@@ -46,7 +46,8 @@
     where.</p>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Who</th><th>For what</th><th>Expecting them</th><th>Since</th><th></th></tr></thead>
+      <thead><tr><th>Who</th><th>For what</th><th>Expecting them</th>
+                 <th>Signed in by</th><th>Since</th><th></th></tr></thead>
       <tbody>
         {% for v in here|sort(attribute='hours', reverse=true) %}
         <tr class="{{ 'row-alert' if v.probably_gone }}">
@@ -56,6 +57,7 @@
           <td>{{ v.visitor['reason'] or '—' }}
             {% if v.visitor['vehicle'] %}<span class="upload-hint">{{ v.visitor['vehicle'] }}</span>{% endif %}</td>
           <td>{{ v.host or '—' }}</td>
+          <td>{{ v.signed_in_by or 'nobody recorded' }}</td>
           <td>
             {{ v.hours }} hours
             {% if v.probably_gone %}
@@ -84,14 +86,27 @@
   <h2 class="section-heading">Been and gone</h2>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Who</th><th>For what</th><th>In</th><th>Out</th></tr></thead>
+      {# Both names, and both times in the château's own clock.
+
+         The names have been recorded on every row since this table was
+         written and shown nowhere, so the register said somebody was here
+         rather than who let them in — which is the half an insurer and a fire
+         officer both ask for.
+
+         And the times were sliced straight off the stored stamp, which is
+         UTC: a visitor signed in at half past midnight appeared on the
+         register as the previous day. #}
+      <thead><tr><th>Who</th><th>For what</th><th>In</th><th>Signed in by</th>
+                 <th>Out</th><th>Signed out by</th></tr></thead>
       <tbody>
         {% for v in recent %}
         <tr>
           <th scope="row">{{ v['name'] }}{% if v['company'] %} · {{ v['company'] }}{% endif %}</th>
           <td>{{ v['reason'] or '—' }}</td>
-          <td>{{ v['signed_in_at'][:16]|replace('T', ' ') }}</td>
-          <td>{{ v['signed_out_at'][:16]|replace('T', ' ') }}</td>
+          <td>{{ local_datetime_str(v['signed_in_at']) }}</td>
+          <td>{{ v['signed_in_by'] or 'nobody recorded' }}</td>
+          <td>{{ local_datetime_str(v['signed_out_at']) }}</td>
+          <td>{{ v['signed_out_by'] or 'nobody recorded' }}</td>
         </tr>
         {% endfor %}
       </tbody>

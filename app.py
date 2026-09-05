@@ -19724,8 +19724,14 @@ def edit_campaign_template(template_id):
         key: len(campaign_audience(conn, [key])) for key in segments
     }
     sends = conn.execute(
-        """SELECT * FROM campaign_sends WHERE template_id = ?
-           ORDER BY created_at DESC LIMIT 20""", (template_id,)).fetchall()
+        # Who sent it. Writing to every guest at once is the loudest thing
+        # anybody here can do, and it has gone out with nobody's name on it.
+        """SELECT campaign_sends.*, users.name AS sent_by
+             FROM campaign_sends
+             LEFT JOIN users ON users.id = campaign_sends.sent_by_user_id
+            WHERE campaign_sends.template_id = ?
+            ORDER BY campaign_sends.created_at DESC LIMIT 20""",
+        (template_id,)).fetchall()
     conn.close()
     return render_template(
         "admin_email_edit.html", template=template, areas=CAMPAIGN_AREAS,
@@ -23217,9 +23223,16 @@ def visitors_on_site(conn, now=None):
     """
     now = now or datetime.now(timezone.utc)
     rows = conn.execute(
-        """SELECT site_visitors.*, users.name AS host
+        # Who let them in. The register exists so the house can say who was
+        # in the building; without this it says somebody was here and not who
+        # admitted them, which is the half an insurer and a fire officer both
+        # ask for.
+        """SELECT site_visitors.*, users.name AS host,
+                  admitter.name AS signed_in_by
              FROM site_visitors
              LEFT JOIN users ON users.id = site_visitors.host_user_id
+             LEFT JOIN users AS admitter
+                    ON admitter.id = site_visitors.signed_in_by_user_id
             WHERE site_visitors.signed_out_at IS NULL
             ORDER BY site_visitors.signed_in_at""").fetchall()
     out = []
@@ -23228,6 +23241,7 @@ def visitors_on_site(conn, now=None):
         hours = round((now - since).total_seconds() / 3600.0, 1) if since else None
         out.append({
             "visitor": r, "since": since, "hours": hours,
+            "signed_in_by": r["signed_in_by"],
             # A judgement, said as one. Somebody who forgot to sign out
             # looks exactly like somebody in the roof space.
             "probably_gone": hours is not None and hours >= VISITOR_LONG_HOURS,
@@ -23257,7 +23271,12 @@ def cleaning_rounds_due(conn, today=None):
     """
     today = today or house_today()
     rows = conn.execute(
-        "SELECT * FROM cleaning_rounds WHERE active = 1").fetchall()
+        # Who says it was done. A deep clean signed off by nobody is a tick
+        # in a box, and the box is the point of the round.
+        """SELECT cleaning_rounds.*, users.name AS last_done_by
+             FROM cleaning_rounds
+             LEFT JOIN users ON users.id = cleaning_rounds.last_done_by_user_id
+            WHERE cleaning_rounds.active = 1""").fetchall()
     out = []
     for r in rows:
         last = parse_date(r["last_done_on"]) if r["last_done_on"] else None
@@ -24406,7 +24425,16 @@ def staff_dashboard():
              ).fetchall()]
             + [dict(d, kind="Company doc", employee_name=None)
                for d in conn.execute(
-                   "SELECT * FROM company_documents WHERE expiry_date IS NOT NULL AND expiry_date <= ? ORDER BY expiry_date",
+                   # Who filed it. On a certificate the house relies on,
+                   # "who put this here" is the first thing asked when it
+                   # turns out to be the wrong version.
+                   """SELECT company_documents.*, users.name AS uploaded_by
+                        FROM company_documents
+                        LEFT JOIN users
+                               ON users.id = company_documents.uploaded_by_user_id
+                       WHERE company_documents.expiry_date IS NOT NULL
+                         AND company_documents.expiry_date <= ?
+                       ORDER BY company_documents.expiry_date""",
                    (soon,),
                ).fetchall()]
             + [{"title": p["provider"] + (f" ({p['coverage_type']})" if p["coverage_type"] else ""),
@@ -24518,9 +24546,17 @@ def staff_dashboard():
         # Today's view: what's due today, overdue, or has no date yet — never
         # a future date, so this never turns into a forward-looking calendar.
         my_tasks = conn.execute(
-            """SELECT * FROM tasks WHERE assigned_to_user_id = ? AND status != 'done'
-               AND (due_date IS NULL OR due_date <= ?)
-               ORDER BY (due_date IS NULL), due_date""",
+            # Who put it on this list. A task DIRECTED at somebody is not one
+            # they picked up: it arrives with an acknowledgment they have to
+            # accept or reject, and being handed work by nobody in particular
+            # is the version of that nobody can push back on.
+            """SELECT tasks.*, director.name AS directed_by
+                 FROM tasks
+                 LEFT JOIN users AS director
+                        ON director.id = tasks.directed_by_user_id
+                WHERE tasks.assigned_to_user_id = ? AND tasks.status != 'done'
+                  AND (tasks.due_date IS NULL OR tasks.due_date <= ?)
+                ORDER BY (tasks.due_date IS NULL), tasks.due_date""",
             (user["id"], today.isoformat()),
         ).fetchall()
 
@@ -43473,10 +43509,15 @@ def police_register_page():
     end = parse_date(request.args.get("to", "")) or today
     rows = conn.execute(
         """SELECT police_register.*, bookings.reference_code, bookings.arrival_date,
-                  bookings.departure_date, rooms.name AS room_name
+                  bookings.departure_date, rooms.name AS room_name,
+                  users.name AS recorded_by
              FROM police_register
              JOIN bookings ON bookings.id = police_register.booking_id
              LEFT JOIN rooms ON rooms.id = bookings.room_id
+             -- Who filled the fiche in. This is a legal register the
+             -- gendarmerie can ask for, and an entry with nobody's name
+             -- against it is one nobody can vouch for.
+             LEFT JOIN users ON users.id = police_register.recorded_by_user_id
             WHERE bookings.arrival_date >= ? AND bookings.arrival_date <= ?
             ORDER BY bookings.arrival_date, police_register.surname""",
         (start.isoformat(), end.isoformat())).fetchall()
@@ -48788,7 +48829,13 @@ def walk_in_booking():
 def admin_images():
     """Every photograph on the public site, in one place, by where it sits."""
     conn = get_db()
-    stored = {r["slot"]: r for r in conn.execute("SELECT * FROM site_images").fetchall()}
+    stored = {r["slot"]: r for r in conn.execute(
+        # Who put it on the public site. A photograph of the house is the
+        # house speaking, and it has been going up anonymously.
+        """SELECT site_images.*, users.name AS uploaded_by
+             FROM site_images
+             LEFT JOIN users ON users.id = site_images.uploaded_by_user_id"""
+    ).fetchall()}
     no_photos = photo_declines(conn, house_today())
     conn.close()
     groups = []
@@ -50632,7 +50679,12 @@ def management_vouchers():
     conn = get_db()
     rows = []
     for voucher in conn.execute(
-            "SELECT * FROM gift_vouchers ORDER BY created_at DESC").fetchall():
+            # Who issued it. A voucher is money the house has promised to
+            # honour, and it has been going out with nobody's name on it.
+            """SELECT gift_vouchers.*, users.name AS issued_by
+                 FROM gift_vouchers
+                 LEFT JOIN users ON users.id = gift_vouchers.issued_by_user_id
+                ORDER BY gift_vouchers.created_at DESC""").fetchall():
         ledger = voucher_ledger(conn, voucher["id"])
         rows.append({"voucher": voucher, **{k: v for k, v in ledger.items()
                                             if k != "voucher"}})
@@ -51439,9 +51491,16 @@ def exit_interviews():
         return redirect(url_for("exit_interviews"))
 
     rows = conn.execute(
-        """SELECT exit_interviews.*, users.name AS staff_name
+        # Two names. `staff_name` is the person who left; who HELD the
+        # interview is somebody else, recorded since the column existed and
+        # joined by nothing -- and an exit interview is a conversation, so
+        # "who did they say this to" is half of what it is.
+        """SELECT exit_interviews.*, users.name AS staff_name,
+                  interviewer.name AS held_by
              FROM exit_interviews
              LEFT JOIN users ON users.id = exit_interviews.user_id
+             LEFT JOIN users AS interviewer
+                    ON interviewer.id = exit_interviews.held_by_user_id
             ORDER BY exit_interviews.held_on DESC""").fetchall()
     # Anybody who has left and has no interview against them. The list that
     # makes the feature more than a filing cabinet.
@@ -52481,9 +52540,18 @@ def management_visitors():
     now = datetime.now(timezone.utc)
     here = visitors_on_site(conn, now)
     recent = conn.execute(
-        """SELECT site_visitors.*, users.name AS host
+        # Both names on a closed visit. A register recording an arrival and
+        # not a departure cannot answer the only question it is ever asked in
+        # an emergency: who is still inside.
+        """SELECT site_visitors.*, users.name AS host,
+                  admitter.name AS signed_in_by,
+                  releaser.name AS signed_out_by
              FROM site_visitors
              LEFT JOIN users ON users.id = site_visitors.host_user_id
+             LEFT JOIN users AS admitter
+                    ON admitter.id = site_visitors.signed_in_by_user_id
+             LEFT JOIN users AS releaser
+                    ON releaser.id = site_visitors.signed_out_by_user_id
             WHERE site_visitors.signed_out_at IS NOT NULL
             ORDER BY site_visitors.signed_in_at DESC LIMIT 40""").fetchall()
     staff = conn.execute(
@@ -57645,7 +57713,13 @@ def management_vault():
     if not vault_enabled():
         return render_template("management_vault.html", entries=None)
     conn = get_db()
-    entries = conn.execute("SELECT * FROM vault_entries ORDER BY title").fetchall()
+    entries = conn.execute(
+        # Who last changed it. A password altered with nobody's name against
+        # it is a password nobody can be asked about.
+        """SELECT vault_entries.*, users.name AS updated_by
+             FROM vault_entries
+             LEFT JOIN users ON users.id = vault_entries.updated_by_user_id
+            ORDER BY vault_entries.title""").fetchall()
     conn.close()
     return render_template("management_vault.html", entries=entries)
 
@@ -62215,9 +62289,15 @@ def admin_inbox_flags():
     kind_filter = request.args.get("kind", "all")
     mailbox_filter = request.args.get("mailbox", "all")
     query = (
+        # Who decided it needed no reply. Resolving a flagged message is a
+        # judgement that a guest is owed nothing further, and it has been
+        # anonymous -- so a message resolved in error looks exactly like one
+        # answered properly.
         "SELECT email_flags.*, users.name AS assigned_to_name, "
+        "closer.name AS resolved_by, "
         "mailbox_routing.label AS mailbox_label FROM email_flags "
         "LEFT JOIN users ON users.id = email_flags.assigned_to_user_id "
+        "LEFT JOIN users AS closer ON closer.id = email_flags.resolved_by_user_id "
         "LEFT JOIN mailbox_routing ON mailbox_routing.mailbox = email_flags.mailbox WHERE 1=1"
     )
     params = []
@@ -63841,8 +63921,13 @@ def staff_reimbursements_owed(conn, today=None):
     """
     day = today or house_today()
     rows = conn.execute(
-        """SELECT expenses.*, users.name AS person, users.email AS person_email
+        """SELECT expenses.*, users.name AS person, users.email AS person_email,
+                  payer.name AS paid_by
              FROM expenses LEFT JOIN users ON users.id = expenses.submitted_by_user_id
+             -- Who handed the money over. Somebody who spent their own money
+             -- on the house and is told it was paid should be able to ask
+             -- whom.
+             LEFT JOIN users AS payer ON payer.id = expenses.paid_by_user_id
             WHERE expenses.kind = 'staff_expense'
               AND expenses.status = 'approved'
               AND expenses.paid_at IS NULL
@@ -64395,7 +64480,12 @@ def pennylane_find_customer(name, email=None):
 
 def pennylane_already_sent(conn, kind, source_id):
     row = conn.execute(
-        "SELECT * FROM pennylane_exports WHERE kind = ? AND source_id = ?",
+        # Who sent it to the accountant. A figure in the books with nobody's
+        # name against the sending is one nobody can be asked about.
+        """SELECT pennylane_exports.*, users.name AS sent_by
+             FROM pennylane_exports
+             LEFT JOIN users ON users.id = pennylane_exports.sent_by_user_id
+            WHERE pennylane_exports.kind = ? AND pennylane_exports.source_id = ?""",
         (kind, source_id)).fetchone()
     return row
 
