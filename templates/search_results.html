@@ -2,198 +2,69 @@
 {% block title %}Search{% endblock %}
 {% block content %}
 
+{# ONE BOX, EVERY SOURCE DRAWN THE SAME WAY.
+
+   This page used to be fourteen hand-written blocks, one per record type,
+   matching fourteen hand-written LIKE clauses in the route — written twice and
+   therefore diverging. The proof that it had: a guest's name found their
+   profile, their dinner and their atelier, and not their STAY. The room
+   booking is the record the house is actually about and was the one thing
+   this box could not find.
+
+   Adding a source is now one entry in _search_sources, not two blocks in two
+   files. #}
+
 <div class="page-head">
   <h1>Search</h1>
 </div>
 
 <form method="get" class="search-bar">
   <div>
-    <label class="field-label">Search everything</label>
-    <input type="text" name="q" value="{{ q }}" placeholder="Guest, employee, task, or room" autofocus>
+    <label class="field-label" for="q">Search everything</label>
+    <input type="text" id="q" name="q" value="{{ q }}"
+           placeholder="A name, a reference, a telephone number, a supplier" autofocus>
   </div>
   <button type="submit" class="btn-mini">Search</button>
 </form>
 
 {% if not q %}
-  <div class="empty-state">Type something above to search across guests, employees, tasks, and rooms.</div>
+  <div class="empty-state">
+    Type something above. This looks through stays, guests, dinners, atelier
+    places, event enquiries, invoices, suppliers, people, tasks, rooms, the
+    waiting list, recurring costs, vehicles, promotional codes, social posts
+    and the company details.
+  </div>
 {% elif total == 0 %}
-  <div class="empty-state">No matches for "{{ q }}".</div>
+  <div class="empty-state">Nothing in the house mentions &ldquo;{{ q }}&rdquo;.</div>
 {% else %}
 
-  {% if results.guests %}
-  <h2 class="section-heading">Guests</h2>
+  <p class="page-intro">
+    {{ total }} {{ 'match' if total == 1 else 'matches' }} for
+    &ldquo;{{ q }}&rdquo;, across
+    {{ groups|length }} {{ 'kind' if groups|length == 1 else 'kinds' }} of record.
+  </p>
+
+  {% for group in groups %}
+  <h2 class="section-heading">{{ group.label }}</h2>
   <div class="mini-list">
-    {% for g in results.guests %}
-    <a href="{{ url_for('edit_guest', guest_id=g['id']) }}" class="mini-row">
-      <span class="mini-name">{{ g['name'] }}{% if g['vip'] %} ★{% endif %}</span>
-      <span class="mini-role">{{ g['email'] or '' }}{% if g['email'] and g['phone'] %} · {% endif %}{{ g['phone'] or '' }}</span>
+    {% for hit in group.hits %}
+    <a href="{{ hit.href }}" class="mini-row">
+      <span class="mini-name">{{ hit.name }}</span>
+      <span class="mini-role">{{ hit.line }}</span>
+      {% if hit.status %}
+      <span class="mini-status status-{{ hit.status_class }}">{{ hit.status }}</span>
+      {% endif %}
     </a>
     {% endfor %}
   </div>
+  {# SAYS WHEN IT STOPPED. A list that quietly shows twenty of eighty has
+     answered a different question from the one asked, and the person reading
+     it has no way of knowing. #}
+  {% if group.capped %}
+  <p class="field-hint">Showing the first {{ group.hits|length }}. Narrow the
+    search to see the rest.</p>
   {% endif %}
-
-  {% if results.employees %}
-  <h2 class="section-heading">Employees</h2>
-  <div class="mini-list">
-    {% for e in results.employees %}
-    <a href="{{ url_for('profile', user_id=e['id']) }}" class="mini-row">
-      <span class="mini-name">{{ e['name'] }}</span>
-      <span class="mini-role">{{ e['job_role'] or 'No role set' }}</span>
-      <span class="mini-status status-{{ e['status'] }}">{{ e['status'] }}</span>
-    </a>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if results.tasks %}
-  <h2 class="section-heading">Tasks</h2>
-  <div class="mini-list">
-    {% for t in results.tasks %}
-    <a href="{{ url_for('admin_tasks') }}" class="mini-row">
-      <span class="mini-name">{{ t['title'] }}</span>
-      <span class="mini-role">{{ t['assigned_to_name'] or 'Unassigned' }}{% if t['due_date'] %} · {{ t['due_date'] }}{% endif %}</span>
-      <span class="mini-status status-{{ 'onshift' if t['status'] == 'done' else 'pending' }}">{{ t['status'] }}</span>
-    </a>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if results.rooms %}
-  <h2 class="section-heading">Rooms</h2>
-  <div class="mini-list">
-    {% for r in results.rooms %}
-    <a href="{{ url_for('edit_room', room_id=r['id']) }}" class="mini-row">
-      <span class="mini-name">{{ r['name'] }}</span>
-      <span class="mini-role">€{{ '%.0f'|format(r['price_per_night']) }}/night</span>
-    </a>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if results.vendors %}
-  <h2 class="section-heading">Vendors</h2>
-  <div class="mini-list">
-    {% for v in results.vendors %}
-    <a href="{{ url_for('vendors') }}" class="mini-row">
-      <span class="mini-name">{{ v['name'] }}</span>
-      <span class="mini-role">{{ v['contact_person'] or '' }}{% if v['payment_terms'] %} · {{ v['payment_terms'] }}{% endif %}</span>
-    </a>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if results.recurring_costs %}
-  <h2 class="section-heading">Recurring Costs</h2>
-  <div class="mini-list">
-    {% for c in results.recurring_costs %}
-    <a href="{{ url_for('management_recurring_costs') }}" class="mini-row">
-      <span class="mini-name">{{ c['label'] }}</span>
-      <span class="mini-role">€{{ '%.2f'|format(c['amount']) }} / {{ c['frequency'] }}</span>
-      <span class="mini-status status-{{ 'onshift' if c['active'] else 'inactive' }}">{{ 'active' if c['active'] else 'paused' }}</span>
-    </a>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if results.waitlist %}
-  <h2 class="section-heading">Waitlist</h2>
-  <div class="mini-list">
-    {% for w in results.waitlist %}
-    <a href="{{ url_for('admin_waitlist') }}" class="mini-row">
-      <span class="mini-name">{{ w['name'] }}</span>
-      <span class="mini-role">{{ w['desired_arrival'] or '?' }} → {{ w['desired_departure'] or '?' }} · {{ w['email'] }}</span>
-      <span class="mini-status status-{{ 'onshift' if w['status'] == 'booked' else ('inactive' if w['status'] == 'closed' else 'pending') }}">{{ w['status'] }}</span>
-    </a>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if results.restaurant_bookings %}
-  <h2 class="section-heading">Restaurant Reservations</h2>
-  <div class="mini-list">
-    {% for r in results.restaurant_bookings %}
-    <a href="{{ url_for('admin_restaurant') }}" class="mini-row">
-      <span class="mini-name">{{ r['guest_name'] }}</span>
-      <span class="mini-role">{{ r['dinner_date'] }} · party of {{ r['party_size'] }} · {{ r['reference_code'] }}</span>
-      <span class="mini-status status-{{ r['status'] }}">{{ r['status'] }}</span>
-    </a>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if results.workshop_bookings %}
-  <h2 class="section-heading">Workshop Registrations</h2>
-  <div class="mini-list">
-    {% for r in results.workshop_bookings %}
-    <a href="{{ url_for('admin_workshop_registrations', session_id=r['session_id']) }}" class="mini-row">
-      <span class="mini-name">{{ r['guest_name'] }}</span>
-      <span class="mini-role">{{ r['workshop_title'] }} · party of {{ r['party_size'] }} · {{ r['reference_code'] }}</span>
-      <span class="mini-status status-{{ r['status'] }}">{{ r['status'] }}</span>
-    </a>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if results.event_inquiries %}
-  <h2 class="section-heading">Event Inquiries</h2>
-  <div class="mini-list">
-    {% for e in results.event_inquiries %}
-    <a href="{{ url_for('admin_events') }}" class="mini-row">
-      <span class="mini-name">{{ e['contact_name'] }}</span>
-      <span class="mini-role">{{ e['event_type']|capitalize }}{% if e['preferred_date'] %} · {{ e['preferred_date'] }}{% endif %} · {{ e['reference_code'] }}</span>
-      <span class="mini-status status-{{ e['status'] }}">{{ e['status'] }}</span>
-    </a>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if results.promo_codes %}
-  <h2 class="section-heading">Promo Codes</h2>
-  <div class="mini-list">
-    {% for c in results.promo_codes %}
-    <a href="{{ url_for('admin_promo_codes') }}" class="mini-row">
-      <span class="mini-name">{{ c['code'] }}</span>
-      <span class="mini-role">{{ c['description'] or '' }}</span>
-      <span class="mini-status status-{{ 'onshift' if c['active'] else 'inactive' }}">{{ 'active' if c['active'] else 'inactive' }}</span>
-    </a>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if results.social_posts %}
-  <h2 class="section-heading">Social Media Posts</h2>
-  <div class="mini-list">
-    {% for p in results.social_posts %}
-    <a href="{{ url_for('management_social') }}" class="mini-row">
-      <span class="mini-name">{{ p['caption'][:60] }}{{ '…' if p['caption']|length > 60 }}</span>
-      <span class="mini-role">{{ p['platform'] }}{% if p['scheduled_date'] %} · {{ p['scheduled_date'] }}{% endif %}</span>
-      <span class="mini-status status-{{ 'onshift' if p['status'] == 'posted' else 'pending' }}">{{ p['status'] }}</span>
-    </a>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if results.vehicles %}
-  <h2 class="section-heading">Vehicles</h2>
-  <div class="mini-list">
-    {% for v in results.vehicles %}
-    <a href="{{ url_for('management_vehicles') }}" class="mini-row">
-      <span class="mini-name">{{ v['name'] }}</span>
-      <span class="mini-role">{{ v['vehicle_type'] or '' }}{% if v['license_plate'] %} · {{ v['license_plate'] }}{% endif %}</span>
-    </a>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if results.company_info %}
-  <h2 class="section-heading">Company Info</h2>
-  <div class="mini-list">
-    <a href="{{ url_for('management_company_info') }}" class="mini-row">
-      <span class="mini-name">{{ results.company_info[0]['legal_name'] or 'Company Info' }}</span>
-      <span class="mini-role">Registration, VAT, accountant, insurance broker</span>
-    </a>
-  </div>
-  {% endif %}
+  {% endfor %}
 
 {% endif %}
 

@@ -536,6 +536,178 @@ def house_date_iso(stamp):
     day = house_date(stamp)
     return day.isoformat() if day else ""
 
+
+# The two nights a year the clocks move, worked out once per year and kept.
+# Cheap either way -- 365 offset lookups -- but this is read on the owner home,
+# which is the one page with a measured budget.
+_CLOCK_CHANGE_CACHE = {}
+
+
+def _offset_at_noon(day):
+    """The zone's UTC offset in the middle of a day.
+
+    Noon on purpose: midnight is the one hour of the day that can be
+    ambiguous or absent, and the answer to "which side of the change is this
+    day on" must not itself depend on the change.
+    """
+    return datetime(day.year, day.month, day.day, 12, tzinfo=LOCAL_TZ).utcoffset()
+
+
+def clock_change_days(year):
+    """[(date, "forward"|"back")] for the days the clocks move that year.
+
+    READ OUT OF THE ZONE, NOT HARD-CODED. "The last Sunday in March" is EU law
+    as it stands and has been amended before -- and the EU has voted once
+    already to abolish the change altogether. Asking the zone means the day
+    this stops happening, this returns nothing and every warning built on it
+    correctly stops appearing, rather than announcing a change that is not
+    coming.
+    """
+    if year in _CLOCK_CHANGE_CACHE:
+        return _CLOCK_CHANGE_CACHE[year]
+    out = []
+    day = date(year, 1, 1)
+    previous = _offset_at_noon(day - timedelta(days=1))
+    while day.year == year:
+        offset = _offset_at_noon(day)
+        if offset != previous:
+            out.append((day, "forward" if offset > previous else "back"))
+        previous = offset
+        day += timedelta(days=1)
+    _CLOCK_CHANGE_CACHE[year] = out
+    return out
+
+
+def next_clock_change(today=None, within_days=14):
+    """The next clock change inside the window, or None.
+
+    Returned as a dict rather than a date because every sentence written about
+    it needs the direction: an hour gained and an hour lost are opposite
+    problems for a rota, and saying "the clocks change" tells nobody which.
+    """
+    today = today or house_today()
+    for year in (today.year, today.year + 1):
+        for day, direction in clock_change_days(year):
+            if day < today:
+                continue
+            days = (day - today).days
+            if days > within_days:
+                return None
+            # The SERVICE day that is short or long is the one before, because
+            # it runs past midnight to the rollover -- the till's Saturday
+            # night is the 25-hour one, not its Sunday.
+            service = day - timedelta(days=1)
+            return {"day": day, "direction": direction, "days": days,
+                    "service_day": service,
+                    "service_hours": service_day_length_hours(service)}
+    return None
+
+
+def service_day_length_hours(day):
+    """How long one restaurant service day is, in real hours.
+
+    Asked of the window itself rather than worked out again, so that a page
+    that says "25 hours" and the figures underneath it are reading the same
+    thing. Nothing in this house should have two definitions of a day.
+    """
+    start, end = service_day_window(day)
+    if not start or not end:
+        return 24.0
+    return round((parse_datetime_iso(end) - parse_datetime_iso(start))
+                 .total_seconds() / 3600, 2)
+
+
+def shifts_across_clock_change(conn, today=None, within_days=14):
+    """Rostered shifts that run through the change, and what they really are.
+
+    A shift written 22:00 to 06:00 is eight hours on three hundred and
+    sixty-three nights a year, nine on one and seven on another. The rota is
+    wall-clock times and the timesheet is UTC instants, so the two disagree by
+    an hour twice a year and NEITHER of them is wrong -- which is exactly why
+    it is worth saying out loud before the night rather than arguing about it
+    on the payslip.
+    """
+    change = next_clock_change(today=today, within_days=within_days)
+    if not change:
+        return []
+    day = change["day"]
+    before = day - timedelta(days=1)
+    rows = conn.execute(
+        """SELECT shifts.*, users.name AS who FROM shifts
+             LEFT JOIN users ON users.id = shifts.user_id
+            WHERE shifts.shift_date IN (?, ?)
+            ORDER BY shifts.shift_date, shifts.start_time""",
+        (before.isoformat(), day.isoformat())).fetchall()
+    out = []
+    for row in rows:
+        shift_day = parse_date(row["shift_date"])
+        try:
+            start_t = datetime.strptime((row["start_time"] or "")[:5], "%H:%M").time()
+            end_t = datetime.strptime((row["end_time"] or "")[:5], "%H:%M").time()
+        except ValueError:
+            continue
+        if not shift_day:
+            continue
+        start = datetime.combine(shift_day, start_t, tzinfo=LOCAL_TZ)
+        # A shift ending at or before it starts is an overnight one, which is
+        # the only kind that can cross the change at all.
+        end_day = shift_day + timedelta(days=1) if end_t <= start_t else shift_day
+        end = datetime.combine(end_day, end_t, tzinfo=LOCAL_TZ)
+        real = round((end.astimezone(timezone.utc)
+                      - start.astimezone(timezone.utc)).total_seconds() / 3600, 2)
+        # What the rota LOOKS like: the wall-clock difference, which is what
+        # anybody reading the roster works out in their head.
+        looks = round(((datetime.combine(end_day, end_t)
+                        - datetime.combine(shift_day, start_t)).total_seconds()
+                       / 3600), 2)
+        if abs(real - looks) < 0.01:
+            continue
+        out.append({"shift": row, "who": row["who"] or "Nobody assigned",
+                    "rostered": looks, "worked": real,
+                    "difference": round(real - looks, 2)})
+    return out
+
+
+def rollover_hour_is_safe(hour=None, day=None):
+    """Whether the till's rollover hour exists exactly once on a change night.
+
+    POS_SERVICE_ROLLOVER_HOUR is an environment variable, and the hours it
+    must never be are the one that goes missing and the one that happens
+    twice. Set it to 2 in Paris and the service day would start at a
+    wall-clock time that does not exist one night in March -- zoneinfo quietly
+    moves it forward an hour, so nothing errors and the whole day's takings are
+    summed over the wrong window. Five is the default and is safe; this is here
+    so that a change to it is caught by a test rather than by a cash-up.
+
+    `hour` and `day` are for asking about one specific night, so that the March
+    case and the October case can each be shown to be caught.
+
+    ONE CONDITION, NOT TWO. The obvious pair -- "does it survive a round trip
+    through UTC" for the missing hour and "does fold change the answer" for the
+    doubled one -- are two ways of asking the same question, and the fold one
+    answers both: a wall-clock time that does not exist has a different offset
+    at fold=0 and fold=1, and so does one that happens twice. Keeping the round
+    trip as well would be a branch that never fires, which is a branch nobody
+    can show still works.
+    """
+    hour = POS_SERVICE_ROLLOVER_HOUR if hour is None else hour
+    if day is not None:
+        days = [day]
+    else:
+        days = []
+        for year in (house_today().year, house_today().year + 1):
+            for changes, _direction in clock_change_days(year):
+                days.extend((changes - timedelta(days=1), changes))
+    for probe in days:
+        wall = datetime(probe.year, probe.month, probe.day, hour, tzinfo=LOCAL_TZ)
+        # An hour that is missing and an hour that happens twice are both
+        # "this wall-clock time is not one instant", and that is exactly what
+        # fold disagreeing with itself means. Either way it is not a question a
+        # takings window can be asked to decide.
+        if wall.replace(fold=1).utcoffset() != wall.utcoffset():
+            return False
+    return True
+
 DEFAULT_TERMS = """DRAFT — NOT YET REVIEWED BY A LAWYER. This is a starting point written
 to match how the château actually operates, not legal advice. Have it reviewed
 by a French lawyer and your insurer before you rely on it, and delete this
@@ -4512,6 +4684,14 @@ def init_db():
          "ALTER TABLE workshop_sessions ADD COLUMN instructor_token TEXT"),
         ("guest_feedback_review_invited_at",
          "ALTER TABLE guest_feedback ADD COLUMN review_invited_at TEXT"),
+        # A SECOND PERSON TO WRITE TO. Not the payer -- that is booked_by
+        # below, and it REPLACES the guest on the money side. This one replaces
+        # nobody: it is the PA, the daughter, the travel agent who wants to see
+        # what we sent, copied on everything the guest is sent.
+        ("bookings_second_contact_name",
+         "ALTER TABLE bookings ADD COLUMN second_contact_name TEXT"),
+        ("bookings_second_contact_email",
+         "ALTER TABLE bookings ADD COLUMN second_contact_email TEXT"),
         ("bookings_booked_by_name", "ALTER TABLE bookings ADD COLUMN booked_by_name TEXT"),
         ("bookings_booked_by_email", "ALTER TABLE bookings ADD COLUMN booked_by_email TEXT"),
         ("waitlist_offered_at", "ALTER TABLE waitlist_entries ADD COLUMN offered_at TEXT"),
@@ -5924,7 +6104,8 @@ NAV_AREAS = {
         "admin_automation", "admin_deposit_rules", "save_room_deposit_settings",
         "admin_outlook_addin", "admin_promo_codes",
         "admin_readiness", "admin_photo_mirror", "fetch_photo_mirror",
-        "admin_terms", "audit_log", "delete_company_document",
+        "admin_terms", "audit_log", "record_history_page",
+        "delete_company_document",
         "delete_insurance_policy", "delete_vendor",
         "download_company_document", "edit_company_document", "edit_insurance_policy",
         "edit_vendor", "export_audit_log_csv", "export_insurance_csv",
@@ -13897,8 +14078,8 @@ def mark_booking_payment_paid(conn, session):
         if portal_token:
             account_line = ("\nYour bookings and balances are always here:\n"
                             f"{url_for('guest_portal', token=portal_token, _external=True)}\n")
-        send_email(
-            stay_details_go_to(booking),   # the stay side: always whoever is staying
+        write_about_stay(
+            booking,   # the stay side: always whoever is staying, plus any copy
             f"Payment received — {booking['room_name']}",
             f"Hi {booking['guest_name']},\n\n"
             f"We've received €{amount:.2f} for your stay ({booking['reference_code']}).\n"
@@ -20632,8 +20813,9 @@ def booking_for_contact(conn, address=None, phone=None):
         rows = conn.execute(
             """SELECT id, arrival_date, departure_date FROM bookings
                 WHERE LOWER(COALESCE(guest_email, '')) = ?
-                   OR LOWER(COALESCE(booked_by_email, '')) = ?""",
-            (address, address)).fetchall()
+                   OR LOWER(COALESCE(booked_by_email, '')) = ?
+                   OR LOWER(COALESCE(second_contact_email, '')) = ?""",
+            (address, address, address)).fetchall()
         if not rows:
             # Somebody paying one share of somebody else's booking is writing
             # about that booking, and is on no booking of their own.
@@ -24748,91 +24930,294 @@ def office_display():
     )
 
 
+# WHAT THE ONE BOX LOOKS IN. Every source declared once -- the query, the
+# columns it searches, and how one hit is drawn -- because this page used to be
+# fourteen hand-written LIKE clauses in the route and fourteen hand-written
+# blocks in the template, written twice and therefore diverging. The gap that
+# proves it: you could search a guest's name and find their PROFILE, their
+# dinner and their atelier, and not the stay itself. Rooms were the one record
+# the house is actually about and the only one the box could not find.
+#
+# `fields` are SQL expressions, so a joined column is as searchable as an own
+# one. `name`, `line`, `status` and `href` take a row and are called in the
+# route -- in Python, where a mistake is a traceback in a test rather than an
+# empty span on a page.
+def _search_sources():
+    """The declaration, built inside a request because href needs url_for."""
+    return [
+        {
+            "key": "bookings",
+            "label": "Stays",
+            "sql": """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                        JOIN rooms ON rooms.id = bookings.room_id""",
+            "fields": ["bookings.guest_name", "bookings.guest_email",
+                       "bookings.reference_code", "bookings.guest_phone",
+                       "bookings.special_requests", "bookings.booked_by_name",
+                       "bookings.booked_by_email", "bookings.second_contact_name",
+                       "bookings.second_contact_email", "rooms.name"],
+            "order": "bookings.arrival_date DESC",
+            "name": lambda r: r["guest_name"],
+            "line": lambda r: (f"{r['room_name']} \u00b7 {r['arrival_date']} to "
+                               f"{r['departure_date']} \u00b7 {r['reference_code']}"),
+            "status": lambda r: (r["status"], r["status"]),
+            "href": lambda r: url_for("edit_booking", booking_id=r["id"]),
+        },
+        {
+            "key": "guests",
+            "label": "Guests",
+            "sql": "SELECT * FROM guests",
+            "fields": ["name", "email", "phone", "notes", "preferences",
+                       "dietary_notes"],
+            "order": "name",
+            "name": lambda r: (r["name"] or "") + (" \u2605" if r["vip"] else ""),
+            "line": lambda r: " \u00b7 ".join(
+                x for x in ((r["email"] or ""), (r["phone"] or "")) if x),
+            "href": lambda r: url_for("edit_guest", guest_id=r["id"]),
+        },
+        {
+            "key": "restaurant_bookings",
+            "label": "Restaurant reservations",
+            "sql": "SELECT * FROM restaurant_bookings",
+            "fields": ["guest_name", "reference_code", "guest_email", "guest_phone",
+                       "dietary_notes"],
+            "order": "dinner_date DESC",
+            "name": lambda r: r["guest_name"],
+            "line": lambda r: (f"{r['dinner_date']} \u00b7 party of "
+                               f"{r['party_size']} \u00b7 {r['reference_code']}"),
+            "status": lambda r: (r["status"], r["status"]),
+            "href": lambda r: url_for("admin_restaurant"),
+        },
+        {
+            "key": "workshop_bookings",
+            "label": "Atelier registrations",
+            "sql": """SELECT workshop_bookings.*, workshops.title AS workshop_title
+                        FROM workshop_bookings
+                        JOIN workshop_sessions
+                          ON workshop_sessions.id = workshop_bookings.session_id
+                        JOIN workshops ON workshops.id = workshop_sessions.workshop_id""",
+            "fields": ["workshop_bookings.guest_name", "workshop_bookings.reference_code",
+                       "workshop_bookings.guest_email", "workshops.title"],
+            "order": "workshop_bookings.created_at DESC",
+            "name": lambda r: r["guest_name"],
+            "line": lambda r: (f"{r['workshop_title']} \u00b7 party of "
+                               f"{r['party_size']} \u00b7 {r['reference_code']}"),
+            "status": lambda r: (r["status"], r["status"]),
+            "href": lambda r: url_for("admin_workshop_registrations",
+                                      session_id=r["session_id"]),
+        },
+        {
+            "key": "event_inquiries",
+            "label": "Event enquiries",
+            "sql": "SELECT * FROM event_inquiries",
+            "fields": ["contact_name", "contact_email", "reference_code",
+                       "event_type", "message"],
+            "order": "created_at DESC",
+            "name": lambda r: r["contact_name"],
+            "line": lambda r: ((r["event_type"] or "").capitalize()
+                               + (f" \u00b7 {r['preferred_date']}" if r["preferred_date"] else "")
+                               + f" \u00b7 {r['reference_code']}"),
+            "status": lambda r: (r["status"], r["status"]),
+            "href": lambda r: url_for("admin_events"),
+        },
+        {
+            "key": "expenses",
+            "label": "Invoices and claims",
+            "sql": "SELECT * FROM expenses",
+            "fields": ["vendor_name", "description", "invoice_number", "doc_type"],
+            "order": "submitted_at DESC",
+            "name": lambda r: r["vendor_name"] or r["description"] or "(no name)",
+            "line": lambda r: (f"\u20ac{float(r['amount'] or 0):.2f} \u00b7 "
+                               + (r["description"] or "")
+                               + (f" \u00b7 due {r['due_date']}" if r["due_date"] else "")),
+            "status": lambda r: (r["status"], r["status"]),
+            "href": lambda r: url_for("expenses"),
+        },
+        {
+            "key": "vendors",
+            "label": "Suppliers",
+            "sql": "SELECT * FROM vendors",
+            "fields": ["name", "contact_person", "notes", "email", "phone"],
+            "order": "name",
+            "name": lambda r: r["name"],
+            "line": lambda r: " \u00b7 ".join(
+                x for x in ((r["contact_person"] or ""), (r["payment_terms"] or "")) if x),
+            "href": lambda r: url_for("vendors"),
+        },
+        {
+            "key": "employees",
+            "label": "People",
+            "sql": "SELECT * FROM users WHERE role = 'employee'",
+            "fields": ["name", "job_role"],
+            "order": "name",
+            "name": lambda r: r["name"],
+            "line": lambda r: r["job_role"] or "No role set",
+            "status": lambda r: (r["status"], r["status"]),
+            "href": lambda r: url_for("profile", user_id=r["id"]),
+        },
+        {
+            "key": "tasks",
+            "label": "Tasks",
+            "sql": """SELECT tasks.*, users.name AS assigned_to_name FROM tasks
+                        LEFT JOIN users ON users.id = tasks.assigned_to_user_id""",
+            "fields": ["tasks.title", "tasks.notes"],
+            "order": "tasks.due_date DESC",
+            "name": lambda r: r["title"],
+            "line": lambda r: ((r["assigned_to_name"] or "Unassigned")
+                               + (f" \u00b7 {r['due_date']}" if r["due_date"] else "")),
+            "status": lambda r: (r["status"],
+                                 "onshift" if r["status"] == "done" else "pending"),
+            "href": lambda r: url_for("admin_tasks"),
+        },
+        {
+            "key": "rooms",
+            "label": "Rooms",
+            "sql": "SELECT * FROM rooms",
+            "fields": ["name", "description"],
+            "order": "sort_order",
+            "name": lambda r: r["name"],
+            "line": lambda r: f"\u20ac{float(r['price_per_night'] or 0):.0f}/night",
+            "href": lambda r: url_for("edit_room", room_id=r["id"]),
+        },
+        {
+            "key": "waitlist",
+            "label": "Waiting list",
+            "sql": "SELECT * FROM waitlist_entries",
+            "fields": ["name", "email", "phone", "notes"],
+            "order": "created_at DESC",
+            "name": lambda r: r["name"],
+            "line": lambda r: (f"{r['desired_arrival'] or '?'} \u2192 "
+                               f"{r['desired_departure'] or '?'} \u00b7 {r['email'] or ''}"),
+            "status": lambda r: (
+                r["status"],
+                "onshift" if r["status"] == "booked"
+                else ("inactive" if r["status"] == "closed" else "pending")),
+            "href": lambda r: url_for("admin_waitlist"),
+        },
+        {
+            "key": "recurring_costs",
+            "label": "Recurring costs",
+            "sql": "SELECT * FROM recurring_costs",
+            "fields": ["label", "category", "notes"],
+            "order": "label",
+            "name": lambda r: r["label"],
+            "line": lambda r: f"\u20ac{float(r['amount'] or 0):.2f} / {r['frequency']}",
+            "status": lambda r: ("active" if r["active"] else "paused",
+                                 "onshift" if r["active"] else "inactive"),
+            "href": lambda r: url_for("management_recurring_costs"),
+        },
+        {
+            "key": "vehicles",
+            "label": "Vehicles",
+            "sql": "SELECT * FROM vehicles",
+            "fields": ["name", "vehicle_type", "license_plate"],
+            "order": "name",
+            "name": lambda r: r["name"],
+            "line": lambda r: " \u00b7 ".join(
+                x for x in ((r["vehicle_type"] or ""), (r["license_plate"] or "")) if x),
+            "href": lambda r: url_for("management_vehicles"),
+        },
+        {
+            "key": "promo_codes",
+            "label": "Promotional codes",
+            "sql": "SELECT * FROM promo_codes",
+            "fields": ["code", "description"],
+            "order": "created_at DESC",
+            "name": lambda r: r["code"],
+            "line": lambda r: r["description"] or "",
+            "status": lambda r: ("active" if r["active"] else "inactive",
+                                 "onshift" if r["active"] else "inactive"),
+            "href": lambda r: url_for("admin_promo_codes"),
+        },
+        {
+            "key": "social_posts",
+            "label": "Social posts",
+            "sql": "SELECT * FROM social_posts",
+            "fields": ["caption", "platform"],
+            "order": "(scheduled_date IS NULL), scheduled_date DESC",
+            "name": lambda r: (r["caption"] or "")[:60]
+                              + ("\u2026" if len(r["caption"] or "") > 60 else ""),
+            "line": lambda r: ((r["platform"] or "")
+                               + (f" \u00b7 {r['scheduled_date']}" if r["scheduled_date"] else "")),
+            "status": lambda r: (r["status"],
+                                 "onshift" if r["status"] == "posted" else "pending"),
+            "href": lambda r: url_for("management_social"),
+        },
+        {
+            "key": "company_info",
+            "label": "Company details",
+            "sql": "SELECT * FROM company_info",
+            "fields": ["legal_name", "registration_number", "vat_number",
+                       "registered_address", "accountant_name",
+                       "insurance_broker_name"],
+            "order": "id",
+            "name": lambda r: r["legal_name"] or "Company info",
+            "line": lambda r: "Registration, VAT, accountant, insurance broker",
+            "href": lambda r: url_for("management_company_info"),
+        },
+    ]
+
+
+def search_house(conn, q, limit=20):
+    """Everything in the house that mentions this, grouped by what it is.
+
+    One needle, one LIKE per declared field. Nothing clever: this is a house
+    with thousands of rows, not millions, and an index-backed full-text search
+    would be a second definition of what "matches" means -- which is exactly
+    the divergence this page was already suffering from.
+
+    Each group carries `capped` rather than silently stopping at the limit. A
+    list that quietly shows twenty of eighty is a list that has answered a
+    different question from the one asked.
+    """
+    q = (q or "").strip()
+    if not q:
+        return []
+    needle = f"%{q}%"
+    out = []
+    for source in _search_sources():
+        fields = source["fields"]
+        where = " OR ".join(f"COALESCE({f}, '') LIKE ?" for f in fields)
+        sql = source["sql"]
+        joiner = " AND " if " WHERE " in sql.upper() else " WHERE "
+        # One more than the limit, so "there are more" is known rather than
+        # assumed from a full page.
+        sql = f"{sql}{joiner}({where}) ORDER BY {source['order']} LIMIT {limit + 1}"
+        try:
+            rows = conn.execute(sql, (needle,) * len(fields)).fetchall()
+        except sqlite3.OperationalError:
+            # A column that has not been migrated yet on some copy of the
+            # database. One source failing must not take the whole box down.
+            continue
+        if not rows:
+            continue
+        capped = len(rows) > limit
+        hits = []
+        for row in rows[:limit]:
+            label, css = (source["status"](row) if source.get("status")
+                          else (None, None))
+            hits.append({"name": source["name"](row), "line": source["line"](row),
+                         "status": label, "status_class": css,
+                         "href": source["href"](row)})
+        out.append({"key": source["key"], "label": source["label"],
+                    "hits": hits, "capped": capped})
+    return out
+
+
 @app.route("/search")
 @owner_required
 def search():
+    """One box, everything the house holds.
+
+    The gap this closed: a guest's name found their profile, their dinner and
+    their atelier, and not their STAY -- the record the house is actually
+    about, and the only one that could not be found from here.
+    """
     q = request.args.get("q", "").strip()
-    results = {"guests": [], "employees": [], "tasks": [], "rooms": [], "vendors": [],
-               "recurring_costs": [], "company_info": [], "waitlist": [], "vehicles": [],
-               "restaurant_bookings": [], "workshop_bookings": [], "social_posts": [],
-               "event_inquiries": [], "promo_codes": []}
-    if q:
-        needle = f"%{q}%"
-        conn = get_db()
-        results["guests"] = conn.execute(
-            """SELECT * FROM guests
-               WHERE name LIKE ? OR notes LIKE ? OR email LIKE ? OR phone LIKE ?
-                  OR preferences LIKE ? OR dietary_notes LIKE ?
-               ORDER BY name LIMIT 20""",
-            (needle,) * 6,
-        ).fetchall()
-        results["employees"] = conn.execute(
-            "SELECT * FROM users WHERE role = 'employee' AND (name LIKE ? OR job_role LIKE ?) ORDER BY name LIMIT 20",
-            (needle, needle),
-        ).fetchall()
-        results["tasks"] = conn.execute(
-            """SELECT tasks.*, users.name AS assigned_to_name FROM tasks
-               LEFT JOIN users ON users.id = tasks.assigned_to_user_id
-               WHERE tasks.title LIKE ? OR tasks.notes LIKE ? ORDER BY tasks.due_date DESC LIMIT 20""",
-            (needle, needle),
-        ).fetchall()
-        results["rooms"] = conn.execute(
-            "SELECT * FROM rooms WHERE name LIKE ? ORDER BY sort_order LIMIT 20", (needle,)
-        ).fetchall()
-        results["vendors"] = conn.execute(
-            "SELECT * FROM vendors WHERE name LIKE ? OR contact_person LIKE ? OR notes LIKE ? ORDER BY name LIMIT 20",
-            (needle, needle, needle),
-        ).fetchall()
-        results["recurring_costs"] = conn.execute(
-            "SELECT * FROM recurring_costs WHERE label LIKE ? OR category LIKE ? ORDER BY label LIMIT 20",
-            (needle, needle),
-        ).fetchall()
-        results["waitlist"] = conn.execute(
-            "SELECT * FROM waitlist_entries WHERE name LIKE ? OR email LIKE ? ORDER BY created_at DESC LIMIT 20",
-            (needle, needle),
-        ).fetchall()
-        results["vehicles"] = conn.execute(
-            "SELECT * FROM vehicles WHERE name LIKE ? OR vehicle_type LIKE ? OR license_plate LIKE ? ORDER BY name LIMIT 20",
-            (needle, needle, needle),
-        ).fetchall()
-        results["restaurant_bookings"] = conn.execute(
-            "SELECT * FROM restaurant_bookings WHERE guest_name LIKE ? OR reference_code LIKE ? OR guest_email LIKE ? "
-            "ORDER BY dinner_date DESC LIMIT 20",
-            (needle, needle, needle),
-        ).fetchall()
-        results["workshop_bookings"] = conn.execute(
-            """SELECT workshop_bookings.*, workshops.title AS workshop_title FROM workshop_bookings
-               JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
-               JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-               WHERE workshop_bookings.guest_name LIKE ? OR workshop_bookings.reference_code LIKE ?
-                  OR workshop_bookings.guest_email LIKE ? OR workshops.title LIKE ?
-               ORDER BY workshop_bookings.created_at DESC LIMIT 20""",
-            (needle, needle, needle, needle),
-        ).fetchall()
-        results["social_posts"] = conn.execute(
-            "SELECT * FROM social_posts WHERE caption LIKE ? OR platform LIKE ? "
-            "ORDER BY (scheduled_date IS NULL), scheduled_date DESC LIMIT 20",
-            (needle, needle),
-        ).fetchall()
-        results["event_inquiries"] = conn.execute(
-            "SELECT * FROM event_inquiries WHERE contact_name LIKE ? OR contact_email LIKE ? "
-            "OR reference_code LIKE ? OR event_type LIKE ? ORDER BY created_at DESC LIMIT 20",
-            (needle, needle, needle, needle),
-        ).fetchall()
-        results["promo_codes"] = conn.execute(
-            "SELECT * FROM promo_codes WHERE code LIKE ? OR description LIKE ? ORDER BY created_at DESC LIMIT 20",
-            (needle, needle),
-        ).fetchall()
-        info = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
-        if info and any(
-            q.lower() in (info[f] or "").lower()
-            for f in ("legal_name", "registration_number", "vat_number", "registered_address",
-                       "accountant_name", "insurance_broker_name")
-        ):
-            results["company_info"] = [info]
-        conn.close()
-    total = sum(len(v) for v in results.values())
-    return render_template("search_results.html", q=q, results=results, total=total)
+    conn = get_db()
+    groups = search_house(conn, q)
+    conn.close()
+    total = sum(len(g["hits"]) for g in groups)
+    return render_template("search_results.html", q=q, groups=groups, total=total)
 
 
 # ---------------------------------------------------------------------------
@@ -31931,8 +32316,14 @@ def email_booking_statement(manage_token):
         f"{url_for('booking_statement', manage_token=manage_token, _external=True)}\n"
         + (("\n" + "\n".join(who) + "\n") if who else "")
         + "\n— Château de Gudanes")
-    if send_email(address, f"Your statement — {booking['reference_code']}", body):
-        flash(f"Sent to {address}.", "success")
+    # The bill side, so the payer is first -- and the second contact is
+    # copied on the statement exactly as on everything else.
+    copies = stay_recipients(booking, side="bill")[1:]
+    if write_about_stay(booking, f"Your statement — {booking['reference_code']}",
+                        body, side="bill"):
+        flash(f"Sent to {address}."
+              + (" Copied to " + ", ".join(copies) + "." if copies else ""),
+              "success")
     else:
         flash("No email provider is connected yet, so it is being held and will "
               "go out once one is.", "error")
@@ -42420,8 +42811,8 @@ def confirm_booking_by_id(conn, booking_id):
     # Safe for bulk_confirm_bookings too: it confirms in a loop, and each
     # booking being durable as it goes is what you want if the loop dies.
     conn.commit()
-    send_email(
-        booking["guest_email"],
+    write_about_stay(
+        booking,
         f"Booking confirmed — {room['name']}",
         f"Hi {booking['guest_name']},\n\nYour booking for {room['name']} "
         f"({format_date_human(booking['arrival_date'])} to {format_date_human(booking['departure_date'])}) "
@@ -43580,8 +43971,8 @@ def decline_booking_by_id(conn, booking_id):
     # cannot write while this transaction is open. Safe for bulk_decline too:
     # each booking being durable as the loop goes is what you want if it dies.
     conn.commit()
-    send_email(
-        booking["guest_email"],
+    write_about_stay(
+        booking,
         f"Booking request declined — {booking['room_name']}",
         f"Hi {booking['guest_name']},\n\nWe're not able to accommodate your request for {booking['room_name']} "
         f"({format_date_human(booking['arrival_date'])} to {format_date_human(booking['departure_date'])}).{refund_note}\n\n"
@@ -43828,6 +44219,13 @@ def edit_booking(booking_id):
         special_requests = request.form.get("special_requests", "").strip()
         # Somebody who is not staying. Both empty means the guest is the payer,
         # which is almost every booking.
+        second_name = request.form.get("second_contact_name", "").strip()[:120]
+        second_email = request.form.get("second_contact_email", "").strip().lower()[:200]
+        # Same rule as the payer below: a name with nowhere to write to is
+        # not a contact, and leaving it on the page implies somebody is being
+        # copied when nobody is.
+        if "@" not in second_email:
+            second_name = second_email = ""
         booked_by_name = request.form.get("booked_by_name", "").strip()[:120]
         booked_by_email = request.form.get("booked_by_email", "").strip().lower()[:200]
         # A name with nowhere to send the bill is worse than neither: the
@@ -43875,10 +44273,12 @@ def edit_booking(booking_id):
         conn.execute(
             """UPDATE bookings SET arrival_date=?, departure_date=?, party_size=?, guest_phone=?,
                special_requests=?, total_price=?, guests_under_18=?,
-               source=?, booked_by_name=?, booked_by_email=? WHERE id=?""",
+               source=?, booked_by_name=?, booked_by_email=?,
+               second_contact_name=?, second_contact_email=? WHERE id=?""",
             (arrival.isoformat(), departure.isoformat(), party_size, guest_phone or None,
              special_requests or None, new_total, under_18, source,
              booked_by_name or None, booked_by_email or None,
+             second_name or None, second_email or None,
              booking_id),
         )
         stamp_room_total(conn, booking_id, new_room_portion,
@@ -51202,7 +51602,7 @@ def chase_outstanding_balance(booking_id):
     departed = (booking["departure_date"] or "") < house_today_iso()
     subject, body = balance_request_email(booking, bill, departed=departed)
     conn.close()
-    if send_email(booking["guest_email"], subject, body):
+    if write_about_stay(booking, subject, body, side="bill"):
         flash(f"Asked {booking['guest_name']} for \u20ac{bill['owed']:.2f}.", "success")
     else:
         flash("No email provider is connected yet, so that is being held and "
@@ -54715,6 +55115,7 @@ WATCH_TASK_KINDS = {
     "detail": "A guest arriving without the details to prepare",
     "access": "A guest who told us something, in a room that asks something",
     "agreement": "An agreement about to roll over while nobody decided",
+    "clocks": "A night the clocks change, with people rostered through it",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -55438,6 +55839,72 @@ def stay_details_go_to(booking):
         return ""
 
 
+def second_contact(booking):
+    """The one extra address on a stay, or "".
+
+    A name with no address is not a contact -- there is nowhere to write --
+    so both have to be there before this is anybody.
+    """
+    try:
+        return (booking["second_contact_email"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        return ""
+
+
+def stay_recipients(booking, side="stay"):
+    """Everybody who should get one message about this stay, in order.
+
+    `side` picks who is FIRST: "bill" sends money to the payer, "stay" sends
+    the arrival details to whoever is sleeping here. The second contact is
+    added to both, because the whole point of them is that they see what the
+    guest sees.
+
+    Deduplicated case-insensitively, and the first entry is always the real
+    recipient -- callers that branch on "did it go" mean that one.
+    """
+    first = bill_goes_to(booking) if side == "bill" else stay_details_go_to(booking)
+    out, seen = [], set()
+    for address in (first, second_contact(booking)):
+        address = (address or "").strip()
+        key = address.lower()
+        if address and key not in seen:
+            seen.add(key)
+            out.append(address)
+    return out
+
+
+def write_about_stay(booking, subject, body, side="stay",
+                     ics_content=None, ics_filename=None):
+    """Write to everybody a stay concerns, and say whether the guest got it.
+
+    THE RULE THIS EXISTS FOR. Sending to a second person is one line at every
+    send site, which means it is one line MISSED at every send site -- and a
+    copy that arrives for the confirmation and not for the change of dates is
+    worse than no copy at all, because the person reading it believes they are
+    up to date. So the second address is resolved here, once, and every letter
+    about a stay goes through it.
+
+    The return value is whether the FIRST recipient was written to. Callers
+    flash "sent" or "held" off this, and that sentence is about the guest.
+    """
+    people = stay_recipients(booking, side=side)
+    if not people:
+        return False
+    delivered = send_email(people[0], subject, body,
+                           ics_content=ics_content, ics_filename=ics_filename)
+    # WHY THEY ARE GETTING THIS. A bill landing in a stranger's inbox with no
+    # explanation reads as a mistake, or worse as a scam -- so the copy says
+    # who asked us to write to them, and the original does not carry the line.
+    note = ("\n\n---\nYou are copied on this because "
+            + (booking["guest_name"] or "the guest")
+            + " asked us to write to you as well about their stay at "
+              "Ch\u00e2teau de Gudanes. Tell us if you would rather we did not.")
+    for address in people[1:]:
+        send_email(address, subject, body + note,
+                   ics_content=ics_content, ics_filename=ics_filename)
+    return delivered
+
+
 def party_detail(conn, party_id):
     """A party, its stays, and what the whole group owes.
 
@@ -56018,6 +56485,44 @@ def watch_task_findings(conn, today=None):
             2,
         ))
     found.extend(agreements)
+
+    # THE NIGHT THE CLOCKS CHANGE, and only if somebody is actually working
+    # through it. A note that the clocks change is a diary entry; a note that
+    # Sylvie's shift is really nine hours is a job. Self-closing like the rest:
+    # the night passes and the next run drops it.
+    #
+    # Titled by the person and the night rather than by the difference, because
+    # the title is the dedupe key and "an hour longer" is the same string every
+    # morning only by luck.
+    clocks = []
+    change = next_clock_change(today=today, within_days=14)
+    for c in take("clocks", shifts_across_clock_change(conn, today=today,
+                                                       within_days=14)):
+        row = c["shift"]
+        clocks.append((
+            "clocks",
+            f"{c['who']} on {row['shift_date']} — the clocks change that night",
+            (f"The roster reads {row['start_time']} to {row['end_time']}, which "
+             f"is {c['rostered']:g} hours. That night it is {c['worked']:g}: the "
+             + ("clocks go back, so the hour between two and three happens twice"
+                if c["difference"] > 0 else
+                "clocks go forward, so the hour between two and three does not "
+                "happen")
+             + ".\n\nThe timesheet will record "
+               f"{c['worked']:g} because it works from real instants, and it is "
+               "right. Decide before the night whether that is what you are "
+               "paying, and tell them."
+             # The till's night is the same fact seen from the other side, and
+             # the person cashing up is the person who needs it.
+             + (f"\n\nThe till's {change['service_day'].isoformat()} is a "
+                f"{change['service_hours']:g}-hour service for the same reason, "
+                "so the cash-up covers "
+                + ("an extra hour" if change["service_hours"] > 24
+                   else "an hour less") + "." if change else "")),
+            row["shift_date"],
+            2,
+        ))
+    found.extend(clocks)
 
     # A vehicle without valid papers. Titled by the vehicle and the document
     # rather than by a date, because the title is the dedupe key: putting
@@ -58038,6 +58543,91 @@ AUDIT_KINDS = [
 ]
 
 
+# What one record is called in the audit log. `target` is free text written
+# at a hundred and seventy-odd call sites and no two areas agreed on one key --
+# a booking is its reference code, an employee is their name, a session is its
+# id -- so the keys are declared per kind here rather than guessed. A kind is
+# (label, table, the columns whose values are keys), and the columns are read
+# from the row so a record renamed since is still found under the old name only
+# if the old name was what was logged, which is the truth and not a guess.
+HISTORY_KINDS = {
+    "booking": ("stay", "bookings", ["reference_code", "id"]),
+    "vendor": ("supplier", "vendors", ["name", "id"]),
+    "employee": ("person", "users", ["name", "id"]),
+    "guest": ("guest", "guests", ["name", "id"]),
+    "expense": ("invoice or claim", "expenses", ["id"]),
+    "workshop_session": ("sitting", "workshop_sessions", ["id"]),
+}
+
+
+def record_history(conn, keys, limit=60):
+    """Every audited change to one record, newest first.
+
+    The audit log has been written to faithfully for a long time and read back
+    exactly one way: a single page of everything the house has ever done,
+    searchable. That answers "who revealed a bank detail in March". It does not
+    answer the question actually asked, which is asked while looking at one
+    booking: who moved these dates, and when.
+
+    Matching is deliberately narrow. A target is either the key exactly, or the
+    key as a whole word inside it -- "room booking GD-1042" is that booking, and
+    a supplier called "Marie" is not the supplier called "Marie-Claire". A
+    substring match would quietly attribute one record's history to another,
+    which on a compliance record is worse than showing nothing.
+    """
+    wanted = [str(k).strip() for k in keys if str(k or "").strip()]
+    if not wanted:
+        return []
+    rows = conn.execute(
+        """SELECT audit_log.*, users.name AS actor_name FROM audit_log
+             LEFT JOIN users ON users.id = audit_log.actor_user_id
+            WHERE audit_log.target IS NOT NULL AND audit_log.target != ''
+            ORDER BY audit_log.created_at DESC"""
+    ).fetchall()
+    out = []
+    for row in rows:
+        target = (row["target"] or "").strip()
+        if any(target == k or k in target.split() for k in wanted):
+            out.append(row)
+            if len(out) >= limit:
+                break
+    return out
+
+
+def history_for(conn, kind, record_id):
+    """One record's title and its history, or None if there is no such record."""
+    spec = HISTORY_KINDS.get(kind)
+    if not spec:
+        return None
+    label, table, columns = spec
+    row = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (record_id,)).fetchone()
+    if not row:
+        return None
+    keys = []
+    for column in columns:
+        try:
+            value = row[column]
+        except (KeyError, IndexError):
+            continue
+        if value not in (None, ""):
+            keys.append(str(value))
+    # A name, a reference code, whatever the record calls itself.
+    for column in ("reference_code", "name", "guest_name", "description", "title"):
+        try:
+            title = row[column]
+        except (KeyError, IndexError):
+            continue
+        if title:
+            break
+    else:
+        title = f"#{record_id}"
+    # NOT "keys". A dict in Jinja resolves an attribute before an item, so
+    # data.keys is dict.keys -- the method -- and the page 500s on a name that
+    # reads perfectly. Named for what it means instead.
+    return {"kind": kind, "label": label, "row": row, "title": title,
+            "found_under": keys, "entries": record_history(conn, keys)}
+
+
 def audit_kind(action):
     a = (action or "").lower()
     for label, tokens in AUDIT_KINDS:
@@ -58101,6 +58691,23 @@ def audit_list_view(conn, args):
         ],
         default_sort="recent",
     )
+
+
+@app.route("/admin/history/<kind>/<int:record_id>")
+@owner_required
+def record_history_page(kind, record_id):
+    """What changed on one record, and who changed it.
+
+    Deliberately one route rather than a panel bolted onto each page: the
+    question is the same question everywhere it is asked, and a panel written
+    six times is a panel that says six different things.
+    """
+    conn = get_db()
+    data = history_for(conn, kind, record_id)
+    conn.close()
+    if not data:
+        abort(404)
+    return render_template("record_history.html", data=data)
 
 
 @app.route("/admin/audit-log")
@@ -58275,6 +58882,18 @@ def readiness_checks(conn):
     add("warn", "Data", "Recent backup", days is not None and days <= 30,
         f"Last taken {days} day{'s' if days != 1 else ''} ago." if days is not None else
         "Never downloaded.")
+
+    # THE HOUR THE TILL'S DAY STARTS AT, checked against the two nights a year
+    # it could be a wall-clock time that does not exist or happens twice. It is
+    # an environment variable, so it can be changed by somebody who has never
+    # thought about the clocks — and getting it wrong sums a whole day's
+    # takings over the wrong window without erroring.
+    add("warn", "Data", "Till day starts at a real hour", rollover_hour_is_safe(),
+        f"{POS_SERVICE_ROLLOVER_HOUR:02d}:00 exists exactly once on both "
+        "clock-change nights." if rollover_hour_is_safe() else
+        f"POS_SERVICE_ROLLOVER_HOUR is {POS_SERVICE_ROLLOVER_HOUR}, which is "
+        "skipped or repeated when the clocks change — the service window would "
+        "be an hour wrong twice a year. Five is the default and is safe.")
 
     broken = conn.execute(
         """SELECT COUNT(*) AS c FROM time_entries
@@ -61282,7 +61901,7 @@ def run_room_balance_reminder_job(conn, days_before):
         manage_url = url_for("manage_booking", manage_token=booking["manage_token"],
                              _external=True)
         subject, body = balance_request_email(booking, bill, departed=False)
-        delivered = send_email(booking["guest_email"], subject, body)
+        delivered = write_about_stay(booking, subject, body, side="bill")
         if delivered:
             conn.execute(
                 "UPDATE bookings SET balance_reminder_sent_at = ? WHERE id = ?",
