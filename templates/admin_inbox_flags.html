@@ -75,9 +75,11 @@
           {% for mb in mailboxes %}
           <tr>
             <td>{{ mb['mailbox'] }}</td>
-            <td><input type="text" name="label_{{ mb['id'] }}" value="{{ mb['label'] or '' }}" style="font-size:12px;"></td>
+            <td><input type="text" name="label_{{ mb['id'] }}" value="{{ mb['label'] or '' }}"
+                 aria-label="What to call the {{ mb['address'] }} inbox" style="font-size:12px;"></td>
             <td>
-              <select name="default_user_{{ mb['id'] }}" style="font-size:12px;">
+              <select name="default_user_{{ mb['id'] }}" style="font-size:12px;"
+                  aria-label="Who answers {{ mb['address'] }} by default">
                 <option value="">— me (owner) —</option>
                 {% for e in employees %}
                 <option value="{{ e['id'] }}" {{ 'selected' if mb['default_user_id'] == e['id'] }}>{{ e['name'] }}</option>
@@ -92,6 +94,7 @@
             </td>
             <td>
               <input type="number" name="escalate_{{ mb['id'] }}" min="1" step="1"
+                 aria-label="Escalate after, hours — {{ mb['address'] }}"
                      value="{{ mb['escalate_hours']|int }}" style="width:70px; font-size:12px;">
               <span class="upload-hint">hours</span>
             </td>

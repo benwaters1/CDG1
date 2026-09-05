@@ -100,7 +100,9 @@
           {% if user['role'] == 'owner' %}
           <form method="post" action="{{ url_for('toggle_onboarding_item', user_id=person['id'], item_id=item['id']) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="task-check">{{ '✓' if item['done'] }}</button>
+            <button type="submit" class="task-check"
+                    aria-pressed="{{ 'true' if item['done'] else 'false' }}"
+                    aria-label="{{ 'Done' if item['done'] else 'Not done' }}: {{ item['label'] }}">{{ '✓' if item['done'] }}</button>
           </form>
           {% else %}
           <span class="task-check">{{ '✓' if item['done'] }}</span>
@@ -134,7 +136,9 @@
         <div class="task-row {{ 'task-done' if item['done'] }}">
           <form method="post" action="{{ url_for('toggle_offboarding_item', user_id=person['id'], item_id=item['id']) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="task-check">{{ '✓' if item['done'] }}</button>
+            <button type="submit" class="task-check"
+                    aria-pressed="{{ 'true' if item['done'] else 'false' }}"
+                    aria-label="{{ 'Done' if item['done'] else 'Not done' }}: {{ item['label'] }}">{{ '✓' if item['done'] }}</button>
           </form>
           <span class="task-title">{{ item['label'] }}</span>
           <form method="post" action="{{ url_for('delete_offboarding_item', user_id=person['id'], item_id=item['id']) }}">

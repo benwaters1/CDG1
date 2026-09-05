@@ -165,7 +165,7 @@ Tarte aux mirabelles | glace verveine | gluten, eggs, milk"></textarea>
     </div>
     <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
       <button type="submit" class="btn-mini" {{ 'disabled' if menu['status'] == 'published' }}>Save</button>
-      <a href="{{ url_for('print_menu_day', menu_id=menu['id']) }}" class="btn-ghost" target="_blank">Print the card</a>
+      <a href="{{ url_for('print_menu_day', menu_id=menu['id']) }}" class="btn-ghost" target="_blank" rel="noopener">Print the card</a>
       {% if menu['status'] != 'published' %}
       <button type="submit" class="btn-primary" style="margin-top:0;"
               formaction="{{ url_for('publish_menu_day', menu_id=menu['id']) }}" formnovalidate>

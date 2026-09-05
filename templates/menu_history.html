@@ -48,7 +48,7 @@
       <span class="mini-status status-inactive">superseded</span>
       {% endif %}
       {% if m['service_date'] == today %}<span class="mini-status status-onshift">tonight</span>{% endif %}
-      <a href="{{ url_for('print_menu_day', menu_id=m['id']) }}" class="small-link" target="_blank">Print</a>
+      <a href="{{ url_for('print_menu_day', menu_id=m['id']) }}" class="small-link" target="_blank" rel="noopener">Print</a>
     </div>
     {% if m['dish_names'] %}
     <span class="upload-hint">{{ m['dish_names']|truncate(190) }}</span>

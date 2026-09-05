@@ -37,7 +37,8 @@
             <form method="post" action="{{ url_for('seat_restaurant_booking', booking_id=b['id']) }}"
                   style="display:flex; gap:6px; align-items:center;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <select name="dining_table_id" onchange="this.form.submit()">
+              <select name="dining_table_id" onchange="this.form.submit()"
+                  aria-label="Which table for {{ b['guest_name'] }}">
                 <option value="">Not seated</option>
                 {% for t in tables %}
                 <option value="{{ t['id'] }}" {{ 'selected' if t['id'] == b['dining_table_id'] }}>

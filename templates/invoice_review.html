@@ -59,6 +59,7 @@
             {# Only an obvious match is pre-ticked. Anything uncertain is a
                deliberate decision rather than something to click past. #}
             <input type="checkbox" name="apply" value="{{ i }}"
+                 aria-label="Take this line: {{ line.description }}"
                    {{ 'checked' if line.match_confidence == 'high' and line.stock_item_id }}>
           </td>
           <td>
@@ -76,10 +77,12 @@
           </td>
           <td class="num">
             <input type="text" name="qty_{{ i }}" inputmode="decimal" style="width:80px;"
+                 aria-label="Quantity — {{ line.description }}"
                    value="{{ line.quantity }}">
           </td>
           <td>
-            <select name="item_{{ i }}">
+            <select name="item_{{ i }}"
+                  aria-label="Which stock item — {{ line.description }}">
               <option value="">— don't add this —</option>
               {% for it in items %}
               <option value="{{ it['id'] }}" {{ 'selected' if line.stock_item_id == it['id'] }}>
@@ -90,6 +93,7 @@
           </td>
           <td class="num">
             <input type="text" name="cost_{{ i }}" inputmode="decimal" style="width:90px;"
+                 aria-label="Unit price — {{ line.description }}"
                    value="{{ '%.2f'|format(line.unit_price) if line.unit_price else '' }}">
           </td>
         </tr>
