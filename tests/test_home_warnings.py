@@ -172,7 +172,9 @@ def _run(s, oc, conn, now, today):
     # that those lines DO clear when the setting arrives, which is the
     # property this check is really about.
     real_checks = m.readiness_checks
-    m.readiness_checks = lambda _conn: []
+    # **kwargs: the caller passes include_slow=False now, and a stand-in
+    # that cannot take it turns this into a crash rather than a check.
+    m.readiness_checks = lambda _conn, **_kw: []
     try:
         left = _titles(conn, today)
     finally:
