@@ -54,7 +54,7 @@
 
     <label class="field-label">Deposit required at booking (%)</label>
     <input type="number" name="deposit_percent" min="0" max="100" value="{{ workshop['deposit_percent'] if workshop else 30 }}">
-    <p class="upload-hint">The rest is due as a balance 30 days before the session starts (or in full, if booked within 30 days).</p>
+    <p class="upload-hint">The rest is due as a balance {{ windows.workshop_balance_days }} days before the session starts (or in full, if booked within {{ windows.workshop_balance_days }} days).</p>
 
     {% if workshop %}
     <label class="field-label" style="margin-top:16px;">

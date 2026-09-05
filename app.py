@@ -493,6 +493,27 @@ _load_dotenv()
 # what day it is here right now (CET/CEST switch handled automatically).
 LOCAL_TZ = ZoneInfo(os.environ.get("LOCAL_TZ", "Europe/Paris"))
 
+# How far each page looks, named once.
+#
+# These were all typed twice: once as a timedelta inside a view, once as
+# English on the page above it. Twenty-two of those sentences were found in
+# a sweep and every one of them still agreed with its query -- which is the
+# best case and still only luck, because nothing would have said so if one
+# had drifted. house_windows() hands them to every template, so the sentence
+# and the query read the same number.
+ARRIVAL_PREP_DAYS = 2
+DIGEST_INTERVAL_HOURS = 24
+WORKING_TIME_REVIEW_DAYS = 28
+INBOX_RESPONSE_DAYS = 30
+RESTAURANT_NO_SHOW_DAYS = 30
+RESTAURANT_FORECAST_DAYS = 14
+TIMESHEET_OUTLIER_DAYS = 14
+DASHBOARD_ARRIVALS_DAYS = 30
+DASHBOARD_TREND_MONTHS = 6
+MY_SHIFTS_AHEAD_DAYS = 7
+PROFILE_HOURS_DAYS = 7
+FINANCIALS_EXPORT_MONTHS = 12
+
 
 def house_today():
     """What day it is at the château.
@@ -7398,7 +7419,7 @@ def roster_vs_occupancy(conn, days):
     return results
 
 
-def timesheet_outliers(conn, today, lookback_days=14, early_hour=6, late_hour=22, max_hours=12):
+def timesheet_outliers(conn, today, lookback_days=TIMESHEET_OUTLIER_DAYS, early_hour=6, late_hour=22, max_hours=12):
     """Closed timesheet entries in the last `lookback_days` with a clock-in
     outside the château's normal hours, or an implausibly long shift — a
     nudge to double-check for a typo or a genuinely unusual day, not a
@@ -7437,7 +7458,7 @@ def timesheet_outliers(conn, today, lookback_days=14, early_hour=6, late_hour=22
     return results
 
 
-def auto_prep_upcoming_arrivals(conn, today, days_ahead=2):
+def auto_prep_upcoming_arrivals(conn, today, days_ahead=ARRIVAL_PREP_DAYS):
     """Silently generates the arrival-prep checklist for confirmed bookings
     arriving within `days_ahead` that haven't been prepped yet, assigning
     to whoever has a shift that day if anyone does (else left unassigned).
@@ -10786,7 +10807,8 @@ def compute_month_stats(conn, today):
     arrivals_30d = conn.execute(
         """SELECT COUNT(*) AS c FROM bookings WHERE status = 'confirmed'
            AND arrival_date >= ? AND arrival_date < ?""",
-        (today.isoformat(), (today + timedelta(days=30)).isoformat()),
+        (today.isoformat(),
+         (today + timedelta(days=DASHBOARD_ARRIVALS_DAYS)).isoformat()),
     ).fetchone()["c"]
 
     return {
@@ -21388,6 +21410,33 @@ def page_draws_a_calendar(endpoint):
     return not (endpoint in NAV_AREA_OF or endpoint in OWNER_ONLY_ENDPOINTS)
 
 
+def house_windows():
+    """Every window a page states in words, so it can state the real one.
+
+    Read at request time rather than built at import, because three of these
+    (the guest session, the workshop balance, the certificate warning) are
+    defined further down the file than the context processor that hands them
+    out. A function sidesteps the ordering entirely and costs nothing.
+    """
+    return {
+        "arrival_prep_days": ARRIVAL_PREP_DAYS,
+        "digest_interval_hours": DIGEST_INTERVAL_HOURS,
+        "working_time_days": WORKING_TIME_REVIEW_DAYS,
+        "inbox_response_days": INBOX_RESPONSE_DAYS,
+        "restaurant_no_show_days": RESTAURANT_NO_SHOW_DAYS,
+        "restaurant_forecast_days": RESTAURANT_FORECAST_DAYS,
+        "timesheet_outlier_days": TIMESHEET_OUTLIER_DAYS,
+        "arrivals_days": DASHBOARD_ARRIVALS_DAYS,
+        "trend_months": DASHBOARD_TREND_MONTHS,
+        "my_shifts_days": MY_SHIFTS_AHEAD_DAYS,
+        "profile_hours_days": PROFILE_HOURS_DAYS,
+        "financials_export_months": FINANCIALS_EXPORT_MONTHS,
+        "cert_warning_days": CERT_EXPIRY_WARNING_DAYS,
+        "guest_session_hours": GUEST_SESSION_HOURS,
+        "workshop_balance_days": WORKSHOP_BALANCE_DAYS,
+    }
+
+
 @app.context_processor
 def inject_calendar_dates():
     """Give every public page the two date lists its calendars ask for.
@@ -21536,6 +21585,9 @@ def inject_user():
         # pages that state the room count and the starting price all read the
         # same answer from the same place.
         "house_rooms": house_room_facts_cached(),
+        # Every window a page states in words. Handed out here so the
+        # sentence above a table and the query under it cannot disagree.
+        "windows": house_windows(),
         "pending_approvals_count": pending_approvals_count,
         "open_hr_notes_count": open_hr_notes_count,
         "unread_notifications_count": unread_notifications_count,
@@ -24396,7 +24448,8 @@ def staff_dashboard():
             conn, today.replace(day=1),
             date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1),
         )
-        financial_trend_months = financial_trend(conn, 6, today)
+        financial_trend_months = financial_trend(
+            conn, DASHBOARD_TREND_MONTHS, today)
         financial_trend_max = max(
             [m["revenue"] for m in financial_trend_months] + [m["expenses_total"] for m in financial_trend_months] + [1]
         )
@@ -24561,11 +24614,25 @@ def staff_dashboard():
         ).fetchall()
 
     my_upcoming_shifts = []
+    next_shift_after_window = None
     if user["role"] != "owner":
+        # The window the page states, not "the next seven rows" — LIMIT 7 with
+        # no ceiling showed a shift a fortnight out under a heading promising
+        # a week, and hid the eighth shift of a busy one.
+        window_end = today + timedelta(days=MY_SHIFTS_AHEAD_DAYS)
         my_upcoming_shifts = conn.execute(
-            "SELECT * FROM shifts WHERE user_id = ? AND shift_date >= ? ORDER BY shift_date, start_time LIMIT 7",
-            (user["id"], today.isoformat()),
+            """SELECT * FROM shifts WHERE user_id = ? AND shift_date >= ?
+               AND shift_date < ? ORDER BY shift_date, start_time""",
+            (user["id"], today.isoformat(), window_end.isoformat()),
         ).fetchall()
+        if not my_upcoming_shifts:
+            # An empty week is the normal case for casual staff, and "nothing
+            # scheduled" is not the answer they came for. Say when it is.
+            next_shift_after_window = conn.execute(
+                """SELECT shift_date FROM shifts WHERE user_id = ?
+                   AND shift_date >= ? ORDER BY shift_date LIMIT 1""",
+                (user["id"], window_end.isoformat()),
+            ).fetchone()
 
     # The chef/partner running the restaurant are regular employees with no
     # owner access — this is their only view into tonight's covers without
@@ -24694,7 +24761,9 @@ def staff_dashboard():
     return render_template(
         "dashboard.html", team=team, stats=stats, briefing=briefing, my_tasks=my_tasks,
         who_is_here=who_is_here, today=today, month_stats=month_stats,
-        my_upcoming_shifts=my_upcoming_shifts, who_is_off_today=who_is_off_today,
+        my_upcoming_shifts=my_upcoming_shifts,
+        next_shift_after_window=next_shift_after_window,
+        who_is_off_today=who_is_off_today,
         on_shift_by_user=on_shift_by_user, on_shift_now=on_shift_now,
         anniversaries=anniversaries, probation_due=probation_due, unstaffed_days=unstaffed_days,
         reviews_due=reviews_due,
@@ -25658,7 +25727,8 @@ def admin_hr():
             bradford.append(dict(score, employee_name=e["name"], user_id=e["id"]))
     bradford.sort(key=lambda b: b["score"], reverse=True)
 
-    violations = working_time_violations(conn, today - timedelta(days=28), today)
+    violations = working_time_violations(
+        conn, today - timedelta(days=WORKING_TIME_REVIEW_DAYS), today)
 
     reviews = conn.execute(
         """SELECT performance_reviews.*, users.name AS employee_name,
@@ -44139,13 +44209,14 @@ def admin_restaurant():
     today = house_today()
     no_show_count = conn.execute(
         "SELECT COUNT(*) AS c FROM restaurant_bookings WHERE no_show_at IS NOT NULL AND dinner_date >= ?",
-        ((today - timedelta(days=30)).isoformat(),),
+        ((today - timedelta(days=RESTAURANT_NO_SHOW_DAYS)).isoformat(),),
     ).fetchone()["c"]
     upcoming_covers = conn.execute(
         """SELECT dinner_date, COALESCE(SUM(party_size), 0) AS covers FROM restaurant_bookings
            WHERE status IN ('pending', 'confirmed') AND dinner_date >= ? AND dinner_date < ?
            GROUP BY dinner_date ORDER BY dinner_date""",
-        (today.isoformat(), (today + timedelta(days=14)).isoformat()),
+        (today.isoformat(),
+         (today + timedelta(days=RESTAURANT_FORECAST_DAYS)).isoformat()),
     ).fetchall()
 
     month_raw = request.args.get("month", "")
@@ -44164,7 +44235,8 @@ def admin_restaurant():
         """SELECT restaurant_shifts.*, users.name AS employee_name FROM restaurant_shifts
            JOIN users ON users.id = restaurant_shifts.user_id
            WHERE dinner_date >= ? AND dinner_date < ? ORDER BY dinner_date, users.name""",
-        (today.isoformat(), (today + timedelta(days=14)).isoformat()),
+        (today.isoformat(),
+         (today + timedelta(days=RESTAURANT_FORECAST_DAYS)).isoformat()),
     ).fetchall()
     shifts_by_date = {}
     for s in upcoming_shifts:
@@ -51105,7 +51177,7 @@ def export_financials_csv():
     conn = get_db()
     months = []
     cursor = today.replace(day=1)
-    for _ in range(12):
+    for _ in range(FINANCIALS_EXPORT_MONTHS):
         month_end = date(cursor.year + 1, 1, 1) if cursor.month == 12 else date(cursor.year, cursor.month + 1, 1)
         months.append(financial_month_summary(conn, cursor, month_end))
         cursor = date(cursor.year - 1, 12, 1) if cursor.month == 1 else date(cursor.year, cursor.month - 1, 1)
@@ -60753,7 +60825,7 @@ def cross_inbox_duplicates(conn):
     return [dict(r, inboxes=(r["inboxes"] or "").split(",")) for r in rows]
 
 
-def inbox_response_stats(conn, since_days=30):
+def inbox_response_stats(conn, since_days=INBOX_RESPONSE_DAYS):
     """Average and worst first-response time per inbox, plus how many are
     still waiting. Measured from when the message arrived to when a reply
     actually went out, so it reflects the guest's experience rather than how
@@ -61910,7 +61982,8 @@ AUTOMATION_JOBS = [
     # Hourly. The page reads a cache and never the network, so a slow morning
     # at Open-Meteo is a page with no weather on it rather than a slow page.
     ("weather", "automation_weather_enabled", None, 3600, run_weather_job),
-    ("daily_digest", "automation_daily_digest_enabled", None, 24 * 3600, run_daily_digest_job),
+    ("daily_digest", "automation_daily_digest_enabled", None,
+     DIGEST_INTERVAL_HOURS * 3600, run_daily_digest_job),
     ("ical_sync", "automation_ical_sync_enabled", "automation_ical_sync_interval_hours", None, run_ical_sync_job),
     ("workshop_feedback_request", "automation_workshop_feedback_enabled", None, 24 * 3600, run_workshop_feedback_request_job),
     ("email_inbox_scan", "automation_email_scan_enabled", None, 900, run_email_inbox_scan_job),

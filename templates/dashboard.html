@@ -99,7 +99,7 @@ function toggleBreak() {
       <span class="stat-tile-icon stat-tile-icon-success">{{ icon('bookings', 19) }}</span>
       <span class="stat-tile-body">
         <span class="stat-tile-value">{{ month_stats.arrivals_30d }}</span>
-        <span class="stat-tile-label">Arrivals, next 30 days</span>
+        <span class="stat-tile-label">Arrivals, next {{ windows.arrivals_days }} days</span>
       </span>
     </div>
     <a href="{{ url_for('admin_feedback') }}" class="stat-tile">
@@ -164,7 +164,7 @@ function toggleBreak() {
     </div>
 
     <div>
-      <h2 class="section-heading" style="margin:0 0 10px;">Revenue, last 6 months</h2>
+      <h2 class="section-heading" style="margin:0 0 10px;">Revenue, last {{ windows.trend_months }} months</h2>
       {% set has_trend = financial_trend_months|selectattr('revenue')|list or financial_trend_months|selectattr('expenses_total')|list %}
       {% if not has_trend %}
         <div class="empty-state">No revenue or expenses recorded yet.</div>
@@ -559,7 +559,12 @@ function toggleBreak() {
 
   <h2 class="section-heading">Your Upcoming Shifts</h2>
   {% if not my_upcoming_shifts %}
-    <div class="empty-state">Nothing scheduled in the next 7 days.</div>
+    <div class="empty-state">
+      Nothing scheduled in the next {{ windows.my_shifts_days }} days.
+      {% if next_shift_after_window %}
+        Your next shift is {{ next_shift_after_window['shift_date']|date_human }}.
+      {% endif %}
+    </div>
   {% else %}
     <div class="mini-list">
       {% for s in my_upcoming_shifts %}

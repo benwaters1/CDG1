@@ -35,7 +35,7 @@
         <input type="checkbox" name="automation_housekeeping_enabled" {{ 'checked' if settings['automation_housekeeping_enabled'] == '1' }}>
         Housekeeping sweep
       </label>
-      <p class="upload-hint" style="margin-top:4px;">Auto-declines pending, unpaid room bookings the owner never acted on, and pre-generates the arrival-prep checklist for stays coming up in the next 2 days — runs every few minutes.</p>
+      <p class="upload-hint" style="margin-top:4px;">Auto-declines pending, unpaid room bookings the owner never acted on, and pre-generates the arrival-prep checklist for stays coming up in the next {{ windows.arrival_prep_days }} days — runs every few minutes.</p>
     </div>
 
     <div>
@@ -43,7 +43,7 @@
         <input type="checkbox" name="automation_daily_digest_enabled" {{ 'checked' if settings['automation_daily_digest_enabled'] == '1' }}>
         Daily owner digest email
       </label>
-      <p class="upload-hint" style="margin-top:4px;">Sends the owner the same "what needs your attention" summary shown on the dashboard, roughly once every 24 hours.</p>
+      <p class="upload-hint" style="margin-top:4px;">Sends the owner the same "what needs your attention" summary shown on the dashboard, roughly once every {{ windows.digest_interval_hours }} hours.</p>
     </div>
 
     <div>

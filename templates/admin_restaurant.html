@@ -35,7 +35,7 @@
    caption instead of competing with the figures above. #}
 <p class="upload-hint" style="margin:-12px 0 20px;">
   Nightly capacity {{ settings['capacity'] }}{% if settings['price_per_person'] %} · €{{ '%.0f'|format(settings['price_per_person']) }} per person{% endif %}
-  · {{ no_show_count }} no-show{{ '' if no_show_count == 1 else 's' }} in the last 30 days ·
+  · {{ no_show_count }} no-show{{ '' if no_show_count == 1 else 's' }} in the last {{ windows.restaurant_no_show_days }} days ·
   <a href="{{ url_for('admin_restaurant_settings') }}">Change</a>
 </p>
 
@@ -62,7 +62,7 @@
 
 {% if upcoming_covers %}
 <div class="detail-card" style="margin-bottom:22px;">
-  <h3>Covers, next 14 days</h3>
+  <h3>Covers, next {{ windows.restaurant_forecast_days }} days</h3>
   <p class="upload-hint">Pending + confirmed party sizes, for shopping and kitchen planning.</p>
   <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:10px;">
     {% for c in upcoming_covers %}
@@ -84,7 +84,7 @@
 {% endif %}
 
 <div class="detail-card" style="margin-bottom:22px;">
-  <h3>Staffing, next 14 days</h3>
+  <h3>Staffing, next {{ windows.restaurant_forecast_days }} days</h3>
   <p class="upload-hint">Who's assigned to work dinner service — feeds the estimated labor cost in the profit share above.</p>
 
   {% if not shifts_by_date %}

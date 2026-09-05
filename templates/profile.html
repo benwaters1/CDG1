@@ -341,7 +341,7 @@
         <h3 style="margin:0;">{{ t('Timesheet') }}</h3>
         {% if user['role'] == 'owner' %}<a href="{{ url_for('admin_timesheets', employee_id=person['id']) }}" class="small-link" style="color:var(--steel);">{{ t('Full report') }}</a>{% endif %}
       </div>
-      <p class="pay-disclaimer" style="margin-top:0;">Built from logging in and out — {{ week_total_hours }}h in the last 7 days.</p>
+      <p class="pay-disclaimer" style="margin-top:0;">Built from logging in and out — {{ week_total_hours }}h in the last {{ windows.profile_hours_days }} days.</p>
       {% if not recent_shifts %}
         <p class="empty-inline">{{ t('No clock-ins yet.') }}</p>
       {% else %}
