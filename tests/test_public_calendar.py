@@ -78,10 +78,20 @@ def run():
     # single free day is not enough: the seeded ateliers close whole weeks, so
     # base+60 landed inside one and a check about a lapsed hold failed on a
     # date that was never free in the first place.
-    def _clear(from_day):
+    # What this suite has already handed out. Without it, two walks converge
+    # on the same night -- the confirmed event and the provisional hold both
+    # landed on one date, so expiring the hold did not free it and the last
+    # check failed on a mechanism that works perfectly.
+    claimed = set()
+
+    def _clear(from_day, span=4):
         day = from_day
-        while any((day + timedelta(days=n)).isoformat() in before for n in range(4)):
+        while any((day + timedelta(days=n)).isoformat() in before
+                  or (day + timedelta(days=n)).isoformat() in claimed
+                  for n in range(span)):
             day += timedelta(days=1)
+        for n in range(span):
+            claimed.add((day + timedelta(days=n)).isoformat())
         return day
 
     base = _clear(m.house_today() + timedelta(days=250))

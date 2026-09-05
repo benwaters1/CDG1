@@ -43,6 +43,36 @@ def _room(sleeps=2):
         conn.close()
 
 
+def _free_from(day, nights=2):
+    """The first arrival on or after `day` the room can actually take.
+
+    The suite used to pick a date and hope. One of its four picks lands on
+    the Noel workshop -- and a workshop holds the whole house -- so the
+    booking was refused, the check read None, and it passed only when an
+    earlier suite happened to move that session first.
+
+    Asks the app's own availability rule rather than a second one of its own,
+    so a suite about bookings cannot disagree with the thing it is testing.
+    """
+    room = _room()
+    conn = db()
+    try:
+        for _ in range(400):
+            end = day + timedelta(days=nights)
+            # One call: is_range_available already covers the workshop
+            # hold, because a session takes over the whole château rather
+            # than one room.
+            # Dates, not ISO strings: is_range_available compares them
+            # against parsed dates and raises on a string.
+            ok, _why = m.is_range_available(conn, room["id"], day, end)
+            if ok:
+                return day
+            day = day + timedelta(days=1)
+    finally:
+        conn.close()
+    return day
+
+
 def _booked(name_like):
     conn = db()
     try:
@@ -85,7 +115,7 @@ def run():
 
     s.section("The path stamps it, so nobody has to remember")
     room = _room()
-    arrival = house_today() + timedelta(days=45)
+    arrival = _free_from(house_today() + timedelta(days=45))
     r = anon.post(f"/book/{room['id']}", data={
         "arrival_date": arrival.isoformat(),
         "departure_date": (arrival + timedelta(days=2)).isoformat(),
@@ -101,7 +131,7 @@ def run():
                    "set is a field that is mostly wrong")
 
     s.section("The desk says desk")
-    wi = house_today() + timedelta(days=60)
+    wi = _free_from(house_today() + timedelta(days=60), nights=1)
     oc.post("/admin/bookings/walk-in", data={
         "room_id": str(room["id"]),
         "arrival_date": wi.isoformat(),
@@ -120,7 +150,7 @@ def run():
     # as returning would make a good week of forward bookings look like loyalty.
     _raw("Past", source="direct", email="zzsrc.web@example.invalid",
          arrival=house_today() - timedelta(days=40), nights=2, price=400)
-    again = house_today() + timedelta(days=90)
+    again = _free_from(house_today() + timedelta(days=90))
     anon2 = m.app.test_client()
     anon2.post(f"/book/{room['id']}", data={
         "arrival_date": again.isoformat(),
