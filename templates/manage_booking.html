@@ -72,7 +72,7 @@
     <div style="flex:1 1 220px;">
       <label for="mb_guest_name">{{ t('Name') }}</label>
       <input type="text" id="mb_guest_name" name="guest_name" required
-             value="{{ booking['guest_name'] or '' }}">
+             value="{{ booking['guest_name'] or '' }}" autocomplete="name" spellcheck="false" autocapitalize="words">
     </div>
     <div style="flex:1 1 220px;">
       <label for="mb_guest_phone">{{ t('Mobile') }}</label>

@@ -12,7 +12,7 @@
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="field-label">Phone (optional)</label>
-      <input type="tel" name="phone" value="{{ person['phone'] or '' }}">
+      <input type="tel" name="phone" value="{{ person['phone'] or '' }}" autocomplete="tel">
       <label class="field-label">Set a password (min 8 characters)</label>
       <div class="password-field">
         <input type="password" name="password" id="onboard-password" required minlength="8">

@@ -8,7 +8,7 @@
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field-label">Phone</label>
-    <input type="tel" name="phone" value="{{ person['phone'] or '' }}">
+    <input type="tel" name="phone" value="{{ person['phone'] or '' }}" autocomplete="tel">
 
     <label class="field-label" style="margin-top:16px;">Emergency contact</label>
     <div class="field-row-2">
@@ -19,7 +19,7 @@
         <input type="text" name="emergency_contact_relationship" placeholder="Relationship (e.g. Spouse)" value="{{ person['emergency_contact_relationship'] or '' }}">
       </div>
     </div>
-    <input type="tel" name="emergency_contact_phone" placeholder="Phone" value="{{ person['emergency_contact_phone'] or '' }}" style="margin-top:8px;">
+    <input type="tel" name="emergency_contact_phone" placeholder="Phone" value="{{ person['emergency_contact_phone'] or '' }}" style="margin-top:8px;" autocomplete="tel">
 
     <button type="submit" class="btn-primary">Save</button>
   </form>

@@ -36,7 +36,7 @@
     <div class="field-row-2">
       <div>
         <label class="field-label">Email</label>
-        <input type="email" name="email" value="{{ guest['email'] if guest else '' }}" placeholder="used to match their bookings">
+        <input type="email" name="email" value="{{ guest['email'] if guest else '' }}" placeholder="used to match their bookings" autocomplete="email">
       </div>
       <div>
         <label class="field-label">Phone</label>

@@ -40,16 +40,16 @@
     <label class="field-label" style="margin-top:16px;">Accountant</label>
     <div class="field-row-2">
       <div><input type="text" name="accountant_name" placeholder="Name / firm" value="{{ info['accountant_name'] if info else '' }}"></div>
-      <div><input type="tel" name="accountant_phone" placeholder="Phone" value="{{ info['accountant_phone'] if info else '' }}"></div>
+      <div><input type="tel" name="accountant_phone" placeholder="Phone" value="{{ info['accountant_phone'] if info else '' }}" autocomplete="tel"></div>
     </div>
-    <input type="email" name="accountant_email" placeholder="Email" value="{{ info['accountant_email'] if info else '' }}" style="margin-top:8px;">
+    <input type="email" name="accountant_email" placeholder="Email" value="{{ info['accountant_email'] if info else '' }}" style="margin-top:8px;" autocomplete="email">
 
     <label class="field-label" style="margin-top:16px;">Insurance broker</label>
     <div class="field-row-2">
       <div><input type="text" name="insurance_broker_name" placeholder="Name / firm" value="{{ info['insurance_broker_name'] if info else '' }}"></div>
-      <div><input type="tel" name="insurance_broker_phone" placeholder="Phone" value="{{ info['insurance_broker_phone'] if info else '' }}"></div>
+      <div><input type="tel" name="insurance_broker_phone" placeholder="Phone" value="{{ info['insurance_broker_phone'] if info else '' }}" autocomplete="tel"></div>
     </div>
-    <input type="email" name="insurance_broker_email" placeholder="Email" value="{{ info['insurance_broker_email'] if info else '' }}" style="margin-top:8px;">
+    <input type="email" name="insurance_broker_email" placeholder="Email" value="{{ info['insurance_broker_email'] if info else '' }}" style="margin-top:8px;" autocomplete="email">
 
     <button type="submit" class="btn-primary" style="margin-top:16px;">Save</button>
   </form>

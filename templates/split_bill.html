@@ -129,7 +129,7 @@
             <input type="text" name="name" value="{{ share['name'] }}" placeholder="Whose share"
                  aria-label="Whose share this is" style="max-width:200px;">
             <input type="email" name="email" value="{{ share['email'] }}" placeholder="Their email"
-                 aria-label="Their email address" style="max-width:240px;">
+                 aria-label="Their email address" style="max-width:240px;" autocomplete="email">
             <input type="text" name="note" value="{{ share['note'] or '' }}"
                  aria-label="A line to send with their share" placeholder="A line for them (optional)" style="max-width:260px;">
             <button type="submit" class="btn-mini">Save</button>
@@ -158,7 +158,7 @@
         <input type="text" name="name" placeholder="Their name">
       </label>
       <label>Their email
-        <input type="email" name="email" placeholder="So they can be sent the link">
+        <input type="email" name="email" placeholder="So they can be sent the link" autocomplete="email">
       </label>
       <label>Amount (&euro;)
         <input type="text" name="amount" inputmode="decimal" required

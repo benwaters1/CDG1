@@ -9,7 +9,7 @@
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="field-label">Email</label>
-      <input type="email" name="email" required autofocus>
+      <input type="email" name="email" required autofocus autocomplete="email">
       <label class="field-label">Password</label>
       <div class="password-field">
         <input type="password" name="password" id="login-password" required>

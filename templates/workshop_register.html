@@ -76,7 +76,7 @@
           <div class="g-row">
             <div class="g-field">
               <label for="guest_name">Your name</label>
-              <input type="text" id="guest_name" name="guest_name" value="{{ prefill_name }}" required autocomplete="name">
+              <input type="text" id="guest_name" name="guest_name" value="{{ prefill_name }}" required autocomplete="name" spellcheck="false" autocapitalize="words">
             </div>
             <div class="g-field">
               <label for="guest_email">Email</label>
@@ -150,7 +150,7 @@
           <div class="g-field">
             <label for="promo_code">Promo code <span class="g-opt">optional</span></label>
             <div class="g-promo">
-              <input type="text" id="promo_code" name="promo_code" value="{{ prefill_promo_code | default('') }}">
+              <input type="text" id="promo_code" name="promo_code" value="{{ prefill_promo_code | default('') }}" spellcheck="false" autocapitalize="characters">
               <button type="button" id="promo_apply_btn">Apply</button>
             </div>
             <p class="g-hint" id="promo_result"></p>
@@ -253,7 +253,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
       </div>
       <div class="g-field g-field--narrow">
         <label for="wl_phone">Phone <span class="g-opt">optional</span></label>
-        <input type="tel" inputmode="tel" id="wl_phone" name="phone" inputmode="tel" value="{{ prefill_phone }}">
+        <input type="tel" inputmode="tel" id="wl_phone" name="phone" inputmode="tel" value="{{ prefill_phone }}" autocomplete="tel">
       </div>
     </div>
 

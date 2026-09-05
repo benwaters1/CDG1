@@ -19,7 +19,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="g-field">
       <label for="ref">{{ t('Reference code') }}</label>
-      <input type="text" id="ref" name="reference_code" placeholder="GUD-XXXXXX" required autocomplete="off">
+      <input type="text" id="ref" name="reference_code" placeholder="GUD-XXXXXX" required autocomplete="off" spellcheck="false" autocapitalize="characters">
     </div>
     <div class="g-field">
       <label for="em">{{ t('Email you booked with') }}</label>

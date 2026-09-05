@@ -40,7 +40,7 @@
     <div class="g-row" style="display:flex; gap:8px; flex-wrap:wrap;">
       <div style="flex:1 1 160px;">
         <label class="field-label" for="sn_{{ st.booking['id'] }}">Surname</label>
-        <input type="text" id="sn_{{ st.booking['id'] }}" name="surname" required maxlength="100">
+        <input type="text" id="sn_{{ st.booking['id'] }}" name="surname" required maxlength="100" autocomplete="family-name" spellcheck="false" autocapitalize="words">
       </div>
       <div style="flex:1 1 180px;">
         <label class="field-label" for="fn_{{ st.booking['id'] }}">First names</label>

@@ -21089,10 +21089,20 @@ def email_enabled():
     return resend_enabled() or bool(SMTP_HOST and SMTP_USERNAME and SMTP_PASSWORD)
 
 
-def send_email_via_resend(to_address, subject, body, ics_content=None, ics_filename=None):
+def send_email_via_resend(to_address, subject, body, ics_content=None,
+                          ics_filename=None, html=None):
     """Resend's HTTP API — plain urllib, no extra dependency (matches how
-    the rest of this file makes outbound HTTP calls, e.g. fetch_ical_ranges)."""
+    the rest of this file makes outbound HTTP calls, e.g. fetch_ical_ranges).
+
+    BOTH PARTS, ALWAYS. `text` is not a fallback that only some clients use:
+    it is what goes in the search index, what a screen reader reads on a
+    client set to plain text, and what this house keeps as its own record of
+    what it said. The HTML is an addition to it and never a replacement, so
+    the text is written first and stays the authoritative version.
+    """
     payload = {"from": RESEND_FROM, "to": [to_address], "subject": subject, "text": body}
+    if html:
+        payload["html"] = html
     if ics_content:
         payload["attachments"] = [{
             "filename": ics_filename or "booking.ics",
@@ -21343,7 +21353,8 @@ def keep_guest_message(to_address, subject, body, channel="email", delivered=Fal
     write_guest_messages([row])
 
 
-def send_email(to_address, subject, body, ics_content=None, ics_filename=None, keep=True):
+def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
+               keep=True, html=None):
     """Send one message, and if it cannot go out, keep it.
 
     `keep=False` for anything whose body is itself a credential — a password
@@ -21356,7 +21367,8 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None, k
     # and it bounced" is a different fact from "we never wrote", and the whole
     # point of keeping this is being able to tell somebody which happened.
     if resend_enabled():
-        if send_email_via_resend(to_address, subject, body, ics_content, ics_filename):
+        if send_email_via_resend(to_address, subject, body, ics_content,
+                                 ics_filename, html=html):
             if keep:
                 keep_guest_message(to_address, subject, body, delivered=True)
             return True
@@ -21385,6 +21397,12 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None, k
         msg["From"] = SMTP_FROM
         msg["To"] = to_address
         msg.set_content(body)
+        if html:
+            # An ALTERNATIVE, which is what makes the plain text the fallback
+            # rather than an attachment somebody has to open. add_alternative
+            # after set_content is the order that produces multipart/alternative
+            # with the text first, which is the order every client expects.
+            msg.add_alternative(html, subtype="html")
         if ics_content:
             msg.add_attachment(
                 ics_content.encode("utf-8"), maintype="text", subtype="calendar",
@@ -37661,6 +37679,38 @@ def deposit_percent_to_show(conn):
         room_payment_setting(conn, "room_deposit_percent"))
 
 
+def house_coordinates(conn):
+    """Where the gates are, or None if nobody has said.
+
+    NO FALLBACK, deliberately. The template that arrived with this carried
+    42.7847 / 1.6564 as a default and its own note said to check them against
+    the actual gates before anything went out. They have not been checked.
+
+    The whole reason the email uses a pin rather than the address is that a
+    search for a building with no street number drops people in the village
+    square -- so a pin that is merely nearby fails at exactly the job it was
+    added for, on an unlit road at night, and does it with more authority
+    than no pin at all. Set them in Settings and the buttons appear.
+    """
+    out = {}
+    for key, column in (("lat", "house_lat"), ("lng", "house_lng")):
+        row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                           (column,)).fetchone()
+        raw = (row["value"] if row else "").strip() if row else ""
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            return {}
+        # A plausible pair, not any two numbers. A transposed longitude puts
+        # the pin in the sea, and the email would say "use the pin" about it.
+        if key == "lat" and not (-90 <= value <= 90):
+            return {}
+        if key == "lng" and not (-180 <= value <= 180):
+            return {}
+        out[key] = raw
+    return out
+
+
 def room_payment_setting(conn, key, cast=float):
     row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
     raw = row["value"] if row else ROOM_PAYMENT_DEFAULTS[key]
@@ -43564,6 +43614,11 @@ def confirm_booking_by_id(conn, booking_id):
         f"— Château de Gudanes",
         ics_content=generate_booking_ics(booking, room["name"]),
         ics_filename=f"{booking['reference_code']}.ics",
+        # The same letter, drawn. Empty if the template will not render, and
+        # the plain text above goes out regardless — a guest hearing nothing
+        # about a room the house has just taken off the market is the one
+        # outcome worth guarding against here.
+        html=booking_confirmation_html(conn, booking, room["name"]),
     )
     return True, None
 
@@ -56656,8 +56711,42 @@ def stay_recipients(booking, side="stay"):
     return out
 
 
+def booking_confirmation_html(conn, booking, room_name):
+    """The confirmation as a mail client would draw it, or "" if it cannot be.
+
+    Returns EMPTY rather than raising. Every caller sends the plain text
+    whatever happens, and a template that will not render is a reason to send
+    a plainer letter -- not a reason for the guest to hear nothing about a
+    room the house has just taken off the market.
+
+    THE COUNT OF NIGHTS IS NOT PASSED. The template arrived with a fixture
+    that said four nights over three, and printed it without complaint; its
+    own note says a confirmation that contradicts its own dates is worse than
+    one that says less. The dates are here, they are unambiguous, and nothing
+    asserts a number over the top of them.
+    """
+    try:
+        bill = booking_bill(conn, booking["id"])
+        owed = bill["owed"] if bill else 0
+        return render_template(
+            "email_booking_confirmed.html",
+            guest_name=(booking["guest_name"] or "").split(" ")[0] or "there",
+            arrival_long=format_date_human(booking["arrival_date"]),
+            departure_long=format_date_human(booking["departure_date"]),
+            room_name=room_name,
+            reference_code=booking["reference_code"],
+            balance_due=(f"\u20ac{owed:,.2f}" if owed and owed > 0.005 else ""),
+            manage_url=url_for("manage_booking",
+                               manage_token=booking["manage_token"], _external=True),
+            settings=house_coordinates(conn),
+        )
+    except Exception as e:      # pragma: no cover - the plain letter still goes
+        print(f"[email html failed] {booking['reference_code']}: {e}")
+        return ""
+
+
 def write_about_stay(booking, subject, body, side="stay",
-                     ics_content=None, ics_filename=None):
+                     ics_content=None, ics_filename=None, html=None):
     """Write to everybody a stay concerns, and say whether the guest got it.
 
     THE RULE THIS EXISTS FOR. Sending to a second person is one line at every
@@ -56673,8 +56762,8 @@ def write_about_stay(booking, subject, body, side="stay",
     people = stay_recipients(booking, side=side)
     if not people:
         return False
-    delivered = send_email(people[0], subject, body,
-                           ics_content=ics_content, ics_filename=ics_filename)
+    delivered = send_email(people[0], subject, body, ics_content=ics_content,
+                           ics_filename=ics_filename, html=html)
     # WHY THEY ARE GETTING THIS. A bill landing in a stranger's inbox with no
     # explanation reads as a mistake, or worse as a scam -- so the copy says
     # who asked us to write to them, and the original does not carry the line.
@@ -56683,6 +56772,11 @@ def write_about_stay(booking, subject, body, side="stay",
             + " asked us to write to you as well about their stay at "
               "Ch\u00e2teau de Gudanes. Tell us if you would rather we did not.")
     for address in people[1:]:
+        # THE COPY GETS THE TEXT, on purpose. Its whole point is the line
+        # saying who asked us to write to them and how to stop, and the HTML
+        # template is a whole document with nowhere to put that. A copy with
+        # the explanation is worth more to the person reading it than a
+        # prettier one without. Revisit when the shell has a slot for it.
         send_email(address, subject, body + note,
                    ics_content=ics_content, ics_filename=ics_filename)
     return delivered

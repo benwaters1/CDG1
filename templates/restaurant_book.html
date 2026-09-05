@@ -49,7 +49,7 @@
           <h2 class="g-step__h"><span class="g-num">02</span> Your party</h2>
           <p class="g-field">
             <label for="guest_name">Name</label>
-            <input type="text" id="guest_name" name="guest_name" autocomplete="name" value="{{ prefill_name }}" required>
+            <input type="text" id="guest_name" name="guest_name" autocomplete="name" value="{{ prefill_name }}" required spellcheck="false" autocapitalize="words">
           </p>
           <div class="g-row">
             <p class="g-field">
@@ -80,7 +80,7 @@
           <p class="g-field g-field--narrow">
             <label for="promo_code">Code <span class="g-opt">optional</span></label>
             <span class="g-promo">
-              <input type="text" id="promo_code" name="promo_code" autocapitalize="characters" value="{{ prefill_promo_code | default('') }}">
+              <input type="text" id="promo_code" name="promo_code" autocapitalize="characters" value="{{ prefill_promo_code | default('') }}" spellcheck="false" autocapitalize="characters">
               <button type="button" id="promo_apply_btn">Apply</button>
             </span>
             <span class="g-hint" id="promo_result" aria-live="polite"></span>
@@ -134,7 +134,7 @@
       <input type="hidden" name="desired_date" value="{{ prefill_date }}">
       <p class="g-field"><label for="rw_name">Name</label><input type="text" id="rw_name" name="name" value="{{ prefill_name }}" required></p>
       <p class="g-field"><label for="rw_email">Email</label><input type="email" inputmode="email" id="rw_email" name="email" value="{{ prefill_email }}" required autocomplete="email"></p>
-      <p class="g-field"><label for="rw_phone">Telephone <span class="g-opt">optional</span></label><input type="tel" inputmode="tel" id="rw_phone" name="phone" inputmode="tel" value="{{ prefill_phone }}"></p>
+      <p class="g-field"><label for="rw_phone">Telephone <span class="g-opt">optional</span></label><input type="tel" inputmode="tel" id="rw_phone" name="phone" inputmode="tel" value="{{ prefill_phone }}" autocomplete="tel"></p>
       <p class="g-field g-field--narrow"><label for="rw_party">Guests</label><input type="number" inputmode="numeric" id="rw_party" name="party_size" min="1" value="{{ prefill_party_size }}" required></p>
       <p class="g-field"><label for="rw_notes">Anything else</label><textarea id="rw_notes" name="notes" rows="3"></textarea>
               <span class="g-hint">Anything here can be changed after booking — use the link in your confirmation.</span></p>

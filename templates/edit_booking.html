@@ -58,7 +58,7 @@
            value="{{ booking['booked_by_name'] or '' }}">
     <input type="email" name="booked_by_email" maxlength="200"
            placeholder="Where the bill should go"
-           value="{{ booking['booked_by_email'] or '' }}">
+           value="{{ booking['booked_by_email'] or '' }}" autocomplete="email">
     <p class="field-hint">The statement and anything about money goes to them.
       Everything about the stay itself still goes to the guest.</p>
 
@@ -73,7 +73,7 @@
            value="{{ booking['second_contact_name'] or '' }}">
     <input type="email" id="second_contact_email" name="second_contact_email" maxlength="200"
            placeholder="Where the copy should go"
-           value="{{ booking['second_contact_email'] or '' }}">
+           value="{{ booking['second_contact_email'] or '' }}" autocomplete="email">
     <p class="field-hint">They get a copy of everything we send about this
       stay, with a line saying who asked us to write to them. Clear the address
       to stop it.</p>
@@ -89,7 +89,7 @@
     </select>
 
     <label class="field-label">Phone</label>
-    <input type="tel" name="guest_phone" value="{{ booking['guest_phone'] or '' }}">
+    <input type="tel" name="guest_phone" value="{{ booking['guest_phone'] or '' }}" autocomplete="tel">
 
     <label class="field-label">Notes</label>
     <textarea name="special_requests">{{ booking['special_requests'] or '' }}</textarea>
@@ -134,7 +134,7 @@
   <form method="post" action="{{ url_for('set_booking_group', booking_id=booking['id']) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field-row-2">
-      <input type="text" name="reference_code" placeholder="Reference of the other booking" required>
+      <input type="text" name="reference_code" placeholder="Reference of the other booking" required spellcheck="false" autocapitalize="characters">
       <button type="submit" class="btn-mini">They are travelling together</button>
     </div>
   </form>

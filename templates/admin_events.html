@@ -54,11 +54,11 @@
     <div class="field-row-2">
       <div>
         <label class="field-label">Contact name</label>
-        <input type="text" name="contact_name" required placeholder="Who's organising it">
+        <input type="text" name="contact_name" required placeholder="Who's organising it" autocomplete="name" spellcheck="false" autocapitalize="words">
       </div>
       <div>
         <label class="field-label">Email (optional)</label>
-        <input type="email" name="contact_email" placeholder="Leave blank for a phone enquiry">
+        <input type="email" name="contact_email" placeholder="Leave blank for a phone enquiry" autocomplete="email">
       </div>
     </div>
     <div class="field-row-2">
@@ -217,7 +217,7 @@
       <input type="text" name="promo_code" style="width:130px;"
              value="{{ e['promo_code'] or '' }}"
              placeholder="{{ 'applied' if e['promo_code_id'] else 'none' }}"
-             {{ 'readonly' if e['promo_code_id'] }}>
+             {{ 'readonly' if e['promo_code_id'] }} spellcheck="false" autocapitalize="characters">
     </div>
     <div>
       <label class="field-label">Deposit (€)</label>

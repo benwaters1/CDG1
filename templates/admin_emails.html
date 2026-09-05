@@ -128,7 +128,7 @@
 </p>
 <form method="post" action="{{ url_for('add_email_optout') }}" class="search-bar">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div><label class="field-label">Email</label><input type="email" name="email" required></div>
+  <div><label class="field-label">Email</label><input type="email" name="email" required autocomplete="email"></div>
   <div style="flex:2 1 200px;"><label class="field-label">Reason (optional)</label><input type="text" name="reason"></div>
   <button type="submit" class="btn-mini">Add</button>
 </form>

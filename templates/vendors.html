@@ -96,7 +96,7 @@
       <input type="text" name="name" value="{{ v['name'] }}" placeholder="Name" required>
       <input type="text" name="contact_person" value="{{ v['contact_person'] or '' }}" placeholder="Contact person">
       <input type="text" name="phone" value="{{ v['phone'] or '' }}" placeholder="Phone">
-      <input type="email" name="email" value="{{ v['email'] or '' }}" placeholder="Email">
+      <input type="email" name="email" value="{{ v['email'] or '' }}" placeholder="Email" autocomplete="email">
       <input type="text" name="payment_terms" value="{{ v['payment_terms'] or '' }}" placeholder="Payment terms (e.g. Net 30)">
       <input type="text" name="notes" value="{{ v['notes'] or '' }}" placeholder="Notes">
       <button type="submit" class="btn-mini">Save</button>
@@ -112,7 +112,7 @@
     <input type="text" name="name" placeholder="Name" required>
     <input type="text" name="contact_person" placeholder="Contact person">
     <input type="text" name="phone" placeholder="Phone">
-    <input type="email" name="email" placeholder="Email">
+    <input type="email" name="email" placeholder="Email" autocomplete="email">
     <input type="text" name="payment_terms" placeholder="Payment terms (e.g. Net 30)">
     <input type="text" name="notes" placeholder="Notes (optional)">
     <button type="submit" class="btn-mini">Add vendor</button>

@@ -632,7 +632,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
       <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
-             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required>
+             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>
           <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
@@ -657,7 +657,7 @@
     <form method="post" action="{{ url_for('newsletter_subscribe') }}" class="g-journal__form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="g-vh" for="jr_email_rest">Your email</label>
-      <input type="email" id="jr_email_rest" name="email" placeholder="Your email" required>
+      <input type="email" id="jr_email_rest" name="email" placeholder="Your email" required autocomplete="email">
       <button type="submit" class="g-btn g-btn--solid">Read along</button>
     </form>
     <p class="g-journal__note">A few times a year, when there is something worth sending. Unsubscribe in one click.</p>

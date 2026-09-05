@@ -251,7 +251,7 @@
         <p class="g-navwrap__foot-h">{{ t('Subscribe to our newsletter') }}</p>
         <form class="g-navwrap__news" method="post" action="{{ url_for('newsletter_subscribe') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="email" inputmode="email" name="email" placeholder="{{ t('Email') }}" aria-label="{{ t('Email address') }}" required>
+          <input type="email" inputmode="email" name="email" placeholder="{{ t('Email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>
           <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>

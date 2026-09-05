@@ -39,6 +39,11 @@
    Changing one of these now changes the whole site, which is the point.
    ========================================================================== */
 :root{
+  --m-tight: 26rem;   /* ~50 characters at 18px */
+  --m-read:  34rem;   /* ~66 characters — the reading default */
+  --m-wide:  46rem;   /* ~72 characters at lede size */
+}
+
 /* A CUSTOM PROPERTY CANNOT BE USED IN A MEDIA QUERY CONDITION.
    --m-tight and --m-read are declared just above and were written into
    forty-two @media rules below, every one of which the browser then
@@ -47,11 +52,12 @@
    phone layout -- the navigation label, the back-to-top position, full
    width buttons on the confirmation page -- had never once applied,
    and nothing anywhere reported it. The values are written out; the
-   variables stay for use in ordinary declarations, where they work. */
-  --m-tight: 26rem;   /* ~50 characters at 18px */
-  --m-read:  34rem;   /* ~66 characters — the reading default */
-  --m-wide:  46rem;   /* ~72 characters at lede size */
-}
+   variables stay for use in ordinary declarations, where they work.
+
+   PUT BACK A SECOND TIME, by the handover of 2026-09-05. The design side
+   works from a tree that still has the variables in, so every zip carries
+   them back. test_design fails on it, which is the only reason it was
+   caught rather than shipped. */
 
 
 /* ==========================================================================
@@ -7898,3 +7904,91 @@ main > .g-wrap + .g-sec{ padding-top: var(--s6); }
   /* And left, so it never shares a corner with the primary action. */
   .g-totop{ right: auto; left: clamp(14px, 2vw, 28px); }
 }
+
+/* ==========================================================================
+   iOS ZOOMS THE PAGE WHEN A FIELD IS UNDER 16px
+   Several fields render at 13.3px, so tapping one on an iPhone zooms the
+   whole page in and leaves the guest scrolled sideways in the middle of a
+   booking form. It is the single most common mobile form fault and it is
+   invisible on a desktop.
+
+   16px on every real input, on touch screens only, so the desktop keeps its
+   proportions.
+   ========================================================================== */
+@media (max-width: 44rem){
+  .g input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  .g select,
+  .g textarea{
+    font-size: 16px;
+  }
+}
+
+/* The checkbox itself is a target, not text — 13px there is fine, but the
+   box was small enough to miss. */
+@media (pointer: coarse){
+  .g input[type="checkbox"],
+  .g input[type="radio"]{ width: 22px; height: 22px; }
+  .g .g-field--check label,
+  .g label:has(> input[type="checkbox"]){
+    display: flex; align-items: flex-start; gap: var(--s3);
+    min-height: 44px; padding: var(--s2) 0;
+  }
+}
+
+/* ==========================================================================
+   TWO REAL FAULTS, FOUND BY MEASURING RATHER THAN BY EYE
+   ==========================================================================
+
+   1. A doubled hairline. `.g-facts` ends with a 1px bottom border and the
+      section beneath it starts with a 1px top border of the SAME colour, so
+      the seam draws at 2px — twice the weight of every other rule on the
+      page, and read as a mistake rather than a division.
+*/
+main > *:not(.g-sec--dark) + .g-sec{ border-top: 0; }
+main > .g-facts{ border-bottom: 1px solid var(--line); }
+
+/*
+   2. On The Estate a `.g-cards` grid holds three cards, and the third spans
+      `1 / -1` — so two are 568px and the last is 1168px with an image
+      stretched to a 5.2:1 letterbox beside two at 2.5:1. A full-width card
+      is a deliberate device; a full-width card that is simply the leftover
+      third of a row is not.
+
+      The span holds where it is chosen. Where a card is last and alone on
+      its row, it takes a normal column and the row centres.
+*/
+.g-cards > .g-card:last-child:nth-child(odd):not([data-span]){
+  grid-column: auto;
+}
+.g-cards:has(> .g-card:last-child:nth-child(odd)){
+  justify-content: center;
+}
+/* If a card IS meant to run full width, it says so and keeps a sane crop. */
+.g-cards > .g-card[data-span="full"]{
+  grid-column: 1 / -1;
+}
+.g-cards > .g-card[data-span="full"] img{
+  aspect-ratio: 21 / 9; object-fit: cover; width: 100%; height: auto;
+}
+
+/* In the dossier list each row carries a bottom border AND the next row a
+   top border, both translucent white — so every divider draws at 2px while
+   the first and last draw at 1px. The list reads as unevenly ruled.
+   One border per seam: the row owns its top edge, and the first has none. */
+.g-dossier__l div{ border-bottom: 0; }
+.g-dossier__l div + div{ border-top: 1px solid rgba(255,255,255,.16); }
+.g-dossier__l div:first-child{ border-top: 0; }
+
+/* Stacked buttons on a narrow screen met edge to edge, so the solid one's
+   border and the quiet one's ran together into a 2px line between them. */
+.g-btn + .g-btn{ margin-top: var(--s3); }
+
+/* The dossier list sits inside a .g-aside, so it picks up BOTH
+   `.g-aside dl > div` (a bottom border) and `.g-dossier__l div` (a top one).
+   Every divider drew at 2px while the first and last drew at 1px.
+
+   I spent three attempts writing .g-dossier__l rules that could never win,
+   because the bottom border comes from a different component's selector.
+   One seam, owned by the top edge. */
+.g-aside .g-dossier__l div,
+.g-aside dl.g-dossier__l > div{ border-bottom: 0; }

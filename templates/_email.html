@@ -1,0 +1,245 @@
+{#  ==========================================================================
+    THE EMAIL WRAPPER
+
+    Every message the château sends is plain text today — `send_email_via_resend`
+    posts only `"text": body` — so there are no buttons, no directions anyone
+    can tap, and a manage link arrives as a bare URL.
+
+    This is the HTML half. It is written for MAIL CLIENTS, which is a
+    different discipline from the website:
+
+      · tables, not flexbox or grid. Outlook uses Word's rendering engine and
+        supports neither
+      · every style inline. Gmail strips <style> blocks on some clients
+      · no web fonts. Georgia and Helvetica are on every machine, and the
+        site's Cormorant simply would not load
+      · one column, 600px. Anything wider is cut off in a preview pane
+      · a button is a table cell with a background and a padded <a> inside.
+        A styled <button> does not exist in email
+
+    The plain-text body is still sent alongside — a client that refuses HTML,
+    or a guest who prefers it, gets exactly what they get today.
+    ========================================================================== #}
+
+{% macro email_shell(title, preheader='', settings={}, lang='en') %}
+<!DOCTYPE html>
+<html lang="{{ lang|default('en') }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+</head>
+<body style="margin:0; padding:0; background:#EDE5D6;">
+
+{# The preheader is the grey line a phone shows under the subject. Left
+   unset, clients pull the first words of the body, which is usually
+   "Hi Eleanor" — a wasted line in the one place a guest decides whether to
+   open at all. #}
+<div style="display:none; max-height:0; overflow:hidden; opacity:0;">{{ preheader }}</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+       style="background:#EDE5D6;">
+  <tr>
+    <td align="center" style="padding:24px 12px;">
+
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0"
+             style="width:100%; max-width:600px; background:#FFFFFF; border:1px solid #DCD2BE;">
+
+        {# ---- the head band ---- #}
+        <tr>
+          <td style="background:#14305F; padding:22px 24px; border-bottom:3px solid #C5A24A;">
+            <p style="margin:0; font-family:Georgia,'Times New Roman',serif; font-size:19px;
+                      color:#FFFFFF; letter-spacing:.02em;">Château de Gudanes</p>
+            <p style="margin:4px 0 0; font-family:Helvetica,Arial,sans-serif; font-size:11px;
+                      letter-spacing:.16em; text-transform:uppercase; color:#DCC077;">
+              Ariège · Pyrénées</p>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:26px 24px;">
+            {{ caller() }}
+          </td>
+        </tr>
+
+        {# ---- the foot ---- #}
+        <tr>
+          <td style="background:#F6F1E7; padding:22px 24px; border-top:1px solid #DCD2BE;">
+            <p style="margin:0 0 6px; font-family:Helvetica,Arial,sans-serif; font-size:12px;
+                      line-height:1.6; color:#4A6076;">
+              Château de Gudanes, 09140 Château-Verdun, Ariège, France<br>
+              <a href="tel:{{ settings.get('phone','') }}"
+                 style="color:#14305F;">{{ settings.get('phone','') }}</a> ·
+              <a href="mailto:{{ settings.get('email','') }}"
+                 style="color:#14305F;">{{ settings.get('email','') }}</a>
+            </p>
+            <p style="margin:0; font-family:Helvetica,Arial,sans-serif; font-size:11px;
+                      color:#6B7A88;">
+              A Class I Historic Monument under restoration since 2013.
+            </p>
+          </td>
+        </tr>
+      </table>
+
+    </td>
+  </tr>
+</table>
+</body>
+</html>
+{% endmacro %}
+
+
+{#  A button. In email this is a table cell, not a <button> — a padded link
+    inside a coloured cell is the only construction that renders everywhere,
+    including Outlook. #}
+{% macro email_button(href, label, tone='solid') %}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;">
+  <tr>
+    <td style="background:{{ '#14305F' if tone == 'solid' else '#FFFFFF' }};
+               border:1px solid {{ '#14305F' if tone == 'solid' else '#C5A24A' }};">
+      <a href="{{ href }}"
+         style="display:inline-block; padding:14px 26px;
+                font-family:Helvetica,Arial,sans-serif; font-size:15px;
+                color:{{ '#FFFFFF' if tone == 'solid' else '#14305F' }};
+                text-decoration:none;">{{ label }}</a>
+    </td>
+  </tr>
+</table>
+{% endmacro %}
+
+
+{#  A labelled fact. Booking references and dates are read at a glance, often
+    on a phone at a service station, so they are set large and lining. #}
+{% macro email_fact(label, value) %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+       style="margin:0 0 14px;">
+  <tr>
+    <td style="padding:0 0 3px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
+               letter-spacing:.14em; text-transform:uppercase; color:#73562D;">{{ label }}</td>
+  </tr>
+  <tr>
+    <td style="font-family:Georgia,'Times New Roman',serif; font-size:20px; color:#14305F;">{{ value }}</td>
+  </tr>
+</table>
+{% endmacro %}
+
+
+{#  ==========================================================================
+    GETTING HERE
+    The château is an hour and three quarters from Toulouse on roads that get
+    small, and the postcode alone drops people in the village rather than at
+    the gates. Every arrival message carries this block.
+
+    The Maps link uses the coordinates, not the address — an address search
+    for a building with no street number is exactly how people end up in the
+    wrong valley.
+    ========================================================================== #}
+{% macro email_directions(settings) %}
+{% set lat = settings.get('lat') %}
+{% set lng = settings.get('lng') %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+       style="margin:26px 0 0; border-top:2px solid #C5A24A;">
+  <tr>
+    <td style="padding:22px 0 0;">
+      <p style="margin:0 0 4px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
+                letter-spacing:.14em; text-transform:uppercase; color:#73562D;">Finding us</p>
+      <p style="margin:0 0 16px; font-family:Georgia,'Times New Roman',serif; font-size:22px;
+                color:#14305F;">The last few miles are the ones that matter</p>
+
+      {# The sentence and the buttons stand or fall together. "Use the pin
+         below" printed above no pin is worse than either, and a pin nobody
+         has checked is worse still: the reason this uses coordinates rather
+         than the address is that being NEARLY right sends people to the
+         village square, which is the exact failure at issue. #}
+      {% if lat and lng %}
+      <p style="margin:0 0 18px; font-family:Helvetica,Arial,sans-serif; font-size:15px;
+                line-height:1.65; color:#2C3E50;">
+        The château is above the village of Château-Verdun, an hour and three
+        quarters south of Toulouse. <strong>Use the pin below rather than
+        searching the address</strong> — there is no street number, and a
+        search will send you to the village square.
+      </p>
+
+      {{ email_button('https://www.google.com/maps/search/?api=1&query=' ~ lat ~ ',' ~ lng,
+                      'Open in Google Maps') }}
+      {{ email_button('https://maps.apple.com/?ll=' ~ lat ~ ',' ~ lng ~ '&q=Ch%C3%A2teau%20de%20Gudanes',
+                      'Open in Apple Maps', 'quiet') }}
+      {% else %}
+      <p style="margin:0 0 18px; font-family:Helvetica,Arial,sans-serif; font-size:15px;
+                line-height:1.65; color:#2C3E50;">
+        The château is above the village of Château-Verdun, an hour and three
+        quarters south of Toulouse. <strong>Do not search the address</strong>
+        — there is no street number, and a search sends you to the village
+        square. Telephone us and we will talk you up the last few miles.
+      </p>
+      {% endif %}
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="margin:14px 0 0;">
+        <tr>
+          <td style="padding:10px 0; border-top:1px solid #E6DCC8;
+                     font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.6; color:#2C3E50;">
+            <strong style="color:#14305F;">Driving</strong> — 1 h 45 from Toulouse
+            airport by the A61 and N20. The last four kilometres climb and narrow;
+            take them slowly.
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:10px 0; border-top:1px solid #E6DCC8;
+                     font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.6; color:#2C3E50;">
+            <strong style="color:#14305F;">By train</strong> — to Ax-les-Thermes,
+            then fifteen minutes by taxi. Tell us your train and we will arrange one.
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:10px 0; border-top:1px solid #E6DCC8;
+                     font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.6; color:#2C3E50;">
+            <strong style="color:#14305F;">Arriving after dark</strong> — the drive
+            is unlit. Telephone when you leave Ax and someone will meet you at the gates.
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+{% endmacro %}
+
+
+{#  ==========================================================================
+    BEFORE YOU COME
+    A confirmation is the most-opened message the château sends, and today it
+    ends after the reference number. A guest who has just booked is the most
+    willing they will ever be to add a dinner — and the least likely to hunt
+    for how.
+
+    Two links, not five. This is a confirmation with an offer in it, not a
+    catalogue.
+    ========================================================================== #}
+{% macro email_extras(manage_url, settings) %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+       style="margin:26px 0 0;">
+  <tr>
+    <td style="background:#F6F1E7; border-left:3px solid #C5A24A; padding:22px 24px;">
+      <p style="margin:0 0 4px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
+                letter-spacing:.14em; text-transform:uppercase; color:#73562D;">Before you come</p>
+      <p style="margin:0 0 14px; font-family:Georgia,'Times New Roman',serif; font-size:22px;
+                color:#14305F;">Anything you want to add, add it now</p>
+
+      <p style="margin:0 0 18px; font-family:Helvetica,Arial,sans-serif; font-size:15px;
+                line-height:1.65; color:#2C3E50;">
+        Dinner at La Table is one sitting and the kitchen cooks for one table,
+        so it is worth claiming early. A transfer from Toulouse, or anything
+        else, can be added to the same booking.
+      </p>
+
+      {{ email_button(manage_url, 'Add dinner, or a transfer') }}
+
+      <p style="margin:10px 0 0; font-family:Helvetica,Arial,sans-serif; font-size:13px;
+                line-height:1.6; color:#4A6076;">
+        The same link changes your dates, tells us of an allergy, or cancels —
+        no password, and it works for as long as the booking does.
+      </p>
+    </td>
+  </tr>
+</table>
+{% endmacro %}

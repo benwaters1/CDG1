@@ -86,17 +86,17 @@
     <div>
       <label class="field-label" for="wi_name">Name</label>
       <input id="wi_name" type="text" name="guest_name" required
-             value="{{ form.get('guest_name', '') }}" placeholder="A surname is enough">
+             value="{{ form.get('guest_name', '') }}" placeholder="A surname is enough" autocomplete="name" spellcheck="false" autocapitalize="words">
     </div>
     <div>
       <label class="field-label" for="wi_phone">Telephone (optional)</label>
-      <input id="wi_phone" type="tel" name="guest_phone" value="{{ form.get('guest_phone', '') }}">
+      <input id="wi_phone" type="tel" name="guest_phone" value="{{ form.get('guest_phone', '') }}" autocomplete="tel">
     </div>
   </div>
 
   <label class="field-label" for="wi_email">Email (optional)</label>
   <input id="wi_email" type="email" name="guest_email" value="{{ form.get('guest_email', '') }}"
-         placeholder="Leave blank if they would rather not">
+         placeholder="Leave blank if they would rather not" autocomplete="email">
   <p class="upload-hint">Without one there is nothing to send them — no statement,
   no account link, and no way to chase a balance later. Worth asking for, not worth
   refusing the booking over.</p>

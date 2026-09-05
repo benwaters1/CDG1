@@ -16,7 +16,7 @@
 
     {% if not employee %}
     <label class="field-label">Email (they'll use this to log in)</label>
-    <input type="email" name="email" required value="{{ prefill_email or '' }}">
+    <input type="email" name="email" required value="{{ prefill_email or '' }}" autocomplete="email">
     {% endif %}
 
     <label class="field-label">Role</label>
@@ -25,7 +25,7 @@
     <div class="field-row-2">
       <div>
         <label class="field-label">Phone</label>
-        <input type="tel" name="phone" value="{{ employee['phone'] if employee else (prefill_phone or '') }}">
+        <input type="tel" name="phone" value="{{ employee['phone'] if employee else (prefill_phone or '') }}" autocomplete="tel">
       </div>
       <div>
         <label class="field-label">Start date</label>
@@ -106,7 +106,7 @@
         <input type="text" name="emergency_contact_relationship" placeholder="Relationship (e.g. Spouse)" value="{{ employee['emergency_contact_relationship'] or '' }}">
       </div>
     </div>
-    <input type="tel" name="emergency_contact_phone" placeholder="Phone" value="{{ employee['emergency_contact_phone'] or '' }}" style="margin-top:8px;">
+    <input type="tel" name="emergency_contact_phone" placeholder="Phone" value="{{ employee['emergency_contact_phone'] or '' }}" style="margin-top:8px;" autocomplete="tel">
     {% endif %}
 
     <label class="field-label">Notes</label>

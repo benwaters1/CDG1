@@ -321,6 +321,7 @@ SUITES = [
     "test_clock_change",
     "test_one_search_box",
     "test_offline_actions",
+    "test_html_email",
     "test_review_invitation",
     "test_itinerary",
     "test_price_agreed",

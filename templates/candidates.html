@@ -57,8 +57,8 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="text" name="name" value="{{ c['name'] }}" placeholder="Name" required>
         <input type="text" name="role_applied" value="{{ c['role_applied'] or '' }}" placeholder="Role applied for">
-        <input type="email" name="email" value="{{ c['email'] or '' }}" placeholder="Email">
-        <input type="tel" name="phone" value="{{ c['phone'] or '' }}" placeholder="Phone">
+        <input type="email" name="email" value="{{ c['email'] or '' }}" placeholder="Email" autocomplete="email">
+        <input type="tel" name="phone" value="{{ c['phone'] or '' }}" placeholder="Phone" autocomplete="tel">
         <input type="text" name="notes" value="{{ c['notes'] or '' }}" placeholder="Notes (optional)">
         <button type="submit" class="btn-mini" style="align-self:flex-start;">Save changes</button>
       </form>
@@ -73,8 +73,8 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="name" placeholder="Name" required>
     <input type="text" name="role_applied" placeholder="Role applied for">
-    <input type="email" name="email" placeholder="Email">
-    <input type="tel" name="phone" placeholder="Phone">
+    <input type="email" name="email" placeholder="Email" autocomplete="email">
+    <input type="tel" name="phone" placeholder="Phone" autocomplete="tel">
     <input type="text" name="notes" placeholder="Notes (optional)">
     <button type="submit" class="btn-mini">Add candidate</button>
   </form>

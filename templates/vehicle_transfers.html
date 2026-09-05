@@ -27,7 +27,7 @@
   <h3>Log a transfer</h3>
   <form method="post" action="{{ url_for('new_vehicle_transfer', vehicle_id=vehicle['id']) }}" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" name="guest_name" placeholder="Guest name">
+    <input type="text" name="guest_name" placeholder="Guest name" autocomplete="name" spellcheck="false" autocapitalize="words">
     <select name="direction" required>
       <option value="">Pickup or drop-off?</option>
       <option value="pickup">Pickup</option>

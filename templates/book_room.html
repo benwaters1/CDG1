@@ -159,7 +159,7 @@
           <h2 class="g-step__h"><span class="g-num">02</span> Who is coming</h2>
           <p class="g-field">
             <label for="guest_name">Your name<span class="g-req" aria-hidden="true">*</span></label>
-            <input type="text" id="guest_name" name="guest_name" autocomplete="name" value="{{ prefill_name }}" required>
+            <input type="text" id="guest_name" name="guest_name" autocomplete="name" value="{{ prefill_name }}" required spellcheck="false" autocapitalize="words">
           </p>
           <div class="g-row">
             <p class="g-field">
@@ -223,7 +223,7 @@
           <p class="g-field g-field--narrow">
             <label for="promo_code">Promo code <span class="g-opt">optional</span></label>
             <span class="g-promo">
-              <input type="text" id="promo_code" name="promo_code" autocapitalize="characters" value="{{ prefill_promo | default('') }}">
+              <input type="text" id="promo_code" name="promo_code" autocapitalize="characters" value="{{ prefill_promo | default('') }}" spellcheck="false" autocapitalize="characters">
               <button type="button" id="promo_apply_btn">Apply</button>
             </span>
             <span class="g-hint" id="promo_result" aria-live="polite"></span>

@@ -1,0 +1,71 @@
+{#  ==========================================================================
+    BOOKING CONFIRMED — the HTML version
+
+    The most-opened message the château sends. Today it is plain text and
+    ends after the reference number, which means the guest most willing to
+    add a dinner is given no way to.
+
+    Register: the site does not say "Hi Eleanor" or "We look forward to
+    welcoming you". It says what is true, plainly. The French is the site's
+    own — a line above the English, the way the headings work — not decoration
+    sprinkled through the sentences.
+
+    The plain-text body still goes out alongside this.
+    ========================================================================== #}
+{% from '_email.html' import email_shell, email_button, email_fact, email_directions, email_extras %}
+
+{% call email_shell('Your booking — Château de Gudanes',
+     'Reference ' ~ reference_code ~ '. Everything you need, including how to find us.',
+     settings) %}
+
+  <p style="margin:0 0 4px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
+            letter-spacing:.14em; text-transform:uppercase; color:#73562D;">C'est confirmé</p>
+  <p style="margin:0 0 20px; font-family:Georgia,'Times New Roman',serif; font-size:27px;
+            line-height:1.25; color:#14305F;">Your room is held, {{ guest_name }}</p>
+
+  <p style="margin:0 0 26px; font-family:Helvetica,Arial,sans-serif; font-size:16px;
+            line-height:1.7; color:#2C3E50;">
+    Five bedrooms of ninety-four are finished, and one of them is yours for
+    the dates below. Everything here is also on your booking page, so there is
+    nothing you need to keep.
+  </p>
+
+  {{ email_fact('Arriving', arrival_long) }}
+  {{ email_fact('Leaving', departure_long) }}
+  {{ email_fact('Room', room_name) }}
+  {{ email_fact('Reference', reference_code) }}
+
+  {% if balance_due %}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+         style="margin:6px 0 22px;">
+    <tr>
+      <td style="background:#F6F1E7; padding:16px 18px; border-left:3px solid #C5A24A;
+                 font-family:Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#2C3E50;">
+        <strong style="color:#14305F;">{{ balance_due }}</strong> is due on arrival.
+        We take cards and cash.
+      </td>
+    </tr>
+  </table>
+  {% endif %}
+
+  {{ email_button(manage_url, 'Your booking page') }}
+
+  {# What a guest is actually most likely to want next, and the directions
+     they will come back for on the day. #}
+  {{ email_extras(manage_url, settings) }}
+  {{ email_directions(settings) }}
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+         style="margin:28px 0 0; border-top:1px solid #E6DCC8;">
+    <tr>
+      <td style="padding:20px 0 0; font-family:Helvetica,Arial,sans-serif; font-size:14px;
+                 line-height:1.7; color:#4A6076;">
+        The walls of this house are not finished and will not be while you are
+        here — that is the point of it. The floors, the beds and the bathrooms
+        are new. If anything at all needs saying before you arrive, reply to
+        this message; it reaches us.
+      </td>
+    </tr>
+  </table>
+
+{% endcall %}

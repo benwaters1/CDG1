@@ -108,7 +108,7 @@
         </p>
         <p class="g-field">
           <label for="contact_name">Your name</label>
-          <input type="text" id="contact_name" name="contact_name" autocomplete="name" required value="{{ prefill_contact_name | default('') }}">
+          <input type="text" id="contact_name" name="contact_name" autocomplete="name" required value="{{ prefill_contact_name | default('') }}" spellcheck="false" autocapitalize="words">
         </p>
         <div class="g-row">
           <p class="g-field">
@@ -146,7 +146,7 @@
           <label for="promo_code">Promo code (optional)</label>
           <input type="text" id="promo_code" name="promo_code"
                  autocomplete="off"
-                 value="{{ prefill_promo_code | default('') }}">
+                 value="{{ prefill_promo_code | default('') }}" spellcheck="false" autocapitalize="characters">
           <span class="g-hint">If you have been given one, we will
           apply it to your quote.</span>
         </p>

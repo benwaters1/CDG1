@@ -381,7 +381,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
       <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
-             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required>
+             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>
           <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>

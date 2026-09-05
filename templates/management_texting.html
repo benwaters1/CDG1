@@ -95,7 +95,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div style="display:flex; gap:8px; flex-wrap:wrap;">
     <input type="tel" name="phone" placeholder="06 12 34 56 78" required style="max-width:220px;"
-           aria-label="Their mobile number">
+           aria-label="Their mobile number" autocomplete="tel">
     <input type="text" name="source" placeholder="Where they said it — on the telephone, at the desk"
            style="max-width:320px;" aria-label="Where they said yes">
     <button type="submit" class="btn-mini">They said yes</button>
@@ -108,7 +108,7 @@
 <form method="post" action="{{ url_for('stop_texting_number') }}" style="margin-bottom:14px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div style="display:flex; gap:8px; flex-wrap:wrap;">
-    <input type="tel" name="phone" placeholder="06 12 34 56 78" required style="max-width:220px;">
+    <input type="tel" name="phone" placeholder="06 12 34 56 78" required style="max-width:220px;" autocomplete="tel">
     <input type="text" name="reason" placeholder="Said so on the phone" style="max-width:260px;">
     <button type="submit" class="btn-mini">Add</button>
   </div>

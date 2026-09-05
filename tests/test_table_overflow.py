@@ -35,6 +35,13 @@ TEMPLATES = os.path.join(_harness.ROOT, "templates")
 EXEMPT = {
     "office_display.html", "pos_kitchen.html", "staff_today.html",
     "menu_card.html", "pos_bill.html",
+    # An email is not a page. These two are built out of tables deliberately:
+    # Outlook draws with Word's engine and has neither flexbox nor grid, so a
+    # table is the only layout that works there. A scrolling wrapper would
+    # mean nothing either — mail clients do not honour overflow-x, and the
+    # class would live in a stylesheet Gmail strips. They are held at 600px
+    # instead, which is the answer that actually works in an inbox.
+    "_email.html", "email_booking_confirmed.html",
 }
 
 
