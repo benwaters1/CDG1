@@ -2,7 +2,12 @@
 {% from '_room_copy.html' import room_copy, room_name, room_note %}
 {% set crumbs = [('Stay', url_for('book_rooms')), (room_name(room['name']), None)] %}
 {% block title %}Book {{ room_name(room['name']) }}{% endblock %}
-{% block description %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
+{# Named, and priced, per room. One template serves five bedrooms, so a
+   fixed sentence here gave all five pages the same description -- which
+   is the one line a search engine shows under the link, so five rooms
+   competed against each other with identical copy. Falls back to the
+   general sentence for a room with no rate on it yet. #}
+{% block description %}{{ room_name(room['name']) }} at Château de Gudanes: a bedroom inside a Class I Historic Monument under restoration in the French Pyrénées, sleeping up to {{ room['max_occupancy'] or 2 }}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}. Rates, availability and what the room actually is.{% endblock %}
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
 {% set sticky_bar = 'none' %}
