@@ -23955,24 +23955,33 @@ def owner_home_figures(conn, today):
     """The five figures across the top, each with a real seven-day series."""
     days = _last_seven_days(today)
 
+    first, last = days[0].isoformat(), days[-1].isoformat()
+
     rooms_total = conn.execute(
         "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
+
+    # One read of the stays that touch the week, counted per night here.
+    # This was seven queries — one per pixel of a 22px sparkline — and so
+    # were the four series below it: thirty-five of the 435 this page ran.
+    # The rule this file already keeps for hours, kept here too.
+    stays = conn.execute(
+        """SELECT room_id, arrival_date, departure_date FROM bookings
+            WHERE status = 'confirmed' AND arrival_date <= ?
+              AND departure_date > ?""", (last, first)).fetchall()
     occupied = []
     for d in days:
-        occupied.append(conn.execute(
-            """SELECT COUNT(DISTINCT room_id) AS c FROM bookings
-               WHERE status = 'confirmed' AND arrival_date <= ? AND departure_date > ?""",
-            (d.isoformat(), d.isoformat())).fetchone()["c"] or 0)
+        iso = d.isoformat()
+        occupied.append(len({r["room_id"] for r in stays
+                             if r["arrival_date"] <= iso < r["departure_date"]}))
     rooms_now = occupied[-1]
     last_night = occupied[-2] if len(occupied) > 1 else rooms_now
     room_delta = rooms_now - last_night
 
-    arrivals = []
-    for d in days:
-        arrivals.append(conn.execute(
-            """SELECT COUNT(*) AS c FROM bookings
-               WHERE status = 'confirmed' AND arrival_date = ?""",
-            (d.isoformat(),)).fetchone()["c"] or 0)
+    by_arrival = {r["arrival_date"]: r["c"] for r in conn.execute(
+        """SELECT arrival_date, COUNT(*) AS c FROM bookings
+            WHERE status = 'confirmed' AND arrival_date BETWEEN ? AND ?
+            GROUP BY arrival_date""", (first, last))}
+    arrivals = [by_arrival.get(d.isoformat(), 0) for d in days]
     departures_today = conn.execute(
         """SELECT COUNT(*) AS c FROM bookings
            WHERE status = 'confirmed' AND departure_date = ?""",
@@ -23984,12 +23993,12 @@ def owner_home_figures(conn, today):
            ORDER BY estimated_arrival_time LIMIT 1""",
         (today.isoformat(),)).fetchone()
 
-    covers = []
-    for d in days:
-        covers.append(conn.execute(
-            """SELECT COALESCE(SUM(party_size), 0) AS c FROM restaurant_bookings
-               WHERE status = 'confirmed' AND dinner_date = ?""",
-            (d.isoformat(),)).fetchone()["c"] or 0)
+    by_dinner = {r["dinner_date"]: r["c"] for r in conn.execute(
+        """SELECT dinner_date, COALESCE(SUM(party_size), 0) AS c
+             FROM restaurant_bookings
+            WHERE status = 'confirmed' AND dinner_date BETWEEN ? AND ?
+            GROUP BY dinner_date""", (first, last))}
+    covers = [by_dinner.get(d.isoformat(), 0) for d in days]
     dietary_tonight = conn.execute(
         """SELECT COUNT(*) AS c FROM restaurant_bookings
            WHERE status = 'confirmed' AND dinner_date = ?
@@ -24000,19 +24009,37 @@ def owner_home_figures(conn, today):
         "SELECT COUNT(*) AS c FROM users WHERE role <> 'owner' AND status = 'active'").fetchone()["c"] or 0
     on_shift = conn.execute(
         "SELECT COUNT(*) AS c FROM time_entries WHERE clock_out_at IS NULL").fetchone()["c"] or 0
-    shift_series = []
-    for d in days:
-        shift_series.append(conn.execute(
-            "SELECT COUNT(*) AS c FROM time_entries WHERE DATE(clock_in_at) = ?",
-            (d.isoformat(),)).fetchone()["c"] or 0)
+    # DATE(clock_in_at) READ THE WRONG DAY. clock_in_at is stored in UTC and
+    # the house is in the Ariège, so somebody clocking in at half past
+    # midnight was counted on the day before — every night of the year. It is
+    # the stamp[:10] fault in SQL's spelling, and the rule against that one
+    # does not name this shape.
+    #
+    # Widened by a day at each end before bucketing, because a local day
+    # reaches into the UTC days either side of it.
+    edge_from = (days[0] - timedelta(days=1)).isoformat()
+    edge_to = (days[-1] + timedelta(days=2)).isoformat()
+    shift_days = {}
+    for row in conn.execute(
+            "SELECT clock_in_at FROM time_entries "
+            "WHERE clock_in_at >= ? AND clock_in_at < ?",
+            (edge_from, edge_to)):
+        day = house_date_iso(row["clock_in_at"])
+        shift_days[day] = shift_days.get(day, 0) + 1
+    shift_series = [shift_days.get(d.isoformat(), 0) for d in days]
 
     decisions, decisions_value, stale = owner_queue_totals(conn, today)
-    decision_series = []
-    for d in days:
-        decision_series.append(conn.execute(
-            """SELECT (SELECT COUNT(*) FROM expenses WHERE DATE(submitted_at) <= ? AND status = 'pending')
-                    + (SELECT COUNT(*) FROM leave_requests WHERE DATE(requested_at) <= ? AND status = 'pending')
-                      AS c""", (d.isoformat(), d.isoformat())).fetchone()["c"] or 0)
+    # Cumulative: how many were waiting on that day and still are. Two more
+    # DATE() calls on UTC stamps, so a thing submitted after midnight counted
+    # from the day before — read through house_date_iso instead, which is the
+    # only right answer to what day it is.
+    waiting = [house_date_iso(r["at"]) for r in conn.execute(
+        """SELECT submitted_at AS at FROM expenses WHERE status = 'pending'
+           UNION ALL
+           SELECT requested_at AS at FROM leave_requests WHERE status = 'pending'""")
+        if r["at"]]
+    decision_series = [sum(1 for w in waiting if w <= d.isoformat())
+                       for d in days]
 
     return [
         {"label": "Rooms occupied", "value": rooms_now, "unit": f"/ {rooms_total}",
@@ -24228,6 +24255,21 @@ def tell_the_house_about_a_review(conn, *, rating, guest_name, comment, what, wh
         "it, and it will keep showing on your home page until somebody has\n"
         "answered it or marked it read.\n\n\u2014 Ch\u00e2teau de Gudanes")
     return True
+
+
+# The readiness checks that belong on the front page rather than only on the
+# readiness page, and the sentence each gets there. Keyed by the check's own
+# label, which is unique; a renamed check therefore goes red in the test
+# rather than quietly falling off the front page.
+#
+# Deliberately three of fourteen. The others are decisions the house has not
+# taken (Stripe) or genuinely optional (the tokens), and a morning panel that
+# lists everything is one nobody reads.
+FRONT_PAGE_READINESS = {
+    "Outbound email": "Nothing can send email",
+    "Terms & conditions": "Guests are agreeing to a placeholder",
+    "Public web address": "Links in guest email go nowhere",
+}
 
 
 def owner_home_warnings(conn, today):
@@ -24574,6 +24616,23 @@ def owner_home_warnings(conn, today):
             f"{pictures['held']} of {len(pictures['wanted'])} are held here. "
             "If that account closes, the rest go — the logo among them.",
             n, "admin_photo_mirror")
+
+    # What the deployment itself is missing. readiness_checks has known
+    # these all along; nothing carried them to a page the owner opens every
+    # morning, so the front page reported 483 held messages for weeks and
+    # never once that nothing could send.
+    #
+    # Three of the fourteen, not all of them. Stripe being unconfigured is a
+    # decision the house has not taken rather than a fault, and the optional
+    # tokens are optional; a panel that lists everything gets scrolled past,
+    # which is the failure it exists to avoid. Each closes itself the moment
+    # the setting arrives.
+    for check in readiness_checks(conn, include_slow=False):
+        if check["ok"] or check["label"] not in FRONT_PAGE_READINESS:
+            continue
+        add("blocker" if check["severity"] == "blocker" else "warn",
+            FRONT_PAGE_READINESS[check["label"]], check["detail"], 1,
+            "admin_readiness")
 
     order = {"blocker": 0, "warn": 1}
     out.sort(key=lambda w: (order.get(w["severity"], 9), -w["count"]))
@@ -59282,9 +59341,16 @@ def export_audit_log_csv():
     return csv_response(fieldnames, lv["rows"], name)
 
 
-def readiness_checks(conn):
+def readiness_checks(conn, *, include_slow=True):
     """Everything that has to be true before this is somebody's real business
     system, and what is merely optional.
+
+    include_slow=False OMITS the checks that cost real time -- today that is
+    one, the owner password, which has to run the password hash to answer and
+    so takes 74ms on purpose. Omitted rather than faked: reporting a clean
+    pass on the seeded password would be a lie about the one item on this
+    list that is a way in. The owner home passes False because none of the
+    three it carries is that one; the readiness page asks for everything.
 
     Written as data rather than prose because the answer changes as env vars
     get set — a checklist in DEPLOY.md goes stale the moment something is
@@ -59394,13 +59460,19 @@ def readiness_checks(conn):
         "Not set. The Vault can't store anything, so codes and passwords have "
         "nowhere safe to live.")
 
-    owner = conn.execute(
-        "SELECT id, email, password_hash FROM users WHERE role = 'owner' LIMIT 1").fetchone()
-    default_pw = bool(owner) and check_password_hash(owner["password_hash"], "changeme")
-    add("blocker", "Security", "Owner password changed", not default_pw,
-        "Changed." if not default_pw else
-        "STILL THE SEEDED PASSWORD. Anyone who has seen the setup notes can log "
-        "in as you.")
+    # Costs 74ms, all of it inside scrypt, which is what a password hash is
+    # for. Fine on a page somebody opened to read this list; not fine on the
+    # owner home, which draws every morning.
+    if include_slow:
+        owner = conn.execute(
+            "SELECT id, email, password_hash FROM users WHERE role = 'owner' "
+            "LIMIT 1").fetchone()
+        default_pw = bool(owner) and check_password_hash(
+            owner["password_hash"], "changeme")
+        add("blocker", "Security", "Owner password changed", not default_pw,
+            "Changed." if not default_pw else
+            "STILL THE SEEDED PASSWORD. Anyone who has seen the setup notes can "
+            "log in as you.")
 
     # The setting is `terms_and_conditions`; an earlier version of this check
     # read a key that doesn't exist, so it reported "still a draft" for ever,

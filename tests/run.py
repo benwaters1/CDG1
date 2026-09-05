@@ -303,6 +303,8 @@ SUITES = [
     "test_rendered_markup",
     "test_outbox_retention",
     "test_orphan_pages",
+    "test_readiness_on_home",
+    "test_owner_figures",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",
