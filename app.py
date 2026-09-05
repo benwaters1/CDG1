@@ -59130,17 +59130,30 @@ AUDIT_KINDS = [
 # (label, table, the columns whose values are keys), and the columns are read
 # from the row so a record renamed since is still found under the old name only
 # if the old name was what was logged, which is the truth and not a guess.
+# (label, table, key columns, the word an action about this kind contains).
+#
+# THE LAST FIELD EXISTS BECAUSE A NUMBER IS NOT A KEY. Ids are not unique
+# across tables -- vendor 47, workshop session 47 and expense 47 are three
+# different things -- and `target` is free text written at a hundred and
+# seventy-odd call sites, some of which write str(id). Matching a bare number
+# put one record's history on another's page: a supplier nobody had touched
+# came up with somebody else's changes against it, which is exactly the thing
+# record_history's own docstring says is worse than showing nothing.
+#
+# So a numeric key only counts when the action is about this kind of thing.
+# A reference code or a name is distinctive enough to stand on its own and is
+# matched whatever the action says.
 HISTORY_KINDS = {
-    "booking": ("stay", "bookings", ["reference_code", "id"]),
-    "vendor": ("supplier", "vendors", ["name", "id"]),
-    "employee": ("person", "users", ["name", "id"]),
-    "guest": ("guest", "guests", ["name", "id"]),
-    "expense": ("invoice or claim", "expenses", ["id"]),
-    "workshop_session": ("sitting", "workshop_sessions", ["id"]),
+    "booking": ("stay", "bookings", ["reference_code", "id"], "booking"),
+    "vendor": ("supplier", "vendors", ["name", "id"], "vendor"),
+    "employee": ("person", "users", ["name", "id"], "employee"),
+    "guest": ("guest", "guests", ["name", "id"], "guest"),
+    "expense": ("invoice or claim", "expenses", ["id"], "expense"),
+    "workshop_session": ("sitting", "workshop_sessions", ["id"], "workshop"),
 }
 
 
-def record_history(conn, keys, limit=60):
+def record_history(conn, keys, limit=60, about=None):
     """Every audited change to one record, newest first.
 
     The audit log has been written to faithfully for a long time and read back
@@ -59154,10 +59167,19 @@ def record_history(conn, keys, limit=60):
     a supplier called "Marie" is not the supplier called "Marie-Claire". A
     substring match would quietly attribute one record's history to another,
     which on a compliance record is worse than showing nothing.
+
+    AND A NUMBER IS NOT A KEY ON ITS OWN. Ids repeat across tables, so a bare
+    numeric key only matches when `about` -- the word an action about this
+    kind of record contains -- is in the action. Without that, vendor 47 was
+    shown workshop session 47's history, which is the same failure the
+    paragraph above is about, arriving by arithmetic instead of by spelling.
     """
     wanted = [str(k).strip() for k in keys if str(k or "").strip()]
     if not wanted:
         return []
+    words, numbers = [], []
+    for key in wanted:
+        (numbers if key.isdigit() else words).append(key)
     rows = conn.execute(
         """SELECT audit_log.*, users.name AS actor_name FROM audit_log
              LEFT JOIN users ON users.id = audit_log.actor_user_id
@@ -59167,7 +59189,12 @@ def record_history(conn, keys, limit=60):
     out = []
     for row in rows:
         target = (row["target"] or "").strip()
-        if any(target == k or k in target.split() for k in wanted):
+        pieces = target.split()
+        hit = any(target == k or k in pieces for k in words)
+        if not hit and numbers and about:
+            if about in (row["action"] or "").lower():
+                hit = any(target == k or k in pieces for k in numbers)
+        if hit:
             out.append(row)
             if len(out) >= limit:
                 break
@@ -59179,7 +59206,7 @@ def history_for(conn, kind, record_id):
     spec = HISTORY_KINDS.get(kind)
     if not spec:
         return None
-    label, table, columns = spec
+    label, table, columns, about = spec
     row = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (record_id,)).fetchone()
     if not row:
         return None
@@ -59205,7 +59232,8 @@ def history_for(conn, kind, record_id):
     # data.keys is dict.keys -- the method -- and the page 500s on a name that
     # reads perfectly. Named for what it means instead.
     return {"kind": kind, "label": label, "row": row, "title": title,
-            "found_under": keys, "entries": record_history(conn, keys)}
+            "found_under": keys,
+            "entries": record_history(conn, keys, about=about)}
 
 
 def audit_kind(action):

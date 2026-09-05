@@ -53,6 +53,14 @@ def _log(target, action=TAG + "_thing_happened", details=None):
     conn.close()
 
 
+def m_history_no_about(key):
+    conn = db()
+    try:
+        return m.record_history(conn, [key])
+    finally:
+        conn.close()
+
+
 def _history(keys):
     conn = db()
     try:
@@ -115,6 +123,60 @@ def run():
                         for e in _history(["Marie"])),
                 detail=str([e["target"] for e in _history(["Marie"])]))
         _log("None", TAG + "_filed_under_the_word_none")
+        s.section("A number is not a key on its own")
+        # Ids repeat across tables — vendor 47, session 47 and expense 47 are
+        # three different things — and target is free text, some of which is
+        # str(id). This one was found by a full run rather than by reading:
+        # an untouched supplier came up with somebody else's history against
+        # it, which is the accusation this whole file is built to avoid.
+        vid = "987654"
+        _log(vid, TAG + "_workshop_session_called_off")
+        _log(vid, TAG + "_vendor_edited")
+        conn = db()
+        try:
+            got = [e["action"] for e in
+                   m.record_history(conn, [vid], about="vendor")]
+        finally:
+            conn.close()
+        s.check("an action about this kind of thing counts",
+                TAG + "_vendor_edited" in got, detail=str(got))
+        s.check("and one about something else with the same id does not",
+                TAG + "_workshop_session_called_off" not in got,
+                detail="vendor %s and workshop session %s are different "
+                       "things: %s" % (vid, vid, got))
+        s.check("and with no kind named, a bare number matches nothing",
+                not m_history_no_about(vid),
+                detail="a number with nothing to say what it is an id OF is "
+                       "not something to put on somebody's record")
+
+        conn = db()
+        try:
+            sid = conn.execute(
+                "SELECT id FROM workshop_sessions ORDER BY id").fetchone()
+            sid = sid["id"] if sid else None
+        finally:
+            conn.close()
+        if sid:
+            _log(str(sid), "workshop_session_called_off", TAG + " weather")
+            conn = db()
+            try:
+                sitting = m.history_for(conn, "workshop_session", sid)
+            finally:
+                conn.close()
+            s.check("and a sitting, which is keyed by nothing but its id, "
+                    "still finds its own",
+                    any(e["details"] == TAG + " weather"
+                        for e in sitting["entries"]),
+                    detail="if the kind stops saying what its actions are "
+                           "called, or history_for stops passing it down, "
+                           "this page empties without erroring: "
+                           + str([e["action"] for e in sitting["entries"]][:5]))
+        s.check("and every kind says what its actions are called",
+                all(bool(spec[3]) for spec in m.HISTORY_KINDS.values()),
+                detail="a kind with no word can never match its own numeric "
+                       "key: " + str({k: v[3] for k, v in
+                                      m.HISTORY_KINDS.items()}))
+
         s.check("asking with no keys at all answers nothing",
                 _history([]) == []
                 and not any(e["action"] == TAG + "_filed_under_the_word_none"
