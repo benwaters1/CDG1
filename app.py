@@ -4870,6 +4870,86 @@ def init_db():
         # there. Three days early every month, always plausible on the
         # page, and nobody ever notices.
         ("filing_due_day", "ALTER TABLE filing_obligations ADD COLUMN due_day INTEGER"),
+
+        # ---- Meetings ------------------------------------------------------
+        #
+        # Three tables rather than one: a meeting has people, and it has
+        # promises, and the promises outlive the meeting. Flattening either
+        # into a text field is how a decision made in March is unfindable in
+        # June.
+        ("meetings", """CREATE TABLE IF NOT EXISTS meetings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'staff'
+                CHECK(kind IN ('staff','owners','contractor','supplier','other')),
+            meeting_date TEXT NOT NULL,
+            start_time TEXT,
+            end_time TEXT,
+            location TEXT,
+            status TEXT NOT NULL DEFAULT 'scheduled'
+                CHECK(status IN ('scheduled','held','cancelled')),
+            agenda TEXT,
+            -- What somebody typed or pasted while it was happening. Kept
+            -- alongside the minutes, never replaced by them: the minutes are
+            -- an interpretation, and the raw note is the evidence.
+            notes_raw TEXT,
+            minutes TEXT,
+            -- Which of the three ways the minutes came about, so the page can
+            -- say so. Minutes a machine wrote and minutes a person wrote are
+            -- not the same claim, and presenting them identically is how the
+            -- first wrong one gets believed.
+            minutes_source TEXT CHECK(minutes_source IN ('claude','extracted','written')),
+            minutes_at TEXT,
+            minutes_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            called_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            cancelled_reason TEXT,
+            created_at TEXT NOT NULL,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+        )"""),
+
+        # One row per person in the room. Exactly one of user_id, vendor_id or
+        # external_name identifies them -- staff and owners have accounts,
+        # contractors are a vendor record, and anybody else is a name and an
+        # address.
+        ("meeting_attendees", """CREATE TABLE IF NOT EXISTS meeting_attendees (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            meeting_id INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+            external_name TEXT,
+            external_email TEXT,
+            role TEXT NOT NULL DEFAULT 'attendee'
+                CHECK(role IN ('chair','attendee','apology')),
+            created_at TEXT NOT NULL
+        )"""),
+
+        # What was agreed, and by when. task_id is the whole point: an action
+        # owned by somebody with an account becomes a real task, so it reaches
+        # the calendar and their own list. An action owned by a contractor has
+        # no task, because there is no account to assign one to, and the page
+        # says so rather than implying a reminder that cannot exist.
+        ("meeting_actions", """CREATE TABLE IF NOT EXISTS meeting_actions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            meeting_id INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            detail TEXT,
+            owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            owner_external TEXT,
+            due_date TEXT,
+            status TEXT NOT NULL DEFAULT 'open'
+                CHECK(status IN ('open','done','dropped')),
+            task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+            done_at TEXT,
+            created_at TEXT NOT NULL,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+        )"""),
+
+        # The task knows which meeting it came out of, so opening the task can
+        # lead back to what was said — a task with no context is one nobody
+        # can judge the priority of.
+        ("tasks_meeting_id",
+         "ALTER TABLE tasks ADD COLUMN meeting_id INTEGER "
+         "REFERENCES meetings(id) ON DELETE SET NULL"),
     ):
         try:
             conn.execute(ddl)
@@ -5209,6 +5289,15 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to_user_id)",
         "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)",
         "CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date)",
+        "CREATE INDEX IF NOT EXISTS idx_meetings_date ON meetings(meeting_date)",
+        "CREATE INDEX IF NOT EXISTS idx_meeting_attendees_meeting "
+        "ON meeting_attendees(meeting_id)",
+        "CREATE INDEX IF NOT EXISTS idx_meeting_attendees_user "
+        "ON meeting_attendees(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_meeting_actions_meeting "
+        "ON meeting_actions(meeting_id)",
+        "CREATE INDEX IF NOT EXISTS idx_meeting_actions_owner "
+        "ON meeting_actions(owner_user_id, status)",
         "CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status)",
         "CREATE INDEX IF NOT EXISTS idx_leave_requests_user_id ON leave_requests(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses(status)",
@@ -6212,6 +6301,19 @@ AREA_TITLES = {
 # can see, which is how 181 of them accumulated unnoticed.
 OWNER_ONLY_AREAS = {
     "reports_index": "management",
+    # Meetings. What was agreed with a contractor, and what a member of staff
+    # was told, both live here — so it follows management access rather than
+    # team access, which is about somebody's own employment.
+    "meetings_page": "management",
+    "meeting_page": "management",
+    "new_meeting": "management",
+    "save_meeting_notes": "management",
+    "make_meeting_minutes": "management",
+    "add_meeting_attendee": "management",
+    "remove_meeting_attendee": "management",
+    "new_meeting_action": "management",
+    "finish_meeting_action": "management",
+    "set_meeting_status": "management",
     "admin_access_levels": "management",
     # Reading these was already owner-only and writing them was not, which
     # is the asymmetry the wrong way round: the dangerous act is not seeing
@@ -54791,6 +54893,334 @@ def vendors():
                            today=today_iso)
 
 
+@app.route("/meetings")
+@owner_required
+def meetings_page():
+    """Every meeting the house has held or scheduled, and what came out of it."""
+    conn = get_db()
+    today = house_today()
+    rows = [dict(r) for r in conn.execute(
+        """SELECT meetings.*, users.name AS called_by_name,
+                  made.name AS created_by_name,
+                  (SELECT COUNT(*) FROM meeting_attendees
+                    WHERE meeting_id = meetings.id) AS attendee_count,
+                  (SELECT COUNT(*) FROM meeting_actions
+                    WHERE meeting_id = meetings.id) AS action_count,
+                  (SELECT COUNT(*) FROM meeting_actions
+                    WHERE meeting_id = meetings.id AND status = 'open')
+                    AS open_actions,
+                  (SELECT COUNT(*) FROM meeting_actions
+                    WHERE meeting_id = meetings.id AND status = 'open'
+                      AND due_date IS NOT NULL AND due_date < ?) AS overdue
+             FROM meetings
+             LEFT JOIN users ON users.id = meetings.called_by_user_id
+             LEFT JOIN users AS made ON made.id = meetings.created_by_user_id
+            ORDER BY meeting_date DESC, id DESC""",
+        (today.isoformat(),))]
+    summary = meeting_summary(conn, today)
+    conn.close()
+
+    today_iso = today.isoformat()
+    lv = list_view(
+        rows, request.args,
+        search=["title", "location", "agenda", "minutes", "called_by_name"],
+        search_hint="Title, place, agenda or anything said",
+        facets=[
+            # The question this page is opened to answer, first: what has been
+            # promised and not done.
+            facet("chase", "Needs chasing", lambda r: (
+                "Actions overdue" if r["overdue"] else
+                ("Held, no minutes" if r["status"] == "held"
+                 and not (r["minutes"] or "").strip() else None)),
+                  order=["Actions overdue", "Held, no minutes"]),
+            facet("kind", "Kind",
+                  lambda r: MEETING_KINDS.get(r["kind"], r["kind"])),
+            facet("status", "Status", lambda r: r["status"].title(),
+                  order=["Scheduled", "Held", "Cancelled"]),
+            facet("when", "When", lambda r: (
+                "Coming up" if r["meeting_date"] >= today_iso else "Past"),
+                  order=["Coming up", "Past"]),
+        ],
+        sorts=[
+            sort_option("date", "Most recent first",
+                        lambda r: r["meeting_date"] or "", reverse=True),
+            sort_option("soon", "Soonest first",
+                        lambda r: r["meeting_date"] or "9999"),
+            sort_option("open", "Most left to do",
+                        lambda r: r["open_actions"], reverse=True),
+        ],
+        default_sort="date",
+    )
+    return render_template("meetings.html", meetings=lv["rows"], lv=lv,
+                           summary=summary, kinds=MEETING_KINDS,
+                           today=today_iso)
+
+
+@app.route("/meetings/new", methods=["POST"])
+@owner_required
+def new_meeting():
+    title = (request.form.get("title", "") or "").strip()
+    when = (request.form.get("meeting_date", "") or "").strip()
+    kind = (request.form.get("kind", "") or "staff").strip()
+    if kind not in MEETING_KINDS:
+        kind = "staff"
+    if not title or not parse_date(when):
+        flash("A meeting needs a title and a date.", "error")
+        return redirect(url_for("meetings_page"))
+    user = current_user()
+    conn = get_db()
+    cur = conn.execute(
+        """INSERT INTO meetings (title, kind, meeting_date, start_time,
+                                 end_time, location, agenda, status,
+                                 called_by_user_id, created_at,
+                                 created_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?, ?)""",
+        (title[:200], kind, when,
+         (request.form.get("start_time", "") or "").strip() or None,
+         (request.form.get("end_time", "") or "").strip() or None,
+         (request.form.get("location", "") or "").strip() or None,
+         (request.form.get("agenda", "") or "").strip() or None,
+         user["id"] if user else None,
+         datetime.now(timezone.utc).isoformat(), user["id"] if user else None))
+    meeting_id = cur.lastrowid
+    # Whoever called it is in the room. Saves the first and most-forgotten
+    # step, and a meeting with no attendees cannot attribute an action.
+    if user:
+        conn.execute(
+            """INSERT INTO meeting_attendees (meeting_id, user_id, role,
+                                              created_at)
+               VALUES (?, ?, 'chair', ?)""",
+            (meeting_id, user["id"], datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash(f"{title} added.", "success")
+    return redirect(url_for("meeting_page", meeting_id=meeting_id))
+
+
+@app.route("/meetings/<int:meeting_id>")
+@owner_required
+def meeting_page(meeting_id):
+    """One meeting: who was there, what was said, what was agreed."""
+    conn = get_db()
+    meeting = conn.execute(
+        """SELECT meetings.*, users.name AS called_by_name,
+                  minuted.name AS minutes_by_name,
+                  made.name AS created_by_name
+             FROM meetings
+             LEFT JOIN users ON users.id = meetings.called_by_user_id
+             LEFT JOIN users AS minuted
+                    ON minuted.id = meetings.minutes_by_user_id
+             LEFT JOIN users AS made ON made.id = meetings.created_by_user_id
+            WHERE meetings.id = ?""", (meeting_id,)).fetchone()
+    if not meeting:
+        conn.close()
+        abort(404)
+    people = meeting_attendees(conn, meeting_id)
+    actions = meeting_actions(conn, meeting_id)
+    here_ids = {p["user_id"] for p in people if p["user_id"]}
+    staff = conn.execute(
+        """SELECT id, name, role FROM users
+            WHERE status = 'active' ORDER BY role != 'owner', name""").fetchall()
+    contractors = conn.execute(
+        "SELECT id, name FROM vendors ORDER BY name").fetchall()
+    conn.close()
+    return render_template(
+        "meeting.html", meeting=meeting, people=people, actions=actions,
+        staff=[s for s in staff if s["id"] not in here_ids],
+        contractors=contractors, kinds=MEETING_KINDS,
+        assignable=[p for p in people if p["user_id"]],
+        today=house_today_iso(), claude_on=claude_configured(),
+        default_days=MEETING_ACTION_DAYS)
+
+
+@app.route("/meetings/<int:meeting_id>/notes", methods=["POST"])
+@owner_required
+def save_meeting_notes(meeting_id):
+    """The raw note, saved as typed. Never overwritten by the minutes."""
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM meetings WHERE id = ?",
+                        (meeting_id,)).fetchone():
+        conn.close()
+        abort(404)
+    conn.execute("UPDATE meetings SET notes_raw = ? WHERE id = ?",
+                 ((request.form.get("notes_raw", "") or "").strip() or None,
+                  meeting_id))
+    conn.commit()
+    conn.close()
+    flash("Notes saved.", "success")
+    return redirect(url_for("meeting_page", meeting_id=meeting_id))
+
+
+@app.route("/meetings/<int:meeting_id>/minutes", methods=["POST"])
+@owner_required
+def make_meeting_minutes(meeting_id):
+    """Write the minutes up from the note, and put the actions on lists.
+
+    Says which of the two wrote them. Minutes a machine produced and minutes
+    a person produced are not the same claim, and the page that presents them
+    identically is the one where the first wrong set gets believed.
+    """
+    user = current_user()
+    conn = get_db()
+    meeting = conn.execute("SELECT * FROM meetings WHERE id = ?",
+                           (meeting_id,)).fetchone()
+    if not meeting:
+        conn.close()
+        abort(404)
+    if not (meeting["notes_raw"] or "").strip():
+        conn.close()
+        flash("There is nothing written down to make minutes from yet.",
+              "error")
+        return redirect(url_for("meeting_page", meeting_id=meeting_id))
+    result = write_meeting_minutes(conn, meeting_id,
+                                   user_id=user["id"] if user else None)
+    if meeting["status"] == "scheduled":
+        conn.execute("UPDATE meetings SET status = 'held' WHERE id = ?",
+                     (meeting_id,))
+    log_audit(conn, "meeting_minutes_written", target=meeting["title"],
+              details=f"{result['actions_created']} action(s), {result['source']}")
+    conn.commit()
+    conn.close()
+    made = result["actions_created"]
+    how = ("written up by Claude" if result["source"] == "claude"
+           else "read off your notes")
+    flash(f"Minutes {how}. "
+          + (f"{made} action{'' if made == 1 else 's'} recorded."
+             if made else "No new actions found in them."), "success")
+    return redirect(url_for("meeting_page", meeting_id=meeting_id))
+
+
+@app.route("/meetings/<int:meeting_id>/attendees", methods=["POST"])
+@owner_required
+def add_meeting_attendee(meeting_id):
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM meetings WHERE id = ?",
+                        (meeting_id,)).fetchone():
+        conn.close()
+        abort(404)
+    who = (request.form.get("who", "") or "").strip()
+    role = (request.form.get("role", "") or "attendee").strip()
+    if role not in ("chair", "attendee", "apology"):
+        role = "attendee"
+    user_id = vendor_id = None
+    external = None
+    if who.startswith("user:") and who[5:].isdigit():
+        user_id = int(who[5:])
+    elif who.startswith("vendor:") and who[7:].isdigit():
+        vendor_id = int(who[7:])
+    else:
+        external = (request.form.get("external_name", "") or "").strip()
+        if not external:
+            conn.close()
+            flash("Choose somebody, or type a name.", "error")
+            return redirect(url_for("meeting_page", meeting_id=meeting_id))
+    conn.execute(
+        """INSERT INTO meeting_attendees (meeting_id, user_id, vendor_id,
+                                          external_name, external_email, role,
+                                          created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (meeting_id, user_id, vendor_id, external,
+         (request.form.get("external_email", "") or "").strip() or None,
+         role, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("meeting_page", meeting_id=meeting_id))
+
+
+@app.route("/meetings/<int:meeting_id>/attendees/<int:attendee_id>/remove",
+           methods=["POST"])
+@owner_required
+def remove_meeting_attendee(meeting_id, attendee_id):
+    conn = get_db()
+    conn.execute("DELETE FROM meeting_attendees WHERE id = ? AND meeting_id = ?",
+                 (attendee_id, meeting_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("meeting_page", meeting_id=meeting_id))
+
+
+@app.route("/meetings/<int:meeting_id>/actions", methods=["POST"])
+@owner_required
+def new_meeting_action(meeting_id):
+    """One thing somebody agreed to, added by hand."""
+    conn = get_db()
+    meeting = conn.execute("SELECT * FROM meetings WHERE id = ?",
+                           (meeting_id,)).fetchone()
+    if not meeting:
+        conn.close()
+        abort(404)
+    title = (request.form.get("title", "") or "").strip()
+    if not title:
+        conn.close()
+        flash("An action needs saying in words.", "error")
+        return redirect(url_for("meeting_page", meeting_id=meeting_id))
+    owner_raw = (request.form.get("owner", "") or "").strip()
+    owner_user_id, owner_external = None, None
+    if owner_raw.startswith("user:") and owner_raw[5:].isdigit():
+        owner_user_id = int(owner_raw[5:])
+    elif owner_raw:
+        owner_external = owner_raw
+    due = (request.form.get("due_date", "") or "").strip()
+    if not parse_date(due):
+        base = parse_date(meeting["meeting_date"]) or house_today()
+        due = (base + timedelta(days=MEETING_ACTION_DAYS)).isoformat()
+    user = current_user()
+    add_meeting_action(conn, meeting_id, title=title,
+                       owner_user_id=owner_user_id,
+                       owner_external=owner_external, due_date=due,
+                       detail=(request.form.get("detail", "") or "").strip()
+                       or None,
+                       created_by_user_id=user["id"] if user else None)
+    conn.commit()
+    conn.close()
+    flash("Action recorded."
+          + ("" if owner_user_id else
+             " Nobody here has an account for it, so it will not appear on a "
+             "list — it is chased from this page."), "success")
+    return redirect(url_for("meeting_page", meeting_id=meeting_id))
+
+
+@app.route("/meeting-actions/<int:action_id>/done", methods=["POST"])
+@owner_required
+def finish_meeting_action(action_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM meeting_actions WHERE id = ?",
+                       (action_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    close_meeting_action(conn, action_id,
+                         done=row["status"] != "done")
+    conn.commit()
+    conn.close()
+    return redirect(url_for("meeting_page", meeting_id=row["meeting_id"]))
+
+
+@app.route("/meetings/<int:meeting_id>/status", methods=["POST"])
+@owner_required
+def set_meeting_status(meeting_id):
+    status = (request.form.get("status", "") or "").strip()
+    if status not in ("scheduled", "held", "cancelled"):
+        abort(400)
+    conn = get_db()
+    meeting = conn.execute("SELECT * FROM meetings WHERE id = ?",
+                           (meeting_id,)).fetchone()
+    if not meeting:
+        conn.close()
+        abort(404)
+    conn.execute(
+        "UPDATE meetings SET status = ?, cancelled_reason = ? WHERE id = ?",
+        (status,
+         (request.form.get("cancelled_reason", "") or "").strip() or None
+         if status == "cancelled" else None, meeting_id))
+    log_audit(conn, "meeting_status_changed", target=meeting["title"],
+              details=status)
+    conn.commit()
+    conn.close()
+    flash(f"Marked {status}.", "success")
+    return redirect(url_for("meeting_page", meeting_id=meeting_id))
+
+
 @app.route("/management/vendors/new", methods=["POST"])
 @owner_required
 def new_vendor():
@@ -59339,6 +59769,455 @@ def export_audit_log_csv():
     fieldnames = ["created_at", "actor_name", "action", "target", "details"]
     name = "audit_log_filtered.csv" if lv["filtered"] else "audit_log.csv"
     return csv_response(fieldnames, lv["rows"], name)
+
+
+# ---------------------------------------------------------------------------
+# Meetings
+# ---------------------------------------------------------------------------
+
+MEETING_KINDS = {
+    "staff": "Staff",
+    "owners": "Owners",
+    "contractor": "Contractor",
+    "supplier": "Supplier",
+    "other": "Other",
+}
+
+# How long an action gets when nobody says. Two weeks is the shortest span
+# that survives a fortnight's holiday, and the point of a default is that the
+# undated action -- the one everybody forgets -- still has a date on it.
+MEETING_ACTION_DAYS = 14
+
+# How far ahead the module looks when it says "coming up".
+MEETING_HORIZON_DAYS = 30
+
+
+def meeting_attendee_name(row):
+    """One attendee, however they are recorded.
+
+    Three ways somebody can be in the room and only one of them has a login,
+    so this is the single place that knows the order to try them in.
+    """
+    for key in ("user_name", "vendor_name", "external_name"):
+        try:
+            value = (row[key] or "").strip()
+        except (KeyError, IndexError, TypeError):
+            value = ""
+        if value:
+            return value
+    return "Somebody"
+
+
+def meeting_attendees(conn, meeting_id):
+    """Everyone at one meeting, named, with how they are known to the house."""
+    return conn.execute(
+        """SELECT meeting_attendees.*,
+                  users.name AS user_name, vendors.name AS vendor_name
+             FROM meeting_attendees
+             LEFT JOIN users ON users.id = meeting_attendees.user_id
+             LEFT JOIN vendors ON vendors.id = meeting_attendees.vendor_id
+            WHERE meeting_attendees.meeting_id = ?
+            ORDER BY CASE meeting_attendees.role WHEN 'chair' THEN 0
+                          WHEN 'attendee' THEN 1 ELSE 2 END,
+                     meeting_attendees.id""",
+        (meeting_id,)).fetchall()
+
+
+def meeting_actions(conn, meeting_id):
+    """What was agreed at one meeting, with who owns each and whether it is
+    on anybody's actual list."""
+    return conn.execute(
+        """SELECT meeting_actions.*, users.name AS owner_name,
+                  wrote.name AS recorded_by_name,
+                  tasks.status AS task_status, tasks.due_date AS task_due
+             FROM meeting_actions
+             LEFT JOIN users ON users.id = meeting_actions.owner_user_id
+             LEFT JOIN users AS wrote
+                    ON wrote.id = meeting_actions.created_by_user_id
+             LEFT JOIN tasks ON tasks.id = meeting_actions.task_id
+            WHERE meeting_actions.meeting_id = ?
+            ORDER BY CASE meeting_actions.status WHEN 'open' THEN 0 ELSE 1 END,
+                     COALESCE(meeting_actions.due_date, '9999'),
+                     meeting_actions.id""",
+        (meeting_id,)).fetchall()
+
+
+# What a set of minutes has to contain. Shared by both writers so the page
+# never has to ask which one produced the thing it is rendering.
+MEETING_MINUTES_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {
+            "type": "string",
+            "description": "What the meeting was about and what happened, in "
+                           "plain English. Three or four sentences at most.",
+        },
+        "decisions": {
+            "type": "array",
+            "description": "Things that were DECIDED, not things that were "
+                           "discussed. Empty if nothing was actually settled.",
+            "items": {"type": "string"},
+        },
+        "actions": {
+            "type": "array",
+            "description": "What somebody agreed to DO. Only where a person "
+                           "committed to something; never invent an action to "
+                           "fill the list.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string",
+                              "description": "The action, starting with a verb."},
+                    "owner": {"type": ["string", "null"],
+                              "description": "The name of whoever agreed to do "
+                                             "it, exactly as it appears in the "
+                                             "attendee list, or null if the "
+                                             "notes do not say."},
+                    "due_days": {"type": ["integer", "null"],
+                                 "description": "Days from the meeting until it "
+                                                "is due, if the notes give a "
+                                                "timeframe. Null if not stated."},
+                },
+                "required": ["title", "owner", "due_days"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["summary", "decisions", "actions"],
+    "additionalProperties": False,
+}
+
+# Lines that announce an action in notes somebody typed in a hurry.
+MEETING_ACTION_MARKERS = ("action:", "action -", "todo:", "to do:", "ap:",
+                          "action point:", "next step:", "agreed:")
+MEETING_DECISION_MARKERS = ("decision:", "decided:", "agreed that", "resolved:")
+
+# "by Friday", "within 2 weeks", "in 3 days", "end of the month".
+MEETING_WHEN = (
+    (r"\bwithin (\d+) days?\b", 1),
+    (r"\bin (\d+) days?\b", 1),
+    (r"\bwithin (\d+) weeks?\b", 7),
+    (r"\bin (\d+) weeks?\b", 7),
+    (r"\bwithin (\d+) months?\b", 30),
+    (r"\bnext week\b", None),
+)
+
+
+def _meeting_due_days(text):
+    """A timeframe read out of the words, or None if nobody gave one.
+
+    Deliberately small. Anything cleverer guesses, and a guessed deadline on
+    somebody else's work is worse than an honest default they can see and
+    change.
+    """
+    low = text.lower()
+    for pattern, multiplier in MEETING_WHEN:
+        found = re.search(pattern, low)
+        if not found:
+            continue
+        if multiplier is None:
+            return 7
+        try:
+            return max(1, int(found.group(1)) * multiplier)
+        except (ValueError, IndexError):
+            continue
+    if "tomorrow" in low:
+        return 1
+    if "end of the month" in low or "end of month" in low:
+        return 30
+    if "today" in low:
+        return 0
+    return None
+
+
+def extract_meeting_minutes(notes, attendee_names=()):
+    """Minutes read out of the raw note, with no help from anywhere.
+
+    This is what runs when Claude is not configured, which on this deployment
+    is always. It is not clever and does not pretend to be: it finds the lines
+    that announce themselves as actions or decisions, reads a name it
+    recognises off each, and takes the rest as the record. A person then edits
+    it, which they would have done anyway.
+
+    The honesty matters more than the cleverness. Everything it returns is a
+    line somebody actually typed.
+    """
+    lines = [" ".join(l.split()) for l in (notes or "").splitlines()]
+    lines = [l for l in lines if l]
+    decisions, actions, plain = [], [], []
+    for line in lines:
+        stripped = line.lstrip("-*\u2022 ").strip()
+        low = stripped.lower()
+        if any(low.startswith(m) for m in MEETING_ACTION_MARKERS):
+            body = stripped.split(":", 1)[-1].strip() if ":" in stripped[:16] \
+                else stripped.split(" ", 1)[-1].strip()
+            owner = None
+            for name in attendee_names:
+                first = name.split()[0].lower() if name.split() else ""
+                if first and (first in low or name.lower() in low):
+                    owner = name
+                    break
+            actions.append({"title": body or stripped, "owner": owner,
+                            "due_days": _meeting_due_days(stripped)})
+        elif any(m in low for m in MEETING_DECISION_MARKERS):
+            decisions.append(stripped)
+        else:
+            plain.append(stripped)
+    summary = " ".join(plain[:4]) if plain else (
+        "No discussion was written down." if not lines else lines[0])
+    return {"summary": summary[:1200], "decisions": decisions,
+            "actions": actions}
+
+
+def meeting_minutes_with_claude(meeting, notes, attendee_names):
+    """The same shape, written properly, when there is a key to do it with.
+
+    Returns None on any failure — a failure must leave the extracted version
+    standing, never a half-read set of minutes presented as the record of what
+    people agreed.
+    """
+    if not claude_configured():
+        return None
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    system = (
+        "You write up the minutes of meetings at a chateau in France that runs "
+        "as a hotel, restaurant and workshop venue. Rules, in order:\n"
+        "1. Only report what the notes actually say. Never invent a decision, "
+        "an action or a deadline that is not there. An empty list is the right "
+        "answer when nothing was settled.\n"
+        "2. A DECISION is something that was settled. A discussion that reached "
+        "no conclusion is not a decision and belongs in the summary.\n"
+        "3. An ACTION is something a person committed to doing. Attribute it "
+        "only to a name in the attendee list, and only where the notes make it "
+        "clear. Use null for the owner rather than guessing — a task on the "
+        "wrong person's list is worse than one on nobody's.\n"
+        "4. Give due_days only where the notes state a timeframe. Null "
+        "otherwise; the house has its own default and would rather use it than "
+        "a deadline you made up.\n"
+        "5. Write in plain English, no jargon, no filler."
+    )
+    try:
+        response = client.messages.parse(
+            model="claude-opus-5", max_tokens=2048, system=system,
+            thinking={"type": "adaptive"},
+            output_config={"format": {"type": "json_schema",
+                                      "schema": MEETING_MINUTES_SCHEMA}},
+            messages=[{"role": "user", "content": (
+                f"Meeting: {meeting['title']}\n"
+                f"Date: {meeting['meeting_date']}\n"
+                f"Present: {', '.join(attendee_names) or 'not recorded'}\n"
+                f"Agenda:\n{meeting['agenda'] or '(none)'}\n\n"
+                f"Notes taken during the meeting:\n{notes}")}],
+        )
+    except Exception as e:                     # pragma: no cover - network
+        print(f"[claude] minutes failed: {e}")
+        return None
+    if getattr(response, "stop_reason", None) == "refusal":
+        return None
+    parsed = getattr(response, "parsed_output", None) or getattr(
+        response, "parsed", None)
+    if not isinstance(parsed, dict) or "summary" not in parsed:
+        return None
+    return parsed
+
+
+def meeting_minutes_text(parsed):
+    """The minutes as one readable block, for the page and for an email."""
+    out = [parsed.get("summary") or ""]
+    if parsed.get("decisions"):
+        out.append("")
+        out.append("Decisions")
+        out.extend("- " + d for d in parsed["decisions"])
+    if parsed.get("actions"):
+        out.append("")
+        out.append("Actions")
+        for a in parsed["actions"]:
+            who = a.get("owner") or "unassigned"
+            out.append(f"- {a.get('title')} ({who})")
+    return "\n".join(out).strip()
+
+
+def write_meeting_minutes(conn, meeting_id, *, user_id=None, now=None):
+    """Turn the raw note into minutes and actions, and put the actions on
+    people's lists.
+
+    Claude first when there is a key, the extractor otherwise, and the source
+    is recorded either way so the page can say which. Nothing is invented in
+    either path: an empty note produces empty minutes rather than a plausible
+    account of a meeting nobody described.
+
+    Idempotent in the way that matters — re-running replaces the minutes but
+    never duplicates an action that is already recorded, because an action
+    already on somebody's list must not arrive twice.
+    """
+    now = now or datetime.now(timezone.utc)
+    meeting = conn.execute("SELECT * FROM meetings WHERE id = ?",
+                           (meeting_id,)).fetchone()
+    if not meeting:
+        return None
+    notes = (meeting["notes_raw"] or "").strip()
+    people = meeting_attendees(conn, meeting_id)
+    names = [meeting_attendee_name(p) for p in people]
+    by_name = {meeting_attendee_name(p).lower(): p["user_id"]
+               for p in people if p["user_id"]}
+
+    parsed = meeting_minutes_with_claude(meeting, notes, names) if notes else None
+    source = "claude"
+    if parsed is None:
+        parsed = extract_meeting_minutes(notes, names)
+        source = "extracted"
+
+    existing = {(r["title"] or "").strip().lower()
+                for r in conn.execute(
+                    "SELECT title FROM meeting_actions WHERE meeting_id = ?",
+                    (meeting_id,))}
+    made = 0
+    for action in parsed.get("actions") or []:
+        title = (action.get("title") or "").strip()
+        if not title or title.lower() in existing:
+            continue
+        existing.add(title.lower())
+        owner_name = (action.get("owner") or "").strip()
+        owner_id = by_name.get(owner_name.lower())
+        days = action.get("due_days")
+        days = MEETING_ACTION_DAYS if days is None else max(0, int(days))
+        due = (parse_date(meeting["meeting_date"]) or house_today()) + timedelta(
+            days=days)
+        add_meeting_action(
+            conn, meeting_id, title=title, owner_user_id=owner_id,
+            owner_external=None if owner_id else (owner_name or None),
+            due_date=due.isoformat(), created_by_user_id=user_id, now=now)
+        made += 1
+
+    conn.execute(
+        """UPDATE meetings SET minutes = ?, minutes_source = ?, minutes_at = ?,
+                               minutes_by_user_id = ?
+            WHERE id = ?""",
+        (meeting_minutes_text(parsed), source, now.isoformat(), user_id,
+         meeting_id))
+    conn.commit()
+    return {"source": source, "actions_created": made,
+            "decisions": len(parsed.get("decisions") or []),
+            "minutes": meeting_minutes_text(parsed)}
+
+
+def add_meeting_action(conn, meeting_id, *, title, owner_user_id=None,
+                       owner_external=None, due_date=None, detail=None,
+                       created_by_user_id=None, now=None):
+    """Record one thing somebody agreed to, and put it on their list.
+
+    THE TASK IS THE POINT. An action owned by somebody with an account writes
+    a real row in `tasks` with origin 'meeting', so it appears on the calendar
+    and on their own page without anything else being wired up — that is the
+    rule this file keeps everywhere else and there is no reason for meetings
+    to be the exception.
+
+    An action owned by a contractor gets no task, because a vendor is a
+    contact record and not an account: there is no list to put it on and
+    nobody to show it to. It stays here and is chased from here. The page says
+    which, because an action presented as though somebody has been reminded,
+    when nobody has, is worse than one plainly marked as needing a phone call.
+    """
+    now = now or datetime.now(timezone.utc)
+    task_id = None
+    if owner_user_id:
+        cur = conn.execute(
+            """INSERT INTO tasks (assigned_to_user_id, title, notes, due_date,
+                                  priority, status, created_at, origin,
+                                  meeting_id)
+               VALUES (?, ?, ?, ?, 'normal', 'open', ?, 'meeting', ?)""",
+            (owner_user_id, title[:200], detail, due_date, now.isoformat(),
+             meeting_id))
+        task_id = cur.lastrowid
+    cur = conn.execute(
+        """INSERT INTO meeting_actions (meeting_id, title, detail,
+                                        owner_user_id, owner_external,
+                                        due_date, status, task_id, created_at,
+                                        created_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)""",
+        (meeting_id, title[:200], detail, owner_user_id, owner_external,
+         due_date, task_id, now.isoformat(), created_by_user_id))
+    return cur.lastrowid
+
+
+def close_meeting_action(conn, action_id, *, done=True, now=None):
+    """Tick an action off, and tick its task off with it.
+
+    Both sides or neither. An action marked done on the meeting page while its
+    task sits open on somebody's list is the same work counted twice, and the
+    person still looking at it has no way to know it has been settled.
+    """
+    now = now or datetime.now(timezone.utc)
+    row = conn.execute("SELECT * FROM meeting_actions WHERE id = ?",
+                       (action_id,)).fetchone()
+    if not row:
+        return False
+    conn.execute(
+        "UPDATE meeting_actions SET status = ?, done_at = ? WHERE id = ?",
+        ("done" if done else "open", now.isoformat() if done else None,
+         action_id))
+    if row["task_id"]:
+        conn.execute(
+            "UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?",
+            ("done" if done else "open", now.isoformat() if done else None,
+             row["task_id"]))
+    return True
+
+
+def meeting_summary(conn, today=None):
+    """The band across the top of the meetings page.
+
+    Actions overdue is the alert one, deliberately: a meeting that happened is
+    history, and an action that is late is work.
+    """
+    today = today or house_today()
+    horizon = (today + timedelta(days=MEETING_HORIZON_DAYS)).isoformat()
+    coming = conn.execute(
+        """SELECT COUNT(*) AS c FROM meetings
+            WHERE status = 'scheduled' AND meeting_date >= ?
+              AND meeting_date <= ?""", (today.isoformat(), horizon)
+    ).fetchone()["c"]
+    held = conn.execute(
+        """SELECT COUNT(*) AS c FROM meetings
+            WHERE status = 'held' AND meeting_date >= ?""",
+        ((today - timedelta(days=90)).isoformat(),)).fetchone()["c"]
+    no_minutes = conn.execute(
+        """SELECT COUNT(*) AS c FROM meetings
+            WHERE status = 'held'
+              AND COALESCE(TRIM(minutes), '') = ''""").fetchone()["c"]
+    open_actions = conn.execute(
+        "SELECT COUNT(*) AS c FROM meeting_actions WHERE status = 'open'"
+    ).fetchone()["c"]
+    overdue = conn.execute(
+        """SELECT COUNT(*) AS c FROM meeting_actions
+            WHERE status = 'open' AND due_date IS NOT NULL AND due_date < ?""",
+        (today.isoformat(),)).fetchone()["c"]
+    # Actions nobody can be reminded of: no account behind them, so no task,
+    # so no list. Named because the alternative is assuming they are handled.
+    unreminded = conn.execute(
+        """SELECT COUNT(*) AS c FROM meeting_actions
+            WHERE status = 'open' AND owner_user_id IS NULL"""
+    ).fetchone()["c"]
+    return {
+        "coming": coming, "held_90": held, "no_minutes": no_minutes,
+        "open_actions": open_actions, "overdue": overdue,
+        "unreminded": unreminded,
+        "cells": [
+            overview_cell("Coming up", coming,
+                          sub=f"next {MEETING_HORIZON_DAYS} days"),
+            overview_cell("Held, last 90 days", held),
+            overview_cell("Held with no minutes", no_minutes,
+                          alert=bool(no_minutes),
+                          hint="a meeting nobody wrote up is one nobody can "
+                               "be held to"),
+            overview_cell("Actions open", open_actions),
+            overview_cell("Actions overdue", overdue, alert=bool(overdue)),
+            overview_cell("Nobody to remind", unreminded,
+                          alert=bool(unreminded),
+                          hint="owned by somebody with no account here, so "
+                               "there is no list it can appear on — ring them"),
+        ],
+    }
 
 
 def readiness_checks(conn, *, include_slow=True):

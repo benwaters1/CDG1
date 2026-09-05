@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}{{ meeting['title'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ meeting['title'] }}</h1>
+  <a href="{{ url_for('meetings_page') }}" class="small-link" style="color:var(--steel);">← Meetings</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  {{ kinds.get(meeting['kind'], meeting['kind']) }} ·
+  {{ meeting['meeting_date']|date_human }}{% if meeting['start_time'] %} at {{ meeting['start_time'] }}{% if meeting['end_time'] %}–{{ meeting['end_time'] }}{% endif %}{% endif %}
+  {%- if meeting['location'] %} · {{ meeting['location'] }}{% endif %}
+  {%- if meeting['called_by_name'] %} · called by {{ meeting['called_by_name'] }}{% endif %}
+  {%- if meeting['created_by_name'] and meeting['created_by_name'] != meeting['called_by_name'] %} · put in the diary by {{ meeting['created_by_name'] }}{% endif %}
+</p>
+
+<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+  {% for state, label in [('scheduled', 'Still to happen'), ('held', 'It happened'), ('cancelled', 'Cancelled')] %}
+  <form method="post" action="{{ url_for('set_meeting_status', meeting_id=meeting['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="status" value="{{ state }}">
+    <button type="submit" class="btn-mini"
+            {{ 'disabled' if meeting['status'] == state }}
+            aria-pressed="{{ 'true' if meeting['status'] == state else 'false' }}">{{ label }}</button>
+  </form>
+  {% endfor %}
+</div>
+
+{% if meeting['agenda'] %}
+<h2 class="section-heading">What needed covering</h2>
+<div class="refund-box" style="white-space:pre-wrap;">{{ meeting['agenda'] }}</div>
+{% endif %}
+
+<h2 class="section-heading">Who was there</h2>
+{% if not people %}
+  <div class="empty-state">Nobody added yet. An action can only be put on somebody's list if they are here.</div>
+{% else %}
+<div class="doc-list" style="max-width:560px;">
+  {% for p in people %}
+  <div class="doc-row" style="gap:8px;">
+    <span style="flex:1;">
+      {{ p['user_name'] or p['vendor_name'] or p['external_name'] or 'Somebody' }}
+      {%- if p['role'] == 'chair' %} <span class="mini-status">Chair</span>
+      {%- elif p['role'] == 'apology' %} <span class="mini-status status-inactive">Apologies</span>{% endif %}
+      {% if not p['user_id'] %}
+        <span class="upload-hint">— no account here, so nothing can be put on a list for them</span>
+      {% endif %}
+    </span>
+    <form method="post" action="{{ url_for('remove_meeting_attendee', meeting_id=meeting['id'], attendee_id=p['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="doc-delete"
+              aria-label="Remove {{ p['user_name'] or p['vendor_name'] or p['external_name'] or 'this person' }} from the meeting">×</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<details class="refund-box" style="margin:12px 0 18px;">
+  <summary>Add somebody</summary>
+  <form method="post" action="{{ url_for('add_meeting_attendee', meeting_id=meeting['id']) }}" style="margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="a_who">From the house or the contact book</label>
+        <select id="a_who" name="who">
+          <option value="">— or type a name below —</option>
+          {% if staff %}
+          <optgroup label="Staff and owners">
+            {% for s in staff %}
+            <option value="user:{{ s['id'] }}">{{ s['name'] }}{% if s['role'] == 'owner' %} (owner){% endif %}</option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
+          {% if contractors %}
+          <optgroup label="Contractors and suppliers">
+            {% for c in contractors %}
+            <option value="vendor:{{ c['id'] }}">{{ c['name'] }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label" for="a_role">Their part in it</label>
+        <select id="a_role" name="role">
+          <option value="attendee">There</option>
+          <option value="chair">Chairing</option>
+          <option value="apology">Apologies</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="a_name">Or a name, for anybody else</label>
+        <input id="a_name" type="text" name="external_name" placeholder="An architect, an inspector">
+      </div>
+      <div>
+        <label class="field-label" for="a_email">Their email, if you have it</label>
+        <input id="a_email" type="email" name="external_email">
+      </div>
+    </div>
+    <button type="submit" class="btn-mini" style="margin-top:10px;">Add them</button>
+  </form>
+</details>
+
+<h2 class="section-heading">Notes taken during it</h2>
+<form method="post" action="{{ url_for('save_meeting_notes', meeting_id=meeting['id']) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field-label" for="m_notes">Type as you go — it is kept exactly as written</label>
+  <textarea id="m_notes" name="notes_raw" rows="10"
+            placeholder="One line per thing. Start a line with ACTION: for something somebody agreed to do, and say who and by when — &quot;ACTION: Marie to get three quotes within 2 weeks&quot;.">{{ meeting['notes_raw'] or '' }}</textarea>
+  <div style="display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap;">
+    <button type="submit" class="btn-mini">Save the notes</button>
+  </div>
+</form>
+
+<form method="post" action="{{ url_for('make_meeting_minutes', meeting_id=meeting['id']) }}" style="margin-top:10px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="btn-primary">Write the minutes up</button>
+  <span class="upload-hint" style="margin-left:8px;">
+    {% if claude_on %}
+      Claude writes them from your notes and pulls out what was agreed.
+    {% else %}
+      Read straight off your notes — the lines marked ACTION become actions.
+      Connecting Claude would write them up in full sentences instead.
+    {% endif %}
+    Anything with a person's name on it goes onto their list; anything without
+    a date gets {{ default_days }} days.
+  </span>
+</form>
+
+{% if meeting['minutes'] %}
+<h2 class="section-heading" style="margin-top:22px;">Minutes</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  {% if meeting['minutes_source'] == 'claude' %}
+    Written up by Claude from the notes above, {{ meeting['minutes_at']|house_day|date_human }}.
+    Worth reading before anybody is held to it.
+  {% elif meeting['minutes_source'] == 'extracted' %}
+    Read off the notes above, {{ meeting['minutes_at']|house_day|date_human }} — every line here is one somebody typed.
+  {% else %}
+    Written by {{ meeting['minutes_by_name'] or 'somebody' }}, {{ meeting['minutes_at']|house_day|date_human }}.
+  {% endif %}
+</p>
+<div class="refund-box" style="white-space:pre-wrap;">{{ meeting['minutes'] }}</div>
+{% endif %}
+
+<h2 class="section-heading" style="margin-top:22px;">What was agreed</h2>
+{% if not actions %}
+  <div class="empty-state">Nothing agreed yet.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Done</th><th scope="col">Action</th><th>Who</th><th>By when</th><th>On a list?</th></tr>
+    </thead>
+    <tbody>
+      {% for a in actions %}
+      <tr class="{{ 'row-alert' if a['status'] == 'open' and a['due_date'] and a['due_date'] < today }}">
+        <td>
+          <form method="post" action="{{ url_for('finish_meeting_action', action_id=a['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="task-check"
+                    aria-pressed="{{ 'true' if a['status'] == 'done' else 'false' }}"
+                    aria-label="{{ 'Done' if a['status'] == 'done' else 'Not done' }}: {{ a['title'] }}">{{ '✓' if a['status'] == 'done' }}</button>
+          </form>
+        </td>
+        <th scope="row" style="font-weight:500;">
+          {{ a['title'] }}
+          {% if a['detail'] %}<span class="upload-hint">{{ a['detail'] }}</span>{% endif %}
+          {% if a['recorded_by_name'] %}<span class="upload-hint">written down by {{ a['recorded_by_name'] }}</span>{% endif %}
+        </th>
+        <td>{{ a['owner_name'] or a['owner_external'] or '—' }}</td>
+        <td>
+          {% if a['due_date'] %}{{ a['due_date']|date_short }}
+            {%- if a['status'] == 'open' and a['due_date'] < today %}
+              <span class="mini-status status-declined">overdue</span>{% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if a['task_id'] %}
+            <span class="mini-status status-approved">On {{ a['owner_name'] }}'s list</span>
+          {% else %}
+            <span class="mini-status status-pending">Ring them</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<details class="refund-box" style="margin-top:12px;">
+  <summary>Add one by hand</summary>
+  <form method="post" action="{{ url_for('new_meeting_action', meeting_id=meeting['id']) }}" style="margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field-label" for="ac_title">What was agreed</label>
+    <input id="ac_title" type="text" name="title" required
+           placeholder="Get three quotes for the roof">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="ac_owner">Who is doing it</label>
+        <select id="ac_owner" name="owner">
+          <option value="">Nobody yet</option>
+          {% for p in assignable %}
+          <option value="user:{{ p['user_id'] }}">{{ p['user_name'] }}</option>
+          {% endfor %}
+          {% for p in people if not p['user_id'] %}
+          <option value="{{ p['vendor_name'] or p['external_name'] }}">{{ p['vendor_name'] or p['external_name'] }} (no account — you chase it)</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label" for="ac_due">By when</label>
+        <input id="ac_due" type="date" name="due_date">
+      </div>
+    </div>
+    <label class="field-label" for="ac_detail">Anything else about it</label>
+    <input id="ac_detail" type="text" name="detail">
+    <button type="submit" class="btn-mini" style="margin-top:10px;">Record it</button>
+  </form>
+</details>
+
+{% endblock %}

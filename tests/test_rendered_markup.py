@@ -166,6 +166,8 @@ ID_TABLES = {
     "record_id": ("bookings", "id"),
     "party_id": ("booking_parties", "id"),
     "vehicle_id": ("vehicles", "id"),
+    "meeting_id": ("meetings", "id"),
+    "action_id": ("meeting_actions", "id"),
 }
 
 
