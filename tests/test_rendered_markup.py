@@ -79,13 +79,40 @@ FIELD = re.compile(r"<(input|select|textarea)\b([^>]*)>", re.S | re.I)
 # behind an unknown argument is noticed rather than skipped.
 NO_RULE = 5
 
-# What the sweep fetched and could not read. All seven today are a Stripe
-# return page needing a real session id -- which this suite will never have,
-# because nothing here calls Stripe -- plus the data-request export, which
-# answers 400 without an id. A ceiling rather than a list: a page that starts
-# answering comes off it for free, and one that stops answering has to be
-# looked at.
-DID_NOT_ANSWER = 7
+# What the sweep fetched and could not read.
+#
+# NAMED RATHER THAN COUNTED, and that change was forced. It was a ceiling of
+# seven -- reasonable, and the reasoning above it was right -- but the number
+# turned out to depend on the ORDER the suites run in: six of these are file
+# views that answer 404 only while the run's scratch upload directory is still
+# empty, so a suite that happens to upload something first takes them off the
+# list. Adding two suites earlier in the run moved it from seven to thirteen
+# with nothing broken, and a bound that moves when unrelated work lands is a
+# bound that gets raised without being read.
+#
+# Every one of these is unreadable for a reason that is stated, and a
+# fourteenth -- or a different one -- reds the run and says which.
+UNREADABLE = {
+    # A Stripe return needs a real session id, and nothing here calls Stripe:
+    # _harness pins the key off and asserts it. These can never answer in a test.
+    "booking_stripe_success": "no Stripe session",
+    "event_stripe_success": "no Stripe session",
+    "restaurant_stripe_success": "no Stripe session",
+    "stripe_success": "no Stripe session",
+    "share_payment_success": "no Stripe session",
+    "workshop_stripe_success": "no Stripe session",
+    # A file view answers 404 until something has been uploaded, and the run
+    # gets a fresh upload directory on purpose so suites cannot inherit each
+    # other's leftovers.
+    "download_company_document": "no file in the run's uploads",
+    "download_document": "no file in the run's uploads",
+    "download_expense_file": "no file in the run's uploads",
+    "view_company_document": "no file in the run's uploads",
+    "view_document": "no file in the run's uploads",
+    "view_expense_file": "no file in the run's uploads",
+    # Answers 400 without an id, which is the correct answer to no id.
+    "data_request_export": "needs an id",
+}
 
 # The pages somebody who does not work here has to get through on their own.
 GUEST_FACING = [
@@ -520,9 +547,15 @@ def run():
     # redirect is a redirect and a CSV is not markup; neither is a gap. An
     # HTML page that did not answer is the only one worth a bound.
     did_not = sorted(skipped["did not answer"])
+    # Compared by name. A page that starts answering still comes off for
+    # free -- it simply stops appearing -- and one that stops answering is
+    # named rather than absorbed into a number that was already too big.
+    unexpected = sorted(e.rsplit(" ", 1)[0] for e in did_not
+                        if e.rsplit(" ", 1)[0] not in UNREADABLE)
     s.check("and the pages it fetched but could not read are named too",
-            len(did_not) <= DID_NOT_ANSWER,
-            detail="%d: %s" % (len(did_not), did_not[:8]))
+            not unexpected,
+            detail="not on the list, and each needs a reason or a fix: %s"
+                   % unexpected[:6])
     s.check("with the redirects and the downloads told apart from them",
             skipped["redirect"] and skipped["not a page"],
             detail="%d redirect(s), %d not-a-page — counting either as a gap "
