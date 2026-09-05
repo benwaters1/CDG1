@@ -29,12 +29,12 @@
     <div>
       <label class="field-label" for="wi_arrival">Arriving</label>
       <input id="wi_arrival" type="date" name="arrival_date" required
-             value="{{ arrival.isoformat() }}">
+             value="{{ form.get('arrival_date') or (arrival.isoformat() if arrival else '') }}">
     </div>
     <div>
       <label class="field-label" for="wi_departure">Leaving</label>
       <input id="wi_departure" type="date" name="departure_date" required
-             value="{{ departure.isoformat() }}">
+             value="{{ form.get('departure_date') or (departure.isoformat() if departure else '') }}">
     </div>
   </div>
   <p class="upload-hint" style="margin-top:4px;">
@@ -43,7 +43,7 @@
   </p>
 
   <label class="field-label" style="margin-top:14px;">
-    Free for {{ arrival.isoformat()|date_short }} → {{ departure.isoformat()|date_short }}
+    Free for {{ shown_arrival.isoformat()|date_short }} → {{ shown_departure.isoformat()|date_short }}
   </label>
   <div class="room-pick">
     {% for o in options %}

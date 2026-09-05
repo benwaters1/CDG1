@@ -49471,10 +49471,17 @@ def walk_in_booking():
     # is what somebody at the desk is nearly always asking about; changing them
     # re-asks the same question of the same page rather than needing a script.
     source = request.form if request.method == "POST" else request.args
-    arrival = parse_date((source.get("arrival_date", "") or "").strip()) or today
-    departure = (parse_date((source.get("departure_date", "") or "").strip())
-                 or (arrival + timedelta(days=1)))
-    options = walk_in_options(conn, rooms, arrival, departure)
+    # Named separately from the strict pair below, which overwrites `arrival`
+    # and `departure` on POST. The room tiles are built from THESE, so the
+    # label above them has to read these too — it used to read the strict
+    # pair, and so announced dates the tiles underneath were not for.
+    shown_arrival = parse_date(
+        (source.get("arrival_date", "") or "").strip()) or today
+    shown_departure = (
+        parse_date((source.get("departure_date", "") or "").strip())
+        or (shown_arrival + timedelta(days=1)))
+    arrival, departure = shown_arrival, shown_departure
+    options = walk_in_options(conn, rooms, shown_arrival, shown_departure)
 
     if request.method == "POST":
         room_raw = (request.form.get("room_id", "") or "").strip()
@@ -49539,9 +49546,11 @@ def walk_in_booking():
         if problem:
             conn.close()
             flash(problem, "error")
-            return render_template("walk_in_booking.html", rooms=rooms, today=today,
-                                   options=options, arrival=arrival,
-                                   departure=departure, form=request.form)
+            return render_template(
+                "walk_in_booking.html", rooms=rooms, today=today,
+                options=options, arrival=arrival, departure=departure,
+                shown_arrival=shown_arrival, shown_departure=shown_departure,
+                form=request.form)
 
         rack = compute_room_total(conn, room, arrival, departure)
         charge_raw = (request.form.get("total_price", "") or "").strip().replace(",", ".")
@@ -49600,9 +49609,10 @@ def walk_in_booking():
                         if not taken else url_for("admin_bookings"))
 
     conn.close()
-    return render_template("walk_in_booking.html", rooms=rooms, today=today,
-                           options=options, arrival=arrival, departure=departure,
-                           form=request.args)
+    return render_template(
+        "walk_in_booking.html", rooms=rooms, today=today, options=options,
+        arrival=arrival, departure=departure, shown_arrival=shown_arrival,
+        shown_departure=shown_departure, form=request.args)
 
 
 @app.route("/admin/images")
