@@ -1,5 +1,17 @@
 # The pass — what the backend needs
 
+> **Built and live, 2026-09-06.** `/pass` on `pass_service()`, with the three
+> write-backs `/pass/note`, `/pass/stock` and `/pass/message`. Covered by
+> `tests/test_pass.py`.
+>
+> The condition it was parked on was met rather than waived: this screen puts a
+> guest's dietary and medical notes on a shared iPad in a kitchen, so the
+> privacy notice moved in the same commit. It now says those notes are shown on
+> a screen in the kitchen during service, that the screen shows only the people
+> eating here that day, and that it cannot be opened without a staff login.
+>
+> Kept as the record of what was asked for, and why.
+
 `pass.html` is finished. Almost all of the data already exists; what is
 missing is one query that joins it and three small POST routes.
 

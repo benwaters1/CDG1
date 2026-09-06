@@ -1,5 +1,20 @@
 # Photo intake — what the backend needs
 
+> **Built and live, 2026-09-06.** `/admin/photos` and `/uploads/<filename>`,
+> on `allowed_image()` and `next_free_slot()`. Covered by
+> `tests/test_photo_intake.py`.
+>
+> One thing was decided against the spec. HEIC is **refused, not converted**:
+> converting means Pillow and pillow-heif, and this app is deliberately clone,
+> run, done. The refusal says what to change on the phone, because the person
+> uploading is standing at it.
+>
+> And three places this spec did not match the code, where the code won:
+> `rooms` uses `active`, not `is_active`; `social_posts` had neither of the
+> columns assumed here; and there was no route serving uploads at all.
+>
+> Kept as the record of what was asked for, and why.
+
 The page is `admin_photo_intake.html` and it is finished. It needs one column,
 one route and one helper. Everything below matches the patterns already in
 `app.py` rather than introducing new ones.
