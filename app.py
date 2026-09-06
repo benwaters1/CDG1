@@ -889,6 +889,25 @@ MS_GRAPH_MAILBOXES = _parse_mailboxes(
 MS_GRAPH_MAILBOX = MS_GRAPH_MAILBOXES[0] if MS_GRAPH_MAILBOXES else None
 SMTP_FROM = os.environ.get("SMTP_FROM") or SMTP_USERNAME
 
+# EVERY LETTER TO ONE ADDRESS, so a test deployment cannot reach a guest.
+#
+# The problem this solves. Testing email means connecting a real provider, and
+# a real provider connected to this app sends real confirmations to real
+# people the moment somebody confirms a booking -- against a database that is
+# a copy of the live one, full of real addresses. "I will be careful" is not a
+# control; the house has 487 messages already waiting, and one wrong click is
+# a year of old letters going out.
+#
+# Set MAIL_REDIRECT_TO and every message the app sends goes THERE instead,
+# whoever it was addressed to. The original recipient is written into the
+# subject and the body so the letter is still worth reading as a test.
+#
+# THE DANGER OF THIS FEATURE IS BEING LEFT ON. A production deployment with it
+# set sends nothing to anybody and looks completely healthy -- so the
+# readiness page carries it as a blocker, in red, saying who is getting the
+# guests' mail. It is not a quiet setting.
+MAIL_REDIRECT_TO = (os.environ.get("MAIL_REDIRECT_TO") or "").strip()
+
 # AI-assisted reply drafting in the Outlook add-in — unset by default, same
 # no-op-until-configured pattern as everything else in this section. This
 # key belongs to the château's own Anthropic account and is separate from
@@ -21483,7 +21502,27 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     `keep=False` for anything whose body is itself a credential — a password
     reset or a staff invitation. Those are short-lived by design, so a retry
     days later is useless, and storing one leaves a working key in a table.
+
+    HERE IS WHERE MAIL_REDIRECT_TO BITES, and it has to be here rather than in
+    either transport: there are two of them, they are chosen further down, and
+    a rule applied in one of them is a rule that does not apply when the other
+    is configured. This is the one door every letter goes through.
     """
+    if MAIL_REDIRECT_TO and to_address:
+        # Named in the subject, so a test inbox with forty letters in it is
+        # still readable -- "which of these was the one to the Dutch couple"
+        # is the question you actually have when checking.
+        intended = to_address
+        to_address = MAIL_REDIRECT_TO
+        subject = f"[test \u2192 {intended}] {subject}"
+        body = (f"[This is a test deployment. This letter was addressed to "
+                f"{intended} and was sent to you instead. No guest received "
+                f"it.]\n\n{body}")
+        # NOT filed as correspondence. booking_correspondence is the record of
+        # what the house has said to a guest, and a letter the guest never got
+        # has no business in it -- worse, it would be filed against whichever
+        # booking owns the redirect address.
+        keep = False
     if not to_address:
         return False
     # Filed whether it goes or not, and marked with which. "We wrote to them
@@ -60797,6 +60836,18 @@ def readiness_checks(conn, *, include_slow=True):
             email_detail += (f" {held} message{'' if held == 1 else 's'} "
                              f"{'is' if held == 1 else 'are'} being held until this is set up.")
     add("blocker", "Email", "Outbound email", email_ok, email_detail)
+
+    # LOUD, because the failure mode of this switch is silence. Left on in
+    # production, not one guest hears anything and every page looks perfectly
+    # healthy -- no error, no bounce, no held mail, because the letters go out
+    # successfully to the wrong person. This is the only thing that would say
+    # so, which is why it is a blocker rather than a note.
+    if MAIL_REDIRECT_TO:
+        add("blocker", "Email", "Guest email is being diverted", False,
+            f"MAIL_REDIRECT_TO is set, so every message the house sends is "
+            f"going to {MAIL_REDIRECT_TO} and NO guest is receiving anything. "
+            "That is correct on a test deployment and wrong on this one if "
+            "this is the real site. Clear the variable to send properly.")
 
     # Guest-facing wording, checked by the app rather than only by the tests.
     # The restaurant confirmation has twice been left reading "TEST SUBJECT
