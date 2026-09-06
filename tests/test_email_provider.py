@@ -212,27 +212,56 @@ def run():
     finally:
         m.resend_enabled, m.send_email_via_resend = was_enabled, was_resend
 
-    # The OTHER branch. Resend is what this house is connecting, so the SMTP
-    # fallback is the half that gets written once and never run -- and it is
-    # the half where keep= decides whether a test tidies up after itself,
-    # because send_email is what queues.
-    was_r, was_e, was_send = m.resend_enabled, m.email_enabled, m.send_email
-    m.resend_enabled = lambda: False
-    m.email_enabled = lambda: True
-    calls = []
-    m.send_email = (lambda to, subj, body, ics=None, name=None, keep=True, html=None:
-                    (calls.append({"to": to, "keep": keep}), False)[1])
+    s.section("It goes through the same door as a real letter")
+
+    # A test that calls a transport directly proves the transport works and
+    # nothing else. MAIL_REDIRECT_TO is applied in send_email, once, because
+    # there are two transports -- so a test send that skipped send_email would
+    # be the ONE letter that reached a real address on a test deployment, and
+    # would report a healthy provider while every real message went elsewhere.
+    was_r, was_resend, was_redirect = (m.resend_enabled, m.send_email_via_resend,
+                                       m.MAIL_REDIRECT_TO)
+    landed = []
+    m.resend_enabled = lambda: True
+    m.send_email_via_resend = (
+        lambda to, subj, body, ics=None, name=None, html=None:
+        (landed.append((to, subj)), (True, None))[1])
+    m.MAIL_REDIRECT_TO = "zzredirect@example.invalid"
     try:
-        r = oc.post("/admin/email-outbox/test", follow_redirects=True)
-        s.check("the SMTP fallback is used when Resend is not configured",
-                len(calls) == 1, detail=str(calls))
-        s.check("and a failed test is not queued from that branch either",
-                calls and calls[0]["keep"] is False,
-                detail="keep=%r — send_email queues on failure, so keep=True "
-                       "here leaves the owner tidying up after a test"
-                       % (calls[0]["keep"] if calls else None))
+        oc.post("/admin/email-outbox/test", follow_redirects=True)
+        s.check("with the redirect on, the test goes to the redirect address",
+                landed and landed[0][0] == "zzredirect@example.invalid",
+                detail="went to %s — this is the letter that would otherwise "
+                       "be the only one reaching a real inbox on a test "
+                       "deployment" % (landed[0][0] if landed else "nothing"))
+        s.check("and still says who it was addressed to",
+                landed and "[test" in landed[0][1], detail=str(landed[:1]))
+        # test_stale_mail states this rule for the audit log and it holds here:
+        # an address written into a permanent log to record something ABOUT
+        # email keeps the thing the log is only meant to describe. Both halves
+        # of the sender line are addresses -- RESEND_FROM is one, the redirect
+        # is another -- so they belong in the flash, read once, not the log.
+        noted = conn.execute(
+            "SELECT details FROM audit_log WHERE action = 'email_provider_tested' "
+            "ORDER BY id DESC LIMIT 1").fetchone()
+        s.check("and the audit line records the transport, not the addresses",
+                noted and "@" not in (noted["details"] or ""),
+                detail=str(noted["details"]) if noted else "nothing logged")
     finally:
-        m.resend_enabled, m.email_enabled, m.send_email = was_r, was_e, was_send
+        (m.resend_enabled, m.send_email_via_resend,
+         m.MAIL_REDIRECT_TO) = was_r, was_resend, was_redirect
+
+    # Read the route, because the two checks above pass just as happily if
+    # somebody re-adds a direct transport call for the Resend case only: the
+    # redirect suite would stay green, and so would this, until the day
+    # somebody set MAIL_REDIRECT_TO on a deployment with SMTP configured.
+    route = src.split("def test_email_provider")[1].split("\n@app.route")[0]
+    s.check("the route calls send_email rather than a transport directly",
+            "send_email_via_resend(" not in route and "send_email(" in route,
+            detail="MAIL_REDIRECT_TO lives in send_email; going around it "
+                   "sends the one letter that reaches a real person")
+    s.check("and asks it for the reason rather than inventing one",
+            "report=report" in route and "report.get" in route)
 
     s.section("The button is on the page, and only when it can be used")
 

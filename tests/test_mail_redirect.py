@@ -62,8 +62,10 @@ def run():
     # The REAL send_email, with only the transport under it replaced — the
     # whole claim is about what send_email does before it chooses one.
     m.resend_enabled = lambda: True
+    # (ok, why) since app.py started reporting WHY Resend refused a message.
+    # send_email unpacks it, and a bare True cannot be unpacked.
     m.send_email_via_resend = lambda to, subj, body, ics=None, name=None, html=None: (
-        sent.append({"to": to, "subject": subj, "body": body}), True)[1]
+        sent.append({"to": to, "subject": subj, "body": body}), (True, None))[1]
     try:
         s.section("With it off, nothing changes")
         m.MAIL_REDIRECT_TO = ""

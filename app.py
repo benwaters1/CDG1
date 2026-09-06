@@ -21093,17 +21093,37 @@ def test_email_provider():
             "and the daily summary can all go out.\n\n"
             "Sent %s.\n" % when)
 
-    if resend_enabled():
-        went, why = send_email_via_resend(to, "Test — the email provider is working", body)
-        sender = "Resend, from %s" % RESEND_FROM
-    else:
-        went = send_email(to, "Test — the email provider is working", body, keep=False)
-        why = None
-        sender = "SMTP via %s" % SMTP_HOST
+    # THROUGH send_email, not around it. Calling a transport directly would
+    # prove the transport works and nothing else — it would skip
+    # MAIL_REDIRECT_TO, so on a test deployment this would be the one letter
+    # that DID reach a real address, and it would report a healthy provider
+    # while every actual message went somewhere else. A test that does not use
+    # the path the real letters use is not a test of the real letters.
+    #
+    # keep=False: the queue is for messages somebody is waiting on. A test
+    # that files itself leaves the owner tidying up after checking something
+    # worked.
+    report = {}
+    sender = ("Resend, from %s" % RESEND_FROM) if resend_enabled() \
+        else ("SMTP via %s" % SMTP_HOST)
+    went = send_email(to, "Test — the email provider is working", body,
+                      keep=False, report=report)
+    why = report.get("why")
+    if MAIL_REDIRECT_TO:
+        sender += ", redirected to %s" % MAIL_REDIRECT_TO
 
     conn = get_db()
+    # The transport and the outcome, NOT the addresses. test_stale_mail states
+    # the rule for the audit log and it holds here too: an address written into
+    # a permanent log to record something about email keeps the thing the log
+    # is only supposed to be describing. Both halves of `sender` are addresses
+    # — RESEND_FROM is one, and so is the redirect — so the flash gets them,
+    # where the person who pressed the button reads them once, and the log gets
+    # the fact.
     log_audit(conn, "email_provider_tested", None,
-              "%s — %s" % (sender, "sent" if went else (why or "refused")))
+              "%s%s — %s" % ("Resend" if resend_enabled() else "SMTP",
+                             ", redirected" if MAIL_REDIRECT_TO else "",
+                             "sent" if went else (why or "refused")))
     conn.commit()
     conn.close()
 
@@ -21591,12 +21611,17 @@ def keep_guest_message(to_address, subject, body, channel="email", delivered=Fal
 
 
 def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
-               keep=True, html=None):
+               keep=True, html=None, report=None):
     """Send one message, and if it cannot go out, keep it.
 
     `keep=False` for anything whose body is itself a credential — a password
     reset or a staff invitation. Those are short-lived by design, so a retry
     days later is useless, and storing one leaves a working key in a table.
+
+    `report` is an optional dict this fills with why a send failed. The return
+    stays a plain bool, because two hundred call sites read it as one and a
+    2-tuple that some of them truth-tested would report every failure as a
+    success. Only the diagnostic pages pass it.
 
     HERE IS WHERE MAIL_REDIRECT_TO BITES, and it has to be here rather than in
     either transport: there are two of them, they are chosen further down, and
@@ -21632,6 +21657,8 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             if keep:
                 keep_guest_message(to_address, subject, body, delivered=True)
             return True
+        if report is not None:
+            report["why"] = why
         if keep:
             queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                               "provider rejected it", why or "Resend API call failed")
@@ -21639,6 +21666,8 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         return False
     if not email_enabled():
         print(f"[email held — no email provider configured] To: {to_address} | Subject: {subject}")
+        if report is not None:
+            report["why"] = "No email provider is configured."
         if keep:
             queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                               "no email provider configured")
@@ -21678,6 +21707,8 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         return True
     except Exception as e:
         print(f"[email failed] To: {to_address} | Subject: {subject} | Error: {e}")
+        if report is not None:
+            report["why"] = "The mail server refused it: %s" % (e,)
         if keep:
             queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                               "send failed", str(e))
