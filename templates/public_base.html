@@ -10,8 +10,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 {# Guest pages — bills, statements, confirmations — must not be indexed. A
    referrer or a forwarded email can be indexed without ever being
-   crawled. Each such page overrides this. #}
-{% block robots %}{% endblock %}
+   crawled. Each such page overrides this.
+
+   And while this is not the real site, NOTHING is indexed: a staging copy on
+   a public address competes with the house's own name using the house's own
+   words. The block is still rendered when live, so the per-page overrides
+   above keep working exactly as before. #}
+{% if site_is_live %}{% block robots %}{% endblock %}
+{%- else %}<meta name="robots" content="noindex, nofollow">{% endif %}
 {# French title and description where a page provides them; English
    otherwise, so a partial rollout does not leave blanks. #}
 {%- set _t_fr %}{% block title_fr %}{% endblock %}{% endset %}

@@ -23,6 +23,14 @@ def run():
     anon = m.app.test_client()
     conn = db()
 
+    # robots.txt answers differently depending on whether this deployment IS
+    # the château's website. Staging refuses everything, which is checked in
+    # test_noindex_meta; what this suite is about is the file the real site
+    # serves, so it asks for that one explicitly rather than inheriting
+    # whatever the environment happens to hold.
+    was_live = m.SITE_IS_LIVE
+    m.SITE_IS_LIVE = True
+
     s.section("robots.txt")
     r = anon.get("/robots.txt")
     s.check("it is served", r.status_code == 200, detail=str(r.status_code))
@@ -95,4 +103,5 @@ def run():
             detail=str([l for l in locs if not l.startswith("http")][:2]))
 
     conn.close()
+    m.SITE_IS_LIVE = was_live
     return s

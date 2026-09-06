@@ -963,6 +963,20 @@ OFFICE_DISPLAY_TOKEN = os.environ.get("OFFICE_DISPLAY_TOKEN", "")
 # have one. Until then, those links fall back to "http://localhost".
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 
+# Whether this deployment IS the château's website, or a copy of it.
+#
+# Defaults to FALSE, which is the whole point: a new deployment is a staging
+# deployment until somebody says otherwise, the same way an endpoint nobody
+# has placed in an area is owner-only until somebody places it. Getting this
+# wrong in the safe direction costs a day of not being indexed; getting it
+# wrong in the other direction puts a second copy of the house in Google
+# under the house's own name.
+#
+# While it is false every page says noindex and robots.txt refuses
+# everything. Set it to 1 on the day the domain points here.
+SITE_IS_LIVE = os.environ.get("SITE_IS_LIVE", "0").strip().lower() in (
+    "1", "true", "yes", "on")
+
 # Encrypts Management > Vault entries at rest (Fernet/AES via the
 # `cryptography` library — not hand-rolled). Unset by default — until you set
 # it, the Vault page shows "not configured" instead of storing anything.
@@ -22340,6 +22354,9 @@ def inject_user():
         # Every window a page states in words. Handed out here so the
         # sentence above a table and the query under it cannot disagree.
         "windows": house_windows(),
+        # Whether this deployment is the real website. Every page asks,
+        # because the answer decides whether it may be indexed at all.
+        "site_is_live": SITE_IS_LIVE,
         "pending_approvals_count": pending_approvals_count,
         "open_hr_notes_count": open_hr_notes_count,
         "unread_notifications_count": unread_notifications_count,
@@ -68328,7 +68345,14 @@ def robots():
 
     The manage links are unguessable, but they leak into referrer headers and
     analytics, and a crawler that found one would index a guest's booking.
+
+    And off EVERYTHING while this is not the real site. A staging copy on a
+    public address competes with the house's own name in search results, with
+    the same words and the same photographs — so until SITE_IS_LIVE says the
+    domain points here, nothing is offered at all.
     """
+    if not SITE_IS_LIVE:
+        return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
     body = "\n".join([
         "User-agent: *",
         "Disallow: /admin",

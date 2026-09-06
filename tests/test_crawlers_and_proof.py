@@ -85,6 +85,14 @@ def run():
     s.check("every room has its own entry", "/book/" in body,
             detail="those are the pages that should rank")
 
+    # robots.txt now answers differently depending on whether this deployment
+    # IS the château's website: a staging copy refuses everything, which is
+    # checked in test_noindex_meta. What this section is about is the file the
+    # real site serves, so it asks for that one rather than inheriting
+    # whatever the environment happens to hold.
+    was_live = m.SITE_IS_LIVE
+    m.SITE_IS_LIVE = True
+
     s.section("What a crawler is kept away from")
     r = anon.get("/robots.txt")
     txt = r.get_data(as_text=True)
@@ -170,4 +178,5 @@ def run():
             detail="checked by effect: a refusal and a success both redirect")
 
     _cleanup()
+    m.SITE_IS_LIVE = was_live
     return s
