@@ -6251,6 +6251,7 @@ NAV_AREAS = {
         "edit_campaign_template", "edit_email_template", "management_email_templates",
         "management_social", "new_announcement", "new_campaign_template",
         "restore_email_template", "send_campaign_template", "send_email_outbox",
+        "test_email_provider",
         "allow_texting_number", "management_texting", "run_checkin_texts_now",
         "save_checkin_text", "stop_texting_number",
         # Pages that had no area at all until now, so they were
@@ -21033,6 +21034,72 @@ def send_email_outbox():
     return redirect(url_for("admin_email_outbox"))
 
 
+@app.route("/admin/email-outbox/test", methods=["POST"])
+@owner_required
+def test_email_provider():
+    """Prove the provider works, before it carries anything that matters.
+
+    Until this existed, the first proof that a newly connected provider worked
+    was a guest either receiving or not receiving their booking confirmation —
+    and a confirmation that does not arrive is invisible from this side. The
+    house finds out when somebody rings up about a booking they were never
+    told had been accepted.
+
+    IT GOES TO THE SIGNED-IN PERSON, AND NOWHERE ELSE. There is deliberately no
+    box to type an address into. A form on an admin page that sends arbitrary
+    text to an arbitrary address, from a freshly verified domain, is the exact
+    thing that gets a domain listed — and the reason to add one is always
+    "just to check", which sending to yourself already does.
+
+    Nothing is queued if it fails. A test that files itself in the outbox
+    leaves the owner tidying up after checking something worked.
+    """
+    user = current_user()
+    to = (user["email"] or "").strip() if user else ""
+    if not to:
+        flash("Your own account has no email address on it, so there is "
+              "nowhere to send a test to.", "error")
+        return redirect(url_for("admin_email_outbox"))
+    if not (resend_enabled() or email_enabled()):
+        flash("No email provider is configured yet — set RESEND_API_KEY and "
+              "RESEND_FROM, or the SMTP_ variables, and reload.", "error")
+        return redirect(url_for("admin_email_outbox"))
+
+    # LOCAL_TZ, not UTC: this stamp is read by somebody standing in the
+    # Ariège, and between midnight and 02:00 the two disagree.
+    when = datetime.now(LOCAL_TZ).strftime("%A %d %B %Y at %H:%M")
+    body = ("This is the château's own test message.\n\n"
+            "If you are reading it, the email provider is connected and "
+            "working: booking confirmations, decline notices, password resets "
+            "and the daily summary can all go out.\n\n"
+            "Sent %s.\n" % when)
+
+    if resend_enabled():
+        went, why = send_email_via_resend(to, "Test — the email provider is working", body)
+        sender = "Resend, from %s" % RESEND_FROM
+    else:
+        went = send_email(to, "Test — the email provider is working", body, keep=False)
+        why = None
+        sender = "SMTP via %s" % SMTP_HOST
+
+    conn = get_db()
+    log_audit(conn, "email_provider_tested", None,
+              "%s — %s" % (sender, "sent" if went else (why or "refused")))
+    conn.commit()
+    conn.close()
+
+    if went:
+        flash("Sent to %s via %s. If it does not arrive within a minute or two, "
+              "check the spam folder — a domain sending for the first time "
+              "often lands there once." % (to, sender), "success")
+    else:
+        # The whole reason this page exists. Every first-day failure is one of
+        # a handful of precise, fixable things and Resend names which.
+        flash("It did not go. %s" % (why or "The provider refused it and gave "
+                                     "no reason."), "error")
+    return redirect(url_for("admin_email_outbox"))
+
+
 @app.route("/admin/email-outbox/discard-stale", methods=["POST"])
 @owner_required
 def discard_stale_email_outbox():
@@ -21212,6 +21279,33 @@ def email_enabled():
     return resend_enabled() or bool(SMTP_HOST and SMTP_USERNAME and SMTP_PASSWORD)
 
 
+def resend_refusal(exc):
+    """Why Resend said no, in the words Resend used.
+
+    str() on an HTTPError is "HTTP Error 403: Forbidden" and nothing else. The
+    reason is in the BODY, and on the day a provider is first connected the
+    body is the whole message: the domain is not verified yet, the from
+    address is not on the domain, the key is restricted to one address. Every
+    one of those is fixable in two minutes by somebody who is told which it is,
+    and unfixable by somebody told "provider rejected it".
+
+    Same shape as _pennylane_request, which learned this first.
+    """
+    if isinstance(exc, HTTPError):
+        try:
+            raw = exc.read().decode("utf-8", "replace")[:400]
+        except Exception:
+            raw = ""
+        try:                                   # Resend answers JSON
+            said = json.loads(raw).get("message") or raw
+        except Exception:
+            said = raw
+        return "Resend refused it (%s): %s" % (exc.code, said or "no reason given")
+    if isinstance(exc, URLError):
+        return "Could not reach Resend: %s" % (exc.reason,)
+    return "Could not reach Resend: %s" % (exc,)
+
+
 def send_email_via_resend(to_address, subject, body, ics_content=None,
                           ics_filename=None, html=None):
     """Resend's HTTP API — plain urllib, no extra dependency (matches how
@@ -21240,10 +21334,11 @@ def send_email_via_resend(to_address, subject, body, ics_content=None,
         )
         with urlopen(req, timeout=10) as resp:
             resp.read()
-        return True
+        return True, None
     except Exception as e:
-        print(f"[resend email failed] To: {to_address} | Subject: {subject} | Error: {e}")
-        return False
+        why = resend_refusal(e)
+        print(f"[resend email failed] To: {to_address} | Subject: {subject} | {why}")
+        return False, why
 
 
 # How long a held message is still worth sending. Fourteen days covers a
@@ -21490,14 +21585,17 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     # and it bounced" is a different fact from "we never wrote", and the whole
     # point of keeping this is being able to tell somebody which happened.
     if resend_enabled():
-        if send_email_via_resend(to_address, subject, body, ics_content,
-                                 ics_filename, html=html):
+        # UNPACKED, never truth-tested: a bare `if` on a 2-tuple is true even
+        # when the first item is False, so every refusal would report success.
+        went, why = send_email_via_resend(to_address, subject, body, ics_content,
+                                          ics_filename, html=html)
+        if went:
             if keep:
                 keep_guest_message(to_address, subject, body, delivered=True)
             return True
         if keep:
             queue_undelivered(to_address, subject, body, ics_content, ics_filename,
-                              "provider rejected it", "Resend API call failed")
+                              "provider rejected it", why or "Resend API call failed")
             keep_guest_message(to_address, subject, body)
         return False
     if not email_enabled():
@@ -61182,7 +61280,7 @@ def send_backup_email(to_address, zip_bytes, filename, note=""):
                 resp.read()
             return True, None
         except Exception as e:
-            return False, str(e)
+            return False, resend_refusal(e)
     if not email_enabled():
         return False, "no email provider configured"
     try:

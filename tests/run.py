@@ -103,6 +103,7 @@ SUITES = [
     "test_campaign_email",
     "test_workshop_announce",
     "test_email_outbox",
+    "test_email_provider",
     "test_email_templates",
     "test_newsletter",
     "test_gallery",

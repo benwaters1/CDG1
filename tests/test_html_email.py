@@ -235,8 +235,10 @@ def run():
 
         s.section("Resend is given both parts")
         posted = {}
+        # (ok, why) since app.py started reporting WHY Resend refused --
+        # send_email unpacks it, and a bare True cannot be unpacked.
         m.send_email_via_resend = lambda to, subj, body, ics=None, name=None, html=None: (
-            posted.update({"text": body, "html": html}), True)[1]
+            posted.update({"text": body, "html": html}), (True, None))[1]
         with m.app.test_request_context("/"):
             m.send_email_via_resend("zzhe@example.invalid", "s", "the plain one",
                                     html="<p>the drawn one</p>")
@@ -247,8 +249,10 @@ def run():
         posted.clear()
         was_enabled = m.resend_enabled
         m.resend_enabled = lambda: True
+        # (ok, why) since app.py started reporting WHY Resend refused --
+        # send_email unpacks it, and a bare True cannot be unpacked.
         m.send_email_via_resend = lambda to, subj, body, ics=None, name=None, html=None: (
-            posted.update({"text": body, "html": html}), True)[1]
+            posted.update({"text": body, "html": html}), (True, None))[1]
         try:
             with m.app.test_request_context("/"):
                 was_email(  # the REAL send_email, not the mock above it

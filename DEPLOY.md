@@ -134,6 +134,21 @@ Railway takes a folder of code and gives you a live URL. No server management.
      If both are set, Resend takes priority. Without either set, the app
      runs exactly as it does today: no emails sent, guests get their
      reference code/link on screen only.
+
+     **Put these on Railway, not in the `.env` on a development machine.**
+     The local database is a copy of the real one, with real guest addresses
+     in it, and the nightly jobs send — balance reminders, review
+     invitations, the daily summary. A key in a local `.env` means the next
+     `python app.py` on a laptop writes to actual guests from the château's
+     verified domain. (The test suite is safe either way: `tests/_harness.py`
+     blanks the key, replaces the transport with one that raises, and asserts
+     both before a single test runs.)
+
+     Once it is set, prove it before it carries anything: **Emails → Held
+     email → "Send a test message to myself"**. It goes to your own address
+     and nowhere else, and if the provider refuses it the page shows the
+     reason Resend gave — "the domain is not verified", "the from address is
+     not on the domain" — rather than a log line nobody reads.
    - **To turn on real payment collection at booking time**: `STRIPE_SECRET_KEY`
      and `STRIPE_PUBLISHABLE_KEY` from your Stripe Dashboard → Developers →
      API keys (use the test-mode keys first to try it safely, live keys once
