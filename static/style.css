@@ -2810,3 +2810,18 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
    nothing here is lost, and an alarm colour for "not sent yet" teaches
    people to ignore the bar. */
 .pending-bar__e{ margin:6px 0 0; color:var(--gold-soft); font-weight:600; }
+
+/* THE SHOPPING ROW. A <button> rather than a checkbox and its label, because
+   this is tapped one-handed in a supermarket aisle with a trolley in the
+   other — the whole row is the target, not a 20px box at the end of it.
+   Resets the button chrome so it reads as a list row and not a form control. */
+.shop-row{
+  display:flex; align-items:center; gap:var(--s3);
+  background:none; border:0; border-bottom:1px solid var(--parchment-line);
+  font:inherit; color:inherit; cursor:pointer;
+}
+.shop-row:last-child{ border-bottom:0; }
+.shop-row .shop-tick{ display:inline-block; min-width:1.2em; color:var(--gold); }
+/* Ticked, not gone. A list that hides what was bought is a list you cannot
+   untick when you put something back on the shelf. */
+.shop-row.task-done .mini-name{ text-decoration:line-through; opacity:0.55; }

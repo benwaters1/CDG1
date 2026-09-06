@@ -5994,6 +5994,11 @@ OFFLINE_ACTIONS = {
     "toggle_breakfast_item": "Ticked off a breakfast",
     "start_break": "Started a break",
     "end_break": "Ended a break",
+    # THE ONE THAT LEAVES THE HOUSE. A supermarket in Toulouse is an hour and
+    # three quarters away and the signal in one is nobody's idea of reliable;
+    # a chef ticking off twenty things and losing the lot at the till is the
+    # exact case the queue was built for.
+    "toggle_shopping_item": "Ticked something off the shopping",
 }
 
 
@@ -6338,6 +6343,7 @@ NAV_AREAS = {
         
     ],
     "restaurant": [
+        "chef_screen", "chef_shopping_page",
         "admin_no_shows", "export_no_shows_csv",
         "admin_menu_engineering", "export_menu_engineering_csv",
         "admin_rate_advice", "export_rate_advice_csv", "apply_rate_advice",
@@ -15834,6 +15840,45 @@ def dining_tables(conn, *, include_retired=False):
             ORDER BY sort_order, label""").fetchall()
 
 
+def pos_open_tables(conn, orders=None):
+    """Every open table, with the clock and the bill on it.
+
+    ONE DEFINITION, because two screens read it: the floor, where somebody
+    decides who to go to next, and the kitchen, where somebody decides what to
+    fire. Those two disagreeing about how long table four has been standing is
+    worse than neither of them knowing -- and a copy of this loop is exactly
+    how that happens, the day somebody fixes the clock on one page.
+
+    `waiting_minutes` is measured from the OLDEST thing still sent and not
+    ready, which is the number the table is actually feeling. `sitting_minutes`
+    is from when they sat down, which is the different question of whether an
+    evening is running long.
+    """
+    if orders is None:
+        orders = conn.execute(
+            "SELECT pos_orders.*, users.name AS opened_by FROM pos_orders "
+            "LEFT JOIN users ON users.id = pos_orders.opened_by_user_id "
+            "WHERE pos_orders.status = 'open' ORDER BY pos_orders.opened_at"
+        ).fetchall()
+    out = []
+    for o in orders:
+        bill = pos_bill(conn, o["id"])
+        waiting = conn.execute(
+            """SELECT MIN(sent_at) AS since FROM pos_order_lines
+               WHERE order_id = ? AND voided = 0 AND state = 'sent'""",
+            (o["id"],)).fetchone()
+        ctx = pos_table_context(conn, o)
+        out.append({
+            "order": o, "total": bill["total"], "unsent": len(bill["unsent"]),
+            "waiting_minutes": minutes_since(waiting["since"]) if waiting["since"] else None,
+            "sitting_minutes": minutes_since(o["opened_at"]),
+            "guest": ctx["booking"]["guest_name"] if ctx else None,
+            "dietary": ctx["dietary"] if ctx else "",
+            "state": o["service_state"] or "seated",
+        })
+    return out
+
+
 def pos_floor(conn):
     """The whole room, free tables included.
 
@@ -15918,6 +15963,102 @@ def pos_open_tickets(conn):
         t["waiting_minutes"] = minutes_since(t["sent_at"])
         t["by_course"] = pos_lines_by_course(t["lines"])
     return out
+
+
+def chef_tonight(conn, day=None):
+    """Everything the kitchen needs for one service, from the parts that
+    already know it.
+
+    COMPOSED, NOT REWRITTEN. Who is eating and what they cannot eat is
+    pass_service. What is on the pass and how long it has stood is pos_floor.
+    Both are already the definition used by the screens the rest of the house
+    reads, and a second answer here would be a second answer -- the kitchen
+    and the floor disagreeing about how long table four has been waiting is
+    worse than neither of them knowing.
+
+    What this adds is the JOIN nobody had: the person and the table are the
+    same guest, and the chef is the one who needs them side by side.
+    """
+    day = day or service_day()
+    service = pass_service(conn, day)
+    floor = pos_open_tables(conn)
+
+    # A table that has been sent something and is still waiting, longest
+    # first. The number is the point: a ticket with no clock is how a table
+    # waits forty minutes and nobody notices.
+    waiting = sorted(
+        [t for t in floor if t.get("waiting_minutes") is not None],
+        key=lambda t: -(t["waiting_minutes"] or 0))
+
+    # WHAT A TABLE STILL OWES, for the one question a chef in a small house
+    # actually gets asked at eleven at night: can that table go. Read off the
+    # order the till already keeps rather than worked out again.
+    money = []
+    for t in floor:
+        order = t["order"]
+        owed = float(t.get("total") or 0)
+        taken = float(order["settled_total"] or 0) + float(order["deposit_credit"] or 0)
+        money.append({
+            "table": order["table_label"], "covers": order["covers"],
+            "owed": round(max(0.0, owed - taken), 2), "bill": owed,
+            "taken": round(taken, 2), "settled": order["status"] != "open",
+            "sitting_minutes": t.get("sitting_minutes"),
+            "guest": t.get("guest"), "state": t.get("state"),
+        })
+
+    return {
+        "day": day,
+        "covers": service["covers"],
+        "service_time": service["service_time"],
+        "guests": service["guests"],
+        "allergy_count": service["allergy_count"],
+        "floor": floor,
+        "waiting": waiting,
+        "longest_wait": waiting[0]["waiting_minutes"] if waiting else None,
+        "money": money,
+        "owed_now": round(sum(m["owed"] for m in money), 2),
+        "stock": service["stock"],
+    }
+
+
+def chef_shopping(conn):
+    """The list that leaves the house, and nothing else on it.
+
+    DELIBERATELY WITHOUT THE GUESTS. This is the one page the app lets a
+    tablet keep and read with no signal, which means it sits in a cache on a
+    device that goes to a supermarket in Toulouse and is left in a van. The
+    privacy notice says a guest's dietary and medical notes are held for the
+    stay and deleted after it; a copy of them cached on a handset in a car
+    park is not that, whatever the notice says.
+
+    So the half that travels is the half with nothing personal in it: what to
+    buy, and what the store is short of. The guests stay on the screen bolted
+    to the wall in the kitchen.
+    """
+    items = conn.execute(
+        """SELECT shopping_items.*, COALESCE(users.name, '') AS added_by
+             FROM shopping_items
+             LEFT JOIN users ON users.id = shopping_items.added_by_user_id
+            ORDER BY shopping_items.bought,
+                     COALESCE(NULLIF(shopping_items.category, ''), 'Anything else'),
+                     shopping_items.name""").fetchall()
+    by_category = {}
+    for row in items:
+        by_category.setdefault(
+            (row["category"] or "").strip() or "Anything else", []).append(row)
+
+    # What the store itself says is short, so the two lists are on one page
+    # rather than one being remembered in the van.
+    watched = conn.execute(
+        """SELECT id, name, unit, reorder_level FROM stock_items
+            WHERE active = 1 AND reorder_level IS NOT NULL AND reorder_level > 0
+            ORDER BY name""").fetchall()
+    levels = stock_levels(conn, [r["id"] for r in watched])
+    short = [dict(r, on_hand=levels.get(r["id"], 0)) for r in watched
+             if levels.get(r["id"], 0) <= (r["reorder_level"] or 0)]
+    return {"by_category": by_category, "short": short,
+            "left": sum(1 for r in items if not r["bought"]),
+            "as_of": datetime.now(timezone.utc).isoformat()}
 
 
 def minutes_since(iso_stamp):
@@ -28034,21 +28175,7 @@ def pos_home():
         "LEFT JOIN users ON users.id = pos_orders.opened_by_user_id "
         "WHERE pos_orders.status = 'open' ORDER BY pos_orders.opened_at").fetchall()
 
-    tables = []
-    for o in orders:
-        bill = pos_bill(conn, o["id"])
-        waiting = conn.execute(
-            """SELECT MIN(sent_at) AS since FROM pos_order_lines
-               WHERE order_id = ? AND voided = 0 AND state = 'sent'""", (o["id"],)).fetchone()
-        ctx = pos_table_context(conn, o)
-        tables.append({
-            "order": o, "total": bill["total"], "unsent": len(bill["unsent"]),
-            "waiting_minutes": minutes_since(waiting["since"]) if waiting["since"] else None,
-            "sitting_minutes": minutes_since(o["opened_at"]),
-            "guest": ctx["booking"]["guest_name"] if ctx else None,
-            "dietary": ctx["dietary"] if ctx else "",
-            "state": o["service_state"] or "seated",
-        })
+    tables = pos_open_tables(conn, orders)
 
     # Tonight's reservations that have not been sat yet — so a table can be
     # opened against its booking, and the allergy taken at booking travels
@@ -29308,6 +29435,38 @@ def pos_kitchen():
     conn.close()
     return render_template("pos_kitchen.html", tickets=tickets, courses=MENU_COURSES,
                            capacity=capacity, short=short, clashes=clashes)
+
+
+@app.route("/chef")
+@login_required
+def chef_screen():
+    """The kitchen's own page, for the tablet on the wall.
+
+    login_required rather than an owner check, for the same reason the pass
+    is: a chef is not an owner, and a screen the kitchen cannot open is a
+    screen that gets replaced by a printed sheet nobody updates.
+    """
+    conn = get_db()
+    data = chef_tonight(conn)
+    shopping = chef_shopping(conn)
+    conn.close()
+    return render_template("chef.html", data=data, shopping=shopping)
+
+
+@app.route("/chef/shopping")
+@login_required
+def chef_shopping_page():
+    """The half that goes to the supermarket.
+
+    Its own page rather than a section of the one above, because it is the
+    only page in this app the service worker is allowed to keep -- and what
+    can be kept has to be decided per page, not per section. There is nothing
+    personal on it.
+    """
+    conn = get_db()
+    shopping = chef_shopping(conn)
+    conn.close()
+    return render_template("chef_shopping.html", shopping=shopping)
 
 
 @app.route("/pos/day")
@@ -31633,6 +31792,7 @@ def new_shopping_item():
 
 @app.route("/shopping/<int:item_id>/toggle", methods=["POST"])
 @login_required
+@repeatable
 def toggle_shopping_item(item_id):
     conn = get_db()
     item = conn.execute("SELECT * FROM shopping_items WHERE id = ?", (item_id,)).fetchone()

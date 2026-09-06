@@ -326,6 +326,7 @@ SUITES = [
     "test_offline_actions",
     "test_html_email",
     "test_mail_redirect",
+    "test_chef_program",
     "test_review_invitation",
     "test_itinerary",
     "test_price_agreed",
