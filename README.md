@@ -1,58 +1,44 @@
-# Design fixes — four real ones, not two hundred and twenty
+# A drawn approach map — and why drawn
 
-You asked for ten per page. I went looking, and **there are not ten faults
-per page.** Making up the difference would mean changing things that are
-already right, which is the point where a rebuild starts going backwards.
+`_approach.html`, on the Contact page, in the site's own gold and blue.
 
-Here is what a full scan actually turned up.
+## Three reasons it is drawn rather than a map tile
 
-## 1. Doubled hairlines — every divider drawn at 2px
+  · **it owes nothing to a CDN.** You have 254 images hotlinked from a
+    Squarespace account; if that lapses the site goes blank. This weighs about
+    four kilobytes and cannot break
+  · **a map tile shows every road equally.** What someone needs before setting
+    off is the one route, the turn that catches people out, and the fact that
+    the last stretch is unlit. A tile buries all three
+  · it is in the site's own colours, so it belongs
 
-The dossier list on the room page sits inside a `.g-aside`, so it collects
-**two** border rules: `.g-aside dl > div` gives every row a bottom border and
-`.g-dossier__l div` gives it a top one. Every divider drew at 2px while the
-first and last drew at 1px — a list that reads as unevenly ruled without it
-being obvious why.
+The geometry is schematic — sequence and relative distance, which is what a
+person reads at the kitchen table. The Google and Apple pins are for the car.
 
-**I wrote three `.g-dossier__l` rules that could never have won**, because
-the bottom border comes from a different component's selector entirely. I only
-found it by asking the browser which rules matched, instead of reading the
-file and guessing. Fixed at the right selector.
+## What it actually says
 
-Same fault on Home, where `.g-facts` and the section below it both drew an
-edge into the same seam.
+Toulouse airport, Foix at 1 h 05, Tarascon at 1 h 25, **left at Les Cabannes**,
+then the final four kilometres as a dashed line marked *unlit*. The pin is the
+gates, and the caption says so — there is no street number here and an address
+search leaves people in the village square.
 
-    doubled rules across 17 pages x 3 widths: 0
+## Two things I got wrong and fixed
 
-## 2. A card that was full width by accident
+  · **every label was upside down.** I put the sub-label at a smaller `y`
+    than the name, and in SVG smaller y is HIGHER — so it read "airport /
+    Toulouse" and "1 h 05 / Foix", subtitle above title, at all four stops
+  · **the same contrast blind spot as the armorial block.** The ground is a
+    gradient, which is a background-IMAGE, so my checker read straight through
+    to white and reported a failure on text that is fine. Solid colour under
+    the gradient — the checker can read it, and a client that fails to paint
+    gradients still gets navy
 
-On The Estate a three-card grid had the last card spanning `1 / -1` — so two
-cards were 568px and the third 1168px, with its image stretched to a 5.2:1
-letterbox beside two at 2.5:1.
+That is the second time the gradient trap has caught me in two rounds. Worth
+knowing if you ever add one: put a `background-color` under it.
 
-A full-width card is a deliberate device. A full-width card that is simply the
-leftover third of a row is not. The span now holds only where it is asked for
-with `data-span="full"`, and that case gets a sane 21:9 crop.
+## Fits
 
-    all three cards 568px, all three images 2.53:1
-
-## 3. Stacked buttons ran together
-
-Two buttons stacked on a narrow screen met edge to edge, so the solid one's
-border and the quiet one's read as a single 2px line between them.
-
-## What I checked and found nothing wrong with
-
-Widowed headings, buttons of mismatched height in a row, list markers hanging
-outside their block, and mixed image ratios anywhere else. **The scan reported
-seventeen pages with doubled rules and two with mixed ratios; measured
-properly, it was two and one** — the rest were side-by-side elements my check
-was reading as stacked.
-
-## Two new audit rules
-
-  - a doubled hairline where two stacked blocks meet
-  - mixed image ratios inside one grid
+320, 390, 768 and 1440 — no sideways scroll, buttons at 49px.
 
 ## Testing
 

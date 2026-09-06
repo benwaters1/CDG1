@@ -61,6 +61,10 @@
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
   </button>
 </section>
+
+
+{% from '_arms.html' import armorial_intro %}
+{{ armorial_intro(settings) }}
 <div class="g-wrap">
   <p class="g-family">
     <span class="g-family__k">Whose house it is</span>

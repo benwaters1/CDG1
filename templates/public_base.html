@@ -15,7 +15,10 @@
    And while this is not the real site, NOTHING is indexed: a staging copy on
    a public address competes with the house's own name using the house's own
    words. The block is still rendered when live, so the per-page overrides
-   above keep working exactly as before. #}
+   above keep working exactly as before.
+
+   PUT BACK after the handover of 2026-09-06, which arrived written against
+   the version before it. repair_handover.py knows about it now. #}
 {% if site_is_live %}{% block robots %}{% endblock %}
 {%- else %}<meta name="robots" content="noindex, nofollow">{% endif %}
 {# French title and description where a page provides them; English

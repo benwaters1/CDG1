@@ -127,6 +127,70 @@ def _jinja_block(text, opener):
     return None
 
 
+def repair_media_query_variables():
+    """Forty-two blocks of phone layout the browser has never once applied.
+
+    A custom property cannot be used in a media query CONDITION: they resolve
+    at computed-value time, long after the query has been evaluated. So
+    @media (max-width: var(--m-read)) is discarded silently and everything
+    inside it never runs — the navigation label, the back-to-top position,
+    full-width buttons on the confirmation page.
+
+    Put back twice by handovers, because the design side works from a tree
+    that still has the variables in and every export carries them. Found by
+    hand both times, which is why it kept coming back.
+
+    Substituted inside @media only. Everywhere else the variable is correct
+    and useful, and that is exactly what makes this hard to see.
+    """
+    import re
+    rel = "static/gudanes.css"
+    src = _read(rel)
+    values = {"--m-tight": "26rem", "--m-read": "34rem"}
+    media = re.compile(r"@media[^{]*\{")
+    out, n, last = [], 0, 0
+    for m in media.finditer(src):
+        cond = fixed = m.group(0)
+        for name, value in values.items():
+            fixed = fixed.replace("var(%s)" % name, value)
+        if fixed != cond:
+            n += 1
+        out.append(src[last:m.start()])
+        out.append(fixed)
+        last = m.end()
+    out.append(src[last:])
+    if n:
+        _write(rel, "".join(out))
+    return n
+
+
+def repair_staging_noindex():
+    """Without this the app is indexable wherever it is deployed.
+
+    chateaugudanes.com is still Squarespace and this app sits on a public
+    Railway URL, so an indexable copy competes with the house for the house's
+    own name, using the house's own words and photographs. SITE_IS_LIVE
+    decides; the wrapper in public_base.html is how a page asks.
+
+    Reverted once, by the handover of 2026-09-06, which was generated from a
+    snapshot taken before the switch landed. Nothing errored.
+    """
+    rel = "templates/public_base.html"
+    src = _read(rel)
+    if "site_is_live" in src:
+        return 0
+    plain = "{% block robots %}{% endblock %}"
+    if plain not in src:
+        print("  ! public_base.html: no robots block to wrap")
+        return 0
+    _write(rel, src.replace(
+        plain,
+        "{% if site_is_live %}{% block robots %}{% endblock %}\n"
+        '{%- else %}<meta name="robots" content="noindex, nofollow">{% endif %}',
+        1))
+    return 1
+
+
 def repair_parent_robots_block():
     """Without this the 24 child overrides below are dead markup."""
     rel = "templates/public_base.html"
@@ -932,6 +996,10 @@ def repair_reverted_guest_pages():
 def main():
     steps = [
         ("the robots block in public_base", repair_parent_robots_block),
+        # Must follow the block repair: it wraps what that one puts back.
+        ("the staging noindex switch", repair_staging_noindex),
+        ("media queries the browser can evaluate",
+         repair_media_query_variables),
         ("noindex on guest pages", repair_child_noindex),
         ("part-payments and auto-charge", repair_workshop_payments),
         ("table wrappers", repair_table_wrappers),
