@@ -22487,6 +22487,19 @@ def house_windows():
 
 
 @app.context_processor
+def inject_house_pin():
+    """Where the gates are, for every page rather than the two that ask.
+
+    A context processor because public_base.html publishes it as structured
+    data on EVERY public page -- that is the pin behind Google's own
+    "Directions" button, which a guest can tap without ever opening the site.
+    Passing it per route would mean remembering on each new page, and the
+    failure of forgetting is that Google keeps the old figure.
+    """
+    return {"house_pin": house_pin()}
+
+
+@app.context_processor
 def inject_offline_actions():
     """The allowlist, for the page that has to know it.
 
@@ -37911,7 +37924,14 @@ def leave_booking_party(conn, booking_id):
         conn.execute("DELETE FROM booking_parties WHERE id = ?", (party_id,))
 
 
-# The chateau's own coordinates.
+# WHERE TO ASK ABOUT THE WEATHER, which is not the same question as where the
+# gates are. A forecast for a valley is the same figure four kilometres up or
+# down it, so this is deliberately a constant and deliberately approximate.
+#
+# It used to be commented "the chateau's own coordinates", which read as THE
+# answer -- and it was one of three in this codebase that disagreed by up to
+# four and a half kilometres. Anything a guest navigates to asks house_pin(),
+# which is absent until somebody has stood at the gates.
 WEATHER_LAT, WEATHER_LON = 42.7669, 1.6647
 # Older than this and it is not "right now" any more, so the page says
 # nothing rather than something out of date.
@@ -38162,6 +38182,27 @@ def house_coordinates(conn):
             return {}
         out[key] = raw
     return out
+
+
+def house_pin():
+    """The gates, for a page to draw, or None.
+
+    THREE ANSWERS USED TO BE IN THIS CODEBASE. The contact page had
+    42.8083/1.6528 typed into its copy, the handover's own map defaulted to
+    42.7847/1.6564, and the weather constant says 42.7669/1.6647 -- spread
+    over four and a half kilometres, on a road whose last four kilometres are
+    unlit. None of the three was ever checked against the gates.
+
+    So there is one now, it lives in a setting, and it is ABSENT rather than
+    guessed until somebody stands at the gates with a telephone. The weather
+    keeps its own constant on purpose: weather over a valley is the same at
+    four kilometres, and a pin is not.
+    """
+    conn = get_db()
+    try:
+        return house_coordinates(conn) or None
+    finally:
+        conn.close()
 
 
 def room_payment_setting(conn, key, cast=float):

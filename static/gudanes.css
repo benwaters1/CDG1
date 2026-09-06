@@ -44,21 +44,6 @@
   --m-wide:  46rem;   /* ~72 characters at lede size */
 }
 
-/* A CUSTOM PROPERTY CANNOT BE USED IN A MEDIA QUERY CONDITION.
-   --m-tight and --m-read are declared just above and were written into
-   forty-two @media rules below, every one of which the browser then
-   discarded: custom properties are resolved at computed-value time,
-   long after a media query has been evaluated. So forty-two blocks of
-   phone layout -- the navigation label, the back-to-top position, full
-   width buttons on the confirmation page -- had never once applied,
-   and nothing anywhere reported it. The values are written out; the
-   variables stay for use in ordinary declarations, where they work.
-
-   PUT BACK A SECOND TIME, by the handover of 2026-09-05. The design side
-   works from a tree that still has the variables in, so every zip carries
-   them back. test_design fails on it, which is the only reason it was
-   caught rather than shipped. */
-
 
 /* ==========================================================================
    THE TYPE SCALE
@@ -7992,3 +7977,258 @@ main > .g-facts{ border-bottom: 1px solid var(--line); }
    One seam, owned by the top edge. */
 .g-aside .g-dossier__l div,
 .g-aside dl.g-dossier__l > div{ border-bottom: 0; }
+
+/* ==========================================================================
+   THE HOMEPAGE STRIP ROWS AND THE THREE WAYS IN
+
+   Three things wrong, and they compound:
+
+   1. `label | prose | link` stretched across the full 1216px is a SPREADSHEET
+      ROW, not editorial. A 192px column holding two words, prose in the
+      middle, and a link stranded at the far right with nothing binding it to
+      the sentence it belongs to.
+
+   2. It is used twice in a row — the price note and "Whose house it is" —
+      so two consecutive bands read as a table with two entries. The content
+      is good (a woman bought a château she had barely seen and lives in it);
+      the layout makes it look like a spec sheet.
+
+   3. `01 02 03` numbers three things that are not sequential. Stay, learn a
+      craft, eat — those are three alternatives. Numbering them tells the
+      reader there is an order, and there isn't one.
+   ========================================================================== */
+
+/* The row becomes a line of writing: label above, sentence and its link on
+   one measure, the link immediately after the words it follows from. */
+.g-family,
+.g-pricenote,
+.g-welcome,
+.g-backtoform{
+  display: block;
+  max-width: 52rem;
+  padding-left: var(--s5);
+  border-left: 2px solid var(--gold);
+}
+.g-family__k,
+.g-pricenote__k,
+.g-welcome__k{
+  display: block; margin: 0 0 var(--s2);
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--gilt);
+}
+.g-family__t,
+.g-pricenote__t,
+.g-welcome__t{
+  display: block; margin: 0 0 var(--s3);
+  font-family: var(--display); font-size: var(--t-h3); line-height: 1.4;
+  color: var(--blue-deep);
+}
+/* The link sits under its own sentence, not a thousand pixels away. */
+.g-family > a,
+.g-pricenote > a,
+.g-welcome > a{
+  display: inline-block;
+  font-family: var(--ui); font-size: var(--t-ui);
+  border-bottom: 1px solid var(--gold);
+  text-decoration: none;
+}
+
+/* The numbers go. Three alternatives are not three steps, and a circled
+   numeral is the single most decorative thing on this page. What replaces
+   it is the thing that actually distinguishes them: the price. */
+.g-three__n{ display: none; }
+.g-three__i{ border-top: 2px solid var(--gold); padding-top: var(--s4); }
+.g-three__t{ margin-top: 0; }
+
+/* The three columns have descriptions of different lengths, so the prices
+   landed at three different heights while the buttons aligned — the one
+   line a reader compares across the three was the one line that did not
+   line up. The column becomes a flex stack: description takes the slack,
+   price and action sit on a shared baseline. */
+.g-three__b{ display: flex; flex-direction: column; height: 100%; }
+.g-three__d{ flex: 1 0 auto; margin-bottom: var(--s4); }
+.g-three__p{ margin: 0 0 var(--s4); }
+.g-three__a{ margin-top: auto; }
+
+/* ==========================================================================
+   THE ARMORIAL INTRODUCTION
+   Royal blue ground, solid gold — gold as a FILL, not the hairlines it has
+   been so far. The arms are the château's own crown-and-laurel mark drawn
+   properly, between two hanging banners.
+
+   The gold on navy is the one place real leaf gold works: #DCC077 reads at
+   7.3:1 on this blue, so it can be bright without being unreadable. That is
+   the whole reason the site's gold has looked brown — it was being held to a
+   contrast ratio it only needs on the cream.
+   ========================================================================== */
+.g-armorial{
+  background-color: #14305F;   /* under the gradient: a fallback, and a
+                                  colour a contrast checker can actually read */
+  background-image:
+    radial-gradient(120% 90% at 50% 0%, #1B3D74 0%, #14305F 55%, #0E2247 100%);
+  color: #F2EDE3;
+  padding: clamp(48px, 7vw, 96px) var(--s5);
+  text-align: center;
+  border-bottom: 3px solid var(--gold);
+  position: relative;
+  overflow: hidden;
+}
+/* A faint damask of the device, so the ground is not flat navy. */
+.g-armorial::before{
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(circle at 12% 22%, rgba(220,192,119,.09) 0 2px, transparent 3px),
+    radial-gradient(circle at 88% 22%, rgba(220,192,119,.09) 0 2px, transparent 3px),
+    radial-gradient(circle at 50% 78%, rgba(220,192,119,.07) 0 2px, transparent 3px);
+  background-size: 180px 180px;
+}
+.g-armorial__in{ position: relative; max-width: 46rem; margin: 0 auto; }
+
+.g-armorial__crest{
+  display: flex; align-items: center; justify-content: center;
+  gap: clamp(12px, 3vw, 44px);
+  margin: 0 0 var(--s5);
+}
+.g-arms{
+  width: clamp(120px, 17vw, 190px); height: auto;
+  color: var(--gold-lit);
+  filter: drop-shadow(0 2px 10px rgba(0,0,0,.35));
+}
+.g-arms--blue{ color: var(--blue-deep); }
+.g-banner{
+  width: clamp(34px, 5vw, 58px); height: auto;
+  color: var(--gold-lit); opacity: .8;
+  align-self: flex-start;
+  margin-top: clamp(4px, 1.5vw, 18px);
+}
+/* Two banners and a shield is a lot for a 360px phone. */
+@media (max-width: 34rem){ .g-banner{ display: none; } }
+
+.g-armorial__fr{
+  margin: 0 0 var(--s3);
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .28em; text-transform: uppercase; color: var(--gold-lit);
+}
+.g-armorial__t{
+  margin: 0; font-family: var(--display); font-weight: 300;
+  font-size: clamp(34px, 5.6vw, 66px); line-height: 1.06;
+  letter-spacing: .01em; color: #FFFFFF;
+}
+/* A solid gold rule, not a hairline. */
+.g-armorial__r{
+  width: 96px; height: 3px; margin: var(--s5) auto;
+  background: linear-gradient(90deg,
+    rgba(220,192,119,0) 0%, var(--gold-lit) 22%, #F0DFAE 50%,
+    var(--gold-lit) 78%, rgba(220,192,119,0) 100%);
+}
+.g-armorial__d{
+  margin: 0 auto; max-width: 34rem;
+  font-family: var(--display); font-size: clamp(17px, 1.6vw, 21px);
+  line-height: 1.7; color: #DCD6C9;
+}
+
+/* ---- solid gold where it was a hairline ------------------------------- */
+/* The eyebrow rule, the section marks and the pull-quote bar were all 1px
+   of brown. On the blue and at the top of a section they can carry weight. */
+.g-sec--dark .g-eyebrow::before,
+.g-armorial .g-eyebrow::before{ height: 3px; background: var(--gold-lit); }
+.g-btn--solid{
+  background: var(--blue-deep); border: 1px solid var(--gold);
+}
+.g-armorial .g-btn--solid{
+  background: var(--gold); border-color: var(--gold);
+  color: var(--blue-deep); font-weight: 600;
+}
+
+/* The second line of the armorial heading is the English, set apart. */
+.g-armorial__t em{
+  font-style: italic; font-weight: 300;
+  color: var(--gold-lit);
+}
+
+/* ==========================================================================
+   THE APPROACH MAP
+   Drawn in the site's own colours. A map tile shows every road equally;
+   what a guest needs before setting off is the one route, the turn that
+   catches people out, and the fact that the last stretch is unlit.
+   ========================================================================== */
+.g-approach{
+  margin: 0; display: grid; gap: var(--s6);
+  grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 1fr);
+  align-items: center;
+  background-color: #12294D;   /* under the gradient, for the same reason as
+                                  the armorial block above */
+  background-image: linear-gradient(180deg, #16345F 0%, #0F2648 100%);
+  border-top: 3px solid var(--gold);
+  padding: clamp(28px, 4vw, 52px);
+}
+@media (max-width: 52rem){ .g-approach{ grid-template-columns: 1fr; } }
+
+.g-approach__svg{ width: 100%; height: auto; display: block; }
+
+.g-approach__hills path{ fill: rgba(255,255,255,.055); }
+
+.g-approach__road{
+  fill: none; stroke: var(--gold-lit); stroke-width: 3;
+  stroke-linecap: round;
+}
+/* The last stretch is the one being warned about, so it is drawn as one. */
+.g-approach__road--last{
+  stroke-dasharray: 7 6; stroke-width: 3.4; stroke: #E8B45C;
+}
+
+.g-approach__stop circle{ fill: var(--gold-lit); }
+.g-approach__stop text,
+.g-approach__endt{
+  fill: #F2EDE3; font-family: var(--ui); font-size: 15px;
+  text-anchor: middle;
+}
+.g-approach__endt{ font-size: 17px; }
+.g-approach__sub{
+  fill: var(--gold-lit); font-family: var(--ui); font-size: 12px;
+  letter-spacing: .08em; text-anchor: middle;
+}
+.g-approach__warn{
+  fill: #E8B45C; font-family: var(--ui); font-size: 13px;
+  letter-spacing: .06em;
+}
+.g-approach__end path{ fill: var(--gold-lit); }
+.g-approach__ring{ stroke: var(--gold-lit); stroke-width: 1.4; opacity: .55; }
+
+.g-approach__cap{ color: #E4DDD0; }
+.g-approach__k{
+  margin: 0 0 var(--s2); font-family: var(--ui); font-size: var(--t-sm);
+  font-weight: 600; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--gold-lit);
+}
+.g-approach__p{
+  margin: 0 0 var(--s5); font-family: var(--display);
+  font-size: clamp(17px, 1.5vw, 20px); line-height: 1.65; color: #E4DDD0;
+}
+.g-approach__p strong{ color: #fff; font-weight: 400; }
+.g-approach__btns{
+  display: flex; flex-wrap: wrap; gap: var(--s3); margin: 0 0 var(--s4);
+}
+.g-approach__btns .g-btn--solid{
+  background: var(--gold); border-color: var(--gold); color: var(--blue-deep);
+}
+.g-approach__btns .g-btn:not(.g-btn--solid){
+  color: #F2EDE3; border-bottom-color: var(--gold-lit);
+}
+.g-approach__note{
+  margin: 0; font-family: var(--ui); font-size: var(--t-sm);
+  line-height: 1.6; color: #A9B8C8;
+}
+
+/* --------------------------------------------------------------------------
+   THE APPROACH MAP — phone variant
+   The landscape drawing is 720 units wide. In a 334px phone column that is a
+   46% scale, which renders the 15px stop labels at 7px and the sub-labels at
+   5.6px. Neither is readable. The portrait drawing is 340 units wide, so it
+   renders at roughly 1:1 and the type stays at its intended size.
+   -------------------------------------------------------------------------- */
+.g-approach__svg--tall{ display: none; }
+@media (max-width: 52rem){
+  .g-approach__svg--wide{ display: none; }
+  .g-approach__svg--tall{ display: block; margin-inline: auto; max-width: 340px; }
+}
