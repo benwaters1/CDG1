@@ -64,7 +64,7 @@ def run():
     m.resend_enabled = lambda: True
     # (ok, why) since app.py started reporting WHY Resend refused a message.
     # send_email unpacks it, and a bare True cannot be unpacked.
-    m.send_email_via_resend = lambda to, subj, body, ics=None, name=None, html=None: (
+    m.send_email_via_resend = lambda to, subj, body, ics=None, name=None, html=None, reply_to=None: (
         sent.append({"to": to, "subject": subj, "body": body}), (True, None))[1]
     try:
         s.section("With it off, nothing changes")

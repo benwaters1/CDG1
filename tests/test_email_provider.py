@@ -95,7 +95,7 @@ def run():
     was_enabled, was_resend = m.resend_enabled, m.send_email_via_resend
     m.resend_enabled = lambda: True
     m.send_email_via_resend = (
-        lambda to, subj, body, ics=None, name=None, html=None:
+        lambda to, subj, body, ics=None, name=None, html=None, reply_to=None:
         (False, "Resend refused it (403): the domain is not verified"))
     try:
         with m.app.test_request_context("/"):
@@ -158,7 +158,7 @@ def run():
     m.RESEND_FROM = "bookings@chateaugudanes.com"
     sent = []
     m.send_email_via_resend = (
-        lambda to, subj, body, ics=None, name=None, html=None:
+        lambda to, subj, body, ics=None, name=None, html=None, reply_to=None:
         (sent.append((to, subj, body)), (True, None))[1])
     try:
         r = oc.post("/admin/email-outbox/test", follow_redirects=True)
@@ -198,7 +198,7 @@ def run():
         before = conn.execute(
             "SELECT COUNT(*) c FROM email_outbox WHERE sent_at IS NULL").fetchone()["c"]
         m.send_email_via_resend = (
-            lambda to, subj, body, ics=None, name=None, html=None:
+            lambda to, subj, body, ics=None, name=None, html=None, reply_to=None:
             (False, "Resend refused it (403): the domain is not verified"))
         r = oc.post("/admin/email-outbox/test", follow_redirects=True)
         s.check("a failed test says exactly why",
@@ -224,7 +224,7 @@ def run():
     landed = []
     m.resend_enabled = lambda: True
     m.send_email_via_resend = (
-        lambda to, subj, body, ics=None, name=None, html=None:
+        lambda to, subj, body, ics=None, name=None, html=None, reply_to=None:
         (landed.append((to, subj)), (True, None))[1])
     m.MAIL_REDIRECT_TO = "zzredirect@example.invalid"
     try:

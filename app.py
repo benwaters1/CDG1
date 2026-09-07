@@ -271,6 +271,7 @@ LEAVE_SETTING_DEFAULTS = {
 AUTOMATION_SETTING_DEFAULTS = {
     "automation_housekeeping_enabled": "1",
     "automation_weather_enabled": "1",
+    "automation_exchange_rates_enabled": "1",
     "automation_photo_mirror_enabled": "1",
     "automation_daily_digest_enabled": "1",
     "automation_ical_sync_enabled": "1",
@@ -21541,6 +21542,40 @@ def make_reference_code():
 # logged and swallowed rather than raised.
 # ---------------------------------------------------------------------------
 
+# Which of the house's inboxes a reply to each kind of letter should reach.
+# The value is matched against the LOCAL PART of the configured mailboxes, so
+# adding experience@ to MS_GRAPH_MAILBOXES is all it takes for atelier replies
+# to start landing there -- there is no second list here to keep in step.
+REPLY_TO_AREAS = {
+    "rooms": ("bookings", "reservations", "stay"),
+    "restaurant": ("restaurant", "dining", "table"),
+    "workshops": ("experience", "workshops", "atelier"),
+    "events": ("events", "weddings"),
+    "accounts": ("accounts", "billing", "finance"),
+}
+
+
+def reply_to_for(area):
+    """The address a reply to this kind of letter should reach, or None.
+
+    EVERY LETTER THIS HOUSE SENDS CAME FROM ONE ADDRESS AND HAD NO REPLY-TO,
+    so a guest hitting Reply on a dinner confirmation wrote to whichever inbox
+    RESEND_FROM happened to name -- and the house runs five. The inbound side
+    has routed by mailbox for months; the outbound side collapsed them all
+    into one and nobody could tell, because a reply that lands in the wrong
+    inbox still lands.
+
+    None when nothing matches, which means the letter goes out exactly as it
+    does today. A guessed Reply-To is worse than none: it would send a guest's
+    reply to an address the house does not read.
+    """
+    for local in REPLY_TO_AREAS.get(area, ()):
+        for mailbox in MS_GRAPH_MAILBOXES:
+            if mailbox.split("@")[0].strip().lower() == local:
+                return mailbox
+    return None
+
+
 def resend_enabled():
     return bool(RESEND_API_KEY and RESEND_FROM)
 
@@ -21577,7 +21612,7 @@ def resend_refusal(exc):
 
 
 def send_email_via_resend(to_address, subject, body, ics_content=None,
-                          ics_filename=None, html=None):
+                          ics_filename=None, html=None, reply_to=None):
     """Resend's HTTP API — plain urllib, no extra dependency (matches how
     the rest of this file makes outbound HTTP calls, e.g. fetch_ical_ranges).
 
@@ -21588,6 +21623,8 @@ def send_email_via_resend(to_address, subject, body, ics_content=None,
     the text is written first and stays the authoritative version.
     """
     payload = {"from": RESEND_FROM, "to": [to_address], "subject": subject, "text": body}
+    if reply_to:
+        payload["reply_to"] = reply_to
     if html:
         payload["html"] = html
     if ics_content:
@@ -21842,7 +21879,7 @@ def keep_guest_message(to_address, subject, body, channel="email", delivered=Fal
 
 
 def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
-               keep=True, html=None, report=None):
+               keep=True, html=None, report=None, area=None):
     """Send one message, and if it cannot go out, keep it.
 
     `keep=False` for anything whose body is itself a credential — a password
@@ -21883,7 +21920,8 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         # UNPACKED, never truth-tested: a bare `if` on a 2-tuple is true even
         # when the first item is False, so every refusal would report success.
         went, why = send_email_via_resend(to_address, subject, body, ics_content,
-                                          ics_filename, html=html)
+                                          ics_filename, html=html,
+                                          reply_to=reply_to_for(area))
         if went:
             if keep:
                 keep_guest_message(to_address, subject, body, delivered=True)
@@ -21916,6 +21954,12 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         msg["Subject"] = subject
         msg["From"] = SMTP_FROM
         msg["To"] = to_address
+        # Same address the Resend branch uses. A rule that applied to one
+        # transport and not the other is a rule that stops applying the day
+        # somebody changes which one is configured.
+        replies_to = reply_to_for(area)
+        if replies_to:
+            msg["Reply-To"] = replies_to
         msg.set_content(body)
         if html:
             # An ALTERNATIVE, which is what makes the plain text the fallback
@@ -22574,6 +22618,39 @@ def house_windows():
         "guest_session_hours": GUEST_SESSION_HOURS,
         "workshop_balance_days": WORKSHOP_BALANCE_DAYS,
     }
+
+
+@app.context_processor
+def inject_exchange_rates():
+    """Rates on every public page, for the same reason the pin is.
+
+    The converter used to fetch these from the guest's browser and had
+    silently stopped working, so the selector changed no figure on the page.
+    Rendered from here they are in the HTML: the conversion needs no third
+    party, cannot be blocked by something the house does not control, and is
+    there before any javascript runs.
+
+    Empty when nothing has been fetched or the rates have gone stale, and the
+    template draws no selector at all in that case -- an inert control is
+    worse than none, which is the fault this replaced.
+    """
+    # ALWAYS the key, never an empty dict. A context processor that returns
+    # nothing leaves fx_rates Undefined, and |tojson on Undefined raises --
+    # which took out every error page, every 404 and every request with no
+    # endpoint, because those are exactly the ones that took this branch.
+    if not request.endpoint or request.endpoint.startswith("static"):
+        return {"fx_rates": {}}
+    try:
+        conn = get_db()
+        try:
+            fx = exchange_rates(conn)
+        finally:
+            conn.close()
+    except Exception:
+        # A context processor that raises takes down every page. Rates are a
+        # convenience; the site is not.
+        return {"fx_rates": {}}
+    return {"fx_rates": fx["rates"]}
 
 
 @app.context_processor
@@ -38095,6 +38172,90 @@ def weather_now(conn, *, max_age_minutes=WEATHER_MAX_AGE_MINUTES, now=None):
             "minutes_old": int(age.total_seconds() // 60)}
 
 
+# The currencies the site offers. EUR is not in it: it is what the house
+# charges in, so it is the base rather than a conversion.
+FX_SETTING = "exchange_rates"
+FX_CURRENCIES = ("USD", "GBP", "AUD")
+# A rate this old is still worth showing -- a guest is being given a rough
+# idea, not a quote -- but past a week it stops being one, and saying nothing
+# beats saying a number from last month.
+FX_STALE_DAYS = 7
+
+
+def fetch_exchange_rates(timeout=8):
+    """Ask Frankfurter what a euro is worth. Raises on anything unusable.
+
+    urllib rather than requests, like every other outbound call here. No key
+    and no account, which is the same reason the weather uses Open-Meteo.
+    """
+    url = ("https://api.frankfurter.app/latest?from=EUR&to="
+           + ",".join(FX_CURRENCIES))
+    req = Request(url, headers={"User-Agent": "chateau-gudanes"})
+    with urlopen(req, timeout=timeout) as r:
+        payload = json.loads(r.read().decode("utf-8"))
+    rates = payload.get("rates") or {}
+    out = {}
+    for code in FX_CURRENCIES:
+        value = rates.get(code)
+        if isinstance(value, (int, float)) and value > 0:
+            out[code] = round(float(value), 4)
+    if not out:
+        raise ValueError("no usable rates in the reply")
+    return {"rates": out, "at": datetime.now(timezone.utc).isoformat()}
+
+
+def exchange_rates(conn):
+    """The cached rates, and whether they are old enough to keep quiet about.
+
+    THE GUEST'S BROWSER USED TO FETCH THIS ITSELF, and it had stopped working
+    -- the call is refused by the browser for want of a CORS header, the
+    catch handler passes null, and every conversion silently does nothing. So
+    the picker sat on every public page offering dollars and pounds and
+    changed no figure on the page when it was used. Nothing errored, nothing
+    was logged, and the control looked exactly as it does when it works.
+
+    Fetched by the house now, on the same argument as the weather: one call an
+    hour for the whole site instead of one per visitor, no third party in the
+    guest's browser, and it cannot be blocked by something the house does not
+    control. It also means the figures are in the HTML, so they are there with
+    no javascript at all.
+
+    Returns {'rates': {...}, 'at': iso or None, 'stale': bool, 'age_days': n}.
+    Empty rates is the honest answer when nothing has been fetched -- the
+    template shows no converter rather than an inert one.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (FX_SETTING,)).fetchone()
+    try:
+        held = json.loads(row["value"]) if row and row["value"] else {}
+    except (ValueError, TypeError):
+        held = {}
+    rates = held.get("rates") or {}
+    when = parse_datetime_iso(held.get("at"))
+    if when and when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    age = (datetime.now(timezone.utc) - when).days if when else None
+    stale = age is None or age > FX_STALE_DAYS
+    return {
+        "rates": {} if stale else rates,
+        "at": held.get("at"), "age_days": age, "stale": stale,
+        # Kept separately so the owner's page can say "we have rates and they
+        # are too old" rather than the same nothing a fresh install shows.
+        "held": rates,
+    }
+
+
+def run_exchange_rate_job(conn):
+    """Refresh the cached rates. Fetched by the house, not by the guest."""
+    snap = fetch_exchange_rates()
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (FX_SETTING, json.dumps(snap)))
+    conn.commit()
+    return ", ".join("%s %s" % (k, v) for k, v in sorted(snap["rates"].items()))
+
+
 def run_weather_job(conn):
     """Refresh the cached reading. Fetched by the house, not by the guest."""
     snap = fetch_weather()
@@ -38912,7 +39073,9 @@ def send_restaurant_email(conn, booking, template_key, context):
     subject, body = render_email_template(conn, template_key, context)
     if not subject:
         return
-    send_email(booking["guest_email"], subject, body)
+    # area=: a reply to a dinner confirmation belongs in the restaurant's
+    # inbox, not in whichever one RESEND_FROM happens to name.
+    send_email(booking["guest_email"], subject, body, area="restaurant")
 
 
 def refund_restaurant_booking(conn, booking, reason="Reservation cancelled by the château", user_id=None):
@@ -40123,7 +40286,7 @@ def run_room_feedback_job(conn, days_after=None):
         conn.execute("UPDATE bookings SET feedback_requested_at = ? WHERE id = ?",
                      (datetime.now(timezone.utc).isoformat(), booking["id"]))
         conn.commit()
-        send_email(booking["guest_email"], subject, body)
+        send_email(booking["guest_email"], subject, body, area="rooms")
         asked += 1
 
     if not departed:
@@ -41004,7 +41167,8 @@ def send_workshop_email(conn, booking, template_key, context):
     if booking["do_not_email"]:
         log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "skipped — opted out")
         return
-    sent = send_email(booking["guest_email"], subject, body)
+    sent = send_email(booking["guest_email"], subject, body,
+                      area="workshops")
     log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "sent" if sent else "failed")
 
 
@@ -64737,7 +64901,8 @@ def run_workshop_feedback_request_job(conn):
             "feedback_url": url_for("workshop_feedback", token=booking["manage_token"], _external=True),
         })
         if subject and not booking["do_not_email"]:
-            send_email(booking["guest_email"], subject, body)
+            send_email(booking["guest_email"], subject, body,
+                       area="workshops")
         conn.execute(
             "UPDATE workshop_bookings SET feedback_requested_at = ? WHERE id = ?",
             (datetime.now(timezone.utc).isoformat(), booking["id"]),
@@ -65275,6 +65440,10 @@ AUTOMATION_JOBS = [
     # Hourly. The page reads a cache and never the network, so a slow morning
     # at Open-Meteo is a page with no weather on it rather than a slow page.
     ("weather", "automation_weather_enabled", None, 3600, run_weather_job),
+    # Daily. A rate that moves half a per cent overnight does not change what
+    # a guest decides, and the figure is labelled as approximate anyway.
+    ("exchange_rates", "automation_exchange_rates_enabled", None, 24 * 3600,
+     run_exchange_rate_job),
     ("daily_digest", "automation_daily_digest_enabled", None,
      DIGEST_INTERVAL_HOURS * 3600, run_daily_digest_job),
     ("ical_sync", "automation_ical_sync_enabled", "automation_ical_sync_interval_hours", None, run_ical_sync_job),
@@ -65461,6 +65630,7 @@ AUTOMATION_EXPLAINED_ON_PAGE = {
 
 AUTOMATION_JOB_LABELS = {
     "weather": "What it is doing at the château",
+    "exchange_rates": "What a euro is worth, for the price converter",
     "housekeeping": "Housekeeping (expire stale bookings, prep arrivals)",
     "daily_digest": "Daily owner digest email",
     "workshop_autocharge": "Workshop: charge the balance on its due date",

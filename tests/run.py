@@ -104,6 +104,7 @@ SUITES = [
     "test_workshop_announce",
     "test_email_outbox",
     "test_email_provider",
+    "test_rates_and_replies",
     "test_email_templates",
     "test_newsletter",
     "test_gallery",
