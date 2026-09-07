@@ -53,3 +53,7 @@ photo_harvest/
 # same way -- tests/run.py works that out on every run, from the run itself.
 catalogue.json
 _untested.txt
+
+# The camera roll's card-reader key, generated for the owner to paste
+# into .env themselves. One line, one copy, never in git.
+INGEST-KEY.txt
