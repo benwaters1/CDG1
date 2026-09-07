@@ -1,0 +1,40 @@
+{#  ==========================================================================
+    ANY ONE OF THE TWENTY-ONE LETTERS, DRAWN
+
+    The words are not here. They live in email_templates, which the owner
+    edits under Management, Email templates — they are DATA. Writing an HTML
+    version of each letter would be twenty-one second copies of the same
+    sentences, and the first time somebody corrected one the two would
+    disagree: a guest would get the old wording drawn nicely and the new
+    wording in plain text, and nothing would report it.
+
+    So this draws whatever it is handed. letter_blocks() takes the owner's
+    text apart into paragraphs and buttons; this puts them on the page. Every
+    letter improves when somebody improves the text, and neither half can
+    drift from the other because there is only one half.
+
+    Written for mail clients, like _email.html: tables, inline styles, no web
+    fonts, one 600px column. Everything is escaped — these bodies carry guest
+    names, and a guest called <script> is a guest.
+    ========================================================================== #}
+{% from '_email.html' import email_shell, email_button %}
+
+{% call email_shell(subject, blocks[0].text[:110] if blocks and blocks[0].kind == 'text' else '', settings) %}
+
+  <p style="margin:0 0 4px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
+            letter-spacing:.14em; text-transform:uppercase; color:#73562D;">Château de Gudanes</p>
+  <p style="margin:0 0 24px; font-family:Georgia,'Times New Roman',serif; font-size:25px;
+            line-height:1.3; color:#14305F;">{{ subject }}</p>
+
+  {% for block in blocks %}
+    {% if block.kind == 'button' %}
+      {{ email_button(block.href, block.label) }}
+    {% else %}
+      {# line-height and size matched to _email.html so a letter drawn here
+         and the booking confirmation drawn there read as the same house. #}
+      <p style="margin:0 0 18px; font-family:Helvetica,Arial,sans-serif; font-size:16px;
+                line-height:1.7; color:#2C3E50;">{{ block.text }}</p>
+    {% endif %}
+  {% endfor %}
+
+{% endcall %}

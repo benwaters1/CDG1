@@ -29480,7 +29480,7 @@ def pos_auto_send_receipt(conn, order_id):
     bill = pos_bill(conn, order_id)
     if not bill or not bill["live"]:
         return None
-    subject, body = render_email_template(
+    subject, body, letter = render_email_template(
         conn, "pos_receipt", pos_receipt_email_context(conn, bill))
     if not subject:
         return None
@@ -29495,7 +29495,7 @@ def pos_auto_send_receipt(conn, order_id):
     # and it caught this. The guest loses nothing by the order: a send that
     # fails is held in the outbox rather than dropped.
     conn.commit()
-    send_email(address, subject, body)
+    send_email(address, subject, body, html=letter)
     return address
 
 
@@ -29548,7 +29548,7 @@ def pos_email_receipt(order_id):
         flash("Enter the guest's email address.", "error")
         return redirect(url_for("pos_order", order_id=order_id))
 
-    subject, body = render_email_template(
+    subject, body, letter = render_email_template(
         conn, "pos_receipt", pos_receipt_email_context(conn, bill))
     if not subject:
         conn.close()
@@ -29563,7 +29563,7 @@ def pos_email_receipt(order_id):
     conn.commit()
     conn.close()
 
-    if send_email(address, subject, body):
+    if send_email(address, subject, body, html=letter):
         flash(f"Receipt sent to {address}.", "success")
     else:
         # send_email holds it in the outbox when no provider is configured, so
@@ -37079,10 +37079,10 @@ def event_email_context(inquiry):
 
 
 def send_event_email(conn, inquiry, template_key, context):
-    subject, body = render_email_template(conn, template_key, context)
+    subject, body, letter = render_email_template(conn, template_key, context)
     if not subject:
         return
-    send_email(inquiry["contact_email"], subject, body)
+    send_email(inquiry["contact_email"], subject, body, html=letter)
 
 
 @app.route("/events")
@@ -39070,12 +39070,13 @@ def restaurant_email_context(booking, refund_note=""):
 
 
 def send_restaurant_email(conn, booking, template_key, context):
-    subject, body = render_email_template(conn, template_key, context)
+    subject, body, letter = render_email_template(conn, template_key, context)
     if not subject:
         return
     # area=: a reply to a dinner confirmation belongs in the restaurant's
     # inbox, not in whichever one RESEND_FROM happens to name.
-    send_email(booking["guest_email"], subject, body, area="restaurant")
+    send_email(booking["guest_email"], subject, body, html=letter,
+               area="restaurant")
 
 
 def refund_restaurant_booking(conn, booking, reason="Reservation cancelled by the château", user_id=None):
@@ -40223,7 +40224,7 @@ def run_review_invitation_job(conn, days_after=None):
                 (datetime.now(timezone.utc).isoformat(), answer["id"]))
             conn.commit()
             continue
-        subject, body = render_email_template(conn, "review_invitation", {
+        subject, body, letter = render_email_template(conn, "review_invitation", {
             "guest_name": (answer["guest_name"] or "").strip().split(" ")[0] or "there",
             "review_url": link,
         })
@@ -40236,7 +40237,7 @@ def run_review_invitation_job(conn, days_after=None):
         conn.execute("UPDATE guest_feedback SET review_invited_at = ? WHERE id = ?",
                      (datetime.now(timezone.utc).isoformat(), answer["id"]))
         conn.commit()
-        send_email(answer["email"], subject, body)
+        send_email(answer["email"], subject, body, html=letter)
         asked += 1
     if not answers:
         return "nobody new to ask"
@@ -40271,7 +40272,7 @@ def run_room_feedback_job(conn, days_after=None):
 
     asked = 0
     for booking in departed:
-        subject, body = render_email_template(conn, "room_feedback_request", {
+        subject, body, letter = render_email_template(conn, "room_feedback_request", {
             "guest_name": (booking["guest_name"] or "").strip().split(" ")[0] or "there",
             "room_name": booking["room_name"],
             "feedback_url": url_for("guest_feedback",
@@ -40286,7 +40287,8 @@ def run_room_feedback_job(conn, days_after=None):
         conn.execute("UPDATE bookings SET feedback_requested_at = ? WHERE id = ?",
                      (datetime.now(timezone.utc).isoformat(), booking["id"]))
         conn.commit()
-        send_email(booking["guest_email"], subject, body, area="rooms")
+        send_email(booking["guest_email"], subject, body, html=letter,
+                   area="rooms")
         asked += 1
 
     if not departed:
@@ -40895,6 +40897,97 @@ def unknown_merge_tags(template_key, subject, body):
     return sorted(used - set(allowed))
 
 
+# A bare URL in a letter is the complaint this answers. Kept deliberately
+# simple: http/https up to whitespace, which is what these bodies contain --
+# a manage link, a check-in link, a feedback link, one per line.
+LETTER_URL = re.compile(r"https?://[^\s<>\"']+")
+
+
+def letter_blocks(text):
+    """The owner's plain text, split into what a drawn letter is made of.
+
+    THE POINT OF DOING IT THIS WAY. There are twenty-one guest letters and
+    every one of them is editable in Management, Email templates -- they are
+    DATA, not code. Writing an HTML version of each would be twenty-one second
+    copies of the same words, and the first time somebody corrected a sentence
+    the two would disagree. A guest would get the old wording drawn nicely and
+    the new wording in plain text, or the other way round, and nothing would
+    report it.
+
+    So there is one set of words. This takes them apart: paragraphs, and any
+    line that is nothing but a link becomes a button. That is the whole
+    finding EMAILS.md opened with -- the manage link arrived as a bare URL a
+    guest had to copy out -- and it is fixed for all twenty-one at once rather
+    than four at a time.
+
+    Returns [{"kind": "text"|"button", ...}]. A pure function of the text, so
+    it can be reasoned about without rendering anything.
+    """
+    blocks = []
+    for chunk in re.split(r"\n\s*\n", (text or "").replace("\r\n", "\n")):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        lines = [l.strip() for l in chunk.split("\n") if l.strip()]
+        keep = []
+        for line in lines:
+            found = LETTER_URL.findall(line)
+            # A LINE THAT IS ONLY A LINK is a button. A line with words either
+            # side of one is a sentence, and turning that into a button loses
+            # the sentence -- so it stays as text with the address visible,
+            # which is what it is today and is at least readable.
+            if len(found) == 1 and line == found[0]:
+                if keep:
+                    blocks.append({"kind": "text", "text": " ".join(keep)})
+                    keep = []
+                label = _letter_label(blocks)
+                blocks.append({"kind": "button", "href": found[0],
+                               "label": label})
+            else:
+                keep.append(line)
+        if keep:
+            blocks.append({"kind": "text", "text": " ".join(keep)})
+    return blocks
+
+
+def _letter_label(blocks):
+    """What to write on a button, taken from the sentence before it.
+
+    The letters all introduce their link the same way -- "Check in online:",
+    "Manage your registration:" -- so the words are already there and do not
+    need inventing. Falls back to something plain rather than guessing.
+    """
+    for block in reversed(blocks):
+        if block["kind"] != "text":
+            continue
+        tail = block["text"].rstrip().rstrip(":").split(":")[-1].strip()
+        # A short trailing clause is a label. A whole paragraph is not, and
+        # putting one on a button gives you a button the width of the page.
+        words = tail.split()
+        if 1 <= len(words) <= 6:
+            return tail[:40]
+        break
+    return "Open the page"
+
+
+def letter_html(subject, text, settings=None):
+    """One of the twenty-one letters, drawn, or "" if it cannot be.
+
+    Empty rather than raising, the same rule the booking confirmation follows:
+    a shell that will not render is a reason to send a plainer letter, never a
+    reason for the guest to hear nothing.
+    """
+    try:
+        blocks = letter_blocks(text)
+        if not blocks:
+            return ""
+        return render_template("email_letter.html", subject=subject,
+                               blocks=blocks, settings=settings or {})
+    except Exception as e:      # pragma: no cover - the text still goes
+        print(f"[email html failed] {subject}: {e}")
+        return ""
+
+
 def render_email_template(conn, template_key, context):
     """Merge-tag substitution against an admin-editable template. Falls back
     to the raw template text (tags left unreplaced) if the context is
@@ -40943,7 +41036,7 @@ def render_email_template(conn, template_key, context):
         body = body_src.format(**context)
     except (KeyError, IndexError):
         body = body_src
-    return subject, body
+    return subject, body, letter_html(subject, body)
 
 
 # The fields a campaign template can use. Kept to things we can reliably fill
@@ -41161,13 +41254,13 @@ def send_workshop_email(conn, booking, template_key, context):
     honouring the guest's do-not-email opt-out and always leaving an
     auditable row in workshop_messages — sent, skipped, or failed — so the
     registration's message history is complete regardless of outcome."""
-    subject, body = render_email_template(conn, template_key, context)
+    subject, body, letter = render_email_template(conn, template_key, context)
     if not subject:
         return
     if booking["do_not_email"]:
         log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "skipped — opted out")
         return
-    sent = send_email(booking["guest_email"], subject, body,
+    sent = send_email(booking["guest_email"], subject, body, html=letter,
                       area="workshops")
     log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "sent" if sent else "failed")
 
@@ -43736,7 +43829,7 @@ def ask_for_a_review(feedback_id):
         conn.close()
         flash(problem, "error")
         return redirect(url_for("admin_feedback"))
-    subject, body = render_email_template(conn, "review_invitation", {
+    subject, body, letter = render_email_template(conn, "review_invitation", {
         "guest_name": (answer["guest_name"] or "").strip().split(" ")[0] or "there",
         "review_url": link,
     })
@@ -43744,7 +43837,7 @@ def ask_for_a_review(feedback_id):
                  (datetime.now(timezone.utc).isoformat(), feedback_id))
     conn.commit()
     conn.close()
-    send_email(answer["email"], subject, body)
+    send_email(answer["email"], subject, body, html=letter)
     flash(f"Asked {answer['guest_name']} for a public review.", "success")
     return redirect(url_for("admin_feedback"))
 
@@ -64731,7 +64824,7 @@ def run_event_balance_reminder_job(conn, days_before):
                                  _external=True)
         except RuntimeError:
             manage_url = f"{PUBLIC_BASE_URL or ''}/events/manage/{event['manage_token']}"
-        subject, body = render_email_template(conn, "event_balance_reminder", {
+        subject, body, letter = render_email_template(conn, "event_balance_reminder", {
             "contact_name": event["contact_name"] or "there",
             "event_type": event["event_type"] or "event",
             "event_date": format_date_human(event["preferred_date"])
@@ -64743,7 +64836,7 @@ def run_event_balance_reminder_job(conn, days_before):
         })
         if not subject:
             continue
-        if send_email(event["contact_email"], subject, body):
+        if send_email(event["contact_email"], subject, body, html=letter):
             # The STAGE is stamped when there is a plan, so the next one can
             # still be chased. Stamping the event would have meant one
             # reminder per wedding rather than one per instalment.
@@ -64896,12 +64989,12 @@ def run_workshop_feedback_request_job(conn):
     ).fetchall()
     sent = 0
     for booking in due:
-        subject, body = render_email_template(conn, "workshop_feedback_request", {
+        subject, body, letter = render_email_template(conn, "workshop_feedback_request", {
             "guest_name": booking["guest_name"], "workshop_title": booking["title"],
             "feedback_url": url_for("workshop_feedback", token=booking["manage_token"], _external=True),
         })
         if subject and not booking["do_not_email"]:
-            send_email(booking["guest_email"], subject, body,
+            send_email(booking["guest_email"], subject, body, html=letter,
                        area="workshops")
         conn.execute(
             "UPDATE workshop_bookings SET feedback_requested_at = ? WHERE id = ?",
@@ -64998,7 +65091,7 @@ def notify_room_waitlist_opening(conn, arrival_iso, departure_iso, *, skip_entry
             "name": entry["name"], "desired_arrival": entry["desired_arrival"],
             "desired_departure": entry["desired_departure"], "book_url": book_url,
         }
-        subject, body = render_email_template(conn, "room_waitlist_opening", context)
+        subject, body, letter = render_email_template(conn, "room_waitlist_opening", context)
         # keep=False, for the same reason a password-reset link uses it: this
         # message is only true for as long as the dates are still free. With no
         # email provider configured, send_email would otherwise queue one of
@@ -65007,7 +65100,8 @@ def notify_room_waitlist_opening(conn, arrival_iso, departure_iso, *, skip_entry
         # is switched on, for dates that were probably resold weeks earlier.
         # Nothing is queued, the entry stays open, and the caller falls back to
         # telling the owner to work the waitlist by hand.
-        reached = bool(subject) and send_email(entry["email"], subject, body, keep=False)
+        reached = bool(subject) and send_email(entry["email"], subject, body,
+                                              keep=False, html=letter)
 
         # And by text, which is the channel that decides this one. A room that
         # has come free will not still be free tomorrow, and somebody watching
@@ -65051,7 +65145,7 @@ def notify_restaurant_waitlist_opening(conn, dinner_date_iso):
             "name": entry["name"], "desired_date": format_date_human(dinner_date_iso),
             "party_size": entry["party_size"] or "?", "book_url": book_url,
         }
-        subject, body = render_email_template(conn, "restaurant_waitlist_opening", context)
+        subject, body, letter = render_email_template(conn, "restaurant_waitlist_opening", context)
         # keep=False, for the same reason a password-reset link uses it: this
         # message is only true for as long as the dates are still free. With no
         # email provider configured, send_email would otherwise queue one of
@@ -65060,7 +65154,8 @@ def notify_restaurant_waitlist_opening(conn, dinner_date_iso):
         # is switched on, for dates that were probably resold weeks earlier.
         # Nothing is queued, the entry stays open, and the caller falls back to
         # telling the owner to work the waitlist by hand.
-        if subject and send_email(entry["email"], subject, body, keep=False):
+        if subject and send_email(entry["email"], subject, body, keep=False,
+                                  html=letter):
             conn.execute("UPDATE restaurant_waitlist SET status = 'contacted' WHERE id = ?", (entry["id"],))
             notified.append(entry)
     if notified:
@@ -65090,7 +65185,7 @@ def notify_workshop_waitlist_opening(conn, session_id):
             "name": entry["name"], "workshop_title": session_row["title"], "dates": date_line,
             "register_url": register_url,
         }
-        subject, body = render_email_template(conn, "workshop_waitlist_opening", context)
+        subject, body, letter = render_email_template(conn, "workshop_waitlist_opening", context)
         # keep=False, for the same reason a password-reset link uses it: this
         # message is only true for as long as the dates are still free. With no
         # email provider configured, send_email would otherwise queue one of
@@ -65099,7 +65194,8 @@ def notify_workshop_waitlist_opening(conn, session_id):
         # is switched on, for dates that were probably resold weeks earlier.
         # Nothing is queued, the entry stays open, and the caller falls back to
         # telling the owner to work the waitlist by hand.
-        if subject and send_email(entry["email"], subject, body, keep=False):
+        if subject and send_email(entry["email"], subject, body, keep=False,
+                                  html=letter):
             conn.execute("UPDATE workshop_waitlist SET status = 'contacted' WHERE id = ?", (entry["id"],))
             notified.append(entry)
     if notified:

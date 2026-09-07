@@ -220,7 +220,12 @@ def run():
     s.section("Pricing an event enquiry")
     sent = []
 
-    def capture(to, subject, body, ics_content=None, ics_filename=None, keep=True):
+    # **rest so this keeps working when send_email grows an argument. It
+    # grew one -- html -- and a mock with a fixed signature turns that
+    # into a TypeError inside the route, which reads as the route being
+    # broken rather than the mock.
+    def capture(to, subject, body, ics_content=None, ics_filename=None,
+                keep=True, **rest):
         sent.append((to, subject))
         return True
 

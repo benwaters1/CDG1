@@ -67,7 +67,7 @@ def run():
     conn.execute("UPDATE email_templates SET subject = ?, body = ? WHERE template_key = ?",
                  ("TEST SUBJECT {guest_name}", "TEST BODY {reference_code}", KEY))
     conn.commit()
-    subject, body = m.render_email_template(conn, KEY, {
+    subject, body, _drawn = m.render_email_template(conn, KEY, {
         "guest_name": "Marie", "dinner_date": "2026-09-01", "party_size": 2,
         "reference_code": "ABC123", "manage_url": "https://example.com/x",
         "price_block": "", "balance_block": "", "arrival_time": "19:30",

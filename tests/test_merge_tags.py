@@ -155,7 +155,7 @@ def run():
     conn.execute("UPDATE email_templates SET body = ? WHERE template_key = ?",
                  ("Hi {guest_name}, about {not_a_real_tag}. {feedback_url}", KEY))
     conn.commit()
-    subject, rendered = m.render_email_template(
+    subject, rendered, _drawn = m.render_email_template(
         conn, KEY, {"guest_name": "Marie", "room_name": "Blue",
                     "feedback_url": "https://example.invalid/f"})
     conn.close()
