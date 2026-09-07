@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Shopping{% endblock %}
+{% block content %}
+
+{#  ==========================================================================
+    THE LIST THAT LEAVES THE HOUSE
+
+    The one page in this app the service worker is allowed to keep, so it can
+    be read in a supermarket in Toulouse with no signal — an hour and three
+    quarters away, in a valley, on a network nobody would call reliable.
+
+    NOTHING PERSONAL IS ON IT, and that is the reason it is a separate page
+    rather than a section of the kitchen screen. A cached page lives on a
+    device that goes in a van and gets left in a car park. The privacy notice
+    says a guest's dietary and medical notes are kept for the stay and deleted
+    after it; a copy sitting in a browser cache in a supermarket is not that.
+    So the guests stay on the screen bolted to the kitchen wall.
+
+    Ticks are held if they cannot be sent — see actions.js — so twenty things
+    ticked in an aisle with no bars are not twenty things lost at the till.
+    ========================================================================== #}
+
+<div class="page-head">
+  <h1>Shopping</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('chef_screen') }}" class="btn-ghost">The kitchen</a>
+    <a href="{{ url_for('shopping_list') }}" class="btn-ghost">Add something</a>
+  </div>
+</div>
+
+{# WHEN THIS WAS TRUE. The whole point of a page you are allowed to keep is
+   that you might be reading yesterday's — so it says when it was fetched,
+   and says it in the local time somebody can compare against a clock. #}
+<p class="page-intro">
+  {{ shopping.left }} {{ 'thing' if shopping.left == 1 else 'things' }} left ·
+  as of <span data-asof="{{ shopping.as_of }}">{{ shopping.as_of[11:16] }} UTC</span>
+</p>
+
+{% if shopping.short %}
+<h2 class="section-heading">The store says these are low</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">What</th><th scope="col">On hand</th>
+      <th scope="col">Reorder at</th></tr></thead>
+    <tbody>
+      {% for r in shopping.short %}
+      <tr>
+        <th scope="row">{{ r.name }}</th>
+        <td>{{ r.on_hand }}{% if r.unit %} {{ r.unit }}{% endif %}</td>
+        <td>{{ r.reorder_level }}{% if r.unit %} {{ r.unit }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if shopping.by_category %}
+{% for category, items in shopping.by_category.items() %}
+<h2 class="section-heading">{{ category }}</h2>
+<div class="mini-list">
+  {% for item in items %}
+  {# A 44px target, because this is tapped one-handed with a trolley in the
+     other. The whole row is the button, not a small box at the end of it. #}
+  <button type="button" class="mini-row shop-row{% if item['bought'] %} task-done{% endif %}"
+          style="width:100%; text-align:left; min-height:52px;"
+          data-shop-id="{{ item['id'] }}" data-shop-name="{{ item['name'] }}"
+          aria-pressed="{{ 'true' if item['bought'] else 'false' }}">
+    <span class="mini-name"><span class="shop-tick" aria-hidden="true">{{ '✓' if item['bought'] else '' }}</span> {{ item['name'] }}</span>
+    <span class="mini-role">
+      {%- if item['store'] %}{{ item['store'] }}{% endif %}
+      {%- if item['added_by'] %}{% if item['store'] %} · {% endif %}{{ item['added_by'] }} asked{% endif %}
+    </span>
+  </button>
+  {% endfor %}
+</div>
+{% endfor %}
+{% else %}
+<div class="empty-state">Nothing on the list.</div>
+{% endif %}
+
+<script>
+// Through gudanes.take, which keeps the tap if it cannot be sent. The row is
+// marked immediately either way: the chef has picked the thing up, and the
+// only outstanding question is whether the house knows yet. The bar at the
+// bottom of the screen is what says so.
+document.querySelectorAll('.shop-row').forEach(function (row) {
+  row.addEventListener('click', function () {
+    var id = row.getAttribute('data-shop-id');
+    var was = row.classList.contains('task-done');
+    gudanes.take('/shopping/' + id + '/toggle',
+                 'Ticked off ' + row.getAttribute('data-shop-name'))
+      .then(function (res) {
+        var bought = res.held ? !was : res.data.bought;
+        row.classList.toggle('task-done', !!bought);
+        row.setAttribute('aria-pressed', bought ? 'true' : 'false');
+        row.querySelector('.shop-tick').textContent = bought ? '✓' : '';
+      });
+  });
+});
+
+// The stamp in local time, once, on the device that is reading it. Rendered
+// as UTC on the server because the server does not know where the tablet is.
+(function () {
+  var el = document.querySelector('[data-asof]');
+  if (!el) return;
+  var when = new Date(el.getAttribute('data-asof'));
+  if (isNaN(when)) return;
+  el.textContent = when.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})
+    + ' on ' + when.toLocaleDateString();
+}());
+</script>
+
+{% endblock %}

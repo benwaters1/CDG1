@@ -23,8 +23,12 @@
       <div class="g-hint">
         Château de Gudanes
         {% if company and company['registered_address'] %}<br>{{ company['registered_address'] }}{% endif %}
-        {% if company and company['siret'] %}<br>SIRET {{ company['siret'] }}{% endif %}
+        {% if company and company['registration_number'] %}<br>SIRET {{ company['registration_number'] }}{% endif %}
         {% if company and company['vat_number'] %}<br>TVA {{ company['vat_number'] }}{% endif %}
+        {% if not (company and company['registration_number'] and company['vat_number']) %}
+        <br><span class="statement-missing">SIRET and TVA number missing —
+          set them under Management, Company info</span>
+        {% endif %}
       </div>
 
     {# Business guests need this as something they can forward to whoever pays.

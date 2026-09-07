@@ -81,7 +81,7 @@
     "addressRegion": "Ariège",
     "addressCountry": "FR"
   },
-  "geo": { "@type": "GeoCoordinates", "latitude": 42.8083, "longitude": 1.6528 },
+  {% if house_pin %}"geo": { "@type": "GeoCoordinates", "latitude": {{ house_pin.lat }}, "longitude": {{ house_pin.lng }} },{% endif %}
   "priceRange": "€€€",
   "currenciesAccepted": "EUR",
   "paymentAccepted": "Credit Card",

@@ -8495,4 +8495,15 @@ main > .g-facts{ border-bottom: 1px solid var(--line); }
   border-top: 1px solid rgba(220,192,119,.3);
   font-family: var(--ui); font-size: var(--t-ui); line-height: 1.65;
   color: #B9C6D4; max-width: 46rem;
+/* --------------------------------------------------------------------------
+   THE APPROACH MAP — phone variant
+   The landscape drawing is 720 units wide. In a 334px phone column that is a
+   46% scale, which renders the 15px stop labels at 7px and the sub-labels at
+   5.6px. Neither is readable. The portrait drawing is 340 units wide, so it
+   renders at roughly 1:1 and the type stays at its intended size.
+   -------------------------------------------------------------------------- */
+.g-approach__svg--tall{ display: none; }
+@media (max-width: 52rem){
+  .g-approach__svg--wide{ display: none; }
+  .g-approach__svg--tall{ display: block; margin-inline: auto; max-width: 340px; }
 }

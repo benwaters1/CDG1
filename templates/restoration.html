@@ -8,7 +8,7 @@
   "description": "An eighteenth-century château by Ange-Jacques Gabriel, First Architect to Louis XV. Classified a Class I Historic Monument in 1994 and under restoration since 2013.",
   "address": {"@type":"PostalAddress","addressLocality":"Château-Verdun",
     "postalCode":"09310","addressRegion":"Ariège","addressCountry":"FR"},
-  "geo": {"@type":"GeoCoordinates","latitude":42.7847,"longitude":1.6733},
+  {% if house_pin %}"geo": {"@type":"GeoCoordinates","latitude":{{ house_pin.lat }},"longitude":{{ house_pin.lng }}},{% endif %}
   "isAccessibleForFree": false,
   "publicAccess": true
 }
