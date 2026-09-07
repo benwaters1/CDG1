@@ -83,43 +83,6 @@ def run():
     oc, ec, owner, emp = clients()
     anon = m.app.test_client()
 
-    s.section("The path stamps it, so nobody has to remember")
-    room = _room()
-    arrival = house_today() + timedelta(days=45)
-    r = anon.post(f"/book/{room['id']}", data={
-        "arrival_date": arrival.isoformat(),
-        "departure_date": (arrival + timedelta(days=2)).isoformat(),
-        "guest_name": f"{TAG} Website", "guest_email": "zzsrc.web@example.invalid",
-        "guest_phone": "", "party_size": "2", "guests_under_18": "0",
-        "special_requests": "", "agree_terms": "on",
-    }, follow_redirects=False)
-    web = _booked(f"{TAG} Website")
-    s.check("a website booking is taken", web is not None,
-            detail=f"HTTP {r.status_code}")
-    s.check("and marked direct", web and web["source"] == "direct",
-            detail=f"{web['source']!r} if web else None — a field somebody has to "
-                   "set is a field that is mostly wrong")
-
-    s.section("The desk says desk")
-    wi = house_today() + timedelta(days=60)
-    oc.post("/admin/bookings/walk-in", data={
-        "room_id": str(room["id"]),
-        "arrival_date": wi.isoformat(),
-        "departure_date": (wi + timedelta(days=1)).isoformat(),
-        "guest_name": f"{TAG} Desk", "guest_email": "", "guest_phone": "",
-        "party_size": "2", "guests_under_18": "0", "special_requests": "",
-        "charge": "200", "payment_method": "cash",
-    }, follow_redirects=True)
-    desk = _booked(f"{TAG} Desk")
-    s.check("a stay taken at the door says so", desk and desk["source"] == "desk",
-            detail=f"{desk['source'] if desk else None!r}")
-
-    s.section("A guest who has STAYED before is its own source")
-    # Departed, not merely booked. Somebody with a confirmed stay still ahead of
-    # them booking a second one is one person planning one trip; counting that
-    # as returning would make a good week of forward bookings look like loyalty.
-    _raw("Past", source="direct", email="zzsrc.web@example.invalid",
-         arrival=house_today() - timedelta(days=40), nights=2, price=400)
     # Nights this room can actually take, asked of the same function the
     # booking route refuses on. They used to be house_today() + 90, + 120 and
     # + 150, and as the calendar rolled the first of those walked into the
@@ -127,6 +90,12 @@ def run():
     # check about how a source is decided failed on a booking that never
     # happened. A fixed offset into a real calendar is a date that is free
     # until one day it is not.
+    #
+    # AND IT HAPPENED AGAIN, to + 45, on 2026-09-07 -- an Immersive Artisan
+    # Workshop this time. The helper was written for the three dates that had
+    # already broken and left beside the two that had not, which is the same
+    # bet as before with a shorter fuse. Every date in this suite that has to
+    # be BOOKABLE now comes through here.
     def _free(after, nights=2):
         # Its own connection, opened and closed, like every other helper here:
         # this suite keeps none open across a check, and one held while the
@@ -150,6 +119,44 @@ def run():
         finally:
             c.close()
         raise AssertionError("no free %d nights in 600 days from %s" % (nights, after))
+
+    s.section("The path stamps it, so nobody has to remember")
+    room = _room()
+    arrival = _free(house_today() + timedelta(days=45))
+    r = anon.post(f"/book/{room['id']}", data={
+        "arrival_date": arrival.isoformat(),
+        "departure_date": (arrival + timedelta(days=2)).isoformat(),
+        "guest_name": f"{TAG} Website", "guest_email": "zzsrc.web@example.invalid",
+        "guest_phone": "", "party_size": "2", "guests_under_18": "0",
+        "special_requests": "", "agree_terms": "on",
+    }, follow_redirects=False)
+    web = _booked(f"{TAG} Website")
+    s.check("a website booking is taken", web is not None,
+            detail=f"HTTP {r.status_code}")
+    s.check("and marked direct", web and web["source"] == "direct",
+            detail=f"{web['source']!r} if web else None — a field somebody has to "
+                   "set is a field that is mostly wrong")
+
+    s.section("The desk says desk")
+    wi = _free(house_today() + timedelta(days=60), nights=1)
+    oc.post("/admin/bookings/walk-in", data={
+        "room_id": str(room["id"]),
+        "arrival_date": wi.isoformat(),
+        "departure_date": (wi + timedelta(days=1)).isoformat(),
+        "guest_name": f"{TAG} Desk", "guest_email": "", "guest_phone": "",
+        "party_size": "2", "guests_under_18": "0", "special_requests": "",
+        "charge": "200", "payment_method": "cash",
+    }, follow_redirects=True)
+    desk = _booked(f"{TAG} Desk")
+    s.check("a stay taken at the door says so", desk and desk["source"] == "desk",
+            detail=f"{desk['source'] if desk else None!r}")
+
+    s.section("A guest who has STAYED before is its own source")
+    # Departed, not merely booked. Somebody with a confirmed stay still ahead of
+    # them booking a second one is one person planning one trip; counting that
+    # as returning would make a good week of forward bookings look like loyalty.
+    _raw("Past", source="direct", email="zzsrc.web@example.invalid",
+         arrival=house_today() - timedelta(days=40), nights=2, price=400)
 
     again = _free(house_today() + timedelta(days=90))
     anon2 = m.app.test_client()
