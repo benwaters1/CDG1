@@ -144,7 +144,11 @@ def run():
     # exactly the regression it was written for is not a check.
     rows = [
         ("the total", r'<th scope="row"><strong>Total</strong></th>'),
-        ("what has been paid", r'<th scope="row">Paid</th>'),
+        ("what has been received", r'<th scope="row">Received</th>'),
+        # Added when the bill stopped netting refunds away in silence. Held
+        # by name like the rest: a refund read as a loose cell leaves a guest
+        # hearing a figure with nothing to say which of the two it is.
+        ("anything refunded", r'<th scope="row">Refunded</th>'),
         ("the balance still owed", r"""<th scope="row"><strong>\{\{ 'Balance due'"""),
         ("and the tourist tax", r'<th scope="row">\s+<strong>Taxe'),
     ]

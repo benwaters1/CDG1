@@ -118,13 +118,23 @@
         <th scope="row"><strong>Total</strong></th>
         <td class="num"><strong>€{{ '%.2f'|format(s.total) }}</strong></td>
       </tr>
-      {% if s.paid %}
-      <tr><th scope="row">Paid</th><td class="num">−€{{ '%.2f'|format(s.paid) }}</td></tr>
+      {% if s.received %}
+      <tr><th scope="row">Received</th><td class="num">−€{{ '%.2f'|format(s.received) }}</td></tr>
+      {% endif %}
+      {% if s.refunded %}
+      {# Shown rather than netted away in silence. A guest reading a smaller
+         "paid" figure with no explanation has no way to tell a refund from a
+         payment we failed to record. #}
+      <tr><th scope="row">Refunded</th><td class="num">+€{{ '%.2f'|format(s.refunded) }}</td></tr>
+      {% endif %}
+      {# Unconditional. This row used to sit inside "if paid", so a stay with
+         nothing paid on it -- every stay awaiting confirmation, every stay on
+         a deposit schedule, every walk-in written down at the door -- got a
+         bill with no bottom line at all. #}
       <tr>
         <th scope="row"><strong>{{ 'Balance due' if s.balance > 0 else 'Settled' }}</strong></th>
         <td class="num"><strong>€{{ '%.2f'|format(s.balance if s.balance > 0 else 0) }}</strong></td>
       </tr>
-      {% endif %}
     </tbody>
     </table>
   </div>

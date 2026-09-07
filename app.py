@@ -22304,6 +22304,29 @@ def amount_paid_for(conn, category, booking):
     `issue_refund` writes a refund into that same ledger -- so using its figure
     here subtracted every refund twice, shrinking the ceiling on each refund
     until a guest could never be made whole.
+
+    THE ROOM CASE, AND WHY IT IS NOT total_price ANY MORE. "Rooms pay the whole
+    total up front" was true when this was written: a stay could only be taken
+    through the card page. It is not true now. A stay can be held unpaid
+    awaiting confirmation, taken on a deposit with the balance due before
+    arrival, written down at the door as a walk-in, or paid in parts through
+    record_manual_booking_payment -- and every one of those was reported here
+    as paid in full the moment it existed.
+
+    Two things came of that, both facing the guest. Their statement -- the
+    document they keep for their VAT -- showed the whole total as paid and a
+    balance of nothing, while the Pay button, the balance chase and the debtors
+    list all read booking_bill and correctly showed the full amount
+    outstanding: two documents about one stay, disagreeing by the entire price
+    of it. And the emailed copy said it in a sentence, telling somebody who had
+    handed over nothing "Received 1350.00, Still to pay 0.00". Behind the house
+    side, refundable_amount is this figure less refunds, so it offered the full
+    price of an unpaid stay as refundable.
+
+    amount_paid is where money is recorded, by record_booking_payment, the one
+    place anything is added to a stay. Refunds are not taken off it -- they
+    live in the refunds table -- so it is still the gross figure, which is the
+    rule above and the one refundable_amount depends on.
     """
     if category == "workshop":
         row = conn.execute(
@@ -22316,6 +22339,20 @@ def amount_paid_for(conn, category, booking):
         keys = booking.keys()
         if "deposit_amount" in keys and booking["deposit_amount"]:
             return round(booking["deposit_amount"], 2)
+    if category == "room" and "amount_paid" in booking.keys():
+        received = round(float(booking["amount_paid"] or 0), 2)
+        if received:
+            return received
+        # Nothing recorded against the stay. Either nothing has been paid, or
+        # it was taken at the card page before amount_paid existed -- the
+        # migration that added the column wrote no backfill, so for those the
+        # old flag is the only record there is. Reading the column alone would
+        # report a stay somebody paid in full as never paid and refuse a refund
+        # that is genuinely owed, which is the same fault the other way round
+        # and the more expensive one.
+        if (booking["payment_status"] or "") in ("paid", "refunded"):
+            return round(float(booking["total_price"] or 0), 2)
+        return 0.0
     return round(booking["total_price"] or 0, 2)
 
 
@@ -33472,8 +33509,10 @@ def email_booking_statement(manage_token):
         f"{format_date_human(booking['departure_date'])}.\n\n"
         + "\n".join(lines) + "\n\n"
         f"  Total   €{statement['total']:.2f}\n"
-        f"  Received   €{statement['paid']:.2f}\n"
-        f"  Still to pay   €{statement['balance'] if statement['balance'] > 0 else 0:.2f}\n\n"
+        f"  Received   €{statement['received']:.2f}\n"
+        + (f"  Refunded   €{statement['refunded']:.2f}\n"
+           if statement["refunded"] else "")
+        + f"  Still to pay   €{statement['balance'] if statement['balance'] > 0 else 0:.2f}\n\n"
         f"Reference code: {booking['reference_code']}\n"
         f"The full statement, and the way to settle it, is here:\n"
         f"{url_for('booking_statement', manage_token=manage_token, _external=True)}\n"
@@ -36755,7 +36794,7 @@ def manage_booking(manage_token):
         days_until = (parse_date(booking["arrival_date"]) - house_today()).days
     addable = [e for e in conn.execute(
         """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
-           AND category = 'room' ORDER BY sort_order, name""").fetchall()
+           ORDER BY category, sort_order, name""").fetchall()
         if (e["lead_time_days"] or 0) <= max(days_until, 0)]
     # Minted on first sight rather than up front, so a link only exists for
     # someone who has actually been here. Written before the connection closes.
@@ -67040,7 +67079,9 @@ def guest_statement(conn, booking):
         [(accommodation, tax_rate(conn, "vat_accommodation"))]
         + [((e["unit_price"] or 0) * (e["quantity"] or 0), tax_rate(conn, "vat_extras"))
            for e in extras])
-    paid = amount_paid_for(conn, "room", booking)
+    received = amount_paid_for(conn, "room", booking)
+    given_back = refunded_so_far(conn, "room", booking["id"])
+    paid = round(received - given_back, 2)
     total = round(accommodation + extras_gross + city_tax, 2)
     return {
         "nights": nights, "adults": adults,
@@ -67049,6 +67090,7 @@ def guest_statement(conn, booking):
         "city_tax": city_tax,
         "city_tax_rate": tax_rate(conn, "city_tax_per_adult_per_night"),
         "vat": vat, "total": total, "paid": paid,
+        "received": received, "refunded": round(given_back, 2),
         "balance": round(total - paid, 2),
     }
 
