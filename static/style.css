@@ -2825,3 +2825,10 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 /* Ticked, not gone. A list that hides what was bought is a list you cannot
    untick when you put something back on the shelf. */
 .shop-row.task-done .mini-name{ text-decoration:line-through; opacity:0.55; }
+
+/* SAID ON THE DOCUMENT, not only on a settings page. A statement is what a
+   business guest forwards to whoever pays them, and it prints a VAT
+   breakdown — so the one thing worse than no TVA number on it is a VAT
+   figure with no TVA number and nothing saying why. Same treatment
+   pos_receipt.html already gives it. */
+.statement-missing{ color:var(--status-warn-fg, #8A6A1F); font-weight:600; }

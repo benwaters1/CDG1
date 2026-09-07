@@ -77,6 +77,37 @@ def _mix(start, end):
         conn.close()
 
 
+def free_nights(room_id, after, nights=2):
+    """The first day from `after` with `nights` genuinely free.
+
+    AT MODULE LEVEL so the first booking in the suite can use it as well. It
+    used to be defined half way down, and the booking above it counted days
+    forward and hoped -- which held until a seeded atelier drifted onto day
+    forty-five and the whole suite went down.
+
+    NOT A RETRY LOOP AROUND THE POST. Every refused attempt still spends a
+    booking against BOOKING_RATE_LIMIT_PER_HOUR, which is five, and this suite
+    makes four -- so retrying the first one is how the fourth comes to be
+    turned away for a reason that has nothing to do with what is being tested.
+    Ask first, post once.
+    """
+    conn = db()
+    try:
+        day = after
+        for _ in range(600):
+            with m.app.test_request_context():
+                # (ok, reason), not a bool: a two-element tuple is truthy
+                # whichever way the answer went.
+                ok, _why = m.is_range_available(
+                    conn, room_id, day, day + timedelta(days=nights))
+                if ok:
+                    return day
+            day += timedelta(days=1)
+    finally:
+        conn.close()
+    raise AssertionError("no free %d nights in 600 days from %s" % (nights, after))
+
+
 def run():
     s = Suite("Where a booking came from")
     _cleanup()
@@ -85,7 +116,7 @@ def run():
 
     s.section("The path stamps it, so nobody has to remember")
     room = _room()
-    arrival = house_today() + timedelta(days=45)
+    arrival = free_nights(room["id"], house_today() + timedelta(days=45))
     r = anon.post(f"/book/{room['id']}", data={
         "arrival_date": arrival.isoformat(),
         "departure_date": (arrival + timedelta(days=2)).isoformat(),
@@ -97,8 +128,9 @@ def run():
     s.check("a website booking is taken", web is not None,
             detail=f"HTTP {r.status_code}")
     s.check("and marked direct", web and web["source"] == "direct",
-            detail=f"{web['source']!r} if web else None — a field somebody has to "
-                   "set is a field that is mostly wrong")
+            detail=(repr(web["source"]) if web else "no booking was taken")
+                   + " — a field somebody has to set is a field that is "
+                     "mostly wrong")
 
     s.section("The desk says desk")
     wi = house_today() + timedelta(days=60)
@@ -128,28 +160,7 @@ def run():
     # happened. A fixed offset into a real calendar is a date that is free
     # until one day it is not.
     def _free(after, nights=2):
-        # Its own connection, opened and closed, like every other helper here:
-        # this suite keeps none open across a check, and one held while the
-        # test client writes through another is how a reader sees a stay that
-        # is not there yet.
-        c = db()
-        try:
-            day = after
-            for _ in range(600):
-                with m.app.test_request_context():
-                    # (ok, reason), not a bool. A bare `if` on this is always
-                    # true -- a two-element tuple is truthy whichever way the
-                    # answer went -- so the first version of this helper handed
-                    # back the very first day it was asked about, workshop and
-                    # all, and the refusal read exactly as it had before.
-                    ok, _why = m.is_range_available(
-                        c, room["id"], day, day + timedelta(days=nights))
-                    if ok:
-                        return day
-                day += timedelta(days=1)
-        finally:
-            c.close()
-        raise AssertionError("no free %d nights in 600 days from %s" % (nights, after))
+        return free_nights(room["id"], after, nights)
 
     again = _free(house_today() + timedelta(days=90))
     anon2 = m.app.test_client()

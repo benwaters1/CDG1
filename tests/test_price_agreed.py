@@ -241,6 +241,18 @@ def run():
         # new nights and not a leftover.
         elsewhere = arrival + timedelta(days=200)
         conn = db()
+        try:
+            with m.app.test_request_context("/"):
+                for _try in range(400):
+                    ok, _why = m.is_range_available(
+                        conn, room["id"], elsewhere,
+                        elsewhere + timedelta(days=2))
+                    if ok:
+                        break
+                    elsewhere += timedelta(days=1)
+        finally:
+            conn.close()
+        conn = db()
         _override(conn, room["id"], elsewhere, elsewhere + timedelta(days=2), 100)
         conn.close()
         oc.post(f"/admin/bookings/{eid}/edit", data={

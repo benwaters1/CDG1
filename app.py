@@ -61252,12 +61252,28 @@ def readiness_checks(conn, *, include_slow=True):
         "Still the placeholder draft. Guests are agreeing to it at booking.")
 
     company = conn.execute(
-        "SELECT registered_address FROM company_info WHERE id = 1").fetchone()
+        """SELECT registered_address, registration_number, vat_number, legal_name
+             FROM company_info WHERE id = 1""").fetchone()
     has_address = bool(company and (company["registered_address"] or "").strip())
     add("warn", "Legal", "Registered address", has_address,
         "On file." if has_address else
         "Not set. Marketing email has to identify the sender by postal address; "
         "the footer currently omits it.")
+
+    # What a note and a statement have to carry. Named individually, because
+    # "company info incomplete" is not something anybody can act on.
+    missing_identity = [
+        label for label, column in (("legal name", "legal_name"),
+                                    ("SIRET", "registration_number"),
+                                    ("TVA number", "vat_number"))
+        if not (company and (company[column] or "").strip())]
+    add("warn", "Legal", "What a receipt has to carry", not missing_identity,
+        "Legal name, SIRET and TVA number are all on file."
+        if not missing_identity else
+        f"{', '.join(missing_identity).capitalize()} not set. Till receipts and "
+        "guest statements both print a VAT breakdown, and both say on the "
+        "document itself that the numbers are missing — a guest forwards a "
+        "statement to whoever pays them. Management, Company info.")
 
     last_backup = conn.execute(
         "SELECT created_at FROM audit_log WHERE action IN ('backup_downloaded', 'backup_auto_sent') "
