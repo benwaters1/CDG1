@@ -55985,11 +55985,18 @@ def set_meeting_status(meeting_id):
     if not meeting:
         conn.close()
         abort(404)
+    # Only a cancellation carries a reason, and a meeting held after all
+    # must not keep the one it was called off with — "Bruce away, no quorum"
+    # sitting under a meeting that went ahead is the page telling the room
+    # something that did not happen. Written out rather than folded into the
+    # tuple: the conditional expression that was here bound in a way nobody
+    # reads correctly at a glance.
+    reason = None
+    if status == "cancelled":
+        reason = (request.form.get("cancelled_reason", "") or "").strip() or None
     conn.execute(
         "UPDATE meetings SET status = ?, cancelled_reason = ? WHERE id = ?",
-        (status,
-         (request.form.get("cancelled_reason", "") or "").strip() or None
-         if status == "cancelled" else None, meeting_id))
+        (status, reason, meeting_id))
     log_audit(conn, "meeting_status_changed", target=meeting["title"],
               details=status)
     conn.commit()

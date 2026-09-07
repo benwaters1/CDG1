@@ -154,6 +154,18 @@ def report_drift():
     print("\n  git diff " + man["commit"] + " -- <file>    # what it will not have\n")
 
 
+# Files whose whole point is to be replaced each round, so a removal in them
+# is not a revert. README.md is the design side's covering letter — what
+# changed this round and why — rewritten by every export. Reporting thirty
+# lost lines from it every single time is true and useless, and a checker
+# that always has something to say is one people learn to scroll past. The
+# run that matters is then the run they skim.
+#
+# Named one by one rather than matched as *.md on purpose: CLAUDE.md is the
+# document in this repository that must never lose a line quietly.
+REPLACED_EACH_ROUND = {"README.md"}
+
+
 def main(argv):
     only = argv[1:]
     if not git("rev-parse", "--git-dir"):
@@ -163,6 +175,8 @@ def main(argv):
     report_drift()
 
     files = changed_files()
+    covering = [f for f in files if f in REPLACED_EACH_ROUND]
+    files = [f for f in files if f not in REPLACED_EACH_ROUND]
     if only:
         files = [f for f in files if any(o in f for o in only)]
     if not files:
@@ -189,7 +203,11 @@ def main(argv):
             text = source[n - 1] if 0 < n <= len(source) else ""
             entry["files"][path].append((n, text))
 
-    print(f"Checked {len(files)} modified file(s); {checked} remove something.\n")
+    print(f"Checked {len(files)} modified file(s); {checked} remove something.")
+    if covering:
+        print("(Not checked: %s — the covering letter, rewritten every round.)"
+              % ", ".join(sorted(covering)))
+    print()
     if not undone:
         print("No committed work is undone by what is in the tree.")
         print("(New content on top of what is already there is fine — that is a "

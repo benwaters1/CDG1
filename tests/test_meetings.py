@@ -335,6 +335,60 @@ def run():
             summary["unreminded"] >= 1,
             detail="%s — the ones that need a telephone call" % summary)
 
+    # ---- held, cancelled, and the reason that must not outlive it ---------
+    #
+    # The coverage report named this route as never answered, and it is the
+    # one route here that writes a sentence onto the page rather than a fact:
+    # a cancellation reason. Which means the interesting case is not
+    # cancelling -- it is UN-cancelling. A meeting put off for "Bruce away,
+    # no quorum" and then held anyway must not still say so; a reason that
+    # outlives its cancellation is a page telling the room a thing that did
+    # not happen.
+    s.section("Marking one held, cancelled, and held again")
+    oc.post(f"/meetings/{mid}/status",
+            data={"status": "cancelled", "cancelled_reason": "Bruce away"})
+    row = conn.execute("SELECT status, cancelled_reason FROM meetings "
+                       "WHERE id = ?", (mid,)).fetchone()
+    s.check("a meeting can be called off, with the reason kept",
+            row["status"] == "cancelled" and row["cancelled_reason"] == "Bruce away",
+            detail=str(dict(row)))
+
+    page = oc.get(f"/meetings/{mid}").get_data(as_text=True)
+    # Anchored to the sentence, not to the page. The reason is ALSO the
+    # prefilled value of the box you would use to edit it, so "is the reason
+    # anywhere in this HTML" passes with the message deleted -- which is what
+    # it did, until a control caught it.
+    said = page.split("Called off.")[1][:200] if "Called off." in page else ""
+    s.check("and the page says so rather than showing a bare word",
+            "Bruce away" in said,
+            detail="'Cancelled' on its own is the one state where everybody "
+                   "who reads it has to go and ask somebody what happened")
+
+    oc.post(f"/meetings/{mid}/status", data={"status": "held"})
+    row = conn.execute("SELECT status, cancelled_reason FROM meetings "
+                       "WHERE id = ?", (mid,)).fetchone()
+    s.check("and holding it after all clears the reason it was called off",
+            row["status"] == "held" and not row["cancelled_reason"],
+            detail="%s — a reason that outlives its cancellation is the page "
+                   "telling the room something that did not happen"
+                   % dict(row))
+
+    oc.post(f"/meetings/{mid}/status", data={"status": "cancelled"})
+    page = oc.get(f"/meetings/{mid}").get_data(as_text=True)
+    s.check("a cancellation with no reason says that it has none",
+            "No reason was written down" in page,
+            detail="an absence you can see is a question somebody can "
+                   "answer; an absence you cannot see is one nobody asks")
+
+    bad = oc.post(f"/meetings/{mid}/status", data={"status": "postponed"})
+    s.check("a status the app does not have is refused",
+            bad.status_code == 400,
+            detail="%d — three states are drawn on the page and anything "
+                   "else renders as nothing at all" % bad.status_code)
+    s.check("and the meeting is left as it was",
+            conn.execute("SELECT status FROM meetings WHERE id = ?",
+                         (mid,)).fetchone()["status"] == "cancelled")
+
     s.check("an employee cannot open any of it",
             ec.get("/meetings").status_code == 403
             and ec.get(f"/meetings/{mid}").status_code == 403)

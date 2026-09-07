@@ -370,4 +370,74 @@ def run():
                              for f, w in sorted(absent.items()))[:220]
                    + " — use site_image() for a photograph somebody uploads")
 
+
+    s.section("Buttons that scroll somewhere on the same page")
+    # A fourth way a link dies, and the quietest of the four. href="#book" with
+    # no id="book" on the page is not an error: the browser does nothing at all.
+    # No 404, no console line, no exception -- the guest presses Check dates and
+    # the page sits still, which reads as a broken site rather than a missing
+    # anchor. Three of these were the Stay page's own booking buttons, all
+    # pointing at #book while nothing carried that id, and one was the "See the
+    # dates" button at the foot of every atelier.
+    #
+    # The awkward part is a PARTIAL. _weekcost.html is a macro rendered inside
+    # book_rooms.html, so its #book is answered by the page that pulls it in and
+    # never by the file it is written in. Checking files on their own reports it
+    # as broken every run, and a check that cries wolf is one people learn to
+    # scroll past -- so each partial is resolved against the pages that include,
+    # import or extend it, and only counts as dead when no host answers it.
+    pulls, parent = {}, {}
+    for rel, body in templates.items():
+        pulls[rel] = set(re.findall(
+            r"\{%-?\s*(?:include|import|from)\s+[\"']([^\"']+)[\"']", body))
+        got = re.search(r"\{%-?\s*extends\s+[\"']([^\"']+)[\"']", body)
+        if got:
+            parent[rel] = got.group(1)
+
+    def ids_reachable(rel, seen=None):
+        seen = seen or set()
+        if rel in seen or rel not in templates:
+            return set()
+        seen.add(rel)
+        found = set(re.findall(r'\bid="([^"]+)"', templates[rel]))
+        for child in pulls.get(rel, ()):
+            found |= ids_reachable(child, seen)
+        if rel in parent:
+            found |= ids_reachable(parent[rel], seen)
+        return found
+
+    hosted_by = {}
+    for page, children in pulls.items():
+        for child in children:
+            hosted_by.setdefault(child, set()).add(page)
+    for child, par in parent.items():
+        hosted_by.setdefault(par, set()).add(child)
+
+    def hosts(rel, seen=None):
+        seen = seen or set()
+        if rel in seen:
+            return set()
+        seen.add(rel)
+        out = set()
+        for h in hosted_by.get(rel, ()):
+            out.add(h)
+            out |= hosts(h, seen)
+        return out
+
+    dangling = []
+    for rel, body in sorted(templates.items()):
+        for lineno, line in enumerate(body.splitlines(), 1):
+            for target in re.findall(r'href="#([^"]+)"', line):
+                # An anchor built from a variable is one line of source and many
+                # different ids on the page; a static read cannot judge it.
+                if "{" in target:
+                    continue
+                where = [rel] + sorted(hosts(rel))
+                if any(target in ids_reachable(w) for w in where):
+                    continue
+                dangling.append(f"{rel}:{lineno} #{target}")
+
+    s.check("every #anchor has something on the page to scroll to",
+            not dangling, detail=" | ".join(dangling[:5]))
+
     return s

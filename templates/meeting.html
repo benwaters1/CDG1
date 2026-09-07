@@ -14,8 +14,17 @@
   {%- if meeting['created_by_name'] and meeting['created_by_name'] != meeting['called_by_name'] %} · put in the diary by {{ meeting['created_by_name'] }}{% endif %}
 </p>
 
-<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
-  {% for state, label in [('scheduled', 'Still to happen'), ('held', 'It happened'), ('cancelled', 'Cancelled')] %}
+{% if meeting['status'] == 'cancelled' %}
+{# Cancelled and nothing else is the one state that sends people asking. #}
+<p class="empty-state" style="margin:0 0 14px;">
+  <strong>Called off.</strong>
+  {% if meeting['cancelled_reason'] %}{{ meeting['cancelled_reason'] }}
+  {%- else %}No reason was written down, so anybody wondering has to ask.{% endif %}
+</p>
+{% endif %}
+
+<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; margin-bottom:16px;">
+  {% for state, label in [('scheduled', 'Still to happen'), ('held', 'It happened')] %}
   <form method="post" action="{{ url_for('set_meeting_status', meeting_id=meeting['id']) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="status" value="{{ state }}">
@@ -24,6 +33,23 @@
             aria-pressed="{{ 'true' if meeting['status'] == state else 'false' }}">{{ label }}</button>
   </form>
   {% endfor %}
+
+  {# Cancelling asks why. Not required — somebody calling off a meeting from
+     a car park should not be held up by a form — but asked for, and its
+     absence is printed rather than hidden. #}
+  <details class="refund-box" style="padding:0 10px;">
+    <summary style="padding:6px 0;">Cancelled</summary>
+    <form method="post" action="{{ url_for('set_meeting_status', meeting_id=meeting['id']) }}"
+          style="margin:6px 0 10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="status" value="cancelled">
+      <label class="field-label" for="why">Why it is not going ahead</label>
+      <input id="why" type="text" name="cancelled_reason" maxlength="200"
+             value="{{ meeting['cancelled_reason'] or '' }}"
+             placeholder="Bruce away — no quorum">
+      <button type="submit" class="btn-mini" style="margin-top:8px;">Call it off</button>
+    </form>
+  </details>
 </div>
 
 {% if meeting['agenda'] %}

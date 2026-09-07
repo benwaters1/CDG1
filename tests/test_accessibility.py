@@ -187,6 +187,83 @@ def run():
             detail=f"{positive[:3]} — one of these pulls an element to the front "
                    "of the tab order for the whole page, not just its own section")
 
+
+    # A CAPTION THAT DESCRIBES A DIFFERENT PHOTOGRAPH. Eleven of them, and the
+    # pool was the worst: alt="The pool" on a picture of a bedroom, on the page
+    # where somebody decides whether to book. Nothing errors. A sighted guest
+    # sees a bedroom where the text promised a pool and quietly distrusts the
+    # rest; a screen reader is simply told the wrong thing and has no way to
+    # know. It survived every sweep because both halves are individually
+    # valid -- the file loads, the alt is present and non-empty.
+    #
+    # It keeps coming back because the templates arrive as whole-file
+    # replacements, so a fix lives exactly one handover. Hence a check rather
+    # than a correction.
+    #
+    # Read from the FILENAME, which is the one part a design handover carries
+    # through unchanged: Chambre*, bedroom*, Classic+Double are bedrooms,
+    # Kitchen* is the kitchen, Gardens*/home-31 are outside. A caption is only
+    # wrong when both sides are recognised AND they disagree -- an alt that
+    # mentions several things ("a bedroom under restoration, bare walls") is
+    # counted right if the photograph matches any of them, because it does.
+    SHOWS = [
+        (r"Kitchen|kitchen", "kitchen"),
+        (r"Dining\+Room|Food\+and\+Dining|day_3_225", "dining"),
+        (r"Bathrooms", "bathroom"),
+        (r"Chambre|bedroom\+|Classic\+Double|ex\+chef\+room", "bedroom"),
+        (r"Gardens|home-31|_DSC8827|IMG_3493", "grounds"),
+        (r"At\+Night", "night"),
+        (r"restoration\+1|day_1_1[89]|day_1_21", "restoration"),
+        (r"Spring\+Gates", "gates"),
+    ]
+    # Specific before general: "the dining room" must not be read as a bedroom
+    # because the word room is in it.
+    SAYS = [
+        (r"\bdining room\b|\btable laid\b|\bat the table\b|\blong table\b", "dining"),
+        (r"\bkitchen\b", "kitchen"),
+        (r"\bbathroom\b", "bathroom"),
+        (r"\b(pool|tennis|gardens?|parkland|grounds|terrace)\b", "grounds"),
+        (r"\bat night\b|\bat dusk\b", "night"),
+        (r"\b(restoration|bare plaster|fresco|work in progress|being relaid)\b",
+         "restoration"),
+        (r"\bgates?\b", "gates"),
+        (r"\b(bedroom|chambre|suite)\b", "bedroom"),
+    ]
+
+    def _first(text, table):
+        for pattern, subject in table:
+            if re.search(pattern, text, re.I):
+                return subject
+        return None
+
+    def _all(text, table):
+        return {subject for pattern, subject in table
+                if re.search(pattern, text, re.I)}
+
+    wrong = []
+    for name, src in sorted(pages.items()):
+        for tag in re.findall(r"<img\b[^>]*>", src):
+            src_attr = re.search(r'src="([^"]+)"', tag)
+            alt_attr = re.search(r'alt="([^"]*)"', tag)
+            if not src_attr or not alt_attr:
+                continue
+            caption = alt_attr.group(1).strip()
+            # A caption built from a variable is one line of source and many
+            # different words on the page; a static read cannot judge it.
+            if not caption or "{" in caption:
+                continue
+            filename = src_attr.group(1).split("?")[0].split("/")[-1]
+            shows = _first(filename, SHOWS)
+            says = _all(caption, SAYS)
+            if shows and says and shows not in says:
+                wrong.append(f'{name}: "{caption[:40]}" is {shows} [{filename[:34]}]')
+
+    # The COUNT first, then as many as will fit. A check that finds eleven and
+    # prints four reads as a smaller problem than it is, and the seven it did
+    # not print are the ones nobody fixes.
+    s.check("no caption describes a different photograph", not wrong,
+            detail=("%d wrong: " % len(wrong)) + " | ".join(wrong))
+
     return s
 
 

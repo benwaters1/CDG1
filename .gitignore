@@ -39,3 +39,17 @@ reset_owner_password.py
 # hand to whoever does the design work. Rebuilt on demand and always from
 # current main, so a committed copy could only ever be a stale one.
 gudanes-design-current.zip
+
+# Everything the Squarespace account still holds, brought down by
+# tools/harvest_photos.py so the photographs can be looked at and sorted.
+# Several hundred pictures are not a repository anybody can clone, and the
+# ones that get chosen go to the volume via /admin/site-images anyway.
+photo_harvest/
+
+# A dump of the live rooms and their prices, taken so the design side could
+# read the copy without a database. It is data, not code: committed, it goes
+# stale the first time a price changes and is then a second answer to a
+# question the database already answers. The list of untested routes goes the
+# same way -- tests/run.py works that out on every run, from the run itself.
+catalogue.json
+_untested.txt

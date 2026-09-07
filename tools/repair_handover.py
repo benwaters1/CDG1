@@ -103,6 +103,19 @@ def _from_git(rel):
         return None
 
 
+def _comment_block(text, needle):
+    """The lines of the {# ... #} that contains `needle`."""
+    lines = text.split("\n")
+    i = next((k for k, l in enumerate(lines) if needle in l), None)
+    if i is None:
+        return None
+    start = next((k for k in range(i, -1, -1) if "{#" in lines[k]), None)
+    end = next((k for k in range(i, len(lines)) if "#}" in lines[k]), None)
+    if start is None or end is None:
+        return None
+    return lines[start:end + 1]
+
+
 def _jinja_block(text, opener):
     """The lines of a {% if %}...{% endif %}, tags balanced, with the comment
     above it. Counting rather than matching the first endif, because these
@@ -125,6 +138,101 @@ def _jinja_block(text, opener):
         if depth == 0:
             return lines[start:k + 1]
     return None
+
+
+def repair_confirmation_map_pin():
+    """A default latitude is the failure the pin was put there to prevent.
+
+    The confirmation letter offers its map from COORDINATES rather than the
+    address, because the chateau has no street number and an address search
+    sends people to the village square — in the dark, at the end of a drive
+    from Toulouse, a mile below where they are expected.
+
+    A hardcoded default is that same failure wearing the fix's clothes. The
+    coordinates are then never absent, so the branch that says "telephone us
+    and we will talk you up the last few miles" can never run, and every
+    guest is sent instead to a point somebody typed once and nobody has
+    checked since. Wrong quietly, for everybody, forever.
+
+    Two handovers have reverted it identically — defaults back, guard and
+    else-branch gone — because the design side's tree still carries the older
+    macro. The prose either side of the guard is unchanged, so this is
+    structure and not intent: the block is lifted back off the commit rather
+    than retyped, and only when the hardcoded default is actually there. Edit
+    the coordinates into something new and this stops firing, which is the
+    behaviour you want the day somebody genuinely moves the pin.
+    """
+    rel = "templates/_email.html"
+    src = _read(rel)
+    if "settings.get('lat', '42.7847')" not in src:
+        return 0
+    head = _from_git(rel)
+    if head is None:
+        return 0
+
+    want = head.split("\n")
+    a = next((k for k, l in enumerate(want)
+              if "{% set lat = settings.get('lat') %}" in l), None)
+    if a is None:
+        return 0
+    b = next((k for k in range(a, len(want))
+              if want[k].strip() == "{% endif %}"), None)
+    if b is None:
+        return 0
+
+    lines = src.split("\n")
+    c = next((k for k, l in enumerate(lines)
+              if "settings.get('lat', '42.7847')" in l), None)
+    d = next((k for k in range(c, len(lines))
+              if "'Open in Apple Maps'" in lines[k]), None)
+    if d is None:
+        return 0
+
+    _write(rel, "\n".join(lines[:c] + want[a:b + 1] + lines[d + 1:]))
+    return 1
+
+
+# The anchors the public buttons scroll to, and the element each belongs on.
+# Kept as data because the failure is always the same shape: the button
+# survives the export and the id it points at does not.
+SCROLL_ANCHORS = [
+    ("templates/book_rooms.html", "book", '<section class="g-book-bar">'),
+    ("templates/contact.html", "write",
+     '<section class="g-sec"><div class="g-two">'),
+]
+
+
+def repair_scroll_anchors():
+    """Buttons that scroll nowhere: an href with no id to answer it.
+
+    This is the quietest of the four ways a link dies. A missing page is a
+    404 and a broken image leaves a hole, but href="#book" with nothing
+    carrying that id is not an error at any level — the browser is asked to
+    scroll to nothing and obliges. No console line, no exception, no server
+    log. The guest presses "Check dates" on the Stay page, the page sits
+    perfectly still, and they conclude the site is broken rather than that
+    an attribute is missing. Three buttons on that page and one on Contact.
+
+    The id is put back only where the file still HAS the href, so this reads
+    the need out of the template rather than asserting it: take the button
+    away and the repair stops firing, which is the correct behaviour the day
+    somebody genuinely redesigns the section.
+    """
+    done = 0
+    for rel, anchor, marker in SCROLL_ANCHORS:
+        src = _read(rel)
+        if 'href="#%s"' % anchor not in src:
+            continue            # nothing points there any more; leave it
+        if 'id="%s"' % anchor in src:
+            continue            # already answered
+        if src.count(marker) != 1:
+            print("  ! %s: cannot place id=\"%s\" — the section it belongs "
+                  "on has moved" % (rel, anchor))
+            continue
+        _write(rel, src.replace(
+            marker, marker.replace(">", ' id="%s">' % anchor, 1), 1))
+        done += 1
+    return done
 
 
 def repair_media_query_variables():
@@ -172,13 +280,32 @@ def repair_staging_noindex():
     own name, using the house's own words and photographs. SITE_IS_LIVE
     decides; the wrapper in public_base.html is how a page asks.
 
-    Reverted once, by the handover of 2026-09-06, which was generated from a
-    snapshot taken before the switch landed. Nothing errored.
+    Reverted twice. The handover of 6 September took the code, having been
+    generated from a snapshot predating the switch. The one of 7 September
+    left the code alone and deleted only the paragraph above it explaining
+    why the conditional is there — so this restores either half. Neither
+    time did anything error.
     """
     rel = "templates/public_base.html"
     src = _read(rel)
     if "site_is_live" in src:
-        return 0
+        # The code is here. Is the reason for it? A guard whose explanation
+        # has been deleted reads as a stray conditional somebody left in,
+        # which is exactly the thing the next person tidies away — and
+        # tidying this one away makes a staging copy of the house indexable
+        # under the house's own name, with nothing red anywhere to say so.
+        if "competes with the house" in src:
+            return 0
+        head = _from_git(rel)
+        if head is None or "competes with the house" not in head:
+            return 0
+        want = _comment_block(head, "competes with the house")
+        here = _comment_block(src, "Each such page overrides this")
+        if not want or not here:
+            return 0
+        _write(rel, src.replace("\n".join(here), "\n".join(want), 1))
+        print("     (the guard was there; its reason was not)")
+        return 1
     plain = "{% block robots %}{% endblock %}"
     if plain not in src:
         print("  ! public_base.html: no robots block to wrap")
@@ -1000,6 +1127,9 @@ def main():
         ("the staging noindex switch", repair_staging_noindex),
         ("media queries the browser can evaluate",
          repair_media_query_variables),
+        ("the confirmation letter's hardcoded map pin",
+         repair_confirmation_map_pin),
+        ("buttons that scroll nowhere", repair_scroll_anchors),
         ("noindex on guest pages", repair_child_noindex),
         ("part-payments and auto-charge", repair_workshop_payments),
         ("table wrappers", repair_table_wrappers),

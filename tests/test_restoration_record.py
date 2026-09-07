@@ -153,6 +153,25 @@ def run():
                    "checking only the total would pass on a sum that happens "
                    "to be correct")
 
+    # And taking one off again. The coverage report named this route as
+    # reached but never answered, which was fair: the page has the button,
+    # the suite had only ever pressed the one beside it. An invoice attached
+    # to the wrong job is the ordinary mistake here -- capital spend covers
+    # several jobs at once and the descriptions are a supplier's, not ours --
+    # so the way back out matters as much as the way in.
+    off = oc.post("/admin/restoration/%d/invoices/%d/remove"
+                  % (wid, ids[TAG + "scaffolding"]))
+    s.check("an invoice attached to the wrong job comes off again",
+            off.status_code == 302, detail=str(off.status_code))
+    s.check("and the cost falls by exactly that invoice",
+            m.restoration_cost(conn, wid)["total"] == 2400.00,
+            detail="%s — 3180.50 less the 780.50 that was taken off"
+                   % m.restoration_cost(conn, wid)["total"])
+    oc.post(f"/admin/restoration/{wid}/invoices",
+            data={"expense_id": [str(ids[TAG + "scaffolding"])]})
+    s.check("and goes back on when it was the right job after all",
+            m.restoration_cost(conn, wid)["total"] == 3180.50)
+
     listed = [w for w in m.restoration_works(conn) if w["id"] == wid]
     s.check("and the list carries the cost without asking per row",
             listed and round(listed[0]["cost"], 2) == 3180.50,

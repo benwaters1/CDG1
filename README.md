@@ -1,44 +1,61 @@
-# A drawn approach map — and why drawn
+# The register, applied everywhere — not just the homepage
 
-`_approach.html`, on the Contact page, in the site's own gold and blue.
+I fixed the funder line on Home last round, then checked whether the same
+faults were sitting on the other pages. Two were.
 
-## Three reasons it is drawn rather than a map tile
+## The funder line was still live on Restoration
 
-  · **it owes nothing to a CDN.** You have 254 images hotlinked from a
-    Squarespace account; if that lapses the site goes blank. This weighs about
-    four kilobytes and cannot break
-  · **a map tile shows every road equally.** What someone needs before setting
-    off is the one route, the turn that catches people out, and the fact that
-    the last stretch is unlit. A tile buries all three
-  · it is in the site's own colours, so it belongs
+> *"The five finished rooms are what pays for it, and they are open now."*
 
-The geometry is schematic — sequence and relative distance, which is what a
-person reads at the kitchen table. The Google and Apple pins are for the car.
+The exact sentence I cut from the homepage, still telling a guest their room
+is a funding mechanism. Now: **"Five rooms are finished, and they are open
+now."**
 
-## What it actually says
+## Two pages defined the house by what it lacks
 
-Toulouse airport, Foix at 1 h 05, Tarascon at 1 h 25, **left at Les Cabannes**,
-then the final four kilometres as a dashed line marked *unlit*. The pin is the
-gates, and the caption says so — there is no street number here and an address
-search leaves people in the village square.
+Workshops: *"There is no reception desk, no lift, and no turndown service."*
+Three absences in a row measures the château against a hotel and comes up
+short on a scale that does not apply.
 
-## Two things I got wrong and fixed
+Now: **"There is no reception, because someone comes out to meet you."** Same
+fact, stated as a choice.
 
-  · **every label was upside down.** I put the sub-label at a smaller `y`
-    than the name, and in SVG smaller y is HIGHER — so it read "airport /
-    Toulouse" and "1 h 05 / Foix", subtitle above title, at all four stops
-  · **the same contrast blind spot as the armorial block.** The ground is a
-    gradient, which is a background-IMAGE, so my checker read straight through
-    to white and reported a failure on text that is fine. Solid colour under
-    the gradient — the checker can read it, and a client that fails to paint
-    gradients still gets navy
+Stay had *"a stay with real limitations"* — now **"It is an old house and
+behaves like one."**
 
-That is the second time the gradient trap has caught me in two rounds. Worth
-knowing if you ever add one: put a `background-color` under it.
+## The linen was missing from the page that sells the rooms
 
-## Fits
+Stay said: *"the beds, the linen, the floors underfoot, the bathrooms."* A
+list of nouns. **The word "embroidered" appeared zero times on that page.**
 
-320, 390, 768 and 1440 — no sideways scroll, buttons at 49px.
+Hand-embroidered vintage linen, collected over years rather than ordered by
+the crate, is the strongest luxury signal you have — and it was one word in a
+list. Now:
+
+> The beds are very good ones, dressed in hand-embroidered vintage linen found
+> and collected over years rather than ordered by the crate — **so no two
+> rooms are made up the same.**
+
+## Three flags I did NOT act on, and why
+
+**"Putting a modern surface over it would be illegal"** and **"protected under
+French law and cannot be changed"** — my check read *unfinished* and *not a
+hotel* as apology. They are the opposite: those sentences are a flex. Kept.
+
+**And the list of absences in `_before.html` stays**, because it sits under
+the heading *"Not if you want a hotel."* Under a self-selection heading a list
+of absences is **filtering, which is confident** — and the line that follows
+it is the whole proposition: *"Someone will meet you and then leave you
+alone."*
+
+The audit rule now knows the difference: absences inside a self-selection
+block pass, the same words in running prose fail.
+
+## New audit rules
+
+  - the guest framed as funding the restoration
+  - value language
+  - the house defined by what it lacks, outside a self-selection block
 
 ## Testing
 
