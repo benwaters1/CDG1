@@ -296,16 +296,20 @@
               {% endfor %}
             </span>
           </span>
+          {% if fx_rates %}
           <span class="g-navwrap__prefs-row">
             <span class="g-navwrap__prefs-label">{{ t('Currency') }}</span>
+            {# Only the currencies there is actually a rate for. Offering one
+               the page cannot convert is the fault this replaced. #}
             <select id="g-currency" aria-label="{{ t('Display currency') }}">
               <option value="EUR" selected>EUR €</option>
-              <option value="USD">USD $</option>
-              <option value="GBP">GBP £</option>
-              <option value="AUD">AUD $</option>
+              {% for code in ['USD', 'GBP', 'AUD'] if fx_rates.get(code) %}
+              <option value="{{ code }}">{{ code }} {{ {'USD':'$','GBP':'£','AUD':'A$'}[code] }}</option>
+              {% endfor %}
             </select>
   <p class="g-cur__note">A guide only. Every transaction is processed in euro, and your bank sets the rate on the day.</p>
           </span>
+          {% endif %}
         </div>
 
         <div class="g-navwrap__legal">
@@ -518,7 +522,6 @@
 (function () {
   var sel = document.getElementById('g-currency');
   if (!sel) return;
-  var KEY = 'gud-fx', DAY = 864e5;
 
   function symbol(c){ return {EUR:'€', USD:'$', GBP:'£', AUD:'A$'}[c] || ''; }
 
@@ -536,18 +539,15 @@
     });
   }
 
-  function withRates(cb) {
-    var cached = null;
-    try { cached = JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch (e) {}
-    if (cached && (Date.now() - cached.t) < DAY) return cb(cached.r);
-    fetch('https://api.frankfurter.app/latest?from=EUR&to=USD,GBP,AUD')
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        try { sessionStorage.setItem(KEY, JSON.stringify({t: Date.now(), r: d.rates})); } catch (e) {}
-        cb(d.rates);
-      })
-      .catch(function () { cb(null); });
-  }
+  /* Rendered by the house, not fetched by this browser. The fetch that used
+     to be here was refused for want of a CORS header, the catch passed null,
+     and every conversion silently did nothing -- so the selector sat on every
+     page and changed no figure on it. Nothing errored and nothing was logged.
+     Server-side it is one call a day for the whole site, it cannot be blocked
+     by something the château does not control, and the numbers are in the
+     HTML before any of this runs. */
+  var RATES = {{ fx_rates|tojson }};
+  function withRates(cb) { cb(RATES); }
 
   var saved = null;
   try { saved = localStorage.getItem('gud-cur'); } catch (e) {}

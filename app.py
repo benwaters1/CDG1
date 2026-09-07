@@ -271,6 +271,7 @@ LEAVE_SETTING_DEFAULTS = {
 AUTOMATION_SETTING_DEFAULTS = {
     "automation_housekeeping_enabled": "1",
     "automation_weather_enabled": "1",
+    "automation_exchange_rates_enabled": "1",
     "automation_photo_mirror_enabled": "1",
     "automation_daily_digest_enabled": "1",
     "automation_ical_sync_enabled": "1",
@@ -3830,6 +3831,13 @@ def init_db():
         # POST rather than on the file because the same photograph is used twice
         # and means something different each time -- the salon as a room, and
         # the salon as a place the plaster came off.
+        # How they came to hear of the house, which is not the same
+        # question as `source`. That records the PATH a booking arrived by --
+        # direct, an agent, the door. This records what made somebody look in
+        # the first place, and the two answers are usually different: a guest
+        # who read the book and then booked direct is "direct" and is not a
+        # direct-marketing success.
+        ("bookings_heard_via", "ALTER TABLE bookings ADD COLUMN heard_via TEXT"),
         ("social_posts_image", "ALTER TABLE social_posts ADD COLUMN image_filename TEXT"),
         ("social_posts_alt", "ALTER TABLE social_posts ADD COLUMN alt_text TEXT"),
         ("social_posts_room", "ALTER TABLE social_posts ADD COLUMN room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL"),
@@ -6291,6 +6299,7 @@ NAV_AREAS = {
     ],
     "financial": [
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
+        "demand_report",
         "management_outstanding", "chase_outstanding_balance",
         "management_vouchers", "new_gift_voucher", "gift_voucher_detail",
         "spend_gift_voucher", "void_gift_voucher",
@@ -20456,6 +20465,191 @@ def on_site_now(conn, now=None):
     }
 
 
+def sellable_nights(conn, start, end, room_id=None):
+    """Room-nights the house could actually have sold in [start, end).
+
+    THE DENOMINATOR IS THE WHOLE ARGUMENT, and it is why this sits beside
+    report_occupancy rather than replacing it. That one divides by every
+    active room times every night, which is the right answer to "how full was
+    the house". It is the wrong answer to "how well did we sell", because a
+    room taken off sale for plaster work and a week held for an atelier both
+    count as nights the house failed to fill -- so the figure gets worse the
+    more restoration happens, and better the less.
+
+    A night counts here only if a guest could have had it: the room is active,
+    and unavailable_nights says nothing else is holding it. That is the same
+    function the booking calendar greys out with, so this number and the
+    nights a guest is actually offered cannot drift apart.
+
+    Returns {'nights': int, 'by_room': {room_id: int}}.
+    """
+    rooms = conn.execute(
+        "SELECT id FROM rooms WHERE active = 1" + (" AND id = ?" if room_id else ""),
+        (room_id,) if room_id else ()).fetchall()
+    by_room, total = {}, 0
+    span = (end - start).days
+    for room in rooms:
+        held = unavailable_nights(conn, room["id"], start, end)
+        # A booking is a night SOLD, not a night that could not be sold. Only
+        # the other reasons come out of the denominator.
+        blocked = sum(1 for why in held.values() if why != "Already booked")
+        free = max(0, span - blocked)
+        by_room[room["id"]] = free
+        total += free
+    return {"nights": total, "by_room": by_room}
+
+
+def nights_sold(conn, start, end, room_id=None):
+    """Room-nights actually taken in [start, end), and what they made.
+
+    occupied_rooms_by_date answers the same question by date and without the
+    money; this pairs with sellable_nights above it, which is why it is here.
+
+    Confirmed only -- a pending request is a hope, and counting hopes as
+    occupancy is how a house talks itself out of chasing them. Money is
+    apportioned by NIGHT rather than by booking, because a stay straddling the
+    window edge otherwise puts its whole total on whichever side the arrival
+    happens to fall.
+    """
+    sold, money, by_room = 0, 0.0, {}
+    q = ("""SELECT room_id, arrival_date, departure_date, total_price
+              FROM bookings
+             WHERE status = 'confirmed' AND arrival_date < ? AND departure_date > ?""")
+    args = [end.isoformat(), start.isoformat()]
+    if room_id:
+        q += " AND room_id = ?"
+        args.append(room_id)
+    for b in conn.execute(q, args).fetchall():
+        arrival, departure = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not arrival or not departure:
+            continue
+        whole = (departure - arrival).days
+        if whole <= 0:
+            continue
+        inside = (min(departure, end) - max(arrival, start)).days
+        if inside <= 0:
+            continue
+        sold += inside
+        money += (b["total_price"] or 0) * inside / whole
+        by_room[b["room_id"]] = by_room.get(b["room_id"], 0) + inside
+    return {"nights": sold, "money": round(money, 2), "by_room": by_room}
+
+
+def revenue_per_available_night(conn, start, end):
+    """What every sellable night earned, including the ones that earned nothing.
+
+    The measure that survives a discount, and the one figure in this file that
+    an empty night can make worse. An average nightly rate RISES when the
+    house sells one expensive night and nothing else -- which is the exact
+    week it did worst. Dividing by every night it could have sold means a
+    night nobody took costs the number rather than being left out of it.
+
+    Both are returned, because the pair is the story: per_sold going up while
+    per_available goes down is a house charging more and selling less.
+    """
+    can = sellable_nights(conn, start, end)["nights"]
+    did = nights_sold(conn, start, end)
+    return {
+        "sellable": can, "sold": did["nights"], "money": did["money"],
+        "per_available": round(did["money"] / can, 2) if can else None,
+        "per_sold": round(did["money"] / did["nights"], 2) if did["nights"] else None,
+        "percent": round(100.0 * did["nights"] / can, 1) if can else None,
+    }
+
+
+def guest_value_estimate(conn):
+    """{guest_id: rough total} for every guest, in three queries rather than n.
+
+    A PROXY, and only ever used to CHOOSE who to look at properly. It reads
+    total_price straight off each table where guest_record reads the bill, so
+    it does not know about extras, discounts, city tax or a part refund, and
+    it must never be the figure anybody is shown. guest_values takes the top
+    of this list and then asks the real question about those.
+
+    The split exists because guest_record calls booking_bill once per stay,
+    which is right for one person and is n queries across a guest list. This
+    is the cheap half of a two-stage sort, not a second opinion about money.
+    """
+    rough, emails = {}, {}
+    for g in conn.execute("SELECT id, email FROM guests").fetchall():
+        rough[g["id"]] = 0.0
+        addr = (g["email"] or "").strip().lower()
+        if addr:
+            emails.setdefault(addr, []).append(g["id"])
+
+    def add(guest_id, amount):
+        if guest_id in rough:
+            rough[guest_id] += float(amount or 0)
+
+    for r in conn.execute(
+        """SELECT linked_guest_id, guest_email, total_price FROM bookings
+            WHERE status = 'confirmed'""").fetchall():
+        if r["linked_guest_id"]:
+            add(r["linked_guest_id"], r["total_price"])
+        else:
+            for gid in emails.get((r["guest_email"] or "").strip().lower(), []):
+                add(gid, r["total_price"])
+    for table in ("workshop_bookings", "restaurant_bookings"):
+        for r in conn.execute(
+                "SELECT guest_email, total_price FROM %s WHERE status = 'confirmed'"
+                % table).fetchall():
+            for gid in emails.get((r["guest_email"] or "").strip().lower(), []):
+                add(gid, r["total_price"])
+    return rough
+
+
+def guest_values(conn, limit=25, headroom=3):
+    """The house's guests ranked by what they have actually been worth.
+
+    report_guest already names the top ten by spend IN A WINDOW, which answers
+    "who mattered this quarter". This answers "who is worth most to this
+    house, ever", which is a different question and the one that decides who
+    gets the room they asked for.
+
+    THE FIGURE COMES FROM guest_record, WHICH IS THE ONLY DEFINITION. That
+    function already says the money is summed from each booking's own bill so
+    there is one definition of what a stay costs; a ranking that added the
+    numbers up its own way would be the second, and the two would agree for a
+    year and then quietly stop.
+
+    Two stages, because the honest figure costs a query per stay: the proxy
+    picks limit * headroom candidates and every one of those is valued
+    properly. The headroom covers the proxy being wrong -- a guest whose bill
+    carries extras it cannot see climbs several places -- and it is a
+    compromise stated rather than hidden. Ask for the top twenty-five and the
+    twenty-sixth by proxy is still examined; the seventy-sixth is not.
+
+    Nights, stays and cancellations come back with the money, because the
+    ranking alone says nothing about WHY somebody is at the top: one long
+    expensive stay and nine years of coming back are the same number and are
+    not the same guest.
+    """
+    rough = guest_value_estimate(conn)
+    shortlist = sorted(rough, key=lambda gid: -rough[gid])[:max(limit * headroom, limit)]
+    out = []
+    for guest_id in shortlist:
+        record = guest_record(conn, guest_id)
+        if not record or not record["spent"]:
+            continue
+        stays = record["stays"]
+        out.append({
+            "id": guest_id,
+            "name": record["guest"]["name"],
+            "email": record["guest"]["email"],
+            "spent": record["spent"], "owed": record["owed"],
+            "nights": record["nights"],
+            "stays": sum(1 for b in stays if b["status"] == "confirmed"),
+            "called_off": sum(1 for b in stays
+                              if b["status"] in ("cancelled", "declined", "no_show")),
+            "workshops": len(record["workshops"]),
+            "meals": len(record["dinners"]),
+            "first_seen": record["first_seen"], "last_seen": record["last_seen"],
+            "vip": bool(record["guest"]["vip"]),
+        })
+    out.sort(key=lambda r: -r["spent"])
+    return out[:limit]
+
+
 def booking_source_mix(conn, start_iso, end_iso):
     """Nights and money by where the booking came from.
 
@@ -21541,6 +21735,40 @@ def make_reference_code():
 # logged and swallowed rather than raised.
 # ---------------------------------------------------------------------------
 
+# Which of the house's inboxes a reply to each kind of letter should reach.
+# The value is matched against the LOCAL PART of the configured mailboxes, so
+# adding experience@ to MS_GRAPH_MAILBOXES is all it takes for atelier replies
+# to start landing there -- there is no second list here to keep in step.
+REPLY_TO_AREAS = {
+    "rooms": ("bookings", "reservations", "stay"),
+    "restaurant": ("restaurant", "dining", "table"),
+    "workshops": ("experience", "workshops", "atelier"),
+    "events": ("events", "weddings"),
+    "accounts": ("accounts", "billing", "finance"),
+}
+
+
+def reply_to_for(area):
+    """The address a reply to this kind of letter should reach, or None.
+
+    EVERY LETTER THIS HOUSE SENDS CAME FROM ONE ADDRESS AND HAD NO REPLY-TO,
+    so a guest hitting Reply on a dinner confirmation wrote to whichever inbox
+    RESEND_FROM happened to name -- and the house runs five. The inbound side
+    has routed by mailbox for months; the outbound side collapsed them all
+    into one and nobody could tell, because a reply that lands in the wrong
+    inbox still lands.
+
+    None when nothing matches, which means the letter goes out exactly as it
+    does today. A guessed Reply-To is worse than none: it would send a guest's
+    reply to an address the house does not read.
+    """
+    for local in REPLY_TO_AREAS.get(area, ()):
+        for mailbox in MS_GRAPH_MAILBOXES:
+            if mailbox.split("@")[0].strip().lower() == local:
+                return mailbox
+    return None
+
+
 def resend_enabled():
     return bool(RESEND_API_KEY and RESEND_FROM)
 
@@ -21577,7 +21805,7 @@ def resend_refusal(exc):
 
 
 def send_email_via_resend(to_address, subject, body, ics_content=None,
-                          ics_filename=None, html=None):
+                          ics_filename=None, html=None, reply_to=None):
     """Resend's HTTP API — plain urllib, no extra dependency (matches how
     the rest of this file makes outbound HTTP calls, e.g. fetch_ical_ranges).
 
@@ -21588,6 +21816,8 @@ def send_email_via_resend(to_address, subject, body, ics_content=None,
     the text is written first and stays the authoritative version.
     """
     payload = {"from": RESEND_FROM, "to": [to_address], "subject": subject, "text": body}
+    if reply_to:
+        payload["reply_to"] = reply_to
     if html:
         payload["html"] = html
     if ics_content:
@@ -21842,7 +22072,7 @@ def keep_guest_message(to_address, subject, body, channel="email", delivered=Fal
 
 
 def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
-               keep=True, html=None, report=None):
+               keep=True, html=None, report=None, area=None):
     """Send one message, and if it cannot go out, keep it.
 
     `keep=False` for anything whose body is itself a credential — a password
@@ -21883,7 +22113,8 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         # UNPACKED, never truth-tested: a bare `if` on a 2-tuple is true even
         # when the first item is False, so every refusal would report success.
         went, why = send_email_via_resend(to_address, subject, body, ics_content,
-                                          ics_filename, html=html)
+                                          ics_filename, html=html,
+                                          reply_to=reply_to_for(area))
         if went:
             if keep:
                 keep_guest_message(to_address, subject, body, delivered=True)
@@ -21916,6 +22147,12 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         msg["Subject"] = subject
         msg["From"] = SMTP_FROM
         msg["To"] = to_address
+        # Same address the Resend branch uses. A rule that applied to one
+        # transport and not the other is a rule that stops applying the day
+        # somebody changes which one is configured.
+        replies_to = reply_to_for(area)
+        if replies_to:
+            msg["Reply-To"] = replies_to
         msg.set_content(body)
         if html:
             # An ALTERNATIVE, which is what makes the plain text the fallback
@@ -22611,6 +22848,39 @@ def house_windows():
         "guest_session_hours": GUEST_SESSION_HOURS,
         "workshop_balance_days": WORKSHOP_BALANCE_DAYS,
     }
+
+
+@app.context_processor
+def inject_exchange_rates():
+    """Rates on every public page, for the same reason the pin is.
+
+    The converter used to fetch these from the guest's browser and had
+    silently stopped working, so the selector changed no figure on the page.
+    Rendered from here they are in the HTML: the conversion needs no third
+    party, cannot be blocked by something the house does not control, and is
+    there before any javascript runs.
+
+    Empty when nothing has been fetched or the rates have gone stale, and the
+    template draws no selector at all in that case -- an inert control is
+    worse than none, which is the fault this replaced.
+    """
+    # ALWAYS the key, never an empty dict. A context processor that returns
+    # nothing leaves fx_rates Undefined, and |tojson on Undefined raises --
+    # which took out every error page, every 404 and every request with no
+    # endpoint, because those are exactly the ones that took this branch.
+    if not request.endpoint or request.endpoint.startswith("static"):
+        return {"fx_rates": {}}
+    try:
+        conn = get_db()
+        try:
+            fx = exchange_rates(conn)
+        finally:
+            conn.close()
+    except Exception:
+        # A context processor that raises takes down every page. Rates are a
+        # convenience; the site is not.
+        return {"fx_rates": {}}
+    return {"fx_rates": fx["rates"]}
 
 
 @app.context_processor
@@ -30571,6 +30841,9 @@ PALETTE_PAGES = [
     ("Go-live checklist", "admin_readiness", "deploy setup ready configuration"),
     ("A photograph in", "photo_intake",
      "photo intake upload picture social post instagram slot schedule alt text"),
+    ("What a night earns", "demand_report",
+     "revenue per available night revpan occupancy sellable nights guest value "
+     "worth referral heard about us demand"),
     ("Who is in the house right now", "roll_call",
      "roll call fire evacuation muster who is here safety emergency headcount"),
     ("Photographs we do not own", "admin_photo_mirror",
@@ -38134,6 +38407,90 @@ def weather_now(conn, *, max_age_minutes=WEATHER_MAX_AGE_MINUTES, now=None):
             "minutes_old": int(age.total_seconds() // 60)}
 
 
+# The currencies the site offers. EUR is not in it: it is what the house
+# charges in, so it is the base rather than a conversion.
+FX_SETTING = "exchange_rates"
+FX_CURRENCIES = ("USD", "GBP", "AUD")
+# A rate this old is still worth showing -- a guest is being given a rough
+# idea, not a quote -- but past a week it stops being one, and saying nothing
+# beats saying a number from last month.
+FX_STALE_DAYS = 7
+
+
+def fetch_exchange_rates(timeout=8):
+    """Ask Frankfurter what a euro is worth. Raises on anything unusable.
+
+    urllib rather than requests, like every other outbound call here. No key
+    and no account, which is the same reason the weather uses Open-Meteo.
+    """
+    url = ("https://api.frankfurter.app/latest?from=EUR&to="
+           + ",".join(FX_CURRENCIES))
+    req = Request(url, headers={"User-Agent": "chateau-gudanes"})
+    with urlopen(req, timeout=timeout) as r:
+        payload = json.loads(r.read().decode("utf-8"))
+    rates = payload.get("rates") or {}
+    out = {}
+    for code in FX_CURRENCIES:
+        value = rates.get(code)
+        if isinstance(value, (int, float)) and value > 0:
+            out[code] = round(float(value), 4)
+    if not out:
+        raise ValueError("no usable rates in the reply")
+    return {"rates": out, "at": datetime.now(timezone.utc).isoformat()}
+
+
+def exchange_rates(conn):
+    """The cached rates, and whether they are old enough to keep quiet about.
+
+    THE GUEST'S BROWSER USED TO FETCH THIS ITSELF, and it had stopped working
+    -- the call is refused by the browser for want of a CORS header, the
+    catch handler passes null, and every conversion silently does nothing. So
+    the picker sat on every public page offering dollars and pounds and
+    changed no figure on the page when it was used. Nothing errored, nothing
+    was logged, and the control looked exactly as it does when it works.
+
+    Fetched by the house now, on the same argument as the weather: one call an
+    hour for the whole site instead of one per visitor, no third party in the
+    guest's browser, and it cannot be blocked by something the house does not
+    control. It also means the figures are in the HTML, so they are there with
+    no javascript at all.
+
+    Returns {'rates': {...}, 'at': iso or None, 'stale': bool, 'age_days': n}.
+    Empty rates is the honest answer when nothing has been fetched -- the
+    template shows no converter rather than an inert one.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (FX_SETTING,)).fetchone()
+    try:
+        held = json.loads(row["value"]) if row and row["value"] else {}
+    except (ValueError, TypeError):
+        held = {}
+    rates = held.get("rates") or {}
+    when = parse_datetime_iso(held.get("at"))
+    if when and when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    age = (datetime.now(timezone.utc) - when).days if when else None
+    stale = age is None or age > FX_STALE_DAYS
+    return {
+        "rates": {} if stale else rates,
+        "at": held.get("at"), "age_days": age, "stale": stale,
+        # Kept separately so the owner's page can say "we have rates and they
+        # are too old" rather than the same nothing a fresh install shows.
+        "held": rates,
+    }
+
+
+def run_exchange_rate_job(conn):
+    """Refresh the cached rates. Fetched by the house, not by the guest."""
+    snap = fetch_exchange_rates()
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (FX_SETTING, json.dumps(snap)))
+    conn.commit()
+    return ", ".join("%s %s" % (k, v) for k, v in sorted(snap["rates"].items()))
+
+
 def run_weather_job(conn):
     """Refresh the cached reading. Fetched by the house, not by the guest."""
     snap = fetch_weather()
@@ -38951,7 +39308,10 @@ def send_restaurant_email(conn, booking, template_key, context):
     subject, body, letter = render_email_template(conn, template_key, context)
     if not subject:
         return
-    send_email(booking["guest_email"], subject, body, html=letter)
+    # area=: a reply to a dinner confirmation belongs in the restaurant's
+    # inbox, not in whichever one RESEND_FROM happens to name.
+    send_email(booking["guest_email"], subject, body, html=letter,
+               area="restaurant")
 
 
 def refund_restaurant_booking(conn, booking, reason="Reservation cancelled by the château", user_id=None):
@@ -40162,7 +40522,8 @@ def run_room_feedback_job(conn, days_after=None):
         conn.execute("UPDATE bookings SET feedback_requested_at = ? WHERE id = ?",
                      (datetime.now(timezone.utc).isoformat(), booking["id"]))
         conn.commit()
-        send_email(booking["guest_email"], subject, body, html=letter)
+        send_email(booking["guest_email"], subject, body, html=letter,
+                   area="rooms")
         asked += 1
 
     if not departed:
@@ -41134,7 +41495,8 @@ def send_workshop_email(conn, booking, template_key, context):
     if booking["do_not_email"]:
         log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "skipped — opted out")
         return
-    sent = send_email(booking["guest_email"], subject, body, html=letter)
+    sent = send_email(booking["guest_email"], subject, body, html=letter,
+                      area="workshops")
     log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "sent" if sent else "failed")
 
 
@@ -45902,7 +46264,8 @@ def edit_booking(booking_id):
             group = booking_group(conn, booking["id"])
             conn.close()
             return render_template("edit_booking.html", booking=booking,
-                               group=group, booking_sources=BOOKING_SOURCES)
+                               group=group, booking_sources=BOOKING_SOURCES,
+                               heard_via_options=HEARD_VIA)
 
         room_for_pricing = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
         # Same as the guest-side change: the extras are backed out of what the
@@ -45915,16 +46278,23 @@ def edit_booking(booking_id):
 
         typed_source = (request.form.get("source", "") or "").strip()
         source = typed_source if typed_source in BOOKING_SOURCES else booking["source"]
+        # Asked at arrival or on the telephone, not on the booking form: the
+        # answer somebody gives while filling in a form to get a room is worth
+        # less than the one they give in conversation. Blank leaves whatever
+        # was there rather than clearing it -- an empty select on a form nobody
+        # touched must not wipe an answer somebody wrote down.
+        typed_heard = (request.form.get("heard_via", "") or "").strip()
+        heard_via = typed_heard if typed_heard in HEARD_VIA else booking["heard_via"]
         under_18 = int(under_18_raw) if under_18_raw.isdigit() else (booking["guests_under_18"] or 0)
         under_18 = max(0, min(under_18, party_size))
 
         conn.execute(
             """UPDATE bookings SET arrival_date=?, departure_date=?, party_size=?, guest_phone=?,
                special_requests=?, total_price=?, guests_under_18=?,
-               source=?, booked_by_name=?, booked_by_email=?,
+               source=?, heard_via=?, booked_by_name=?, booked_by_email=?,
                second_contact_name=?, second_contact_email=? WHERE id=?""",
             (arrival.isoformat(), departure.isoformat(), party_size, guest_phone or None,
-             special_requests or None, new_total, under_18, source,
+             special_requests or None, new_total, under_18, source, heard_via,
              booked_by_name or None, booked_by_email or None,
              second_name or None, second_email or None,
              booking_id),
@@ -45958,7 +46328,8 @@ def edit_booking(booking_id):
     group = booking_group(conn, booking["id"])
     conn.close()
     return render_template("edit_booking.html", booking=booking,
-                               group=group, booking_sources=BOOKING_SOURCES)
+                               group=group, booking_sources=BOOKING_SOURCES,
+                               heard_via_options=HEARD_VIA)
 
 
 @app.route("/admin/bookings/<int:booking_id>/refund", methods=["POST"])
@@ -51684,6 +52055,68 @@ def admin_wastage_rate():
     return render_template("admin_wastage_rate.html", data=data, days=days)
 
 
+@app.route("/reports/what-a-night-earns")
+@owner_required
+def demand_report():
+    """What a night the house could have sold actually earned, and who is worth most.
+
+    Three figures nothing else here produces. Occupancy on the reports page
+    divides by every active room times every night, which is right for "how
+    full was the house" and wrong for "how well did we sell" -- it counts a
+    room off sale for plaster work as a night the house failed to fill, so it
+    gets worse the more restoration happens. This divides by the nights a
+    guest could actually have had.
+
+    Revenue per available night is the one an empty night can make worse. An
+    average rate rises when the house sells one expensive night and nothing
+    else, which is the exact week it did worst.
+
+    And what made people look, which is not how the booking arrived.
+    """
+    days = request.args.get("days", "90")
+    days = int(days) if days.isdigit() and 7 <= int(days) <= 730 else 90
+    start = house_today()
+    end = start + timedelta(days=days)
+
+    conn = get_db()
+    ahead = revenue_per_available_night(conn, start, end)
+    behind = revenue_per_available_night(conn, start - timedelta(days=days), start)
+    values = guest_values(conn, limit=20)
+    heard = referral_sources(conn, start - timedelta(days=365), end)
+    rooms = {r["id"]: r["name"] for r in
+             conn.execute("SELECT id, name FROM rooms WHERE active = 1").fetchall()}
+    can = sellable_nights(conn, start, end)["by_room"]
+    did = nights_sold(conn, start, end)["by_room"]
+    conn.close()
+
+    by_room = sorted(
+        [{"name": rooms[rid], "sellable": can.get(rid, 0), "sold": did.get(rid, 0),
+          "percent": round(100.0 * did.get(rid, 0) / can[rid], 1) if can.get(rid) else None}
+         for rid in rooms],
+        key=lambda r: -(r["percent"] or -1))
+
+    overview = [
+        overview_cell("Nights we could sell", ahead["sellable"],
+                      sub="next %d days" % days,
+                      hint="rooms that are active, on nights nothing else is "
+                           "holding — not ninety-four, and not five times "
+                           "ninety either"),
+        overview_cell("Sold", ahead["sold"],
+                      sub=("%s%%" % ahead["percent"]) if ahead["percent"] is not None else "—"),
+        overview_cell("Per night we could sell",
+                      euro(ahead["per_available"]) if ahead["per_available"] is not None else "—",
+                      hint="an empty night makes this worse, which is the "
+                           "whole point of it"),
+        overview_cell("Per night we did sell",
+                      euro(ahead["per_sold"]) if ahead["per_sold"] is not None else "—",
+                      hint="this one rises when the house sells one expensive "
+                           "night and nothing else"),
+    ]
+    return render_template("report_demand.html", overview=overview, days=days,
+                           ahead=ahead, behind=behind, by_room=by_room,
+                           values=values, heard=heard)
+
+
 @app.route("/reports")
 @owner_required
 def reports_index():
@@ -57337,6 +57770,59 @@ BOOKING_SOURCES = {
     "event": "Part of an event or wedding",
     "other": "Something else",
 }
+
+
+# What made somebody look, as opposed to how the booking arrived. Free text
+# would give forty spellings of "Instagram" and no report; a fixed list gives
+# one that adds up. "Somewhere else" is deliberately last and deliberately
+# vague -- a list with no way out gets filled in wrongly rather than left
+# blank, and a wrong answer is worse than a missing one here.
+HEARD_VIA = {
+    "returning": "They had been before",
+    "word_of_mouth": "Somebody told them",
+    "instagram": "Instagram",
+    "facebook": "Facebook",
+    "search": "They searched for it",
+    "press": "Press or television",
+    "book": "The book",
+    "agent": "An agent or platform",
+    "other": "Somewhere else",
+}
+
+
+def referral_sources(conn, start, end):
+    """What made people look, by stays and by money.
+
+    NOT booking_source_mix, which answers a different question and is easy to
+    mistake for this one. That reports the PATH a booking took -- direct, an
+    agent, the door -- which is about commission and channel. This reports what
+    made somebody look at all, and the two come apart exactly where it matters:
+    a guest who saw the house on television and then booked direct is a direct
+    booking and is not a direct-marketing success. Reading the first as though
+    it were the second is how a house stops paying for the thing that works.
+
+    Not recorded is its own row and is never folded into anything. Most stays
+    predate the question being asked, and quietly calling those "other" would
+    report a number the house never collected as though it had.
+    """
+    rows, unknown = {}, {"stays": 0, "money": 0.0}
+    for b in conn.execute(
+        """SELECT heard_via, total_price FROM bookings
+            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
+            (start.isoformat(), end.isoformat())).fetchall():
+        key = (b["heard_via"] or "").strip()
+        target = rows.setdefault(key, {"stays": 0, "money": 0.0}) if key in HEARD_VIA \
+            else unknown
+        target["stays"] += 1
+        target["money"] += float(b["total_price"] or 0)
+    out = [{"key": k, "label": HEARD_VIA[k], "stays": v["stays"],
+            "money": round(v["money"], 2)}
+           for k, v in rows.items() if k in HEARD_VIA]
+    out.sort(key=lambda r: -r["stays"])
+    if unknown["stays"]:
+        out.append({"key": None, "label": "Not recorded", "stays": unknown["stays"],
+                    "money": round(unknown["money"], 2)})
+    return out
 
 
 def booking_source_for(conn, email, fallback):
@@ -64867,7 +65353,8 @@ def run_workshop_feedback_request_job(conn):
             "feedback_url": url_for("workshop_feedback", token=booking["manage_token"], _external=True),
         })
         if subject and not booking["do_not_email"]:
-            send_email(booking["guest_email"], subject, body, html=letter)
+            send_email(booking["guest_email"], subject, body, html=letter,
+                       area="workshops")
         conn.execute(
             "UPDATE workshop_bookings SET feedback_requested_at = ? WHERE id = ?",
             (datetime.now(timezone.utc).isoformat(), booking["id"]),
@@ -65408,6 +65895,10 @@ AUTOMATION_JOBS = [
     # Hourly. The page reads a cache and never the network, so a slow morning
     # at Open-Meteo is a page with no weather on it rather than a slow page.
     ("weather", "automation_weather_enabled", None, 3600, run_weather_job),
+    # Daily. A rate that moves half a per cent overnight does not change what
+    # a guest decides, and the figure is labelled as approximate anyway.
+    ("exchange_rates", "automation_exchange_rates_enabled", None, 24 * 3600,
+     run_exchange_rate_job),
     ("daily_digest", "automation_daily_digest_enabled", None,
      DIGEST_INTERVAL_HOURS * 3600, run_daily_digest_job),
     ("ical_sync", "automation_ical_sync_enabled", "automation_ical_sync_interval_hours", None, run_ical_sync_job),
@@ -65594,6 +66085,7 @@ AUTOMATION_EXPLAINED_ON_PAGE = {
 
 AUTOMATION_JOB_LABELS = {
     "weather": "What it is doing at the château",
+    "exchange_rates": "What a euro is worth, for the price converter",
     "housekeeping": "Housekeeping (expire stale bookings, prep arrivals)",
     "daily_digest": "Daily owner digest email",
     "workshop_autocharge": "Workshop: charge the balance on its due date",

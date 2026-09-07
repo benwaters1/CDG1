@@ -88,6 +88,21 @@
       {% endfor %}
     </select>
 
+    {# A different question from the one above, and the answer is usually a
+       different word. That records how the booking ARRIVED; this records what
+       made them look. A guest who saw the house on television and then booked
+       direct is a direct booking and is not a direct-marketing success. #}
+    <label class="field-label">How did they hear of us?</label>
+    <select name="heard_via">
+      <option value="">Not recorded</option>
+      {% for key, label in heard_via_options.items() %}
+      <option value="{{ key }}"{{ ' selected' if key == booking['heard_via'] }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <p class="g-hint">Worth asking at arrival rather than on the booking form &mdash;
+      the answer somebody gives in conversation is worth more than the one they
+      give while filling in a form to get a room.</p>
+
     <label class="field-label">Phone</label>
     <input type="tel" name="guest_phone" value="{{ booking['guest_phone'] or '' }}" autocomplete="tel">
 

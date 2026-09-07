@@ -173,6 +173,14 @@ m.fetch_weather = _refuse(
     "Open-Meteo",
     "the page reads a cached reading; stand in for fetch_weather in the test")
 
+# Frankfurter, for exactly the reason above. It needs no key and costs nothing,
+# which is the category that gets left out -- and the whole point of moving
+# this call off the guest's browser was that the house makes it, so a suite
+# that reached it would be making it from a laptop several hundred times a run.
+m.fetch_exchange_rates = _refuse(
+    "Frankfurter",
+    "the page reads cached rates; stand in for fetch_exchange_rates in the test")
+
 # Anthropic, for the same reason texting is here and one the file already
 # learned the hard way. Three routes build a real client - reading a supplier
 # invoice, reading a menu, drafting a reply - and each is guarded only by
@@ -219,6 +227,8 @@ assert not getattr(m.stripe, "api_key", None), (
     "blanking STRIPE_SECRET_KEY afterwards does not undo that")
 assert not m.PENNYLANE_API_TOKEN, "the live Pennylane token is still set under test"
 assert not m.sms_enabled(), "a texting provider is configured under test"
+assert m.fetch_exchange_rates.__name__ == "_blocked", (
+    "the exchange rate fetch is not blocked under test")
 assert m.fetch_weather.__name__ == "_blocked", (
     "the weather fetch is not blocked under test — it needs no key and costs "
     "nothing, which is why it is the one that gets forgotten")
