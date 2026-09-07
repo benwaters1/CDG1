@@ -1,0 +1,135 @@
+{#  ==========================================================================
+    THE ARMORIAL DEVICE
+
+    Drawn from the mark the château ALREADY uses — a crown, a G, a laurel
+    wreath. That matters: Gudanes is a Class I Historic Monument built for
+    the de Sales family, and inventing quarterings and charges for a real
+    house would be false heraldry. Anyone who knows arms would see it, and
+    the whole point of this site is that it does not overclaim.
+
+    So: the existing elements, drawn properly, in gold, on the blue.
+
+    SVG rather than the PNG in the header, because the PNG is white — which
+    is why the logo disappears against the cream ground on a phone. This one
+    takes `currentColor` and can be gold on blue or blue on cream.
+    ========================================================================== #}
+
+{% macro arms(size='auto', tone='gold') %}
+<svg class="g-arms g-arms--{{ tone }}" viewBox="0 0 200 260" role="img"
+     aria-label="Château de Gudanes" {% if size != 'auto' %}width="{{ size }}"{% endif %}>
+
+  {# ---- the coronet ---- #}
+  <g fill="none" stroke="currentColor" stroke-width="2.4"
+     stroke-linecap="round" stroke-linejoin="round">
+    <path d="M62 44 L62 30 L74 40 L86 24 L100 38 L114 24 L126 40 L138 30 L138 44 Z"/>
+    <path d="M58 44 h84 v9 h-84 z"/>
+  </g>
+  <g fill="currentColor">
+    <circle cx="62" cy="27" r="3.4"/>
+    <circle cx="86" cy="21" r="3.4"/>
+    <circle cx="100" cy="34" r="3"/>
+    <circle cx="114" cy="21" r="3.4"/>
+    <circle cx="138" cy="27" r="3.4"/>
+  </g>
+
+  {# ---- the shield ---- #}
+  <path d="M52 66 h96 v74 c0 34 -26 54 -48 66 c-22 -12 -48 -32 -48 -66 z"
+        fill="currentColor" opacity=".1"/>
+  <path d="M52 66 h96 v74 c0 34 -26 54 -48 66 c-22 -12 -48 -32 -48 -66 z"
+        fill="none" stroke="currentColor" stroke-width="2.6"/>
+
+  {# ---- the letter ---- #}
+  <text x="100" y="152" text-anchor="middle" fill="currentColor"
+        font-family="Cormorant Garamond, Georgia, serif"
+        font-size="82" font-weight="300">G</text>
+
+  {# ---- the laurel ---- #}
+  <g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+    <path d="M44 96 c-10 30 -4 62 20 88"/>
+    <path d="M156 96 c10 30 4 62 -20 88"/>
+  </g>
+  <g fill="currentColor" opacity=".9">
+    {% for i in range(7) %}
+    <ellipse cx="{{ 40 + (i * i) // 4 }}" cy="{{ 102 + i * 12 }}" rx="8" ry="3.6"
+             transform="rotate({{ -40 + i * 9 }} {{ 40 + (i * i) // 4 }} {{ 102 + i * 12 }})"/>
+    <ellipse cx="{{ 160 - (i * i) // 4 }}" cy="{{ 102 + i * 12 }}" rx="8" ry="3.6"
+             transform="rotate({{ 40 - i * 9 }} {{ 160 - (i * i) // 4 }} {{ 102 + i * 12 }})"/>
+    {% endfor %}
+  </g>
+
+  {# ---- the date on a ribbon ---- #}
+  <path d="M40 222 h120 l-12 20 h-96 z" fill="currentColor"/>
+  <path d="M40 222 l-10 -8 v8 z M160 222 l10 -8 v8 z" fill="currentColor" opacity=".6"/>
+  <text x="100" y="238" text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif" font-size="17"
+        font-weight="600" letter-spacing="1.5" fill="#14305F">1741</text>
+</svg>
+{% endmacro %}
+
+
+{#  ==========================================================================
+    THE BANNER
+    Two hanging pennants either side of the arms, the way a hall is dressed
+    for an occasion. Drawn rather than photographed so they stay crisp and
+    weigh nothing.
+    ========================================================================== #}
+{% macro banner(side='left') %}
+<svg class="g-banner g-banner--{{ side }}" viewBox="0 0 60 180" role="presentation"
+     aria-hidden="true">
+  <path d="M4 0 h52 v140 l-26 22 l-26 -22 z" fill="currentColor" opacity=".16"/>
+  <path d="M4 0 h52 v140 l-26 22 l-26 -22 z" fill="none"
+        stroke="currentColor" stroke-width="1.6"/>
+  <path d="M0 0 h60 v10 h-60 z" fill="currentColor"/>
+  {# A fleur-de-lis: the charge that belongs on a French banner, and it
+     fills the field rather than leaving it looking like an empty bookmark. #}
+  <g fill="currentColor" opacity=".95" transform="translate(30 60) scale(1.35)">
+    {# centre petal — tall, tapering, with the pinch above the band #}
+    <path d="M0 -20 c6 7 8 14 4 21 c-1 2 -2 4 -4 5 c-2 -1 -3 -3 -4 -5
+             c-4 -7 -2 -14 4 -21 z"/>
+    {# the two side petals fall away and curl UP at the tip, which is what
+       makes it a lily rather than a clover #}
+    <path d="M-3 1 C-8 -3 -14 -6 -18 -3 C-22 0 -21 7 -16 10
+             C-11 13 -6 9 -3 3 Z"/>
+    <path d="M3 1 C8 -3 14 -6 18 -3 C22 0 21 7 16 10
+             C11 13 6 9 3 3 Z"/>
+    {# the band, and the foot below it #}
+    <rect x="-10" y="4" width="20" height="3.6" rx="1"/>
+    <path d="M-3.5 9 h7 c1 6 2 10 3.5 13 h-14 c1.5 -3 2.5 -7 3.5 -13 z"/>
+  </g>
+  <g fill="currentColor" opacity=".55">
+    <circle cx="30" cy="112" r="3.4"/>
+  </g>
+</svg>
+{% endmacro %}
+
+
+{#  ==========================================================================
+    THE ARMORIAL INTRODUCTION
+    Royal blue ground, solid gold, arms between two banners. This is the
+    first thing anyone sees, and it should look like the house rather than
+    like a booking engine.
+    ========================================================================== #}
+{% macro armorial_intro(settings) %}
+<section class="g-armorial">
+  <div class="g-armorial__in">
+
+    <div class="g-armorial__crest">
+      {{ banner('left') }}
+      {{ arms('auto', 'gold') }}
+      {{ banner('right') }}
+    </div>
+
+    <p class="g-armorial__fr">Ariège · Pyrénées · Depuis 1741</p>
+    {# The hero above already carries the name as the h1. Repeating it here
+       is a duplicate heading and wastes the strongest line on the page. The
+       arms say the name; this line says what the house IS. #}
+    <h2 class="g-armorial__t">Bâti pour un marquis.<br><em>Restauré pierre par pierre.</em></h2>
+    <p class="g-armorial__r"></p>
+    <p class="g-armorial__d">
+      Built for the Marquis de Sales, abandoned in 1850, and under restoration
+      since 2013. Five bedrooms of ninety-four are finished, and you are
+      welcome in the five.
+    </p>
+  </div>
+</section>
+{% endmacro %}

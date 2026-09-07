@@ -88,7 +88,36 @@ def run():
     conn.commit()
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (room["id"],)).fetchone()
 
-    arrival = m.house_today() + timedelta(days=90)
+
+    # Nights this room can actually take, asked of the same function the edit
+    # route refuses on. Three dates here were fixed offsets from today -- + 90,
+    # + 290 and + 340 -- and as the calendar rolled two of them walked into
+    # workshops: Noel at Gudanes and Cooking in the Cuisine. The move was
+    # refused, the stay never went anywhere, and a check about what a re-quote
+    # does to a stored total failed on a booking that had not moved.
+    #
+    # test_booking_source learned this first and carries the same helper. A
+    # fixed offset into a real calendar is a date that is free until one day
+    # it is not, and the day it stops being free is a morning somebody spends
+    # reading a diff that changed nothing.
+    def _free(after, nights=2):
+        c = db()
+        try:
+            day = after
+            for _ in range(600):
+                with m.app.test_request_context():
+                    # (ok, reason), not a bool: a bare `if` on a two-element
+                    # tuple is true whichever way the answer went.
+                    ok, _why = m.is_range_available(
+                        c, room["id"], day, day + timedelta(days=nights))
+                    if ok:
+                        return day
+                day += timedelta(days=1)
+        finally:
+            c.close()
+        raise AssertionError("no free %d nights in 600 days from %s" % (nights, after))
+
+    arrival = _free(m.house_today() + timedelta(days=90))
     departure = arrival + timedelta(days=2)
     try:
         with m.app.test_request_context("/"):
@@ -239,7 +268,7 @@ def run():
         conn.close()
         # Somewhere cheaper, so the figure after the move is unmistakably the
         # new nights and not a leftover.
-        elsewhere = arrival + timedelta(days=200)
+        elsewhere = _free(arrival + timedelta(days=200))
         conn = db()
         try:
             with m.app.test_request_context("/"):
@@ -304,7 +333,7 @@ def run():
         _override(conn, room["id"], arrival, departure, 350)
         conn.commit()
         conn.close()
-        their_dates = arrival + timedelta(days=250)
+        their_dates = _free(arrival + timedelta(days=250))
         conn = db()
         _override(conn, room["id"], their_dates, their_dates + timedelta(days=2), 100)
         conn.close()

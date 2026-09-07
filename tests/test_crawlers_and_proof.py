@@ -117,10 +117,18 @@ def run():
                   "instagram_followers": "", "facebook_followers": ""},
             follow_redirects=True)
     home = anon.get("/").get_data(as_text=True)
-    s.check("a supplied figure appears", "96" in home and "recommend" in home,
+    # THE RENDERED SENTENCE, not the digits. "96" in home and "367" not in
+    # home were substring searches over a whole HTML document, and this page
+    # generates random element ids -- id="j-email-3679" is a real one. So the
+    # empty-figure check failed roughly one run in forty, on nothing, and the
+    # supplied-figure check would have passed on a random id alone. A check
+    # that goes red at random is worse than no check: it teaches everyone that
+    # red means run it again.
+    s.check("a supplied figure appears",
+            "of guests recommend the château" in home and ">96%<" in home,
             detail="the component reads settings and renders nothing without them")
     s.check("and one left empty does not",
-            "Instagram" not in home or "367" not in home,
+            "following the restoration on Instagram" not in home,
             detail="any figure not supplied renders nothing, which is what "
                    "makes supplying one at a time safe")
 

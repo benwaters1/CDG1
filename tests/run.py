@@ -148,6 +148,7 @@ SUITES = [
     "test_repeat_guests",
     "test_room_economics",
     "test_still_out",
+    "test_roll_call",
     "test_sick_note",
     "test_insurer_notice",
     "test_home_warnings",

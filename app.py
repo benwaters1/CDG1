@@ -20366,6 +20366,96 @@ def report_labour(conn, period):
     }
 
 
+def on_site_now(conn, now=None):
+    """Everyone who is in the house right now, staff and guests together.
+
+    THE LIST NOBODY COULD PRODUCE, and the one a fire officer asks for. The
+    app knew who was clocked in and it knew who was staying, on two different
+    screens, and at the moment it is wanted nobody is going to open two
+    screens and add them up on paper.
+
+    Guests are counted from CONFIRMED stays covering tonight, and party_size
+    is what goes in the total rather than one per booking -- a family of five
+    is five people on a landing, not one.
+
+    It says what it cannot know, which matters more here than anywhere else in
+    this app: a guest who went out to dinner is still on this list, and a
+    member of staff who forgot to clock out is too. It is who is EXPECTED to
+    be in the building, and it says so, because a list that claimed to be
+    certain would be trusted at exactly the wrong moment.
+    """
+    now = now or datetime.now(timezone.utc)
+    today = house_today()
+
+    staff = conn.execute(
+        """SELECT users.id, users.name, users.phone, users.job_role,
+                  time_entries.clock_in_at
+             FROM time_entries JOIN users ON users.id = time_entries.user_id
+            WHERE time_entries.clock_out_at IS NULL
+            ORDER BY users.name""").fetchall()
+
+    stays = conn.execute(
+        """SELECT bookings.id, bookings.guest_name, bookings.guest_phone,
+                  bookings.party_size, bookings.arrival_date,
+                  bookings.departure_date, rooms.name AS room_name
+             FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed'
+              AND bookings.arrival_date <= ? AND bookings.departure_date > ?
+            ORDER BY rooms.sort_order, rooms.id""",
+        (today.isoformat(), today.isoformat())).fetchall()
+
+    # A shift that has run past a day is somebody who forgot, not somebody
+    # still working, and on this list it is worth saying which.
+    def hours_since(stamp):
+        when = parse_datetime_iso(stamp)
+        if not when:
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        return round((now - when).total_seconds() / 3600, 1)
+
+    def local_clock(stamp):
+        """The wall clock in the Ariege, not Greenwich. A muster list showing
+        13:20 for somebody who started at 15:20 is read by a person standing
+        outside comparing it against their own watch."""
+        when = parse_datetime_iso(stamp)
+        if not when:
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        return when.astimezone(LOCAL_TZ).strftime("%H:%M")
+
+    staff_rows = [{
+        "id": s["id"], "name": s["name"], "phone": s["phone"],
+        "job_role": s["job_role"], "since": s["clock_in_at"],
+        "since_time": local_clock(s["clock_in_at"]),
+        "hours": hours_since(s["clock_in_at"]),
+        "probably_forgot": (hours_since(s["clock_in_at"]) or 0) > 16,
+    } for s in staff]
+
+    guest_rows = [{
+        "booking_id": b["id"], "name": b["guest_name"], "phone": b["guest_phone"],
+        "room": b["room_name"], "party_size": b["party_size"] or 1,
+        "arrived": b["arrival_date"], "leaving": b["departure_date"],
+    } for b in stays]
+
+    return {
+        # Both, and both are read. The ISO stamp is the record; taken_at is
+        # what goes on the page, because a muster list is a SNAPSHOT and the
+        # first question about one an hour old is when it was taken.
+        "as_at": now.isoformat(),
+        "taken_at": now.astimezone(LOCAL_TZ).strftime("%H:%M"),
+        "day": today.isoformat(),
+        "staff": staff_rows,
+        "guests": guest_rows,
+        "staff_count": len(staff_rows),
+        "guest_count": sum(g["party_size"] for g in guest_rows),
+        "rooms_occupied": len(guest_rows),
+        "total": len(staff_rows) + sum(g["party_size"] for g in guest_rows),
+        "doubtful": [s["name"] for s in staff_rows if s["probably_forgot"]],
+    }
+
+
 def booking_source_mix(conn, start_iso, end_iso):
     """Nights and money by where the booking came from.
 
@@ -30444,6 +30534,8 @@ PALETTE_PAGES = [
     ("Go-live checklist", "admin_readiness", "deploy setup ready configuration"),
     ("A photograph in", "photo_intake",
      "photo intake upload picture social post instagram slot schedule alt text"),
+    ("Who is in the house right now", "roll_call",
+     "roll call fire evacuation muster who is here safety emergency headcount"),
     ("Photographs we do not own", "admin_photo_mirror",
      "images photos squarespace cdn hotlink mirror logo pictures gallery "
      "who hosts our pictures"),
@@ -62445,6 +62537,26 @@ def chat_with(user_id):
     channel = dm_channel_for(conn, user["id"], user_id)
     conn.close()
     return redirect(url_for("chat_channel", slug=channel["slug"]))
+
+
+@app.route("/roll-call")
+@login_required
+def roll_call():
+    """Everyone expected in the house right now, staff and guests on one page.
+
+    Deliberately NOT owner-only. The person who needs this is whoever is
+    standing outside at two in the morning, and an access preset is not a
+    thing anybody checks first. Every other list in this app can wait for the
+    right person to log in; this one cannot.
+
+    It is also deliberately plain: no search, no chips, no sort. A page that
+    has to be read while a building empties is a page with nothing on it to
+    press by mistake.
+    """
+    conn = get_db()
+    here = on_site_now(conn)
+    conn.close()
+    return render_template("roll_call.html", here=here)
 
 
 @app.route("/today")

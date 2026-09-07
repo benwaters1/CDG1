@@ -133,7 +133,10 @@ def run():
                      "mostly wrong")
 
     s.section("The desk says desk")
-    wi = house_today() + timedelta(days=60)
+    # The last fixed offset in this suite. It is free today, which is exactly
+    # what + 45 was until an atelier drifted onto it — so it goes through the
+    # helper with the rest rather than waiting its turn to break.
+    wi = free_nights(room["id"], house_today() + timedelta(days=60), nights=1)
     oc.post("/admin/bookings/walk-in", data={
         "room_id": str(room["id"]),
         "arrival_date": wi.isoformat(),

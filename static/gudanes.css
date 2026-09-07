@@ -44,6 +44,25 @@
   --m-wide:  46rem;   /* ~72 characters at lede size */
 }
 
+/* A CUSTOM PROPERTY CANNOT BE USED IN A MEDIA QUERY CONDITION.
+   --m-tight and --m-read are declared just above and were written into
+   forty-two @media rules below, every one of which the browser then
+   discarded: custom properties are resolved at computed-value time,
+   long after a media query has been evaluated. So forty-two blocks of
+   phone layout -- the navigation label, the back-to-top position, full
+   width buttons on the confirmation page -- had never once applied,
+   and nothing anywhere reported it. The values are written out; the
+   variables stay for use in ordinary declarations, where they work.
+
+   PUT BACK A THIRD TIME, by the handover of 2026-09-07. The design side
+   works from a tree that still has the variables in, so every zip carries
+   them back. Asking them again has now failed twice, so the repair is
+   automatic from here: tools/repair_handover.py rewrites the conditions
+   on every handover, and test_design still fails on it as the backstop.
+   Whoever edits this file next: the variables are RIGHT everywhere else
+   in this stylesheet. It is only the condition between @media and { that
+   cannot resolve them. */
+
 
 /* ==========================================================================
    THE TYPE SCALE
@@ -8220,6 +8239,262 @@ main > .g-facts{ border-bottom: 1px solid var(--line); }
   line-height: 1.6; color: #A9B8C8;
 }
 
+/* ==========================================================================
+   WHAT IT TOOK
+   The section under the hero was a label-prose-link row where the strongest
+   moment on the page should be. This is dramatic on purpose: a heading that
+   fills the width, four facts set like an inscription, and a turn.
+   ========================================================================== */
+.g-took{
+  background-color: var(--sand);
+  background-image:
+    linear-gradient(180deg, #FBF7EF 0%, var(--sand) 42%, #EFE7D7 100%);
+  padding: clamp(56px, 8vw, 120px) var(--s5);
+  /* No bottom border: the section beneath already draws its own top edge,
+     and two of them make a 2px seam. Same fault as .g-facts, made again. */
+}
+.g-took__in{ max-width: 62rem; margin: 0 auto; }
+
+.g-took__fr{
+  margin: 0 0 var(--s4);
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .26em; text-transform: uppercase; color: var(--gilt);
+}
+/* The line that does the work. It is the largest type on the page after the
+   hero, because it is the sentence the whole site rests on. */
+.g-took__h{
+  margin: 0 0 clamp(32px, 4vw, 56px);
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(30px, 4.6vw, 58px); line-height: 1.12;
+  letter-spacing: -.005em; color: var(--blue-deep);
+  max-width: 34ch;
+}
+.g-took__h em{
+  display: block; font-style: italic; color: var(--gilt);
+  margin-top: .12em;
+}
+
+/* The prose keeps a reading measure, but the SECTION uses the width — the
+   facts run the full span beneath it, which is what makes it feel like an
+   inscription rather than a column of text. */
+.g-took__body{ display: grid; gap: var(--s6); }
+.g-took__lede,
+.g-took__close,
+.g-took__turn,
+.g-took__sig{ max-width: 40rem; }
+.g-took__lede{
+  margin: 0; font-family: var(--display);
+  font-size: clamp(18px, 1.7vw, 22px); line-height: 1.65; color: var(--ink);
+}
+
+/* The facts are set like an inscription — figure above, plain sentence
+   below, a gold rule over each. Not a stat card. */
+.g-took__facts{
+  margin: 0; display: grid; gap: var(--s5) var(--s6);
+  grid-template-columns: 1fr;
+}
+/* Two by two, then four across when there is genuinely room. Never three
+   with one orphaned underneath. */
+@media (min-width: 40rem){ .g-took__facts{ grid-template-columns: 1fr 1fr; } }
+/* Four across left each fact 31 characters wide, under the measure floor.
+   Three columns gives about 42 — and the fourth centres beneath rather than
+   sitting orphaned to the left. */
+@media (min-width: 76rem){
+  .g-took__facts{ grid-template-columns: repeat(3, 1fr); }
+  .g-took__facts > div:last-child{
+    grid-column: 1 / -1;
+    max-width: calc(33.333% - var(--s6));
+    justify-self: center;
+  }
+}
+.g-took__facts > div{ border-top: 2px solid var(--gold); padding-top: var(--s3); }
+.g-took__facts dt{
+  font-family: var(--display); font-size: clamp(21px, 2vw, 27px);
+  line-height: 1.15; color: var(--blue-deep);
+  font-variant-numeric: lining-nums;
+}
+.g-took__facts dd{
+  margin: var(--s2) 0 0; font-family: var(--ui);
+  font-size: var(--t-ui); line-height: 1.6; color: var(--ink-soft);
+}
+
+/* The turn. One short line, alone, doing the pivot from what it cost to
+   why any of it concerns the reader. */
+.g-took__turn{
+  margin: var(--s3) 0; padding-left: var(--s5);
+  border-left: 3px solid var(--gold);
+  font-family: var(--display); font-style: italic;
+  font-size: clamp(22px, 2.4vw, 31px); line-height: 1.3;
+  color: var(--gilt);
+}
+.g-took__close{
+  margin: 0; font-family: var(--display);
+  font-size: clamp(17px, 1.6vw, 21px); line-height: 1.7; color: var(--ink);
+}
+
+.g-took__sig{ margin: 0; display: grid; gap: 2px; }
+.g-took__sigt{
+  font-family: var(--display); font-size: clamp(18px, 1.7vw, 22px);
+  color: var(--blue-deep);
+}
+.g-took__sigs{
+  font-family: var(--ui); font-size: var(--t-sm); color: var(--gilt);
+  letter-spacing: .04em;
+}
+.g-took__a{ display: flex; flex-wrap: wrap; gap: var(--s4); margin: var(--s3) 0 0; }
+
+/* ==========================================================================
+   THE SEARCH PANEL
+   Four cream boxes butted together with hairlines between them — it reads as
+   a form bolted onto a photograph, and it is the one ordinary thing in an
+   otherwise handsome hero.
+
+   Made of the same materials as the rest: the deep blue, gold rules, the
+   display face for values. It sits ON the photograph rather than covering a
+   rectangle of it, and the labels are gold rather than grey.
+   ========================================================================== */
+.g-herosearch{
+  background: rgba(14, 28, 48, .82);
+  backdrop-filter: blur(14px) saturate(115%);
+  -webkit-backdrop-filter: blur(14px) saturate(115%);
+  border: 1px solid rgba(220,192,119,.42);
+  border-top: 2px solid var(--gold);
+  box-shadow: 0 18px 44px rgba(8,18,34,.34);
+  padding: 0;
+  gap: 0;
+}
+/* A hairline between cells, in gold at low opacity rather than a grey rule. */
+.g .g-herosearch__f + .g-herosearch__f{
+  border-left: 1px solid rgba(220,192,119,.26);
+}
+.g .g-herosearch__f{
+  background: none;
+  padding: var(--s4) var(--s5);
+}
+.g .g-herosearch__f > label{
+  font-family: var(--ui); font-size: 11px; font-weight: 600;
+  letter-spacing: .2em; text-transform: uppercase;
+  color: var(--gold-lit);
+}
+.g .g-herosearch__f .g-rp__btn,
+.g .g-herosearch__f input,
+.g .g-herosearch__f select{
+  background: none; border: 0; color: #FFFFFF;
+  font-family: var(--display); font-weight: 300;
+}
+.g .g-herosearch__f .g-rp__val{ color: #FFFFFF; }
+/* "Add dates" is a prompt, not a value. */
+.g .g-herosearch__f .g-rp__val:empty::before,
+.g .g-herosearch__f .is-empty{
+  color: rgba(255,255,255,.62); font-style: italic;
+}
+.g .g-herosearch__f:focus-within{ background: rgba(220,192,119,.10); }
+
+/* The action is solid gold on the navy — the one place on the site where
+   gold can be a fill behind dark text and still clear AA. */
+.g .g-herosearch__go{
+  background: var(--gold); border: 0;
+  color: var(--blue-deep); font-family: var(--ui);
+  font-weight: 600; letter-spacing: .04em;
+}
+.g .g-herosearch__go:hover{ background: #D8B667; }
+
+@media (max-width: 44rem){
+  /* Two columns already; the divider has to follow the grid, not the source
+     order, or the second row gets a stray line down its left. */
+  .g .g-herosearch__f + .g-herosearch__f{ border-left: 0; }
+  .g .g-herosearch__f{ border-top: 1px solid rgba(220,192,119,.26); }
+  .g .g-herosearch__f:nth-of-type(2){ border-left: 1px solid rgba(220,192,119,.26); }
+}
+
+/* "Add dates" was breaking across two lines, which makes the panel look
+   broken rather than roomy. It is two words and should stay two words. */
+.g .g-herosearch__f .g-rp__val,
+.g .g-herosearch__f .g-rp__btn{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.g .g-herosearch__f{ min-width: 0; }
+
+/* A card grid that leaves ONE item alone on its last row reads as a mistake —
+   2+2+1 on Stay, 2+1 twice on The Estate. My earlier rule only caught the
+   odd-last-child case at three columns; this catches the two-column one.
+   Centring the last row is the least destructive fix: nothing is stretched,
+   nothing is cropped, the lone card just stops sitting hard left. */
+.g-cards{ justify-content: center; }
+.g-cards > .g-card{ width: 100%; }
+
+/* Matched to the CONTAINER query the grid already uses, not the viewport —
+   the grid is two columns at 1440px because it measures its wrapper, and my
+   viewport rules were reverting the fix before three columns ever applied. */
+@container (min-width: 56rem) and (max-width: 79.99rem){
+  .g-cards:has(> .g-card:last-child:nth-child(odd)) > .g-card:last-child{
+    grid-column: 1 / -1;
+    max-width: calc(50% - var(--s4));
+    justify-self: center;
+  }
+}
+
+/* My new panel padding left the date buttons at 40px on a tablet — under the
+   minimum, and the panel is the first thing a guest touches. The cell can be
+   as roomy as it likes; the control inside it holds 44. */
+.g .g-herosearch__f .g-rp__btn,
+.g .g-herosearch__f select,
+.g .g-herosearch__f input:not([type="checkbox"]){
+  min-height: 44px;
+}
+
+/* ==========================================================================
+   HOW YOU ARE LOOKED AFTER
+   The service had no section at all, and it is what guests at this level
+   actually judge. Set on the navy so it reads as the confident part of the
+   page rather than more parchment.
+   ========================================================================== */
+.g-care{
+  background-color: #14305F;
+  background-image:
+    radial-gradient(120% 100% at 20% 0%, #1B3D74 0%, #14305F 58%, #0E2247 100%);
+  color: #E7E1D5;
+  padding: clamp(56px, 8vw, 108px) var(--s5);
+  border-top: 3px solid var(--gold);
+}
+.g-care__in{ max-width: 68rem; margin: 0 auto; }
+
+.g-care__fr{
+  margin: 0 0 var(--s3);
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .26em; text-transform: uppercase; color: var(--gold-lit);
+}
+.g-care__h{
+  margin: 0 0 clamp(34px, 4vw, 60px);
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(28px, 4vw, 50px); line-height: 1.14;
+  color: #FFFFFF; max-width: 24ch;
+}
+
+.g-care__grid{
+  display: grid; gap: var(--s6) var(--s7);
+  grid-template-columns: 1fr;
+}
+@media (min-width: 44rem){ .g-care__grid{ grid-template-columns: 1fr 1fr; } }
+
+.g-care__i{ border-top: 2px solid var(--gold); padding-top: var(--s4); }
+.g-care__k{
+  margin: 0 0 var(--s3);
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--gold-lit);
+}
+.g-care__t{
+  margin: 0; font-family: var(--display);
+  font-size: clamp(17px, 1.5vw, 20px); line-height: 1.7; color: #E7E1D5;
+}
+
+.g-care__note{
+  margin: clamp(34px, 4vw, 56px) 0 0; padding-top: var(--s5);
+  border-top: 1px solid rgba(220,192,119,.3);
+  font-family: var(--ui); font-size: var(--t-ui); line-height: 1.65;
+  color: #B9C6D4; max-width: 46rem;
 /* --------------------------------------------------------------------------
    THE APPROACH MAP — phone variant
    The landscape drawing is 720 units wide. In a 334px phone column that is a

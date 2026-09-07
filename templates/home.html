@@ -61,16 +61,15 @@
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
   </button>
 </section>
-<div class="g-wrap">
-  <p class="g-family">
-    <span class="g-family__k">Whose house it is</span>
-    <span class="g-family__t">Karina Waters bought a château she had barely seen, and lives here still. When you stay, you are in someone's home rather than a hotel.</span>
-    <a href="{{ url_for('story') }}">How it happened</a>
-  </p>
-</div>
 
 
+{% from '_arms.html' import armorial_intro %}
+{{ armorial_intro(settings) }}
+{% from '_took.html' import what_it_took %}
+{{ what_it_took(settings) }}
 
+{% from '_care.html' import looked_after %}
+{{ looked_after(settings) }}
 
 {{ stay_panel() }}
 
