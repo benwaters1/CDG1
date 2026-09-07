@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}When you cannot work{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>When you cannot work</h1>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  <strong>This is not a swap and it is not leave.</strong> A swap is what you
+  need once a shift is already on you. This is what stops it being put there in
+  the first place &mdash; say it here and the rota shows it while it is being
+  built. If you want paid days off, that is a leave request.
+</p>
+
+<div style="margin-bottom:20px;">
+  <form method="post" action="{{ url_for('cannot_work') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field-label" for="cw_from">From</label>
+    <input type="date" id="cw_from" name="starts_on" min="{{ today }}" required>
+
+    <label class="field-label" for="cw_to">To, and including</label>
+    <input type="date" id="cw_to" name="ends_on" min="{{ today }}" required>
+
+    <label class="field-label" for="cw_why">Why, if you want to say</label>
+    <input type="text" id="cw_why" name="reason" maxlength="200"
+           placeholder="A wedding, an exam, back at my mother's — or leave it blank">
+    <p class="g-hint">You do not have to give a reason. It only helps whoever is
+      building the rota decide what can move.</p>
+
+    <button type="submit" class="btn-primary">Tell the rota</button>
+  </form>
+</div>
+
+<h2>What you have told us</h2>
+{% if mine %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>From</th><th>To</th><th>Why</th><th></th></tr></thead>
+    <tbody>
+      {% for r in mine %}
+      <tr>
+        <td>{{ r['starts_on'] }}</td>
+        <td>{{ r['ends_on'] }}</td>
+        <td>{{ r['reason'] or '—' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('cannot_work_remove', entry_id=r['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">I can work after all</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="muted">Nothing coming up. You are available as far as the rota knows.</p>
+{% endif %}
+
+{% if everyone %}
+<h2>Everybody</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Who</th><th>From</th><th>To</th><th>Why</th><th></th></tr></thead>
+    <tbody>
+      {% for r in everyone %}
+      <tr>
+        <td>{{ r['name'] }}</td>
+        <td>{{ r['starts_on'] }}</td>
+        <td>{{ r['ends_on'] }}</td>
+        <td>{{ r['reason'] or '—' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('cannot_work_remove', entry_id=r['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Tips{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Tips, and whose hours earned them</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('tronc_page', day=(day - one_day).isoformat()) }}" class="btn-ghost">&larr; The night before</a>
+    {% if day < today %}
+    <a href="{{ url_for('tronc_page', day=(day + one_day).isoformat()) }}" class="btn-ghost">The night after &rarr;</a>
+    {% endif %}
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  <strong>Service for {{ day }}</strong> &mdash; the restaurant&rsquo;s day, which
+  ends at five in the morning. A table that paid at half past one belongs to the
+  night before, and to the people who worked it.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if data.nobody_clocked_in %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>&euro;{{ '{:,.2f}'.format(data.pot) }} was charged in service and nobody
+  was clocked in.</strong> The money is real and somebody worked for it, so this
+  is a timesheet to fix rather than tips to write off.
+</div>
+{% endif %}
+
+<h2>The share</h2>
+<p class="g-hint">
+  By hours on the floor. Not by role &mdash; the house has never recorded a
+  weighting, and this software is not the place to decide that a chef is worth
+  four fifths of a server. If you want it split another way, that is a decision
+  to take and then record, not one to leave to a default.
+</p>
+
+{% if data.shares %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Who</th><th>Hours</th><th>Share of the night</th><th>Owed</th></tr></thead>
+    <tbody>
+      {% for r in data.shares %}
+      <tr>
+        <td>{{ r.name }}</td>
+        <td>{{ r.hours }}</td>
+        <td>{% if data.hours %}{{ (100 * r.hours / data.hours)|round(1) }}%{% else %}&mdash;{% endif %}</td>
+        <td><strong>&euro;{{ '{:,.2f}'.format(r.share) }}</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="3">Shared out</td>
+        <td>&euro;{{ '{:,.2f}'.format(data.allocated) }}</td>
+      </tr>
+      {% if data.remainder %}
+      {# Named rather than pushed onto the last row. A few cents a service is
+         nothing; a few cents a service that always lands on the same person
+         is noticed, and remembered. #}
+      <tr>
+        <td colspan="3">Left over after rounding down</td>
+        <td>&euro;{{ '{:,.2f}'.format(data.remainder) }}</td>
+      </tr>
+      {% endif %}
+    </tfoot>
+  </table>
+</div>
+{% else %}
+<p class="muted">Nothing was charged in service that night, or nobody was clocked in.</p>
+{% endif %}
+
+<h2>The week behind</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Night</th><th>Bills</th><th>Service taken</th><th>On the floor</th></tr></thead>
+    <tbody>
+      {% for n in week %}
+      <tr{{ ' class="row-alert"'|safe if n.nobody_clocked_in }}>
+        <td><a href="{{ url_for('tronc_page', day=n.day) }}">{{ n.day }}</a></td>
+        <td>{{ n.orders }}</td>
+        <td>&euro;{{ '{:,.2f}'.format(n.pot) }}</td>
+        <td>{{ n.shares|length }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

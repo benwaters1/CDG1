@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Contracted hours{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What the contract says, against what happened</h1>
+  <div style="display:flex; gap:10px;">
+    {% for n in [1, 4, 13, 52] %}
+    <a href="{{ url_for('contracted_hours_page', weeks=n) }}"
+       class="btn-ghost{{ ' btn-primary' if n == weeks }}">{{ n }} week{{ '' if n == 1 else 's' }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  <strong>The gap matters both ways.</strong> Over is unpaid overtime the house
+  is accruing whether or not anybody has noticed &mdash; in France that is a
+  liability, not a favour. Under is somebody on a thirty-five hour contract
+  being given twenty, which is a pay cut nobody agreed to and the first thing
+  they will raise. Hours are net of breaks, and a clock-out recorded before its
+  clock-in cannot subtract from anybody&rsquo;s total.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if data.no_contracted_hours %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>No contracted figure on file for
+  {{ data.no_contracted_hours|join(', ') }}.</strong>
+  The question cannot be asked about them at all &mdash; so they are listed
+  below with the gap left blank rather than measured against nought, which
+  would put every one of them at the top as wildly over.
+  Set it on each person&rsquo;s record.
+</div>
+{% endif %}
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Who</th><th>Contract</th><th>A week</th>
+          <th>Expected over {{ data.weeks }} weeks</th><th>Worked</th><th>Gap</th></tr>
+    </thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr{{ ' class="row-alert"'|safe if r.gap is not none and (r.gap > 1 or r.gap < -1) }}>
+        <td>{{ r.name }}{% if r.job_role %} <span class="muted">&middot; {{ r.job_role }}</span>{% endif %}</td>
+        <td>{{ r.contract_type or '—' }}</td>
+        <td class="num">{{ r.contracted_per_week or '—' }}</td>
+        <td class="num">{{ r.expected if r.expected is not none else '—' }}</td>
+        <td class="num">{{ r.worked }}</td>
+        <td class="num">
+          {%- if r.gap is none -%}
+            <span class="muted">not set</span>
+          {%- elif r.gap > 0 -%}
+            <strong>+{{ r.gap }}</strong>
+          {%- else -%}
+            {{ r.gap }}
+          {%- endif -%}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

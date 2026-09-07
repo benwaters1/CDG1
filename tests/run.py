@@ -151,6 +151,7 @@ SUITES = [
     "test_still_out",
     "test_roll_call",
     "test_what_a_night_earns",
+    "test_hours_and_tips",
     "test_sick_note",
     "test_insurer_notice",
     "test_home_warnings",
