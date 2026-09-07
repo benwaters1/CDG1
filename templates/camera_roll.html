@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Camera roll{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Camera roll</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('work_in_progress_public') }}" class="btn-mini" target="_blank" rel="noopener">See the public strip</a>
+    <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Everything off the camera, looked at once. The good ones go onto the public
+  work-in-progress page on their own; anything with a person in it is held for
+  you whatever else was decided, and nothing is ever posted to Instagram or
+  Facebook by the app — the best become drafts in the social queue with the
+  words already written.
+</p>
+
+{% with cells = summary.cells %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if summary.video_blind %}
+<div class="refund-box" style="margin-bottom:14px;">
+  <p style="margin:0;">
+    <strong>Video is stored and shown, but nothing here can see inside it.</strong>
+    That needs <code>ffmpeg</code>, which is not installed on this machine, so
+    a clip arrives held with that written on it and you write the line
+    yourself. A caption invented for footage nobody has watched would be
+    worse than no caption.
+  </p>
+</div>
+{% endif %}
+
+<details class="refund-box" style="margin-bottom:16px;" {{ 'open' if not rows }}>
+  <summary>Read a card</summary>
+  <form method="post" action="{{ url_for('camera_upload') }}"
+        enctype="multipart/form-data" style="margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field-label" for="media">The photographs and clips</label>
+    <input id="media" type="file" name="media" multiple required
+           accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm">
+    <p class="upload-hint" style="margin-top:6px;">
+      Select the whole card if you like — anything already here is recognised
+      by its contents and skipped, so reading the same card next week costs
+      nothing and imports only what is new. RAW (.RW2) is not taken, because a
+      browser cannot show one: shoot RAW+JPEG and the JPEG is what arrives.
+    </p>
+    <button type="submit" class="btn-primary" style="margin-top:10px;">Take these in</button>
+  </form>
+</details>
+
+{% if summary.unseen %}
+<form method="post" action="{{ url_for('camera_assess') }}" style="margin-bottom:16px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="btn-primary">
+    Look at the {{ summary.unseen }} nothing has seen
+  </button>
+  <span class="upload-hint">
+    Oldest first, forty at a time. A frame scoring {{ publish_score }} or more
+    goes straight up; {{ social_score }} or more is also drafted as a post.
+  </span>
+</form>
+{% endif %}
+
+{% include "_list_toolbar.html" %}
+
+{% if not rows %}
+  <div class="empty-state">
+    Nothing off the camera yet. Read a card above and the rest happens.
+  </div>
+{% else %}
+<div style="display:flex; flex-wrap:wrap; gap:16px;">
+  {% for r in rows %}
+  <article class="refund-box" style="flex:1 1 320px; max-width:420px; margin:0;">
+
+    {% if r['kind'] == 'video' and not r['poster'] %}
+      <div class="empty-state" style="margin:0 0 8px;">
+        A clip, unwatched — {{ r['original_name'] }}
+      </div>
+      <video controls preload="none" style="width:100%; border-radius:6px;"
+             src="{{ url_for('room_photo', filename=r['filename']) }}"></video>
+    {% else %}
+      <img src="{{ url_for('room_photo', filename=r['poster'] or r['filename']) }}"
+           alt="{{ r['shows'] or r['original_name'] or 'A frame off the camera' }}"
+           style="width:100%; border-radius:6px;" loading="lazy">
+      {% if r['kind'] == 'video' %}
+      <p class="upload-hint" style="margin:4px 0 0;">
+        A clip — this is one frame out of it.
+        <a href="{{ url_for('room_photo', filename=r['filename']) }}"
+           target="_blank" rel="noopener">Watch it</a>
+      </p>
+      {% endif %}
+    {% endif %}
+
+    <p style="margin:8px 0 2px;">
+      {% if r['status'] == 'published' %}
+        <span class="mini-status status-active">Up</span>
+      {% elif r['status'] == 'rejected' %}
+        <span class="mini-status status-inactive">Set aside</span>
+      {% elif not r['assessed_at'] %}
+        <span class="mini-status status-pending">Not looked at</span>
+      {% else %}
+        <span class="mini-status status-pending">Waiting on you</span>
+      {% endif %}
+      {% if r['has_people'] %}
+        <span class="mini-status status-inactive">Somebody in it</span>
+      {% endif %}
+      {% if r['score'] is not none %}
+        <span class="mini-status">{{ r['score'] }}/100</span>
+      {% endif %}
+      {% if r['social_post_id'] %}
+        <span class="mini-status status-active">Drafted as a post</span>
+      {% endif %}
+    </p>
+
+    <p class="upload-hint" style="margin:0 0 6px;">
+      {{ (r['taken_at'] or r['created_at'])|house_day|date_short }}
+      {%- if r['work_title'] %} · {{ r['work_title'] }}{% endif %}
+      {%- if r['original_name'] %} · {{ r['original_name'] }}{% endif %}
+      {# Putting a photograph on the public site, or taking one off it, is a
+         decision somebody made. Printed here so it can be asked about — a
+         name recorded and never shown is a name nobody can use. #}
+      {%- if r['decided_by_name'] %} · {{ 'put up' if r['status'] == 'published' else 'set aside' }} by {{ r['decided_by_name'] }}{% endif %}
+    </p>
+
+    {% if r['shows'] %}<p style="margin:0 0 6px;">{{ r['shows'] }}</p>{% endif %}
+    {% if r['hold_reason'] %}
+      <p class="upload-hint" style="margin:0 0 6px;"><strong>Held:</strong> {{ r['hold_reason'] }}</p>
+    {% endif %}
+
+    <details style="margin-bottom:8px;">
+      <summary class="small-link">The words</summary>
+      <form method="post" action="{{ url_for('camera_caption', media_id=r['id']) }}"
+            style="margin-top:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="field-label" for="sc{{ r['id'] }}">On the page</label>
+        <input id="sc{{ r['id'] }}" type="text" name="site_caption"
+               value="{{ r['site_caption'] or '' }}" maxlength="300">
+        <label class="field-label" for="so{{ r['id'] }}">If it were posted</label>
+        <textarea id="so{{ r['id'] }}" name="social_caption" rows="3"
+                  maxlength="900">{{ r['social_caption'] or '' }}</textarea>
+        <button type="submit" class="btn-mini" style="margin-top:8px;">Save the words</button>
+      </form>
+    </details>
+
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      {% if r['status'] != 'published' %}
+      <form method="post" action="{{ url_for('camera_publish', media_id=r['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if works %}
+        <select name="work_id" aria-label="Which job this belongs to">
+          <option value="">— work in progress —</option>
+          {% for w in works %}
+          <option value="{{ w['id'] }}" {{ 'selected' if w['id'] == r['work_id'] }}>{{ w['title'] }}</option>
+          {% endfor %}
+        </select>
+        {% endif %}
+        <button type="submit" class="btn-mini">Put it up</button>
+      </form>
+      {% endif %}
+      {% if r['status'] != 'rejected' %}
+      <form method="post" action="{{ url_for('camera_set_aside', media_id=r['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini"
+                aria-label="Set aside {{ r['original_name'] or 'this frame' }}">Set aside</button>
+      </form>
+      {% endif %}
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

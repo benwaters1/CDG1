@@ -188,6 +188,18 @@ m.fetch_weather = _refuse(
 # a third party. Blocked before there is anything to leak.
 m.ANTHROPIC_API_KEY = None
 
+# And the camera roll's vision call by name, not only by the key. This file
+# argues two paragraphs up that a live module global behind a call-site
+# conditional is exactly how the Stripe hole survived every run, so a new
+# third-party call written the same afternoon gets the same treatment rather
+# than an exception for being new. It is also the one that would be reached
+# in bulk: assessing a card is four hundred requests, not one.
+REAL_ASSESS_MEDIA = m.assess_media_with_claude
+m.assess_media_with_claude = _refuse(
+    "Anthropic, to look at a photograph",
+    "stand in for assess_media_with_claude in the test; a card is four "
+    "hundred frames and each one is a paid request")
+
 # Browser push, for the same reason and at the same stage as the two above.
 # A staff member who turns notifications on has handed us an endpoint at a
 # browser vendor's push service and a key to sign for it, and notify_user
@@ -227,6 +239,10 @@ assert m.webpush.__name__ == "_blocked", (
 assert m.fetch_one_image.__name__ == "_blocked", (
     "the photograph mirror is not blocked under test — it needs no key, which "
     "is why it is the kind that gets forgotten")
+assert m.assess_media_with_claude.__name__ == "_blocked", (
+    "the camera roll's vision call is not blocked under test — assessing one "
+    "card is four hundred paid requests, and the suite reads a copy of the "
+    "real database")
 assert not m.claude_configured(), (
     "ANTHROPIC_API_KEY is still set under test — app.py read it into a module "
     "global at import, and _load_dotenv puts the environment variable back, so "

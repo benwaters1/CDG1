@@ -308,6 +308,7 @@ SUITES = [
     "test_owner_figures",
     "test_meetings",
     "test_restoration_record",
+    "test_camera_roll",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",

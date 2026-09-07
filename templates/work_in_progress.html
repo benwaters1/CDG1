@@ -1,0 +1,83 @@
+{% extends "public_base.html" %}
+{% block title %}Work in progress{% endblock %}
+{% block description %}Photographs from the restoration of Château de Gudanes as the work happens — not a finished account, but what the building looked like this week.{% endblock %}
+{% block content %}
+
+<section class="g-sec">
+  <div class="g-wrap g-wrap--narrow">
+    <h1 class="g-display">Work in progress</h1>
+    {# The explanation the page needs in order to be read correctly. Without
+       it a strip of scaffolding and bare plaster reads as a building site
+       somebody forgot to tidy; with it, it reads as the thing people come
+       here for. It is also honest about what this page is NOT — the finished
+       account lives at /restoration/record and is written afterwards. #}
+    <p class="g-p">
+      These are photographs from the work itself, put up as it happens rather
+      than chosen afterwards. Some of them are of a wall with nothing on it.
+      That is the point: a Class I monument cannot be renovated in the
+      ordinary sense, so the building comes back one approved intervention at
+      a time, and most weeks what there is to show is a stripped reveal, a
+      lifted floor, or a room with a bucket in it.
+    </p>
+    <p class="g-p">
+      Nothing here is staged and nothing is a plan. It is what the château
+      looked like on the day.
+      <a href="{{ url_for('restoration_record_public') }}">The written record
+      of finished work is here</a>.
+    </p>
+  </div>
+</section>
+
+{% if not strip %}
+<section class="g-sec">
+  <div class="g-wrap g-wrap--narrow">
+    <p class="g-p">
+      Nothing has been added yet this season. Come back — it moves in bursts,
+      because the work does.
+    </p>
+  </div>
+</section>
+{% else %}
+<section class="g-sec">
+  <div class="g-wrap">
+    <div class="g-slots" style="display:flex; flex-wrap:wrap; gap:18px;">
+      {% for m in strip %}
+      <figure style="margin:0; flex:1 1 300px; max-width:460px;">
+        {% if m['kind'] == 'video' %}
+          <video controls preload="metadata" playsinline
+                 {% if m['poster'] %}poster="{{ url_for('room_photo', filename=m['poster']) }}"{% endif %}
+                 style="width:100%; border-radius:4px;">
+            <source src="{{ url_for('room_photo', filename=m['filename']) }}">
+            Your browser will not play this clip.
+          </video>
+        {% else %}
+          <img src="{{ url_for('room_photo', filename=m['filename']) }}"
+               alt="{{ m['site_caption'] or m['shows'] or 'Restoration work at Château de Gudanes' }}"
+               loading="lazy" style="width:100%; border-radius:4px;">
+        {% endif %}
+        <figcaption class="g-foot-note" style="margin-top:8px;">
+          {% if m['site_caption'] %}{{ m['site_caption'] }}{% endif %}
+          {%- if m['taken_at'] %}
+            <span style="display:block; opacity:.75;">{{ m['taken_at']|house_day|date_human }}</span>
+          {%- endif %}
+        </figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="g-sec">
+  <div class="g-wrap g-wrap--narrow">
+    <p class="g-p">
+      The rooms that are finished are open to guests, and that is what pays
+      for the rest of it.
+      <a href="{{ url_for('book_rooms') }}">The five that are ready</a>, or
+      <a href="{{ url_for('workshops_public') }}">the ateliers, where you work
+      on the building yourself</a>.
+    </p>
+  </div>
+</section>
+
+{% endblock %}

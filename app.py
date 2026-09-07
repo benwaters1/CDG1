@@ -132,6 +132,8 @@ import ssl
 import base64
 import threading
 import time
+import shutil        # which(): whether ffmpeg is on this box
+import subprocess    # one frame out of a clip, and nothing else
 from email.message import EmailMessage
 from datetime import datetime, timezone, timedelta, date, time as dtime
 from functools import wraps
@@ -206,6 +208,62 @@ DEFAULT_PHONE_COUNTRY = "+33"
 FR_MOBILE_PREFIXES = ("+336", "+337")
 
 IMAGE_EXTENSIONS = {"png", "jpg", "jpeg"}
+
+# ---------------------------------------------------------------------------
+# THE CAMERA ROLL
+#
+# What comes off the card, and the bars a frame has to clear before the house
+# publishes it without anybody looking. Named here rather than typed into the
+# routes because these are the judgement, and a judgement buried in an `if`
+# three hundred lines down is one nobody can find to argue with.
+# ---------------------------------------------------------------------------
+
+# A Lumix GH5 writes .RW2 raw and .MP4/.MOV video alongside its JPEGs. Raw is
+# not a thing a browser can show, so it is not accepted: shoot RAW+JPEG and
+# the JPEG is what arrives. Said plainly on the page rather than silently
+# skipped, because a photograph that vanishes without a word is worse than
+# one refused with a reason.
+# HEIC is deliberately absent. Pillow cannot open one without an extra
+# library, Chrome cannot display one, and a photograph that arrives and
+# then sits held saying "could not be opened" has wasted somebody's
+# time twice. An iPhone set to "Most Compatible" sends JPEG.
+MEDIA_PHOTO_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+MEDIA_VIDEO_EXTENSIONS = {"mp4", "mov", "m4v", "webm"}
+
+# What the assessment must give a frame before it goes up on its own. Not a
+# tight bar -- the work IS rough, half-finished walls are the point, and a
+# strip of only immaculate photographs would be a different and less honest
+# website. It is set to catch the accidental frame, the one of the floor, the
+# one taken while the lens cap was half on.
+MEDIA_PUBLISH_SCORE = 68
+
+# And a higher one before it is offered as something the house would POST.
+# A picture good enough for the record is not automatically good enough to
+# put in front of forty thousand people who did not ask for it.
+MEDIA_SOCIAL_SCORE = 82
+
+# How many the public strip carries. Enough to read as a diary, few enough
+# that the page still loads on a phone in the Ariege.
+MEDIA_STRIP_COUNT = 24
+
+# Longest edge kept. A GH5 frame is 5184px and about 9MB; the site shows it
+# at 1200 at the very most. Storing the original would fill the volume in a
+# season for no visible gain, and the card keeps the negative.
+MEDIA_MAX_EDGE = 2000
+
+# What one file may weigh coming in. A minute of GH5 4K is roughly 700MB, so
+# video wants a real ceiling or one clip fills the disk.
+MEDIA_MAX_BYTES = 512 * 1024 * 1024
+
+# The standing piece of work a frame is filed against when it is not yet part
+# of a named job. Matched by title, so it must not be edited casually.
+MEDIA_DIARY_TITLE = "Work in progress"
+
+# The card reader's shared secret. Unset means the machine door does not
+# exist at all -- a 404, not a 401, because an unconfigured door should not
+# advertise itself. Generated into a file and pasted by the owner; never
+# printed into a chat window.
+MEDIA_INGEST_KEY = (os.environ.get("GUDANES_INGEST_KEY") or "").strip()
 VIEWABLE_EXTENSIONS = IMAGE_EXTENSIONS | {"pdf"}  # types a browser can render inline, no download needed
 
 CHECKOUT_CHECKLIST = [
@@ -557,7 +615,14 @@ def house_date(stamp):
     """
     if not stamp:
         return None
-    when = parse_datetime_iso(stamp)
+    # A moment, however the caller is holding it. Most callers have the ISO
+    # string straight out of the database; a few genuinely have a datetime in
+    # hand and would otherwise have to spell .isoformat() at the call site,
+    # which is a TypeError waiting for whoever forgets. This is not the same
+    # thing as the two spellings of the ANSWER that this function exists to
+    # stamp out -- there is still exactly one right answer, and this only
+    # widens what may be asked.
+    when = stamp if isinstance(stamp, datetime) else parse_datetime_iso(stamp)
     if not when:
         return None
     if when.tzinfo is None:
@@ -5084,6 +5149,47 @@ def init_db():
         ("tasks_restoration_work_id",
          "ALTER TABLE tasks ADD COLUMN restoration_work_id INTEGER "
          "REFERENCES restoration_works(id) ON DELETE SET NULL"),
+
+        # Everything the camera has handed over, and what was decided about
+        # it. One row per FILE, keyed on its bytes.
+        ("media_intake", """CREATE TABLE IF NOT EXISTS media_intake (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sha256 TEXT NOT NULL UNIQUE,
+            filename TEXT NOT NULL,
+            original_name TEXT,
+            kind TEXT NOT NULL DEFAULT 'photo'
+                CHECK(kind IN ('photo','video')),
+            bytes INTEGER,
+            width INTEGER,
+            height INTEGER,
+            taken_at TEXT,
+            source TEXT,
+            poster TEXT,
+
+            status TEXT NOT NULL DEFAULT 'new'
+                CHECK(status IN ('new','held','published','rejected')),
+            verdict TEXT,
+            score INTEGER,
+            shows TEXT,
+            site_caption TEXT,
+            social_caption TEXT,
+            hold_reason TEXT,
+            has_people INTEGER NOT NULL DEFAULT 0,
+            assessed_at TEXT,
+            assess_error TEXT,
+
+            work_id INTEGER REFERENCES restoration_works(id) ON DELETE SET NULL,
+            restoration_photo_id INTEGER
+                REFERENCES restoration_photos(id) ON DELETE SET NULL,
+            social_post_id INTEGER REFERENCES social_posts(id) ON DELETE SET NULL,
+            published_at TEXT,
+            decided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            decided_at TEXT,
+            created_at TEXT NOT NULL
+        )"""),
+        ("media_intake_status_idx",
+         "CREATE INDEX IF NOT EXISTS media_intake_status_idx "
+         "ON media_intake(status, taken_at DESC)"),
     ):
         try:
             conn.execute(ddl)
@@ -6595,6 +6701,15 @@ OWNER_ONLY_AREAS = {
     # The restoration record. Management rather than estate: it carries what
     # the work cost, and spend is the owner's to see.
     "restoration_record": "management",
+    # The camera roll. Management rather than estate: it decides what appears
+    # on the house's public pages, which is the owner's call and not a
+    # maintenance job.
+    "camera_roll": "management",
+    "camera_upload": "management",
+    "camera_assess": "management",
+    "camera_publish": "management",
+    "camera_set_aside": "management",
+    "camera_caption": "management",
     "restoration_work_page": "management",
     "new_restoration_work": "management",
     "save_restoration_work": "management",
@@ -55670,6 +55785,335 @@ def restoration_record_public():
                            kinds=RESTORATION_KINDS)
 
 
+@app.route("/admin/camera")
+@owner_required
+def camera_roll():
+    """Everything the camera has handed over, and what became of it."""
+    conn = get_db()
+    rows = [dict(r) for r in conn.execute(
+        # Written out rather than aliased, because test_who_did_it looks for
+        # the join TABLE-qualified: an alias would satisfy a person reading
+        # it and not the check, and the check is the thing that noticed this
+        # decision had nobody's name on it in the first place.
+        """SELECT media_intake.*, rw.title AS work_title,
+                  sp.status AS post_status, du.name AS decided_by_name
+             FROM media_intake
+             LEFT JOIN restoration_works rw ON rw.id = media_intake.work_id
+             LEFT JOIN social_posts sp ON sp.id = media_intake.social_post_id
+             LEFT JOIN users du ON du.id = media_intake.decided_by_user_id
+            ORDER BY COALESCE(media_intake.taken_at,
+                              media_intake.created_at) DESC""")]
+    summary = media_summary(conn)
+    works = conn.execute(
+        "SELECT id, title FROM restoration_works "
+        "WHERE status IN ('planned','in_progress') ORDER BY title").fetchall()
+    conn.close()
+
+    lv = list_view(
+        rows, request.args,
+        search=["original_name", "shows", "site_caption", "social_caption",
+                "hold_reason", "work_title"],
+        search_hint="What is in it, or the file name off the card",
+        facets=[
+            # The question this page is opened to answer: what needs me.
+            facet("state", "Where it got to", lambda r: (
+                "Nothing has looked at it" if not r["assessed_at"] else
+                {"held": "Waiting on you", "published": "Up",
+                 "rejected": "Not used", "new": "Waiting on you"}.get(
+                     r["status"])),
+                  order=["Waiting on you", "Nothing has looked at it", "Up",
+                         "Not used"]),
+            facet("people", "Somebody in it",
+                  lambda r: "Yes — yours to decide" if r["has_people"] else None),
+            facet("kind", "Photo or video",
+                  lambda r: "Video" if r["kind"] == "video" else "Photograph"),
+            facet("post", "Offered as a post",
+                  lambda r: "Drafted" if r["social_post_id"] else None),
+        ],
+        sorts=[
+            sort_option("taken", "When it was taken",
+                        lambda r: (r["taken_at"] or r["created_at"] or ""),
+                        reverse=True),
+            sort_option("best", "Best first",
+                        lambda r: r["score"] or -1, reverse=True),
+            sort_option("worst", "Worst first", lambda r: (r["score"]
+                        if r["score"] is not None else 999)),
+        ],
+        default_sort="taken",
+    )
+    return render_template("camera_roll.html", rows=lv["rows"], lv=lv,
+                           summary=summary, works=works,
+                           publish_score=MEDIA_PUBLISH_SCORE,
+                           social_score=MEDIA_SOCIAL_SCORE)
+
+
+def take_in_media(conn, files, source="upload", *, now=None):
+    """Everything that arrives, however it arrived. Returns (taken, skipped).
+
+    One function rather than a loop in each route. Every bulk action in this
+    app that began as a loop inside a route ended up behaving differently
+    from the single-item path it was supposed to repeat, and this one has two
+    callers on the day it is written -- a browser form and a card reader on
+    somebody's laptop.
+
+    Nothing is skipped in silence. An import of four hundred files that
+    quietly drops nine is how somebody finds out in March that October never
+    arrived.
+    """
+    now = now or datetime.now(timezone.utc)
+    taken, skipped = 0, []
+    for f in files:
+        if not f or not f.filename:
+            continue
+        raw = f.read()
+        if len(raw) > MEDIA_MAX_BYTES:
+            skipped.append((f.filename, "it is bigger than %d MB"
+                            % (MEDIA_MAX_BYTES // (1024 * 1024))))
+            continue
+        if not media_kind_of(f.filename):
+            skipped.append((f.filename, "not a kind of file this takes — "
+                            "RAW (.RW2) and HEIC are not, so shoot RAW+JPEG "
+                            "and set a phone to Most Compatible"))
+            continue
+        stored = store_media_bytes(raw, f.filename)
+        if not stored:
+            skipped.append((f.filename, "it could not be stored"))
+            continue
+        if conn.execute("SELECT 1 FROM media_intake WHERE sha256 = ?",
+                        (stored["sha256"],)).fetchone():
+            skipped.append((f.filename, "it is already here"))
+            continue
+        poster = None
+        if stored["kind"] == "video":
+            poster = media_poster(
+                os.path.join(ROOM_PHOTO_DIR, stored["filename"]),
+                stored["filename"])
+        cur = conn.execute(
+            """INSERT INTO media_intake (sha256, filename, original_name, kind,
+                                         bytes, width, height, taken_at,
+                                         source, poster, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (stored["sha256"], stored["filename"], f.filename, stored["kind"],
+             stored["bytes"], stored["width"], stored["height"],
+             _exif_taken_at(os.path.join(ROOM_PHOTO_DIR, stored["filename"])),
+             (source or "upload").strip()[:60],
+             poster, now.isoformat()))
+        taken += 1
+    return taken, skipped
+
+
+@app.route("/admin/camera/upload", methods=["POST"])
+@owner_required
+def camera_upload():
+    """A card, a phone, or a folder somebody dragged onto the page."""
+    files = request.files.getlist("media")
+    if not files or all(not f or not f.filename for f in files):
+        flash("No files came through.", "error")
+        return redirect(url_for("camera_roll"))
+    conn = get_db()
+    taken, skipped = take_in_media(conn, files,
+                                  (request.form.get("source") or "upload"))
+    conn.commit()
+    conn.close()
+    msg, cat = bulk_message("Took in", "file", taken, skipped)
+    flash(msg, cat)
+    return redirect(url_for("camera_roll"))
+
+
+def _ingest_key_ok():
+    """Whether this request carries the card reader's key.
+
+    compare_digest rather than ==, because a plain comparison returns as soon
+    as two bytes differ and that timing is enough to guess a key one character
+    at a time over enough requests.
+    """
+    if not MEDIA_INGEST_KEY:
+        return False
+    return hmac.compare_digest(
+        (request.headers.get("X-Ingest-Key") or "").strip(), MEDIA_INGEST_KEY)
+
+
+@app.route("/ingest/known", methods=["POST"])
+@csrf.exempt
+def ingest_known():
+    """Which of these do you already have?
+
+    Asked before anything is sent. A card holds four hundred frames and gains
+    forty a week, so without this the house re-uploads nine megabytes a frame,
+    every week, over a rural French connection, to be told each time that it
+    already had it.
+    """
+    if not MEDIA_INGEST_KEY:
+        abort(404)
+    if not _ingest_key_ok():
+        abort(403)
+    asked = (request.get_json(silent=True) or {}).get("sha256") or []
+    asked = [str(h)[:64] for h in asked][:2000]
+    if not asked:
+        return {"known": []}
+    conn = get_db()
+    marks = ",".join("?" * len(asked))
+    known = [r["sha256"] for r in conn.execute(
+        "SELECT sha256 FROM media_intake WHERE sha256 IN (%s)" % marks, asked)]
+    conn.close()
+    return {"known": known}
+
+
+@app.route("/ingest/media", methods=["POST"])
+@csrf.exempt
+def ingest_media():
+    """The card reader's door. Never looks at a cookie, so it cannot be
+    driven by a page the owner happens to be visiting."""
+    if not MEDIA_INGEST_KEY:
+        abort(404)
+    if not _ingest_key_ok():
+        abort(403)
+    files = request.files.getlist("media")
+    if not files:
+        return {"taken": 0, "skipped": []}
+    conn = get_db()
+    taken, skipped = take_in_media(
+        conn, files, (request.form.get("source") or "card"))
+    conn.commit()
+    conn.close()
+    return {"taken": taken,
+            "skipped": [{"file": n, "why": w} for n, w in skipped]}
+
+
+@app.route("/admin/camera/assess", methods=["POST"])
+@owner_required
+def camera_assess():
+    """Look at everything nothing has looked at yet.
+
+    One at a time and in the order they were taken, so a card that half
+    finishes has done the oldest rather than a scatter. Anything it cannot
+    judge is HELD with the reason on it, never dropped.
+    """
+    conn = get_db()
+    ids = [int(i) for i in request.form.getlist("id") if str(i).isdigit()]
+    if not ids:
+        ids = [r["id"] for r in conn.execute(
+            "SELECT id FROM media_intake WHERE assessed_at IS NULL "
+            "ORDER BY COALESCE(taken_at, created_at) LIMIT 40")]
+    if not ids:
+        conn.close()
+        flash("Nothing is waiting to be looked at.", "error")
+        return redirect(url_for("camera_roll"))
+    up, skipped = 0, []
+    for row_id in ids:
+        outcome = assess_media_row(conn, row_id)
+        if outcome == "published":
+            up += 1
+        else:
+            row = conn.execute(
+                "SELECT original_name, hold_reason, verdict FROM media_intake "
+                "WHERE id = ?", (row_id,)).fetchone()
+            name = (row["original_name"] if row else None) or ("#%d" % row_id)
+            if row and row["verdict"] == "reject":
+                skipped.append((name, "it is not a good photograph"))
+            else:
+                skipped.append((name, (row["hold_reason"] if row else None)
+                                or "it needs you to look"))
+    conn.commit()
+    conn.close()
+    msg, cat = bulk_message("Put up", "frame", up, skipped)
+    flash(msg, cat)
+    return redirect(url_for("camera_roll"))
+
+
+@app.route("/admin/camera/<int:media_id>/publish", methods=["POST"])
+@owner_required
+def camera_publish(media_id):
+    conn = get_db()
+    user = current_user()
+    work_id = request.form.get("work_id")
+    ok, why = publish_media(
+        conn, media_id, by_user_id=user["id"] if user else None,
+        work_id=int(work_id) if (work_id or "").isdigit() else None)
+    conn.commit()
+    conn.close()
+    flash("It is up on the work-in-progress page." if ok
+          else "Not put up — %s." % why, "success" if ok else "error")
+    return redirect(url_for("camera_roll"))
+
+
+@app.route("/admin/camera/<int:media_id>/set-aside", methods=["POST"])
+@owner_required
+def camera_set_aside(media_id):
+    """Not used. Kept, though — the file stays, and so does the row.
+
+    Deleting it would mean the next read of the same card brings it back and
+    asks again, which is the one thing the hash is here to prevent.
+    """
+    conn = get_db()
+    user = current_user()
+    now = datetime.now(timezone.utc).isoformat()
+    row = conn.execute("SELECT restoration_photo_id FROM media_intake "
+                       "WHERE id = ?", (media_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    if row["restoration_photo_id"]:
+        conn.execute("DELETE FROM restoration_photos WHERE id = ?",
+                     (row["restoration_photo_id"],))
+    conn.execute(
+        """UPDATE media_intake SET status = 'rejected', verdict = 'reject',
+                  restoration_photo_id = NULL, published_at = NULL,
+                  decided_by_user_id = ?, decided_at = ? WHERE id = ?""",
+        (user["id"] if user else None, now, media_id))
+    conn.commit()
+    conn.close()
+    flash("Set aside. It is off the page and the file is kept.", "success")
+    return redirect(url_for("camera_roll"))
+
+
+@app.route("/admin/camera/<int:media_id>/caption", methods=["POST"])
+@owner_required
+def camera_caption(media_id):
+    """Your words instead of its.
+
+    Written straight through to the published photograph as well, or the
+    caption on the page would still be the machine's while the roll showed
+    yours -- two answers to one question, which is how a page ends up lying
+    quietly for a month.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM media_intake WHERE id = ?",
+                       (media_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    site = (request.form.get("site_caption", "") or "").strip() or None
+    social = (request.form.get("social_caption", "") or "").strip() or None
+    conn.execute("UPDATE media_intake SET site_caption = ?, social_caption = ? "
+                 "WHERE id = ?", (site, social, media_id))
+    if row["restoration_photo_id"]:
+        conn.execute("UPDATE restoration_photos SET caption = ? WHERE id = ?",
+                     (site, row["restoration_photo_id"]))
+    if row["social_post_id"] and social:
+        conn.execute("UPDATE social_posts SET caption = ? WHERE id = ? "
+                     "AND status = 'idea'", (social, row["social_post_id"]))
+    conn.commit()
+    conn.close()
+    flash("Caption saved.", "success")
+    return redirect(url_for("camera_roll"))
+
+
+@app.route("/restoration/work-in-progress")
+def work_in_progress_public():
+    """The live strip: what the house looked like this week.
+
+    Its own page rather than an edit to restoration.html, for the same reason
+    the record is: the public templates arrive from the design side as
+    whole-file replacements, so anything written into one of those survives
+    exactly one handover.
+    """
+    conn = get_db()
+    strip = media_strip(conn)
+    conn.close()
+    return render_template("work_in_progress.html", strip=strip)
+
+
 @app.route("/meetings")
 @owner_required
 def meetings_page():
@@ -60897,6 +61341,457 @@ def restoration_task_for(conn, work_id, *, now=None):
 
 
 # ---------------------------------------------------------------------------
+# The camera roll
+#
+# What the house photographs, and what becomes of it.
+#
+# The restoration has been photographed since 2013 and almost none of it has
+# ever been seen. The pictures sit on cards and on a laptop, and the website
+# shows the same thirty-five images over and over. The bottleneck is not the
+# camera and it is not the website: it is that choosing, cropping, captioning
+# and posting four hundred frames is an evening's work nobody has, every week,
+# forever.
+#
+# So the frame is looked at once, on arrival, and the ordinary case goes all
+# the way through on its own. What is deliberately NOT automatic:
+#
+#   - anything with a person in it. A guest's face on a public page unasked
+#     is the one mistake here that cannot be taken back, and the privacy
+#     notice makes a promise about it. Held, always, whatever the score.
+#   - posting to Instagram or Facebook. The house has no posting integration
+#     and would need one; more to the point, publishing to somebody else's
+#     audience on the owner's behalf is theirs to press. A good frame becomes
+#     a DRAFT in the social queue that already exists, with the caption
+#     written, and somebody presses post.
+# ---------------------------------------------------------------------------
+
+MEDIA_ASSESS_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["verdict", "score", "shows", "has_people",
+                 "site_caption", "social_caption", "hold_reason"],
+    "properties": {
+        "verdict": {"type": "string", "enum": ["publish", "hold", "reject"]},
+        "score": {"type": "integer", "minimum": 0, "maximum": 100},
+        "shows": {"type": "string",
+                  "description": "Plainly what is in the frame, one line."},
+        "has_people": {"type": "boolean"},
+        "site_caption": {"type": ["string", "null"]},
+        "social_caption": {"type": ["string", "null"]},
+        "hold_reason": {"type": ["string", "null"]},
+    },
+}
+
+MEDIA_ASSESS_SYSTEM = """You are looking at photographs from Chateau de Gudanes, an
+eighteenth-century Class I Historic Monument in the French Pyrenees that has been
+under restoration since 2013. They are shot by the owner as the work happens. The
+good ones go onto a public "work in progress" page and, occasionally, to Instagram.
+
+Judge each frame on whether it is worth a stranger's attention. Rules, in order:
+
+1. A PERSON IN THE FRAME MEANS has_people TRUE AND verdict "hold". Anyone
+   recognisable -- a guest, a workman, a child, a face reflected in glass, a
+   figure in the background. This is not a matter of degree and it is not
+   traded off against how good the photograph is. Say so in hold_reason.
+
+2. Reject what is genuinely no good: out of focus, badly under- or
+   over-exposed, an accidental frame, the floor, a lens cap, a photograph of a
+   screen or a document. Be willing to reject. The point of this is that
+   nobody has to look through four hundred frames.
+
+3. Do NOT reject a photograph for being rough, dim, dusty or unfinished. Bare
+   plaster, scaffolding, rubble, a room with no floor and a bucket in it --
+   that is the subject, not a fault. A strip of only immaculate photographs
+   would be a worse and less honest page than this one deserves.
+
+4. site_caption is one plain sentence saying what is happening. Never invent a
+   date, a name, a room, a material, a century or a technique. If you cannot
+   tell what part of the building it is, say what you can see and no more --
+   "a window reveal stripped back to the stone" is right, "the Chambre Bleue,
+   1741" is a lie unless it is written on the wall.
+
+5. social_caption is for Instagram: two or three sentences, in the house's
+   voice, which is quiet. No exclamation marks, no hype, no emoji, no
+   hashtags, no "stunning" or "breathtaking", no rhetorical questions. It may
+   say what is being done and why it is interesting. It must not claim
+   anything the photograph does not show.
+
+6. score is 0-100 on whether a stranger scrolling would stop. Reserve above 85
+   for something genuinely arresting."""
+
+
+def media_kind_of(name):
+    """photo, video, or None for something this does not accept."""
+    ext = (name or "").rsplit(".", 1)[-1].lower() if "." in (name or "") else ""
+    if ext in MEDIA_PHOTO_EXTENSIONS:
+        return "photo"
+    if ext in MEDIA_VIDEO_EXTENSIONS:
+        return "video"
+    return None
+
+
+def ffmpeg_path():
+    """Where ffmpeg is, or None.
+
+    Video is stored and served either way. What needs ffmpeg is a still to
+    look at, and without one the clip is HELD with that written on it rather
+    than guessed about. A caption invented for footage nobody has watched is
+    worse than no caption.
+    """
+    return shutil.which("ffmpeg")
+
+
+def _exif_taken_at(path):
+    """When the shutter fired, as a UTC instant, or None.
+
+    EXIF records the camera's wall clock with no timezone on it. The camera
+    is at the chateau, so that wall clock IS house local time -- which is the
+    whole reason this cannot use the file's mtime as an equivalent: a card
+    copied in March carries March's mtime on a photograph taken in October.
+    """
+    try:
+        from PIL import Image
+        with Image.open(path) as im:
+            raw = (im.getexif() or {}).get(36867) or (im.getexif() or {}).get(306)
+    except Exception:
+        return None
+    if not raw:
+        return None
+    try:
+        naive = datetime.strptime(str(raw).strip(), "%Y:%m:%d %H:%M:%S")
+    except ValueError:
+        return None
+    return naive.replace(tzinfo=LOCAL_TZ).astimezone(timezone.utc).isoformat()
+
+
+def store_media_bytes(raw, original_name):
+    """Put one file on the volume beside the room photographs.
+
+    Returns a dict, or None if it is not something we take. Photographs are
+    re-encoded down to MEDIA_MAX_EDGE: a GH5 frame is 5184px and nine
+    megabytes, the site shows it at 1200 at the very most, and the card keeps
+    the negative. Video is stored untouched -- there is no transcoder here and
+    a half-transcoded clip is worse than a big one.
+
+    The sha256 is of the ORIGINAL bytes, before any of that, because it is
+    the identity of the FRAME. Re-encoding is not deterministic across Pillow
+    versions, so hashing the output would make the same photograph a new one
+    after a library upgrade -- and the whole point of the hash is that a card
+    can be read again next week for nothing.
+    """
+    kind = media_kind_of(original_name)
+    if not kind or not raw:
+        return None
+    digest = hashlib.sha256(raw).hexdigest()
+    safe = secure_filename(original_name) or "frame"
+    stored = "roll_%s_%s" % (digest[:12], safe)
+    out = {"sha256": digest, "kind": kind, "original_name": original_name,
+           "bytes": len(raw), "width": None, "height": None, "poster": None,
+           "taken_at": None}
+
+    if kind == "video":
+        with open(os.path.join(ROOM_PHOTO_DIR, stored), "wb") as f:
+            f.write(raw)
+        out["filename"] = stored
+        return out
+
+    try:
+        from PIL import Image, ImageOps
+        with Image.open(io.BytesIO(raw)) as im:
+            im = ImageOps.exif_transpose(im)
+            if im.mode not in ("RGB", "L"):
+                im = im.convert("RGB")
+            im.thumbnail((MEDIA_MAX_EDGE, MEDIA_MAX_EDGE), Image.LANCZOS)
+            stored = "roll_%s.jpg" % digest[:16]
+            im.save(os.path.join(ROOM_PHOTO_DIR, stored), "JPEG",
+                    quality=88, optimize=True)
+            out["width"], out["height"] = im.size
+    except Exception:
+        # Unreadable as an image. Kept anyway, under its own name, because a
+        # photograph that disappears without a word is worse than one held
+        # with a reason -- and the reason is written on the row later.
+        with open(os.path.join(ROOM_PHOTO_DIR, stored), "wb") as f:
+            f.write(raw)
+    out["filename"] = stored
+    return out
+
+
+def media_poster(path, stored_name):
+    """One frame out of a clip, for looking at and for the page's thumbnail."""
+    exe = ffmpeg_path()
+    if not exe:
+        return None
+    poster = "roll_poster_%s.jpg" % secrets.token_hex(6)
+    try:
+        subprocess.run(
+            [exe, "-loglevel", "error", "-y", "-ss", "1", "-i", path,
+             "-frames:v", "1", "-vf", "scale=%d:-1" % MEDIA_MAX_EDGE,
+             os.path.join(ROOM_PHOTO_DIR, poster)],
+            check=True, timeout=90, capture_output=True)
+    except Exception:
+        return None
+    return poster if os.path.exists(os.path.join(ROOM_PHOTO_DIR, poster)) else None
+
+
+def assess_media_with_claude(image_bytes, media_type="image/jpeg"):
+    """Look at one frame. Returns the dict, or None on any failure.
+
+    None means NOT ASSESSED, and the caller holds the frame. It never means
+    reject: a photograph quietly binned because a request timed out is a
+    photograph nobody knows they lost.
+    """
+    if not claude_configured():
+        return None
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    try:
+        response = client.messages.parse(
+            model="claude-opus-5", max_tokens=1024,
+            system=MEDIA_ASSESS_SYSTEM,
+            output_config={"format": {"type": "json_schema",
+                                      "schema": MEDIA_ASSESS_SCHEMA}},
+            messages=[{"role": "user", "content": [
+                {"type": "image",
+                 "source": {"type": "base64", "media_type": media_type,
+                            "data": base64.standard_b64encode(
+                                image_bytes).decode("ascii")}},
+                {"type": "text", "text":
+                 "Judge this frame for the chateau's work-in-progress page."},
+            ]}],
+        )
+        return response.parsed_output
+    except Exception:
+        return None
+
+
+def _assess_source_bytes(row):
+    """The image the model should look at: the frame, or a video's poster.
+
+    Sent smaller than it is stored. Vision gains nothing above about 1500px
+    and every pixel above that is paid for on every frame of every card.
+    """
+    name = row["poster"] or row["filename"]
+    path = os.path.join(ROOM_PHOTO_DIR, name)
+    if not os.path.exists(path):
+        return None
+    try:
+        from PIL import Image
+        with Image.open(path) as im:
+            if im.mode not in ("RGB", "L"):
+                im = im.convert("RGB")
+            im.thumbnail((1200, 1200), Image.LANCZOS)
+            buf = io.BytesIO()
+            im.save(buf, "JPEG", quality=82)
+            return buf.getvalue()
+    except Exception:
+        return None
+
+
+def assess_media_row(conn, row_id, *, now=None):
+    """Look at one row and write down what was decided.
+
+    Every path out of here leaves the row in a state a person can act on. A
+    frame is never left saying "new" with nothing written against it, because
+    that is the state that makes a queue unreadable -- you cannot tell the
+    ones nobody has got to from the ones something went wrong on.
+    """
+    now = now or datetime.now(timezone.utc)
+    row = conn.execute("SELECT * FROM media_intake WHERE id = ?",
+                       (row_id,)).fetchone()
+    if not row:
+        return None
+
+    def hold(why):
+        conn.execute(
+            """UPDATE media_intake SET status = 'held', verdict = 'hold',
+                      hold_reason = ?, assessed_at = ?, assess_error = ?
+                WHERE id = ?""", (why, now.isoformat(), why, row_id))
+        return "held"
+
+    if row["kind"] == "video" and not row["poster"]:
+        return hold("ffmpeg is not installed here, so nothing has looked "
+                    "inside this clip. Watch it and write the line yourself.")
+    if not claude_configured():
+        return hold("ANTHROPIC_API_KEY is not set, so nothing has looked at "
+                    "this yet.")
+    raw = _assess_source_bytes(row)
+    if raw is None:
+        return hold("The file could not be opened as an image.")
+
+    got = assess_media_with_claude(raw)
+    if not got:
+        return hold("The assessment did not come back. Nothing is wrong with "
+                    "the photograph — try it again.")
+
+    people = 1 if got.get("has_people") else 0
+    verdict = got.get("verdict") or "hold"
+    score = int(got.get("score") or 0)
+    # The gate, applied here rather than trusted from the verdict. The model
+    # is told to hold anything with a person in it and will nearly always do
+    # so; "nearly always" is not the standard for the one mistake on this
+    # page that cannot be taken back.
+    if people:
+        verdict = "hold"
+    status = {"publish": "published", "reject": "rejected"}.get(verdict, "held")
+    if verdict == "publish" and score < MEDIA_PUBLISH_SCORE:
+        verdict, status = "hold", "held"
+    conn.execute(
+        """UPDATE media_intake
+              SET verdict = ?, score = ?, shows = ?, has_people = ?,
+                  site_caption = ?, social_caption = ?, hold_reason = ?,
+                  assessed_at = ?, assess_error = NULL,
+                  status = CASE WHEN ? = 'published' THEN 'new' ELSE ? END
+            WHERE id = ?""",
+        (verdict, score, got.get("shows"), people,
+         (got.get("site_caption") or "").strip() or None,
+         (got.get("social_caption") or "").strip() or None,
+         (got.get("hold_reason") or "").strip() or None,
+         now.isoformat(), status, status, row_id))
+    if status == "published":
+        publish_media(conn, row_id, now=now)
+    return status
+
+
+def working_diary_work(conn, *, now=None):
+    """The standing piece of work everything hangs off until told otherwise.
+
+    A photograph needs somewhere to be filed, and most of what comes off a
+    card on a Tuesday is not yet a named job -- it is the week. So there is
+    one standing row for it. Deliberately NOT publishable: the public RECORD
+    is finished work written up, and the live strip is a different thing that
+    reads the camera roll directly. Mixing them would put half a job on the
+    page that is meant to say what was finished.
+    """
+    now = now or datetime.now(timezone.utc)
+    row = conn.execute(
+        "SELECT * FROM restoration_works WHERE title = ? LIMIT 1",
+        (MEDIA_DIARY_TITLE,)).fetchone()
+    if row:
+        return row["id"]
+    cur = conn.execute(
+        """INSERT INTO restoration_works (title, place, kind, status,
+                                          started_on, summary, publishable,
+                                          created_at)
+           VALUES (?, 'The estate', 'fabric', 'in_progress', ?, ?, 0, ?)""",
+        (MEDIA_DIARY_TITLE, house_date_iso(now),
+         "Everything the camera brought back that is not yet its own job. "
+         "Photographs land here so they are filed against the building "
+         "rather than nowhere; move one onto a real piece of work whenever "
+         "there is one.", now.isoformat()))
+    return cur.lastrowid
+
+
+def publish_media(conn, row_id, *, now=None, work_id=None, by_user_id=None):
+    """Put one frame on the public strip, and offer the best as a post.
+
+    Refuses anything with a person in it, again, at the moment of publishing.
+    The row was written by an assessment that could have been wrong, or by an
+    owner ticking quickly, and this is the last place it can be caught.
+    Returns (ok, reason).
+    """
+    now = now or datetime.now(timezone.utc)
+    row = conn.execute("SELECT * FROM media_intake WHERE id = ?",
+                       (row_id,)).fetchone()
+    if not row:
+        return False, "gone"
+    if row["has_people"]:
+        return False, ("there is somebody in it — that one is yours to "
+                       "decide, not the app's")
+
+    work = work_id or row["work_id"] or working_diary_work(conn, now=now)
+    photo_id = row["restoration_photo_id"]
+    if not photo_id:
+        cur = conn.execute(
+            """INSERT INTO restoration_photos (work_id, kind, filename,
+                                               caption, taken_on, created_at,
+                                               created_by_user_id)
+               VALUES (?, 'during', ?, ?, ?, ?, ?)""",
+            (work, row["poster"] or row["filename"], row["site_caption"],
+             house_date_iso(_media_when(row)), now.isoformat(), by_user_id))
+        photo_id = cur.lastrowid
+
+    social_id = row["social_post_id"]
+    if (not social_id and (row["score"] or 0) >= MEDIA_SOCIAL_SCORE
+            and row["social_caption"]):
+        cur = conn.execute(
+            """INSERT INTO social_posts (platform, caption, post_type, status,
+                                         notes, created_by_user_id, created_at)
+               VALUES ('Instagram', ?, 'photo', 'idea', ?, ?, ?)""",
+            (row["social_caption"],
+             "Written off the camera roll. The picture is %s — check it "
+             "before posting." % (row["poster"] or row["filename"]),
+             by_user_id, now.isoformat()))
+        social_id = cur.lastrowid
+
+    conn.execute(
+        """UPDATE media_intake SET status = 'published', work_id = ?,
+                  restoration_photo_id = ?, social_post_id = ?,
+                  published_at = ?, decided_by_user_id = ?, decided_at = ?
+            WHERE id = ?""",
+        (work, photo_id, social_id, now.isoformat(), by_user_id,
+         now.isoformat(), row_id))
+    return True, "up"
+
+
+def _media_when(row):
+    """The moment a frame belongs to, however little the file admitted."""
+    stamp = row["taken_at"] or row["created_at"]
+    try:
+        return datetime.fromisoformat(stamp)
+    except (TypeError, ValueError):
+        return datetime.now(timezone.utc)
+
+
+def media_strip(conn, limit=None):
+    """What the public work-in-progress strip shows, newest first."""
+    return conn.execute(
+        """SELECT * FROM media_intake
+            WHERE status = 'published' AND has_people = 0
+            ORDER BY COALESCE(taken_at, created_at) DESC
+            LIMIT ?""", (limit or MEDIA_STRIP_COUNT,)).fetchall()
+
+
+def media_summary(conn):
+    """The band: what is waiting, what went up, and what nothing has seen."""
+    counts = {r["status"]: r["n"] for r in conn.execute(
+        "SELECT status, COUNT(*) AS n FROM media_intake GROUP BY status")}
+    unseen = conn.execute(
+        "SELECT COUNT(*) AS n FROM media_intake WHERE assessed_at IS NULL"
+    ).fetchone()["n"]
+    people = conn.execute(
+        "SELECT COUNT(*) AS n FROM media_intake "
+        "WHERE has_people = 1 AND status = 'held'").fetchone()["n"]
+    posts = conn.execute(
+        "SELECT COUNT(*) AS n FROM media_intake mi JOIN social_posts sp "
+        "ON sp.id = mi.social_post_id WHERE sp.status = 'idea'").fetchone()["n"]
+    return {
+        "new": counts.get("new", 0),
+        "held": counts.get("held", 0),
+        "published": counts.get("published", 0),
+        "rejected": counts.get("rejected", 0),
+        "unseen": unseen,
+        "people": people,
+        "drafts": posts,
+        "video_blind": not bool(ffmpeg_path()),
+        "cells": [
+            overview_cell("Waiting on you", counts.get("held", 0),
+                          alert=bool(counts.get("held", 0)),
+                          hint="held rather than published — a person in the "
+                               "frame, or nothing could judge it"),
+            overview_cell("Nothing has looked yet", unseen,
+                          alert=bool(unseen),
+                          hint="read the card, then press Look at these"),
+            overview_cell("Up on the page", counts.get("published", 0)),
+            overview_cell("Somebody in it", people,
+                          hint="never published without you saying so"),
+            overview_cell("Drafted as posts", posts,
+                          hint="written and waiting in the social queue; "
+                               "nothing is posted by the app"),
+            overview_cell("Set aside", counts.get("rejected", 0)),
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Meetings
 # ---------------------------------------------------------------------------
 
@@ -61409,6 +62304,14 @@ def readiness_checks(conn, *, include_slow=True):
     out = []
 
     def add(severity, area, label, ok, detail):
+        # The template renders 'blocker' red, 'warn' amber and EVERYTHING
+        # ELSE as "optional" -- so a typo does not show up as a typo, it
+        # shows up as an item quietly demoted to the bucket nobody acts on.
+        # Three spellings were already in the file before this line was
+        # added. Named rather than accepted.
+        assert severity in ("blocker", "warn", "info"), (
+            "unknown readiness severity %r on %r — the readiness page has "
+            "three, and anything else renders as 'optional'" % (severity, label))
         out.append({"severity": severity, "area": area, "label": label,
                     "ok": ok, "detail": detail})
 
@@ -61459,6 +62362,26 @@ def readiness_checks(conn, *, include_slow=True):
             email_detail += (f" {held} message{'' if held == 1 else 's'} "
                              f"{'is' if held == 1 else 'are'} being held until this is set up.")
     add("blocker", "Email", "Outbound email", email_ok, email_detail)
+
+    # The camera roll. Both of these fail by being quiet rather than by
+    # breaking, which is the only kind of fault a list like this catches.
+    add("info", "Camera roll", "Looking inside video",
+        bool(ffmpeg_path()),
+        "Installed — a still is taken out of each clip and judged like a "
+        "photograph."
+        if ffmpeg_path() else
+        "ffmpeg is not on this machine, so nothing can see inside a clip. "
+        "Video is still stored, shown and published; it just arrives held "
+        "with that written on it, and you write the line. Captioning "
+        "footage nobody has watched would be worse.")
+
+    add("info", "Camera roll", "Reading a card unattended",
+        bool(MEDIA_INGEST_KEY),
+        "Set. tools/ingest_media.py can post a card straight in."
+        if MEDIA_INGEST_KEY else
+        "GUDANES_INGEST_KEY is not set, so the card reader's door does not "
+        "exist and photographs arrive only by dragging them onto the page. "
+        "That is the step that stops getting done in November.")
 
     # Guest-facing wording, checked by the app rather than only by the tests.
     # The restaurant confirmation has twice been left reading "TEST SUBJECT
