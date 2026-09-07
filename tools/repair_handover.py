@@ -489,6 +489,49 @@ def repair_plan_col_rule():
     return 1
 
 
+def repair_media_query_variables():
+    """Forty-two @media rules whose condition is a custom property.
+
+    A custom property CANNOT be used in a media query condition: they are
+    resolved at computed-value time, long after the query has been evaluated,
+    so the browser discards the whole rule. Forty-two blocks of phone layout —
+    the navigation label, the back-to-top position, full width buttons on the
+    confirmation page — never once applied, and a discarded @media reports
+    nothing: no error, no console warning, and the page renders perfectly at
+    the desktop size anyone checks it at.
+
+    THIS IS HERE BECAUSE ASKING HAS FAILED TWICE. It came back in the handover
+    of 2026-09-05 and again on 2026-09-07. The design side works from a tree
+    that still has the variables in, so every zip carries them back, and a
+    note in the CSS is not read by whatever generates the zip. Repairing it is
+    cheaper than the fourth conversation about it.
+
+    Only the CONDITION is touched — everything between @media and the opening
+    brace. The variables are correct, and wanted, in ordinary declarations.
+    """
+    rel = "static/gudanes.css"
+    src = _read(rel)
+    values = {}
+    for name in ("--m-tight", "--m-read", "--m-wide"):
+        found = re.search(re.escape(name) + r":\s*([0-9.]+[a-z%]+)\s*;", src)
+        if found:
+            values[name] = found.group(1)
+    if not values:
+        return 0
+
+    def one(match):
+        cond = match.group(0)
+        for name, literal in values.items():
+            cond = cond.replace("var(%s)" % name, literal)
+        return cond
+
+    out, _n = re.subn(r"@media[^{]*", one, src)
+    if out == src:
+        return 0
+    _write(rel, out)
+    return 1
+
+
 def repair_panel_heading_rule():
     """.g-panel__h is used on the manage pages and defined nowhere.
 
@@ -945,6 +988,7 @@ def main():
         ("aria-hidden on decorative svgs", repair_decorative_svgs),
         ("the .g-plan__col rule", repair_plan_col_rule),
         ("the .g-panel__h rule", repair_panel_heading_rule),
+        ("variables in media query conditions", repair_media_query_variables),
         ("the house's own reviews", repair_featured_reviews),
         ("why a room is unavailable", repair_unavailable_reason),
         ("the under-18 count the return reads", repair_under_18_field),

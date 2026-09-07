@@ -1,0 +1,90 @@
+{#  ==========================================================================
+    WHAT IT TOOK
+
+    This replaces the label-prose-link strip under the hero, which read like a
+    spreadsheet row where the page's strongest moment should be.
+
+    The brief, in Ben's words: everyone renovates, it is fun and it is hard,
+    there is blood and sweat in it — and these people feel exactly that about
+    a kitchen and still cannot picture this. It is beyond anyone's net worth,
+    so it cannot be sold as a thing to acquire. But it also must not read as
+    another society. The essence is that we are working so that people can
+    enjoy the house WITH us, and so it is still standing in a hundred years
+    when it was rubble when we bought it.
+
+    So the section does one thing: it gives the reader a ruler they already
+    own. You have done a kitchen. Hold that feeling. Now multiply it by
+    ninety-four rooms and fifteen years and five hundred tonnes of fallen
+    stone. That is not a boast — it is an invitation to imagine, and it lands
+    because the reader supplies the feeling themselves.
+
+    Then it turns immediately to the point: none of that is why you are here.
+    You are here because the house needs people in it.
+    ========================================================================== #}
+
+{% macro what_it_took(settings) %}
+<section class="g-took">
+  <div class="g-took__in">
+
+    <p class="g-took__fr">L'œuvre d'une vie</p>
+    <h2 class="g-took__h">
+      You have painted a room and known how long it took.
+      <em>This house has ninety-four.</em>
+    </h2>
+
+    <div class="g-took__body">
+      <p class="g-took__lede">
+        Everyone who has pulled up a floor or lived through a kitchen knows the
+        shape of it — the dust, the delays, the arguments about a doorway, the
+        evening it finally comes right. That feeling is the correct one. Hold
+        it, and then let it run for fifteen years.
+      </p>
+
+      <dl class="g-took__facts">
+        <div>
+          <dt>500 tonnes</dt>
+          <dd>of fallen stone and rubble cleared by hand before a single
+            restoration could begin</dd>
+        </div>
+        <div>
+          <dt>Every intervention</dt>
+          <dd>applied for, drawn, and approved by the Monuments Historiques
+            before a tool is lifted</dd>
+        </div>
+        <div>
+          <dt>The first winter</dt>
+          <dd>spent inside with no electricity, no heating and no water, in a
+            tent pitched in one of the rooms</dd>
+        </div>
+        <div>
+          <dt>Five of ninety-four</dt>
+          <dd>bedrooms finished. The other eighty-nine are the next fifteen
+            years</dd>
+        </div>
+      </dl>
+
+      <p class="g-took__turn">
+        None of which is the reason to come.
+      </p>
+
+      <p class="g-took__close">
+        A house this size was never meant to be lived in by one family, and it
+        does not survive being looked at. It survives being used — fires lit,
+        beds slept in, a long table with people around it. So we have people
+        to stay, and the house goes on.
+      </p>
+
+      <p class="g-took__sig">
+        <span class="g-took__sigt">Karina &amp; Craig Waters</span>
+        <span class="g-took__sigs">who bought it, and live here still</span>
+      </p>
+
+      <p class="g-took__a">
+        <a href="{{ url_for('restoration_page') }}" class="g-btn g-btn--solid">
+          What has been done, and what is left</a>
+        <a href="{{ url_for('book_rooms') }}" class="g-btn">Stay the night</a>
+      </p>
+    </div>
+  </div>
+</section>
+{% endmacro %}

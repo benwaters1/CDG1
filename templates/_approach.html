@@ -1,0 +1,98 @@
+{#  ==========================================================================
+    THE APPROACH
+
+    Drawn, not photographed. Three reasons that matters here:
+
+      · it owes nothing to a CDN. Two hundred and fifty-four images on this
+        site are hotlinked from a Squarespace account, and if that lapses the
+        site goes blank. This weighs four kilobytes and cannot break
+      · a map tile shows every road equally. What a guest arriving at dusk
+        needs is the ONE route, the two turns that catch people out, and the
+        fact that the last stretch is unlit
+      · it is drawn in the site's own gold and blue, so it belongs
+
+    Geometry is schematic, not survey — it shows sequence and relative
+    distance, which is what someone reads before setting off. The Google and
+    Apple pins are for the car itself.
+    ========================================================================== #}
+
+{% macro approach_map(settings) %}
+{% set lat = settings.get('lat', '42.7847') %}
+{% set lng = settings.get('lng', '1.6564') %}
+
+<figure class="g-approach">
+  <svg class="g-approach__svg" viewBox="0 0 720 420" role="img"
+       aria-label="The route from Toulouse to Château de Gudanes: A61 and N20 south through Foix and Tarascon, then the climb to Château-Verdun.">
+
+    {# ---- the mountains, so the last stretch reads as a climb ---- #}
+    <g class="g-approach__hills">
+      <path d="M0 300 L90 214 L150 262 L232 178 L318 258 L392 196 L470 268
+               L556 190 L640 256 L720 208 L720 420 L0 420 Z"/>
+      <path d="M0 336 L104 272 L196 320 L296 254 L400 322 L512 262 L620 320
+               L720 274 L720 420 L0 420 Z" opacity=".55"/>
+    </g>
+
+    {# ---- the road ---- #}
+    <path class="g-approach__road"
+          d="M64 92 C170 92 210 140 262 168 C318 198 356 190 420 214
+             C486 238 512 276 566 300"/>
+    <path class="g-approach__road g-approach__road--last"
+          d="M566 300 C600 312 618 330 632 346"/>
+
+    {# ---- the stops ---- #}
+    <g class="g-approach__stop">
+      <circle cx="64" cy="92" r="7"/>
+      <text x="64" y="62">Toulouse</text>
+      <text x="64" y="78" class="g-approach__sub">airport</text>
+    </g>
+    <g class="g-approach__stop">
+      <circle cx="262" cy="168" r="5.5"/>
+      <text x="262" y="138">Foix</text>
+      <text x="262" y="154" class="g-approach__sub">1 h 05</text>
+    </g>
+    <g class="g-approach__stop">
+      <circle cx="420" cy="214" r="5.5"/>
+      <text x="420" y="184">Tarascon</text>
+      <text x="420" y="200" class="g-approach__sub">1 h 25</text>
+    </g>
+    <g class="g-approach__stop">
+      <circle cx="566" cy="300" r="5.5"/>
+      <text x="566" y="270">Les Cabannes</text>
+      <text x="566" y="286" class="g-approach__sub">turn left here</text>
+    </g>
+
+    {# ---- the château ---- #}
+    <g class="g-approach__end" transform="translate(632 344) scale(1.25)">
+      <path d="M-13 8 h26 v-16 l-6 -5 v-7 h-4 v4 l-3 -3 l-3 3 v-4 h-4 v7 l-6 5 z"/>
+      <circle cx="0" cy="0" r="17" fill="none" class="g-approach__ring"/>
+    </g>
+    <text x="632" y="386" class="g-approach__endt">Château de Gudanes</text>
+    <text x="632" y="402" class="g-approach__sub">1 h 45 · Château-Verdun</text>
+
+    {# ---- the warning that actually matters ---- #}
+    <text x="556" y="352" class="g-approach__warn" text-anchor="end">4 km, unlit</text>
+  </svg>
+
+  <figcaption class="g-approach__cap">
+    <p class="g-approach__k">The drive</p>
+    <p class="g-approach__p">
+      An hour and three quarters from Toulouse. <strong>The last four
+      kilometres climb and narrow, and there are no lights.</strong> If you are
+      arriving after dark, telephone from Les Cabannes and someone will meet
+      you at the gates.
+    </p>
+    <p class="g-approach__btns">
+      <a class="g-btn g-btn--solid"
+         href="https://www.google.com/maps/search/?api=1&amp;query={{ lat }},{{ lng }}"
+         rel="noopener">Open in Google Maps</a>
+      <a class="g-btn"
+         href="https://maps.apple.com/?ll={{ lat }},{{ lng }}&amp;q=Ch%C3%A2teau%20de%20Gudanes"
+         rel="noopener">Apple Maps</a>
+    </p>
+    <p class="g-approach__note">
+      The pin is the gates, not the village. There is no street number here,
+      and an address search will leave you in the square below.
+    </p>
+  </figcaption>
+</figure>
+{% endmacro %}
