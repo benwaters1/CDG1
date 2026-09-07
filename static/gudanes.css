@@ -8495,6 +8495,8 @@ main > .g-facts{ border-bottom: 1px solid var(--line); }
   border-top: 1px solid rgba(220,192,119,.3);
   font-family: var(--ui); font-size: var(--t-ui); line-height: 1.65;
   color: #B9C6D4; max-width: 46rem;
+}
+
 /* --------------------------------------------------------------------------
    THE APPROACH MAP — phone variant
    The landscape drawing is 720 units wide. In a 334px phone column that is a
@@ -8507,3 +8509,20 @@ main > .g-facts{ border-bottom: 1px solid var(--line); }
   .g-approach__svg--wide{ display: none; }
   .g-approach__svg--tall{ display: block; margin-inline: auto; max-width: 340px; }
 }
+
+
+/* ==========================================================================
+   WHAT THE ROAD IS DOING
+   Above the page, not inside it. The guest this is for is reading the
+   directions on the morning they set off, and a notice below the fold is the
+   same as no notice. Two levels only: a scale of five gets used as a scale of
+   one and everything ends up amber.
+   ========================================================================== */
+.g-roadnote{
+  padding: 12px 0; font-family: var(--ui); font-size: var(--t-sm);
+  line-height: 1.5; border-bottom: 1px solid rgba(0,0,0,.08);
+}
+.g-roadnote strong{ font-weight: 600; margin-right: .5em; }
+.g-roadnote--note{ background: #FBF3DE; color: #4A3B12; }
+.g-roadnote--serious{ background: #7A1F1F; color: #FBF1F1; }
+.g-roadnote--serious strong{ color: #fff; }

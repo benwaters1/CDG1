@@ -3838,6 +3838,19 @@ def init_db():
         # who read the book and then booked direct is "direct" and is not a
         # direct-marketing success.
         ("bookings_heard_via", "ALTER TABLE bookings ADD COLUMN heard_via TEXT"),
+        # What the road is doing, which is a thing about TODAY and has to stop
+        # being true on its own. ends_on is NOT NULL for that reason: a snow
+        # warning still on the page in July is not a stale notice, it is the
+        # reason nobody reads the next real one.
+        ("road_notices_table", """CREATE TABLE IF NOT EXISTS road_notices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            headline TEXT NOT NULL,
+            detail TEXT,
+            severity TEXT NOT NULL DEFAULT 'note',
+            starts_on TEXT NOT NULL,
+            ends_on TEXT NOT NULL,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL)"""),
         ("social_posts_image", "ALTER TABLE social_posts ADD COLUMN image_filename TEXT"),
         ("social_posts_alt", "ALTER TABLE social_posts ADD COLUMN alt_text TEXT"),
         ("social_posts_room", "ALTER TABLE social_posts ADD COLUMN room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL"),
@@ -6289,6 +6302,7 @@ NAV_AREAS = {
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         "vehicle_transfers_page",
+        "road_notices_page", "road_notice_remove",
     ],
     "comms": [
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
@@ -20833,6 +20847,85 @@ def record_unavailability(conn, user_id, starts_on, ends_on, reason=None):
     return True, None
 
 
+# How loudly a notice is drawn. Only two, on purpose: a scale of five gets
+# used as a scale of one, and everything ends up amber.
+ROAD_SEVERITIES = {
+    "note": "Worth knowing",
+    "serious": "They need to change how they travel",
+}
+# The longest a notice may run. A fortnight is a cold snap or a closure; past
+# that it is a fact about the road rather than a warning about this week, and
+# it belongs in the approach copy where it is written once and read calmly.
+ROAD_NOTICE_MAX_DAYS = 21
+
+
+def road_notice(conn, day=None):
+    """What the road is doing, or None. The one a guest is shown.
+
+    THE ARGUMENT FOR THE END DATE BEING COMPULSORY. Every notice like this
+    fails the same way: it is switched on for a real reason in February and it
+    is still there in July, because taking it down is nobody's job and nothing
+    reminds them. A snow warning on the page in summer is worse than no
+    warning at all -- it is the reason the next real one is not believed, and
+    the next real one is the night somebody drives up an unlit road on ice.
+
+    So it expires by itself, and it cannot be created without saying when.
+
+    The most serious runs first, then the one that started most recently. Only
+    one is ever returned: two notices on an arrival page is a wall of warnings,
+    which reads as a house with a problem rather than a road with one.
+    """
+    iso = (day or house_today()).isoformat()
+    return conn.execute(
+        """SELECT * FROM road_notices
+            WHERE starts_on <= ? AND ends_on >= ?
+            ORDER BY CASE severity WHEN 'serious' THEN 0 ELSE 1 END,
+                     starts_on DESC, id DESC
+            LIMIT 1""", (iso, iso)).fetchone()
+
+
+def road_notices_all(conn):
+    """Every notice, current and finished, newest first. The owner's list."""
+    today = house_today().isoformat()
+    rows = conn.execute(
+        """SELECT road_notices.*, users.name AS put_up_by
+             FROM road_notices
+             LEFT JOIN users ON users.id = road_notices.created_by_user_id
+            ORDER BY road_notices.starts_on DESC, road_notices.id DESC""").fetchall()
+    return [dict(r, live=(r["starts_on"] <= today <= r["ends_on"]),
+                 finished=r["ends_on"] < today) for r in map(dict, rows)]
+
+
+def add_road_notice(conn, headline, detail, severity, starts_on, ends_on, user_id=None):
+    """Put a notice up. Returns (ok, reason).
+
+    Refuses an open-ended one, and refuses a long one. Both refusals are the
+    same argument: this says what the road is doing THIS WEEK, and a warning
+    that outlives the weather is what teaches everybody to ignore the panel.
+    """
+    headline = (headline or "").strip()
+    if not headline:
+        return False, "A notice needs a line somebody can read at a glance."
+    start, end = parse_date(starts_on), parse_date(ends_on)
+    if not start or not end:
+        return False, "Both dates are needed — a notice has to stop on its own."
+    if end < start:
+        return False, "The last day cannot be before the first."
+    if (end - start).days + 1 > ROAD_NOTICE_MAX_DAYS:
+        return False, ("Longer than %d days is a fact about the road rather "
+                       "than a warning about this week — put it in the "
+                       "approach copy instead." % ROAD_NOTICE_MAX_DAYS)
+    conn.execute(
+        """INSERT INTO road_notices (headline, detail, severity, starts_on,
+             ends_on, created_by_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (headline, (detail or "").strip() or None,
+         severity if severity in ROAD_SEVERITIES else "note",
+         start.isoformat(), end.isoformat(), user_id,
+         datetime.now(timezone.utc).isoformat()))
+    return True, None
+
+
 def booking_source_mix(conn, start_iso, end_iso):
     """Nights and money by where the booking came from.
 
@@ -23064,6 +23157,27 @@ def inject_exchange_rates():
         # convenience; the site is not.
         return {"fx_rates": {}}
     return {"fx_rates": fx["rates"]}
+
+
+@app.context_processor
+def inject_road_notice():
+    """The road notice, everywhere, so no arrival page can forget it.
+
+    Same argument as the pin above: passing it per route means remembering on
+    every new page, and the failure of forgetting is that a guest reads the
+    directions page on the morning they set off and is told nothing.
+    """
+    if not request.endpoint or request.endpoint.startswith("static"):
+        return {"road_now": None}
+    try:
+        conn = get_db()
+        try:
+            return {"road_now": road_notice(conn)}
+        finally:
+            conn.close()
+    except Exception:
+        # A context processor that raises takes down every page.
+        return {"road_now": None}
 
 
 @app.context_processor
@@ -31024,6 +31138,8 @@ PALETTE_PAGES = [
     ("Go-live checklist", "admin_readiness", "deploy setup ready configuration"),
     ("A photograph in", "photo_intake",
      "photo intake upload picture social post instagram slot schedule alt text"),
+    ("What the road is doing", "road_notices_page",
+     "road snow ice chains closed weather driving arrival warning notice"),
     ("Contracted hours against worked", "contracted_hours_page",
      "contract hours worked overtime under agreed cdi cdd thirty-five"),
     ("Tips, and whose hours earned them", "tronc_page",
@@ -52433,6 +52549,54 @@ def cannot_work_remove(entry_id):
     conn.close()
     flash("Removed.", "success")
     return redirect(url_for("cannot_work"))
+
+
+@app.route("/admin/road", methods=["GET", "POST"])
+@owner_required
+def road_notices_page():
+    """What the road is doing, for guests who are about to drive up it.
+
+    The last few miles are unlit, there is no street number, and an address
+    search puts people in the village square. All of that is written into the
+    approach copy already, because it is always true. This is for the week it
+    is worse than usual.
+    """
+    conn = get_db()
+    if request.method == "POST":
+        user = current_user()
+        ok, why = add_road_notice(
+            conn, request.form.get("headline"), request.form.get("detail"),
+            request.form.get("severity"), request.form.get("starts_on"),
+            request.form.get("ends_on"), user["id"] if user else None)
+        if ok:
+            conn.commit()
+            flash("Up. It will come down on its own.", "success")
+        else:
+            flash(why, "error")
+        conn.close()
+        return redirect(url_for("road_notices_page"))
+    rows = road_notices_all(conn)
+    live = road_notice(conn)
+    conn.close()
+    return render_template("road_notices.html", rows=rows, live=live,
+                           severities=ROAD_SEVERITIES, today=house_today(),
+                           max_days=ROAD_NOTICE_MAX_DAYS)
+
+
+@app.route("/admin/road/<int:notice_id>/remove", methods=["POST"])
+@owner_required
+def road_notice_remove(notice_id):
+    """Take one down early — the weather turned out better than expected."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM road_notices WHERE id = ?", (notice_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM road_notices WHERE id = ?", (notice_id,))
+    conn.commit()
+    conn.close()
+    flash("Down.", "success")
+    return redirect(url_for("road_notices_page"))
 
 
 @app.route("/reports")
