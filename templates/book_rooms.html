@@ -765,7 +765,13 @@
     <div><dt>The address</dt><dd>2 Route de Beille, Ch&acirc;teau-Verdun, Ari&egrave;ge 09310, France</dd></div>
   </div>
   <p class="g-hint" style="margin-top:var(--s4)">
-    <a href="https://www.google.com/maps/search/?api=1&amp;query=Ch%C3%A2teau+de+Gudanes+Ch%C3%A2teau-Verdun" target="_blank" rel="noopener">Open in Google Maps</a>
+    {# A PIN OR NOTHING. This was a Google Maps SEARCH for the house by
+       name, which returns whatever Google thinks is closest to the person
+       searching -- from outside Europe it came back in Tokyo. A search
+       dressed up as a map is worse than no link, because the guest sets
+       off. house_maps is empty until somebody sets the coordinates. #}
+    {% if house_maps %}<a href="{{ house_maps.google }}" target="_blank" rel="noopener">Open in Google Maps</a>
+    {%- else %}<span>Telephone for directions &mdash; an address search does not find the gates</span>{% endif %}
     &middot; <a href="{{ url_for('contact_page') }}#map">See it on the map</a>
   </p>
 </div></section>
