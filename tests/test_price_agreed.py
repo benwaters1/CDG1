@@ -74,6 +74,28 @@ def _row(booking_id):
         conn.close()
 
 
+def _first_free(room_id, from_date, nights=2):
+    """The first window from here the house would actually accept.
+
+    Opens its own connection: by the point this is called the suite has
+    already closed the one it was using, and a helper that depends on the
+    caller's connection still being open is one that works until somebody
+    moves the call.
+    """
+    conn = db()
+    try:
+        day = from_date
+        for _ in range(240):
+            ok, _why = m.is_range_available(
+                conn, room_id, day, day + timedelta(days=nights))
+            if ok:
+                return day
+            day += timedelta(days=1)
+        return from_date
+    finally:
+        conn.close()
+
+
 def run():
     s = Suite("The price that was agreed")
     _cleanup()
@@ -239,7 +261,12 @@ def run():
         conn.close()
         # Somewhere cheaper, so the figure after the move is unmistakably the
         # new nights and not a leftover.
-        elsewhere = arrival + timedelta(days=200)
+        # Not a bare offset: the ateliers hold the WHOLE château for their
+        # runs, so a date reached by arithmetic is refused whenever one falls
+        # there — and which days those are moves with the real calendar. This
+        # went red the morning arrival-plus-200 became 6 December, which is
+        # the middle of Noël at Gudanes.
+        elsewhere = _first_free(room["id"], arrival + timedelta(days=200))
         conn = db()
         _override(conn, room["id"], elsewhere, elsewhere + timedelta(days=2), 100)
         conn.close()

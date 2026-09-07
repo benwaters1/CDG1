@@ -240,6 +240,8 @@ ID_TABLES = {
     "party_id": ("booking_parties", "id"),
     "vehicle_id": ("vehicles", "id"),
     "meeting_id": ("meetings", "id"),
+    "work_id": ("restoration_works", "id"),
+    "photo_id": ("restoration_photos", "id"),
     "action_id": ("meeting_actions", "id"),
 }
 

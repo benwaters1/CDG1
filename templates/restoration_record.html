@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Restoration record{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Restoration record</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('restoration_record_public') }}" class="btn-mini" target="_blank" rel="noopener">See the public page</a>
+    <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  What has been done to the building, where, what it cost, and what was found
+  doing it. Attach the invoices and a job stops being a story and becomes a
+  figure. Anything marked for the public page appears on it.
+</p>
+
+{% with cells = summary.cells %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if summary.unwritten %}
+<div class="refund-box" style="margin-bottom:14px;">
+  <p style="margin:0;">
+    <strong>{{ summary.unwritten }}</strong>
+    finished {{ 'job has' if summary.unwritten == 1 else 'jobs have' }} no
+    description written. Whoever did the work remembers for about a fortnight,
+    and then nobody does — that is the half of this record that cannot be
+    reconstructed later.
+  </p>
+</div>
+{% endif %}
+
+<details class="refund-box" style="margin-bottom:18px;">
+  <summary>Record a piece of work</summary>
+  <form method="post" action="{{ url_for('new_restoration_work') }}" style="margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field-label" for="w_title">What the work is</label>
+    <input id="w_title" type="text" name="title" required
+           placeholder="North gutter replaced in slate">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="w_room">A room, if it is one</label>
+        <select id="w_room" name="room_id">
+          <option value="">— not a room —</option>
+          {% for r in rooms %}<option value="{{ r['id'] }}">{{ r['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label" for="w_place">Or where, if it is not</label>
+        <input id="w_place" type="text" name="place"
+               placeholder="The north elevation, the orangery, the roof">
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="w_kind">Kind</label>
+        <select id="w_kind" name="kind">
+          {% for key, label in kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label" for="w_status">Where it has got to</label>
+        <select id="w_status" name="status">
+          <option value="planned">Planned</option>
+          <option value="in_progress">Underway</option>
+          <option value="done">Finished</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="w_from">Started</label>
+        <input id="w_from" type="date" name="started_on">
+      </div>
+      <div>
+        <label class="field-label" for="w_to">Finished</label>
+        <input id="w_to" type="date" name="finished_on">
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="w_vendor">Who did it</label>
+        <select id="w_vendor" name="vendor_id">
+          <option value="">— not recorded —</option>
+          {% for v in vendors %}<option value="{{ v['id'] }}">{{ v['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label" for="w_mat">Materials</label>
+        <input id="w_mat" type="text" name="materials"
+               placeholder="Slate, lime mortar, chestnut">
+      </div>
+    </div>
+    <label class="field-label" for="w_sum">What was done</label>
+    <textarea id="w_sum" name="summary" rows="3"></textarea>
+    <label class="field-label" for="w_found">What was found doing it</label>
+    <textarea id="w_found" name="found" rows="2"
+              placeholder="The date stone behind the render. The original colour under six layers."></textarea>
+    <button type="submit" class="btn-primary" style="margin-top:10px;">Record it</button>
+  </form>
+</details>
+
+{% if summary.spend_all %}
+<p class="upload-hint" style="margin:-4px 0 14px;">
+  <strong>&euro;{{ '%.0f'|format(summary.spend_all) }}</strong> of invoices
+  attached to the work so far{% if summary.spend_year %}, of which
+  <strong>&euro;{{ '%.0f'|format(summary.spend_year) }}</strong> this
+  year{% endif %} — gross, as invoiced, and only the jobs with invoices on
+  them. Anything not attached is not in that figure.
+</p>
+{% endif %}
+
+{% include "_list_toolbar.html" %}
+
+{% if not works %}
+  <div class="empty-state">
+    {% if lv.q %}Nothing matches that search.{% else %}Nothing recorded yet. Three years of work, and the first entry goes in above.{% endif %}
+  </div>
+{% else %}
+  <div class="doc-list">
+    {% for w in works %}
+    <div class="doc-row" style="align-items:flex-start; flex-direction:column; gap:3px; padding:11px 12px;">
+      <div style="display:flex; align-items:center; width:100%; gap:8px; flex-wrap:wrap;">
+        <a href="{{ url_for('restoration_work_page', work_id=w['id']) }}"
+           style="font-weight:600; flex:1; min-width:200px;">{{ w['title'] }}</a>
+        <span class="mini-status">{{ kinds.get(w['kind'], w['kind']) }}</span>
+        {% if w['status'] == 'in_progress' %}<span class="mini-status status-pending">Underway</span>
+        {% elif w['status'] == 'planned' %}<span class="mini-status">Planned</span>
+        {% elif w['status'] == 'abandoned' %}<span class="mini-status status-inactive">Abandoned</span>
+        {% elif not (w['summary'] or '').strip() %}<span class="mini-status status-declined">Not written up</span>
+        {% endif %}
+        {% if w['publishable'] %}<span class="mini-status status-approved">On the public page</span>{% endif %}
+        {% if w['cost'] %}<span class="mini-status status-pending">&euro;{{ '%.0f'|format(w['cost']) }}</span>{% endif %}
+      </div>
+      <span class="upload-hint">
+        {{ w['room_name'] or w['place'] or 'The estate' }}
+        {%- if w['finished_on'] %} · finished {{ w['finished_on']|date_short }}
+        {%- elif w['started_on'] %} · started {{ w['started_on']|date_short }}{% endif %}
+        {%- if w['vendor_name'] %} · {{ w['vendor_name'] }}{% endif %}
+        {%- if w['invoice_count'] %} · {{ w['invoice_count'] }} invoice{{ '' if w['invoice_count'] == 1 else 's' }}
+        {%- else %} · no invoices attached{% endif %}
+        {%- if w['photo_count'] %} · {{ w['photo_count'] }} photograph{{ '' if w['photo_count'] == 1 else 's' }}{% endif %}
+        {%- if w['created_by_name'] %} · written down by {{ w['created_by_name'] }}{% endif %}
+      </span>
+      {% if w['found'] %}
+      <span class="upload-hint" style="font-style:italic;">Found: {{ w['found']|truncate(140) }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}

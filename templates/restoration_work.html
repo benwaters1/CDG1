@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}{{ work['title'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ work['title'] }}</h1>
+  <a href="{{ url_for('restoration_record') }}" class="small-link" style="color:var(--steel);">← Restoration record</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  {{ work['room_name'] or work['place'] or 'The estate' }} ·
+  {{ kinds.get(work['kind'], work['kind']) }}
+  {%- if work['started_on'] %} · started {{ work['started_on']|date_human }}{% endif %}
+  {%- if work['finished_on'] %} · finished {{ work['finished_on']|date_human }}{% endif %}
+  {%- if work['vendor_name'] %} · {{ work['vendor_name'] }}{% endif %}
+  {%- if work['created_by_name'] %} · written down by {{ work['created_by_name'] }}{% endif %}
+</p>
+
+<h2 class="section-heading">What it cost</h2>
+{% if not cost.invoices %}
+  <div class="empty-state">
+    No invoices attached, so this job has no cost on record. Attach them below
+    and it stops being a story.
+  </div>
+{% else %}
+<p style="font-size:22px; font-weight:600; margin:0 0 4px;">&euro;{{ '%.2f'|format(cost.total) }}</p>
+<p class="upload-hint" style="margin-top:0;">
+  Gross, as invoiced, across {{ cost.count }} invoice{{ '' if cost.count == 1 else 's' }}
+  {%- if cost.suppliers %} from {{ cost.suppliers|join(', ') }}{% endif %}.
+  Refused invoices are not counted.
+</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Invoice</th><th>Supplier</th><th>Date</th><th class="num">Amount</th><th></th></tr></thead>
+    <tbody>
+      {% for i in cost.invoices %}
+      <tr>
+        <th scope="row" style="font-weight:500;">{{ i['description'] or '—' }}</th>
+        <td>{{ i['vendor_name'] or '—' }}</td>
+        <td>{{ (i['invoice_date'] or i['spent_on'] or '')|date_short }}</td>
+        <td class="num">&euro;{{ '%.2f'|format(i['amount'] or 0) }}</td>
+        <td>
+          <form method="post" action="{{ url_for('detach_restoration_expense', work_id=work['id'], expense_id=i['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="doc-delete"
+                    aria-label="Take {{ i['description'] or 'this invoice' }} off this job">×</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<details class="refund-box" style="margin:12px 0 18px;">
+  <summary>Attach invoices</summary>
+  <form method="post" action="{{ url_for('attach_restoration_expense', work_id=work['id']) }}" style="margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if not candidates %}
+      <p class="upload-hint">Nothing left to attach.</p>
+    {% else %}
+    <p class="upload-hint" style="margin-top:0;">Capital spend first — a roof is capital, and that is usually the pile this reaches into.</p>
+    <div class="table-wrap" style="max-height:340px; overflow:auto;">
+      <table class="data-table">
+        <thead><tr><th></th><th scope="col">What</th><th>Supplier</th><th>Date</th><th class="num">Amount</th></tr></thead>
+        <tbody>
+          {% for c in candidates %}
+          <tr>
+            <td><input type="checkbox" name="expense_id" value="{{ c['id'] }}"
+                       aria-label="Attach {{ c['description'] or 'invoice' }} from {{ c['vendor_name'] or 'unknown supplier' }}"></td>
+            <th scope="row" style="font-weight:500;">{{ c['description'] or '—' }}{% if c['is_capital'] %} <span class="mini-status">capital</span>{% endif %}</th>
+            <td>{{ c['vendor_name'] or '—' }}</td>
+            <td>{{ (c['invoice_date'] or c['spent_on'] or '')|date_short }}</td>
+            <td class="num">&euro;{{ '%.2f'|format(c['amount'] or 0) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit" class="btn-mini" style="margin-top:10px;">Attach the ticked ones</button>
+    {% endif %}
+  </form>
+</details>
+
+<h2 class="section-heading">Photographs</h2>
+{% if not photos %}
+  <div class="empty-state">None yet. A before is only worth keeping if there is an after beside it.</div>
+{% else %}
+<div class="g-slots" style="display:flex; flex-wrap:wrap; gap:12px;">
+  {% for p in photos %}
+  <figure style="margin:0; max-width:240px;">
+    <img src="{{ url_for('room_photo', filename=p['filename']) }}"
+         alt="{{ p['caption'] or (photo_kinds.get(p['kind'], p['kind']) ~ ' — ' ~ work['title']) }}"
+         style="width:100%; border-radius:6px;" loading="lazy">
+    <figcaption class="upload-hint">
+      <strong>{{ photo_kinds.get(p['kind'], p['kind']) }}</strong>
+      {%- if p['taken_on'] %} · {{ p['taken_on']|date_short }}{% endif %}
+      {%- if p['added_by_name'] %} · added by {{ p['added_by_name'] }}{% endif %}
+      {% if p['caption'] %}<br>{{ p['caption'] }}{% endif %}
+      <form method="post" action="{{ url_for('remove_restoration_photo', photo_id=p['id']) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="doc-delete" aria-label="Remove this photograph">×</button>
+      </form>
+    </figcaption>
+  </figure>
+  {% endfor %}
+</div>
+{% endif %}
+
+<details class="refund-box" style="margin:12px 0 18px;">
+  <summary>Add photographs</summary>
+  <form method="post" action="{{ url_for('add_restoration_photo', work_id=work['id']) }}"
+        enctype="multipart/form-data" style="margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="p_kind">Which part of the job</label>
+        <select id="p_kind" name="kind">
+          {% for key, label in photo_kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label" for="p_when">When it was taken</label>
+        <input id="p_when" type="date" name="taken_on">
+      </div>
+    </div>
+    <label class="field-label" for="p_cap">A line about it</label>
+    <input id="p_cap" type="text" name="caption">
+    <label class="field-label" for="p_file">The photographs</label>
+    <input id="p_file" type="file" name="photo" accept="image/*" multiple required>
+    <button type="submit" class="btn-mini" style="margin-top:10px;">Add them</button>
+  </form>
+</details>
+
+<h2 class="section-heading">The record</h2>
+<form method="post" action="{{ url_for('save_restoration_work', work_id=work['id']) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field-label" for="e_title">What the work is</label>
+  <input id="e_title" type="text" name="title" value="{{ work['title'] }}" required>
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="e_room">A room, if it is one</label>
+      <select id="e_room" name="room_id">
+        <option value="">— not a room —</option>
+        {% for r in rooms %}
+        <option value="{{ r['id'] }}" {{ 'selected' if r['id'] == work['room_id'] }}>{{ r['name'] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="field-label" for="e_place">Or where, if it is not</label>
+      <input id="e_place" type="text" name="place" value="{{ work['place'] or '' }}">
+    </div>
+  </div>
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="e_kind">Kind</label>
+      <select id="e_kind" name="kind">
+        {% for key, label in kinds.items() %}
+        <option value="{{ key }}" {{ 'selected' if key == work['kind'] }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="field-label" for="e_status">Where it has got to</label>
+      <select id="e_status" name="status">
+        {% for key, label in [('planned','Planned'), ('in_progress','Underway'), ('done','Finished'), ('abandoned','Abandoned')] %}
+        <option value="{{ key }}" {{ 'selected' if key == work['status'] }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="e_from">Started</label>
+      <input id="e_from" type="date" name="started_on" value="{{ work['started_on'] or '' }}">
+    </div>
+    <div>
+      <label class="field-label" for="e_to">Finished</label>
+      <input id="e_to" type="date" name="finished_on" value="{{ work['finished_on'] or '' }}">
+    </div>
+  </div>
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="e_vendor">Who did it</label>
+      <select id="e_vendor" name="vendor_id">
+        <option value="">— not recorded —</option>
+        {% for v in vendors %}
+        <option value="{{ v['id'] }}" {{ 'selected' if v['id'] == work['vendor_id'] }}>{{ v['name'] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="field-label" for="e_mat">Materials</label>
+      <input id="e_mat" type="text" name="materials" value="{{ work['materials'] or '' }}">
+    </div>
+  </div>
+  <label class="field-label" for="e_sum">What was done</label>
+  <textarea id="e_sum" name="summary" rows="4">{{ work['summary'] or '' }}</textarea>
+  <label class="field-label" for="e_found">What was found doing it</label>
+  <textarea id="e_found" name="found" rows="3"
+            placeholder="The date stone behind the render. The original colour under six layers.">{{ work['found'] or '' }}</textarea>
+  <label class="amenity" style="display:block; margin-top:10px;">
+    <input type="checkbox" name="publishable" value="1" {{ 'checked' if work['publishable'] }}>
+    Show this on the public restoration page
+  </label>
+  <p class="upload-hint" style="margin-top:2px;">
+    Off by default. A record of the house's own work is not automatically
+    something the house has decided to publish. Only finished work appears.
+  </p>
+  <button type="submit" class="btn-primary" style="margin-top:10px;">Save</button>
+</form>
+
+{% endblock %}

@@ -54,6 +54,22 @@ def _read(conn, key):
     return row["value"] if row else None
 
 
+def _first_free_for_room(conn, room, from_date, nights=2):
+    """The first window from here the house would accept for a NEW stay.
+
+    _free() below answers the same question for a booking being moved, which
+    needs an exclusion. This one is for a stay that does not exist yet.
+    """
+    day = from_date
+    for _ in range(200):
+        ok, _why = m.is_range_available(
+            conn, room["id"], day, day + timedelta(days=nights))
+        if ok:
+            return day
+        day += timedelta(days=1)
+    return from_date
+
+
 def _free(booking_id, from_date, nights=2):
     """The first window from here that the house would actually accept.
 
@@ -126,7 +142,12 @@ def run():
     m.send_email = lambda to, subj, body, **k: (sent.append(to), True)[1]
 
     try:
-        arrival = m.house_today() + timedelta(days=40)
+        # Not a bare offset: the ateliers hold the whole château, so a date
+        # reached by arithmetic is refused every so often — and it depends on
+        # the real calendar, so it passes for months and then does not. The
+        # helper twenty lines up exists for this and was not used here.
+        arrival = _first_free_for_room(conn, room, m.house_today()
+                                       + timedelta(days=40))
         b = _make(conn, room, "MOVE", arrival)
         conn.close()
 

@@ -1,0 +1,73 @@
+{% extends "public_base.html" %}
+{% block title %}What has been done{% endblock %}
+{% block description %}A record of the restoration of Château de Gudanes, room by room and elevation by elevation — what was done, what it was done with, and what came to light doing it.{% endblock %}
+{% block content %}
+
+<section class="g-sec">
+  <div class="g-wrap g-wrap--narrow">
+    <h1 class="g-display">What has been done</h1>
+    <p class="g-p">
+      The château has been under restoration since 2013. This is the record of
+      it — kept as the work happens rather than written afterwards, place by
+      place, with what came to light along the way.
+    </p>
+  </div>
+</section>
+
+{% if not works %}
+<section class="g-sec">
+  <div class="g-wrap g-wrap--narrow">
+    <p class="g-p">The record is being written. Come back shortly.</p>
+  </div>
+</section>
+{% else %}
+{% for w in works %}
+<section class="g-sec">
+  <div class="g-wrap g-wrap--narrow">
+    <h2 class="g-pagehead">{{ w['title'] }}</h2>
+    <p class="g-foot-note">
+      {{ w['room_name'] or w['place'] or 'The estate' }}
+      · {{ kinds.get(w['kind'], w['kind'])|lower }}
+      {%- if w['finished_on'] %} · finished {{ w['finished_on']|date_human }}{% endif %}
+      {%- if w['materials'] %} · {{ w['materials'] }}{% endif %}
+    </p>
+
+    {% if w['summary'] %}<p class="g-p">{{ w['summary'] }}</p>{% endif %}
+
+    {% if w['found'] %}
+    <blockquote class="g-quote">{{ w['found'] }}</blockquote>
+    {% endif %}
+
+    {% if photos.get(w['id']) %}
+    <div style="display:flex; flex-wrap:wrap; gap:14px; margin-top:var(--s5);">
+      {% for p in photos[w['id']] %}
+      <figure style="margin:0; flex:1 1 260px; max-width:420px;">
+        <img src="{{ url_for('room_photo', filename=p['filename']) }}"
+             alt="{{ p['caption'] or (w['title'] ~ ', ' ~ p['kind']) }}"
+             style="width:100%; border-radius:4px;" loading="lazy" decoding="async">
+        <figcaption class="g-foot-note">
+          {{ p['caption'] or p['kind']|capitalize }}
+          {%- if p['taken_on'] %} · {{ p['taken_on']|date_human }}{% endif %}
+        </figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endfor %}
+{% endif %}
+
+<section class="g-sec">
+  <div class="g-wrap g-wrap--narrow">
+    <p class="g-p">
+      The ateliers are held in the middle of this work, not around it —
+      <a class="g-inline-link" href="{{ url_for('workshops_public') }}">the
+      programme is here</a>, and
+      <a class="g-inline-link" href="{{ url_for('restoration_page') }}">the
+      story of the house is here</a>.
+    </p>
+  </div>
+</section>
+
+{% endblock %}

@@ -77,6 +77,22 @@ def _mix(start, end):
         conn.close()
 
 
+def _first_free(from_date, room_id, nights=2):
+    """The first date from here the house would actually accept."""
+    conn = db()
+    try:
+        day = from_date
+        for _ in range(200):
+            ok, _why = m.is_range_available(
+                conn, room_id, day, day + timedelta(days=nights))
+            if ok:
+                return day
+            day += timedelta(days=1)
+        return from_date
+    finally:
+        conn.close()
+
+
 def run():
     s = Suite("Where a booking came from")
     _cleanup()
@@ -85,7 +101,12 @@ def run():
 
     s.section("The path stamps it, so nobody has to remember")
     room = _room()
-    arrival = house_today() + timedelta(days=45)
+    # Not a bare offset. The ateliers hold the whole château for their runs,
+    # so a date reached by arithmetic is refused whenever one happens to fall
+    # there — and which days those are moves with the real calendar. This
+    # went red on the morning that today-plus-forty-five became the day
+    # before Immersive Artisan Workshops, having passed for months.
+    arrival = _first_free(house_today() + timedelta(days=45), room["id"])
     r = anon.post(f"/book/{room['id']}", data={
         "arrival_date": arrival.isoformat(),
         "departure_date": (arrival + timedelta(days=2)).isoformat(),

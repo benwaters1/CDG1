@@ -5009,6 +5009,81 @@ def init_db():
         ("tasks_meeting_id",
          "ALTER TABLE tasks ADD COLUMN meeting_id INTEGER "
          "REFERENCES meetings(id) ON DELETE SET NULL"),
+
+        # ---- The restoration record ----------------------------------------
+        #
+        # What has been done to the building, where, and what was found doing
+        # it. Three tables: the work, the invoices that paid for it, and the
+        # photographs. Flattening any of the three into a text field is how a
+        # thing done in 2024 becomes unfindable in 2029.
+        ("restoration_works", """CREATE TABLE IF NOT EXISTS restoration_works (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            -- WHERE, keyed to the building. A room where there is one; a
+            -- named place where there is not, because most of a château is
+            -- not a bedroom -- the north elevation, the orangery, the roof.
+            room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL,
+            place TEXT,
+            kind TEXT NOT NULL DEFAULT 'fabric'
+                CHECK(kind IN ('fabric','roof','services','decoration',
+                               'grounds','survey','other')),
+            status TEXT NOT NULL DEFAULT 'planned'
+                CHECK(status IN ('planned','in_progress','done','abandoned')),
+            started_on TEXT,
+            finished_on TEXT,
+            summary TEXT,
+            -- What came to light doing it. The date stone behind the render,
+            -- the original colour under six layers, the blocked doorway.
+            -- This is the part no hotel system would ever have a field for,
+            -- and the part that sells the ateliers and gets the press.
+            found TEXT,
+            materials TEXT,
+            -- Whether it may appear on the public page. Off by default: a
+            -- record of the house's own work is not automatically something
+            -- the house has decided to publish.
+            publishable INTEGER NOT NULL DEFAULT 0,
+            vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+            -- Planned work with a date becomes a task, so it reaches the
+            -- calendar like everything else that has to happen.
+            task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+        )"""),
+
+        # The money. Many-to-many because a roof is twenty invoices from four
+        # suppliers, and an invoice can cover two jobs. This is what turns
+        # "the roof" from a story into a figure the owner has never had.
+        ("restoration_work_expenses",
+         """CREATE TABLE IF NOT EXISTS restoration_work_expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            work_id INTEGER NOT NULL
+                REFERENCES restoration_works(id) ON DELETE CASCADE,
+            expense_id INTEGER NOT NULL
+                REFERENCES expenses(id) ON DELETE CASCADE,
+            created_at TEXT NOT NULL,
+            UNIQUE(work_id, expense_id)
+        )"""),
+
+        # Before and after, PAIRED. room_photos is for selling a room and
+        # gallery_photos is for the public gallery; neither can say that this
+        # picture is the same wall as that one, eight months earlier, which is
+        # the only thing that makes a restoration photograph worth keeping.
+        ("restoration_photos", """CREATE TABLE IF NOT EXISTS restoration_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            work_id INTEGER NOT NULL
+                REFERENCES restoration_works(id) ON DELETE CASCADE,
+            kind TEXT NOT NULL DEFAULT 'during'
+                CHECK(kind IN ('before','during','after','detail','found')),
+            filename TEXT NOT NULL,
+            caption TEXT,
+            taken_on TEXT,
+            created_at TEXT NOT NULL,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+        )"""),
+
+        ("tasks_restoration_work_id",
+         "ALTER TABLE tasks ADD COLUMN restoration_work_id INTEGER "
+         "REFERENCES restoration_works(id) ON DELETE SET NULL"),
     ):
         try:
             conn.execute(ddl)
@@ -5357,6 +5432,14 @@ def init_db():
         "ON meeting_actions(meeting_id)",
         "CREATE INDEX IF NOT EXISTS idx_meeting_actions_owner "
         "ON meeting_actions(owner_user_id, status)",
+        "CREATE INDEX IF NOT EXISTS idx_restoration_works_room "
+        "ON restoration_works(room_id)",
+        "CREATE INDEX IF NOT EXISTS idx_restoration_works_status "
+        "ON restoration_works(status, finished_on)",
+        "CREATE INDEX IF NOT EXISTS idx_restoration_work_expenses "
+        "ON restoration_work_expenses(work_id)",
+        "CREATE INDEX IF NOT EXISTS idx_restoration_photos_work "
+        "ON restoration_photos(work_id, kind)",
         "CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status)",
         "CREATE INDEX IF NOT EXISTS idx_leave_requests_user_id ON leave_requests(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses(status)",
@@ -6509,6 +6592,16 @@ OWNER_ONLY_AREAS = {
     # was told, both live here — so it follows management access rather than
     # team access, which is about somebody's own employment.
     "meetings_page": "management",
+    # The restoration record. Management rather than estate: it carries what
+    # the work cost, and spend is the owner's to see.
+    "restoration_record": "management",
+    "restoration_work_page": "management",
+    "new_restoration_work": "management",
+    "save_restoration_work": "management",
+    "attach_restoration_expense": "management",
+    "detach_restoration_expense": "management",
+    "add_restoration_photo": "management",
+    "remove_restoration_photo": "management",
     "meeting_page": "management",
     "new_meeting": "management",
     "save_meeting_notes": "management",
@@ -55271,6 +55364,312 @@ def vendors():
                            today=today_iso)
 
 
+@app.route("/admin/restoration")
+@owner_required
+def restoration_record():
+    """Everything the house has done to itself, and what it cost."""
+    conn = get_db()
+    today = house_today()
+    rows = [dict(r) for r in restoration_works(conn)]
+    summary = restoration_summary(conn, today)
+    rooms = conn.execute(
+        "SELECT id, name FROM rooms ORDER BY sort_order, name").fetchall()
+    vendors = conn.execute(
+        "SELECT id, name FROM vendors ORDER BY name").fetchall()
+    conn.close()
+
+    lv = list_view(
+        rows, request.args,
+        search=["title", "place", "room_name", "summary", "found",
+                "materials", "vendor_name"],
+        search_hint="What, where, or anything found doing it",
+        facets=[
+            # The question this page is opened to answer first: what is
+            # happening now, and what has been done and never written up.
+            facet("state", "State", lambda r: (
+                "Underway" if r["status"] == "in_progress" else
+                ("Planned" if r["status"] == "planned" else
+                 ("Finished, not written up"
+                  if r["status"] == "done"
+                  and not (r["summary"] or "").strip() else
+                  ("Finished" if r["status"] == "done" else None)))),
+                  order=["Underway", "Finished, not written up", "Planned",
+                         "Finished"]),
+            facet("where", "Where",
+                  lambda r: restoration_where(r), limit=10),
+            facet("kind", "Kind",
+                  lambda r: RESTORATION_KINDS.get(r["kind"], r["kind"])),
+            facet("public", "On the public page",
+                  lambda r: "Published" if r["publishable"] else None),
+            facet("costed", "Invoices attached",
+                  lambda r: None if r["invoice_count"] else "None attached"),
+        ],
+        sorts=[
+            sort_option("recent", "Most recent first",
+                        lambda r: (r["finished_on"] or r["started_on"]
+                                   or r["created_at"] or ""), reverse=True),
+            sort_option("cost", "Most spent first",
+                        lambda r: r["cost"] or 0, reverse=True),
+            sort_option("where", "By place",
+                        lambda r: restoration_where(r).lower()),
+        ],
+        default_sort="recent",
+    )
+    return render_template(
+        "restoration_record.html", works=lv["rows"], lv=lv, summary=summary,
+        rooms=rooms, vendors=vendors, kinds=RESTORATION_KINDS,
+        today=today.isoformat())
+
+
+@app.route("/admin/restoration/new", methods=["POST"])
+@owner_required
+def new_restoration_work():
+    title = (request.form.get("title", "") or "").strip()
+    if not title:
+        flash("Say what the work is.", "error")
+        return redirect(url_for("restoration_record"))
+    kind = (request.form.get("kind", "") or "fabric").strip()
+    if kind not in RESTORATION_KINDS:
+        kind = "fabric"
+    status = (request.form.get("status", "") or "planned").strip()
+    if status not in ("planned", "in_progress", "done", "abandoned"):
+        status = "planned"
+    room_raw = (request.form.get("room_id", "") or "").strip()
+    user = current_user()
+    conn = get_db()
+    cur = conn.execute(
+        """INSERT INTO restoration_works (title, room_id, place, kind, status,
+                                          started_on, finished_on, summary,
+                                          found, materials, vendor_id,
+                                          created_at, created_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (title[:200], int(room_raw) if room_raw.isdigit() else None,
+         (request.form.get("place", "") or "").strip() or None, kind, status,
+         (request.form.get("started_on", "") or "").strip() or None,
+         (request.form.get("finished_on", "") or "").strip() or None,
+         (request.form.get("summary", "") or "").strip() or None,
+         (request.form.get("found", "") or "").strip() or None,
+         (request.form.get("materials", "") or "").strip() or None,
+         (lambda v: int(v) if v.isdigit() else None)(
+             (request.form.get("vendor_id", "") or "").strip()),
+         datetime.now(timezone.utc).isoformat(),
+         user["id"] if user else None))
+    work_id = cur.lastrowid
+    restoration_task_for(conn, work_id)
+    conn.commit()
+    conn.close()
+    flash(f"{title} recorded.", "success")
+    return redirect(url_for("restoration_work_page", work_id=work_id))
+
+
+@app.route("/admin/restoration/<int:work_id>")
+@owner_required
+def restoration_work_page(work_id):
+    """One piece of work: where, what was found, what it cost, the pictures."""
+    conn = get_db()
+    work = conn.execute(
+        """SELECT restoration_works.*, rooms.name AS room_name,
+                  vendors.name AS vendor_name, users.name AS created_by_name
+             FROM restoration_works
+             LEFT JOIN rooms ON rooms.id = restoration_works.room_id
+             LEFT JOIN vendors ON vendors.id = restoration_works.vendor_id
+             LEFT JOIN users ON users.id = restoration_works.created_by_user_id
+            WHERE restoration_works.id = ?""", (work_id,)).fetchone()
+    if not work:
+        conn.close()
+        abort(404)
+    cost = restoration_cost(conn, work_id)
+    photos = restoration_photos(conn, work_id)
+    attached = {r["expense_id"] for r in conn.execute(
+        "SELECT expense_id FROM restoration_work_expenses WHERE work_id = ?",
+        (work_id,))}
+    # Invoices it could still be attached to. Capital spend first: a château
+    # roof is capital, and that is the pile this record is nearly always
+    # reaching into.
+    candidates = conn.execute(
+        """SELECT id, vendor_name, description, amount, invoice_date, spent_on,
+                  is_capital
+             FROM expenses
+            WHERE status IN ('pending', 'approved', 'paid')
+            ORDER BY is_capital DESC,
+                     COALESCE(invoice_date, spent_on, submitted_at) DESC
+            LIMIT 200""").fetchall()
+    rooms = conn.execute(
+        "SELECT id, name FROM rooms ORDER BY sort_order, name").fetchall()
+    vendors = conn.execute(
+        "SELECT id, name FROM vendors ORDER BY name").fetchall()
+    conn.close()
+    return render_template(
+        "restoration_work.html", work=work, cost=cost, photos=photos,
+        candidates=[c for c in candidates if c["id"] not in attached],
+        rooms=rooms, vendors=vendors, kinds=RESTORATION_KINDS,
+        photo_kinds=RESTORATION_PHOTO_KINDS, today=house_today_iso())
+
+
+@app.route("/admin/restoration/<int:work_id>/save", methods=["POST"])
+@owner_required
+def save_restoration_work(work_id):
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM restoration_works WHERE id = ?",
+                        (work_id,)).fetchone():
+        conn.close()
+        abort(404)
+    kind = (request.form.get("kind", "") or "fabric").strip()
+    if kind not in RESTORATION_KINDS:
+        kind = "fabric"
+    status = (request.form.get("status", "") or "planned").strip()
+    if status not in ("planned", "in_progress", "done", "abandoned"):
+        status = "planned"
+    room_raw = (request.form.get("room_id", "") or "").strip()
+    vendor_raw = (request.form.get("vendor_id", "") or "").strip()
+    conn.execute(
+        """UPDATE restoration_works
+              SET title = ?, room_id = ?, place = ?, kind = ?, status = ?,
+                  started_on = ?, finished_on = ?, summary = ?, found = ?,
+                  materials = ?, vendor_id = ?, publishable = ?
+            WHERE id = ?""",
+        ((request.form.get("title", "") or "").strip()[:200] or "Untitled",
+         int(room_raw) if room_raw.isdigit() else None,
+         (request.form.get("place", "") or "").strip() or None, kind, status,
+         (request.form.get("started_on", "") or "").strip() or None,
+         (request.form.get("finished_on", "") or "").strip() or None,
+         (request.form.get("summary", "") or "").strip() or None,
+         (request.form.get("found", "") or "").strip() or None,
+         (request.form.get("materials", "") or "").strip() or None,
+         int(vendor_raw) if vendor_raw.isdigit() else None,
+         1 if request.form.get("publishable") else 0, work_id))
+    restoration_task_for(conn, work_id)
+    conn.commit()
+    conn.close()
+    flash("Saved.", "success")
+    return redirect(url_for("restoration_work_page", work_id=work_id))
+
+
+@app.route("/admin/restoration/<int:work_id>/invoices", methods=["POST"])
+@owner_required
+def attach_restoration_expense(work_id):
+    """Attach an invoice, so the job carries what it actually cost."""
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM restoration_works WHERE id = ?",
+                        (work_id,)).fetchone():
+        conn.close()
+        abort(404)
+    ids = [v for v in request.form.getlist("expense_id") if v.isdigit()]
+    now = datetime.now(timezone.utc).isoformat()
+    added = 0
+    for expense_id in ids:
+        try:
+            conn.execute(
+                """INSERT INTO restoration_work_expenses
+                       (work_id, expense_id, created_at) VALUES (?, ?, ?)""",
+                (work_id, int(expense_id), now))
+            added += 1
+        except sqlite3.IntegrityError:
+            # Already attached. The UNIQUE is what makes pressing the button
+            # twice harmless rather than a job costed double.
+            pass
+    conn.commit()
+    conn.close()
+    flash(f"{added} invoice{'' if added == 1 else 's'} attached."
+          if added else "Nothing new to attach.", "success")
+    return redirect(url_for("restoration_work_page", work_id=work_id))
+
+
+@app.route("/admin/restoration/<int:work_id>/invoices/<int:expense_id>/remove",
+           methods=["POST"])
+@owner_required
+def detach_restoration_expense(work_id, expense_id):
+    conn = get_db()
+    conn.execute(
+        "DELETE FROM restoration_work_expenses "
+        "WHERE work_id = ? AND expense_id = ?", (work_id, expense_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("restoration_work_page", work_id=work_id))
+
+
+@app.route("/admin/restoration/<int:work_id>/photos", methods=["POST"])
+@owner_required
+def add_restoration_photo(work_id):
+    """A photograph, filed as before, during, after, detail or found.
+
+    Stored where the room photographs are stored and served by the same
+    route: one directory on the volume, one place to back up, and nothing new
+    to remember when the disk is moved.
+    """
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM restoration_works WHERE id = ?",
+                        (work_id,)).fetchone():
+        conn.close()
+        abort(404)
+    kind = (request.form.get("kind", "") or "during").strip()
+    if kind not in RESTORATION_PHOTO_KINDS:
+        kind = "during"
+    stored = save_room_photos_multi(request.files.getlist("photo"))
+    if not stored:
+        conn.close()
+        flash("No photograph came through — a JPEG, PNG or WebP.", "error")
+        return redirect(url_for("restoration_work_page", work_id=work_id))
+    user = current_user()
+    now = datetime.now(timezone.utc).isoformat()
+    for name in stored:
+        conn.execute(
+            """INSERT INTO restoration_photos (work_id, kind, filename,
+                                               caption, taken_on, created_at,
+                                               created_by_user_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (work_id, kind, name,
+             (request.form.get("caption", "") or "").strip() or None,
+             (request.form.get("taken_on", "") or "").strip() or None,
+             now, user["id"] if user else None))
+    conn.commit()
+    conn.close()
+    flash(f"{len(stored)} photograph{'' if len(stored) == 1 else 's'} added.",
+          "success")
+    return redirect(url_for("restoration_work_page", work_id=work_id))
+
+
+@app.route("/admin/restoration/photos/<int:photo_id>/remove", methods=["POST"])
+@owner_required
+def remove_restoration_photo(photo_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM restoration_photos WHERE id = ?",
+                       (photo_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM restoration_photos WHERE id = ?", (photo_id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("restoration_work_page", work_id=row["work_id"]))
+
+
+@app.route("/restoration/record")
+def restoration_record_public():
+    """The story, written by what actually happened.
+
+    A page of its own rather than an edit to restoration.html. The public
+    templates arrive from the design side as whole-file replacements, so
+    anything written into that file survives exactly one handover — the same
+    reasoning that keeps the photograph mirror at the response layer instead
+    of in 256 edited tags.
+
+    Only what has been marked publishable, and only what is finished. A
+    record of the house's own work is not automatically something the house
+    has decided to publish.
+    """
+    conn = get_db()
+    works = [w for w in restoration_works(conn, publishable_only=True)
+             if w["status"] == "done"]
+    photos = {}
+    for w in works:
+        photos[w["id"]] = restoration_photos(conn, w["id"])
+    conn.close()
+    return render_template("restoration_record_public.html",
+                           works=works, photos=photos,
+                           kinds=RESTORATION_KINDS)
+
+
 @app.route("/meetings")
 @owner_required
 def meetings_page():
@@ -60249,6 +60648,245 @@ def export_audit_log_csv():
     fieldnames = ["created_at", "actor_name", "action", "target", "details"]
     name = "audit_log_filtered.csv" if lv["filtered"] else "audit_log.csv"
     return csv_response(fieldnames, lv["rows"], name)
+
+
+# ---------------------------------------------------------------------------
+# The restoration record
+# ---------------------------------------------------------------------------
+
+RESTORATION_KINDS = {
+    "fabric": "Fabric and masonry",
+    "roof": "Roof and rainwater",
+    "services": "Services",
+    "decoration": "Decoration",
+    "grounds": "Grounds",
+    "survey": "Survey and report",
+    "other": "Other",
+}
+
+RESTORATION_PHOTO_KINDS = {
+    "before": "Before",
+    "during": "During",
+    "after": "After",
+    "detail": "Detail",
+    "found": "What was found",
+}
+
+# An expense the owner refused did not pay for anything, so it is not part of
+# what the work cost. 'rejected' is the value the CHECK constraint allows --
+# not 'declined', which it does not, and which quietly matched nothing.
+RESTORATION_COUNTED_STATUSES = ("pending", "approved", "paid")
+
+
+def restoration_where(row):
+    """Where the work happened, however it is recorded.
+
+    A room where there is one, a named place where there is not. Most of a
+    château is not a bedroom — the north elevation, the orangery, the roof —
+    and this is the single place that knows the order to try.
+    """
+    for key in ("room_name", "place"):
+        try:
+            value = (row[key] or "").strip()
+        except (KeyError, IndexError, TypeError):
+            value = ""
+        if value:
+            return value
+    return "The estate"
+
+
+def restoration_cost(conn, work_id):
+    """What a piece of work cost, as invoiced, with the invoices it came from.
+
+    Gross, as the expense rows hold it. Every figure in this file states
+    which it is, and a net number mixed into a gross total is the kind that
+    gets believed and is wrong.
+
+    Refused invoices are left out entirely rather than shown at zero: an
+    expense the owner declined did not pay for anything, and a count of
+    invoices that includes it overstates how much of the job is documented.
+    """
+    marks = ",".join("?" * len(RESTORATION_COUNTED_STATUSES))
+    rows = conn.execute(
+        f"""SELECT expenses.id, expenses.amount, expenses.vendor_name,
+                   expenses.description, expenses.invoice_date,
+                   expenses.spent_on, expenses.status
+              FROM restoration_work_expenses
+              JOIN expenses ON expenses.id = restoration_work_expenses.expense_id
+             WHERE restoration_work_expenses.work_id = ?
+               AND expenses.status IN ({marks})
+             ORDER BY COALESCE(expenses.invoice_date, expenses.spent_on,
+                               expenses.submitted_at)""",
+        (work_id,) + RESTORATION_COUNTED_STATUSES).fetchall()
+    total = round(sum(float(r["amount"] or 0) for r in rows), 2)
+    suppliers = sorted({(r["vendor_name"] or "").strip()
+                        for r in rows if (r["vendor_name"] or "").strip()})
+    return {"total": total, "invoices": rows, "count": len(rows),
+            "suppliers": suppliers}
+
+
+def restoration_photos(conn, work_id):
+    """Every photograph of one piece of work, before first.
+
+    Ordered so a page can read left to right as the work happened, which is
+    the only arrangement that makes a before worth keeping next to an after.
+    """
+    return conn.execute(
+        """SELECT restoration_photos.*, users.name AS added_by_name
+             FROM restoration_photos
+             LEFT JOIN users
+                    ON users.id = restoration_photos.created_by_user_id
+            WHERE restoration_photos.work_id = ?
+            ORDER BY CASE restoration_photos.kind
+                          WHEN 'before' THEN 0 WHEN 'during' THEN 1
+                          WHEN 'found' THEN 2 WHEN 'after' THEN 3
+                          ELSE 4 END,
+                     COALESCE(restoration_photos.taken_on,
+                              restoration_photos.created_at),
+                     restoration_photos.id""",
+        (work_id,)).fetchall()
+
+
+def restoration_works(conn, *, publishable_only=False, room_id=None):
+    """The record, newest first, each with where it happened and what it cost.
+
+    The cost is a subquery rather than a second pass: a list of two hundred
+    entries would otherwise ask the database two hundred times, which is the
+    fault this file has already fixed twice elsewhere.
+    """
+    marks = ",".join("?" * len(RESTORATION_COUNTED_STATUSES))
+    where, params = [], []
+    if publishable_only:
+        where.append("restoration_works.publishable = 1")
+    if room_id:
+        where.append("restoration_works.room_id = ?")
+        params.append(room_id)
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+    return conn.execute(
+        f"""SELECT restoration_works.*, rooms.name AS room_name,
+                   vendors.name AS vendor_name,
+                   users.name AS created_by_name,
+                   (SELECT COUNT(*) FROM restoration_photos
+                     WHERE work_id = restoration_works.id) AS photo_count,
+                   (SELECT COALESCE(SUM(expenses.amount), 0)
+                      FROM restoration_work_expenses rwe
+                      JOIN expenses ON expenses.id = rwe.expense_id
+                     WHERE rwe.work_id = restoration_works.id
+                       AND expenses.status IN ({marks})) AS cost,
+                   (SELECT COUNT(*)
+                      FROM restoration_work_expenses rwe
+                      JOIN expenses ON expenses.id = rwe.expense_id
+                     WHERE rwe.work_id = restoration_works.id
+                       AND expenses.status IN ({marks})) AS invoice_count
+              FROM restoration_works
+              LEFT JOIN rooms ON rooms.id = restoration_works.room_id
+              LEFT JOIN vendors ON vendors.id = restoration_works.vendor_id
+              LEFT JOIN users ON users.id = restoration_works.created_by_user_id
+              {clause}
+             ORDER BY COALESCE(restoration_works.finished_on,
+                               restoration_works.started_on,
+                               restoration_works.created_at) DESC,
+                      restoration_works.id DESC""",
+        tuple(RESTORATION_COUNTED_STATUSES) * 2 + tuple(params)).fetchall()
+
+
+def restoration_summary(conn, today=None):
+    """The band across the top. Spend is the figure nobody has ever had."""
+    today = today or house_today()
+    year = today.year
+    marks = ",".join("?" * len(RESTORATION_COUNTED_STATUSES))
+    counts = conn.execute(
+        """SELECT
+             SUM(status = 'planned') AS planned,
+             SUM(status = 'in_progress') AS underway,
+             SUM(status = 'done') AS done,
+             SUM(publishable = 1 AND status = 'done') AS publishable
+           FROM restoration_works""").fetchone()
+    spend_all = conn.execute(
+        f"""SELECT COALESCE(SUM(expenses.amount), 0) AS total
+              FROM restoration_work_expenses rwe
+              JOIN expenses ON expenses.id = rwe.expense_id
+             WHERE expenses.status IN ({marks})""",
+        RESTORATION_COUNTED_STATUSES).fetchone()["total"]
+    spend_year = conn.execute(
+        f"""SELECT COALESCE(SUM(expenses.amount), 0) AS total
+              FROM restoration_work_expenses rwe
+              JOIN expenses ON expenses.id = rwe.expense_id
+             WHERE expenses.status IN ({marks})
+               AND COALESCE(expenses.invoice_date, expenses.spent_on,
+                            expenses.submitted_at) >= ?""",
+        RESTORATION_COUNTED_STATUSES + (f"{year}-01-01",)).fetchone()["total"]
+    # Work finished and never written up is the one that rots: the person who
+    # did it remembers for about a fortnight, and then nobody does.
+    unwritten = conn.execute(
+        """SELECT COUNT(*) AS c FROM restoration_works
+            WHERE status = 'done' AND COALESCE(TRIM(summary), '') = ''"""
+    ).fetchone()["c"]
+    return {
+        "planned": counts["planned"] or 0,
+        "underway": counts["underway"] or 0,
+        "done": counts["done"] or 0,
+        "publishable": counts["publishable"] or 0,
+        "spend_all": round(spend_all or 0, 2),
+        "spend_year": round(spend_year or 0, 2),
+        "unwritten": unwritten,
+        "cells": [
+            overview_cell("Underway", counts["underway"] or 0),
+            overview_cell("Planned", counts["planned"] or 0),
+            overview_cell("Finished", counts["done"] or 0),
+            overview_cell("Spent, all time",
+                          f"\u20ac{round(spend_all or 0):,.0f}",
+                          hint="gross, as invoiced, across every job with "
+                               "invoices attached"),
+            overview_cell("Spent in %d" % year,
+                          f"\u20ac{round(spend_year or 0):,.0f}"),
+            overview_cell("Finished, not written up", unwritten,
+                          alert=bool(unwritten),
+                          hint="whoever did it remembers for about a "
+                               "fortnight, and then nobody does"),
+        ],
+    }
+
+
+def restoration_task_for(conn, work_id, *, now=None):
+    """Put planned work on the calendar, and take it off once it is done.
+
+    Planned work is work that has to happen, so it belongs on a list like
+    everything else. Finished work does not: a task for something already
+    done is a line nobody can tick, and a list with those on it is one that
+    gets skimmed rather than read.
+
+    Idempotent — called on every save, and a work already carrying a task
+    keeps the same one rather than collecting a new one each time.
+    """
+    now = now or datetime.now(timezone.utc)
+    work = conn.execute("SELECT * FROM restoration_works WHERE id = ?",
+                        (work_id,)).fetchone()
+    if not work:
+        return None
+    wants = work["status"] in ("planned", "in_progress") and work["started_on"]
+    if not wants:
+        if work["task_id"]:
+            conn.execute(
+                "UPDATE tasks SET status = 'done', completed_at = ? "
+                "WHERE id = ? AND status != 'done'",
+                (now.isoformat(), work["task_id"]))
+        return work["task_id"]
+    title = "Restoration: %s" % (work["title"] or "")[:180]
+    if work["task_id"]:
+        conn.execute(
+            "UPDATE tasks SET title = ?, due_date = ? WHERE id = ?",
+            (title, work["started_on"], work["task_id"]))
+        return work["task_id"]
+    cur = conn.execute(
+        """INSERT INTO tasks (assigned_to_user_id, title, notes, due_date,
+                              priority, status, created_at, origin,
+                              restoration_work_id)
+           VALUES (NULL, ?, ?, ?, 'normal', 'open', ?, 'restoration', ?)""",
+        (title, work["summary"], work["started_on"], now.isoformat(), work_id))
+    conn.execute("UPDATE restoration_works SET task_id = ? WHERE id = ?",
+                 (cur.lastrowid, work_id))
+    return cur.lastrowid
 
 
 # ---------------------------------------------------------------------------
