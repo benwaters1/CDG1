@@ -135,6 +135,78 @@ def run():
                 detail="four figures in four files is how they came to "
                        "disagree by four and a half kilometres")
 
+        s.section("No page offers a search dressed up as a map")
+        # Six templates ran a Google Maps SEARCH for the house by name. A
+        # search returns Google's best guess, weighted by where the person
+        # searching is — from outside Europe it answered in Tokyo. That is
+        # worse than the village square the design side was worried about, and
+        # worse than no link, because the guest sets off.
+        import os as _os
+        searched = []
+        for filename in sorted(_os.listdir(TEMPLATES)):
+            if not filename.endswith(".html"):
+                continue
+            body = open(_os.path.join(TEMPLATES, filename),
+                        encoding="utf-8").read()
+            body = re.sub(r"\{#.*?#\}", " ", body, flags=re.S)
+            if "query=Ch" in body or "maps?q=Ch" in body:
+                searched.append(filename)
+        s.check("not one of them searches by name", not searched,
+                detail="a name search is not a pin, and it does not even stay "
+                       "in the right country: " + str(searched))
+
+        # AND app.py, because the link building MOVED THERE. The first version
+        # of this guard read the templates only — right while the six copies
+        # lived in templates, wrong the moment they became one builder in
+        # Python. Moving the thing being guarded out of the guarded region is
+        # its own fault class, and breaking it on purpose is what found it.
+        source = open(os.path.join(_harness.ROOT, "app.py"),
+                      encoding="utf-8").read().replace("\r\n", "\n")
+        code = "\n".join(l.split("#")[0] for l in source.splitlines())
+        s.check("and neither does the one place that builds them",
+                "query=Ch" not in code and "maps?q=Ch" not in code,
+                detail="a guard that reads only templates would not see a "
+                       "name search move into Python")
+        # Only these three functions are read, so the weather constant and the
+        # docstrings that quote all four figures are left alone.
+        pinned = ""
+        for fn in ("def house_pin(", "def house_coordinates(",
+                   "def house_map_links("):
+            at = source.find(fn)
+            if at >= 0:
+                end = source.find("\ndef ", at + 1)
+                pinned += source[at:end if end > 0 else len(source)]
+        pinned = re.sub(r'""".*?"""', " ", pinned, flags=re.S)
+        pinned = "\n".join(l.split("#")[0] for l in pinned.splitlines())
+        s.check("and no coordinate is written into the pin functions",
+                not PAIR.search(pinned),
+                detail="an invented default here would reach every page at "
+                       "once, which is the whole point of there being one: "
+                       + str(PAIR.findall(pinned)[:3]))
+
+        _pin(None, None)
+        page = anon.get("/contact").get_data(as_text=True)
+        s.check("with no pin the map itself is absent, not wrong",
+                "output=embed" not in page,
+                detail="a map showing the wrong place is worse than a link to "
+                       "one, because it looks authoritative")
+        s.check("and the page says why rather than showing an empty box",
+                "does not find them" in page)
+        _pin("42.8083", "1.6528")
+        page = anon.get("/contact").get_data(as_text=True)
+        s.check("with a pin the embedded map uses it",
+                "maps?q=42.8083,1.6528" in page and "output=embed" in page,
+                detail="the picture and the button have to be one place")
+        for path, name in (("/book/rooms", "the room page"),
+                           ("/contact", "the contact page")):
+            r = anon.get(path)
+            if r.status_code != 200:
+                continue
+            body = r.get_data(as_text=True)
+            s.check("%s links to the pin" % name,
+                    "query=42.8083,1.6528" in body,
+                    detail=path)
+
         s.section("The weather is allowed its own, and says why")
         source = open(os.path.join(_harness.ROOT, "app.py"),
                       encoding="utf-8").read()

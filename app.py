@@ -978,7 +978,7 @@ OFFICE_DISPLAY_TOKEN = os.environ.get("OFFICE_DISPLAY_TOKEN", "")
 # links back to the site (e.g. a workshop balance reminder's "manage your
 # registration" link) needs to be told what the site's public URL actually
 # is — a real request has a Host header for this; a timer doesn't. Set this
-# to your real domain (e.g. "https://gudanes-hr.up.railway.app") once you
+# to your real domain (this one is "https://cdg1-production.up.railway.app")
 # have one. Until then, those links fall back to "http://localhost".
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 
@@ -22496,7 +22496,8 @@ def inject_house_pin():
     Passing it per route would mean remembering on each new page, and the
     failure of forgetting is that Google keeps the old figure.
     """
-    return {"house_pin": house_pin()}
+    pin = house_pin()
+    return {"house_pin": pin, "house_maps": house_map_links() if pin else {}}
 
 
 @app.context_processor
@@ -38203,6 +38204,37 @@ def house_pin():
         return house_coordinates(conn) or None
     finally:
         conn.close()
+
+
+def house_map_links():
+    """Where to send somebody who taps "open in maps", or nothing.
+
+    THIS WENT TO TOKYO. Six templates carried the same hand-written link, and
+    none of them was a pin: every one ran a Google Maps SEARCH for the words
+    "Chateau de Gudanes Chateau-Verdun". A search returns Google's best guess,
+    weighted by where the person searching is -- so the answer depends on the
+    guest's own location, and from outside Europe it came back in Japan.
+
+    That is the failure the design side wrote the map to prevent, in its own
+    caption: an address search leaves you in the square below. It turns out to
+    be worse than the square below.
+
+    So: coordinates, or no link at all. A search dressed up as a map is worse
+    than a page that says to telephone, because the guest sets off.
+    """
+    pin = house_pin()
+    if not pin:
+        return {}
+    at = f"{pin['lat']},{pin['lng']}"
+    return {
+        "google": f"https://www.google.com/maps/search/?api=1&query={at}",
+        "apple": (f"https://maps.apple.com/?ll={at}"
+                  "&q=Ch%C3%A2teau%20de%20Gudanes"),
+        # The embedded map on the contact page. Same pin, so the picture and
+        # the button cannot point at two different places.
+        "embed": f"https://www.google.com/maps?q={at}&output=embed",
+        "at": at,
+    }
 
 
 def room_payment_setting(conn, key, cast=float):

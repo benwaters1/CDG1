@@ -174,7 +174,7 @@ Railway takes a folder of code and gives you a live URL. No server management.
      somewhere separate from the database (a password manager's secure notes,
      for instance). Without it set, the Vault page just says it isn't
      configured yet.
-5. Railway gives you a URL like `gudanes-hr.up.railway.app`
+5. Railway gives you a URL like `cdg1-production.up.railway.app`
 6. **Point your own domain at it** (optional but nicer): in Railway, add a
    custom domain like `staff.chateaugudanes.com`, then add the DNS record
    Railway gives you into your Squarespace domain settings
