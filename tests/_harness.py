@@ -285,11 +285,30 @@ ANSWERS = {}
 # is how most forms here answer, and calling that a refusal would erase real
 # coverage. A redirect to the login page is a refusal, and it is checked by
 # where it points rather than by its code.
-_REFUSAL_CODES = {401, 403, 404, 405, 500, 502, 503}
+# 400 belongs here for the same reason 403 does: it is the app saying no.
+_REFUSAL_CODES = {400, 401, 403, 404, 405, 500, 502, 503}
+
+# What each answer FLASHED, which is the only thing that separates a form
+# that worked from one that was refused. Both answer 302 back to a page, so
+# the status code cannot tell them apart -- but every one of the app's 742
+# flashes carries a category, and there are only two of them in the whole
+# file. The app already says which happened, on every form, every time.
+def _flash_categories():
+    """The categories flashed by THIS request, not ones left over.
+
+    A flash survives until something renders it, so a redirect chain can
+    carry one request's message into the next request's bookkeeping. Read as
+    a delta against what was already there.
+    """
+    from flask import g as _g, session as _sess
+    before = getattr(_g, "_flash_mark", 0)
+    return {c for c, _msg in list(_sess.get("_flashes", []))[before:]}
 
 
 @m.app.before_request
 def _record_endpoint():          # pragma: no cover - bookkeeping, not behaviour
+    from flask import g as _g, session as _sess
+    _g._flash_mark = len(_sess.get("_flashes", []))
     if request.endpoint:
         EXERCISED.add(request.endpoint)
 
@@ -303,10 +322,20 @@ def _record_answer(response):    # pragma: no cover - bookkeeping, not behaviour
     ANSWERS.setdefault(request.endpoint, set()).add(
         (request.method, code, where[-40:]))
 
+    said = _flash_categories()
     refused = code in _REFUSAL_CODES
     if code in (301, 302, 303, 307, 308):
         trimmed = where.rstrip("/")
         refused = trimmed.endswith("/login") or trimmed == "/login"
+    # The app declined and said so. A form that answers "Enter both dates"
+    # has tested the sentence, not the booking -- and every route in here
+    # answers an empty post exactly that way, which is why almost every POST
+    # counted as covered on the strength of tests/test_empty_form_crashes
+    # sweeping it and nothing else ever posting anything real.
+    if "error" in said and "success" not in said:
+        refused = True
+        ANSWERS.setdefault(request.endpoint, set()).add(
+            (request.method, code, "declined"))
     # logout is the one endpoint whose SUCCESS is a redirect to the login
     # page, so the rule above would call the only thing it does a refusal.
     # Named rather than handled by loosening the rule, which would excuse

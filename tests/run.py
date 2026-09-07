@@ -459,6 +459,47 @@ COVERAGE_KNOWN_GAPS = {
     # and reversible, rather than in the rule. tests/test_provider_off.py
     # does exercise it -- the token posture and the 503 both.
     "api_draft_reply",
+
+    # ------------------------------------------------------------------
+    # AND EIGHTEEN WHOSE ONLY TEST IS THE APP SAYING NO.
+    #
+    # These were all reading as covered until the measure learned to tell a
+    # form that worked from one that was refused. Both answer 302 back to a
+    # page, so the status code cannot separate them -- but every one of the
+    # app's 742 flashes carries a category, and there are only two, so the
+    # app states on every form which happened. A response that flashed an
+    # error and no success is now a refusal, in the same sense a 403 is.
+    #
+    # What reached each of these was tests/test_empty_form_crashes sweeping
+    # every POST with an empty body to prove none of them 500s. That is a
+    # real check and it stays -- but it tests the sentence the route composes
+    # when it declines, and nothing else. The working branch of all eighteen
+    # has never run.
+    #
+    # Listed rather than silently re-covered, and checked in both directions
+    # like everything else here: write a real post for one of these and the
+    # run reds until the name comes off. Four of them (the Stripe cancels and
+    # the two workshop payment starts) need a payment provider and belong
+    # with the three above; sync_pennylane is stood down at import on purpose.
+    # The other thirteen are ordinary owner-side writes with no excuse.
+    "add_bill_share",
+    "assign_access_preset",
+    "edit_menu_day",
+    "paste_event_guests",
+    "pos_pay_link",
+    "read_invoice",
+    "record_maintenance_done",
+    "restaurant_stripe_cancel",
+    "save_access_preset",
+    "scan_expense",
+    "send_campaign_template",
+    "send_event_revenue",
+    "send_workshop_revenue",
+    "stripe_cancel",
+    "sync_pennylane",
+    "workshop_pay_balance",
+    "workshop_pay_deposit",
+    "workshop_stripe_cancel",
 }
 
 
