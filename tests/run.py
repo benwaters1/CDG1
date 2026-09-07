@@ -325,6 +325,7 @@ SUITES = [
     "test_one_search_box",
     "test_offline_actions",
     "test_html_email",
+    "test_letters_drawn",
     "test_mail_redirect",
     "test_chef_program",
     "test_where_the_gates_are",
