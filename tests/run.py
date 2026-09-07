@@ -91,6 +91,7 @@ SUITES = [
     "test_photo_mirror",
     "test_booking_bar",
     "test_booking_journey",
+    "test_the_whole_way_through",
     "test_funnel_forms",
     "test_pass",
     "test_site_audit",
