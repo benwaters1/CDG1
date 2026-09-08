@@ -726,6 +726,12 @@
 </div></section>
 
 
+
+{% from '_explorer.html' import restoration_explorer %}
+{% from '_interactive.html' import the_reveal %}
+{{ restoration_explorer(settings) }}
+{{ the_reveal(reveal_pairs) }}
+
 {{ scale() }}
 
 <!-- ============ THE CLOSER ============ -->

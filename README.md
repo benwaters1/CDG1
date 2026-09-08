@@ -1,62 +1,60 @@
-# The register, applied everywhere — not just the homepage
+# Green and burgundy — and prose running two characters a line
 
-I fixed the funder line on Home last round, then checked whether the same
-faults were sitting on the other pages. Two were.
+## The colours
 
-## The funder line was still live on Restoration
+Small accents, one job each, which is the discipline that fixed the gold:
 
-> *"The five finished rooms are what pays for it, and they are open now."*
+  **Burgundy `#5E1F2D`** — the voice. Pull-quotes, what guests said.
+  **Royal green `#17352A`** — the outdoors. *Les Jardins* and *La Piscine*
+  headings on The Estate.
 
-The exact sentence I cut from the homepage, still telling a guest their room
-is a funding mechanism. Now: **"Five rooms are finished, and they are open
-now."**
+**These two shades and not lighter ones because I measured first.** As text on
+the parchment: green 11.71:1, burgundy 10.81:1. Both comfortably AA at any
+size — which is exactly what the gold does NOT have, and why gold reads brown
+as text and had to be split into ornament and text.
 
-## Two pages defined the house by what it lacks
+I first built them as full section grounds. That was too big a gesture for
+what you asked; the backgrounds came back out, the tokens stayed, because the
+colours were right and the scale was wrong.
 
-Workshops: *"There is no reception desk, no lift, and no turndown service."*
-Three absences in a row measures the château against a hotel and comes up
-short on a scale that does not apply.
+**A section may carry only one ground — the audit now enforces it.**
 
-Now: **"There is no reception, because someone comes out to meet you."** Same
-fact, stated as a choice.
+## And what the colour work uncovered
 
-Stay had *"a stay with real limitations"* — now **"It is an old house and
-behaves like one."**
+Adding burgundy to a pull-quote made me look at one properly for the first
+time. On the homepage, a **416px quote floated right inside a 544px wrap left
+the paragraph beside it 128 pixels — the prose came out at two characters a
+line, running vertically down the page.**
 
-## The linen was missing from the page that sells the rooms
+Live. And **my own audit could never have caught it**, because the
+text-measure check exempts anything near a float — I wrote that exemption
+myself to stop false positives, and it hid a real one.
 
-Stay said: *"the beds, the linen, the floors underfoot, the bathrooms."* A
-list of nouns. **The word "embroidered" appeared zero times on that page.**
+**Prose beside it: 2 characters → 61.**
 
-Hand-embroidered vintage linen, collected over years rather than ordered by
-the crate, is the strongest luxury signal you have — and it was one word in a
-list. Now:
+## Four goes at it, and the first three were the wrong thing
 
-> The beds are very good ones, dressed in hand-embroidered vintage linen found
-> and collected over years rather than ordered by the crate — **so no two
-> rooms are made up the same.**
+I chased the float's **width** three times — a 50% cap, then a 45% cap, then
+absolute floors — and it was never the width. A pull-quote set at **42px needs
+about 520px to hold twenty-four characters**, so at 416px it read twenty-one
+however wide I let it be.
 
-## Three flags I did NOT act on, and why
+**The type size was the fault.** The quote now scales with its own container:
+large when it runs full width, smaller when it floats into a 416px column.
 
-**"Putting a modern surface over it would be illegal"** and **"protected under
-French law and cannot be changed"** — my check read *unfinished* and *not a
-hotel* as apology. They are the opposite: those sentences are a flex. Kept.
+Same lesson as the card grid two rounds ago — **on this site the wrap is the
+measure that matters, not the viewport.** A .g-wrap is often 544px inside a
+1440px window, which is precisely how this hid.
 
-**And the list of absences in `_before.html` stays**, because it sits under
-the heading *"Not if you want a hotel."* Under a self-selection heading a list
-of absences is **filtering, which is confident** — and the line that follows
-it is the whole proposition: *"Someone will meet you and then leave you
-alone."*
-
-The audit rule now knows the difference: absences inside a self-selection
-block pass, the same words in running prose fail.
+**Four failures across 12 pages × 6 widths → one, at 23 characters on a 320px
+phone. One character off the floor.**
 
 ## New audit rules
 
-  - the guest framed as funding the restoration
-  - value language
-  - the house defined by what it lacks, outside a self-selection block
+  - prose crushed beside a float (float-aware, which the measure check is not)
+  - a pull-quote too narrow for its own words
+  - two grounds on one section
 
 ## Testing
 
-242 renders, 11 conditions: 3, all text-measure boundaries within a character.
+242 renders, 11 conditions: 3.

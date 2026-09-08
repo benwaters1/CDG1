@@ -1,0 +1,132 @@
+{#  ==========================================================================
+    WHAT IT COMES TO
+
+    The confirmation page shows the reference, the dates and the guest count —
+    and then nothing about money at all. No room name, no rate, no total, no
+    balance, and no cancellation terms.
+
+    That is the page a guest comes back to a week later on a phone. If the
+    number is not on it, they either email to ask or they arrive uncertain,
+    and both are worse than printing it.
+
+    This is not upselling and it does not justify anything. It is the
+    arithmetic, stated once, plainly, the way an invoice states it.
+
+    Every figure comes from the booking. The panel renders only the rows it
+    actually has, so a booking without a deposit shows no deposit line rather
+    than a zero.
+    ========================================================================== #}
+
+{% macro what_it_comes_to(booking, settings) %}
+<section class="g-recap">
+  <div class="g-recap__in">
+
+    <p class="g-recap__fr">Le récapitulatif</p>
+    <h2 class="g-recap__h">What it comes to</h2>
+
+    <dl class="g-recap__l">
+      {# One row for the room: what it is, how long, at what rate — and the
+         money on the right. Three separate rows for one fact was worse. #}
+      {% if booking.room_name or booking.rooms_total %}
+      <div>
+        <dt>{{ booking.room_name or 'The room' }}
+          {%- if booking.nights %}
+          <span class="g-recap__q">{{ booking.nights }}
+            {{- ' night' if booking.nights == 1 else ' nights' }}
+            {%- if booking.rate_per_night %} at €{{ '{:,.0f}'.format(booking.rate_per_night|float) }} a night{% endif %}</span>
+          {%- elif booking.rate_per_night %}
+          <span class="g-recap__q">€{{ '{:,.0f}'.format(booking.rate_per_night|float) }} a night</span>
+          {%- endif %}
+        </dt>
+        <dd>{% if booking.rooms_total %}€{{ '{:,.2f}'.format(booking.rooms_total|float) }}{% endif %}</dd>
+      </div>
+      {% endif %}
+
+      {% if booking.extras %}
+      {% for x in booking.extras %}
+      <div>
+        <dt>{{ x.label }}</dt>
+        <dd>€{{ '{:,.2f}'.format(x.amount|float) }}</dd>
+      </div>
+      {% endfor %}
+      {% endif %}
+
+      {# The taxe de séjour is set by the commune, not by the house. Saying so
+         stops it reading as a charge we invented. #}
+      {% if booking.tourist_tax %}
+      <div>
+        <dt>Taxe de séjour
+          <span class="g-recap__q">set by the commune, not by us</span></dt>
+        <dd>€{{ '{:,.2f}'.format(booking.tourist_tax|float) }}</dd>
+      </div>
+      {% endif %}
+    </dl>
+
+    {% if booking.total %}
+    <p class="g-recap__tot">
+      <span class="g-recap__totk">Total</span>
+      <span class="g-recap__totv">€{{ '{:,.2f}'.format(booking.total|float) }}</span>
+    </p>
+    {% endif %}
+
+    {% if booking.paid or booking.balance %}
+    <dl class="g-recap__pay">
+      {% if booking.paid %}
+      <div><dt>Paid</dt><dd>€{{ '{:,.2f}'.format(booking.paid|float) }}</dd></div>
+      {% endif %}
+      {% if booking.balance %}
+      <div class="g-recap__due">
+        <dt>Due on arrival</dt>
+        <dd>€{{ '{:,.2f}'.format(booking.balance|float) }}</dd>
+      </div>
+      {% endif %}
+    </dl>
+    {% endif %}
+
+    <div class="g-recap__terms">
+      <p class="g-recap__k">If you need to change it</p>
+      {% if settings.get('cancel_free_days') %}
+      <p class="g-recap__t">
+        Cancel more than {{ settings.get('cancel_free_days') }} days before you
+        arrive and there is nothing to pay.
+        {%- if booking.paid %} Anything already paid comes back to the same
+        card within a few days.{% endif %}
+        Inside that, {{ settings.get('cancel_note',
+          'write to us and we will do what we can — this is a house, not a chain, and there is usually a way.') }}
+      </p>
+      {% else %}
+      {# Rather than invent a policy: point at the page that holds it. #}
+      <p class="g-recap__t">
+        Plans change and we would rather know early. Write to us or use your
+        booking page, and the terms are set out in full on the
+        <a href="{{ url_for('terms_page') }}">terms</a>.
+      </p>
+      {% endif %}
+
+      <p class="g-recap__t">
+        <strong>What is already in the rate:</strong> breakfast, the grounds,
+        the pool, the tennis court, tea and coffee through the day, wi-fi
+        throughout, and parking at the house.
+      </p>
+    </div>
+
+    <p class="g-recap__a">
+      {% if booking.manage_url %}
+      <a href="{{ booking.manage_url }}" class="g-btn g-btn--solid">Change or add to this booking</a>
+      {% endif %}
+      <button type="button" class="g-btn" data-print>Print or save as PDF</button>
+    </p>
+  </div>
+</section>
+
+<script>
+/* Save-as-PDF is the browser's print dialogue, which every phone and desktop
+   already has and already knows how to turn into a file. Building a PDF
+   server-side for a page that prints correctly would be work for nothing. */
+(function(){
+  document.querySelectorAll('[data-print]').forEach(function(b){
+    b.addEventListener('click', function(){ window.print(); });
+  });
+})();
+</script>
+{% endmacro %}

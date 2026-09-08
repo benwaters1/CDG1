@@ -235,6 +235,118 @@ def repair_scroll_anchors():
     return done
 
 
+# The ten. Each is (file, what is there, what it should be, why).
+#
+# Two shapes. Where the photograph belonged in its slot and the CAPTION had
+# drifted, the caption is corrected. Where the caption was right and the
+# wrong picture was in the slot, the picture is swapped -- and always for one
+# already in use on this site under exactly that description, so nothing new
+# is hotlinked and nothing is invented.
+_CDN = "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/"
+
+CAPTION_FIXES = [
+    ("templates/book_rooms.html",
+     'alt="Restoration work in progress"',
+     'alt="Chambre Bleue, one of the five finished rooms"',
+     "a finished blue bedroom, beside prose about the beds and the linen"),
+
+    ("templates/restoration.html",
+     'March+Kitchen+Shots-3.jpg?format=1500w" alt="Work in progress"',
+     'March+Kitchen+Shots-3.jpg?format=1500w" alt="Copper pans in the kitchen"',
+     "copper pans, in a section headed Staying Here"),
+
+    ("templates/book_rooms.html",
+     _CDN + 'cc7f6cb2-243c-47a9-ab7e-5200a66afca1/bedroom+3.jpg?format=1000w'
+     '" alt="The kitchen table in winter"',
+     _CDN + '1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg'
+     '?format=1000w" alt="The kitchen table in winter"',
+     "fourth in a band of kitchen, pans and dining room"),
+
+    ("templates/events_info.html",
+     _CDN + "1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png",
+     _CDN + "1728027560330-AOHMYTLQV9BVVSYW5FS3/Gardens+-+Formal+Gardens+2.jpg",
+     "captioned The formal gardens"),
+
+    ("templates/events_info.html",
+     _CDN + "1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg",
+     _CDN + "e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg",
+     "captioned The chateau at night, on a site that HAS that photograph"),
+
+    ("templates/restaurant_info.html",
+     _CDN + "296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG",
+     _CDN + "1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg",
+     "captioned The dining room laid for dinner"),
+
+    ("templates/restoration.html",
+     _CDN + "1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg"
+     "?format=1500w",
+     _CDN + "1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1500w",
+     "the hero of the restoration page, captioned Restoration work in progress"),
+
+    ("templates/workshops_public.html",
+     _CDN + "aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg",
+     _CDN + "296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG",
+     "first in a band captioned kitchen, pans, dining room, kitchen table"),
+
+    # Neither half was right on these two, and the reason is worth keeping:
+    # the site has no photograph of the pool or of the tennis court, both of
+    # which it sells. The grounds are at least the same subject, and the
+    # caption then says what is actually in the frame.
+    ("templates/facilities.html",
+     _CDN + "1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg"
+     '?format=1000w" alt="The grounds at dusk"',
+     _CDN + "8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg"
+     '?format=1000w" alt="The grounds, with the court at the far edge"',
+     "the card for Le Court, which had a bedroom on it"),
+
+    ("templates/book_rooms.html",
+     _CDN + "aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg"
+     '?format=1000w" alt="The pool"',
+     _CDN + "1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg"
+     '?format=1000w" alt="The grounds below the ch\u00e2teau"',
+     "the Outdoors card, which had a bedroom captioned The pool"),
+]
+
+
+def repair_photograph_captions():
+    """Captions naming one thing over a photograph of another.
+
+    Ten of them, on seven public pages: a bedroom captioned "The pool" on the
+    page where somebody decides whether to book; a bedroom captioned "The
+    chateau at night" on a site that already carries a photograph of the
+    chateau at night. Nothing errors -- both halves are individually valid,
+    the file loads and the alt is present and non-empty -- so it survived
+    every sweep until a check compared the two.
+
+    The cause is arithmetic, not carelessness: thirty-five photographs cover
+    the whole public site, reused six to twelve times each, so when a slot
+    needs a picture and the shelf holds five bedrooms, a bedroom goes in and
+    the caption stays whatever the slot was for.
+
+    Corrected once and reverted whole by the very next export, identically,
+    because the design side's tree does not have the corrections in it.
+    """
+    done = 0
+    for rel, find, repl, why in CAPTION_FIXES:
+        src = _read(rel)
+        # Keyed on what is WRONG, never on whether the right photograph
+        # appears somewhere in the file. Three of these were skipped on the
+        # first run for being "already right": their substitute is used
+        # elsewhere on the same page -- Kitchen+1.JPG is in the band two
+        # sections down -- and "is the correct picture present anywhere" is
+        # not the same question as "is it in this slot".
+        n = src.count(find)
+        if n == 0:
+            continue          # corrected already, or the section is rebuilt
+        if n > 1:
+            print("  ! %s: this matches in more than one place, so it cannot "
+                  "be placed safely (%s)" % (rel, why))
+            continue
+        _write(rel, src.replace(find, repl, 1))
+        done += 1
+    return done
+
+
 def repair_media_query_variables():
     """Forty-two blocks of phone layout the browser has never once applied.
 
@@ -315,7 +427,11 @@ def repair_staging_noindex():
         "{% if site_is_live %}{% block robots %}{% endblock %}\n"
         '{%- else %}<meta name="robots" content="noindex, nofollow">{% endif %}',
         1))
-    return 1
+    # And the reason, in the same run. Returning here meant a
+    # handover that took both halves needed the tool run twice, and
+    # nothing said so -- which is the worst version of that bug,
+    # because the first run looks like it finished.
+    return 1 + repair_staging_noindex()
 
 
 def repair_parent_robots_block():
@@ -1130,6 +1246,8 @@ def main():
         ("the confirmation letter's hardcoded map pin",
          repair_confirmation_map_pin),
         ("buttons that scroll nowhere", repair_scroll_anchors),
+        ("captions over the wrong photograph",
+         repair_photograph_captions),
         ("noindex on guest pages", repair_child_noindex),
         ("part-payments and auto-charge", repair_workshop_payments),
         ("table wrappers", repair_table_wrappers),
