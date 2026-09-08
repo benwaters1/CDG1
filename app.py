@@ -41771,6 +41771,20 @@ def uploaded_file(filename):
     """
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,120}", filename or ""):
         abort(404)
+    # Two intakes write photographs, to two directories, and social_posts has
+    # one column to name them with. The photo intake page stores here; the
+    # camera roll stores beside the room photographs, deliberately, because
+    # that is where add_restoration_photo already puts them and it is one
+    # place to back up. So a name that is not here is looked for there.
+    #
+    # This direction only. This route is login_required and room_photo is
+    # public, so a room photograph reached through here is seen by strictly
+    # fewer people. Teaching the PUBLIC route to reach into UPLOAD_DIR would
+    # put signed contracts and doctors' notes one guessed name away from
+    # anybody, which is what the paragraph above is guarding.
+    if not os.path.exists(os.path.join(UPLOAD_DIR, filename)):
+        if os.path.exists(os.path.join(ROOM_PHOTO_DIR, filename)):
+            return send_from_directory(ROOM_PHOTO_DIR, filename)
     return send_from_directory(UPLOAD_DIR, filename)
 
 
@@ -61713,12 +61727,18 @@ def publish_media(conn, row_id, *, now=None, work_id=None, by_user_id=None):
     if (not social_id and (row["score"] or 0) >= MEDIA_SOCIAL_SCORE
             and row["social_caption"]):
         cur = conn.execute(
-            """INSERT INTO social_posts (platform, caption, post_type, status,
-                                         notes, created_by_user_id, created_at)
-               VALUES ('Instagram', ?, 'photo', 'idea', ?, ?, ?)""",
-            (row["social_caption"],
-             "Written off the camera roll. The picture is %s — check it "
-             "before posting." % (row["poster"] or row["filename"]),
+            """INSERT INTO social_posts (platform, caption, image_filename,
+                                         alt_text, post_type, status, notes,
+                                         created_by_user_id, created_at)
+               VALUES ('Instagram', ?, ?, ?, 'photo', 'idea', ?, ?, ?)""",
+            (row["social_caption"], row["poster"] or row["filename"],
+             # The alt text is what the photograph SHOWS, which is not the
+             # caption: the caption is what the house wants to say about it.
+             # Same picture, two jobs, and using one for both is how alt text
+             # ends up as marketing copy read aloud to somebody who cannot
+             # see the frame.
+             row["site_caption"] or row["shows"],
+             "Written off the camera roll — read it before it goes out.",
              by_user_id, now.isoformat()))
         social_id = cur.lastrowid
 

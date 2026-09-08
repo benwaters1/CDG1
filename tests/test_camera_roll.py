@@ -311,6 +311,18 @@ def run():
     s.check("with the words already written",
             post and "render came off" in (post["caption"] or ""),
             detail=str(post["caption"]) if post else "")
+    # A caption with no picture attached is the state the queue was already
+    # in before the photo intake page added the column — a sentence and a
+    # note telling somebody to go and find the frame. Two kinds of draft
+    # that look identical in the list and are not.
+    s.check("and the picture attached, not described in a note",
+            post and post["image_filename"],
+            detail=str(post["image_filename"]) if post else "")
+    s.check("plus alt text saying what is IN it, which the caption does not",
+            post and post["alt_text"] and post["alt_text"] != post["caption"],
+            detail="%s — the caption is what the house wants to say; the alt "
+                   "text is what somebody who cannot see the frame is told"
+                   % (post["alt_text"] if post else "none"))
 
     # ---- the owner's words win --------------------------------------------
     s.section("Your words instead of its")
