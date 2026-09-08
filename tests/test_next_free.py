@@ -102,10 +102,24 @@ def run():
             detail="offering it produces a guest who picks those dates, is "
                    "refused, and trusts the page less than if it had never "
                    "been there")
+    # Asked, not asserted. The room is free from lead+40 as far as its own
+    # bookings go, but next_free_nights also honours what holds the whole
+    # chateau — an atelier, an event, a held date — and which days those are
+    # moves with the real calendar. Written as a bare offset this check was
+    # true the morning it was typed and false the morning an atelier landed
+    # on it, which is a fuse rather than a test.
+    wants = today + timedelta(days=m.NEXT_FREE_LEAD_DAYS + 40)
+    for _ in range(120):
+        ok, _why = m.is_range_available(conn, fussy, wants,
+                                        wants + timedelta(days=3))
+        if ok:
+            break
+        wants += timedelta(days=1)
     s.check("it offers the first date it can really take",
-            fussy_run and fussy_run["date_iso"] ==
-            (today + timedelta(days=m.NEXT_FREE_LEAD_DAYS + 40)).isoformat(),
-            detail=str(fussy_run["date_iso"]) if fussy_run else "")
+            fussy_run and fussy_run["date_iso"] == wants.isoformat(),
+            detail="%s — the house would take %s"
+                   % (fussy_run["date_iso"] if fussy_run else "nothing",
+                      wants.isoformat()))
     s.check("and at least its own minimum",
             fussy_run and fussy_run["nights"] >= 3,
             detail=str(fussy_run["nights"]) if fussy_run else "")
