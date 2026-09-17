@@ -43,7 +43,7 @@
 
   <div class="g-split" style="margin-top:var(--s6)">
     <div>
-      <p class="g-p">A château is not a hotel that happens to be old. There is no reception desk, no lift, and no turndown service. There is a house that has been standing since 1741, four of whose ninety-four rooms were habitable when the family bought it, and a decade of work since to bring back the rest — approved intervention by approved intervention, because France does not allow a Class I monument to be renovated in the ordinary sense.</p>
+      <p class="g-p">A château is not a hotel that happens to be old. There is no reception, because someone comes out to meet you. There is a house that has been standing since 1741, four of whose ninety-four rooms were habitable when the family bought it, and a decade of work since to bring back the rest — approved intervention by approved intervention, because France does not allow a Class I monument to be renovated in the ordinary sense.</p>
       <p class="g-p">What that means for a guest is unusual. You are not visiting a finished thing. Bare plaster and weathered stone are protected and will stay; the beds, the linen, the floors and the bathrooms are new and are very good indeed. Both facts are true at once, and neither is an apology.</p>
     </div>
     <div>
@@ -74,6 +74,10 @@
 <div class="g-wrap g-mark__wrap">{{ mark('lime') }}</div>
 
 <!-- ============ CHOOSE — the three, side by side ============ -->
+
+{% from '_glance.html' import atelier_glance %}
+{{ atelier_glance(glance_workshop, settings, glance_from) }}
+
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
   <h2 class="g-place">{% if workshops and workshops|length > 1 %}{{ workshops|length }} Ateliers, One House{% else %}One Atelier at a Time{% endif %}</h2>
   <p class="g-p">This is a restoration, not a renovation — fifteen years in, and years from finished.</p>
@@ -129,7 +133,7 @@
 </div></section>
 
 <div class="g-quote-band">
-  <p class="g-quote-band__t">To stay within these walls is to take part in her restoration — each Workshop helping bring her back to life, one fresco, one meal, one market morning at a time.</p>
+  <p class="g-quote-band__t">Every atelier is taught in the rooms it is restoring — the fresco you gild is the one on the wall around you, not a copy of it.</p>
 </div>
 
 <!-- ============ EVERY DATE, IN ONE PLACE ============ -->
@@ -163,7 +167,8 @@
     'Seven':   "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1000w"
   } %}
 
-  <div class="g-sittings-grid">
+  <div class="g-wrap"><p class="g-eyebrow">Every date, in one place</p><h2 class="g-h2">Choose when you come</h2></div>
+<div class="g-sittings-grid">
     {% for item in ns.rows|sort(attribute='r.session.start_date') %}
     {% set w = item.w %}{% set r = item.r %}
     {% set pic = namespace(u=None) %}
@@ -392,19 +397,7 @@
 {# La Maison Bleue's pattern: one quotation given a whole section rather than
    a grid of cards. This is the château's own restoration record, which is
    the strongest thing anyone has said about it. #}
-<section class="g-sec g-testament"><div class="g-wrap">
-  <blockquote class="g-testament__q">
-    &ldquo;One of the most closely watched private restorations in France.&rdquo;
-    <cite class="g-testament__by">Awarded the Medal of Honour, Fondation Prince Louis de Polignac, 2016</cite>
-  </blockquote>
-</div></section>
 
-
-<div class="g-wrap"><svg class="g-house" viewBox="0 0 64 30" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M2 28h60"/><path d="M6 28V12l26-9 26 9v16"/>
-  <path d="M6 12h52"/><path d="M14 28v-8h5v8M27 28v-8h5v8M40 28v-8h5v8"/>
-  <path d="M20 8v-3M32 5v-3M44 8v-3"/>
-</svg></div>
 
 
 <!-- ============ THE WORD ============ -->

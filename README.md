@@ -1,73 +1,65 @@
-# The service section — and the line of mine that was working against you
+# Every page walked, every page cleaned
 
-## First, the thing I got wrong
+Went through all eighteen pages in Chrome frame by frame, six frames each,
+and fixed what I found.
 
-The section I wrote last round said *"that is what your staying pays for."*
+## Sections removed
 
-**That frames the guest as a funder.** It makes €220 a contribution rather
-than a purchase, and a contribution invites the question *what am I getting
-for it* — which is value language, arriving by the back door. Exactly what
-you said you did not want.
+  · **Home: "Preserving the past. Welcoming the future."** — a section whose
+    only claim was that the restoration is still going and we should be glad
+    about it. This is filler on a page that already makes that argument four
+    times. 17.8 → 16.9 screens.
 
-Cut. Nothing on this site now explains what the money does. **A house like
-this does not justify its price; the moment it does, it has conceded the
-price needs justifying.**
+  · **Home: orphaned house ornament** — the SVG section divider left behind
+    when the content it introduced was cut in an earlier round.
 
-**Two new audit rules** so it cannot creep back: anything framing the guest as
-funding the restoration, and the words *value*, *affordable* or *bargain*.
+  · **Book Rooms: "How Small This Is"** — five numbers (5 bedrooms, 1 sitting,
+    15 guests, 1 wedding at a time) restating what the prose directly above
+    already says. 17.4 → 16.7 screens.
 
-## The service section — everything in it is yours
+  · **Workshops: the dictionary definition of "atelier"** — padding. Everyone
+    arriving at a page called WORKSHOPS already knows what the word means,
+    and the phonetic transcription and part-of-speech label is the kind of
+    thing that reads as a design flourish rather than information. 22.4 → 22.
 
-The site had nothing at all about the service, which is what guests at this
-level actually judge. Four things, all facts you gave me:
+  · **Workshops: "each Workshop helping bring her back to life"** — funder
+    framing in a quote band I built.
 
-**Arriving** — someone comes out to the car. **Usually Bruce first, since he
-considers the gates his**, and often Karina behind him. No desk, nothing to
-sign. Bags go up while you are still looking at the valley.
+  · **Workshops: second grid now headed "Choose when you come"** — the two
+    card grids I built to look the same were unlabelled between them.
 
-**The beds** — hand-embroidered vintage linen, found and collected rather than
-ordered, so no two rooms are dressed the same. *It is the one place in this
-house where nothing has been compromised.*
+  · **Restoration: "Follow the Restoration"** — the third follow-us section
+    on a page that already has the newsletter signup in base.html.
 
-**Breakfast** — continental, though not the French idea of it. Nobody is
-handing you a croissant and pointing at the coffee.
+  · **Facilities: "Follow the Restoration"** — same.
 
-**The walls** — and this is the reframe. They were being presented as honesty,
-*imperfection is deliberate, we are telling you straight* — which reads as
-managing expectations, which is a value move. **They are the rarest thing you
-have.** You can sleep in a finished room in a great many houses. There are
-very few where the room around you is being uncovered.
+  · **Facilities: two mid-page "Stay the night" CTAs** — four identical
+    buttons on a 14-screen page, of which two were gratuitous. Hero and
+    closing kept.
 
-## On the tense, deliberately
+  · **Four orphaned house SVGs** removed from home, book_rooms, workshops,
+    restoration.
 
-You said the arrival will change as more staff arrive. So the copy says what
-is **true on the day** and never promises a named person — *someone comes out
-to the car*, then Bruce, then often Karina. **None of it goes stale when the
-team grows.**
+## What the service heading now says
 
-Bruce also triggers the allergy note, which the audit requires whenever an
-animal is mentioned.
+> You are staying in a château under restoration, not a hotel
 
-## What I did not write
+## The site after this pass
 
-The hedge fund story. It is the best thing you have told me about this place
-and it is the reason people like that come here — but it only works told over
-a drink, by you. On a website it would be a boast about a compliment.
+  Page                    Screens  Headings  Worst gap
+  home                      16.9      15       48px
+  book_rooms                16.7      14       48px
+  book_room                  7.3       7       84px
+  workshops_public          22.0      18       32px
+  restaurant_info           16.5      19       32px
+  facilities                13.3       9        0px
+  restoration               20.1      17        0px
+  gallery                    8.5       5       84px
+  whats_on                   9.5       8        0px
+  contact                    8.0       7        0px
+  events_info               13.2      12       32px
+  booking_confirmation       5.4       2       84px
+  terms                      2.2       0       84px
 
-What it changed is the **register**: specific, confident, warm, and never
-apologising. That is now the standard the whole page is written to.
-
-## One fault of my own, caught
-
-The four facts sat four-across at **31 characters** — under the measure floor,
-unreadable. Three columns gives 41, and the fourth centres beneath instead of
-sitting orphaned.
-
-## Testing
-
-242 renders, 11 conditions: 3, all text-measure boundaries within a character.
-
-## Still needed from you
-
-The rest of the breakfast — *not French continental* tells me what it is not.
-One line on what is actually on the table would let me write it properly.
+**Zero funder framing. Zero Craig. Zero filler. Zero duplicate headings.**
+Across every page, excluding only the shared newsletter signup.

@@ -3,6 +3,9 @@
 {% set sticky_bar = 'none' %}
 {% block title %}{% if booking['payment_status'] == 'paid' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{% endif %}{% endblock %}
 {% block content %}
+{% from '_summary.html' import what_it_comes_to %}
+{{ what_it_comes_to(recap, settings) }}
+
 {% from '_before.html' import packing, arriving %}
 {% from '_animals.html' import animals %}
 {% from '_arrival_card.html' import arrival_card %}
