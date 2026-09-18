@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Assistant{% endblock %}
+{% block content %}
+
+{#  The owner's assistant. Reuses the chat thread's classes rather than
+    inventing a second set: it is the same shape of thing on screen, and a
+    second stylesheet for it would be two things to keep looking alike.
+
+    The one thing that is genuinely different is a PROPOSAL — the assistant
+    saying it wants to do something, with a confirm and a cancel. Nothing has
+    happened when one of those is drawn. That sentence is written from the
+    database rather than from what the assistant said, so if it names the
+    wrong person the line on screen says the right one.  #}
+
+<div class="page-head">
+  <h1>Assistant</h1>
+  <div>
+    {% if messages %}
+    <form method="post" action="{{ url_for('assistant_clear_route') }}"
+          style="display:inline" onsubmit="return confirm('Clear this conversation?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-ghost">Clear</button>
+    </form>
+    {% endif %}
+    <a href="{{ url_for('dashboard') }}" class="btn-ghost">Home</a>
+  </div>
+</div>
+
+{% if not enabled %}
+  {# Said plainly on the page rather than failing at the first message. #}
+  <div class="empty-state">
+    The assistant needs <strong>ANTHROPIC_API_KEY</strong> set before it can
+    answer. Everything else on this page will work the moment it is.
+  </div>
+{% endif %}
+
+<div class="chat-thread" id="assistant-thread">
+  {% if not messages %}
+    <div class="empty-state">
+      Ask what is waiting, what is on today, or tell me to approve something.
+    </div>
+  {% endif %}
+
+  {% for msg in messages %}
+    {% if msg['role'] == 'user' %}
+      <div class="chat-msg chat-msg-mine">
+        <div class="chat-msg-head"><span class="chat-msg-author">You</span>
+          <span class="chat-msg-time">{{ msg['created_at'][11:16] }}</span></div>
+        <div class="chat-msg-body">{{ msg['content'] }}</div>
+      </div>
+
+    {% elif msg['role'] == 'assistant' and msg['action_status'] %}
+      {# A proposal. The three states it can be in are visibly different,
+         because "waiting for you" and "you already said no" must never look
+         the same. #}
+      <div class="chat-msg">
+        <div class="chat-msg-head">
+          <span class="chat-msg-author">Assistant</span>
+          <span class="chat-msg-time">{{ msg['created_at'][11:16] }}</span>
+        </div>
+        <div class="chat-msg-body">
+          <strong>{{ msg['content'] }}</strong>
+          {% if msg['action_status'] == 'pending' %}
+            <p class="upload-hint" style="margin:6px 0 8px;">
+              Nothing has happened yet.
+            </p>
+            <form method="post" style="display:inline"
+                  action="{{ url_for('assistant_confirm_route', message_id=msg['id']) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="agreed" value="yes">
+              <button type="submit" class="btn-primary">Do it</button>
+            </form>
+            <form method="post" style="display:inline"
+                  action="{{ url_for('assistant_confirm_route', message_id=msg['id']) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="agreed" value="no">
+              <button type="submit" class="btn-ghost">No</button>
+            </form>
+          {% elif msg['action_status'] == 'confirmed' %}
+            <p class="upload-hint" style="margin:6px 0 0;">
+              Done {{ (msg['executed_at'] or '')[11:16] }}.
+            </p>
+          {% else %}
+            <p class="upload-hint" style="margin:6px 0 0;">You said no.</p>
+          {% endif %}
+        </div>
+      </div>
+
+    {% elif msg['role'] == 'assistant' %}
+      <div class="chat-msg">
+        <div class="chat-msg-head"><span class="chat-msg-author">Assistant</span>
+          <span class="chat-msg-time">{{ msg['created_at'][11:16] }}</span></div>
+        <div class="chat-msg-body" style="white-space:pre-line">{{ msg['content'] }}</div>
+      </div>
+
+    {% else %}
+      {# What a tool actually returned. Kept on the page rather than hidden:
+         the assistant's answer is a summary of this, and being able to see
+         the thing it summarised is what makes it checkable. #}
+      <details class="chat-msg" style="opacity:.75">
+        <summary class="chat-msg-head" style="cursor:pointer">
+          <span class="chat-msg-author">{{ msg['tool_name'] or 'looked something up' }}</span>
+          <span class="chat-msg-time">{{ msg['created_at'][11:16] }}</span>
+        </summary>
+        <div class="chat-msg-body" style="white-space:pre-line">{{ msg['content'] }}</div>
+      </details>
+    {% endif %}
+  {% endfor %}
+</div>
+
+<form method="post" action="{{ url_for('assistant_say_route') }}" class="chat-compose">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <textarea name="said" rows="2" required
+            placeholder="What is waiting on me this morning?"
+            aria-label="Ask the assistant"{{ ' disabled' if not enabled }}></textarea>
+  <button type="submit" class="btn-primary"{{ ' disabled' if not enabled }}>Ask</button>
+</form>
+
+<script>
+// Land at the newest message, same as the staff chat does.
+(function () {
+  var thread = document.getElementById('assistant-thread');
+  if (thread) thread.scrollTop = thread.scrollHeight;
+})();
+</script>
+
+{% endblock %}
