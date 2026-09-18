@@ -384,6 +384,19 @@
   {% endwith %}
 
   
+{# What the road is doing, above the page rather than inside it: a guest
+   reading the directions on the morning they set off is exactly who this is
+   for, and burying it under the content is the same as not having it. It
+   expires on its own, so it cannot be the notice nobody took down. #}
+{% if road_now %}
+<div class="g-roadnote g-roadnote--{{ road_now['severity'] }}" role="status">
+  <div class="g-wrap">
+    <strong>{{ road_now['headline'] }}</strong>
+    {% if road_now['detail'] %}<span>{{ road_now['detail'] }}</span>{% endif %}
+  </div>
+</div>
+{% endif %}
+
 {% block content %}{% endblock %}
 
 <p class="g-cred">

@@ -276,6 +276,32 @@ def run():
     dead = re.findall(r"@media[^{]*var\(--[^)]*\)", public)
     s.check("no media query is written with a custom property in it", not dead,
             detail="; ".join(d.strip()[:60] for d in dead[:3]))
+
+    # EVERY BLOCK IS CLOSED, which sounds like something a stylesheet cannot
+    # get wrong and is the second way this file has silently lost rules.
+    #
+    # A missing `}` does not break the page. The rule simply swallows
+    # everything after it: the declarations become part of the unclosed
+    # selector, the selectors after it become invalid declarations, and the
+    # browser drops them without a word. It happened on a merge -- a conflict
+    # boundary fell inside .g-care__note and the closing brace went with it --
+    # and from then on the approach map's phone variant and the road notice
+    # were both dead. Every other check here passed, because they read the
+    # TEXT of this file and the text was all present.
+    depth, opened_at = 0, []
+    for line_no, line in enumerate(public.split("\n"), 1):
+        for ch in line:
+            if ch == "{":
+                depth += 1
+                opened_at.append(line_no)
+            elif ch == "}":
+                depth -= 1
+                if opened_at:
+                    opened_at.pop()
+    s.check("every block in the public stylesheet is closed", depth == 0,
+            detail="%d unclosed, first opened near line %s — an unclosed rule "
+                   "swallows every rule after it and the browser says nothing"
+                   % (depth, opened_at[0] if opened_at else "?"))
     s.check("and the breakpoints are still declared for ordinary use",
             "--m-tight:" in public and "--m-read:" in public,
             detail="they work in a declaration; only the condition is the problem")

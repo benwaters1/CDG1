@@ -3838,6 +3838,19 @@ def init_db():
         # who read the book and then booked direct is "direct" and is not a
         # direct-marketing success.
         ("bookings_heard_via", "ALTER TABLE bookings ADD COLUMN heard_via TEXT"),
+        # What the road is doing, which is a thing about TODAY and has to stop
+        # being true on its own. ends_on is NOT NULL for that reason: a snow
+        # warning still on the page in July is not a stale notice, it is the
+        # reason nobody reads the next real one.
+        ("road_notices_table", """CREATE TABLE IF NOT EXISTS road_notices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            headline TEXT NOT NULL,
+            detail TEXT,
+            severity TEXT NOT NULL DEFAULT 'note',
+            starts_on TEXT NOT NULL,
+            ends_on TEXT NOT NULL,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL)"""),
         ("social_posts_image", "ALTER TABLE social_posts ADD COLUMN image_filename TEXT"),
         ("social_posts_alt", "ALTER TABLE social_posts ADD COLUMN alt_text TEXT"),
         ("social_posts_room", "ALTER TABLE social_posts ADD COLUMN room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL"),
@@ -3930,6 +3943,22 @@ def init_db():
         # a trial period that lapses un-actioned confirms the employee, and a
         # CDD left running past its end date becomes a CDI.
         ("users_contract_type", "ALTER TABLE users ADD COLUMN contract_type TEXT"),
+        # The number in the contract. contract_type says CDI or CDD; it does
+        # not say thirty-five hours, and without that "are they working what
+        # we agreed" cannot be asked at all -- which in France is not a
+        # management nicety, it is the difference between paid overtime and
+        # unpaid overtime.
+        ("users_contracted_hours", "ALTER TABLE users ADD COLUMN contracted_hours_per_week REAL"),
+        # When somebody cannot work, said BEFORE the rota is built rather than
+        # after. A swap request is what you need once a shift is already on
+        # somebody; this is what stops it being put there.
+        ("staff_unavailability_table", """CREATE TABLE IF NOT EXISTS staff_unavailability (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            starts_on TEXT NOT NULL,
+            ends_on TEXT NOT NULL,
+            reason TEXT,
+            created_at TEXT NOT NULL)"""),
         ("users_contract_end_date", "ALTER TABLE users ADD COLUMN contract_end_date TEXT"),
         ("users_trial_end_date", "ALTER TABLE users ADD COLUMN trial_end_date TEXT"),
         # The language this person reads the app in. Per-user rather than the
@@ -6273,6 +6302,7 @@ NAV_AREAS = {
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         "vehicle_transfers_page",
+        "road_notices_page", "road_notice_remove",
     ],
     "comms": [
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
@@ -6447,7 +6477,7 @@ NAV_AREAS = {
         
     ],
     "payroll": [
-        "pay_statement_page",
+        "pay_statement_page", "tronc_page", "contracted_hours_page",
         "admin_payroll", "export_payroll_csv",
         # Wages sit in `payroll` rather than `team`: what somebody is paid is
         # not something everybody who can see the staff list should read, and
@@ -20650,6 +20680,252 @@ def guest_values(conn, limit=25, headroom=3):
     return out[:limit]
 
 
+def contracted_vs_worked(conn, start, end):
+    """What each person's contract says against what they actually did.
+
+    THE GAP IS THE POINT, IN BOTH DIRECTIONS. Over is unpaid overtime the
+    house is accruing whether or not anybody has noticed -- in France that is
+    a liability, not a favour. Under is somebody on a thirty-five hour
+    contract being given twenty, which is a pay cut nobody agreed to and the
+    first thing they will raise.
+
+    Batched through net_hours_for_entries. The per-entry version costs a query
+    each and, called without a connection, opens one per row -- a fortnight of
+    timesheets once issued 260 queries to print a column.
+
+    Somebody with no contracted figure is LISTED, with the gap left blank
+    rather than computed against zero. Reading a missing number as nought
+    would put every one of them at the top as wildly over.
+    """
+    people = conn.execute(
+        """SELECT id, name, job_role, contract_type, contracted_hours_per_week
+             FROM users WHERE status = 'active' ORDER BY name""").fetchall()
+    entries = conn.execute(
+        """SELECT * FROM time_entries
+            WHERE clock_out_at IS NOT NULL
+              AND clock_in_at >= ? AND clock_in_at < ?""",
+        (start.isoformat(), (end + timedelta(days=1)).isoformat())).fetchall()
+    hours = net_hours_for_entries(conn, entries)
+    worked = {}
+    for e in entries:
+        worked[e["user_id"]] = worked.get(e["user_id"], 0.0) + hours.get(e["id"], 0.0)
+
+    weeks = max((end - start).days, 1) / 7.0
+    out = []
+    for p in people:
+        did = round(worked.get(p["id"], 0.0), 2)
+        agreed = p["contracted_hours_per_week"]
+        expected = round(agreed * weeks, 2) if agreed else None
+        out.append({
+            "id": p["id"], "name": p["name"], "job_role": p["job_role"],
+            "contract_type": p["contract_type"],
+            "contracted_per_week": agreed,
+            "expected": expected, "worked": did,
+            "gap": round(did - expected, 2) if expected is not None else None,
+            "unrecorded": agreed is None,
+        })
+    # Biggest gap either way first; the ones with no figure last, because they
+    # are a question for the office rather than a number to act on.
+    out.sort(key=lambda r: (r["gap"] is None, -abs(r["gap"] or 0)))
+    return {"from": start.isoformat(), "to": end.isoformat(),
+            "weeks": round(weeks, 2), "rows": out,
+            "no_contracted_hours": [r["name"] for r in out if r["unrecorded"]]}
+
+
+def service_charge_taken(conn, day):
+    """What the till collected in service on one service day, and on what.
+
+    service_day, not the calendar day: the restaurant's day ends at 05:00, so
+    a table that paid at 01:30 on Wednesday belongs to Tuesday's service and
+    to Tuesday's staff. Reading this off a date column would hand one table's
+    service to the wrong shift roughly once a week.
+    """
+    first, last = service_day_window(day)
+    rows = conn.execute(
+        """SELECT id, service_charge, closed_at FROM pos_orders
+            WHERE closed_at IS NOT NULL AND closed_at >= ? AND closed_at < ?
+              AND COALESCE(service_charge, 0) > 0
+              AND status != 'void'""",
+        (first, last)).fetchall()
+    return {"day": day.isoformat(),
+            "orders": len(rows),
+            "total": round(sum(r["service_charge"] or 0 for r in rows), 2)}
+
+
+def tronc_shares(conn, day):
+    """Who was working that service, and what share of the tips each is owed.
+
+    SHARED BY HOURS ON THE FLOOR, which is the only basis this app can defend.
+    Not by role, because the house has never recorded a weighting and inventing
+    one here would be this software deciding that a chef is worth 0.8 of a
+    server. Not evenly, because somebody who came in for the last hour of a
+    Saturday did not do the same work as somebody who did all of it.
+
+    A share is never rounded up. The remainder from rounding is reported as
+    its own line rather than being pushed onto the last person in the list --
+    a few cents a service is nothing, and a few cents a service that always
+    lands on the same person is the kind of thing that is noticed and
+    remembered.
+
+    Nobody clocked in means the money is reported UNALLOCATED rather than
+    silently vanishing: the service was still charged and somebody worked it,
+    and the answer is that the timesheets are wrong, not that the tips are.
+    """
+    taken = service_charge_taken(conn, day)
+    first, last = service_day_window(day)
+    entries = conn.execute(
+        """SELECT time_entries.*, users.name FROM time_entries
+             JOIN users ON users.id = time_entries.user_id
+            WHERE time_entries.clock_out_at IS NOT NULL
+              AND time_entries.clock_in_at < ? AND time_entries.clock_out_at > ?""",
+        (last, first)).fetchall()
+    hours = net_hours_for_entries(conn, entries)
+    by_person = {}
+    for e in entries:
+        row = by_person.setdefault(e["user_id"], {"name": e["name"], "hours": 0.0})
+        row["hours"] += hours.get(e["id"], 0.0)
+
+    total_hours = sum(r["hours"] for r in by_person.values())
+    pot = taken["total"]
+    shares = []
+    for uid, row in sorted(by_person.items(), key=lambda kv: -kv[1]["hours"]):
+        share = (pot * row["hours"] / total_hours) if total_hours else 0.0
+        # Down, never up: rounding a share up pays out more than came in.
+        shares.append({"user_id": uid, "name": row["name"],
+                       "hours": round(row["hours"], 2),
+                       # int() truncates toward zero, which is floor here
+                       # because a share is never negative. Avoids an import
+                       # for one call.
+                       "share": int(share * 100) / 100.0})
+    allocated = round(sum(r["share"] for r in shares), 2)
+    return {
+        "day": day.isoformat(), "pot": pot, "orders": taken["orders"],
+        "hours": round(total_hours, 2),
+        "shares": shares,
+        "allocated": allocated,
+        # Named, so it can be added to the next service rather than lost.
+        "remainder": round(pot - allocated, 2),
+        "nobody_clocked_in": bool(pot) and not shares,
+    }
+
+
+def unavailable_on(conn, day):
+    """Who has said they cannot work on a given day.
+
+    Read by the rota so a shift is not put on somebody who told the house
+    weeks ago. Inclusive at both ends: somebody saying they are away from the
+    fourth to the sixth means all three days, which is what a person means and
+    is not what a half-open range does.
+    """
+    iso = day.isoformat()
+    return conn.execute(
+        """SELECT staff_unavailability.*, users.name
+             FROM staff_unavailability JOIN users ON users.id = staff_unavailability.user_id
+            WHERE staff_unavailability.starts_on <= ? AND staff_unavailability.ends_on >= ?
+            ORDER BY users.name""", (iso, iso)).fetchall()
+
+
+def record_unavailability(conn, user_id, starts_on, ends_on, reason=None):
+    """Somebody says they cannot work. Returns (ok, reason).
+
+    Refuses a range that ends before it starts, because the row it would write
+    matches no day at all -- so the person believes they have told the house
+    and the rota never hears about it. That is worse than the form refusing.
+    """
+    start, end = parse_date(starts_on), parse_date(ends_on)
+    if not start or not end:
+        return False, "Both dates are needed."
+    if end < start:
+        return False, "The last day cannot be before the first."
+    if (end - start).days > 366:
+        return False, "That is longer than a year — record it as leave instead."
+    conn.execute(
+        """INSERT INTO staff_unavailability (user_id, starts_on, ends_on, reason, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (user_id, start.isoformat(), end.isoformat(),
+         (reason or "").strip() or None, datetime.now(timezone.utc).isoformat()))
+    return True, None
+
+
+# How loudly a notice is drawn. Only two, on purpose: a scale of five gets
+# used as a scale of one, and everything ends up amber.
+ROAD_SEVERITIES = {
+    "note": "Worth knowing",
+    "serious": "They need to change how they travel",
+}
+# The longest a notice may run. A fortnight is a cold snap or a closure; past
+# that it is a fact about the road rather than a warning about this week, and
+# it belongs in the approach copy where it is written once and read calmly.
+ROAD_NOTICE_MAX_DAYS = 21
+
+
+def road_notice(conn, day=None):
+    """What the road is doing, or None. The one a guest is shown.
+
+    THE ARGUMENT FOR THE END DATE BEING COMPULSORY. Every notice like this
+    fails the same way: it is switched on for a real reason in February and it
+    is still there in July, because taking it down is nobody's job and nothing
+    reminds them. A snow warning on the page in summer is worse than no
+    warning at all -- it is the reason the next real one is not believed, and
+    the next real one is the night somebody drives up an unlit road on ice.
+
+    So it expires by itself, and it cannot be created without saying when.
+
+    The most serious runs first, then the one that started most recently. Only
+    one is ever returned: two notices on an arrival page is a wall of warnings,
+    which reads as a house with a problem rather than a road with one.
+    """
+    iso = (day or house_today()).isoformat()
+    return conn.execute(
+        """SELECT * FROM road_notices
+            WHERE starts_on <= ? AND ends_on >= ?
+            ORDER BY CASE severity WHEN 'serious' THEN 0 ELSE 1 END,
+                     starts_on DESC, id DESC
+            LIMIT 1""", (iso, iso)).fetchone()
+
+
+def road_notices_all(conn):
+    """Every notice, current and finished, newest first. The owner's list."""
+    today = house_today().isoformat()
+    rows = conn.execute(
+        """SELECT road_notices.*, users.name AS put_up_by
+             FROM road_notices
+             LEFT JOIN users ON users.id = road_notices.created_by_user_id
+            ORDER BY road_notices.starts_on DESC, road_notices.id DESC""").fetchall()
+    return [dict(r, live=(r["starts_on"] <= today <= r["ends_on"]),
+                 finished=r["ends_on"] < today) for r in map(dict, rows)]
+
+
+def add_road_notice(conn, headline, detail, severity, starts_on, ends_on, user_id=None):
+    """Put a notice up. Returns (ok, reason).
+
+    Refuses an open-ended one, and refuses a long one. Both refusals are the
+    same argument: this says what the road is doing THIS WEEK, and a warning
+    that outlives the weather is what teaches everybody to ignore the panel.
+    """
+    headline = (headline or "").strip()
+    if not headline:
+        return False, "A notice needs a line somebody can read at a glance."
+    start, end = parse_date(starts_on), parse_date(ends_on)
+    if not start or not end:
+        return False, "Both dates are needed — a notice has to stop on its own."
+    if end < start:
+        return False, "The last day cannot be before the first."
+    if (end - start).days + 1 > ROAD_NOTICE_MAX_DAYS:
+        return False, ("Longer than %d days is a fact about the road rather "
+                       "than a warning about this week — put it in the "
+                       "approach copy instead." % ROAD_NOTICE_MAX_DAYS)
+    conn.execute(
+        """INSERT INTO road_notices (headline, detail, severity, starts_on,
+             ends_on, created_by_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (headline, (detail or "").strip() or None,
+         severity if severity in ROAD_SEVERITIES else "note",
+         start.isoformat(), end.isoformat(), user_id,
+         datetime.now(timezone.utc).isoformat()))
+    return True, None
+
+
 def booking_source_mix(conn, start_iso, end_iso):
     """Nights and money by where the booking came from.
 
@@ -22881,6 +23157,27 @@ def inject_exchange_rates():
         # convenience; the site is not.
         return {"fx_rates": {}}
     return {"fx_rates": fx["rates"]}
+
+
+@app.context_processor
+def inject_road_notice():
+    """The road notice, everywhere, so no arrival page can forget it.
+
+    Same argument as the pin above: passing it per route means remembering on
+    every new page, and the failure of forgetting is that a guest reads the
+    directions page on the morning they set off and is told nothing.
+    """
+    if not request.endpoint or request.endpoint.startswith("static"):
+        return {"road_now": None}
+    try:
+        conn = get_db()
+        try:
+            return {"road_now": road_notice(conn)}
+        finally:
+            conn.close()
+    except Exception:
+        # A context processor that raises takes down every page.
+        return {"road_now": None}
 
 
 @app.context_processor
@@ -30841,6 +31138,14 @@ PALETTE_PAGES = [
     ("Go-live checklist", "admin_readiness", "deploy setup ready configuration"),
     ("A photograph in", "photo_intake",
      "photo intake upload picture social post instagram slot schedule alt text"),
+    ("What the road is doing", "road_notices_page",
+     "road snow ice chains closed weather driving arrival warning notice"),
+    ("Contracted hours against worked", "contracted_hours_page",
+     "contract hours worked overtime under agreed cdi cdd thirty-five"),
+    ("Tips, and whose hours earned them", "tronc_page",
+     "tronc tips service charge gratuity share split staff floor"),
+    ("When somebody cannot work", "cannot_work",
+     "unavailable cannot work away rota holiday off busy"),
     ("What a night earns", "demand_report",
      "revenue per available night revpan occupancy sellable nights guest value "
      "worth referral heard about us demand"),
@@ -52169,6 +52474,183 @@ def demand_report():
                            values=values, heard=heard)
 
 
+@app.route("/admin/contracted-hours")
+@owner_required
+def contracted_hours_page():
+    """What each contract says against what each person actually worked.
+
+    The gap matters in both directions. Over is unpaid overtime the house is
+    accruing whether anybody has noticed or not; under is somebody on a
+    thirty-five hour contract being given twenty, which is a pay cut nobody
+    agreed to and the first thing they will raise.
+    """
+    weeks = request.args.get("weeks", "4")
+    weeks = int(weeks) if weeks.isdigit() and 1 <= int(weeks) <= 52 else 4
+    end = house_today()
+    start = end - timedelta(weeks=weeks)
+    conn = get_db()
+    data = contracted_vs_worked(conn, start, end)
+    conn.close()
+    counted = [r for r in data["rows"] if r["gap"] is not None]
+    overview = [
+        overview_cell("People", len(data["rows"]), sub="%d week%s" % (weeks, "" if weeks == 1 else "s")),
+        overview_cell("Over their contract", sum(1 for r in counted if r["gap"] > 1),
+                      alert=any(r["gap"] > 1 for r in counted),
+                      hint="unpaid overtime is a liability, not a favour"),
+        overview_cell("Under it", sum(1 for r in counted if r["gap"] < -1),
+                      alert=any(r["gap"] < -1 for r in counted),
+                      hint="a pay cut nobody agreed to"),
+        overview_cell("No contracted figure", len(data["no_contracted_hours"]),
+                      alert=bool(data["no_contracted_hours"]),
+                      hint="the question cannot be asked about them at all"),
+    ]
+    return render_template("contracted_hours.html", data=data, weeks=weeks,
+                           overview=overview)
+
+
+@app.route("/admin/tronc")
+@owner_required
+def tronc_page():
+    """The service charge the till took, and whose hours earned it.
+
+    Shared by hours on the floor, which is the only basis this app can defend:
+    the house has never recorded a role weighting, and inventing one here
+    would be software deciding a chef is worth 0.8 of a server.
+    """
+    day = parse_date(request.args.get("day", "")) or service_day()
+    conn = get_db()
+    data = tronc_shares(conn, day)
+    week = [tronc_shares(conn, day - timedelta(days=n)) for n in range(7)]
+    conn.close()
+    overview = [
+        overview_cell("Service taken", euro(data["pot"]),
+                      sub="%d bill%s" % (data["orders"], "" if data["orders"] == 1 else "s")),
+        overview_cell("Hours on the floor", data["hours"]),
+        overview_cell("Shared out", euro(data["allocated"])),
+        overview_cell("Left over", euro(data["remainder"]),
+                      alert=data["remainder"] > 1,
+                      hint="rounding, always downwards — carry it to the next "
+                           "service rather than giving it to whoever is last "
+                           "in the list"),
+    ]
+    return render_template("tronc.html", data=data, week=week, day=day,
+                           today=service_day(), one_day=timedelta(days=1),
+                           overview=overview)
+
+
+@app.route("/rota/cannot-work", methods=["GET", "POST"])
+@login_required
+def cannot_work():
+    """Say when you cannot work, BEFORE the rota is built.
+
+    Not a swap request. A swap is what you need once a shift is already on
+    you; this is what stops it being put there — and the two get confused,
+    which is why this page says so at the top.
+
+    Anybody can file their own. The owner sees everybody's, because the point
+    is the rota reading it.
+    """
+    user = current_user()
+    conn = get_db()
+    if request.method == "POST":
+        ok, why = record_unavailability(
+            conn, user["id"], request.form.get("starts_on", ""),
+            request.form.get("ends_on", ""), request.form.get("reason"))
+        if ok:
+            conn.commit()
+            flash("Noted. The rota will show it when it is being built.", "success")
+        else:
+            flash(why, "error")
+        conn.close()
+        return redirect(url_for("cannot_work"))
+
+    today = house_today()
+    mine = conn.execute(
+        """SELECT * FROM staff_unavailability
+            WHERE user_id = ? AND ends_on >= ? ORDER BY starts_on""",
+        (user["id"], today.isoformat())).fetchall()
+    everyone = conn.execute(
+        """SELECT staff_unavailability.*, users.name FROM staff_unavailability
+             JOIN users ON users.id = staff_unavailability.user_id
+            WHERE staff_unavailability.ends_on >= ?
+            ORDER BY staff_unavailability.starts_on""",
+        (today.isoformat(),)).fetchall() if user["role"] == "owner" else []
+    conn.close()
+    return render_template("cannot_work.html", mine=mine, everyone=everyone,
+                           today=today)
+
+
+@app.route("/rota/cannot-work/<int:entry_id>/remove", methods=["POST"])
+@login_required
+def cannot_work_remove(entry_id):
+    """Take one back. Your own only, unless you are the owner.
+
+    Checked on the ROW rather than trusted from the form: an id in a URL is
+    not proof of whose it is, and deleting somebody else's is how a shift
+    lands on a person who is away.
+    """
+    user = current_user()
+    conn = get_db()
+    row = conn.execute("SELECT * FROM staff_unavailability WHERE id = ?",
+                       (entry_id,)).fetchone()
+    if not row or (row["user_id"] != user["id"] and user["role"] != "owner"):
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM staff_unavailability WHERE id = ?", (entry_id,))
+    conn.commit()
+    conn.close()
+    flash("Removed.", "success")
+    return redirect(url_for("cannot_work"))
+
+
+@app.route("/admin/road", methods=["GET", "POST"])
+@owner_required
+def road_notices_page():
+    """What the road is doing, for guests who are about to drive up it.
+
+    The last few miles are unlit, there is no street number, and an address
+    search puts people in the village square. All of that is written into the
+    approach copy already, because it is always true. This is for the week it
+    is worse than usual.
+    """
+    conn = get_db()
+    if request.method == "POST":
+        user = current_user()
+        ok, why = add_road_notice(
+            conn, request.form.get("headline"), request.form.get("detail"),
+            request.form.get("severity"), request.form.get("starts_on"),
+            request.form.get("ends_on"), user["id"] if user else None)
+        if ok:
+            conn.commit()
+            flash("Up. It will come down on its own.", "success")
+        else:
+            flash(why, "error")
+        conn.close()
+        return redirect(url_for("road_notices_page"))
+    rows = road_notices_all(conn)
+    live = road_notice(conn)
+    conn.close()
+    return render_template("road_notices.html", rows=rows, live=live,
+                           severities=ROAD_SEVERITIES, today=house_today(),
+                           max_days=ROAD_NOTICE_MAX_DAYS)
+
+
+@app.route("/admin/road/<int:notice_id>/remove", methods=["POST"])
+@owner_required
+def road_notice_remove(notice_id):
+    """Take one down early — the weather turned out better than expected."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM road_notices WHERE id = ?", (notice_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM road_notices WHERE id = ?", (notice_id,))
+    conn.commit()
+    conn.close()
+    flash("Down.", "success")
+    return redirect(url_for("road_notices_page"))
+
+
 @app.route("/reports")
 @owner_required
 def reports_index():
@@ -63606,10 +64088,20 @@ def admin_shifts():
     ).fetchall()
     staffing = roster_vs_occupancy(conn, week["days"])
     outliers = timesheet_outliers(conn, today)
+    # Who has already said they cannot work, read HERE rather than left in a
+    # table nobody joins. Somebody telling the house weeks ago and then being
+    # rostered anyway is worse than never having asked them: they did the
+    # right thing and it made no difference.
+    away = {}
+    for d in week["days"]:
+        for row in unavailable_on(conn, d):
+            away.setdefault(d.isoformat(), []).append(
+                {"name": row["name"], "user_id": row["user_id"],
+                 "reason": row["reason"]})
     conn.close()
     return render_template(
         "admin_shifts.html", today=today, week=week, pending_swaps=pending_swaps,
-        staffing=staffing, outliers=outliers,
+        staffing=staffing, outliers=outliers, away=away,
     )
 
 

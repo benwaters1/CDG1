@@ -8478,6 +8478,20 @@ main > .g-facts{ border-bottom: 1px solid var(--line); }
   color: #B9C6D4; max-width: 46rem;
 }
 
+/* --------------------------------------------------------------------------
+   THE APPROACH MAP — phone variant
+   The landscape drawing is 720 units wide. In a 334px phone column that is a
+   46% scale, which renders the 15px stop labels at 7px and the sub-labels at
+   5.6px. Neither is readable. The portrait drawing is 340 units wide, so it
+   renders at roughly 1:1 and the type stays at its intended size.
+   -------------------------------------------------------------------------- */
+.g-approach__svg--tall{ display: none; }
+@media (max-width: 52rem){
+  .g-approach__svg--wide{ display: none; }
+  .g-approach__svg--tall{ display: block; margin-inline: auto; max-width: 340px; }
+}
+
+
 /* ==========================================================================
    THE NINETY-FOUR
    "Five of ninety-four" as a thing you can count rather than read. The five
@@ -9329,3 +9343,20 @@ h2.g-h2--vert,
 .g-hero__in > .g-herosearch{
   max-width: 46rem;
 }
+
+
+/* ==========================================================================
+   WHAT THE ROAD IS DOING
+   Above the page, not inside it. The guest this is for is reading the
+   directions on the morning they set off, and a notice below the fold is the
+   same as no notice. Two levels only: a scale of five gets used as a scale of
+   one and everything ends up amber.
+   ========================================================================== */
+.g-roadnote{
+  padding: 12px 0; font-family: var(--ui); font-size: var(--t-sm);
+  line-height: 1.5; border-bottom: 1px solid rgba(0,0,0,.08);
+}
+.g-roadnote strong{ font-weight: 600; margin-right: .5em; }
+.g-roadnote--note{ background: #FBF3DE; color: #4A3B12; }
+.g-roadnote--serious{ background: #7A1F1F; color: #FBF1F1; }
+.g-roadnote--serious strong{ color: #fff; }

@@ -122,6 +122,17 @@
         <td class="cal-room-col">{{ row.employee['name'] }}</td>
         {% for cell in row.cells %}
         <td class="{{ 'cal-today' if cell.date == today }}" style="vertical-align:top; padding:4px !important; border:1px solid var(--parchment-line);">
+          {# Said BEFORE the rota was built. Somebody who told the house weeks
+             ago and is rostered anyway did the right thing and it made no
+             difference, which is worse than never having asked them. #}
+          {% set told_us = (away.get(cell.date.isoformat(), []) if away else [])
+                           | selectattr('user_id', 'equalto', row.employee['id']) | list %}
+          {% if told_us %}
+          <div style="background:var(--status-bad-bg, #fdecea); border:1px solid var(--danger); border-radius:5px; padding:3px 5px; margin-bottom:3px; font-size:11px;">
+            <strong>Cannot work</strong>
+            {% if told_us[0].reason %}<div class="upload-hint">{{ told_us[0].reason }}</div>{% endif %}
+          </div>
+          {% endif %}
           {% for entry in cell.shifts %}
           {% set s = entry.shift %}
           {% set att = entry.attendance %}
