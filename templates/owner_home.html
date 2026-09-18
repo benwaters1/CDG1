@@ -28,6 +28,9 @@
         {% if queue %}
         <a href="#waiting" class="oh-btn oh-btn--gold">Review {{ queue|length }} decision{{ '' if queue|length == 1 else 's' }}</a>
         {% endif %}
+        {# First, because it is the one that can answer a question rather than
+           showing you another page to read. #}
+        <a href="{{ url_for('assistant_page') }}" class="oh-btn">Ask</a>
         <a href="{{ url_for('office_display') }}" target="_blank" rel="noopener" class="oh-btn">Office display</a>
         <a href="{{ url_for('staff_today') }}" class="oh-btn">Printable sheet</a>
       </div>

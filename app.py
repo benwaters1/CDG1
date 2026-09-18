@@ -5051,6 +5051,32 @@ def init_db():
         ("tasks_meeting_id",
          "ALTER TABLE tasks ADD COLUMN meeting_id INTEGER "
          "REFERENCES meetings(id) ON DELETE SET NULL"),
+
+        # The assistant's conversation, and its proposed actions.
+        #
+        # role: 'user' is the owner typing, 'assistant' is Claude, 'tool' is
+        # the result of something that actually ran. The three together are
+        # replayed back to the model as the conversation, so what it is told
+        # it did is the same record the owner can read.
+        #
+        # action_status is the safety model in one column. An assistant row
+        # proposing a real action is written 'pending' and NOTHING RUNS until
+        # the owner presses confirm, which moves it to 'confirmed' and stamps
+        # executed_at. A row still reading 'pending' has never happened.
+        # Declining writes 'cancelled', kept rather than deleted: what the
+        # assistant suggested and the owner refused is worth looking back at.
+        ("assistant_messages", """CREATE TABLE IF NOT EXISTS assistant_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            role TEXT NOT NULL CHECK(role IN ('user','assistant','tool')),
+            content TEXT,
+            tool_name TEXT,
+            tool_input TEXT,
+            tool_call_id TEXT,
+            action_status TEXT CHECK(action_status IN ('pending','confirmed','cancelled')),
+            executed_at TEXT,
+            created_at TEXT NOT NULL
+        )"""),
     ):
         try:
             conn.execute(ddl)
@@ -6556,6 +6582,13 @@ AREA_TITLES = {
 # can see, which is how 181 of them accumulated unnoticed.
 OWNER_ONLY_AREAS = {
     "reports_index": "management",
+    # The assistant reads staff expense claims and time-off requests and can
+    # act on them, so it follows management access, and every one of its
+    # routes checks role == owner on top of that.
+    "assistant_page": "management",
+    "assistant_say_route": "management",
+    "assistant_confirm_route": "management",
+    "assistant_clear_route": "management",
     # Meetings. What was agreed with a contractor, and what a member of staff
     # was told, both live here — so it follows management access rather than
     # team access, which is about somebody's own employment.
@@ -7666,12 +7699,21 @@ app.jinja_env.globals["date_range"] = format_date_range
 app.jinja_env.globals["euro"] = lambda v: euro(v)
 
 
-def log_audit(conn, action, target=None, details=None):
+def log_audit(conn, action, target=None, details=None, via=None):
     """Records who did what to something sensitive, and when — deletions,
     status changes, vault/bank-detail edits, backup downloads. Separate from
     recent_activity() (which is a general-interest feed for the dashboard);
-    this is specifically for looking back at who touched something risky."""
+    this is specifically for looking back at who touched something risky.
+
+    `via` names the route a decision came through when it was not a plain
+    click — today that means the assistant. The ACTOR is unchanged: the owner
+    confirming a proposal is the owner deciding, and recording the machine as
+    the actor would be a lie about who is accountable. But "approved" and
+    "approved through the assistant" are different things to read back when
+    working out how a decision got made, so the line says which."""
     user = current_user()
+    if via:
+        details = f"{details} — via {via}" if details else f"via {via}"
     conn.execute(
         "INSERT INTO audit_log (actor_user_id, action, target, details, created_at) VALUES (?, ?, ?, ?, ?)",
         (user["id"] if user else None, action, target, details, datetime.now(timezone.utc).isoformat()),
@@ -25436,6 +25478,7 @@ def owner_home_queue(conn):
                WHERE expenses.status = 'pending'
                ORDER BY expenses.submitted_at""").fetchall():
         out.append({
+            "id": e["id"],
             "kind": "Claim" if e["submitted_by_user_id"] else "Invoice",
             "who": e["who"] or e["vendor_name"] or "—",
             "title": e["vendor_name"] or e["who"] or e["description"] or "Expense",
@@ -25456,6 +25499,7 @@ def owner_home_queue(conn):
         if s and e2:
             days = (e2 - s).days + 1
         out.append({
+            "id": l["id"],
             "kind": "Time off", "who": l["who"], "title": l["who"],
             "detail": f"{l['start_date']} – {l['end_date']}",
             "amount": f"{days} day{'s' if days != 1 else ''}",
@@ -25469,6 +25513,7 @@ def owner_home_queue(conn):
                WHERE timesheet_corrections.status = 'pending'
                ORDER BY timesheet_corrections.created_at""").fetchall():
         out.append({
+            "id": c["id"],
             "kind": "Timesheet", "who": c["who"] or "—", "title": c["who"] or "Timesheet",
             "detail": c["note"] or "needs checking",
             "amount": "—", "age": house_date_iso(c["created_at"]),
@@ -35074,18 +35119,24 @@ def submit_expense():
     )
 
 
-@app.route("/expenses/<int:expense_id>/decide", methods=["POST"])
-@owner_required
-def decide_expense(expense_id):
-    status = request.form.get("status", "")
+def apply_expense_decision(conn, expense_id, status, note=None, reference=None,
+                           via=None):
+    """Approve, reject or settle one expense, and tell whoever submitted it.
+
+    The route and the assistant both call this, so neither can drift from the
+    other — see the note above for why that matters here.
+
+    Returns (ok, message, row). `row` is None when there is no such expense, so
+    a caller can tell "does not exist" from "already carried that status"; ok
+    is False for both. Commits its own work, because the email it sends must
+    never be able to describe a write still sitting in a transaction.
+    """
     if status not in ("approved", "rejected", "paid"):
-        abort(400)
-    note = request.form.get("owner_note", "").strip()
-    conn = get_db()
+        return False, "That is not a decision this house records.", None
+    note = (note or "").strip()
     row = conn.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,)).fetchone()
     if not row:
-        conn.close()
-        abort(404)
+        return False, "No expense with that number.", None
     # Guard against the same button double-submitting (two clicks racing
     # each other) re-sending the decision email — status != ? rather than
     # a fixed prior-state check, since the workflow legitimately moves
@@ -35095,7 +35146,7 @@ def decide_expense(expense_id):
         # 'Paid' used to be a word in a column. It could not answer when
         # somebody was actually reimbursed, how, or by whom \u2014 which is the
         # question a member of staff who spent their own money asks.
-        reference = request.form.get("paid_reference", "").strip()[:120] or None
+        reference = (reference or "").strip()[:120] or None
         cur = conn.execute(
             "UPDATE expenses SET status = ?, owner_note = ?, decided_at = ?, "
             "paid_at = ?, paid_by_user_id = ?, paid_reference = ? "
@@ -35112,12 +35163,11 @@ def decide_expense(expense_id):
     # on a dinner service, which has been audited since the beginning.
     log_audit(conn, f"expense_{status}", target=row["vendor_name"] or row["description"][:60],
               details=f"{float(row['amount'] or 0):.2f}"
-                      + (f" ref {reference}" if status == "paid" and reference else ""))
+                      + (f" ref {reference}" if status == "paid" and reference else ""),
+              via=via)
     conn.commit()
     if cur.rowcount == 0:
-        conn.close()
-        flash("Already updated.", "success")
-        return redirect(url_for("expenses"))
+        return False, "Already updated.", row
     submitter = (
         conn.execute("SELECT * FROM users WHERE id = ?", (row["submitted_by_user_id"],)).fetchone()
         if row["submitted_by_user_id"] else None
@@ -35136,8 +35186,25 @@ def decide_expense(expense_id):
             body=f"{row['description']} — €{row['amount']:.2f}" + (f" · {note}" if note else ""),
             link="/my-expenses",
         )
+    return True, "Updated.", row
+
+
+@app.route("/expenses/<int:expense_id>/decide", methods=["POST"])
+@owner_required
+def decide_expense(expense_id):
+    status = request.form.get("status", "")
+    if status not in ("approved", "rejected", "paid"):
+        abort(400)
+    conn = get_db()
+    ok, message, row = apply_expense_decision(
+        conn, expense_id, status,
+        note=request.form.get("owner_note", ""),
+        reference=request.form.get("paid_reference", ""),
+    )
     conn.close()
-    flash("Updated.", "success")
+    if row is None:
+        abort(404)
+    flash(message, "success")
     return redirect(url_for("expenses"))
 
 
@@ -63499,6 +63566,79 @@ def assign_access_preset():
     return redirect(url_for("admin_access_levels"))
 
 
+# ---------------------------------------------------------------------------
+# THE ASSISTANT'S PAGES
+#
+# Owner only, and belt-and-braces about it. `@owner_required` does NOT mean
+# owner -- it means "a preset that grants this page's area" -- so these sit in
+# the `management` area, which no non-owner preset grants, AND check the role
+# directly. Both, because this reads staff expense claims and time-off
+# requests and can act on them, and because getting that wrong once already
+# made a grievance about a manager readable by that manager.
+#
+# The role check is applied identically to the reads and the writes. Mixing
+# the two mechanisms is what let somebody delete a note they could not read.
+# ---------------------------------------------------------------------------
+
+def _assistant_guard():
+    """Returns a response to send instead, or None to carry on."""
+    user = current_user()
+    if not user or user["role"] != "owner":
+        abort(403)
+    return user
+
+
+@app.route("/assistant")
+@owner_required
+def assistant_page():
+    user = _assistant_guard()
+    conn = get_db()
+    rows = assistant_history(conn, user["id"])
+    conn.close()
+    return render_template("assistant.html", messages=rows,
+                           enabled=assistant_enabled(),
+                           today=house_today())
+
+
+@app.route("/assistant/say", methods=["POST"])
+@owner_required
+def assistant_say_route():
+    user = _assistant_guard()
+    said = (request.form.get("said", "") or "").strip()
+    conn = get_db()
+    ok, error = assistant_turn(conn, user, said)
+    conn.close()
+    if not ok and error:
+        flash(error, "error")
+    return redirect(url_for("assistant_page"))
+
+
+@app.route("/assistant/confirm/<int:message_id>", methods=["POST"])
+@owner_required
+def assistant_confirm_route(message_id):
+    """Yes or no to one proposal. The only route that changes anything."""
+    user = _assistant_guard()
+    agreed = request.form.get("agreed") == "yes"
+    conn = get_db()
+    ok, message = assistant_confirm(conn, user, message_id, agreed)
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return redirect(url_for("assistant_page"))
+
+
+@app.route("/assistant/clear", methods=["POST"])
+@owner_required
+def assistant_clear_route():
+    """Start again. Deletes only this owner's own conversation."""
+    user = _assistant_guard()
+    conn = get_db()
+    conn.execute("DELETE FROM assistant_messages WHERE user_id = ?", (user["id"],))
+    conn.commit()
+    conn.close()
+    flash("Cleared.", "success")
+    return redirect(url_for("assistant_page"))
+
+
 @app.route("/chat")
 @login_required
 def chat_home():
@@ -63684,6 +63824,29 @@ def staff_today():
     )
 
 
+def mark_task_done(conn, task, done=True):
+    """Tick one task off, or put it back. Does not commit.
+
+    The route and the assistant both go through here, so neither can tick a
+    task off in a way that leaves the acknowledgment behind — which is exactly
+    what the assistant did before this existed.
+    """
+    conn.execute(
+        "UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?",
+        ("done" if done else "open",
+         datetime.now(timezone.utc).isoformat() if done else None, task["id"]),
+    )
+    # A directed task carries a separate accept/reject field. Completing it is
+    # unambiguous acceptance, so resolve that too rather than leaving it
+    # pending — the same reasoning as in toggle_task.
+    if done and "acknowledgment_status" in {c["name"] for c in
+                                            conn.execute("PRAGMA table_info(tasks)").fetchall()}:
+        conn.execute(
+            "UPDATE tasks SET acknowledgment_status = 'accepted' WHERE id = ? "
+            "AND acknowledgment_status = 'pending'", (task["id"],))
+    return done
+
+
 @app.route("/tasks/<int:task_id>/complete", methods=["POST"])
 @login_required
 @repeatable
@@ -63705,20 +63868,7 @@ def complete_task(task_id):
         conn.close()
         return jsonify(error="forbidden"), 403
 
-    done = task["status"] != "done"
-    conn.execute(
-        "UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?",
-        ("done" if done else "open",
-         datetime.now(timezone.utc).isoformat() if done else None, task_id),
-    )
-    # A directed task carries a separate accept/reject field. Completing it is
-    # unambiguous acceptance, so resolve that too rather than leaving it
-    # pending — the same reasoning as in toggle_task.
-    if done and "acknowledgment_status" in {c["name"] for c in
-                                            conn.execute("PRAGMA table_info(tasks)").fetchall()}:
-        conn.execute(
-            "UPDATE tasks SET acknowledgment_status = 'accepted' WHERE id = ? "
-            "AND acknowledgment_status = 'pending'", (task_id,))
+    done = mark_task_done(conn, task, done=task["status"] != "done")
     conn.commit()
     conn.close()
     return jsonify(status="done" if done else "open")
@@ -64716,26 +64866,31 @@ def export_leave_csv():
     return csv_response(fieldnames, rows, "leave_requests.csv")
 
 
-@app.route("/admin/leave/<int:request_id>/decide", methods=["POST"])
-@owner_required
-def decide_leave(request_id):
-    status = request.form.get("status", "")
+def apply_leave_decision(conn, request_id, status, via=None):
+    """Approve or decline one time-off request, and tell the person waiting.
+
+    Same reasoning as apply_expense_decision: the route and the assistant both
+    need this, and a second copy of it is a second thing to keep in step.
+
+    Returns (ok, message, req). `req` is None when there is no such request, so
+    a caller can tell that from "somebody already decided it".
+    """
     if status not in ("approved", "declined"):
-        abort(400)
-    conn = get_db()
+        return False, "A time-off request is either approved or declined.", None
     req = conn.execute("SELECT * FROM leave_requests WHERE id = ?", (request_id,)).fetchone()
     if not req:
-        conn.close()
-        abort(404)
+        return False, "No time-off request with that number.", None
     cur = conn.execute(
         "UPDATE leave_requests SET status = ?, decided_at = ? WHERE id = ? AND status = 'pending'",
         (status, datetime.now(timezone.utc).isoformat(), request_id),
     )
+    # Somebody's time off is worth the same record as somebody's expense: both
+    # are decisions about a person that they will ask about later.
+    log_audit(conn, f"leave_{status}", target=str(req["user_id"]),
+              details=f"{req['start_date']} to {req['end_date']}", via=via)
     conn.commit()
     if cur.rowcount == 0:
-        conn.close()
-        flash("Already decided.", "success")
-        return redirect(url_for("admin_leave"))
+        return False, "Already decided.", req
     employee = conn.execute("SELECT * FROM users WHERE id = ?", (req["user_id"],)).fetchone()
     if employee:
         send_email(
@@ -64749,8 +64904,21 @@ def decide_leave(request_id):
             conn, employee["id"], "leave_decided", f"Your time off request has been {status}",
             body=f"{req['start_date']} to {req['end_date']}", link="/leave",
         )
+    return True, f"Request {status}.", req
+
+
+@app.route("/admin/leave/<int:request_id>/decide", methods=["POST"])
+@owner_required
+def decide_leave(request_id):
+    status = request.form.get("status", "")
+    if status not in ("approved", "declined"):
+        abort(400)
+    conn = get_db()
+    ok, message, req = apply_leave_decision(conn, request_id, status)
     conn.close()
-    flash(f"Request {status}.", "success")
+    if req is None:
+        abort(404)
+    flash(message, "success")
     return redirect(url_for("admin_leave"))
 
 
@@ -69543,6 +69711,567 @@ def build_menu_draft(conn, extracted, *, service_date, service="dinner", source=
              (d.get("name") or "").strip(), d.get("description"), allergens or None,
              d.get("carte_price"), d.get("supplement") or 0, i, now))
     return menu_id
+
+
+# ---------------------------------------------------------------------------
+# THE ASSISTANT
+#
+# An owner who opens this app in the morning wants to be TOLD what is waiting,
+# and then to deal with it by saying so. The home page answers the first half
+# well and the second half not at all: every decision on it is a link to
+# another page with a button on it, and the answer to "approve Sarah's leave
+# and tell the chef about the cot" is four pages and six clicks.
+#
+# So this is a conversation that can also act. It reads the same figures the
+# home page reads -- there is no second definition of what is waiting -- and
+# it can carry out a small, named set of the decisions the owner already makes
+# by hand.
+#
+# THE SAFETY MODEL, WHICH IS THE ONLY INTERESTING PART.
+#
+# Tools split in two, and the split is enforced HERE, on the server, not by
+# asking the model to behave:
+#
+#   READ tools run immediately. They answer questions and cost nothing but
+#   time, and making the owner confirm "may I look at today's arrivals" would
+#   train them to press yes without reading, which is exactly how the one that
+#   mattered gets waved through.
+#
+#   ACTION tools NEVER run when the model asks for them. The call is written
+#   down as a proposal, the loop stops, and the owner sees what it intends to
+#   do with a confirm and a cancel. Only the confirm route executes it. A
+#   model that hallucinates a tool call, or is talked into one by something it
+#   read in a guest's message, gets a proposal on a screen and no further.
+#
+# ASSISTANT_ACTION_TOOLS is the list that decides which is which, and it is a
+# hardcoded set of names rather than anything the model supplies. The model
+# cannot mark its own call as safe.
+#
+# What is deliberately NOT here: anything that deletes, anything that touches
+# payroll or a contract, and any direct way to move money. Declining a booking
+# can refund a guest, which is why its confirmation says so in the sentence.
+# ---------------------------------------------------------------------------
+
+ASSISTANT_MODEL = "claude-opus-5"
+
+# Six turns is enough for "what is waiting" -> read the queue -> "and what is
+# on today" -> read the day -> answer. It exists so a loop that goes wrong
+# stops costing money rather than running until something else breaks.
+ASSISTANT_MAX_STEPS = 6
+
+ASSISTANT_TOOLS = [
+    {
+        "name": "get_today",
+        "description": (
+            "What is happening at the chateau today: arrivals, departures, "
+            "dinner covers, and the tasks due. Call this for almost any "
+            "question about today, this morning, or what is on."),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "get_waiting",
+        "description": (
+            "Everything waiting on the owner's decision right now: expense "
+            "claims and supplier invoices, time-off requests, timesheet "
+            "corrections. Each item comes back with the id needed to act on "
+            "it. Call this before proposing any approval or rejection."),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "get_warnings",
+        "description": (
+            "Things nobody has told the owner: unanswered poor feedback, "
+            "lapsed insurance, rota clashes, a stale backup. The same list "
+            "the home page shows."),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "find_booking",
+        "description": (
+            "Look up a room booking by reference code or guest name. Returns "
+            "the booking id, dates, room, status and what is owed."),
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {
+                "type": "string",
+                "description": "A reference code, or part of a guest's name"}},
+            "required": ["query"], "additionalProperties": False,
+        },
+    },
+
+    # ---- from here down, every one needs the owner to confirm it ----
+    {
+        "name": "approve_expense",
+        "description": (
+            "Approve one expense claim or supplier invoice, which emails "
+            "whoever submitted it. Needs the owner's confirmation first."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "expense_id": {"type": "integer"},
+                "note": {"type": "string", "description": "Optional, recorded with the decision"},
+            },
+            "required": ["expense_id"], "additionalProperties": False,
+        },
+    },
+    {
+        "name": "reject_expense",
+        "description": (
+            "Reject one expense claim or supplier invoice, which emails "
+            "whoever submitted it. Needs the owner's confirmation first."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "expense_id": {"type": "integer"},
+                "note": {"type": "string", "description": "Why — the submitter reads this"},
+            },
+            "required": ["expense_id"], "additionalProperties": False,
+        },
+    },
+    {
+        "name": "approve_leave",
+        "description": (
+            "Approve one time-off request, which emails the employee. Needs "
+            "the owner's confirmation first."),
+        "input_schema": {
+            "type": "object",
+            "properties": {"leave_request_id": {"type": "integer"}},
+            "required": ["leave_request_id"], "additionalProperties": False,
+        },
+    },
+    {
+        "name": "decline_leave",
+        "description": (
+            "Decline one time-off request, which emails the employee. Needs "
+            "the owner's confirmation first."),
+        "input_schema": {
+            "type": "object",
+            "properties": {"leave_request_id": {"type": "integer"}},
+            "required": ["leave_request_id"], "additionalProperties": False,
+        },
+    },
+    {
+        "name": "add_task",
+        "description": (
+            "Put a job on the house's task list, which puts it on the "
+            "calendar for its due date. Needs the owner's confirmation first."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "notes": {"type": "string"},
+                "due_date": {"type": "string", "description": "YYYY-MM-DD. Today if left out."},
+            },
+            "required": ["title"], "additionalProperties": False,
+        },
+    },
+    {
+        "name": "finish_task",
+        "description": "Tick a task off. Needs the owner's confirmation first.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"task_id": {"type": "integer"}},
+            "required": ["task_id"], "additionalProperties": False,
+        },
+    },
+]
+
+# THE SERVER DECIDES WHICH TOOLS ARE DANGEROUS, not the model and not the tool
+# description. A name in here is never executed straight from a model response.
+ASSISTANT_ACTION_TOOLS = frozenset({
+    "approve_expense", "reject_expense",
+    "approve_leave", "decline_leave",
+    "add_task", "finish_task",
+})
+
+ASSISTANT_SYSTEM = (
+    "You are the assistant to the owner of Chateau de Gudanes, a small chateau "
+    "in the Ariege that runs as a guest house, a restaurant and a workshop "
+    "venue. You are talking to the owner, in private, on their own screen.\n\n"
+    "How to work:\n"
+    "1. LOOK BEFORE YOU ANSWER. You have tools that read the house's real "
+    "figures. Use them rather than guessing, and never state a number, a name "
+    "or a date you have not read from a tool in this conversation.\n"
+    "2. Be brief. This is read standing up with a coffee. Short sentences, no "
+    "headings, no bullet lists unless you are genuinely listing things, and "
+    "no restating the question back.\n"
+    "3. When nothing is waiting, say so in one line. Do not manufacture "
+    "activity to seem useful.\n"
+    "4. ACTIONS NEED THE OWNER'S CONFIRMATION, and the app handles that for "
+    "you: when you call a tool that changes something, the owner is shown "
+    "what you propose and presses confirm or cancel. So propose the action "
+    "directly rather than asking permission in words first — asking twice is "
+    "just slower. Never say something has been done; say what you have put up "
+    "for them to confirm.\n"
+    "5. Only ever act on one thing at a time unless the owner asked for "
+    "several. If they say 'approve the lot', propose each one separately so "
+    "they can refuse one without refusing all.\n"
+    "6. You are reading real people's expense claims and time off. Do not "
+    "editorialise about them, and do not recommend approving or refusing "
+    "unless asked what you think."
+)
+
+
+def assistant_enabled():
+    """Whether the assistant can run at all. Same gate as every other Claude
+    feature here: no key, no assistant, and the page says so plainly rather
+    than failing at the first message."""
+    return claude_configured()
+
+
+def assistant_history(conn, user_id, limit=60):
+    """The conversation, oldest first.
+
+    Capped because the whole thing is sent to the model on every turn and an
+    unbounded thread eventually costs more than it is worth. Sixty messages is
+    several days of ordinary use.
+    """
+    rows = conn.execute(
+        """SELECT * FROM assistant_messages WHERE user_id = ?
+           ORDER BY id DESC LIMIT ?""", (user_id, limit)).fetchall()
+    return list(reversed(rows))
+
+
+def _assistant_say(conn, user_id, role, content=None, tool_name=None,
+                   tool_input=None, tool_call_id=None, action_status=None):
+    """Write one line of the conversation down and hand back its id."""
+    cur = conn.execute(
+        """INSERT INTO assistant_messages
+           (user_id, role, content, tool_name, tool_input, tool_call_id,
+            action_status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, role, content, tool_name,
+         json.dumps(tool_input) if tool_input is not None else None,
+         tool_call_id, action_status, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    return cur.lastrowid
+
+
+def assistant_messages_for_model(rows):
+    """Our rows, as the shape the Messages API wants.
+
+    A pending proposal is deliberately NOT replayed as a tool_use with no
+    result: the API requires every tool_use to be answered, and a proposal
+    waiting on a human has no answer yet. It is replayed as what it actually
+    is — the assistant saying it wants to do something — so a conversation
+    that continues past an unanswered proposal still makes sense to the model.
+    """
+    out = []
+    for r in rows:
+        if r["role"] == "user":
+            out.append({"role": "user", "content": r["content"] or ""})
+        elif r["role"] == "assistant":
+            if r["action_status"] == "pending":
+                out.append({"role": "assistant", "content":
+                            f"[proposed {r['tool_name']}, waiting for confirmation]"})
+            elif r["content"]:
+                out.append({"role": "assistant", "content": r["content"]})
+        elif r["role"] == "tool":
+            # What a tool returned, as plain text from the user side. The
+            # alternative is a real tool_result block, which has to be paired
+            # with the tool_use in the message immediately before it — and
+            # once a proposal has sat overnight waiting for a person, that
+            # pairing is long gone. Text costs a little precision and cannot
+            # produce an API error at six in the morning.
+            out.append({"role": "user", "content":
+                        f"[result of {r['tool_name']}]\n{r['content'] or ''}"})
+    # The API rejects a conversation that opens with an assistant turn, which
+    # is what a cleared-then-continued thread can produce.
+    while out and out[0]["role"] != "user":
+        out.pop(0)
+    # And two turns from the same side become one. A tool result is replayed
+    # as something the user side said, and the model usually calls a tool
+    # without any words alongside it -- so an ordinary "what is waiting?" and
+    # its lookup are two user turns running together, which an API expecting
+    # the sides to alternate can refuse outright.
+    merged = []
+    for msg in out:
+        if merged and merged[-1]["role"] == msg["role"]:
+            merged[-1]["content"] = f"{merged[-1]['content']}\n\n{msg['content']}"
+        else:
+            merged.append(dict(msg))
+    return merged
+
+
+def assistant_read_tool(conn, user, name, args):
+    """Run one of the tools that only looks. Returns text for the model.
+
+    Everything here reads through the same helpers the owner's home page
+    reads, so the assistant and the page can never disagree about what is
+    waiting — there is one definition and this is not a second one.
+    """
+    today = house_today()
+    if name == "get_today":
+        rows = owner_home_day(conn, today, user)
+        if not rows:
+            return "Nothing scheduled today: no arrivals, no departures, no tasks due."
+        lines = []
+        for r in rows:
+            when = r["time"] or "—"
+            done = " (done)" if r["done"] else ""
+            who = f" [{r['assignee']}]" if r["assignee"] else ""
+            lines.append(f"{when} · {r['kind']}: {r['title']}"
+                         + (f" — {r['detail']}" if r["detail"] else "") + who + done)
+        return f"Today, {today.isoformat()}:\n" + "\n".join(lines)
+
+    if name == "get_waiting":
+        queue = owner_home_queue(conn)
+        if not queue:
+            return "Nothing is waiting on a decision."
+        lines = []
+        for q in queue:
+            lines.append(
+                f"{q['kind']} #{q.get('id', '?')}: {q['title']} — {q['detail']} "
+                f"({q['amount']}, since {q['age']})")
+        return "Waiting on you:\n" + "\n".join(lines)
+
+    if name == "get_warnings":
+        warnings = owner_home_warnings(conn, today)
+        if not warnings:
+            return "No warnings."
+        return "Worth knowing:\n" + "\n".join(
+            f"{w['severity']}: {w['title']} — {w['detail']}" for w in warnings)
+
+    if name == "find_booking":
+        q = (args.get("query") or "").strip()
+        if not q:
+            return "No search text given."
+        like = f"%{q}%"
+        rows = conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+               JOIN rooms ON rooms.id = bookings.room_id
+               WHERE bookings.reference_code LIKE ? OR bookings.guest_name LIKE ?
+               ORDER BY bookings.arrival_date DESC LIMIT 8""", (like, like)).fetchall()
+        if not rows:
+            return f"No booking matches {q!r}."
+        out = []
+        for b in rows:
+            bill = booking_bill(conn, b["id"])
+            owed = f", owes €{bill['owed']:.2f}" if bill and bill["owed"] > 0.005 else ""
+            out.append(f"#{b['id']} {b['reference_code']} · {b['guest_name']} · "
+                       f"{b['room_name']} · {b['arrival_date']} to "
+                       f"{b['departure_date']} · {b['status']}{owed}")
+        return "\n".join(out)
+
+    return f"No tool called {name}."
+
+
+def assistant_describe_action(conn, name, args):
+    """The sentence the owner reads before pressing confirm.
+
+    Written from the DATABASE, not from the model's own words. If the model
+    says it is approving Sarah's 3 days and the id it passed is somebody
+    else's request, this sentence says whose it actually is — which is the
+    whole point of showing it.
+    """
+    if name in ("approve_expense", "reject_expense"):
+        row = conn.execute("SELECT * FROM expenses WHERE id = ?",
+                           (args.get("expense_id"),)).fetchone()
+        if not row:
+            return "No expense with that number."
+        verb = "Approve" if name == "approve_expense" else "Reject"
+        who = row["vendor_name"] or row["description"] or "an expense"
+        return (f"{verb} €{float(row['amount'] or 0):,.2f} — {who}"
+                + (f" ({args['note']})" if args.get("note") else ""))
+
+    if name in ("approve_leave", "decline_leave"):
+        row = conn.execute(
+            """SELECT leave_requests.*, users.name AS who FROM leave_requests
+               JOIN users ON users.id = leave_requests.user_id
+               WHERE leave_requests.id = ?""",
+            (args.get("leave_request_id"),)).fetchone()
+        if not row:
+            return "No time-off request with that number."
+        verb = "Approve" if name == "approve_leave" else "Decline"
+        return (f"{verb} {row['who']}'s time off, "
+                f"{row['start_date']} to {row['end_date']}")
+
+    if name == "add_task":
+        due = args.get("due_date") or house_today_iso()
+        return f"Add a task: {args.get('title', '')} (due {due})"
+
+    if name == "finish_task":
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?",
+                           (args.get("task_id"),)).fetchone()
+        if not row:
+            return "No task with that number."
+        return f"Tick off: {row['title']}"
+
+    return f"Run {name}"
+
+
+def assistant_run_action(conn, user, name, args):
+    """Actually do it. Only ever called from the confirm route.
+
+    Everything here goes through the same helper the owner's own button goes
+    through — apply_expense_decision, apply_leave_decision — so the assistant
+    cannot approve an expense in a way that skips the email, the audit line or
+    the notification. `via` puts "through the assistant" on the audit line.
+    """
+    if name in ("approve_expense", "reject_expense"):
+        ok, message, _row = apply_expense_decision(
+            conn, args.get("expense_id"),
+            "approved" if name == "approve_expense" else "rejected",
+            note=args.get("note"), via="the assistant")
+        return ok, message
+
+    if name in ("approve_leave", "decline_leave"):
+        ok, message, _req = apply_leave_decision(
+            conn, args.get("leave_request_id"),
+            "approved" if name == "approve_leave" else "declined",
+            via="the assistant")
+        return ok, message
+
+    if name == "add_task":
+        title = (args.get("title") or "").strip()[:120]
+        if not title:
+            return False, "A task needs a title."
+        due = (args.get("due_date") or "").strip() or house_today_iso()
+        if not parse_date(due):
+            return False, f"{due!r} is not a date."
+        conn.execute(
+            """INSERT INTO tasks (title, notes, priority, due_date, created_at, origin)
+               VALUES (?, ?, 'normal', ?, ?, 'assistant')""",
+            (title, (args.get("notes") or "").strip() or None, due,
+             datetime.now(timezone.utc).isoformat()))
+        log_audit(conn, "task_created", target=title, via="the assistant")
+        conn.commit()
+        return True, f"Added: {title}, due {due}."
+
+    if name == "finish_task":
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?",
+                           (args.get("task_id"),)).fetchone()
+        if not row:
+            return False, "No task with that number."
+        mark_task_done(conn, row, done=True)
+        log_audit(conn, "task_completed", target=row["title"], via="the assistant")
+        conn.commit()
+        return True, f"Ticked off: {row['title']}."
+
+    return False, f"There is no action called {name}."
+
+
+def assistant_turn(conn, user, said):
+    """One thing the owner said, and everything that follows from it.
+
+    Loops while the model wants to READ — so "what is waiting and what is on
+    today" is two lookups and one answer rather than three exchanges. Stops
+    dead the moment it proposes an ACTION: that gets written down as a
+    proposal and shown to the owner, and this function returns without having
+    changed anything.
+
+    Returns (ok, error). The conversation itself is read back out of the table
+    by the caller, so a failure halfway through still leaves the owner looking
+    at whatever did get written.
+    """
+    if not assistant_enabled():
+        return False, "The assistant needs ANTHROPIC_API_KEY to be set."
+    said = (said or "").strip()
+    if not said:
+        return False, "Nothing was said."
+    _assistant_say(conn, user["id"], "user", content=said[:4000])
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    for _step in range(ASSISTANT_MAX_STEPS):
+        history = assistant_messages_for_model(assistant_history(conn, user["id"]))
+        try:
+            response = client.messages.create(
+                model=ASSISTANT_MODEL, max_tokens=1024,
+                system=ASSISTANT_SYSTEM, tools=ASSISTANT_TOOLS,
+                messages=history)
+        except Exception as e:      # pragma: no cover - network/credit/limits
+            print(f"[assistant failed] {e}")
+            return False, "The assistant could not be reached just now."
+
+        text_parts, tool_calls = [], []
+        for block in (response.content or []):
+            kind = getattr(block, "type", None)
+            if kind == "text":
+                text_parts.append(getattr(block, "text", "") or "")
+            elif kind == "tool_use":
+                tool_calls.append(block)
+
+        said_text = "\n".join(t for t in text_parts if t.strip()).strip()
+
+        if not tool_calls:
+            _assistant_say(conn, user["id"], "assistant",
+                           content=said_text or "(nothing to say)")
+            return True, None
+
+        # Anything it says alongside a tool call is worth keeping — it is
+        # usually the sentence explaining what it is about to do.
+        if said_text:
+            _assistant_say(conn, user["id"], "assistant", content=said_text)
+
+        proposed_any = False
+        for call in tool_calls:
+            name = getattr(call, "name", "") or ""
+            args = getattr(call, "input", None) or {}
+            if name in ASSISTANT_ACTION_TOOLS:
+                # STOPS HERE. Written down, not run.
+                _assistant_say(
+                    conn, user["id"], "assistant",
+                    content=assistant_describe_action(conn, name, args),
+                    tool_name=name, tool_input=args,
+                    tool_call_id=getattr(call, "id", None),
+                    action_status="pending")
+                proposed_any = True
+            else:
+                result = assistant_read_tool(conn, user, name, args)
+                _assistant_say(conn, user["id"], "tool", content=result,
+                               tool_name=name,
+                               tool_call_id=getattr(call, "id", None))
+        if proposed_any:
+            return True, None
+    # Ran out of steps. Said plainly rather than silently truncated, because a
+    # half-answer that looks whole is worse than one that admits it stopped.
+    _assistant_say(conn, user["id"], "assistant",
+                   content="I looked at several things and did not get to an "
+                           "answer. Ask me again more narrowly?")
+    return True, None
+
+
+def assistant_confirm(conn, user, message_id, agreed):
+    """Carry out a proposal, or drop it. The only path that changes anything.
+
+    Re-reads the row rather than trusting anything the browser sent, and
+    refuses anything that is not a pending proposal belonging to this user —
+    so a stale tab, a second click, or somebody else's id all fail closed.
+    """
+    row = conn.execute(
+        """SELECT * FROM assistant_messages
+           WHERE id = ? AND user_id = ?""", (message_id, user["id"])).fetchone()
+    if not row:
+        return False, "No such proposal."
+    if row["action_status"] != "pending":
+        # Already confirmed, already cancelled, or never a proposal at all.
+        return False, "That has already been dealt with."
+    if (row["tool_name"] or "") not in ASSISTANT_ACTION_TOOLS:
+        return False, "That is not something the assistant can carry out."
+
+    if not agreed:
+        conn.execute(
+            "UPDATE assistant_messages SET action_status = 'cancelled' WHERE id = ?",
+            (row["id"],))
+        conn.commit()
+        _assistant_say(conn, user["id"], "tool",
+                       content="The owner cancelled that.",
+                       tool_name=row["tool_name"])
+        return True, "Cancelled."
+
+    try:
+        args = json.loads(row["tool_input"] or "{}")
+    except ValueError:
+        args = {}
+    ok, message = assistant_run_action(conn, user, row["tool_name"], args)
+    conn.execute(
+        "UPDATE assistant_messages SET action_status = ?, executed_at = ? WHERE id = ?",
+        ("confirmed" if ok else "cancelled",
+         datetime.now(timezone.utc).isoformat() if ok else None, row["id"]))
+    conn.commit()
+    _assistant_say(conn, user["id"], "tool", content=message,
+                   tool_name=row["tool_name"])
+    return ok, message
 
 
 def draft_reply_with_claude(context, compose_text):
