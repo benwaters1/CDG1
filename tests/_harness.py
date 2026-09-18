@@ -599,6 +599,51 @@ def ensure_room(min_occupancy=1):
         conn.close()
 
 
+def free_window(room_id, nights, after_days=30, clear_of_ateliers=False):
+    """The first arrival from today+after_days with `nights` genuinely free.
+
+    ASKED, NOT COUNTED, and that is the whole point. A suite that writes
+    `house_today() + timedelta(days=40)` is not choosing a date, it is
+    choosing an OFFSET -- and what sits at that offset changes every day the
+    calendar moves, because the seeded ateliers are placed relative to today
+    as well. Both then drift, at different speeds, until one lands on the
+    other.
+
+    That is exactly what happened: two suites picked +40 days, an atelier was
+    seeded across the same window, and the booking they posted was refused
+    with "those dates are held for a workshop". Nothing about either suite had
+    changed. The calendar had. Four checks went red on a morning when nobody
+    had touched the code they test, which is the worst kind of red there is --
+    it teaches people that a failure means nothing.
+
+    `clear_of_ateliers` is for suites that assert what is ON during a stay: a
+    seeded atelier overlapping the window is not a bug, it is another atelier,
+    and a test that says "nothing else is offered" needs a window with nothing
+    else in it.
+    """
+    from datetime import timedelta
+    conn = db()
+    try:
+        day = house_today() + timedelta(days=after_days)
+        for _ in range(900):
+            end = day + timedelta(days=nights)
+            with m.app.test_request_context("/"):
+                ok, _why = m.is_range_available(conn, room_id, day, end)
+            if ok and clear_of_ateliers:
+                clash = conn.execute(
+                    """SELECT 1 FROM workshop_sessions
+                        WHERE start_date < ? AND end_date >= ? LIMIT 1""",
+                    (end.isoformat(), day.isoformat())).fetchone()
+                ok = not clash
+            if ok:
+                return day
+            day += timedelta(days=1)
+    finally:
+        conn.close()
+    raise AssertionError(
+        "no free %d-night window for room %s within 900 days" % (nights, room_id))
+
+
 def secrets_token():
     import secrets
     return secrets.token_urlsafe(16)

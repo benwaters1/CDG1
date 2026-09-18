@@ -71,9 +71,9 @@
   <div class="g-two">
     <div>
       <p class="g-p g-lede-first">Five bedrooms inside a restoration followed by Vogue, AD Italia and the French press — a Class I Historic Monument still being brought back, and open to guests while the work goes on.</p>
-      <p class="g-p">The walls are bare plaster and weathered stone. They are protected under French law and cannot be changed, so they stay as two hundred and eighty years left them. Everything within them is new and was chosen carefully — the beds, the linen, the floors underfoot, the bathrooms.</p>
-      <p class="g-p">Both things are true at once. It is a stay with real limitations: no lift, original staircases, bathrooms shared and privately allocated on the ground floor, and electricity kept deliberately low. These are not oversights — they are the conditions under which a monument of this class is permitted to be lived in at all. In practice it means the evenings are lit by candle, and nobody has ever complained about that.</p>
-      <blockquote class="g-quote">Each room opens as the last one is finished. That is not a donation — it is how the work continues.</blockquote>
+      <p class="g-p">The walls are bare plaster and weathered stone. They are protected under French law and cannot be changed, so they stay as two hundred and eighty years left them. Everything within them is new. The beds are very good ones, dressed in hand-embroidered vintage linen found and collected over years rather than ordered by the crate — so no two rooms are made up the same. The floors and the bathrooms are new throughout.</p>
+      <p class="g-p">Both things are true at once. It is an old house and behaves like one: original staircases and no lift, bathrooms shared and privately allocated on the ground floor, and electricity kept deliberately low. These are not oversights — they are the conditions under which a monument of this class is permitted to be lived in at all. In practice it means the evenings are lit by candle, and nobody has ever complained about that.</p>
+      <blockquote class="g-quote g-quote--bord">Each room opens as the last one is finished. That is not a donation — it is how the work continues.</blockquote>
     </div>
     <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1500w" alt="Restoration work in progress" loading="lazy">
   </div>
@@ -701,12 +701,6 @@
 {{ animals() }}
 
 
-<div class="g-wrap"><svg class="g-house" viewBox="0 0 64 30" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M2 28h60"/><path d="M6 28V12l26-9 26 9v16"/>
-  <path d="M6 12h52"/><path d="M14 28v-8h5v8M27 28v-8h5v8M40 28v-8h5v8"/>
-  <path d="M20 8v-3M32 5v-3M44 8v-3"/>
-</svg></div>
-
 {% from '_faq.html' import faq %}
 {{ faq([
   ('Is there a lift?',
@@ -766,12 +760,12 @@
   </div>
   <p class="g-hint" style="margin-top:var(--s4)">
     {# A PIN OR NOTHING. This was a Google Maps SEARCH for the house by
-       name, which returns whatever Google thinks is closest to the person
-       searching -- from outside Europe it came back in Tokyo. A search
-       dressed up as a map is worse than no link, because the guest sets
-       off. house_maps is empty until somebody sets the coordinates. #}
-    {% if house_maps %}<a href="{{ house_maps.google }}" target="_blank" rel="noopener">Open in Google Maps</a>
-    {%- else %}<span>Telephone for directions &mdash; an address search does not find the gates</span>{% endif %}
+              name, which returns whatever Google thinks is closest to the person
+              searching -- from outside Europe it came back in Tokyo. A search
+              dressed up as a map is worse than no link, because the guest sets
+              off. house_maps is empty until somebody sets the coordinates. #}
+          {% if house_maps %}<a href="{{ house_maps.google }}" target="_blank" rel="noopener">Open in Google Maps</a>
+          {%- else %}<span>Telephone for directions &mdash; an address search does not find the gates</span>{% endif %}
     &middot; <a href="{{ url_for('contact_page') }}#map">See it on the map</a>
   </p>
 </div></section>
@@ -780,22 +774,7 @@
 {# Every figure verified against the system: five bedrooms of ninety-four rooms, one sitting a
    night in the kitchen, one event at a time, fifteen on an atelier. The
    constraint is the product, and the site had never said so. #}
-<section class="g-sec g-scarce" data-fold><div class="g-wrap">
-  <div class="g-scarce__in">
-    <p class="g-eyebrow">Worth Knowing</p>
-    <h2 class="g-scarce__h">How Small This Is</h2>
-    <p class="g-scarce__p">Not a marketing position. It is what a house still being restored can actually hold.</p>
 
-    <div class="g-scarce__grid">
-      <div class="g-scarce__i"><b class="g-fig">5</b><span>Bedrooms open, of ninety-four rooms</span></div>
-      <div class="g-scarce__i"><b class="g-fig">1</b><span>Sitting, when it runs</span></div>
-      <div class="g-scarce__i"><b class="g-fig">15</b><span>Guests at most on an atelier</span></div>
-      <div class="g-scarce__i"><b class="g-fig">1</b><span>Wedding or event at a time</span></div>
-    </div>
-
-    <p class="g-scarce__note">Rooms open one at a time, as the restoration reaches them.</p>
-  </div>
-</div></section>
 
 <!-- ============ WHAT A NIGHT INCLUDES ============ -->
 

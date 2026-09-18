@@ -196,6 +196,26 @@ def run():
                           follow_redirects=True).status_code == 200,
                 detail="the letters use it, so it has to work")
 
+        # THE PAGE A GUEST LANDS ON FIRST, RIGHT AFTER PAYING OR ASKING TO
+        # BOOK. Its "What it comes to" panel was wired to the booking row
+        # directly -- rooms_total, nights, rate_per_night are not columns on
+        # that table, they are worked out -- so every figure on it was blank.
+        # Checked here rather than only against the macro in isolation,
+        # because the fault was in the WIRING between the route and the
+        # template, on a booking made the way a real guest makes one.
+        confirm = guest.get("/book/confirmation/%s" % token)
+        s.check("the confirmation page opens too",
+                confirm.status_code == 200, confirm)
+        confirmed_body = confirm.get_data(as_text=True)
+        with m.app.test_request_context("/"):
+            opening_bill = m.booking_bill(conn, row["id"])
+        s.check("and its money panel actually says what is owed",
+                bool(opening_bill) and
+                ("%.2f" % opening_bill["total"]) in confirmed_body.replace(",", ""),
+                detail="booking_bill says %.2f; a panel with none of it "
+                       "printed is the fault it exists to fix"
+                       % (opening_bill["total"] if opening_bill else -1))
+
         # ---- telling the house when they arrive -------------------------
         s.section("They say when they are coming")
         guest.post("/book/manage/%s" % token,

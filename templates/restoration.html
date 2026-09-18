@@ -57,20 +57,7 @@
   </div>
 </section>
 
-<section class="g-sec g-sec--sand">
-  <div class="g-wrap">
-    <div class="g-two">
-      <div>
-        <p class="g-fr">Rien ne se fait vite ici<span class="g-fr__en">Nothing here is done quickly</span></p>
-    <p class="g-eyebrow">How the work is governed</p>
-        <h2 class="g-h2">Nothing here begins with a decision. <em>It begins with a dossier.</em></h2>
-        <p class="g-p">Because the château is Class I listed, every intervention is applied for and approved by the Monuments Historiques before a tool is lifted. Restorers work alongside artisans from the valley. New work is done so that it could one day be removed without harming what was there.</p>
-        <p class="g-p">The aim is not to return the château to a single moment in time. It is to let it go on.</p>
-      </div>
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1500w" alt="Original stonework" loading="lazy">
-    </div>
-  </div>
-</section>
+
 
 <section class="g-sec">
   <div class="g-wrap">
@@ -249,16 +236,6 @@
   </p>
 </div></section>
 
-
-<div class="g-wrap"><svg class="g-house" viewBox="0 0 64 30" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M2 28h60"/><path d="M6 28V12l26-9 26 9v16"/>
-  <path d="M6 12h52"/><path d="M14 28v-8h5v8M27 28v-8h5v8M40 28v-8h5v8"/>
-  <path d="M20 8v-3M32 5v-3M44 8v-3"/>
-</svg></div>
-
-
-
-<div class="g-wrap g-mark__wrap">{{ mark('trowel') }}</div>
 
 <!-- ============ THE FIGURES ============ -->
 {# Twelve hundred words on the restoration and not one number. These are the
@@ -569,24 +546,7 @@
 </div></section>
 
 <!-- ============ WHO DOES THE WORK ============ -->
-<section class="g-sec g-paper"><div class="g-wrap">
-  <p class="g-eyebrow">The Hands</p>
-  <h2 class="g-place">Who Does the Work</h2>
 
-  <dl class="g-facts-list">
-    <div><dt>Versailles</dt><dd>French conservation experts from Versailles advise on what may be touched and how</dd></div>
-    <div><dt>A retired plasterer</dt><dd>A local man in his eighties came out of retirement — the skills needed are no longer commonly known</dd></div>
-    <div><dt>Monuments Historiques</dt><dd>Every intervention approved before a tool is lifted. Reference PA00132943</dd></div>
-    <div><dt>A team of six</dt><dd>The core building team, working through the year</dd></div>
-    <div><dt>Guests</dt><dd>Taught alongside the conservators on the eighteenth-century frescoes in the dining room</dd></div>
-    <div><dt>The family</dt><dd>Karina oversees the work in France. Jasmine, who studied art history, on the research</dd></div>
-  </dl>
-
-  <blockquote class="g-pull">
-    <p>Many years passed, and in between we began slowly decorating and using the room just as it was.</p>
-    <cite>On waiting for permits to restore one room's beams and walls — work resumed in 2021</cite>
-  </blockquote>
-</div></section>
 
 
 <div class="g-wrap g-mark__wrap">{{ mark('plaster') }}</div>
@@ -594,83 +554,20 @@
 <!-- ============ THE RECORD ============ -->
 {# Publications verified against the château's own press page and the
    individual articles. Nothing here is claimed that cannot be shown. #}
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">The Record</p>
-  <h2 class="g-place">Who Has Been Watching</h2>
-  <p class="g-p">The restoration has been followed since the year it began.</p>
 
-  <div class="g-masthead">
-    <div class="g-masthead__i"><b>Vogue</b><span>Netherlands</span></div>
-    <div class="g-masthead__i"><b>AD</b><span>Architectural Digest Italia</span></div>
-    <div class="g-masthead__i"><b>House &amp; Garden</b><span>December 2018</span></div>
-    <div class="g-masthead__i"><b>Lonely Planet</b><span>2018</span></div>
-    <div class="g-masthead__i"><b>Daily Mail</b><span>On opening the gates</span></div>
-    <div class="g-masthead__i"><b>Domain</b><span>Australia</span></div>
-    <div class="g-masthead__i"><b>Home Beautiful</b><span>Australia</span></div>
-    <div class="g-masthead__i"><b>The Good Life France</b><span>Ten years on</span></div>
-  </div>
-
-  <div class="g-medal">
-    <p class="g-medal__k">2016</p>
-    <p class="g-medal__t">Medal of Honour</p>
-    <p class="g-medal__d">Awarded by the Fondation Prince Louis de Polignac in recognition of the restoration.</p>
-  </div>
-
-  <p class="g-p" style="margin-top:var(--s7)">The château has also been chosen as a setting by <em>Zimmermann</em>, <em>Cire Trudon</em>, <em>Sézane</em>, <em>Dôen</em>, <em>Mango</em> and <em>Rosemary Hallgarten</em>. The fees stay in the building.</p>
-</div></section>
 
 
 <!-- ============ THE JOURNAL ============ -->
 {# The newsletter form was only in the menu panel. This is the same route,
    placed where a reader who has just finished the page will see it. #}
-<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">The Journal</p>
-    <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
-    <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
-      <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
-             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
-        <fieldset class="g-interests">
-          <legend>What would you like to hear about?</legend>
-          <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
-          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
-          <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
-        </fieldset>
-      <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
-    </form>
-        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
-    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
-  </div>
-</div></section>
+
 
 
 <!-- ============ THE JOURNAL, PROPERLY ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap g-journal">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">Not Ready To Book</p>
-    <h2 class="g-place">Watch It Come Off The Wall</h2>
-    <p class="g-p">Ninety-four rooms, five finished. When a room opens, when something comes out from under the plaster, when the ateliers are released — that goes out first to the people reading along.</p>
-    <p class="g-p">It is the same record Vogue, AD Italia and the French press have been following since 2013. Rooms are usually spoken for before they reach the booking page.</p>
-    <form method="post" action="{{ url_for('newsletter_subscribe') }}" class="g-journal__form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="jr_email_rest">Your email</label>
-      <input type="email" id="jr_email_rest" name="email" placeholder="Your email" required autocomplete="email">
-      <button type="submit" class="g-btn g-btn--solid">Read along</button>
-    </form>
-    <p class="g-journal__note">A few times a year, when there is something worth sending. Unsubscribe in one click.</p>
-  </div>
-</div></section>
 
 
-<div class="g-wrap">
-  <p class="g-devise">
-    <span class="g-devise__fr">« Un centimètre, c'est une bonne matinée. »</span>
-    <span class="g-devise__en">A centimetre is a good morning</span>
-  </p>
-</div>
+
+
 
 
 
@@ -701,30 +598,17 @@
 
 
 <!-- ============ WHERE IT IS POSTED FIRST ============ -->
-<section class="g-sec"><div class="g-wrap g-insta">
-  <p class="g-fr">Au jour le jour<span class="g-fr__en">Day by day</span></p>
-  <p class="g-eyebrow">Before It Reaches Here</p>
-  <h2 class="g-place">The Work, As It Happens</h2>
-  <p class="g-p g-lede-first">What comes off a wall goes out the same week. This page is the edited version; the account is the unedited one, and rooms are usually spoken for before they reach the booking page.</p>
-  <p class="g-p">
-    <a href="https://www.instagram.com/chateaugudanes/" class="g-btn g-btn--solid" rel="me noopener">Instagram</a>
-    <a href="https://www.facebook.com/chateaugudanes/" class="g-btn" rel="me noopener">Facebook</a>
-  </p>
-  <p class="g-limit"><span class="g-limit__k">If you would rather not</span>The journal goes out a few times a year by email, and carries the same things without an account.</p>
-</div></section>
+
 
 <!-- ============ THE CLOSE ============ -->
-<section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Scaffolding in an unfinished room" loading="lazy">
-  <h2 class="g-close__h">The work continues because people come</h2>
-  <p class="g-close__p">A night, a table, a week at an atelier. Then the next room, the next window, the next stretch of fresco.</p>
-  <div class="g-close__acts">
-      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Work on it yourself</a>
-      <a href="{{ url_for('gallery_page') }}" class="g-btn g-btn">See the record</a>
-  </div>
-</div></section>
 
+
+
+
+{% from '_explorer.html' import restoration_explorer %}
+{% from '_interactive.html' import the_reveal %}
+{{ restoration_explorer(settings) }}
+{{ the_reveal(reveal_pairs) }}
 
 {{ scale() }}
 
@@ -733,7 +617,7 @@
   <p class="g-fr">Restons-en là pour l'instant<span class="g-fr__en">Enough for now</span></p>
   <p class="g-eyebrow">The Part You Can Do</p>
   <h2 class="g-place">Five Rooms Are Ready</h2>
-  <p class="g-p g-lede-first">The rest of this takes as long as it takes. The five finished rooms are what pays for it, and they are open now.</p>
+  <p class="g-p g-lede-first">The rest of this takes as long as it takes. Five rooms are finished, and they are open now.</p>
   <p class="g-p">
     <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See the rooms</a>
     <a href="{{ url_for('workshops_public') }}">Or learn a craft here</a>

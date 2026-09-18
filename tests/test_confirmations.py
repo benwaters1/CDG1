@@ -101,6 +101,24 @@ def run():
         s.check("the room's name is on its confirmation",
                 name and name["name"] in bodies["the room booking"],
                 detail=f"expected {name['name'] if name else '?'!r}")
+        # THE "WHAT IT COMES TO" PANEL. Its own docstring says why it exists:
+        # the page showed the reference and the dates and "then nothing about
+        # money at all". It arrived asking the booking row for rooms_total,
+        # nights, rate_per_night — columns that do not exist there — so it
+        # rendered its heading with no figures under it, on a page a guest has
+        # just been charged from. booking_recap() is the fix; this proves the
+        # figure it produces is the one printed on the actual page, not just
+        # that the function returns something.
+        bid = conn.execute("SELECT id FROM bookings WHERE manage_token = ?",
+                           (room["manage_token"],)).fetchone()["id"]
+        with m.app.test_request_context("/"):
+            bill = m.booking_bill(conn, bid)
+        if bill and bill["total"]:
+            s.check("and the total it was actually charged is on the page",
+                    ("%.2f" % bill["total"]) in bodies["the room booking"].replace(",", ""),
+                    detail=f"booking_bill says {bill['total']:.2f}, "
+                           "a guest just charged this should not see nothing "
+                           "or a different number")
     if session and "the workshop booking" in bodies:
         w = conn.execute(
             """SELECT workshops.title FROM workshop_sessions

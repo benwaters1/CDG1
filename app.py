@@ -36256,6 +36256,49 @@ def book_room(room_id):
     )
 
 
+def booking_recap(booking):
+    """The stay's arithmetic, shaped for the panel on the confirmation page.
+
+    Reads booking_bill and renames nothing else: one definition of what a stay
+    costs, presented. The room line, any extras, the taxe de sejour and the
+    total all come off the bill, so a stay whose dates or extras changed shows
+    what it now costs rather than what it cost when it was booked.
+
+    Returns None when there is no bill to show, and the panel simply does not
+    draw -- which is right for a stay that has been cancelled.
+    """
+    conn = get_db()
+    try:
+        bill = booking_bill(conn, booking["id"])
+    finally:
+        conn.close()
+    if not bill:
+        return None
+    room_line = next((l for l in bill["lines"] if l["kind"] == "room"), None)
+    tax_line = next((l for l in bill["lines"] if l["kind"] == "city_tax"), None)
+    nights = bill["nights"] or 0
+    rooms_total = room_line["amount"] if room_line else 0.0
+    return {
+        "room_name": booking["room_name"],
+        "nights": nights,
+        # Per night only where it divides into one -- a stay of no nights has
+        # no nightly rate, and printing one works out as a division by zero.
+        "rate_per_night": round(rooms_total / nights, 2) if nights else None,
+        "rooms_total": rooms_total,
+        # The discount rides here as a line of its own rather than being
+        # netted into the room total, so the panel shows the nights at the
+        # price they were sold at and the reduction beneath them.
+        "extras": [{"label": l["label"], "amount": l["amount"]}
+                   for l in bill["lines"] if l["kind"] in ("extra", "discount")],
+        "tourist_tax": tax_line["amount"] if tax_line else None,
+        "total": bill["total"],
+        "paid": bill["paid"],
+        "balance": bill["owed"],
+        "manage_url": url_for("manage_booking",
+                              manage_token=booking["manage_token"]),
+    }
+
+
 @app.route("/book/confirmation/<manage_token>")
 def booking_confirmation(manage_token):
     conn = get_db()
@@ -36267,7 +36310,8 @@ def booking_confirmation(manage_token):
     conn.close()
     if not booking:
         abort(404)
-    return render_template("booking_confirmation.html", booking=booking)
+    return render_template("booking_confirmation.html", booking=booking,
+                           recap=booking_recap(booking))
 
 
 @app.route("/book/stripe-success")
@@ -42100,8 +42144,16 @@ def workshops_public():
     # else this route reads.
     deposit_pct = workshop_deposit_to_show(conn)
     conn.close()
+    # What the panel at the top of the page quotes. The ateliers are priced
+    # individually, so the lowest is the honest single figure and the template
+    # says "from" whenever there is more than one of them.
+    priced = sorted((w for w in workshops if w["price_per_person"]),
+                    key=lambda w: w["price_per_person"])
+    glance_workshop = priced[0] if priced else None
+    glance_from = len({w["price_per_person"] for w in priced}) > 1
     return render_template(
         "workshops_public.html", workshops=workshops,
+        glance_workshop=glance_workshop, glance_from=glance_from,
         deposit_pct=deposit_pct,
         balance_days=WORKSHOP_BALANCE_DAYS,
         sessions_by_workshop=sessions_by_workshop,

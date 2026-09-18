@@ -76,7 +76,10 @@ def run():
         if hasattr(m, "house_setting") else "18"
     conn.close()
 
-    arrival = house_today() + timedelta(days=40)
+    # Asked, not counted. +40 days walked onto a seeded atelier the morning
+    # the calendar moved, and the booking below was refused for a reason that
+    # had nothing to do with the tax this suite is about.
+    arrival = _harness.free_window(room["id"], 3, after_days=40)
     departure = arrival + timedelta(days=3)          # 3 nights
 
     s.section("A booking made through the form carries the tax")
@@ -167,7 +170,7 @@ def run():
     # in full. Stamped or nothing.
     conn = db()
     old_room = _room(conn, 2)
-    old_arrival = house_today() + timedelta(days=300)
+    old_arrival = _harness.free_window(old_room["id"], 2, after_days=300)
     old_departure = old_arrival + timedelta(days=2)
     # Priced from the rate card, with no discount_amount, because that is the
     # only consistent state. total_price, discount_amount and the rate card are a
@@ -208,7 +211,7 @@ def run():
                    f"{legacy_stmt['total']:.2f}")
 
     s.section("A walk-in taken at the desk carries it too")
-    wi_arrival = house_today() + timedelta(days=60)
+    wi_arrival = _harness.free_window(room["id"], 2, after_days=60)
     r = oc.post("/admin/bookings/walk-in", data={
         "room_id": str(room["id"]),
         "arrival_date": wi_arrival.isoformat(),

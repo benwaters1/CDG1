@@ -1,0 +1,98 @@
+{#  ==========================================================================
+    THE ATELIER, AT A GLANCE
+
+    Two faults on this page, both structural:
+
+      1. THERE IS NO PRICE ON IT. The copy says "included in one price" and
+         never says what the price is. Twenty-three screens selling a
+         four-figure week with no figure anywhere. Someone deciding has to
+         click through to a booking form to find out what it costs, and most
+         will not.
+
+      2. "What a Day Actually Looks Like" — the single thing a buyer most
+         wants — sits at 79% of the way down, below the FAQ, below the market,
+         below the social links.
+
+    This panel puts the eight facts a person needs to decide in one place,
+    near the top, before any of the prose. It is not a summary of the page;
+    it is the page's answer to "should I do this".
+
+    Every figure comes from the workshop record. A row without a value does
+    not render, so a workshop with no set dates shows no dates line rather
+    than an empty one.
+    ========================================================================== #}
+
+{% macro atelier_glance(w, settings, price_from=False) %}
+<section class="g-gl">
+  <div class="g-gl__in">
+
+    <p class="g-gl__fr">L'essentiel</p>
+    <h2 class="g-gl__h">What it is, and what it costs</h2>
+
+    <dl class="g-gl__grid">
+
+      {% if w and w.price_per_person %}
+      <div class="g-gl__i g-gl__i--lead">
+        <dt>{{ 'From, per person' if price_from else 'Per person' }}</dt>
+        <dd class="g-gl__big">€{{ '{:,.0f}'.format(w.price_per_person|float) }}</dd>
+        <p class="g-gl__n">Everything in — bed, board, materials, the
+          transfers from Toulouse, and the run of the house</p>
+      </div>
+      {% endif %}
+
+      <div class="g-gl__i">
+        <dt>How long</dt>
+        <dd>{{ w.duration_label if w and w.duration_label else 'Five days, four nights' }}</dd>
+        <p class="g-gl__n">Arrive Sunday, work Monday to Thursday, leave Friday</p>
+      </div>
+
+      <div class="g-gl__i">
+        <dt>How many</dt>
+        <dd>Fifteen</dd>
+        <p class="g-gl__n">And the château takes no other guests while an
+          atelier is running</p>
+      </div>
+
+      <div class="g-gl__i">
+        <dt>Who it is for</dt>
+        <dd>No experience</dd>
+        <p class="g-gl__n">Nobody arrives knowing how to do this. That is the
+          point of being taught by the people doing it</p>
+      </div>
+
+      <div class="g-gl__i">
+        <dt>Taught by</dt>
+        <dd>The conservators</dd>
+        <p class="g-gl__n">The same artisans restoring the château, on the
+          walls they are actually restoring</p>
+      </div>
+
+      <div class="g-gl__i">
+        <dt>What you take home</dt>
+        <dd>A panel you made</dd>
+        <p class="g-gl__n">Plaster, gilding or fresco depending on the
+          atelier — yours, finished, and packed to travel</p>
+      </div>
+
+    </dl>
+
+    {# The day itself, brought up from 79% of the way down the page. #}
+    <div class="g-gl__day">
+      <p class="g-gl__k">A day, from waking</p>
+      <ol class="g-gl__ol">
+        <li><b>8.00</b> Breakfast, laid in the dining salon</li>
+        <li><b>9.30</b> On the scaffold or at the bench with the conservators</li>
+        <li><b>1.00</b> Lunch, long, at the table outside if the weather holds</li>
+        <li><b>2.30</b> Back to it — the afternoon is where the work happens</li>
+        <li><b>6.00</b> Down tools. The house, the pool, the valley, or nothing</li>
+        <li><b>8.00</b> Dinner at one sitting, everyone at one table</li>
+      </ol>
+    </div>
+
+    <p class="g-gl__a">
+      <a href="{{ url_for('workshops_public') }}#dates" class="g-btn g-btn--solid">See the dates</a>
+      <a href="{{ url_for('contact_page') }}" class="g-btn">Ask about a private group</a>
+    </p>
+  </div>
+</section>
+{% endmacro %}

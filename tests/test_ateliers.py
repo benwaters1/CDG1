@@ -178,5 +178,20 @@ def run():
             "The Long Weekender" not in body,
             detail="a finished workshop is still on the public page")
 
+    # THE PANEL THIS PAGE WAS BUILT AROUND. atelier_glance() was written
+    # because "twenty-three screens selling a four-figure week with no figure
+    # anywhere" was the finding — and the handover that added it called it
+    # with `workshop`, a name with nothing bound to it on a page whose route
+    # only ever passes `workshops` (plural, a list). The macro is written
+    # defensively, so nothing errors: it just renders its heading with no
+    # price under it, reproducing the exact fault it exists to fix. Checked
+    # here on the real page rather than on the macro in isolation, because the
+    # wiring between the route and the template is exactly what went missing.
+    s.check("and the price panel actually carries a price",
+            "What it is, and what it costs" in body and "€" in body.split(
+                "What it is, and what it costs", 1)[1][:600],
+            detail="the panel exists to put a figure on the page; one with no "
+                   "€ near it is the fault it was written to fix, recurring")
+
     conn.close()
     return s
