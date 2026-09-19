@@ -1,0 +1,90 @@
+12 files, against commit 52edc21. CRLF preserved.
+
+=============================================================
+RULE VIOLATIONS FOUND IN THE CURRENT REPO — 18 of them
+=============================================================
+All of these were removed in earlier rounds. They are all back, because
+every fix I made since the container reset was made against a stale copy
+and never reached the repo. This is the first sweep run against live code.
+
+FUNDER FRAMING — 5 places
+  restoration.html  "Every night booked and every workshop taken funds the
+                     next room. That is not a donation — it is how the work
+                     continues, and why Gudanes is open at all."
+                     The most explicit one on the site. Replaced with the
+                     house being open while still being made, which is the
+                     true and more interesting claim.
+  home.html         "Nothing here is funded from outside. The rooms that are
+                     finished pay for the ones that are not."
+  book_room.html    "Why it continues — Nothing here is funded from outside.
+                     The finished rooms pay for the rest."
+  book_rooms.html   "That is not a donation — it is how the work continues."
+  home.html         "and because of you"
+
+SELF-DEFEATING SCARCITY — 3 places
+  gallery.html x2, whats_on.html x1
+  "Rooms are usually spoken for before they reach the booking page."
+  On pages whose job is to get someone to the booking page. Deleted.
+
+ROOMS DESCRIBED AS FINISHED — 9 places
+  gallery.html x3, whats_on.html, restoration.html x4, workshops_public.html,
+  events_info.html, book_rooms.html x2
+  "Ninety-four rooms, five finished" / "Five rooms ready" / "Rooms are
+  finished one at a time" / "Every finished room" / "the most recently
+  finished rooms". All now "open to guests" or "restored".
+
+  Left alone deliberately: "they photograph in a way a finished room cannot"
+  — that is about other houses, not room status here.
+
+PRICE JUSTIFICATION — 1 place
+  book_room.html  "new and expensive" -> "new, and genuinely luxury"
+
+=============================================================
+WHAT'S ON — the fuller page you asked for
+=============================================================
+templates/whats_on.html            57 lines
+  "Within an Hour" goes from six places to twelve (even, so no card orphans):
+    Grotte de Lombrives   largest cave system in Europe, 39km, ten minutes
+                          down the valley. Cathar refuge, Bronze Age burial
+                          place, concerts in the cathedral chamber. Henri IV
+                          left his name on the wall in 1578.
+    Château de Lordat     965m, one of the largest medieval fortresses in the
+                          Ariège, on the spur directly above this valley.
+    The baths at Ax       33-38C, twenty minutes. Bassin des Ladres is free.
+    Parc de la Préhistoire  Tarascon, fifteen minutes.
+    Andorra               an hour and a quarter over the pass.
+    The Orlu valley       national reserve, izards, Maison des Loups.
+  Seasons expanded: transhumance, village fêtes, autumn named the quietest,
+  Beille's cross-country added to winter.
+  Checked against Ariège Pyrénées Tourisme and the operators, not memory.
+
+=============================================================
+THE REST
+=============================================================
+static/gudanes.css                102 lines
+  - PRINT: every page printed blank. `body * { visibility: hidden }` is
+    global and only the takeaway card is restored. Confirmed with a real
+    PDF: 3 pages, zero characters, including the booking confirmation with
+    its own Print button. Now 0 of 36.
+  - HERO: `.g-hero__in{ position: relative }` overrode the `position:
+    absolute` holding content over the film — headline on ~640px of navy.
+    Same line dropped `.g-hero__pause` into flow at the top of the hero,
+    over the MENU button, unclickable.
+  - CONSENT TEXT: 1.15:1 on the checkbox a guest must read before paying.
+    Now 10.4:1.
+  - Journal checkboxes had no accent-color; creed panel squeezed its quote
+    to 21 characters; note that reduced-motion does not cover video.
+
+book_room.html   ruin history added — the only guest page without it
+book_rooms.html  riding arranged through the château
+events_info.html / facilities.html  carriage stated as the château's own
+restaurant_info.html  the kitchen was "brought back" — from what
+home.html  agreed hero text; {{ workshops|length }}; journal label/id
+public_base.html  price out of the quick-book widget
+
+STILL NEED A ROUTE BACK (not in the design surface):
+  _care.html  bags and animals copy corrected today
+  _took.html  still the old byline in the repo
+  terms.html  built with .narrow-card / .manual-body, admin classes that
+              appear zero times in gudanes.css
+  three guest emails: stay, atelier, thank-you

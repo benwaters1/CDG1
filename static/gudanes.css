@@ -619,6 +619,10 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-room__rate{ text-align: left; }
 }
 
+/* NOTE: this covers transition and animation only. An autoplaying video is
+   neither, so the hero loop is handled separately in the page itself. If
+   another moving element is added that is not a transition or an animation,
+   it needs its own handling; this block will not catch it. */
 @media (prefers-reduced-motion: reduce){
   .g *{ transition: none !important; animation: none !important; }
 }
@@ -888,11 +892,20 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 /* ==========================================================================
    HERO VIDEO — full-bleed looping background, pause control.
    ========================================================================== */
-/* The video must stay in the layout flow. As position:absolute it was
-   removed from flow, .g-hero collapsed to zero height, and the section
-   below slid up underneath the video — the text-over-video overlap. */
+/* SUPERSEDED, kept because it is the reason not to undo the rule below.
+   This used to say the video must stay in the layout flow: as
+   position:absolute it left the flow, .g-hero collapsed to zero height and
+   the next section slid up underneath it. That cannot happen now — .g-hero
+   carries its own min-height (58vh, and 72/42/26vh for hero--full/short/
+   band), so it no longer takes its height from the film. Absolute is right
+   here; if those min-heights ever go, this comes back. */
+/* The film is the hero's ground, so it fills the hero rather than being a
+   band at the top of it. Sized with its own height, the hero could be taller
+   than the film and the content — anchored to the bottom — came to rest on
+   bare navy below it. */
 .g .g-hero__video{
-  width: 100%; height: clamp(22rem, 78vh, 46rem); object-fit: cover;
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; object-fit: cover;
   display: block;
 }
 .g-hero__pause{
@@ -3213,12 +3226,30 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g .g-dossier a:not(.g-btn):hover, .g .g-close a:not(.g-btn):hover{ color: #fff; }
 
 
-/* The Terms link sits in a .g-terms label inside the navy panel, so it needs
-   the light ink like everything else on that ground. It was navy on navy —
-   invisible, on the one link a guest must read before paying. */
-.g .g-terms a, .g .g-terms span{ color: rgba(214,196,164,.98); }
-.g .g-terms a{ border-bottom: 1px solid rgba(214,196,164,.5); }
-.g .g-terms a:hover{ color: #fff; border-bottom-color: #fff; }
+/* The terms consent sits in a .g-terms label, and that label paints its own
+   ground: `background: var(--sand-2)`, a light panel. It is NOT on the navy,
+   even inside the dossier — the navy is behind the panel, not behind the
+   text.
+
+   This rule previously set cream ink, with a comment saying it was navy on
+   navy before. That was true of the dark-panel case and wrong for the
+   default one: cream on sand-2 measures 1.15:1 for the link and 1.37:1 for
+   the label — the same invisibility the earlier fix set out to remove, moved
+   rather than solved, on the consent a guest must read before paying.
+
+   Dark ink for the sand panel. The one width where the panel drops its
+   background and does sit on the navy is handled beside the rule that
+   removes it, further down, so the two cannot drift apart. */
+.g .g-terms span{ color: var(--ink); }
+.g .g-terms a{ color: var(--blue-deep); border-bottom: 1px solid var(--gilt); }
+.g .g-terms a:hover{ color: var(--gilt); border-bottom-color: var(--gilt); }
+
+/* `.g .g-dossier a:not(.g-btn)` above colours every link in the navy dossier
+   cream, which outranks the rule above and is wrong for this one link. */
+.g .g-dossier .g-terms a:not(.g-btn),
+.g .g-aside .g-terms a:not(.g-btn){
+  color: var(--blue-deep); border-bottom: 1px solid var(--gilt);
+}
 
 /* Small links inside a hint were on an old grey at 4.12:1. */
 .g .g-hint a{ color: var(--blue-deep); border-bottom: 1px solid var(--gilt); }
@@ -4874,11 +4905,25 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 .g-season__l li{ position: relative; padding-left: var(--s5); font-size: 16px; line-height: 1.55; color: var(--ink); }
 .g-season__l li::before{ content: "·"; position: absolute; left: var(--s3); color: var(--gilt); font-weight: 700; }
 
-/* The takeaway card is the only thing that prints. */
+/* On a page that HAS a takeaway card, the card is the only thing worth
+   printing, so everything else is hidden and the card is promoted.
+
+   Scoped with :has() rather than applied to every page. Unscoped, the
+   `body * { visibility: hidden }` below restored only the card — and on any
+   page without one, which is nearly all of them, nothing ever became visible
+   again and the page printed as blank sheets. The booking confirmation was
+   one of them, and it carries its own "Print or save as PDF" button.
+
+   :has() is unsupported in a few older browsers; there the rule simply does
+   not apply, which prints the whole page rather than nothing. Failing toward
+   too much ink beats failing toward an empty sheet. */
 @media print{
-  body * { visibility: hidden; }
-  .g-takeaway__card, .g-takeaway__card * { visibility: visible; }
-  .g-takeaway__card{ position: absolute; inset: 0; border: 0; padding: 0; }
+  body:has(.g-takeaway__card) *{ visibility: hidden; }
+  body:has(.g-takeaway__card) .g-takeaway__card,
+  body:has(.g-takeaway__card) .g-takeaway__card *{ visibility: visible; }
+  body:has(.g-takeaway__card) .g-takeaway__card{
+    position: absolute; inset: 0; border: 0; padding: 0;
+  }
   .g-takeaway__k{ color: #000; }
 }
 
@@ -5807,9 +5852,15 @@ body.has-hero .g-cred{ background: var(--blue-deep); }
 }
 .g-interests label{
   display: flex; align-items: center; gap: var(--s3);
-  min-height: 40px; font-size: var(--t-ui); color: var(--ink); cursor: pointer;
+  min-height: 44px; font-size: var(--t-ui); color: var(--ink); cursor: pointer;
 }
-.g-interests input{ flex: 0 0 auto; width: 18px; height: 18px; }
+/* Every other checkbox on the site sets an accent-colour; this fieldset was
+   missed and fell back to the browser's default blue, the one saturated
+   colour nowhere else in the palette. */
+.g-interests input{
+  flex: 0 0 auto; width: 18px; height: 18px;
+  accent-color: var(--blue-deep);
+}
 
 .g-presskit .g-h3{ margin-top: var(--s6); }
 
@@ -6440,6 +6491,15 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
   .g-terms{ padding: var(--s4) 0 var(--s4) var(--s4); background: none; }
   .g-terms__l{ gap: var(--s3); }
   .g-terms__l > div{ gap: 1px; }
+
+  /* With the background gone the label sits straight on whatever is behind
+     it, which inside the booking dossier is navy. This is the only width at
+     which the terms text needs the light ink — kept here, beside the rule
+     that removes the ground. */
+  .g .g-dossier .g-terms span, .g .g-aside .g-terms span{ color: rgba(226,214,192,.98); }
+  .g .g-dossier .g-terms a:not(.g-btn), .g .g-aside .g-terms a:not(.g-btn){
+    color: rgba(226,214,192,.98); border-bottom: 1px solid rgba(226,214,192,.55);
+  }
 }
 .g-terms__k{
   margin: 0 0 var(--s4); font-family: var(--ui); font-size: var(--t-sm);
@@ -7023,7 +7083,10 @@ main > .g-wrap:empty{ display: none; }
 .g-story__d{ max-width: none; }
 .g-story__in, .g-story{ max-width: var(--m-read); }
 
-.g-creed__in{ max-width: var(--m-tight); }
+/* The creed panel holds a heading, a lede and a pull-quote, not a single
+   paragraph. --m-tight is sized for ~50 characters of 18px body text, and
+   squeezed its 27px display-italic quote to 21 characters a line. */
+.g-creed__in{ max-width: var(--m-wide); }
 .g-creed__lede{ max-width: none; }
 
 /* Where a panel is deliberately wide — because it holds a table, a grid or a
@@ -8824,8 +8887,17 @@ main > .g-facts{ border-bottom: 1px solid var(--line); }
 
    Found by a new check that asks whether every control is actually reachable
    with elementFromPoint, rather than only whether it overlaps something. */
-.g-hero__pause{ position: relative; z-index: 6; }
-.g-hero__in{ position: relative; z-index: 2; }
+/* Both take z-index only, deliberately without `position`.
+   Adding `position: relative` lifts them above the wash as intended, and
+   also overrides the `position: absolute` each already has further up —
+   which anchors the pause button to the bottom-right of the hero and holds
+   the hero content OVER the film. With it, the content fell below the video
+   onto roughly 640px of bare navy, the wash gradient and the title's
+   text-shadow had nothing to sit on, and the pause button dropped into
+   normal flow at the top of the hero, on top of the MENU button and
+   unclickable. Both elements are already positioned, so z-index is enough. */
+.g-hero__pause{ z-index: 6; }
+.g-hero__in{ z-index: 2; }
 
 /* `.g-hero__wash` is the gradient over the hero photograph, and on the events
    pages it sits ON TOP of the hero's own primary button — so "Make an enquiry"

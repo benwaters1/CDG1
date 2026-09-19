@@ -73,7 +73,7 @@
       <p class="g-p g-lede-first">Five bedrooms inside a restoration followed by Vogue, AD Italia and the French press — a Class I Historic Monument still being brought back, and open to guests while the work goes on.</p>
       <p class="g-p">The walls are bare plaster and weathered stone. They are protected under French law and cannot be changed, so they stay as two hundred and eighty years left them. Everything within them is new. The beds are very good ones, dressed in hand-embroidered vintage linen found and collected over years rather than ordered by the crate — so no two rooms are made up the same. The floors and the bathrooms are new throughout.</p>
       <p class="g-p">Both things are true at once. It is an old house and behaves like one: original staircases and no lift, bathrooms shared and privately allocated on the ground floor, and electricity kept deliberately low. These are not oversights — they are the conditions under which a monument of this class is permitted to be lived in at all. In practice it means the evenings are lit by candle, and nobody has ever complained about that.</p>
-      <blockquote class="g-quote g-quote--bord">Each room opens as the last one is finished. That is not a donation — it is how the work continues.</blockquote>
+      <blockquote class="g-quote g-quote--bord">The rooms open one at a time, as the restoration reaches them.</blockquote>
     </div>
     <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1500w" alt="Restoration work in progress" loading="lazy">
   </div>
@@ -267,7 +267,7 @@
     {# A guest who finds nothing available currently leaves with nothing.
        These are the people most likely to book — they arrived with dates. #}
     <div class="g-waitlist">
-      <p class="g-fr">Cinq chambres, quatre-vingt-neuf à venir<span class="g-fr__en">Five rooms ready, eighty-nine to come</span></p>
+      <p class="g-fr">Cinq chambres, quatre-vingt-neuf à venir<span class="g-fr__en">Five rooms open to guests, eighty-nine to come</span></p>
     <p class="g-eyebrow">If Those Dates Are Taken</p>
       <h3 class="g-h3">Tell us and we will write when they open</h3>
       <p class="g-p">Rooms come back. People move dates, and rooms open as the restoration reaches them. If you leave your dates we will write to you before they go public.</p>
@@ -496,8 +496,8 @@
     <div class="g-extra__b">
       <p class="g-extra__k">The Valley Floor</p>
       <h3 class="g-extra__t">Riding</h3>
-      <p class="g-extra__d">Horses from a stable in the valley, ridden out along the Ariège and up through the forest tracks above the village. Hacks of an hour or a half-day, with a guide who knows which paths are passable after rain. Suitable for beginners; the mountain routes are not.</p>
-      <p class="g-extra__p">By the hour or the half-day · weight and experience asked in advance</p>
+      <p class="g-extra__d">Horses from a stable in the valley, brought up to the château or met down in the valley, and ridden out along the Ariège and up through the forest tracks above the village. Hacks of an hour or a half-day, with a guide who knows which paths are passable after rain. Suitable for beginners; the mountain routes are not.</p>
+      <p class="g-extra__p">Arranged through the château when you book · by the hour or the half-day · weight and experience asked in advance</p>
     </div>
   </article>
 
@@ -735,8 +735,11 @@
     <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
     <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
-      <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
+      {# One id, set once. Calling random twice produced a different number for
+         the label and the input, so the `for` pointed at nothing. #}
+      {% set j_id = 'j-email-' ~ range(1000,9999)|random %}
+      <label class="g-vh" for="{{ j_id }}">{{ t('Email address') }}</label>
+      <input type="email" inputmode="email" name="email" id="{{ j_id }}"
              placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
       <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
     </form>
@@ -845,7 +848,7 @@
 <div class="g-wrap">
   <p class="g-devise">
     <span class="g-devise__fr">« Cinq chambres prêtes. Quatre-vingt-neuf attendent. »</span>
-    <span class="g-devise__en">Five rooms ready. Eighty-nine waiting</span>
+    <span class="g-devise__en">Five rooms open to guests. Eighty-nine waiting</span>
   </p>
 </div>
 
@@ -855,7 +858,7 @@
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Linen turned down" loading="lazy">
   <h2 class="g-close__h">Take a room</h2>
-  <p class="g-close__p">Five bedrooms, opened one at a time as the restoration reaches them. Each room opens as the last one is finished.</p>
+  <p class="g-close__p">Five bedrooms, opened one at a time as the restoration reaches them.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check your dates</a>
       <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Keep the evening</a>

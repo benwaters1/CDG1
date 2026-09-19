@@ -61,10 +61,10 @@
     <p class="g-eyebrow">The Record · Fifteen Years</p>
     <h1 class="g-pagehead">The château, as it is</h1>
   <p class="g-p g-lede-first">Photographs taken across the seasons, mostly by guests and by the family, over a decade of work.</p>
-  <p class="g-p">There is no styling here and very little tidying. Rooms are photographed as they are on the day — some finished, some with the plaster still open and the scaffolding up. That is the point of the record.</p>
+  <p class="g-p">There is no styling here and very little tidying. Rooms are photographed as they are on the day — some restored, some with the plaster still open and the scaffolding up. That is the point of the record.</p>
 
 
-    <p class="g-lede">Bare plaster and finished salons, the grounds in every season, and the work itself. No staging, and nothing hidden.</p>
+    <p class="g-lede">Bare plaster and restored salons, the grounds in every season, and the work itself. No staging, and nothing hidden.</p>
     <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
   </div>
 </section>
@@ -230,7 +230,7 @@
       <dl class="g-plate__l">
         <div><dt>Taken by</dt><dd>The family, the guests, and the magazines that have come</dd></div>
         <div><dt>Not styled</dt><dd>Rooms are photographed as they are that morning</dd></div>
-        <div><dt>Not finished</dt><dd>Every room here was unusable at some point in the last fifteen years</dd></div>
+        <div><dt>Not restored yet</dt><dd>Every room here was unusable at some point in the last fifteen years</dd></div>
         <div><dt>The walls</dt><dd>Bare by law, and the reason the photographs look the way they do</dd></div>
       </dl>
     </div>
@@ -248,8 +248,11 @@
     <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
     <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
-      <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
+      {# One id, set once. Calling random twice produced a different number for
+         the label and the input, so the `for` pointed at nothing. #}
+      {% set j_id = 'j-email-' ~ range(1000,9999)|random %}
+      <label class="g-vh" for="{{ j_id }}">{{ t('Email address') }}</label>
+      <input type="email" inputmode="email" name="email" id="{{ j_id }}"
              placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>
@@ -272,8 +275,8 @@
   <div class="g-journal__in">
     <p class="g-eyebrow">Not Ready To Book</p>
     <h2 class="g-place">Watch It Come Off The Wall</h2>
-    <p class="g-p">Ninety-four rooms, five finished. When a room opens, when something comes out from under the plaster, when the ateliers are released — that goes out first to the people reading along.</p>
-    <p class="g-p">It is the same record Vogue, AD Italia and the French press have been following since 2013. Rooms are usually spoken for before they reach the booking page.</p>
+    <p class="g-p">Ninety-four rooms, five open to guests. When a room opens, when something comes out from under the plaster, when the ateliers are released — that goes out first to the people reading along.</p>
+    <p class="g-p">It is the same record Vogue, AD Italia and the French press have been following since 2013.</p>
     <form method="post" action="{{ url_for('newsletter_subscribe') }}" class="g-journal__form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="g-vh" for="jr_email_gal">Your email</label>
@@ -291,13 +294,13 @@
   <p class="g-eyebrow">Fifteen Years of It</p>
   <h2 class="g-place">Rooms That No Longer Look Like This</h2>
 
-  <p class="g-p g-lede-first">Photographs taken since 2013, of rooms in states that have gone and will not come back. A wall opened, a floor lifted, a ceiling before it was consolidated. Once a room is finished, that version of it exists only here.</p>
+  <p class="g-p g-lede-first">Photographs taken since 2013, of rooms in states that have gone and will not come back. A wall opened, a floor lifted, a ceiling before it was consolidated. Once a room is restored, that version of it exists only here.</p>
   <p class="g-p">It is the reason the record was kept at all. It is also, unexpectedly, the most useful thing on this site for anyone scouting a location — the same room can be seen stripped to stone and finished, which is a choice no other building can offer.</p>
 
   <div class="g-grid g-grid--2">
     <div class="g-panel">
       <h3 class="g-h3">For anyone reading along</h3>
-      <p class="g-p">The archive is the long version of the journal. Ninety-four rooms, five finished, and every one of the others photographed as it was found.</p>
+      <p class="g-p">The archive is the long version of the journal. Ninety-four rooms, five open to guests, and every one of the others photographed as it was found.</p>
       
     </div>
     <div class="g-panel">
@@ -330,7 +333,7 @@
   <p class="g-fr">Au jour le jour<span class="g-fr__en">Day by day</span></p>
   <p class="g-eyebrow">Before It Reaches Here</p>
   <h2 class="g-place">The Work, As It Happens</h2>
-  <p class="g-p g-lede-first">What comes off a wall goes out the same week. This page is the edited version; the account is the unedited one, and rooms are usually spoken for before they reach the booking page.</p>
+  <p class="g-p g-lede-first">What comes off a wall goes out the same week. This page is the edited version; the account is the unedited one.</p>
   <p class="g-p">
     <a href="https://www.instagram.com/chateaugudanes/" class="g-btn g-btn--solid" rel="me noopener">Instagram</a>
     <a href="https://www.facebook.com/chateaugudanes/" class="g-btn" rel="me noopener">Facebook</a>

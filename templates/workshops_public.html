@@ -332,7 +332,7 @@
     <p class="g-eyebrow">Bathing</p>
     <h2 class="g-h2">Les Salles de Bains</h2>
     <p class="g-p g-lede-first">Floral papers, a cast-iron freestanding bath, and a dressing room to yourself.</p>
-    <p class="g-p">Three on the ground floor, each papered differently — brass fittings, hexagonal terracotta underfoot, deep towels, and a window onto the valley. They are the most recently finished rooms in the building, and it shows.</p>
+    <p class="g-p">Three on the ground floor, each papered differently — brass fittings, hexagonal terracotta underfoot, deep towels, and a window onto the valley. They are the most recently restored rooms in the building, and it shows.</p>
     <p class="g-p">Ensuite bathrooms are not permitted under historic preservation rules, which is why they sit together downstairs rather than off each bedroom. It also means they are among the most modern rooms in the building. On a workshop they are shared between the group and privately allocated.</p>
   </div>
 </div></section>
@@ -530,8 +530,11 @@
     <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
     <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
-      <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
+      {# One id, set once. Calling random twice produced a different number for
+         the label and the input, so the `for` pointed at nothing. #}
+      {% set j_id = 'j-email-' ~ range(1000,9999)|random %}
+      <label class="g-vh" for="{{ j_id }}">{{ t('Email address') }}</label>
+      <input type="email" inputmode="email" name="email" id="{{ j_id }}"
              placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>

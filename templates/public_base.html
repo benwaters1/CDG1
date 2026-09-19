@@ -165,7 +165,7 @@
             </span>
           </div>
           <button type="submit" class="g-btn g-btn--solid g-qbook__go">{{ t('Check availability') }}</button>
-          <p class="g-qbook__n">{{ t('Five rooms · from €{price} a night · breakfast included', price=(house_rooms.from_price if house_rooms else 220)) }}</p>
+          <p class="g-qbook__n">{{ t('Five rooms · breakfast included') }}</p>
         </form>
 
         <p class="g-navwrap__group">{{ t('Stay') }}</p>
@@ -331,7 +331,7 @@
           <span class="g-bookmenu__txt">
             <b>{{ t('Stay Now') }}</b>
             <em>{{ t('A room, your own dates') }}</em>
-            <span class="g-bookmenu__meta">{{ t('Five rooms · from €{price} a night · breakfast included', price=(house_rooms.from_price if house_rooms else 220)) }}</span>
+            <span class="g-bookmenu__meta">{{ t('Five rooms · breakfast included') }}</span>
           </span>
         </a>
 

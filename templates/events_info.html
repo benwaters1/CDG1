@@ -169,7 +169,7 @@
   <div>
     <p class="g-eyebrow">The Setting</p>
     <h2 class="g-h2">Rooms in every state between ruin and restoration</h2>
-    <p class="g-p">Ninety-four rooms across five floors and 43,000 square feet, an eighteenth-century façade by the architect of the Petit Trianon, and parkland beneath the Pyrénées. Some rooms are finished; some are bare plaster and weathered stone. Both photograph extraordinarily.</p>
+    <p class="g-p">Ninety-four rooms across five floors and 43,000 square feet, an eighteenth-century façade by the architect of the Petit Trianon, and parkland beneath the Pyrénées. Some rooms are restored; some are bare plaster and weathered stone. Both photograph extraordinarily.</p>
     <p class="g-p">Four salons, a chapel, two vestibules and the grounds — the main dining room seats forty, the other salons twenty to thirty, and the outdoor areas take larger parties.</p>
   </div>
   <div class="g-two__media">
@@ -199,7 +199,7 @@
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1000w" alt="The parkland" loading="lazy">
       <div class="g-incl-card__b">
         <h3 class="g-incl-card__t">The Arrival</h3>
-        <p>Horses and a carriage can be arranged for the drive, which was built for exactly that. Or the bus from Toulouse, which is how most guests come and which is its own kind of arrival.</p>
+        <p>The carriage is the château's own, and the drive was built for exactly that arrival — a quarter of a mile under the limes at walking pace. Or the bus from Toulouse, which is how most guests come and which is its own kind of arrival.</p>
       </div>
     </article>
   </div>
@@ -335,8 +335,11 @@
     <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
     <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
-      <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
+      {# One id, set once. Calling random twice produced a different number for
+         the label and the input, so the `for` pointed at nothing. #}
+      {% set j_id = 'j-email-' ~ range(1000,9999)|random %}
+      <label class="g-vh" for="{{ j_id }}">{{ t('Email address') }}</label>
+      <input type="email" inputmode="email" name="email" id="{{ j_id }}"
              placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required value="{{ prefill_email | default('') }}" autocomplete="email">
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>

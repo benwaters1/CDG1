@@ -127,10 +127,10 @@
 </svg>
   <h2 class="g-place">The Valley Through the Year</h2>
   <dl class="g-facts-list">
-    <div><dt>Spring</dt><dd>Wildflowers through the parkland, the gardens waking, and the markets filling again after winter. Snow still on the high peaks.</dd></div>
-    <div><dt>Summer</dt><dd>The pool opens. Long evenings, dinner outside, and the vide-greniers and antique fairs at their best — Mirepoix on a Monday, Foix at the end of July.</dd></div>
-    <div><dt>Autumn</dt><dd>Virginia creeper turns the gates scarlet. Mushrooms in the woods, the harvest through the valley, and the light that photographers come for.</dd></div>
-    <div><dt>Winter</dt><dd>Ax 3 Domaines is twenty-five minutes away — eighty kilometres of piste between 1,400 and 2,400 metres. The thermal baths at Ax run 33–38°C all year.</dd></div>
+    <div><dt>Spring</dt><dd>Wildflowers through the parkland, the gardens waking, and the markets filling again after winter. Snow still on the high peaks, and the transhumance beginning — herds walked up to the summer pasture, which the valley still turns out for.</dd></div>
+    <div><dt>Summer</dt><dd>The pool opens. Long evenings, dinner outside, and the vide-greniers and antique fairs at their best — Mirepoix on a Monday, Foix at the end of July. Village fêtes most weekends, and the rivers cold enough to swim in.</dd></div>
+    <div><dt>Autumn</dt><dd>Virginia creeper turns the gates scarlet. Mushrooms in the woods, the harvest through the valley, and the light that photographers come for. The quietest season here, and the one we would choose.</dd></div>
+    <div><dt>Winter</dt><dd>Ax 3 Domaines is twenty-five minutes away — eighty kilometres of piste between 1,400 and 2,400 metres. Plateau de Beille has sixty kilometres of cross-country above Les Cabannes. The thermal baths at Ax run 33–38°C all year, which is the point of them in February.</dd></div>
   </dl>
 </div></section>
 
@@ -166,9 +166,11 @@
 
 <section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
   <p class="g-p" style="text-align:center;margin:0 auto">
-    Class I protection means the walls stay as they were found. Everything within
-    them — beds, linen, floors, bathrooms — is new, and finished to a standard
-    the building around it has not reached yet. The imperfection is deliberate, and the valley outside is no more polished than the house.
+    This house was abandoned in 1850 and stood empty for over a century and a
+    half. Class I protection means the walls stay as that left them. Everything
+    within them — beds, linen, floors, bathrooms — is new, and finished to a
+    standard the building around it has not reached yet. The imperfection is
+    deliberate, and the valley outside is no more polished than the house.
   </p>
 </div></section>
 
@@ -219,6 +221,36 @@
       <h3 class="g-find__t">Labouiche</h3>
       <p class="g-find__d">An underground river you travel by boat, near Foix. Europe's longest navigable one, and much better than it sounds.</p>
     </div>
+    <div class="g-find">
+      <p class="g-find__k">39 kilometres</p>
+      <h3 class="g-find__t">Grotte de Lombrives</h3>
+      <p class="g-find__d">The largest cave system in Europe, ten minutes down the valley at Ussat. A refuge for the Cathars, a Bronze Age burial place, and a chamber with acoustics good enough that concerts are held in it. Henri IV walked four hundred metres in and left his name on the wall in 1578.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">965 metres</p>
+      <h3 class="g-find__t">Château de Lordat</h3>
+      <p class="g-find__d">One of the largest medieval fortresses in the Ariège, on the spur directly above this valley. Ruined, open, and almost always empty. Ten minutes, and the whole valley laid out beneath you.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">33–38°C</p>
+      <h3 class="g-find__t">The baths at Ax</h3>
+      <p class="g-find__d">Thermal water the Romans used and the town was built on, twenty minutes up the road. Open all year, and best in falling snow. The Bassin des Ladres in the square outside is free, and locals still put their feet in it.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">Prehistory, outdoors</p>
+      <h3 class="g-find__t">Parc de la Préhistoire</h3>
+      <p class="g-find__d">At Tarascon, fifteen minutes away. Life-size animals through a wooded park, workshops in spear-throwing and fire-making, and the best explanation of what is on the cave walls at Niaux. The one that works with children.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">Another country</p>
+      <h3 class="g-find__t">Andorra</h3>
+      <p class="g-find__d">An hour and a quarter up the valley and over the pass. Duty-free, high mountain, and a strange small principality that has never belonged to France or Spain. Take a passport.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">Izards and wolves</p>
+      <h3 class="g-find__t">The Orlu valley</h3>
+      <p class="g-find__d">A national reserve half an hour away where izards graze the slopes in plain sight, and the Maison des Loups keeps wolves in wide enclosures on the mountainside. A walk in up the valley, and no road beyond it.</p>
+    </div>
   </div>
 
   <p class="g-hint" style="margin-top:var(--s6)">Also within reach: Roquefixade, facing Montségur across the valley and free to walk any day of the year; the Lombrives caves; and Camon, listed among the most beautiful villages in France.</p>
@@ -237,8 +269,11 @@
     <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
     <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
-      <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
+      {# One id, set once. Calling random twice produced a different number for
+         the label and the input, so the `for` pointed at nothing. #}
+      {% set j_id = 'j-email-' ~ range(1000,9999)|random %}
+      <label class="g-vh" for="{{ j_id }}">{{ t('Email address') }}</label>
+      <input type="email" inputmode="email" name="email" id="{{ j_id }}"
              placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>
@@ -263,8 +298,8 @@
   <div class="g-journal__in">
     <p class="g-eyebrow">Not Ready To Book</p>
     <h2 class="g-place">Watch It Come Off The Wall</h2>
-    <p class="g-p">Ninety-four rooms, five finished. When a room opens, when something comes out from under the plaster, when the ateliers are released — that goes out first to the people reading along.</p>
-    <p class="g-p">It is the same record Vogue, AD Italia and the French press have been following since 2013. Rooms are usually spoken for before they reach the booking page.</p>
+    <p class="g-p">Ninety-four rooms, five open to guests. When a room opens, when something comes out from under the plaster, when the ateliers are released — that goes out first to the people reading along.</p>
+    <p class="g-p">It is the same record Vogue, AD Italia and the French press have been following since 2013.</p>
     <form method="post" action="{{ url_for('newsletter_subscribe') }}" class="g-journal__form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="g-vh" for="jr_email_won">Your email</label>
