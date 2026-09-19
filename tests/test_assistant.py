@@ -20,7 +20,7 @@ proposal, and a tool name the model made up.
 """
 import json
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, free_window
 import _harness
 
 m = _harness.m
@@ -72,6 +72,16 @@ def _cleanup(conn, owner_id):
     conn.execute("DELETE FROM assistant_messages WHERE user_id = ?", (owner_id,))
     conn.execute("DELETE FROM tasks WHERE title LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM expenses WHERE description LIKE ?", (TAG + "%",))
+    # AND THE STAY. This suite books somebody in ARRIVING TODAY so the kitchen
+    # sheet has an allergy to find, and leaving it behind put a phantom guest
+    # on every "who is arriving" in the app: nine checks in four other suites
+    # went red — the consequences list, the home warnings that must be able to
+    # be empty, the watch tasks, and the rooms-ready sheet. A suite that does
+    # not clear up is a suite that breaks the ones after it.
+    conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM guests WHERE email LIKE ?", (TAG.lower() + "%",))
+    conn.execute("DELETE FROM guest_notes WHERE guest_id NOT IN "
+                 "(SELECT id FROM guests)")
     conn.commit()
 
 
@@ -112,6 +122,121 @@ def run():
     s.check("a read tool needed no confirmation",
             not any(r["action_status"] == "pending" for r in rows),
             detail="looking at today's arrivals is not a decision")
+
+    # ---- the things somebody actually asks in the morning ---------------
+    s.section("What it can tell you about the guests")
+    # Through the dispatcher directly: these are reads, so there is no gate to
+    # exercise, and what matters is that they come back with the house's real
+    # answer rather than an empty string the model would then invent around.
+    room = _harness.ensure_room(min_occupancy=2)
+    arrive = _harness.free_window(room["id"], 2, after_days=15)
+    now = m.datetime.now(m.timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+             guest_email, arrival_date, departure_date, party_size, status,
+             created_at, estimated_arrival_time)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 2, 'confirmed', ?, '18:30')""",
+        (room["id"], TAG + "-ARR", TAG.lower() + "arrtok",
+         TAG + " Almeida", TAG.lower() + ".almeida@example.invalid",
+         arrive.isoformat(), (arrive + m.timedelta(days=2)).isoformat(), now))
+    conn.execute(
+        """INSERT INTO guests (name, email, dietary_notes, created_at)
+           VALUES (?, ?, ?, ?)""",
+        (TAG + " Almeida", TAG.lower() + ".almeida@example.invalid",
+         "severe shellfish allergy", now))
+    # ATTACHED TO THE STAY, because that is the only way the kitchen sheet
+    # finds it: dietary_sheet joins the profile on bookings.linked_guest_id.
+    # A real booking gets that at the moment it is confirmed; one inserted
+    # straight into the table does not, and a fixture without it tests a
+    # situation the app does not produce.
+    conn.execute("""UPDATE bookings SET linked_guest_id =
+                      (SELECT id FROM guests WHERE email = ?)
+                    WHERE reference_code = ?""",
+                 (TAG.lower() + ".almeida@example.invalid", TAG + "-ARR"))
+    conn.commit()
+
+    said = m.assistant_read_tool(conn, owner, "arrivals",
+                                 {"day": arrive.isoformat()})
+    s.check("it can say who is arriving on a day",
+            TAG + " Almeida" in said, detail=said[:200])
+    s.check("with the time they said they would get here", "18:30" in said)
+    # THE ONE THAT MATTERS. An allergy paraphrased is an allergy that can kill
+    # somebody, so it comes back word for word and the system prompt tells the
+    # model to repeat it rather than summarise it.
+    s.check("and their allergy, in the words it was written in",
+            "severe shellfish allergy" in said,
+            detail="a dietary note must reach the answer verbatim")
+
+    found = m.assistant_read_tool(conn, owner, "find_guest",
+                                  {"query": TAG + " Almeida"})
+    s.check("it can look a guest up by name", TAG + " Almeida" in found,
+            detail=found[:200])
+    s.check("and says what they cannot eat",
+            "shellfish" in found, detail=found[:200])
+
+    here = m.assistant_read_tool(conn, owner, "who_is_here", {})
+    s.check("and it can say who is in the house", isinstance(here, str) and here,
+            detail=str(here)[:120])
+
+    s.check("none of the three needs confirming",
+            not ({"arrivals", "who_is_here", "find_guest"} & m.ASSISTANT_ACTION_TOOLS),
+            detail="a lookup behind a confirm teaches people to press yes unread")
+
+
+    s.section("What it can tell the kitchen")
+    # dietary_sheet is the one place the three hiding places for an allergy --
+    # the stay, the table reservation, the atelier place -- are brought
+    # together. The assistant reads THAT rather than assembling a fourth
+    # answer, so it cannot disagree with the sheet the chef is holding.
+    booking_row = conn.execute(
+        "SELECT id FROM bookings WHERE reference_code = ?", (TAG + "-ARR",)).fetchone()
+    conn.execute("UPDATE bookings SET arrival_date = ?, departure_date = ? WHERE id = ?",
+                 (m.house_today().isoformat(),
+                  (m.house_today() + m.timedelta(days=2)).isoformat(),
+                  booking_row["id"]))
+    conn.commit()
+    kitchen = m.assistant_read_tool(conn, owner, "kitchen", {})
+    s.check("it can say what the kitchen needs", isinstance(kitchen, str) and kitchen,
+            detail=str(kitchen)[:120])
+    s.check("and an allergy reaches it in the words it was written in",
+            "severe shellfish allergy" in kitchen,
+            detail=kitchen[:300])
+    s.check("kitchen is a lookup, not a decision",
+            "kitchen" not in m.ASSISTANT_ACTION_TOOLS)
+
+    s.section("Acting on a guest waits for the owner, like everything else")
+    before_time = conn.execute(
+        "SELECT estimated_arrival_time FROM bookings WHERE id = ?",
+        (booking_row["id"],)).fetchone()["estimated_arrival_time"]
+    before = _install([
+        _Response([_Block(type="tool_use", id="t9", name="set_arrival_time",
+                          input={"booking_id": booking_row["id"], "time": "22:15"})]),
+    ])
+    try:
+        m.assistant_turn(conn, owner, "they said quarter past ten")
+    finally:
+        _restore(before)
+    proposed = conn.execute(
+        """SELECT * FROM assistant_messages WHERE user_id = ? AND action_status = 'pending'
+           ORDER BY id DESC LIMIT 1""", (owner["id"],)).fetchone()
+    s.check("it is put up for confirmation", proposed is not None)
+    s.check("and the booking has NOT moved",
+            conn.execute("SELECT estimated_arrival_time FROM bookings WHERE id = ?",
+                         (booking_row["id"],)).fetchone()["estimated_arrival_time"]
+            == before_time,
+            detail="a model response changed a real booking")
+    # Composed from the database, so a wrong id names the wrong guest on screen
+    # rather than agreeing with whatever the assistant said.
+    s.check("and the sentence names the guest and the room",
+            proposed and TAG in (proposed["content"] or "")
+            and "22:15" in (proposed["content"] or ""),
+            detail=repr(proposed["content"] if proposed else None))
+    oc.post(f"/assistant/confirm/{proposed['id']}", data={"agreed": "yes"},
+            follow_redirects=True)
+    s.check("and only the confirm sets it",
+            conn.execute("SELECT estimated_arrival_time FROM bookings WHERE id = ?",
+                         (booking_row["id"],)).fetchone()["estimated_arrival_time"] == "22:15")
+
 
     # ---- an action, which must NOT happen -------------------------------
     s.section("An action is written down, not carried out")

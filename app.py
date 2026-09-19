@@ -6582,10 +6582,19 @@ AREA_TITLES = {
 # can see, which is how 181 of them accumulated unnoticed.
 OWNER_ONLY_AREAS = {
     "reports_index": "management",
-    # The assistant reads staff expense claims and time-off requests and can
-    # act on them, so it follows management access, and every one of its
-    # routes checks role == owner on top of that.
+    # Listed here and NOT in NAV_AREAS, which is what actually shuts them.
+    # can_reach() reads ENDPOINT_AREA, built from NAV_AREAS alone; this dict
+    # feeds the menu. So these endpoints are UNMAPPED, and an unmapped
+    # endpoint is refused outright — the strictest of the three mechanisms,
+    # not the "management area" one. Every route checks role == owner as well,
+    # because the assistant reads staff expense claims and time-off requests
+    # and can act on them.
     "assistant_page": "management",
+    # Three hundred people's names, addresses and travel notes, and a form
+    # that writes to the guests table. Unmapped like the assistant above, so
+    # no preset reaches it at all, plus role == owner on the read and the
+    # write alike.
+    "import_guests": "management",
     "assistant_say_route": "management",
     "assistant_confirm_route": "management",
     "assistant_clear_route": "management",
@@ -32921,6 +32930,332 @@ CATALOGUE_EXTRA_FIELDS = [
     "name", "price", "active", "sort_order", "category", "description",
     "lead_time_days", "max_qty", "guest_bookable", "sold_in_pos",
 ]
+
+
+# ---------------------------------------------------------------------------
+# BRINGING THE OLD GUEST LIST IN
+#
+# Eleven years of people — three hundred of them — live in the workshop booking
+# system this app replaced. Retyping them is not a plan, and leaving them there
+# means a guest who has been here six times arrives as a stranger.
+#
+# Built as a page rather than a script for one reason: THE REAL GUESTS ARE NOT
+# ON ANYBODY'S LAPTOP. They are on the Railway volume. A script that runs here
+# imports into a dev database with one guest in it and achieves nothing, so the
+# import has to be something the owner does against the live site, from a file,
+# through a form.
+#
+# THE RULES IT FOLLOWS, all of which exist because an import is the easiest
+# possible way to quietly ruin a table:
+#
+#   NOTHING IS EVER DELETED, and nothing already typed here is overwritten. A
+#   note somebody wrote about a guest in THIS house beats a note exported from
+#   the old one, always — so an existing guest only has their EMPTY fields
+#   filled in. Run it twice and the second run changes nothing.
+#
+#   A DRY RUN IS THE DEFAULT. The form opens with "show me what would happen"
+#   already ticked, so the first press of the button reads the file and writes
+#   nothing. An import you cannot preview is one you find out about afterwards.
+#
+#   MONEY IS NOT IMPORTED. The export carries an outstanding balance per person
+#   — a little over two hundred thousand euros across fifty-three people, some
+#   of it against people first added in 2021. This app chases balances
+#   automatically and that automation is ON by default, so importing those
+#   figures would start emailing people about money they may have settled years
+#   ago in a system that has since been switched off. They are read, counted,
+#   and reported so nobody wonders where they went, and they are not written.
+#
+#   IT SAYS WHAT IT DID NOT DO. Through bulk_message, like every other bulk
+#   action here, so a row skipped for a missing email is named rather than
+#   quietly dropped from a cheerful total.
+# ---------------------------------------------------------------------------
+
+# What the old system calls things. Kept as a map rather than positions because
+# a column order is the first thing to change between two exports.
+GUEST_IMPORT_ALIASES = {
+    "first_name": ("first_name", "firstname", "first", "given_name"),
+    "last_name": ("last_name", "lastname", "surname", "family_name"),
+    "email": ("email", "email_address", "e-mail"),
+    "phone": ("phone", "telephone", "mobile", "phone_number"),
+    "person_id": ("person_id", "id", "personid"),
+    "num_programs": ("num_programs", "programs", "programmes"),
+    "date_added": ("date_added", "created", "created_at", "date_created"),
+    "balance": ("overall_balance", "balance", "outstanding"),
+    "credit": ("personal_credit", "credit"),
+}
+
+# Free text worth carrying over, and the heading to file it under. These are
+# the answers to the old system's own questions, and they are the operational
+# part of the export — where somebody is flying into, who is collecting them.
+GUEST_IMPORT_NOTE_FIELDS = [
+    ("my_arrival_information", "Arrival"),
+    ("accommodation_information_in_toulouse", "Toulouse"),
+    ("departure_information", "Departure"),
+]
+
+
+def _guest_import_pick(row, key):
+    """One value, whatever the old system happened to call the column."""
+    for name in GUEST_IMPORT_ALIASES.get(key, (key,)):
+        if name in row and (row[name] or "").strip():
+            return row[name].strip()
+    return ""
+
+
+def _guest_import_money(value):
+    """A figure out of the export, or None. Never guesses: a value it cannot
+    read comes back as None rather than zero, because a balance silently read
+    as nothing is the same bug as one read as double."""
+    text = (value or "").strip()
+    for symbol in ("€", "$", "£", ","):
+        text = text.replace(symbol, "")
+    text = text.strip()
+    if not text:
+        return None
+    try:
+        return round(float(text), 2)
+    except ValueError:
+        return None
+
+
+def parse_guest_import(text):
+    """The export, read into the shape this app keeps people in.
+
+    Returns (people, problems). `people` is one entry per PERSON — the same
+    address twice in the file is one person here, with both rows' notes folded
+    together, because importing them twice would create exactly the duplicate
+    the guests table was refactored to stop being.
+
+    Reads, decides nothing, writes nothing. Everything below can be tested
+    without a database.
+    """
+    import csv as _csv
+    import io as _io
+
+    problems = []
+    try:
+        reader = _csv.DictReader(_io.StringIO(text))
+        rows = list(reader)
+    except Exception as e:                       # pragma: no cover - malformed
+        return [], [("the file", f"could not be read as a CSV: {e}")]
+    if not rows:
+        return [], [("the file", "there are no rows in it")]
+
+    # Lower-cased headers, so a file exported with First_Name still lands.
+    normalised = []
+    for row in rows:
+        normalised.append({(k or "").strip().lower(): (v or "")
+                           for k, v in row.items() if k})
+
+    if not any("email" in r for r in normalised[:1]):
+        return [], [("the file", "there is no email column, so nobody in it "
+                                 "can be matched to a guest")]
+
+    by_email = {}
+    order = []
+    for i, row in enumerate(normalised, start=2):   # 2 = first row after header
+        email = _guest_import_pick(row, "email").lower()
+        first = _guest_import_pick(row, "first_name")
+        last = _guest_import_pick(row, "last_name")
+        name = " ".join(p for p in (first, last) if p).strip()
+        if not email:
+            problems.append((name or f"row {i}", "no email address"))
+            continue
+        if "@" not in email:
+            problems.append((name or email, "that is not an email address"))
+            continue
+        if not name:
+            problems.append((email, "no name"))
+            continue
+
+        notes = []
+        for column, heading in GUEST_IMPORT_NOTE_FIELDS:
+            value = (row.get(column) or "").strip()
+            if value:
+                notes.append(f"{heading}: {value}")
+
+        entry = by_email.get(email)
+        if entry is None:
+            entry = {
+                "email": email,
+                "name": name,
+                "phone": _guest_import_pick(row, "phone"),
+                "notes": notes,
+                "created_at": _guest_import_pick(row, "date_added"),
+                "programs": _guest_import_pick(row, "num_programs"),
+                "person_ids": [],
+                "balance": _guest_import_money(_guest_import_pick(row, "balance")),
+                "rows": 1,
+            }
+            by_email[email] = entry
+            order.append(email)
+        else:
+            # The same person twice. Keep the fuller name, add any notes the
+            # other row had, and count it so the report can say it happened.
+            if len(name) > len(entry["name"]):
+                entry["name"] = name
+            for note in notes:
+                if note not in entry["notes"]:
+                    entry["notes"].append(note)
+            if not entry["phone"]:
+                entry["phone"] = _guest_import_pick(row, "phone")
+            # THE BALANCE IS PER ROW, NOT PER PERSON. Somebody listed twice
+            # carries 0.00 against one registration and the real figure
+            # against the other, so keeping only the first row's value drops
+            # the money silently -- it lost 19,826 euros of the real export,
+            # which is exactly the wrong direction for a number whose whole
+            # job is to be reconciled against the file it came from.
+            more = _guest_import_money(_guest_import_pick(row, "balance"))
+            if more is not None:
+                entry["balance"] = round((entry["balance"] or 0.0) + more, 2)
+            entry["rows"] += 1
+        person_id = _guest_import_pick(row, "person_id")
+        if person_id and person_id not in entry["person_ids"]:
+            entry["person_ids"].append(person_id)
+
+    return [by_email[e] for e in order], problems
+
+
+def import_guest_rows(conn, people, dry_run=True):
+    """Put the people in, and say exactly what happened to each.
+
+    Matching is on the email address, lower-cased — the same key
+    confirm_booking_by_id uses to find a returning guest, so a person imported
+    here and a person who books tomorrow are the same row rather than two.
+
+    An existing guest is only ever FILLED IN. Their name, their phone and any
+    note written in this house are left exactly as they are; the import can add
+    what is missing and nothing else. That is what makes running it twice safe,
+    and it is also the honest order of trust: somebody here typed that.
+    """
+    added, filled, untouched, skipped = [], [], [], []
+    now = datetime.now(timezone.utc).isoformat()
+
+    for person in people:
+        existing = conn.execute(
+            "SELECT * FROM guests WHERE email = ? COLLATE NOCASE "
+            "AND merged_into_id IS NULL", (person["email"],)).fetchone()
+
+        note_block = "\n".join(person["notes"])
+        # Where they came from, so somebody looking at an odd note a year from
+        # now can tell it was imported rather than typed by a colleague.
+        provenance = "From the old workshop booking system"
+        if person["programs"] and person["programs"] not in ("0", ""):
+            provenance += f" — {person['programs']} programme(s) before this one"
+        full_note = "\n".join(x for x in (note_block, provenance) if x)
+
+        if existing:
+            updates = {}
+            if not (existing["phone"] or "").strip() and person["phone"]:
+                updates["phone"] = person["phone"]
+            # Notes are APPENDED, never replaced. The existing note is
+            # somebody's own words about this guest.
+            if note_block and note_block not in (existing["notes"] or ""):
+                updates["notes"] = "\n".join(
+                    x for x in ((existing["notes"] or "").strip(), full_note) if x)
+            if not updates:
+                untouched.append(person["name"])
+                continue
+            if not dry_run:
+                conn.execute(
+                    "UPDATE guests SET %s WHERE id = ?"
+                    % ", ".join(f"{k} = ?" for k in updates),
+                    list(updates.values()) + [existing["id"]])
+            filled.append(person["name"])
+            continue
+
+        if not dry_run:
+            conn.execute(
+                """INSERT INTO guests (name, email, phone, notes, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (person["name"], person["email"], person["phone"] or None,
+                 full_note or None, person["created_at"] or now))
+        added.append(person["name"])
+
+    return {"added": added, "filled": filled, "untouched": untouched,
+            "skipped": skipped}
+
+
+@app.route("/management/import-guests", methods=["GET", "POST"])
+@owner_required
+def import_guests():
+    """Bring the old system's guest list in, from a file, with a preview first.
+
+    Owner only, and by role as well as by area: this reads three hundred
+    people's names, addresses and travel plans.
+    """
+    user = current_user()
+    if not user or user["role"] != "owner":
+        abort(403)
+
+    conn = get_db()
+    guest_count = conn.execute(
+        "SELECT COUNT(*) AS c FROM guests WHERE merged_into_id IS NULL"
+    ).fetchone()["c"]
+
+    if request.method == "GET":
+        conn.close()
+        return render_template("import_guests.html", guest_count=guest_count,
+                               result=None, money=None)
+
+    upload = request.files.get("people")
+    if not upload or not upload.filename:
+        conn.close()
+        flash("Choose the exported file first.", "error")
+        return redirect(url_for("import_guests"))
+
+    raw = upload.read()
+    # The export carries a byte-order mark. Read without stripping it and every
+    # header on the first column is prefixed with an invisible character, so
+    # `first_name` is not `first_name` and the whole file looks nameless.
+    for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            text = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:                                        # pragma: no cover - unreadable
+        conn.close()
+        flash("That file is not in a text encoding this can read.", "error")
+        return redirect(url_for("import_guests"))
+
+    people, problems = parse_guest_import(text)
+    if not people:
+        conn.close()
+        message, category = bulk_message("imported", "guest", 0, problems)
+        flash(message, category)
+        return redirect(url_for("import_guests"))
+
+    # WHAT IS IN THE FILE AND IS NOT BEING WRITTEN. Counted and shown rather
+    # than dropped in silence -- somebody who knows the export has balances on
+    # it should be told where they went, not left to discover it.
+    owing = [p for p in people if p["balance"] not in (None, 0.0)]
+    money = {
+        "people": len(owing),
+        "total": round(sum(p["balance"] for p in owing), 2),
+    } if owing else None
+
+    dry_run = request.form.get("dry_run") == "on"
+    result = import_guest_rows(conn, people, dry_run=dry_run)
+    result["dry_run"] = dry_run
+    result["read"] = len(people)
+    result["duplicates"] = sum(1 for p in people if p["rows"] > 1)
+    if not dry_run:
+        log_audit(conn, "guests_imported",
+                  target=upload.filename,
+                  details=f"{len(result['added'])} added, "
+                          f"{len(result['filled'])} filled in")
+        conn.commit()
+    conn.close()
+
+    message, category = bulk_message(
+        "would import" if dry_run else "imported", "guest",
+        len(result["added"]) + len(result["filled"]), problems,
+        detail=f"{len(result['added'])} new, {len(result['filled'])} filled in, "
+               f"{len(result['untouched'])} already complete")
+    flash(message, category)
+    return render_template("import_guests.html", guest_count=guest_count,
+                           result=result, money=money)
 
 
 @app.route("/management/import-catalogue", methods=["GET", "POST"])
@@ -69900,6 +70235,60 @@ ASSISTANT_TOOLS = [
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
+        "name": "arrivals",
+        "description": (
+            "Who is arriving and leaving on a given day, with the room, the "
+            "party size, what time they said they would get here, anything "
+            "they cannot eat, whether it is their first stay or their sixth, "
+            "and anything still missing from the booking. This is what the "
+            "breakfast sheet is printed from. Defaults to today."),
+        "input_schema": {
+            "type": "object",
+            "properties": {"day": {
+                "type": "string",
+                "description": "YYYY-MM-DD. Today if left out."}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "who_is_here",
+        "description": (
+            "The guests in the house right now — the stays that cover today — "
+            "with their room and when they leave."),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "find_guest",
+        "description": (
+            "Look a person up by name or email: how many times they have "
+            "stayed, when they were last here, what they cannot eat, how they "
+            "like to arrive, and any standing note about them. Use this before "
+            "saying anything about a particular guest."),
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {
+                "type": "string",
+                "description": "Part of a name, or an email address"}},
+            "required": ["query"], "additionalProperties": False,
+        },
+    },
+    {
+        "name": "kitchen",
+        "description": (
+            "What the kitchen needs for one day's service: how many are "
+            "eating, and every single person with something they cannot eat, "
+            "gathered from the stays, the table reservations and the atelier "
+            "places alike. Use this for any question about dinner, covers, "
+            "allergies or what the chef needs to know. Defaults to today."),
+        "input_schema": {
+            "type": "object",
+            "properties": {"day": {
+                "type": "string",
+                "description": "YYYY-MM-DD. Today if left out."}},
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "find_booking",
         "description": (
             "Look up a room booking by reference code or guest name. Returns "
@@ -69965,6 +70354,40 @@ ASSISTANT_TOOLS = [
         },
     },
     {
+        "name": "set_arrival_time",
+        "description": (
+            "Record what time a guest said they will arrive, against their "
+            "booking. Needs the owner's confirmation first. Find the booking "
+            "with find_booking to get its number."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "booking_id": {"type": "integer"},
+                "time": {"type": "string",
+                         "description": "As they said it — '18:30', 'after six', 'late'"},
+            },
+            "required": ["booking_id", "time"], "additionalProperties": False,
+        },
+    },
+    {
+        "name": "note_about_guest",
+        "description": (
+            "Add a line to the running note on a guest — something learned "
+            "about them worth the next person knowing. Needs the owner's "
+            "confirmation first. Find them with find_guest to get the number. "
+            "NOT the place for an allergy: a dietary note belongs on their "
+            "profile where the kitchen sheet reads it, and the owner should "
+            "set that on the guest's own page."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "guest_id": {"type": "integer"},
+                "note": {"type": "string"},
+            },
+            "required": ["guest_id", "note"], "additionalProperties": False,
+        },
+    },
+    {
         "name": "add_task",
         "description": (
             "Put a job on the house's task list, which puts it on the "
@@ -69993,6 +70416,7 @@ ASSISTANT_TOOLS = [
 # THE SERVER DECIDES WHICH TOOLS ARE DANGEROUS, not the model and not the tool
 # description. A name in here is never executed straight from a model response.
 ASSISTANT_ACTION_TOOLS = frozenset({
+    "set_arrival_time", "note_about_guest",
     "approve_expense", "reject_expense",
     "approve_leave", "decline_leave",
     "add_task", "finish_task",
@@ -70006,6 +70430,10 @@ ASSISTANT_SYSTEM = (
     "1. LOOK BEFORE YOU ANSWER. You have tools that read the house's real "
     "figures. Use them rather than guessing, and never state a number, a name "
     "or a date you have not read from a tool in this conversation.\n"
+    "1a. A DIETARY NOTE AND A CAUTION ARE REPEATED WORD FOR WORD, never "
+    "paraphrased and never left out of a summary. Somebody could be allergic, "
+    "and a standing instruction about a guest exists because the house meant "
+    "it.\n"
     "2. Be brief. This is read standing up with a coffee. Short sentences, no "
     "headings, no bullet lists unless you are genuinely listing things, and "
     "no restating the question back.\n"
@@ -70146,6 +70574,103 @@ def assistant_read_tool(conn, user, name, args):
         return "Worth knowing:\n" + "\n".join(
             f"{w['severity']}: {w['title']} — {w['detail']}" for w in warnings)
 
+    if name == "arrivals":
+        day = parse_date((args.get("day") or "").strip()) or today
+        sheet = arrivals_sheet(conn, day)
+        if sheet["nothing_doing"]:
+            return f"Nobody arriving or leaving on {day.isoformat()}."
+        lines = [f"{day.isoformat()}: {len(sheet['arriving'])} arriving, "
+                 f"{len(sheet['leaving'])} leaving, {sheet['beds']} bed(s)."]
+        for r in sheet["arriving"]:
+            b = r["booking"]
+            bits = [f"ARRIVING {b['guest_name']} — {b['room_name']}, "
+                    f"party of {b['party_size']}"]
+            if r["arrival_time"]:
+                bits.append(f"at {r['arrival_time']}")
+            if r["dietary"]:
+                bits.append(f"CANNOT EAT: {r['dietary']}")
+            if r["milestone"]:
+                bits.append(str(r["milestone"]))
+            # A standing instruction about somebody is the one thing on this
+            # sheet that must not be summarised away.
+            if r["caution"]:
+                bits.append(f"CAUTION: {r['caution']['caution']}")
+            if r["prior_no_shows"]:
+                bits.append(f"{r['prior_no_shows']} previous no-show(s)")
+            lines.append(" · ".join(bits))
+        for b in sheet["leaving"]:
+            lines.append(f"LEAVING {b['guest_name']} — {b['room_name']}")
+        return "\n".join(lines)
+
+    if name == "who_is_here":
+        here = guests_in_residence(conn, today)
+        if not here:
+            return "Nobody is staying tonight."
+        return "In the house now:\n" + "\n".join(
+            f"{g['guest_name']} — {g['room_name']}, until {g['departure_date']}"
+            for g in here)
+
+    if name == "find_guest":
+        q = (args.get("query") or "").strip()
+        if not q:
+            return "No name or address given."
+        like = f"%{q}%"
+        rows = conn.execute(
+            """SELECT * FROM guests
+               WHERE (name LIKE ? OR email LIKE ?) AND merged_into_id IS NULL
+               ORDER BY name LIMIT 6""", (like, like)).fetchall()
+        if not rows:
+            return f"Nobody on file matches {q!r}."
+        out = []
+        for g in rows:
+            stays = conn.execute(
+                """SELECT COUNT(*) AS n, MAX(arrival_date) AS last
+                     FROM bookings
+                    WHERE guest_email = ? COLLATE NOCASE
+                      AND status IN ('confirmed','completed')""",
+                (g["email"] or "",)).fetchone()
+            bits = [g["name"]]
+            if g["email"]:
+                bits.append(g["email"])
+            if stays and stays["n"]:
+                bits.append(f"{stays['n']} stay(s), last {stays['last']}")
+            else:
+                bits.append("no stays on record")
+            if (g["dietary_notes"] or "").strip():
+                bits.append(f"CANNOT EAT: {g['dietary_notes'].strip()}")
+            if (g["usual_arrival_time"] or "").strip():
+                bits.append(f"usually arrives {g['usual_arrival_time'].strip()}")
+            if (g["caution"] or "").strip():
+                bits.append(f"CAUTION ({g['caution_level']}): {g['caution'].strip()}")
+            if (g["notes"] or "").strip():
+                bits.append("note: " + " ".join(g["notes"].split())[:180])
+            out.append(" · ".join(bits))
+        return "\n".join(out)
+
+    if name == "kitchen":
+        day = parse_date((args.get("day") or "").strip()) or today
+        sheet = dietary_sheet(conn, day)
+        if not sheet["people"]:
+            return f"Nobody eating here on {day.isoformat()}."
+        lines = [f"{day.isoformat()}: {sheet['covers']} cover(s). "
+                 f"{sheet['with_notes']} person(s) with something they cannot "
+                 f"eat, covering {sheet['flagged_covers']} of them."]
+        for person in sheet["people"]:
+            if not person["notes"]:
+                continue
+            # VERBATIM. The whole reason this sheet exists is that somebody
+            # was going to be served the thing they told us about, so the
+            # words they used are the words that come back.
+            lines.append(f"{person['who']} ({person['kind']}, "
+                         f"{person['where']}, {person['covers']} cover(s)): "
+                         + " | ".join(person["notes"]))
+        if sheet["silent"]:
+            # Said out loud, because "nobody has a note" and "nobody was asked"
+            # look identical on a screen and only one of them is safe.
+            lines.append(f"{sheet['silent']} other(s) with nothing recorded — "
+                         "which is not the same as nothing to record.")
+        return "\n".join(lines)
+
     if name == "find_booking":
         q = (args.get("query") or "").strip()
         if not q:
@@ -70200,6 +70725,25 @@ def assistant_describe_action(conn, name, args):
         return (f"{verb} {row['who']}'s time off, "
                 f"{row['start_date']} to {row['end_date']}")
 
+    if name == "set_arrival_time":
+        row = conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                 JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.id = ?""", (args.get("booking_id"),)).fetchone()
+        if not row:
+            return "No booking with that number."
+        was = (row["estimated_arrival_time"] or "").strip()
+        return (f"Note that {row['guest_name']} ({row['room_name']}, "
+                f"{row['arrival_date']}) arrives {args.get('time', '')}"
+                + (f", replacing {was}" if was else ""))
+
+    if name == "note_about_guest":
+        row = conn.execute("SELECT name FROM guests WHERE id = ?",
+                           (args.get("guest_id"),)).fetchone()
+        if not row:
+            return "No guest with that number."
+        return f"Write against {row['name']}: {(args.get('note') or '').strip()[:160]}"
+
     if name == "add_task":
         due = args.get("due_date") or house_today_iso()
         return f"Add a task: {args.get('title', '')} (due {due})"
@@ -70235,6 +70779,42 @@ def assistant_run_action(conn, user, name, args):
             "approved" if name == "approve_leave" else "declined",
             via="the assistant")
         return ok, message
+
+    if name == "set_arrival_time":
+        row = conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                 JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.id = ?""", (args.get("booking_id"),)).fetchone()
+        if not row:
+            return False, "No booking with that number."
+        when = (args.get("time") or "").strip()[:60]
+        if not when:
+            return False, "No time given."
+        conn.execute(
+            "UPDATE bookings SET estimated_arrival_time = ? WHERE id = ?",
+            (when, row["id"]))
+        log_audit(conn, "arrival_time_set", target=row["reference_code"],
+                  details=when, via="the assistant")
+        conn.commit()
+        return True, f"{row['guest_name']} is arriving {when}."
+
+    if name == "note_about_guest":
+        row = conn.execute(
+            "SELECT * FROM guests WHERE id = ? AND merged_into_id IS NULL",
+            (args.get("guest_id"),)).fetchone()
+        if not row:
+            return False, "No guest with that number."
+        # Through the same helper the guest page's own form calls, so a note
+        # written this way is the same kind of record as one typed there --
+        # attributed, timestamped, and added rather than replacing anything.
+        actor = current_user()
+        if not add_guest_note(conn, row["id"], args.get("note") or "",
+                              actor["id"] if actor else None):
+            return False, "There was nothing to write."
+        log_audit(conn, "guest_note_added", target=row["name"],
+                  via="the assistant")
+        conn.commit()
+        return True, f"Noted against {row['name']}."
 
     if name == "add_task":
         title = (args.get("title") or "").strip()[:120]
