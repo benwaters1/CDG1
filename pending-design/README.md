@@ -1,5 +1,12 @@
 # Four partials held back, and why each one is not live
 
+> **Second export, 2026-09-18 17:21.** A fresh zip arrived forty-five minutes
+> after the first. `base.html` in it is still the initial-commit version — 0
+> `url_for` calls, no CSRF meta tag — so it was cut from the same stale tree
+> and nothing from it was installed either. Everything held below is
+> byte-identical between the two exports. The one thing the second one carried
+> that was worth keeping is `new-components.css`, described at the bottom.
+
 All four arrived in the full export of 2026-09-18. None of them is broken and
 none of them was rejected on taste. Each is held for a reason a person has to
 resolve, and each reason is written out below so that resolving it is a small
@@ -110,3 +117,29 @@ Worth reading either way. Its `Quiet` undefined class — a missing value render
 as nothing rather than raising — is exactly why `what_it_comes_to` would have
 drawn an empty money panel rather than failing loudly, and is the reason that
 macro is parked rather than live.
+
+---
+
+## `new-components.css`
+
+The 977 lines of stylesheet the two exports carried for the five parked
+macros — `.g-rex`, `.g-94`, `.g-reveal`, `.g-recap`, `.g-gl` — lifted out of
+their `static/gudanes.css` rather than merged into ours.
+
+**Why not merged.** Their stylesheet is 997 lines ahead on these components and
+91 lines behind on everything else, and those 91 lines are: the road-notice
+rules, their own phone variant of the approach map, and every
+`@media (max-width: 34rem)` and `(max-width: 26rem)` condition — which is the
+custom-property-in-a-media-query bug for the **fourth** time. Taking the whole
+file would have traded three live fixes for styling that renders nothing,
+because the components it styles are all parked.
+
+`tools/repair_handover.py` now rewrites those conditions automatically, so the
+fourth occurrence would have been repaired rather than shipped. It is still not
+a reason to install a stylesheet that deletes working rules.
+
+**How to use it.** When a partial is wired up, move its block from here into
+`static/gudanes.css`. The file is brace-balanced and carries no custom property
+in any media condition, so a block can be dropped in as written. Nothing in it
+has been edited except the run boundaries, which were widened until each rule
+closes — a diff boundary does not respect a rule boundary.
