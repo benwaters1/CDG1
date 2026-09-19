@@ -960,6 +960,13 @@ ICAL_SYNC_TOKEN = os.environ.get("ICAL_SYNC_TOKEN", "")
 # is what email recovery is only a proxy for.
 OWNER_RECOVERY_TOKEN = os.environ.get("OWNER_RECOVERY_TOKEN", "")
 
+# The simpler way back in: set this to the password you want and redeploy.
+#
+# Stripped, because a trailing space copied out of a variable box is invisible
+# and is the likeliest reason a token comparison fails — there is no sense in
+# letting the same thing bite twice.
+OWNER_TEMP_PASSWORD = (os.environ.get("OWNER_TEMP_PASSWORD", "") or "").strip()
+
 # Lets an external scheduler trigger a "what needs my attention" summary
 # email to the owner without a logged-in session — same pattern as
 # ICAL_SYNC_TOKEN above. Unset by default — until you set it,
@@ -6032,6 +6039,41 @@ def init_db():
         print("  (change this after your first login — there is no email")
         print("   recovery configured yet, so store this somewhere safe)")
         print("=" * 70)
+
+    # A PASSWORD SET FROM THE DEPLOYMENT, when there is no other way in.
+    #
+    # Runs on every boot while the variable is set, which is the point: the
+    # owner sets it, redeploys, logs in, and takes it out again. Idempotent —
+    # setting the same password twice is setting the same password.
+    #
+    # Possession of a deployment variable proves control of the deployment,
+    # which is the thing email recovery is only ever a proxy for. Anybody who
+    # can set this could already change the password by other means.
+    if OWNER_TEMP_PASSWORD:
+        who = conn.execute(
+            "SELECT * FROM users WHERE role = 'owner' ORDER BY id LIMIT 1").fetchone()
+        if who:
+            conn.execute(
+                """UPDATE users SET password_hash = ?, reset_code = NULL,
+                   reset_token = NULL, reset_token_expires_at = NULL,
+                   account_claimed = 1 WHERE id = ?""",
+                (generate_password_hash(OWNER_TEMP_PASSWORD), who["id"]))
+            conn.execute(
+                """INSERT INTO audit_log (actor_user_id, action, target, details,
+                   created_at) VALUES (NULL, ?, ?, ?, ?)""",
+                ("owner_password_set_from_environment", who["email"],
+                 "OWNER_TEMP_PASSWORD was set on the deployment",
+                 datetime.now(timezone.utc).isoformat()))
+            conn.commit()
+            print("=" * 70)
+            print("OWNER_TEMP_PASSWORD is set, so the owner password has been")
+            print(f"  changed to it. Sign in as: {who['email']}")
+            print("  NOW REMOVE OWNER_TEMP_PASSWORD from the deployment —")
+            print("  while it is set, it is reapplied on every restart and it")
+            print("  is sitting in plain text in your variables.")
+            print("=" * 70)
+        else:
+            print("OWNER_TEMP_PASSWORD is set but there is no owner account.")
 
     # The built-in revenue categories, carrying across whatever was already
     # mapped. Called here rather than inline above because it reads app_settings

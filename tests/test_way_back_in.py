@@ -116,6 +116,42 @@ def run():
     finally:
         m.OWNER_RECOVERY_TOKEN = before
 
+    s.section("The simpler way in: a password set from the deployment")
+    # The route above works and was still not usable: getting in through it
+    # means a token copied without losing a character, and a mismatch answers
+    # with a 404 that deliberately says nothing. This is the same authority —
+    # control of the deployment — with nothing to mistype.
+    owner = conn.execute(
+        "SELECT * FROM users WHERE role = 'owner' ORDER BY id LIMIT 1").fetchone()
+    was = owner["password_hash"]
+    before_pw = m.OWNER_TEMP_PASSWORD
+    # With a trailing space on purpose: an invisible one copied out of a
+    # variable box is the likeliest reason the token kept failing, so this
+    # must not be able to bite the same way twice.
+    m.OWNER_TEMP_PASSWORD = "a-temporary-one-2026  ".strip()
+    try:
+        conn2 = db()
+        m.init_db()
+        conn2.close()
+        now = conn.execute("SELECT * FROM users WHERE id = ?",
+                           (owner["id"],)).fetchone()
+        s.check("the password becomes the one set on the deployment",
+                m.check_password_hash(now["password_hash"], "a-temporary-one-2026"),
+                detail="set OWNER_TEMP_PASSWORD, redeploy, sign in")
+        s.check("and it is written down",
+                conn.execute(
+                    """SELECT COUNT(*) AS c FROM audit_log
+                       WHERE action = 'owner_password_set_from_environment'"""
+                ).fetchone()["c"] >= 1,
+                detail="a password changed outside the ordinary route has to "
+                       "be findable afterwards")
+    finally:
+        m.OWNER_TEMP_PASSWORD = before_pw
+        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                     (was, owner["id"]))
+        conn.commit()
+
+
     s.section("Switched off again, it is gone")
     s.check("the page disappears with the token",
             anon.get("/recover/" + TOKEN).status_code == 404)
