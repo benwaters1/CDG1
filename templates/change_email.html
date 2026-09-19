@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_icons.html" import password_toggle %}
+{% block title %}Change sign-in address{% endblock %}
+{% block content %}
+<div class="narrow-card">
+  <h1>Change Sign-in Address</h1>
+  {# Said out loud on the page, because the whole failure this guards against
+     is somebody changing it to an address they cannot read.
+
+     AND THE SECOND SENTENCE IS CONDITIONAL, because it is a claim about what
+     this code does rather than a reassurance. The letter to the old address
+     only goes when a provider is configured; promising one to a house that
+     has no mail set up is a page telling a comfortable lie about its own
+     behaviour, which is how somebody ends up believing a hijack would have
+     been noticed. #}
+  <p class="pay-disclaimer" style="margin-top:-6px;">
+    You sign in as <strong>{{ person['email'] }}</strong>. Change it and that is the address
+    you type to log in, and the one a password reset is sent to — so it has to be a mailbox
+    you can open.
+    {% if email_enabled %}
+    We'll tell the old address that it changed.
+    {% else %}
+    There's no email provider configured yet, so nothing will be sent to the old
+    address — and nobody can reset their own password until there is.
+    {% endif %}
+  </p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <label class="field-label" for="new-email">New sign-in address</label>
+    <input id="new-email" type="email" name="new_email" required autocomplete="email">
+
+    <label class="field-label" for="confirm-email">Type it again</label>
+    <input id="confirm-email" type="email" name="confirm_email" required autocomplete="email">
+
+    <label class="field-label" for="current-password">Your current password</label>
+    <div class="password-field">
+      <input type="password" name="current_password" id="current-password" required
+             autocomplete="current-password">
+      {{ password_toggle('current-password') }}
+    </div>
+
+    <button type="submit" class="btn-primary">Update sign-in address</button>
+  </form>
+</div>
+{% endblock %}

@@ -241,7 +241,13 @@
         <div><span class="detail-label">{{ t('Role') }}</span>{{ person['job_role'] or '—' }}</div>
         <div><span class="detail-label">{{ t('Status') }}</span><span class="status-{{ person['status'] }}">{{ person['status'] }}</span></div>
         <div><span class="detail-label">{{ t('Phone') }}</span>{{ person['phone'] or '—' }}</div>
-        <div><span class="detail-label">{{ t('Email') }}</span>{{ person['email'] }}</div>
+        {# The address in this box is the login, so the person it belongs to —
+           and only them — gets a way to change it from here. The owner falls
+           through the self-service button at the top of this page, because the
+           owner branch above claims it first, and the owner is precisely who
+           needs this: their account is seeded with an address nobody reads. #}
+        <div><span class="detail-label">{{ t('Email') }}</span>{{ person['email'] }}{% if person['id'] == user['id'] %}
+          <a href="{{ url_for('change_email') }}" class="small-link" style="margin-left:8px;">{{ t('Change sign-in address') }}</a>{% endif %}</div>
         <div><span class="detail-label">{{ t('Start date') }}</span>{{ person['start_date'] or '—' }}</div>
         <div><span class="detail-label">{{ t('On the team since') }}</span>{{ person['created_at']|house_day }}</div>
         <div><span class="detail-label">{{ t('Tasks completed (7d / 30d)') }}</span>{{ task_stats.week }} / {{ task_stats.month }}</div>

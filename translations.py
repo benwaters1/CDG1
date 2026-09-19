@@ -159,6 +159,7 @@ FR = {
     "Currency": "Devise",
     "Language": "Langue",
     "Password": "Mot de passe",
+    "Change sign-in address": "Changer l'adresse de connexion",
     "Log out": "Déconnexion",
     "charged in EUR": "débité en EUR",
     "Ariège · French Pyrénées · Restored since 2013":
@@ -753,6 +754,7 @@ ES = {
     "Currency": "Moneda",
     "Language": "Idioma",
     "Password": "Contraseña",
+    "Change sign-in address": "Cambiar la dirección de acceso",
     "Log out": "Cerrar sesión",
     "charged in EUR": "cobrado en EUR",
     "Ariège · French Pyrénées · Restored since 2013":

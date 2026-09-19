@@ -9,10 +9,19 @@ What is worth asserting here is almost entirely about the door being SHUT.
 Unset is the normal state, and in that state the page must not merely refuse:
 it must not appear to exist at all, because a 403 tells somebody scanning that
 there is something here worth coming back for.
+
+The last section is the one that stops all of this being needed twice. The
+owner account is seeded by the app itself as owner@chateaugudanes.com, which
+is nobody's mailbox, and until now no route on this site could change a user's
+email — so the day mail is configured, "forgot password" posts a code to a dead
+address and the lockout above comes straight back. Changing the sign-in
+address is the fix, and because the sign-in address IS the account, the checks
+for it belong with the rest of the recovery story rather than in a file of
+their own.
 """
 import hmac
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, fill, forms_on
 import _harness
 
 m = _harness.m
@@ -294,6 +303,291 @@ def run():
                         for k in ("guests", "bookings")),
             detail="a yes or no tells two deployments apart; a number is the "
                    "owner's business")
+
+    # ------------------------------------------------------------------
+    # The third door, and the one that means the other two are never needed:
+    # changing the address you sign in with.
+    #
+    # No route could. Every UPDATE on users set something else, so the owner
+    # account kept the address the app invented for it on first run —
+    # owner@chateaugudanes.com, which nobody reads. The moment a mail provider
+    # is configured, "forgot password" starts posting a six digit code there,
+    # and the way back in is a deployment variable again. This is that lockout
+    # closed off at the source.
+    #
+    # On a person of its own rather than the owner row. The sections above
+    # borrow the owner and put the password back afterwards; this one changes
+    # an identity, and doing that to the account every later suite logs in as
+    # is how one suite breaks forty.
+    # ------------------------------------------------------------------
+    s.section("Changing the address you sign in with")
+    PASSWORD = "the-one-they-know-8821"
+    OLD = "zzchange.old@example.invalid"
+    NEW = "zzchange.new@example.invalid"
+    conn.execute("DELETE FROM users WHERE email LIKE 'zzchange.%'")
+    conn.execute(
+        """INSERT INTO users (email, password_hash, role, name, job_role,
+           status, created_at) VALUES (?, ?, 'employee', 'Zz Changer',
+           'General', 'active', ?)""",
+        (OLD, m.generate_password_hash(PASSWORD),
+         m.datetime.now(m.timezone.utc).isoformat()))
+    conn.commit()
+    mover = conn.execute("SELECT * FROM users WHERE email = ?", (OLD,)).fetchone()
+    mc = m.app.test_client()
+    with mc.session_transaction() as sess:
+        sess["user_id"] = mover["id"]
+
+    def address_now():
+        return conn.execute("SELECT email FROM users WHERE id = ?",
+                            (mover["id"],)).fetchone()["email"]
+
+    s.check("the page opens for the person signed in",
+            mc.get("/change-email").status_code == 200)
+    # WHAT THE PAGE PROMISES HAS TO BE WHAT THE CODE DOES. The notice to the
+    # old address only goes when a provider is configured, and the harness —
+    # like the live site until its DNS is finished — has none. A page that
+    # promises the letter anyway is how somebody comes to believe a hijack
+    # would have been noticed. Same rule as the privacy notice: the copy is a
+    # claim about this code, so it is checked like one.
+    was_enabled = m.email_enabled
+    try:
+        m.email_enabled = lambda: False
+        quiet_page = mc.get("/change-email").get_data(as_text=True)
+        s.check("with no mail configured it promises no letter",
+                "tell the old address" not in quiet_page,
+                detail="the page would be describing something it will not do")
+        s.check("and says so rather than staying silent",
+                "no email provider" in quiet_page.lower())
+        m.email_enabled = lambda: True
+        loud_page = mc.get("/change-email").get_data(as_text=True)
+        s.check("and with a provider it says the letter is coming",
+                "tell the old address" in loud_page)
+    finally:
+        m.email_enabled = was_enabled
+    s.check("and not for anybody who is not",
+            m.app.test_client().get("/change-email",
+                                    follow_redirects=False).status_code in (302, 401, 403),
+            detail="the login IS the thing being changed")
+
+    s.section("It refuses everything it should")
+    # THE PASSWORD IS THE POINT. A borrowed session — a laptop left open, a
+    # tab on a shared machine — must not be enough to walk off with somebody's
+    # login, which is what this would be without it.
+    mc.post("/change-email", data={"new_email": NEW, "confirm_email": NEW,
+                                   "current_password": "not-the-password"})
+    s.check("a wrong current password changes nothing", address_now() == OLD)
+    mc.post("/change-email", data={"new_email": "not-an-address",
+                                   "confirm_email": "not-an-address",
+                                   "current_password": PASSWORD})
+    s.check("and something that is not an address is refused",
+            address_now() == OLD)
+    # The typo case, which is this feature's own way of causing the lockout it
+    # exists to cure: a wrong address saved successfully is a dead mailbox
+    # again, only now chosen on purpose.
+    mc.post("/change-email", data={"new_email": NEW,
+                                   "confirm_email": "zzchange.nwe@example.invalid",
+                                   "current_password": PASSWORD})
+    s.check("and two that do not match are refused", address_now() == OLD)
+    # Checked on the ANSWER, not on the row. "It is still OLD afterwards" is
+    # true whether the route refused or cheerfully wrote OLD back over OLD,
+    # so on its own it proves nothing: a refusal re-renders the form, and an
+    # acceptance redirects to the profile.
+    same = mc.post("/change-email", data={"new_email": OLD, "confirm_email": OLD,
+                                          "current_password": PASSWORD})
+    s.check("and the address it already has is refused",
+            same.status_code == 200 and address_now() == OLD,
+            detail=f"HTTP {same.status_code} — 302 means it was taken as a change")
+
+    # Somebody else's address. The column is UNIQUE, so without this check the
+    # answer is a 500 rather than a sentence — and the UNIQUE index is case
+    # SENSITIVE, so the capitalised spelling is the one that gets through it.
+    taken = conn.execute(
+        "SELECT email FROM users WHERE id != ? ORDER BY id LIMIT 1",
+        (mover["id"],)).fetchone()["email"]
+    r = mc.post("/change-email", data={"new_email": taken, "confirm_email": taken,
+                                       "current_password": PASSWORD})
+    s.check("an address another account holds is refused", address_now() == OLD,
+            response=r)
+    # AND ONE HELD IN CAPITALS. Typing it in capitals proves nothing — the
+    # route lowercases what it is given before it looks, so the two spellings
+    # are the same string by then. What the unique index cannot see is a row
+    # ALREADY STORED with a capital: it is case sensitive, so Zz@… and zz@…
+    # are two different addresses to it and both may exist. Login is not case
+    # sensitive — it lowercases and matches — so the moment both exist the
+    # capitalised account stops being reachable by anybody, silently, and the
+    # person who lost it did nothing. Nothing in this app writes such a row;
+    # an import or a hand-edited database does. COLLATE NOCASE on the
+    # duplicate check is the only thing standing in front of it.
+    conn.execute(
+        """INSERT INTO users (email, password_hash, role, name, job_role,
+           status, created_at) VALUES (?, ?, 'employee', 'Zz Shouty',
+           'General', 'active', ?)""",
+        ("ZzChange.Shouty@Example.Invalid", m.generate_password_hash("x" * 14),
+         m.datetime.now(m.timezone.utc).isoformat()))
+    conn.commit()
+    quiet_spelling = "zzchange.shouty@example.invalid"
+    mc.post("/change-email", data={"new_email": quiet_spelling,
+                                   "confirm_email": quiet_spelling,
+                                   "current_password": PASSWORD})
+    s.check("and so is one another account holds in capitals",
+            address_now() == OLD,
+            detail="the unique index is case sensitive, so it would have let "
+                   "this through and orphaned the other account")
+
+    s.section("A good one lands, normalised the way login reads it")
+    # Typed the way somebody actually types an address into a form on a phone:
+    # a capital on the front and a space on the end from the autocomplete.
+    # login does .strip().lower() and then matches with a plain `=`, so an
+    # address saved any other way is one that can never be typed back in.
+    # SUBMITTED THROUGH THE FORM THE PAGE DRAWS, not through the field names
+    # the route happens to read. Every post above types those names in by
+    # hand, which is right for testing the route and proves nothing about the
+    # template: a renamed box, or one somebody forgot to draw, passes all of
+    # them and is broken for every person who opens the page.
+    posts = [f for f in forms_on(mc.get("/change-email").get_data(as_text=True))
+             if f["method"] == "post"]
+    form = max(posts, key=lambda f: len(f["fields"])) if posts else {"fields": []}
+    drawn = {x["name"] for x in form["fields"]}
+    s.check("the page draws every box the route reads",
+            {"new_email", "confirm_email", "current_password"} <= drawn,
+            detail=f"the form sends {sorted(drawn)}")
+    # Typed the way somebody types an address into a form on a phone: a
+    # capital on the front, and a space on the end from the autocomplete.
+    messy = "  ZzChange.New@Example.Invalid  "
+    done = mc.post("/change-email",
+                   data=fill(form, {"new_email": messy, "confirm_email": messy,
+                                    "current_password": PASSWORD}),
+                   follow_redirects=True)
+    s.check("it is accepted", done.status_code == 200, response=done)
+    s.check("and stored exactly as login would look it up", address_now() == NEW,
+            detail=repr(address_now()))
+
+    # THE WHOLE POINT, and the thing every check above is only scaffolding
+    # for: it has to let them in at the new address and stop letting them in
+    # at the old one.
+    conn.execute("DELETE FROM login_throttle")
+    conn.commit()
+    fresh_in = m.app.test_client()
+    fresh_in.post("/login", data={"email": NEW, "password": PASSWORD})
+    with fresh_in.session_transaction() as sess:
+        signed_in = sess.get("user_id")
+    s.check("the new address signs in", signed_in == mover["id"],
+            detail="a change that does not let you log in is not one")
+    stale = m.app.test_client()
+    stale.post("/login", data={"email": OLD, "password": PASSWORD})
+    with stale.session_transaction() as sess:
+        old_still_works = sess.get("user_id")
+    s.check("and the old one does not", old_still_works is None)
+    conn.execute("DELETE FROM login_throttle")
+    conn.commit()
+
+    s.section("A reset already in flight dies with the address")
+    # A code was posted to the old mailbox. The login it opens has just become
+    # a different address, so leaving it live means whoever reads the old mail
+    # can take the account straight back — the change would look done and
+    # would not be.
+    code = "424242"
+    conn.execute(
+        """UPDATE users SET reset_code = ?, reset_token = 'a-live-token',
+           reset_token_expires_at = ?, reset_code_attempts = 0 WHERE id = ?""",
+        (m.generate_password_hash(code),
+         (m.datetime.now(m.timezone.utc) + m.timedelta(minutes=9)).isoformat(),
+         mover["id"]))
+    conn.commit()
+    back = "zzchange.back@example.invalid"
+    mc.post("/change-email", data={"new_email": back, "confirm_email": back,
+                                   "current_password": PASSWORD})
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (mover["id"],)).fetchone()
+    s.check("the address moved again", row["email"] == back)
+    s.check("the code is gone", row["reset_code"] is None)
+    s.check("the token with it", row["reset_token"] is None)
+    s.check("and the expiry that kept it alive",
+            row["reset_token_expires_at"] is None)
+    # Not merely NULL in a column — actually unusable. This is the claim in a
+    # form somebody can check without reading the schema.
+    conn.execute("DELETE FROM submission_log")
+    conn.commit()
+    was_hash = row["password_hash"]
+    m.app.test_client().post(
+        "/reset-password",
+        data={"email": back, "code": code, "password": "taken-over-12345",
+              "confirm_password": "taken-over-12345"}, follow_redirects=True)
+    s.check("and the code cannot be redeemed against the new address",
+            conn.execute("SELECT password_hash FROM users WHERE id = ?",
+                         (mover["id"],)).fetchone()["password_hash"] == was_hash,
+            detail="the old mailbox would still own the account")
+
+    s.section("It is written down, naming both addresses")
+    # A login identity changing is exactly the event somebody goes looking for
+    # afterwards — "this account is not the one I set up" is asked weeks late,
+    # by which point the only record of what happened is this line.
+    entry = conn.execute(
+        """SELECT * FROM audit_log WHERE action = 'user_email_changed'
+           ORDER BY id DESC LIMIT 1""").fetchone()
+    s.check("there is an audit line", entry is not None)
+    s.check("under the person's name, so it is on their record",
+            entry and (entry["target"] or "") == mover["name"],
+            detail=repr(entry["target"] if entry else None))
+    s.check("saying what it was", entry and NEW in (entry["details"] or ""))
+    s.check("and what it became", entry and back in (entry["details"] or ""),
+            detail=repr(entry["details"] if entry else None))
+
+    s.section("And the address losing the account is told")
+    # The hijack case: somebody changes the login on a session that is not
+    # theirs and the rightful owner learns nothing at all — unless the address
+    # that used to work gets a letter about it.
+    sent = []
+    was_enabled, was_send = m.email_enabled, m.send_email
+    m.email_enabled = lambda: True
+    m.send_email = lambda to, subject, body, **kw: (
+        sent.append((to, subject, body)), True)[1]
+    try:
+        onward = "zzchange.onward@example.invalid"
+        mc.post("/change-email", data={"new_email": onward,
+                                       "confirm_email": onward,
+                                       "current_password": PASSWORD})
+        s.check("one letter goes out", len(sent) == 1, detail=f"{len(sent)} sent")
+        s.check("to the address that just stopped working",
+                sent and sent[0][0] == back,
+                detail=repr(sent[0][0] if sent else None))
+        body = sent[0][2] if sent else ""
+        s.check("naming the address it was", back in body)
+        s.check("and the one it now is", onward in body,
+                detail="somebody reading this has to be able to see where "
+                       "their account went")
+        s.check("and it never carries a password",
+                PASSWORD not in body, detail="this is a notice, not a key")
+    finally:
+        m.email_enabled, m.send_email = was_enabled, was_send
+
+    # WITH NO PROVIDER, WHICH IS THE STATE THIS HOUSE IS IN. The notice is a
+    # courtesy; the change is the job. A house with no mail configured must
+    # still be able to fix its own login, and must not have a letter nobody
+    # will ever send queued up behind it.
+    sent.clear()
+    was_enabled, was_send = m.email_enabled, m.send_email
+    m.email_enabled = lambda: False
+    m.send_email = lambda to, subject, body, **kw: (
+        sent.append((to, subject, body)), True)[1]
+    try:
+        final = "zzchange.final@example.invalid"
+        quiet = mc.post("/change-email", data={"new_email": final,
+                                               "confirm_email": final,
+                                               "current_password": PASSWORD},
+                        follow_redirects=True)
+        s.check("with no mail configured the change still lands",
+                address_now() == final, response=quiet)
+        s.check("and nothing is sent or queued", sent == [],
+                detail=f"{sent} — skipped silently, not held for a retry that "
+                       "is never coming")
+    finally:
+        m.email_enabled, m.send_email = was_enabled, was_send
+
+    conn.execute("DELETE FROM audit_log WHERE action = 'user_email_changed'")
+    conn.execute("DELETE FROM users WHERE email LIKE 'zzchange.%'")
+    conn.execute("DELETE FROM submission_log")
+    conn.execute("DELETE FROM login_throttle")
+    conn.commit()
 
     conn.close()
     return s

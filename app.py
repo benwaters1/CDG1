@@ -23896,6 +23896,138 @@ def change_password():
     return render_template("change_password.html")
 
 
+@app.route("/change-email", methods=["GET", "POST"])
+@login_required
+def change_email():
+    """The address you sign in with, changed by the person who signs in.
+
+    Nothing could change it. Every UPDATE on this table set the password, the
+    reset code, the phone, the emergency contact, the name, the job, the
+    status, the invite token, the PIN, the language, the access preset —
+    never the email. So the address a row was created with was the address it
+    kept for good.
+
+    That is a lockout waiting to happen, because the first owner account is
+    not created by a person. The app seeds it on an empty database as
+    owner@chateaugudanes.com, which is nobody's mailbox, and the owner reads
+    their mail at a different address entirely. The day a mail provider is
+    configured, "I forgot my password" starts posting a six digit code to an
+    address that does not exist — and the only way back in is the recovery
+    door in /recover, which needs control of the deployment. That is the
+    afternoon this house has already spent once.
+
+    A CREDENTIAL, NOT A PROFILE FIELD, which is why this is its own page next
+    to change_password rather than another box on my-contact-info beside the
+    phone number. `login` finds the row by email and nothing else: change it
+    and you have changed what the account IS. So it asks for the current
+    password the way changing a password does — a borrowed session should not
+    be enough to walk off with the login.
+    """
+    user = current_user()
+    if request.method != "POST":
+        return render_template("change_email.html", person=user,
+                               email_enabled=email_enabled())
+
+    current = request.form.get("current_password", "")
+    # NORMALISED EXACTLY AS LOGIN NORMALISES. That route reads
+    # `.strip().lower()` off the form and matches with a plain `=`, so an
+    # address stored with a capital letter or a trailing space is an address
+    # that can never be typed back in. The change would report success, the
+    # page would redirect happily, and the account would be gone — which is a
+    # worse version of the problem this page exists to solve.
+    new_email = (request.form.get("new_email", "") or "").strip().lower()
+    confirm = (request.form.get("confirm_email", "") or "").strip().lower()
+    old_email = (user["email"] or "").strip()
+
+    def refuse(message):
+        flash(message, "error")
+        return render_template("change_email.html", person=user,
+                               email_enabled=email_enabled())
+
+    if not check_password_hash(user["password_hash"], current):
+        return refuse("Current password is incorrect.")
+    if not EMAIL_RE.match(new_email):
+        return refuse("That doesn't look like an email address.")
+    # ASKED FOR TWICE, because one typo here is the same lockout as the dead
+    # seeded address, arriving faster: the write succeeds, the reset code
+    # goes to an address that does not exist, and the door has shut behind
+    # them. Two identical typos is a different order of accident from one.
+    if new_email != confirm:
+        return refuse("The two addresses don't match.")
+    if new_email == old_email.lower():
+        return refuse("That's already your sign-in address.")
+
+    conn = get_db()
+    # COLLATE NOCASE rather than a bare `=`. The UNIQUE index on this column
+    # is case sensitive, so a row stored as Owner@… is unreachable at login
+    # and would still collide on the write — refused by sqlite as a 500
+    # rather than by this route as a sentence somebody can act on.
+    taken = conn.execute(
+        "SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?",
+        (new_email, user["id"]),
+    ).fetchone()
+    if taken:
+        conn.close()
+        return refuse("Another account already uses that address.")
+
+    try:
+        conn.execute("UPDATE users SET email = ? WHERE id = ?",
+                     (new_email, user["id"]))
+    except sqlite3.IntegrityError:
+        # The check above and the write are not one operation, so two changes
+        # racing for the same address can still meet at the index. Same
+        # sentence either way.
+        conn.close()
+        return refuse("Another account already uses that address.")
+
+    # ANY RESET IN FLIGHT DIES HERE. A code was posted to the old address; the
+    # login it opens has just become a different address. Leaving it live
+    # means whoever reads the old mailbox can still take the account back —
+    # the change would look done and would not be. _clear_reset rather than a
+    # column list of its own, so a reset column added later is cleared by both
+    # doors instead of one.
+    _clear_reset(conn, user["id"])
+    # Findable afterwards, and under the name rather than the address: the
+    # person's history page keys on it, and it is what the sibling
+    # password_changed line writes. Both addresses go in the detail, which the
+    # audit page searches — so the old one still finds this line after it has
+    # stopped being anybody's login. The action is called user_email_changed
+    # because "user" is the word that files it under People.
+    log_audit(conn, "user_email_changed", target=user["name"],
+              details=f"{old_email or 'no address'} -> {new_email}")
+    conn.commit()
+    conn.close()
+
+    # THE OLD ADDRESS IS TOLD, because it is the one losing the account. A
+    # session taken over a shoulder changes the login and the rightful owner
+    # learns nothing — unless the address that used to work gets a letter.
+    # Sent after the commit, with the connection closed: it is news about
+    # something that already happened, and a mail server with a ten second
+    # timeout has no business holding the write lock.
+    #
+    # Only when a provider is configured. With none, send_email would file
+    # this in the undelivered outbox for a house that has no mail at all,
+    # which is a queue of letters nobody is ever going to send.
+    if old_email and email_enabled():
+        first = (user["name"] or "").split(" ")[0] or "there"
+        send_email(
+            old_email, "The sign-in address on your account was changed",
+            f"Hi {first},\n\n"
+            f"The address used to sign in to Château de Gudanes was changed "
+            f"from {old_email} to {new_email}.\n\n"
+            f"This message is going to the old address because it is the one "
+            f"that no longer works for signing in.\n\n"
+            f"If you did this, there is nothing to do — use the new address "
+            f"from now on.\n\n"
+            f"If you did not, say so straight away: whoever holds the new "
+            f"address can now reset the password on this account.\n\n"
+            f"— Château de Gudanes",
+        )
+
+    flash(f"Sign-in address updated — use {new_email} from now on.", "success")
+    return redirect(url_for("profile", user_id=user["id"]))
+
+
 @app.route("/my-contact-info", methods=["GET", "POST"])
 @login_required
 def edit_own_contact_info():
