@@ -133,6 +133,14 @@ def run():
             _clean(conn)
             conn.close()
             return s
+        # THE HOUSE TAKES BOOKINGS, NOT REQUESTS FOR THEM. This used to
+        # read "pending" and wait for the owner to press a button, which
+        # meant a guest who had just paid was told their dates were still
+        # to be confirmed, and a request nobody looked at for two days
+        # cancelled itself.
+        s.check("and it is booked, not merely requested",
+                row["status"] == "confirmed",
+                detail="status is %r" % (row["status"],))
 
         # ---- the letter, which is all they hold -------------------------
         s.section("The letter is the only thing they are given")
@@ -140,6 +148,22 @@ def run():
         s.check("a letter goes to the guest", bool(theirs),
                 detail="letters written: " + str([l["to"] for l in letters]))
         body = theirs[0]["body"] if theirs else ""
+        # And it is the REAL one — drawn, with the dates attached —
+        # rather than an acknowledgement promising a letter later. These
+        # checks used to sit at the end of the walk, after the owner
+        # confirmed; they belong here now, because this is where it
+        # happens.
+        s.check("and it is the confirmation itself",
+                "confirmed" in (theirs[0]["subject"] if theirs else "").lower(),
+                detail=repr(theirs[0]["subject"] if theirs else None))
+        s.check("drawn, not only written",
+                theirs and theirs[0]["html"].lstrip().lower().startswith("<!doctype"),
+                detail="the confirmation is the most opened letter this "
+                       "house sends")
+        s.check("with the dates attached for their calendar",
+                theirs and "BEGIN:VCALENDAR" in theirs[0]["ics"],
+                detail="a guest who cannot add it to a calendar writes it "
+                       "on paper, and then arrives on the wrong day")
         s.check("naming the reference they will quote on the telephone",
                 (row["reference_code"] or "") in body, detail=body[:120])
         # THE HINGE. Everything below is opened with what this finds and
@@ -369,37 +393,32 @@ def run():
                 itin.status_code == 200, itin)
 
         # ---- and the house writes again ---------------------------------
-        s.section("The house confirms, and writes again")
+        s.section("And the old confirm button does not write again")
+        # The stay was confirmed as it was taken, so this button now has
+        # nothing to do. It has to stay harmless rather than be removed:
+        # stays taken before this changed are still sitting pending, and a
+        # guest carrying a caution still lands there on purpose. What it must
+        # not do is send a second confirmation to somebody who already has
+        # one — confirm_booking_by_id only ever acts on a pending row, and
+        # this is the check that keeps that true.
         del letters[:]
-        ok = oc.post("/admin/bookings/%d/confirm" % row["id"],
-                     follow_redirects=True)
-        s.check("the owner can confirm it", ok.status_code == 200, ok)
-        s.check("and it is confirmed",
-                (conn.execute("SELECT status FROM bookings WHERE id = ?",
-                              (row["id"],)).fetchone()["status"]) == "confirmed")
-        second = [l for l in letters if l["to"] == EMAIL]
-        s.check("a second letter goes to the guest", bool(second),
-                detail=str([l["to"] for l in letters]))
-        if second:
-            s.check("drawn, not only written",
-                    second[0]["html"].lstrip().lower().startswith("<!doctype"),
-                    detail="the confirmation is the most opened letter this "
-                           "house sends")
-            s.check("with the dates attached for their calendar",
-                    "BEGIN:VCALENDAR" in second[0]["ics"],
-                    detail="a guest who cannot add it to a calendar writes it "
-                           "on paper, and then arrives on the wrong day")
-            # A guest keeps the first letter. If the second sends them
-            # somewhere else, they have two addresses and no way to know which
-            # is theirs.
-            s.check("carrying the same address as the first",
-                    token in second[0]["body"],
-                    detail="the second letter must not hand them a different "
-                           "way in")
-        s.check("and that address still opens their page",
+        again = oc.post("/admin/bookings/%d/confirm" % row["id"],
+                        follow_redirects=True)
+        # A 404, which is right: the page only draws that button beside a
+        # pending stay, so reaching this at all means a stale tab or a
+        # forged post, and neither should be told it worked.
+        s.check("a stale confirm is refused rather than obeyed",
+                again.status_code == 404, detail=str(again.status_code))
+        s.check("and no second confirmation goes out",
+                not [l for l in letters if l["to"] == EMAIL],
+                detail="letters: " + str([l["to"] for l in letters]))
+        s.check("the stay is still confirmed, once",
+                conn.execute("SELECT status FROM bookings WHERE id = ?",
+                             (row["id"],)).fetchone()["status"] == "confirmed")
+        s.check("and their address still opens their page",
                 guest.get("/book/manage/%s" % token).status_code == 200,
-                detail="confirming must not invalidate the link the guest is "
-                       "already holding")
+                detail="nothing about confirming may invalidate the link the "
+                       "guest is already holding")
     finally:
         m.send_email = was_send
         _clean(conn)
