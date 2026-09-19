@@ -155,6 +155,7 @@ SUITES = [
     "test_what_a_night_earns",
     "test_hours_and_tips",
     "test_road_notice",
+    "test_salvage_handover",
     "test_sick_note",
     "test_insurer_notice",
     "test_home_warnings",
