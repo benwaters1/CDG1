@@ -22,7 +22,7 @@
     {% endif %}
     <div class="expense-head">
       <div>
-        <strong>{{ room['name'] }}</strong>
+        <strong>{{ room['name'] }}</strong>{% if room['channel_name'] %} <span class="muted">({{ room['channel_name'] }} on the channels)</span>{% endif %}
         {% if room['price_per_night'] %} — €{{ '%.0f'|format(room['price_per_night']) }}/night{% endif %}
         · sleeps {{ room['max_occupancy'] }}
         <span class="mini-status {{ 'status-active' if room['active'] else 'status-inactive' }}" style="margin-left:8px;">{{ 'open for booking' if room['active'] else 'hidden' }}</span>

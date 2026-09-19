@@ -5092,6 +5092,12 @@ def init_db():
             executed_at TEXT,
             created_at TEXT NOT NULL
         )"""),
+
+        # What Booking.com and the rest call this room. The house name is the
+        # real one and stays in `name`; this is the alias staff have been
+        # translating in their heads every time an arrival comes off a feed.
+        # Free text, never matched on -- a label for a person to read.
+        ("rooms_channel_name", "ALTER TABLE rooms ADD COLUMN channel_name TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -44755,12 +44761,12 @@ def new_room():
         conn = get_db()
         max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM rooms").fetchone()["m"]
         conn.execute(
-            """INSERT INTO rooms (name, description, max_occupancy, max_adults, max_children,
+            """INSERT INTO rooms (name, channel_name, description, max_occupancy, max_adults, max_children,
                price_per_night, min_nights, size_sqm, bed_setup, bathroom, outlook, floor,
                access_steps, access_car_metres, access_bathroom, access_notes,
                export_token, sort_order, photo_filename, amenities)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (f["name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (f["name"], f["channel_name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"],
              f["access_steps"], f["access_car_metres"], f["access_bathroom"],
@@ -44801,12 +44807,12 @@ def edit_room(room_id):
             photo_filename = room["photo_filename"]
 
         conn.execute(
-            """UPDATE rooms SET name=?, description=?, max_occupancy=?, max_adults=?, max_children=?,
+            """UPDATE rooms SET name=?, channel_name=?, description=?, max_occupancy=?, max_adults=?, max_children=?,
                price_per_night=?, min_nights=?, size_sqm=?, bed_setup=?, bathroom=?, outlook=?,
                floor=?, access_steps=?, access_car_metres=?, access_bathroom=?,
                access_notes=?, active=?, photo_filename=?, amenities=?,
                workshop_room=? WHERE id=?""",
-            (f["name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
+            (f["name"], f["channel_name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"],
              f["access_steps"], f["access_car_metres"], f["access_bathroom"],
@@ -68201,6 +68207,10 @@ def room_fields_from_form():
     children = _i("max_children", 0) or 0
     return {
         "name": (request.form.get("name", "") or "").strip(),
+        # Blank means "the same as the house name", which is the common case
+        # and must not render as an empty second line on every card.
+        "channel_name": ((request.form.get("channel_name", "") or "").strip()
+                         or None),
         "description": (request.form.get("description", "") or "").strip(),
         "max_adults": adults, "max_children": children,
         # Kept in step with the split so every existing availability and
