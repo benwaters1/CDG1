@@ -952,6 +952,14 @@ if STRIPE_SECRET_KEY:
 # clicks "Sync all calendars" by hand. See DEPLOY.md.
 ICAL_SYNC_TOKEN = os.environ.get("ICAL_SYNC_TOKEN", "")
 
+# The way back in when the password is gone and email is not set up yet.
+#
+# Unset by default, and unset is the normal state: with no value here the
+# route 404s like it does not exist. Set it in Railway, use it, delete it.
+# Possession of a deployment variable proves control of the deployment, which
+# is what email recovery is only a proxy for.
+OWNER_RECOVERY_TOKEN = os.environ.get("OWNER_RECOVERY_TOKEN", "")
+
 # Lets an external scheduler trigger a "what needs my attention" summary
 # email to the owner without a logged-in session — same pattern as
 # ICAL_SYNC_TOKEN above. Unset by default — until you set it,
@@ -5729,6 +5737,35 @@ def init_db():
                          (position, room_name))
         conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?)",
                      ("rooms_initial_order_set", datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+
+    # WHERE THE GATES ARE.
+    #
+    # house_coordinates() has refused to guess since it was written, and said
+    # so in its own docstring: the template that arrived with it carried
+    # 42.7847 / 1.6564 as a default with a note to check them against the
+    # actual gates, and nobody had. A pin that is merely nearby fails at
+    # exactly the job it was added for -- an unlit road at night -- and fails
+    # it with more authority than no pin at all. So the buttons stayed hidden.
+    #
+    # It also told the owner to "set them in Settings", and there is no such
+    # field: nothing in the app could write these two keys, so the feature was
+    # unreachable rather than merely unset.
+    #
+    # 42.783835 / 1.680329 is what Wikipedia and the Monument Historique
+    # listing both give for the chateau, and the owner has confirmed it is the
+    # gates. For scale, the four pairs that were scattered through the code
+    # before this were between 580 metres and 3.5 kilometres away from it.
+    #
+    # Guarded, so it is set once and never again -- if somebody moves the pin
+    # a few metres up the road after standing at it with a telephone, a
+    # redeploy must not put this back.
+    if not conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                        ("house_lat",)).fetchone():
+        conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?)",
+                     ("house_lat", "42.783835"))
+        conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?)",
+                     ("house_lng", "1.680329"))
         conn.commit()
 
     # The ateliers, with their real prices and dates. Two passes:
@@ -43745,6 +43782,65 @@ def sync_all_ical_sources():
     flash(f"Synced {ok_count} of {len(sources)} calendar{'s' if len(sources) != 1 else ''}.",
           "success" if ok_count == len(sources) else "error")
     return redirect(url_for("admin_rooms"))
+
+
+
+@app.route("/recover/<token>", methods=["GET", "POST"])
+def recover_owner_password(token):
+    """Set the owner's password when there is no other way in.
+
+    404s unless OWNER_RECOVERY_TOKEN is set and matches, and 404 rather than
+    403 so somebody guessing learns nothing -- the same posture and the same
+    reasoning as /api/sync-ical.
+
+    Sets a password the person supplies; it never displays one. So this is a
+    door, not a window: it cannot be used to READ anything, and the worst a
+    leaked token does is let somebody who can already redeploy the app change
+    a password they could have changed by other means anyway.
+
+    Whoever it belongs to is chosen by the OWNER of the house, not by the URL:
+    the first owner account, because a site with two of them is not the
+    situation this exists for.
+    """
+    if not OWNER_RECOVERY_TOKEN or not hmac.compare_digest(
+            token, OWNER_RECOVERY_TOKEN):
+        abort(404)
+
+    conn = get_db()
+    owner = conn.execute(
+        "SELECT * FROM users WHERE role = 'owner' ORDER BY id LIMIT 1").fetchone()
+    if not owner:
+        conn.close()
+        abort(404)
+
+    if request.method == "GET":
+        conn.close()
+        return render_template("recover.html", who=owner["email"], done=False)
+
+    new = request.form.get("password", "")
+    again = request.form.get("password_again", "")
+    if len(new) < 10:
+        conn.close()
+        flash("Use at least ten characters.", "error")
+        return redirect(url_for("recover_owner_password", token=token))
+    if new != again:
+        conn.close()
+        flash("The two passwords are not the same.", "error")
+        return redirect(url_for("recover_owner_password", token=token))
+
+    conn.execute(
+        """UPDATE users SET password_hash = ?, reset_code = NULL,
+           reset_token = NULL, reset_token_expires_at = NULL,
+           account_claimed = 1 WHERE id = ?""",
+        (generate_password_hash(new), owner["id"]))
+    # Recorded, because a password changed outside the ordinary route is
+    # exactly the event somebody should be able to find afterwards. The actor
+    # is nobody -- there is no session here -- and the line says so.
+    log_audit(conn, "owner_password_recovered", target=owner["email"],
+              details="through the recovery token")
+    conn.commit()
+    conn.close()
+    return render_template("recover.html", who=owner["email"], done=True)
 
 
 @app.route("/api/sync-ical", methods=["GET", "POST"])

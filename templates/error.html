@@ -3,9 +3,12 @@
 {% block title %}{{ code }}{% endblock %}
 {% block content %}
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Not Here</p>
-  <h1 class="g-pagehead">That page has moved, or never existed</h1>
-  <p class="g-lede">The site was rebuilt recently, so an old link may simply point somewhere that has gone. These are the things people are usually after.</p>
+  <p class="g-eyebrow">{% if code == 404 %}Not Here{% else %}Something went wrong{% endif %}</p>
+  <h1 class="g-pagehead">{% if code == 404 %}That page has moved, or never existed{% else %}Something went wrong at our end{% endif %}</h1>
+  {# Branching, because deleting the old block below took the only thing that
+     knew the difference with it — and a server fault announcing that the page
+     "never existed" blames the visitor for our mistake. #}
+  <p class="g-lede">{% if code == 404 %}The site was rebuilt recently, so an old link may simply point somewhere that has gone. These are the things people are usually after.{% else %}The fault is ours, not yours, and it has been logged. In the meantime these are the things people are usually after.{% endif %}</p>
 
   <ul class="g-lost">
     <li><a href="{{ url_for('book_rooms') }}"><b>Stay the night</b><span>Five bedrooms{% if house_rooms and house_rooms.from_price %}, from &euro;{{ house_rooms.from_price }}{% endif %}</span></a></li>
@@ -15,39 +18,9 @@
     <li><a href="{{ url_for('restoration_page') }}"><b>The restoration</b><span>Fifteen years, and not finished</span></a></li>
     <li><a href="{{ url_for('contact_page') }}"><b>Write to us</b><span>Someone reads it at the château</span></a></li>
   </ul>
-</div></section>
 
-
-{# There was no error template at all — a mistyped URL or an expired manage
-   link returned the bare Flask page, which looks like the site is broken
-   rather than the address being wrong. Register with:
-     @app.errorhandler(404)
-     def not_found(e): return render_template("error.html", code=404), 404
-     @app.errorhandler(500)
-     def server_error(e): return render_template("error.html", code=500), 500 #}
-
-<section class="g-sec g-short"><div class="g-wrap">
-  <p class="g-eyebrow">Château de Gudanes</p>
-  <h1 class="g-display" >
-    {% if code == 404 %}That page is not here{% else %}Something went wrong{% endif %}
-  </h1>
-  <p class="g-p g-lede-first">{%- if code == 404 %}The address may have changed, or the link may have expired.
-    {% else %}The fault is ours, not yours. It has been logged.{%- endif %}</p>
-
-  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-    <path d="M0 13h38"/><path d="M82 13h38"/>
-    <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
-    <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
-    <circle cx="60" cy="13" r="1.4"/>
-  </svg>
-
-  <div class="g-conf__acts">
-    <a href="{{ url_for('dashboard') }}" class="g-btn g-btn--solid">The château</a>
-    <a href="{{ url_for('book_rooms') }}" class="g-btn">Rooms &amp; dates</a>
-    <a href="{{ url_for('find_booking') }}" class="g-btn">Find my booking</a>
-    <a href="{{ url_for('contact_page') }}" class="g-btn">Contact</a>
-  </div>
-
+  {# Kept from the page this replaced: the one line that tells somebody the
+     house would rather hear about a broken link than have them give up. #}
   <p class="g-hint">If you were following a link from us and it has not worked, write to
     <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a> and we will sort it out.</p>
 </div></section>

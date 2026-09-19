@@ -78,11 +78,16 @@ FIELD = re.compile(r"<(input|select|textarea)\b([^>]*)>", re.S | re.I)
 # up — a filename, a slug, a month. A ceiling, so a new page
 # behind an unknown argument is noticed rather than skipped.
 #
-# It did that: uploaded_file was added for the photograph intake and takes a
-# stored filename, which is the same shape as room_photo and mirrored_photo
-# beside it. Six now, and the six are export_report_csv, mirrored_photo,
+# It did that twice. uploaded_file was added for the photograph intake and
+# takes a stored filename, which is the same shape as room_photo and
+# mirrored_photo beside it. Then recover_owner_password, whose argument is a
+# SECRET rather than an id — it is the recovery token itself, read from the
+# environment, and the whole point of that route is that nothing can reach it
+# without the value. There is nothing to teach here and there must not be.
+#
+# Seven now: export_report_csv, mirrored_photo, recover_owner_password,
 # room_ics_feed, room_photo, set_language and uploaded_file.
-NO_RULE = 6
+NO_RULE = 7
 
 # What the sweep fetched and could not read.
 #

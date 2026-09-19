@@ -23,6 +23,7 @@ SUITES = [
     "test_chat",
     "test_assistant",
     "test_guest_import",
+    "test_way_back_in",
     "test_access_levels",
     "test_booking_quote",
     "test_booking_bill",
