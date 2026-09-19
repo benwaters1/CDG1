@@ -9,7 +9,8 @@
 <p class="pay-disclaimer" style="margin-top:-10px;">
   The wording a guest receives automatically at each step — for rooms, the restaurant,
   workshops and events. Merge tags fill in per guest, so one template covers every
-  booking rather than a copy per stay.
+  booking rather than a copy per stay. <strong>Open one and you see the letter as a
+  guest reads it</strong>, filled in with a real-looking booking, before you save.
 </p>
 
 {% set broken = states.values()|select('equalto', 'Needs fixing')|list|length %}
@@ -47,8 +48,11 @@
         {% elif state == 'Edited' %}<span class="mini-status status-upcoming">edited{% if t['updated_at'] %} {{ t['updated_at']|house_day }}{% endif %}</span>
         {% endif %}
       </div>
-      <span class="small-link" style="color:var(--steel); cursor:pointer;"
-            onclick="toggleTemplateEdit('{{ key }}')">Edit</span>
+      {# A BUTTON, not a span with an onclick. The old one could not be reached
+         by keyboard and was announced as nothing at all. #}
+      <button type="button" class="btn-mini btn-ghost tpl-toggle"
+              aria-expanded="false" aria-controls="edit-tpl-{{ key }}"
+              data-tpl-toggle="{{ key }}">Edit</button>
     </div>
 
     {# What the guest actually sees, without opening the editor. #}
@@ -60,37 +64,81 @@
     {% endif %}
   </div>
 
-  <form method="post" action="{{ url_for('edit_email_template', template_key=key) }}"
-        id="edit-tpl-{{ key }}" class="detail-card tpl-editor" style="display:none;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field-label">Subject</label>
-    <input aria-label="Subject" type="text" name="subject" value="{{ t['subject'] }}" required>
-    <label class="field-label" style="margin-top:10px;">Body</label>
-    <textarea aria-label="Body" name="body" rows="10" required
-              style="font-family:'IBM Plex Mono', monospace; font-size:12.5px;">{{ t['body'] }}</textarea>
-    {% if tags[key] %}
-    <p class="field-hint">Keep every tag you want filled in: {% for tag in tags[key] %}<code>{{ '{' }}{{ tag }}{{ '}' }}</code>{% endfor %}</p>
-    {% endif %}
-    {# What this message CAN use, which is the half that was missing. The line
-       above says what it uses today; without this the only way to find out what
-       else was available was to guess one, save it, send one and look — and by
-       then the person who could see the mistake was the guest. #}
-    {% if available[key] %}
-    <p class="field-hint">Available here: {% for tag in available[key] %}<code>{{ '{' }}{{ tag }}{{ '}' }}</code>{% endfor %}</p>
-    <p class="field-hint">Anything else is refused when you save: nothing would
-    fill it, and a guest would read it exactly as you typed it.</p>
-    {% endif %}
-    <div style="display:flex; gap:10px; align-items:center; margin-top:10px;">
-      <button type="submit" class="btn-mini">Save</button>
-      {% if key in edited %}
-      <button type="submit" class="btn-text-danger" formaction="{{ url_for('restore_email_template', template_key=key) }}"
-              formnovalidate
-              onclick="return confirm('Put this template back to its original wording? Your changes will be lost.');">
-        Restore original wording
-      </button>
-      {% endif %}
+  <div class="tpl-editor" id="edit-tpl-{{ key }}" hidden>
+    <div class="tpl-cols">
+
+      {# ---- the wording ------------------------------------------------- #}
+      <form method="post" action="{{ url_for('edit_email_template', template_key=key) }}"
+            class="tpl-write" data-tpl-form="{{ key }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label class="field-label" for="subj-{{ key }}">Subject</label>
+        <input type="text" id="subj-{{ key }}" name="subject" required
+               value="{{ t['subject'] }}" data-tpl-subject>
+        {# Most phones cut a subject around here. Said as a count rather than a
+           rule: a long subject is not wrong, it is just not all read. #}
+        <p class="field-hint"><span data-tpl-sublen>—</span></p>
+
+        <label class="field-label" for="body-{{ key }}" style="margin-top:10px;">Body</label>
+        <textarea id="body-{{ key }}" name="body" rows="14" required data-tpl-body
+                  style="font-family:'IBM Plex Mono', monospace; font-size:12.5px;">{{ t['body'] }}</textarea>
+
+        {% if available[key] %}
+        {# CLICK TO PUT ONE IN. Saving refuses a tag nothing fills, so typing
+           them by hand is a trap with a save button on the end of it. #}
+        <p class="field-hint" style="margin-top:10px;">Click to insert — these are the
+          only ones this message can fill:</p>
+        <p class="tpl-tags">
+          {% for tag in available[key] %}
+          <button type="button" class="tpl-tagbtn" data-tpl-insert="{{ '{' }}{{ tag }}{{ '}' }}"
+                  title="Insert {{ '{' }}{{ tag }}{{ '}' }}">{{ '{' }}{{ tag }}{{ '}' }}</button>
+          {% endfor %}
+        </p>
+        <p class="field-hint">Anything else is refused when you save: nothing would
+          fill it, and a guest would read it exactly as you typed it.</p>
+        {% endif %}
+
+        <div class="tpl-acts">
+          <button type="submit" class="btn-primary">Save</button>
+          {% if key in edited %}
+          <button type="button" class="btn-mini btn-ghost" data-tpl-showorig="{{ key }}">
+            See the original wording
+          </button>
+          <button type="submit" class="btn-text-danger" formaction="{{ url_for('restore_email_template', template_key=key) }}"
+                  formnovalidate
+                  onclick="return confirm('Put this template back to its original wording? Your changes will be lost.');">
+            Restore original wording
+          </button>
+          {% endif %}
+        </div>
+
+        {% if key in edited and shipped[key][0] %}
+        {# Restore used to be a leap: a button saying your changes will be lost,
+           showing nothing of what you would get back. #}
+        <div class="tpl-orig" data-tpl-orig="{{ key }}" hidden>
+          <p class="field-hint" style="margin:0 0 6px;"><strong>The wording it shipped with</strong></p>
+          <p class="tpl-subject" style="margin-top:0;">{{ shipped[key][0] }}</p>
+          <pre class="tpl-origbody">{{ shipped[key][1] }}</pre>
+        </div>
+        {% endif %}
+      </form>
+
+      {# ---- what the guest reads ---------------------------------------- #}
+      <div class="tpl-read" aria-live="polite">
+        <p class="tpl-readhead">As a guest reads it</p>
+        <div class="tpl-warn" data-tpl-warn hidden></div>
+        <div class="tpl-letter">
+          <p class="tpl-letsubj" data-tpl-psubject></p>
+          <pre class="tpl-letbody" data-tpl-pbody></pre>
+        </div>
+        <p class="field-hint" data-tpl-unused></p>
+        <p class="field-hint">Filled in with a booking that could have happened —
+          Marie Dubois, three nights, a real-looking reference — so the length and
+          the tone are the ones a guest gets.</p>
+      </div>
+
     </div>
-  </form>
+  </div>
   {% endfor %}
 {% endif %}
 
@@ -105,19 +153,171 @@
 .tpl-subject{ margin:7px 0 3px; font-size:14px; }
 .tpl-preview{ margin:0; font-size:12.5px; color:var(--steel); line-height:1.6; }
 .tpl-tags{ margin:8px 0 0; display:flex; gap:5px; flex-wrap:wrap; }
-.tpl-tags code, .tpl-editor code{
+.tpl-tags code{
   font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--steel);
   background:var(--parchment); border-radius:4px; padding:1px 5px;
 }
-.tpl-editor{ max-width:760px; margin:-4px 0 18px; }
+.tpl-editor{ margin:-4px 0 18px; }
+
+/* The wording and the letter side by side, because the whole point is reading
+   one against the other. They stack on a narrow screen rather than shrinking
+   the letter to something nobody can judge. */
+.tpl-cols{ display:grid; gap:18px; grid-template-columns:1fr; align-items:start; }
+@media (min-width: 62rem){ .tpl-cols{ grid-template-columns:1fr 1fr; } }
+.tpl-write, .tpl-read{
+  background:var(--surface); border:1px solid var(--parchment-line);
+  border-radius:10px; padding:14px 16px;
+}
+.tpl-acts{ display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap; }
+.tpl-readhead{
+  margin:0 0 10px; font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--steel);
+}
+.tpl-letter{ background:var(--parchment); border-radius:8px; padding:14px 16px; }
+.tpl-letsubj{ margin:0 0 10px; font-weight:600; font-size:14px; }
+.tpl-letbody{
+  margin:0; white-space:pre-wrap; word-wrap:break-word; font-family:inherit;
+  font-size:13.5px; line-height:1.65;
+}
+.tpl-warn{
+  background:var(--status-bad-bg,#fdecea); border:1px solid var(--danger);
+  border-radius:8px; padding:9px 12px; margin-bottom:10px; font-size:12.5px;
+}
+.tpl-tagbtn{
+  font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--steel);
+  background:var(--parchment); border:1px solid var(--parchment-line);
+  border-radius:4px; padding:2px 6px; cursor:pointer;
+}
+.tpl-tagbtn:hover{ border-color:var(--steel); color:var(--ink); }
+.tpl-orig{ margin-top:12px; border-top:1px solid var(--parchment-line); padding-top:10px; }
+.tpl-origbody{
+  margin:0; white-space:pre-wrap; font-family:inherit; font-size:12.5px;
+  line-height:1.6; color:var(--steel);
+}
+.tpl-over{ color:var(--danger); }
 </style>
 
 <script>
-function toggleTemplateEdit(key) {
-  var edit = document.getElementById('edit-tpl-' + key);
-  edit.style.display = edit.style.display === 'none' ? 'block' : 'none';
-  if (edit.style.display === 'block') edit.querySelector('textarea').focus();
-}
+(function(){
+  /* Everything here is delegated off the document, so it works for every card
+     without one listener per template — there are twenty-odd of them. */
+
+  function fields(key){
+    var form = document.querySelector('[data-tpl-form="' + key + '"]');
+    var box  = document.getElementById('edit-tpl-' + key);
+    if (!form || !box) return null;
+    return {
+      form: form, box: box,
+      subject: form.querySelector('[data-tpl-subject]'),
+      body: form.querySelector('[data-tpl-body]'),
+      sublen: form.querySelector('[data-tpl-sublen]'),
+      psubject: box.querySelector('[data-tpl-psubject]'),
+      pbody: box.querySelector('[data-tpl-pbody]'),
+      warn: box.querySelector('[data-tpl-warn]'),
+      unused: box.querySelector('[data-tpl-unused]')
+    };
+  }
+
+  /* The subject length, said as a count rather than a rule. Around 45
+     characters is what a phone shows; past that it is not wrong, it is just
+     not all read. */
+  function countSubject(f){
+    if (!f.subject || !f.sublen) return;
+    var n = f.subject.value.length;
+    f.sublen.textContent = n + ' characters' +
+      (n > 45 ? ' — a phone shows about the first 45' : '');
+    f.sublen.className = n > 45 ? 'tpl-over' : '';
+  }
+
+  /* THE PREVIEW IS ASKED OF THE SERVER, not worked out here. The substitution
+     and the two refusals live in one place, beside the send — a copy in this
+     file would agree with the letter for a while and then quietly stop. */
+  var pending = {};
+  function preview(key){
+    var f = fields(key);
+    if (!f) return;
+    clearTimeout(pending[key]);
+    pending[key] = setTimeout(function(){
+      fetch('/management/email-templates/' + encodeURIComponent(key) + '/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject: f.subject.value, body: f.body.value })
+      })
+      .then(function(r){ if (!r.ok) throw new Error(); return r.json(); })
+      .then(function(d){
+        f.psubject.textContent = d.subject;
+        f.pbody.textContent = d.body;
+        if (d.refused){
+          f.warn.hidden = false;
+          f.warn.innerHTML = '<strong>This would not go out as written</strong> — ' +
+            d.why + '. ' + (d.shipped_instead
+              ? 'A guest would receive the original wording below instead.'
+              : 'Nothing would be sent at all.');
+        } else {
+          f.warn.hidden = true;
+        }
+        f.unused.textContent = d.unused && d.unused.length
+          ? 'Not used here: ' + d.unused.join(', ')
+          : '';
+      })
+      .catch(function(){
+        f.warn.hidden = false;
+        f.warn.textContent = 'Could not reach the preview — the wording is unchanged.';
+      });
+    }, 250);
+  }
+
+  document.addEventListener('click', function(ev){
+    var toggle = ev.target.closest('[data-tpl-toggle]');
+    if (toggle){
+      var key = toggle.getAttribute('data-tpl-toggle');
+      var box = document.getElementById('edit-tpl-' + key);
+      var open = box.hidden;
+      box.hidden = !open;
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.textContent = open ? 'Close' : 'Edit';
+      if (open){
+        var f = fields(key);
+        if (f){ f.body.focus(); countSubject(f); preview(key); }
+      }
+      return;
+    }
+
+    var ins = ev.target.closest('[data-tpl-insert]');
+    if (ins){
+      var form = ins.closest('[data-tpl-form]');
+      var area = form && form.querySelector('[data-tpl-body]');
+      if (!area) return;
+      var tag = ins.getAttribute('data-tpl-insert');
+      var at = area.selectionStart || 0;
+      area.value = area.value.slice(0, at) + tag + area.value.slice(area.selectionEnd || at);
+      area.focus();
+      area.selectionStart = area.selectionEnd = at + tag.length;
+      preview(form.getAttribute('data-tpl-form'));
+      return;
+    }
+
+    var orig = ev.target.closest('[data-tpl-showorig]');
+    if (orig){
+      var k = orig.getAttribute('data-tpl-showorig');
+      var panel = document.querySelector('[data-tpl-orig="' + k + '"]');
+      if (panel){
+        panel.hidden = !panel.hidden;
+        orig.textContent = panel.hidden ? 'See the original wording' : 'Hide the original';
+      }
+    }
+  });
+
+  document.addEventListener('input', function(ev){
+    var form = ev.target.closest('[data-tpl-form]');
+    if (!form) return;
+    var key = form.getAttribute('data-tpl-form');
+    var f = fields(key);
+    if (!f) return;
+    if (ev.target === f.subject) countSubject(f);
+    preview(key);
+  });
+})();
 </script>
 
 {% endblock %}

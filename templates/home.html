@@ -21,7 +21,7 @@
      other two overlays Safari can add. #}
   <video class="g-hero__video" autoplay muted loop playsinline
          disablepictureinpicture disableremoteplayback
-         poster="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/115c409a-1d7f-445b-97e2-dd7a7b74ce87/DJI_0275-2-Edit.jpg?format=1500w">
+         poster="{{ url_for('static', filename='video/chateau_hero_poster.jpg') }}">
     <source src="{{ url_for('static', filename='video/chateau_hero_loop.mp4') }}" type="video/mp4">
   </video>
   <div class="g-hero__wash"></div>
@@ -413,6 +413,24 @@
     }
     v.remove();
   }
+  /* SOMEBODY WHO HAS ASKED FOR LESS MOTION DOES NOT GET A MOVING PICTURE.
+     The stylesheet's reduced-motion block turns off `transition` and
+     `animation`, and an autoplaying looping video is neither — so the one
+     thing on this site that actually moves was the one thing that ignored the
+     setting. People turn it on for vestibular disorders and for migraine;
+     a full-screen loop is the worst case of what it is for.
+
+     Falls through to the same poster the autoplay-refused path uses, so there
+     is one still frame and one code path rather than two. The pause button
+     above already lets anybody who wants it press play. */
+  var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
+  if (calm && calm.matches){
+    still();
+    var btn = document.getElementById('g-hero-pause');
+    if (btn) btn.setAttribute('aria-label', 'Play video');
+    return;
+  }
+
   var play = v.play();
   if (play && typeof play.catch === 'function') play.catch(still);
   setTimeout(function(){ if (v.paused) still(); }, 1200);

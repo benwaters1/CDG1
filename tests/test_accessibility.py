@@ -179,6 +179,47 @@ def run():
                    "_menu_fields.html is pulled in once per course"
                    % (len(repeated), repeated[:3]))
 
+    s.section("The one thing on the site that moves")
+
+    home = io.open(os.path.join(_harness.ROOT, "templates", "home.html"),
+                   encoding="utf-8").read()
+
+    # SOMEBODY WHO HAS ASKED FOR LESS MOTION MUST NOT GET A MOVING PICTURE.
+    # The stylesheet's reduced-motion block turns off `transition` and
+    # `animation`, and an autoplaying looping video is neither -- so the only
+    # thing on this site that actually moves was the only thing ignoring the
+    # setting. People turn it on for vestibular disorders and for migraine,
+    # and a full-screen loop is the worst case of what it is for.
+    s.check("the hero video honours prefers-reduced-motion",
+            "prefers-reduced-motion" in home,
+            detail="the CSS block covers transition and animation; an "
+                   "autoplaying video is neither")
+    s.check("and there is a control to stop it by hand as well",
+            'id="g-hero-pause"' in home,
+            detail="the setting covers people who have found it; the button "
+                   "covers everybody else")
+
+    # A poster that 404s leaves a blank hero on every visit where autoplay is
+    # refused, which is most phones on low power. Ours, so nothing else can
+    # take it away.
+    poster = re.search(r'<video[^>]*\bposter="([^"]+)"', home, re.S)
+    s.check("the hero poster is a file this house owns",
+            poster and "squarespace" not in poster.group(1).lower(),
+            detail=poster.group(1)[:70] if poster else "no poster at all")
+    for name, cap in (("chateau_hero_loop.mp4", 4.0),
+                      ("chateau_hero_poster.jpg", 0.5)):
+        path = os.path.join(_harness.ROOT, "static", "video", name)
+        there = os.path.exists(path)
+        s.check("%s is actually there" % name, there,
+                detail="the markup references it; a missing file is a blank "
+                       "hero rather than an error anybody sees")
+        if there:
+            mb = os.path.getsize(path) / 1048576.0
+            # A ceiling rather than a target. The front page is the one every
+            # guest loads, often on a phone in a valley with one bar.
+            s.check("and is under %.1f MB (it is %.2f)" % (cap, mb), mb < cap,
+                    detail="this is the heaviest thing on the busiest page")
+
     s.section("A table of figures reads as rows, not as two columns")
     # A label/value table with no th at all is read as unrelated cells: the
     # guest hears every label, then every number, and has to hold the pairing

@@ -6424,6 +6424,7 @@ NAV_AREAS = {
         "delete_campaign_template", "discard_email_outbox",
         "discard_stale_email_outbox", "edit_announcement",
         "edit_campaign_template", "edit_email_template", "management_email_templates",
+        "preview_email_template_route",
         "management_social", "new_announcement", "new_campaign_template",
         "restore_email_template", "send_campaign_template", "send_email_outbox",
         "test_email_provider",
@@ -42142,6 +42143,122 @@ def letter_html(subject, text, settings=None):
         return ""
 
 
+# A stay somebody could actually have had, for previewing wording against.
+#
+# NOT "Lorem" and not "XXXX". The whole reason to preview is to see the
+# sentence the way a guest reads it, and a placeholder that is three letters
+# long hides every problem worth catching: the line that runs too long, the
+# greeting that reads oddly with a real surname, the price that wanted a
+# thousands separator. These are the shapes the real values take.
+SAMPLE_MERGE_VALUES = {
+    "guest_name": "Marie Dubois",
+    "contact_name": "Marie Dubois",
+    "name": "Marie Dubois",
+    "reference_code": "GUD-4417",
+    "room_name": "Chambre \u00c9meraude",
+    "workshop_title": "Lime Plaster and Fresco",
+    "event_type": "wedding",
+    "dates": "14 to 17 October 2026",
+    "desired_arrival": "14 October 2026",
+    "desired_departure": "17 October 2026",
+    "desired_date": "14 October 2026",
+    "dinner_date": "Friday 14 October",
+    "event_date": "Saturday 15 October 2026",
+    "service_date": "14 October 2026",
+    "balance_due_date": "30 September 2026",
+    "party_size": "2",
+    "table": "Table 4",
+    "receipt_number": "R-002841",
+    "total_price": "\u20ac1,236.60",
+    "balance_amount": "\u20ac736.60",
+    "deposit_amount": "\u20ac500.00",
+    # The block tags are multi-line in the real thing, and previewing them as
+    # one word would make every letter look shorter than it is.
+    "price_block": "Three nights at \u20ac220\u2003\u20ac660.00\n"
+                   "Taxe de s\u00e9jour\u2003\u20ac6.60\n"
+                   "Total\u2003\u20ac666.60",
+    "balance_line": "Balance of \u20ac736.60 due by 30 September 2026.",
+    "dietary_line": "No shellfish, and one guest is coeliac.",
+    "refund_note": "Nothing has been charged.",
+    "status_line": "Paid in full",
+    "company_block": "Ch\u00e2teau de Gudanes\n09310 Ch\u00e2teau-Verdun\nSIRET 000 000 000 00000",
+    "items": "2 \u00d7 Men\u00fc du march\u00e9\u2003\u20ac110.00\n"
+             "1 \u00d7 Bottle, Ari\u00e8ge red\u2003\u20ac38.00",
+    "totals": "Subtotal\u2003\u20ac148.00\nService\u2003\u20ac14.80\nTotal\u2003\u20ac162.80",
+    "manage_url": "https://chateaugudanes.com/stay/9f2c1a7b",
+    "book_url": "https://chateaugudanes.com/book",
+    "register_url": "https://chateaugudanes.com/workshops",
+    "review_url": "https://chateaugudanes.com/review/9f2c1a7b",
+    "feedback_url": "https://chateaugudanes.com/feedback/9f2c1a7b",
+}
+
+
+def sample_merge_context(template_key):
+    """Plausible values for every tag this template is allowed to use.
+
+    Keyed off EMAIL_TEMPLATE_TAGS rather than off what the wording happens to
+    contain, so a tag somebody has just typed previews immediately instead of
+    after a save.
+    """
+    return {tag: SAMPLE_MERGE_VALUES.get(tag, "{%s}" % tag)
+            for tag in EMAIL_TEMPLATE_TAGS.get(template_key, ())}
+
+
+def preview_email_template(template_key, subject_src, body_src):
+    """What a guest would actually receive if this draft were saved and sent.
+
+    THE POINT IS THAT IT TELLS THE TRUTH ABOUT REFUSALS. render_email_template
+    does not send what is in the row when the row holds placeholder text or a
+    tag nothing fills -- it sends the SHIPPED wording instead and logs it. That
+    behaviour is correct and it is invisible: the owner edits, saves, sees a
+    tick, and a guest receives words nobody on this side chose.
+
+    So this runs the same two guards and says so. It reads the draft passed in
+    rather than the stored row, because the question being asked is about text
+    that has not been saved yet.
+
+    Returns {subject, body, refused, why, shipped_instead}.
+    """
+    subject_src = subject_src or ""
+    body_src = body_src or ""
+    stray = unknown_merge_tags(template_key, subject_src, body_src)
+    placeholder = bool(PLACEHOLDER_TEXT.search(subject_src + " " + body_src))
+
+    why = []
+    if stray:
+        why.append("nothing fills " + ", ".join("{%s}" % s for s in sorted(stray)))
+    if placeholder:
+        why.append("it still reads as placeholder text")
+
+    shipped = next((d for d in DEFAULT_EMAIL_TEMPLATES if d[0] == template_key), None)
+    used_shipped = False
+    if why and shipped:
+        subject_src, body_src = shipped[2], shipped[3]
+        used_shipped = True
+
+    context = sample_merge_context(template_key)
+    try:
+        subject = subject_src.format(**context)
+    except (KeyError, IndexError, ValueError):
+        subject = subject_src
+    try:
+        body = body_src.format(**context)
+    except (KeyError, IndexError, ValueError):
+        body = body_src
+
+    return {
+        "subject": subject,
+        "body": body,
+        "refused": bool(why),
+        "why": "; ".join(why),
+        "shipped_instead": used_shipped,
+        # Named so the page can say which are sitting unused rather than making
+        # somebody compare two lists by eye.
+        "unused": sorted(set(EMAIL_TEMPLATE_TAGS.get(template_key, ()))
+                         - set(re.findall(r"\{(\w+)\}", subject_src + " " + body_src))),
+    }
+
+
 def render_email_template(conn, template_key, context):
     """Merge-tag substitution against an admin-editable template. Falls back
     to the raw template text (tags left unreplaced) if the context is
@@ -62051,9 +62168,42 @@ def management_email_templates():
         ],
         default_sort="area",
     )
+    # The wording each one SHIPPED with, so "restore" is a comparison rather
+    # than a leap. It was a button saying your changes will be lost, showing
+    # nothing of what you would get back.
+    shipped = {t["template_key"]: defaults.get(t["template_key"], (None, None))
+               for t in templates}
     return render_template("management_email_templates.html", templates=lv["rows"], lv=lv,
                            edited=edited, states=states, tags=tags,
-                           available=available)
+                           available=available, shipped=shipped)
+
+
+@app.route("/management/email-templates/<template_key>/preview", methods=["POST"])
+@owner_required
+def preview_email_template_route(template_key):
+    """What a guest would read, for wording that has not been saved yet.
+
+    The page this serves is an editor for text that goes to guests, and until
+    now it showed the source and never the result. You typed
+    "Dear {guest_name}" into a monospace box, pressed save, and the only way to
+    find out what anybody received was to send one.
+
+    Draft text in, merged text out, using the SAME substitution and the SAME
+    two refusals the send uses -- so the preview cannot drift from the letter.
+    A second implementation here would agree for a year and then quietly stop,
+    which is the failure this app has been bitten by more than once.
+    """
+    if not any(d[0] == template_key for d in DEFAULT_EMAIL_TEMPLATES):
+        conn = get_db()
+        known = conn.execute(
+            "SELECT 1 FROM email_templates WHERE template_key = ?",
+            (template_key,)).fetchone()
+        conn.close()
+        if not known:
+            abort(404)
+    data = request.get_json(silent=True) or {}
+    return jsonify(preview_email_template(
+        template_key, data.get("subject", ""), data.get("body", "")))
 
 
 @app.route("/management/email-templates/<template_key>/restore", methods=["POST"])

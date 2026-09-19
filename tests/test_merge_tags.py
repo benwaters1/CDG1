@@ -138,9 +138,18 @@ def run():
 
     s.section("The page says what is available, not only what is used")
     body = oc.get("/management/email-templates").get_data(as_text=True)
-    s.check("the available list is on it", "Available here" in body,
+    # Asked of the CONTROLS, not of the sentence above them. This read
+    # `"Available here" in body` and went red the day the wording changed,
+    # while every tag was still on the page and had just become clickable.
+    # A check on prose reports on prose.
+    offered = re.findall(r'data-tpl-insert="\{(\w+)\}"', body)
+    s.check("every tag a template can fill is offered on the page", offered,
             detail="the page showed what each template uses and never what it "
-                   "could use")
+                   "could use; %d offered" % len(offered))
+    s.check("and each is a control you can put in, not just a list",
+            body.count("data-tpl-insert=") >= len(set(offered)),
+            detail="saving refuses a tag nothing fills, so typing them by hand "
+                   "is a trap with a save button on the end of it")
     s.check("with a tag the shipped wording does not use", "{room_name}" in body
             or "room_name" in body,
             detail="the list is just the tags already in the text again")
