@@ -43920,6 +43920,10 @@ def status_page():
     tables = 0
     applied = False
     sign_in_as = ""
+    works = None
+    active = None
+    owner_rows = 0
+    locked_out = 0
     try:
         conn = get_db()
         try:
@@ -43943,11 +43947,36 @@ def status_page():
             # Remove the variable and this address stops being published.
             if OWNER_TEMP_PASSWORD:
                 owner = conn.execute(
-                    """SELECT email FROM users WHERE role = 'owner'
+                    """SELECT * FROM users WHERE role = 'owner'
                        ORDER BY id LIMIT 1""").fetchone()
                 # Exactly the row the recovery writes to, so the answer is
                 # the account it was set on rather than a good guess at it.
                 sign_in_as = (owner["email"] if owner else "")
+                # AND WHETHER IT ACTUALLY OPENS IT. "Applied" reads an audit
+                # line, which says the password was written at some point —
+                # not that the value in the variable right now opens the
+                # account right now. This hashes the one against the other
+                # the way the login route does, so "it didn't work" has an
+                # answer instead of another theory.
+                if owner:
+                    works = bool(check_password_hash(
+                        owner["password_hash"], OWNER_TEMP_PASSWORD))
+                    # The login route refuses an inactive account with its own
+                    # message, which reads to most people as a wrong password.
+                    active = (owner["status"] != "inactive")
+                # The recovery writes to the LOWEST id. A second owner row is
+                # therefore not the one being opened, and looks identical to
+                # the password having failed.
+                owner_rows = conn.execute(
+                    "SELECT COUNT(*) AS c FROM users WHERE role = 'owner'"
+                ).fetchone()["c"]
+                # Five wrong attempts locks the connection for fifteen
+                # minutes, and the refusal is not the same refusal.
+                locked_out = conn.execute(
+                    """SELECT COUNT(*) AS c FROM login_throttle
+                       WHERE locked_until IS NOT NULL
+                         AND locked_until > ?""",
+                    (datetime.now(timezone.utc).isoformat(),)).fetchone()["c"]
         finally:
             conn.close()
     except Exception:                    # pragma: no cover - a broken database
@@ -43988,6 +44017,12 @@ def status_page():
         "recovery": {
             "temp_password_set": env("OWNER_TEMP_PASSWORD"),
             "temp_password_applied": applied,
+            # The one that settles it: does the variable, as it stands, open
+            # the account named below? Null unless a temp password is set.
+            "temp_password_opens_the_account": works,
+            "account_is_active": active,
+            "owner_accounts": owner_rows,
+            "connections_locked_out": locked_out,
             # Empty unless the owner has a temp password set right now. The
             # password worked the whole time and was set on an account nobody
             # had been told about, which is the entire reason this key exists.
