@@ -243,6 +243,339 @@ def run():
             detail="this is shared state; leaving it French breaks the suites "
                    "that run after this one")
 
+    s.section("What a page could not translate is written down")
+    # THE POINT OF THE WHOLE THING. The list of work is computed from what was
+    # actually served, so a handover that redraws the public pages on Friday
+    # puts its new sentences on this list the first time somebody reads one in
+    # French. Nobody maintains it, and it cannot go stale — which a hand-typed
+    # list did, inside an hour, when a handover changed "two hundred and
+    # fifty years" to "two hundred and eighty" in a paragraph being translated.
+    conn = db()
+    conn.execute("DELETE FROM page_translations")
+    conn.commit()
+    guest = m.app.test_client()
+    guest.get("/language/fr")
+    guest.get("/book")
+    wanted = conn.execute(
+        "SELECT COUNT(*) c FROM page_translations WHERE lang='fr'").fetchone()["c"]
+    s.check("one French page view records what it could not say",
+            wanted > 50, detail="%d rows" % wanted)
+    s.check("and an English reader records nothing new",
+            (m.app.test_client().get("/book"),
+             conn.execute("SELECT COUNT(*) c FROM page_translations"
+                          ).fetchone()["c"])[1] == wanted,
+            detail="English is the source; there is nothing to want")
+    before = wanted
+    guest.get("/book")
+    s.check("and reading it twice does not write it twice",
+            conn.execute("SELECT COUNT(*) c FROM page_translations WHERE lang='fr'"
+                         ).fetchone()["c"] == before,
+            detail="the unique key makes the second view a no-op")
+
+    # WHAT MUST NOT BE ON THE LIST. Text that is already French is the trap:
+    # t() has run by the time this sees the page, so the nav and the footer
+    # are French already and look exactly like English nobody has translated.
+    # The first version of this recorded "Séjourner au château" as wanting a
+    # French translation.
+    french_already = conn.execute(
+        """SELECT COUNT(*) c FROM page_translations
+           WHERE lang='fr' AND source_text IN (?, ?)""",
+        ("Séjourner", "Séances photo")).fetchone()["c"]
+    s.check("text that is already French is not asked for again",
+            french_already == 0,
+            detail="otherwise the job translates French into French")
+    s.check("and neither is an address or an email",
+            not m.worth_translating("ariege@chateaugudanes.com")
+            and not m.worth_translating("+33 6 28 06 97 76"),
+            detail="a translated address is a guest writing to nobody")
+    s.check("nor a proper noun",
+            not m.worth_translating("Château de Gudanes")
+            and not m.worth_translating("La Table"),
+            detail="asked to translate it, a model will oblige")
+
+    s.section("The job fills them, and the page then says them")
+    calls = []
+
+    def fake_batch(lines, lang):
+        calls.append((tuple(lines), lang))
+        # Deliberately REVERSED, and with one line dropped. A job that pairs
+        # answers to questions by position would put the wrong French under
+        # every sentence and nothing would look wrong from outside.
+        out = {}
+        for src_line in list(lines)[::-1][:-1] or list(lines)[::-1]:
+            out[src_line] = "[%s] %s" % (lang.upper(), src_line)
+        return out, {}
+
+    was_batch = m.translate_batch_with_claude
+    was_conf = m.claude_configured
+    m.translate_batch_with_claude = fake_batch
+    m.claude_configured = lambda: True
+    try:
+        said = m.run_page_translation_job(conn, limit=30)
+        s.check("the job reports what it did", "translated" in said, detail=said)
+        done = conn.execute(
+            """SELECT source_text, translated FROM page_translations
+               WHERE status='machine' LIMIT 200""").fetchall()
+        s.check("rows come back translated", len(done) > 0,
+                detail="%d written" % len(done))
+        s.check("and every answer is under its own question",
+                all(r["translated"] == "[FR] " + r["source_text"] for r in done),
+                detail="matched back by source text, never by position")
+        # And it reaches a guest.
+        m.translation_memory(force=True)
+        page = guest.get("/book").get_data(as_text=True)
+        s.check("and a guest is served them",
+                any("[FR] " + r["source_text"] in page for r in done),
+                detail="the memory is read on the next response")
+    finally:
+        m.translate_batch_with_claude = was_batch
+        m.claude_configured = was_conf
+
+    s.section("It never asks the same question twice")
+    m.translate_batch_with_claude = lambda lines, lang: ({}, {l: True for l in lines})
+    m.claude_configured = lambda: True
+    try:
+        m.run_page_translation_job(conn, limit=20)
+        left = conn.execute(
+            "SELECT COUNT(*) c FROM page_translations WHERE status='skip'"
+        ).fetchone()["c"]
+        s.check("a line the model says to leave alone is filed as skip",
+                left > 0, detail="%d skipped" % left)
+        s.check("and skip is not wanted, so it is never sent again",
+                conn.execute(
+                    """SELECT COUNT(*) c FROM page_translations
+                       WHERE status='skip' AND status='wanted'""").fetchone()["c"] == 0,
+                detail="otherwise every proper noun goes to the model every "
+                       "ten minutes for ever")
+    finally:
+        m.translate_batch_with_claude = was_batch
+        m.claude_configured = was_conf
+
+    s.section("A person's translation outranks the machine's")
+    conn.execute(
+        """INSERT OR REPLACE INTO page_translations
+           (source_text, lang, translated, status, created_at)
+           VALUES ('Lime, not cement', 'fr', 'De la chaux, pas du ciment',
+                   'approved', ?)""", (m.datetime.now(m.timezone.utc).isoformat(),))
+    conn.commit()
+    m.translate_batch_with_claude = lambda lines, lang: (
+        {l: "MACHINE OVERWROTE IT" for l in lines}, {})
+    m.claude_configured = lambda: True
+    try:
+        m.run_page_translation_job(conn, limit=50)
+        kept = conn.execute(
+            """SELECT translated, status FROM page_translations
+               WHERE source_text='Lime, not cement' AND lang='fr'""").fetchone()
+        s.check("an approved line is left exactly as the person wrote it",
+                kept["translated"] == "De la chaux, pas du ciment"
+                and kept["status"] == "approved",
+                detail="%r / %s" % (kept["translated"], kept["status"]))
+    finally:
+        m.translate_batch_with_claude = was_batch
+        m.claude_configured = was_conf
+
+    s.section("It cannot spend without a ceiling, and cannot be reached from a page")
+    s.check("a run is capped", m.TRANSLATION_MAX_PER_RUN <= 500,
+            detail="a handover can add two thousand sentences in an afternoon")
+    s.check("and batched rather than sent one at a time",
+            1 < m.TRANSLATION_BATCH <= 100, detail=str(m.TRANSLATION_BATCH))
+    # NEVER INSIDE A REQUEST. A page a guest is waiting for must not depend on
+    # a third party being up, whatever the latency.
+    reached = []
+    m.translate_batch_with_claude = lambda lines, lang: (reached.append(1), ({}, {}))[1]
+    m.claude_configured = lambda: True
+    try:
+        conn.execute("UPDATE page_translations SET status='wanted' WHERE status='machine'")
+        conn.commit()
+        m.translation_memory(force=True)
+        guest.get("/book")
+        s.check("serving a page calls no model at all", reached == [],
+                detail="%d call(s) from one page view" % len(reached))
+    finally:
+        m.translate_batch_with_claude = was_batch
+        m.claude_configured = was_conf
+
+    s.section("The model's answers are matched back by source, never by order")
+    # THE ONE PLACE A SILENT, SERIOUS CORRUPTION COULD HAPPEN. If answers were
+    # paired to questions by position, a model that dropped or reordered a
+    # line would put the third sentence's French under the second sentence's
+    # English — fluent, plausible, on the wrong paragraph, and invisible to
+    # anybody who does not read both languages. Every other test here mocks
+    # translate_batch_with_claude out; this one drives it.
+    asked = ["Lime, not cement", "Approved, then done", "The building breathes"]
+
+    class _FakeMessages:
+        def __init__(self, payload):
+            self.payload = payload
+            self.seen = []
+
+        def parse(self, **kw):
+            self.seen.append(kw)
+            return type("R", (), {"parsed_output": self.payload})()
+
+    class _FakeClient:
+        def __init__(self, payload):
+            self.messages = _FakeMessages(payload)
+
+    def with_payload(payload):
+        holder = {}
+
+        class _Anthropic:
+            def __init__(self, **kw):
+                holder["client"] = _FakeClient(payload)
+                self.messages = holder["client"].messages
+        return _Anthropic, holder
+
+    was_anthropic = m.anthropic.Anthropic
+    was_conf = m.claude_configured
+    m.claude_configured = lambda: True
+    try:
+        # Reordered, one dropped, and one line invented that was never asked
+        # about — all three things a model can do.
+        payload = {"lines": [
+            {"source": "The building breathes", "translated": "Le bâtiment respire",
+             "leave_alone": False},
+            {"source": "A line nobody asked about", "translated": "Inventé",
+             "leave_alone": False},
+            {"source": "Lime, not cement", "translated": "De la chaux, pas du ciment",
+             "leave_alone": False},
+        ]}
+        m.anthropic.Anthropic, _h = with_payload(payload)
+        done, leave = m.translate_batch_with_claude(asked, "fr")
+        s.check("a reordered answer lands under its own question",
+                done.get("Lime, not cement") == "De la chaux, pas du ciment"
+                and done.get("The building breathes") == "Le bâtiment respire",
+                detail=repr(done))
+        s.check("a line the model never answered is simply absent",
+                "Approved, then done" not in done,
+                detail="it stays wanted and is asked again next run")
+        s.check("and a line nobody asked about is discarded",
+                "A line nobody asked about" not in done,
+                detail="otherwise the model can write rows for text that is "
+                       "on no page at all")
+
+        # An answer identical to the question is not a translation.
+        m.anthropic.Anthropic, _h = with_payload({"lines": [
+            {"source": "Lime, not cement", "translated": "Lime, not cement",
+             "leave_alone": False}]})
+        done, leave = m.translate_batch_with_claude(["Lime, not cement"], "fr")
+        s.check("an answer identical to the question is left alone, not stored",
+                not done and leave.get("Lime, not cement"),
+                detail="storing it would serve English and call it French")
+
+        # And the provider falling over is a quiet no-op.
+        class _Boom:
+            def __init__(self, **kw):
+                raise RuntimeError("provider down")
+        m.anthropic.Anthropic = _Boom
+        done, leave = m.translate_batch_with_claude(asked, "fr")
+        s.check("a provider that is down costs nothing", done == {} and leave == {},
+                detail="the rows stay wanted and the pages stay English")
+    finally:
+        m.anthropic.Anthropic = was_anthropic
+        m.claude_configured = was_conf
+
+    s.section("A line approved while the job is running is not overwritten")
+    # The rows are chosen, then translated, then written. Somebody approving a
+    # line in between is a real sequence, and the write must lose that race
+    # rather than win it — which is what `AND status = 'wanted'` on the UPDATE
+    # is for.
+    conn = db()
+    conn.execute("DELETE FROM page_translations")
+    stamp = m.datetime.now(m.timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO page_translations (source_text, lang, status, created_at)
+           VALUES ('Lime, not cement', 'fr', 'wanted', ?)""", (stamp,))
+    conn.commit()
+
+    def approve_then_answer(lines, lang):
+        # The person gets there first, while the model is still thinking.
+        other = db()
+        other.execute(
+            """UPDATE page_translations SET translated = ?, status = 'approved'
+               WHERE source_text = 'Lime, not cement' AND lang = 'fr'""",
+            ("De la chaux, pas du ciment",))
+        other.commit()
+        other.close()
+        return {l: "CE QUE LA MACHINE A DIT" for l in lines}, {}
+
+    was_batch = m.translate_batch_with_claude
+    m.translate_batch_with_claude = approve_then_answer
+    m.claude_configured = lambda: True
+    try:
+        m.run_page_translation_job(conn, limit=10)
+        row = conn.execute(
+            """SELECT translated, status FROM page_translations
+               WHERE source_text = 'Lime, not cement' AND lang = 'fr'""").fetchone()
+        s.check("the person's words are the ones kept",
+                row["translated"] == "De la chaux, pas du ciment",
+                detail="%r / %s" % (row["translated"], row["status"]))
+        s.check("and it stays approved rather than being demoted to machine",
+                row["status"] == "approved", detail=row["status"])
+    finally:
+        m.translate_batch_with_claude = was_batch
+        m.claude_configured = was_conf
+    conn.execute("DELETE FROM page_translations")
+    conn.commit()
+    # Left OPEN: the section below still uses it. Closing it here
+    # crashed the suite on "Cannot operate on a closed database".
+
+    s.section("With no provider it is a no-op, not an error")
+    # The shipping state today: there is no key, and the site must be exactly
+    # as it was rather than broken.
+    s.check("the job says so plainly",
+            m.run_page_translation_job(conn) == "no model provider configured")
+    s.check("and a page is still served",
+            guest.get("/book").status_code == 200)
+    conn.execute("DELETE FROM page_translations")
+    conn.commit()
+    conn.close()
+
+    s.section("A hand-written translation that no longer matches any page")
+    # THE REASON THE REST OF THIS EXISTS, made into a check.
+    #
+    # page_text.py holds the translations written by hand rather than by the
+    # job, and it is keyed on the English sentence. The design side redraws
+    # the public pages most weeks, so the day a sentence is reworded its
+    # translation stops matching — and nothing breaks. The page simply serves
+    # that paragraph in English again, silently, for ever.
+    #
+    # It is not a hypothetical. Twenty-two entries were written in one sitting
+    # and two of them were dead within the hour, because a handover installed
+    # that morning had already changed "two hundred and fifty years" to "two
+    # hundred and eighty" in one of the paragraphs being translated.
+    #
+    # So a key here that matches nothing a guest is served is a FAILURE, and
+    # the fix is to delete it rather than retype it against today's wording:
+    # the job translates whatever the page actually says, which is the whole
+    # point of it existing.
+    import page_text
+    live = set()
+    walked = 0
+    for rule in m.app.url_map.iter_rules():
+        if rule.arguments or "GET" not in (rule.methods or ()):
+            continue
+        if rule.endpoint.startswith("static") or "webhook" in rule.endpoint:
+            continue
+        r = anon.get(str(rule))
+        if r.status_code != 200:
+            continue
+        text = r.get_data(as_text=True)
+        if '<body class="g' not in text:
+            continue
+        walked += 1
+        live |= {m.translation_key(node)
+                 for _st, _e, node in m.page_text_spans(text)}
+    s.check("there are public pages to check against", walked > 10,
+            detail="%d walked; if this collapses the check below proves "
+                   "nothing" % walked)
+    for code, table in (("fr", page_text.FR), ("es", page_text.ES)):
+        stale = sorted(k for k in table if k not in live)
+        s.check("every hand-written %s key is still on a page" % code,
+                not stale,
+                detail="%d stale: %s" % (len(stale), "; ".join(
+                    k[:60] for k in stale[:3])))
+
     s.section("How much of the site can actually be read in each language")
     # PRINTED, NOT ASSERTED, and deliberately the number that was missing: not
     # "is the table full" but "how much of what a guest reads is translated".

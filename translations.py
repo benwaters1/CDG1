@@ -1139,6 +1139,18 @@ ES = {
     "Notifications": "Notificaciones",
 }
 
+# The public pages' own prose, kept in its own file because it is 1,900
+# sentences and would bury the strings above. Merged rather than looked up
+# separately, so there is still ONE answer to what a word is in French: a
+# string that is both a t() call and page prose cannot translate two ways.
+#
+# The entries here lose to the ones above on a clash. Those were written for
+# a specific button or label and are the more deliberate of the two.
+import page_text
+
+FR = dict(page_text.FR, **FR)
+ES = dict(page_text.ES, **ES)
+
 TABLES = {"fr": FR, "es": ES}
 
 

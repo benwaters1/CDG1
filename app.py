@@ -271,6 +271,11 @@ LEAVE_SETTING_DEFAULTS = {
 }
 AUTOMATION_SETTING_DEFAULTS = {
     "automation_housekeeping_enabled": "1",
+    # ON by default. The site already offers French and Spanish in the
+    # switcher; without this the offer is the nav and nothing under it.
+    # It costs nothing until a guest actually reads a page in one of them,
+    # because the work is only ever what was served.
+    "automation_page_translation_enabled": "1",
     "automation_weather_enabled": "1",
     "automation_exchange_rates_enabled": "1",
     "automation_photo_mirror_enabled": "1",
@@ -1549,6 +1554,36 @@ def init_db():
             checked_by_user_id INTEGER REFERENCES users(id),
             checked_at TEXT NOT NULL,
             UNIQUE(item_id, checklist_date)
+        );
+
+        -- THE TRANSLATION MEMORY.
+        --
+        -- One row per sentence per language. Filled by a background job
+        -- rather than by hand, because the sentences are not ours: the
+        -- design side redraws the public pages most weeks, and a paragraph
+        -- translated by hand on Monday is a paragraph that no longer exists
+        -- on Friday. A hand-typed key went stale inside an hour the first
+        -- time this was tried -- the wall paragraph on /book said two
+        -- hundred and fifty years in the morning and two hundred and eighty
+        -- by the afternoon.
+        --
+        -- status says where a translation came from and is the whole point
+        -- of keeping this in a table rather than a file:
+        --   wanted   seen on a page, nothing to serve yet -- serves English
+        --   machine  translated by the job, good enough to serve
+        --   approved a person has read it; the job must never overwrite it
+        --   skip     a proper noun or an address; never translate this
+        CREATE TABLE IF NOT EXISTS page_translations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_text TEXT NOT NULL,
+            lang TEXT NOT NULL,
+            translated TEXT,
+            status TEXT NOT NULL DEFAULT 'wanted'
+                CHECK(status IN ('wanted','machine','approved','skip')),
+            seen_on TEXT,
+            created_at TEXT NOT NULL,
+            translated_at TEXT,
+            UNIQUE(source_text, lang)
         );
 
         CREATE TABLE IF NOT EXISTS login_throttle (
@@ -46134,6 +46169,179 @@ def _as_markup(said):
     return (said.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
+# ---------------------------------------------------------------------------
+# The translation memory: what has been translated, and what is waiting to be.
+#
+# WHY THIS IS NOT A FILE OF FRENCH. Writing 1,900 sentences into a Python
+# dictionary was the obvious answer and it is wrong, because the sentences are
+# not ours. The design side redraws the public pages most weeks, so a
+# paragraph translated by hand on Monday is a paragraph that does not exist on
+# Friday — and the translation does not break, it just silently stops matching
+# and the page quietly goes back to English. That was not theoretical: the
+# first hand-written batch went stale inside the hour, because a handover
+# installed that morning had changed "two hundred and fifty years" to "two
+# hundred and eighty" in the paragraph being translated.
+#
+# So the list of what needs translating is COMPUTED FROM WHAT IS SERVED. A
+# page is rendered, every sentence on it is looked up, and anything with no
+# translation is written down as wanted. New prose arrives in a handover, the
+# first reader in French records it, the job translates it, and the next
+# reader has it. Nobody maintains a list.
+#
+# NOTHING HERE EVER BLOCKS A GUEST. A sentence with no translation is served
+# in English, which is the same fallback translate() has always had. The model
+# is never called inside a request — not for latency, though that matters, but
+# because a page a guest is waiting for must not depend on a third party being
+# up.
+# ---------------------------------------------------------------------------
+
+# Things made of letters that are nonetheless not prose. Translating one is
+# damage rather than work: an address in Spanish is a guest writing to nobody,
+# and a reference code translated is a booking nobody can find.
+_NOT_PROSE = re.compile(
+    r"""^(?:
+          \S+@\S+\.\S+                   # an email address
+        | (?:https?://|www\.)\S+         # a link
+        | [+(]?[\d][\d\s()+.–-]{6,} # a telephone number
+        | [A-Z]{2}-\d+                   # a booking reference
+        )$""", re.X)
+
+# Proper nouns, which are the same in every language. Kept as a list rather
+# than guessed at, because "La Table" is a restaurant and not a table, and a
+# model asked to translate it will oblige.
+DO_NOT_TRANSLATE = {
+    "Château de Gudanes", "Chateau de Gudanes", "Gudanes", "La Table",
+    "Château-Verdun", "Ariège", "Les Cabannes", "Ax-les-Thermes",
+    "Monuments Historiques", "Château Ateliers",
+}
+
+_WORDS = re.compile(r"[A-Za-zÀ-ɏ][A-Za-zÀ-ɏ'’-]*")
+
+
+def worth_translating(key):
+    """Whether a sentence off a page is worth asking anybody to translate.
+
+    Two words or more, not an address or a code, and not a proper noun. The
+    bar is deliberately low: a miss here costs one wasted row, and being too
+    strict costs a sentence a guest reads in the wrong language.
+    """
+    if not key or len(key) < 3 or len(key) > 2000:
+        return False
+    if key in DO_NOT_TRANSLATE or _NOT_PROSE.match(key):
+        return False
+    return len(_WORDS.findall(key)) >= 2
+
+
+@app.teardown_request
+def flush_wanted_translations(exc=None):
+    """Write down what had no translation, once the guest has their page.
+
+    AFTER the response, on purpose. Every connection this request opened is
+    closed by now, so this cannot queue behind its own write lock — the
+    mistake keep_guest_message was written to avoid, and the reason it is
+    shaped the same way.
+
+    The first reader of a newly redrawn page pays for the whole page's worth
+    of rows; everybody after them writes nothing, because the unique key turns
+    the insert into a no-op.
+    """
+    if not has_request_context():
+        return
+    wanted = g.pop("_wanted_translations", None) if hasattr(g, "pop") else None
+    if not wanted:
+        return
+    lang = getattr(g, "_lang", None)
+    if not lang or lang == "en":
+        return
+    seen = request.path[:200] if request else None
+    stamp = datetime.now(timezone.utc).isoformat()
+    rows = [(key, lang, seen, stamp) for key in dict.fromkeys(wanted)]
+    note_wanted_translations(rows)
+
+
+# Read once per process and refreshed on a timer, because this is consulted
+# for every sentence on every public page and a query per sentence would be
+# 1,247 of them on the restoration page alone.
+_TRANSLATION_MEMORY = {"at": None, "by_lang": {}}
+TRANSLATION_MEMORY_TTL_SECONDS = 120
+
+
+def translation_memory(force=False):
+    """{lang: {source: translated}} for everything worth serving.
+
+    'wanted' rows are deliberately absent: they have nothing to serve, and a
+    None in here would have to be checked for at every call site.
+    """
+    now = datetime.now(timezone.utc)
+    cached_at = _TRANSLATION_MEMORY["at"]
+    if (not force and cached_at
+            and (now - cached_at).total_seconds() < TRANSLATION_MEMORY_TTL_SECONDS):
+        return _TRANSLATION_MEMORY["by_lang"]
+    by_lang = {}
+    try:
+        conn = get_db()
+        try:
+            for row in conn.execute(
+                """SELECT source_text, lang, translated FROM page_translations
+                   WHERE status IN ('machine', 'approved')
+                     AND translated IS NOT NULL AND translated != ''"""):
+                by_lang.setdefault(row["lang"], {})[row["source_text"]] = row["translated"]
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        # A page is served in English rather than not served. This runs on
+        # every public response and must not be able to take the site down.
+        return _TRANSLATION_MEMORY["by_lang"]
+    _TRANSLATION_MEMORY["at"] = now
+    _TRANSLATION_MEMORY["by_lang"] = by_lang
+    return by_lang
+
+
+def note_wanted_translations(rows):
+    """Write down sentences that have no translation yet.
+
+    INSERT OR IGNORE against the unique key, so a page read a thousand times
+    writes these once. Everything is swallowed: this is bookkeeping about a
+    side effect, and losing the note must never lose the page.
+    """
+    if not rows:
+        return 0
+    try:
+        conn = get_db()
+        try:
+            conn.executemany(
+                """INSERT OR IGNORE INTO page_translations
+                   (source_text, lang, status, seen_on, created_at)
+                   VALUES (?, ?, 'wanted', ?, ?)""", rows)
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:                      # pragma: no cover - last resort
+        print("[translations not noted] %s" % e)
+        return 0
+    return len(rows)
+
+
+_TRANSLATED_VALUES = {}
+
+
+def _translated_values(lang, table, remembered):
+    """Every string that is already an answer in this language.
+
+    Rebuilt only when one of the two sources has changed size, which is
+    once every couple of minutes at most: this is consulted for every
+    sentence on every public page, and building a set of two thousand
+    strings per page view would cost more than the translation it guards.
+    """
+    stamp = (len(table), len(remembered))
+    cached = _TRANSLATED_VALUES.get(lang)
+    if cached and cached[0] == stamp:
+        return cached[1]
+    values = set(table.values()) | set(remembered.values())
+    _TRANSLATED_VALUES[lang] = (stamp, values)
+    return values
+
+
 def translate_page(html_text, lang):
     """One rendered page, with every sentence there is a translation for.
 
@@ -46142,14 +46350,29 @@ def translate_page(html_text, lang):
     """
     if lang not in translations.TABLES:
         return html_text
+    # THE HAND-WRITTEN TABLE WINS. Those entries were chosen for a named
+    # button or a heading somebody argued about; the memory is filled by a
+    # job. Where both have an answer the deliberate one is the right one.
     table = translations.TABLES[lang]
+    remembered = translation_memory().get(lang, {})
+    # WHAT IS ALREADY IN THIS LANGUAGE IS NOT A MISS.
+    # t() has run by now, so the nav, the footer and the buttons on
+    # the page are French already -- and to a pass looking for English
+    # they look exactly like sentences nobody has translated. The
+    # first run recorded 'Sejourner au chateau' and 'Seances photo' as
+    # wanting French, which would have had the job translate French
+    # into French and then serve the result.
+    already = _translated_values(lang, table, remembered)
     pieces, last, changed = [], 0, False
+    missing = []
     for start, end, text in page_text_spans(html_text):
         key = translation_key(text)
         if not key:
             continue
-        said = table.get(key)
+        said = table.get(key) or remembered.get(key)
         if not said or said == key:
+            if key not in already and worth_translating(key):
+                missing.append(key)
             continue
         raw = html_text[start:end]
         # Only the words are replaced. The whitespace around them is the
@@ -46161,6 +46384,15 @@ def translate_page(html_text, lang):
         pieces.append(lead + _as_markup(said) + tail)
         last = end
         changed = True
+    if missing:
+        # Held on g and written after the response, never mid-render:
+        # a guest is waiting for this page and a write lock is not
+        # theirs to queue behind. Same shape as keep_guest_message.
+        if has_request_context():
+            pending = g.get("_wanted_translations")
+            if pending is None:
+                pending = g._wanted_translations = []
+            pending.extend(missing)
     if not changed:
         return html_text
     pieces.append(html_text[last:])
@@ -67075,6 +67307,161 @@ def run_housekeeping_job(conn):
             f"booking(s), prepped {prepped} arrival(s)")
 
 
+LANGUAGE_NAMES = {"fr": "French", "es": "Spanish"}
+
+# How many sentences go in one call, and how many calls a run may make. The
+# ceiling is a cost ceiling and nothing else: a handover that redraws every
+# public page can add two thousand sentences in an afternoon, and this is what
+# stops that turning into two thousand sentences' worth of model time in the
+# ten minutes afterwards. They are spread over the following runs instead,
+# and the pages stay in English in the meantime, which is the same fallback
+# the site has always had.
+TRANSLATION_BATCH = 25
+TRANSLATION_MAX_PER_RUN = 150
+
+TRANSLATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "lines": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string"},
+                    "translated": {"type": "string"},
+                    "leave_alone": {"type": "boolean"},
+                },
+                "required": ["source", "translated", "leave_alone"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["lines"],
+    "additionalProperties": False,
+}
+
+TRANSLATION_SYSTEM = (
+    "You translate the website of Chateau de Gudanes, an eighteenth-century "
+    "chateau in the Ariege in the French Pyrenees. It takes guests, runs a "
+    "restaurant and holds workshops, while being restored under French "
+    "heritage law.\n\n"
+    "Rules, in order of importance:\n"
+    "1. Translate the meaning, not the words. This is a real house writing in "
+    "its own voice: plain, exact, unhurried, never marketing language. Match "
+    "that register in the target language.\n"
+    "2. NEVER translate proper nouns. Chateau de Gudanes, La Table, Chateau "
+    "Ateliers, Monuments Historiques, place names (Ariege, Chateau-Verdun, Ax-"
+    "les-Thermes, Lombrives), personal names. Set leave_alone true and return "
+    "the source unchanged for a string that is ONLY a proper noun, a postal "
+    "address, an email address, a telephone number or a reference code.\n"
+    "3. Keep every number, price, date and measurement exactly as given. "
+    "Convert nothing. A room that is 43,000 square feet stays 43,000 square "
+    "feet.\n"
+    "4. If the source is ALREADY in the target language, set leave_alone true "
+    "and return it unchanged. Do not paraphrase it.\n"
+    "5. Keep the punctuation the source uses, including the typographic "
+    "quotes and dashes, and keep any leading or trailing symbols.\n"
+    "6. Return one entry for every source line you are given, with `source` "
+    "copied back exactly. Never merge, split or reorder them."
+)
+
+
+def translate_batch_with_claude(lines, lang):
+    """One model call. Returns {source: translated} for what came back.
+
+    A source that comes back marked leave_alone, or unchanged, or missing
+    entirely is simply absent from the result — the caller files those as
+    'skip' so they are never asked about again.
+    """
+    if not claude_configured() or not lines:
+        return {}, {}
+    wanted = LANGUAGE_NAMES.get(lang, lang)
+    # THE CLIENT IS BUILT INSIDE THE TRY, not above it. Constructing it
+    # can raise on its own -- a malformed key, a library that cannot
+    # reach its config -- and with that line outside, the exception went
+    # straight past this handler and took the whole job down instead of
+    # leaving the rows wanted for the next run.
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        response = client.messages.parse(
+            model="claude-opus-5", max_tokens=8192,
+            system=TRANSLATION_SYSTEM,
+            output_config={"format": {"type": "json_schema",
+                                      "schema": TRANSLATION_SCHEMA}},
+            messages=[{"role": "user", "content":
+                       "Translate each line into %s.\n\n%s"
+                       % (wanted, json.dumps(lines, ensure_ascii=False))}],
+        )
+        parsed = response.parsed_output or {}
+    except Exception as e:
+        print("[translation call failed] %s" % e)
+        return {}, {}
+    done, leave = {}, {}
+    known = set(lines)
+    for item in parsed.get("lines", []):
+        source = (item or {}).get("source")
+        # MATCHED BACK BY SOURCE, never by position. A model that drops or
+        # reorders a line would otherwise put the third sentence's French
+        # under the second sentence's English, which is worse than no
+        # translation and impossible to spot from the outside.
+        if source not in known:
+            continue
+        said = (item.get("translated") or "").strip()
+        if item.get("leave_alone") or not said or said == source:
+            leave[source] = True
+            continue
+        done[source] = said
+    return done, leave
+
+
+def run_page_translation_job(conn, limit=None):
+    """Translate what the public pages have asked for and nobody has written.
+
+    The whole point of the feature: the list of work comes from what was
+    actually served, so a handover that redraws the site on Friday is
+    translated by the job without anybody being told it happened.
+    """
+    if not claude_configured():
+        return "no model provider configured"
+    budget = limit or TRANSLATION_MAX_PER_RUN
+    rows = conn.execute(
+        """SELECT source_text, lang FROM page_translations
+           WHERE status = 'wanted' ORDER BY id LIMIT ?""", (budget,)).fetchall()
+    if not rows:
+        return "nothing waiting"
+    by_lang = {}
+    for r in rows:
+        by_lang.setdefault(r["lang"], []).append(r["source_text"])
+
+    stamp = datetime.now(timezone.utc).isoformat()
+    written = skipped = 0
+    for lang, sources in by_lang.items():
+        for i in range(0, len(sources), TRANSLATION_BATCH):
+            chunk = sources[i:i + TRANSLATION_BATCH]
+            done, leave = translate_batch_with_claude(chunk, lang)
+            for source, said in done.items():
+                conn.execute(
+                    """UPDATE page_translations
+                       SET translated = ?, status = 'machine', translated_at = ?
+                       WHERE source_text = ? AND lang = ? AND status = 'wanted'""",
+                    (said, stamp, source, lang))
+                written += 1
+            for source in leave:
+                # Filed rather than left waiting, so the same proper noun is
+                # not sent to the model again every ten minutes for ever.
+                conn.execute(
+                    """UPDATE page_translations
+                       SET status = 'skip', translated_at = ?
+                       WHERE source_text = ? AND lang = ? AND status = 'wanted'""",
+                    (stamp, source, lang))
+                skipped += 1
+            conn.commit()
+    # The next public response should see this rather than waiting out the
+    # cache, or the job appears to have done nothing for two minutes.
+    translation_memory(force=True)
+    return "translated %d, left %d alone" % (written, skipped)
+
+
 def run_daily_digest_job(conn):
     to_address = owner_email(conn)
     if not to_address:
@@ -67967,6 +68354,12 @@ def run_photo_mirror_job(conn):
 
 AUTOMATION_JOBS = [
     ("housekeeping", "automation_housekeeping_enabled", None, 600, run_housekeeping_job),
+    # Every ten minutes, and the interval is the feature: a handover that
+    # redraws the public pages is translated within the hour rather than
+    # overnight. Capped per run, so a redraw of the whole site costs a
+    # series of small calls instead of one enormous one.
+    ("page_translation", "automation_page_translation_enabled", None, 600,
+     run_page_translation_job),
     # Hourly. The page reads a cache and never the network, so a slow morning
     # at Open-Meteo is a page with no weather on it rather than a slow page.
     ("weather", "automation_weather_enabled", None, 3600, run_weather_job),
@@ -68216,6 +68609,7 @@ AUTOMATION_JOB_LABELS = {
     "weather": "What it is doing at the château",
     "exchange_rates": "What a euro is worth, for the price converter",
     "housekeeping": "Housekeeping (expire stale bookings, prep arrivals)",
+    "page_translation": "Translate new public-page text into French and Spanish",
     "daily_digest": "Daily owner digest email",
     "workshop_autocharge": "Workshop: charge the balance on its due date",
     "workshop_decision": "Workshop: it will not reach the number it needs to run (once when the date is in sight, once if it passes)",
