@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Import guests{% endblock %}
+{% block content %}
+
+{#  Mirrors import_catalogue.html deliberately — same shape, same dry-run
+    default, same promise that nothing is ever deleted. Two pages that do the
+    same kind of dangerous thing should look and behave the same way.  #}
+
+<div class="page-head">
+  <h1>Import guests</h1>
+  <a href="{{ url_for('guests') }}" class="btn-ghost">Guests</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Brings the guest list in from the system this one replaced, so somebody who
+  has been here six times does not arrive as a stranger. There
+  {{ 'is' if guest_count == 1 else 'are' }} currently
+  <strong>{{ guest_count }}</strong> guest{{ '' if guest_count == 1 else 's' }} on file.
+</p>
+
+<div class="detail-card">
+  <h3>Upload the export</h3>
+  <p class="upload-hint">
+    A CSV with, at minimum, a column of email addresses and the names beside
+    them. Arrival, Toulouse and departure notes come across too if they are in
+    the file.
+  </p>
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="people" accept=".csv,text/csv" required
+           aria-label="Guest export file">
+    <label class="checkbox-row" style="margin-top:12px;">
+      {# Ticked on purpose. The first press of the button should never be the
+         one that writes three hundred rows. #}
+      <input type="checkbox" name="dry_run" checked>
+      <span>Show me what it would do first, without saving</span>
+    </label>
+    <button type="submit" class="btn-primary" style="margin-top:12px;">Import</button>
+  </form>
+</div>
+
+{% if result %}
+<h2 class="section-heading">
+  {{ 'What it would do' if result.dry_run else 'What it did' }}
+</h2>
+{% if result.dry_run %}
+<p class="upload-hint" style="margin-top:-8px;">
+  <strong>Nothing has been saved.</strong> Untick the box above and import
+  again to make these changes.
+</p>
+{% endif %}
+
+<div class="mini-list">
+  <div class="mini-row">
+    <span class="mini-name">Read from the file</span>
+    <span class="mini-role">{{ result.read }} people</span>
+  </div>
+  <div class="mini-row">
+    <span class="mini-name">New to us</span>
+    <span class="mini-role">{{ result.added|length }}</span>
+  </div>
+  <div class="mini-row">
+    <span class="mini-name">Already here, gaps filled in</span>
+    <span class="mini-role">{{ result.filled|length }}</span>
+  </div>
+  <div class="mini-row">
+    <span class="mini-name">Already here, nothing to add</span>
+    <span class="mini-role">{{ result.untouched|length }}</span>
+  </div>
+  {% if result.duplicates %}
+  <div class="mini-row">
+    <span class="mini-name">Listed twice in the file, folded into one</span>
+    <span class="mini-role">{{ result.duplicates }}</span>
+  </div>
+  {% endif %}
+</div>
+
+{% if money %}
+{#  Said out loud rather than dropped in silence. Somebody who knows the export
+    has money on it should be told where it went.  #}
+<div class="detail-card" style="margin-top:var(--s4);">
+  <h3>The balances in this file were not imported</h3>
+  <p class="upload-hint">
+    The file carries an outstanding balance for <strong>{{ money.people }}</strong>
+    {{ 'person' if money.people == 1 else 'people' }}, totalling
+    <strong>€{{ '%.2f'|format(money.total) }}</strong>. None of it has been
+    written.
+  </p>
+  <p class="upload-hint">
+    This house chases an unpaid balance automatically, and that is switched on.
+    Importing a figure from a system that has been turned off would start
+    writing to people about money they may have settled long ago. If those
+    balances are real and current, they want adding deliberately, a person at a
+    time — not as a side effect of importing a mailing list.
+  </p>
+</div>
+{% endif %}
+
+{% if result.added %}
+<h2 class="section-heading">New to us</h2>
+<div class="mini-list">
+  {% for name in result.added[:40] %}
+  <div class="mini-row"><span class="mini-name">{{ name }}</span></div>
+  {% endfor %}
+  {% if result.added|length > 40 %}
+  <div class="mini-row"><span class="mini-role">and {{ result.added|length - 40 }} more</span></div>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+
+<h2 class="section-heading">What this does and doesn't touch</h2>
+<div class="mini-list">
+  <div class="mini-row">
+    <span class="mini-name">Never deletes anything</span>
+    <span class="mini-role">the worst a wrong file can do is add people you then merge</span>
+  </div>
+  <div class="mini-row">
+    <span class="mini-name">Never overwrites what is already here</span>
+    <span class="mini-role">an existing guest only has their empty fields filled in</span>
+  </div>
+  <div class="mini-row">
+    <span class="mini-name">Safe to run twice</span>
+    <span class="mini-role">people are matched on their email address, so the second run changes nothing</span>
+  </div>
+  <div class="mini-row">
+    <span class="mini-name">Guests only</span>
+    <span class="mini-role">no bookings, no payments, no balances, no staff</span>
+  </div>
+</div>
+
+{% endblock %}

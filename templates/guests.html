@@ -8,6 +8,13 @@
   {% if user['role'] == 'owner' %}
   <div style="display:flex; gap:10px;">
     <a href="{{ url_for('export_guests_csv') }}" class="btn-ghost">Export CSV</a>
+    {# Beside the export, because somebody looking for one is usually looking
+       for the other. can() rather than an unconditional link: this is a
+       management page and the Guests page is not, so drawing it for everybody
+       would put a 403 in front of anyone without it. #}
+    {% if can('import_guests') %}
+    <a href="{{ url_for('import_guests') }}" class="btn-ghost">Import</a>
+    {% endif %}
     <a href="{{ url_for('new_guest') }}" class="btn-primary" style="margin-top:0;">+ Add guest</a>
   </div>
   {% endif %}

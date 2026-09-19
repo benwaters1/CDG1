@@ -20,7 +20,7 @@ proposal, and a tool name the model made up.
 """
 import json
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, free_window
 import _harness
 
 m = _harness.m
@@ -112,6 +112,57 @@ def run():
     s.check("a read tool needed no confirmation",
             not any(r["action_status"] == "pending" for r in rows),
             detail="looking at today's arrivals is not a decision")
+
+    # ---- the things somebody actually asks in the morning ---------------
+    s.section("What it can tell you about the guests")
+    # Through the dispatcher directly: these are reads, so there is no gate to
+    # exercise, and what matters is that they come back with the house's real
+    # answer rather than an empty string the model would then invent around.
+    room = _harness.ensure_room(min_occupancy=2)
+    arrive = _harness.free_window(room["id"], 2, after_days=15)
+    now = m.datetime.now(m.timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+             guest_email, arrival_date, departure_date, party_size, status,
+             created_at, estimated_arrival_time)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 2, 'confirmed', ?, '18:30')""",
+        (room["id"], TAG + "-ARR", TAG.lower() + "arrtok",
+         TAG + " Almeida", TAG.lower() + ".almeida@example.invalid",
+         arrive.isoformat(), (arrive + m.timedelta(days=2)).isoformat(), now))
+    conn.execute(
+        """INSERT INTO guests (name, email, dietary_notes, created_at)
+           VALUES (?, ?, ?, ?)""",
+        (TAG + " Almeida", TAG.lower() + ".almeida@example.invalid",
+         "severe shellfish allergy", now))
+    conn.commit()
+
+    said = m.assistant_read_tool(conn, owner, "arrivals",
+                                 {"day": arrive.isoformat()})
+    s.check("it can say who is arriving on a day",
+            TAG + " Almeida" in said, detail=said[:200])
+    s.check("with the time they said they would get here", "18:30" in said)
+    # THE ONE THAT MATTERS. An allergy paraphrased is an allergy that can kill
+    # somebody, so it comes back word for word and the system prompt tells the
+    # model to repeat it rather than summarise it.
+    s.check("and their allergy, in the words it was written in",
+            "severe shellfish allergy" in said,
+            detail="a dietary note must reach the answer verbatim")
+
+    found = m.assistant_read_tool(conn, owner, "find_guest",
+                                  {"query": TAG + " Almeida"})
+    s.check("it can look a guest up by name", TAG + " Almeida" in found,
+            detail=found[:200])
+    s.check("and says what they cannot eat",
+            "shellfish" in found, detail=found[:200])
+
+    here = m.assistant_read_tool(conn, owner, "who_is_here", {})
+    s.check("and it can say who is in the house", isinstance(here, str) and here,
+            detail=str(here)[:120])
+
+    s.check("none of the three needs confirming",
+            not ({"arrivals", "who_is_here", "find_guest"} & m.ASSISTANT_ACTION_TOOLS),
+            detail="a lookup behind a confirm teaches people to press yes unread")
+
 
     # ---- an action, which must NOT happen -------------------------------
     s.section("An action is written down, not carried out")
