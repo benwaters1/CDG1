@@ -203,7 +203,7 @@
             </li>
             {% endfor %}
           </ul>
-          <p class="g-hint">Added to your request. The château confirms availability and the final total.</p>
+          <p class="g-hint">Added to your booking. The total below is what you pay.</p>
         </section>
         {% endif %}
 
@@ -275,7 +275,7 @@
           </label>
 
           {% if stripe_enabled and room['price_per_night'] %}
-          <button type="submit" class="g-btn g-submit">Pay &amp; request to book</button>
+          <button type="submit" class="g-btn g-submit">Pay &amp; book</button>
           <p class="g-foot-note">Your dates are held from the moment you submit. The château confirms within a day, and you get a reference code and a link to change anything — dates, guests, extras, or what the kitchen should know.</p>
           {% else %}
           
@@ -605,7 +605,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     <div class="g-plate__row">
       <dl class="g-plate__l">
         <div><dt>The payment</dt><dd>Taken by Stripe. Your card details never reach the château</dd></div>
-        <div><dt>The reading</dt><dd>Every request is read by hand, usually the same day</dd></div>
+        <div><dt>The booking</dt><dd>Confirmed straight away, with your dates held</dd></div>
         <div><dt>If declined</dt><dd>The refund is automatic and complete. Nothing to chase</dd></div>
         <div><dt>Your reference</dt><dd>Emailed at once, with a link to change or cancel the booking</dd></div>
         <div><dt>Breakfast</dt><dd>Included every morning, in the rate you see</dd></div>

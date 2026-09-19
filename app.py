@@ -22569,7 +22569,32 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
                     party_size, special_requests, chosen_extras, payment_status="unpaid",
                     stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
                     total_price_override=None, discount_amount_override=None,
-                   guests_under_18=0, source="direct"):
+                   guests_under_18=0, source="direct", confirm_now=False):
+    """Write a stay down. With confirm_now, it is booked rather than requested.
+
+    THE HOUSE TAKES BOOKINGS, NOT REQUESTS FOR BOOKINGS. Every stay used to
+    land as 'pending' and wait for the owner to press confirm, which meant a
+    guest who had just paid was told their dates were "awaiting confirmation",
+    and a request nobody looked at for two days cancelled itself. That is a
+    reasonable way to run five rooms and it is not what this house wants: a
+    booking made on the website is a booking.
+
+    Confirming is not a status change. It creates the guest's standing profile,
+    mints the link to their own page, re-checks the room is genuinely free
+    against confirmed stays, refuses anybody under a standing instruction not
+    to accept them, and sends the real confirmation with its calendar invite.
+    So this does not set a column -- it calls confirm_booking_by_id, the same
+    function the owner's own button calls, and there is one definition of what
+    being confirmed means.
+
+    WHEN IT CANNOT, THE OLD BEHAVIOUR IS THE FALLBACK AND THAT IS DELIBERATE.
+    confirm_booking_by_id refuses a guest carrying a 'refuse' caution, and
+    refuses a room that has just gone. Both are exactly the cases where a
+    person should look at it, so the stay stays pending, the owner is told to
+    review it, and the guest is told it is awaiting confirmation -- which is
+    true, rather than a cheerful confirmation of a stay that is not going to
+    happen.
+    """
     nights = (departure - arrival).days
     extras_total = sum(e["price"] for e in chosen_extras)
 
@@ -22661,6 +22686,15 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
                          arrival.isoformat(), departure.isoformat())
     conn.commit()
 
+    # Booked, not requested. confirm_booking_by_id commits and sends the
+    # confirmation itself, so if this succeeds the letters below are the wrong
+    # ones and are skipped. If it refuses -- a caution, or the room went in the
+    # seconds in between -- everything carries on exactly as it did before,
+    # which is the right answer for both of those.
+    confirmed_now = False
+    if confirm_now and new_row:
+        confirmed_now, _why = confirm_booking_by_id(conn, new_row["id"])
+
     checkin_url = url_for("guest_checkin", manage_token=manage_token, _external=True)
     detail_lines = [
         f"Arrival: {format_date_human(arrival.isoformat())}",
@@ -22689,35 +22723,58 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
     # — claiming "confirmed" would be the worse error of the two. It leads with
     # the payment, then says plainly what is left and that they need do nothing.
     paid = payment_status == "paid"
-    if paid:
-        subject = f"Payment received — {room['name']}"
-        opening = (f"Thank you — your payment of €{total_price:.2f} has been received "
-                   f"in full.\n\nWe are confirming the dates now and will email you "
-                   f"as soon as that is done. Nothing further is needed from you.")
-    else:
-        subject = f"Booking request received — {room['name']}"
-        opening = (f"Your request for {room['name']} has been received and is "
-                   f"awaiting confirmation.")
-    send_email(
-        guest_email,
-        subject,
-        f"Hi {guest_name},\n\n"
-        f"{opening}\n\n"
-        + "\n".join(detail_lines) +
-        f"\n\nReference code: {reference_code}\n"
-        f"Check in online, manage your booking, or send us a request: {checkin_url}\n\n"
-        f"— Château de Gudanes",
-    )
+    # A stay confirmed a moment ago has already had the real thing — the one
+    # with the calendar invite on it — from confirm_booking_by_id. Sending
+    # "your request has been received" on top of it would be the house
+    # contradicting itself in two letters a minute apart.
+    if not confirmed_now:
+        if paid:
+            subject = f"Payment received — {room['name']}"
+            opening = (f"Thank you — your payment of €{total_price:.2f} has been received "
+                       f"in full.\n\nWe are confirming the dates now and will email you "
+                       f"as soon as that is done. Nothing further is needed from you.")
+        else:
+            subject = f"Booking request received — {room['name']}"
+            opening = (f"Your request for {room['name']} has been received and is "
+                       f"awaiting confirmation.")
+        send_email(
+            guest_email,
+            subject,
+            f"Hi {guest_name},\n\n"
+            f"{opening}\n\n"
+            + "\n".join(detail_lines) +
+            f"\n\nReference code: {reference_code}\n"
+            f"Check in online, manage your booking, or send us a request: {checkin_url}\n\n"
+            f"— Château de Gudanes",
+        )
     owner_to = owner_email(conn)
     if owner_to:
-        send_email(
-            owner_to,
-            f"New booking request — {room['name']} ({reference_code})",
-            f"{guest_name} requested {room['name']}, {arrival.isoformat()} to {departure.isoformat()}, "
-            f"party of {party_size}.\n"
-            f"{'Payment already received.' if payment_status == 'paid' else 'No payment taken — review and confirm.'}\n\n"
-            f"Review: {url_for('admin_bookings', _external=True)}",
-        )
+        # Two different things to read at breakfast. "Somebody booked" is news;
+        # "somebody is waiting on you" is a job, and the subject line says
+        # which so the ones needing a person stand out from the ones that do
+        # not. A stay that fell back to pending says so in as many words.
+        if confirmed_now:
+            send_email(
+                owner_to,
+                f"Booked — {room['name']} ({reference_code})",
+                f"{guest_name} booked {room['name']}, {arrival.isoformat()} to "
+                f"{departure.isoformat()}, party of {party_size}.\n"
+                f"{'Paid in full.' if paid else 'No payment taken.'}\n\n"
+                f"Nothing to do — they have their confirmation.\n"
+                f"{url_for('admin_bookings', _external=True)}",
+            )
+        else:
+            send_email(
+                owner_to,
+                f"Needs you — {room['name']} ({reference_code})",
+                f"{guest_name} requested {room['name']}, {arrival.isoformat()} to {departure.isoformat()}, "
+                f"party of {party_size}.\n"
+                f"{'Payment already received.' if payment_status == 'paid' else 'No payment taken.'}\n\n"
+                f"This one did not confirm itself — either there is a standing "
+                f"instruction about this guest, or the room went while they were "
+                f"typing. Review and confirm.\n"
+                f"{url_for('admin_bookings', _external=True)}",
+            )
     return reference_code, manage_token
 
 
@@ -22751,7 +22808,7 @@ def create_booking_from_stripe_session(conn, session):
     reference_code, manage_token = create_booking(
         conn, room, meta["guest_name"], meta["guest_email"], meta.get("guest_phone", ""),
         arrival, departure, int(meta["party_size"]), meta.get("special_requests", ""),
-        chosen_extras, payment_status="paid",
+        chosen_extras, payment_status="paid", confirm_now=True,
         stripe_session_id=session["id"], stripe_payment_intent_id=sval(session, "payment_intent"),
         promo_code=meta.get("promo_code") or None,
         guests_under_18=int(meta.get("guests_under_18") or 0),
@@ -36255,7 +36312,7 @@ def book_room(room_id):
         _, manage_token = create_booking(
             conn, room, guest_name, guest_email, guest_phone, arrival, departure,
             party_size, special_requests, chosen_extras, promo_code=promo_code or None,
-            guests_under_18=guests_under_18,
+            guests_under_18=guests_under_18, confirm_now=True,
         )
         conn.close()
         return redirect(url_for("booking_confirmation", manage_token=manage_token))
@@ -37073,7 +37130,7 @@ def manage_booking(manage_token):
                     conn, room, who, booking["guest_email"],
                     booking["guest_phone"], arrival, departure, party,
                     f"Added to {booking['reference_code']} from the guest's "
-                    "own page.", [], source="direct")
+                    "own page.", [], source="direct", confirm_now=True)
                 added = conn.execute(
                     "SELECT id FROM bookings WHERE reference_code = ?",
                     (ref,)).fetchone()
@@ -41374,7 +41431,19 @@ def session_room_error(conn, session_id, occupancy_type, party_size, exclude_id=
 
 def create_workshop_booking(conn, session_row, workshop, guest_name, guest_email, guest_phone, party_size,
                              notes, occupancy_type="double", requested_roommate=None, dietary_notes=None,
-                             medical_notes=None, special_occasion=None, booking_id=None, promo_code=None):
+                             medical_notes=None, special_occasion=None, booking_id=None, promo_code=None,
+                             confirm_now=False):
+    """Take a place on an atelier. With confirm_now, it is taken rather than asked for.
+
+    The places are already claimed before this is reached — claim_workshop_places
+    takes the lock on the public path — so the capacity promise is kept whether
+    or not a person looks at it afterwards. What confirming adds is the guest's
+    real letter, the audit line, and the refusal of anybody under a standing
+    instruction not to accept them.
+
+    Where it refuses, the registration stays pending and the owner is told to
+    look at it, which is the right answer for exactly those cases.
+    """
     reference_code = make_workshop_reference_code()
     manage_token = secrets.token_urlsafe(24)
     subtotal, supplement = workshop_subtotal(workshop, party_size, occupancy_type)
@@ -41423,10 +41492,22 @@ def create_workshop_booking(conn, session_row, workshop, guest_name, guest_email
            WHERE workshop_bookings.id = ?""",
         (booking_row_id,),
     ).fetchone()
-    send_workshop_email(conn, booking_row, "workshop_registration_received", workshop_email_context(booking_row))
-    conn.commit()
+    confirmed_now = False
+    if confirm_now:
+        confirmed_now, _why, _cap = confirm_workshop_registration_by_id(
+            conn, booking_row_id)
+        conn.commit()
+    # A place confirmed a moment ago has had the real letter already. Sending
+    # "we have received your registration" on top of it would be the house
+    # contradicting itself twice in a minute.
+    if not confirmed_now:
+        send_workshop_email(conn, booking_row, "workshop_registration_received", workshop_email_context(booking_row))
+        conn.commit()
 
-    notify_title = f"Workshop registration — {workshop['title']}, {guest_name} ({date_line})"
+    notify_title = (
+        f"Atelier booked — {workshop['title']}, {guest_name} ({date_line})"
+        if confirmed_now else
+        f"Needs you — {workshop['title']}, {guest_name} ({date_line})")
     notified_ids = set()
     owner_row = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
     if owner_row:
@@ -42389,6 +42470,7 @@ def workshop_register(session_id):
             conn, session_row, workshop, guest_name, guest_email, guest_phone or None, party_size, notes,
             occupancy_type=occupancy_type, requested_roommate=requested_roommate, dietary_notes=dietary_notes,
             medical_notes=medical_notes, special_occasion=special_occasion, promo_code=promo_code or None,
+            confirm_now=True,
         )
         now_iso = datetime.now(timezone.utc).isoformat()
         conn.execute(
@@ -50191,10 +50273,16 @@ def set_workshop_occupancy(registration_id):
     return redirect(url_for("admin_workshop_registrations"))
 
 
-@app.route("/admin/workshops/registrations/<int:registration_id>/confirm", methods=["POST"])
-@owner_required
-def confirm_workshop_registration(registration_id):
-    conn = get_db()
+def confirm_workshop_registration_by_id(conn, registration_id, via=None):
+    """Confirm one place on an atelier and write to whoever took it.
+
+    The owner's button and the registration form both call this, so a place
+    confirmed from the form cannot skip the audit line, the capacity warning
+    or the letter — the shape of fault this app keeps finding whenever a
+    second caller appears beside a route.
+
+    Returns (ok, reason, capacity_note). Leaves commit/close to the caller.
+    """
     booking = conn.execute(
         """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date,
                workshop_sessions.capacity, workshops.title FROM workshop_bookings
@@ -50204,16 +50292,28 @@ def confirm_workshop_registration(registration_id):
         (registration_id,),
     ).fetchone()
     if not booking:
-        conn.close()
-        abort(404)
+        return False, "not found", ""
+
+    # A STANDING INSTRUCTION MEANS THE HOUSE, NOT THE ROOMS. Confirming a stay
+    # has refused a cautioned guest for a while; an atelier never asked, so
+    # somebody the house had decided not to accept could not book a bed and
+    # could book a week of lessons and a bed with it. That went unnoticed while
+    # a person read every registration by hand. They do not any more.
+    caution = guest_caution_for(conn, email=booking["guest_email"],
+                                name=booking["guest_name"])
+    if caution and caution["caution_level"] == "refuse":
+        return False, (f"there is a standing instruction not to accept a booking "
+                       f"from {caution['name']} ({caution['caution']}) — lift it "
+                       "on their profile if that has changed"), ""
+
     cur = conn.execute(
         "UPDATE workshop_bookings SET status = 'confirmed', decided_at = ? WHERE id = ? AND status = 'pending'",
         (datetime.now(timezone.utc).isoformat(), registration_id),
     )
     if cur.rowcount == 0:
-        conn.close()
-        abort(404)
-    log_audit(conn, "workshop_registration_confirmed", target=booking["reference_code"])
+        return False, "not found or not pending", ""
+    log_audit(conn, "workshop_registration_confirmed",
+              target=booking["reference_code"], via=via)
     conn.commit()
 
     confirmed_total = conn.execute(
@@ -50225,14 +50325,28 @@ def confirm_workshop_registration(registration_id):
     # -- the same reasoning as entering a booking by hand, where somebody may
     # know something the rules do not. What the public promise is about is a
     # GUEST being told there is room and then finding there was not, and that
-    # is the path that takes the lock.
+    # is the path that takes the lock — which the registration form does before
+    # it ever gets here.
     capacity_note = ""
     if confirmed_total > booking["capacity"]:
         capacity_note = f" Heads up — confirmed registrations for this session now total {confirmed_total}, over the {booking['capacity']}-spot cap."
 
     send_workshop_email(conn, booking, "workshop_confirmed", workshop_email_context(booking))
+    return True, None, capacity_note
+
+
+@app.route("/admin/workshops/registrations/<int:registration_id>/confirm", methods=["POST"])
+@owner_required
+def confirm_workshop_registration(registration_id):
+    conn = get_db()
+    ok, reason, capacity_note = confirm_workshop_registration_by_id(conn, registration_id)
     conn.commit()
     conn.close()
+    if not ok:
+        if reason in ("not found", "not found or not pending"):
+            abort(404)
+        flash(f"Could not confirm: {reason}", "error")
+        return redirect(url_for("admin_workshop_registrations"))
     flash("Registration confirmed." + capacity_note, "success" if not capacity_note else "error")
     return redirect(url_for("admin_workshop_registrations"))
 
