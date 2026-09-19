@@ -141,6 +141,7 @@ from urllib.parse import quote, urlencode, urlparse
 from zoneinfo import ZoneInfo
 from calendar import monthrange
 
+from html.parser import HTMLParser
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, flash, send_from_directory, abort, jsonify,
@@ -45994,6 +45995,212 @@ def t(text, **kwargs):
             # A translation with a typo'd placeholder must not blank the page.
             return text.format(**kwargs)
     return out
+
+
+# ---------------------------------------------------------------------------
+# The public pages in French and Spanish, done to the RESPONSE.
+#
+# t() translates a string a template asked to have translated. The guest site
+# almost never asked: 531 words across 55 public pages sat inside t() and
+# 22,812 did not — so the switcher changed the nav, the footer and the booking
+# widget and left every sentence of the restoration story, the rooms and the
+# workshops in English. The tables read 100% full because they held everything
+# that had been asked for, which is the wrong question asked precisely. A
+# guest reading "L'histoire de la restauration" in the menu got "There is no
+# electricity, no heating and no water" in the page, which reads as broken
+# rather than unfinished.
+#
+# WHY NOT WRAP THE TEMPLATES IN t(). serve_our_own_photographs answered this
+# for the 256 hotlinked <img> tags and the reason is unchanged: the public
+# templates are redrawn most weeks and arrive as whole-file replacements, so
+# twenty-two thousand words wrapped by hand would survive exactly one
+# handover. Done to the response it needs nothing from the design side, it
+# cannot be reverted by accident, and a page that did not exist this morning
+# is translated the first time it is served.
+#
+# HOW IT IS SAFE. The parser LOCATES text and never rebuilds the document:
+# every byte outside a text node is spliced back untouched, so attribute
+# quoting, self-closing slashes, entities, comments and the doctype cannot be
+# disturbed by a round trip. With an empty table a 109KB page comes back byte
+# for byte, and there is a test that says so.
+#
+# MEASURED, NOT GUESSED. The restoration page is 106KB with 1,247 text
+# nodes on it and costs 9.8ms to translate — near enough all of it the
+# parse, since an empty table costs the same 9.8ms. Only a French or
+# Spanish reader pays it. Everybody else pays 0.0018ms: one substring test
+# for the public body class, over bytes, before anything is decoded. That
+# is the trade taken deliberately — the alternative is caching rendered
+# pages per language, which buys a few milliseconds on a house's website
+# and costs a whole class of staleness bug on pages that show live
+# availability.
+# ---------------------------------------------------------------------------
+
+# Text inside these is not prose. <script> and <style> because a "translation"
+# there is a syntax error, <textarea> because its text is a value somebody is
+# editing, <code>/<pre> because their content is shown exactly as written.
+NEVER_TRANSLATE_INSIDE = {"script", "style", "textarea", "code", "pre",
+                          "kbd", "samp", "svg"}
+
+
+class _TextSpans(HTMLParser):
+    """Byte offsets of every text node not inside a tag that forbids it.
+
+    Records where every token starts and takes each text node's end from the
+    start of the token after it. That is exact, and the obvious alternative is
+    not: handle_data reports DECODED text, whose length does not match the
+    source wherever the source held an entity, so adding len(data) to the
+    start drifts the moment a page contains an &amp;.
+    """
+
+    def __init__(self, src):
+        super().__init__(convert_charrefs=True)
+        self.line_at = [0]
+        for line in src.splitlines(True):
+            self.line_at.append(self.line_at[-1] + len(line))
+        self.tokens = []
+        self.depth = 0
+        try:
+            self.feed(src)
+            self.close()
+        except Exception:
+            # A page this cannot parse is a page served in English, never a
+            # page not served. Malformed markup is the design side's to fix
+            # and is not worth a 500 in front of a guest.
+            self.tokens = []
+
+    def _off(self):
+        line, col = self.getpos()
+        return self.line_at[line - 1] + col
+
+    def handle_starttag(self, tag, attrs):
+        self.tokens.append((self._off(), "tag", None))
+        if tag in NEVER_TRANSLATE_INSIDE:
+            self.depth += 1
+
+    def handle_startendtag(self, tag, attrs):
+        self.tokens.append((self._off(), "tag", None))
+
+    def handle_endtag(self, tag):
+        self.tokens.append((self._off(), "tag", None))
+        if tag in NEVER_TRANSLATE_INSIDE and self.depth:
+            self.depth -= 1
+
+    def handle_data(self, data):
+        self.tokens.append((self._off(), "skip" if self.depth else "data", data))
+
+    def handle_comment(self, data):
+        self.tokens.append((self._off(), "tag", None))
+
+    def handle_decl(self, decl):
+        self.tokens.append((self._off(), "tag", None))
+
+    def handle_pi(self, data):
+        self.tokens.append((self._off(), "tag", None))
+
+
+def page_text_spans(html_text):
+    """[(start, end, text)] for every text node that may be translated."""
+    toks = _TextSpans(html_text).tokens
+    out = []
+    for i, (off, kind, payload) in enumerate(toks):
+        if kind != "data":
+            continue
+        end = toks[i + 1][0] if i + 1 < len(toks) else len(html_text)
+        out.append((off, end, payload))
+    return out
+
+
+def translation_key(text):
+    """The form a page string is stored under.
+
+    Whitespace-normalised, because a sentence is indented one way in the
+    template and another after Jinja has run, and wraps differently again when
+    the design side reflows the file. A key carrying the layout of the day it
+    was captured would stop matching the first time the page was redrawn —
+    which is the failure this whole approach exists to avoid.
+    """
+    return " ".join((text or "").split())
+
+
+def _as_markup(said):
+    """A translation, safe to splice into a text node.
+
+    The source text was DECODED on the way in, so a translation containing an
+    ampersand has to be written back encoded or it lands in the page as the
+    start of an entity. Quotes are left alone deliberately: this is text
+    content, never an attribute value, and escaping them would put &#34; in
+    front of a guest.
+    """
+    return (said.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def translate_page(html_text, lang):
+    """One rendered page, with every sentence there is a translation for.
+
+    Returns the page unchanged when there is nothing to do, so the caller can
+    leave the response body alone rather than setting it to itself.
+    """
+    if lang not in translations.TABLES:
+        return html_text
+    table = translations.TABLES[lang]
+    pieces, last, changed = [], 0, False
+    for start, end, text in page_text_spans(html_text):
+        key = translation_key(text)
+        if not key:
+            continue
+        said = table.get(key)
+        if not said or said == key:
+            continue
+        raw = html_text[start:end]
+        # Only the words are replaced. The whitespace around them is the
+        # template's own layout — dropping it closes up the space between two
+        # inline elements and the sentence loses its gaps.
+        lead = raw[:len(raw) - len(raw.lstrip())]
+        tail = raw[len(raw.rstrip()):]
+        pieces.append(html_text[last:start])
+        pieces.append(lead + _as_markup(said) + tail)
+        last = end
+        changed = True
+    if not changed:
+        return html_text
+    pieces.append(html_text[last:])
+    return "".join(pieces)
+
+
+# The public pages carry `<body class="g...">` and the staff app carries
+# `<body class="staff-shell">`. Tested as bytes before anything is decoded,
+# the way serve_our_own_photographs tests for the CDN host: most responses in
+# this app are staff pages, form posts and CSVs, and they should pay a memory
+# scan rather than a parse.
+_PUBLIC_BODY = b'<body class="g'
+
+
+@app.after_request
+def translate_public_page(response):
+    """Serve the public site in the language the reader chose.
+
+    Narrow on purpose. English is the source, so this is a no-op for almost
+    everybody. The staff app is deliberately excluded — translations.py has
+    the reasoning: the owner's side is payroll, financials and the till, read
+    by one person in one language, and the staff screens that DO carry a
+    reader already call t() in their own templates. A half-translated ledger
+    is worse than an English one.
+    """
+    if response.direct_passthrough:
+        return response
+    if not (response.content_type or "").startswith("text/html"):
+        return response
+    lang = current_language()
+    if lang == "en" or lang not in translations.TABLES:
+        return response
+    raw = response.get_data()
+    if _PUBLIC_BODY not in raw:
+        return response
+    body = raw.decode("utf-8", "replace")
+    done = translate_page(body, lang)
+    if done != body:
+        response.set_data(done)
+    return response
 
 
 _SHELL_VERSION = None

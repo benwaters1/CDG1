@@ -131,6 +131,7 @@ SUITES = [
     "test_vehicles",
     "test_offline",
     "test_translations",
+    "test_page_translation",
     "test_staff_language",
     "test_whats_on",
     "test_ateliers",
