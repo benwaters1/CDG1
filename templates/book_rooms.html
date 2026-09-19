@@ -72,7 +72,7 @@
     <div>
       <p class="g-p g-lede-first">Five bedrooms inside a restoration followed by Vogue, AD Italia and the French press — a Class I Historic Monument still being brought back, and open to guests while the work goes on.</p>
       <p class="g-p">The walls are bare plaster and weathered stone. They are protected under French law and cannot be changed, so they stay as two hundred and eighty years left them. Everything within them is new. The beds are very good ones, dressed in hand-embroidered vintage linen found and collected over years rather than ordered by the crate — so no two rooms are made up the same. The floors and the bathrooms are new throughout.</p>
-      <p class="g-p">Both things are true at once. It is an old house and behaves like one: original staircases and no lift, bathrooms shared and privately allocated on the ground floor, and electricity kept deliberately low. These are not oversights — they are the conditions under which a monument of this class is permitted to be lived in at all. In practice it means the evenings are lit by candle, and nobody has ever complained about that.</p>
+      <p class="g-p">Both things are true at once. It is an old house and behaves like one: original staircases and no lift, bedrooms on the top floor with the bathrooms downstairs, and electricity kept deliberately low. These are not oversights — they are the conditions under which a monument of this class is permitted to be lived in at all. In practice it means the evenings are lit by candle, and nobody has ever complained about that.</p>
       <blockquote class="g-quote g-quote--bord">The rooms open one at a time, as the restoration reaches them.</blockquote>
     </div>
     <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1500w" alt="Restoration work in progress" loading="lazy">
@@ -321,8 +321,8 @@
     <h2 class="g-h2">Les Salles de Bains</h2>
     <p class="g-p g-lede-first">Floral papers, a cast-iron freestanding bath, and a dressing room to yourself.</p>
     <p class="g-p">Three bathrooms on the ground floor, each with its own character.</p>
-    <p class="g-p">Émeraude, du Levant and Les Deux Chambres each have a private bathroom a few steps along the corridor. Cerise and Tilleul share a bathroom set between them.</p>
-    <p class="g-p">Brass fittings, hexagonal terracotta underfoot, and cast-iron baths deep enough to disappear into. Ensuite bathrooms are not permitted under Class I rules — which is why they sit off the corridor rather than behind your bed, and why they are among the newest rooms in a building that is mostly not.</p>
+    <p class="g-p">Émeraude, du Levant and Les Deux Chambres each have a private bathroom downstairs. Cerise and Tilleul share a bathroom set between them.</p>
+    <p class="g-p">Brass fittings, hexagonal terracotta underfoot, and cast-iron baths deep enough to disappear into. Ensuite bathrooms are not permitted under Class I rules — which is why they sit downstairs rather than behind your bed, and why they are among the newest rooms in a building that is mostly not. There is a powder room on the bedroom floor for the night.</p>
     <p style="margin-top:var(--s6)">
       <a href="#book" class="g-btn g-btn--solid">Check dates</a>
     </p>
@@ -378,7 +378,7 @@
 
 <section class="g-sec g-sec--tight g-sec--terre" data-fold><div class="g-wrap g-wrap--narrow">
   <h2 class="g-place">What the Rooms Are Made Of</h2>
-  <p class="g-p">Château de Gudanes is under restoration, having been a ruin until recent years — work is ongoing throughout the estate. Most bathrooms sit together in a central area, though each is privately allocated to its room, aside from the shared rooms, which share a bathroom between the two.</p>
+  <p class="g-p">Château de Gudanes is under restoration, having been a ruin until recent years — work is ongoing throughout the estate. The bedrooms are all on the top floor. The bathrooms are downstairs, each privately allocated to its room — aside from the shared rooms, which share one between the two. A powder room sits on the bedroom floor, so the stairs are for bathing rather than for the night.</p>
   <p class="g-p">The château is home to one resident French Bulldog — naturally — and a few cats.</p>
   <p class="g-p"><em>Estate grounds of approximately six acres, in the Ariège, at the foot of the Pyrénées.</em></p>
 </div></section>
@@ -704,7 +704,7 @@
 {% from '_faq.html' import faq %}
 {{ faq([
   ('Is there a lift?',
-   'No. Gudanes is a Class I Historic Monument and a lift cannot be installed. The staircases are the originals, and the bedrooms are up them. If stairs are difficult, write to us before booking and we will tell you honestly whether it will work.'),
+   'No. Gudanes is a Class I Historic Monument and a lift cannot be installed. The staircases are the originals, with no handrail in places, and there are a great many of them: the bedrooms are on the top floor, the bathrooms downstairs, and the grounds are terraced, so it is stairs outside as well as in. There is a powder room on the bedroom floor. If stairs are difficult, write to us before booking and we will tell you honestly whether it will work.'),
   ('Why are the walls unfinished?',
    'Because the law requires it. Class I classification means the walls stay as the centuries left them — bare plaster, weathered stone — and every intervention is approved before a tool is lifted. Everything within them is new: the beds, the linen, the floors, the bathrooms.'),
   ('When do I pay?',
@@ -796,7 +796,7 @@
       <p class="g-tier__p"><b>From €{{ '%.0f'|format(r['price_per_night']) }}</b> a night</p>
       <dl class="g-tier__f">
         <div><dt>Sleeps</dt><dd>{{ r['max_occupancy'] or 2 }}</dd></div>
-        <div><dt>Bathroom</dt><dd>{%- if 'Shared' in r['name'] %}Shared with one other room{% else %}Private, along the corridor{%- endif %}</dd></div>
+        <div><dt>Bathroom</dt><dd>{%- if 'Shared' in r['name'] %}Shared with one other room{% else %}Private, downstairs{%- endif %}</dd></div>
         <div><dt>Breakfast</dt><dd>Included</dd></div>
         <div><dt>Minimum</dt><dd>{{ r['min_nights'] or 1 }} night{{ '' if (r['min_nights'] or 1) == 1 else 's' }}</dd></div>
       </dl>
@@ -805,7 +805,7 @@
     {% endfor %}
   </ul>
   <p class="g-limit"><span class="g-limit__k">On top</span>The taxe de séjour is set by the commune, not by us, and charged per adult per night{% if settings and settings['tourist_tax'] %} — €{{ '%.2f'|format(settings['tourist_tax']) }}{% endif %}. It is the only thing added to the rates above.</p>
-  <p class="g-limit"><span class="g-limit__k">No ensuites</span>Bathrooms are private but along the corridor. Ensuites are not permitted in a monument of this class.</p>
+  <p class="g-limit"><span class="g-limit__k">No ensuites</span>The bedrooms are on the top floor and the bathrooms are downstairs, privately allocated. Ensuites are not permitted in a monument of this class.</p>
 </div></section>
 
 <!-- ============ NO DATES YET ============ -->

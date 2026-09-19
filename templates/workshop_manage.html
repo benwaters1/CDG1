@@ -150,11 +150,20 @@
   {% endif %}
 
   {% if booking['status'] in ('pending', 'confirmed') %}
-  <form method="post" onsubmit="return confirm('Cancel this registration? This cannot be undone.');" style="margin-top:var(--s4);">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="action" value="cancel">
-    <button type="submit" class="btn-text-danger">Cancel this registration</button>
-  </form>
+  {# Not offered as a standing button. It was one click behind a generic
+     browser confirm, with nothing said about money beforehand. Still
+     reachable — a guest must be able to cancel — but the terms come
+     first and it takes a deliberate second action to open. #}
+  <details class="g-cancel-fold" style="margin-top:var(--s4);">
+    <summary>I need to cancel</summary>
+    <p class="g-hint" style="margin-top:var(--s3)">Registrations are non-refundable, deposit included. Write to us before you cancel — we can usually move you to another atelier instead.</p>
+    <p class="g-hint"><a href="mailto:{{ settings.get('email','') }}">Write to us first</a></p>
+    <form method="post" onsubmit="return confirm('Cancel this registration? It is non-refundable and cannot be undone.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="cancel">
+      <button type="submit" class="btn-text-danger">Cancel this registration anyway</button>
+    </form>
+  </details>
   {% endif %}
 </div>
 

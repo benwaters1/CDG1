@@ -892,13 +892,9 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 /* ==========================================================================
    HERO VIDEO — full-bleed looping background, pause control.
    ========================================================================== */
-/* SUPERSEDED, kept because it is the reason not to undo the rule below.
-   This used to say the video must stay in the layout flow: as
-   position:absolute it left the flow, .g-hero collapsed to zero height and
-   the next section slid up underneath it. That cannot happen now — .g-hero
-   carries its own min-height (58vh, and 72/42/26vh for hero--full/short/
-   band), so it no longer takes its height from the film. Absolute is right
-   here; if those min-heights ever go, this comes back. */
+/* The video must stay in the layout flow. As position:absolute it was
+   removed from flow, .g-hero collapsed to zero height, and the section
+   below slid up underneath the video — the text-over-video overlap. */
 /* The film is the hero's ground, so it fills the hero rather than being a
    band at the top of it. Sized with its own height, the hero could be taller
    than the film and the content — anchored to the bottom — came to rest on
@@ -9432,3 +9428,22 @@ h2.g-h2--vert,
 .g-roadnote--note{ background: #FBF3DE; color: #4A3B12; }
 .g-roadnote--serious{ background: #7A1F1F; color: #FBF1F1; }
 .g-roadnote--serious strong{ color: #fff; }
+
+/* ==========================================================================
+   THE CANCEL DISCLOSURE
+   Cancelling is not free and not automatic, so it is not a standing button.
+   It sits behind a summary with the terms stated above the action. Quiet by
+   design — findable by someone who needs it, not inviting to someone idly
+   reading their booking.
+   ========================================================================== */
+.g-cancel-fold{ border-top: 1px solid var(--line); padding-top: var(--s4); }
+.g-cancel-fold > summary{
+  cursor: pointer; list-style: none;
+  font-family: var(--ui); font-size: var(--t-sm); color: var(--ink-faint);
+  padding: var(--s2) 0; min-height: 44px; display: flex; align-items: center;
+}
+.g-cancel-fold > summary::-webkit-details-marker{ display: none; }
+.g-cancel-fold > summary::after{ content: " ›"; color: var(--gilt); }
+.g-cancel-fold[open] > summary::after{ content: " ⌄"; }
+.g-cancel-fold > summary:hover{ color: var(--ink); }
+.g-cancel-fold .btn-text-danger{ margin-top: var(--s3); }

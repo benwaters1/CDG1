@@ -55,7 +55,7 @@
       {{ stay_cost(room, deposit_shown) }}
     {% endif %}
 
-    <p class="g-room__note">Continental breakfast included. Walls left as the centuries made them — under Class I protection, they stay that way. Everything within them is new.</p>
+    <p class="g-room__note">Continental breakfast included. Walls left as the centuries made them — under Class I protection, they stay that way. Everything within them is new. The bedrooms are on the top floor and the bathrooms are downstairs, with a powder room up with the bedrooms; there is no lift, and a great many stairs.</p>
   </div>
 
   <div class="g-strip">
@@ -140,7 +140,7 @@
             </p>
           </div>
           {# Beneath both fields, not inside one — it describes the party. #}
-          <p class="g-hint g-hint--row">Guests under eighteen. Children are welcome from eight. The staircases are eighteenth-century and there are no handrails in places. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s are exempt from the taxe de sejour, so the count is what keeps a family from being overcharged and the commune's return right.</p>
+          <p class="g-hint g-hint--row">Guests under eighteen. Children are welcome from eight. The staircases are eighteenth-century and there are no handrails in places — the bedrooms are on the top floor and the bathrooms are downstairs. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s are exempt from the taxe de sejour, so the count is what keeps a family from being overcharged and the commune's return right.</p>
           {# party_size is what the route already reads, so it is kept and
              filled from the two fields above rather than replaced. #}
           <input type="hidden" name="party_size" id="party_size" value="{{ prefill_party_size or 2 }}">
@@ -234,7 +234,7 @@
 
       <aside class="g-aside">
         <div class="g-dossier">
-          <p class="g-dossier__k">Your request</p>
+          <p class="g-dossier__k">Your booking</p>
           <p class="g-dossier__room">{{ room_name(room['name']) }}</p>
           <dl class="g-dossier__l">
             <div><dt>Arrival</dt><dd data-mirror="arrival_date">—</dd></div>
@@ -607,7 +607,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         <div><dt>The payment</dt><dd>Taken by Stripe. Your card details never reach the château</dd></div>
         <div><dt>The booking</dt><dd>Confirmed straight away, with your dates held</dd></div>
         <div><dt>If declined</dt><dd>The refund is automatic and complete. Nothing to chase</dd></div>
-        <div><dt>Your reference</dt><dd>Emailed at once, with a link to change or cancel the booking</dd></div>
+        <div><dt>Your reference</dt><dd>Emailed at once, with a link to see your booking and add to it</dd></div>
         <div><dt>Breakfast</dt><dd>Included every morning, in the rate you see</dd></div>
         <div><dt>Tourist tax</dt><dd>Charged locally on departure, as French law requires</dd></div>
       </dl>

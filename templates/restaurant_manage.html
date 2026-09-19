@@ -30,11 +30,20 @@
   </div>
 
   {% if booking['status'] in ('pending', 'confirmed') %}
-  <form method="post" onsubmit="return confirm('Cancel this reservation? This cannot be undone.');" style="margin-top:var(--s4);">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="action" value="cancel">
-    <button type="submit" class="btn-text-danger">Cancel this reservation</button>
-  </form>
+  {# Not offered as a standing button. It was one click behind a generic
+     browser confirm, with nothing said about money beforehand. Still
+     reachable — a guest must be able to cancel — but the terms come
+     first and it takes a deliberate second action to open. #}
+  <details class="g-cancel-fold" style="margin-top:var(--s4);">
+    <summary>I need to cancel</summary>
+    <p class="g-hint" style="margin-top:var(--s3)">The kitchen cooks for one table and buys for it in advance, so tell us as early as you can.</p>
+    <p class="g-hint"><a href="mailto:{{ settings.get('email','') }}">Write to us first</a></p>
+    <form method="post" onsubmit="return confirm('Cancel this reservation? The table is released immediately.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="cancel">
+      <button type="submit" class="btn-text-danger">Cancel this reservation anyway</button>
+    </form>
+  </details>
   {% endif %}
 </div>
 </div></section>

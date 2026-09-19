@@ -177,7 +177,7 @@
   {% if workshop['price_per_person'] %}
   <p class="g-p" style="color:rgba(255,255,255,.88)">A {{ workshop['deposit_percent'] }}% deposit reserves your place; the balance is due thirty days before the stay, or in full if you are booking within thirty days of it. Travel insurance is required.</p>
   {% endif %}
-  <p class="g-p" style="color:rgba(255,255,255,.88)">Registration is a request, not an instant confirmation. We will confirm your place by email. You will receive a reference code and a link to manage your registration and payment.</p>
+  <p class="g-p" style="color:rgba(255,255,255,.88)">Your place is confirmed as you register, and held from that moment. You will receive a reference code and a link to manage your registration and payment.</p>
   {% if session_rows %}
   <p style="margin-top:var(--s6)"><a href="#top" class="g-btn g-btn--solid">See the dates</a></p>
   {% endif %}
@@ -187,7 +187,7 @@
 <section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
   <p class="g-p" style="text-align:center;margin:0 auto">
     The walls of the room you work in are protected and unchanged. The bed you
-    sleep in, the linen on it and the bathroom along the corridor are not. The imperfection is deliberate. It is also what you will be working on.
+    sleep in, the linen on it and the bathroom downstairs are not. The imperfection is deliberate. It is also what you will be working on.
   </p>
 </div></section>
 
@@ -285,7 +285,7 @@
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Hold your place</h2>
-  <p class="g-close__p">Registration is a request, not an instant confirmation. We will confirm your place by email.</p>
+  <p class="g-close__p">Your place is confirmed as you register, and held from that moment.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Compare the ateliers</a>
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us first</a>

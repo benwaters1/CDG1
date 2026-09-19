@@ -1,7 +1,7 @@
 {% extends "public_base.html" %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% set sticky_bar = 'none' %}
-{% block title %}Registration received{% endblock %}
+{% block title %}Your place is held{% endblock %}
 {% block content %}
 {% from '_paydates.html' import pay_dates, no_reply %}
 
@@ -9,7 +9,7 @@
    endpoint as before. #}
 
 <section class="g-sec"><div class="g-wrap g-wrap--narrow">
-  <p class="g-eyebrow">Registration received</p>
+  <p class="g-eyebrow">Your place is held</p>
   <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
     <path d="M0 13h38"/><path d="M82 13h38"/>
     <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
@@ -20,8 +20,8 @@
     Thank you, {{ booking['guest_name'].split(' ')[0] }}
   </h1>
   <p class="g-p g-lede-first">
-    Your registration for <strong>{{ booking['title'] }}</strong> has been received.
-    We will confirm your place by email.
+    Your place on <strong>{{ booking['title'] }}</strong> is confirmed and held.
+    Everything below is also in your email.
   </p>
 
   <div class="g-conf g-plate-edge">

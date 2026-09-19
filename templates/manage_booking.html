@@ -394,12 +394,33 @@
 </div>
 {% endif %}
 
+{# Cancelling is not free and is not automatic, so it is not offered as a
+   standing button. It was a one-click action with a generic browser confirm,
+   and the only warning about money sat BELOW it — and only for guests who
+   had already paid, which is exactly the group least able to act on it after
+   the fact.
+
+   It is still reachable, deliberately: a guest must be able to cancel. But
+   the terms come first, it takes a deliberate second action to open, and the
+   confirm says what actually happens rather than "cannot be undone". #}
 <div style="margin-top:var(--s5);">
-  <form method="post" onsubmit="return confirm('Cancel this booking? This cannot be undone.');">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="action" value="cancel">
-    <button type="submit" class="btn-text-danger">{{ t('Cancel this booking') }}</button>
-  </form>
+  <details class="g-cancel-fold">
+    <summary>{{ t('I need to cancel') }}</summary>
+    <p class="g-hint" style="margin-top:var(--s3)">
+      Bookings are non-refundable.
+    </p>
+    <p class="g-hint">
+      Write to us before you cancel — we can sometimes move your dates instead.
+    </p>
+    <p class="g-hint">
+      <a href="mailto:{{ settings.get('email','') }}?subject=Booking%20{{ booking['reference_code'] }}">{{ t('Write to us first') }}</a>
+    </p>
+    <form method="post" onsubmit="return confirm('Cancel this booking? It is non-refundable and cannot be undone.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="cancel">
+      <button type="submit" class="btn-text-danger">{{ t('Cancel this booking anyway') }}</button>
+    </form>
+  </details>
   {% if booking['payment_status'] == 'paid' %}<p class="g-hint">Cancelling does not automatically refund a payment — contact the château about your refund.</p>{% endif %}
 </div>
 
