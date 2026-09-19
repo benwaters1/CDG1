@@ -47,7 +47,10 @@ def _cleanup():
     conn.close()
 
 
-def _arrival(ref, phone, days=1, status="confirmed"):
+# days=0 because the arrival note is sent on the MORNING OF, not the day
+# before. The departure note still counts one day back, so the checkout
+# fixtures below pass their own offset rather than taking this default.
+def _arrival(ref, phone, days=0, status="confirmed"):
     conn = db()
     room = conn.execute("SELECT id FROM rooms LIMIT 1").fetchone()["id"]
     when = datetime.now(m.LOCAL_TZ).date() + timedelta(days=days)
@@ -105,7 +108,7 @@ def run():
     _arrival("PENDING", "06 11 11 11 11", status="pending")   # not confirmed
     said = _run()
     held = _outbox("+33611111111")
-    s.check("the guest arriving tomorrow is written to", len(held) == 1,
+    s.check("the guest arriving today is written to", len(held) == 1,
             detail=f"{len(held)} — a stay six days out and an unconfirmed one "
                    "must not be in this list")
     s.check("and it is stamped against the booking", bool(_stamp("GOOD")))

@@ -939,6 +939,10 @@ SCANNER_URL = (os.environ.get("SCANNER_URL") or "").rstrip("/")
 SMS_PROVIDER_SID = os.environ.get("SMS_PROVIDER_SID")
 SMS_PROVIDER_TOKEN = os.environ.get("SMS_PROVIDER_TOKEN")
 SMS_FROM_NUMBER = os.environ.get("SMS_FROM_NUMBER")
+# The WhatsApp sender, as a plain E.164 number -- the whatsapp: prefix is
+# added at the point of sending rather than stored, so a number pasted out of
+# the Twilio console works whichever way it was copied.
+WHATSAPP_FROM_NUMBER = (os.environ.get("WHATSAPP_FROM_NUMBER") or "").strip()
 
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY")
@@ -5098,6 +5102,14 @@ def init_db():
         # translating in their heads every time an arrival comes off a feed.
         # Free text, never matched on -- a label for a person to read.
         ("rooms_channel_name", "ALTER TABLE rooms ADD COLUMN channel_name TEXT"),
+
+        # Which way a message actually went. Without it the outbox cannot
+        # answer "did this guest get a WhatsApp or a text", which is the first
+        # question asked when somebody says they had nothing -- and the answer
+        # differs per message, because a type with no approved template falls
+        # back to SMS while the others do not.
+        ("sms_outbox_channel",
+         "ALTER TABLE sms_outbox ADD COLUMN channel TEXT NOT NULL DEFAULT 'sms'"),
     ):
         try:
             conn.execute(ddl)
@@ -40929,6 +40941,24 @@ def sms_enabled():
     return bool(SMS_PROVIDER_SID and SMS_PROVIDER_TOKEN and SMS_FROM_NUMBER)
 
 
+def whatsapp_enabled():
+    """Whether there is a WhatsApp sender, which is not the same as being
+    able to start a conversation on it -- see whatsapp_template_for."""
+    return bool(SMS_PROVIDER_SID and SMS_PROVIDER_TOKEN and WHATSAPP_FROM_NUMBER)
+
+
+def whatsapp_template_for(conn, kind):
+    """The approved template id for one message type, or ''.
+
+    Meta approves a template per message, not per account, so this is settings
+    data rather than one environment variable: the arrival note and the
+    departure note are two separate approvals and arrive weeks apart.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (f"whatsapp_template_{kind}",)).fetchone()
+    return (row["value"] or "").strip() if row else ""
+
+
 def can_text(conn, raw_number, purpose="transactional"):
     """(number_or_None, refusal_or_None) — whether this may be texted, and why not.
 
@@ -41019,7 +41049,8 @@ def file_guest_text(conn, number, body, *, delivered):
          datetime.now(timezone.utc).isoformat()))
 
 
-def send_sms(conn, raw_number, body, purpose="transactional", hold=True):
+def send_sms(conn, raw_number, body, purpose="transactional", hold=True,
+             channel="sms", template_id="", variables=None, note=""):
     """Send a text, or keep it until there is a way to.
 
     Returns (sent, refusal). A refusal is a decision — the wrong number, a
@@ -41044,40 +41075,92 @@ def send_sms(conn, raw_number, body, purpose="transactional", hold=True):
     number, refusal = can_text(conn, raw_number, purpose)
     if refusal:
         return False, refusal
-    if not sms_enabled():
+    # Asked of the channel this message is actually going on. Gating on
+    # sms_enabled() alone would hold every message in a house that had set up
+    # WhatsApp and no SMS sender -- which is a likely shape here, since the
+    # guests are mostly on foreign numbers.
+    if not (whatsapp_enabled() if channel == "whatsapp" else sms_enabled()):
         if not hold:
             return False, "no way to send, and this message would be stale later"
         conn.execute(
-            """INSERT INTO sms_outbox (phone, body, purpose, reason, created_at)
-               VALUES (?, ?, ?, 'no provider configured', ?)""",
-            (number, body, purpose, datetime.now(timezone.utc).isoformat()))
+            """INSERT INTO sms_outbox (phone, body, purpose, reason, created_at,
+               channel) VALUES (?, ?, ?, 'no provider configured', ?, ?)""",
+            (number, body, purpose, datetime.now(timezone.utc).isoformat(),
+             channel))
         file_guest_text(conn, number, body, delivered=False)
         return False, None          # held, not refused
-    ok, result = sms_provider_send(number, body)
+    ok, result = sms_provider_send(number, body, channel, template_id, variables)
+    # `note` carries the reason a channel was CHOSEN, which is the question
+    # asked when a guest says they had nothing: "WhatsApp is set up but this
+    # message has no approved template, so it went by text" is the answer, and
+    # it is invisible unless written down at the moment it is decided.
+    reason = ("sent" if ok else "send failed") + (f" — {note}" if note else "")
     conn.execute(
         """INSERT INTO sms_outbox (phone, body, purpose, reason, created_at,
-           sent_at, provider_message_id, last_error)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (number, body, purpose, "sent" if ok else "send failed",
+           sent_at, provider_message_id, last_error, channel)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (number, body, purpose, reason,
          datetime.now(timezone.utc).isoformat(),
          datetime.now(timezone.utc).isoformat() if ok else None,
-         result if ok else None, None if ok else str(result)[:400]))
+         result if ok else None, None if ok else str(result)[:400], channel))
     file_guest_text(conn, number, body, delivered=ok)
     return bool(ok), None
 
 
-def sms_provider_send(number, body):
+def twilio_message_fields(number, body, channel="sms", template_id="",
+                          variables=None):
+    """What Twilio is actually posted, as a dict, so it can be read in a test.
+
+    Pulled out of the send because the send is the one thing the harness
+    stands down -- which left the difference between an SMS and a WhatsApp
+    unprovable by anything except reading it. A wrong prefix here is not an
+    error anywhere: Twilio accepts the request and the message goes to the
+    wrong network or nowhere, and the run log says sent.
+    """
+    if channel != "whatsapp":
+        return {"To": number, "From": SMS_FROM_NUMBER, "Body": body}
+    # BOTH numbers carry the prefix. Prefixing only the recipient is accepted
+    # by the API and delivers nothing.
+    fields = {"To": f"whatsapp:{number}",
+              "From": f"whatsapp:{WHATSAPP_FROM_NUMBER}"}
+    if template_id:
+        # Twilio's Content API: the approved template by id, and its variables
+        # as a JSON object keyed "1", "2", ... in the order Meta approved
+        # them. A body alongside it would be ignored, so it is not sent.
+        fields["ContentSid"] = template_id
+        if variables:
+            fields["ContentVariables"] = json.dumps(
+                {str(i + 1): str(v) for i, v in enumerate(variables)})
+    else:
+        # Only valid inside a window the guest opened by writing first.
+        fields["Body"] = body
+    return fields
+
+
+def sms_provider_send(number, body, channel="sms", template_id="",
+                      variables=None):
     """The one place a text actually leaves the building.
 
     Deliberately the only function that talks to the provider, so the test
     harness has exactly one thing to block — the lesson from the morning the
     suite turned out to be able to reach Stripe. Nothing else in this file
     opens a connection to send a message.
+
+    WhatsApp goes through the same endpoint with both numbers prefixed, and
+    with the body replaced by an approved template id and its variables when
+    one is given. Meta refuses free text for a conversation the BUSINESS
+    starts, which every message this app sends is, so a WhatsApp send without
+    a template is only valid inside a window the guest opened by writing
+    first.
     """
-    if not sms_enabled():
+    if channel == "whatsapp" and not whatsapp_enabled():
+        return False, "no WhatsApp sender configured"
+    if channel != "whatsapp" and not sms_enabled():
         return False, "no provider configured"
     # Stdlib only, like every other outbound call in this file.
-    payload = urlencode({"To": number, "From": SMS_FROM_NUMBER, "Body": body}).encode()
+    payload = urlencode(
+        twilio_message_fields(number, body, channel, template_id, variables)
+    ).encode()
     url = (f"https://api.twilio.com/2010-04-01/Accounts/"
            f"{quote(SMS_PROVIDER_SID)}/Messages.json")
     auth = base64.b64encode(
@@ -41108,11 +41191,23 @@ GUEST_TEXTS = {
         "setting": "sms_checkin_template",
         "stamp": "checkin_text_sent_at",
         "date_column": "arrival_date",
-        # The day before is the point: they are travelling, away from a
-        # computer, and this is when "where do I actually go" is the only
-        # question left.
-        "days_before": 1,
+        # THE MORNING OF, which is a change of mind rather than a fix. The
+        # argument for the day before was that it catches somebody already
+        # travelling; the argument that won is that the last mile is the part
+        # people actually need, and a note read over breakfast on the day is
+        # the one still open on the phone at the gate.
+        #
+        # Only honest because the hour windows landed first. On a plain daily
+        # cooldown this would go out at whatever time the process last
+        # restarted, and "we look forward to seeing you today" at half past
+        # midnight is about a day that is over. See JOB_HOURS.
+        "days_before": 0,
         "label": "arrival",
+        # The variables an approved WhatsApp template is filled with, in the
+        # order Meta approved them. Positional, because that is what the
+        # Content API takes -- the names here are only so this list can be
+        # read against the template somebody submitted.
+        "variables": ("guest_name", "manage_url"),
         # Sized to ONE billed message with a real url and a long first name.
         # The url is most of the budget — about 71 characters once the live
         # host and a 32-character token are in it, out of 160 — so there are
@@ -41120,7 +41215,7 @@ GUEST_TEXTS = {
         # Marie-Christine. The first version of this read beautifully and cost
         # two messages per arrival, which is invisible until the bill.
         "default": (
-            "Bonjour {guest_name}, we look forward to seeing you tomorrow. "
+            "Bonjour {guest_name}, we look forward to seeing you today. "
             "How to find us: {manage_url}"
         ),
     },
@@ -41159,14 +41254,15 @@ def sms_segments(body):
     return max(1, -(-len(body) // SMS_SEGMENT_CHARS))
 
 
-def guest_text_body(conn, booking, kind="checkin"):
-    """The message for one booking, with the tags filled in."""
-    spec = GUEST_TEXTS[kind]
-    row = conn.execute(
-        "SELECT value FROM app_settings WHERE key = ?", (spec["setting"],)).fetchone()
-    template = (row["value"] if row and (row["value"] or "").strip()
-                else spec["default"])
-    first = (booking["guest_name"] or "").strip().split(" ")[0] or "there"
+def guest_text_tags(conn, booking):
+    """What each merge tag is worth for one booking.
+
+    Split out because a WhatsApp template is filled by POSITION rather than by
+    name -- Meta approves "Bonjour {{1}}, ... {{2}}" and the app has to know
+    which value is 1. Both the written message and the template variables now
+    come from this one dict, so they cannot disagree about what {guest_name}
+    means.
+    """
     token = booking["manage_token"]
     try:
         manage_url = url_for("manage_booking", manage_token=token, _external=True)
@@ -41175,13 +41271,32 @@ def guest_text_body(conn, booking, kind="checkin"):
         base = PUBLIC_BASE_URL.rstrip("/")
         manage_url = f"{base}/book/manage/{token}"
         statement_url = f"{base}/booking/{token}/statement"
-    return (template
-            .replace("{guest_name}", first)
-            .replace("{reference}", booking["reference_code"] or "")
-            .replace("{arrival_date}", format_date_human(booking["arrival_date"]))
-            .replace("{departure_date}", format_date_human(booking["departure_date"]))
-            .replace("{manage_url}", manage_url)
-            .replace("{statement_url}", statement_url))
+    return {
+        "guest_name": (booking["guest_name"] or "").strip().split(" ")[0] or "there",
+        "reference": booking["reference_code"] or "",
+        "arrival_date": format_date_human(booking["arrival_date"]),
+        "departure_date": format_date_human(booking["departure_date"]),
+        "manage_url": manage_url,
+        "statement_url": statement_url,
+    }
+
+
+def guest_text_variables(conn, booking, kind="checkin"):
+    """The approved template's variables, in the order it expects them."""
+    tags = guest_text_tags(conn, booking)
+    return [tags.get(name, "") for name in GUEST_TEXTS[kind].get("variables", ())]
+
+
+def guest_text_body(conn, booking, kind="checkin"):
+    """The message for one booking, with the tags filled in."""
+    spec = GUEST_TEXTS[kind]
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = ?", (spec["setting"],)).fetchone()
+    template = (row["value"] if row and (row["value"] or "").strip()
+                else spec["default"])
+    for name, value in guest_text_tags(conn, booking).items():
+        template = template.replace("{" + name + "}", value)
+    return template
 
 
 def run_guest_text_job(conn, kind="checkin", days_before=None):
@@ -41220,6 +41335,24 @@ def run_guest_text_job(conn, kind="checkin", days_before=None):
                      (datetime.now(timezone.utc).isoformat(), b["id"]))
         conn.commit()
 
+    # WHICH WAY THESE GO, decided once for the run rather than per guest.
+    #
+    # Three states, and the middle one is the whole reason this is written
+    # down: WhatsApp configured with no approved template for THIS message is
+    # not an error and is not WhatsApp either. Meta refuses free text for a
+    # conversation the business opens, so sending it anyway would be a clean
+    # run and a guest with nothing. It goes by text, and the outbox row says
+    # so in words rather than leaving somebody to infer it from a channel
+    # column six weeks later.
+    template_id = whatsapp_template_for(conn, kind) if whatsapp_enabled() else ""
+    if template_id:
+        channel, note = "whatsapp", ""
+    elif whatsapp_enabled():
+        channel, note = "sms", ("WhatsApp is set up but this message has no "
+                                "approved template, so it went by text")
+    else:
+        channel, note = "sms", ""
+
     sent = held = skipped = 0
     with_party = len(quiet)
     reasons = {}
@@ -41229,9 +41362,10 @@ def run_guest_text_job(conn, kind="checkin", days_before=None):
             skipped += 1
             reasons[refusal] = reasons.get(refusal, 0) + 1
             continue
-        went, send_refusal = send_sms(conn, number,
-                                      guest_text_body(conn, booking, kind),
-                                      purpose="transactional")
+        went, send_refusal = send_sms(
+            conn, number, guest_text_body(conn, booking, kind),
+            purpose="transactional", channel=channel, template_id=template_id,
+            variables=guest_text_variables(conn, booking, kind), note=note)
         if send_refusal:
             skipped += 1
             reasons[send_refusal] = reasons.get(send_refusal, 0) + 1
@@ -67696,6 +67830,50 @@ AUTOMATION_JOBS = [
 ]
 
 
+# Jobs that have to happen at a time of DAY, not merely once a day, as
+# (from_hour, until_hour) on the house's own clock. Half-open: 7 to 12 means a
+# run at 07:00 and none at 12:00.
+#
+# Only jobs whose usefulness actually depends on the hour are here. Everything
+# else is genuinely "once a day, whenever" and putting it in a window would
+# only invent a way for it to be skipped.
+JOB_HOURS = {
+    # Its own comment has always said "Daily, early". The argument for the
+    # note is that it arrives before the day starts rather than waiting to be
+    # looked up, and an afternoon digest is a different thing entirely.
+    "morning_digest": (6, 11),
+    # THE ARRIVAL TEXT. Whatever days_before is set to, the message reads as
+    # something said in the morning, and the last hour it can honestly be
+    # sent is well before the guest is standing at the door.
+    "checkin_text": (7, 12),
+    # The departure note, the evening before. Its comment gives the reason:
+    # somebody reading "checkout is at eleven" at ten past ten has been told
+    # too late to do anything about it.
+    "checkout_text": (17, 21),
+}
+
+
+def job_window_open(conn, job_name, window):
+    """Whether an anchored job may run now, on the house's clock.
+
+    False for three different reasons and the caller does not care which:
+    too early, too late, or it has already gone today.
+    """
+    from_hour, until_hour = window
+    now = datetime.now(LOCAL_TZ)
+    if not (from_hour <= now.hour < until_hour):
+        return False
+    row = conn.execute(
+        "SELECT last_ran_at FROM automation_runs WHERE job_name = ?",
+        (job_name,)).fetchone()
+    # house_date rather than [:10]: last_ran_at is UTC, and a job that ran at
+    # 00:30 local is stamped with yesterday's UTC date, which would let it run
+    # a second time the same morning.
+    if row and row["last_ran_at"] and house_date(row["last_ran_at"]) == house_today():
+        return False
+    return True
+
+
 def automation_tick():
     """One pass over every periodic job — called on a timer from the
     background thread, and also directly by the admin 'run now' buttons
@@ -67720,6 +67898,16 @@ def automation_tick():
                     cooldown = max(1, float(settings[interval_key])) * 3600
                 except (TypeError, ValueError):
                     cooldown = 6 * 3600
+            window = JOB_HOURS.get(job_name)
+            if window is not None:
+                if not job_window_open(conn, job_name, window):
+                    continue
+                # "Already run today" above is what makes an anchored job
+                # daily. A 24-hour cooldown here would fight it and lose: a
+                # run at 07:02 is not eligible at 07:00 tomorrow, so it would
+                # creep later every day until it fell out of its own window.
+                # An hour is enough to be the race guard it was always for.
+                cooldown = 3600
             if not claim_job_run(conn, job_name, cooldown):
                 continue
             try:

@@ -158,6 +158,12 @@ m._pennylane_request = _refuse(
 # was added once the key already worked, and every run in between was covered
 # by nothing but a conditional.
 m.SMS_PROVIDER_SID = m.SMS_PROVIDER_TOKEN = m.SMS_FROM_NUMBER = None
+# WhatsApp goes out through the same account and the same function, so the
+# stand-in below covers the send either way -- but whatsapp_enabled() reads
+# this number rather than the three above, and a suite that left it set would
+# have every guest text CHOOSE the WhatsApp path. Cleared so the default in a
+# test is the same default a house without WhatsApp has.
+m.WHATSAPP_FROM_NUMBER = ""
 m.sms_provider_send = _refuse(
     "the SMS provider",
     "every message costs money; stand in for sms_provider_send in the test")
@@ -227,6 +233,7 @@ assert not getattr(m.stripe, "api_key", None), (
     "blanking STRIPE_SECRET_KEY afterwards does not undo that")
 assert not m.PENNYLANE_API_TOKEN, "the live Pennylane token is still set under test"
 assert not m.sms_enabled(), "a texting provider is configured under test"
+assert not m.whatsapp_enabled(), "a WhatsApp sender is configured under test"
 assert m.fetch_exchange_rates.__name__ == "_blocked", (
     "the exchange rate fetch is not blocked under test")
 assert m.fetch_weather.__name__ == "_blocked", (

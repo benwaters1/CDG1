@@ -164,10 +164,13 @@ def run():
                     "pennylane_invoice_id"] is None)
 
     # --------------------------------------------------------------- texts
-    s.section("Tomorrow's arrivals, with no SMS provider")
+    s.section("Today's arrivals, with no SMS provider")
     room = conn.execute(
         "SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
-    arrival = (today + timedelta(days=1)).isoformat()
+    # Today, not tomorrow: the arrival note moved to the morning OF. The
+    # departure fixture above still counts a day back, which is why this is
+    # spelled out rather than shared.
+    arrival = today.isoformat()
 
     def make_arrival(ref, phone):
         conn.execute(
