@@ -24,6 +24,14 @@
         <label class="field-label" for="name">Name</label>
         <input type="text" id="name" name="name" required
                value="{{ room['name'] if room else '' }}" placeholder="Chambre du Levant">
+        <label class="field-label" for="channel_name" style="margin-top:10px;">Name on Booking.com</label>
+        <input type="text" id="channel_name" name="channel_name"
+               value="{{ room['channel_name'] or '' if room else '' }}"
+               placeholder="Double Room with Mountain View">
+        <p class="field-hint">What the channels list this room as, if it is not
+          the house name. Shown beside the real name wherever staff see rooms,
+          so an arrival off a feed does not have to be translated from memory.
+          Leave it blank if they match.</p>
       </div>
       <div>
         <label class="field-label" for="floor">Where it is</label>

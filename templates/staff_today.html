@@ -37,7 +37,7 @@
   <div class="guest-card {{ 'guest-card-urgent' if r.urgent }}"
        style="padding:10px 12px;">
     <span class="guest-card-top">
-      <span class="guest-name">{{ r.room['name'] }}</span>
+      <span class="guest-name">{{ r.room['name'] }}{% if r.room['channel_name'] %}<span class="guest-card-meta" style="font-weight:400; margin-left:8px;">{{ r.room['channel_name'] }}</span>{% endif %}</span>
       {% if r.state == 'occupied' %}
         <span class="mini-status status-onshift">{{ t('Occupied') }}</span>
       {% elif r.state == 'turnover' %}

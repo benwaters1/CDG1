@@ -173,6 +173,65 @@ def run():
                 armed.get("recovery", {}).get("temp_password_applied") is True,
                 detail="set-but-not-applied is a real state and looked "
                        "identical from outside")
+        # THE ONE THAT SETTLES IT. "Applied" reads an audit line, which says a
+        # password was written at some point — not that the value in the
+        # variable right now opens the account right now. Those two sat side
+        # by side with "it didn't work" and neither could settle it.
+        s.check("and that the variable as it stands opens that account",
+                armed.get("recovery", {}).get(
+                    "temp_password_opens_the_account") is True,
+                detail="hashed against the stored hash the way login does")
+        s.check("and that the account is not inactive",
+                armed.get("recovery", {}).get("account_is_active") is True,
+                detail="login refuses an inactive account with a message most "
+                       "people read as a wrong password")
+        # Asserting True against a value that is already True cannot tell a
+        # real read from a hardcoded one, so make it say False.
+        conn.execute("UPDATE users SET status = 'inactive' WHERE id = ?",
+                     (owner["id"],))
+        conn.commit()
+        try:
+            s.check("and notices when it IS inactive",
+                    m.app.test_client().get("/status").get_json()["recovery"][
+                        "account_is_active"] is False,
+                    detail="a correct password on an inactive account is "
+                           "refused, and the refusal reads like a wrong one")
+        finally:
+            conn.execute("UPDATE users SET status = 'active' WHERE id = ?",
+                         (owner["id"],))
+            conn.commit()
+        s.check("and how many owner accounts there are to be confused by",
+                armed.get("recovery", {}).get("owner_accounts", 0) >= 1,
+                detail="the recovery writes to the lowest id; a second owner "
+                       "row is not the one being opened")
+
+        # And it must be able to say NO. A check that only ever reports
+        # success is the thing this whole page exists to stop.
+        wrong = m.OWNER_TEMP_PASSWORD
+        m.OWNER_TEMP_PASSWORD = "not-the-one-that-was-set-9912"
+        try:
+            s.check("and says so plainly when the variable does NOT open it",
+                    m.app.test_client().get("/status").get_json()["recovery"][
+                        "temp_password_opens_the_account"] is False,
+                    detail="otherwise it is a light that is always green")
+        finally:
+            m.OWNER_TEMP_PASSWORD = wrong
+
+        # A locked connection is its own refusal with its own fix, and from
+        # the outside it reads exactly like the password being wrong again.
+        conn.execute(
+            """INSERT INTO login_throttle (ip_address, failed_count, locked_until)
+               VALUES ('203.0.113.11', 5, ?)
+               ON CONFLICT(ip_address) DO UPDATE SET locked_until = excluded.locked_until""",
+            ((m.datetime.now(m.timezone.utc) + m.timedelta(hours=2)).isoformat(),))
+        conn.commit()
+        s.check("and it counts connections currently locked out",
+                m.app.test_client().get("/status").get_json()["recovery"][
+                    "connections_locked_out"] >= 1,
+                detail="a lockout refuses a correct password and says the "
+                       "same thing a wrong one does")
+        conn.execute("DELETE FROM login_throttle")
+        conn.commit()
     finally:
         m.OWNER_TEMP_PASSWORD = before_pw
         conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
@@ -221,10 +280,14 @@ def run():
     # into their own deployment config, costs nothing that window did not
     # already cost. The harness leaves the variable unset, which is shipped
     # state, so this is the state the world sees.
+    shut = m.app.test_client().get("/status").get_json().get("recovery", {})
     s.check("but with no temp password set, it names no account",
-            not m.app.test_client().get("/status").get_json()
-                .get("recovery", {}).get("sign_in_as"),
+            not shut.get("sign_in_as"),
             detail="published only for the minutes the door is open anyway")
+    s.check("and says nothing about whether a password opens it",
+            shut.get("temp_password_opens_the_account") is None,
+            detail="a public oracle answering yes or no about a live "
+                   "credential is a thing to guess at, however slowly")
     s.check("and it does not count the guests for a stranger",
             "has_data" in facts.get("database", {})
             and not any(k in facts.get("database", {})

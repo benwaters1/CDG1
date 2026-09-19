@@ -5092,6 +5092,12 @@ def init_db():
             executed_at TEXT,
             created_at TEXT NOT NULL
         )"""),
+
+        # What Booking.com and the rest call this room. The house name is the
+        # real one and stays in `name`; this is the alias staff have been
+        # translating in their heads every time an arrival comes off a feed.
+        # Free text, never matched on -- a label for a person to read.
+        ("rooms_channel_name", "ALTER TABLE rooms ADD COLUMN channel_name TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -44037,6 +44043,10 @@ def status_page():
     tables = 0
     applied = False
     sign_in_as = ""
+    works = None
+    active = None
+    owner_rows = 0
+    locked_out = 0
     try:
         conn = get_db()
         try:
@@ -44060,11 +44070,36 @@ def status_page():
             # Remove the variable and this address stops being published.
             if OWNER_TEMP_PASSWORD:
                 owner = conn.execute(
-                    """SELECT email FROM users WHERE role = 'owner'
+                    """SELECT * FROM users WHERE role = 'owner'
                        ORDER BY id LIMIT 1""").fetchone()
                 # Exactly the row the recovery writes to, so the answer is
                 # the account it was set on rather than a good guess at it.
                 sign_in_as = (owner["email"] if owner else "")
+                # AND WHETHER IT ACTUALLY OPENS IT. "Applied" reads an audit
+                # line, which says the password was written at some point —
+                # not that the value in the variable right now opens the
+                # account right now. This hashes the one against the other
+                # the way the login route does, so "it didn't work" has an
+                # answer instead of another theory.
+                if owner:
+                    works = bool(check_password_hash(
+                        owner["password_hash"], OWNER_TEMP_PASSWORD))
+                    # The login route refuses an inactive account with its own
+                    # message, which reads to most people as a wrong password.
+                    active = (owner["status"] != "inactive")
+                # The recovery writes to the LOWEST id. A second owner row is
+                # therefore not the one being opened, and looks identical to
+                # the password having failed.
+                owner_rows = conn.execute(
+                    "SELECT COUNT(*) AS c FROM users WHERE role = 'owner'"
+                ).fetchone()["c"]
+                # Five wrong attempts locks the connection for fifteen
+                # minutes, and the refusal is not the same refusal.
+                locked_out = conn.execute(
+                    """SELECT COUNT(*) AS c FROM login_throttle
+                       WHERE locked_until IS NOT NULL
+                         AND locked_until > ?""",
+                    (datetime.now(timezone.utc).isoformat(),)).fetchone()["c"]
         finally:
             conn.close()
     except Exception:                    # pragma: no cover - a broken database
@@ -44105,6 +44140,12 @@ def status_page():
         "recovery": {
             "temp_password_set": env("OWNER_TEMP_PASSWORD"),
             "temp_password_applied": applied,
+            # The one that settles it: does the variable, as it stands, open
+            # the account named below? Null unless a temp password is set.
+            "temp_password_opens_the_account": works,
+            "account_is_active": active,
+            "owner_accounts": owner_rows,
+            "connections_locked_out": locked_out,
             # Empty unless the owner has a temp password set right now. The
             # password worked the whole time and was set on an account nobody
             # had been told about, which is the entire reason this key exists.
@@ -44837,12 +44878,12 @@ def new_room():
         conn = get_db()
         max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM rooms").fetchone()["m"]
         conn.execute(
-            """INSERT INTO rooms (name, description, max_occupancy, max_adults, max_children,
+            """INSERT INTO rooms (name, channel_name, description, max_occupancy, max_adults, max_children,
                price_per_night, min_nights, size_sqm, bed_setup, bathroom, outlook, floor,
                access_steps, access_car_metres, access_bathroom, access_notes,
                export_token, sort_order, photo_filename, amenities)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (f["name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (f["name"], f["channel_name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"],
              f["access_steps"], f["access_car_metres"], f["access_bathroom"],
@@ -44883,12 +44924,12 @@ def edit_room(room_id):
             photo_filename = room["photo_filename"]
 
         conn.execute(
-            """UPDATE rooms SET name=?, description=?, max_occupancy=?, max_adults=?, max_children=?,
+            """UPDATE rooms SET name=?, channel_name=?, description=?, max_occupancy=?, max_adults=?, max_children=?,
                price_per_night=?, min_nights=?, size_sqm=?, bed_setup=?, bathroom=?, outlook=?,
                floor=?, access_steps=?, access_car_metres=?, access_bathroom=?,
                access_notes=?, active=?, photo_filename=?, amenities=?,
                workshop_room=? WHERE id=?""",
-            (f["name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
+            (f["name"], f["channel_name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"],
              f["access_steps"], f["access_car_metres"], f["access_bathroom"],
@@ -68316,6 +68357,10 @@ def room_fields_from_form():
     children = _i("max_children", 0) or 0
     return {
         "name": (request.form.get("name", "") or "").strip(),
+        # Blank means "the same as the house name", which is the common case
+        # and must not render as an empty second line on every card.
+        "channel_name": ((request.form.get("channel_name", "") or "").strip()
+                         or None),
         "description": (request.form.get("description", "") or "").strip(),
         "max_adults": adults, "max_children": children,
         # Kept in step with the split so every existing availability and

@@ -361,6 +361,7 @@ SUITES = [
     "test_unreachable_code",
     "test_handover_check",
     "test_repair_handover",
+    "test_room_channel_name",
 ]
 
 
