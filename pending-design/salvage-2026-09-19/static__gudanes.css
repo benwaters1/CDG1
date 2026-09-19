@@ -1,0 +1,114 @@
+/* Added runs only, salvaged from gudanes-full.zip.
+   The rest of that file REMOVES lines this tree has, so it was
+   not installed. Nothing below is edited except the run
+   boundaries, widened until each block closes. */
+
+/* Every page overflowed on mobile because images from the CMS have no
+   intrinsic constraint. This is the belt — every image in the page respects
+   the viewport. */
+img{ max-width: 100%; height: auto; }
+
+}
+
+/* Every page overflowed on mobile because images from the CMS have no
+   intrinsic constraint. This is the belt — every image in the page respects
+   the viewport. */
+img{ max-width: 100%; height: auto; }
+
+/* Band: contain overflow so images don't blow out the viewport on mobile */
+.g-band{ overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+
+/* Comparison table on book_rooms: scroll inside its wrapper on phone */
+.g-compare{ overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.g-compare table{ min-width: 36rem; }
+
+/* Thead on book_rooms list: keep inside viewport */
+@media(max-width:40rem){
+  .g-rooms-list thead{ font-size: var(--s-1); }
+  .g-rooms-list th, .g-rooms-list td{ padding-left: var(--s-2); padding-right: var(--s-2); }
+
+/* -----------------------------------------------------------------------
+   SECTION SPACING — adjacent same-background sections were touching.
+   Add a rule between them so the page reads as structured, not run-on.
+   ----------------------------------------------------------------------- */
+
+/* Adjacent white-on-white sections: add a hairline rule between them */
+.g-sec + .g-sec:not(.g-sec--sand):not(.g-paper):not(.g-close):not(.g-sec--flush):not(.g-band):not(.g-hero){
+  border-top: 1px solid var(--sand-3, #e8e0d4);
+  padding-top: clamp(48px, 5vw, 72px);
+}
+
+/* But not after a ground-change — those already have enough space */
+.g-sec--sand + .g-sec,
+.g-paper + .g-sec,
+.g-close + .g-sec,
+.g-band + .g-sec,
+.g-hero + .g-sec,
+.g-sec--flush + .g-sec{
+  border-top: none;
+}
+
+/* Increase bottom padding on ALL sections so content breathes */
+.g-sec{ padding-bottom: clamp(48px, 5vw, 72px); }
+.g-sec--tight{ padding-bottom: clamp(24px, 3vw, 36px); }
+
+
+/* Sand sections following each other also need spacing */
+.g-sec--sand + .g-sec--sand{
+  border-top: 1px solid rgba(0,0,0,0.08);
+  padding-top: clamp(48px, 5vw, 72px);
+}
+
+/* Flush sections still need a gap after them */
+.g-sec--flush + .g-sec,
+.g-sec + .g-sec--flush{
+  padding-top: clamp(36px, 4vw, 60px);
+}
+
+/* Book bar is a utility band — needs clear separation from what follows */
+.g-book-bar + .g-sec,
+.g-book-bar + .g-sec--flush{
+  margin-top: clamp(24px, 3vw, 48px);
+}
+
+/* Terre (dark) sections touching others */
+.g-sec--terre + .g-sec,
+.g-sec + .g-sec--terre{
+  padding-top: clamp(48px, 5vw, 72px);
+}
+
+/* -----------------------------------------------------------------------
+   UNIVERSAL SECTION SPACING
+   Every direct child of main needs breathing room from its siblings,
+   regardless of what class it carries. The 0px gaps between g-armorial,
+   g-took, g-care, g-sec--flush etc. are what made the page feel crushed.
+   ----------------------------------------------------------------------- */
+main > * + *{
+  margin-top: clamp(32px, 4vw, 64px);
+}
+/* Exceptions: elements that ARE deliberate zero-gap (hero into content,
+   bands of images, or ground-changes that manage their own spacing) */
+main > .g-hero + *,
+main > .g-band + *,
+main > .g-formhero + *{
+  margin-top: 0;
+}
+/* Flush sections that are MEANT to be stacked tight (image-text pairs) */
+main > .g-sec--flush + .g-sec--flush{
+  margin-top: 0;
+}
+
+/* The homepage cards (g-sec--flush) are a visual grid — they stack tight
+   on purpose. But the armorial, facts band, and credibility band need
+   their own space. */
+main > .g-armorial{ margin-top: clamp(48px, 5vw, 72px); }
+main > .g-facts{ margin-top: clamp(32px, 3vw, 48px); }
+main > .g-cred{ margin-top: clamp(32px, 3vw, 48px); }
+
+/* On contact page and others, custom sections also need breathing room.
+   Catch anything that isn't flush by re-declaring the universal spacing
+   with higher specificity for direct children that aren't hero or flush. */
+main > section + section:not(.g-sec--flush):not(.g-hero):not(.g-band){
+  margin-top: clamp(32px, 4vw, 64px);
+}
+
