@@ -70273,6 +70273,22 @@ ASSISTANT_TOOLS = [
         },
     },
     {
+        "name": "kitchen",
+        "description": (
+            "What the kitchen needs for one day's service: how many are "
+            "eating, and every single person with something they cannot eat, "
+            "gathered from the stays, the table reservations and the atelier "
+            "places alike. Use this for any question about dinner, covers, "
+            "allergies or what the chef needs to know. Defaults to today."),
+        "input_schema": {
+            "type": "object",
+            "properties": {"day": {
+                "type": "string",
+                "description": "YYYY-MM-DD. Today if left out."}},
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "find_booking",
         "description": (
             "Look up a room booking by reference code or guest name. Returns "
@@ -70338,6 +70354,40 @@ ASSISTANT_TOOLS = [
         },
     },
     {
+        "name": "set_arrival_time",
+        "description": (
+            "Record what time a guest said they will arrive, against their "
+            "booking. Needs the owner's confirmation first. Find the booking "
+            "with find_booking to get its number."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "booking_id": {"type": "integer"},
+                "time": {"type": "string",
+                         "description": "As they said it — '18:30', 'after six', 'late'"},
+            },
+            "required": ["booking_id", "time"], "additionalProperties": False,
+        },
+    },
+    {
+        "name": "note_about_guest",
+        "description": (
+            "Add a line to the running note on a guest — something learned "
+            "about them worth the next person knowing. Needs the owner's "
+            "confirmation first. Find them with find_guest to get the number. "
+            "NOT the place for an allergy: a dietary note belongs on their "
+            "profile where the kitchen sheet reads it, and the owner should "
+            "set that on the guest's own page."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "guest_id": {"type": "integer"},
+                "note": {"type": "string"},
+            },
+            "required": ["guest_id", "note"], "additionalProperties": False,
+        },
+    },
+    {
         "name": "add_task",
         "description": (
             "Put a job on the house's task list, which puts it on the "
@@ -70366,6 +70416,7 @@ ASSISTANT_TOOLS = [
 # THE SERVER DECIDES WHICH TOOLS ARE DANGEROUS, not the model and not the tool
 # description. A name in here is never executed straight from a model response.
 ASSISTANT_ACTION_TOOLS = frozenset({
+    "set_arrival_time", "note_about_guest",
     "approve_expense", "reject_expense",
     "approve_leave", "decline_leave",
     "add_task", "finish_task",
@@ -70596,6 +70647,30 @@ def assistant_read_tool(conn, user, name, args):
             out.append(" · ".join(bits))
         return "\n".join(out)
 
+    if name == "kitchen":
+        day = parse_date((args.get("day") or "").strip()) or today
+        sheet = dietary_sheet(conn, day)
+        if not sheet["people"]:
+            return f"Nobody eating here on {day.isoformat()}."
+        lines = [f"{day.isoformat()}: {sheet['covers']} cover(s). "
+                 f"{sheet['with_notes']} person(s) with something they cannot "
+                 f"eat, covering {sheet['flagged_covers']} of them."]
+        for person in sheet["people"]:
+            if not person["notes"]:
+                continue
+            # VERBATIM. The whole reason this sheet exists is that somebody
+            # was going to be served the thing they told us about, so the
+            # words they used are the words that come back.
+            lines.append(f"{person['who']} ({person['kind']}, "
+                         f"{person['where']}, {person['covers']} cover(s)): "
+                         + " | ".join(person["notes"]))
+        if sheet["silent"]:
+            # Said out loud, because "nobody has a note" and "nobody was asked"
+            # look identical on a screen and only one of them is safe.
+            lines.append(f"{sheet['silent']} other(s) with nothing recorded — "
+                         "which is not the same as nothing to record.")
+        return "\n".join(lines)
+
     if name == "find_booking":
         q = (args.get("query") or "").strip()
         if not q:
@@ -70650,6 +70725,25 @@ def assistant_describe_action(conn, name, args):
         return (f"{verb} {row['who']}'s time off, "
                 f"{row['start_date']} to {row['end_date']}")
 
+    if name == "set_arrival_time":
+        row = conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                 JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.id = ?""", (args.get("booking_id"),)).fetchone()
+        if not row:
+            return "No booking with that number."
+        was = (row["estimated_arrival_time"] or "").strip()
+        return (f"Note that {row['guest_name']} ({row['room_name']}, "
+                f"{row['arrival_date']}) arrives {args.get('time', '')}"
+                + (f", replacing {was}" if was else ""))
+
+    if name == "note_about_guest":
+        row = conn.execute("SELECT name FROM guests WHERE id = ?",
+                           (args.get("guest_id"),)).fetchone()
+        if not row:
+            return "No guest with that number."
+        return f"Write against {row['name']}: {(args.get('note') or '').strip()[:160]}"
+
     if name == "add_task":
         due = args.get("due_date") or house_today_iso()
         return f"Add a task: {args.get('title', '')} (due {due})"
@@ -70685,6 +70779,42 @@ def assistant_run_action(conn, user, name, args):
             "approved" if name == "approve_leave" else "declined",
             via="the assistant")
         return ok, message
+
+    if name == "set_arrival_time":
+        row = conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                 JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.id = ?""", (args.get("booking_id"),)).fetchone()
+        if not row:
+            return False, "No booking with that number."
+        when = (args.get("time") or "").strip()[:60]
+        if not when:
+            return False, "No time given."
+        conn.execute(
+            "UPDATE bookings SET estimated_arrival_time = ? WHERE id = ?",
+            (when, row["id"]))
+        log_audit(conn, "arrival_time_set", target=row["reference_code"],
+                  details=when, via="the assistant")
+        conn.commit()
+        return True, f"{row['guest_name']} is arriving {when}."
+
+    if name == "note_about_guest":
+        row = conn.execute(
+            "SELECT * FROM guests WHERE id = ? AND merged_into_id IS NULL",
+            (args.get("guest_id"),)).fetchone()
+        if not row:
+            return False, "No guest with that number."
+        # Through the same helper the guest page's own form calls, so a note
+        # written this way is the same kind of record as one typed there --
+        # attributed, timestamped, and added rather than replacing anything.
+        actor = current_user()
+        if not add_guest_note(conn, row["id"], args.get("note") or "",
+                              actor["id"] if actor else None):
+            return False, "There was nothing to write."
+        log_audit(conn, "guest_note_added", target=row["name"],
+                  via="the assistant")
+        conn.commit()
+        return True, f"Noted against {row['name']}."
 
     if name == "add_task":
         title = (args.get("title") or "").strip()[:120]
