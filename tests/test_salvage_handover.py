@@ -53,6 +53,17 @@ def _run(zip_path, *args):
     return (r.stdout or "") + (r.stderr or "")
 
 
+def _tree(path):
+    """Every file under a directory, with its size. Enough to notice a write,
+    a delete or an overwrite, and cheap enough to take twice."""
+    out = {}
+    for base, _dirs, files in os.walk(path):
+        for f in files:
+            full = os.path.join(base, f)
+            out[os.path.relpath(full, path)] = os.path.getsize(full)
+    return out
+
+
 def _zip(tmp, files):
     path = os.path.join(tmp, "handover.zip")
     with zipfile.ZipFile(path, "w") as z:
@@ -65,6 +76,11 @@ def run():
     s = Suite("taking only what a stale handover adds")
     import tempfile
     tmp = tempfile.mkdtemp(prefix="gudanes_test_salvage_")
+
+    # Taken before anything runs, and compared after. This suite drives a
+    # tool whose whole job is writing files, and it shares a repository with
+    # a real salvage directory.
+    pending_before = _tree(os.path.join(ROOT, "pending-design"))
 
     head_css = subprocess.run(
         ["git", "show", "HEAD:static/gudanes.css"], cwd=ROOT,
@@ -142,15 +158,26 @@ def run():
 
     s.section("What it writes, when asked")
 
-    out = _run(mixed, "--write")
+    # --out, into a temporary directory. This suite must never write into
+    # pending-design/: a real salvage lives there, and the cleanup that
+    # follows a test run deleted two committed files out of it.
+    salvage_to = os.path.join(tmp, "salvage")
+    out = _run(mixed, "--write", "--out", salvage_to)
     s.check("it says where it put things", "Wrote" in out, detail=out[-300:])
-    made = [d for d in os.listdir(os.path.join(ROOT, "pending-design"))
-            if d.startswith("salvage-")]
-    s.check("into pending-design, not templates or static", bool(made),
-            detail=str(os.listdir(os.path.join(ROOT, "pending-design"))))
+    made = [salvage_to] if os.path.isdir(salvage_to) else []
+    s.check("into the directory it was given, and nowhere else", bool(made),
+            detail=salvage_to)
+    # Snapshotted rather than argued about. The first version of this check
+    # ended in `or True` and could not fail, which is the thing this file is
+    # most careful about everywhere else.
+    s.check("and the real pending-design is untouched",
+            _tree(os.path.join(ROOT, "pending-design")) == pending_before,
+            detail="a real salvage lives there; an earlier version of this "
+                   "suite wrote into it and then tidied up, which deleted two "
+                   "committed files")
     written, d = [], None
     if made:
-        d = os.path.join(ROOT, "pending-design", made[0])
+        d = made[0]
         # Files only. A broken flattening leaves a DIRECTORY here -- which is
         # the very thing the last check in this section is about -- and
         # opening one raises PermissionError rather than failing a check.
@@ -228,16 +255,10 @@ def run():
     # the fifty-eight files in the third export looked like this, and none of
     # them was a change anybody made.
     tiny = _zip(tmp, {"static/gudanes.css": cut + "\n.zz-tiny{ color: red; }\n"})
-    out = _run(tiny, "--write")
+    out = _run(tiny, "--write", "--out", os.path.join(tmp, "tiny"))
     s.check("it is reported but not salvaged",
             "ADDS AND REMOVES" in out and "Wrote 0 file(s)" in out,
             detail=out[-240:])
-
-    # This suite writes into the real pending-design/. Clear what it made, or
-    # the next run finds a stale directory and reads it as its own output.
-    import shutil
-    for d in made:
-        shutil.rmtree(os.path.join(ROOT, "pending-design", d), ignore_errors=True)
 
     s.section("It does not fall over on nonsense")
 
@@ -251,6 +272,14 @@ def run():
     s.check("and a binary file inside one is skipped rather than decoded",
             "read" in _run(binary), detail="it is not ours to reason about")
 
+    # Temp only, and last: the sections below still write zips into it.
+    # Nothing this suite creates is inside the repository.
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+    s.check("and it cleaned up after itself, outside the repository",
+            not os.path.exists(tmp) and
+            _tree(os.path.join(ROOT, "pending-design")) == pending_before,
+            detail="the suite drives a tool whose job is writing files")
     return s
 
 

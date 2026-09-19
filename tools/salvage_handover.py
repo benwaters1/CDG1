@@ -136,6 +136,13 @@ def main():
     ap.add_argument("zip")
     ap.add_argument("--write", action="store_true",
                     help="write what is salvageable into pending-design/")
+    ap.add_argument("--out", default=None,
+                    help="where to write it. Defaults to "
+                         "pending-design/salvage-<date>. The suite points this "
+                         "at a temporary directory, because a test that writes "
+                         "into the default one deletes whatever a real run "
+                         "left there — which it did, taking two committed "
+                         "files with it.")
     args = ap.parse_args()
 
     if not os.path.exists(args.zip):
@@ -207,8 +214,9 @@ def main():
         print("tools/export_for_design.py to stop the next one being stale.")
         return 0
 
-    out = os.path.join(ROOT, "pending-design",
-                       "salvage-" + datetime.date.today().isoformat())
+    out = args.out or os.path.join(
+        ROOT, "pending-design",
+        "salvage-" + datetime.date.today().isoformat())
     os.makedirs(out, exist_ok=True)
     written = 0
 
