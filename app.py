@@ -6064,10 +6064,18 @@ def init_db():
                 ("owner_password_set_from_environment", who["email"],
                  "OWNER_TEMP_PASSWORD was set on the deployment",
                  datetime.now(timezone.utc).isoformat()))
+            # And it unlocks the door it locked. Five wrong attempts locks an
+            # IP for fifteen minutes, and the person making five wrong
+            # attempts is by definition the one who cannot get in. The lock
+            # is a row on the volume, so redeploying does not clear it — the
+            # recovery path was being defeated by the lockout it had caused.
+            conn.execute("DELETE FROM login_throttle")
             conn.commit()
             print("=" * 70)
             print("OWNER_TEMP_PASSWORD is set, so the owner password has been")
-            print(f"  changed to it. Sign in as: {who['email']}")
+            print(f"  changed to it. SIGN IN AS: {who['email']}")
+            print("  (that is the account it was set on — not necessarily")
+            print("   the address you normally use)")
             print("  NOW REMOVE OWNER_TEMP_PASSWORD from the deployment —")
             print("  while it is set, it is reapplied on every restart and it")
             print("  is sitting in plain text in your variables.")
@@ -43910,6 +43918,8 @@ def status_page():
     # the owner's business rather than a visitor's.
     has_data = False
     tables = 0
+    applied = False
+    sign_in_as = ""
     try:
         conn = get_db()
         try:
@@ -43919,6 +43929,25 @@ def status_page():
             rows = conn.execute("SELECT COUNT(*) AS c FROM bookings").fetchone()["c"]
             guests = conn.execute("SELECT COUNT(*) AS c FROM guests").fetchone()["c"]
             has_data = bool(rows or guests)
+            # Whether the variable actually landed, rather than whether it is
+            # set. Set-but-not-applied is a real state — there may be no owner
+            # account at all — and from outside it looked exactly like applied.
+            applied = bool(conn.execute(
+                """SELECT 1 FROM audit_log
+                   WHERE action = 'owner_password_set_from_environment'
+                   LIMIT 1""").fetchone())
+            # WHICH ACCOUNT. Reported only while OWNER_TEMP_PASSWORD is set,
+            # because that window is one the owner opened on purpose by
+            # putting a password into their deployment config — a username
+            # adds nothing to somebody who would still need that password.
+            # Remove the variable and this address stops being published.
+            if OWNER_TEMP_PASSWORD:
+                owner = conn.execute(
+                    """SELECT email FROM users WHERE role = 'owner'
+                       ORDER BY id LIMIT 1""").fetchone()
+                # Exactly the row the recovery writes to, so the answer is
+                # the account it was set on rather than a good guess at it.
+                sign_in_as = (owner["email"] if owner else "")
         finally:
             conn.close()
     except Exception:                    # pragma: no cover - a broken database
@@ -43958,6 +43987,11 @@ def status_page():
         # the question that took an afternoon; the values stay where they are.
         "recovery": {
             "temp_password_set": env("OWNER_TEMP_PASSWORD"),
+            "temp_password_applied": applied,
+            # Empty unless the owner has a temp password set right now. The
+            # password worked the whole time and was set on an account nobody
+            # had been told about, which is the entire reason this key exists.
+            "sign_in_as": sign_in_as,
             "recovery_token_set": env("OWNER_RECOVERY_TOKEN"),
         },
     })

@@ -129,6 +129,18 @@ def run():
     # variable box is the likeliest reason the token kept failing, so this
     # must not be able to bite the same way twice.
     m.OWNER_TEMP_PASSWORD = "a-temporary-one-2026  ".strip()
+    # A locked-out IP, because that is the state the owner is actually in by
+    # the time they reach for this: five wrong attempts locks them for fifteen
+    # minutes, and the person making five wrong attempts is the one who cannot
+    # get in. The lock is a row on the volume, so redeploying does not shift
+    # it — the recovery was being defeated by the lockout it had caused.
+    conn.execute(
+        """INSERT INTO login_throttle (ip_address, failed_count, locked_until)
+           VALUES ('203.0.113.9', 5, ?)
+           ON CONFLICT(ip_address) DO UPDATE SET failed_count = 5,
+           locked_until = excluded.locked_until""",
+        ((m.datetime.now(m.timezone.utc) + m.timedelta(hours=2)).isoformat(),))
+    conn.commit()
     try:
         conn2 = db()
         m.init_db()
@@ -138,6 +150,10 @@ def run():
         s.check("the password becomes the one set on the deployment",
                 m.check_password_hash(now["password_hash"], "a-temporary-one-2026"),
                 detail="set OWNER_TEMP_PASSWORD, redeploy, sign in")
+        s.check("and the lockout it caused is lifted with it",
+                conn.execute("SELECT COUNT(*) AS c FROM login_throttle"
+                             ).fetchone()["c"] == 0,
+                detail="a recovery that leaves you locked out is not one")
         s.check("and it is written down",
                 conn.execute(
                     """SELECT COUNT(*) AS c FROM audit_log
@@ -145,6 +161,18 @@ def run():
                 ).fetchone()["c"] >= 1,
                 detail="a password changed outside the ordinary route has to "
                        "be findable afterwards")
+
+        # WHICH ACCOUNT. The password was set correctly and on an account
+        # nobody had been told the name of, so it read as not working at all.
+        armed = m.app.test_client().get("/status").get_json()
+        s.check("and the status page says which account to sign in as",
+                armed.get("recovery", {}).get("sign_in_as") == owner["email"],
+                detail="the password worked the whole time; the address was "
+                       "the thing nobody had said out loud")
+        s.check("and that the variable actually landed",
+                armed.get("recovery", {}).get("temp_password_applied") is True,
+                detail="set-but-not-applied is a real state and looked "
+                       "identical from outside")
     finally:
         m.OWNER_TEMP_PASSWORD = before_pw
         conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
@@ -187,6 +215,16 @@ def run():
                        "worse than no status page")
     finally:
         m.OWNER_TEMP_PASSWORD = before
+    # And the address goes away with the variable. Naming the login account on
+    # a public page forever is a standing gift to whoever is scanning; naming
+    # it during a window the owner opened on purpose, by putting a password
+    # into their own deployment config, costs nothing that window did not
+    # already cost. The harness leaves the variable unset, which is shipped
+    # state, so this is the state the world sees.
+    s.check("but with no temp password set, it names no account",
+            not m.app.test_client().get("/status").get_json()
+                .get("recovery", {}).get("sign_in_as"),
+            detail="published only for the minutes the door is open anyway")
     s.check("and it does not count the guests for a stranger",
             "has_data" in facts.get("database", {})
             and not any(k in facts.get("database", {})
