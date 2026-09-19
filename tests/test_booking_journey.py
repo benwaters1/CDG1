@@ -22,9 +22,11 @@ The form reader lives in _harness, because test_funnel_forms needs it too and
 two copies of a parser is two things to keep in step. It is stdlib
 html.parser: this app has no build step and no third-party HTML library.
 """
-from _harness import Suite, db, ensure_room, forms_on, links_on, fill
+from _harness import (Suite, db, ensure_room, forms_on, links_on, fill,
+                      flashes, free_window, house_today)
 
-from datetime import timedelta
+import re
+from datetime import date, timedelta
 
 import _harness
 
@@ -209,6 +211,102 @@ def run():
     conn.execute("DELETE FROM guests WHERE email LIKE 'zzflood%@example.invalid'")
     conn.execute("DELETE FROM submission_log WHERE ip_address = ?", (GUEST_IP,))
     conn.commit()
+
+    s.section("The search says no at the search, not at the end of the form")
+    # ALL OF THIS WAS ALREADY REFUSED -- on submitting the booking, after the
+    # guest had chosen a room and typed their name, email, phone and terms.
+    # Nothing bad could be stored. What it cost was the guest's time and their
+    # belief that the house knows what it is doing: rooms and prices offered
+    # for dates that were never possible, and the refusal arriving last.
+    pub = m.app.test_client()
+    today = house_today()
+
+    def search(arrival, departure, party="2"):
+        return pub.get("/book", query_string={
+            "arrival": str(arrival), "departure": str(departure),
+            "party_size": str(party)})
+
+    def offers_a_room(response):
+        return bool(re.search(r'href="/book/\d+\?[^"]*arrival=',
+                              response.get_data(as_text=True)))
+
+    past = search(today - timedelta(days=30), today - timedelta(days=28))
+    s.check("a stay in the past offers nothing", not offers_a_room(past))
+    s.check("and says why, in the words the booking form uses",
+            "Choose an arrival date in the future." in " ".join(flashes(past)),
+            detail="%s -- being told two different things about one mistake "
+                   "is worse than being told once" % (flashes(past)[:1],))
+
+    backwards = search(today + timedelta(days=40), today + timedelta(days=38))
+    s.check("dates the wrong way round are explained",
+            not offers_a_room(backwards)
+            and any("after the arrival" in f for f in flashes(backwards)),
+            detail="%s -- this used to render the page as though nobody had "
+                   "searched at all" % (flashes(backwards)[:1],))
+
+    half = pub.get("/book", query_string={"arrival": str(today + timedelta(days=40))})
+    s.check("and so is one date without the other",
+            any("both an arrival and a departure" in f for f in flashes(half)),
+            detail=str(flashes(half)[:1]))
+
+    s.section("A room too small for the party is not offered as available")
+    # THE ONE THAT IS NOT AN EDGE CASE. The rooms sleep two, two, two, three
+    # and five. A family of four was shown all five as available, picked one,
+    # filled in the whole form, and was told it sleeps two.
+    sizes_conn = db()
+    sizes = sorted(r["max_occupancy"] or 0 for r in sizes_conn.execute(
+        "SELECT max_occupancy FROM rooms WHERE active = 1"))
+    widest = sizes_conn.execute(
+        """SELECT id FROM rooms WHERE active = 1
+           ORDER BY max_occupancy DESC, id LIMIT 1""").fetchone()["id"]
+    sizes_conn.close()
+    s.check("there are rooms of more than one size to tell apart",
+            len(set(sizes)) > 1, detail=str(sizes))
+    biggest = max(sizes)
+    smallest = min(sizes)
+
+    # Asked of the calendar rather than counted off today: free_window
+    # returns an arrival with the nights genuinely free for that room,
+    # which a fixed offset does not, because the seeded ateliers move
+    # with the calendar.
+    start = free_window(widest, 2)
+    when = (start, start + timedelta(days=2))
+    family = search(when[0], when[1], biggest)
+    body = family.get_data(as_text=True)
+    s.check("a party only the largest room can take is still offered one",
+            offers_a_room(family),
+            detail="party of %d, largest room sleeps %d" % (biggest, biggest))
+    s.check("and the rooms that cannot hold them say so",
+            "Sleeps up to %d" % smallest in body,
+            detail="the reason has to name the size, or it reads as a date "
+                   "clash and they go and try other dates")
+
+    too_many = search(when[0], when[1], biggest + 1)
+    s.check("a party no room can take is offered nothing",
+            not offers_a_room(too_many),
+            detail="party of %d" % (biggest + 1))
+
+    s.section("The number of nights is the number of nights")
+    # Worked out in the template, on the ISO strings, with every month treated
+    # as thirty days. Three nights read as two across the end of August, four
+    # as six across February, and a five-night New Year stay as MINUS three
+    # hundred and fifty-six -- which the positive-only guard then hid, so the
+    # booking somebody plans a year ahead showed no night count at all.
+    def nights_shown(arrival, departure):
+        body = search(arrival, departure).get_data(as_text=True)
+        found = re.search(r"·\s*(\d+)\s*night", body)
+        return int(found.group(1)) if found else None
+
+    for label, arrival, departure in [
+        ("inside one month", today + timedelta(days=40), today + timedelta(days=43)),
+        ("across a month end", date(today.year + 1, 8, 30), date(today.year + 1, 9, 2)),
+        ("across February", date(today.year + 1, 2, 26), date(today.year + 1, 3, 2)),
+        ("across New Year", date(today.year + 1, 12, 28), date(today.year + 2, 1, 2)),
+    ]:
+        want = (departure - arrival).days
+        s.check("%s reads %d night(s)" % (label, want),
+                nights_shown(arrival, departure) == want,
+                detail="page said %s" % nights_shown(arrival, departure))
 
     _clean(conn)
     conn.close()

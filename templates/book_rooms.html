@@ -127,13 +127,14 @@
   <div class="g-searched" role="status">
     <p class="g-searched__dates">
       <strong>{{ arrival|date_short }}</strong> to <strong>{{ departure|date_short }}</strong>
-      {%- set a = arrival|string -%}{%- set d = departure|string -%}
-      {%- if a|length >= 10 and d|length >= 10 -%}
-        {# ISO strings sort and subtract reliably; day-of-year is enough here #}
-        {%- set nights = ((d[8:10]|int) - (a[8:10]|int)) + (((d[5:7]|int) - (a[5:7]|int)) * 30) -%}
-        {%- if nights > 0 %}· {{ nights }} night{{ '' if nights == 1 else 's' }}{% endif -%}
-      {%- endif -%}
-      {% if prefill_party_size %}· {{ prefill_party_size }} guest{{ '' if prefill_party_size == 1 else 's' }}{%- endif %}</p>
+      {#- The night count comes from the route now. It was worked out here, on
+          the ISO strings, with every month treated as thirty days: three
+          nights read as two across the end of August, four as six across
+          February, and a five-night New Year stay as minus three hundred and
+          fifty-six -- which the positive-only guard then hid, so the booking
+          people plan furthest ahead showed no nights at all. -#}
+      {%- if stay_nights and stay_nights > 0 %} · {{ stay_nights }} night{{ '' if stay_nights == 1 else 's' }}{% endif -%}
+      {% if prefill_party_size %} · {{ prefill_party_size }} guest{{ '' if prefill_party_size == 1 else 's' }}{%- endif %}</p>
     <p class="g-searched__count">
       {% set free = availability.values()|select|list|length %}
       {% if free %}{{ free }} of {{ rooms|length }} room{{ '' if rooms|length == 1 else 's' }} available

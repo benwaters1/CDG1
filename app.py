@@ -36205,17 +36205,70 @@ def book_rooms():
     arrival_raw = request.args.get("arrival", "").strip()
     departure_raw = request.args.get("departure", "").strip()
     arrival, departure = parse_date(arrival_raw), parse_date(departure_raw)
+    party_raw = request.args.get("party_size", "").strip()
+    party_size = int(party_raw) if party_raw.lstrip("-").isdigit() else None
+
+    # WHY A SEARCH WAS NOT RUN, said out loud rather than shrugged off.
+    #
+    # This used to be one expression -- departure > arrival -- and everything
+    # it rejected simply rendered the page as though nobody had searched at
+    # all. Somebody who typed their dates the wrong way round got the front of
+    # the booking page back with no explanation and no idea what they had done.
+    #
+    # And a date in the PAST was not rejected at all. It searched, it offered
+    # rooms with prices, the guest picked one and filled in name, email, phone
+    # and terms -- and the refusal arrived only on submitting the form. The
+    # sentence below is the one create_booking uses, deliberately: being told
+    # two different things about the same mistake is worse than being told
+    # once.
+    search_problem = None
+    if arrival_raw or departure_raw:
+        if not arrival or not departure:
+            search_problem = "Choose both an arrival and a departure date."
+        elif departure <= arrival:
+            search_problem = "The departure date has to be after the arrival."
+        elif arrival < house_today():
+            search_problem = "Choose an arrival date in the future."
+
+    # Said through flash(), which public_base.html already draws and
+    # styles, rather than a banner of its own. A second way of telling a
+    # guest something is a second thing to style, and the design side
+    # redraws these templates most weeks -- an invented class would have
+    # arrived unstyled the first time they did.
+    if search_problem:
+        flash(search_problem, "error")
 
     availability = {}
     unavailable_reason = {}
-    searched = bool(arrival and departure and departure > arrival)
+    searched = bool(arrival and departure and departure > arrival
+                    and not search_problem)
+    # Computed HERE rather than in the template, which was doing its own date
+    # arithmetic on the ISO strings and treating every month as thirty days.
+    # It read three nights as two across the end of August, four as six across
+    # February, and a New Year stay of five nights as MINUS three hundred and
+    # fifty-six -- which the template then hid, because it only prints a
+    # positive number. So the one booking somebody plans a year ahead showed
+    # no night count at all.
+    stay_nights = (departure - arrival).days if searched else 0
     if searched:
-        stay_nights = (departure - arrival).days
         for room in rooms:
             ok, _ = is_range_available(conn, room["id"], arrival, departure)
             too_short = stay_nights < room["min_nights"]
-            availability[room["id"]] = ok and not too_short
-            if too_short:
+            # CAPACITY, WHICH THE SEARCH USED TO IGNORE ENTIRELY. The rooms
+            # sleep two, two, two, three and five, so a family of four was
+            # shown all five as available, chose one, filled in the whole
+            # form and was then told it sleeps two. A party of four is not an
+            # edge case; it is a family.
+            too_small = bool(party_size and party_size > 0
+                             and room["max_occupancy"]
+                             and party_size > room["max_occupancy"])
+            availability[room["id"]] = ok and not too_short and not too_small
+            # Capacity first: a room that cannot hold the party will not hold
+            # it on any date, so "sleeps up to two" is the useful sentence and
+            # "not available these dates" sends them off to try other ones.
+            if too_small:
+                unavailable_reason[room["id"]] = f"Sleeps up to {room['max_occupancy']}"
+            elif too_short:
                 unavailable_reason[room["id"]] = f"Requires a {room['min_nights']}-night minimum stay"
             elif not ok:
                 unavailable_reason[room["id"]] = "Not available these dates"
@@ -36259,6 +36312,7 @@ def book_rooms():
         "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
         returning_guest=welcome,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
+        stay_nights=stay_nights,
         nothing_available=nothing_available, next_free=next_free,
         weather=weather,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
