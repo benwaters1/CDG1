@@ -156,5 +156,43 @@ def run():
     s.check("the page disappears with the token",
             anon.get("/recover/" + TOKEN).status_code == 404)
 
+    s.section("And a page that says what the deployment is doing")
+    # The afternoon this came out of went on guesswork: is the new build live,
+    # did the variable take, is this the instance with the data, is the code
+    # even running. None of it was visible from outside, so every answer meant
+    # asking the one person who could not log in to go and read something back.
+    r = m.app.test_client().get("/status")
+    s.check("it opens without a login", r.status_code == 200,
+            detail="the situation it is for is being unable to log in")
+    facts = r.get_json()
+    s.check("and it is readable as data", isinstance(facts, dict))
+    s.check("it says whether a way back in is armed",
+            "temp_password_set" in facts.get("recovery", {})
+            and "recovery_token_set" in facts.get("recovery", {}),
+            detail="the question that took an afternoon")
+    s.check("and whether the database survives a deploy",
+            "on_a_volume" in facts.get("database", {}),
+            detail="two deployments of one repository, one without a volume, "
+                   "are otherwise identical from outside")
+
+    # WHAT IT MUST NEVER SAY. Configuration is reported as yes or no, never as
+    # a value, and the page is public.
+    before = m.OWNER_TEMP_PASSWORD
+    m.OWNER_TEMP_PASSWORD = "a-secret-nobody-should-see"
+    try:
+        body = m.app.test_client().get("/status").get_data(as_text=True)
+        s.check("it never prints a secret it was given",
+                "a-secret-nobody-should-see" not in body,
+                detail="a status page that leaks the thing it reports on is "
+                       "worse than no status page")
+    finally:
+        m.OWNER_TEMP_PASSWORD = before
+    s.check("and it does not count the guests for a stranger",
+            "has_data" in facts.get("database", {})
+            and not any(k in facts.get("database", {})
+                        for k in ("guests", "bookings")),
+            detail="a yes or no tells two deployments apart; a number is the "
+                   "owner's business")
+
     conn.close()
     return s

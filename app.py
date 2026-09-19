@@ -43885,6 +43885,84 @@ def recover_owner_password(token):
     return render_template("recover.html", who=owner["email"], done=True)
 
 
+
+# When this process started, so "did my redeploy actually happen" is a fact
+# rather than an inference from whether a page looks different.
+BOOTED_AT = datetime.now(timezone.utc).isoformat()
+
+
+@app.route("/status")
+def status_page():
+    """What this deployment is, and what it has been told — never any values.
+
+    Public on purpose. Everything here is either a boolean about whether a
+    setting exists, or something already visible to anybody who can load the
+    site. The point is that it can be read WITHOUT being able to log in, which
+    is exactly the situation it was written for.
+    """
+    def env(name):
+        return bool((os.environ.get(name) or "").strip())
+
+    # Whether this database has ever been used, as a yes or no. Two
+    # deployments of the same repository, one with a volume and one without,
+    # are otherwise indistinguishable from outside — which is precisely the
+    # confusion this is here to end. A count would answer it too and would be
+    # the owner's business rather than a visitor's.
+    has_data = False
+    tables = 0
+    try:
+        conn = get_db()
+        try:
+            tables = conn.execute(
+                "SELECT COUNT(*) AS c FROM sqlite_master WHERE type = 'table'"
+            ).fetchone()["c"]
+            rows = conn.execute("SELECT COUNT(*) AS c FROM bookings").fetchone()["c"]
+            guests = conn.execute("SELECT COUNT(*) AS c FROM guests").fetchone()["c"]
+            has_data = bool(rows or guests)
+        finally:
+            conn.close()
+    except Exception:                    # pragma: no cover - a broken database
+        pass                             # is itself the answer; say so below
+
+    return jsonify({
+        "booted_at": BOOTED_AT,
+        "now": datetime.now(timezone.utc).isoformat(),
+        # Railway sets these; empty elsewhere. The commit is how you tell
+        # whether the thing you just pushed is the thing that is running.
+        "commit": (os.environ.get("RAILWAY_GIT_COMMIT_SHA") or "")[:8],
+        "branch": os.environ.get("RAILWAY_GIT_BRANCH") or "",
+        "service": os.environ.get("RAILWAY_SERVICE_NAME") or "",
+        "database": {
+            "path": DB_PATH,
+            # A path outside the checkout means a mounted volume, which means
+            # the data survives a deploy. Inside it, the data is erased every
+            # time — which is a thing to know before wondering where a
+            # password went.
+            "on_a_volume": not DB_PATH.startswith(BASE_DIR),
+            "tables": tables,
+            "has_data": has_data,
+        },
+        "configured": {
+            "assistant": env("ANTHROPIC_API_KEY"),
+            "email_resend": env("RESEND_API_KEY"),
+            "email_smtp": env("SMTP_HOST") and env("SMTP_USERNAME"),
+            "stripe": env("STRIPE_SECRET_KEY"),
+            "stripe_webhook": env("STRIPE_WEBHOOK_SECRET"),
+            "stripe_publishable": env("STRIPE_PUBLISHABLE_KEY"),
+            "vault": env("VAULT_ENCRYPTION_KEY"),
+            "public_base_url": os.environ.get("PUBLIC_BASE_URL") or "",
+            "ical_sync": env("ICAL_SYNC_TOKEN"),
+            "graph_mailboxes": len(MS_GRAPH_MAILBOXES),
+        },
+        # The two that exist to let somebody back in. Whether they are SET is
+        # the question that took an afternoon; the values stay where they are.
+        "recovery": {
+            "temp_password_set": env("OWNER_TEMP_PASSWORD"),
+            "recovery_token_set": env("OWNER_RECOVERY_TOKEN"),
+        },
+    })
+
+
 @app.route("/api/sync-ical", methods=["GET", "POST"])
 def api_sync_ical():
     """No-login sync trigger for an external scheduler. 404s (not 401/403,
