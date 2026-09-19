@@ -37,14 +37,14 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field-row-2">
       <div>
-        <label class="field-label">Event type</label>
-        <select name="event_type" required>
+        <label class="field-label" for="admin_events-event-type">Event type</label>
+        <select id="admin_events-event-type" name="event_type" required>
           {% for t in event_types %}<option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label class="field-label">Status</label>
-        <select name="status">
+        <label class="field-label" for="admin_events-status">Status</label>
+        <select id="admin_events-status" name="status">
           {% for s in ['new','contacted','quoted','confirmed','declined','cancelled'] %}
           <option value="{{ s }}">{{ s|capitalize }}</option>
           {% endfor %}
@@ -53,52 +53,52 @@
     </div>
     <div class="field-row-2">
       <div>
-        <label class="field-label">Contact name</label>
-        <input type="text" name="contact_name" required placeholder="Who's organising it" autocomplete="name" spellcheck="false" autocapitalize="words">
+        <label class="field-label" for="admin_events-contact-name">Contact name</label>
+        <input id="admin_events-contact-name" type="text" name="contact_name" required placeholder="Who's organising it" autocomplete="name" spellcheck="false" autocapitalize="words">
       </div>
       <div>
-        <label class="field-label">Email (optional)</label>
-        <input type="email" name="contact_email" placeholder="Leave blank for a phone enquiry" autocomplete="email">
+        <label class="field-label" for="admin_events-contact-email">Email (optional)</label>
+        <input id="admin_events-contact-email" type="email" name="contact_email" placeholder="Leave blank for a phone enquiry" autocomplete="email">
       </div>
     </div>
     <div class="field-row-2">
       <div>
-        <label class="field-label">Phone</label>
-        <input type="text" name="contact_phone">
+        <label class="field-label" for="admin_events-contact-phone">Phone</label>
+        <input id="admin_events-contact-phone" type="text" name="contact_phone">
       </div>
       <div>
-        <label class="field-label">Expected guests</label>
-        <input type="number" name="guest_count" min="1">
+        <label class="field-label" for="admin_events-guest-count">Expected guests</label>
+        <input id="admin_events-guest-count" type="number" name="guest_count" min="1">
       </div>
     </div>
     <div class="field-row-2">
       <div>
-        <label class="field-label">Preferred date</label>
-        <input type="date" name="preferred_date">
+        <label class="field-label" for="admin_events-preferred-date">Preferred date</label>
+        <input id="admin_events-preferred-date" type="date" name="preferred_date">
       </div>
       <div>
-        <label class="field-label">Alternate date</label>
-        <input type="date" name="alternate_date">
+        <label class="field-label" for="admin_events-alternate-date">Alternate date</label>
+        <input id="admin_events-alternate-date" type="date" name="alternate_date">
       </div>
     </div>
     <div class="field-row-2">
       <div>
-        <label class="field-label">End date (multi-day events)</label>
-        <input type="date" name="end_date">
+        <label class="field-label" for="admin_events-end-date">End date (multi-day events)</label>
+        <input id="admin_events-end-date" type="date" name="end_date">
       </div>
       <div>
-        <label class="field-label">Spaces needed</label>
-        <input type="text" name="spaces" placeholder="South lawn, orangery, 4 bedrooms...">
+        <label class="field-label" for="admin_events-spaces">Spaces needed</label>
+        <input id="admin_events-spaces" type="text" name="spaces" placeholder="South lawn, orangery, 4 bedrooms...">
       </div>
     </div>
-    <label class="field-label">Quoted price (€)</label>
-    <input type="number" name="quoted_price" step="0.01" min="0" style="max-width:180px;">
+    <label class="field-label" for="admin_events-quoted-price">Quoted price (€)</label>
+    <input id="admin_events-quoted-price" type="number" name="quoted_price" step="0.01" min="0" style="max-width:180px;">
 
-    <label class="field-label">What they've asked for</label>
-    <textarea name="message" rows="2" placeholder="Marquee on the south lawn, 80 seated, band until midnight..."></textarea>
+    <label class="field-label" for="admin_events-message">What they've asked for</label>
+    <textarea id="admin_events-message" name="message" rows="2" placeholder="Marquee on the south lawn, 80 seated, band until midnight..."></textarea>
 
-    <label class="field-label">Private note</label>
-    <input type="text" name="owner_note" placeholder="Only you see this">
+    <label class="field-label" for="admin_events-owner-note">Private note</label>
+    <input id="admin_events-owner-note" type="text" name="owner_note" placeholder="Only you see this">
 
     <button type="submit" class="btn-primary">Add event</button>
   </form>
@@ -108,8 +108,8 @@
   <summary class="small-link" style="color:var(--steel); cursor:pointer;">Edit event types ({{ event_types|length }})</summary>
   <form method="post" action="{{ url_for('update_event_types') }}" class="detail-card" style="margin-top:10px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field-label">One per line</label>
-    <textarea name="event_types" rows="5" style="font-family:'IBM Plex Mono',monospace; font-size:13px;">{% for t in event_types %}{{ t }}
+    <label class="field-label" for="admin_events-event-types">One per line</label>
+    <textarea id="admin_events-event-types" name="event_types" rows="5" style="font-family:'IBM Plex Mono',monospace; font-size:13px;">{% for t in event_types %}{{ t }}
 {% endfor %}</textarea>
     <p class="upload-hint">These fill the dropdown on the public enquiry form and here. A type you remove stays valid on events already using it.</p>
     <button type="submit" class="btn-mini">Save types</button>
@@ -118,8 +118,8 @@
 
 <form method="get" class="search-bar">
   <div>
-    <label class="field-label">Status</label>
-    <select name="status">
+    <label class="field-label" for="admin_events-status-2">Status</label>
+    <select id="admin_events-status-2" name="status">
       <option value="">All</option>
       {% for s in ['new','contacted','quoted','confirmed','declined','cancelled'] %}
       <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
@@ -201,38 +201,38 @@
   <form method="post" action="{{ url_for('update_event_inquiry', inquiry_id=e['id']) }}" class="search-bar" style="margin-top:10px; margin-bottom:0;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
-      <label class="field-label">Status</label>
-      <select name="status">
+      <label class="field-label" for="admin_events-status-3">Status</label>
+      <select id="admin_events-status-3" name="status">
         {% for s in ['new','contacted','quoted','confirmed','declined','cancelled'] %}
         <option value="{{ s }}" {{ 'selected' if e['status'] == s }}>{{ s|capitalize }}</option>
         {% endfor %}
       </select>
     </div>
     <div>
-      <label class="field-label">Quoted price (€)</label>
-      <input type="number" name="quoted_price" step="0.01" min="0" value="{{ e['quoted_price'] if e['quoted_price'] is not none else '' }}" style="width:110px;">
+      <label class="field-label" for="admin_events-quoted-price-2">Quoted price (€)</label>
+      <input id="admin_events-quoted-price-2" type="number" name="quoted_price" step="0.01" min="0" value="{{ e['quoted_price'] if e['quoted_price'] is not none else '' }}" style="width:110px;">
     </div>
     <div>
-      <label class="field-label">Promo code</label>
-      <input type="text" name="promo_code" style="width:130px;"
+      <label class="field-label" for="admin_events-promo-code">Promo code</label>
+      <input id="admin_events-promo-code" type="text" name="promo_code" style="width:130px;"
              value="{{ e['promo_code'] or '' }}"
              placeholder="{{ 'applied' if e['promo_code_id'] else 'none' }}"
              {{ 'readonly' if e['promo_code_id'] }} spellcheck="false" autocapitalize="characters">
     </div>
     <div>
-      <label class="field-label">Deposit (€)</label>
-      <input type="number" name="deposit_amount" step="0.01" min="0" style="width:110px;"
+      <label class="field-label" for="admin_events-deposit-amount">Deposit (€)</label>
+      <input id="admin_events-deposit-amount" type="number" name="deposit_amount" step="0.01" min="0" style="width:110px;"
              value="{{ '%.2f'|format(e['deposit_amount']) if e['deposit_amount'] is not none else '' }}"
              placeholder="auto">
     </div>
     <div>
-      <label class="field-label">Balance due</label>
-      <input type="date" name="balance_due_date" style="width:150px;"
+      <label class="field-label" for="admin_events-balance-due-date">Balance due</label>
+      <input id="admin_events-balance-due-date" type="date" name="balance_due_date" style="width:150px;"
              value="{{ e['balance_due_date'] or '' }}">
     </div>
     <div style="flex:2 1 200px;">
-      <label class="field-label">Owner note</label>
-      <input type="text" name="owner_note" value="{{ e['owner_note'] or '' }}">
+      <label class="field-label" for="admin_events-owner-note-2">Owner note</label>
+      <input id="admin_events-owner-note-2" type="text" name="owner_note" value="{{ e['owner_note'] or '' }}">
     </div>
     <button type="submit" class="btn-mini">Save</button>
   </form>

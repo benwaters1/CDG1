@@ -38,8 +38,8 @@
 
 <div class="search-bar" style="margin-bottom:18px;">
   <div>
-    <label class="field-label">Status</label>
-    <select onchange="window.location.href='{{ url_for('management_social') }}?status=' + this.value + '&platform={{ platform_filter }}'">
+    <label class="field-label" for="management_social-status">Status</label>
+    <select id="management_social-status" onchange="window.location.href='{{ url_for('management_social') }}?status=' + this.value + '&platform={{ platform_filter }}'">
       <option value="">All</option>
       {% for s in ['idea', 'drafted', 'scheduled', 'posted'] %}
       <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
@@ -48,8 +48,8 @@
   </div>
   {% if platforms %}
   <div>
-    <label class="field-label">Platform</label>
-    <select onchange="window.location.href='{{ url_for('management_social') }}?status={{ status_filter }}&platform=' + this.value">
+    <label class="field-label" for="management_social-platform">Platform</label>
+    <select id="management_social-platform" onchange="window.location.href='{{ url_for('management_social') }}?status={{ status_filter }}&platform=' + this.value">
       <option value="">All</option>
       {% for p in platforms %}
       <option value="{{ p }}" {{ 'selected' if platform_filter == p }}>{{ p }}</option>
@@ -98,11 +98,11 @@
       </select>
       <div>
         <label class="field-label">Scheduled date</label>
-        <input type="date" name="scheduled_date" value="{{ p['scheduled_date'] or '' }}">
+        <input aria-label="Scheduled date" type="date" name="scheduled_date" value="{{ p['scheduled_date'] or '' }}">
       </div>
       <div>
         <label class="field-label">Scheduled time</label>
-        <input type="time" name="scheduled_time" value="{{ p['scheduled_time'] or '' }}">
+        <input aria-label="Scheduled time" type="time" name="scheduled_time" value="{{ p['scheduled_time'] or '' }}">
       </div>
       <select name="assigned_to_user_id">
         <option value="">Unassigned</option>
@@ -110,9 +110,9 @@
         <option value="{{ e['id'] }}" {{ 'selected' if p['assigned_to_user_id'] == e['id'] }}>{{ e['name'] }}</option>
         {% endfor %}
       </select>
-      <textarea name="caption" placeholder="Caption / content" required>{{ p['caption'] }}</textarea>
-      <input type="text" name="link" value="{{ p['link'] or '' }}" placeholder="Link (optional)">
-      <input type="text" name="notes" value="{{ p['notes'] or '' }}" placeholder="Notes (optional)">
+      <textarea aria-label="Caption / content" name="caption" placeholder="Caption / content" required>{{ p['caption'] }}</textarea>
+      <input aria-label="Link (optional)" type="text" name="link" value="{{ p['link'] or '' }}" placeholder="Link (optional)">
+      <input aria-label="Notes (optional)" type="text" name="notes" value="{{ p['notes'] or '' }}" placeholder="Notes (optional)">
       <button type="submit" class="btn-mini">Save</button>
     </form>
     {% endfor %}
@@ -135,12 +135,12 @@
       {% endfor %}
     </select>
     <div>
-      <label class="field-label">Scheduled date (optional)</label>
-      <input type="date" name="scheduled_date">
+      <label class="field-label" for="management_social-scheduled-date">Scheduled date (optional)</label>
+      <input id="management_social-scheduled-date" type="date" name="scheduled_date">
     </div>
     <div>
-      <label class="field-label">Scheduled time (optional)</label>
-      <input type="time" name="scheduled_time">
+      <label class="field-label" for="management_social-scheduled-time">Scheduled time (optional)</label>
+      <input id="management_social-scheduled-time" type="time" name="scheduled_time">
     </div>
     <select name="assigned_to_user_id">
       <option value="">Unassigned</option>
@@ -148,9 +148,9 @@
       <option value="{{ e['id'] }}">{{ e['name'] }}</option>
       {% endfor %}
     </select>
-    <textarea name="caption" placeholder="Caption / content idea" required></textarea>
-    <input type="text" name="link" placeholder="Link (optional)">
-    <input type="text" name="notes" placeholder="Notes (optional)">
+    <textarea aria-label="Caption / content idea" name="caption" placeholder="Caption / content idea" required></textarea>
+    <input aria-label="Link (optional)" type="text" name="link" placeholder="Link (optional)">
+    <input aria-label="Notes (optional)" type="text" name="notes" placeholder="Notes (optional)">
     <button type="submit" class="btn-mini">Add</button>
   </form>
 </div>

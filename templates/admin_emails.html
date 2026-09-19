@@ -43,26 +43,26 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="refund-fields">
       <div>
-        <label class="field-label">Name</label>
-        <input type="text" name="name" required placeholder="Autumn &amp; Winter offer">
+        <label class="field-label" for="admin_emails-name">Name</label>
+        <input id="admin_emails-name" type="text" name="name" required placeholder="Autumn &amp; Winter offer">
       </div>
       <div>
-        <label class="field-label">Area</label>
-        <select name="area">
+        <label class="field-label" for="admin_emails-area">Area</label>
+        <select id="admin_emails-area" name="area">
           {% for a in areas %}<option value="{{ a }}">{{ a|capitalize }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label class="field-label">Category (optional)</label>
-        <input type="text" name="category" placeholder="Offers, Pre-arrival…">
+        <label class="field-label" for="admin_emails-category">Category (optional)</label>
+        <input id="admin_emails-category" type="text" name="category" placeholder="Offers, Pre-arrival…">
       </div>
       <div class="refund-reason">
-        <label class="field-label">Subject</label>
-        <input type="text" name="subject" required placeholder="Bonjour {{ '{{first_name}}' }} — a note from the château">
+        <label class="field-label" for="admin_emails-subject">Subject</label>
+        <input id="admin_emails-subject" type="text" name="subject" required placeholder="Bonjour {{ '{{first_name}}' }} — a note from the château">
       </div>
       <div class="refund-reason">
-        <label class="field-label">Message</label>
-        <textarea name="body" rows="4" placeholder="Bonjour {{ '{{first_name}}' }},&#10;&#10;…"></textarea>
+        <label class="field-label" for="admin_emails-body">Message</label>
+        <textarea id="admin_emails-body" name="body" rows="4" placeholder="Bonjour {{ '{{first_name}}' }},&#10;&#10;…"></textarea>
       </div>
     </div>
     <button type="submit" class="btn-mini">Create</button>
@@ -128,8 +128,8 @@
 </p>
 <form method="post" action="{{ url_for('add_email_optout') }}" class="search-bar">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div><label class="field-label">Email</label><input type="email" name="email" required autocomplete="email"></div>
-  <div style="flex:2 1 200px;"><label class="field-label">Reason (optional)</label><input type="text" name="reason"></div>
+  <div><label class="field-label" for="admin_emails-email">Email</label><input id="admin_emails-email" type="email" name="email" required autocomplete="email"></div>
+  <div style="flex:2 1 200px;"><label class="field-label" for="admin_emails-reason">Reason (optional)</label><input id="admin_emails-reason" type="text" name="reason"></div>
   <button type="submit" class="btn-mini">Add</button>
 </form>
 

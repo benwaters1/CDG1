@@ -30,22 +30,22 @@
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if duplicates %}<input type="hidden" name="confirm_duplicate" value="1">{% endif %}
-    <label class="field-label">Guest name</label>
-    <input type="text" name="name" required value="{{ (typed.name if typed else '') or (guest['name'] if guest else '') }}">
+    <label class="field-label" for="guest_form-name">Guest name</label>
+    <input id="guest_form-name" type="text" name="name" required value="{{ (typed.name if typed else '') or (guest['name'] if guest else '') }}">
 
     <div class="field-row-2">
       <div>
-        <label class="field-label">Email</label>
-        <input type="email" name="email" value="{{ guest['email'] if guest else '' }}" placeholder="used to match their bookings" autocomplete="email">
+        <label class="field-label" for="guest_form-email">Email</label>
+        <input id="guest_form-email" type="email" name="email" value="{{ guest['email'] if guest else '' }}" placeholder="used to match their bookings" autocomplete="email">
       </div>
       <div>
-        <label class="field-label">Phone</label>
-        <input type="text" name="phone" value="{{ guest['phone'] if guest else '' }}">
+        <label class="field-label" for="guest_form-phone">Phone</label>
+        <input id="guest_form-phone" type="text" name="phone" value="{{ guest['phone'] if guest else '' }}">
       </div>
     </div>
 
-    <label class="field-label">Dietary requirements</label>
-    <input type="text" name="dietary_notes" value="{{ guest['dietary_notes'] if guest else '' }}" placeholder="Coeliac, no shellfish, vegetarian...">
+    <label class="field-label" for="guest_form-dietary-notes">Dietary requirements</label>
+    <input id="guest_form-dietary-notes" type="text" name="dietary_notes" value="{{ guest['dietary_notes'] if guest else '' }}" placeholder="Coeliac, no shellfish, vegetarian...">
 
     {# The language they read in. Recorded rather than guessed, and used on the
        pages a guest reaches with a link we sent them. #}
@@ -81,8 +81,8 @@
       have stopped coming. <a href="{{ url_for('room_access_page') }}">What each room asks</a>.
     </p>
 
-    <label class="field-label">Preferences</label>
-    <input type="text" name="preferences" value="{{ guest['preferences'] if guest else '' }}" placeholder="Prefers the Rose Room, early breakfast, quiet side...">
+    <label class="field-label" for="guest_form-preferences">Preferences</label>
+    <input id="guest_form-preferences" type="text" name="preferences" value="{{ guest['preferences'] if guest else '' }}" placeholder="Prefers the Rose Room, early breakfast, quiet side...">
 
     <label class="checkbox-row" style="margin-top:14px;">
       <input type="checkbox" name="vip" value="1" {% if guest and guest['vip'] %}checked{% endif %}>
@@ -90,7 +90,7 @@
     </label>
 
     <label class="field-label">Notes for staff</label>
-    <textarea name="notes" placeholder="Anything worth knowing next time they stay...">{{ guest['notes'] if guest else '' }}</textarea>
+    <textarea aria-label="Anything worth knowing next time they stay..." name="notes" placeholder="Anything worth knowing next time they stay...">{{ guest['notes'] if guest else '' }}</textarea>
 
     <button type="submit" class="btn-primary">{% if guest %}Save changes{% else %}Create profile{% endif %}</button>
   </form>

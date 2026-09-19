@@ -11,21 +11,21 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="detail-card">
     <div class="refund-fields">
-      <div><label class="field-label">Name</label><input type="text" name="name" value="{{ template['name'] }}" required></div>
+      <div><label class="field-label" for="admin_email_edit-name">Name</label><input id="admin_email_edit-name" type="text" name="name" value="{{ template['name'] }}" required></div>
       <div>
-        <label class="field-label">Area</label>
-        <select name="area">
+        <label class="field-label" for="admin_email_edit-area">Area</label>
+        <select id="admin_email_edit-area" name="area">
           {% for a in areas %}<option value="{{ a }}" {{ 'selected' if template['area'] == a }}>{{ a|capitalize }}</option>{% endfor %}
         </select>
       </div>
-      <div><label class="field-label">Category</label><input type="text" name="category" value="{{ template['category'] or '' }}"></div>
+      <div><label class="field-label" for="admin_email_edit-category">Category</label><input id="admin_email_edit-category" type="text" name="category" value="{{ template['category'] or '' }}"></div>
     </div>
 
-    <label class="field-label">Subject</label>
-    <input type="text" name="subject" value="{{ template['subject'] }}" required>
+    <label class="field-label" for="admin_email_edit-subject">Subject</label>
+    <input id="admin_email_edit-subject" type="text" name="subject" value="{{ template['subject'] }}" required>
 
-    <label class="field-label">Message</label>
-    <textarea name="body" rows="16" style="font-family:inherit; line-height:1.55;">{{ template['body'] }}</textarea>
+    <label class="field-label" for="admin_email_edit-body">Message</label>
+    <textarea id="admin_email_edit-body" name="body" rows="16" style="font-family:inherit; line-height:1.55;">{{ template['body'] }}</textarea>
 
     <p class="upload-hint">
       Merge fields — type them exactly, including the double braces:
@@ -37,8 +37,8 @@
     <p class="upload-hint" style="margin-top:-4px;">Optional. Leave off to send this by hand only.</p>
     <div class="refund-fields">
       <div>
-        <label class="field-label">Around</label>
-        <select name="trigger_event">
+        <label class="field-label" for="admin_email_edit-trigger-event">Around</label>
+        <select id="admin_email_edit-trigger-event" name="trigger_event">
           <option value="">— don't send automatically —</option>
           <option value="arrival" {{ 'selected' if template['trigger_event'] == 'arrival' }}>Guest arrival</option>
           <option value="departure" {{ 'selected' if template['trigger_event'] == 'departure' }}>Guest departure</option>
@@ -46,8 +46,8 @@
         </select>
       </div>
       <div>
-        <label class="field-label">Days offset</label>
-        <input type="number" name="trigger_offset_days" step="1"
+        <label class="field-label" for="admin_email_edit-trigger-offset-days">Days offset</label>
+        <input id="admin_email_edit-trigger-offset-days" type="number" name="trigger_offset_days" step="1"
                value="{{ template['trigger_offset_days'] if template['trigger_offset_days'] is not none else '' }}"
                placeholder="-7">
         <span class="upload-hint">negative = before, positive = after</span>
@@ -92,12 +92,12 @@
   <div class="refund-fields">
     <div>
       <label class="field-label">Only those who visited within</label>
-      <input type="number" name="since_months" min="1" placeholder="e.g. 24">
+      <input aria-label="e.g. 24" type="number" name="since_months" min="1" placeholder="e.g. 24">
       <span class="upload-hint">months — blank for all time</span>
     </div>
     <div>
-      <label class="field-label">Confirm recipient count</label>
-      <input type="text" name="confirm_count" placeholder="type the number">
+      <label class="field-label" for="admin_email_edit-confirm-count">Confirm recipient count</label>
+      <input id="admin_email_edit-confirm-count" type="text" name="confirm_count" placeholder="type the number">
       <span class="upload-hint">so a big send is never one stray click</span>
     </div>
   </div>

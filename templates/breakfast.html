@@ -54,8 +54,8 @@
       {% if user['role'] == 'owner' %}
       <form method="post" action="{{ url_for('edit_breakfast_item', item_id=i['id']) }}" id="edit-breakfast-{{ i['id'] }}" class="upload-form" style="display:none;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="text" name="name" value="{{ i['name'] }}" placeholder="Name" required>
-        <input type="text" name="category" value="{{ i['category'] or '' }}" placeholder="Category">
+        <input aria-label="Name" type="text" name="name" value="{{ i['name'] }}" placeholder="Name" required>
+        <input aria-label="Category" type="text" name="category" value="{{ i['category'] or '' }}" placeholder="Category">
         <button type="submit" class="btn-mini">Save</button>
       </form>
       {% endif %}
@@ -70,8 +70,8 @@
   <h3>Add a breakfast item</h3>
   <form method="post" action="{{ url_for('new_breakfast_item') }}" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" name="name" placeholder="e.g. Croissants" required>
-    <input type="text" name="category" placeholder="e.g. Bread, Fruit, Dairy, Drinks">
+    <input aria-label="e.g. Croissants" type="text" name="name" placeholder="e.g. Croissants" required>
+    <input aria-label="e.g. Bread, Fruit, Dairy, Drinks" type="text" name="category" placeholder="e.g. Bread, Fruit, Dairy, Drinks">
     <button type="submit" class="btn-mini">Add item</button>
   </form>
 </div>

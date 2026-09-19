@@ -157,7 +157,7 @@
       <form method="post" action="{{ url_for('mark_booking_no_show', booking_id=b['id']) }}"
             onsubmit="return confirm('Mark {{ b['reference_code'] }} as never arrived? Nothing is charged or refunded.');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="text" name="note" placeholder="What happened (optional)" maxlength="300">
+        <input aria-label="What happened (optional)" type="text" name="note" placeholder="What happened (optional)" maxlength="300">
         <button type="submit" class="btn-text-danger">Did not arrive</button>
       </form>
       {% endif %}

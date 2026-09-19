@@ -24,9 +24,9 @@
   <div class="detail-card" style="max-width:680px;">
     <h3 style="margin-top:0;">The card</h3>
     <div class="refund-fields">
-      <div><label class="field-label">Title</label><input type="text" name="title" value="{{ menu['title'] or '' }}"></div>
-      <div><label class="field-label">Set menu name</label><input type="text" name="formule_label" value="{{ menu['formule_label'] or '' }}"></div>
-      <div><label class="field-label">Set price (€)</label><input type="text" name="formule_price" inputmode="decimal" value="{{ '%.2f'|format(menu['formule_price']) if menu['formule_price'] else '' }}"></div>
+      <div><label class="field-label" for="menu_review-title">Title</label><input id="menu_review-title" type="text" name="title" value="{{ menu['title'] or '' }}"></div>
+      <div><label class="field-label" for="menu_review-formule-label">Set menu name</label><input id="menu_review-formule-label" type="text" name="formule_label" value="{{ menu['formule_label'] or '' }}"></div>
+      <div><label class="field-label" for="menu_review-formule-price">Set price (€)</label><input id="menu_review-formule-price" type="text" name="formule_price" inputmode="decimal" value="{{ '%.2f'|format(menu['formule_price']) if menu['formule_price'] else '' }}"></div>
     </div>
   </div>
 
@@ -36,22 +36,22 @@
     <div class="refund-fields">
       <div style="grid-column:1 / -1;">
         <label class="field-label">Dish</label>
-        <input type="text" name="name-{{ d['id'] }}" value="{{ d['name'] }}">
+        <input aria-label="Dish" type="text" name="name-{{ d['id'] }}" value="{{ d['name'] }}">
       </div>
       <div style="grid-column:1 / -1;">
         <label class="field-label">Description</label>
-        <input type="text" name="description-{{ d['id'] }}" value="{{ d['description'] or '' }}">
+        <input aria-label="Description" type="text" name="description-{{ d['id'] }}" value="{{ d['description'] or '' }}">
       </div>
       <div>
         <label class="field-label">Course</label>
-        <select name="course-{{ d['id'] }}">
+        <select aria-label="Course" name="course-{{ d['id'] }}">
           {% for k, v in courses.items() %}
           <option value="{{ k }}" {{ 'selected' if d['course'] == k }}>{{ v }}</option>
           {% endfor %}
         </select>
       </div>
-      <div><label class="field-label">À la carte (€)</label><input type="text" name="carte_price-{{ d['id'] }}" inputmode="decimal" value="{{ '%.2f'|format(d['carte_price']) if d['carte_price'] else '' }}"></div>
-      <div><label class="field-label">Supplement (€)</label><input type="text" name="supplement-{{ d['id'] }}" inputmode="decimal" value="{{ '%.2f'|format(d['supplement']) if d['supplement'] else '' }}"></div>
+      <div><label class="field-label">À la carte (€)</label><input aria-label="À la carte (€)" type="text" name="carte_price-{{ d['id'] }}" inputmode="decimal" value="{{ '%.2f'|format(d['carte_price']) if d['carte_price'] else '' }}"></div>
+      <div><label class="field-label">Supplement (€)</label><input aria-label="Supplement (€)" type="text" name="supplement-{{ d['id'] }}" inputmode="decimal" value="{{ '%.2f'|format(d['supplement']) if d['supplement'] else '' }}"></div>
       <div>
         <label class="field-label" style="display:flex; align-items:center; gap:7px;">
           <input type="checkbox" name="drop-{{ d['id'] }}"> Not on this card

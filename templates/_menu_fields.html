@@ -6,16 +6,16 @@
 <div class="refund-fields">
   <div style="grid-column:1 / -1;">
     <label class="field-label">Dish</label>
-    <input type="text" name="name" value="{{ item['name'] if item else '' }}" required
+    <input aria-label="Dish" type="text" name="name" value="{{ item['name'] if item else '' }}" required
            placeholder="e.g. Truite de l'Ariège, beurre noisette">
   </div>
   <div style="grid-column:1 / -1;">
     <label class="field-label">Description — what the guest reads</label>
-    <input type="text" name="description" value="{{ item['description'] if item else '' }}">
+    <input aria-label="Description — what the guest reads" type="text" name="description" value="{{ item['description'] if item else '' }}">
   </div>
   <div>
     <label class="field-label">Course</label>
-    <select name="course">
+    <select aria-label="Course" name="course">
       {% for k, v in courses.items() %}
       <option value="{{ k }}" {{ 'selected' if item and item['course'] == k }}>{{ v }}</option>
       {% endfor %}
@@ -23,23 +23,23 @@
   </div>
   <div>
     <label class="field-label">Price (€)</label>
-    <input type="text" name="price" inputmode="decimal"
+    <input aria-label="Price (€)" type="text" name="price" inputmode="decimal"
            value="{{ '%.2f'|format(item['price']) if item and item['price'] else '' }}">
   </div>
   <div>
     <label class="field-label">VAT %</label>
-    <input type="text" name="vat_rate" inputmode="decimal" placeholder="from the Tax page"
+    <input aria-label="VAT %" type="text" name="vat_rate" inputmode="decimal" placeholder="from the Tax page"
            value="{{ item['vat_rate'] if item and item['vat_rate'] is not none else '' }}">
     <span class="field-hint">Blank means 10% food, 20% for apéritifs, wine and digestifs.</span>
   </div>
   <div>
     <label class="field-label">Minutes to cook</label>
-    <input type="number" name="prep_minutes" min="0"
+    <input aria-label="Minutes to cook" type="number" name="prep_minutes" min="0"
            value="{{ item['prep_minutes'] if item and item['prep_minutes'] else '' }}">
   </div>
   <div>
     <label class="field-label">Comes out of stock</label>
-    <select name="stock_item_id">
+    <select aria-label="Comes out of stock" name="stock_item_id">
       <option value="">— nothing tracked —</option>
       {% for st in stock_items %}
       <option value="{{ st['id'] }}" {{ 'selected' if item and item['stock_item_id'] == st['id'] }}>
@@ -50,20 +50,20 @@
   </div>
   <div>
     <label class="field-label">How much per serving</label>
-    <input type="text" name="stock_qty_per_unit" inputmode="decimal"
+    <input aria-label="How much per serving" type="text" name="stock_qty_per_unit" inputmode="decimal"
            value="{{ item['stock_qty_per_unit'] if item else 1 }}">
     <span class="field-hint">1 = one whole stock unit. For wine sold by the glass,
       set the bottle size below instead and let each pour work it out.</span>
   </div>
   <div>
     <label class="field-label">Bottle size (ml)</label>
-    <input type="text" name="container_ml" inputmode="decimal" placeholder="750"
+    <input aria-label="Bottle size (ml)" type="text" name="container_ml" inputmode="decimal" placeholder="750"
            value="{{ item['container_ml'] if item and item['container_ml'] else '' }}">
     <span class="field-hint">Set this on the wine, then add glass and bottle pours to it.</span>
   </div>
   <div>
     <label class="field-label">Pour loss (%)</label>
-    <input type="text" name="pour_loss_percent" inputmode="decimal"
+    <input aria-label="Pour loss (%)" type="text" name="pour_loss_percent" inputmode="decimal"
            placeholder="{{ pour_loss_hint if pour_loss_hint is defined else 15 }}"
            value="{{ item['pour_loss_percent'] if item and item['pour_loss_percent'] else '' }}">
     {# The trade gets 5 x 150ml from a 75cl bottle, not 6 — tasting, spillage,
@@ -74,7 +74,7 @@
   </div>
   <div>
     <label class="field-label">Dietary (free text)</label>
-    <input type="text" name="dietary_tags" value="{{ item['dietary_tags'] if item else '' }}"
+    <input aria-label="Dietary (free text)" type="text" name="dietary_tags" value="{{ item['dietary_tags'] if item else '' }}"
            placeholder="vegetarian, vegan">
   </div>
   <div>

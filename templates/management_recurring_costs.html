@@ -60,27 +60,27 @@
     </div>
     <form method="post" action="{{ url_for('edit_recurring_cost', cost_id=c['id']) }}" id="edit-cost-{{ c['id'] }}" class="upload-form" style="display:none;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="label" value="{{ c['label'] }}" placeholder="Label" required>
-      <input type="number" name="amount" step="0.01" min="0" value="{{ c['amount'] }}" placeholder="Amount" required>
+      <input aria-label="Label" type="text" name="label" value="{{ c['label'] }}" placeholder="Label" required>
+      <input aria-label="Amount" type="number" name="amount" step="0.01" min="0" value="{{ c['amount'] }}" placeholder="Amount" required>
       <select name="frequency">
         <option value="monthly" {{ 'selected' if c['frequency'] == 'monthly' }}>Monthly</option>
         <option value="annual" {{ 'selected' if c['frequency'] == 'annual' }}>Annual</option>
       </select>
-      <input type="text" name="category" value="{{ c['category'] or '' }}" placeholder="Category (optional)">
+      <input aria-label="Category (optional)" type="text" name="category" value="{{ c['category'] or '' }}" placeholder="Category (optional)">
       <div>
         <label class="field-label">Next due (optional)</label>
-        <input type="date" name="next_due_date" value="{{ c['next_due_date'] or '' }}">
+        <input aria-label="Next due (optional)" type="date" name="next_due_date" value="{{ c['next_due_date'] or '' }}">
       </div>
       <div>
         <label class="field-label">Supplier (optional)</label>
-        <select name="vendor_id">
+        <select aria-label="Supplier (optional)" name="vendor_id">
           <option value="">Not linked</option>
           {% for v in vendors %}
           <option value="{{ v['id'] }}" {{ 'selected' if c['vendor_id'] == v['id'] }}>{{ v['name'] }}</option>
           {% endfor %}
         </select>
       </div>
-      <input type="text" name="notes" value="{{ c['notes'] or '' }}" placeholder="Notes (optional)">
+      <input aria-label="Notes (optional)" type="text" name="notes" value="{{ c['notes'] or '' }}" placeholder="Notes (optional)">
       <button type="submit" class="btn-mini">Save</button>
     </form>
     {% endfor %}
@@ -91,11 +91,11 @@
   <h3>Add a recurring cost</h3>
   <form method="post" action="{{ url_for('new_recurring_cost') }}" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" name="label" placeholder="e.g. Property insurance" required>
-    <input type="number" name="amount" step="0.01" min="0" placeholder="Amount" required>
+    <input aria-label="e.g. Property insurance" type="text" name="label" placeholder="e.g. Property insurance" required>
+    <input aria-label="Amount" type="number" name="amount" step="0.01" min="0" placeholder="Amount" required>
     <div>
-      <label class="field-label">Supplier (optional)</label>
-      <select name="vendor_id">
+      <label class="field-label" for="management_recurring_costs-vendor-id">Supplier (optional)</label>
+      <select id="management_recurring_costs-vendor-id" name="vendor_id">
         <option value="">Not linked</option>
         {% for v in vendors %}
         <option value="{{ v['id'] }}" {{ 'selected' if False }}>{{ v['name'] }}</option>
@@ -106,12 +106,12 @@
       <option value="monthly">Monthly</option>
       <option value="annual">Annual</option>
     </select>
-    <input type="text" name="category" placeholder="Category (optional)">
+    <input aria-label="Category (optional)" type="text" name="category" placeholder="Category (optional)">
     <div>
-      <label class="field-label">Next due (optional)</label>
-      <input type="date" name="next_due_date">
+      <label class="field-label" for="management_recurring_costs-next-due-date">Next due (optional)</label>
+      <input id="management_recurring_costs-next-due-date" type="date" name="next_due_date">
     </div>
-    <input type="text" name="notes" placeholder="Notes (optional)">
+    <input aria-label="Notes (optional)" type="text" name="notes" placeholder="Notes (optional)">
     <button type="submit" class="btn-mini">Add</button>
   </form>
 </div>

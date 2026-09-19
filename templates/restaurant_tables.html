@@ -84,10 +84,10 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <h2 class="section-heading">Add a table</h2>
   <div class="field-row-2">
-    <input type="text" name="name" placeholder="What it is called, e.g. By the window" required>
-    <input type="number" name="seats" min="1" placeholder="Seats (2)">
+    <input aria-label="What it is called, e.g. By the window" type="text" name="name" placeholder="What it is called, e.g. By the window" required>
+    <input aria-label="Seats (2)" type="number" name="seats" min="1" placeholder="Seats (2)">
   </div>
-  <input type="text" name="area" placeholder="Where, e.g. orangery" style="width:100%;">
+  <input aria-label="Where, e.g. orangery" type="text" name="area" placeholder="Where, e.g. orangery" style="width:100%;">
   <button type="submit" class="btn-mini" style="margin-top:8px;">Add</button>
 </form>
 

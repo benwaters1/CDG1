@@ -102,7 +102,7 @@
               <option value="{{ d['id'] }}">{{ d['name'] }}</option>
               {% endfor %}
             </select>
-            <input type="text" name="purpose" placeholder="Purpose (optional)">
+            <input aria-label="Purpose (optional)" type="text" name="purpose" placeholder="Purpose (optional)">
             <button type="submit" class="btn-mini">Check out</button>
           </form>
         {% endif %}
@@ -120,7 +120,7 @@
         {% endfor %}
         <form method="post" action="{{ url_for('new_vehicle_maintenance', vehicle_id=v['id']) }}" class="upload-form" style="margin-top:6px;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="text" name="title" placeholder="e.g. Brake pads worn" required>
+          <input aria-label="e.g. Brake pads worn" type="text" name="title" placeholder="e.g. Brake pads worn" required>
           <button type="submit" class="btn-mini">Report</button>
         </form>
       </div>
@@ -144,7 +144,7 @@
         <form method="post" action="{{ url_for('new_insurance_policy') }}" class="upload-form" style="margin-top:6px;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="vehicle_id" value="{{ v['id'] }}">
-          <input type="text" name="provider" placeholder="Insurer" required>
+          <input aria-label="Insurer" type="text" name="provider" placeholder="Insurer" required>
           <input type="date" name="expiry_date">
           <button type="submit" class="btn-mini">Add policy</button>
         </form>
@@ -167,12 +167,12 @@
 
     <form method="post" action="{{ url_for('edit_vehicle', vehicle_id=v['id']) }}" id="edit-vehicle-{{ v['id'] }}" class="upload-form detail-card" style="display:none;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="name" value="{{ v['name'] }}" placeholder="Name" required>
-      <input type="text" name="vehicle_type" value="{{ v['vehicle_type'] or '' }}" placeholder="Type (e.g. Car, Van, Golf cart)">
-      <input type="text" name="fuel_type" value="{{ v['fuel_type'] or '' }}" placeholder="Fuel type (e.g. Petrol, Diesel, Electric)">
-      <input type="text" name="license_plate" value="{{ v['license_plate'] or '' }}" placeholder="License plate">
+      <input aria-label="Name" type="text" name="name" value="{{ v['name'] }}" placeholder="Name" required>
+      <input aria-label="Type (e.g. Car, Van, Golf cart)" type="text" name="vehicle_type" value="{{ v['vehicle_type'] or '' }}" placeholder="Type (e.g. Car, Van, Golf cart)">
+      <input aria-label="Fuel type (e.g. Petrol, Diesel, Electric)" type="text" name="fuel_type" value="{{ v['fuel_type'] or '' }}" placeholder="Fuel type (e.g. Petrol, Diesel, Electric)">
+      <input aria-label="License plate" type="text" name="license_plate" value="{{ v['license_plate'] or '' }}" placeholder="License plate">
       <label class="field-label">Next service due</label>
-      <input type="date" name="next_service_due" value="{{ v['next_service_due'] or '' }}">
+      <input aria-label="Next service due" type="date" name="next_service_due" value="{{ v['next_service_due'] or '' }}">
       <label class="field-label" for="ct_{{ v['id'] }}">Contrôle technique valid until</label>
       <input type="date" id="ct_{{ v['id'] }}" name="ct_expires_on"
              value="{{ v['ct_expires_on'] or '' }}">
@@ -191,7 +191,7 @@
         <input type="checkbox" name="off_road" {{ 'checked' if v['off_road'] }}>
         Off the road on purpose — stop chasing its papers
       </label>
-      <input type="text" name="notes" value="{{ v['notes'] or '' }}" placeholder="Notes">
+      <input aria-label="Notes" type="text" name="notes" value="{{ v['notes'] or '' }}" placeholder="Notes">
       <button type="submit" class="btn-mini">Save</button>
       <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleVehicleEdit({{ v['id'] }})">Cancel</span>
     </form>
@@ -203,11 +203,11 @@
   <h3>Add a vehicle</h3>
   <form method="post" action="{{ url_for('new_vehicle') }}" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" name="name" placeholder="Name (e.g. Porsche Cayenne)" required>
-    <input type="text" name="vehicle_type" placeholder="Type (e.g. Car, Van, Golf cart)">
-    <input type="text" name="fuel_type" placeholder="Fuel type (e.g. Petrol, Diesel, Electric)">
-    <input type="text" name="license_plate" placeholder="License plate">
-    <input type="text" name="notes" placeholder="Notes (optional)">
+    <input aria-label="Name (e.g. Porsche Cayenne)" type="text" name="name" placeholder="Name (e.g. Porsche Cayenne)" required>
+    <input aria-label="Type (e.g. Car, Van, Golf cart)" type="text" name="vehicle_type" placeholder="Type (e.g. Car, Van, Golf cart)">
+    <input aria-label="Fuel type (e.g. Petrol, Diesel, Electric)" type="text" name="fuel_type" placeholder="Fuel type (e.g. Petrol, Diesel, Electric)">
+    <input aria-label="License plate" type="text" name="license_plate" placeholder="License plate">
+    <input aria-label="Notes (optional)" type="text" name="notes" placeholder="Notes (optional)">
     <button type="submit" class="btn-mini">Add vehicle</button>
   </form>
 </div>

@@ -73,10 +73,10 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="category" value="Restaurant">
     <div style="flex:2 1 200px;">
-      <input type="text" name="name" placeholder="Add an ingredient to the shopping list" required>
+      <input aria-label="Add an ingredient to the shopping list" type="text" name="name" placeholder="Add an ingredient to the shopping list" required>
     </div>
     <div>
-      <input type="text" name="store" placeholder="Store (optional)">
+      <input aria-label="Store (optional)" type="text" name="store" placeholder="Store (optional)">
     </div>
     <button type="submit" class="btn-mini">Add</button>
   </form>
@@ -114,8 +114,8 @@
   <form method="post" action="{{ url_for('new_restaurant_shift') }}" class="search-bar" style="margin-top:14px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
-      <label class="field-label">Employee</label>
-      <select name="user_id" required>
+      <label class="field-label" for="admin_restaurant-user-id">Employee</label>
+      <select id="admin_restaurant-user-id" name="user_id" required>
         <option value="">— choose —</option>
         {% for e in employees %}
         <option value="{{ e['id'] }}">{{ e['name'] }}{{ ' (owner)' if e['role'] == 'owner' }}</option>
@@ -123,16 +123,16 @@
       </select>
     </div>
     <div>
-      <label class="field-label">Date</label>
-      <input type="date" name="dinner_date" required>
+      <label class="field-label" for="admin_restaurant-dinner-date">Date</label>
+      <input id="admin_restaurant-dinner-date" type="date" name="dinner_date" required>
     </div>
     <div>
-      <label class="field-label">Role (optional)</label>
-      <input type="text" name="role_note" placeholder="Server, Kitchen, Host...">
+      <label class="field-label" for="admin_restaurant-role-note">Role (optional)</label>
+      <input id="admin_restaurant-role-note" type="text" name="role_note" placeholder="Server, Kitchen, Host...">
     </div>
     <div>
-      <label class="field-label">Est. hours (optional)</label>
-      <input type="number" name="estimated_hours" min="0" step="0.5" style="width:90px;">
+      <label class="field-label" for="admin_restaurant-estimated-hours">Est. hours (optional)</label>
+      <input id="admin_restaurant-estimated-hours" type="number" name="estimated_hours" min="0" step="0.5" style="width:90px;">
     </div>
     <button type="submit" class="btn-mini">Assign</button>
   </form>
@@ -140,8 +140,8 @@
 
 <form method="get" class="search-bar">
   <div>
-    <label class="field-label">Status</label>
-    <select name="status">
+    <label class="field-label" for="admin_restaurant-status">Status</label>
+    <select id="admin_restaurant-status" name="status">
       <option value="">All</option>
       {% for s in ['pending','confirmed','declined','cancelled'] %}
       <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>

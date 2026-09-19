@@ -56,8 +56,8 @@
 <form method="post" action="{{ url_for('issue_access_item') }}" class="search-bar">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div>
-    <label class="field-label">Item</label>
-    <select name="access_item_id" required>
+    <label class="field-label" for="admin_access-access-item-id">Item</label>
+    <select id="admin_access-access-item-id" name="access_item_id" required>
       <option value="">— choose —</option>
       {% for i in items %}
       <option value="{{ i['id'] }}">{{ i['label'] }} ({{ access_kinds[i['kind']] }})</option>
@@ -65,15 +65,15 @@
     </select>
   </div>
   <div>
-    <label class="field-label">To</label>
-    <select name="user_id" required>
+    <label class="field-label" for="admin_access-user-id">To</label>
+    <select id="admin_access-user-id" name="user_id" required>
       <option value="">— choose —</option>
       {% for e in employees %}<option value="{{ e['id'] }}">{{ e['name'] }}</option>{% endfor %}
     </select>
   </div>
   <div style="flex:2 1 200px;">
-    <label class="field-label">Note (optional)</label>
-    <input type="text" name="notes" placeholder="e.g. spare, returned to safe nightly">
+    <label class="field-label" for="admin_access-notes">Note (optional)</label>
+    <input id="admin_access-notes" type="text" name="notes" placeholder="e.g. spare, returned to safe nightly">
   </div>
   <button type="submit" class="btn-mini">Issue</button>
 </form>
@@ -85,22 +85,22 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="refund-fields">
       <div>
-        <label class="field-label">Name</label>
-        <input type="text" name="label" required placeholder="e.g. Cellar door, main gate">
+        <label class="field-label" for="admin_access-label">Name</label>
+        <input id="admin_access-label" type="text" name="label" required placeholder="e.g. Cellar door, main gate">
       </div>
       <div>
-        <label class="field-label">Type</label>
-        <select name="kind">
+        <label class="field-label" for="admin_access-kind">Type</label>
+        <select id="admin_access-kind" name="kind">
           {% for key, label in access_kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label class="field-label">Where it lives</label>
-        <input type="text" name="location" placeholder="e.g. Key safe, office drawer">
+        <label class="field-label" for="admin_access-location">Where it lives</label>
+        <input id="admin_access-location" type="text" name="location" placeholder="e.g. Key safe, office drawer">
       </div>
       <div class="refund-reason">
-        <label class="field-label">Note</label>
-        <input type="text" name="notes" placeholder="How many exist, who cuts copies…">
+        <label class="field-label" for="admin_access-notes-2">Note</label>
+        <input id="admin_access-notes-2" type="text" name="notes" placeholder="How many exist, who cuts copies…">
       </div>
     </div>
     <p class="upload-hint">

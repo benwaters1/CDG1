@@ -19,19 +19,19 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <h2 class="section-heading">Sign somebody in</h2>
   <div class="field-row-2">
-    <input type="text" name="name" placeholder="Name" required>
-    <input type="text" name="company" placeholder="Company">
+    <input aria-label="Name" type="text" name="name" placeholder="Name" required>
+    <input aria-label="Company" type="text" name="company" placeholder="Company">
   </div>
   <div class="field-row-2">
-    <input type="text" name="reason" placeholder="What they are here for">
+    <input aria-label="What they are here for" type="text" name="reason" placeholder="What they are here for">
     <select name="host_user_id">
       <option value="">Who is expecting them</option>
       {% for u in staff %}<option value="{{ u['id'] }}">{{ u['name'] }}</option>{% endfor %}
     </select>
   </div>
   <div class="field-row-2">
-    <input type="text" name="phone" placeholder="Telephone">
-    <input type="text" name="vehicle" placeholder="Vehicle or registration">
+    <input aria-label="Telephone" type="text" name="phone" placeholder="Telephone">
+    <input aria-label="Vehicle or registration" type="text" name="vehicle" placeholder="Vehicle or registration">
   </div>
   <button type="submit" class="btn-mini">Sign in</button>
 </form>

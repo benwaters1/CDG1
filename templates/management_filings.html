@@ -40,8 +40,8 @@
             style="display:flex; gap:6px; align-items:flex-end; flex-wrap:wrap;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="date" name="filed_on" value="{{ today }}" style="width:150px;">
-        <input type="text" name="amount" placeholder="Amount" style="width:100px;">
-        <input type="text" name="reference" placeholder="Reference" style="width:130px;">
+        <input aria-label="Amount" type="text" name="amount" placeholder="Amount" style="width:100px;">
+        <input aria-label="Reference" type="text" name="reference" placeholder="Reference" style="width:130px;">
         <button type="submit" class="btn-mini">Filed</button>
       </form>
     </div>
@@ -87,8 +87,8 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <h2 class="section-heading">Add one</h2>
   <div class="field-row-2">
-    <input type="text" name="name" placeholder="What, e.g. VAT return" required>
-    <input type="text" name="authority" placeholder="To whom, e.g. SIE Foix">
+    <input aria-label="What, e.g. VAT return" type="text" name="name" placeholder="What, e.g. VAT return" required>
+    <input aria-label="To whom, e.g. SIE Foix" type="text" name="authority" placeholder="To whom, e.g. SIE Foix">
   </div>
   <div class="field-row-2">
     <select name="every">
@@ -99,8 +99,8 @@
     <input type="date" name="due_on" required>
   </div>
   <div class="field-row-2">
-    <input type="number" name="warn_days" min="0" placeholder="Warn this many days before (14)">
-    <input type="text" name="note" placeholder="Anything worth remembering">
+    <input aria-label="Warn this many days before (14)" type="number" name="warn_days" min="0" placeholder="Warn this many days before (14)">
+    <input aria-label="Anything worth remembering" type="text" name="note" placeholder="Anything worth remembering">
   </div>
   <button type="submit" class="btn-mini">Add</button>
   <p class="pay-disclaimer" style="margin-top:6px;">The date rolls forward when you record a

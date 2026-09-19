@@ -54,57 +54,57 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="refund-fields">
       <div>
-        <label class="field-label">When</label>
-        <input type="datetime-local" name="occurred_at" required>
+        <label class="field-label" for="admin_incidents-occurred-at">When</label>
+        <input id="admin_incidents-occurred-at" type="datetime-local" name="occurred_at" required>
       </div>
       <div>
-        <label class="field-label">Type</label>
-        <select name="kind">
+        <label class="field-label" for="admin_incidents-kind">Type</label>
+        <select id="admin_incidents-kind" name="kind">
           {% for key, label in incident_kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label class="field-label">Severity</label>
-        <select name="severity">
+        <label class="field-label" for="admin_incidents-severity">Severity</label>
+        <select id="admin_incidents-severity" name="severity">
           {% for key, label in incident_severities.items() %}
           <option value="{{ key }}" {{ 'selected' if key == 'minor' }}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
       <div>
-        <label class="field-label">Where</label>
-        <input type="text" name="location" placeholder="e.g. Kitchen, north stairs, courtyard">
+        <label class="field-label" for="admin_incidents-location">Where</label>
+        <input id="admin_incidents-location" type="text" name="location" placeholder="e.g. Kitchen, north stairs, courtyard">
       </div>
       <div>
-        <label class="field-label">Who was affected (staff)</label>
-        <select name="affected_user_id">
+        <label class="field-label" for="admin_incidents-affected-user-id">Who was affected (staff)</label>
+        <select id="admin_incidents-affected-user-id" name="affected_user_id">
           <option value="">— not a staff member —</option>
           {% for e in employees %}<option value="{{ e['id'] }}">{{ e['name'] }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label class="field-label">…or their name</label>
-        <input type="text" name="affected_person" placeholder="Guest or contractor">
+        <label class="field-label" for="admin_incidents-affected-person">…or their name</label>
+        <input id="admin_incidents-affected-person" type="text" name="affected_person" placeholder="Guest or contractor">
       </div>
       <div class="refund-reason">
-        <label class="field-label">What happened</label>
-        <input type="text" name="summary" required placeholder="One line — this is what shows in the register">
+        <label class="field-label" for="admin_incidents-summary">What happened</label>
+        <input id="admin_incidents-summary" type="text" name="summary" required placeholder="One line — this is what shows in the register">
       </div>
       <div class="refund-reason">
-        <label class="field-label">Detail</label>
-        <textarea name="detail" rows="3" placeholder="Sequence of events, conditions, anything a claim would need."></textarea>
+        <label class="field-label" for="admin_incidents-detail">Detail</label>
+        <textarea id="admin_incidents-detail" name="detail" rows="3" placeholder="Sequence of events, conditions, anything a claim would need."></textarea>
       </div>
       <div>
-        <label class="field-label">Witnesses</label>
-        <input type="text" name="witnesses">
+        <label class="field-label" for="admin_incidents-witnesses">Witnesses</label>
+        <input id="admin_incidents-witnesses" type="text" name="witnesses">
       </div>
       <div>
-        <label class="field-label">Work days lost</label>
-        <input type="number" name="work_days_lost" min="0" step="1">
+        <label class="field-label" for="admin_incidents-work-days-lost">Work days lost</label>
+        <input id="admin_incidents-work-days-lost" type="number" name="work_days_lost" min="0" step="1">
       </div>
       <div>
-        <label class="field-label">Relevant policy</label>
-        <select name="insurance_policy_id">
+        <label class="field-label" for="admin_incidents-insurance-policy-id">Relevant policy</label>
+        <select id="admin_incidents-insurance-policy-id" name="insurance_policy_id">
           <option value="">— none —</option>
           {% for p in policies %}
           <option value="{{ p['id'] }}">{{ p['provider'] }}{% if p['coverage_type'] %} — {{ p['coverage_type'] }}{% endif %}</option>
@@ -112,8 +112,8 @@
         </select>
       </div>
       <div class="refund-reason">
-        <label class="field-label">Action taken</label>
-        <textarea name="action_taken" rows="2" placeholder="What was done at the time, and what will stop it happening again."></textarea>
+        <label class="field-label" for="admin_incidents-action-taken">Action taken</label>
+        <textarea id="admin_incidents-action-taken" name="action_taken" rows="2" placeholder="What was done at the time, and what will stop it happening again."></textarea>
       </div>
     </div>
     <div style="display:flex; gap:16px; align-items:center; margin:10px 0;">
@@ -175,11 +175,11 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div style="flex:1 1 260px;">
         <label class="field-label">Add to the action taken</label>
-        <input type="text" name="action_taken" placeholder="Leave blank to keep what's there">
+        <input aria-label="Leave blank to keep what's there" type="text" name="action_taken" placeholder="Leave blank to keep what's there">
       </div>
       <div>
         <label class="field-label">Status</label>
-        <select name="status">
+        <select aria-label="Status" name="status">
           {% for s in ['open','actioned','closed'] %}
           <option value="{{ s }}" {{ 'selected' if i['status'] == s }}>{{ s|capitalize }}</option>
           {% endfor %}

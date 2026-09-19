@@ -14,58 +14,58 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field-row-2">
       <div>
-        <label class="field-label">Code</label>
-        <input type="text" name="code" style="text-transform:uppercase;" placeholder="e.g. SUMMER25" required>
+        <label class="field-label" for="admin_promo_codes-code">Code</label>
+        <input id="admin_promo_codes-code" type="text" name="code" style="text-transform:uppercase;" placeholder="e.g. SUMMER25" required>
       </div>
       <div>
-        <label class="field-label">Applies to</label>
-        <select name="applies_to">
+        <label class="field-label" for="admin_promo_codes-applies-to">Applies to</label>
+        <select id="admin_promo_codes-applies-to" name="applies_to">
           {% for a in applies_to_options %}
           <option value="{{ a }}">{{ 'All bookings' if a == 'all' else a|capitalize }}</option>
           {% endfor %}
         </select>
       </div>
     </div>
-    <label class="field-label">Description (optional, staff-only)</label>
-    <input type="text" name="description" placeholder="What this code is for">
+    <label class="field-label" for="admin_promo_codes-description">Description (optional, staff-only)</label>
+    <input id="admin_promo_codes-description" type="text" name="description" placeholder="What this code is for">
     <div class="field-row-2">
       <div>
-        <label class="field-label">Discount type</label>
-        <select name="discount_type">
+        <label class="field-label" for="admin_promo_codes-discount-type">Discount type</label>
+        <select id="admin_promo_codes-discount-type" name="discount_type">
           <option value="percent">Percent off</option>
           <option value="fixed">Fixed amount off (€)</option>
         </select>
       </div>
       <div>
-        <label class="field-label">Discount value</label>
-        <input type="number" name="discount_value" step="0.01" min="0.01" required>
+        <label class="field-label" for="admin_promo_codes-discount-value">Discount value</label>
+        <input id="admin_promo_codes-discount-value" type="number" name="discount_value" step="0.01" min="0.01" required>
       </div>
     </div>
     <div class="field-row-2">
       <div>
-        <label class="field-label">Max discount (€, optional — caps a percent code)</label>
-        <input type="number" name="max_discount_amount" step="0.01" min="0">
+        <label class="field-label" for="admin_promo_codes-max-discount-amount">Max discount (€, optional — caps a percent code)</label>
+        <input id="admin_promo_codes-max-discount-amount" type="number" name="max_discount_amount" step="0.01" min="0">
       </div>
       <div>
-        <label class="field-label">Minimum spend (€, optional)</label>
-        <input type="number" name="min_spend" step="0.01" min="0">
+        <label class="field-label" for="admin_promo_codes-min-spend">Minimum spend (€, optional)</label>
+        <input id="admin_promo_codes-min-spend" type="number" name="min_spend" step="0.01" min="0">
       </div>
     </div>
     <div class="field-row-2">
       <div>
-        <label class="field-label">Max redemptions (optional)</label>
-        <input type="number" name="max_redemptions" min="1" placeholder="Unlimited">
+        <label class="field-label" for="admin_promo_codes-max-redemptions">Max redemptions (optional)</label>
+        <input id="admin_promo_codes-max-redemptions" type="number" name="max_redemptions" min="1" placeholder="Unlimited">
       </div>
       <div></div>
     </div>
     <div class="field-row-2">
       <div>
-        <label class="field-label">Valid from (optional)</label>
-        <input type="date" name="valid_from">
+        <label class="field-label" for="admin_promo_codes-valid-from">Valid from (optional)</label>
+        <input id="admin_promo_codes-valid-from" type="date" name="valid_from">
       </div>
       <div>
-        <label class="field-label">Valid until (optional)</label>
-        <input type="date" name="valid_until">
+        <label class="field-label" for="admin_promo_codes-valid-until">Valid until (optional)</label>
+        <input id="admin_promo_codes-valid-until" type="date" name="valid_until">
       </div>
     </div>
     <button type="submit" class="btn-primary" style="margin-top:10px;">Create code</button>
@@ -115,11 +115,11 @@
         <div class="field-row-2">
           <div>
             <label class="field-label">Code</label>
-            <input type="text" name="code" style="text-transform:uppercase;" value="{{ c['code'] }}" required>
+            <input aria-label="Code" type="text" name="code" style="text-transform:uppercase;" value="{{ c['code'] }}" required>
           </div>
           <div>
             <label class="field-label">Applies to</label>
-            <select name="applies_to">
+            <select aria-label="Applies to" name="applies_to">
               {% for a in applies_to_options %}
               <option value="{{ a }}" {{ 'selected' if a == c['applies_to'] }}>{{ 'All bookings' if a == 'all' else a|capitalize }}</option>
               {% endfor %}
@@ -127,45 +127,45 @@
           </div>
         </div>
         <label class="field-label">Description</label>
-        <input type="text" name="description" value="{{ c['description'] or '' }}">
+        <input aria-label="Description" type="text" name="description" value="{{ c['description'] or '' }}">
         <div class="field-row-2">
           <div>
             <label class="field-label">Discount type</label>
-            <select name="discount_type">
+            <select aria-label="Discount type" name="discount_type">
               <option value="percent" {{ 'selected' if c['discount_type'] == 'percent' }}>Percent off</option>
               <option value="fixed" {{ 'selected' if c['discount_type'] == 'fixed' }}>Fixed amount off (€)</option>
             </select>
           </div>
           <div>
             <label class="field-label">Discount value</label>
-            <input type="number" name="discount_value" step="0.01" min="0.01" value="{{ c['discount_value'] }}" required>
+            <input aria-label="Discount value" type="number" name="discount_value" step="0.01" min="0.01" value="{{ c['discount_value'] }}" required>
           </div>
         </div>
         <div class="field-row-2">
           <div>
             <label class="field-label">Max discount (€, optional)</label>
-            <input type="number" name="max_discount_amount" step="0.01" min="0" value="{{ c['max_discount_amount'] if c['max_discount_amount'] is not none else '' }}">
+            <input aria-label="Max discount (€, optional)" type="number" name="max_discount_amount" step="0.01" min="0" value="{{ c['max_discount_amount'] if c['max_discount_amount'] is not none else '' }}">
           </div>
           <div>
             <label class="field-label">Minimum spend (€, optional)</label>
-            <input type="number" name="min_spend" step="0.01" min="0" value="{{ c['min_spend'] if c['min_spend'] is not none else '' }}">
+            <input aria-label="Minimum spend (€, optional)" type="number" name="min_spend" step="0.01" min="0" value="{{ c['min_spend'] if c['min_spend'] is not none else '' }}">
           </div>
         </div>
         <div class="field-row-2">
           <div>
             <label class="field-label">Max redemptions (optional)</label>
-            <input type="number" name="max_redemptions" min="1" value="{{ c['max_redemptions'] if c['max_redemptions'] is not none else '' }}" placeholder="Unlimited">
+            <input aria-label="Max redemptions (optional)" type="number" name="max_redemptions" min="1" value="{{ c['max_redemptions'] if c['max_redemptions'] is not none else '' }}" placeholder="Unlimited">
           </div>
           <div></div>
         </div>
         <div class="field-row-2">
           <div>
             <label class="field-label">Valid from</label>
-            <input type="date" name="valid_from" value="{{ c['valid_from'] or '' }}">
+            <input aria-label="Valid from" type="date" name="valid_from" value="{{ c['valid_from'] or '' }}">
           </div>
           <div>
             <label class="field-label">Valid until</label>
-            <input type="date" name="valid_until" value="{{ c['valid_until'] or '' }}">
+            <input aria-label="Valid until" type="date" name="valid_until" value="{{ c['valid_until'] or '' }}">
           </div>
         </div>
         <button type="submit" class="btn-mini" style="margin-top:8px;">Save</button>

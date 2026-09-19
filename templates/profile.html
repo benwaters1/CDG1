@@ -120,7 +120,7 @@
       {% if user['role'] == 'owner' %}
       <form method="post" action="{{ url_for('new_onboarding_item', user_id=person['id']) }}" class="upload-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="text" name="label" placeholder="Add a step">
+        <input aria-label="Add a step" type="text" name="label" placeholder="Add a step">
         <button type="submit" class="btn-mini">{{ t('Add') }}</button>
       </form>
       {% endif %}
@@ -150,7 +150,7 @@
       </div>
       <form method="post" action="{{ url_for('new_offboarding_item', user_id=person['id']) }}" class="upload-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="text" name="label" placeholder="Add a step">
+        <input aria-label="Add a step" type="text" name="label" placeholder="Add a step">
         <button type="submit" class="btn-mini">{{ t('Add') }}</button>
       </form>
     </div>
@@ -227,8 +227,8 @@
       {% if user['role'] == 'owner' %}
       <form method="post" action="{{ url_for('new_equipment_item', user_id=person['id']) }}" class="upload-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="text" name="label" placeholder="e.g. Master key, uniform (2x)" required>
-        <input type="text" name="notes" placeholder="Notes (optional)">
+        <input aria-label="e.g. Master key, uniform (2x)" type="text" name="label" placeholder="e.g. Master key, uniform (2x)" required>
+        <input aria-label="Notes (optional)" type="text" name="notes" placeholder="Notes (optional)">
         <button type="submit" class="btn-mini">{{ t('Log issued item') }}</button>
       </form>
       {% endif %}
@@ -334,7 +334,7 @@
       {% endif %}
       <form method="post" action="{{ url_for('new_check_in_note', user_id=person['id']) }}" class="upload-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <textarea name="body" rows="2" placeholder="e.g. Discussed weekend availability, went well."></textarea>
+        <textarea aria-label="e.g. Discussed weekend availability, went well." name="body" rows="2" placeholder="e.g. Discussed weekend availability, went well."></textarea>
         <button type="submit" class="btn-mini" style="align-self:flex-start;">{{ t('Add note') }}</button>
       </form>
     </div>
@@ -362,7 +362,7 @@
             <span class="small-link" style="color:var(--steel); margin-left:8px; cursor:pointer;" onclick="toggleFlag({{ s['id'] }})">{{ t('Flag') }}</span>
             <form method="post" action="{{ url_for('flag_timesheet_entry', entry_id=s['id']) }}" id="flag-{{ s['id'] }}" class="upload-form" style="display:none; width:100%; margin-top:6px;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="text" name="note" placeholder="What looks wrong?" required>
+              <input aria-label="What looks wrong?" type="text" name="note" placeholder="What looks wrong?" required>
               <button type="submit" class="btn-mini">{{ t('Send') }}</button>
             </form>
             {% endif %}
@@ -394,7 +394,7 @@
           <form method="post" action="{{ url_for('edit_document', doc_id=d['id']) }}" id="edit-doc-{{ d['id'] }}" class="search-bar" style="display:none; margin-top:6px;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div style="flex:1;">
-              <input type="text" name="title" value="{{ d['title'] }}" placeholder="Title" required>
+              <input aria-label="Title" type="text" name="title" value="{{ d['title'] }}" placeholder="Title" required>
             </div>
             <div>
               <input type="date" name="expiry_date" value="{{ d['expiry_date'] or '' }}">
@@ -409,10 +409,10 @@
 
       <form method="post" action="{{ url_for('upload_document', user_id=person['id']) }}" enctype="multipart/form-data" class="upload-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="text" name="title" placeholder="Document title (e.g. Contract)">
+        <input aria-label="Document title (e.g. Contract)" type="text" name="title" placeholder="Document title (e.g. Contract)">
         <input type="file" name="document" required>
-        <label class="field-label">{{ t('Expiry date (optional — for permits, certifications)') }}</label>
-        <input type="date" name="expiry_date">
+        <label class="field-label" for="profile-expiry-date">{{ t('Expiry date (optional — for permits, certifications)') }}</label>
+        <input id="profile-expiry-date" type="date" name="expiry_date">
         <button type="submit" class="btn-mini">{{ t('Upload') }}</button>
         <p class="upload-hint">{{ t('PDF, image, or Word doc, up to 15MB.') }}</p>
       </form>

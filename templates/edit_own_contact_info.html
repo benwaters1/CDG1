@@ -7,19 +7,19 @@
   <p class="pay-disclaimer" style="margin-top:-6px;">For anything else on your profile — role, pay, skills — ask the owner.</p>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field-label">Phone</label>
-    <input type="tel" name="phone" value="{{ person['phone'] or '' }}" autocomplete="tel">
+    <label class="field-label" for="edit_own_contact_info-phone">Phone</label>
+    <input id="edit_own_contact_info-phone" type="tel" name="phone" value="{{ person['phone'] or '' }}" autocomplete="tel">
 
-    <label class="field-label" style="margin-top:16px;">Emergency contact</label>
+    <label class="field-label" style="margin-top:16px;" for="edit_own_contact_info-emergency-contact-name">Emergency contact</label>
     <div class="field-row-2">
       <div>
-        <input type="text" name="emergency_contact_name" placeholder="Name" value="{{ person['emergency_contact_name'] or '' }}">
+        <input id="edit_own_contact_info-emergency-contact-name" type="text" name="emergency_contact_name" placeholder="Name" value="{{ person['emergency_contact_name'] or '' }}">
       </div>
       <div>
-        <input type="text" name="emergency_contact_relationship" placeholder="Relationship (e.g. Spouse)" value="{{ person['emergency_contact_relationship'] or '' }}">
+        <input aria-label="Relationship (e.g. Spouse)" type="text" name="emergency_contact_relationship" placeholder="Relationship (e.g. Spouse)" value="{{ person['emergency_contact_relationship'] or '' }}">
       </div>
     </div>
-    <input type="tel" name="emergency_contact_phone" placeholder="Phone" value="{{ person['emergency_contact_phone'] or '' }}" style="margin-top:8px;" autocomplete="tel">
+    <input aria-label="Phone" type="tel" name="emergency_contact_phone" placeholder="Phone" value="{{ person['emergency_contact_phone'] or '' }}" style="margin-top:8px;" autocomplete="tel">
 
     <button type="submit" class="btn-primary">Save</button>
   </form>

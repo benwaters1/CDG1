@@ -46,16 +46,16 @@
     <input type="date" name="shift_date" value="{{ week.range_start.isoformat() }}" required>
   </div>
   <div>
-    <label class="field-label">Start</label>
-    <input type="time" name="start_time">
+    <label class="field-label" for="admin_shifts-start-time">Start</label>
+    <input id="admin_shifts-start-time" type="time" name="start_time">
   </div>
   <div>
-    <label class="field-label">End</label>
-    <input type="time" name="end_time">
+    <label class="field-label" for="admin_shifts-end-time">End</label>
+    <input id="admin_shifts-end-time" type="time" name="end_time">
   </div>
   <div style="flex:2 1 200px;">
-    <label class="field-label">Role / note</label>
-    <input type="text" name="role_note" placeholder="e.g. Front desk cover">
+    <label class="field-label" for="admin_shifts-role-note">Role / note</label>
+    <input id="admin_shifts-role-note" type="text" name="role_note" placeholder="e.g. Front desk cover">
   </div>
   <button type="submit" class="btn-mini">+ Add shift</button>
 </form>

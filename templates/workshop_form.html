@@ -6,20 +6,20 @@
   <h1>{% if workshop %}Edit {{ workshop['title'] }}{% else %}Add Workshop{% endif %}</h1>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field-label">Title</label>
-    <input type="text" name="title" required value="{{ workshop['title'] if workshop else '' }}">
+    <label class="field-label" for="workshop_form-title">Title</label>
+    <input id="workshop_form-title" type="text" name="title" required value="{{ workshop['title'] if workshop else '' }}">
 
-    <label class="field-label">Description (shown to guests)</label>
-    <textarea name="description" placeholder="What this workshop covers, what to bring, who it's for">{{ workshop['description'] if workshop else '' }}</textarea>
+    <label class="field-label" for="workshop_form-description">Description (shown to guests)</label>
+    <textarea id="workshop_form-description" name="description" placeholder="What this workshop covers, what to bring, who it's for">{{ workshop['description'] if workshop else '' }}</textarea>
 
     <div class="field-row-2">
       <div>
-        <label class="field-label">Instructor name</label>
-        <input type="text" name="instructor_name" value="{{ workshop['instructor_name'] if workshop else '' }}">
+        <label class="field-label" for="workshop_form-instructor-name">Instructor name</label>
+        <input id="workshop_form-instructor-name" type="text" name="instructor_name" value="{{ workshop['instructor_name'] if workshop else '' }}">
       </div>
       <div>
-        <label class="field-label">Instructor (if staff)</label>
-        <select name="instructor_user_id">
+        <label class="field-label" for="workshop_form-instructor-user-id">Instructor (if staff)</label>
+        <select id="workshop_form-instructor-user-id" name="instructor_user_id">
           <option value="">— not on staff —</option>
           {% for i in instructors %}
           <option value="{{ i['id'] }}" {{ 'selected' if workshop and workshop['instructor_user_id'] == i['id'] }}>{{ i['name'] }}{{ ' (owner)' if i['role'] == 'owner' }}</option>
@@ -30,30 +30,30 @@
 
     <div class="field-row-2">
       <div>
-        <label class="field-label">Price per person (€)</label>
-        <input type="number" name="price_per_person" step="0.01" min="0" value="{{ workshop['price_per_person'] if workshop else '' }}">
+        <label class="field-label" for="workshop_form-price-per-person">Price per person (€)</label>
+        <input id="workshop_form-price-per-person" type="number" name="price_per_person" step="0.01" min="0" value="{{ workshop['price_per_person'] if workshop else '' }}">
       </div>
       <div>
-        <label class="field-label">Default capacity</label>
-        <input type="number" name="default_capacity" min="1" value="{{ workshop['default_capacity'] if workshop else 10 }}">
+        <label class="field-label" for="workshop_form-default-capacity">Default capacity</label>
+        <input id="workshop_form-default-capacity" type="number" name="default_capacity" min="1" value="{{ workshop['default_capacity'] if workshop else 10 }}">
       </div>
     </div>
     <p class="upload-hint">Default capacity pre-fills new sessions — each session can still set its own.</p>
 
-    <label class="field-label" style="margin-top:16px;">What's included (shown to guests)</label>
-    <textarea name="inclusions" placeholder="e.g. Accommodation, all meals and château beverages, and all workshop activities as per the itinerary. Excludes transport and travel insurance.">{{ workshop['inclusions'] if workshop else '' }}</textarea>
+    <label class="field-label" style="margin-top:16px;" for="workshop_form-inclusions">What's included (shown to guests)</label>
+    <textarea id="workshop_form-inclusions" name="inclusions" placeholder="e.g. Accommodation, all meals and château beverages, and all workshop activities as per the itinerary. Excludes transport and travel insurance.">{{ workshop['inclusions'] if workshop else '' }}</textarea>
 
-    <label class="field-label">Day-by-day itinerary (shown to guests)</label>
-    <textarea name="itinerary" rows="6" placeholder="Day 1: Arrival, welcome dinner&#10;Day 2: Morning session, free afternoon, group dinner&#10;Day 3: Closing session, departure">{{ workshop['itinerary'] if workshop else '' }}</textarea>
+    <label class="field-label" for="workshop_form-itinerary">Day-by-day itinerary (shown to guests)</label>
+    <textarea id="workshop_form-itinerary" name="itinerary" rows="6" placeholder="Day 1: Arrival, welcome dinner&#10;Day 2: Morning session, free afternoon, group dinner&#10;Day 3: Closing session, departure">{{ workshop['itinerary'] if workshop else '' }}</textarea>
     <p class="upload-hint">One line per day works well — line breaks are preserved on the public workshop page.</p>
 
-    <label class="field-label" style="margin-top:16px;">Single-occupancy supplement (€ per person)</label>
-    <input type="number" name="single_supplement" min="0" step="1" placeholder="Leave empty for none"
+    <label class="field-label" style="margin-top:16px;" for="workshop_form-single-supplement">Single-occupancy supplement (€ per person)</label>
+    <input id="workshop_form-single-supplement" type="number" name="single_supplement" min="0" step="1" placeholder="Leave empty for none"
            value="{{ workshop['single_supplement'] if workshop and workshop['single_supplement'] is not none else '' }}">
     <p class="upload-hint">The price above assumes a shared room. This is what a guest pays on top for a room to themselves — a common request, and the only way it gets charged. Left empty, a solo room is offered at no extra cost.</p>
 
-    <label class="field-label">Deposit required at booking (%)</label>
-    <input type="number" name="deposit_percent" min="0" max="100" value="{{ workshop['deposit_percent'] if workshop else 30 }}">
+    <label class="field-label" for="workshop_form-deposit-percent">Deposit required at booking (%)</label>
+    <input id="workshop_form-deposit-percent" type="number" name="deposit_percent" min="0" max="100" value="{{ workshop['deposit_percent'] if workshop else 30 }}">
     <p class="upload-hint">The rest is due as a balance {{ windows.workshop_balance_days }} days before the session starts (or in full, if booked within {{ windows.workshop_balance_days }} days).</p>
 
     {% if workshop %}

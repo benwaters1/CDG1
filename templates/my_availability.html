@@ -48,15 +48,15 @@
     <input type="date" name="on_date" min="{{ today.isoformat() }}" required>
   </div>
   <div>
-    <label class="field-label">I am…</label>
-    <select name="available">
+    <label class="field-label" for="my_availability-available">I am…</label>
+    <select id="my_availability-available" name="available">
       <option value="">{{ t('not available') }}</option>
       <option value="1">{{ t('available') }}</option>
     </select>
   </div>
   <div style="flex:2 1 200px;">
-    <label class="field-label">{{ t('Note (optional)') }}</label>
-    <input type="text" name="note" placeholder="Family thing, appointment…">
+    <label class="field-label" for="my_availability-note">{{ t('Note (optional)') }}</label>
+    <input id="my_availability-note" type="text" name="note" placeholder="Family thing, appointment…">
   </div>
   <button type="submit" class="btn-mini">{{ t('Add') }}</button>
 </form>

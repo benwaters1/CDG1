@@ -48,14 +48,14 @@
       <div id="bank-edit-{{ e['id'] }}" style="display:none; margin-top:12px; padding-top:12px; border-top:1px dashed var(--parchment-line);">
         <form method="post" action="{{ url_for('edit_bank_details', entry_id=e['id']) }}" style="display:flex; flex-direction:column; gap:8px;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="text" name="label" value="{{ e['label'] }}" placeholder="Label (e.g. Main operating account)" required>
-          <input type="text" name="bank_name" value="{{ e['bank_name'] or '' }}" placeholder="Bank name">
-          <input type="text" name="account_holder" value="{{ e['account_holder'] or '' }}" placeholder="Account holder">
-          <input type="text" name="currency" value="{{ e['currency'] or '' }}" placeholder="Currency (e.g. EUR)">
-          <input type="text" name="account_number" placeholder="New account number — leave blank to keep current">
-          <input type="text" name="iban" placeholder="New IBAN — leave blank to keep current">
-          <input type="text" name="swift_bic" placeholder="New SWIFT/BIC — leave blank to keep current">
-          <textarea name="notes" rows="2" placeholder="Notes">{{ e['notes'] or '' }}</textarea>
+          <input aria-label="Label (e.g. Main operating account)" type="text" name="label" value="{{ e['label'] }}" placeholder="Label (e.g. Main operating account)" required>
+          <input aria-label="Bank name" type="text" name="bank_name" value="{{ e['bank_name'] or '' }}" placeholder="Bank name">
+          <input aria-label="Account holder" type="text" name="account_holder" value="{{ e['account_holder'] or '' }}" placeholder="Account holder">
+          <input aria-label="Currency (e.g. EUR)" type="text" name="currency" value="{{ e['currency'] or '' }}" placeholder="Currency (e.g. EUR)">
+          <input aria-label="New account number — leave blank to keep current" type="text" name="account_number" placeholder="New account number — leave blank to keep current">
+          <input aria-label="New IBAN — leave blank to keep current" type="text" name="iban" placeholder="New IBAN — leave blank to keep current">
+          <input aria-label="New SWIFT/BIC — leave blank to keep current" type="text" name="swift_bic" placeholder="New SWIFT/BIC — leave blank to keep current">
+          <textarea aria-label="Notes" name="notes" rows="2" placeholder="Notes">{{ e['notes'] or '' }}</textarea>
           <button type="submit" class="btn-mini" style="align-self:flex-start;">Save changes</button>
         </form>
       </div>
@@ -67,14 +67,14 @@
     <h3>Add bank details</h3>
     <form method="post" action="{{ url_for('new_bank_details') }}" class="upload-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="label" placeholder="Label (e.g. Main operating account)" required>
-      <input type="text" name="bank_name" placeholder="Bank name">
-      <input type="text" name="account_holder" placeholder="Account holder">
-      <input type="text" name="currency" placeholder="Currency (e.g. EUR)">
-      <input type="text" name="account_number" placeholder="Account number">
-      <input type="text" name="iban" placeholder="IBAN">
-      <input type="text" name="swift_bic" placeholder="SWIFT/BIC">
-      <textarea name="notes" rows="2" placeholder="Notes (optional)"></textarea>
+      <input aria-label="Label (e.g. Main operating account)" type="text" name="label" placeholder="Label (e.g. Main operating account)" required>
+      <input aria-label="Bank name" type="text" name="bank_name" placeholder="Bank name">
+      <input aria-label="Account holder" type="text" name="account_holder" placeholder="Account holder">
+      <input aria-label="Currency (e.g. EUR)" type="text" name="currency" placeholder="Currency (e.g. EUR)">
+      <input aria-label="Account number" type="text" name="account_number" placeholder="Account number">
+      <input aria-label="IBAN" type="text" name="iban" placeholder="IBAN">
+      <input aria-label="SWIFT/BIC" type="text" name="swift_bic" placeholder="SWIFT/BIC">
+      <textarea aria-label="Notes (optional)" name="notes" rows="2" placeholder="Notes (optional)"></textarea>
       <button type="submit" class="btn-mini">Save</button>
     </form>
   </div>

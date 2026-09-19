@@ -20,13 +20,13 @@
   <h2 class="section-heading">Claim a journey</h2>
   <div class="field-row-2">
     <input type="date" name="travelled_on" value="{{ today }}">
-    <input type="text" name="kilometres" placeholder="How many kilometres" required>
+    <input aria-label="How many kilometres" type="text" name="kilometres" placeholder="How many kilometres" required>
   </div>
   <div class="field-row-2">
-    <input type="text" name="from_place" placeholder="From">
-    <input type="text" name="to_place" placeholder="To">
+    <input aria-label="From" type="text" name="from_place" placeholder="From">
+    <input aria-label="To" type="text" name="to_place" placeholder="To">
   </div>
-  <input type="text" name="reason" placeholder="What for" style="width:100%;">
+  <input aria-label="What for" type="text" name="reason" placeholder="What for" style="width:100%;">
   <button type="submit" class="btn-mini" style="margin-top:8px;">Claim</button>
   <p class="pay-disclaimer" style="margin-top:6px;">At &euro;{{ '%.2f'|format(rate) }} a kilometre.
     Claims need approving before they are paid.</p>

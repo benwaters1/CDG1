@@ -27,7 +27,7 @@
 
 <div class="overview-filters" id="overview-filters">
   <div>
-    <label class="field-label">Lane</label>
+    <label class="field-label" for="f-lane">Lane</label>
     <select id="f-lane">
       <option value="">All</option>
       <option value="booking">Bookings</option>
@@ -38,7 +38,7 @@
     </select>
   </div>
   <div>
-    <label class="field-label">Related to</label>
+    <label class="field-label" for="f-guest">Related to</label>
     <select id="f-guest">
       <option value="">All</option>
       <option value="guest">Guest-related</option>
@@ -46,7 +46,7 @@
     </select>
   </div>
   <div>
-    <label class="field-label">Origin</label>
+    <label class="field-label" for="f-scheduled">Origin</label>
     <select id="f-scheduled">
       <option value="">All</option>
       <option value="1">Scheduled (checklist/recurring)</option>
@@ -54,7 +54,7 @@
     </select>
   </div>
   <div>
-    <label class="field-label">Employee</label>
+    <label class="field-label" for="f-employee">Employee</label>
     <select id="f-employee">
       <option value="">Everyone</option>
       {% for e in sheet.employees %}
@@ -78,20 +78,20 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="assigned_to_user_id" value="{{ sheet.owner_id }}">
     <div style="flex:2 1 220px;">
-      <label class="field-label">My task (owner)</label>
-      <input type="text" name="title" placeholder="e.g. Pay the electricity bill" required>
+      <label class="field-label" for="admin_overview-title">My task (owner)</label>
+      <input id="admin_overview-title" type="text" name="title" placeholder="e.g. Pay the electricity bill" required>
     </div>
     <div>
-      <label class="field-label">Priority</label>
-      <select name="priority">
+      <label class="field-label" for="admin_overview-priority">Priority</label>
+      <select id="admin_overview-priority" name="priority">
         <option value="low">Low</option>
         <option value="normal" selected>Normal</option>
         <option value="high">High</option>
       </select>
     </div>
     <div>
-      <label class="field-label">Due date</label>
-      <input type="date" name="due_date" value="{{ sheet.anchor.isoformat() }}">
+      <label class="field-label" for="admin_overview-due-date">Due date</label>
+      <input id="admin_overview-due-date" type="date" name="due_date" value="{{ sheet.anchor.isoformat() }}">
     </div>
     <button type="submit" class="btn-mini">+ Add my task</button>
   </form>

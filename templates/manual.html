@@ -84,7 +84,7 @@
   {% if user['role'] == 'owner' %}
   <form method="post" action="{{ url_for('new_manual_section') }}" class="new-section-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" name="title" placeholder="New section title (e.g. Kitchen & Meals)">
+    <input aria-label="New section title (e.g. Kitchen & Meals)" type="text" name="title" placeholder="New section title (e.g. Kitchen & Meals)">
     <button type="submit" class="btn-mini">{{ t('+ Add section') }}</button>
   </form>
   {% endif %}

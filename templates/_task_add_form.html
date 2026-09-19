@@ -2,7 +2,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div>
     <label class="field-label">Employee</label>
-    <select name="assigned_to_user_id" required>
+    <select aria-label="Employee" name="assigned_to_user_id" required>
       {% for e in sheet.employees %}
       <option value="{{ e['id'] }}">{{ e['name'] }}</option>
       {% endfor %}
@@ -10,15 +10,15 @@
   </div>
   <div style="flex:2 1 220px;">
     <label class="field-label">Task</label>
-    <input type="text" name="title" placeholder="e.g. Turn over Tour Nord Suite" required>
+    <input aria-label="Task" type="text" name="title" placeholder="e.g. Turn over Tour Nord Suite" required>
   </div>
   <div style="flex:2 1 200px;">
     <label class="field-label">Room / guest</label>
-    <input type="text" name="room_note" placeholder="e.g. Tour Nord Suite, 2 guests">
+    <input aria-label="Room / guest" type="text" name="room_note" placeholder="e.g. Tour Nord Suite, 2 guests">
   </div>
   <div>
     <label class="field-label">Priority</label>
-    <select name="priority">
+    <select aria-label="Priority" name="priority">
       <option value="low">Low</option>
       <option value="normal" selected>Normal</option>
       <option value="high">High</option>
@@ -26,7 +26,7 @@
   </div>
   <div>
     <label class="field-label">Due date</label>
-    <input type="date" name="due_date" value="{{ sheet.anchor.isoformat() if sheet is defined else '' }}">
+    <input aria-label="Due date" type="date" name="due_date" value="{{ sheet.anchor.isoformat() if sheet is defined else '' }}">
   </div>
   <div style="flex-direction:row; align-items:center; gap:6px; align-self:flex-end; padding-bottom:9px;">
     <input type="checkbox" name="repeat_weekly" id="repeat_weekly" value="1">

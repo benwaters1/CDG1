@@ -26,8 +26,8 @@
 
 <form method="get" class="search-bar">
   <div>
-    <label class="field-label">Status</label>
-    <select name="status" onchange="this.form.submit()">
+    <label class="field-label" for="room_issues-status">Status</label>
+    <select id="room_issues-status" name="status" onchange="this.form.submit()">
       <option value="open" {{ 'selected' if status_filter == 'open' }}>Open</option>
       <option value="resolved" {{ 'selected' if status_filter == 'resolved' }}>Resolved</option>
       <option value="all" {{ 'selected' if status_filter == 'all' }}>All</option>
@@ -89,8 +89,8 @@
       <option value="{{ r['id'] }}">{{ r['name'] }}</option>
       {% endfor %}
     </select>
-    <input type="text" name="title" placeholder="Short summary (e.g. Leaking tap)" required>
-    <input type="text" name="description" placeholder="More detail (optional)">
+    <input aria-label="Short summary (e.g. Leaking tap)" type="text" name="title" placeholder="Short summary (e.g. Leaking tap)" required>
+    <input aria-label="More detail (optional)" type="text" name="description" placeholder="More detail (optional)">
     {% if user['role'] == 'owner' %}
     <select name="assigned_to_user_id">
       <option value="">Also assign a task to… (optional)</option>

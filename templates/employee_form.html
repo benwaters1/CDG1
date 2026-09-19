@@ -11,37 +11,37 @@
   {% endif %}
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field-label">Full name</label>
-    <input type="text" name="name" required value="{{ employee['name'] if employee else (prefill_name or '') }}">
+    <label class="field-label" for="employee_form-name">Full name</label>
+    <input id="employee_form-name" type="text" name="name" required value="{{ employee['name'] if employee else (prefill_name or '') }}">
 
     {% if not employee %}
-    <label class="field-label">Email (they'll use this to log in)</label>
-    <input type="email" name="email" required value="{{ prefill_email or '' }}" autocomplete="email">
+    <label class="field-label" for="employee_form-email">Email (they'll use this to log in)</label>
+    <input id="employee_form-email" type="email" name="email" required value="{{ prefill_email or '' }}" autocomplete="email">
     {% endif %}
 
-    <label class="field-label">Role</label>
-    <input type="text" name="job_role" placeholder="e.g. Head Housekeeper" value="{{ employee['job_role'] if employee else (prefill_job_role or '') }}">
+    <label class="field-label" for="employee_form-job-role">Role</label>
+    <input id="employee_form-job-role" type="text" name="job_role" placeholder="e.g. Head Housekeeper" value="{{ employee['job_role'] if employee else (prefill_job_role or '') }}">
 
     <div class="field-row-2">
       <div>
-        <label class="field-label">Phone</label>
-        <input type="tel" name="phone" value="{{ employee['phone'] if employee else (prefill_phone or '') }}" autocomplete="tel">
+        <label class="field-label" for="employee_form-phone">Phone</label>
+        <input id="employee_form-phone" type="tel" name="phone" value="{{ employee['phone'] if employee else (prefill_phone or '') }}" autocomplete="tel">
       </div>
       <div>
-        <label class="field-label">Start date</label>
-        <input type="date" name="start_date" value="{{ employee['start_date'] if employee else '' }}">
+        <label class="field-label" for="employee_form-start-date">Start date</label>
+        <input id="employee_form-start-date" type="date" name="start_date" value="{{ employee['start_date'] if employee else '' }}">
       </div>
     </div>
 
     {% if employee %}
-    <label class="field-label">Status</label>
-    <select name="status">
+    <label class="field-label" for="employee_form-status">Status</label>
+    <select id="employee_form-status" name="status">
       <option value="active" {{ 'selected' if employee['status']=='active' }}>Active</option>
       <option value="inactive" {{ 'selected' if employee['status']=='inactive' }}>Inactive</option>
     </select>
 
-    <label class="field-label">Reason for leaving (optional)</label>
-    <input type="text" name="reason_for_leaving" placeholder="e.g. Resigned, end of contract, terminated" value="{{ employee['reason_for_leaving'] or '' }}">
+    <label class="field-label" for="employee_form-reason-for-leaving">Reason for leaving (optional)</label>
+    <input id="employee_form-reason-for-leaving" type="text" name="reason_for_leaving" placeholder="e.g. Resigned, end of contract, terminated" value="{{ employee['reason_for_leaving'] or '' }}">
     {% endif %}
 
     <h3 style="margin:22px 0 0;">Contract</h3>
@@ -50,7 +50,7 @@
     </p>
     <div class="field-row-2">
       <div>
-        <label class="field-label">Contract type</label>
+        <label class="field-label" for="contract-type">Contract type</label>
         <select name="contract_type" id="contract-type">
           <option value="">— not set —</option>
           {% for key, label in contract_types.items() %}
@@ -59,58 +59,58 @@
         </select>
       </div>
       <div>
-        <label class="field-label">Notice period (days)</label>
-        <input type="number" name="notice_period_days" min="0" step="1" placeholder="e.g. 30"
+        <label class="field-label" for="employee_form-notice-period-days">Notice period (days)</label>
+        <input id="employee_form-notice-period-days" type="number" name="notice_period_days" min="0" step="1" placeholder="e.g. 30"
                value="{{ employee['notice_period_days'] if employee and employee['notice_period_days'] is not none else '' }}">
       </div>
     </div>
     <div class="field-row-2">
       <div>
-        <label class="field-label">Trial period ends</label>
-        <input type="date" name="trial_end_date" value="{{ employee['trial_end_date'] if employee and employee['trial_end_date'] else '' }}">
+        <label class="field-label" for="employee_form-trial-end-date">Trial period ends</label>
+        <input id="employee_form-trial-end-date" type="date" name="trial_end_date" value="{{ employee['trial_end_date'] if employee and employee['trial_end_date'] else '' }}">
         <span class="upload-hint">Flagged {{ trial_warning_days }} days ahead.</span>
       </div>
       <div>
-        <label class="field-label">Fixed term ends</label>
-        <input type="date" name="contract_end_date" value="{{ employee['contract_end_date'] if employee and employee['contract_end_date'] else '' }}">
+        <label class="field-label" for="employee_form-contract-end-date">Fixed term ends</label>
+        <input id="employee_form-contract-end-date" type="date" name="contract_end_date" value="{{ employee['contract_end_date'] if employee and employee['contract_end_date'] else '' }}">
         <span class="upload-hint">Only applies to a fixed-term contract — ignored on a permanent one.</span>
       </div>
     </div>
 
     <div class="field-row-2">
       <div>
-        <label class="field-label">Pay rate (reference only)</label>
-        <input type="text" name="pay_rate" placeholder="e.g. €14/hour" value="{{ employee['pay_rate'] if employee else '' }}">
+        <label class="field-label" for="employee_form-pay-rate">Pay rate (reference only)</label>
+        <input id="employee_form-pay-rate" type="text" name="pay_rate" placeholder="e.g. €14/hour" value="{{ employee['pay_rate'] if employee else '' }}">
       </div>
       <div>
-        <label class="field-label">Pay type</label>
-        <input type="text" name="pay_type" placeholder="e.g. Hourly, salaried" value="{{ employee['pay_type'] if employee else '' }}">
+        <label class="field-label" for="employee_form-pay-type">Pay type</label>
+        <input id="employee_form-pay-type" type="text" name="pay_type" placeholder="e.g. Hourly, salaried" value="{{ employee['pay_type'] if employee else '' }}">
       </div>
     </div>
 
-    <label class="field-label">Annual leave entitlement (days/year)</label>
-    <input type="number" name="annual_leave_days" min="0" step="1" placeholder="e.g. 25" value="{{ employee['annual_leave_days'] if employee and employee['annual_leave_days'] is not none else '' }}">
+    <label class="field-label" for="employee_form-annual-leave-days">Annual leave entitlement (days/year)</label>
+    <input id="employee_form-annual-leave-days" type="number" name="annual_leave_days" min="0" step="1" placeholder="e.g. 25" value="{{ employee['annual_leave_days'] if employee and employee['annual_leave_days'] is not none else '' }}">
     <p class="upload-hint" style="margin:-2px 0 0 0;">Leave blank to hide the leave balance on their profile.</p>
 
     {% if employee %}
-    <label class="field-label">Skills / certifications</label>
-    <input type="text" name="skills" placeholder="e.g. First aid, pool chemicals, driving license" value="{{ employee['skills'] or '' }}">
+    <label class="field-label" for="employee_form-skills">Skills / certifications</label>
+    <input id="employee_form-skills" type="text" name="skills" placeholder="e.g. First aid, pool chemicals, driving license" value="{{ employee['skills'] or '' }}">
     <p class="upload-hint" style="margin:-2px 0 0 0;">Comma-separated — shown as tags on their profile.</p>
 
-    <label class="field-label" style="margin-top:16px;">Emergency contact</label>
+    <label class="field-label" style="margin-top:16px;" for="employee_form-emergency-contact-name">Emergency contact</label>
     <div class="field-row-2">
       <div>
-        <input type="text" name="emergency_contact_name" placeholder="Name" value="{{ employee['emergency_contact_name'] or '' }}">
+        <input id="employee_form-emergency-contact-name" type="text" name="emergency_contact_name" placeholder="Name" value="{{ employee['emergency_contact_name'] or '' }}">
       </div>
       <div>
-        <input type="text" name="emergency_contact_relationship" placeholder="Relationship (e.g. Spouse)" value="{{ employee['emergency_contact_relationship'] or '' }}">
+        <input aria-label="Relationship (e.g. Spouse)" type="text" name="emergency_contact_relationship" placeholder="Relationship (e.g. Spouse)" value="{{ employee['emergency_contact_relationship'] or '' }}">
       </div>
     </div>
-    <input type="tel" name="emergency_contact_phone" placeholder="Phone" value="{{ employee['emergency_contact_phone'] or '' }}" style="margin-top:8px;" autocomplete="tel">
+    <input aria-label="Phone" type="tel" name="emergency_contact_phone" placeholder="Phone" value="{{ employee['emergency_contact_phone'] or '' }}" style="margin-top:8px;" autocomplete="tel">
     {% endif %}
 
-    <label class="field-label">Notes</label>
-    <textarea name="notes" placeholder="Schedule notes, preferences — nothing sensitive.">{{ employee['notes'] if employee else '' }}</textarea>
+    <label class="field-label" for="employee_form-notes">Notes</label>
+    <textarea id="employee_form-notes" name="notes" placeholder="Schedule notes, preferences — nothing sensitive.">{{ employee['notes'] if employee else '' }}</textarea>
 
     <button type="submit" class="btn-primary">{% if employee %}Save changes{% else %}Add employee{% endif %}</button>
   </form>

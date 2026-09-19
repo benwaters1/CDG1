@@ -26,12 +26,12 @@
       <option value="{{ u.unit['id'] }}">{{ u.unit['name'] }}{% if u.unit['where_it_is'] %} &mdash; {{ u.unit['where_it_is'] }}{% endif %}</option>
       {% endfor %}
     </select>
-    <input type="text" name="celsius" inputmode="decimal" placeholder="What it reads, e.g. 4.5" required>
+    <input aria-label="What it reads, e.g. 4.5" type="text" name="celsius" inputmode="decimal" placeholder="What it reads, e.g. 4.5" required>
   </div>
   <div class="field-row-2">
-    <input type="text" name="action_taken" maxlength="300"
+    <input aria-label="If it was out of range, what was done about it" type="text" name="action_taken" maxlength="300"
            placeholder="If it was out of range, what was done about it">
-    <input type="text" name="note" maxlength="200" placeholder="Anything else worth saying">
+    <input aria-label="Anything else worth saying" type="text" name="note" maxlength="200" placeholder="Anything else worth saying">
   </div>
   <button type="submit" class="btn-mini">Write it down</button>
   <p class="pay-disclaimer" style="margin-top:6px;">A reading outside the range is recorded even
@@ -101,12 +101,12 @@
   <input type="hidden" name="what" value="unit">
   <h2 class="section-heading">Add a unit</h2>
   <div class="field-row-2">
-    <input type="text" name="name" maxlength="80" placeholder="What it is called, e.g. Walk-in" required>
-    <input type="text" name="where_it_is" maxlength="80" placeholder="Where it is">
+    <input aria-label="What it is called, e.g. Walk-in" type="text" name="name" maxlength="80" placeholder="What it is called, e.g. Walk-in" required>
+    <input aria-label="Where it is" type="text" name="where_it_is" maxlength="80" placeholder="Where it is">
   </div>
   <div class="field-row-2">
-    <input type="text" name="min_c" inputmode="decimal" placeholder="No colder than, in C">
-    <input type="text" name="max_c" inputmode="decimal" placeholder="No warmer than, in C">
+    <input aria-label="No colder than, in C" type="text" name="min_c" inputmode="decimal" placeholder="No colder than, in C">
+    <input aria-label="No warmer than, in C" type="text" name="max_c" inputmode="decimal" placeholder="No warmer than, in C">
   </div>
   <button type="submit" class="btn-mini">Add it</button>
   <p class="pay-disclaimer" style="margin-top:6px;">Leave the range blank if you do not know it.

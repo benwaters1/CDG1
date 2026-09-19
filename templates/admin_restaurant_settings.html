@@ -11,24 +11,24 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="detail-grid" style="grid-template-columns:1fr 1fr;">
     <div>
-      <label class="field-label">Opening date</label>
-      <input type="date" name="opening_date" value="{{ settings['opening_date'] or '' }}">
+      <label class="field-label" for="admin_restaurant_settings-opening-date">Opening date</label>
+      <input id="admin_restaurant_settings-opening-date" type="date" name="opening_date" value="{{ settings['opening_date'] or '' }}">
     </div>
     <div>
-      <label class="field-label">Dinner time</label>
-      <input type="text" name="dinner_time" value="{{ settings['dinner_time'] }}" placeholder="19:30">
+      <label class="field-label" for="admin_restaurant_settings-dinner-time">Dinner time</label>
+      <input id="admin_restaurant_settings-dinner-time" type="text" name="dinner_time" value="{{ settings['dinner_time'] }}" placeholder="19:30">
     </div>
     <div>
-      <label class="field-label">Nightly capacity</label>
-      <input type="number" name="capacity" min="1" value="{{ settings['capacity'] }}" required>
+      <label class="field-label" for="admin_restaurant_settings-capacity">Nightly capacity</label>
+      <input id="admin_restaurant_settings-capacity" type="number" name="capacity" min="1" value="{{ settings['capacity'] }}" required>
     </div>
     <div>
-      <label class="field-label">Price per person (€)</label>
-      <input type="number" name="price_per_person" min="0" step="0.01" value="{{ settings['price_per_person'] if settings['price_per_person'] is not none else '' }}">
+      <label class="field-label" for="admin_restaurant_settings-price-per-person">Price per person (€)</label>
+      <input id="admin_restaurant_settings-price-per-person" type="number" name="price_per_person" min="0" step="0.01" value="{{ settings['price_per_person'] if settings['price_per_person'] is not none else '' }}">
     </div>
     <div>
-      <label class="field-label">Restaurant lead</label>
-      <select name="lead_user_id">
+      <label class="field-label" for="admin_restaurant_settings-lead-user-id">Restaurant lead</label>
+      <select id="admin_restaurant_settings-lead-user-id" name="lead_user_id">
         <option value="">— none set —</option>
         {% for e in employees %}
         <option value="{{ e['id'] }}" {{ 'selected' if settings['lead_user_id'] == e['id'] }}>{{ e['name'] }}{{ ' (owner)' if e['role'] == 'owner' }}</option>
@@ -36,12 +36,12 @@
       </select>
     </div>
     <div>
-      <label class="field-label">Chef/partner profit share (%)</label>
-      <input type="number" name="profit_share_percent" min="0" max="100" step="0.1" value="{{ settings['profit_share_percent'] }}">
+      <label class="field-label" for="admin_restaurant_settings-profit-share-percent">Chef/partner profit share (%)</label>
+      <input id="admin_restaurant_settings-profit-share-percent" type="number" name="profit_share_percent" min="0" max="100" step="0.1" value="{{ settings['profit_share_percent'] }}">
     </div>
     <div>
-      <label class="field-label">Deposit at booking (%, optional)</label>
-      <input type="number" name="deposit_percent" min="0" max="100" step="1" value="{{ settings['deposit_percent'] if settings['deposit_percent'] is not none else '' }}" placeholder="Leave blank to charge in full online">
+      <label class="field-label" for="admin_restaurant_settings-deposit-percent">Deposit at booking (%, optional)</label>
+      <input id="admin_restaurant_settings-deposit-percent" type="number" name="deposit_percent" min="0" max="100" step="1" value="{{ settings['deposit_percent'] if settings['deposit_percent'] is not none else '' }}" placeholder="Leave blank to charge in full online">
     </div>
   </div>
   <p class="upload-hint" style="margin-top:6px;">When set, online payment only collects this percentage as a deposit — the rest is due at the restaurant. Guests still see the full total up front; only the online charge is reduced.</p>
@@ -92,16 +92,16 @@
       <input type="date" name="start_date" required>
     </div>
     <div>
-      <label class="field-label">To</label>
-      <input type="date" name="end_date" required>
+      <label class="field-label" for="admin_restaurant_settings-end-date">To</label>
+      <input id="admin_restaurant_settings-end-date" type="date" name="end_date" required>
     </div>
     <div>
-      <label class="field-label">Rate (€ / person)</label>
-      <input type="number" name="price_per_person" step="0.01" min="0" required style="width:110px;">
+      <label class="field-label" for="admin_restaurant_settings-price-per-person-2">Rate (€ / person)</label>
+      <input id="admin_restaurant_settings-price-per-person-2" type="number" name="price_per_person" step="0.01" min="0" required style="width:110px;">
     </div>
     <div>
-      <label class="field-label">Label (optional)</label>
-      <input type="text" name="label" placeholder="New Year's Eve">
+      <label class="field-label" for="admin_restaurant_settings-label">Label (optional)</label>
+      <input id="admin_restaurant_settings-label" type="text" name="label" placeholder="New Year's Eve">
     </div>
     <button type="submit" class="btn-mini">Add</button>
   </form>

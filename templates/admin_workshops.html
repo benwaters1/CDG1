@@ -121,7 +121,7 @@
                 onsubmit="return confirm('Call this sitting off? Everybody registered is cancelled and written to, and the waiting list is told it is not running.');"
                 style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="text" name="reason" placeholder="Why (they are told)" style="max-width:180px;">
+            <input aria-label="Why (they are told)" type="text" name="reason" placeholder="Why (they are told)" style="max-width:180px;">
             <button type="submit" class="btn-mini btn-danger">Call it off</button>
           </form>
           {% endif %}
@@ -168,20 +168,20 @@
       <div class="field-row-2">
         <div>
           <label class="field-label">Start date</label>
-          <input type="date" name="start_date" required>
+          <input aria-label="Start date" type="date" name="start_date" required>
         </div>
         <div>
           <label class="field-label">End date (leave blank for a single day)</label>
-          <input type="date" name="end_date">
+          <input aria-label="End date (leave blank for a single day)" type="date" name="end_date">
         </div>
       </div>
       <div class="field-row-2">
-        <input type="number" name="capacity" min="1" placeholder="Capacity ({{ w['default_capacity'] }} default)">
-        <input type="number" name="min_participants" min="0" placeholder="Minimum to run (blank = no minimum)">
+        <input aria-label="Capacity ( default)" type="number" name="capacity" min="1" placeholder="Capacity ({{ w['default_capacity'] }} default)">
+        <input aria-label="Minimum to run (blank = no minimum)" type="number" name="min_participants" min="0" placeholder="Minimum to run (blank = no minimum)">
       </div>
       <div class="field-row-2">
-        <input type="number" name="decide_by_days" min="0" placeholder="Decide this many days before (21 default)">
-        <input type="text" name="notes" placeholder="Notes (optional)">
+        <input aria-label="Decide this many days before (21 default)" type="number" name="decide_by_days" min="0" placeholder="Decide this many days before (21 default)">
+        <input aria-label="Notes (optional)" type="text" name="notes" placeholder="Notes (optional)">
       </div>
       <p class="pay-disclaimer" style="margin-top:-4px;">Capacity is the most it can take; the minimum is the fewest it can run with. Set one and a session that will not reach it appears on your home page while there is still time to ring the waitlist or call it off.</p>
       <button type="submit" class="btn-mini">+ Add session</button>
@@ -220,11 +220,11 @@
           <option value="{{ it['id'] }}">{{ it['name'] }} ({{ it['unit'] }})</option>
           {% endfor %}
         </select>
-        <input type="text" name="note" placeholder="Note (optional)">
+        <input aria-label="Note (optional)" type="text" name="note" placeholder="Note (optional)">
       </div>
       <div class="field-row-2">
-        <input type="text" name="qty_per_person" placeholder="Per person (e.g. 2)">
-        <input type="text" name="qty_per_session" placeholder="Per session (e.g. 8)">
+        <input aria-label="Per person (e.g. 2)" type="text" name="qty_per_person" placeholder="Per person (e.g. 2)">
+        <input aria-label="Per session (e.g. 8)" type="text" name="qty_per_session" placeholder="Per session (e.g. 8)">
       </div>
       <button type="submit" class="btn-mini">+ Add material</button>
     </form>
@@ -251,7 +251,7 @@
     <form method="post" action="{{ url_for('new_workshop_custom_field', workshop_id=w['id']) }}" class="upload-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field-row-2">
-        <input type="text" name="label" placeholder="Question (e.g. Shuttle pickup time)" required>
+        <input aria-label="Question (e.g. Shuttle pickup time)" type="text" name="label" placeholder="Question (e.g. Shuttle pickup time)" required>
         <select name="field_type">
           <option value="text">Short text</option>
           <option value="textarea">Long text</option>
@@ -260,7 +260,7 @@
         </select>
       </div>
       <div class="field-row-2">
-        <input type="text" name="options" placeholder="Options, comma-separated (only for Choice)">
+        <input aria-label="Options, comma-separated (only for Choice)" type="text" name="options" placeholder="Options, comma-separated (only for Choice)">
         <label class="field-label" style="flex-direction:row; align-items:center; gap:6px;">
           <input type="checkbox" name="required"> Required
         </label>

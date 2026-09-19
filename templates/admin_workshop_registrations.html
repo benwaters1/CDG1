@@ -20,8 +20,8 @@
 
 <form method="get" class="search-bar">
   <div>
-    <label class="field-label">Status</label>
-    <select name="status">
+    <label class="field-label" for="admin_workshop_registrations-status">Status</label>
+    <select id="admin_workshop_registrations-status" name="status">
       <option value="">All</option>
       {% for s in ['pending','confirmed','declined','cancelled'] %}
       <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
@@ -66,7 +66,7 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div>
           <label class="field-label">Arrangement</label>
-          <select name="occupancy_type">
+          <select aria-label="Arrangement" name="occupancy_type">
             <option value="double" {{ 'selected' if r['occupancy_type'] == 'double' }}>Double (shared)</option>
             <option value="triple" {{ 'selected' if r['occupancy_type'] == 'triple' }}>Triple</option>
             <option value="solo" {{ 'selected' if r['occupancy_type'] == 'solo' }}>Solo (private room)</option>
@@ -74,7 +74,7 @@
         </div>
         <div style="max-width:170px;">
           <label class="field-label">Agreed supplement (€ pp)</label>
-          <input type="number" name="single_supplement" step="0.01" min="0"
+          <input aria-label="Agreed supplement (€ pp)" type="number" name="single_supplement" step="0.01" min="0"
                  value="{{ '%.2f'|format(r['single_supplement']) if r['single_supplement'] else '' }}"
                  placeholder="0.00">
         </div>
@@ -118,8 +118,8 @@
           <option value="payment" selected>Add a payment</option>
           <option value="refund">Add refund</option>
         </select>
-        <input type="text" name="description" placeholder="Description" required style="font-size:12px;">
-        <input type="number" name="amount" step="0.01" min="0.01" placeholder="Amount" required style="font-size:12px; width:90px;">
+        <input aria-label="Description" type="text" name="description" placeholder="Description" required style="font-size:12px;">
+        <input aria-label="Amount" type="number" name="amount" step="0.01" min="0.01" placeholder="Amount" required style="font-size:12px; width:90px;">
         <select name="method" style="font-size:12px;">
           <option value="">Method (optional)</option>
           <option value="online">Online</option>
@@ -161,7 +161,7 @@
     <form method="post" action="{{ url_for('assign_workshop_room', registration_id=r['id']) }}" style="display:flex; gap:6px; align-items:center; margin-top:6px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="field-label" style="margin:0;">Room</label>
-      <select name="room_id" onchange="this.form.submit()" style="font-size:12px; padding:2px;">
+      <select aria-label="Room" name="room_id" onchange="this.form.submit()" style="font-size:12px; padding:2px;">
         <option value="">Unassigned</option>
         {% for room in rooms %}
         <option value="{{ room['id'] }}" {{ 'selected' if r['assigned_room_id'] == room['id'] }}>{{ room['name'] }}</option>
