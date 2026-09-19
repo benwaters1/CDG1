@@ -34,60 +34,60 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="refund-fields">
       <div>
-        <label class="field-label">What it is</label>
-        <input type="text" name="name" required placeholder="e.g. Louis XV walnut commode">
+        <label class="field-label" for="admin_assets-name">What it is</label>
+        <input id="admin_assets-name" type="text" name="name" required placeholder="e.g. Louis XV walnut commode">
       </div>
       <div>
-        <label class="field-label">Category</label>
-        <select name="category">
+        <label class="field-label" for="admin_assets-category">Category</label>
+        <select id="admin_assets-category" name="category">
           {% for k, v in asset_categories.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label class="field-label">Where it is</label>
-        <input type="text" name="location" placeholder="e.g. Blue salon, first floor">
+        <label class="field-label" for="admin_assets-location">Where it is</label>
+        <input id="admin_assets-location" type="text" name="location" placeholder="e.g. Blue salon, first floor">
       </div>
       <div>
-        <label class="field-label">Condition</label>
-        <select name="condition">
+        <label class="field-label" for="admin_assets-condition">Condition</label>
+        <select id="admin_assets-condition" name="condition">
           {% for k, v in asset_conditions.items() %}
           <option value="{{ k }}" {{ 'selected' if k == 'good' }}>{{ v }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="refund-reason">
-        <label class="field-label">Description</label>
-        <textarea name="description" rows="2" placeholder="Maker, marks, dimensions, distinguishing features — what would identify it if it turned up at auction."></textarea>
+        <label class="field-label" for="admin_assets-description">Description</label>
+        <textarea id="admin_assets-description" name="description" rows="2" placeholder="Maker, marks, dimensions, distinguishing features — what would identify it if it turned up at auction."></textarea>
       </div>
       <div>
-        <label class="field-label">Acquired on</label>
-        <input type="date" name="acquired_on">
+        <label class="field-label" for="admin_assets-acquired-on">Acquired on</label>
+        <input id="admin_assets-acquired-on" type="date" name="acquired_on">
       </div>
       <div>
-        <label class="field-label">Acquired from</label>
-        <input type="text" name="acquired_from" placeholder="Dealer, auction, inherited…">
+        <label class="field-label" for="admin_assets-acquired-from">Acquired from</label>
+        <input id="admin_assets-acquired-from" type="text" name="acquired_from" placeholder="Dealer, auction, inherited…">
       </div>
       <div>
-        <label class="field-label">What it cost (€)</label>
-        <input type="text" name="purchase_price" inputmode="decimal" placeholder="0.00">
+        <label class="field-label" for="admin_assets-purchase-price">What it cost (€)</label>
+        <input id="admin_assets-purchase-price" type="text" name="purchase_price" inputmode="decimal" placeholder="0.00">
       </div>
       <div>
-        <label class="field-label">Value today (€)</label>
-        <input type="text" name="estimated_value" inputmode="decimal" placeholder="0.00">
+        <label class="field-label" for="admin_assets-estimated-value">Value today (€)</label>
+        <input id="admin_assets-estimated-value" type="text" name="estimated_value" inputmode="decimal" placeholder="0.00">
       </div>
       <div>
-        <label class="field-label">Where that figure came from</label>
-        <select name="value_source">
+        <label class="field-label" for="admin_assets-value-source">Where that figure came from</label>
+        <select id="admin_assets-value-source" name="value_source">
           {% for k, v in asset_value_sources.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label class="field-label">Valued on</label>
-        <input type="date" name="valued_on">
+        <label class="field-label" for="admin_assets-valued-on">Valued on</label>
+        <input id="admin_assets-valued-on" type="date" name="valued_on">
       </div>
       <div>
-        <label class="field-label">Covered by</label>
-        <select name="insurance_policy_id">
+        <label class="field-label" for="admin_assets-insurance-policy-id">Covered by</label>
+        <select id="admin_assets-insurance-policy-id" name="insurance_policy_id">
           <option value="">— no policy —</option>
           {% for p in policies %}
           <option value="{{ p['id'] }}">{{ p['provider'] }}{% if p['coverage_type'] %} — {{ p['coverage_type'] }}{% endif %}</option>
@@ -95,17 +95,17 @@
         </select>
       </div>
       <div>
-        <label class="field-label">Serial / reference</label>
-        <input type="text" name="serial_number">
+        <label class="field-label" for="admin_assets-serial-number">Serial / reference</label>
+        <input id="admin_assets-serial-number" type="text" name="serial_number">
       </div>
       <div>
-        <label class="field-label">Photograph</label>
-        <input type="file" name="photo" accept="image/*" capture="environment">
+        <label class="field-label" for="admin_assets-photo">Photograph</label>
+        <input id="admin_assets-photo" type="file" name="photo" accept="image/*" capture="environment">
         <span class="upload-hint">Worth more than the figure in a claim.</span>
       </div>
       <div class="refund-reason">
-        <label class="field-label">Notes</label>
-        <input type="text" name="notes" placeholder="Provenance, restoration history, anything an insurer would ask.">
+        <label class="field-label" for="admin_assets-notes">Notes</label>
+        <input id="admin_assets-notes" type="text" name="notes" placeholder="Provenance, restoration history, anything an insurer would ask.">
       </div>
     </div>
     <button type="submit" class="btn-primary" style="margin-top:0;">Add to the register</button>
@@ -131,8 +131,8 @@
    insurance renewal is actually about, and the old form could not say it. #}
 <form method="get" class="search-bar" style="margin-bottom:6px;">
   <div>
-    <label class="field-label">Which of them</label>
-    <select name="status" onchange="this.form.submit()">
+    <label class="field-label" for="admin_assets-status">Which of them</label>
+    <select id="admin_assets-status" name="status" onchange="this.form.submit()">
       <option value="current" {{ 'selected' if show == 'current' }}>Still held</option>
       {% for k, v in asset_statuses.items() %}
       <option value="{{ k }}" {{ 'selected' if show == k }}>{{ v }}</option>
@@ -182,7 +182,7 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div>
           <label class="field-label">Status</label>
-          <select name="status">
+          <select aria-label="Status" name="status">
             {% for k, v in asset_statuses.items() %}
             <option value="{{ k }}" {{ 'selected' if a['status'] == k }}>{{ v }}</option>
             {% endfor %}
@@ -190,12 +190,12 @@
         </div>
         <div>
           <label class="field-label">Value (€)</label>
-          <input type="text" name="estimated_value" inputmode="decimal"
+          <input aria-label="Value (€)" type="text" name="estimated_value" inputmode="decimal"
                  value="{{ a['estimated_value'] if a['estimated_value'] else '' }}">
         </div>
         <div>
           <label class="field-label">Condition</label>
-          <select name="condition">
+          <select aria-label="Condition" name="condition">
             {% for k, v in asset_conditions.items() %}
             <option value="{{ k }}" {{ 'selected' if a['condition'] == k }}>{{ v }}</option>
             {% endfor %}
@@ -203,7 +203,7 @@
         </div>
         <div>
           <label class="field-label">Covered by</label>
-          <select name="insurance_policy_id">
+          <select aria-label="Covered by" name="insurance_policy_id">
             <option value="">— none —</option>
             {% for p in policies %}
             <option value="{{ p['id'] }}" {{ 'selected' if a['insurance_policy_id'] == p['id'] }}>{{ p['provider'] }}</option>
@@ -212,7 +212,7 @@
         </div>
         <div>
           <label class="field-label">Move to</label>
-          <input type="text" name="location" placeholder="{{ a['location'] or 'room' }}">
+          <input aria-label="Move to" type="text" name="location" placeholder="{{ a['location'] or 'room' }}">
         </div>
         <button type="submit" class="btn-mini">Save</button>
       </form>

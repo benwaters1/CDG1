@@ -49,7 +49,7 @@
           <option value="{{ c['id'] }}">{{ c['name'] }}</option>
           {% endfor %}
         </select>
-        <input type="text" name="note" placeholder="Note (optional)">
+        <input aria-label="Note (optional)" type="text" name="note" placeholder="Note (optional)">
         <button type="submit" class="btn-mini">{{ t('Request swap') }}</button>
       </form>
       {% endif %}

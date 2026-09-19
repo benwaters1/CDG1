@@ -260,16 +260,16 @@
       <input type="date" name="start_date" required>
     </div>
     <div>
-      <label class="field-label">To (last night)</label>
-      <input type="date" name="end_date" required>
+      <label class="field-label" for="room_form-end-date">To (last night)</label>
+      <input id="room_form-end-date" type="date" name="end_date" required>
     </div>
     <div>
-      <label class="field-label">Rate (€/night)</label>
-      <input type="number" name="price_per_night" step="1" min="0" required style="width:120px;">
+      <label class="field-label" for="room_form-price-per-night">Rate (€/night)</label>
+      <input id="room_form-price-per-night" type="number" name="price_per_night" step="1" min="0" required style="width:120px;">
     </div>
     <div style="flex:1 1 160px;">
-      <label class="field-label">Why</label>
-      <input type="text" name="label" placeholder="New Year, Peak season…">
+      <label class="field-label" for="room_form-label">Why</label>
+      <input id="room_form-label" type="text" name="label" placeholder="New Year, Peak season…">
     </div>
     <button type="submit" class="btn-mini">Add rate</button>
   </form>

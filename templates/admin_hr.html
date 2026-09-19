@@ -235,20 +235,20 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="refund-fields">
       <div>
-        <label class="field-label">Employee</label>
-        <select name="user_id" required>
+        <label class="field-label" for="admin_hr-user-id">Employee</label>
+        <select id="admin_hr-user-id" name="user_id" required>
           <option value="">— choose —</option>
           {% for e in employees %}<option value="{{ e['id'] }}">{{ e['name'] }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label class="field-label">Certification</label>
-        <input type="text" name="name" required placeholder="Food hygiene, First aid, Driving licence...">
+        <label class="field-label" for="admin_hr-name">Certification</label>
+        <input id="admin_hr-name" type="text" name="name" required placeholder="Food hygiene, First aid, Driving licence...">
       </div>
-      <div><label class="field-label">Issued by</label><input type="text" name="issuer"></div>
-      <div><label class="field-label">Reference</label><input type="text" name="reference"></div>
-      <div><label class="field-label">Issued</label><input type="date" name="issued_date"></div>
-      <div><label class="field-label">Expires</label><input type="date" name="expiry_date"></div>
+      <div><label class="field-label" for="admin_hr-issuer">Issued by</label><input id="admin_hr-issuer" type="text" name="issuer"></div>
+      <div><label class="field-label" for="admin_hr-reference">Reference</label><input id="admin_hr-reference" type="text" name="reference"></div>
+      <div><label class="field-label" for="admin_hr-issued-date">Issued</label><input id="admin_hr-issued-date" type="date" name="issued_date"></div>
+      <div><label class="field-label" for="admin_hr-expiry-date">Expires</label><input id="admin_hr-expiry-date" type="date" name="expiry_date"></div>
       <div class="refund-reason">
         <label class="checkbox-row">
           <input type="checkbox" name="required" value="1">
@@ -329,8 +329,8 @@
         </select>
       </div>
       <div>
-        <label class="field-label">Type</label>
-        <select name="kind">
+        <label class="field-label" for="admin_hr-kind">Type</label>
+        <select id="admin_hr-kind" name="kind">
           <option value="sick">Sick</option>
           <option value="emergency">Emergency / dependant</option>
           <option value="unpaid">Unpaid</option>
@@ -338,9 +338,9 @@
           <option value="other">Other</option>
         </select>
       </div>
-      <div><label class="field-label">From</label><input type="date" name="start_date" required></div>
-      <div><label class="field-label">To</label><input type="date" name="end_date"></div>
-      <div class="refund-reason"><label class="field-label">Reason / notes</label><input type="text" name="reason"></div>
+      <div><label class="field-label" for="admin_hr-start-date">From</label><input id="admin_hr-start-date" type="date" name="start_date" required></div>
+      <div><label class="field-label" for="admin_hr-end-date">To</label><input id="admin_hr-end-date" type="date" name="end_date"></div>
+      <div class="refund-reason"><label class="field-label" for="admin_hr-reason">Reason / notes</label><input id="admin_hr-reason" type="text" name="reason"></div>
       <div class="refund-reason">
         <label class="checkbox-row">
           <input type="checkbox" name="self_certified" value="1" checked>
@@ -459,19 +459,19 @@
           {% for e in employees %}<option value="{{ e['id'] }}">{{ e['name'] }}</option>{% endfor %}
         </select>
       </div>
-      <div><label class="field-label">Review date</label><input type="date" name="review_date" value="{{ today.isoformat() }}" required></div>
-      <div><label class="field-label">Period from</label><input type="date" name="period_start"></div>
-      <div><label class="field-label">Period to</label><input type="date" name="period_end"></div>
+      <div><label class="field-label" for="admin_hr-review-date">Review date</label><input id="admin_hr-review-date" type="date" name="review_date" value="{{ today.isoformat() }}" required></div>
+      <div><label class="field-label" for="admin_hr-period-start">Period from</label><input id="admin_hr-period-start" type="date" name="period_start"></div>
+      <div><label class="field-label" for="admin_hr-period-end">Period to</label><input id="admin_hr-period-end" type="date" name="period_end"></div>
       <div>
-        <label class="field-label">Overall (1–5)</label>
-        <select name="overall_rating">
+        <label class="field-label" for="admin_hr-overall-rating">Overall (1–5)</label>
+        <select id="admin_hr-overall-rating" name="overall_rating">
           <option value="">—</option>
           {% for n in [1,2,3,4,5] %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
         </select>
       </div>
-      <div class="refund-reason"><label class="field-label">Strengths</label><textarea name="strengths" rows="2"></textarea></div>
-      <div class="refund-reason"><label class="field-label">Areas to improve</label><textarea name="improvements" rows="2"></textarea></div>
-      <div class="refund-reason"><label class="field-label">Goals for next period</label><textarea name="goals" rows="2"></textarea></div>
+      <div class="refund-reason"><label class="field-label" for="admin_hr-strengths">Strengths</label><textarea id="admin_hr-strengths" name="strengths" rows="2"></textarea></div>
+      <div class="refund-reason"><label class="field-label" for="admin_hr-improvements">Areas to improve</label><textarea id="admin_hr-improvements" name="improvements" rows="2"></textarea></div>
+      <div class="refund-reason"><label class="field-label" for="admin_hr-goals">Goals for next period</label><textarea id="admin_hr-goals" name="goals" rows="2"></textarea></div>
     </div>
     <p class="upload-hint">Saved as a draft. The employee sees nothing until you share it.</p>
     <button type="submit" class="btn-mini">Save draft</button>

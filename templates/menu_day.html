@@ -32,9 +32,9 @@
     <input type="hidden" name="service" value="{{ service }}">
     <h3 style="margin-top:0;">Start the card</h3>
     <div class="refund-fields">
-      <div><label class="field-label">Title (optional)</label><input type="text" name="title" placeholder="Menu du {{ on.strftime('%d %B') }}"></div>
-      <div><label class="field-label">Set menu name</label><input type="text" name="formule_label" placeholder="Menu Dégustation"></div>
-      <div><label class="field-label">Set price (€)</label><input type="text" name="formule_price" inputmode="decimal" placeholder="65"></div>
+      <div><label class="field-label" for="menu_day-title">Title (optional)</label><input id="menu_day-title" type="text" name="title" placeholder="Menu du {{ on.strftime('%d %B') }}"></div>
+      <div><label class="field-label" for="menu_day-formule-label">Set menu name</label><input id="menu_day-formule-label" type="text" name="formule_label" placeholder="Menu Dégustation"></div>
+      <div><label class="field-label" for="menu_day-formule-price">Set price (€)</label><input id="menu_day-formule-price" type="text" name="formule_price" inputmode="decimal" placeholder="65"></div>
     </div>
     <p class="field-hint">Leave the price blank if tonight is à la carte.</p>
     <button type="submit" class="btn-primary" style="margin-top:8px;">Start</button>
@@ -49,8 +49,8 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="date" value="{{ on.isoformat() }}">
     <input type="hidden" name="service" value="{{ service }}">
-    <label class="field-label">Photo or PDF of the card</label>
-    <input type="file" name="card" accept="application/pdf,image/*">
+    <label class="field-label" for="menu_day-card">Photo or PDF of the card</label>
+    <input id="menu_day-card" type="file" name="card" accept="application/pdf,image/*">
     <p class="field-hint">
       Works best with the <a href="{{ url_for('menu_template_sheet', date=on.isoformat()) }}">printable template</a> —
       write on it, photograph it, upload the photo.
@@ -63,8 +63,8 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="date" value="{{ on.isoformat() }}">
     <input type="hidden" name="service" value="{{ service }}">
-    <label class="field-label">Or paste the card as text</label>
-    <textarea name="pasted" rows="8" placeholder="MENU — 65 €
+    <label class="field-label" for="menu_day-pasted">Or paste the card as text</label>
+    <textarea id="menu_day-pasted" name="pasted" rows="8" placeholder="MENU — 65 €
 ENTRÉES
 Velouté de cèpes | châtaignes grillées | milk, celery
 PLATS
@@ -158,10 +158,10 @@ Tarte aux mirabelles | glace verveine | gluten, eggs, milk"></textarea>
         class="detail-card" style="max-width:760px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="refund-fields">
-      <div><label class="field-label">Title</label><input type="text" name="title" value="{{ menu['title'] or '' }}"></div>
-      <div><label class="field-label">Set menu name</label><input type="text" name="formule_label" value="{{ menu['formule_label'] or '' }}" placeholder="Menu Dégustation"></div>
-      <div><label class="field-label">Set price (€)</label><input type="text" name="formule_price" inputmode="decimal" value="{{ '%.2f'|format(menu['formule_price']) if menu['formule_price'] else '' }}"></div>
-      <div style="grid-column:1 / -1;"><label class="field-label">Note for the floor</label><input type="text" name="notes" value="{{ menu['notes'] or '' }}"></div>
+      <div><label class="field-label" for="menu_day-title-2">Title</label><input id="menu_day-title-2" type="text" name="title" value="{{ menu['title'] or '' }}"></div>
+      <div><label class="field-label" for="menu_day-formule-label-2">Set menu name</label><input id="menu_day-formule-label-2" type="text" name="formule_label" value="{{ menu['formule_label'] or '' }}" placeholder="Menu Dégustation"></div>
+      <div><label class="field-label" for="menu_day-formule-price-2">Set price (€)</label><input id="menu_day-formule-price-2" type="text" name="formule_price" inputmode="decimal" value="{{ '%.2f'|format(menu['formule_price']) if menu['formule_price'] else '' }}"></div>
+      <div style="grid-column:1 / -1;"><label class="field-label" for="menu_day-notes">Note for the floor</label><input id="menu_day-notes" type="text" name="notes" value="{{ menu['notes'] or '' }}"></div>
     </div>
     <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
       <button type="submit" class="btn-mini" {{ 'disabled' if menu['status'] == 'published' }}>Save</button>
@@ -192,7 +192,7 @@ Tarte aux mirabelles | glace verveine | gluten, eggs, milk"></textarea>
         {% if d['menu_item_id'] %}<span class="upload-hint" title="Served before — its sales history carries over">seen before</span>{% endif %}
         <form method="post" action="{{ url_for('menu_dish_availability', dish_id=d['id']) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          {% if d['available'] %}<input type="text" name="note" placeholder="why" style="width:110px; margin:0;">{% endif %}
+          {% if d['available'] %}<input aria-label="why" type="text" name="note" placeholder="why" style="width:110px; margin:0;">{% endif %}
           <button type="submit" class="btn-mini">{{ 'Back on' if not d['available'] else '86' }}</button>
         </form>
         {% if menu['status'] != 'published' %}
@@ -217,10 +217,10 @@ Tarte aux mirabelles | glace verveine | gluten, eggs, milk"></textarea>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="course" value="{{ course }}">
     <div class="refund-fields">
-      <div style="grid-column:1 / -1;"><label class="field-label">Dish</label><input type="text" name="name" placeholder="Truite de l'Ariège, beurre noisette"></div>
-      <div style="grid-column:1 / -1;"><label class="field-label">Description</label><input type="text" name="description"></div>
-      <div><label class="field-label">À la carte (€)</label><input type="text" name="carte_price" inputmode="decimal"></div>
-      <div><label class="field-label">Supplement (€)</label><input type="text" name="supplement" inputmode="decimal" placeholder="0"></div>
+      <div style="grid-column:1 / -1;"><label class="field-label">Dish</label><input aria-label="Dish" type="text" name="name" placeholder="Truite de l'Ariège, beurre noisette"></div>
+      <div style="grid-column:1 / -1;"><label class="field-label">Description</label><input aria-label="Description" type="text" name="description"></div>
+      <div><label class="field-label">À la carte (€)</label><input aria-label="À la carte (€)" type="text" name="carte_price" inputmode="decimal"></div>
+      <div><label class="field-label">Supplement (€)</label><input aria-label="Supplement (€)" type="text" name="supplement" inputmode="decimal" placeholder="0"></div>
       <div>
         <label class="field-label">In the set menu</label>
         <label style="display:flex; gap:7px; align-items:center; font-size:14px;">

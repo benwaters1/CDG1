@@ -42,17 +42,17 @@
     </select>
     <input type="date" name="held_on" value="{{ today }}">
   </div>
-  <input type="text" name="person_name" placeholder="Name, if they are not on the list above"
+  <input aria-label="Name, if they are not on the list above" type="text" name="person_name" placeholder="Name, if they are not on the list above"
          style="width:100%; margin-bottom:8px;">
-  <label class="field-label">Why they are leaving</label>
-  <textarea name="why_leaving" rows="2" style="width:100%;"></textarea>
-  <label class="field-label" style="margin-top:8px;">What worked</label>
-  <textarea name="what_worked" rows="2" style="width:100%;"></textarea>
-  <label class="field-label" style="margin-top:8px;">What did not</label>
-  <textarea name="what_did_not" rows="2" style="width:100%;"></textarea>
+  <label class="field-label" for="exit_interviews-why-leaving">Why they are leaving</label>
+  <textarea id="exit_interviews-why-leaving" name="why_leaving" rows="2" style="width:100%;"></textarea>
+  <label class="field-label" style="margin-top:8px;" for="exit_interviews-what-worked">What worked</label>
+  <textarea id="exit_interviews-what-worked" name="what_worked" rows="2" style="width:100%;"></textarea>
+  <label class="field-label" style="margin-top:8px;" for="exit_interviews-what-did-not">What did not</label>
+  <textarea id="exit_interviews-what-did-not" name="what_did_not" rows="2" style="width:100%;"></textarea>
   <div class="field-row-2" style="margin-top:8px;">
-    <input type="text" name="would_return" placeholder="Would they come back?">
-    <input type="text" name="note" placeholder="Anything else">
+    <input aria-label="Would they come back?" type="text" name="would_return" placeholder="Would they come back?">
+    <input aria-label="Anything else" type="text" name="note" placeholder="Anything else">
   </div>
   <button type="submit" class="btn-mini" style="margin-top:8px;">Record</button>
 </form>

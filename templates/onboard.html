@@ -11,14 +11,14 @@
     </p>
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="field-label">Phone (optional)</label>
-      <input type="tel" name="phone" value="{{ person['phone'] or '' }}" autocomplete="tel">
-      <label class="field-label">Set a password (min 8 characters)</label>
+      <label class="field-label" for="onboard-phone">Phone (optional)</label>
+      <input id="onboard-phone" type="tel" name="phone" value="{{ person['phone'] or '' }}" autocomplete="tel">
+      <label class="field-label" for="onboard-password">Set a password (min 8 characters)</label>
       <div class="password-field">
         <input type="password" name="password" id="onboard-password" required minlength="8">
         {{ password_toggle('onboard-password') }}
       </div>
-      <label class="field-label">Confirm password</label>
+      <label class="field-label" for="onboard-confirm-password">Confirm password</label>
       <div class="password-field">
         <input type="password" name="confirm_password" id="onboard-confirm-password" required minlength="8">
         {{ password_toggle('onboard-confirm-password') }}

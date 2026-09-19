@@ -34,7 +34,7 @@
     the real thing. It is only used here.
   </p>
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-    <input type="text" name="opening" inputmode="decimal" placeholder="42000"
+    <input aria-label="42000" type="text" name="opening" inputmode="decimal" placeholder="42000"
            style="max-width:180px; margin:0;">
     <button type="submit" class="btn-mini">Save</button>
   </div>
@@ -60,7 +60,7 @@
     {% endif %}
   </p>
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-    <input type="text" name="monthly_staff" inputmode="decimal" placeholder="6500"
+    <input aria-label="6500" type="text" name="monthly_staff" inputmode="decimal" placeholder="6500"
            value="{{ '%.2f'|format(ahead.monthly_staff) if ahead.monthly_staff is not none else '' }}"
            style="max-width:180px; margin:0;">
     <button type="submit" class="btn-mini">Save</button>

@@ -61,8 +61,8 @@
   <input type="hidden" name="for_date" value="{{ on.isoformat() }}">
   <h2 class="section-heading">Put something on the board</h2>
   <div class="field-row-2">
-    <input type="text" name="what" maxlength="200" placeholder="What needs doing" required>
-    <input type="text" name="note" maxlength="200" placeholder="Anything worth saying">
+    <input aria-label="What needs doing" type="text" name="what" maxlength="200" placeholder="What needs doing" required>
+    <input aria-label="Anything worth saying" type="text" name="note" maxlength="200" placeholder="Anything worth saying">
   </div>
   <button type="submit" class="btn-mini">Add</button>
 </form>

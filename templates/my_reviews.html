@@ -38,7 +38,7 @@
     <form method="post" action="{{ url_for('acknowledge_review', review_id=r['id']) }}" style="margin-top:12px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="field-label">{{ t("Anything you'd like to add? (optional)") }}</label>
-      <textarea name="employee_comments" rows="3" placeholder="Your own view — this is recorded alongside the review."></textarea>
+      <textarea aria-label="Your own view — this is recorded alongside the review." name="employee_comments" rows="3" placeholder="Your own view — this is recorded alongside the review."></textarea>
       <button type="submit" class="btn-primary">{{ t("I've read this") }}</button>
       <p class="upload-hint">{{ t("Confirming means you've seen it, not necessarily that you agree — add a comment if you see it differently.") }}</p>
     </form>

@@ -36,11 +36,11 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="flex:1; min-width:180px;">
       <label class="field-label">Title</label>
-      <input type="text" name="title" value="{{ s['title'] }}" required>
+      <input aria-label="Title" type="text" name="title" value="{{ s['title'] }}" required>
     </div>
     <div style="flex:2; min-width:220px;">
       <label class="field-label">Blurb</label>
-      <input type="text" name="blurb" value="{{ s['blurb'] or '' }}">
+      <input aria-label="Blurb" type="text" name="blurb" value="{{ s['blurb'] or '' }}">
     </div>
     <button type="submit" class="btn-mini">Save</button>
   </form>
@@ -73,7 +73,7 @@
       <form method="post" action="{{ url_for('edit_gallery_photo', photo_id=p['id']) }}"
             style="margin-top:4px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="text" name="caption" value="{{ p['caption'] or '' }}" placeholder="Caption"
+        <input aria-label="Caption" type="text" name="caption" value="{{ p['caption'] or '' }}" placeholder="Caption"
                style="width:100%; font-size:12px;" onchange="this.form.submit()">
       </form>
 

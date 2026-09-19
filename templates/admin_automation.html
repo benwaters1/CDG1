@@ -100,8 +100,8 @@
           <input type="number" name="automation_email_unanswered_hours" min="1" step="1" value="{{ settings['automation_email_unanswered_hours'] }}">
         </div>
         <div style="max-width:220px;">
-          <label class="field-label">Scan messages from the last (days)</label>
-          <input type="number" name="automation_email_scan_lookback_days" min="1" step="1" value="{{ settings['automation_email_scan_lookback_days'] }}">
+          <label class="field-label" for="admin_automation-automation-email-scan-lookback-days">Scan messages from the last (days)</label>
+          <input id="admin_automation-automation-email-scan-lookback-days" type="number" name="automation_email_scan_lookback_days" min="1" step="1" value="{{ settings['automation_email_scan_lookback_days'] }}">
         </div>
       </div>
     </div>

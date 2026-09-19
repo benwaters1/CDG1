@@ -84,8 +84,8 @@
 
     <form method="post" action="{{ url_for('new_ical_source', room_id=room['id']) }}" class="upload-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="label" placeholder="e.g. Airbnb">
-      <input type="text" name="url" placeholder="https://www.airbnb.com/calendar/ical/....ics">
+      <input aria-label="e.g. Airbnb" type="text" name="label" placeholder="e.g. Airbnb">
+      <input aria-label="https://www.airbnb.com/calendar/ical/....ics" type="text" name="url" placeholder="https://www.airbnb.com/calendar/ical/....ics">
       <button type="submit" class="btn-mini">+ Add calendar</button>
     </form>
 
@@ -116,7 +116,7 @@
         <input type="date" name="start_date" required>
         <input type="date" name="end_date" required>
       </div>
-      <input type="text" name="reason" placeholder="Reason (optional) — e.g. Renovation, Family visit">
+      <input aria-label="Reason (optional) — e.g. Renovation, Family visit" type="text" name="reason" placeholder="Reason (optional) — e.g. Renovation, Family visit">
       <button type="submit" class="btn-mini">+ Block these dates</button>
     </form>
   </div>

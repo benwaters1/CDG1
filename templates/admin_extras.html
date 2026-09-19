@@ -10,16 +10,16 @@
 <form method="post" action="{{ url_for('new_extra') }}" class="search-bar">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div style="flex:1;">
-    <label class="field-label">Name</label>
-    <input type="text" name="name" placeholder="e.g. Breakfast, Airport transfer" required>
+    <label class="field-label" for="admin_extras-name">Name</label>
+    <input id="admin_extras-name" type="text" name="name" placeholder="e.g. Breakfast, Airport transfer" required>
   </div>
   <div>
-    <label class="field-label">Price (€)</label>
-    <input type="number" name="price" step="0.01" min="0">
+    <label class="field-label" for="admin_extras-price">Price (€)</label>
+    <input id="admin_extras-price" type="number" name="price" step="0.01" min="0">
   </div>
   <div>
-    <label class="field-label">Category</label>
-    <select name="category">
+    <label class="field-label" for="admin_extras-category">Category</label>
+    <select id="admin_extras-category" name="category">
       {% for key, label in categories.items() %}
       <option value="{{ key }}"{{ ' selected' if key == (e['category'] if e is defined else 'other') }}>{{ label }}</option>
       {% endfor %}
@@ -30,8 +30,8 @@
        sees it filed under. Left on "work it out" a transfer posts to Transport
        and everything else to Extras; set it only to send something somewhere of
        its own, which is how a category added on the Pennylane page gets fed. #}
-    <label class="field-label">Revenue goes to</label>
-    <select name="revenue_category">
+    <label class="field-label" for="admin_extras-revenue-category">Revenue goes to</label>
+    <select id="admin_extras-revenue-category" name="revenue_category">
       <option value="">Work it out</option>
       {% for rc in revenue_categories %}
       <option value="{{ rc['key'] }}"{{ ' selected' if e is defined and e['revenue_category'] == rc['key'] }}>{{ rc['label'] }}</option>
@@ -39,20 +39,20 @@
     </select>
   </div>
   <div style="flex:1 1 220px;">
-    <label class="field-label">Description</label>
-    <input type="text" name="description" maxlength="300"
+    <label class="field-label" for="admin_extras-description">Description</label>
+    <input id="admin_extras-description" type="text" name="description" maxlength="300"
            placeholder="What a guest sees under the name"
            value="{{ e['description'] or '' if e is defined else '' }}">
   </div>
   <div>
-    <label class="field-label">Notice needed</label>
-    <input type="number" name="lead_time_days" min="0" style="width:6em;"
+    <label class="field-label" for="admin_extras-lead-time-days">Notice needed</label>
+    <input id="admin_extras-lead-time-days" type="number" name="lead_time_days" min="0" style="width:6em;"
            placeholder="days"
            value="{{ e['lead_time_days'] or '' if e is defined else '' }}">
   </div>
   <div>
-    <label class="field-label">Most one guest may take</label>
-    <input type="number" name="max_qty" min="1" style="width:6em;"
+    <label class="field-label" for="admin_extras-max-qty">Most one guest may take</label>
+    <input id="admin_extras-max-qty" type="number" name="max_qty" min="1" style="width:6em;"
            placeholder="any"
            value="{{ e['max_qty'] or '' if e is defined else '' }}">
   </div>
@@ -97,7 +97,7 @@
     <form method="post" action="{{ url_for('edit_extra', extra_id=e['id']) }}" id="edit-extra-{{ e['id'] }}" class="search-bar" style="display:none; margin-top:6px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div style="flex:1;">
-        <input type="text" name="name" value="{{ e['name'] }}" placeholder="Name" required>
+        <input aria-label="Name" type="text" name="name" value="{{ e['name'] }}" placeholder="Name" required>
       </div>
       <div>
         <input type="number" name="price" step="0.01" min="0" value="{{ e['price'] }}">
@@ -116,7 +116,7 @@
        and everything else to Extras; set it only to send something somewhere of
        its own, which is how a category added on the Pennylane page gets fed. #}
     <label class="field-label">Revenue goes to</label>
-    <select name="revenue_category">
+    <select aria-label="Revenue goes to" name="revenue_category">
       <option value="">Work it out</option>
       {% for rc in revenue_categories %}
       <option value="{{ rc['key'] }}"{{ ' selected' if e is defined and e['revenue_category'] == rc['key'] }}>{{ rc['label'] }}</option>
@@ -125,19 +125,19 @@
   </div>
   <div style="flex:1 1 220px;">
     <label class="field-label">Description</label>
-    <input type="text" name="description" maxlength="300"
+    <input aria-label="Description" type="text" name="description" maxlength="300"
            placeholder="What a guest sees under the name"
            value="{{ e['description'] or '' if e is defined else '' }}">
   </div>
   <div>
     <label class="field-label">Notice needed</label>
-    <input type="number" name="lead_time_days" min="0" style="width:6em;"
+    <input aria-label="Notice needed" type="number" name="lead_time_days" min="0" style="width:6em;"
            placeholder="days"
            value="{{ e['lead_time_days'] or '' if e is defined else '' }}">
   </div>
   <div>
     <label class="field-label">Most one guest may take</label>
-    <input type="number" name="max_qty" min="1" style="width:6em;"
+    <input aria-label="Most one guest may take" type="number" name="max_qty" min="1" style="width:6em;"
            placeholder="any"
            value="{{ e['max_qty'] or '' if e is defined else '' }}">
   </div>

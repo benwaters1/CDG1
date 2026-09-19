@@ -43,10 +43,10 @@
     {% if user['role'] == 'owner' %}
     <form method="post" action="{{ url_for('edit_contact', contact_id=p['id']) }}" id="edit-contact-{{ p['id'] }}" class="upload-form" style="display:none;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="name" value="{{ p['name'] }}" placeholder="Name" required>
-      <input type="text" name="role" value="{{ p['role'] or '' }}" placeholder="Role (e.g. Plumber)">
-      <input type="text" name="phone" value="{{ p['phone'] or '' }}" placeholder="Phone">
-      <input type="text" name="notes" value="{{ p['notes'] or '' }}" placeholder="Notes (optional)">
+      <input aria-label="Name" type="text" name="name" value="{{ p['name'] }}" placeholder="Name" required>
+      <input aria-label="Role (e.g. Plumber)" type="text" name="role" value="{{ p['role'] or '' }}" placeholder="Role (e.g. Plumber)">
+      <input aria-label="Phone" type="text" name="phone" value="{{ p['phone'] or '' }}" placeholder="Phone">
+      <input aria-label="Notes (optional)" type="text" name="notes" value="{{ p['notes'] or '' }}" placeholder="Notes (optional)">
       <button type="submit" class="btn-mini">{{ t('Save') }}</button>
     </form>
     {% endif %}
@@ -59,10 +59,10 @@
   <h3>{{ t('Add a contact') }}</h3>
   <form method="post" action="{{ url_for('new_contact') }}" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" name="name" placeholder="Name" required>
-    <input type="text" name="role" placeholder="Role (e.g. Electrician)">
-    <input type="text" name="phone" placeholder="Phone">
-    <input type="text" name="notes" placeholder="Notes (optional)">
+    <input aria-label="Name" type="text" name="name" placeholder="Name" required>
+    <input aria-label="Role (e.g. Electrician)" type="text" name="role" placeholder="Role (e.g. Electrician)">
+    <input aria-label="Phone" type="text" name="phone" placeholder="Phone">
+    <input aria-label="Notes (optional)" type="text" name="notes" placeholder="Notes (optional)">
     <button type="submit" class="btn-mini">{{ t('Add contact') }}</button>
   </form>
 </div>

@@ -21,7 +21,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <h2 class="section-heading">Write one down</h2>
   <div class="field-row-2">
-    <input type="text" name="what" placeholder="What was broken or missing" required>
+    <input aria-label="What was broken or missing" type="text" name="what" placeholder="What was broken or missing" required>
     <input type="date" name="found_on" value="{{ today }}">
   </div>
   <div class="field-row-2">
@@ -37,8 +37,8 @@
     </select>
   </div>
   <div class="field-row-2">
-    <input type="text" name="replacement_cost" placeholder="What replacing it costs">
-    <input type="text" name="note" placeholder="Anything worth saying">
+    <input aria-label="What replacing it costs" type="text" name="replacement_cost" placeholder="What replacing it costs">
+    <input aria-label="Anything worth saying" type="text" name="note" placeholder="Anything worth saying">
   </div>
   <button type="submit" class="btn-mini">Record it</button>
   <p class="pay-disclaimer" style="margin-top:6px;">Both the room and the stay are optional. A

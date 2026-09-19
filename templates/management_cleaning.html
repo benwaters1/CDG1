@@ -62,12 +62,12 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <h2 class="section-heading">Add something</h2>
   <div class="field-row-2">
-    <input type="text" name="what" placeholder="What, e.g. sweep the main stair" required>
-    <input type="text" name="area" placeholder="Where, e.g. entrance hall">
+    <input aria-label="What, e.g. sweep the main stair" type="text" name="what" placeholder="What, e.g. sweep the main stair" required>
+    <input aria-label="Where, e.g. entrance hall" type="text" name="area" placeholder="Where, e.g. entrance hall">
   </div>
   <div class="field-row-2">
-    <input type="number" name="every_days" min="1" placeholder="Every how many days (7)">
-    <input type="text" name="note" placeholder="Anything worth saying">
+    <input aria-label="Every how many days (7)" type="number" name="every_days" min="1" placeholder="Every how many days (7)">
+    <input aria-label="Anything worth saying" type="text" name="note" placeholder="Anything worth saying">
   </div>
   <button type="submit" class="btn-mini">Add</button>
 </form>

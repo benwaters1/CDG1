@@ -27,14 +27,14 @@
   <h3>Log a transfer</h3>
   <form method="post" action="{{ url_for('new_vehicle_transfer', vehicle_id=vehicle['id']) }}" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" name="guest_name" placeholder="Guest name" autocomplete="name" spellcheck="false" autocapitalize="words">
+    <input aria-label="Guest name" type="text" name="guest_name" placeholder="Guest name" autocomplete="name" spellcheck="false" autocapitalize="words">
     <select name="direction" required>
       <option value="">Pickup or drop-off?</option>
       <option value="pickup">Pickup</option>
       <option value="dropoff">Drop-off</option>
     </select>
-    <label class="field-label">Scheduled time</label>
-    <input type="datetime-local" name="scheduled_at" required>
+    <label class="field-label" for="vehicle_transfers-scheduled-at">Scheduled time</label>
+    <input id="vehicle_transfers-scheduled-at" type="datetime-local" name="scheduled_at" required>
     <select name="driver_user_id">
       <option value="">Driver (optional)</option>
       {% for d in drivers %}
@@ -48,7 +48,7 @@
       <option value="{{ key }}">{{ label }}</option>
       {% endfor %}
     </select>
-    <input type="text" name="notes" placeholder="Notes (optional)">
+    <input aria-label="Notes (optional)" type="text" name="notes" placeholder="Notes (optional)">
     <button type="submit" class="btn-mini">Log transfer</button>
   </form>
 </div>

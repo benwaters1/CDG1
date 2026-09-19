@@ -32,6 +32,8 @@ neither is worth a check that cries wolf, because a check nobody trusts is
 one everybody learns to skip — and it will be skipped on the commit that
 mattered.
 """
+import glob
+import io
 import os
 import re
 
@@ -124,6 +126,58 @@ def run():
             unlabelled.append(f"{name}: {tag[:70]}")
     s.check("no field is left to a placeholder alone", not unlabelled,
             detail=f"{len(unlabelled)}: {unlabelled[:2]}" if unlabelled else "")
+
+    s.section("Six hundred labels were associated at once, so: two rules")
+
+    # tools/fix_labels.py wired 618 controls to their labels across 100
+    # templates. Both of the faults below were IN that pass and both are worse
+    # than the missing label they replaced, because a wrong name is acted on
+    # where a missing one is asked about. Guarded at the source, across EVERY
+    # template rather than the public ones, since almost all of it was staff-side.
+    every = sorted(glob.glob(os.path.join(_harness.ROOT, "templates", "*.html")))
+
+    # ONE. A label that wraps its control must not also carry for=. When it has
+    # both, `for` wins -- and the pass pointed twenty-four of them at whatever
+    # field came next. room_form.html had "Bookable - guests can choose this
+    # room" addressing the start-date box.
+    crossed = []
+    for path in every:
+        body = io.open(path, encoding="utf-8").read()
+        for mo in re.finditer(r'<label\b[^>]*\bfor="([^"]+)"[^>]*>(.*?)</label>',
+                              body, re.S | re.I):
+            inner = re.search(r'<(input|select|textarea)\b[^>]*>', mo.group(2), re.I)
+            if not inner:
+                continue
+            got = re.search(r'\bid="([^"]+)"', inner.group(0))
+            if not got or got.group(1) != mo.group(1):
+                crossed.append("%s: for=%s" % (os.path.basename(path), mo.group(1)))
+    s.check("no label points past the control it already wraps", not crossed,
+            detail="%d: %s" % (len(crossed), crossed[:3]))
+
+    # TWO. A partial can be included more than once on a page, so a literal id
+    # in one is emitted more than once -- invalid HTML, which breaks both the
+    # association being made and getElementById. Eleven of them came from
+    # _menu_fields.html, included once per course. Partials use aria-label.
+    repeated = []
+    for path in every:
+        stem = os.path.basename(path)
+        if not stem.startswith("_"):
+            continue
+        body = io.open(path, encoding="utf-8").read()
+        # Only the ones the label pass would MINT, which are `<stem>-<slug>`.
+        # A hand-written id in a partial is a different question: twenty-eight
+        # of those predate this and most are in partials included once, where
+        # a literal id is fine. Narrowed so the guard reports the regression it
+        # is for rather than a standing argument about somebody else's markup.
+        minted = stem[:-5] + "-"
+        for mo in re.finditer(r'<(input|select|textarea)\b[^>]*>', body, re.I):
+            fid = re.search(r'\bid="([^"]+)"', mo.group(0))
+            if fid and fid.group(1).startswith(minted):
+                repeated.append("%s: id=%s" % (stem, fid.group(1)))
+    s.check("the label pass minted no field id inside a partial", not repeated,
+            detail="%d: %s — a partial included twice emits it twice, and "
+                   "_menu_fields.html is pulled in once per course"
+                   % (len(repeated), repeated[:3]))
 
     s.section("A table of figures reads as rows, not as two columns")
     # A label/value table with no th at all is read as unrelated cells: the

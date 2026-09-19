@@ -12,44 +12,44 @@
   <h3>Legal &amp; Registration</h3>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field-label">Legal entity name</label>
-    <input type="text" name="legal_name" value="{{ info['legal_name'] if info else '' }}">
+    <label class="field-label" for="management_company_info-legal-name">Legal entity name</label>
+    <input id="management_company_info-legal-name" type="text" name="legal_name" value="{{ info['legal_name'] if info else '' }}">
 
     <div class="field-row-2">
       <div>
-        <label class="field-label">Registration number</label>
-        <input type="text" name="registration_number" value="{{ info['registration_number'] if info else '' }}">
+        <label class="field-label" for="management_company_info-registration-number">Registration number</label>
+        <input id="management_company_info-registration-number" type="text" name="registration_number" value="{{ info['registration_number'] if info else '' }}">
       </div>
       <div>
-        <label class="field-label">VAT number</label>
-        <input type="text" name="vat_number" value="{{ info['vat_number'] if info else '' }}">
+        <label class="field-label" for="management_company_info-vat-number">VAT number</label>
+        <input id="management_company_info-vat-number" type="text" name="vat_number" value="{{ info['vat_number'] if info else '' }}">
       </div>
     </div>
 
-    <label class="field-label">Registered address</label>
-    <textarea name="registered_address" style="min-height:60px;">{{ info['registered_address'] if info else '' }}</textarea>
+    <label class="field-label" for="management_company_info-registered-address">Registered address</label>
+    <textarea id="management_company_info-registered-address" name="registered_address" style="min-height:60px;">{{ info['registered_address'] if info else '' }}</textarea>
     <span class="upload-hint">Printed at the foot of every campaign email — marketing mail has to identify the sender by postal address. Left blank, the footer simply omits it.</span>
 
-    <label class="field-label">Incorporation date</label>
-    <input type="date" name="incorporation_date" value="{{ info['incorporation_date'] if info else '' }}">
+    <label class="field-label" for="management_company_info-incorporation-date">Incorporation date</label>
+    <input id="management_company_info-incorporation-date" type="date" name="incorporation_date" value="{{ info['incorporation_date'] if info else '' }}">
 
-    <label class="field-label" style="margin-top:16px;">Maximum guests in the house at once</label>
-    <input type="number" name="house_guest_capacity" min="1" style="max-width:120px;" value="{{ house_guest_capacity }}">
+    <label class="field-label" style="margin-top:16px;" for="management_company_info-house-guest-capacity">Maximum guests in the house at once</label>
+    <input id="management_company_info-house-guest-capacity" type="number" name="house_guest_capacity" min="1" style="max-width:120px;" value="{{ house_guest_capacity }}">
     <span class="upload-hint">The legal limit, not a comfort one — it caps room bookings and atelier registrations together, in any mix, on the online booking pages. Staff can still confirm or enter a booking that goes over it by hand.</span>
 
-    <label class="field-label" style="margin-top:16px;">Accountant</label>
+    <label class="field-label" style="margin-top:16px;" for="management_company_info-accountant-name">Accountant</label>
     <div class="field-row-2">
-      <div><input type="text" name="accountant_name" placeholder="Name / firm" value="{{ info['accountant_name'] if info else '' }}"></div>
-      <div><input type="tel" name="accountant_phone" placeholder="Phone" value="{{ info['accountant_phone'] if info else '' }}" autocomplete="tel"></div>
+      <div><input id="management_company_info-accountant-name" type="text" name="accountant_name" placeholder="Name / firm" value="{{ info['accountant_name'] if info else '' }}"></div>
+      <div><input aria-label="Phone" type="tel" name="accountant_phone" placeholder="Phone" value="{{ info['accountant_phone'] if info else '' }}" autocomplete="tel"></div>
     </div>
-    <input type="email" name="accountant_email" placeholder="Email" value="{{ info['accountant_email'] if info else '' }}" style="margin-top:8px;" autocomplete="email">
+    <input aria-label="Email" type="email" name="accountant_email" placeholder="Email" value="{{ info['accountant_email'] if info else '' }}" style="margin-top:8px;" autocomplete="email">
 
-    <label class="field-label" style="margin-top:16px;">Insurance broker</label>
+    <label class="field-label" style="margin-top:16px;" for="management_company_info-insurance-broker-name">Insurance broker</label>
     <div class="field-row-2">
-      <div><input type="text" name="insurance_broker_name" placeholder="Name / firm" value="{{ info['insurance_broker_name'] if info else '' }}"></div>
-      <div><input type="tel" name="insurance_broker_phone" placeholder="Phone" value="{{ info['insurance_broker_phone'] if info else '' }}" autocomplete="tel"></div>
+      <div><input id="management_company_info-insurance-broker-name" type="text" name="insurance_broker_name" placeholder="Name / firm" value="{{ info['insurance_broker_name'] if info else '' }}"></div>
+      <div><input aria-label="Phone" type="tel" name="insurance_broker_phone" placeholder="Phone" value="{{ info['insurance_broker_phone'] if info else '' }}" autocomplete="tel"></div>
     </div>
-    <input type="email" name="insurance_broker_email" placeholder="Email" value="{{ info['insurance_broker_email'] if info else '' }}" style="margin-top:8px;" autocomplete="email">
+    <input aria-label="Email" type="email" name="insurance_broker_email" placeholder="Email" value="{{ info['insurance_broker_email'] if info else '' }}" style="margin-top:8px;" autocomplete="email">
 
     <button type="submit" class="btn-primary" style="margin-top:16px;">Save</button>
   </form>
