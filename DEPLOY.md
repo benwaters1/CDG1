@@ -29,7 +29,7 @@ you a working private URL. Everything after that is optional and can wait.
    recovery configured yet, so this is the only way in. Save it, log in,
    change it immediately.
 6. **Set `PUBLIC_BASE_URL`** to the address Railway gives you (e.g.
-   `https://cdg1-production.up.railway.app`, no trailing slash). Links inside
+   `https://cdg1-production-9186.up.railway.app`, no trailing slash). Links inside
    automated email have nothing to point at until you do.
 7. **Then, in whatever order suits you**: real email (`RESEND_API_KEY`),
    live payments (`STRIPE_*`), a custom domain, the Vault key, the scheduled
@@ -96,6 +96,16 @@ the browser still gets their booking. A unique index on the Stripe session id
 means those two paths can never produce a duplicate.
 
 ---
+
+> **THE LIVE SITE IS `cdg1-production-9186.up.railway.app`.**
+>
+> There are two Railway services deploying this repo and their names
+> differ by four digits. `cdg1-production.up.railway.app` — no 9186 —
+> is the other one: it has **no volume**, so its database is wiped on
+> every deploy, and it can be running old code while the real site is
+> current. Checking the wrong one has now cost two afternoons; the
+> giveaway is `/status`, which answers on the real one and 404s on a
+> stale build.
 
 ## Option A — Railway (easiest, ~10 minutes, free tier works for this size)
 
@@ -174,7 +184,7 @@ Railway takes a folder of code and gives you a live URL. No server management.
      somewhere separate from the database (a password manager's secure notes,
      for instance). Without it set, the Vault page just says it isn't
      configured yet.
-5. Railway gives you a URL like `cdg1-production.up.railway.app`
+5. Railway gives you a URL like `cdg1-production-9186.up.railway.app`
 6. **Point your own domain at it** (optional but nicer): in Railway, add a
    custom domain like `staff.chateaugudanes.com`, then add the DNS record
    Railway gives you into your Squarespace domain settings
