@@ -225,6 +225,21 @@ m.fetch_one_image = _refuse(
     "the Squarespace CDN",
     "stand in for fetch_one_image in the test; a real run downloads 93 images")
 
+# Meta, which is the newest of these and the one with the loudest failure.
+# publish_social_post puts a photograph and a caption on the house's real
+# Instagram and its real Page, and the copied database is full of real posts
+# with real captions on them -- a run that reached it would not cost money, it
+# would PUBLISH. There is no undo for that beyond deleting it afterwards and
+# hoping nobody was looking.
+#
+# Stood down at meta_request rather than at meta_configured, for the reason
+# the Stripe hole taught this file: a conditional at the call site with a live
+# credential behind it is one `if` away from going out.
+m.meta_request = _refuse(
+    "the Meta Graph API",
+    "a real call PUBLISHES to the house's Instagram and Page; stand in for "
+    "meta_request in the test, not for meta_configured")
+
 # Proof, rather than the assumption this file used to make. Each of these was
 # true only by accident of what happens to be in .env on one machine.
 assert not m.stripe_enabled(), "Stripe is still enabled under test"
@@ -248,6 +263,9 @@ assert not m.claude_configured(), (
     "ANTHROPIC_API_KEY is still set under test — app.py read it into a module "
     "global at import, and _load_dotenv puts the environment variable back, so "
     "clearing os.environ before the import does not undo it")
+assert m.meta_request.__name__ == "_blocked", (
+    "the Meta Graph call is not blocked under test — reaching it would post "
+    "to the house's real Instagram, not merely spend money")
 assert not (m.email_enabled() or m.resend_enabled()), (
     "an email provider is configured under test — a run would send real mail "
     "to the real guest addresses in the copied database")

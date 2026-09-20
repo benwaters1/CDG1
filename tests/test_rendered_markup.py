@@ -91,10 +91,24 @@ FIELD = re.compile(r"<(input|select|textarea)\b([^>]*)>", re.S | re.I)
 # markup, so this sweep could not read it even if it could build the URL.
 # test_photo_sizes is what proves that route answers.
 #
-# Eight now: export_report_csv, mirrored_photo, photo_at_size,
-# recover_owner_password, room_ics_feed, room_photo, set_language and
-# uploaded_file.
-NO_RULE = 8
+# And twice more, both photographs behind a token rather than an id, and both
+# for the same reason the token exists at all. site_photo serves one of the
+# house's own pictures in place of one on the public site, and its token
+# changes every time the picture does — a name that always meant the same
+# bytes is what the thirty-day cache on its neighbour rests on.
+# social_photo_public is the one link Meta is given to fetch a photograph it is
+# about to publish, unguessable precisely so there is nothing to walk.
+# Neither has an id to teach and neither returns markup, so this sweep could
+# not read them even if it could build the URLs. test_site_photo_swap and
+# test_social_publishing are what prove they answer.
+#
+# arrival_id went the other way and was TAUGHT rather than exempted: it is an
+# id of a row in photo_inbox, which is exactly what this map is for.
+#
+# Ten now: export_report_csv, mirrored_photo, photo_at_size,
+# recover_owner_password, room_ics_feed, room_photo, set_language, site_photo,
+# social_photo_public and uploaded_file.
+NO_RULE = 10
 
 # What the sweep fetched and could not read.
 #
@@ -224,6 +238,7 @@ def _read(page, html, found):
 # for.
 ID_TABLES = {
     "booking_id": ("bookings", "id"),
+    "arrival_id": ("photo_inbox", "id"),
     "user_id": ("users", "id"),
     "order_id": ("pos_orders", "id"),
     "room_id": ("rooms", "id"),

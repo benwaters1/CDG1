@@ -322,6 +322,9 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_checkout_text_enabled": "1",
     "automation_backup_interval_hours": "24",
     "automation_social_schedule_enabled": "1",
+    # OFF until somebody turns it on. The switch is the last thing between a
+    # half-configured deployment and the house posting to Instagram.
+    "automation_social_publish_enabled": "0",
     "automation_social_horizon_days": "28",
     "automation_maintenance_enabled": "1",
 }
@@ -3947,6 +3950,14 @@ def init_db():
         # writes `caption` but a person choosing one of these.
         ("social_posts_suggested", "ALTER TABLE social_posts ADD COLUMN suggested_json TEXT"),
         ("social_posts_suggested_at", "ALTER TABLE social_posts ADD COLUMN suggested_at TEXT"),
+        # WHO said yes, and when. A column rather than a status, so the
+        # answer survives the post being edited afterwards.
+        ("social_posts_approved_at", "ALTER TABLE social_posts ADD COLUMN approved_at TEXT"),
+        ("social_posts_approved_by", "ALTER TABLE social_posts ADD COLUMN approved_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL"),
+        # The one link Meta is given to the photograph, and what went wrong
+        # last time if anything did.
+        ("social_posts_publish_token", "ALTER TABLE social_posts ADD COLUMN publish_token TEXT"),
+        ("social_posts_publish_error", "ALTER TABLE social_posts ADD COLUMN publish_error TEXT"),
         ("social_posts_offer_site", "ALTER TABLE social_posts ADD COLUMN offer_for_site INTEGER NOT NULL DEFAULT 0"),
         # One post per plan per date. The generator relies on this rather
         # than on checking first: two ticks landing together cannot both
@@ -4458,6 +4469,22 @@ def init_db():
         # This is the index of the ones a copy has been taken of. The copies
         # live on the data volume beside the room photographs, not in git: 93
         # photographs is a repository nobody can clone.
+        # A picture on the public site replaced by one of the house's own.
+        # Keyed by the URL in the template, because that is the thing the
+        # response layer sees -- and NOT by a hash of the file, because the
+        # point is that the file behind a given place on the page changes.
+        ("site_photo_overrides_table", """CREATE TABLE IF NOT EXISTS site_photo_overrides (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             source_url TEXT NOT NULL UNIQUE,
+             filename TEXT NOT NULL,
+             -- Changes every time the picture does. /mirrored-photo is cached
+             -- for thirty days on the promise that a name always means the
+             -- same bytes; a swap that reused one would be a photograph the
+             -- house has replaced and the world keeps showing for a month.
+             token TEXT NOT NULL,
+             set_at TEXT NOT NULL,
+             set_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+         )"""),
         ("mirrored_images_table", """CREATE TABLE IF NOT EXISTS mirrored_images (
              id INTEGER PRIMARY KEY AUTOINCREMENT,
              source_url TEXT NOT NULL UNIQUE,
@@ -6715,7 +6742,10 @@ NAV_AREAS = {
         "photo_intake", "uploaded_file", "photo_at_size",
         "photo_tray", "set_aside_arrival", "bring_back_arrival",
         "suggest_post_words", "use_suggested_words",
+        "approve_social_post", "unapprove_social_post",
+        "publish_social_post_now",
         "arrival_to_post",
+        "arrival_to_site", "site_photographs", "put_back_site_photo",
         "admin_terms", "audit_log", "record_history_page",
         "delete_company_document",
         "delete_insurance_policy", "delete_vendor",
@@ -20589,7 +20619,7 @@ def record_mirror(conn, url, filename="", size=0, ctype="", error=""):
          error or None))
 
 
-def swap_mirrored(html, index):
+def swap_mirrored(html, index, overrides=None):
     """Point the page at the house's copies instead of theirs.
 
     Done to the response rather than to the templates, on purpose. The public
@@ -20602,15 +20632,24 @@ def swap_mirrored(html, index):
     mirror leaves the rest pointing where they always did rather than breaking
     the photographs it has not reached yet.
     """
-    if not index:
+    if not index and not overrides:
         return html
+    overrides = overrides or {}
     # One pass over the document, not one per photograph. The home page is
     # 190KB and carries 23 of these; scanning it 93 times to swap 23 of them
     # is 18MB of string work on every request, and this runs on every page the
     # public sees.
-    return _MIRROR_URL_RE.sub(
-        lambda m: ("/mirrored-photo/" + index[m.group(0)]) if m.group(0) in index
-        else m.group(0), html)
+    def instead(match):
+        url = match.group(0)
+        # An override first: it is the house saying "not that picture, this
+        # one", and the mirror is only ever "the same picture, our copy".
+        if url in overrides:
+            return overrides[url]
+        if url in index:
+            return "/mirrored-photo/" + index[url]
+        return url
+
+    return _MIRROR_URL_RE.sub(instead, html)
 
 
 def report_labour(conn, period):
@@ -26077,6 +26116,30 @@ def owner_home_warnings(conn, today):
     # A policy that has already run out. Without the vehicle ones: the check
     # below names the CAR, which is the more useful sentence, and counting
     # both would put two lines on the panel about one lapsed van policy.
+    # THE META TOKEN, which fails in the worst way a thing can fail: a
+    # long-lived one lasts about sixty days, everything works, everybody
+    # forgets, and one evening two months later a post does not go out and
+    # nothing says so. It closes itself like everything else here — renew the
+    # token, set the new date, and the line goes.
+    if meta_configured(conn):
+        left = meta_token_days_left(conn)
+        if left is None:
+            add("watch", "Nobody has said when the Meta token runs out",
+                "Instagram and the Page are connected, but with no expiry "
+                "recorded there is no warning before it lapses — and the "
+                "first sign would be a post that quietly did not go out.",
+                1, "admin_automation")
+        elif left < 0:
+            add("blocker", "The Meta token has run out",
+                f"It lapsed {abs(left)} day{'' if abs(left) == 1 else 's'} ago. "
+                "Nothing is going out on Instagram or the Page until it is "
+                "renewed.", 1, "admin_automation")
+        elif left <= META_TOKEN_WARN_DAYS:
+            add("watch", "The Meta token is about to run out",
+                f"{left} day{'' if left == 1 else 's'} left. Renewing it on a "
+                "quiet morning is easier than finding out because a post did "
+                "not go.", 1, "admin_automation")
+
     uncovered = lapsed_cover(conn, today, include_vehicles=False)
     if uncovered:
         worst = uncovered[0]
@@ -31577,6 +31640,9 @@ PALETTE_PAGES = [
     ("Photographs waiting", "photo_tray",
      "camera tray gh5 lumix arrived waiting photograph picture inbox choose "
      "social post website image set aside"),
+    ("Photographs swapped on the site", "site_photographs",
+     "website site photograph picture replace swap squarespace mirror our own "
+     "put back revert"),
     ("What the road is doing", "road_notices_page",
      "road snow ice chains closed weather driving arrival warning notice"),
     ("Contracted hours against worked", "contracted_hours_page",
@@ -43756,7 +43822,8 @@ def serve_our_own_photographs(response):
     if b"squarespace-cdn.com" not in raw:
         return response
     body = raw.decode("utf-8", "replace")
-    swapped = swap_mirrored(body, mirror_cache_index())
+    swapped = swap_mirrored(body, mirror_cache_index(),
+                            site_override_cache_index())
     if swapped != body:
         response.set_data(swapped)
     return response
@@ -43776,6 +43843,190 @@ def mirrored_photo(filename):
     # different name. Nothing served here is ever rewritten in place.
     resp.headers["Cache-Control"] = "public, max-age=2592000"
     return resp
+
+
+_SITE_OVERRIDE_CACHE = {"at": 0.0, "index": {}}
+_SITE_OVERRIDE_LOCK = threading.Lock()
+
+
+def site_override_index(conn):
+    """{source_url: the path to serve instead} for every picture swapped.
+
+    Checked against the disk like the mirror index is, and for the same
+    reason: a row whose file has gone would swap a working URL for a 404 of
+    our own making, which is the one outcome worse than hotlinking.
+    """
+    out = {}
+    try:
+        rows = conn.execute(
+            "SELECT source_url, filename, token FROM site_photo_overrides"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return out
+    for row in rows:
+        if os.path.exists(os.path.join(UPLOAD_DIR, row["filename"])):
+            out[row["source_url"]] = "/site-photo/%s.jpg" % row["token"]
+    return out
+
+
+def site_override_cache_index():
+    now = time.monotonic()
+    with _SITE_OVERRIDE_LOCK:
+        if (_SITE_OVERRIDE_CACHE["at"]
+                and now - _SITE_OVERRIDE_CACHE["at"] < _MIRROR_CACHE_SECONDS):
+            return _SITE_OVERRIDE_CACHE["index"]
+    conn = get_db()
+    try:
+        index = site_override_index(conn)
+    finally:
+        conn.close()
+    with _SITE_OVERRIDE_LOCK:
+        _SITE_OVERRIDE_CACHE["at"] = now
+        _SITE_OVERRIDE_CACHE["index"] = index
+    return index
+
+
+def forget_site_overrides():
+    """Drop the cache the moment a picture is swapped or put back.
+
+    Without this, changing a photograph does nothing anybody can see for up to
+    the cache's life -- and the person who just pressed the button reloads,
+    sees the old picture, and presses it again.
+    """
+    with _SITE_OVERRIDE_LOCK:
+        _SITE_OVERRIDE_CACHE["at"] = 0.0
+        _SITE_OVERRIDE_CACHE["index"] = {}
+
+
+@app.route("/site-photo/<token>.jpg")
+def site_photo(token):
+    """One of the house's own photographs, standing in for a site picture.
+
+    THE TOKEN CHANGES EVERY TIME THE PICTURE DOES, and that is load-bearing
+    rather than tidy. Its neighbour /mirrored-photo is named by a hash of the
+    source URL and cached for thirty days precisely because nothing served
+    there is ever rewritten in place. A swap that reused one name would be a
+    picture the house has replaced and the world keeps showing, for a month,
+    with no way to tell anybody's browser otherwise. A new name is a new
+    picture, so the long cache stays safe.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_-]{20,64}", token or ""):
+        abort(404)
+    conn = get_db()
+    row = conn.execute(
+        "SELECT filename FROM site_photo_overrides WHERE token = ?",
+        (token,)).fetchone()
+    conn.close()
+    if not row:
+        abort(404)
+    path = photo_rendition(row["filename"], "web")
+    if not path:
+        abort(404)
+    resp = send_from_directory(os.path.dirname(path), os.path.basename(path))
+    resp.headers["Cache-Control"] = "public, max-age=2592000"
+    return resp
+
+
+@app.route("/admin/photos/tray/<int:arrival_id>/use-on-site",
+           methods=["GET", "POST"])
+@owner_required
+def arrival_to_site(arrival_id):
+    """Put this photograph on the public site, in place of one that is there.
+
+    NOT BY EDITING A TEMPLATE, which is the whole point and the reason this
+    works at all. The public pages are rewritten by hand most weeks and arrive
+    as whole-file replacements, so a swapped img tag would survive exactly one
+    handover. Done to the response instead, it needs nothing from anybody and
+    cannot be undone by accident.
+
+    The pictures offered are read out of the templates rather than kept in a
+    list, for the same reason hotlinked_urls does it: a list goes stale the
+    first time a handover adds a photograph, and going stale quietly is the
+    failure the whole mirror exists to prevent.
+    """
+    conn = get_db()
+    arrival = conn.execute("SELECT * FROM photo_inbox WHERE id = ?",
+                           (arrival_id,)).fetchone()
+    if not arrival:
+        conn.close()
+        abort(404)
+
+    if request.method == "POST":
+        target = (request.form.get("source_url") or "").strip()
+        if target not in hotlinked_urls():
+            conn.close()
+            flash("That is not one of the site's photographs.", "error")
+            return redirect(url_for("arrival_to_site", arrival_id=arrival_id))
+        conn.execute(
+            """INSERT INTO site_photo_overrides
+                 (source_url, filename, token, set_at, set_by_user_id)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(source_url) DO UPDATE SET
+                 filename = excluded.filename, token = excluded.token,
+                 set_at = excluded.set_at, set_by_user_id = excluded.set_by_user_id""",
+            (target, arrival["filename"], secrets.token_urlsafe(24),
+             datetime.now(timezone.utc).isoformat(), session.get("user_id")))
+        conn.execute(
+            """UPDATE photo_inbox SET used_as = 'site', used_at = ?
+                WHERE id = ?""",
+            (datetime.now(timezone.utc).isoformat(), arrival_id))
+        log_audit(conn, "site_photograph_replaced", target=target[:120])
+        conn.commit()
+        conn.close()
+        forget_site_overrides()
+        flash("That picture on the site is now yours. It can be put back at "
+              "any time.", "success")
+        return redirect(url_for("site_photographs"))
+
+    swapped = site_override_index(conn)
+    conn.close()
+    # Sorted so the same picture is in the same place every time somebody
+    # looks: a grid that reshuffles is one you cannot learn.
+    choices = sorted(hotlinked_urls())
+    return render_template("admin_use_on_site.html", arrival=arrival,
+                           choices=choices, swapped=swapped)
+
+
+@app.route("/admin/site-photos")
+@owner_required
+def site_photographs():
+    """Which of the site's pictures are the house's own, and which are not."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT site_photo_overrides.*, users.name AS set_by_name
+             FROM site_photo_overrides
+             LEFT JOIN users ON users.id = site_photo_overrides.set_by_user_id
+            ORDER BY set_at DESC""").fetchall()
+    conn.close()
+    return render_template("admin_site_photos.html", rows=rows,
+                           total=len(hotlinked_urls()))
+
+
+@app.route("/admin/site-photos/<int:override_id>/put-back", methods=["POST"])
+@owner_required
+def put_back_site_photo(override_id):
+    """Undo one swap.
+
+    Back to the house's MIRRORED copy, not back to hotlinking: removing the
+    override leaves the picture served from our own mirror exactly as it was
+    before any of this, which is the state the rest of the site is in.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM site_photo_overrides WHERE id = ?",
+                       (override_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM site_photo_overrides WHERE id = ?", (override_id,))
+    conn.execute(
+        """UPDATE photo_inbox SET used_as = NULL, used_at = NULL
+            WHERE filename = ? AND used_as = 'site'""", (row["filename"],))
+    log_audit(conn, "site_photograph_put_back", target=(row["source_url"])[:120])
+    conn.commit()
+    conn.close()
+    forget_site_overrides()
+    flash("Put back to the picture that was there before.", "success")
+    return redirect(url_for("site_photographs"))
 
 
 @app.route("/admin/photo-mirror")
@@ -59796,8 +60047,16 @@ def management_social():
     status_filter = request.args.get("status", "").strip()
     platform_filter = request.args.get("platform", "").strip()
     conn = get_db()
-    query = """SELECT social_posts.*, users.name AS assignee_name FROM social_posts
-               LEFT JOIN users ON users.id = social_posts.assigned_to_user_id WHERE 1=1"""
+    # approved_by joined as well as the assignee: a *_by_user_id nothing joins
+    # is a decision nobody can be asked about, and "who said this could go out"
+    # is the one worth being able to ask.
+    query = """SELECT social_posts.*, users.name AS assignee_name,
+                      approver.name AS approved_by_name
+                 FROM social_posts
+                 LEFT JOIN users ON users.id = social_posts.assigned_to_user_id
+                 LEFT JOIN users AS approver
+                        ON approver.id = social_posts.approved_by_user_id
+                WHERE 1=1"""
     params = []
     if status_filter:
         query += " AND social_posts.status = ?"
@@ -60028,6 +60287,312 @@ def suggest_photo_caption(image_bytes):
     if not parsed or not parsed.get("captions"):
         return None
     return parsed
+
+
+# ---------------------------------------------------------------------------
+# Putting a post out, on Instagram and on the Page.
+#
+# NO APP REVIEW IS NEEDED FOR THIS, and it is worth writing down because the
+# opposite is widely believed and was believed here for an afternoon. Meta's
+# App Review buys ADVANCED ACCESS, which is for letting strangers connect
+# THEIR accounts to your app. The house posts to its own, and Standard Access
+# — automatic, no review, no business verification — covers any permission for
+# users who hold a role on the app. Nobody is waiting on Meta.
+#
+# WHAT DOES BITE IS THE TOKEN, and it fails in the worst way there is: a
+# long-lived token lasts about sixty days, everything works, everybody forgets,
+# and one evening two months later a post does not go out and nothing says so.
+# So the expiry is stored, the owner home warns before it lapses, and a run
+# that finds it gone says which post did not go and why.
+#
+# AND META HAS TO SEE THE PHOTOGRAPH. It fetches the image itself, from a
+# public URL — which every other photograph route here deliberately is not,
+# because UPLOAD_DIR holds signed contracts and doctors' notes. So a post
+# being published gets its own unguessable link to its own picture and nothing
+# else: no directory, no filename, no way to walk from one to another.
+# ---------------------------------------------------------------------------
+
+META_GRAPH = "https://graph.facebook.com/v21.0"
+META_SETTING_KEYS = ("meta_page_id", "meta_ig_user_id", "meta_access_token",
+                     "meta_token_expires_at")
+# How long before a token lapses the house starts being told. Two weeks is
+# long enough to do something about it on a quiet morning rather than at the
+# moment a post fails.
+META_TOKEN_WARN_DAYS = 14
+
+
+def meta_setting(conn, key):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (key,)).fetchone()
+    return ((row["value"] if row else "") or "").strip()
+
+
+def meta_configured(conn):
+    """Enough to publish anything at all. Checked separately per platform."""
+    return bool(meta_setting(conn, "meta_access_token")
+                and (meta_setting(conn, "meta_ig_user_id")
+                     or meta_setting(conn, "meta_page_id")))
+
+
+def meta_token_days_left(conn):
+    """Days until the token lapses, or None if nobody has said when.
+
+    None is not "fine" — it is "nobody knows", which is why the warning says
+    so rather than staying quiet.
+    """
+    when = parse_date(meta_setting(conn, "meta_token_expires_at"))
+    if not when:
+        return None
+    return (when - house_today()).days
+
+
+def meta_request(path, params):
+    """One POST to the Graph API. (ok, payload_or_message).
+
+    urllib, like every other outbound call here. Never raises: publishing
+    happens on a schedule with nobody watching, so a failure has to come back
+    as something the row can record and the owner can read tomorrow.
+    """
+    # The NAMES, not the modules: app.py imports urlopen/Request/urlencode
+    # directly, and `urllib.request.X` is an AttributeError here because the
+    # submodule was never imported. It reads as though it should work, which
+    # is the whole problem with it.
+    data = urlencode({k: v for k, v in params.items() if v is not None}).encode()
+    req = Request(f"{META_GRAPH}/{path}", data=data, method="POST")
+    try:
+        with urlopen(req, timeout=60) as resp:
+            return True, json.loads(resp.read().decode("utf-8") or "{}")
+    except HTTPError as e:
+        try:
+            said = json.loads(e.read().decode("utf-8"))
+            message = (said.get("error") or {}).get("message") or str(e)
+        except Exception:
+            message = str(e)
+        return False, message
+    except (URLError, OSError, ValueError) as e:
+        return False, "could not reach Meta (%s)" % e
+
+
+def ensure_publish_token(conn, post_id):
+    """The one link Meta is given, made when it is first needed."""
+    row = conn.execute("SELECT publish_token FROM social_posts WHERE id = ?",
+                       (post_id,)).fetchone()
+    if row and row["publish_token"]:
+        return row["publish_token"]
+    token = secrets.token_urlsafe(24)
+    conn.execute("UPDATE social_posts SET publish_token = ? WHERE id = ?",
+                 (token, post_id))
+    return token
+
+
+def publish_social_post(conn, post):
+    """Put one post out. (ok, what_to_tell_somebody).
+
+    REFUSES RATHER THAN GUESSES, every time. Not approved, no photograph, no
+    words, already posted, nothing configured: each is its own sentence,
+    because "could not publish" tells whoever reads it tomorrow nothing they
+    can act on.
+    """
+    if post["status"] == "posted":
+        return False, "it has already gone out"
+    if not post["approved_at"]:
+        return False, "nobody has approved it"
+    if not post["image_filename"]:
+        return False, "there is no photograph on it"
+    if not (post["caption"] or "").strip():
+        return False, "it has no words yet"
+    if not meta_configured(conn):
+        return False, ("Instagram and the Page are not connected yet — see "
+                       "DEPLOY.md")
+    left = meta_token_days_left(conn)
+    token = meta_setting(conn, "meta_access_token")
+    if left is not None and left < 0:
+        return False, ("the Meta token lapsed %d days ago and has to be "
+                       "renewed" % abs(left))
+
+    path = photo_rendition(post["image_filename"], "social")
+    if not path:
+        return False, "the photograph is not on the volume any more"
+    link = url_for("social_photo_public",
+                   token=ensure_publish_token(conn, post["id"]), _external=True)
+    caption = (post["caption"] or "").strip()
+    wanted = (post["platform"] or "").strip().lower()
+    ig_user, page_id = (meta_setting(conn, "meta_ig_user_id"),
+                        meta_setting(conn, "meta_page_id"))
+    done, problems = [], []
+
+    if "instagram" in wanted and ig_user:
+        # Two steps, and the second is the one that publishes. A container
+        # made and never published is a photograph sitting at Meta that no
+        # one can see, which looks exactly like success from here.
+        ok, made = meta_request("%s/media" % ig_user,
+                                {"image_url": link, "caption": caption,
+                                 "access_token": token})
+        if not ok:
+            problems.append("Instagram: %s" % made)
+        else:
+            ok2, published = meta_request(
+                "%s/media_publish" % ig_user,
+                {"creation_id": (made or {}).get("id"), "access_token": token})
+            if ok2:
+                done.append("Instagram")
+            else:
+                problems.append("Instagram: %s" % published)
+
+    if "facebook" in wanted and page_id:
+        ok, said = meta_request("%s/photos" % page_id,
+                                {"url": link, "caption": caption,
+                                 "access_token": token})
+        if ok:
+            done.append("the Page")
+        else:
+            problems.append("Facebook: %s" % said)
+
+    if not done and not problems:
+        return False, ("nothing is connected for %s" % (post["platform"] or "it"))
+    if done:
+        conn.execute(
+            """UPDATE social_posts SET status = 'posted', posted_at = ?,
+                 publish_error = ? WHERE id = ?""",
+            (datetime.now(timezone.utc).isoformat(),
+             "; ".join(problems) or None, post["id"]))
+        close_social_task(conn, post["id"])
+    else:
+        conn.execute("UPDATE social_posts SET publish_error = ? WHERE id = ?",
+                     ("; ".join(problems), post["id"]))
+    if done and problems:
+        # BOTH, rather than the cheerful half. A post that reached Instagram
+        # and not the Page is not "posted", it is half posted, and the half
+        # that failed is the half nobody would go looking for.
+        return True, "Went out on %s. %s" % (" and ".join(done),
+                                             "; ".join(problems))
+    if done:
+        return True, "Went out on %s." % " and ".join(done)
+    return False, "; ".join(problems)
+
+
+def run_social_publish_job(conn):
+    """Put out everything approved whose time has come.
+
+    Only what a person approved, and only what is actually due. A post with no
+    date is not due; a post nobody approved is never due however old it gets.
+    """
+    now = datetime.now(timezone.utc)
+    today, clock = house_today_iso(), now.strftime("%H:%M")
+    rows = conn.execute(
+        """SELECT * FROM social_posts
+            WHERE status = 'scheduled' AND approved_at IS NOT NULL
+              AND scheduled_date IS NOT NULL AND scheduled_date <= ?
+            ORDER BY scheduled_date, id""", (today,)).fetchall()
+    sent = 0
+    for post in rows:
+        if (post["scheduled_date"] == today and post["scheduled_time"]
+                and post["scheduled_time"] > clock):
+            continue
+        ok, _said = publish_social_post(conn, post)
+        if ok:
+            sent += 1
+    return sent
+
+
+@app.route("/social-photo/<token>.jpg")
+def social_photo_public(token):
+    """The one photograph this token stands for, for Meta to come and fetch.
+
+    Public because it has to be: Meta fetches the image itself and cannot sign
+    in. So it is scoped as tightly as a public thing can be — one token, one
+    post, one picture, at the size Instagram accepts. There is no directory
+    here and no filename, so there is nothing to walk.
+
+    noindex, because a link that leaks into a referrer can be indexed without
+    ever being crawled, and robots.txt only asks crawlers not to FETCH a path.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_-]{20,64}", token or ""):
+        abort(404)
+    conn = get_db()
+    row = conn.execute(
+        "SELECT image_filename FROM social_posts WHERE publish_token = ?",
+        (token,)).fetchone()
+    conn.close()
+    if not row or not row["image_filename"]:
+        abort(404)
+    path = photo_rendition(row["image_filename"], "social")
+    if not path:
+        abort(404)
+    resp = send_from_directory(os.path.dirname(path), os.path.basename(path))
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
+@app.route("/management/social/<int:post_id>/approve", methods=["POST"])
+@owner_required
+def approve_social_post(post_id):
+    """Somebody signs their name to it going out.
+
+    THE GATE. Publishing reads this and nothing else: no approval, nothing
+    leaves, however carefully it was scheduled. Recorded as who and when
+    rather than as a status, so the answer to "who said yes to this" survives
+    the post being edited afterwards.
+    """
+    conn = get_db()
+    post = conn.execute("SELECT * FROM social_posts WHERE id = ?",
+                        (post_id,)).fetchone()
+    if not post:
+        conn.close()
+        abort(404)
+    if not (post["caption"] or "").strip():
+        conn.close()
+        flash("It has no words yet — approving an empty post is approving "
+              "whatever gets typed into it later.", "error")
+        return redirect(url_for("management_social"))
+    conn.execute(
+        """UPDATE social_posts SET approved_at = ?, approved_by_user_id = ?
+            WHERE id = ?""",
+        (datetime.now(timezone.utc).isoformat(), session.get("user_id"), post_id))
+    log_audit(conn, "social_post_approved", target=(post["caption"] or "")[:60])
+    conn.commit()
+    conn.close()
+    flash("Approved. It will go out when its time comes.", "success")
+    return redirect(url_for("management_social"))
+
+
+@app.route("/management/social/<int:post_id>/unapprove", methods=["POST"])
+@owner_required
+def unapprove_social_post(post_id):
+    """Take it back, which has to be possible right up until it goes."""
+    conn = get_db()
+    post = conn.execute("SELECT * FROM social_posts WHERE id = ?",
+                        (post_id,)).fetchone()
+    if not post:
+        conn.close()
+        abort(404)
+    conn.execute(
+        """UPDATE social_posts SET approved_at = NULL, approved_by_user_id = NULL
+            WHERE id = ?""", (post_id,))
+    log_audit(conn, "social_post_approval_withdrawn",
+              target=(post["caption"] or "")[:60])
+    conn.commit()
+    conn.close()
+    flash("Approval withdrawn. It will not go out.", "success")
+    return redirect(url_for("management_social"))
+
+
+@app.route("/management/social/<int:post_id>/publish-now", methods=["POST"])
+@owner_required
+def publish_social_post_now(post_id):
+    """Send it now rather than waiting for the schedule."""
+    conn = get_db()
+    post = conn.execute("SELECT * FROM social_posts WHERE id = ?",
+                        (post_id,)).fetchone()
+    if not post:
+        conn.close()
+        abort(404)
+    ok, said = publish_social_post(conn, post)
+    conn.commit()
+    conn.close()
+    flash(said if ok else "It did not go out: %s." % said,
+          "success" if ok else "error")
+    return redirect(url_for("management_social"))
 
 
 @app.route("/management/social/<int:post_id>/suggest-words", methods=["POST"])
@@ -69090,6 +69655,11 @@ AUTOMATION_JOBS = [
     ("workshop_feedback_request", "automation_workshop_feedback_enabled", None, 24 * 3600, run_workshop_feedback_request_job),
     ("email_inbox_scan", "automation_email_scan_enabled", None, 900, run_email_inbox_scan_job),
     ("hr_escalation", "automation_hr_escalation_enabled", None, 21600, run_hr_escalation_job),
+    # Every five minutes. A post scheduled for 10:00 that goes out at 10:04
+    # is fine; one that waits for the hourly run is not what "scheduled"
+    # means to whoever set the time.
+    ("social_publish", "automation_social_publish_enabled", None, 300,
+     run_social_publish_job),
     ("campaign_triggers", "automation_campaign_triggers_enabled", None, 21600, run_campaign_triggers_job),
     ("backup_email", "automation_backup_email_enabled", "automation_backup_interval_hours", None, run_backup_email_job),
     # Daily is enough: it works a month ahead, so a missed day costs
@@ -69331,6 +69901,7 @@ AUTOMATION_JOB_LABELS = {
     "workshop_autocharge": "Workshop: charge the balance on its due date",
     "workshop_decision": "Workshop: it will not reach the number it needs to run (once when the date is in sight, once if it passes)",
     "ical_sync": "iCal sync",
+    "social_publish": "Put out approved posts whose time has come",
     "workshop_balance_reminder": "Workshop balance-due reminders",
     "room_balance_reminder": "Room balance-due reminders (before the guest travels)",
     "event_balance_reminder": "Event balance-due reminders (a wedding balance is a bank transfer, not a tap)",

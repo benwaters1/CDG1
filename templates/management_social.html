@@ -74,7 +74,21 @@
       <span class="mini-status status-{{ 'onshift' if p['status'] == 'posted' else 'pending' }}">{{ p['status'] }}</span>
       <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleSocialEdit({{ p['id'] }})">Edit</span>
       {% if p['status'] != 'posted' %}
+      {# THE GATE. Publishing reads approved_at and nothing else, so this is
+         the only thing between a scheduled post and Instagram. #}
+      {% if p['approved_at'] %}
+      <span class="mini-status status-onshift" title="Approved {{ p['approved_at']|house_day }} by {{ p['approved_by_name'] or 'somebody' }}">approved{% if p['approved_by_name'] %} — {{ p['approved_by_name'] }}{% endif %}</span>
+      <form method="post" action="{{ url_for('unapprove_social_post', post_id=p['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Withdraw</button></form>
+      {% if p['image_filename'] %}
+      <form method="post" action="{{ url_for('publish_social_post_now', post_id=p['id']) }}" onsubmit="return confirm('Put this out now, on {{ p['platform'] }}?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Publish now</button></form>
+      {% endif %}
+      {% elif (p['caption'] or '').strip() %}
+      <form method="post" action="{{ url_for('approve_social_post', post_id=p['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Approve</button></form>
+      {% endif %}
       <form method="post" action="{{ url_for('mark_social_post_posted', post_id=p['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Mark posted</button></form>
+      {% endif %}
+      {% if p['publish_error'] %}
+      <span class="mini-role" style="color:var(--danger,#a33);" title="{{ p['publish_error'] }}">last try: {{ p['publish_error'][:60] }}</span>
       {% endif %}
       <form method="post" action="{{ url_for('delete_social_post', post_id=p['id']) }}" onsubmit="return confirm('Remove this post from the schedule?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Remove</button></form>
     </div>
