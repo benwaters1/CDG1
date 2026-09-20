@@ -3909,6 +3909,9 @@ def init_db():
         ("social_posts_image", "ALTER TABLE social_posts ADD COLUMN image_filename TEXT"),
         ("social_posts_alt", "ALTER TABLE social_posts ADD COLUMN alt_text TEXT"),
         ("social_posts_room", "ALTER TABLE social_posts ADD COLUMN room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL"),
+        # The day it was TAKEN, which is not the day it arrived: a card
+        # emptied on Sunday is full of Saturday.
+        ("social_posts_taken_on", "ALTER TABLE social_posts ADD COLUMN taken_on TEXT"),
         ("social_posts_offer_site", "ALTER TABLE social_posts ADD COLUMN offer_for_site INTEGER NOT NULL DEFAULT 0"),
         # One post per plan per date. The generator relies on this rather
         # than on checking first: two ticks landing together cannot both
@@ -43941,6 +43944,26 @@ def uploaded_file(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 
 
+@app.route("/photo/<size>/<filename>")
+@login_required
+def photo_at_size(size, filename):
+    """One photograph, at the size the page asking for it actually needs.
+
+    Made on first ask and kept, so the cost is paid once rather than on every
+    view. Behind a login for the same reason /uploads is: UPLOAD_DIR holds
+    signed contracts and doctors' notes beside the photographs, and the name
+    is checked rather than trusted -- a stored name is one this app wrote.
+    """
+    if size not in PHOTO_SIZES:
+        abort(404)
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,120}", filename or ""):
+        abort(404)
+    path = photo_rendition(filename, size)
+    if not path:
+        abort(404)
+    return send_from_directory(os.path.dirname(path), os.path.basename(path))
+
+
 @app.route("/admin/photos", methods=["GET", "POST"])
 @owner_required
 def photo_intake():
@@ -43969,10 +43992,23 @@ def photo_intake():
             flash(why, "error")
             return redirect(url_for("photo_intake"))
 
-        safe = secure_filename(photo.filename)
-        name = "photo_%s_%s" % (secrets.token_hex(6), safe)
+        # Normalised here rather than stored as shot. A GH5 frame is ten
+        # megabytes and 5184 wide; Instagram refuses anything over 1440, and
+        # the tray below would load forty of them at full size.
+        try:
+            normalised, taken_on = photo_master(photo.read(), photo.filename)
+        except ValueError as why:
+            conn.close()
+            flash(str(why), "error")
+            return redirect(url_for("photo_intake"))
+        safe = os.path.splitext(secure_filename(photo.filename))[0][:60] or "frame"
+        # Stored as the JPEG it now IS, whatever it arrived as -- a name still
+        # saying .png for a file that is no longer one is how a mismatch
+        # between the name and the bytes gets served to a browser.
+        name = "photo_%s_%s.jpg" % (secrets.token_hex(6), safe)
         os.makedirs(UPLOAD_DIR, exist_ok=True)
-        photo.save(os.path.join(UPLOAD_DIR, name))
+        with open(os.path.join(UPLOAD_DIR, name), "wb") as fh:
+            fh.write(normalised)
 
         plan_id = request.form.get("plan_id") or None
         try:
@@ -43996,13 +44032,14 @@ def photo_intake():
         conn.execute(
             """INSERT INTO social_posts (platform, caption, image_filename, alt_text,
                  plan_id, room_id, offer_for_site, scheduled_date, status,
-                 created_by_user_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 taken_on, created_by_user_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             ((plan["platform"] if plan else "instagram"), caption, name,
              (request.form.get("alt_text") or "").strip() or None,
              plan_id, room_id,
              1 if request.form.get("use_on_site") else 0,
              when, "drafted" if caption else "idea",
+             taken_on.isoformat() if taken_on else None,
              session.get("user_id"), datetime.now(timezone.utc).isoformat()))
         conn.commit()
         conn.close()
@@ -59123,6 +59160,151 @@ def close_social_task(conn, post_id):
            WHERE id = ? AND status != 'done'""",
         (datetime.now(timezone.utc).isoformat(), row["task_id"]))
     return True
+
+
+# ---------------------------------------------------------------------------
+# Photographs: one master, and every size made from it.
+#
+# A GH5 frame is 5184x3888 and about ten megabytes. Nothing wants that. The
+# website wants something a phone can load on a train, Instagram will not take
+# an image wider than 1440, and the caption model is handed a smaller copy
+# still. Stored as shot, every one of those is a page that takes six seconds
+# to paint and a publish that Meta rejects -- and the rejection arrives at the
+# scheduled hour, hours after the person who chose the picture went to bed.
+#
+# So one master is normalised on the way in and every other size is made from
+# it on demand and kept. Three things happen at the door, and all three are
+# the kind that fail silently:
+#
+#   ROTATION IS APPLIED, THEN FORGOTTEN. A camera held upright writes a
+#   sideways frame plus an EXIF tag saying "turn this". Browsers honour the
+#   tag; PIL, Meta's fetcher and anything that re-encodes do not. So a picture
+#   that looked right in the admin page goes out on Instagram on its side.
+#   The pixels are turned once, here, and the tag is dropped so nobody turns
+#   them twice.
+#
+#   THE METADATA IS DROPPED WITH IT, which is the point rather than a side
+#   effect: a camera frame carries the lens, the serial number and, on a body
+#   with location enabled, where it was standing. Publishing the house's own
+#   photographs is fine. Publishing its coordinates and kit list is not, and
+#   nobody would ever notice it happening.
+#
+#   THE DAY IS TAKEN FROM THE SHUTTER, not from when the file arrived. A card
+#   emptied on Sunday is full of Saturday.
+# ---------------------------------------------------------------------------
+
+PHOTO_DERIVED_DIR = os.environ.get("GUDANES_PHOTO_SIZE_DIR") or \
+    os.path.join(DATA_DIR, "photo_sizes")
+
+# The master. Not the original file -- a 5184px frame is kept at 3000, which
+# is larger than any use here and still a quarter of the bytes. Full-resolution
+# originals belong on the card and in whatever the house backs up to, not on a
+# web server's volume.
+PHOTO_MASTER_EDGE = 3000
+PHOTO_MASTER_QUALITY = 88
+
+# (longest edge in pixels, JPEG quality). Each one exists for a specific
+# consumer, and the number is that consumer's limit rather than a round figure:
+#   social  Meta refuses an image wider than 1440 outright.
+#   vision  the caption model resizes anything longer than 1568 itself, so
+#           sending more is paying to transmit pixels that get thrown away.
+#   web     a generous full-bleed on a retina screen.
+#   thumb   a tray of forty photographs that has to paint at once.
+PHOTO_SIZES = {
+    "thumb": (400, 78),
+    "web": (2000, 82),
+    "social": (1440, 88),
+    "vision": (1568, 80),
+}
+
+
+def photo_taken_on(img):
+    """The day the shutter fired, read off the frame. A date, or None.
+
+    EXIF DateTimeOriginal is the CAMERA'S OWN CLOCK, and a camera is set to
+    local time -- so this one really is the house's day already, and reading
+    the date straight off it is right. That is the opposite of the rule for a
+    stored stamp, where slicing the first ten characters reads UTC and files
+    anything shot after midnight under yesterday. Worth saying out loud,
+    because the two look identical on the page.
+    """
+    try:
+        raw = (img.getexif() or {}).get(36867) or (img.getexif() or {}).get(306)
+    except Exception:
+        return None
+    if not raw:
+        return None
+    try:
+        # EXIF spells it '2026:09:20 18:41:07'.
+        return datetime.strptime(str(raw).strip()[:19], "%Y:%m:%d %H:%M:%S").date()
+    except ValueError:
+        return None
+
+
+def photo_master(data, filename=""):
+    """Normalise a photograph on the way in. (jpeg_bytes, taken_on).
+
+    Raises ValueError on anything that is not an image this can read, with a
+    sentence saying so -- the caller is a person at an upload box, not a log.
+    """
+    from PIL import Image, ImageOps
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.load()
+    except Exception:
+        raise ValueError(
+            "That file could not be read as a photograph. A .rw2 or .raw "
+            "straight off the camera is not one a browser can show — set the "
+            "GH5 to send JPEGs, or export one first.")
+    taken = photo_taken_on(img)
+    # Turn the pixels once. exif_transpose returns a copy with the tag gone.
+    img = ImageOps.exif_transpose(img) or img
+    if img.mode in ("RGBA", "LA", "P", "PA"):
+        # A transparent PNG has to land on something, and white is what every
+        # page here has behind it. Left as RGBA it cannot be saved as JPEG at
+        # all; converted bluntly, transparency comes out black.
+        img = img.convert("RGBA")
+        flat = Image.new("RGB", img.size, (255, 255, 255))
+        flat.paste(img, mask=img.split()[-1])
+        img = flat
+    elif img.mode != "RGB":
+        img = img.convert("RGB")
+    if max(img.size) > PHOTO_MASTER_EDGE:
+        img.thumbnail((PHOTO_MASTER_EDGE, PHOTO_MASTER_EDGE), Image.LANCZOS)
+    buf = io.BytesIO()
+    # No exif= argument, so nothing is carried over: no GPS, no serial number.
+    img.save(buf, "JPEG", quality=PHOTO_MASTER_QUALITY, optimize=True,
+             progressive=True)
+    return buf.getvalue(), taken
+
+
+def photo_rendition(stored_name, size):
+    """The path to this photograph at `size`, making it if it is not there yet.
+
+    Made once and kept. Regenerated if the master is ever replaced, which is
+    what the mtime comparison is for: without it, swapping a website picture
+    would leave every size showing the picture it replaced, and the admin page
+    would show the new one while the public site showed the old.
+    """
+    if size not in PHOTO_SIZES:
+        raise ValueError("No such photograph size: %s" % size)
+    source = os.path.join(UPLOAD_DIR, stored_name)
+    if not os.path.exists(source):
+        return None
+    out_dir = os.path.join(PHOTO_DERIVED_DIR, size)
+    os.makedirs(out_dir, exist_ok=True)
+    out = os.path.join(out_dir, os.path.splitext(stored_name)[0] + ".jpg")
+    if os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(source):
+        return out
+    edge, quality = PHOTO_SIZES[size]
+    from PIL import Image, ImageOps
+    with Image.open(source) as img:
+        img = ImageOps.exif_transpose(img) or img
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        img.thumbnail((edge, edge), Image.LANCZOS)
+        img.save(out, "JPEG", quality=quality, optimize=True, progressive=True)
+    return out
 
 
 def allowed_image(filename):

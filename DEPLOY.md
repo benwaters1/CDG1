@@ -202,10 +202,16 @@ one variable:
 GUDANES_DB_PATH=/data/gudanes_hr.db
 ```
 
-That single setting moves all three: uploads and room photos default to
-sitting beside the database, so they follow it onto the volume. (They can be
-split out with `GUDANES_UPLOAD_DIR` and `GUDANES_ROOM_PHOTO_DIR` if you ever
-want them elsewhere, but there's no reason to.)
+That single setting moves all of them: uploads, room photos and the resized
+copies of photographs all default to sitting beside the database, so they
+follow it onto the volume. (They can be split out with `GUDANES_UPLOAD_DIR`,
+`GUDANES_ROOM_PHOTO_DIR` and `GUDANES_PHOTO_SIZE_DIR` if you ever want them
+elsewhere, but there's no reason to.)
+
+The resized copies are the one folder here that can be safely deleted: every
+size is made from the master on first ask and kept, so losing them costs one
+slow page load each and nothing else. They are on the volume because making
+them again on every view is wasteful, not because they are precious.
 
 **How production actually runs.** `python app.py` is the development server
 and is not used here. Railway reads `Procfile`, which starts gunicorn against

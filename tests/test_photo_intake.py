@@ -31,7 +31,26 @@ import _harness
 
 m = _harness.m
 TAG = "ZZINTAKE"
-PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 40
+def _png():
+    """A PNG THAT ACTUALLY DECODES, which eight bytes of header no longer is.
+
+    This fixture was the magic number and forty zeroes, and that was enough
+    for as long as the route only ever wrote the bytes to disk. It does not
+    any more: every photograph is opened on the way in, turned the right way
+    up, stripped of where the camera was standing and resized, so a header
+    with nothing behind it is refused at the door -- exactly as a truncated
+    upload should be. Eight checks here went red the day that landed, every
+    one of them about slots and captions and none about image formats, which
+    is what a fixture that has stopped resembling the real thing looks like.
+    """
+    from PIL import Image
+    img = Image.new("RGB", (240, 160), (120, 90, 60))
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+PNG = _png()
 
 
 def _cleanup(conn):
@@ -217,7 +236,13 @@ def run():
     body = r.get_data(as_text=True)
     s.check("the plan is offered by name", TAG + " Wednesdays" in body)
     s.check("and the recent strip shows what has been put in",
-            "/uploads/" in body, detail="the strip is how somebody sees it landed")
+            "/photo/thumb/" in body, detail="the strip is how somebody sees it landed")
+    # The strip used to point straight at the stored file, which meant a dozen
+    # full-size frames downloaded to draw a row of small squares.
+    s.check("at a size a strip of them can actually carry",
+            "/uploads/" not in body,
+            detail="a GH5 frame is ten megabytes, and twelve of them is the "
+                   "page nobody waits for")
     s.check("an employee cannot", ec.get("/admin/photos").status_code != 200)
 
     _cleanup(conn)

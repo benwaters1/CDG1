@@ -379,7 +379,7 @@
     <div class="pi-recent">
       {% for r in recent %}
       <figure class="pi-recent__i">
-        <img src="{{ url_for('uploaded_file', filename=r['image_filename']) }}"
+        <img src="{{ url_for('photo_at_size', size='thumb', filename=r['image_filename']) }}"
              alt="{{ r['alt_text'] or '' }}" loading="lazy">
         <figcaption>
           {{ r['scheduled_date'] or 'unscheduled' }} ·

@@ -99,6 +99,7 @@ SUITES = [
     "test_pass",
     "test_site_audit",
     "test_photo_intake",
+    "test_photo_sizes",
     "test_house_day",
     "test_house_operations",
     "test_house_reports",

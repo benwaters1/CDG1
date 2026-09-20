@@ -10,3 +10,7 @@ cryptography==50.0.0
 tzdata==2026.3
 pywebpush==2.4.0
 anthropic==0.122.0
+# Photographs off the camera are normalised and resized before anything uses
+# them (photo_master / photo_rendition): rotation applied, metadata dropped,
+# and a size per consumer. Meta refuses an image wider than 1440.
+Pillow==12.3.0

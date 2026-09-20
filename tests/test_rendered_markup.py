@@ -85,9 +85,16 @@ FIELD = re.compile(r"<(input|select|textarea)\b([^>]*)>", re.S | re.I)
 # environment, and the whole point of that route is that nothing can reach it
 # without the value. There is nothing to teach here and there must not be.
 #
-# Seven now: export_report_csv, mirrored_photo, recover_owner_password,
-# room_ics_feed, room_photo, set_language and uploaded_file.
-NO_RULE = 7
+# And a third time, for the same reason as the first: photo_at_size serves one
+# photograph at one size, so its arguments are a size name and a stored
+# filename. There is no id to teach, and what comes back is a JPEG rather than
+# markup, so this sweep could not read it even if it could build the URL.
+# test_photo_sizes is what proves that route answers.
+#
+# Eight now: export_report_csv, mirrored_photo, photo_at_size,
+# recover_owner_password, room_ics_feed, room_photo, set_language and
+# uploaded_file.
+NO_RULE = 8
 
 # What the sweep fetched and could not read.
 #
