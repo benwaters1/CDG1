@@ -3943,6 +3943,10 @@ def init_db():
         # The day it was TAKEN, which is not the day it arrived: a card
         # emptied on Sunday is full of Saturday.
         ("social_posts_taken_on", "ALTER TABLE social_posts ADD COLUMN taken_on TEXT"),
+        # SUGGESTED words, kept apart from the caption on purpose. Nothing
+        # writes `caption` but a person choosing one of these.
+        ("social_posts_suggested", "ALTER TABLE social_posts ADD COLUMN suggested_json TEXT"),
+        ("social_posts_suggested_at", "ALTER TABLE social_posts ADD COLUMN suggested_at TEXT"),
         ("social_posts_offer_site", "ALTER TABLE social_posts ADD COLUMN offer_for_site INTEGER NOT NULL DEFAULT 0"),
         # One post per plan per date. The generator relies on this rather
         # than on checking first: two ticks landing together cannot both
@@ -6710,6 +6714,7 @@ NAV_AREAS = {
         "admin_readiness", "admin_photo_mirror", "fetch_photo_mirror",
         "photo_intake", "uploaded_file", "photo_at_size",
         "photo_tray", "set_aside_arrival", "bring_back_arrival",
+        "suggest_post_words", "use_suggested_words",
         "arrival_to_post",
         "admin_terms", "audit_log", "record_history_page",
         "delete_company_document",
@@ -59801,7 +59806,18 @@ def management_social():
         query += " AND social_posts.platform = ?"
         params.append(platform_filter)
     query += " ORDER BY (social_posts.scheduled_date IS NULL), social_posts.scheduled_date, social_posts.created_at"
-    posts = conn.execute(query, params).fetchall()
+    posts = []
+    for row in conn.execute(query, params).fetchall():
+        # A dict rather than the Row, so the decoded suggestions can travel
+        # with the post. Kept as its own key and never merged into `caption`:
+        # the caption box is the only thing that is the caption, and nothing
+        # but a person choosing fills it.
+        post = dict(row)
+        try:
+            post["suggestions"] = json.loads(row["suggested_json"] or "") or None
+        except (ValueError, TypeError):
+            post["suggestions"] = None
+        posts.append(post)
     platforms = [r["platform"] for r in conn.execute(
         "SELECT DISTINCT platform FROM social_posts ORDER BY platform"
     ).fetchall()]
@@ -59907,6 +59923,188 @@ def mark_social_post_posted(post_id):
     close_social_task(conn, post_id)
     conn.commit()
     conn.close()
+    return redirect(url_for("management_social"))
+
+
+# ---------------------------------------------------------------------------
+# Words for a photograph — SUGGESTED, and never written in.
+#
+# The intake page has always refused to write captions, and the reason is in
+# its docstring: a generated sentence about a French château reads like every
+# other generated sentence, and the writing is the reason the site works. The
+# owner asked for a suggestion anyway, which is a different thing and worth
+# being exact about.
+#
+# A SUGGESTION IS NOT A DRAFT. What comes back is put in its own field, shown
+# as two or three options to choose between, and the post stays an IDEA until
+# a person picks one or writes their own. Nothing here ever writes `caption`.
+# A post that arrives already looking finished is one nobody reads before it
+# goes out, which is how the house ends up sounding like everybody else.
+#
+# AND IT IS ASKED FOR, NOT VOLUNTEERED. On the post, by somebody looking at it.
+# Forty frames off a shoot would otherwise be forty calls for the thirty-six
+# nobody chose.
+# ---------------------------------------------------------------------------
+
+PHOTO_CAPTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "what_is_shown": {
+            "type": "string",
+            "description": "A plain, literal description of what is in the "
+                           "frame. No adjectives of quality.",
+        },
+        "alt_text": {
+            "type": "string",
+            "description": "Alt text for a screen reader: what the picture "
+                           "shows, under 125 characters, no 'image of'.",
+        },
+        "captions": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 2,
+            "maxItems": 3,
+            "description": "Two or three different captions to choose between.",
+        },
+    },
+    "required": ["what_is_shown", "alt_text", "captions"],
+    "additionalProperties": False,
+}
+
+
+PHOTO_CAPTION_SYSTEM = (
+    "You suggest captions for photographs taken at Chateau de Gudanes, a "
+    "restored 18th-century chateau in the Ariege, in the French Pyrenees. "
+    "Somebody who knows the house will read your suggestions and pick one or "
+    "write their own. Rules, in order of importance:\n"
+    "1. DESCRIBE ONLY WHAT IS IN THE FRAME. You are looking at a photograph "
+    "and nothing else. Never state a room's name, a price, a date, an event, "
+    "who is in it or what is happening that day -- you cannot see any of "
+    "that, and a caption that invents it goes out to the public over the "
+    "house's name.\n"
+    "2. Plain English. No marketing language, no hype, no exclamation marks, "
+    "no 'nestled', no 'step into', no rhetorical questions, no emoji, no "
+    "hashtags. If a sentence could be about any chateau anywhere, it is the "
+    "wrong sentence.\n"
+    "3. Short. One or two sentences. The photograph is doing the work.\n"
+    "4. Give two or three genuinely DIFFERENT options -- a different angle on "
+    "the picture each time, not the same sentence reworded. The point is to "
+    "give somebody a choice, and three near-identical lines is no choice.\n"
+    "5. Write the alt text for somebody who cannot see the picture: what is "
+    "actually there, concretely, under 125 characters, not a caption."
+)
+
+
+def suggest_photo_caption(image_bytes):
+    """Ask for words for one photograph. The suggestion dict, or None.
+
+    None on every failure, and the caller says so plainly. A suggestion that
+    silently does not arrive is indistinguishable from one that arrived empty,
+    and the person is left waiting for something that is never coming.
+    """
+    if not claude_configured() or not image_bytes:
+        return None
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    try:
+        response = client.messages.parse(
+            model="claude-opus-5", max_tokens=1024,
+            system=PHOTO_CAPTION_SYSTEM,
+            output_config={"format": {"type": "json_schema",
+                                      "schema": PHOTO_CAPTION_SCHEMA}},
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {
+                    "type": "base64", "media_type": "image/jpeg",
+                    "data": base64.standard_b64encode(image_bytes).decode("ascii")}},
+                {"type": "text", "text":
+                 "Suggest captions for this photograph, and alt text for it."},
+            ]}],
+        )
+    except Exception as e:
+        print(f"[claude] caption suggestion failed: {e}")
+        return None
+    if getattr(response, "stop_reason", None) == "refusal":
+        return None
+    parsed = getattr(response, "parsed_output", None)
+    if not parsed or not parsed.get("captions"):
+        return None
+    return parsed
+
+
+@app.route("/management/social/<int:post_id>/suggest-words", methods=["POST"])
+@owner_required
+def suggest_post_words(post_id):
+    """Ask for some words for the photograph on this post."""
+    conn = get_db()
+    post = conn.execute("SELECT * FROM social_posts WHERE id = ?",
+                        (post_id,)).fetchone()
+    if not post:
+        conn.close()
+        abort(404)
+    if not post["image_filename"]:
+        conn.close()
+        flash("There is no photograph on that post to write about.", "error")
+        return redirect(url_for("management_social"))
+    if not claude_configured():
+        conn.close()
+        flash("Suggestions need ANTHROPIC_API_KEY to be set — see DEPLOY.md.",
+              "error")
+        return redirect(url_for("management_social"))
+    # The small copy, which is the whole reason that size exists: anything
+    # longer than 1568 is resized and thrown away before it is looked at.
+    path = photo_rendition(post["image_filename"], "vision")
+    data = None
+    if path:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    suggestion = suggest_photo_caption(data)
+    if not suggestion:
+        conn.close()
+        flash("No suggestion came back. Nothing has been changed — write it "
+              "yourself, or try again.", "error")
+        return redirect(url_for("management_social"))
+    conn.execute(
+        """UPDATE social_posts SET suggested_json = ?, suggested_at = ?
+            WHERE id = ?""",
+        (json.dumps(suggestion), datetime.now(timezone.utc).isoformat(), post_id))
+    conn.commit()
+    conn.close()
+    flash("Some suggestions to choose from — none of them is the caption "
+          "until you say so.", "success")
+    return redirect(url_for("management_social"))
+
+
+@app.route("/management/social/<int:post_id>/use-words", methods=["POST"])
+@owner_required
+def use_suggested_words(post_id):
+    """Take one of the suggestions as the caption. A PERSON does this."""
+    conn = get_db()
+    post = conn.execute("SELECT * FROM social_posts WHERE id = ?",
+                        (post_id,)).fetchone()
+    if not post:
+        conn.close()
+        abort(404)
+    try:
+        suggestion = json.loads(post["suggested_json"] or "{}")
+    except ValueError:
+        suggestion = {}
+    captions = suggestion.get("captions") or []
+    try:
+        which = int(request.form.get("which") or 0)
+    except ValueError:
+        which = 0
+    if not captions or which < 0 or which >= len(captions):
+        conn.close()
+        flash("That suggestion is no longer there.", "error")
+        return redirect(url_for("management_social"))
+    conn.execute(
+        """UPDATE social_posts SET caption = ?, alt_text = COALESCE(alt_text, ?),
+             status = CASE WHEN status = 'idea' THEN 'drafted' ELSE status END
+            WHERE id = ?""",
+        (captions[which], (suggestion.get("alt_text") or "").strip() or None,
+         post_id))
+    conn.commit()
+    conn.close()
+    flash("Taken as the caption. Edit it like any other.", "success")
     return redirect(url_for("management_social"))
 
 

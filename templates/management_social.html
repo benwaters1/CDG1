@@ -111,6 +111,37 @@
         {% endfor %}
       </select>
       <textarea aria-label="Caption / content" name="caption" placeholder="Caption / content" required>{{ p['caption'] }}</textarea>
+      {% if p['image_filename'] %}
+      {# SUGGESTED, not written in. The caption box above is the only thing
+         that is the caption, and nothing fills it but a person. #}
+      <div class="sugg">
+        <img class="sugg__pic"
+             src="{{ url_for('photo_at_size', size='thumb', filename=p['image_filename']) }}"
+             alt="{{ p['alt_text'] or 'The photograph on this post' }}"
+             loading="lazy" width="90" height="90">
+        <div class="sugg__body">
+          {% if p['suggestions'] %}
+          <p class="field-label">Suggestions — none of these is the caption until you pick one</p>
+          {% for c in p['suggestions']['captions'] %}
+          <div class="sugg__one">
+            <span>{{ c }}</span>
+            <button type="submit" class="btn-mini"
+                    formaction="{{ url_for('use_suggested_words', post_id=p['id']) }}"
+                    formmethod="post" name="which" value="{{ loop.index0 }}">Use this</button>
+          </div>
+          {% endfor %}
+          {% if p['suggestions']['alt_text'] and not p['alt_text'] %}
+          <p class="g-muted">Alt text it offers: {{ p['suggestions']['alt_text'] }}</p>
+          {% endif %}
+          {% endif %}
+          <button type="submit" class="btn-mini"
+                  formaction="{{ url_for('suggest_post_words', post_id=p['id']) }}"
+                  formmethod="post">
+            {{ 'Suggest again' if p['suggestions'] else 'Suggest some words' }}
+          </button>
+        </div>
+      </div>
+      {% endif %}
       <input aria-label="Link (optional)" type="text" name="link" value="{{ p['link'] or '' }}" placeholder="Link (optional)">
       <input aria-label="Notes (optional)" type="text" name="notes" value="{{ p['notes'] or '' }}" placeholder="Notes (optional)">
       <button type="submit" class="btn-mini">Save</button>
@@ -163,3 +194,16 @@ function toggleSocialEdit(id) {
 </script>
 
 {% endblock %}
+
+<style>
+  .sugg { display: flex; gap: .7rem; align-items: flex-start; margin: .4rem 0; }
+  .sugg__pic { border-radius: 4px; object-fit: cover; width: 90px; height: 90px; }
+  .sugg__body { flex: 1; min-width: 0; }
+  .sugg__one {
+    display: flex; gap: .5rem; align-items: baseline;
+    justify-content: space-between; padding: .3rem 0;
+    border-bottom: 1px solid rgba(0,0,0,.06);
+  }
+  .sugg__one span { flex: 1; }
+  @media (pointer: coarse) { .sugg .btn-mini { min-height: 44px; } }
+</style>
