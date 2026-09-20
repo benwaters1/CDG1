@@ -304,7 +304,7 @@ def run():
         out = {}
         for src_line in list(lines)[::-1][:-1] or list(lines)[::-1]:
             out[src_line] = "[%s] %s" % (lang.upper(), src_line)
-        return out, {}
+        return out, {}, None
 
     was_batch = m.translate_batch_with_claude
     was_conf = m.claude_configured
@@ -332,7 +332,7 @@ def run():
         m.claude_configured = was_conf
 
     s.section("It never asks the same question twice")
-    m.translate_batch_with_claude = lambda lines, lang: ({}, {l: True for l in lines})
+    m.translate_batch_with_claude = lambda lines, lang: ({}, {l: True for l in lines}, None)
     m.claude_configured = lambda: True
     try:
         m.run_page_translation_job(conn, limit=20)
@@ -359,7 +359,7 @@ def run():
                    'approved', ?)""", (m.datetime.now(m.timezone.utc).isoformat(),))
     conn.commit()
     m.translate_batch_with_claude = lambda lines, lang: (
-        {l: "MACHINE OVERWROTE IT" for l in lines}, {})
+        {l: "MACHINE OVERWROTE IT" for l in lines}, {}, None)
     m.claude_configured = lambda: True
     try:
         m.run_page_translation_job(conn, limit=50)
@@ -382,7 +382,7 @@ def run():
     # NEVER INSIDE A REQUEST. A page a guest is waiting for must not depend on
     # a third party being up, whatever the latency.
     reached = []
-    m.translate_batch_with_claude = lambda lines, lang: (reached.append(1), ({}, {}))[1]
+    m.translate_batch_with_claude = lambda lines, lang: (reached.append(1), ({}, {}, None))[1]
     m.claude_configured = lambda: True
     try:
         conn.execute("UPDATE page_translations SET status='wanted' WHERE status='machine'")
@@ -441,7 +441,7 @@ def run():
              "leave_alone": False},
         ]}
         m.anthropic.Anthropic, _h = with_payload(payload)
-        done, leave = m.translate_batch_with_claude(asked, "fr")
+        done, leave, why = m.translate_batch_with_claude(asked, "fr")
         s.check("a reordered answer lands under its own question",
                 done.get("Lime, not cement") == "De la chaux, pas du ciment"
                 and done.get("The building breathes") == "Le bâtiment respire",
@@ -458,7 +458,7 @@ def run():
         m.anthropic.Anthropic, _h = with_payload({"lines": [
             {"source": "Lime, not cement", "translated": "Lime, not cement",
              "leave_alone": False}]})
-        done, leave = m.translate_batch_with_claude(["Lime, not cement"], "fr")
+        done, leave, why = m.translate_batch_with_claude(["Lime, not cement"], "fr")
         s.check("an answer identical to the question is left alone, not stored",
                 not done and leave.get("Lime, not cement"),
                 detail="storing it would serve English and call it French")
@@ -468,7 +468,7 @@ def run():
             def __init__(self, **kw):
                 raise RuntimeError("provider down")
         m.anthropic.Anthropic = _Boom
-        done, leave = m.translate_batch_with_claude(asked, "fr")
+        done, leave, why = m.translate_batch_with_claude(asked, "fr")
         s.check("a provider that is down costs nothing", done == {} and leave == {},
                 detail="the rows stay wanted and the pages stay English")
     finally:
@@ -497,7 +497,7 @@ def run():
             ("De la chaux, pas du ciment",))
         other.commit()
         other.close()
-        return {l: "CE QUE LA MACHINE A DIT" for l in lines}, {}
+        return {l: "CE QUE LA MACHINE A DIT" for l in lines}, {}, None
 
     was_batch = m.translate_batch_with_claude
     m.translate_batch_with_claude = approve_then_answer
@@ -519,6 +519,93 @@ def run():
     conn.commit()
     # Left OPEN: the section below still uses it. Closing it here
     # crashed the suite on "Cannot operate on a closed database".
+
+    s.section("The answer is read under either name the SDK uses")
+    # meeting_minutes already reads `parsed_output or parsed`, because the
+    # SDK has answered under both. This read parsed_output directly, and a
+    # bare attribute access raises AttributeError -- which the handler around
+    # it then swallowed, so every call came back empty and the rows sat
+    # "wanted" for ever with nothing said about it anywhere.
+    was_conf, was_anth = m.claude_configured, m.anthropic.Anthropic
+    m.claude_configured = lambda: True
+
+    class _OldName:
+        """A response carrying `parsed` and no `parsed_output` at all."""
+        def __init__(self, **kw):
+            self.messages = self
+        def parse(self, **kw):
+            class R:
+                parsed = {"lines": [{"source": "Lime, not cement",
+                                     "translated": "De la chaux, pas du ciment",
+                                     "leave_alone": False}]}
+            return R()
+    m.anthropic.Anthropic = _OldName
+    try:
+        done, leave, why = m.translate_batch_with_claude(["Lime, not cement"], "fr")
+        s.check("a response with only `parsed` is still read",
+                done.get("Lime, not cement") == "De la chaux, pas du ciment",
+                detail="done=%r why=%r" % (done, why))
+        s.check("and it is not reported as a failure", why is None, detail=str(why))
+    finally:
+        m.anthropic.Anthropic = was_anth
+        m.claude_configured = was_conf
+
+    s.section("A run that gets nowhere says so, rather than saying nothing")
+    # THE FAULT THIS WAS WRITTEN FOR. The job reported "translated 0, left 0"
+    # whatever went wrong, so a provider refusing every call looked exactly
+    # like a queue that was already empty. Eighteen minutes of watching a
+    # percentage that never moved is what it cost, and on a quiet site nobody
+    # would have noticed for weeks.
+    conn = db()
+    conn.execute("DELETE FROM page_translations")
+    conn.execute("""INSERT INTO page_translations
+                    (source_text, lang, status, created_at)
+                    VALUES (?, 'fr', 'wanted', ?)""",
+                 ("A sentence waiting to be translated.",
+                  m.datetime.now(m.timezone.utc).isoformat()))
+    conn.commit()
+    was_conf = m.claude_configured
+    was_anth = m.anthropic.Anthropic
+    m.claude_configured = lambda: True
+
+    class _Down:
+        def __init__(self, **kw):
+            raise RuntimeError("provider refused the key")
+    m.anthropic.Anthropic = _Down
+    try:
+        said = m.run_page_translation_job(conn, limit=5)
+        s.check("the job names the failure", "refused the key" in said,
+                detail=said)
+        s.check("and says how many are still waiting", "waiting" in said,
+                detail=said)
+        s.check("and does not claim to have translated anything",
+                "translated 0" not in said, detail=said)
+        s.check("the row is left wanted for the next run",
+                conn.execute("""SELECT status FROM page_translations
+                                WHERE lang = 'fr'""").fetchone()["status"]
+                == "wanted")
+    finally:
+        m.anthropic.Anthropic = was_anth
+        m.claude_configured = was_conf
+
+    # And an answer in a shape we do not read is reported too, rather than
+    # counting as an empty reply.
+    class _Odd:
+        def __init__(self, **kw):
+            self.messages = self
+        def parse(self, **kw):
+            return type("R", (), {"parsed_output": "not a dict"})()
+    m.claude_configured = lambda: True
+    m.anthropic.Anthropic = _Odd
+    try:
+        said = m.run_page_translation_job(conn, limit=5)
+        s.check("an unreadable answer is reported, not swallowed",
+                "shape" in said or "waiting" in said, detail=said)
+    finally:
+        m.anthropic.Anthropic = was_anth
+        m.claude_configured = was_conf
+    conn.execute("DELETE FROM page_translations")
+    conn.commit()
 
     s.section("With no provider it is a no-op, not an error")
     # The shipping state today: there is no key, and the site must be exactly

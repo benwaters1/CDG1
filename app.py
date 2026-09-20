@@ -67428,7 +67428,7 @@ def translate_batch_with_claude(lines, lang):
     'skip' so they are never asked about again.
     """
     if not claude_configured() or not lines:
-        return {}, {}
+        return {}, {}, None
     wanted = LANGUAGE_NAMES.get(lang, lang)
     # THE CLIENT IS BUILT INSIDE THE TRY, not above it. Constructing it
     # can raise on its own -- a malformed key, a library that cannot
@@ -67446,10 +67446,22 @@ def translate_batch_with_claude(lines, lang):
                        "Translate each line into %s.\n\n%s"
                        % (wanted, json.dumps(lines, ensure_ascii=False))}],
         )
-        parsed = response.parsed_output or {}
+        # parsed_output OR parsed. The SDK has answered under both names
+        # and meeting_minutes already reads it this way -- a bare
+        # attribute access raises AttributeError, which the handler
+        # below then swallows, and the rows sit "wanted" for ever with
+        # nobody any the wiser.
+        parsed = (getattr(response, "parsed_output", None)
+                  or getattr(response, "parsed", None) or {})
+        if not isinstance(parsed, dict):
+            return {}, {}, "the provider answered in a shape we do not read"
     except Exception as e:
+        # REPORTED, not just printed. A job that can fail silently for
+        # ever is worse than one that fails loudly once: the pages stay
+        # English, the queue keeps growing, and the only sign is a
+        # percentage that never moves.
         print("[translation call failed] %s" % e)
-        return {}, {}
+        return {}, {}, "%s: %s" % (type(e).__name__, e)
     done, leave = {}, {}
     known = set(lines)
     for item in parsed.get("lines", []):
@@ -67465,7 +67477,7 @@ def translate_batch_with_claude(lines, lang):
             leave[source] = True
             continue
         done[source] = said
-    return done, leave
+    return done, leave, None
 
 
 def run_page_translation_job(conn, limit=None):
@@ -67489,10 +67501,13 @@ def run_page_translation_job(conn, limit=None):
 
     stamp = datetime.now(timezone.utc).isoformat()
     written = skipped = 0
+    failures = []
     for lang, sources in by_lang.items():
         for i in range(0, len(sources), TRANSLATION_BATCH):
             chunk = sources[i:i + TRANSLATION_BATCH]
-            done, leave = translate_batch_with_claude(chunk, lang)
+            done, leave, why = translate_batch_with_claude(chunk, lang)
+            if why:
+                failures.append(why)
             for source, said in done.items():
                 conn.execute(
                     """UPDATE page_translations
@@ -67513,7 +67528,18 @@ def run_page_translation_job(conn, limit=None):
     # The next public response should see this rather than waiting out the
     # cache, or the job appears to have done nothing for two minutes.
     translation_memory(force=True)
-    return "translated %d, left %d alone" % (written, skipped)
+    waiting = conn.execute(
+        "SELECT COUNT(*) AS c FROM page_translations WHERE status = 'wanted'"
+    ).fetchone()["c"]
+    if failures and not written:
+        # The whole run got nowhere. Say so where the owner reads it,
+        # with the provider's own words and the size of the backlog.
+        return "nothing translated, %d still waiting -- %s" % (
+            waiting, failures[0][:160])
+    return "translated %d, left %d alone, %d still waiting%s" % (
+        written, skipped, waiting,
+        " (%d call(s) failed: %s)" % (len(failures), failures[0][:120])
+        if failures else "")
 
 
 def run_daily_digest_job(conn):
