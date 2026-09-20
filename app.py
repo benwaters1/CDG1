@@ -44403,6 +44403,7 @@ def status_page():
     active = None
     owner_rows = 0
     locked_out = 0
+    translation = {}
     try:
         conn = get_db()
         try:
@@ -44412,6 +44413,21 @@ def status_page():
             rows = conn.execute("SELECT COUNT(*) AS c FROM bookings").fetchone()["c"]
             guests = conn.execute("SELECT COUNT(*) AS c FROM guests").fetchone()["c"]
             has_data = bool(rows or guests)
+            # IS THE SITE TRANSLATING ITSELF? Counts only, and they are
+            # counts of sentences that appear on public pages anyway, so
+            # nothing here is the owner's business rather than a
+            # visitor's -- unlike the guest and booking numbers above,
+            # which is why those are reported as a single yes or no.
+            #
+            # It exists because the job spent an afternoon translating
+            # nothing while looking exactly like a job with nothing to do.
+            # "wanted 0" and "wanted 300, machine 0" are different faults
+            # with different fixes, and from outside they were the same
+            # unmoving percentage.
+            for state in ("wanted", "machine", "approved", "skip"):
+                translation[state] = conn.execute(
+                    "SELECT COUNT(*) AS c FROM page_translations WHERE status = ?",
+                    (state,)).fetchone()["c"]
             # Whether the variable actually landed, rather than whether it is
             # set. Set-but-not-applied is a real state — there may be no owner
             # account at all — and from outside it looked exactly like applied.
@@ -44478,6 +44494,11 @@ def status_page():
             "on_a_volume": not DB_PATH.startswith(BASE_DIR),
             "tables": tables,
             "has_data": has_data,
+        },
+        "translation": {
+            **translation,
+            "enabled": AUTOMATION_SETTING_DEFAULTS.get(
+                "automation_page_translation_enabled") == "1",
         },
         "configured": {
             "assistant": env("ANTHROPIC_API_KEY"),
