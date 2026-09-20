@@ -6743,6 +6743,7 @@ NAV_AREAS = {
         "photo_tray", "set_aside_arrival", "bring_back_arrival",
         "suggest_post_words", "use_suggested_words",
         "approve_social_post", "unapprove_social_post",
+        "connect_social_accounts",
         "publish_social_post_now",
         "arrival_to_post",
         "arrival_to_site", "site_photographs", "put_back_site_photo",
@@ -31640,6 +31641,9 @@ PALETTE_PAGES = [
     ("Photographs waiting", "photo_tray",
      "camera tray gh5 lumix arrived waiting photograph picture inbox choose "
      "social post website image set aside"),
+    ("Connect Instagram and the Page", "connect_social_accounts",
+     "meta facebook instagram token connect publish social account expires "
+     "page id business"),
     ("Photographs swapped on the site", "site_photographs",
      "website site photograph picture replace swap squarespace mirror our own "
      "put back revert"),
@@ -60522,6 +60526,98 @@ def social_photo_public(token):
     resp = send_from_directory(os.path.dirname(path), os.path.basename(path))
     resp.headers["X-Robots-Tag"] = "noindex"
     return resp
+
+
+def meta_token_tail(conn):
+    """The last four characters of the token, or "" if there is none.
+
+    Enough to tell one token from another when you are looking at two tabs,
+    and not enough to be worth anything to anybody who sees the screen.
+    """
+    token = meta_setting(conn, "meta_access_token")
+    return token[-4:] if len(token) > 8 else ("set" if token else "")
+
+
+@app.route("/management/social/connect", methods=["GET", "POST"])
+@owner_required
+def connect_social_accounts():
+    """Where the Instagram and Page details are put in.
+
+    THE TOKEN IS NEVER SENT BACK TO THE BROWSER. Not in a value, not in a
+    placeholder, not in a comment. A password field still puts the real
+    characters in the HTML, so anybody looking over a shoulder at View Source,
+    and every cache and history between here and there, has it. The page shows
+    the last four characters and nothing else, which is enough to tell one
+    token from another and worth nothing to anybody who sees the screen.
+
+    AND AN EMPTY BOX MEANS "LEAVE IT ALONE", not "delete it". Otherwise
+    correcting the expiry date -- the field somebody actually comes back to
+    edit -- would silently disconnect the account, and the first sign would be
+    a post that did not go out.
+
+    THE EXPIRY IS TYPED RATHER THAN INFERRED. Meta shows it on the token
+    itself; guessing sixty days from today would be a date the app made up,
+    and a warning built on a made-up date is worse than no warning, because it
+    is believed.
+    """
+    conn = get_db()
+    if request.method == "POST":
+        changed = []
+        for key, field in (("meta_page_id", "page_id"),
+                           ("meta_ig_user_id", "ig_user_id")):
+            value = (request.form.get(field) or "").strip()
+            if value != meta_setting(conn, key):
+                conn.execute(
+                    "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    (key, value))
+                changed.append(field.replace("_", " "))
+
+        token = (request.form.get("access_token") or "").strip()
+        if token:
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES "
+                "('meta_access_token', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (token,))
+            changed.append("the token")
+
+        when_raw = (request.form.get("expires_on") or "").strip()
+        if when_raw and not parse_date(when_raw):
+            conn.close()
+            flash("That expiry date could not be read. Use the date picker, "
+                  "or leave it blank to say nobody knows.", "error")
+            return redirect(url_for("connect_social_accounts"))
+        if when_raw != meta_setting(conn, "meta_token_expires_at"):
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES "
+                "('meta_token_expires_at', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (when_raw,))
+            changed.append("when it runs out")
+
+        # The CHANGE is recorded, never the value. An audit trail holding a
+        # live credential is a second place it has to be kept safe.
+        if changed:
+            log_audit(conn, "social_accounts_connected",
+                      target=", ".join(changed))
+        conn.commit()
+        conn.close()
+        flash("Saved." if changed else "Nothing was different.", "success")
+        return redirect(url_for("connect_social_accounts"))
+
+    state = {
+        "page_id": meta_setting(conn, "meta_page_id"),
+        "ig_user_id": meta_setting(conn, "meta_ig_user_id"),
+        "token_tail": meta_token_tail(conn),
+        "expires_on": meta_setting(conn, "meta_token_expires_at"),
+        "days_left": meta_token_days_left(conn),
+        "ready": meta_configured(conn),
+        "publishing_on": get_automation_settings(conn)
+                             .get("automation_social_publish_enabled") == "1",
+    }
+    conn.close()
+    return render_template("management_social_connect.html", state=state)
 
 
 @app.route("/management/social/<int:post_id>/approve", methods=["POST"])

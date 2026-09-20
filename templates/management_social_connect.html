@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Connect Instagram and the Page{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Connect Instagram and the Page</h1>
+  <a href="{{ url_for('management_social') }}" class="btn-mini">The social list</a>
+  <a href="{{ url_for('admin_automation') }}" class="btn-mini">Automation</a>
+</div>
+
+<div class="connect-state">
+  {% if state.ready %}
+    <p><strong>Connected.</strong>
+      {% if state.days_left is none %}
+        Nobody has said when the token runs out, so there will be no warning
+        before it lapses — and the first sign would be a post that quietly did
+        not go out.
+      {% elif state.days_left < 0 %}
+        <span class="connect-bad">The token ran out
+        {{ -state.days_left }} day{{ '' if -state.days_left == 1 else 's' }} ago.</span>
+        Nothing is going out until it is renewed.
+      {% else %}
+        The token has {{ state.days_left }}
+        day{{ '' if state.days_left == 1 else 's' }} left.
+      {% endif %}
+    </p>
+    {% if not state.publishing_on %}
+    <p class="connect-warn">
+      Publishing is switched <strong>off</strong>, so nothing will go out on a
+      schedule even though the accounts are connected. Turn it on under
+      <a href="{{ url_for('admin_automation') }}">Automation</a> when you are
+      ready — or approve one post and use <em>Publish now</em> first, which
+      proves the whole chain without waiting for a timer.
+    </p>
+    {% endif %}
+  {% else %}
+    <p><strong>Not connected yet.</strong> Until the token and at least one of
+      the two IDs are here, nothing can be published and the app will say so
+      rather than failing quietly.</p>
+  {% endif %}
+</div>
+
+<form method="post" class="upload-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div>
+    <label class="field-label" for="connect-page">Facebook Page ID</label>
+    <input id="connect-page" type="text" name="page_id"
+           value="{{ state.page_id }}" autocomplete="off"
+           placeholder="e.g. 1234567890">
+    <p class="g-muted">Leave blank to post to Instagram only.</p>
+  </div>
+
+  <div>
+    <label class="field-label" for="connect-ig">Instagram user ID</label>
+    <input id="connect-ig" type="text" name="ig_user_id"
+           value="{{ state.ig_user_id }}" autocomplete="off"
+           placeholder="e.g. 17841400000000000">
+    <p class="g-muted">
+      The Business account's ID, not the @name. Creator accounts cannot
+      publish through the API; it has to be a Business one.
+    </p>
+  </div>
+
+  <div>
+    <label class="field-label" for="connect-token">Access token</label>
+    {# NOT sent back. Even a password field puts the real characters in the
+       HTML, so the page shows the last four and nothing else. #}
+    <input id="connect-token" type="password" name="access_token"
+           autocomplete="off" spellcheck="false"
+           placeholder="{% if state.token_tail %}Held, ending {{ state.token_tail }} — leave blank to keep it{% else %}Paste the long-lived token{% endif %}">
+    <p class="g-muted">
+      {% if state.token_tail %}
+      A token is held, ending <code>{{ state.token_tail }}</code>. Leaving this
+      blank keeps it — only type here to replace it.
+      {% else %}
+      Paste it once. It is never shown again, and never written to the audit
+      trail.
+      {% endif %}
+    </p>
+  </div>
+
+  <div>
+    <label class="field-label" for="connect-expires">When the token runs out</label>
+    <input id="connect-expires" type="date" name="expires_on"
+           value="{{ state.expires_on }}">
+    <p class="g-muted">
+      Meta shows this on the token itself — copy it across rather than
+      guessing. This date is the only reason you will be warned before a post
+      fails to go out, and a date the app invented would be believed.
+    </p>
+  </div>
+
+  <button type="submit" class="g-btn g-btn--solid">Save</button>
+</form>
+
+<h2>Getting the details</h2>
+<ol class="g-muted">
+  <li>An Instagram <strong>Business</strong> account, linked to a Facebook Page.</li>
+  <li>A Meta app at developers.facebook.com, of type <strong>Business</strong>.
+      Creating it is a form — nobody approves it.</li>
+  <li>A long-lived access token, and the expiry Meta shows beside it.</li>
+</ol>
+<p class="g-muted">
+  <strong>App Review is not needed.</strong> It grants Advanced access, which
+  is for letting other people connect their own accounts. The house posts to
+  its own, and Standard access covers that automatically. If you are ever
+  asked to verify the business, you have strayed into requesting Advanced —
+  back out of it.
+</p>
+
+<style>
+  .connect-state { margin-bottom: var(--s4, 1.5rem); }
+  .connect-bad { color: var(--danger, #a33); font-weight: 600; }
+  .connect-warn { color: var(--steel, #6b7f8f); }
+  .upload-form > div { margin-bottom: var(--s3, 1rem); }
+</style>
+{% endblock %}

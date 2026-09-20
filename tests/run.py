@@ -99,6 +99,7 @@ SUITES = [
     "test_pass",
     "test_site_audit",
     "test_caption_suggestions",
+    "test_social_connect",
     "test_social_publishing",
     "test_camera_ingest",
     "test_photo_intake",
