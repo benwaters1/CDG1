@@ -1430,6 +1430,31 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
      ones are handled above, these are everywhere else. */
   .small-link{ min-height:34px; display:inline-flex; align-items:center; }
 
+  /* THE TILL'S OWN CONTROLS, which this block had never reached.
+     Everything above is the app's generic furniture — buttons, chips, topbar
+     links — and the till uses none of it. It has its own classes, so it sat
+     outside the one rule in this file written for fingers. That is exactly
+     the wrong way round: the till is the ONE part of this app that is never
+     used with a mouse, and it was the only part with no touch sizing.
+     Measured on an iPad-sized viewport, the numbers were 28px, 17px, 39px. */
+
+  /* Seated · Ordered · Starters away · Mains away · Dessert · Bill dropped.
+     Tapped more often than anything else in the building during service, and
+     the six sit in one row — so a near-miss does not do nothing, it marks the
+     wrong course away. 28px tall before this. */
+  .till-state{ min-height:44px; display:inline-flex; align-items:center;
+               font-size:14px; }
+
+  /* "‹ Floor" — the way back out of a tab, and 17px tall, which is the
+     hardest thing on the screen to hit and the one most often wanted. */
+  .till-back{ min-height:44px; display:inline-flex; align-items:center;
+              padding:0 6px; }
+
+  /* The ✕ that leaves the till: 39px wide against a 44px minimum. Five pixels
+     is not a rounding error on a control that discards what is on screen. */
+  .till-bar__exit{ min-width:44px; display:inline-flex; align-items:center;
+                   justify-content:center; }
+
   /* Guest side. The footer link to the Terms is on every public page and was
      13px tall — it is the one thing a guest may genuinely need to read before
      agreeing to it, so it should not be the hardest thing to hit. */

@@ -365,6 +365,7 @@ SUITES = [
     "test_room_channel_name",
     "test_job_hour_windows",
     "test_whatsapp_channel",
+    "test_till_touch_targets",
 ]
 
 
