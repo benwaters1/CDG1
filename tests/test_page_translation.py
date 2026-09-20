@@ -635,17 +635,23 @@ def run():
 
     class _Refused:
         def __init__(self, **kw):
-            raise RuntimeError("key sk-secret-do-not-print was refused")
+            raise RuntimeError("key sk-secret-do-not-print-abcdefgh was refused")
     m.anthropic.Anthropic = _Refused
     try:
         m.run_page_translation_job(diag, limit=5)
         t = m.app.test_client().get("/status").get_json()["translation"]
-        s.check("the failure kind reaches the status page",
-                t.get("last_error") == "RuntimeError", detail=str(t.get("last_error")))
+        s.check("the failure reaches the status page with its reason",
+                "RuntimeError" in (t.get("last_error") or "")
+                and "was refused" in (t.get("last_error") or ""),
+                detail=str(t.get("last_error")))
+        # THE MESSAGE IS KEPT, THE KEY IS NOT. What gets sent to the
+        # provider is sentences already printed on public pages, so a
+        # provider quoting the request back costs nothing. The
+        # credential is the one thing in that string worth hiding.
         body = m.app.test_client().get("/status").get_data(as_text=True)
-        s.check("and the provider's own words never do",
-                "sk-secret-do-not-print" not in body and "refused" not in body,
-                detail="a public page must not echo what was sent to a provider")
+        s.check("but the key never does",
+                "sk-secret-do-not-print" not in body,
+                detail="a public page must never echo the credential")
     finally:
         m.anthropic.Anthropic = was_anth2
         m.claude_configured = was_conf2

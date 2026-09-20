@@ -67516,6 +67516,16 @@ def translate_batch_with_claude(lines, lang):
     return done, leave, None
 
 
+def redact_secrets(text):
+    """Anything key-shaped, replaced. Everything else left readable.
+
+    A provider quoting the request back is quoting public page text, which
+    costs nothing. A provider quoting the credential is a different matter,
+    and this page is public."""
+    out = re.sub(r"(sk-|key-)[A-Za-z0-9_\-]{8,}", "[key redacted]", text or "")
+    return re.sub(r"[A-Za-z0-9_\-]{32,}", "[redacted]", out)
+
+
 def run_page_translation_job(conn, limit=None):
     """Translate what the public pages have asked for and nobody has written.
 
@@ -67567,15 +67577,21 @@ def run_page_translation_job(conn, limit=None):
     waiting = conn.execute(
         "SELECT COUNT(*) AS c FROM page_translations WHERE status = 'wanted'"
     ).fetchone()["c"]
-    # Remembered as a KIND, never the message. "AuthenticationError" and
-    # "BadRequestError" are different faults with different fixes, and the
-    # class name carries that while a provider's prose might carry a
-    # fragment of what was sent to it.
+    # THE KIND AND WHAT IT SAID. The first version kept only the class
+    # name, on the grounds that a provider's prose might echo back a
+    # fragment of what was sent to it. That was the wrong worry: what is
+    # sent is sentences already printed on public pages, so an echo of
+    # the input is an echo of something any visitor can read.
+    #
+    # The key is the only thing here worth hiding, and it is redacted
+    # below rather than left to chance. Without the message, "the request
+    # was malformed" is all anybody gets, and which FIELD was malformed
+    # is the entire question.
     conn.execute(
         """INSERT INTO app_settings (key, value) VALUES (?, ?)
            ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
-        ("page_translation_last_error",
-         failures[0].split(":")[0] if failures else ""))
+        ("page_translation_last_error", redact_secrets(failures[0])[:300]
+         if failures else ""))
     conn.commit()
     if failures and not written:
         # The whole run got nowhere. Say so where the owner reads it,
