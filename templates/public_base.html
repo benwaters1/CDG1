@@ -905,11 +905,26 @@
   var fields = document.querySelectorAll('[data-rp-open]');
   if (!fields.length) return;
 
-  /* Bind by name, so the picker works on any page carrying an arrival and
-     departure pair — not only the homepage it was first written for. */
-  var aIn = document.querySelector('input[type=date][name=arrival]');
-  var dIn = document.querySelector('input[type=date][name=departure]');
-  if (!aIn || !dIn) return;
+  /* SCOPED TO THE FORM THE BUTTON IS IN, not to the document.
+
+     These were document.querySelector, which returns the FIRST match on the
+     page. The homepage carries TWO forms with arrival and departure inputs —
+     the quick-book widget in the header and the hero search — so picking
+     dates in the hero wrote them into the widget, and the hero form posted
+     empty: /book?arrival=&departure=. The guest saw a calendar accept their
+     dates and a results page that had never been given any.
+
+     Resolved on every open instead, from the anchor outwards, so a page with
+     one pair behaves exactly as before and a page with two stops guessing. */
+  var scope = document;
+  var aIn = null, dIn = null;
+  function bindTo(anchor){
+    scope = (anchor && anchor.closest('form')) || document;
+    aIn = scope.querySelector('input[type=date][name=arrival]');
+    dIn = scope.querySelector('input[type=date][name=departure]');
+    return !!(aIn && dIn);
+  }
+  if (!bindTo(fields[0])) return;
 
   /* JavaScript is running, so show the buttons and hide the raw inputs. */
   document.querySelectorAll('[data-rp-open]').forEach(function(b){
@@ -948,9 +963,9 @@
 
   function paintFields(){
     var n = nights();
-    var la = document.querySelector('[data-rp-label=arrival]');
-    var ld = document.querySelector('[data-rp-label=departure]');
-    var ln = document.querySelector('[data-rp-nights]');
+    var la = scope.querySelector('[data-rp-label=arrival]');
+    var ld = scope.querySelector('[data-rp-label=departure]');
+    var ln = scope.querySelector('[data-rp-nights]');
     if (la) la.textContent = pretty(start) || 'Add dates';
     if (ld) ld.textContent = pretty(end) || 'Add dates';
     if (ln) ln.textContent = n ? (n + (n===1 ? ' night' : ' nights')) : '';
@@ -1050,6 +1065,10 @@
   var openAnchor = null;
   function open(anchor){
     openAnchor = anchor;
+    /* Re-pointed every time: the guest may open the widget's picker and then
+       the hero's, and the second must not carry the first one's dates. */
+    if (!bindTo(anchor)) return;
+    start = parse(aIn.value); end = parse(dIn.value); hover = null;
     cursor = new Date((start||today).getFullYear(), (start||today).getMonth(), 1);
     draw(); panel.hidden = false; place(anchor);
     document.addEventListener('keydown', onKey);

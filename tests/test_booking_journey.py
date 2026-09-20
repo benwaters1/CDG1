@@ -25,6 +25,7 @@ html.parser: this app has no build step and no third-party HTML library.
 from _harness import (Suite, db, ensure_room, forms_on, links_on, fill,
                       flashes, free_window, house_today)
 
+import os
 import re
 from datetime import date, timedelta
 
@@ -307,6 +308,41 @@ def run():
         s.check("%s reads %d night(s)" % (label, want),
                 nights_shown(arrival, departure) == want,
                 detail="page said %s" % nights_shown(arrival, departure))
+
+    s.section("The date picker writes into the form it was opened from")
+    # A LIVE BOOKING BUG, found by the design side and confirmed here.
+    #
+    # The picker bound its two date inputs with document.querySelector,
+    # which returns the FIRST match in the document. The homepage carries two
+    # forms with arrival and departure: the quick-book widget in the nav
+    # drawer, which comes first and uses native inputs, and the hero search,
+    # which is the one with the calendar. So the hero picker wrote the
+    # guest's dates into the widget's hidden inputs and the hero form posted
+    # empty -- /book?arrival=&departure=. The calendar accepted the dates and
+    # the results page had never been given any.
+    #
+    # Checked on the SOURCE because this is browser behaviour and the suite
+    # runs no JavaScript. Two things have to hold: the page really does carry
+    # more than one such form (or the bug is unreachable and this proves
+    # nothing), and the picker no longer resolves those inputs document-wide.
+    home = pub.get("/").get_data(as_text=True)
+    pairs = [f for f in forms_on(home)
+             if any(x["name"] == "arrival" for x in f["fields"])
+             and any(x["name"] == "departure" for x in f["fields"])]
+    s.check("the home page carries more than one dated form",
+            len(pairs) > 1,
+            detail="%d found; with one the picker cannot pick wrong and the "
+                   "check below is vacuous" % len(pairs))
+    base = open(os.path.join(_harness.ROOT, "templates", "public_base.html"),
+                encoding="utf-8").read()
+    s.check("the picker does not bind its dates document-wide",
+            "document.querySelector('input[type=date][name=arrival]')"
+            not in base,
+            detail="document.querySelector returns the first match on the "
+                   "page, and there is more than one")
+    s.check("it scopes them to the form instead",
+            "closest('form')" in base,
+            detail="resolved from the button outwards, on every open")
 
     _clean(conn)
     conn.close()
