@@ -607,6 +607,52 @@ def run():
     conn.execute("DELETE FROM page_translations")
     conn.commit()
 
+    s.section("Whether the site is translating itself can be read from outside")
+    # An hour was spent unable to tell two faults apart: sentences never
+    # written down, and sentences written down but never translated. From
+    # outside both were the same unmoving percentage on a French page, and
+    # the automation page that would have said which needs a login -- on a
+    # site whose whole recovery story is about not being able to log in.
+    diag = db()
+    diag.execute("DELETE FROM page_translations")
+    diag.commit()
+    guest2 = m.app.test_client()
+    guest2.get("/language/fr")
+    guest2.get("/book")
+    t = m.app.test_client().get("/status").get_json().get("translation") or {}
+    s.check("status counts what is waiting", t.get("wanted", 0) > 50,
+            detail=str(t))
+    s.check("and what has been translated", "machine" in t and "approved" in t)
+    s.check("and whether the job is switched on at all",
+            t.get("enabled") is True,
+            detail="read from the database, not from the default constant")
+
+    # THE KIND OF FAILURE, NEVER THE PROVIDER'S PROSE. A class name says
+    # which fix is needed; a message body can carry a fragment of what was
+    # sent, and this page is public.
+    was_conf2, was_anth2 = m.claude_configured, m.anthropic.Anthropic
+    m.claude_configured = lambda: True
+
+    class _Refused:
+        def __init__(self, **kw):
+            raise RuntimeError("key sk-secret-do-not-print was refused")
+    m.anthropic.Anthropic = _Refused
+    try:
+        m.run_page_translation_job(diag, limit=5)
+        t = m.app.test_client().get("/status").get_json()["translation"]
+        s.check("the failure kind reaches the status page",
+                t.get("last_error") == "RuntimeError", detail=str(t.get("last_error")))
+        body = m.app.test_client().get("/status").get_data(as_text=True)
+        s.check("and the provider's own words never do",
+                "sk-secret-do-not-print" not in body and "refused" not in body,
+                detail="a public page must not echo what was sent to a provider")
+    finally:
+        m.anthropic.Anthropic = was_anth2
+        m.claude_configured = was_conf2
+    diag.execute("DELETE FROM page_translations")
+    diag.commit()
+    diag.close()
+
     s.section("With no provider it is a no-op, not an error")
     # The shipping state today: there is no key, and the site must be exactly
     # as it was rather than broken.

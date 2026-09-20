@@ -44404,6 +44404,8 @@ def status_page():
     owner_rows = 0
     locked_out = 0
     translation = {}
+    translation_on = None
+    translation_error = None
     try:
         conn = get_db()
         try:
@@ -44424,6 +44426,19 @@ def status_page():
             # "wanted 0" and "wanted 300, machine 0" are different faults
             # with different fixes, and from outside they were the same
             # unmoving percentage.
+            # THE VALUE IN THE DATABASE, not the default it was seeded
+            # with. The first version read the constant, so it said
+            # "enabled: true" whatever the switch actually was -- a
+            # diagnostic that could only ever agree with the code,
+            # which is the one thing it did not need to check.
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?",
+                ("automation_page_translation_enabled",)).fetchone()
+            translation_on = bool(row) and row["value"] == "1"
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?",
+                ("page_translation_last_error",)).fetchone()
+            translation_error = (row["value"] or None) if row else None
             for state in ("wanted", "machine", "approved", "skip"):
                 translation[state] = conn.execute(
                     "SELECT COUNT(*) AS c FROM page_translations WHERE status = ?",
@@ -44497,8 +44512,8 @@ def status_page():
         },
         "translation": {
             **translation,
-            "enabled": AUTOMATION_SETTING_DEFAULTS.get(
-                "automation_page_translation_enabled") == "1",
+            "enabled": translation_on,
+            "last_error": translation_error,
         },
         "configured": {
             "assistant": env("ANTHROPIC_API_KEY"),
@@ -67552,6 +67567,16 @@ def run_page_translation_job(conn, limit=None):
     waiting = conn.execute(
         "SELECT COUNT(*) AS c FROM page_translations WHERE status = 'wanted'"
     ).fetchone()["c"]
+    # Remembered as a KIND, never the message. "AuthenticationError" and
+    # "BadRequestError" are different faults with different fixes, and the
+    # class name carries that while a provider's prose might carry a
+    # fragment of what was sent to it.
+    conn.execute(
+        """INSERT INTO app_settings (key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+        ("page_translation_last_error",
+         failures[0].split(":")[0] if failures else ""))
+    conn.commit()
     if failures and not written:
         # The whole run got nowhere. Say so where the owner reads it,
         # with the provider's own words and the size of the backlog.
