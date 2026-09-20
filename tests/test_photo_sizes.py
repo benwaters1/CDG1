@@ -30,7 +30,7 @@ that door announce themselves when they stop happening.
 import io
 import os
 
-from _harness import Suite, clients
+from _harness import Suite, clients, db
 import _harness
 
 m = _harness.m
@@ -206,6 +206,56 @@ def run():
             anon.get(f"/photo/thumb/{name}").status_code in (302, 401, 403),
             detail=f"HTTP {anon.get(f'/photo/thumb/{name}').status_code} - "
                    "uploads are not a public directory")
+
+    s.section("What the page showed is what gets saved")
+    # THE EDITOR HAD NEVER ONCE BEEN OBEYED. The intake page straightens the
+    # exposure, warms it, lifts the contrast and crops, draws the result to a
+    # canvas and posts it as a data URL beside the original file. The route
+    # read request.files and nothing else, so every adjustment and every crop
+    # was discarded in silence -- the page showed the corrected picture, the
+    # button said "Save the photograph", and the untouched frame is what
+    # landed. The only way to catch it was to compare the stored file against
+    # what you remembered doing.
+    import base64
+    original = _frame(600, 400, colour=(200, 30, 30), taken="2026:05:06 09:10:11")
+    # Unmistakably different: a square crop, and a colour the original has none
+    # of. "The file changed" would pass on a re-encode; this cannot.
+    edited_bytes = _frame(300, 300, colour=(10, 60, 220))
+    posted = oc.post("/admin/photos", data={
+        "photo": (io.BytesIO(original), "salon.jpg"),
+        "edited": "data:image/jpeg;base64," + base64.b64encode(edited_bytes).decode(),
+        "alt_text": TAG + " edited",
+    }, content_type="multipart/form-data", follow_redirects=True)
+    conn = db()
+    row = conn.execute(
+        "SELECT * FROM social_posts WHERE alt_text = ? ORDER BY id DESC LIMIT 1",
+        (TAG + " edited",)).fetchone()
+    conn.close()
+    s.check("the photograph lands", bool(row),
+            detail=f"HTTP {posted.status_code}")
+    if row:
+        with open(os.path.join(m.UPLOAD_DIR, row["image_filename"]), "rb") as fh:
+            stored = _open(fh.read())
+        px = stored.convert("RGB").getpixel((stored.size[0] // 2, stored.size[1] // 2))
+        s.check("and it is the edited one, not the frame as shot",
+                stored.size[0] == stored.size[1] and px[2] > px[0],
+                detail=f"{stored.size} and {px} - a 600x400 red frame means "
+                       "the crop and every slider were thrown away, which is "
+                       "what happened every time until this was written")
+        # A canvas carries no EXIF, so this is the half that breaks the moment
+        # the edited picture is preferred, and nothing would say so.
+        s.check("and the day it was taken survives being edited",
+                row["taken_on"] == "2026-05-06",
+                detail=f"{row['taken_on']} - read off the frame as shot, which "
+                       "is posted alongside and still has it")
+        conn = db()
+        conn.execute("DELETE FROM social_posts WHERE id = ?", (row["id"],))
+        conn.commit()
+        conn.close()
+        try:
+            os.remove(os.path.join(m.UPLOAD_DIR, row["image_filename"]))
+        except OSError:
+            pass
 
     s.section("A file that is not a photograph")
     try:

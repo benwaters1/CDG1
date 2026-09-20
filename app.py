@@ -130,6 +130,7 @@ import string
 import smtplib
 import ssl
 import base64
+import binascii
 import threading
 import time
 from email.message import EmailMessage
@@ -43995,12 +43996,26 @@ def photo_intake():
         # Normalised here rather than stored as shot. A GH5 frame is ten
         # megabytes and 5184 wide; Instagram refuses anything over 1440, and
         # the tray below would load forty of them at full size.
+        as_shot = photo.read()
+        # WHAT THE PAGE SHOWED IS WHAT GETS SAVED. The editor posts its result
+        # as a data URL beside the original file; both arrive, and the edited
+        # one is the photograph somebody actually chose.
+        edited = photo_from_data_url(request.form.get("edited"))
         try:
-            normalised, taken_on = photo_master(photo.read(), photo.filename)
+            normalised, taken_on = photo_master(edited or as_shot, photo.filename)
         except ValueError as why:
             conn.close()
             flash(str(why), "error")
             return redirect(url_for("photo_intake"))
+        if edited:
+            # A canvas carries no EXIF, so the day would be lost the moment
+            # anybody touched a slider -- read it off the frame as shot, which
+            # is posted alongside and still has it.
+            try:
+                from PIL import Image as _Im
+                taken_on = photo_taken_on(_Im.open(io.BytesIO(as_shot))) or taken_on
+            except Exception:
+                pass
         safe = os.path.splitext(secure_filename(photo.filename))[0][:60] or "frame"
         # Stored as the JPEG it now IS, whatever it arrived as -- a name still
         # saying .png for a file that is no longer one is how a mismatch
@@ -59276,6 +59291,33 @@ def photo_master(data, filename=""):
     img.save(buf, "JPEG", quality=PHOTO_MASTER_QUALITY, optimize=True,
              progressive=True)
     return buf.getvalue(), taken
+
+
+def photo_from_data_url(raw):
+    """The picture the BROWSER showed, out of the form field it rides in.
+
+    THE BUG THIS EXISTS FOR, and it had been live the whole time the editor
+    had. The intake page lets somebody straighten the exposure, warm it,
+    lift the contrast and crop it, draws the result on a canvas, and posts it
+    as a data URL in a hidden field. The route read `request.files` and
+    nothing else. So every adjustment and every crop was thrown away in
+    silence: the page showed the corrected picture, the button said "Save the
+    photograph", and what landed on disk was the untouched frame. Nothing
+    errored, and the only way to notice was to compare the stored file against
+    what you remembered doing to it.
+
+    Returns bytes, or None for anything that is not a data URL this wrote --
+    the field is ordinary form input and is treated as such.
+    """
+    if not raw or not raw.startswith("data:image/"):
+        return None
+    head, _, b64 = raw.partition(",")
+    if "base64" not in head or not b64:
+        return None
+    try:
+        return base64.b64decode(b64, validate=True) or None
+    except (ValueError, binascii.Error):
+        return None
 
 
 def photo_rendition(stored_name, size):
