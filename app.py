@@ -2188,6 +2188,36 @@ def init_db():
             posted_at TEXT
         );
 
+        -- Photographs that have ARRIVED and not yet been used for anything.
+        --
+        -- The camera sends what the photographer picked on its own screen, and
+        -- that is the first sieve. This is the second: a frame off the GH5 is
+        -- not a social post, not a website picture and not rubbish until
+        -- somebody says which. Filing it as a draft post on arrival would mean
+        -- the social list became a camera roll, and a list that is mostly
+        -- things nobody chose is one people stop reading -- the same failure
+        -- the self-closing watch tasks exist to avoid.
+        --
+        -- `sha256` is of the bytes AS SENT and is UNIQUE, which is what makes
+        -- sending twice harmless. A watcher that is restarted, a folder that
+        -- is re-scanned, a card re-inserted, the same frame chosen again on
+        -- the camera: all of them arrive a second time, and none of them
+        -- should show up as a second photograph.
+        CREATE TABLE IF NOT EXISTS photo_inbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT NOT NULL,
+            original_name TEXT,
+            sha256 TEXT NOT NULL UNIQUE,
+            taken_on TEXT,
+            arrived_at TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'camera',
+            -- What it became, once it became something. NULL is the tray.
+            used_as TEXT,
+            used_ref INTEGER,
+            used_at TEXT,
+            dismissed INTEGER NOT NULL DEFAULT 0
+        );
+
         -- A standing commitment to post: "Instagram, Tuesdays at 10, the
         -- restaurant". The plan is the rule; social_posts rows are what the
         -- rule produced, and they are ordinary editable posts once made.
@@ -5448,6 +5478,16 @@ def init_db():
     if not conn.execute("SELECT 1 FROM app_settings WHERE key = 'supplier_upload_token'").fetchone():
         conn.execute(
             "INSERT INTO app_settings (key, value) VALUES ('supplier_upload_token', ?)",
+            (secrets.token_urlsafe(24),),
+        )
+        conn.commit()
+
+    if not conn.execute(
+            "SELECT 1 FROM app_settings WHERE key = 'camera_ingest_token'").fetchone():
+        # What the camera watcher signs in with. Generated here so there is
+        # never a deployment with the door open and no lock on it.
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('camera_ingest_token', ?)",
             (secrets.token_urlsafe(24),),
         )
         conn.commit()
@@ -43943,6 +43983,89 @@ def uploaded_file(filename):
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,120}", filename or ""):
         abort(404)
     return send_from_directory(UPLOAD_DIR, filename)
+
+
+def camera_ingest_token(conn):
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'camera_ingest_token'").fetchone()
+    return (row["value"] if row else "") or ""
+
+
+def store_arriving_photograph(conn, data, original_name, source="camera"):
+    """File one arriving photograph in the tray. (row_id, what_happened).
+
+    Normalised on the way in like anything else, and deduplicated on the bytes
+    AS SENT -- which is the whole reason this is a function rather than four
+    lines in the route. Every way a photograph arrives twice is ordinary:
+    the watcher restarts and re-reads the folder, the card goes back in the
+    camera, the same frame gets chosen again at the end of a second shoot.
+    None of them is an error and none of them is a second photograph. So a
+    repeat is reported as one rather than refused as one, and the caller says
+    so plainly instead of announcing a success that did not happen.
+    """
+    digest = hashlib.sha256(data).hexdigest()
+    seen = conn.execute(
+        "SELECT id FROM photo_inbox WHERE sha256 = ?", (digest,)).fetchone()
+    if seen:
+        return seen["id"], "already here"
+    normalised, taken_on = photo_master(data, original_name)
+    safe = os.path.splitext(secure_filename(original_name or ""))[0][:60] or "frame"
+    name = "photo_%s_%s.jpg" % (secrets.token_hex(6), safe)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    with open(os.path.join(UPLOAD_DIR, name), "wb") as fh:
+        fh.write(normalised)
+    conn.execute(
+        """INSERT INTO photo_inbox (filename, original_name, sha256, taken_on,
+             arrived_at, source) VALUES (?, ?, ?, ?, ?, ?)""",
+        (name, (original_name or "")[:120] or None, digest,
+         taken_on.isoformat() if taken_on else None,
+         datetime.now(timezone.utc).isoformat(), source))
+    return conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"], "stored"
+
+
+@app.route("/api/photographs", methods=["POST"])
+@csrf.exempt
+def camera_photo_ingest():
+    """The camera's way in, for the watcher sitting on the house machine.
+
+    THE GH5 CANNOT REACH THIS AND NEVER WILL. Its Wi-Fi sends to a shared
+    folder on a computer on the same network, which is the only destination it
+    has left -- Panasonic's own cloud and web-service options went when LUMIX
+    CLUB shut down in 2022, and the remaining one needs a phone. So something
+    on that machine watches the folder and forwards what lands, and this is
+    what it forwards to.
+
+    No login: the token IS the credential, the same shape as the supplier
+    upload links. Compared in constant time, because a token checked with ==
+    leaks its own prefix to anybody willing to time the answers.
+
+    It is deliberately DULL about what it did. A photograph that was already
+    here says so rather than reporting a success, because a watcher that
+    cannot tell "stored" from "you have this" is a watcher that either sends
+    everything forever or stops sending after its first restart.
+    """
+    conn = get_db()
+    expected = camera_ingest_token(conn)
+    offered = (request.headers.get("X-Gudanes-Token")
+               or request.form.get("token") or "")
+    if not expected or not secrets.compare_digest(offered, expected):
+        conn.close()
+        return jsonify(ok=False, error="That token is not the one."), 401
+
+    photo = request.files.get("photo")
+    if not (photo and photo.filename):
+        conn.close()
+        return jsonify(ok=False, error="No photograph was sent."), 400
+    try:
+        row_id, what = store_arriving_photograph(
+            conn, photo.read(), photo.filename,
+            source=(request.form.get("source") or "camera")[:20])
+    except ValueError as why:
+        conn.close()
+        return jsonify(ok=False, error=str(why)), 415
+    conn.commit()
+    conn.close()
+    return jsonify(ok=True, id=row_id, status=what), 200
 
 
 @app.route("/photo/<size>/<filename>")

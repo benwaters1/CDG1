@@ -213,6 +213,29 @@ size is made from the master on first ask and kept, so losing them costs one
 slow page load each and nothing else. They are on the volume because making
 them again on every view is wasteful, not because they are precious.
 
+**Photographs from the camera.** The GH5 sends over Wi-Fi to a shared folder
+on a machine at the house — Wi-Fi Function, New Connection, *Send Images
+Stored in the Camera*, then PC, so only the frames picked on the camera's own
+screen are sent. Nothing about that can reach Railway, so `tools/photo_watcher.py`
+runs on that machine and forwards what lands to `/api/photographs`. It is
+stdlib only, so it runs on whatever Python is already there.
+
+Its token is generated on first boot and lives in `app_settings` under
+`camera_ingest_token`. Read it out of the database and paste it into
+`tools/photo_watcher.ini` beside the script — never into chat or email:
+
+```
+[watcher]
+folder = C:/LumixDrop
+url = https://<the château>/api/photographs
+token = <from app_settings>
+every = 20
+```
+
+`--once` does a single pass, which is the way to test the setup. The watcher
+never deletes anything: the drop folder belongs to the camera, and tidying it
+is a person's decision.
+
 **How production actually runs.** `python app.py` is the development server
 and is not used here. Railway reads `Procfile`, which starts gunicorn against
 `wsgi.py`. That file exists because creating the database and starting the

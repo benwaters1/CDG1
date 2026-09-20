@@ -98,6 +98,7 @@ SUITES = [
     "test_funnel_forms",
     "test_pass",
     "test_site_audit",
+    "test_camera_ingest",
     "test_photo_intake",
     "test_photo_sizes",
     "test_house_day",
