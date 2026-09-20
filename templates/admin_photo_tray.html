@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Photographs waiting{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Photographs waiting</h1>
+  <a href="{{ url_for('photo_intake') }}" class="btn-mini">Add one by hand</a>
+  <a href="{{ url_for('management_social') }}" class="btn-mini">The social list</a>
+</div>
+
+<p class="g-muted">
+  What the camera has sent. Nothing here is a post or a picture on the website
+  until you say so — pick what each one is for, and set aside the rest.
+</p>
+
+{% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}
+
+{% if lv.rows %}
+<div class="tray-grid">
+  {% for r in lv.rows %}
+  <figure class="tray-item{{ ' is-set-aside' if r['dismissed'] and not r['used_as'] }}">
+    <a href="{{ url_for('photo_at_size', size='web', filename=r['filename']) }}"
+       target="_blank" rel="noopener">
+      <img src="{{ url_for('photo_at_size', size='thumb', filename=r['filename']) }}"
+           alt="{{ r['original_name'] or 'A photograph from the camera' }}"
+           loading="lazy" width="200" height="200">
+    </a>
+    <figcaption>
+      <span class="tray-item__when">
+        {% if r['taken_on'] %}Taken {{ r['taken_on'] }}{% else %}No date on the frame{% endif %}
+      </span>
+      <span class="tray-item__name">{{ r['original_name'] or '—' }}</span>
+
+      {% if r['used_as'] == 'social' %}
+        <span class="tray-item__state">Already a post</span>
+      {% elif r['used_as'] == 'site' %}
+        <span class="tray-item__state">On the website</span>
+      {% else %}
+      <div class="tray-item__do">
+        <form method="post" action="{{ url_for('arrival_to_post', arrival_id=r['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="g-btn g-btn--solid btn-mini">Make it a post</button>
+        </form>
+        {% if r['dismissed'] %}
+        <form method="post" action="{{ url_for('bring_back_arrival', arrival_id=r['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-mini">Bring it back</button>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('set_aside_arrival', arrival_id=r['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-mini">Set aside</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </figcaption>
+  </figure>
+  {% endfor %}
+</div>
+{% elif lv.total %}
+<p class="g-muted">Nothing matches that.</p>
+{% else %}
+<p class="g-muted">
+  Nothing has arrived yet. The camera sends to a folder on the house machine
+  and the watcher forwards what lands — see DEPLOY.md if it has not been set
+  up yet.
+</p>
+{% endif %}
+
+<style>
+  /* A grid rather than a table: these are pictures, and a table of pictures
+     is a table that drags the page sideways on a phone. */
+  .tray-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: var(--s3, 1rem);
+    margin-top: var(--s3, 1rem);
+  }
+  .tray-item { margin: 0; }
+  .tray-item img {
+    width: 100%; height: auto; aspect-ratio: 1 / 1; object-fit: cover;
+    border-radius: 4px; display: block; background: rgba(0, 0, 0, .04);
+  }
+  .tray-item.is-set-aside img { opacity: .45; }
+  .tray-item figcaption {
+    display: flex; flex-direction: column; gap: .25rem; padding-top: .4rem;
+    font-size: .85rem;
+  }
+  .tray-item__name { color: var(--muted, #6b6b6b); word-break: break-all; }
+  .tray-item__state { color: var(--muted, #6b6b6b); font-style: italic; }
+  .tray-item__do { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .3rem; }
+  .tray-item__do form { margin: 0; }
+  /* Fingers, not a mouse: this gets used standing up with the camera in the
+     other hand. */
+  @media (pointer: coarse) {
+    .tray-item__do .btn-mini { min-height: 44px; padding-inline: .9rem; }
+  }
+</style>
+{% endblock %}

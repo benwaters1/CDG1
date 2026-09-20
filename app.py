@@ -6708,7 +6708,9 @@ NAV_AREAS = {
         "admin_automation", "admin_deposit_rules", "save_room_deposit_settings",
         "admin_outlook_addin", "admin_promo_codes",
         "admin_readiness", "admin_photo_mirror", "fetch_photo_mirror",
-        "photo_intake", "uploaded_file",
+        "photo_intake", "uploaded_file", "photo_at_size",
+        "photo_tray", "set_aside_arrival", "bring_back_arrival",
+        "arrival_to_post",
         "admin_terms", "audit_log", "record_history_page",
         "delete_company_document",
         "delete_insurance_policy", "delete_vendor",
@@ -31567,6 +31569,9 @@ PALETTE_PAGES = [
     ("Go-live checklist", "admin_readiness", "deploy setup ready configuration"),
     ("A photograph in", "photo_intake",
      "photo intake upload picture social post instagram slot schedule alt text"),
+    ("Photographs waiting", "photo_tray",
+     "camera tray gh5 lumix arrived waiting photograph picture inbox choose "
+     "social post website image set aside"),
     ("What the road is doing", "road_notices_page",
      "road snow ice chains closed weather driving arrival warning notice"),
     ("Contracted hours against worked", "contracted_hours_page",
@@ -44198,6 +44203,119 @@ def photo_intake():
     conn.close()
     return render_template("admin_photo_intake.html", social_plans=plans,
                            rooms=rooms, recent=recent)
+
+
+@app.route("/admin/photos/tray")
+@owner_required
+def photo_tray():
+    """What the camera has sent, and what nobody has decided about yet.
+
+    THE TRAY IS THE SECOND SIEVE. The first is the camera's own screen, where
+    the keepers are picked out of forty near-identical frames. This is where a
+    keeper becomes a specific thing: a post, a picture on the website, or
+    nothing. Until it does it sits here, and that is the whole point -- an
+    arrival that filed itself as a draft post would turn the social list into
+    a camera roll.
+
+    Set aside rather than deleted. The file is on the volume either way, and a
+    photograph dismissed by a mis-tap at the wrong moment should not be gone.
+    """
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM photo_inbox ORDER BY id DESC").fetchall()
+    conn.close()
+    lv = list_view(
+        rows, request.args,
+        search=["original_name", "source"],
+        search_hint="Search by what the camera called it",
+        facets=[
+            facet("state", "State",
+                  lambda r: ("Used" if r["used_as"]
+                             else "Set aside" if r["dismissed"] else "Waiting"),
+                  order=["Waiting", "Used", "Set aside"]),
+            facet("source", "Came from",
+                  lambda r: (r["source"] or "").strip().title() or None),
+        ],
+        sorts=[
+            sort_option("newest", "Most recently arrived",
+                        lambda r: r["arrived_at"] or "", reverse=True),
+            sort_option("taken", "When it was taken",
+                        lambda r: r["taken_on"] or "", reverse=True),
+        ],
+        default_sort="newest")
+    return render_template("admin_photo_tray.html", lv=lv)
+
+
+def _arrival(conn, arrival_id):
+    row = conn.execute("SELECT * FROM photo_inbox WHERE id = ?",
+                       (arrival_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    return row
+
+
+@app.route("/admin/photos/tray/<int:arrival_id>/set-aside", methods=["POST"])
+@owner_required
+def set_aside_arrival(arrival_id):
+    """Out of the way, not off the volume."""
+    conn = get_db()
+    row = _arrival(conn, arrival_id)
+    conn.execute("UPDATE photo_inbox SET dismissed = 1 WHERE id = ?", (arrival_id,))
+    conn.commit()
+    conn.close()
+    flash("Set aside. It is still there under Set aside if you want it back.",
+          "success")
+    return redirect(url_for("photo_tray"))
+
+
+@app.route("/admin/photos/tray/<int:arrival_id>/bring-back", methods=["POST"])
+@owner_required
+def bring_back_arrival(arrival_id):
+    conn = get_db()
+    _arrival(conn, arrival_id)
+    conn.execute("UPDATE photo_inbox SET dismissed = 0 WHERE id = ?", (arrival_id,))
+    conn.commit()
+    conn.close()
+    flash("Back in the tray.", "success")
+    return redirect(url_for("photo_tray"))
+
+
+@app.route("/admin/photos/tray/<int:arrival_id>/make-post", methods=["POST"])
+@owner_required
+def arrival_to_post(arrival_id):
+    """Turn one arrival into a post to be written.
+
+    It becomes an IDEA, not a draft. Nothing here writes the caption -- the
+    suggestion is asked for on the post itself, when somebody is looking at
+    it, so the frames nobody chose cost nothing.
+
+    An arrival that has already been used says so instead of quietly making a
+    second post. Two posts of the same photograph is the house posting the
+    same picture twice a fortnight apart, which nobody would notice here and
+    everybody would notice there.
+    """
+    conn = get_db()
+    row = _arrival(conn, arrival_id)
+    if row["used_as"]:
+        conn.close()
+        flash("That photograph has already been used — it is on the list "
+              "rather than in the tray.", "error")
+        return redirect(url_for("photo_tray"))
+    conn.execute(
+        """INSERT INTO social_posts (platform, caption, image_filename, alt_text,
+             offer_for_site, status, taken_on, created_by_user_id, created_at)
+           VALUES ('instagram', '', ?, NULL, 0, 'idea', ?, ?, ?)""",
+        (row["filename"], row["taken_on"], session.get("user_id"),
+         datetime.now(timezone.utc).isoformat()))
+    post_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    conn.execute(
+        """UPDATE photo_inbox SET used_as = 'social', used_ref = ?, used_at = ?
+            WHERE id = ?""",
+        (post_id, datetime.now(timezone.utc).isoformat(), arrival_id))
+    conn.commit()
+    conn.close()
+    flash("On the social list as an idea, waiting for its words.", "success")
+    return redirect(url_for("management_social"))
 
 
 @app.route("/room-photos/<filename>")
