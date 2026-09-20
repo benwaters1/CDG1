@@ -41,6 +41,7 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="g-btn g-btn--solid btn-mini">Make it a post</button>
         </form>
+        <a class="btn-mini" href="{{ url_for('arrival_to_site', arrival_id=r['id']) }}">Put it on the site</a>
         {% if r['dismissed'] %}
         <form method="post" action="{{ url_for('bring_back_arrival', arrival_id=r['id']) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
