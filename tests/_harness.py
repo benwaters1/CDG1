@@ -606,7 +606,8 @@ def ensure_room(min_occupancy=1):
         conn.close()
 
 
-def free_window(room_id, nights, after_days=30, clear_of_ateliers=False):
+def free_window(room_id, nights, after_days=30, clear_of_ateliers=False,
+                clear_of_rate_overrides=False):
     """The first arrival from today+after_days with `nights` genuinely free.
 
     ASKED, NOT COUNTED, and that is the whole point. A suite that writes
@@ -627,6 +628,15 @@ def free_window(room_id, nights, after_days=30, clear_of_ateliers=False):
     seeded atelier overlapping the window is not a bug, it is another atelier,
     and a test that says "nothing else is offered" needs a window with nothing
     else in it.
+
+    `clear_of_rate_overrides` is the same argument about MONEY, and it is the
+    half that free-and-available does not cover. A seasonal rate sitting over
+    the window leaves the nights perfectly bookable and silently changes what
+    they cost, so a suite that writes its expected figures as "two nights at
+    200" needs nights the rate card alone prices. One night of margin past the
+    stay is included, because a suite that extends a booking buys the night
+    after it too. Ask for this rather than hardcoding a total the calendar can
+    move out from under: test_price_agreed read 400 and was handed 1199.
     """
     from datetime import timedelta
     conn = db()
@@ -642,6 +652,14 @@ def free_window(room_id, nights, after_days=30, clear_of_ateliers=False):
                         WHERE start_date < ? AND end_date >= ? LIMIT 1""",
                     (end.isoformat(), day.isoformat())).fetchone()
                 ok = not clash
+            if ok and clear_of_rate_overrides:
+                # `end` rather than the last night, so the margin night counts.
+                priced = conn.execute(
+                    """SELECT 1 FROM room_rate_overrides
+                        WHERE room_id = ? AND start_date <= ? AND end_date >= ?
+                        LIMIT 1""",
+                    (room_id, end.isoformat(), day.isoformat())).fetchone()
+                ok = not priced
             if ok:
                 return day
             day += timedelta(days=1)

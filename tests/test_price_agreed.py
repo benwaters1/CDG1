@@ -100,24 +100,27 @@ def run():
     # fixed offset into a real calendar is a date that is free until one day
     # it is not, and the day it stops being free is a morning somebody spends
     # reading a diff that changed nothing.
-    def _free(after, nights=2):
-        c = db()
-        try:
-            day = after
-            for _ in range(600):
-                with m.app.test_request_context():
-                    # (ok, reason), not a bool: a bare `if` on a two-element
-                    # tuple is true whichever way the answer went.
-                    ok, _why = m.is_range_available(
-                        c, room["id"], day, day + timedelta(days=nights))
-                    if ok:
-                        return day
-                day += timedelta(days=1)
-        finally:
-            c.close()
-        raise AssertionError("no free %d nights in 600 days from %s" % (nights, after))
+    #
+    # The harness owns the scan now (_harness.free_window), because free was
+    # only half of what this suite needs from a window.
+    def _free(after, nights=2, plain_rate=False):
+        return _harness.free_window(
+            room["id"], nights,
+            after_days=(after - m.house_today()).days,
+            clear_of_rate_overrides=plain_rate)
 
-    arrival = _free(m.house_today() + timedelta(days=90))
+    # AND CLEAR OF SEASONAL RATES, which free-and-available does not give you.
+    # Every figure below is written out as two nights at 200 -- 400 stamped,
+    # 490 on the books once a 90 euro transfer is added, 290 after a move to
+    # 100 a night. None of that is true of a window somebody has priced
+    # differently, and the scan was only ever asked whether the nights were
+    # free. It landed on a window carrying an override and the stamp came back
+    # 1199: the check reading 400 went red, and the two stored totals read
+    # -509, which is the same wrong figure subtracted back out of the extras.
+    # Nobody had touched pricing. The calendar had moved, which is the failure
+    # this whole scan exists to stop, in the one dimension it was not asking
+    # about.
+    arrival = _free(m.house_today() + timedelta(days=90), plain_rate=True)
     departure = arrival + timedelta(days=2)
     try:
         with m.app.test_request_context("/"):
@@ -131,6 +134,20 @@ def run():
                      (booking["id"],))
         conn.commit()
         bid = booking["id"]
+
+        s.section("The window this is measured in")
+        # Asked of the pricing code itself, before a single figure is read
+        # against it. An expectation the fixture cannot vouch for is a check
+        # that goes red for reasons that have nothing to do with the code, and
+        # when it does it names the wrong thing -- "the room line is stamped"
+        # is a lie about what broke if what broke was the window.
+        with m.app.test_request_context("/"):
+            rate_card = m.compute_room_total(conn, room, arrival, departure)
+        s.check("the rate card prices these nights at two hundred a night",
+                abs(rate_card - 400) < 0.01,
+                detail=f"{rate_card} for {arrival} to {departure} — a seasonal "
+                       "rate over these nights makes every figure below wrong "
+                       "about a code path that is working perfectly")
 
         s.section("What was agreed is written down")
         after = _row(bid)
