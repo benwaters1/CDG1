@@ -370,4 +370,42 @@ def run():
                              for f, w in sorted(absent.items()))[:220]
                    + " — use site_image() for a photograph somebody uploads")
 
+    s.section("An in-page link lands on something that is on the page")
+    # A href="#w6" with no id="w6" is a link that does nothing at all. It
+    # does not 404, nothing is logged, and the page does not move -- the
+    # guest taps and concludes the site is broken. Every atelier card on
+    # /workshops carried one: "View itinerary" pointed at #w2 through #w6,
+    # none of which existed, while the same template already linked properly
+    # to the atelier page fifty lines further down.
+    #
+    # Asked of the RENDERED page, because the ids and the links are both
+    # built in loops and neither exists in the source to be compared.
+    anon = m.app.test_client()
+    dead = {}
+    walked = 0
+    for rule in m.app.url_map.iter_rules():
+        if rule.arguments or "GET" not in (rule.methods or ()):
+            continue
+        if rule.endpoint.startswith("static") or "webhook" in rule.endpoint:
+            continue
+        r = anon.get(str(rule))
+        if r.status_code != 200:
+            continue
+        body = r.get_data(as_text=True)
+        if "<body" not in body:
+            continue
+        walked += 1
+        targets = set(re.findall(r'href="#([A-Za-z0-9_:.-]+)"', body))
+        ids = set(re.findall(r'\sid="([A-Za-z0-9_:.-]+)"', body))
+        # name= is still a valid anchor target in HTML.
+        ids |= set(re.findall(r'<a[^>]+name="([A-Za-z0-9_:.-]+)"', body))
+        missing = sorted(t for t in targets if t and t not in ids)
+        if missing:
+            dead[str(rule)] = missing
+    s.check("there were pages to walk", walked > 10, detail=str(walked))
+    s.check("every #anchor on every page has something to land on",
+            not dead,
+            detail="; ".join("%s -> %s" % (p, ", ".join(a[:4]))
+                             for p, a in sorted(dead.items()))[:240])
+
     return s

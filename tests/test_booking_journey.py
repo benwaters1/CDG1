@@ -344,6 +344,37 @@ def run():
             "closest('form')" in base,
             detail="resolved from the button outwards, on every open")
 
+    s.section("What the page says about a bathroom is what the room has")
+    # A CLAIM MADE AT THE POINT OF PAYMENT, and it was wrong for two of the
+    # five rooms. The card decided shared-versus-private by testing whether
+    # the room NAME contained "Shared" -- no room is named that way, so every
+    # room said "Private, downstairs", including the two that share one.
+    # A guest paid for a private bathroom and would have found out on
+    # arrival. The rooms table has carried a `bathroom` column the whole
+    # time, and _roompick.html was already reading it, so the right answer
+    # was one column away in a file alongside.
+    truth = db()
+    rooms_now = truth.execute(
+        "SELECT name, bathroom FROM rooms WHERE active = 1").fetchall()
+    truth.close()
+    shared = [r for r in rooms_now if (r["bathroom"] or "") == "shared"]
+    s.check("some rooms share a bathroom and some do not",
+            shared and len(shared) < len(rooms_now),
+            detail="%d of %d share; with none or all the check below cannot "
+                   "tell a right answer from a lucky one"
+                   % (len(shared), len(rooms_now)))
+    page = pub.get("/book").get_data(as_text=True)
+    s.check("the page says shared exactly as often as a room shares",
+            page.count("Shared with one other room") == len(shared),
+            detail="page says shared %d time(s), %d room(s) do"
+            % (page.count("Shared with one other room"), len(shared)))
+    s.check("and never calls a shared bathroom private",
+            page.count("Private, downstairs")
+            == len(rooms_now) - len(shared),
+            detail="page says private %d time(s), %d room(s) are"
+            % (page.count("Private, downstairs"),
+               len(rooms_now) - len(shared)))
+
     _clean(conn)
     conn.close()
     return s

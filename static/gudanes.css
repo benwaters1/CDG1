@@ -532,6 +532,21 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 
 @media (max-width: 60rem){
   .g-stickybar{ display: flex; }
+}
+
+/* NOT WHILE THE MENU IS OPEN.
+   The bar is fixed to the bottom of the window at z-index 60 and the nav
+   drawer is 59, so the bar sat on top of the drawer's own last inch --
+   which is where Terms and Privacy live. On a phone they could be scrolled
+   to and not tapped: the guest saw the link, put a finger on it, and
+   opened the booking bar instead.
+   Same for the room page's own bottom bar, which is the same idea at the
+   same height. :has() rather than a body class, because the drawer sets
+   is-open on itself and nothing else has to learn about it. */
+body:has(.g-navwrap.is-open) .g-stickybar,
+body:has(.g-navwrap.is-open) .g-bookbar{ display: none; }
+
+@media (max-width: 60rem){
   /* Keep the footer clear of the bar. */
   .g-footer{ padding-bottom: calc(var(--s7) + 72px); }
 }
@@ -5098,8 +5113,28 @@ main .g-facts-list dt, main .g-facts-list dd{ font-size: var(--t-small); }
 .g-sec--dark .g-limit{ border-left-color: #D9C79B; color: #C9D4DF; }
 .g-sec--dark .g-limit__k{ color: #D9C79B; }
 .g .g-sec--dark a{ color: #EDE4D3; }
+/* AND THE SAME LINK INSIDE A PARAGRAPH, which the rule above lost to.
+   `.g main p a` is three elements deep and `.g .g-sec--dark a` is one, so
+   body copy won and every link in a dark closing section was painted
+   var(--blue-deep) -- navy on navy, measured at 1.00. Not hard to read:
+   invisible. "Ask about a month" was a live link nobody could see.
+   Matched at the same depth rather than forced with !important. */
+.g main .g-sec--dark p a,
+.g main .g-sec--dark li a,
+.g main .g-sec--dark dd a{ color: #EDE4D3; }
+/* AND THE SECONDARY LINK BESIDE A BUTTON, which beat even that.
+   `.g main p > .g-btn + a:not(.g-btn)` was written to style the quiet
+   link that sits next to a call to action, and it counts three classes to
+   the rule above's two. On a dark ground it painted that link navy on
+   navy: 1.00, which is not low contrast but no contrast. "Ask about a
+   month" was a live link that could not be seen at all. */
+.g main .g-sec--dark p > .g-btn + a:not(.g-btn){ color: #EDE4D3; }
 .g .g-sec--dark .g-btn{ border-color: #D9C79B; color: #EDE4D3; }
-.g .g-sec--dark .g-btn--solid{ background: var(--gilt); border-color: var(--gilt); color: var(--blue-deep); }
+/* --gilt is rgb(115,86,45), a dark bronze. Navy on it measures 1.91,
+   so the one button in the section meant to be the loudest thing on it
+   was the hardest to read. #D9C79B is the lighter gold this file
+   already uses for eyebrows on a dark ground, and navy on it is 7.5. */
+.g .g-sec--dark .g-btn--solid{ background: #D9C79B; border-color: #D9C79B; color: var(--blue-deep); }
 
 /* ==========================================================================
    .g-figs — THE LAYOUT WAS NEVER WRITTEN EITHER
