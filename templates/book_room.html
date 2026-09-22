@@ -7,7 +7,7 @@
    is the one line a search engine shows under the link, so five rooms
    competed against each other with identical copy. Falls back to the
    general sentence for a room with no rate on it yet. #}
-{% block description %}{{ room_name(room['name']) }} at Château de Gudanes: a bedroom inside a Class I Historic Monument under restoration in the French Pyrénées, sleeping up to {{ room['max_occupancy'] or 2 }}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}. Rates, availability and what the room actually is.{% endblock %}
+{% block description %}{{ room_name(room['name']) }} at Château de Gudanes, a Class I monument under restoration in the Pyrénées. Sleeps {{ room['max_occupancy'] or 2 }}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}. Dates, rates and what the room is.{% endblock %}
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
 {% set sticky_bar = 'none' %}
@@ -33,7 +33,7 @@
     'https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w',
     'https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/71e505e9-4a57-4bd6-9ed7-96530cbaa16b/day_1_18.jpg?format=1500w'
   ] %}
-  <img loading="lazy" decoding="async" class="g-roomhero"
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-roomhero"
        src="{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% else %}{{ ROOM_FALLBACKS[room['id'] % 3] }}{% endif %}"
        alt="{{ room_name(room['name']) }}">
 
@@ -95,7 +95,7 @@
   <p class="g-overlap">
     <span class="g-overlap__k">While you are here</span>
     {% for w in overlapping_workshops %}
-      An atelier runs {{ w['start_date'] }}–{{ w['end_date'] }}{% if w['title'] %} — {{ w['title'] }}{% endif %}.
+      An atelier runs {{ date_range(w['start_date'], w['end_date']) }}{% if w['title'] %} — {{ w['title'] }}{% endif %}.
     {% endfor %}
     The house is busier then, and the dining room is given over to it. Some people come for exactly that; if you would rather have it quiet, tell us and we will find you other dates.
   </p>
@@ -203,18 +203,21 @@
             </li>
             {% endfor %}
           </ul>
-          <p class="g-hint">Added to your booking. The total below is what you pay.</p>
+          <p class="g-hint">Anything you tick here is added to the total below, and nothing else is.</p>
         </section>
         {% endif %}
 
-        <section class="g-step">
-          <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+        {# The fleur sits BETWEEN steps, as on the restaurant and atelier forms. Inside this
+           step it stacked the ornament, the hairline connector and the top padding, so
+           the last step looked different from the three above it. #}
+        <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M0 13h38"/><path d="M82 13h38"/>
   <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
   <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
-  <h2 class="g-step__h"><span class="g-num">{{ '04' if extras else '03' }}</span> Anything we should know</h2>
+        <section class="g-step">
+          <h2 class="g-step__h"><span class="g-num">{{ '04' if extras else '03' }}</span> Anything we should know</h2>
           <p class="g-field">
             <label for="special_requests">Anything we should know <span class="g-opt">optional</span></label>
             <textarea id="special_requests" name="special_requests" rows="4" placeholder="Dietary needs, occasion, arrival time, questions...">{{ prefill_requests | default('') }}</textarea>
@@ -257,7 +260,7 @@
             <dl class="g-quote__l" id="quote_lines">
               {% if initial_quote and initial_quote.available %}
                 {% for line in initial_quote.lines %}
-                <div><dt>{{ line.label }}</dt><dd class="g-fig">€{{ '%.2f'|format(line.amount) }}</dd></div>
+                <div><dt>{{ line.label }}</dt><dd class="g-fig">€{{ '{:,.2f}'.format(line.amount) }}</dd></div>
                 {% endfor %}
               {% endif %}
             </dl>
@@ -270,13 +273,13 @@
           </div>
 
           <label class="g-terms" for="agree_terms">
-            <input type="checkbox" id="agree_terms" name="agree_terms" required>
+            <input type="checkbox" id="agree_terms" name="agree_terms" required{% if prefill_terms %} checked{% endif %}>
             <span>I agree to the <a href="{{ url_for('terms_page') }}" target="_blank" rel="noopener">Terms &amp; Conditions</a></span>
           </label>
 
           {% if stripe_enabled and room['price_per_night'] %}
           <button type="submit" class="g-btn g-submit">Pay &amp; book</button>
-          <p class="g-foot-note">Your dates are held from the moment you submit. The château confirms within a day, and you get a reference code and a link to change anything — dates, guests, extras, or what the kitchen should know.</p>
+          <p class="g-foot-note">Your booking is confirmed the moment your payment goes through. You get a reference code and a link to change anything — dates, guests, extras, or what the kitchen should know.</p>
           {% else %}
           
 {# Families decide they need two rooms while looking at one, not afterwards
@@ -293,10 +296,10 @@
               <div class="g-review__tot"><dt>Total</dt><dd data-rv-total>—</dd></div>
               <div><dt>To pay now</dt><dd data-rv-dep>—</dd></div>
             </dl>
-            <p class="g-review__n">Paid in full when you book. Nothing is charged until the château confirms.</p>
+            <p class="g-review__n">Your dates are held from the moment you submit. We confirm by email and send payment details with it.</p>
           </div>
 
-          <button type="submit" class="g-btn g-submit" data-hold>Hold these dates</button>
+          <button type="submit" class="g-btn g-submit" data-hold>Book these dates</button>
           <p class="g-holding" data-holding hidden role="status">
             <span class="g-holding__m">Holding your dates…</span>
           </p>
@@ -606,7 +609,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
       <dl class="g-plate__l">
         <div><dt>The payment</dt><dd>Taken by Stripe. Your card details never reach the château</dd></div>
         <div><dt>The booking</dt><dd>Confirmed straight away, with your dates held</dd></div>
-        <div><dt>If declined</dt><dd>The refund is automatic and complete. Nothing to chase</dd></div>
+        <div><dt>Cancellation</dt><dd>Non-refundable. Write to us and we can sometimes move your dates instead</dd></div>
         <div><dt>Your reference</dt><dd>Emailed at once, with a link to see your booking and add to it</dd></div>
         <div><dt>Breakfast</dt><dd>Included every morning, in the rate you see</dd></div>
         <div><dt>Tourist tax</dt><dd>Charged locally on departure, as French law requires</dd></div>
@@ -705,10 +708,11 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
 <div class="g-bookbar" role="region" aria-label="Your booking">
   <span class="g-bookbar__sum">
-    <span class="g-bookbar__t" data-bar-total>{% if initial_quote and initial_quote.total %}€{{ '%.0f'|format(initial_quote.total) }}{% else %}Choose dates{% endif %}</span>
+    <span class="g-bookbar__t" data-bar-total>{% if initial_quote and initial_quote.total %}€{{ '{:,.0f}'.format(initial_quote.total) }}{% else %}Choose dates{% endif %}</span>
     <span class="g-bookbar__n" data-bar-note>{{ room_name(room['name']) }}</span>
   </span>
-  <button type="submit" form="{{ book_form_id|default('book-form') }}" class="g-btn g-btn--solid">Hold these dates</button>
+  {# Says what the form's own button says. It read "Hold these dates" in every case, so a paying guest saw "Pay & book" in the form and "Hold these dates" in the bar on the same screen. #}
+  <button type="submit" form="{{ book_form_id|default('book-form') }}" class="g-btn g-btn--solid">{% if stripe_enabled and room['price_per_night'] %}Pay &amp; book{% else %}Book these dates{% endif %}</button>
 </div>
 
 <script>

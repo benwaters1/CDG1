@@ -190,8 +190,26 @@ def run():
                 "output=embed" not in page,
                 detail="a map showing the wrong place is worse than a link to "
                        "one, because it looks authoritative")
+        # THE SUBSTANCE, NOT THE SENTENCE. This asked for the words "does not
+        # find them", out of a claim that an address search misses the gates.
+        # The owner has since established that Google Maps brings people to
+        # the front, so that claim is UNTRUE and was rightly taken off five
+        # pages -- and a check demanding it back would have had the site
+        # telling guests something false to keep a test green. What has to
+        # survive is the REASON the map is missing, which is that nobody has
+        # set the coordinates.
+        # READ INSIDE THE BOX, not across the page. Asking whether the word
+        # "coordinates" appears anywhere passed with the explanation deleted,
+        # because the prose above the map uses the word too -- a rewrite of
+        # this check that could not fail, which is worse than the brittle one
+        # it replaced.
+        box = re.search(r'class="empty-state"[^>]*>(.*?)</div>', page, re.S)
+        said = (box.group(1) if box else "").strip()
         s.check("and the page says why rather than showing an empty box",
-                "does not find them" in page)
+                len(said) > 40 and "coordinate" in said.lower(),
+                detail="an empty box explains nothing, and a guest who cannot "
+                       "see where the gates are is a guest who drives past: "
+                       + (repr(said[:60]) if said else "no empty state at all"))
         _pin("42.8083", "1.6528")
         page = anon.get("/contact").get_data(as_text=True)
         s.check("with a pin the embedded map uses it",

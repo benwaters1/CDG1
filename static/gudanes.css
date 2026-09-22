@@ -271,7 +271,10 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 /* ---- Hero -------------------------------------------------------------- */
 
 .g-hero{ position: relative; background: var(--blue-deep); }
-.g .g-hero__img{ width: 100%; height: clamp(22rem, 78vh, 46rem); object-fit: cover; }
+/* The photograph fills the hero, as the video does on the homepage. In flow with
+   its own clamp() height inside a min-height hero, any difference showed as bare
+   navy above and below the picture — 32px on Stay at phone width, 180px on Events. */
+.g .g-hero__img{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .g-hero__wash{
   position: absolute; inset: 0;
   background: linear-gradient(180deg, rgba(20,41,63,.10) 0%, rgba(20,41,63,.04) 40%, rgba(20,41,63,.62) 100%);
@@ -429,6 +432,10 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-field input:focus, .g-field textarea:focus, .g-field select:focus{
   outline: none; border-color: var(--blue-deep);
 }
+/* A native date input does not match :focus-visible on its host while a segment
+   holds focus, so it never got the 2px ring every other field has; the only
+   indicator was a 1px border turning navy. Give it the ring on plain :focus. */
+.g .g-field input[type="date"]:focus{ outline: 2px solid var(--gilt); outline-offset: 3px; }
 .g-field textarea{ min-height: 8rem; resize: vertical; line-height: 1.55; }
 
 .g-promo{ display: flex; gap: var(--s2); }
@@ -532,6 +539,21 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 
 @media (max-width: 60rem){
   .g-stickybar{ display: flex; }
+}
+
+/* NOT WHILE THE MENU IS OPEN.
+   The bar is fixed to the bottom of the window at z-index 60 and the nav
+   drawer is 59, so the bar sat on top of the drawer's own last inch --
+   which is where Terms and Privacy live. On a phone they could be scrolled
+   to and not tapped: the guest saw the link, put a finger on it, and
+   opened the booking bar instead.
+   Same for the room page's own bottom bar, which is the same idea at the
+   same height. :has() rather than a body class, because the drawer sets
+   is-open on itself and nothing else has to learn about it. */
+body:has(.g-navwrap.is-open) .g-stickybar,
+body:has(.g-navwrap.is-open) .g-bookbar{ display: none; }
+
+@media (max-width: 60rem){
   /* Keep the footer clear of the bar. */
   .g-footer{ padding-bottom: calc(var(--s7) + 72px); }
 }
@@ -778,11 +800,15 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 .g-navwrap{
   position: fixed; top: 0; left: 0; bottom: 0; z-index: 59;
   width: min(24rem, 88vw); background: var(--sand);
-  transform: translateX(-100%); transition: transform .3s ease;
+  transform: translateX(-100%); visibility: hidden;
+  /* Closed, the drawer is off-screen but was still visibility:visible, so every
+     control in it kept its place in the tab order — ten Tab presses through an
+     invisible form. hidden takes it out; the delay lets the slide finish first. */
+  transition: transform .3s ease, visibility 0s linear .3s;
   overflow-y: auto; box-shadow: 20px 0 50px rgba(0,0,0,.12);
   display: flex; flex-direction: column;
 }
-.g-navwrap.is-open{ transform: translateX(0); }
+.g-navwrap.is-open{ transform: translateX(0); visibility: visible; transition-delay: 0s, 0s; }
 .g-navwrap__inner{ padding: var(--s8) var(--s6) var(--s6); flex: 0 0 auto; }
 .g-navwrap__close{
   position: absolute; top: var(--s5); right: var(--s5);
@@ -3515,8 +3541,17 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g.has-hero.at-top:has(.g-crumbs) .g-nav a{ color: var(--blue-deep); }
 /* The logo on a light header is simply the dark logo — the mask treatment
    belongs only where the header is transparent over a photograph. */
+/* Set the fill transparent expecting a dark logo FILE to show through; the only
+   file is the white wordmark, so the header logo was white on cream on every
+   page but the homepage. The mask paints the white file navy on ordinary pages;
+   do the same here. No dark file is needed. */
 .g.has-hero.at-top:has(.g-crumbs) .g-logo,
-.g.has-hero.at-top:has(.g-crumbs) .g-brand{ background-color: transparent; }
+.g.has-hero.at-top:has(.g-crumbs) .g-brand{
+  background-color: var(--blue-deep);
+  -webkit-mask-image: var(--logo-src); mask-image: var(--logo-src);
+}
+.g.has-hero.at-top:has(.g-crumbs) .g-logo img,
+.g.has-hero.at-top:has(.g-crumbs) .g-brand img{ opacity: 0; }
 .g.has-hero.at-top:has(.g-crumbs) .g-burger span,
 .g.has-hero.at-top:has(.g-crumbs) .g-navbtn__bars span{ background: var(--blue-deep); }
 .g.has-hero.at-top:has(.g-crumbs) .g-burger__label,
@@ -4913,14 +4948,15 @@ main .g-hero p, main td p, main th p{ max-width: none; }
    :has() is unsupported in a few older browsers; there the rule simply does
    not apply, which prints the whole page rather than nothing. Failing toward
    too much ink beats failing toward an empty sheet. */
+/* This targeted .g-takeaway__card, a class in no template — the card is .g-recap —
+   so "Print or save as PDF" printed the whole page: five buttons, the upsell, the
+   photo band. On paper a guest needs the reference block and the money recap. */
 @media print{
-  body:has(.g-takeaway__card) *{ visibility: hidden; }
-  body:has(.g-takeaway__card) .g-takeaway__card,
-  body:has(.g-takeaway__card) .g-takeaway__card *{ visibility: visible; }
-  body:has(.g-takeaway__card) .g-takeaway__card{
-    position: absolute; inset: 0; border: 0; padding: 0;
-  }
-  .g-takeaway__k{ color: #000; }
+  body:has(.g-recap) .g-conf__acts, body:has(.g-recap) .g-recap__a,
+  body:has(.g-recap) .g-sec--sand, body:has(.g-recap) .g-band,
+  body:has(.g-recap) .g-cred, body:has(.g-recap) main > .g-wrap:empty{ display: none !important; }
+  body:has(.g-recap) .g-recap{ border-top: 1px solid #000; padding: 12pt 0 0; margin: 12pt 0 0; background: none; }
+  .g-recap__k, .g-recap__h{ color: #000 !important; }
 }
 
 /* ==========================================================================
@@ -5098,8 +5134,28 @@ main .g-facts-list dt, main .g-facts-list dd{ font-size: var(--t-small); }
 .g-sec--dark .g-limit{ border-left-color: #D9C79B; color: #C9D4DF; }
 .g-sec--dark .g-limit__k{ color: #D9C79B; }
 .g .g-sec--dark a{ color: #EDE4D3; }
+/* AND THE SAME LINK INSIDE A PARAGRAPH, which the rule above lost to.
+   `.g main p a` is three elements deep and `.g .g-sec--dark a` is one, so
+   body copy won and every link in a dark closing section was painted
+   var(--blue-deep) -- navy on navy, measured at 1.00. Not hard to read:
+   invisible. "Ask about a month" was a live link nobody could see.
+   Matched at the same depth rather than forced with !important. */
+.g main .g-sec--dark p a,
+.g main .g-sec--dark li a,
+.g main .g-sec--dark dd a{ color: #EDE4D3; }
+/* AND THE SECONDARY LINK BESIDE A BUTTON, which beat even that.
+   `.g main p > .g-btn + a:not(.g-btn)` was written to style the quiet
+   link that sits next to a call to action, and it counts three classes to
+   the rule above's two. On a dark ground it painted that link navy on
+   navy: 1.00, which is not low contrast but no contrast. "Ask about a
+   month" was a live link that could not be seen at all. */
+.g main .g-sec--dark p > .g-btn + a:not(.g-btn){ color: #EDE4D3; }
 .g .g-sec--dark .g-btn{ border-color: #D9C79B; color: #EDE4D3; }
-.g .g-sec--dark .g-btn--solid{ background: var(--gilt); border-color: var(--gilt); color: var(--blue-deep); }
+/* --gilt is rgb(115,86,45), a dark bronze. Navy on it measures 1.91,
+   so the one button in the section meant to be the loudest thing on it
+   was the hardest to read. #D9C79B is the lighter gold this file
+   already uses for eyebrows on a dark ground, and navy on it is 7.5. */
+.g .g-sec--dark .g-btn--solid{ background: #D9C79B; border-color: #D9C79B; color: var(--blue-deep); }
 
 /* ==========================================================================
    .g-figs — THE LAYOUT WAS NEVER WRITTEN EITHER
@@ -5755,6 +5811,7 @@ body.has-hero .g-cred{ background: var(--blue-deep); }
 .g-nodate .g-field--narrow{ flex: 1 1 10rem; min-width: 0; }
 
 .g-news__see{ margin: var(--s3) 0 0; font-family: var(--ui); font-size: var(--t-sm); }
+.g-news__see a{ display: inline-block; padding: .85em 0; margin: -.85em 0; min-height: 44px; box-sizing: border-box; }
 
 .g-arrive{ margin: var(--s7) 0; padding: var(--s6); border: 1px solid var(--gilt); background: var(--white); }
 .g-arrive__k{
@@ -7943,10 +8000,12 @@ main > .g-wrap + .g-sec{ padding-top: var(--s6); }
    the page that has to work.
    ========================================================================== */
 @media (max-width: 44rem){
-  /* Above the bar, not on it. */
-  body:has(.g-stickybar) .g-totop{ bottom: calc(clamp(14px, 2vw, 28px) + 76px); }
-  /* And left, so it never shares a corner with the primary action. */
-  .g-totop{ right: auto; left: clamp(14px, 2vw, 28px); }
+  /* Moving it left kept it off the Book button and put it on the text instead;
+     the reading column runs the full screen here and a fixed bar owns the bottom.
+     The offset rule also keyed on .g-stickybar, which the room page does not use
+     (.g-bookbar), so where it mattered most it never applied. A phone has a
+     sticky header and a native scroll-to-top gesture. */
+  .g-totop{ display: none; }
 }
 
 /* ==========================================================================
@@ -8026,6 +8085,12 @@ main > .g-facts{ border-bottom: 1px solid var(--line); }
 /* Stacked buttons on a narrow screen met edge to edge, so the solid one's
    border and the quiet one's ran together into a 2px line between them. */
 .g-btn + .g-btn{ margin-top: var(--s3); }
+/* That margin is for STACKED buttons. Unscoped, it also fired on pairs side by side
+   in a flex row — the closing call-to-action on fourteen pages — pushing the second
+   button 12px lower than the first. Rows already space with gap. */
+.g-close__acts > .g-btn + .g-btn, .g-conf__acts > .g-btn + .g-btn, .g-approach__btns > .g-btn + .g-btn,
+.g-took__a > .g-btn + .g-btn, .g-three__a > .g-btn + .g-btn, .g-programme__a > .g-btn + .g-btn,
+.g-p:has(> .g-btn + .g-btn) > .g-btn + .g-btn, .g-hero__cta > .g-btn + .g-btn{ margin-top: 0; }
 
 /* The dossier list sits inside a .g-aside, so it picks up BOTH
    `.g-aside dl > div` (a bottom border) and `.g-dossier__l div` (a top one).
@@ -9447,3 +9512,18 @@ h2.g-h2--vert,
 .g-cancel-fold[open] > summary::after{ content: " ⌄"; }
 .g-cancel-fold > summary:hover{ color: var(--ink); }
 .g-cancel-fold .btn-text-danger{ margin-top: var(--s3); }
+
+/* ==========================================================================
+   SMALL TEXT WAS RUNNING TO 100–123 CHARACTERS A LINE
+   Notes, hints and caveats are set at 13–15px but sat in the 46rem container
+   meant for 18px body prose. The measure scale at the top of this file already
+   has the right token; these classes simply were not using it. */
+.g .g-hint, .g .g-room__note, .g .g-care__note, .g .g-rex__caveat,
+.g .g-backtoform, .g .g-foot-note, .g .g-review__n{ max-width: var(--m-read); }
+.g .g-terms{ max-width: none; }
+
+/* Headings that wrapped left a single short word on the last line. balance
+   redistributes the words across the lines already taken. Current browsers
+   only; older ones wrap as before. */
+.g h1, .g h2, .g h3, .g .g-display, .g .g-h2, .g .g-place, .g .g-step__h, .g .g-close__h{ text-wrap: balance; }
+.g .g-lede, .g .g-hero__lede, .g .g-p.g-lede-first{ text-wrap: pretty; }

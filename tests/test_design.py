@@ -317,9 +317,23 @@ def run():
             detail="it was allowed to absorb all the pressure and went to 34px")
     s.check("and a ceiling so it cannot crowd out the menu",
             re.search(r"\.g-logo\s*\{[^}]*max-width:", public))
-    s.check("the back-to-top is lifted clear of the booking bar",
-            re.search(r"\.g-totop\s*\{[^}]*bottom:\s*\d", public)
-            and re.search(r"\.g-totop\s*\{[^}]*left:", public),
-            detail="pinned bottom-right it shares a corner with Book")
+    # ASKED AS THE PROPERTY, NOT THE MECHANISM. This used to require a `left:`
+    # in the base rule, because moving the arrow leftwards was how it was got
+    # out of the Book button's corner at the time. A handover raised it on
+    # small screens instead, which clears the bar just as well and keeps the
+    # arrow where a thumb reaches for it -- and this went red for a page that
+    # was fine. What must stay true is that on a phone the arrow is not left
+    # at its default offset in the same corner as Book: lifted, moved aside or
+    # taken away, any of the three will do.
+    small_screen = re.findall(
+        r"@media[^{]*max-width[^{]*\{(?:[^{}]|\{[^{}]*\})*?\.g-totop\s*\{([^}]*)\}",
+        public)
+    s.check("the back-to-top is kept out of the booking bar's corner on a phone",
+            any(re.search(r"(bottom:\s*\d|display:\s*none|left:)", rule)
+                for rule in small_screen),
+            detail="pinned bottom-right at the default offset it covers Book, "
+                   "which is the one control on the page that has to work: "
+                   + (str(small_screen[:2]) if small_screen
+                      else "no small-screen rule for .g-totop at all"))
 
     return s

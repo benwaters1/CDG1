@@ -41,7 +41,7 @@
 {% from '_emblems.html' import emblem %}
 
 <section class="g-hero">
-<img loading="lazy" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w" alt="A bedroom, walls left as found">
+<img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w" alt="A bedroom, walls left as found">
 <div class="g-hero__wash"></div>
 <div class="g-hero__in">
   <p class="g-hero__eyebrow">Cinq Chambres · Ariège</p>
@@ -80,7 +80,7 @@
 </div></section>
 
 <!-- Availability. Replaces "BOOK IN" per card with a real search. -->
-<section class="g-book-bar"><div class="g-wrap">
+<section class="g-book-bar" id="book"><div class="g-wrap">
   <form method="get" class="g-search" aria-label="Check availability">
     <div class="g-search__f"><label for="s_arrival">Arrival</label>
       <input type="date" id="s_arrival" name="arrival" value="{{ arrival }}">
@@ -187,7 +187,7 @@
            guest is actually deciding on — and keep the nightly rate beneath. #}
         {% set _n = stay_nights | default(0) | int %}
         <p class="g-card__rate">{%- if _n > 0 %}
-            <b data-eur="{{ (room['price_per_night'] * _n)|int }}">€{{ '%.0f'|format(room['price_per_night'] * _n) }}</b>
+            <b data-eur="{{ (room['price_per_night'] * _n)|int }}">€{{ '{:,.0f}'.format(room['price_per_night'] * _n) }}</b>
             <span>total · {{ _n }} night{{ '' if _n == 1 else 's' }}</span>
             {# On a single night the total and the nightly rate are the same
                figure, so printing both says nothing twice. #}
@@ -321,7 +321,7 @@
     <p class="g-eyebrow">Bathing</p>
     <h2 class="g-h2">Les Salles de Bains</h2>
     <p class="g-p g-lede-first">Floral papers, a cast-iron freestanding bath, and a dressing room to yourself.</p>
-    <p class="g-p">Three bathrooms on the ground floor, each with its own character.</p>
+    <p class="g-p">Three bathrooms downstairs, each with its own character.</p>
     <p class="g-p">Émeraude, du Levant and Les Deux Chambres each have a private bathroom downstairs. Cerise and Tilleul share a bathroom set between them.</p>
     <p class="g-p">Brass fittings, hexagonal terracotta underfoot, and cast-iron baths deep enough to disappear into. Ensuite bathrooms are not permitted under Class I rules — which is why they sit downstairs rather than behind your bed, and why they are among the newest rooms in a building that is mostly not. There is a powder room on the bedroom floor for the night.</p>
     <p style="margin-top:var(--s6)">
@@ -666,16 +666,16 @@
 
   <div class="g-says__grid">
     <figure class="g-say">
-      <blockquote class="g-say__q">Loved everything about the Chateau de Gudanes</blockquote>
-      <figcaption class="g-say__by">Cynthia<span class="g-say__src">United States · Booking.com</span></figcaption>
+      <blockquote class="g-say__q">Each morning I woke up worried that it was only a dream.</blockquote>
+      <figcaption class="g-say__by">A guest<span class="g-say__src">Google</span></figcaption>
     </figure>
     <figure class="g-say">
       <blockquote class="g-say__q">Spacious rooms with private, well-equipped bathrooms</blockquote>
       <figcaption class="g-say__by">A guest from the Netherlands<span class="g-say__src">Booking.com</span></figcaption>
     </figure>
     <figure class="g-say">
-      <blockquote class="g-say__q">Der liebevolle Empfang, das leckere Abendessen und das Ambiente</blockquote>
-      <figcaption class="g-say__by">Martin<span class="g-say__src">Germany · Booking.com</span></figcaption>
+      <blockquote class="g-say__q">After years of careful restoration, the owners brought it back from a ruin. The atmosphere is warm and not spooky at all.</blockquote>
+      <figcaption class="g-say__by">A guest<span class="g-say__src">Google</span></figcaption>
     </figure>
   </div>
 
@@ -755,7 +755,7 @@
    this is where a guest decides whether the journey is worth it. #}
 <section class="g-sec g-sec--tight" data-fold><div class="g-wrap">
   <p class="g-eyebrow">Where This Is</p>
-  <h2 class="g-place">Two Hours From Toulouse, Three Minutes From the Village</h2>
+  <h2 class="g-place">Under Two Hours From Toulouse, Three Minutes From the Village</h2>
   <div class="g-facts-list">
     <div><dt>By air</dt><dd>Toulouse-Blagnac, then an hour and three quarters by road. We can send a car.</dd></div>
     <div><dt>By train</dt><dd>Les Cabannes, on the Toulouse&ndash;Latour-de-Carol line. Three minutes from the gates.</dd></div>
@@ -769,7 +769,7 @@
               dressed up as a map is worse than no link, because the guest sets
               off. house_maps is empty until somebody sets the coordinates. #}
           {% if house_maps %}<a href="{{ house_maps.google }}" target="_blank" rel="noopener">Open in Google Maps</a>
-          {%- else %}<span>Telephone for directions &mdash; an address search does not find the gates</span>{% endif %}
+          {%- else %}<span>Google Maps brings you to the front of the house</span>{% endif %}
     &middot; <a href="{{ url_for('contact_page') }}#map">See it on the map</a>
   </p>
 </div></section>
@@ -797,7 +797,7 @@
       <p class="g-tier__p"><b>From €{{ '%.0f'|format(r['price_per_night']) }}</b> a night</p>
       <dl class="g-tier__f">
         <div><dt>Sleeps</dt><dd>{{ r['max_occupancy'] or 2 }}</dd></div>
-        <div><dt>Bathroom</dt><dd>{%- if 'Shared' in r['name'] %}Shared with one other room{% else %}Private, downstairs{%- endif %}</dd></div>
+        <div><dt>Bathroom</dt><dd>{%- if r['bathroom'] == 'shared' %}Shared with one other room{% else %}Private, downstairs{%- endif %}</dd></div>
         <div><dt>Breakfast</dt><dd>Included</dd></div>
         <div><dt>Minimum</dt><dd>{{ r['min_nights'] or 1 }} night{{ '' if (r['min_nights'] or 1) == 1 else 's' }}</dd></div>
       </dl>

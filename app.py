@@ -23734,6 +23734,18 @@ def inject_user():
         # that passes its own `settings` shadows this, which is how the
         # restaurant and workshop pages keep theirs.
         "settings": LazyPublicSettings(),
+        # THE SAME OBJECT UNDER A NAME NOTHING SHADOWS, for the handful of
+        # facts that are true of the SITE rather than of the page.
+        #
+        # `settings` cannot carry those. It means the site settings on most
+        # pages and a sqlite3.Row of restaurant_settings or a workshop on the
+        # pages whose routes pass their own — which is deliberate and is how
+        # those pages keep theirs. So a base template reaching into `settings`
+        # for a site-wide flag works on every page but those, and those answer
+        # 500: sqlite3.Row has no .get, and a missing column raises rather
+        # than returning nothing. That is exactly how it arrived in a
+        # handover, taking the public dining page down with it.
+        "site": LazyPublicSettings(),
         "photo_consent_choices": PHOTO_CONSENT,
         "decline_reasons": DECLINE_REASONS,
         # WHICH AREA THIS PAGE IS IN, from the one list that decides it.
@@ -59924,6 +59936,16 @@ PUBLIC_SETTINGS = (
     "press_email",            # on the press page
     "review_recommend", "review_count",
     "instagram_followers", "facebook_followers",
+    # Whether the site offers French and Spanish. Off until the prose is
+    # translated: advertising fr/es alternates to a search engine promises
+    # pages that do not exist. It arrived from the design side gated on a
+    # setting NOTHING WROTE, which does not hide the switcher until the prose
+    # is ready — it hides it for good, with no way to bring it back.
+    "show_language_switcher",
+    # The rating in the JSON-LD, which must be the same figure the Stay page
+    # prints. It was hardcoded 10 out of 10 from 4 reviews while the page and
+    # Booking.com both said 9.8 from 6.
+    "score_overall",
 )
 
 

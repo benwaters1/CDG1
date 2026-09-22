@@ -29,10 +29,13 @@
    real translated paths, as /fr/les-chambres rather than ?lang=fr — these use
    it. Without it they fall back to the query form, which works but ranks
    less well. Path prefixes with translated slugs are the better shape. #}
-{% for code in languages %}
+{# Gated with the switcher (TRANSLATION_GAP option 1): 10,700 words of prose are
+   English-only, so advertising fr/es alternates to search engines promises pages
+   that do not exist. Flip show_language_switcher on when the prose is translated. #}
+{% if site.get('show_language_switcher') %}{% for code in languages %}
 <link rel="alternate" hreflang="{{ code }}" href="{% if alt_urls and alt_urls.get(code) %}{{ alt_urls[code] }}{% else %}{{ request.base_url }}{% if code != 'en' %}?lang={{ code }}{% endif %}{% endif %}">
 {% endfor %}
-<link rel="alternate" hreflang="x-default" href="{{ request.base_url }}">{% endif %}
+<link rel="alternate" hreflang="x-default" href="{{ request.base_url }}">{% endif %}{% endif %}
 <meta property="og:site_name" content="Château de Gudanes">
 <meta property="og:type" content="website">
 <meta property="og:title" content="{% block og_title %}{{ self.title() }}{% endblock %} — Château de Gudanes">
@@ -71,7 +74,7 @@
   "name": "Château de Gudanes",
   "description": "An eighteenth-century Class I Historic Monument in the French Pyrénées, open to guests while its restoration continues.",
   "url": "https://chateaugudanes.com/",
-  "telephone": "+33 5 61 64 96 82",
+  "telephone": "+33 6 28 06 97 76",
   "email": "ariege@chateaugudanes.com",
   "address": {
     "@type": "PostalAddress",
@@ -92,14 +95,18 @@
     { "@type": "LocationFeatureSpecification", "name": "Free parking", "value": true },
     { "@type": "LocationFeatureSpecification", "name": "Wi-Fi", "value": true },
     { "@type": "LocationFeatureSpecification", "name": "Breakfast included", "value": true }
-  ],
+  ]{% if site.get('score_overall') and site.get('review_count') %},
+  {# Read from the same settings the Stay page displays, so the figure Google
+     shows can never differ from the one a guest reads on the site. Was hardcoded
+     10 from 4 while the page and Booking.com said otherwise. Omitted when the
+     settings are empty rather than inventing a number. #}
   "aggregateRating": {
     "@type": "AggregateRating",
-    "ratingValue": "10",
+    "ratingValue": "{{ site.get('score_overall') }}",
     "bestRating": "10",
-    "ratingCount": "4",
-    "reviewCount": "4"
-  }
+    "ratingCount": "{{ site.get('review_count')|int }}",
+    "reviewCount": "{{ site.get('review_count')|int }}"
+  }{% endif %}
 }
 </script>
 {% block schema %}{% endblock %}
@@ -124,7 +131,7 @@
 <nav class="g-nav" aria-label="{{ t('Main') }}">
       <a href="{{ url_for('book_rooms') }}"{% if NAV_HERE == 'book_rooms' %} class="is-here" aria-current="page"{% endif %}>{{ t('Stay') }}</a>
       <a href="{{ url_for('workshops_public') }}"{% if NAV_HERE == 'workshops_public' %} class="is-here" aria-current="page"{% endif %}>{{ t('Workshops') }}</a>
-      <a href="{{ url_for('restaurant_info') }}"{% if NAV_HERE == 'restaurant_info' %} class="is-here" aria-current="page"{% endif %}>{{ t('La Table') }}</a>
+      <a href="{{ url_for('restaurant_info') }}"{% if NAV_HERE == 'restaurant_info' %} class="is-here" aria-current="page"{% endif %}>{{ t('Dining') }}</a>
       <div class="g-nav__has-sub">
         <a href="{{ url_for('events_info') }}"{% if NAV_HERE == 'events_info' %} class="is-here" aria-current="page"{% endif %} aria-haspopup="true" aria-expanded="false">{{ t('Events') }}<span class="g-nav__caret" aria-hidden="true"></span></a>
         <ul class="g-subnav">
@@ -179,7 +186,7 @@
         </a>
         <a href="{{ url_for('restaurant_info') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M8 9c0-1.5 1.5-3 4-3s4 1.5 4 3"/></svg>
-          {{ t('La Table') }}
+          {{ t('Dining') }}
         </a>
         <a href="{{ url_for('events_info') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M6 3v7a6 6 0 0 0 12 0V3M12 17v4M8 21h8"/></svg>
@@ -274,7 +281,10 @@
         </div>
 
         <div class="g-navwrap__linkgrid">
-          <a href="mailto:experience@chateaugudanes.com">{{ t('Contact us') }}</a>
+          {# Was a mailto to experience@, the workshops-and-events inbox, while the
+             general address ariege@ sat three lines below. The contact page explains
+             which inbox is which, so send people there. #}
+          <a href="{{ url_for('contact_page') }}">{{ t('Contact us') }}</a>
           <a href="{{ url_for('press') }}">{{ t('Press') }}</a>
           <a href="{{ url_for('workshops_public') }}">{{ t('Groups') }}</a>
           <a href="{{ url_for('find_booking') }}">{{ t('Manage your booking') }}</a>
@@ -285,7 +295,13 @@
         <p><a href="tel:+33628069776">+33 6 28 06 97 76</a></p>
         <p><a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></p>
 
+        {# The switcher is hidden until the prose is translated (TRANSLATION_GAP
+           option 1). Without the guard on the box itself, hiding the switcher left an
+           empty bordered panel on every page whenever there were no fx rates either. #}
+        {% set _show_lang = site.get('show_language_switcher') %}
+        {% if _show_lang or fx_rates %}
         <div class="g-navwrap__prefs">
+          {% if _show_lang %}
           <span class="g-navwrap__prefs-row">
             <span class="g-navwrap__prefs-label">{{ t('Language') }}</span>
             <span class="g-lang">
@@ -296,6 +312,7 @@
               {% endfor %}
             </span>
           </span>
+          {% endif %}
           {% if fx_rates %}
           <span class="g-navwrap__prefs-row">
             <span class="g-navwrap__prefs-label">{{ t('Currency') }}</span>
@@ -311,6 +328,7 @@
           </span>
           {% endif %}
         </div>
+        {% endif %}
 
         <div class="g-navwrap__legal">
           <a href="{{ url_for('terms_page') }}">{{ t('Terms & Conditions') }}</a>
@@ -465,7 +483,7 @@
         <ul>
           <li><a href="{{ url_for('book_rooms') }}">{{ t('Nightly stays') }}</a></li>
           <li><a href="{{ url_for('workshops_public') }}">Workshops</a></li>
-          <li><a href="{{ url_for('restaurant_info') }}">{{ t('La Table') }}</a></li>
+          <li><a href="{{ url_for('restaurant_info') }}">{{ t('Dining') }}</a></li>
           <li><a href="{{ url_for('events_info') }}">{{ t('Weddings & Celebrations') }}</a></li>
           <li><a href="/restoration">{{ t('The restoration') }}</a></li>
           <li><a href="/gallery">{{ t('Gallery') }}</a></li>
@@ -581,12 +599,41 @@
   var overlay=document.getElementById('g-panel-overlay');
   var closeBtn=document.querySelector('.g-navwrap__close');
   if(!b||!w) return;
-  function openPanel(){ w.classList.add('is-open'); if(overlay) overlay.classList.add('is-open'); b.setAttribute('aria-expanded','true'); document.body.style.overflow='hidden'; }
-  function closePanel(){ w.classList.remove('is-open'); if(overlay) overlay.classList.remove('is-open'); b.setAttribute('aria-expanded','false'); document.body.style.overflow=''; }
+  /* While the drawer is open the rest of the page is behind an overlay and
+     cannot be seen — but Tab could still reach it: it left the drawer, landed
+     on the header's Book button, then walked through the page underneath.
+     Everything outside the drawer is made inert while it is open. The drawer
+     sits inside the header, so inerting body's children would inert the
+     header and the drawer with it; instead walk up from the drawer and inert
+     every sibling not on the path to it or to the overlay. */
+  var rest=[];
+  function setInert(on){
+    if(!on){ rest.forEach(function(el){ el.inert=false; }); rest=[]; return; }
+    var keep=[w, overlay]; var n=w; while(n && n!==document.body){ keep.push(n); n=n.parentElement; }
+    n=w; while(n && n!==document.body){
+      [].slice.call(n.parentElement.children).forEach(function(el){
+        if(keep.indexOf(el)===-1 && el.tagName!=='SCRIPT'){ el.inert=true; rest.push(el); }
+      });
+      n=n.parentElement;
+    }
+  }
+  function openPanel(){ w.classList.add('is-open'); if(overlay) overlay.classList.add('is-open'); b.setAttribute('aria-expanded','true'); document.body.style.overflow='hidden'; setInert(true); var first=w.querySelector('.g-navwrap__close, a, button, input'); if(first) first.focus(); }
+  function closePanel(){ setInert(false); w.classList.remove('is-open'); if(overlay) overlay.classList.remove('is-open'); b.setAttribute('aria-expanded','false'); document.body.style.overflow=''; b.focus(); }
   b.addEventListener('click', function(){ w.classList.contains('is-open') ? closePanel() : openPanel(); });
   if(overlay) overlay.addEventListener('click', closePanel);
   if(closeBtn) closeBtn.addEventListener('click', closePanel);
-  document.addEventListener('keydown', function(e){ if(e.key==='Escape') closePanel(); });
+  document.addEventListener('keydown', function(e){
+    if(e.key==='Escape'){ closePanel(); return; }
+    /* Wrap Tab within the drawer, so the last item leads to the first rather
+       than out to the browser's own controls. */
+    if(e.key!=='Tab' || !w.classList.contains('is-open')) return;
+    var f=[].slice.call(w.querySelectorAll('a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])'))
+      .filter(function(el){ return !el.disabled && el.offsetParent!==null && getComputedStyle(el).visibility!=='hidden'; });
+    if(!f.length) return;
+    var first=f[0], last=f[f.length-1];
+    if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+  });
 })();
 </script>
 
@@ -905,17 +952,43 @@
   var fields = document.querySelectorAll('[data-rp-open]');
   if (!fields.length) return;
 
-  /* Bind by name, so the picker works on any page carrying an arrival and
-     departure pair — not only the homepage it was first written for. */
-  var aIn = document.querySelector('input[type=date][name=arrival]');
-  var dIn = document.querySelector('input[type=date][name=departure]');
-  if (!aIn || !dIn) return;
+  /* SCOPED TO THE FORM THE BUTTON IS IN, not to the document.
 
-  /* JavaScript is running, so show the buttons and hide the raw inputs. */
-  document.querySelectorAll('[data-rp-open]').forEach(function(b){
-    var f = b.parentElement; if (f) f.classList.add('is-rp', 'g-rp__f');
-  });
-  fields.forEach(function(b){ b.hidden = false; });
+     These were document.querySelector, which returns the FIRST match on the
+     page. The homepage carries TWO forms with arrival and departure inputs —
+     the quick-book widget in the header and the hero search — so picking
+     dates in the hero wrote them into the widget, and the hero form posted
+     empty: /book?arrival=&departure=. The guest saw a calendar accept their
+     dates and a results page that had never been given any.
+
+     Resolved on every open instead, from the anchor outwards, so a page with
+     one pair behaves exactly as before and a page with two stops guessing. */
+  var scope = document;
+  var aIn = null, dIn = null;
+  function bindTo(anchor){
+    scope = (anchor && anchor.closest('form')) || document;
+    aIn = scope.querySelector('input[type=date][name=arrival]');
+    dIn = scope.querySelector('input[type=date][name=departure]');
+    return !!(aIn && dIn);
+  }
+  if (!bindTo(fields[0])) return;
+
+  /* The swap to the custom picker happens at the END of this function, in
+     takeOver(), once everything is built and bound — not here. Hiding the
+     native inputs first meant any later failure left the guest with the
+     inputs hidden AND a button that did nothing: no way to enter dates at
+     all. Swapping last means a broken picker degrades to two working date
+     fields rather than to nothing. */
+  function takeOver(){
+    document.querySelectorAll('[data-rp-open]').forEach(function(b){
+      var f = b.parentElement; if (f) f.classList.add('is-rp', 'g-rp__f');
+    });
+    fields.forEach(function(b){
+      b.hidden = false;
+      b.setAttribute('aria-haspopup', 'dialog');
+      b.setAttribute('aria-controls', 'g-rp-panel');
+    });
+  }
 
   var MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
@@ -931,6 +1004,7 @@
 
   var panel = document.createElement('div');
   panel.className = 'g-rp';
+  panel.id = 'g-rp-panel';
   panel.setAttribute('role','dialog');
   panel.setAttribute('aria-label','Choose your dates');
   panel.hidden = true;
@@ -948,9 +1022,9 @@
 
   function paintFields(){
     var n = nights();
-    var la = document.querySelector('[data-rp-label=arrival]');
-    var ld = document.querySelector('[data-rp-label=departure]');
-    var ln = document.querySelector('[data-rp-nights]');
+    var la = scope.querySelector('[data-rp-label=arrival]');
+    var ld = scope.querySelector('[data-rp-label=departure]');
+    var ln = scope.querySelector('[data-rp-nights]');
     if (la) la.textContent = pretty(start) || 'Add dates';
     if (ld) ld.textContent = pretty(end) || 'Add dates';
     if (ln) ln.textContent = n ? (n + (n===1 ? ' night' : ' nights')) : '';
@@ -1050,6 +1124,10 @@
   var openAnchor = null;
   function open(anchor){
     openAnchor = anchor;
+    /* Re-pointed every time: the guest may open the widget's picker and then
+       the hero's, and the second must not carry the first one's dates. */
+    if (!bindTo(anchor)) return;
+    start = parse(aIn.value); end = parse(dIn.value); hover = null;
     cursor = new Date((start||today).getFullYear(), (start||today).getMonth(), 1);
     draw(); panel.hidden = false; place(anchor);
     document.addEventListener('keydown', onKey);
@@ -1118,6 +1196,7 @@
   });
   window.addEventListener('resize', function(){ if(!panel.hidden && openAnchor) place(openAnchor); });
 
+  takeOver();
   paintFields();
 })();
 </script>

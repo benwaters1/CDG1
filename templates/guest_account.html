@@ -21,7 +21,7 @@
   <div class="account-balance">
     <div>
       <span class="account-balance__label">Your balance</span>
-      <span class="account-balance__figure">€{{ '%.2f'|format(balance.total) }}</span>
+      <span class="account-balance__figure">€{{ '{:,.2f}'.format(balance.total) }}</span>
     </div>
     {% if can_pay_online %}
     <p class="g-hint" style="margin:var(--s1) 0 0;">Pay any stay below, or settle it with us when you arrive.</p>
@@ -59,11 +59,11 @@
       {{ b['arrival_date']|date_short }} → {{ b['departure_date']|date_short }}
       · {{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}
       {% set money = balance.per_booking.get(b['id']) if balance else None %}
-      {%- if money %} · €{{ '%.2f'|format(money.total) }}{% elif b['total_price'] %} · €{{ '%.2f'|format(b['total_price']) }}{% endif %}
+      {%- if money %} · €{{ '{:,.2f}'.format(money.total) }}{% elif b['total_price'] %} · €{{ '{:,.2f}'.format(b['total_price']) }}{% endif %}
     </p>
     {% if money and money.owed > 0 %}
     <p class="account-owed">
-      <strong>€{{ '%.2f'|format(money.owed) }}</strong> still to pay
+      <strong>€{{ '{:,.2f}'.format(money.owed) }}</strong> still to pay
       {%- if money.paid %} · €{{ '%.2f'|format(money.paid) }} received{% endif %}
       {%- if money.due_date %} · due {{ money.due_date|date_short }}{% endif %}
     </p>
@@ -75,7 +75,7 @@
       </a>
       {% if money and money.owed > 0 and can_pay_online %}
       <a href="{{ url_for('booking_pay', manage_token=b['manage_token']) }}" class="g-btn g-btn--sm g-btn--solid">
-        Pay €{{ '%.2f'|format(money.owed) }}
+        Pay €{{ '{:,.2f}'.format(money.owed) }}
       </a>
       {% endif %}
       <a href="{{ url_for('booking_statement', manage_token=b['manage_token']) }}" class="small-link">Your bill</a>

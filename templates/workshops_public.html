@@ -3,7 +3,7 @@
 {% set crumbs = [('Workshops', None)] %}
 {% block title_fr %}Les Ateliers{% endblock %}
 {% block description_fr %}Ateliers de restauration au château : enduits à la chaux, dorure, conservation de fresques du XVIIIe siècle. Quinze places, un atelier à la fois.{% endblock %}
-{% block title %}French Craft Workshops in a Château, Ariège{% endblock %}
+{% block title %}Craft Workshops in a French Château{% endblock %}
 {% block description %}Plaster, gilding and fresco conservation taught by the artisans restoring a Class I French château. Fifteen places, the house to yourselves, full board.{% endblock %}
 {% block og_desc %}Five ateliers at Château de Gudanes — restoration, cooking, and the brocantes of the Ariège. Never more than fifteen guests, and the château takes no others.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1200w{% endblock %}
@@ -20,7 +20,7 @@
 {% set WS_HERO = 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1500w' %}
 
 <section class="g-hero">
-  <img loading="lazy" decoding="async" class="g-hero__img" src="{{ WS_HERO }}" alt="Château Workshops">
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ WS_HERO }}" alt="Château Workshops">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">{%- if workshops %}{{ workshops|length }} Atelier{{ '' if workshops|length == 1 else 's' }} · {% endif %}Château de Gudanes</p>
@@ -80,7 +80,7 @@
 
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
   <h2 class="g-place">{% if workshops and workshops|length > 1 %}{{ workshops|length }} Ateliers, One House{% else %}One Atelier at a Time{% endif %}</h2>
-  <p class="g-p">This is a restoration, not a renovation — fifteen years in, and years from finished.</p>
+  <p class="g-p">Five ateliers across the year, each a few nights inside the working restoration. What each one is:</p>
   <dl class="g-facts-list" style="margin-bottom:var(--s7)">
     <div><dt>Three nights</dt><dd>The brocantes — antique fairs, vide-greniers and the dealers worth the detour</dd></div>
     <div><dt>Five nights</dt><dd>The kitchen — market mornings, hands-on classes, and the château's own 1700s recipe book</dd></div>
@@ -106,7 +106,7 @@
       <div class="g-wscard__top">
         {% set rows = sessions_by_workshop.get(w['id'], []) %}
         {% if rows and rows[0].session['end_date'] and rows[0].session['end_date'] != rows[0].session['start_date'] %}
-        {% if w['nights_label'] %}<p class=\"g-wscard__len\">{{ w['nights_label'] }}</p>{% endif %}
+        {% if w['nights_label'] %}<p class="g-wscard__len">{{ w['nights_label'] }}</p>{% endif %}
         {% endif %}
         <h3 class="g-wscard__name">{{ w['title'] }}</h3>
         {% if rows %}
@@ -121,7 +121,7 @@
           <span>per person</span>
         </p>
         {% endif %}
-        <a href="#w{{ w['id'] }}" class="g-btn">View itinerary</a>
+        <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" class="g-btn">View itinerary</a>
       </div>
     </article>
     {% endfor %}
@@ -167,7 +167,7 @@
     'Seven':   "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1000w"
   } %}
 
-  <div class="g-wrap"><p class="g-eyebrow">Every date, in one place</p><h2 class="g-h2">Choose when you come</h2></div>
+  <p class="g-p" style="margin-top:calc(var(--s2)*-1)">Every date across the year, in one place — filter by atelier above.</p>
 <div class="g-sittings-grid">
     {% for item in ns.rows|sort(attribute='r.session.start_date') %}
     {% set w = item.w %}{% set r = item.r %}
@@ -183,7 +183,7 @@
       <div class="g-sit__b">
         <p class="g-sit__name">{{ w['title'] }}</p>
         <h3 class="g-sit__when">{{ date_range(r.session['start_date'], r.session['end_date']) }}</h3>
-        {% if w['nights_label'] %}<p class=\"g-sit__meta\">{{ w['nights_label'] }}</p>{% endif %}
+        {% if w['nights_label'] %}<p class="g-sit__meta">{{ w['nights_label'] }}</p>{% endif %}
         {% if w['price_per_person'] %}
         <p class="g-sit__rate">
           <span class="g-fig">€{{ '{:,.0f}'.format(w['price_per_person']) }}</span>
@@ -228,7 +228,7 @@
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1000w" alt="A château bedroom" loading="lazy">
       <div class="g-incl-card__b">
         <h3 class="g-incl-card__t">Your Room</h3>
-        <p>An antique French bed dressed in vintage monogrammed linen, and a beautifully appointed shared bathroom on the ground floor. Laundry whenever you need it.</p>
+        <p>An antique French bed dressed in vintage monogrammed linen, and a beautifully appointed shared bathroom downstairs. Laundry whenever you need it.</p>
       </div>
     </article>
 
@@ -298,6 +298,35 @@
 })();
 </script>
 
+<!-- ============ A SINGLE LINE ============ -->
+{# La Maison Bleue's pattern: one quotation given a whole section rather than
+   a grid of cards. This is the château's own restoration record, which is
+   the strongest thing anyone has said about it. #}
+
+
+
+<!-- ============ WHAT A DAY LOOKS LIKE ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">Une journée d'atelier<span class="g-fr__en">A day in the atelier</span></p>
+  <p class="g-eyebrow">Hour by Hour</p>
+  <h2 class="g-place">What a Day Actually Looks Like</h2>
+  <div class="g-timeline">
+    <ol class="g-timeline__l">
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">8.00</span>
+        <span class="g-timeline__v">Breakfast in the dining salon. Long, and nobody rushes it.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">9.30</span>
+        <span class="g-timeline__v">Into the room you are working on. Overalls provided; wear what you would not mind ruining underneath.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">13.00</span>
+        <span class="g-timeline__v">Lunch, usually outside. Wine if you want it, though the afternoon is fiddly.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">14.30</span>
+        <span class="g-timeline__v">Back to it until about six. A good afternoon is measured in centimetres.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">20.00</span>
+        <span class="g-timeline__v">Dinner together at one table. This is the part people write about afterwards.</span></li>
+    </ol>
+  </div>
+  <p class="g-limit"><span class="g-limit__k">Physical</span>You are on your feet, often on a platform, often with your arms above your head. Say if that is a problem and we will place you where it is not.</p>
+</div></section>
+
 <!-- ============ LA CUISINE ============ -->
 {# Food is most of what a guest remembers, and the workshops page barely
    mentioned it. Same voice as the nightly page. #}
@@ -332,7 +361,7 @@
     <p class="g-eyebrow">Bathing</p>
     <h2 class="g-h2">Les Salles de Bains</h2>
     <p class="g-p g-lede-first">Floral papers, a cast-iron freestanding bath, and a dressing room to yourself.</p>
-    <p class="g-p">Three on the ground floor, each papered differently — brass fittings, hexagonal terracotta underfoot, deep towels, and a window onto the valley. They are the most recently restored rooms in the building, and it shows.</p>
+    <p class="g-p">Three downstairs, each papered differently — brass fittings, hexagonal terracotta underfoot, deep towels, and a window onto the valley. They are the most recently restored rooms in the building, and it shows.</p>
     <p class="g-p">Ensuite bathrooms are not permitted under historic preservation rules, which is why they sit together downstairs rather than off each bedroom. It also means they are among the most modern rooms in the building. On a workshop they are shared between the group and privately allocated.</p>
   </div>
 </div></section>
@@ -393,12 +422,102 @@
 </div></section>
 
 
-<!-- ============ A SINGLE LINE ============ -->
-{# La Maison Bleue's pattern: one quotation given a whole section rather than
-   a grid of cards. This is the château's own restoration record, which is
-   the strongest thing anyone has said about it. #}
+<!-- ============ THE MARKET MORNING ============ -->
+{# The markets, the farm shop and the eighteenth-century recipe book are all
+   documented in the château's own material. #}
+<section class="g-sec g-paper" data-fold><div class="g-wrap">
+  <p class="g-eyebrow">Cooking in the Cuisine</p>
+  <h2 class="g-place">The Market Comes First</h2>
+
+  <div class="g-two" style="margin-top:var(--s7)">
+    <figure class="g-fig-block">
+      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w" alt="Market produce on the kitchen table" loading="lazy">
+      <figcaption>Nothing is decided before the market. What is on the stalls that morning is what the day is built around.</figcaption>
+    </figure>
+    <div>
+      <p class="g-p g-lede-first">The kitchen does not write a menu and then go shopping. It goes to the market and then decides.</p>
+      <p class="g-p">Les Cabannes on a Sunday, three minutes below the gates — a village of three hundred and seventeen people. Tarascon-sur-Ariège on Wednesday and Saturday, twenty minutes down the valley and much larger. La Ferme du Quié in the village for wine, cheese, ham and whatever else it has that week.</p>
+      <p class="g-p">You go with the chef, who has bought from the same producers for twenty years and will tell you which stall is worth queueing at. Then it comes back and you cook it — including, on some days, from the château's own eighteenth-century recipe book.</p>
+    </div>
+  </div>
+
+  <div class="g-plate">
+    <div class="g-plate__row">
+      <dl class="g-plate__l">
+        <div><dt>Sunday</dt><dd>Les Cabannes market, three minutes from the gate</dd></div>
+        <div><dt>Wednesday</dt><dd>Tarascon-sur-Ariège, twenty minutes down the valley</dd></div>
+        <div><dt>Saturday</dt><dd>Tarascon again, and the larger of the two days</dd></div>
+        <div><dt>Any day</dt><dd>La Ferme du Quié in the village for cheese, ham and local wine</dd></div>
+        <div><dt>In summer</dt><dd>The château gardens, and the cherry and plum trees below the terraces</dd></div>
+        <div><dt>The book</dt><dd>An eighteenth-century Gudanes recipe book, still cooked from</dd></div>
+      </dl>
+    </div>
+  </div>
+</div></section>
+
+<!-- ============ KEY INFORMATION ============ -->
+<section class="g-sec g-sec--sand" data-fold><div class="g-wrap">
+  <p class="g-eyebrow">Practical</p>
+  <h2 class="g-place">Key Information</h2>
+  <div class="g-key">
+    <div class="g-key__i">
+      <p class="g-key__k">Address</p>
+      <p class="g-key__v">2 Route de Beille<br>Château-Verdun, Ariège 09310<br>France</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Arrival</p>
+      <p class="g-key__v">From 4pm. Departure by 11am.<br>Someone will meet you at the gates.</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Getting here</p>
+      <p class="g-key__v">Toulouse-Blagnac, 1h45 by road<br>Les Cabannes station, three minutes</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Contact</p>
+      <p class="g-key__v"><a href="tel:+33628069776">+33 6 28 06 97 76</a><br>
+      <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Youngest guest</p>
+      <p class="g-key__v">Eight. The staircases are eighteenth-century and there are no handrails in places.</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Payment</p>
+      <p class="g-key__v">Charged in euro, handled by Stripe.<br>A deposit holds your place; the balance is taken nearer the date.</p>
+    </div>
+  </div>
+</div></section>
 
 
+
+<div class="g-wrap g-mark__wrap">{{ mark('fresco') }}</div>
+
+<!-- ============ WHAT YOU NEED ============ -->
+<section class="g-sec g-sec--sand" data-fold><div class="g-wrap">
+  <p class="g-eyebrow">Before You Come</p>
+  <h2 class="g-place">What to Bring, and What Not To</h2>
+  <div class="g-grid g-grid--2">
+    <div class="g-panel">
+      <h3 class="g-h3">Bring</h3>
+      <ul class="g-ticks">
+        <li>Clothes you would not mind ruining — lime does not wash out</li>
+        <li>Shoes with a closed toe and a flat sole</li>
+        <li>Reading glasses if you use them. The work is close</li>
+        <li>A notebook. Most people want one by day two</li>
+      </ul>
+    </div>
+    <div class="g-panel">
+      <h3 class="g-h3">Do not</h3>
+      <ul class="g-ticks g-ticks--no">
+        <li>Bring tools. Everything is here, and ours are sharpened</li>
+        <li>Expect to finish something. You are joining work in progress</li>
+        <li>Book if you cannot manage stairs — the ateliers are not on one floor</li>
+        <li>Come for a demonstration. You will be doing it</li>
+      </ul>
+    </div>
+  </div>
+  <p class="g-limit"><span class="g-limit__k">No experience</span>None is needed. Half of every atelier has never held a trowel, and the artisans are used to it.</p>
+</div></section>
 
 <!-- ============ THE WORD ============ -->
 {# The programme is built on a word most English guests half-know. Set as a
@@ -439,39 +558,6 @@
 ], 'Before You Register', 'The Questions That Come Up') }}
 
 
-
-<!-- ============ THE MARKET MORNING ============ -->
-{# The markets, the farm shop and the eighteenth-century recipe book are all
-   documented in the château's own material. #}
-<section class="g-sec g-paper" data-fold><div class="g-wrap">
-  <p class="g-eyebrow">Cooking in the Cuisine</p>
-  <h2 class="g-place">The Market Comes First</h2>
-
-  <div class="g-two" style="margin-top:var(--s7)">
-    <figure class="g-fig-block">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w" alt="Market produce on the kitchen table" loading="lazy">
-      <figcaption>Nothing is decided before the market. What is on the stalls that morning is what the day is built around.</figcaption>
-    </figure>
-    <div>
-      <p class="g-p g-lede-first">The kitchen does not write a menu and then go shopping. It goes to the market and then decides.</p>
-      <p class="g-p">Les Cabannes on a Sunday, three minutes below the gates — a village of three hundred and seventeen people. Tarascon-sur-Ariège on Wednesday and Saturday, twenty minutes down the valley and much larger. La Ferme du Quié in the village for wine, cheese, ham and whatever else it has that week.</p>
-      <p class="g-p">You go with the chef, who has bought from the same producers for twenty years and will tell you which stall is worth queueing at. Then it comes back and you cook it — including, on some days, from the château's own eighteenth-century recipe book.</p>
-    </div>
-  </div>
-
-  <div class="g-plate">
-    <div class="g-plate__row">
-      <dl class="g-plate__l">
-        <div><dt>Sunday</dt><dd>Les Cabannes market, three minutes from the gate</dd></div>
-        <div><dt>Wednesday</dt><dd>Tarascon-sur-Ariège, twenty minutes down the valley</dd></div>
-        <div><dt>Saturday</dt><dd>Tarascon again, and the larger of the two days</dd></div>
-        <div><dt>Any day</dt><dd>La Ferme du Quié in the village for cheese, ham and local wine</dd></div>
-        <div><dt>In summer</dt><dd>The château gardens, and the cherry and plum trees below the terraces</dd></div>
-        <div><dt>The book</dt><dd>An eighteenth-century Gudanes recipe book, still cooked from</dd></div>
-      </dl>
-    </div>
-  </div>
-</div></section>
 
 <!-- ============ WHO COMES ============ -->
 {# From the château's own introductions of past participants and their
@@ -520,79 +606,41 @@
 
 
 
-<!-- ============ THE JOURNAL ============ -->
-{# The newsletter form was only in the menu panel. This is the same route,
-   placed where a reader who has just finished the page will see it. #}
-<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">The Journal</p>
-    <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
-    <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      {# One id, set once. Calling random twice produced a different number for
-         the label and the input, so the `for` pointed at nothing. #}
-      {% set j_id = 'j-email-' ~ range(1000,9999)|random %}
-      <label class="g-vh" for="{{ j_id }}">{{ t('Email address') }}</label>
-      <input type="email" inputmode="email" name="email" id="{{ j_id }}"
-             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
-        <fieldset class="g-interests">
-          <legend>What would you like to hear about?</legend>
-          <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
-          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
-          <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
-        </fieldset>
-      <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
-    </form>
-        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
-    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
-  </div>
-</div></section>
-
-
-
-
-
-
-<!-- ============ THE PROGRAMME ============ -->
+<!-- ============ WHAT PARTICIPANTS SAY ============ -->
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-fr">Le programme<span class="g-fr__en">The programme</span></p>
-  <p class="g-eyebrow">Dated, Not Continuous</p>
-  <h2 class="g-place">The Year's Programme</h2>
-  <p class="g-p">One atelier runs at a time and there are a fixed number of places in a year. These are the dates, with who is leading each.</p>
-  {# The overbooking promise. Fifth round of putting it back. It is a
-     commitment the code keeps with a write lock -- workshop_register and
-     workshop_manage both take it before claiming a place -- and
-     test_no_overbooking exists to hold the software to it. #}
-  <p class="g-p">Places are shown live below. When a session reads as full, it is full &mdash; we do not overbook a house this size.</p>
+  <p class="g-eyebrow">From the Ateliers</p>
+  <h2 class="g-place">What People Who Did the Work Say</h2>
+  <p class="g-p">Reviews from guests who stayed the night tell you about the beds. These are from people who spent four days lifting overpaint off a wall, which is a different question.</p>
 
-  {% if workshops %}
-  <ol class="g-programme">
-    {% for w in workshops %}
-    {% for r in sessions_by_workshop.get(w['id'], []) %}
-    <li class="g-programme__i{% if r.remaining <= 0 %} is-full{% endif %}">
-      <span class="g-programme__n">{{ '%02d'|format(loop.index) }}</span>
-      <div class="g-programme__b">
-        <p class="g-programme__d">{%- if r.start_date %}{{ r.start_date }}{% if r.end_date %} — {{ r.end_date }}{% endif %}{% else %}Dates to be confirmed{%- endif %}</p>
-        <h3 class="g-programme__t">{{ w['title'] }}</h3>
-        {% if w['lead_name'] %}<p class="g-programme__w">With {{ w['lead_name'] }}{% if w['lead_role'] %}, {{ w['lead_role'] }}{%- endif %}</p>{% endif %}
-        {% if w['summary'] %}<p class="g-programme__s">{{ w['summary']|truncate(140) }}</p>{% endif %}
-        <p class="g-programme__a">{%- if r.remaining > 0 %}
-            <span class="g-programme__left">{{ r.remaining }} of {{ r.capacity }} place{{ '' if r.capacity == 1 else 's' }} left</span>
-            <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" class="g-btn">See this atelier</a>
-          {% else %}
-            <span class="g-programme__left">Full</span>
-            <a href="{{ url_for('contact_page') }}">Ask about a cancellation</a>
-          {%- endif %}</p>
-      </div>
-    </li>
+  {% if atelier_reviews %}
+  <div class="g-grid g-grid--2">
+    {% for r in atelier_reviews %}
+    <blockquote class="g-panel g-say">
+      <p class="g-say__q">{{ r['text'] }}</p>
+      <footer class="g-say__by">
+        {{ r['name'] }}{% if r['workshop'] %} · {{ r['workshop'] }}{% endif %}
+        {% if r['source'] %}<span class="g-say__src">{{ r['source'] }}</span>{% endif %}
+      </footer>
+    </blockquote>
     {% endfor %}
-    {% endfor %}
-  </ol>
+  </div>
   {% else %}
-  <p class="g-limit"><span class="g-limit__k">Next year</span>The programme is being set. <a href="{{ url_for('contact_page') }}">Tell us what you would want to learn</a> and we will write when the dates go up.</p>
+  {# The fallback said "Not yet — we have not gathered these properly". A real
+     atelier review exists on Google; the ellipsis marks one omitted sentence
+     that used the word "renovation". Shows until atelier_reviews is populated. #}
+  <div class="g-grid g-grid--2">
+    <blockquote class="g-panel g-say">
+      <p class="g-say__q">This was a dream lived as I had been following this Chateau since 2014. … Karina, her family, and the wonderful staff deserve all the accolades for the attention to the culinary experiences, lush table settings, and wonderful entertainment and activities. No other place in our worldly travels has matched the vacation we had here.</p>
+      <footer class="g-say__by">A guest<span class="g-say__src">Google</span></footer>
+    </blockquote>
+  </div>
   {% endif %}
+
+  <p class="g-hint">Google reviews for the château cover the stay, the table and the ateliers together. We would rather separate them than let a review of the breakfast stand in for a review of the work.</p>
 </div></section>
+
+
+
 
 <!-- ============ HOW FEW SEATS ============ -->
 {# Computed from the sessions actually published, so it can never drift from
@@ -617,92 +665,6 @@
 </div></section>
 {% endif %}
 
-
-<!-- ============ KEY INFORMATION ============ -->
-<section class="g-sec g-sec--sand" data-fold><div class="g-wrap">
-  <p class="g-eyebrow">Practical</p>
-  <h2 class="g-place">Key Information</h2>
-  <div class="g-key">
-    <div class="g-key__i">
-      <p class="g-key__k">Address</p>
-      <p class="g-key__v">2 Route de Beille<br>Château-Verdun, Ariège 09310<br>France</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Arrival</p>
-      <p class="g-key__v">From 4pm. Departure by 11am.<br>Someone will meet you at the gates.</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Getting here</p>
-      <p class="g-key__v">Toulouse-Blagnac, 1h45 by road<br>Les Cabannes station, three minutes</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Contact</p>
-      <p class="g-key__v"><a href="tel:+33628069776">+33 6 28 06 97 76</a><br>
-      <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Youngest guest</p>
-      <p class="g-key__v">Eight. The staircases are eighteenth-century and there are no handrails in places.</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Payment</p>
-      <p class="g-key__v">Charged in euro, handled by Stripe.<br>A deposit holds your place; the balance is taken nearer the date.</p>
-    </div>
-  </div>
-</div></section>
-
-
-
-<div class="g-wrap g-mark__wrap">{{ mark('fresco') }}</div>
-
-<!-- ============ WHAT A DAY LOOKS LIKE ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-fr">Une journée d'atelier<span class="g-fr__en">A day in the atelier</span></p>
-  <p class="g-eyebrow">Hour by Hour</p>
-  <h2 class="g-place">What a Day Actually Looks Like</h2>
-  <div class="g-timeline">
-    <ol class="g-timeline__l">
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">8.00</span>
-        <span class="g-timeline__v">Breakfast in the dining salon. Long, and nobody rushes it.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">9.30</span>
-        <span class="g-timeline__v">Into the room you are working on. Overalls provided; wear what you would not mind ruining underneath.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">13.00</span>
-        <span class="g-timeline__v">Lunch, usually outside. Wine if you want it, though the afternoon is fiddly.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">14.30</span>
-        <span class="g-timeline__v">Back to it until about six. A good afternoon is measured in centimetres.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">20.00</span>
-        <span class="g-timeline__v">Dinner together at one table. This is the part people write about afterwards.</span></li>
-    </ol>
-  </div>
-  <p class="g-limit"><span class="g-limit__k">Physical</span>You are on your feet, often on a platform, often with your arms above your head. Say if that is a problem and we will place you where it is not.</p>
-</div></section>
-
-<!-- ============ WHAT YOU NEED ============ -->
-<section class="g-sec g-sec--sand" data-fold><div class="g-wrap">
-  <p class="g-eyebrow">Before You Come</p>
-  <h2 class="g-place">What to Bring, and What Not To</h2>
-  <div class="g-grid g-grid--2">
-    <div class="g-panel">
-      <h3 class="g-h3">Bring</h3>
-      <ul class="g-ticks">
-        <li>Clothes you would not mind ruining — lime does not wash out</li>
-        <li>Shoes with a closed toe and a flat sole</li>
-        <li>Reading glasses if you use them. The work is close</li>
-        <li>A notebook. Most people want one by day two</li>
-      </ul>
-    </div>
-    <div class="g-panel">
-      <h3 class="g-h3">Do not</h3>
-      <ul class="g-ticks g-ticks--no">
-        <li>Bring tools. Everything is here, and ours are sharpened</li>
-        <li>Expect to finish something. You are joining work in progress</li>
-        <li>Book if you cannot manage stairs — the ateliers are not on one floor</li>
-        <li>Come for a demonstration. You will be doing it</li>
-      </ul>
-    </div>
-  </div>
-  <p class="g-limit"><span class="g-limit__k">No experience</span>None is needed. Half of every atelier has never held a trowel, and the artisans are used to it.</p>
-</div></section>
 
 <!-- ============ WHOLE SESSIONS ============ -->
 <section class="g-sec g-sec--sand"><div class="g-wrap">
@@ -749,70 +711,93 @@
 </div></section>
 
 
-<!-- ============ WHAT PARTICIPANTS SAY ============ -->
+<!-- ============ THE PROGRAMME ============ -->
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">From the Ateliers</p>
-  <h2 class="g-place">What People Who Did the Work Say</h2>
-  <p class="g-p">Reviews from guests who stayed the night tell you about the beds. These are from people who spent four days lifting overpaint off a wall, which is a different question.</p>
+  <p class="g-fr">Le programme<span class="g-fr__en">The programme</span></p>
+  <p class="g-eyebrow">Dated, Not Continuous</p>
+  <h2 class="g-place">The Year's Programme</h2>
+  <p class="g-p">The full year, with who is leading each atelier and where places remain.</p>
+  {# The overbooking promise. Fifth round of putting it back. It is a
+     commitment the code keeps with a write lock -- workshop_register and
+     workshop_manage both take it before claiming a place -- and
+     test_no_overbooking exists to hold the software to it. #}
+  <p class="g-p">Places are shown live below. When a session reads as full, it is full &mdash; we do not overbook a house this size.</p>
 
-  {% if atelier_reviews %}
-  <div class="g-grid g-grid--2">
-    {% for r in atelier_reviews %}
-    <blockquote class="g-panel g-say">
-      <p class="g-say__q">{{ r['text'] }}</p>
-      <footer class="g-say__by">
-        {{ r['name'] }}{% if r['workshop'] %} · {{ r['workshop'] }}{% endif %}
-        {% if r['source'] %}<span class="g-say__src">{{ r['source'] }}</span>{% endif %}
-      </footer>
-    </blockquote>
+  {% if workshops %}
+  <ol class="g-programme">
+    {% for w in workshops %}
+    {% for r in sessions_by_workshop.get(w['id'], []) %}
+    <li class="g-programme__i{% if r.remaining <= 0 %} is-full{% endif %}">
+      <span class="g-programme__n">{{ '%02d'|format(loop.index) }}</span>
+      <div class="g-programme__b">
+        <p class="g-programme__d">{%- if r.start_date %}{{ r.start_date }}{% if r.end_date %} — {{ r.end_date }}{% endif %}{% else %}Dates to be confirmed{%- endif %}</p>
+        <h3 class="g-programme__t">{{ w['title'] }}</h3>
+        {% if w['lead_name'] %}<p class="g-programme__w">With {{ w['lead_name'] }}{% if w['lead_role'] %}, {{ w['lead_role'] }}{%- endif %}</p>{% endif %}
+        {% if w['summary'] %}<p class="g-programme__s">{{ w['summary']|truncate(140) }}</p>{% endif %}
+        <p class="g-programme__a">{%- if r.remaining > 0 %}
+            <span class="g-programme__left">{{ r.remaining }} of {{ r.capacity }} place{{ '' if r.capacity == 1 else 's' }} left</span>
+            <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" class="g-btn">See this atelier</a>
+          {% else %}
+            <span class="g-programme__left">Full</span>
+            <a href="{{ url_for('contact_page') }}">Ask about a cancellation</a>
+          {%- endif %}</p>
+      </div>
+    </li>
     {% endfor %}
-  </div>
+    {% endfor %}
+  </ol>
   {% else %}
-  <p class="g-limit"><span class="g-limit__k">Not yet</span>We have not gathered these properly. If you have done an atelier here and would write two sentences, <a href="{{ url_for('contact_page') }}">tell us</a> — it is worth more to the next person than anything we could write.</p>
+  <p class="g-limit"><span class="g-limit__k">Next year</span>The programme is being set. <a href="{{ url_for('contact_page') }}">Tell us what you would want to learn</a> and we will write when the dates go up.</p>
   {% endif %}
-
-  <p class="g-hint">Google reviews for the château cover the stay, the table and the ateliers together. We would rather separate them than let a review of the breakfast stand in for a review of the work.</p>
 </div></section>
+
+<!-- ============ THE JOURNAL ============ -->
+{# The newsletter form was only in the menu panel. This is the same route,
+   placed where a reader who has just finished the page will see it. #}
+<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
+  <div class="g-journal__in">
+    <p class="g-eyebrow">The Journal</p>
+    <h2 class="g-journal__h">Follow the Restoration</h2>
+    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
+    <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {# One id, set once. Calling random twice produced a different number for
+         the label and the input, so the `for` pointed at nothing. #}
+      {% set j_id = 'j-email-' ~ range(1000,9999)|random %}
+      <label class="g-vh" for="{{ j_id }}">{{ t('Email address') }}</label>
+      <input type="email" inputmode="email" name="email" id="{{ j_id }}"
+             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
+        <fieldset class="g-interests">
+          <legend>What would you like to hear about?</legend>
+          <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
+        </fieldset>
+      <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
+    </form>
+        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
+    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
+  </div>
+</div></section>
+
+
 
 
 
 
 <!-- ============ THE CLOSE ============ -->
 
-{% if featured_reviews %}
-<section class="g-sec g-says"><div class="g-wrap">
-  <h2 class="g-place">What People Say</h2>
-  <div class="g-says__grid">
-    {% for r in featured_reviews %}
-    <figure class="g-say">
-      <blockquote class="g-say__q">{{ r['comment'] or 'A very good day.' }}</blockquote>
-      <figcaption class="g-say__by">
-        {{ (r['guest_name'] or 'A guest').split(' ')[0] }}
-        <span class="g-say__src">
-          {{ '\u2605' * r['rating'] }}{{ '\u2606' * (5 - r['rating']) }}
-          {%- if r['workshop_title'] %} \u00b7 {{ r['workshop_title'] }}{% endif %}
-        </span>
-      </figcaption>
-      {% if r['reply'] %}
-      <p class="g-say__reply">
-        <span class="g-say__reply-by">Ch\u00e2teau de Gudanes</span>
-        {{ r['reply'] }}
-      </p>
-      {% endif %}
-    </figure>
-    {% endfor %}
-  </div>
-</div></section>
-{% endif %}
+{# A second reviews block looped featured_reviews — the STAY reviews — under the atelier section that opens "Reviews from guests who stayed the night tell you about the beds; these are from people who spent four days at the workbench." Removed. #}
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The workshop table" loading="lazy">
   <h2 class="g-close__h">Take a week of it</h2>
   <p class="g-close__p">Fifteen guests at most, and the château takes no others while an atelier runs. The dates that suit you are unlikely to come round twice.</p>
   <div class="g-close__acts">
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See every date</a>
+      <a href="#dates" class="g-btn g-btn--solid">See every date</a>
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn">Stay the night instead</a>
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us something</a>
   </div>
 </div></section>
 
 {% endblock %}
+

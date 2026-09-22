@@ -21,7 +21,7 @@
 {% set crumbs = [('La Table', None)] %}
 {% block title_fr %}La Table{% endblock %}
 {% block description_fr %}Un seul service par soir, dans la salle à manger du château. Cuisiné dans la cuisine Renaissance à partir du marché du dimanche et du potager.{% endblock %}
-{% block title %}Dining in a French Château, Ariège Pyrenees{% endblock %}
+{% block title %}Dining in a French Château, Ariège{% endblock %}
 {% block description %}One table, one sitting, in the dining salon of a Class I French château. Cooked from the Sunday market and the château gardens.{% endblock %}
 {% block og_desc %}Dinner at Château de Gudanes, cooked in the château's own Renaissance kitchen from the Sunday market and the gardens. Candlelight, and a fire in winter.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1200w{% endblock %}
@@ -30,7 +30,7 @@
 {% from '_proof.html' import credential, proof %}
 {% from '_marks.html' import mark %}
 <section class="g-hero">
-<img loading="lazy" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w" alt="The dining room at Château de Gudanes">
+<img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w" alt="The dining room at Château de Gudanes">
 <div class="g-hero__wash"></div>
 <div class="g-hero__in"><p class="g-hero__eyebrow">Dining · Château de Gudanes</p>
     <h1 class="g-hero__title">La Table</h1>
@@ -369,6 +369,17 @@
 </div></section>
 
 
+<!-- ============ WHAT A GUEST SAID ============ -->
+{# La Table had no guest quote at all. A Google review about the food. #}
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+  <p class="g-eyebrow">From the Table</p>
+  <figure class="g-say" style="margin:0">
+    <blockquote class="g-say__q">The breakfast was outstanding, with local produce and fresh fruit.</blockquote>
+    <figcaption class="g-say__by">A guest<span class="g-say__src">Google</span></figcaption>
+  </figure>
+</div></section>
+
+
 <!-- ============ THE JOURNAL ============ -->
 {# The newsletter form was only in the menu panel. This is the same route,
    placed where a reader who has just finished the page will see it. #}
@@ -409,7 +420,7 @@
    this is where a guest decides whether the journey is worth it. #}
 <section class="g-sec g-sec--tight"><div class="g-wrap">
   <p class="g-eyebrow">Where This Is</p>
-  <h2 class="g-place">Two Hours From Toulouse, Three Minutes From the Village</h2>
+  <h2 class="g-place">Under Two Hours From Toulouse, Three Minutes From the Village</h2>
   <div class="g-facts-list">
     <div><dt>By air</dt><dd>Toulouse-Blagnac, then an hour and three quarters by road. We can send a car.</dd></div>
     <div><dt>By train</dt><dd>Les Cabannes, on the Toulouse&ndash;Latour-de-Carol line. Three minutes from the gates.</dd></div>
@@ -423,7 +434,7 @@
               dressed up as a map is worse than no link, because the guest sets
               off. house_maps is empty until somebody sets the coordinates. #}
           {% if house_maps %}<a href="{{ house_maps.google }}" target="_blank" rel="noopener">Open in Google Maps</a>
-          {%- else %}<span>Telephone for directions &mdash; an address search does not find the gates</span>{% endif %}
+          {%- else %}<span>Google Maps brings you to the front of the house</span>{% endif %}
     &middot; <a href="{{ url_for('contact_page') }}#map">See it on the map</a>
   </p>
 </div></section>

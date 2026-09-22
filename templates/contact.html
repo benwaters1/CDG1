@@ -8,7 +8,7 @@
   "@type": "ContactPage",
   "name": "Contact — Château de Gudanes",
   "mainEntity": {"@type":"LodgingBusiness","name":"Château de Gudanes",
-    "telephone":"+33 5 61 64 96 82","email":"ariege@chateaugudanes.com",
+    "telephone":"+33 6 28 06 97 76","email":"ariege@chateaugudanes.com",
     "address":{"@type":"PostalAddress","streetAddress":"2 Route de Beille",
       "addressLocality":"Château-Verdun","postalCode":"09310","addressCountry":"FR"}}
 }
@@ -21,8 +21,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
-{% from '_approach.html' import approach_map %}
-{{ approach_map(settings) }}
+{# approach_map() was also called here, first in the content block with settings as its argument, so the drive diagram rendered ABOVE the hero. Its place is the On the Map section below. #}
 
 {% from '_flexible.html' import flexible %}
 {% from '_marks.html' import mark, monogram %}
@@ -34,7 +33,7 @@
    question had to hunt the footer. #}
 
 <section class="g-hero">
-  <img loading="lazy" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="The gates at Château de Gudanes">
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="The gates at Château de Gudanes">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Château-Verdun · Ariège</p>
@@ -43,7 +42,7 @@
   </div>
 </section>
 
-<section class="g-sec"><div class="g-two">
+<section class="g-sec" id="write"><div class="g-two">
   <div>
     <p class="g-fr">Écrivez-nous<span class="g-fr__en">Write to us</span></p>
     <p class="g-eyebrow">Write to Us</p>
@@ -93,9 +92,8 @@
   </div>
   {% else %}
   <div class="empty-state" id="map">
-    No map here yet — the coordinates of the gates have not been set, and an
-    address search for a building with no street number does not find them.
-    The road is described below.
+    No map here yet — the coordinates of the gates have not been set. Google
+    Maps brings you to the front of the house; the road is described below.
   </div>
   {% endif %}
   <p class="g-hint" style="margin-top:var(--s4)">
@@ -105,10 +103,10 @@
        dressed up as a map is worse than no link, because the guest sets
        off. house_maps is empty until somebody sets the coordinates. #}
     {% if house_maps %}<a href="{{ house_maps.google }}" target="_blank" rel="noopener">Open in Google Maps</a>
-    {%- else %}<span>Telephone for directions &mdash; an address search does not find the gates</span>{% endif %}
+    {%- else %}<span>Google Maps brings you to the front of the house</span>{% endif %}
     {%- if house_pin %} · {{ house_pin.lat }}, {{ house_pin.lng }}{% endif %} ·
     The gates are on the D8 through Château-Verdun, on the left as you climb.
-    Satnav sometimes stops at the village; keep going.
+    The last four kilometres are unlit; if you arrive after dark, telephone from Les Cabannes.
   </p>
 </div></section>
 
@@ -133,7 +131,7 @@
       <span>Every date, and what each one includes</span>
     </a>
     <a href="{{ url_for('restaurant_info') }}" class="g-contact-link">
-      <b>{{ t('La Table') }}</b>
+      <b>{{ t('Dining') }}</b>
       <span>Reserve a table for dinner</span>
     </a>
     <a href="{{ url_for('find_booking') }}" class="g-contact-link">
@@ -202,7 +200,7 @@
       <dl class="g-plate__l">
         <div><dt>By air</dt><dd>Toulouse-Blagnac, then an hour and three quarters by road</dd></div>
         <div><dt>By train</dt><dd>To Foix, twenty minutes away. We will meet it</dd></div>
-        <div><dt>By car</dt><dd>Two hours from Toulouse, three from Barcelona. Parking at the château</dd></div>
+        <div><dt>By car</dt><dd>An hour and three quarters from Toulouse, three hours from Barcelona. Parking at the château</dd></div>
         <div><dt>The address</dt><dd>2 Route de Beille, Château-Verdun, Ariège 09310</dd></div>
         <div><dt>Nearest village</dt><dd>Les Cabannes, three minutes below the gates</dd></div>
         <div><dt>Transfers</dt><dd>Arranged — tell us your arrival and we will send a car</dd></div>

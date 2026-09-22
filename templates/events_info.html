@@ -33,7 +33,7 @@
    alternate_date, guest_count, message. #}
 
 <section class="g-hero">
-  <img loading="lazy" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1500w" alt="The château" style="height:clamp(16rem,48vh,30rem);">
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1500w" alt="The château">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Weddings · Celebrations · Film</p>
@@ -55,13 +55,13 @@
 
 <section class="g-sec">
   <div class="g-wrap">
-    <p class="g-eyebrow">What We Host</p>
     <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M0 13h38"/><path d="M82 13h38"/>
   <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
   <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
+    <p class="g-eyebrow">What We Host</p>
   <h2 class="g-place">Three Ways to Take the Château</h2>
   <p class="g-p">This is a restoration, not a renovation — fifteen years in, and years from finished.</p>
     <div class="g-grid g-grid--3">
@@ -86,7 +86,7 @@
     <div class="g-two">
       <div>
         <h2 class="g-h2">A location that <em>cannot be built</em></h2>
-        <p class="g-p">Two hours from Toulouse, three minutes from the village of Les Cabannes, and surrounded by the mountains of the Ariège. None of it can be reproduced closer to home.</p>
+        <p class="g-p">An hour and three quarters from Toulouse, three minutes from the village of Les Cabannes, and surrounded by the mountains of the Ariège. None of it can be reproduced closer to home.</p>
         <p class="g-p">Tell us what you have in mind and we will come back with availability, what the château can hold, and what it costs.</p>
       </div>
 
@@ -294,13 +294,13 @@
    château's own capacities; the cost basis is deliberately a basis, not a
    number, because every event is quoted. #}
 <section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">Before You Enquire</p>
   <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M0 13h38"/><path d="M82 13h38"/>
   <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
   <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
+  <p class="g-eyebrow">Before You Enquire</p>
   <h2 class="g-place">What to Expect</h2>
 
   <div class="g-figures">
@@ -412,7 +412,7 @@
    this is where a guest decides whether the journey is worth it. #}
 <section class="g-sec g-sec--tight"><div class="g-wrap">
   <p class="g-eyebrow">Where This Is</p>
-  <h2 class="g-place">Two Hours From Toulouse, Three Minutes From the Village</h2>
+  <h2 class="g-place">Under Two Hours From Toulouse, Three Minutes From the Village</h2>
   <div class="g-facts-list">
     <div><dt>By air</dt><dd>Toulouse-Blagnac, then an hour and three quarters by road. We can send a car.</dd></div>
     <div><dt>By train</dt><dd>Les Cabannes, on the Toulouse&ndash;Latour-de-Carol line. Three minutes from the gates.</dd></div>
@@ -426,7 +426,7 @@
        dressed up as a map is worse than no link, because the guest sets
        off. house_maps is empty until somebody sets the coordinates. #}
     {% if house_maps %}<a href="{{ house_maps.google }}" target="_blank" rel="noopener">Open in Google Maps</a>
-    {%- else %}<span>Telephone for directions &mdash; an address search does not find the gates</span>{% endif %}
+    {%- else %}<span>Google Maps brings you to the front of the house</span>{% endif %}
     &middot; <a href="{{ url_for('contact_page') }}#map">See it on the map</a>
   </p>
 </div></section>
