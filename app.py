@@ -3992,6 +3992,20 @@ def init_db():
         ("rooms_bed_setup", "ALTER TABLE rooms ADD COLUMN bed_setup TEXT"),
         ("rooms_bathroom", "ALTER TABLE rooms ADD COLUMN bathroom TEXT"),
         ("rooms_outlook", "ALTER TABLE rooms ADD COLUMN outlook TEXT"),
+        # NO BEDROOM IS ON THE GROUND FLOOR. The bedrooms are upstairs and
+        # the bathrooms are down, confirmed by the owner. One room carried
+        # floor = 'ground', and _roompick reads that column to answer the
+        # question "how are you with stairs?" -- so somebody who said stairs
+        # were difficult was recommended that room with the words "it is on
+        # the ground floor, so no staircase". A wrong fact in a column is a
+        # promise the app then makes in its own voice.
+        #
+        # Cleared rather than rewritten: "not the ground floor" is what is
+        # known, and the picker treats an empty floor as upstairs, which is
+        # the safe side. The owner sets the real one per room at
+        # /admin/rooms/<id>/edit, where this field already lives.
+        ("rooms_floor_no_ground",
+         "UPDATE rooms SET floor = NULL WHERE LOWER(COALESCE(floor, '')) = 'ground'"),
         ("rooms_floor", "ALTER TABLE rooms ADD COLUMN floor TEXT"),
         # Employment terms. `start_date` alone couldn't express a fixed-term
         # contract or a trial period, and both carry hard deadlines in France:

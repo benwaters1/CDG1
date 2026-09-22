@@ -375,6 +375,40 @@ def run():
             % (page.count("Private, downstairs"),
                len(rooms_now) - len(shared)))
 
+    s.section("Nobody is told a room has no stairs unless it truly has none")
+    # The room picker asks "how are you with stairs?" and, for somebody who
+    # says they are difficult, answers with "it is on the ground floor, so
+    # no staircase". That sentence is generated from rooms.floor, and one
+    # room carried 'ground' when every bedroom in this house is upstairs --
+    # so the app made a promise about a staircase to the one guest who most
+    # needed it to be true.
+    #
+    # Checked as BEHAVIOUR rather than as a fact about the building: a room
+    # may legitimately become a ground-floor room one day, and this must not
+    # go red when it does. What must hold is that the flag follows the
+    # column, and that a room with no floor recorded is never called
+    # step-free -- not knowing is not the same as knowing there are none.
+    floors = db()
+    recorded = {r["name"]: (r["floor"] or "").strip().lower()
+                for r in floors.execute(
+                    "SELECT name, floor FROM rooms WHERE active = 1")}
+    floors.close()
+    picker = pub.get("/book").get_data(as_text=True)
+    flags = re.findall(r'stairs:"(\w+)"', picker)
+    s.check("the picker publishes a stairs flag for every room",
+            len(flags) == len(recorded),
+            detail="%d flags for %d rooms" % (len(flags), len(recorded)))
+    s.check("and calls step-free exactly the rooms recorded as ground floor",
+            flags.count("ground")
+            == sum(1 for f in recorded.values() if f == "ground"),
+            detail="%d called step-free, %d recorded as ground"
+            % (flags.count("ground"),
+               sum(1 for f in recorded.values() if f == "ground")))
+    s.check("so a room with no floor recorded is never called step-free",
+            not [n for n, f in recorded.items() if not f]
+            or flags.count("ground") < len(recorded),
+            detail="an unrecorded floor must read as stairs, not as none")
+
     _clean(conn)
     conn.close()
     return s

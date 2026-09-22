@@ -5,15 +5,15 @@
 {% macro room_copy(name, fallback='') -%}
 {%- set RM_DESC = {
   'Chambre Émeraude':
-    'The largest room in the house, on the first floor, with two windows onto the valley and the peaks behind it. A cast-iron bath and a dressing room of your own. The walls are as the eighteenth century left them; everything you sleep in and wash in is new.',
+    'The largest room in the house, upstairs, with two windows onto the valley and the peaks behind it. A cast-iron bath and a dressing room of your own. The walls are as the eighteenth century left them; everything you sleep in and wash in is new.',
   'Chambre du Levant':
-    'A king bed set against hand-painted panelling, with the mountains filling the window from first light. The bathroom is a few steps along the corridor and yours alone — ensuites are not permitted in a monument of this class.',
+    'A king bed set against hand-painted panelling, with the mountains filling the window from first light. The bathroom is downstairs and yours alone — ensuites are not permitted in a monument of this class.',
   'Les Deux Chambres':
-    'Two bedrooms opening into one another, sleeping five, with the valley on both sides. Children of eight and over are welcome, and the kitchen will cook for them. A private bathroom sits a few steps away.',
+    'Two bedrooms opening into one another, sleeping five, with the valley on both sides. Children of eight and over are welcome, and the kitchen will cook for them. A private bathroom sits downstairs.',
   'Chambre Cerise':
-    'A quiet double on the ground floor, floral papers and a marble chimneypiece, sharing a bathroom with one other room. Brass fittings and hexagonal terracotta underfoot, among the most recently finished work in the building.',
+    'A quiet double upstairs, floral papers and a marble chimneypiece, sharing a bathroom with one other room downstairs. Brass fittings and hexagonal terracotta underfoot, among the most recently finished work in the building.',
   'Chambre Tilleul':
-    'Two beds that can be made up as a twin or pushed together as a double, whichever suits. Shares a bathroom with the Chambre Cerise next door. The most straightforward room in the house, and the least expensive way into it.'
+    'Two beds that can be made up as a twin or pushed together as a double, whichever suits. Shares a bathroom downstairs with the Chambre Cerise. The most straightforward room in the house, and the least expensive way into it.'
 } -%}
 {{- RM_DESC.get(name) or fallback -}}
 {%- endmacro %}
@@ -51,10 +51,10 @@
    guest needs to know what they are choosing. #}
 {% macro room_note(db_name) -%}
 {%- set MAP = {
-  'Chambre Émeraude':        'the largest room, first floor, two windows onto the valley',
+  'Chambre Émeraude':        'the largest room, upstairs, two windows onto the valley',
   'Chambre du Levant':    'a king bed against hand-painted panelling, east-facing',
   'Les Deux Chambres': 'two bedrooms opening into one another, sleeping five',
-  'Chambre Cerise':     'a quiet double on the ground floor, shared bathroom',
+  'Chambre Cerise':     'a quiet double upstairs, shared bathroom downstairs',
   'Chambre Tilleul':'twin or double, shared bathroom, the simplest room'
 } -%}
 {{- MAP.get(db_name, '') -}}
