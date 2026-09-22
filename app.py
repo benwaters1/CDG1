@@ -227,6 +227,27 @@ ARRIVAL_PREP_CHECKLIST = [
     "Review special requests",
     "Confirm arrival time with guest",
 ]
+# The prefix on each kind of reference, in ONE place.
+#
+# THE TWO HALVES DRIFTED, which is what a second spelling always does. The app
+# has generated four prefixes since the four booking types were built -- rooms
+# GUD, events EVT, dinner DIN, ateliers WRK -- while three of the four find
+# pages printed CDG-XXXXXX in the box a guest types into. Nothing has ever
+# generated a CDG reference. A guest holding WRK-4B2K9X was being shown a hint
+# that matched nothing they had, on the one page whose entire job is to let
+# them find their booking, and the form would then tell them it could not be
+# found. Handed over by the design side as "GUD or CDG?", which is itself the
+# wrong question: there are four, one per kind.
+#
+# Read by the generators AND by the templates, so there is nothing to keep in
+# step. test_reference_prefixes fails on a fifth spelling appearing anywhere.
+REFERENCE_PREFIXES = {
+    "room": "GUD-",
+    "event": "EVT-",
+    "restaurant": "DIN-",
+    "workshop": "WRK-",
+}
+
 MAX_UPLOAD_MB = 15
 LOGIN_LOCKOUT_THRESHOLD = 5
 LOGIN_LOCKOUT_MINUTES = 15
@@ -7926,6 +7947,8 @@ app.jinja_env.filters["house_day"] = house_date_iso
 app.jinja_env.filters["date_short"] = format_date_short
 app.jinja_env.filters["date_human"] = format_date_human
 app.jinja_env.globals["date_range"] = format_date_range
+# So a find page cannot print a prefix the app does not generate.
+app.jinja_env.globals["ref_prefix"] = REFERENCE_PREFIXES
 # Money on a page was formatted inline, template by template, with
 # '%.2f'|format and a euro sign typed next to it. One definition instead, so a
 # figure reads the same wherever it appears.
@@ -22286,7 +22309,7 @@ def generate_booking_ics(booking, room_name):
 
 
 def make_reference_code():
-    return "GUD-" + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+    return REFERENCE_PREFIXES["room"] + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 
 
 # ---------------------------------------------------------------------------
@@ -38569,7 +38592,7 @@ def known_event_types(conn):
 
 
 def make_event_reference_code():
-    return "EVT-" + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+    return REFERENCE_PREFIXES["event"] + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 
 
 def event_email_context(inquiry):
@@ -39382,7 +39405,7 @@ def export_events_csv():
 # ---------------------------------------------------------------------------
 
 def make_restaurant_reference_code():
-    return "DIN-" + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+    return REFERENCE_PREFIXES["restaurant"] + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 
 
 def get_restaurant_settings(conn):
@@ -41106,7 +41129,7 @@ def restaurant_manage(manage_token):
 
 
 def make_workshop_reference_code():
-    return "WRK-" + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+    return REFERENCE_PREFIXES["workshop"] + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 
 
 def workshop_deposit_to_show(conn):
