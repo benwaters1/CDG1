@@ -24,6 +24,7 @@
       <div><dt>Room arrangement</dt><dd>{{ booking['occupancy_type']|capitalize }}{% if booking['single_supplement'] %} <span class="g-hint">(private room, +€{{ '%.0f'|format(booking['single_supplement']) }} per person)</span>{% endif %}</dd></div>
       {% if booking['assigned_room_name'] %}<div><dt>Your room</dt><dd>{{ booking['assigned_room_name'] }}</dd></div>{% endif %}
     </dl>
+    <p class="g-hint" style="margin-top:var(--s4);"><a href="{{ url_for('workshop_calendar_ics', manage_token=booking['manage_token']) }}" style="color:var(--steel);">Add to calendar (.ics)</a></p>
     {% if guests and guests|length > 1 %}
     <div class="g-mb-note">
       <span class="g-mb-dt">Party</span>

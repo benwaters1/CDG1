@@ -55,6 +55,9 @@
     <a href="{{ url_for('workshop_manage', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid">
       View my registration
     </a>
+    <a href="{{ url_for('workshop_calendar_ics', manage_token=booking['manage_token']) }}" class="g-btn">
+      Add to calendar
+    </a>
   </div>
 
   <div class="g-orn" aria-hidden="true">

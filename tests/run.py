@@ -103,6 +103,7 @@ SUITES = [
     "test_social_publishing",
     "test_camera_ingest",
     "test_reference_prefixes",
+    "test_workshop_calendar",
     "test_photo_intake",
     "test_photo_tray",
     "test_photo_sizes",

@@ -300,6 +300,7 @@ ENDPOINT_ARGS = {
     ("event_stripe_success", "manage_token"): ("event_inquiries", "manage_token"),
     ("restaurant_confirmation", "manage_token"): ("restaurant_bookings", "manage_token"),
     ("restaurant_manage", "manage_token"): ("restaurant_bookings", "manage_token"),
+    ("workshop_calendar_ics", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_confirmation", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_manage", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_pay_balance", "manage_token"): ("workshop_bookings", "manage_token"),

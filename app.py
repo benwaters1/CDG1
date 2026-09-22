@@ -22308,6 +22308,48 @@ def generate_booking_ics(booking, room_name):
     return "\r\n".join(lines) + "\r\n"
 
 
+def generate_workshop_ics(booking):
+    """An atelier in the guest's own calendar.
+
+    DTEND IS EXCLUSIVE AND end_date IS NOT, which is the whole of the care
+    needed here. RFC 5545 says an all-day event ends the morning of its DTEND,
+    while a session's end_date is a day the atelier RUNS -- every query in the
+    app matches a session to a day with `end_date >= day`, and the dates a
+    guest is shown read "10 - 17 July" with the 17th at the workbench. Copy
+    the end date straight in and the atelier finishes a day early in their
+    calendar, which is the day they would book the drive home on.
+
+    The stay version next door has no such adjustment and is right not to:
+    a booking's departure_date IS the morning they leave.
+    """
+    start = parse_date(booking["start_date"])
+    end = parse_date(booking["end_date"])
+    if not start or not end:
+        return None
+    now_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    title = (booking["title"] or "Atelier").strip()
+    where = (booking["assigned_room_name"] or "").strip()
+    described = "Reference: %s" % booking["reference_code"]
+    if where:
+        described += ". Your room: %s" % where
+    lines = [
+        "BEGIN:VCALENDAR", "VERSION:2.0",
+        "PRODID:-//Chateau de Gudanes//Ateliers//EN", "CALSCALE:GREGORIAN",
+        "BEGIN:VEVENT",
+        f"UID:workshop-{booking['id']}@gudanes-hr.local",
+        f"DTSTAMP:{now_stamp}",
+        f"DTSTART;VALUE=DATE:{start.strftime('%Y%m%d')}",
+        # The morning after the last day, so the last day is included.
+        f"DTEND;VALUE=DATE:{(end + timedelta(days=1)).strftime('%Y%m%d')}",
+        f"SUMMARY:{ical_escape('Château de Gudanes — ' + title)}",
+        f"DESCRIPTION:{ical_escape(described)}",
+        "LOCATION:Château de Gudanes, Château-Verdun, Ariège",
+        "END:VEVENT",
+        "END:VCALENDAR",
+    ]
+    return "\r\n".join(lines) + "\r\n"
+
+
 def make_reference_code():
     return REFERENCE_PREFIXES["room"] + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 
@@ -38414,6 +38456,39 @@ def booking_calendar_ics(manage_token):
     return app.response_class(
         body, mimetype="text/calendar",
         headers={"Content-Disposition": f'attachment; filename="{booking["reference_code"]}.ics"'},
+    )
+
+
+@app.route("/workshops/<manage_token>/calendar.ics")
+def workshop_calendar_ics(manage_token):
+    """The atelier as a file the guest's calendar understands.
+
+    The token is the credential, as it is on every other page a guest reaches
+    without a login. A cancelled place is a 404 rather than a calendar entry:
+    an atelier somebody has withdrawn from should not keep reappearing in
+    their diary.
+    """
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT workshop_bookings.*, workshop_sessions.start_date,
+                  workshop_sessions.end_date, workshops.title,
+                  rooms.name AS assigned_room_name
+             FROM workshop_bookings
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+             LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
+            WHERE workshop_bookings.manage_token = ?""",
+        (manage_token,)).fetchone()
+    conn.close()
+    if not booking or booking["status"] not in ("pending", "confirmed"):
+        abort(404)
+    body = generate_workshop_ics(booking)
+    if not body:
+        abort(404)
+    return app.response_class(
+        body, mimetype="text/calendar",
+        headers={"Content-Disposition":
+                 f'attachment; filename="{booking["reference_code"]}.ics"'},
     )
 
 
