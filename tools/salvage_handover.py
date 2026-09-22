@@ -61,6 +61,28 @@ import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+
+def _said_as(path):
+    """A path as somebody would type it, and the whole one when it is elsewhere.
+
+    os.path.relpath RAISES on Windows when the two paths are on different
+    drives -- and salvaging to another drive is the ORDINARY case here, not an
+    edge one: the whole point of --out is to write somewhere that is not the
+    repository, and a temp folder on C: beside a checkout on D: is what that
+    looks like on this machine.
+
+    So the tool read the zip, worked out the runs, wrote every file it meant
+    to, and then fell over on the last line -- the one that says where it put
+    them. Nothing was lost and nothing was wrong except the report, which is
+    the part the person is waiting for. It had been red in the suite for long
+    enough to be read as furniture.
+    """
+    try:
+        return os.path.relpath(path, ROOT)
+    except ValueError:
+        return os.path.abspath(path)
+
+
 # Enough of a difference to be worth reporting as a run rather than noise. A
 # one-line change against a hundred-line deletion is a collapsed file, not an
 # edit, and the count below is what tells those apart at a glance.
@@ -251,7 +273,7 @@ def main():
         io.open(dest, "w", encoding="utf-8", newline="\r\n").write(body)
         written += 1
 
-    print("Wrote %d file(s) to %s" % (written, os.path.relpath(out, ROOT)))
+    print("Wrote %d file(s) to %s" % (written, _said_as(out)))
     print("Nothing was installed. Read them before wiring anything up -- the")
     print("last three exports carried macros reading columns that do not exist.")
     return 0
