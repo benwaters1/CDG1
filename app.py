@@ -4062,6 +4062,20 @@ def init_db():
         ("rooms_bed_setup", "ALTER TABLE rooms ADD COLUMN bed_setup TEXT"),
         ("rooms_bathroom", "ALTER TABLE rooms ADD COLUMN bathroom TEXT"),
         ("rooms_outlook", "ALTER TABLE rooms ADD COLUMN outlook TEXT"),
+        # NO BEDROOM IS ON THE GROUND FLOOR. The bedrooms are upstairs and
+        # the bathrooms are down, confirmed by the owner. One room carried
+        # floor = 'ground', and _roompick reads that column to answer the
+        # question "how are you with stairs?" -- so somebody who said stairs
+        # were difficult was recommended that room with the words "it is on
+        # the ground floor, so no staircase". A wrong fact in a column is a
+        # promise the app then makes in its own voice.
+        #
+        # Cleared rather than rewritten: "not the ground floor" is what is
+        # known, and the picker treats an empty floor as upstairs, which is
+        # the safe side. The owner sets the real one per room at
+        # /admin/rooms/<id>/edit, where this field already lives.
+        ("rooms_floor_no_ground",
+         "UPDATE rooms SET floor = NULL WHERE LOWER(COALESCE(floor, '')) = 'ground'"),
         ("rooms_floor", "ALTER TABLE rooms ADD COLUMN floor TEXT"),
         # Employment terms. `start_date` alone couldn't express a fixed-term
         # contract or a trial period, and both carry hard deadlines in France:
@@ -45066,6 +45080,9 @@ def status_page():
     active = None
     owner_rows = 0
     locked_out = 0
+    translation = {}
+    translation_on = None
+    translation_error = None
     try:
         conn = get_db()
         try:
@@ -45075,6 +45092,34 @@ def status_page():
             rows = conn.execute("SELECT COUNT(*) AS c FROM bookings").fetchone()["c"]
             guests = conn.execute("SELECT COUNT(*) AS c FROM guests").fetchone()["c"]
             has_data = bool(rows or guests)
+            # IS THE SITE TRANSLATING ITSELF? Counts only, and they are
+            # counts of sentences that appear on public pages anyway, so
+            # nothing here is the owner's business rather than a
+            # visitor's -- unlike the guest and booking numbers above,
+            # which is why those are reported as a single yes or no.
+            #
+            # It exists because the job spent an afternoon translating
+            # nothing while looking exactly like a job with nothing to do.
+            # "wanted 0" and "wanted 300, machine 0" are different faults
+            # with different fixes, and from outside they were the same
+            # unmoving percentage.
+            # THE VALUE IN THE DATABASE, not the default it was seeded
+            # with. The first version read the constant, so it said
+            # "enabled: true" whatever the switch actually was -- a
+            # diagnostic that could only ever agree with the code,
+            # which is the one thing it did not need to check.
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?",
+                ("automation_page_translation_enabled",)).fetchone()
+            translation_on = bool(row) and row["value"] == "1"
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?",
+                ("page_translation_last_error",)).fetchone()
+            translation_error = (row["value"] or None) if row else None
+            for state in ("wanted", "machine", "approved", "skip"):
+                translation[state] = conn.execute(
+                    "SELECT COUNT(*) AS c FROM page_translations WHERE status = ?",
+                    (state,)).fetchone()["c"]
             # Whether the variable actually landed, rather than whether it is
             # set. Set-but-not-applied is a real state — there may be no owner
             # account at all — and from outside it looked exactly like applied.
@@ -45141,6 +45186,11 @@ def status_page():
             "on_a_volume": not DB_PATH.startswith(BASE_DIR),
             "tables": tables,
             "has_data": has_data,
+        },
+        "translation": {
+            **translation,
+            "enabled": translation_on,
+            "last_error": translation_error,
         },
         "configured": {
             "assistant": env("ANTHROPIC_API_KEY"),
@@ -68872,7 +68922,7 @@ def translate_batch_with_claude(lines, lang):
     'skip' so they are never asked about again.
     """
     if not claude_configured() or not lines:
-        return {}, {}
+        return {}, {}, None
     wanted = LANGUAGE_NAMES.get(lang, lang)
     # THE CLIENT IS BUILT INSIDE THE TRY, not above it. Constructing it
     # can raise on its own -- a malformed key, a library that cannot
@@ -68890,10 +68940,22 @@ def translate_batch_with_claude(lines, lang):
                        "Translate each line into %s.\n\n%s"
                        % (wanted, json.dumps(lines, ensure_ascii=False))}],
         )
-        parsed = response.parsed_output or {}
+        # parsed_output OR parsed. The SDK has answered under both names
+        # and meeting_minutes already reads it this way -- a bare
+        # attribute access raises AttributeError, which the handler
+        # below then swallows, and the rows sit "wanted" for ever with
+        # nobody any the wiser.
+        parsed = (getattr(response, "parsed_output", None)
+                  or getattr(response, "parsed", None) or {})
+        if not isinstance(parsed, dict):
+            return {}, {}, "the provider answered in a shape we do not read"
     except Exception as e:
+        # REPORTED, not just printed. A job that can fail silently for
+        # ever is worse than one that fails loudly once: the pages stay
+        # English, the queue keeps growing, and the only sign is a
+        # percentage that never moves.
         print("[translation call failed] %s" % e)
-        return {}, {}
+        return {}, {}, "%s: %s" % (type(e).__name__, e)
     done, leave = {}, {}
     known = set(lines)
     for item in parsed.get("lines", []):
@@ -68909,7 +68971,17 @@ def translate_batch_with_claude(lines, lang):
             leave[source] = True
             continue
         done[source] = said
-    return done, leave
+    return done, leave, None
+
+
+def redact_secrets(text):
+    """Anything key-shaped, replaced. Everything else left readable.
+
+    A provider quoting the request back is quoting public page text, which
+    costs nothing. A provider quoting the credential is a different matter,
+    and this page is public."""
+    out = re.sub(r"(sk-|key-)[A-Za-z0-9_\-]{8,}", "[key redacted]", text or "")
+    return re.sub(r"[A-Za-z0-9_\-]{32,}", "[redacted]", out)
 
 
 def run_page_translation_job(conn, limit=None):
@@ -68933,10 +69005,13 @@ def run_page_translation_job(conn, limit=None):
 
     stamp = datetime.now(timezone.utc).isoformat()
     written = skipped = 0
+    failures = []
     for lang, sources in by_lang.items():
         for i in range(0, len(sources), TRANSLATION_BATCH):
             chunk = sources[i:i + TRANSLATION_BATCH]
-            done, leave = translate_batch_with_claude(chunk, lang)
+            done, leave, why = translate_batch_with_claude(chunk, lang)
+            if why:
+                failures.append(why)
             for source, said in done.items():
                 conn.execute(
                     """UPDATE page_translations
@@ -68957,7 +69032,34 @@ def run_page_translation_job(conn, limit=None):
     # The next public response should see this rather than waiting out the
     # cache, or the job appears to have done nothing for two minutes.
     translation_memory(force=True)
-    return "translated %d, left %d alone" % (written, skipped)
+    waiting = conn.execute(
+        "SELECT COUNT(*) AS c FROM page_translations WHERE status = 'wanted'"
+    ).fetchone()["c"]
+    # THE KIND AND WHAT IT SAID. The first version kept only the class
+    # name, on the grounds that a provider's prose might echo back a
+    # fragment of what was sent to it. That was the wrong worry: what is
+    # sent is sentences already printed on public pages, so an echo of
+    # the input is an echo of something any visitor can read.
+    #
+    # The key is the only thing here worth hiding, and it is redacted
+    # below rather than left to chance. Without the message, "the request
+    # was malformed" is all anybody gets, and which FIELD was malformed
+    # is the entire question.
+    conn.execute(
+        """INSERT INTO app_settings (key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+        ("page_translation_last_error", redact_secrets(failures[0])[:300]
+         if failures else ""))
+    conn.commit()
+    if failures and not written:
+        # The whole run got nowhere. Say so where the owner reads it,
+        # with the provider's own words and the size of the backlog.
+        return "nothing translated, %d still waiting -- %s" % (
+            waiting, failures[0][:160])
+    return "translated %d, left %d alone, %d still waiting%s" % (
+        written, skipped, waiting,
+        " (%d call(s) failed: %s)" % (len(failures), failures[0][:120])
+        if failures else "")
 
 
 def run_daily_digest_job(conn):

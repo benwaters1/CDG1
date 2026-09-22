@@ -25,6 +25,7 @@ html.parser: this app has no build step and no third-party HTML library.
 from _harness import (Suite, db, ensure_room, forms_on, links_on, fill,
                       flashes, free_window, house_today)
 
+import os
 import re
 from datetime import date, timedelta
 
@@ -307,6 +308,106 @@ def run():
         s.check("%s reads %d night(s)" % (label, want),
                 nights_shown(arrival, departure) == want,
                 detail="page said %s" % nights_shown(arrival, departure))
+
+    s.section("The date picker writes into the form it was opened from")
+    # A LIVE BOOKING BUG, found by the design side and confirmed here.
+    #
+    # The picker bound its two date inputs with document.querySelector,
+    # which returns the FIRST match in the document. The homepage carries two
+    # forms with arrival and departure: the quick-book widget in the nav
+    # drawer, which comes first and uses native inputs, and the hero search,
+    # which is the one with the calendar. So the hero picker wrote the
+    # guest's dates into the widget's hidden inputs and the hero form posted
+    # empty -- /book?arrival=&departure=. The calendar accepted the dates and
+    # the results page had never been given any.
+    #
+    # Checked on the SOURCE because this is browser behaviour and the suite
+    # runs no JavaScript. Two things have to hold: the page really does carry
+    # more than one such form (or the bug is unreachable and this proves
+    # nothing), and the picker no longer resolves those inputs document-wide.
+    home = pub.get("/").get_data(as_text=True)
+    pairs = [f for f in forms_on(home)
+             if any(x["name"] == "arrival" for x in f["fields"])
+             and any(x["name"] == "departure" for x in f["fields"])]
+    s.check("the home page carries more than one dated form",
+            len(pairs) > 1,
+            detail="%d found; with one the picker cannot pick wrong and the "
+                   "check below is vacuous" % len(pairs))
+    base = open(os.path.join(_harness.ROOT, "templates", "public_base.html"),
+                encoding="utf-8").read()
+    s.check("the picker does not bind its dates document-wide",
+            "document.querySelector('input[type=date][name=arrival]')"
+            not in base,
+            detail="document.querySelector returns the first match on the "
+                   "page, and there is more than one")
+    s.check("it scopes them to the form instead",
+            "closest('form')" in base,
+            detail="resolved from the button outwards, on every open")
+
+    s.section("What the page says about a bathroom is what the room has")
+    # A CLAIM MADE AT THE POINT OF PAYMENT, and it was wrong for two of the
+    # five rooms. The card decided shared-versus-private by testing whether
+    # the room NAME contained "Shared" -- no room is named that way, so every
+    # room said "Private, downstairs", including the two that share one.
+    # A guest paid for a private bathroom and would have found out on
+    # arrival. The rooms table has carried a `bathroom` column the whole
+    # time, and _roompick.html was already reading it, so the right answer
+    # was one column away in a file alongside.
+    truth = db()
+    rooms_now = truth.execute(
+        "SELECT name, bathroom FROM rooms WHERE active = 1").fetchall()
+    truth.close()
+    shared = [r for r in rooms_now if (r["bathroom"] or "") == "shared"]
+    s.check("some rooms share a bathroom and some do not",
+            shared and len(shared) < len(rooms_now),
+            detail="%d of %d share; with none or all the check below cannot "
+                   "tell a right answer from a lucky one"
+                   % (len(shared), len(rooms_now)))
+    page = pub.get("/book").get_data(as_text=True)
+    s.check("the page says shared exactly as often as a room shares",
+            page.count("Shared with one other room") == len(shared),
+            detail="page says shared %d time(s), %d room(s) do"
+            % (page.count("Shared with one other room"), len(shared)))
+    s.check("and never calls a shared bathroom private",
+            page.count("Private, downstairs")
+            == len(rooms_now) - len(shared),
+            detail="page says private %d time(s), %d room(s) are"
+            % (page.count("Private, downstairs"),
+               len(rooms_now) - len(shared)))
+
+    s.section("Nobody is told a room has no stairs unless it truly has none")
+    # The room picker asks "how are you with stairs?" and, for somebody who
+    # says they are difficult, answers with "it is on the ground floor, so
+    # no staircase". That sentence is generated from rooms.floor, and one
+    # room carried 'ground' when every bedroom in this house is upstairs --
+    # so the app made a promise about a staircase to the one guest who most
+    # needed it to be true.
+    #
+    # Checked as BEHAVIOUR rather than as a fact about the building: a room
+    # may legitimately become a ground-floor room one day, and this must not
+    # go red when it does. What must hold is that the flag follows the
+    # column, and that a room with no floor recorded is never called
+    # step-free -- not knowing is not the same as knowing there are none.
+    floors = db()
+    recorded = {r["name"]: (r["floor"] or "").strip().lower()
+                for r in floors.execute(
+                    "SELECT name, floor FROM rooms WHERE active = 1")}
+    floors.close()
+    picker = pub.get("/book").get_data(as_text=True)
+    flags = re.findall(r'stairs:"(\w+)"', picker)
+    s.check("the picker publishes a stairs flag for every room",
+            len(flags) == len(recorded),
+            detail="%d flags for %d rooms" % (len(flags), len(recorded)))
+    s.check("and calls step-free exactly the rooms recorded as ground floor",
+            flags.count("ground")
+            == sum(1 for f in recorded.values() if f == "ground"),
+            detail="%d called step-free, %d recorded as ground"
+            % (flags.count("ground"),
+               sum(1 for f in recorded.values() if f == "ground")))
+    s.check("so a room with no floor recorded is never called step-free",
+            not [n for n, f in recorded.items() if not f]
+            or flags.count("ground") < len(recorded),
+            detail="an unrecorded floor must read as stairs, not as none")
 
     _clean(conn)
     conn.close()
