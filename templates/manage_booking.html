@@ -347,9 +347,23 @@
       {{ e['name'] }} — €{{ '%.2f'|format(e['price'] or 0) }}
       {% if e['description'] %}<span class="g-hint">{{ e['description'] }}</span>{% endif %}
     </span>
-    <input type="number" inputmode="numeric" id="mb_quantity" name="quantity" value="1" min="1"
+    {# One id per extra: the page lists several, and a repeated id is a
+       label pointing at whichever input the browser happens to find first. #}
+    <input type="number" inputmode="numeric" id="mb_quantity_{{ e['id'] }}" name="quantity" value="1" min="1"
            {% if e['max_qty'] %}max="{{ e['max_qty'] }}"{% endif %}
            style="width:64px;" aria-label="How many {{ e['name'] }}">
+    {% if e['ask_when'] and when_days %}
+    {# WHEN, for the extras that ask: the days still to come of this stay. #}
+    <select name="extra_when" aria-label="When would you like the {{ e['name'] }}?">
+      {% for day in when_days %}
+      {% set on_arrival = loop.first and day.isoformat() == booking['arrival_date'] %}
+      <option value="{{ 'arrival' if on_arrival else day.isoformat() }}">{{ 'On arrival, ' if on_arrival }}{{ day.isoformat()|date_short }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="extra_note" maxlength="120"
+           placeholder="A time, or anything we should know"
+           aria-label="A time, or anything we should know about the {{ e['name'] }}">
+    {% endif %}
     <button type="submit" class="g-btn g-btn--sm">Add</button>
   </form>
   {% endfor %}

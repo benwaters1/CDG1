@@ -65,6 +65,15 @@
       Guests can add this themselves
     </label>
   </div>
+  <div style="align-self:flex-end;">
+    {# The guest is asked which day of their stay, and for a note. The day is
+       what puts it on the right morning's list and on the calendar. #}
+    <label class="field-label" style="display:flex; gap:6px; align-items:center;">
+      <input type="checkbox" name="ask_when"
+             {{ 'checked' if (e['ask_when'] if e is defined else False) }}>
+      Ask the guest when they'd like it
+    </label>
+  </div>
   <button type="submit" class="btn-mini">+ Add extra</button>
 </form>
 
@@ -148,6 +157,13 @@
       <input type="checkbox" name="guest_bookable"
              {{ 'checked' if (e['guest_bookable'] if e is defined else False) }}>
       Guests can add this themselves
+    </label>
+  </div>
+  <div style="align-self:flex-end;">
+    <label class="field-label" style="display:flex; gap:6px; align-items:center;">
+      <input type="checkbox" name="ask_when"
+             {{ 'checked' if (e['ask_when'] if e is defined else False) }}>
+      Ask the guest when they'd like it
     </label>
   </div>
       <div>

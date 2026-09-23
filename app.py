@@ -4125,6 +4125,10 @@ def init_db():
         ("extras_max_qty", "ALTER TABLE extras ADD COLUMN max_qty INTEGER"),
         ("extras_guest_bookable", "ALTER TABLE extras ADD COLUMN guest_bookable INTEGER NOT NULL DEFAULT 1"),
         ("extras_sold_in_pos", "ALTER TABLE extras ADD COLUMN sold_in_pos INTEGER NOT NULL DEFAULT 0"),
+        # Whether a guest is asked WHEN they would like it -- a board on
+        # arrival, or on the Saturday. Off by default: most things are simply
+        # for the stay, and a transfer has questions of its own.
+        ("extras_ask_when", "ALTER TABLE extras ADD COLUMN ask_when INTEGER NOT NULL DEFAULT 0"),
         # ---- The restaurant menu, and what a service actually needs -------
         # `menu_items` existed and the till never touched it, so the food was
         # not on the till at all. A dish needs a course (service fires by
@@ -4282,6 +4286,10 @@ def init_db():
          "ALTER TABLE booking_extras ADD COLUMN delivered_at TEXT"),
         ("booking_extras_delivered_by_user_id",
          "ALTER TABLE booking_extras ADD COLUMN delivered_by_user_id INTEGER"),
+        # 1 when the line's price is already inside bookings.total_price,
+        # because it was chosen with the stay. See create_booking.
+        ("booking_extras_in_booking_total",
+         "ALTER TABLE booking_extras ADD COLUMN in_booking_total INTEGER NOT NULL DEFAULT 0"),
         ("event_inquiries_promo_code", "ALTER TABLE event_inquiries ADD COLUMN promo_code TEXT"),
         ("event_inquiries_promo_code_id",
          "ALTER TABLE event_inquiries ADD COLUMN promo_code_id INTEGER"),
@@ -5770,6 +5778,10 @@ def init_db():
                 f"VALUES ({', '.join('?' * len(fields))})", list(fields.values()))
         conn.commit()
         print(f"Seeded {len(DEFAULT_ROOMS)} rooms — edit them under Guests, Rooms.")
+
+    # Extras added to the catalogue since, once each. See ADDED_EXTRAS.
+    seed_added_extras(conn)
+    conn.commit()
 
     # The list a room is walked against, so the first person to open the page
     # has something to walk rather than a blank form and a decision to make.
@@ -9969,6 +9981,45 @@ DEFAULT_EXTRAS = [
     {"name": "Airport Transfer (Toulouse, up to 3 guests)", "price": 350.0, "category": "other", "sort_order": 1, "guest_bookable": 1},
 ]
 
+# Extras put into the catalogue AFTER a house has started, which DEFAULT_EXTRAS
+# can never do: it only seeds a database with no rooms in it. Each goes in ONCE,
+# remembered by its key, and never again -- one the owner deletes stays deleted,
+# one they reprice keeps their price, and one they rename is not added a second
+# time under the old name.
+ADDED_EXTRAS = [
+    ("added_extra_cremant_board", {
+        "name": "Crémant & charcuterie board",
+        "description": ("A bottle of local sparkling wine, crémant, with a board "
+                        "of charcuterie, ready on arrival or on a day of your "
+                        "stay you choose."),
+        "price": 80.0, "category": "food", "sort_order": 2,
+        "guest_bookable": 1, "lead_time_days": 3, "ask_when": 1,
+    }),
+]
+
+
+def seed_added_extras(conn):
+    """Put each ADDED_EXTRAS entry in, once per database. Returns how many."""
+    cols = {c["name"] for c in conn.execute("PRAGMA table_info(extras)").fetchall()}
+    added = 0
+    for key, extra in ADDED_EXTRAS:
+        if conn.execute("SELECT 1 FROM app_settings WHERE key = ?", (key,)).fetchone():
+            continue
+        if not conn.execute("SELECT 1 FROM extras WHERE name = ?",
+                            (extra["name"],)).fetchone():
+            fields = {k: v for k, v in extra.items() if k in cols}
+            fields["active"] = 1
+            conn.execute(
+                f"INSERT INTO extras ({', '.join(fields)}) "
+                f"VALUES ({', '.join('?' * len(fields))})", list(fields.values()))
+            added += 1
+        # DO NOTHING rather than a plain insert: two boots racing each other
+        # must not fall over on the second writing the same memory.
+        conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                     "ON CONFLICT(key) DO NOTHING",
+                     (key, datetime.now(timezone.utc).isoformat()))
+    return added
+
 # The ateliers, taken from chateaugudanes.com. Prices and dates are the ones
 # published there; the names are the real product names rather than the
 # by-duration shorthand.
@@ -10695,6 +10746,34 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "detail": r["notes"] or "",
             "assignee_id": None, "assignee_name": None, "id": r["id"],
             "link": url_for("admin_workshop_registrations"),
+        })
+
+    # What the house has promised a guest for a particular day: a board on
+    # arrival, a transfer on the Tuesday. Here because it is work on a date
+    # like anything else, and a promise that lives only on its own page is one
+    # somebody has to remember to open.
+    for x in conn.execute(
+            """SELECT booking_extras.*, bookings.guest_name, rooms.name AS room_name
+                 FROM booking_extras
+                 JOIN bookings ON bookings.id = booking_extras.booking_id
+                 LEFT JOIN rooms ON rooms.id = bookings.room_id
+                WHERE booking_extras.category = 'room'
+                  AND booking_extras.status IN ('confirmed', 'delivered')
+                  AND bookings.status = 'confirmed'
+                  AND booking_extras.scheduled_for >= ?
+                  AND booking_extras.scheduled_for < ?""",
+            (query_start.isoformat(), query_end.isoformat())).fetchall():
+        qty = x["quantity"] or 1
+        rows.append({
+            "kind": "extra", "lane": "booking", "is_guest": True, "origin": "booking",
+            "scheduled": True, "status": x["status"], "acknowledgment_status": None,
+            "priority": None, "repeat_weekly": 0, "date": x["scheduled_for"],
+            "title": (f"{x['name']}{f' ×{qty}' if qty > 1 else ''} — "
+                      f"{x['guest_name']}, {x['room_name'] or 'room TBC'}"),
+            "short": x["name"],
+            "detail": x["notes"] or "",
+            "assignee_id": None, "assignee_name": None, "id": x["id"],
+            "link": url_for("extras_due_page"),
         })
 
     rows.sort(key=lambda r: r["date"] or "9999-99-99")
@@ -12995,13 +13074,29 @@ def room_economics(conn, *, months=12, today=None):
 
     # Extras per booking, so the room's own earnings can be separated from
     # what was sold alongside it.
+    #
+    # Room lines only: booking_id means a different table in each category,
+    # and without this a workshop's extras were credited to whichever ROOM
+    # booking happened to share its number.
     extras = {}
     for r in conn.execute(
         f"""SELECT booking_id, COALESCE(SUM(unit_price * COALESCE(quantity, 1)), 0) AS total
               FROM booking_extras
-             WHERE {EXTRAS_COUNTED_SQL}
+             WHERE {EXTRAS_COUNTED_SQL} AND category = 'room'
              GROUP BY booking_id""").fetchall():
         extras[r["booking_id"]] = r["total"] or 0.0
+    # And the part of each booking's total_price that IS extras: the ones
+    # chosen with the stay, which total_price took in when it was agreed. Only
+    # those come out of it. One added afterwards was never in total_price, and
+    # taking it out anyway made the room look as though it had earned less
+    # for every bottle charged to it later.
+    in_total = {}
+    for r in conn.execute(
+        """SELECT booking_id, COALESCE(SUM(unit_price * COALESCE(quantity, 1)), 0) AS total
+             FROM booking_extras
+            WHERE category = 'room' AND in_booking_total = 1
+            GROUP BY booking_id""").fetchall():
+        in_total[r["booking_id"]] = r["total"] or 0.0
 
     for b in conn.execute(
         """SELECT id, room_id, arrival_date, departure_date, party_size,
@@ -13022,7 +13117,7 @@ def room_economics(conn, *, months=12, today=None):
             continue
 
         extras_total = extras.get(b["id"], 0.0)
-        room_total = max(0.0, b["total_price"] - extras_total)
+        room_total = max(0.0, b["total_price"] - in_total.get(b["id"], 0.0))
         share = counted / stay_nights
 
         room["nights"] += counted
@@ -14344,7 +14439,8 @@ def stock_overview(conn):
 
 def add_booking_extra(conn, category, booking_id, extra, quantity=1, *,
                       unit_price=None, notes=None, user_id=None,
-                      scheduled_for=None, status="confirmed"):
+                      scheduled_for=None, status="confirmed",
+                      in_booking_total=False):
     """Sell an extra against a booking, and take it out of stock if it maps to
     something we hold.
 
@@ -14372,10 +14468,10 @@ def add_booking_extra(conn, category, booking_id, extra, quantity=1, *,
     conn.execute(
         """INSERT INTO booking_extras (category, booking_id, extra_id, name, unit_price,
            quantity, notes, status, scheduled_for, added_by_user_id,
-           revenue_category, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+           revenue_category, in_booking_total, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (category, booking_id, extra_id, name, price, quantity, notes, status,
-         scheduled_for, user_id, revenue_category,
+         scheduled_for, user_id, revenue_category, 1 if in_booking_total else 0,
          datetime.now(timezone.utc).isoformat()),
     )
     line_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
@@ -14535,6 +14631,117 @@ def extras_for_booking(conn, category, booking_id):
     return conn.execute(
         """SELECT * FROM booking_extras WHERE category = ? AND booking_id = ?
            ORDER BY created_at""", (category, booking_id)).fetchall()
+
+
+EXTRA_NOTE_MAX = 120
+
+
+def extra_too_soon(extra, arrival, today=None):
+    """Whether this extra needs more notice than there is before `arrival`.
+
+    One rule for the three places a guest can ask for something -- the booking
+    form, the price beside it and the manage page afterwards -- so none of them
+    can offer what another would refuse. The first of them did not ask at all:
+    the form showed "3 days' notice" beside an extra and then took it for
+    tomorrow.
+    """
+    lead = extra["lead_time_days"] or 0
+    return bool(lead) and (arrival - (today or house_today())).days < lead
+
+
+def notice_refusal(extras):
+    """The sentence for extras these dates are too soon for."""
+    parts = []
+    for e in extras:
+        n = e["lead_time_days"] or 0
+        parts.append(f"{e['name']} needs {n} day{'' if n == 1 else 's'}' notice")
+    return ("; ".join(parts) + " — too soon for these dates. Untick "
+            + ("it" if len(extras) == 1 else "them")
+            + ", or contact us and we'll see what we can do.")
+
+
+def stay_days(arrival, departure, earliest=None):
+    """The days of a stay something can be brought on: arrival to the last night."""
+    day = max(arrival, earliest) if earliest else arrival
+    out = []
+    while day < departure:
+        out.append(day)
+        day += timedelta(days=1)
+    return out
+
+
+def read_extra_when(raw_when, raw_note, arrival, departure, name, earliest=None):
+    """When a guest wants an extra that asks. (scheduled_for_iso, notes, error).
+
+    THE DAY IS A CHOICE, NOT A NOTE. It goes on the line as scheduled_for,
+    which is what puts it on the right morning's list of what the house owes,
+    and on the calendar. A day typed into a free-text box would reach neither,
+    and somebody would have to read every note to find out what Saturday
+    needs. The note is for the rest: a time, a place, an occasion.
+
+    "arrival", or nothing, means on arrival, and the note says so: on the day
+    they come, "ready when they walk in" and "that evening" are different jobs.
+    Once a stay has begun there is no arrival left to have it ready for, so a
+    choice of nothing means the first day still to come.
+    """
+    note = " ".join((raw_note or "").split())[:EXTRA_NOTE_MAX]
+    days = stay_days(arrival, departure, earliest)
+    if not days:
+        return None, None, f"There is no day left in this stay for the {name}."
+    raw_when = (raw_when or "").strip()
+    if raw_when in ("", "arrival"):
+        day = days[0]
+        on_arrival = day == arrival
+    else:
+        day = parse_date(raw_when)
+        if day not in days:
+            return None, None, f"Choose a day of your stay for the {name}."
+        on_arrival = False
+    notes = " — ".join(x for x in ("On arrival" if on_arrival else "", note) if x)
+    return day.isoformat(), notes or None, None
+
+
+def pack_extra_details(details, limit=490):
+    """{extra_id: {"on": iso, "notes": text}} as one Stripe metadata value.
+
+    Stripe keeps 500 characters a value, and a value over it refuses the
+    whole checkout -- so the booking would fail for the sake of a note. The
+    DAY is never cut, because it is what puts the extra on the right list;
+    the notes are shortened, longest first, until it fits.
+    """
+    data = {str(k): [v.get("on") or "", v.get("notes") or ""]
+            for k, v in (details or {}).items()}
+
+    def dump():
+        return json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+
+    packed = dump()
+    while len(packed) > limit:
+        longest = max(data, key=lambda k: len(data[k][1]), default=None)
+        if longest is None or not data[longest][1]:
+            break
+        data[longest][1] = data[longest][1][:-10].rstrip()
+        packed = dump()
+    while len(packed) > limit and data:
+        data.pop(list(data)[-1])
+        packed = dump()
+    return packed
+
+
+def unpack_extra_details(raw):
+    """The other half of pack_extra_details. Anything unreadable is left out."""
+    try:
+        data = json.loads(raw) if raw else {}
+    except ValueError:
+        return {}
+    out = {}
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if str(key).isdigit() and isinstance(value, list) and len(value) == 2:
+                day = parse_date(str(value[0])) if value[0] else None
+                out[int(key)] = {"on": day.isoformat() if day else None,
+                                 "notes": str(value[1]) if value[1] else None}
+    return out
 
 
 # What counts as a line that happened. Written once and used by every query
@@ -22982,7 +23189,8 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
                     party_size, special_requests, chosen_extras, payment_status="unpaid",
                     stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
                     total_price_override=None, discount_amount_override=None,
-                   guests_under_18=0, source="direct", confirm_now=False):
+                   guests_under_18=0, source="direct", confirm_now=False,
+                   extra_details=None):
     """Write a stay down. With confirm_now, it is booked rather than requested.
 
     THE HOUSE TAKES BOOKINGS, NOT REQUESTS FOR BOOKINGS. Every stay used to
@@ -23097,6 +23305,19 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
     if new_row:
         stamp_room_total(conn, new_row["id"], quoted_room_portion,
                          arrival.isoformat(), departure.isoformat())
+        # THE EXTRAS AS LINES, in the same transaction as the booking. They
+        # went into extras_summary and nowhere else, so an airport transfer
+        # ticked on the form was charged at checkout and then missing from the
+        # bill -- the one every Pay button, balance chase and debtors list
+        # reads -- and never reached the list of what the house owes its
+        # guests, so nobody was told to arrange it. in_booking_total says the
+        # price is already inside total_price, so the readers that split a
+        # stay into room and extras take it out once instead of twice.
+        for e in chosen_extras:
+            detail = (extra_details or {}).get(e["id"]) or {}
+            add_booking_extra(conn, "room", new_row["id"], e, 1,
+                              scheduled_for=detail.get("on"),
+                              notes=detail.get("notes"), in_booking_total=True)
     conn.commit()
 
     # Booked, not requested. confirm_booking_by_id commits and sends the
@@ -23230,6 +23451,8 @@ def create_booking_from_stripe_session(conn, session):
         # recomputes exactly as it always did.
         total_price_override=float(meta["total_price"]) if meta.get("total_price") else None,
         discount_amount_override=float(meta["discount_amount"]) if meta.get("discount_amount") else None,
+        # When they want the things that ask, carried through the card page.
+        extra_details=unpack_extra_details(meta.get("extra_when", "")),
     )
     # Record the amount, not just the fact. Without this the stay shows as paid
     # with nothing received against it, so adding a night later would look like
@@ -33559,7 +33782,7 @@ CATALOGUE_ROOM_FIELDS = [
 ]
 CATALOGUE_EXTRA_FIELDS = [
     "name", "price", "active", "sort_order", "category", "description",
-    "lead_time_days", "max_qty", "guest_bookable", "sold_in_pos",
+    "lead_time_days", "max_qty", "guest_bookable", "sold_in_pos", "ask_when",
 ]
 
 
@@ -36848,7 +37071,8 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
     nights = (departure - arrival).days if (arrival and departure) else 0
     quote = {"nights": nights, "available": True, "reason": None, "lines": [],
              "room_total": 0.0, "extras_total": 0.0, "discount": 0.0,
-             "promo_error": None, "total": 0.0, "per_night": None}
+             "promo_error": None, "total": 0.0, "per_night": None,
+             "too_soon": []}
 
     if nights < 1:
         quote.update(available=False, reason="Departure must be after arrival.")
@@ -36872,14 +37096,23 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
         "label": f"{room['name']} — {nights} night{'' if nights == 1 else 's'}",
         "amount": quote["room_total"]})
 
-    # Mirrors the booking form's own query: every active extra, by id. Filtering
-    # differently here would price a line the form let them tick, or vice versa.
-    ids = [i for i in extra_ids if isinstance(i, int)]
+    # Mirrors the booking form's own query: every extra a guest may add, by id.
+    # Filtering differently here would price a line the form let them tick, or
+    # vice versa. One that needs more notice than these dates allow is named
+    # rather than priced -- the booking would refuse it -- whether it is ticked
+    # or not, so the page can say so before anybody gets as far as paying.
+    quote["too_soon"] = [
+        {"id": e["id"], "name": e["name"], "notice": e["lead_time_days"]}
+        for e in conn.execute(
+            "SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1").fetchall()
+        if extra_too_soon(e, arrival)]
+    blocked = {e["id"] for e in quote["too_soon"]}
+    ids = [i for i in extra_ids if isinstance(i, int) and i not in blocked]
     if ids:
         marks = ",".join("?" * len(ids))
         for extra in conn.execute(
-                f"SELECT * FROM extras WHERE active = 1 AND id IN ({marks})",
-                tuple(ids)).fetchall():
+                f"SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1 "
+                f"AND id IN ({marks})", tuple(ids)).fetchall():
             price = round(extra["price"] or 0, 2)
             quote["extras_total"] += price
             quote["lines"].append({"label": extra["name"], "amount": price})
@@ -37045,6 +37278,12 @@ def book_room_prefill(form=None, conn=None):
         "prefill_extras": {int(i) for i in (form.getlist("extras")
                            if hasattr(form, "getlist") else [])
                            if str(i).isdigit()},
+        # What they said about WHEN, for the extras that ask. Keyed by the
+        # extra's id as a string, which is how the template looks them up.
+        "prefill_extra_when": {k[len("extra_when_"):]: field(k) for k in form.keys()
+                               if k.startswith("extra_when_")},
+        "prefill_extra_note": {k[len("extra_note_"):]: field(k) for k in form.keys()
+                               if k.startswith("extra_note_")},
     }
     # AND WHAT WE ALREADY KNOW, in the blanks only. A guest who has told us
     # they are coeliac and that they usually arrive at four should not be asked
@@ -37093,7 +37332,12 @@ def book_room(room_id):
     if not room:
         conn.close()
         abort(404)
-    extras = conn.execute("SELECT * FROM extras WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    # Only what a guest may add. guest_bookable is the flag that decides it
+    # everywhere else, and this form did not ask -- so an item kept for the
+    # till was offered to anybody booking a room.
+    extras = conn.execute(
+        "SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1 "
+        "ORDER BY sort_order, name").fetchall()
     gallery_photos = conn.execute(
         "SELECT * FROM room_photos WHERE room_id = ? ORDER BY sort_order, id", (room_id,)
     ).fetchall()
@@ -37134,6 +37378,24 @@ def book_room(room_id):
         if party_size:
             guests_under_18 = max(0, min(guests_under_18, party_size))
 
+        chosen_extras = [e for e in extras if e["id"] in selected_extra_ids]
+        # Notice, and WHEN, for what they ticked -- only once there are dates
+        # to measure either against.
+        too_soon, extra_details, when_error = [], {}, None
+        if arrival and departure and departure > arrival:
+            too_soon = [e for e in chosen_extras if extra_too_soon(e, arrival)]
+            for e in chosen_extras:
+                if not e["ask_when"]:
+                    continue
+                on, notes, problem = read_extra_when(
+                    request.form.get(f"extra_when_{e['id']}", ""),
+                    request.form.get(f"extra_note_{e['id']}", ""),
+                    arrival, departure, e["name"])
+                if problem:
+                    when_error = when_error or problem
+                else:
+                    extra_details[e["id"]] = {"on": on, "notes": notes}
+
         error = None
         if not guest_name or not guest_email:
             error = "Name and email are required."
@@ -37162,6 +37424,10 @@ def book_room(room_id):
                      "it looks like they may be the wrong way round.")
         elif (departure - arrival).days < room["min_nights"]:
             error = f"This room requires a minimum stay of {room['min_nights']} night{'s' if room['min_nights'] != 1 else ''}."
+        elif too_soon:
+            error = notice_refusal(too_soon)
+        elif when_error:
+            error = when_error
         elif not agreed_to_terms:
             error = "Please confirm you agree to the Terms & Conditions."
         else:
@@ -37182,7 +37448,6 @@ def book_room(room_id):
             return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **prefill)
 
         nights = (departure - arrival).days
-        chosen_extras = [e for e in extras if e["id"] in selected_extra_ids]
         room_total = compute_room_total(conn, room, arrival, departure)
 
         discount_amount = 0.0
@@ -37285,6 +37550,8 @@ def book_room(room_id):
                         "guests_under_18": str(guests_under_18),
                         "special_requests": special_requests[:490],
                         "extra_ids": ",".join(str(e["id"]) for e in chosen_extras),
+                        **({"extra_when": pack_extra_details(extra_details)}
+                           if extra_details else {}),
                         "promo_code": promo_code if discount_amount else "",
                         # The figures the guest is being charged, right now, so
                         # the webhook stores these rather than recomputing them
@@ -37331,6 +37598,11 @@ def book_room(room_id):
                 "special_requests": special_requests[:490],
                 "promo_code": promo_code,
                 "extras": sorted(e["id"] for e in chosen_extras),
+                "extra_when": {str(k): request.form.get(f"extra_when_{k}", "")
+                               for k in extra_details},
+                "extra_note": {str(k): (request.form.get(f"extra_note_{k}", "")
+                                        or "")[:EXTRA_NOTE_MAX]
+                               for k in extra_details},
             }
             return redirect(checkout_session.url, code=303)
 
@@ -37338,6 +37610,7 @@ def book_room(room_id):
             conn, room, guest_name, guest_email, guest_phone, arrival, departure,
             party_size, special_requests, chosen_extras, promo_code=promo_code or None,
             guests_under_18=guests_under_18, confirm_now=True,
+            extra_details=extra_details,
         )
         conn.close()
         return redirect(url_for("booking_confirmation", manage_token=manage_token))
@@ -37350,6 +37623,7 @@ def book_room(room_id):
     prefill_party_size = request.args.get("party_size", "")
     prefill_requests = prefill_promo = ""
     prefill_extras = set()
+    prefill_extra_when, prefill_extra_note = {}, {}
 
     # Coming back from an abandoned card payment. What they typed was put in
     # their session on the way out (see the Stripe branch above), so it can be
@@ -37372,6 +37646,8 @@ def book_room(room_id):
         prefill_requests = stashed.get("special_requests", "")
         prefill_promo = stashed.get("promo_code", "")
         prefill_extras = set(stashed.get("extras", []))
+        prefill_extra_when = stashed.get("extra_when") or {}
+        prefill_extra_note = stashed.get("extra_note") or {}
 
     # Priced server-side when the guest arrives with dates already chosen, which
     # they usually do — the room list carries them through. The same figures are
@@ -37401,6 +37677,7 @@ def book_room(room_id):
         prefill_phone=prefill_phone, prefill_party_size=prefill_party_size, gallery_photos=gallery_photos,
         prefill_requests=prefill_requests, prefill_promo=prefill_promo,
         prefill_extras=prefill_extras, initial_quote=initial_quote,
+        prefill_extra_when=prefill_extra_when, prefill_extra_note=prefill_extra_note,
         deposit_shown=deposit_shown,
     )
 
@@ -38473,14 +38750,23 @@ def manage_booking(manage_token):
             # cannot be arranged, and promising it would be worse than refusing.
             arrival = parse_date(booking["arrival_date"])
             lead = extra["lead_time_days"] or 0
-            days_until = (arrival - house_today()).days if arrival else 0
-            if lead and days_until < lead:
+            when_on, when_notes, when_problem = None, None, None
+            if extra["ask_when"] and arrival and departure:
+                when_on, when_notes, when_problem = read_extra_when(
+                    request.form.get("extra_when", ""),
+                    request.form.get("extra_note", ""),
+                    arrival, departure, extra["name"], earliest=house_today())
+            if lead and (arrival is None or extra_too_soon(extra, arrival)):
                 flash(f"{extra['name']} needs {lead} day{'s' if lead != 1 else ''} "
                       f"notice, so it's too late for this stay — call us and we'll "
                       f"see what we can do.", "error")
+            elif when_problem:
+                flash(when_problem, "error")
             else:
                 add_booking_extra(conn, "room", booking["id"], extra, quantity,
-                                  notes="Added by the guest")
+                                  notes=" — ".join(x for x in ("Added by the guest",
+                                                              when_notes) if x),
+                                  scheduled_for=when_on)
                 log_audit(conn, "guest_added_extra", target=booking["reference_code"],
                           details=f"{quantity} x {extra['name']}")
                 owner_to = owner_email(conn)
@@ -38495,7 +38781,11 @@ def manage_booking(manage_token):
                         f"{booking['guest_name']} added {quantity} x {extra['name']} "
                         f"(€{(extra['price'] or 0) * quantity:.2f}) to their "
                         f"{booking['room_name']} stay, {booking['arrival_date']} to "
-                        f"{booking['departure_date']}.\n\n— Château de Gudanes")
+                        f"{booking['departure_date']}."
+                        + (f" They would like it on {format_date_human(when_on)}"
+                           + (f": {when_notes}" if when_notes else "") + "."
+                           if when_on else "")
+                        + "\n\n— Château de Gudanes")
                 conn.commit()
                 flash(f"{extra['name']} added — it's on your bill.", "success")
         conn.commit()
@@ -38567,6 +38857,12 @@ def manage_booking(manage_token):
         """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
            ORDER BY category, sort_order, name""").fetchall()
         if (e["lead_time_days"] or 0) <= max(days_until, 0)]
+    # The days a guest can still choose for the extras that ask.
+    when_days = []
+    if parse_date(booking["arrival_date"]) and parse_date(booking["departure_date"]):
+        when_days = stay_days(parse_date(booking["arrival_date"]),
+                              parse_date(booking["departure_date"]),
+                              earliest=house_today())
     # Minted on first sight rather than up front, so a link only exists for
     # someone who has actually been here. Written before the connection closes.
     portal_token = guest_portal_token(conn, booking["guest_email"])
@@ -38597,6 +38893,7 @@ def manage_booking(manage_token):
         has_transfer=booking_has_transfer(booking), dinner_bookings=dinner_bookings,
         restaurant_settings=restaurant_settings, dinner_min_date=dinner_min_date, dinner_max_date=dinner_max_date,
         dinner_available=dinner_available, bill=bill, addable=addable,
+        when_days=when_days,
         stripe_enabled=stripe_enabled(),
         part_payment_allowed=part_payment_allowed,
     )
@@ -45995,6 +46292,7 @@ def extra_fields_from_form():
         # else to extras. Set it only to send something somewhere of its own,
         # which is how a category the owner adds later gets fed.
         "revenue_category": (request.form.get("revenue_category", "") or "").strip() or None,
+        "ask_when": 1 if request.form.get("ask_when") == "on" else 0,
     }
 
 
@@ -46015,11 +46313,12 @@ def new_extra():
     max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM extras").fetchone()["m"]
     conn.execute(
         """INSERT INTO extras (name, price, description, category, guest_bookable,
-           lead_time_days, max_qty, revenue_category, sort_order)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           lead_time_days, max_qty, revenue_category, ask_when, sort_order)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (fields["name"], fields["price"] or 0, fields["description"],
          fields["category"], fields["guest_bookable"], fields["lead_time_days"],
-         fields["max_qty"], fields["revenue_category"], max_order + 1),
+         fields["max_qty"], fields["revenue_category"], fields["ask_when"],
+         max_order + 1),
     )
     conn.commit()
     conn.close()
@@ -46041,10 +46340,11 @@ def edit_extra(extra_id):
     conn.execute(
         """UPDATE extras SET name = ?, price = ?, description = ?, category = ?,
            guest_bookable = ?, lead_time_days = ?, max_qty = ?,
-           revenue_category = ? WHERE id = ?""",
+           revenue_category = ?, ask_when = ? WHERE id = ?""",
         (fields["name"], fields["price"] or 0, fields["description"],
          fields["category"], fields["guest_bookable"], fields["lead_time_days"],
-         fields["max_qty"], fields["revenue_category"], extra_id),
+         fields["max_qty"], fields["revenue_category"], fields["ask_when"],
+         extra_id),
     )
     conn.commit()
     conn.close()
@@ -71460,9 +71760,21 @@ def vat_working(conn, start, end):
             "exact": False,
         })
 
+    # The ROOM part of total_price. Extras chosen with a stay are inside
+    # total_price and are lines as well, counted below at the extras rate --
+    # so they come out of this figure once, here, or the same bottle is on the
+    # working twice at two different rates.
     rooms = conn.execute(
         """SELECT COALESCE(SUM(total_price), 0) AS t FROM bookings
            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
+        (s_iso, e_iso)).fetchone()["t"]
+    rooms -= conn.execute(
+        """SELECT COALESCE(SUM(booking_extras.unit_price * booking_extras.quantity), 0) AS t
+             FROM booking_extras
+             JOIN bookings ON bookings.id = booking_extras.booking_id
+            WHERE booking_extras.category = 'room' AND booking_extras.in_booking_total = 1
+              AND bookings.status = 'confirmed'
+              AND bookings.arrival_date >= ? AND bookings.arrival_date < ?""",
         (s_iso, e_iso)).fetchone()["t"]
     _estimate("Rooms", rooms, tax_rate(conn, "vat_accommodation"))
 
@@ -72153,7 +72465,19 @@ def guest_statement(conn, booking):
     arrival, departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
     nights = max(0, (departure - arrival).days) if arrival and departure else 0
 
-    accommodation = round(float(booking["total_price"] or 0), 2)
+    # total_price is the whole stay as agreed, extras chosen with it included.
+    # Those extras are lines now, listed below at their own rate, so their part
+    # of total_price comes out of the accommodation line ONCE -- whatever has
+    # happened to them since, because total_price took them in regardless.
+    in_total = 0.0
+    try:
+        in_total = conn.execute(
+            """SELECT COALESCE(SUM(unit_price * quantity), 0) AS t FROM booking_extras
+               WHERE category = 'room' AND booking_id = ? AND in_booking_total = 1""",
+            (booking["id"],)).fetchone()["t"] or 0.0
+    except sqlite3.OperationalError:
+        pass
+    accommodation = round(float(booking["total_price"] or 0) - in_total, 2)
     extras = []
     extras_gross = 0.0
     # booking_extras only exists once the extras module is in; degrade quietly

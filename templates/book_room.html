@@ -176,6 +176,9 @@
         </section>
 
         {% if extras %}
+        {# What these dates are too soon for, from the quote the page was drawn
+           with. The script keeps it current as the dates change. #}
+        {% set too_soon_ids = (initial_quote.too_soon | map(attribute='id') | list) if initial_quote else [] %}
         <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M0 13h38"/><path d="M82 13h38"/>
   <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
@@ -189,7 +192,8 @@
             <li>
               <label class="g-check">
                 <input type="checkbox" id="extra_{{ e['id'] }}" name="extras" value="{{ e['id'] }}"
-                         {{ 'checked' if e['id'] in (prefill_extras | default([])) }}>
+                         {{ 'checked' if e['id'] in (prefill_extras | default([])) and e['id'] not in too_soon_ids }}
+                         {{ 'disabled' if e['id'] in too_soon_ids }}>
                 <span class="g-check__t">
                   <b>{{ e['name'] }}</b>
                   {% if e['description'] %}<span>{{ e['description'] }}</span>{% endif %}
@@ -202,6 +206,30 @@
                    worded as guest_account.html already words it. #}
                 {%- if e['lead_time_days'] %}<span class="g-addons__notice">{{ e['lead_time_days'] }} days' notice</span>{% endif %}
             </label>
+            {%- if e['lead_time_days'] %}
+            <span class="g-hint" id="extra_too_soon_{{ e['id'] }}"{{ '' if e['id'] in too_soon_ids else ' hidden' }}>Too soon for these dates: it needs {{ e['lead_time_days'] }} days' notice.</span>
+            {%- endif %}
+            {%- if e['ask_when'] %}
+            {# WHEN, for the extras that ask. The day is a choice rather than a
+               note because the day is what puts it on the right morning's list
+               in the house; the note is for everything else. Shown while the
+               extra is ticked, and always without JavaScript. #}
+            <div class="g-extra-when" data-extra-when="{{ e['id'] }}">
+              <p class="g-field">
+                <label for="extra_when_{{ e['id'] }}">When would you like it?</label>
+                <select id="extra_when_{{ e['id'] }}" name="extra_when_{{ e['id'] }}"
+                        data-picked="{{ (prefill_extra_when | default({})).get(e['id']|string, '') }}">
+                  <option value="arrival">On arrival</option>
+                </select>
+              </p>
+              <p class="g-field">
+                <label for="extra_note_{{ e['id'] }}">A time, or anything we should know <span class="g-opt">optional</span></label>
+                <input type="text" id="extra_note_{{ e['id'] }}" name="extra_note_{{ e['id'] }}"
+                       maxlength="120" placeholder="e.g. 7pm, on the terrace"
+                       value="{{ (prefill_extra_note | default({})).get(e['id']|string, '') }}">
+              </p>
+            </div>
+            {%- endif %}
             </li>
             {% endfor %}
           </ul>
@@ -514,7 +542,37 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   // on screen if a request fails rather than blanking the panel mid-decision.
   var box=document.getElementById('quote_box'), pending;
   function money(n){ return '€'+Number(n).toFixed(2); }
+  // WHEN, for the extras that ask: the days of the stay, filled in from the
+  // dates as they are chosen, and each box shown only while its extra is ticked.
+  function isoDay(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+  function dayLabel(d){ return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}); }
+  function fillWhen(){
+    var days=[];
+    if(arrive.value&&depart.value){
+      var d=new Date(arrive.value+'T12:00:00'), end=new Date(depart.value+'T12:00:00');
+      while(d<end){ days.push(new Date(d)); d.setDate(d.getDate()+1); }
+    }
+    f.querySelectorAll('[data-extra-when]').forEach(function(wrap){
+      var id=wrap.getAttribute('data-extra-when');
+      var sel=document.getElementById('extra_when_'+id), cb=document.getElementById('extra_'+id);
+      if(!sel) return;
+      var keep=sel.getAttribute('data-picked')||sel.value;
+      sel.removeAttribute('data-picked');
+      sel.innerHTML='';
+      var first=document.createElement('option'); first.value='arrival';
+      first.textContent=days.length?'On arrival, '+dayLabel(days[0]):'On arrival';
+      sel.appendChild(first);
+      days.slice(1).forEach(function(day){
+        var o=document.createElement('option'); o.value=isoDay(day); o.textContent=dayLabel(day);
+        sel.appendChild(o);
+      });
+      if([].some.call(sel.options,function(o){ return o.value===keep; })) sel.value=keep;
+      wrap.hidden=!(cb&&cb.checked);
+    });
+  }
+  f.querySelectorAll('[name="extras"]').forEach(function(cb){ cb.addEventListener('change',fillWhen); });
   function refreshQuote(){
+    fillWhen();
     if(!box) return;
     if(!arrive.value||!depart.value){ box.hidden=true; return; }
     var q=new URLSearchParams();
@@ -531,6 +589,16 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         .then(function(r){ return r.ok?r.json():null; })
         .then(function(d){
           if(!d) return;
+          // Anything these dates are too soon for is unticked and shut, with
+          // the reason beside it, rather than priced here and refused on Book.
+          var blocked={};
+          (d.too_soon||[]).forEach(function(x){ blocked[String(x.id)]=true; });
+          f.querySelectorAll('[name="extras"]').forEach(function(cb){
+            var hint=document.getElementById('extra_too_soon_'+cb.value);
+            if(blocked[cb.value]){ cb.checked=false; cb.disabled=true; if(hint) hint.hidden=false; }
+            else { cb.disabled=false; if(hint) hint.hidden=true; }
+          });
+          fillWhen();
           box.hidden=false;
           var reason=document.getElementById('quote_reason');
           var lines=document.getElementById('quote_lines');
@@ -561,6 +629,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   var applyBtn=document.getElementById('promo_apply_btn');
   if(applyBtn) applyBtn.addEventListener('click',refreshQuote);
 
+  fillWhen();
   sync();
 })();
 </script>
