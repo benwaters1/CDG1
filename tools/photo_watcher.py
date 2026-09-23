@@ -52,9 +52,12 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_NAME = ".photo_watcher_sent.json"
-# What a camera writes. Deliberately not .rw2: the app cannot open a RAW file
-# and would refuse it, so sending them is a round trip to a polite error.
-PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+# What a camera writes, and what a phone does. Deliberately not .rw2: the app
+# cannot open a RAW file and would refuse it, so sending them is a round trip
+# to a polite error. HEIC is in because the app converts it to JPEG now --
+# an iPhone photograph dropped in the same folder would otherwise sit there
+# unsent and nobody would know why.
+PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif"}
 SETTLE_SECONDS = 3
 
 

@@ -174,6 +174,36 @@ def run():
             detail=f"{other_body} — cameras reuse filenames, so matching on "
                    "the name loses a real photograph and never says so")
 
+    s.section("An iPhone photograph by the same door")
+    # THE PATH THAT NEEDS photo_master TO REGISTER THE DECODER ITSELF. The
+    # intake page asks allowed_image first, which registers it as a side
+    # effect, so a check there passes whether or not photo_master does. This
+    # door goes straight to photo_master, and is the one that proves it.
+    from PIL import Image as _Im
+    try:
+        import pillow_heif as _ph
+        # Written through pillow-heif directly, WITHOUT registering it with
+        # Pillow -- registering here would do photo_master's job for it and
+        # this check would pass with photo_master's own call deleted.
+        hbuf = io.BytesIO()
+        _ph.from_pillow(_Im.new("RGB", (800, 600), (40, 80, 160))).save(hbuf, quality=80)
+        heic = hbuf.getvalue()
+    except Exception:
+        heic = b""
+    s.check("a real HEIC could be made to send", heic[4:12] == b"ftypheic",
+            detail="pillow-heif is needed to write one")
+    sent = _send(anon, heic, TAG + "-IMG_4021.HEIC", token)
+    said = json.loads(sent.get_data(as_text=True) or "{}")
+    conn = db()
+    got = conn.execute("SELECT filename FROM photo_inbox WHERE id = ?",
+                       (said.get("id"),)).fetchone()
+    conn.close()
+    s.check("it is accepted", sent.status_code == 200 and said.get("status") == "stored",
+            detail=f"HTTP {sent.status_code} {said}")
+    s.check("and lands as a JPEG", got and got["filename"].endswith(".jpg")
+            and _Im.open(os.path.join(m.UPLOAD_DIR, got["filename"])).format == "JPEG",
+            detail=f"{got['filename'] if got else None}")
+
     s.section("What it will not take")
     bad = _send(anon, b"II*\x00 not a photograph at all", TAG + "-raw.rw2", token)
     s.check("a file it cannot read is refused, with a reason",

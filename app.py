@@ -183,12 +183,16 @@ ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "docx", "doc", "txt"}
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
 # EVERY IPHONE SHOOTS THESE BY DEFAULT, AND NO BROWSER HERE WILL SHOW ONE.
 #
-# So they are refused with a sentence that says what to do, rather than stored.
-# Converting them would mean Pillow and pillow-heif -- an imaging dependency,
-# in an app that is deliberately `git clone`, `python app.py`, and runs. The
-# alternative was to keep the file and let the page show a broken picture
-# nobody can fix, which is worse than a refusal that explains itself: the
-# person uploading is standing at their phone and can change one setting.
+# They used to be refused outright, because converting them needed Pillow and
+# pillow-heif and the app had neither. It has Pillow now -- every photograph is
+# decoded and re-encoded on the way in -- so with pillow-heif installed an
+# iPhone picture is simply CONVERTED: it lands as a JPEG like anything else,
+# and nobody is sent into their phone's settings to change a format.
+#
+# Still refused, with the sentence that says what to do, on a deployment where
+# the decoder is missing. Accepting a file the app cannot open would be the
+# broken picture nobody can fix, which is worse than a refusal that explains
+# itself. heif_available() is what decides, not this list.
 REFUSED_IMAGE_EXTENSIONS = {"heic", "heif"}
 # Not RFC-5322-exhaustive — just enough shape-checking to reject garbage
 # and control characters (a public, unauthenticated form is the only place
@@ -60024,6 +60028,7 @@ def photo_master(data, filename=""):
     sentence saying so -- the caller is a person at an upload box, not a log.
     """
     from PIL import Image, ImageOps
+    heif_available()        # so a HEIC off an iPhone opens like a JPEG
     try:
         img = Image.open(io.BytesIO(data))
         img.load()
@@ -60110,11 +60115,34 @@ def photo_rendition(stored_name, size):
     return out
 
 
+_HEIF = {"checked": False, "ok": False}
+
+
+def heif_available():
+    """True once iPhone HEIC photographs can be opened here.
+
+    Registers pillow-heif's opener with Pillow the first time it is asked, so
+    Image.open reads a HEIC exactly as it reads a JPEG. False when the package
+    is not installed, and the upload is refused with a reason instead.
+    """
+    if not _HEIF["checked"]:
+        _HEIF["checked"] = True
+        try:
+            import pillow_heif
+            pillow_heif.register_heif_opener()
+            _HEIF["ok"] = True
+        except Exception:
+            _HEIF["ok"] = False
+    return _HEIF["ok"]
+
+
 def allowed_image(filename):
     """(ok, reason). A reason rather than a bare False, because the commonest
     refusal is one the person can fix in ten seconds if they are told how."""
     ext = (filename or "").rsplit(".", 1)[-1].lower() if "." in (filename or "") else ""
     if ext in ALLOWED_IMAGE_EXTENSIONS:
+        return True, ""
+    if ext in REFUSED_IMAGE_EXTENSIONS and heif_available():
         return True, ""
     if ext in REFUSED_IMAGE_EXTENSIONS:
         return False, ("That is an iPhone HEIC photograph, which no browser here "

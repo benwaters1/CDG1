@@ -5,12 +5,15 @@ puts it against a plan, and works out the next slot that plan has free.
 
 THREE THINGS CARRY THIS FILE.
 
-  THE HEIC REFUSAL. Every iPhone shoots HEIC by default and no browser here
-  will display one, so the choice was an imaging dependency or an honest
-  refusal -- and the refusal has to SAY WHAT TO DO, because the person
-  uploading is standing at their phone and can change one setting in ten
-  seconds. Storing it silently would leave a broken picture on the page and
-  nobody able to work out why.
+  THE iPHONE PHOTOGRAPH. Every iPhone shoots HEIC by default and no browser
+  here will display one. It used to be refused, because converting it needed
+  an imaging dependency the app did not have. The app decodes every
+  photograph now, so with pillow-heif installed a HEIC is CONVERTED and lands
+  as a JPEG; only where the decoder is missing is it refused -- and then the
+  refusal has to SAY WHAT TO DO, because the person uploading is standing at
+  their phone and can change one setting in ten seconds. Storing it
+  unconverted would leave a broken picture on the page and nobody able to
+  work out why, which is why both halves are checked.
 
   A BLANK CAPTION IS AN IDEA, NOT A DRAFT. The page deliberately does not
   write the caption: a generated sentence about a French chateau reads like
@@ -89,14 +92,26 @@ def run():
         s.check("%s is %s" % (name, "taken" if ok else "refused"), got == ok)
 
     # The one that matters, because it is what a phone hands you.
-    heic_ok, heic_why = m.allowed_image("IMG_4021.HEIC")
-    s.check("an iPhone HEIC is refused", not heic_ok)
+    s.check("the HEIC decoder is installed here", m.heif_available(),
+            detail="pillow-heif is in requirements.txt; without it the half "
+                   "below that converts is not being tested")
+    s.check("an iPhone HEIC is taken", m.allowed_image("IMG_4021.HEIC")[0])
+    s.check("upper case makes no difference",
+            m.allowed_image("IMG.HEIC")[0] == m.allowed_image("img.heic")[0])
+    # And where the decoder is missing, the old honest refusal -- stood in for
+    # by telling the app it is not there, and put back afterwards.
+    real_heif = dict(m._HEIF)
+    m._HEIF.update(checked=True, ok=False)
+    try:
+        heic_ok, heic_why = m.allowed_image("IMG_4021.HEIC")
+    finally:
+        m._HEIF.clear()
+        m._HEIF.update(real_heif)
+    s.check("without the decoder it is refused", not heic_ok)
     s.check("and the refusal says how to fix it",
             "Most Compatible" in heic_why or "JPEG" in heic_why,
             detail="somebody standing at their phone can change one setting; "
                    "a bare 'not allowed' leaves them stuck")
-    s.check("upper case makes no difference",
-            m.allowed_image("IMG.HEIC")[0] == m.allowed_image("img.heic")[0])
 
     s.section("A photograph with nothing written is an idea")
 
@@ -177,9 +192,40 @@ def run():
 
     s.section("What it refuses, and what it says")
 
+    # A REAL HEIC, made the way an iPhone makes one, not a PNG with the name
+    # changed -- a renamed PNG would sail through any decoder and prove
+    # nothing about HEIC at all.
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (640, 480), (30, 110, 70)).save(buf, "HEIF")
+    heic = buf.getvalue()
+    s.check("the file really is a HEIC", heic[4:12] == b"ftypheic",
+            detail=repr(heic[4:12]))
+    upload("holiday.HEIC", data=heic, alt_text=TAG + " heic")
+    row = conn.execute("SELECT image_filename FROM social_posts WHERE alt_text = ?",
+                       (TAG + " heic",)).fetchone()
+    s.check("an iPhone photograph is kept", bool(row))
+    stored = None
+    if row:
+        with open(os.path.join(m.UPLOAD_DIR, row["image_filename"]), "rb") as fh:
+            stored = Image.open(io.BytesIO(fh.read()))
+    s.check("as a JPEG a browser can show, not the HEIC it arrived as",
+            stored is not None and stored.format == "JPEG"
+            and row["image_filename"].endswith(".jpg"),
+            detail=f"{stored.format if stored else None}, "
+                   f"{row['image_filename'] if row else None}")
+    s.check("with the picture intact", stored is not None and stored.size == (640, 480),
+            detail=f"{stored.size if stored else None}")
+
     before = conn.execute("SELECT COUNT(*) c FROM social_posts").fetchone()["c"]
-    r = upload("holiday.HEIC")
-    s.check("a HEIC writes nothing",
+    real_heif = dict(m._HEIF)
+    m._HEIF.update(checked=True, ok=False)
+    try:
+        r = upload("holiday.HEIC", data=heic)
+    finally:
+        m._HEIF.clear()
+        m._HEIF.update(real_heif)
+    s.check("without the decoder a HEIC writes nothing",
             conn.execute("SELECT COUNT(*) c FROM social_posts").fetchone()["c"] == before)
     s.check("and the page says what to do about it",
             any("Most Compatible" in f for f in flashes(r)),

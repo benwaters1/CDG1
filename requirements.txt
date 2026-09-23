@@ -14,3 +14,5 @@ anthropic==0.122.0
 # them (photo_master / photo_rendition): rotation applied, metadata dropped,
 # and a size per consumer. Meta refuses an image wider than 1440.
 Pillow==12.3.0
+# iPhone photographs (HEIC), converted to JPEG on the way in by photo_master.
+pillow-heif==1.8.0
