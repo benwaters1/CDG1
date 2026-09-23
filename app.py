@@ -7138,7 +7138,12 @@ def labour_hours_by_person(conn, start_iso, end_iso):
     entry, while the labour report rounded each person to 1dp and costed once —
     so the two put different numbers on the same shifts. Employees only: the
     owner's own clocked time is drawings, not a wage bill.
+
+    The window is the house's days; clock_in_at is a moment in UTC, so it is
+    compared with the instants those days begin. A shift started at half past
+    midnight on the 1st is the new month's.
     """
+    start_iso, end_iso = house_moment(start_iso), house_moment(end_iso)
     return conn.execute(
         """SELECT users.id, users.name, users.pay_rate, users.pay_type,
                   COALESCE(SUM(
@@ -7234,7 +7239,7 @@ def premium_hours(conn, user_id, start, end):
             WHERE user_id = ? AND clock_out_at IS NOT NULL
               AND clock_out_at > clock_in_at
               AND clock_in_at >= ? AND clock_in_at < ?""",
-        (user_id, start, end)).fetchall()
+        (user_id, house_moment(start), house_moment(end))).fetchall()
     for row in rows:
         try:
             began = datetime.fromisoformat(row["clock_in_at"])
@@ -7322,7 +7327,7 @@ def meals_taken(conn, user_id, start, end):
             WHERE user_id = ? AND clock_out_at IS NOT NULL
               AND clock_out_at > clock_in_at
               AND clock_in_at >= ? AND clock_in_at < ?""",
-        (user_id, start, end)).fetchone()["c"] or 0
+        (user_id, house_moment(start), house_moment(end))).fetchone()["c"] or 0
     return {"shifts": shifts, "meals": round(shifts * per_shift, 2)}
 
 
@@ -8730,7 +8735,7 @@ def financial_month_summary(conn, month_start, month_end):
         """SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
            WHERE status IN ('approved','paid') AND is_capital = 1
              AND submitted_at >= ? AND submitted_at < ?""",
-        (month_start.isoformat(), month_end.isoformat())).fetchone()["total"]
+        moments).fetchone()["total"]
 
     expenses_total = round(staff_expenses + supplier_expenses, 2)
     net = round(revenue - expenses_total - (labour_cost or 0), 2)
@@ -8765,7 +8770,7 @@ def expense_category_breakdown(conn, month_start, month_end):
            FROM expenses
            WHERE status IN ('approved','paid') AND submitted_at >= ? AND submitted_at < ?
            GROUP BY category ORDER BY total DESC""",
-        (month_start.isoformat(), month_end.isoformat()),
+        (house_moment(month_start), house_moment(month_end)),
     ).fetchall()
     return rows
 
@@ -8977,6 +8982,11 @@ def resolve_period(period=None, anchor=None, today=None):
         "anchor": anchor, "anchor_iso": anchor.isoformat(),
         "prev_anchor": prev_anchor.isoformat(), "next_anchor": next_anchor.isoformat(),
         "prev_start_iso": prev_start.isoformat(), "prev_end_iso": prev_end.isoformat(),
+        # The same windows as INSTANTS, for the columns that hold a moment --
+        # clock_in_at, created_at, submitted_at. The _iso ones are dates, and a
+        # stored UTC stamp compared with a date is compared with midnight UTC.
+        "start_at": house_moment(start), "end_at": house_moment(end),
+        "prev_start_at": house_moment(prev_start), "prev_end_at": house_moment(prev_end),
         "is_current": start <= today < end,
     }
 
@@ -9485,13 +9495,13 @@ def employee_overview(conn, period, today):
         """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
            FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
              AND clock_in_at >= ? AND clock_in_at < ?""",
-        (period["start_iso"], period["end_iso"]),
+        (period["start_at"], period["end_at"]),
     ).fetchone()["h"]
     prev_hours = conn.execute(
         """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
            FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
              AND clock_in_at >= ? AND clock_in_at < ?""",
-        (period["prev_start_iso"], period["prev_end_iso"]),
+        (period["prev_start_at"], period["prev_end_at"]),
     ).fetchone()["h"]
     active = conn.execute(
         "SELECT COUNT(*) AS c FROM users WHERE role = 'employee' AND status = 'active'"
@@ -9581,7 +9591,7 @@ def restaurant_overview(conn, period, today):
     refunded = conn.execute(
         """SELECT COALESCE(SUM(amount), 0) AS t FROM refunds
            WHERE category = 'restaurant' AND created_at >= ? AND created_at < ?""",
-        (period["start_iso"], period["end_iso"]),
+        (period["start_at"], period["end_at"]),
     ).fetchone()["t"]
     pending = conn.execute(
         "SELECT COUNT(*) AS c FROM restaurant_bookings WHERE status = 'pending'"
@@ -9625,7 +9635,7 @@ def workshops_overview(conn, period, today):
     refunded = conn.execute(
         """SELECT COALESCE(SUM(amount), 0) AS t FROM refunds
            WHERE category = 'workshop' AND created_at >= ? AND created_at < ?""",
-        (period["start_iso"], period["end_iso"]),
+        (period["start_at"], period["end_at"]),
     ).fetchone()["t"]
     pending = conn.execute(
         "SELECT COUNT(*) AS c FROM workshop_bookings WHERE status = 'pending'"
@@ -11882,7 +11892,9 @@ def compute_month_stats(conn, today):
     revenue -= conn.execute(
         """SELECT COALESCE(SUM(amount), 0) AS total FROM refunds
            WHERE category = 'room' AND created_at >= ? AND created_at < ?""",
-        (month_start.isoformat(), month_end.isoformat()),
+        # The house's month, as financial_month_summary asks it -- the two
+        # must agree, and the summary moved onto the house's instants.
+        (house_moment(month_start), house_moment(month_end)),
     ).fetchone()["total"]
     revenue = round(revenue, 2)
 
@@ -12917,7 +12929,7 @@ def discount_outcomes(conn, *, months=12, today=None):
     not proof.
     """
     today = today or house_today()
-    since = (today - timedelta(days=30 * months)).isoformat()
+    since = house_moment(today - timedelta(days=30 * months))
 
     rooms = conn.execute(
         "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
@@ -14037,10 +14049,10 @@ def discount_cost(conn, *, start=None, end=None):
     where, params = ["1=1"], []
     if start:
         where.append("promo_code_redemptions.redeemed_at >= ?")
-        params.append(start if isinstance(start, str) else start.isoformat())
+        params.append(house_moment(start))
     if end:
         where.append("promo_code_redemptions.redeemed_at < ?")
-        params.append(end if isinstance(end, str) else end.isoformat())
+        params.append(house_moment(end))
 
     rows = conn.execute(
         f"""SELECT promo_codes.id, promo_codes.code, promo_codes.description,
@@ -16110,6 +16122,25 @@ def house_day_window(first, last=None):
     return (start.astimezone(timezone.utc).isoformat(),
             end.astimezone(timezone.utc).isoformat())
 
+def house_moment(day):
+    """The instant the house's `day` begins, as a stored UTC string.
+
+    For comparing a stored moment with a day: `created_at >= house_moment(d)`
+    is "on or after d, here", and `< house_moment(d + 1 day)` is "before the
+    day after". A bare date in its place is midnight UTC, an hour or two into
+    the house's day, so whatever happened in that hour lands on the wrong side.
+
+    Takes a date or an ISO date string. Something that is already a moment --
+    a datetime, or a string with a time on it -- is handed back unchanged, so a
+    caller that was already right stays right.
+    """
+    if isinstance(day, datetime):
+        return day.isoformat()
+    if isinstance(day, str) and len(day) > 10:
+        return day
+    return house_day_window(day)[0]
+
+
 # The events worth journalling: anything that moves money or changes the bill.
 # Kitchen state (ready, served) is deliberately absent — it is not a financial
 # event, and a journal that logs everything is one nobody reads.
@@ -17198,6 +17229,9 @@ def payroll_period_rows(conn, period):
     export refuses rather than quietly sending a wrong number to the accountant.
     """
     start_iso, end_iso = period["start_iso"], period["end_iso"]
+    # The shifts are MOMENTS and are asked with the instants; the wage and
+    # contract dates below are dates and keep start_iso/end_iso.
+    start_at, end_at = period["start_at"], period["end_at"]
     rows = []
     for p in conn.execute(
         """SELECT id, name, job_role, pay_rate, pay_type, contract_type
@@ -17213,13 +17247,13 @@ def payroll_period_rows(conn, period):
                FROM time_entries
                WHERE user_id = ? AND clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
                  AND clock_in_at >= ? AND clock_in_at < ?""",
-            (p["id"], start_iso, end_iso),
+            (p["id"], start_at, end_at),
         ).fetchone()
         broken = conn.execute(
             """SELECT COUNT(*) AS c FROM time_entries
                WHERE user_id = ? AND clock_out_at IS NOT NULL AND clock_out_at < clock_in_at
                  AND clock_in_at >= ? AND clock_in_at < ?""",
-            (p["id"], start_iso, end_iso),
+            (p["id"], start_at, end_at),
         ).fetchone()["c"]
         # A shift nobody clocked out of. The app closes it on their next login
         # and stamps auto_closed, so the real end time is unknown -- a Friday
@@ -17240,7 +17274,7 @@ def payroll_period_rows(conn, period):
             """SELECT COUNT(*) AS c FROM time_entries
                WHERE user_id = ? AND auto_closed = 1
                  AND clock_in_at >= ? AND clock_in_at < ?""",
-            (p["id"], start_iso, end_iso),
+            (p["id"], start_at, end_at),
         ).fetchone()["c"]
         # And the mirror of it: still running when payroll was drawn, so the
         # hours are incomplete. Silently worth zero means quietly underpaid.
@@ -17248,7 +17282,7 @@ def payroll_period_rows(conn, period):
             """SELECT COUNT(*) AS c FROM time_entries
                WHERE user_id = ? AND clock_out_at IS NULL
                  AND clock_in_at >= ? AND clock_in_at < ?""",
-            (p["id"], start_iso, end_iso),
+            (p["id"], start_at, end_at),
         ).fetchone()["c"]
         absence_days = conn.execute(
             """SELECT COALESCE(SUM(julianday(MIN(end_date, ?)) - julianday(MAX(start_date, ?)) + 1), 0) AS d
@@ -17699,7 +17733,7 @@ def working_time_violations(conn, from_date, to_date):
            WHERE time_entries.clock_out_at IS NOT NULL
              AND time_entries.clock_in_at >= ? AND time_entries.clock_in_at < ?
            ORDER BY users.id, time_entries.clock_in_at""",
-        (from_date.isoformat(), (to_date + timedelta(days=1)).isoformat()),
+        (house_moment(from_date), house_moment(to_date + timedelta(days=1))),
     ).fetchall()
 
     by_user = {}
@@ -18037,7 +18071,7 @@ def report_occupancy(conn, period):
     room_refunds = conn.execute(
         """SELECT COALESCE(SUM(amount), 0) AS t FROM refunds
            WHERE category = 'room' AND created_at >= ? AND created_at < ?""",
-        (start.isoformat(), end.isoformat())).fetchone()["t"]
+        (house_moment(start), house_moment(end))).fetchone()["t"]
     revenue_gross = revenue
     revenue = revenue - room_refunds
 
@@ -18293,9 +18327,9 @@ def decline_analysis(conn, start=None, end=None):
         """SELECT decline_reason, decline_note, guest_name, reference_code,
                   arrival_date, departure_date, party_size, total_price
              FROM bookings
-            WHERE status = 'declined' AND created_at >= ? AND created_at <= ?
+            WHERE status = 'declined' AND created_at >= ? AND created_at < ?
             ORDER BY created_at DESC""",
-        (start.isoformat(), end.isoformat() + "T23:59:59")).fetchall()
+        (house_moment(start), house_moment(end + timedelta(days=1)))).fetchall()
     by_reason = {}
     unrecorded = 0
     for r in rows:
@@ -21343,7 +21377,7 @@ def contracted_vs_worked(conn, start, end):
         """SELECT * FROM time_entries
             WHERE clock_out_at IS NOT NULL
               AND clock_in_at >= ? AND clock_in_at < ?""",
-        (start.isoformat(), (end + timedelta(days=1)).isoformat())).fetchall()
+        (house_moment(start), house_moment(end + timedelta(days=1)))).fetchall()
     hours = net_hours_for_entries(conn, entries)
     worked = {}
     for e in entries:
@@ -21650,7 +21684,7 @@ def report_guest(conn, period):
     feedback = conn.execute(
         """SELECT COUNT(*) AS c, AVG(rating) AS avg_rating FROM guest_feedback
            WHERE submitted_at >= ? AND submitted_at < ?""",
-        (start_iso, end_iso),
+        (house_moment(start_iso), house_moment(end_iso)),
     ).fetchone()
     top = sorted(
         [{"email": k, "name": v["name"], "total": round(v["total"], 2), "stays": v["stays"]}
@@ -24855,7 +24889,7 @@ def enquiry_conversion(conn, *, months=12, today=None):
     because this month's enquiries have not had time to become anything.
     """
     today = today or house_today()
-    since = (today - timedelta(days=30 * months)).isoformat()
+    since = house_moment(today - timedelta(days=30 * months))
     rows = conn.execute(
         """SELECT status, COUNT(*) AS n FROM event_inquiries
             WHERE created_at >= ? GROUP BY status""", (since,)).fetchall()
@@ -26500,7 +26534,7 @@ def unanswered_reviews(conn, *, days=60, today=None):
     watch tasks do.
     """
     day = today or house_today()
-    since = (day - timedelta(days=max(1, days))).isoformat()
+    since = house_moment(day - timedelta(days=max(1, days)))
     rooms = conn.execute(
         """SELECT guest_feedback.*, bookings.reference_code, bookings.guest_email,
                   bookings.manage_token, rooms.name AS room_name, 'room' AS source
@@ -28166,8 +28200,9 @@ def profile(user_id):
         (user_id,),
     ).fetchall()
     today_for_stats = house_today()
-    week_ago_for_stats = (today_for_stats - timedelta(days=7)).isoformat()
-    month_ago_for_stats = (today_for_stats - timedelta(days=30)).isoformat()
+    # Compared with completed_at, a moment: the house's midnight, not UTC's.
+    week_ago_for_stats = house_moment(today_for_stats - timedelta(days=7))
+    month_ago_for_stats = house_moment(today_for_stats - timedelta(days=30))
     task_stats = {
         "week": conn.execute(
             """SELECT COUNT(*) AS c FROM tasks WHERE assigned_to_user_id = ? AND status = 'done'
@@ -28729,13 +28764,13 @@ def admin_hr():
         """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
            FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
              AND clock_in_at >= ? AND clock_in_at < ?""",
-        (period["start_iso"], period["end_iso"]),
+        (period["start_at"], period["end_at"]),
     ).fetchone()
     prev_hours_row = conn.execute(
         """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
            FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
              AND clock_in_at >= ? AND clock_in_at < ?""",
-        (period["prev_start_iso"], period["prev_end_iso"]),
+        (period["prev_start_at"], period["prev_end_at"]),
     ).fetchone()
     absence_days = conn.execute(
         """SELECT COALESCE(SUM(julianday(MIN(end_date, ?)) - julianday(MAX(start_date, ?)) + 1), 0) AS d
@@ -29281,7 +29316,7 @@ def timesheet_query(conn, employee_id, start, end):
     sql = """SELECT time_entries.*, users.name AS user_name
              FROM time_entries JOIN users ON users.id = time_entries.user_id
              WHERE clock_in_at >= ? AND clock_in_at < ?"""
-    params = [start.isoformat(), (end + timedelta(days=1)).isoformat()]
+    params = [house_moment(start), house_moment(end + timedelta(days=1))]
     if employee_id:
         sql += " AND user_id = ?"
         params.append(employee_id)
@@ -49731,13 +49766,13 @@ def restaurant_profit_share(conn, year, month):
     dinner_refunds = conn.execute(
         "SELECT COALESCE(SUM(amount), 0) AS t FROM refunds "
         "WHERE category = 'restaurant' AND created_at >= ? AND created_at < ?",
-        (month_start.isoformat(), month_end.isoformat()),
+        (house_moment(month_start), house_moment(month_end)),
     ).fetchone()["t"]
     revenue = round(revenue - dinner_refunds, 2)
     expense_costs = conn.execute(
         "SELECT COALESCE(SUM(amount), 0) AS t FROM expenses WHERE restaurant_related = 1 "
         "AND status IN ('approved', 'paid') AND submitted_at >= ? AND submitted_at < ?",
-        (month_start.isoformat(), month_end.isoformat()),
+        (house_moment(month_start), house_moment(month_end)),
     ).fetchone()["t"]
     labor_cost, unestimated_labor_shifts = restaurant_labor_cost(conn, month_start, month_end)
     costs = expense_costs + labor_cost
@@ -57252,11 +57287,11 @@ def annual_summary():
         """SELECT vendor_name, SUM(amount) AS total FROM expenses
            WHERE kind = 'supplier_invoice' AND status IN ('approved','paid') AND vendor_name IS NOT NULL
            AND submitted_at >= ? AND submitted_at < ? GROUP BY vendor_name ORDER BY total DESC LIMIT 10""",
-        (year_start.isoformat(), year_end.isoformat()),
+        (house_moment(year_start), house_moment(year_end)),
     ).fetchall()
     feedback_row = conn.execute(
         "SELECT AVG(rating) AS a, COUNT(*) AS c FROM guest_feedback WHERE submitted_at >= ? AND submitted_at < ?",
-        (year_start.isoformat(), year_end.isoformat()),
+        (house_moment(year_start), house_moment(year_end)),
     ).fetchone()
     booking_count = conn.execute(
         "SELECT COUNT(*) AS c FROM bookings WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?",
@@ -67771,7 +67806,9 @@ def staff_today():
              AND (due_date IS NULL OR due_date <= ?)
              AND (status != 'done' OR completed_at >= ?)
            ORDER BY status = 'done', (due_date IS NULL), due_date, id""",
-        (user["id"], today.isoformat(), today.isoformat()),
+        # due_date is a date; completed_at is a moment, and "done today" is
+        # since the house's midnight.
+        (user["id"], today.isoformat(), house_moment(today)),
     ).fetchall()
 
     my_shift_today = conn.execute(
@@ -68320,7 +68357,7 @@ def my_hours():
            FROM time_entries
            WHERE user_id = ? AND clock_in_at >= ? AND clock_in_at < ?
            ORDER BY clock_in_at DESC""",
-        (user["id"], period["start_iso"], period["end_iso"])).fetchall()
+        (user["id"], period["start_at"], period["end_at"])).fetchall()
     conn.close()
 
     # Worked out here rather than in the template: the arithmetic is the same
@@ -71903,7 +71940,7 @@ def vat_working(conn, start, end):
     for row in conn.execute(
         """SELECT category, COALESCE(SUM(amount), 0) AS t FROM refunds
            WHERE created_at >= ? AND created_at < ? GROUP BY category""",
-        (s_iso, e_iso)).fetchall():
+        (house_moment(start), house_moment(end))).fetchall():
         given_back = round(row["t"] or 0, 2)
         if given_back <= 0:
             continue
@@ -73053,7 +73090,7 @@ def cost_of_taking_money(conn, start, end):
     if isinstance(end, str):
         end = parse_date(end)
     pct, fixed = card_fee_settings(conn)
-    lo, hi = start.isoformat(), (end + timedelta(days=1)).isoformat()
+    lo, hi = house_moment(start), house_moment(end + timedelta(days=1))
 
     methods = {}
 

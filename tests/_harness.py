@@ -354,6 +354,56 @@ def _record_answer(response):    # pragma: no cover - bookkeeping, not behaviour
     return response
 
 
+# ---------------------------------------------------------------------------
+# A STORED MOMENT, ASKED ABOUT WITH A BARE DATE.
+#
+# Every *_at column holds an instant in UTC. Compared with '2026-09-01', the
+# date is read as midnight UTC -- an hour or two into the house's day -- so
+# whatever happened in that hour lands on the wrong side of the line: a shift
+# started at half past midnight on the 1st paid in the month before, a refund
+# issued then taken off the wrong month's takings.
+#
+# Reading the code for it found ten. Measuring found forty-nine, because the
+# date is nearly always in a variable and only the running query knows what
+# it held. So it is MEASURED, on every run: SQLite hands each statement over
+# with its values filled in, and any that compares a *_at column with a bare
+# date is recorded under the app.py function that asked. run.py names them at
+# the end against its known list, in both directions.
+BARE_DATE_SEEN = {}
+_APP_FILE = os.path.abspath(m.__file__)
+_BARE = r"'\d{4}-\d{2}-\d{2}'"
+_BARE_DATE = [
+    re.compile(r"\b((?:\w+\.)?\w+_at)\s*(?:>=|<=|>|<|=)\s*" + _BARE, re.I),
+    re.compile(_BARE + r"\s*(?:>=|<=|>|<)\s*((?:\w+\.)?\w+_at)\b", re.I),
+    re.compile(r"\b((?:\w+\.)?\w+_at)\s+BETWEEN\s+" + _BARE, re.I),
+]
+
+
+def _moment_against_date(sql):
+    columns = {col.lower() for rx in _BARE_DATE for col in rx.findall(sql)}
+    if not columns:
+        return
+    import traceback
+    for frame in reversed(traceback.extract_stack()[:-1]):
+        if os.path.abspath(frame.filename) == _APP_FILE:
+            for col in columns:
+                key = (frame.name, col)
+                BARE_DATE_SEEN[key] = BARE_DATE_SEEN.get(key, 0) + 1
+            return
+
+
+_real_connect = sqlite3.connect
+
+
+def _connect_watched(*args, **kwargs):
+    conn = _real_connect(*args, **kwargs)
+    conn.set_trace_callback(_moment_against_date)
+    return conn
+
+
+sqlite3.connect = _connect_watched
+
+
 def coverage_report():
     """(exercised, untested, by_area) for every page a person can open.
 

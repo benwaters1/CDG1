@@ -474,6 +474,31 @@ COVERAGE_KNOWN_GAPS = set()
 # set(), not {}: {} is a dict, and the check below does set arithmetic on this.
 
 
+# Queries that compare a stored moment (a *_at column, an instant in UTC) with
+# a bare date, by the function that asked and the column -- measured on every
+# full run by _harness, which watches each statement with its values filled
+# in. A bare date there is midnight UTC, an hour or two into the house's day.
+#
+# What is left, and why. Checked both ways like COVERAGE_KNOWN_GAPS: a new one
+# reds the run, and so does one that has been mended and is still here.
+BARE_DATE_KNOWN = {
+    ("owner_home_figures", "clock_in_at"):
+        "widened a day each way, then each shift filed by house_date_iso: right",
+    ("admin_incidents", "occurred_at"):
+        "the time as somebody typed it, local and without a zone: a date "
+        "compares with it correctly",
+    ("delivery_shortfalls", "stock_movements.created_at"): "stock -- the other agent's",
+    ("night_cost", "stock_movements.created_at"): "stock -- the other agent's",
+    ("price_changes", "stock_movements.created_at"): "stock -- the other agent's",
+    ("waste_log", "stock_movements.created_at"): "stock -- the other agent's",
+    ("fridge_log", "fridge_readings.read_at"): "kitchen -- the other agent's",
+    ("what_sells", "pos_order_lines.created_at"): "till -- the other agent's",
+    ("service_times", "sent_at"): "till -- the other agent's",
+    ("spend_by_vendor", "submitted_at"): "supplier invoices -- the other agent's",
+    ("supplier_statement", "submitted_at"): "supplier invoices -- the other agent's",
+}
+
+
 def main(argv):
     wanted = argv[1:]
     names = [n for n in SUITES if not wanted or any(w in n for w in wanted)]
@@ -561,6 +586,26 @@ def main(argv):
         except Exception as e:                       # pragma: no cover
             print(f"\n(coverage report unavailable: {e})")
 
+    # Stored moments asked about with a bare date, as measured while the
+    # suites above ran. Full runs only: a partial run does not reach every
+    # query, so an absence proves nothing about whether one was mended.
+    moments_ok = True
+    if not wanted:
+        seen = _harness.BARE_DATE_SEEN
+        fresh = sorted(k for k in seen if k not in BARE_DATE_KNOWN)
+        mended = sorted(k for k in BARE_DATE_KNOWN if k not in seen)
+        print(f"\nMOMENTS — {len(seen)} place(s) compared a stored moment with "
+              f"a bare date, {len(fresh)} of them new")
+        for fn, col in fresh:
+            print(f"    NEW  {fn}: {col} (x{seen[(fn, col)]}) -- compare with "
+                  "house_moment() or house_day_window(), or service_day_window() "
+                  "for the till")
+        if mended:
+            print("  ON THE KNOWN LIST AND NOT SEEN ANY MORE — take these off it:")
+            for fn, col in mended:
+                print(f"    {fn}: {col}")
+        moments_ok = not fresh and not mended
+
     print("\n" + "=" * 64)
     total = total_passed + len(all_failed)
     print(f"{total_passed}/{total} checks passed across {len(names)} suite(s)")
@@ -579,8 +624,11 @@ def main(argv):
     if not registry_ok:
         print("\nA suite file was written and never registered — the total"
               " above does not cover it.")
+    if not moments_ok:
+        print("\nA query compares a stored moment with a bare date, or one on "
+              "the known list has been mended — see MOMENTS above.")
     return 0 if (not all_failed and not crashed and control_ok
-                 and registry_ok and coverage_ok) else 1
+                 and registry_ok and coverage_ok and moments_ok) else 1
 
 
 if __name__ == "__main__":

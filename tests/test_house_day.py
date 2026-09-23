@@ -326,6 +326,11 @@ def _moments(s, conn, app_src):
     s.check("a house day starts at its own midnight",
             first == "2031-07-14T22:00:00+00:00" and last == "2031-07-15T22:00:00+00:00",
             detail=f"{first} .. {last}")
+    s.check("house_moment is where a house day begins, and leaves a moment alone",
+            m.house_moment("2031-07-15") == first
+            and m.house_moment(date(2031, 7, 15)) == first
+            and m.house_moment(LATE) == LATE,
+            detail=f"{m.house_moment('2031-07-15')}, {m.house_moment(LATE)}")
     w = m.house_day_window("2031-10-26")      # the clocks go back that night
     s.check("and a night the clocks change is 25 hours, not a gap",
             w == ("2031-10-25T22:00:00+00:00", "2031-10-26T23:00:00+00:00"), detail=str(w))
@@ -426,6 +431,38 @@ def _moments(s, conn, app_src):
             detail="SUBSTR(created_at, 1, 10) called it the 14th, a day past the "
                    "twelve months the privacy notice promises")
     s.check("and removes one filed the evening before", TAG + "-gone" not in left)
+
+    # A shift started at half past midnight on the 1st is the NEW month's --
+    # in the one definition of hours worked, and on the payroll rows the
+    # accountant is sent. A bare date had it in the month before.
+    emp = conn.execute("SELECT id FROM users WHERE role = 'employee' "
+                       "AND status = 'active' ORDER BY id LIMIT 1").fetchone()
+    s.check("there is an employee to clock in", emp is not None)
+    if emp:
+        conn.execute("INSERT INTO time_entries (user_id, clock_in_at, clock_out_at) "
+                     "VALUES (?, '2031-07-31T22:30:00+00:00', '2031-08-01T02:30:00+00:00')",
+                     (emp["id"],))
+        conn.commit()
+
+        def hours(first, after):
+            row = next((r for r in m.labour_hours_by_person(conn, first, after)
+                        if r["id"] == emp["id"]), None)
+            return round(row["hours"], 2) if row else 0.0
+
+        s.check("a shift from 00:30 on the 1st is worked in the new month",
+                hours("2031-08-01", "2031-09-01") == 4.0
+                and hours("2031-07-01", "2031-08-01") == 0.0,
+                detail=f"August {hours('2031-08-01', '2031-09-01')}, "
+                       f"July {hours('2031-07-01', '2031-08-01')}")
+        august = m.resolve_period("month", "2031-08-01", today=date(2031, 8, 15))
+        row = next((r for r in m.payroll_period_rows(conn, august)
+                    if r["user_id"] == emp["id"]), None)
+        s.check("and paid with it on the payroll rows",
+                row is not None and row["shifts"] >= 1 and row["hours"] >= 4.0,
+                detail=str({k: row[k] for k in ("hours", "shifts")}) if row else "no row")
+        conn.execute("DELETE FROM time_entries WHERE user_id = ? AND clock_in_at LIKE '2031-%'",
+                     (emp["id"],))
+        conn.commit()
 
     s.section("Nor does the database spell it the old way")
     found, current = {}, None
