@@ -286,6 +286,7 @@ SUITES = [
     "test_publish_consent",
     "test_room_checks",
     "test_no_show_rooms",
+    "test_what_a_stay_owes",
     "test_orphan_templates",
     "test_guest_page",
     "test_stay_cost",

@@ -42,16 +42,23 @@ def _cleanup():
 def _booking(ref, *, room_id, days_ago=3, status="confirmed", paid=0, total=800):
     conn = db()
     arrival = m.house_today() - timedelta(days=days_ago)
+    departure = arrival + timedelta(days=2)
+    # The room's agreed price is STAMPED, as create_booking stamps every real
+    # booking. The no-show message reads booking_bill, which trusts the stamp;
+    # without one it falls back to the rate card, and a fixture's 600 would be
+    # read as whatever the card says two nights cost.
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, guest_phone, arrival_date, departure_date, party_size,
-           status, payment_status, total_price, amount_paid, created_at)
-           VALUES (?, ?, ?, ?, ?, '', ?, ?, 2, ?, ?, ?, ?, ?)""",
+           status, payment_status, total_price, amount_paid, created_at,
+           room_total_quoted, room_total_quoted_for)
+           VALUES (?, ?, ?, ?, ?, '', ?, ?, 2, ?, ?, ?, ?, ?, ?, ?)""",
         (room_id, f"{TAG}-{ref}", f"tok{TAG}{ref}".lower(), f"{TAG} {ref}",
          f"zzns.{ref}@example.invalid".lower(), arrival.isoformat(),
-         (arrival + timedelta(days=2)).isoformat(), status,
+         departure.isoformat(), status,
          "paid" if paid >= total else "unpaid", total, paid,
-         datetime.now(timezone.utc).isoformat()))
+         datetime.now(timezone.utc).isoformat(),
+         total, f"{arrival.isoformat()}|{departure.isoformat()}"))
     conn.commit()
     row = conn.execute("SELECT * FROM bookings WHERE reference_code = ?",
                        (f"{TAG}-{ref}",)).fetchone()

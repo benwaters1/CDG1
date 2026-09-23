@@ -14836,6 +14836,25 @@ def stamp_room_total(conn, booking_id, amount, arrival_iso, departure_iso):
         (round(float(amount or 0), 2), f"{arrival_iso}|{departure_iso}", booking_id))
 
 
+def stay_city_tax(booking):
+    """The taxe de sejour a stay carries: the stamped figure, or none at all.
+
+    It is due per person per night actually spent. A stay that was cancelled or
+    declined spent none, and city_tax_working has always left those out of the
+    return for that reason. A stay nobody arrived for spent none either -- the
+    same fact, reached the other way -- and was being declared, charged on the
+    bill and printed on the guest's statement as though the nights had
+    happened. One place decides it, so the bill, the statement, the return and
+    the tax page cannot disagree.
+    """
+    keys = booking.keys()
+    if (booking["status"] if "status" in keys else "") in ("cancelled", "declined"):
+        return 0.0
+    if "no_show_at" in keys and booking["no_show_at"]:
+        return 0.0
+    return round(float(booking["city_tax"] or 0), 2)
+
+
 def booking_bill(conn, booking_id):
     """What a stay costs, what has been received, and what is still owed.
 
@@ -14904,7 +14923,7 @@ def booking_bill(conn, booking_id):
     # A line rather than an addition to the room total, because it carries no
     # VAT and is collected on the commune's behalf.
     if nights and booking["status"] not in ("cancelled",):
-        stay_tax = round(float(booking["city_tax"] or 0), 2)
+        stay_tax = stay_city_tax(booking)
         if stay_tax:
             lines.append({"label": "Taxe de sejour", "amount": stay_tax,
                           "kind": "city_tax"})
@@ -20603,11 +20622,16 @@ def money_due(conn, weeks=12, today=None):
         slot["items"].append({"date": day.isoformat(), "who": label,
                               "amount": round(float(amount or 0), 2), "what": what})
 
+    # What is left is what the bill says is left -- booking_bill, the one the
+    # Pay button, the chase and the guest's own page read. total_price less
+    # what was paid left out the taxe de sejour and anything added since.
     for r in conn.execute(
-            """SELECT guest_name, balance_due_date, balance_amount, amount_paid,
-                      total_price FROM bookings
-                WHERE status = 'confirmed' AND balance_due_date IS NOT NULL""").fetchall():
-        outstanding = float(r["total_price"] or 0) - float(r["amount_paid"] or 0)
+            """SELECT id, guest_name, balance_due_date FROM bookings
+                WHERE status = 'confirmed' AND balance_due_date IS NOT NULL
+                  AND balance_due_date >= ? AND balance_due_date <= ?""",
+            (today.isoformat(), end.isoformat())).fetchall():
+        bill = booking_bill(conn, r["id"])
+        outstanding = bill["owed"] if bill else 0.0
         if outstanding > 0.005:
             add(r["balance_due_date"], r["guest_name"] or "A guest", outstanding, "Room balance")
 
@@ -35684,7 +35708,8 @@ def admin_tax():
     today = house_today()
     stays = conn.execute(
         """SELECT party_size, guests_under_18, arrival_date, departure_date, city_tax
-           FROM bookings WHERE status = 'confirmed' AND arrival_date >= ?""",
+           FROM bookings WHERE status = 'confirmed' AND no_show_at IS NULL
+            AND arrival_date >= ?""",
         (date(today.year, 1, 1).isoformat(),)).fetchall()
     # What was actually charged. Working out what it WOULD have been for stays
     # that were never charged it would tell the owner they owe the commune money
@@ -48214,14 +48239,19 @@ def mark_booking_no_show(booking_id):
     # What is owed on it does not answer itself. booking_bill is the one
     # definition of what a stay owes, so the figure quoted here is the figure
     # every other page would quote.
-    owed = 0.0
-    try:
-        owed = round(float(booking["total_price"] or 0) - float(booking["amount_paid"] or 0), 2)
-    except (TypeError, ValueError):
-        owed = 0.0
+    #
+    # It says so and it now does so: this read total_price less what was paid,
+    # under a comment claiming the bill. Read after the stamp above, so the
+    # taxe de sejour has already come off -- no night was spent.
+    bill = booking_bill(conn, booking_id)
+    owed = round(bill["owed"], 2) if bill else 0.0
+    tax_dropped = round(float(booking["city_tax"] or 0), 2)
     conn.commit()
     conn.close()
     msg = f"{booking['reference_code']} marked as not arrived."
+    if tax_dropped > 0:
+        msg += (f" The EUR {tax_dropped:,.2f} taxe de sejour is off the bill: no "
+                "night was spent, so none is owed to the commune.")
     if owed > 0:
         msg += (f" EUR {owed:,.2f} of it is unpaid — decide whether to chase it "
                 "or write it off; nothing has been charged or refunded.")
@@ -53896,8 +53926,12 @@ def money_ahead(conn, *, days=90, today=None):
                 WHERE bookings.status = 'confirmed'
                   AND bookings.arrival_date >= ? AND bookings.arrival_date <= ?""",
             (today.isoformat(), last.isoformat())).fetchall():
-        due = round((b["total_price"] or 0) + (b["city_tax"] or 0)
-                    - (b["discount_amount"] or 0) - (b["amount_paid"] or 0), 2)
+        # The bill's own figure. This took the discount off total_price a
+        # second time -- total_price is already net of it -- so every stay
+        # booked with a code was forecast short by its discount, and anything
+        # added to a stay afterwards was not forecast at all.
+        bill = booking_bill(conn, b["id"])
+        due = round(bill["owed"], 2) if bill else 0.0
         if due > 0.01:
             incoming.append({"date": b["arrival_date"], "amount": due,
                              "label": f"{b['guest_name']} — {b['room_name'] or 'room'}",
@@ -72415,6 +72449,8 @@ def city_tax_arrears(conn):
                  LEFT JOIN rooms ON rooms.id = bookings.room_id
                 WHERE bookings.status = 'confirmed'
                   AND COALESCE(bookings.city_tax, 0) = 0
+                  -- Nobody arrived, so there are no nights to charge for.
+                  AND bookings.no_show_at IS NULL
                 ORDER BY bookings.arrival_date DESC""").fetchall():
         arrival = parse_date(booking["arrival_date"])
         departure = parse_date(booking["departure_date"])
@@ -72456,6 +72492,9 @@ def charge_city_tax_now(conn, booking_id):
         return False, "No such booking."
     if float(booking["city_tax"] or 0) > 0:
         return False, "That stay already carries the tax."
+    if booking["no_show_at"]:
+        return False, ("Nobody arrived for that stay, so no night was spent and "
+                       "no tax is due on it.")
     arrival = parse_date(booking["arrival_date"])
     departure = parse_date(booking["departure_date"])
     nights = (departure - arrival).days if (arrival and departure) else 0
@@ -72497,7 +72536,9 @@ def city_tax_working(conn, start, end):
     exempt nights as well as chargeable ones.
 
     Cancelled and declined stays are excluded: no nights were spent, so nothing
-    is owed. A stay that is unpaid is still declared — the tax is due on the
+    is owed. So is a stay nobody arrived for, which is the same fact -- it was
+    being declared, and the house would have handed the commune tax on nights
+    nobody slept. A stay that is unpaid is still declared — the tax is due on the
     nights, not on our success in collecting them — but the unpaid amount is
     reported so the house can see what it is handing over ahead of receiving.
     """
@@ -72507,6 +72548,7 @@ def city_tax_working(conn, start, end):
             """SELECT bookings.*, rooms.name AS room_name FROM bookings
                  LEFT JOIN rooms ON rooms.id = bookings.room_id
                 WHERE bookings.status = 'confirmed'
+                  AND bookings.no_show_at IS NULL
                   AND bookings.arrival_date < ?
                   AND bookings.departure_date > ?
                 ORDER BY bookings.arrival_date""", (e_iso, s_iso)).fetchall():
@@ -72612,7 +72654,7 @@ def guest_statement(conn, booking):
     # charge the house had never asked for to a document that is the guest's VAT
     # record - and disagreed with booking_bill, THE definition of what a stay
     # owes, by exactly that amount on every stay.
-    city_tax = round(float(booking["city_tax"] or 0), 2)
+    city_tax = stay_city_tax(booking)
     adults = max(0, int(booking["party_size"] or 0) - int(booking["guests_under_18"] or 0))
 
     vat = vat_breakdown(
