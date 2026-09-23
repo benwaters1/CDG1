@@ -350,6 +350,10 @@ AUTOMATION_SETTING_DEFAULTS = {
     # OFF until somebody turns it on. The switch is the last thing between a
     # half-configured deployment and the house posting to Instagram.
     "automation_social_publish_enabled": "0",
+    # On: it asks nobody until the accounts are connected and the app's id and
+    # secret are in, and after that it is what finds a dead token before a post
+    # does.
+    "automation_meta_token_enabled": "1",
     "automation_social_horizon_days": "28",
     "automation_maintenance_enabled": "1",
 }
@@ -6782,7 +6786,7 @@ NAV_AREAS = {
         "photo_tray", "set_aside_arrival", "bring_back_arrival",
         "suggest_post_words", "use_suggested_words",
         "approve_social_post", "unapprove_social_post",
-        "connect_social_accounts",
+        "connect_social_accounts", "check_social_token",
         "publish_social_post_now",
         "arrival_to_post",
         "arrival_to_site", "site_photographs", "put_back_site_photo",
@@ -26307,28 +26311,68 @@ def owner_home_warnings(conn, today):
     # below names the CAR, which is the more useful sentence, and counting
     # both would put two lines on the panel about one lapsed van policy.
     # THE META TOKEN, which fails in the worst way a thing can fail: a
-    # long-lived one lasts about sixty days, everything works, everybody
+    # person's token lasts about sixty days, everything works, everybody
     # forgets, and one evening two months later a post does not go out and
-    # nothing says so. It closes itself like everything else here — renew the
-    # token, set the new date, and the line goes.
+    # nothing says so. It closes itself like everything else here -- a new
+    # token, or Meta's next answer, and the line goes.
+    #
+    # WHAT META SAID COMES FIRST. A token Meta says is dead is a blocker
+    # however many days a date claims are left, and one it reports no expiry
+    # for needs no date at all. Every line goes to the connect page, because
+    # that is where each of them is put right.
     if meta_configured(conn):
-        left = meta_token_days_left(conn)
-        if left is None:
+        state = meta_token_state(conn)
+        left = state["days_left"]
+        if state["kind"] == "invalid":
+            add("blocker", "Meta says the token no longer works",
+                f"{state['problem']}. Nothing is going out on Instagram or the "
+                "Page until a new one is pasted in.",
+                1, "connect_social_accounts")
+        elif state["kind"] == "unknown":
             add("watch", "Nobody has said when the Meta token runs out",
                 "Instagram and the Page are connected, but with no expiry "
                 "recorded there is no warning before it lapses — and the "
-                "first sign would be a post that quietly did not go out.",
-                1, "admin_automation")
-        elif left < 0:
+                "first sign would be a post that quietly did not go out. "
+                + ("Meta has not answered about it yet; the daily check will "
+                   "ask again." if meta_can_ask(conn) else
+                   "Put the app ID and secret in and the app will ask Meta "
+                   "itself."),
+                1, "connect_social_accounts")
+        elif left is not None and left < 0:
             add("blocker", "The Meta token has run out",
                 f"It lapsed {abs(left)} day{'' if abs(left) == 1 else 's'} ago. "
                 "Nothing is going out on Instagram or the Page until it is "
-                "renewed.", 1, "admin_automation")
-        elif left <= META_TOKEN_WARN_DAYS:
+                "renewed.", 1, "connect_social_accounts")
+        elif left is not None and left <= META_TOKEN_WARN_DAYS:
             add("watch", "The Meta token is about to run out",
                 f"{left} day{'' if left == 1 else 's'} left. Renewing it on a "
                 "quiet morning is easier than finding out because a post did "
-                "not go.", 1, "admin_automation")
+                "not go.", 1, "connect_social_accounts")
+        # INSTAGRAM'S OWN CLOCK, separate from the token's. Meta lists the
+        # permissions that survive its ninety-day data access expiry: the
+        # Page's are on the list and Instagram's two are not. So a token Meta
+        # reports no expiry for can still stop posting to Instagram on this
+        # date while the Page carries on -- and only a person can put it right,
+        # by making a new token.
+        until = parse_date(state["data_access_until"])
+        if (until and state["kind"] != "invalid"
+                and meta_setting(conn, "meta_ig_user_id")):
+            gone = (until - today).days
+            if gone < 0:
+                add("blocker", "Meta's access for Instagram has ended",
+                    f"It ended on {until.isoformat()}. Meta keeps the Page's "
+                    "permissions past that date and not Instagram's, so expect "
+                    "Instagram to refuse posts until a new token is made in the "
+                    "Graph API Explorer and pasted on the connect page.",
+                    1, "connect_social_accounts")
+            elif gone <= META_TOKEN_WARN_DAYS:
+                when = "today" if gone == 0 else f"in {gone} day{'' if gone == 1 else 's'}"
+                add("watch", "Meta's access for Instagram is about to end",
+                    f"On {until.isoformat()}, {when}. Instagram's permissions "
+                    "are not among the ones Meta keeps after that, so make a new "
+                    "token in the Graph API Explorer and paste it on the connect "
+                    "page before then; the app does the rest.",
+                    1, "connect_social_accounts")
 
     uncovered = lapsed_cover(conn, today, include_vehicles=False)
     if uncovered:
@@ -31832,7 +31876,7 @@ PALETTE_PAGES = [
      "social post website image set aside"),
     ("Connect Instagram and the Page", "connect_social_accounts",
      "meta facebook instagram token connect publish social account expires "
-     "page id business"),
+     "page id business app secret renew graph explorer"),
     ("Photographs swapped on the site", "site_photographs",
      "website site photograph picture replace swap squarespace mirror our own "
      "put back revert"),
@@ -60612,10 +60656,17 @@ def suggest_photo_caption(image_bytes):
 # users who hold a role on the app. Nobody is waiting on Meta.
 #
 # WHAT DOES BITE IS THE TOKEN, and it fails in the worst way there is: a
-# long-lived token lasts about sixty days, everything works, everybody forgets,
+# person's token lasts about sixty days, everything works, everybody forgets,
 # and one evening two months later a post does not go out and nothing says so.
-# So the expiry is stored, the owner home warns before it lapses, and a run
-# that finds it gone says which post did not go and why.
+# So the app does not keep that kind. It asks Meta what the token is, and swaps
+# one that lapses for the Page's own token -- which Meta's documentation says
+# has no expiration date -- at the moment it is pasted in, and daily after.
+#
+# WHAT IT CANNOT DO is the one thing Meta keeps for a person. Data access
+# lapses ninety days after whoever made the token last authorised the app, and
+# Instagram's two permissions are not on Meta's list of those that survive it
+# (the Page's are). Only that person can authorise it again, so the owner home
+# says when, by Meta's own date, two weeks ahead.
 #
 # AND META HAS TO SEE THE PHOTOGRAPH. It fetches the image itself, from a
 # public URL — which every other photograph route here deliberately is not,
@@ -60626,7 +60677,24 @@ def suggest_photo_caption(image_bytes):
 
 META_GRAPH = "https://graph.facebook.com/v21.0"
 META_SETTING_KEYS = ("meta_page_id", "meta_ig_user_id", "meta_access_token",
-                     "meta_token_expires_at")
+                     "meta_token_expires_at", "meta_app_id", "meta_app_secret")
+# What Meta said about the token the house holds. All of it is about ONE
+# token, so all of it goes the moment a different one is pasted in or swapped
+# for -- kept, it would be a verdict on a token that is no longer here.
+META_VERDICT_KEYS = ("meta_token_checked_at", "meta_token_type",
+                     "meta_token_problem", "meta_token_no_expiry",
+                     "meta_token_expiry_from_meta", "meta_data_access_expires_at")
+# What to tick in the Graph API Explorer, from Meta's documentation. Instagram
+# publishing through Facebook Login needs instagram_basic,
+# instagram_content_publish and pages_read_engagement; a photograph on the
+# Page needs pages_manage_posts; and finding the Page's own token (me/accounts)
+# needs pages_show_list. A Page held in a business portfolio also needs the
+# two ads permissions for Instagram. An extra tick costs nothing under
+# Standard Access; a missing one is a post refused on its first night.
+META_PERMISSIONS_TO_TICK = ("pages_show_list", "pages_read_engagement",
+                            "pages_manage_posts", "instagram_basic",
+                            "instagram_content_publish")
+META_PERMISSIONS_IF_PORTFOLIO = ("ads_management", "ads_read")
 # How long before a token lapses the house starts being told. Two weeks is
 # long enough to do something about it on a quiet morning rather than at the
 # moment a post fails.
@@ -60646,31 +60714,79 @@ def meta_configured(conn):
                      or meta_setting(conn, "meta_page_id")))
 
 
-def meta_token_days_left(conn):
-    """Days until the token lapses, or None if nobody has said when.
+def _days_until(value):
+    """Whole days from the house's today to a stored date, or None."""
+    when = parse_date(value)
+    return (when - house_today()).days if when else None
 
-    None is not "fine" — it is "nobody knows", which is why the warning says
-    so rather than staying quiet.
+
+def meta_token_state(conn):
+    """What is known about the token, in one of five words.
+
+      invalid    Meta was asked and said the token no longer works
+      no_expiry  Meta was asked and reported no expiry date for it
+      expires    there is a date -- Meta's once it has answered, else typed
+      unknown    Meta has not answered and nobody has typed a date
+      none       there is no token at all
+
+    NO_EXPIRY IS WORDED WITH CARE. Meta's documentation says a long-lived Page
+    token does not have an expiration date; what debug_token sends for one is
+    an expires_at of 0, and its reference page does not say what 0 means. So
+    the page says exactly what is known -- Meta reports no expiry -- and never
+    promises "never".
     """
-    when = parse_date(meta_setting(conn, "meta_token_expires_at"))
-    if not when:
-        return None
-    return (when - house_today()).days
+    def get(key):
+        return meta_setting(conn, key)
+
+    state = {"checked_at": get("meta_token_checked_at"),
+             "problem": get("meta_token_problem").rstrip(". "),
+             "type": get("meta_token_type"),
+             "data_access_until": get("meta_data_access_expires_at")}
+    if not get("meta_access_token"):
+        return dict(state, kind="none", days_left=None)
+    if state["problem"]:
+        return dict(state, kind="invalid", days_left=None)
+    if state["checked_at"]:
+        if get("meta_token_no_expiry") == "1":
+            return dict(state, kind="no_expiry", days_left=None)
+        left = _days_until(get("meta_token_expiry_from_meta"))
+    else:
+        left = _days_until(get("meta_token_expires_at"))
+    return dict(state, kind="unknown" if left is None else "expires", days_left=left)
 
 
-def meta_request(path, params):
-    """One POST to the Graph API. (ok, payload_or_message).
+def _set_meta(conn, key, value):
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value or ""))
+
+
+def meta_can_ask(conn):
+    """Whether the app holds what it needs to ask Meta about the token."""
+    return all(meta_setting(conn, key) for key in
+               ("meta_access_token", "meta_app_id", "meta_app_secret"))
+
+
+def meta_request(path, params, method="POST"):
+    """One call to the Graph API. (ok, payload_or_message).
 
     urllib, like every other outbound call here. Never raises: publishing
     happens on a schedule with nobody watching, so a failure has to come back
     as something the row can record and the owner can read tomorrow.
+
+    GET as well as POST, for asking Meta what a token is -- through THIS
+    function rather than a second one, so there is still exactly one way out
+    to Meta and the harness standing it down covers all of it.
     """
     # The NAMES, not the modules: app.py imports urlopen/Request/urlencode
     # directly, and `urllib.request.X` is an AttributeError here because the
     # submodule was never imported. It reads as though it should work, which
     # is the whole problem with it.
-    data = urlencode({k: v for k, v in params.items() if v is not None}).encode()
-    req = Request(f"{META_GRAPH}/{path}", data=data, method="POST")
+    query = urlencode({k: v for k, v in params.items() if v is not None})
+    if method == "GET":
+        req = Request(f"{META_GRAPH}/{path}?{query}", method="GET")
+    else:
+        req = Request(f"{META_GRAPH}/{path}", data=query.encode(), method="POST")
     try:
         with urlopen(req, timeout=60) as resp:
             return True, json.loads(resp.read().decode("utf-8") or "{}")
@@ -60683,6 +60799,173 @@ def meta_request(path, params):
         return False, message
     except (URLError, OSError, ValueError) as e:
         return False, "could not reach Meta (%s)" % e
+
+
+def _meta_date(ts):
+    """A Unix time from Meta as the house's calendar date, or "" for none.
+
+    0 is "", on purpose: it is what Meta sends for a token with no expiry
+    date, and read as a date it would be a token that lapsed in 1970.
+    """
+    try:
+        ts = int(ts or 0)
+    except (TypeError, ValueError):
+        return ""
+    if ts <= 0:
+        return ""
+    return house_date_iso(datetime.fromtimestamp(ts, timezone.utc).isoformat())
+
+
+def check_meta_token(conn):
+    """Ask Meta what the stored token is. (ok, what_to_tell_somebody).
+
+    debug_token, asked with the app's own id and secret, answers with the
+    token's real expiry, whether it still works, what kind it is and when
+    Meta's access to the accounts' data ends. That replaces the date the owner
+    used to type in, which was right only as long as nobody forgot to change
+    it -- so an answer clears a typed date, which was about the same token.
+
+    Needs the app id and secret; without them nothing is sent, and the answer
+    says which is missing. A call that does not reach Meta, or an answer that
+    does not say whether the token works, changes nothing: the last real
+    answer stands rather than a guess.
+    """
+    token = meta_setting(conn, "meta_access_token")
+    app_id = meta_setting(conn, "meta_app_id")
+    secret = meta_setting(conn, "meta_app_secret")
+    if not token:
+        return False, "There is no token to ask Meta about yet."
+    missing = [label for label, value in (("the app ID", app_id),
+                                          ("the app secret", secret)) if not value]
+    if missing:
+        return False, "Meta can only be asked with %s." % " and ".join(missing)
+    ok, payload = meta_request("debug_token", {
+        "input_token": token, "access_token": "%s|%s" % (app_id, secret)},
+        method="GET")
+    if not ok:
+        return False, "Meta could not be asked: %s" % payload
+    data = (payload or {}).get("data") or {}
+    if "is_valid" not in data:
+        return False, "Meta answered without saying whether the token works."
+    _set_meta(conn, "meta_token_checked_at", datetime.now(timezone.utc).isoformat())
+    _set_meta(conn, "meta_token_type", str(data.get("type") or "").upper())
+    _set_meta(conn, "meta_data_access_expires_at",
+              _meta_date(data.get("data_access_expires_at")))
+    _set_meta(conn, "meta_token_expires_at", "")
+    if not data.get("is_valid"):
+        reason = ((data.get("error") or {}).get("message")
+                  or "Meta says this token no longer works")
+        _set_meta(conn, "meta_token_problem", reason)
+        _set_meta(conn, "meta_token_no_expiry", "")
+        _set_meta(conn, "meta_token_expiry_from_meta", "")
+        return False, "Meta says the token no longer works: %s" % reason
+    _set_meta(conn, "meta_token_problem", "")
+    expires = _meta_date(data.get("expires_at"))
+    _set_meta(conn, "meta_token_expiry_from_meta", expires)
+    _set_meta(conn, "meta_token_no_expiry", "" if expires else "1")
+    if expires:
+        return True, "Meta says the token is good until %s." % expires
+    return True, "Meta says the token is good and reports no expiry date for it."
+
+
+def make_meta_token_last(conn):
+    """Swap a token that lapses for the Page's own, which does not. (ok, message).
+
+    Meta's documented route, step by step:
+
+      1. exchange the person's token for a long-lived one (fb_exchange_token)
+      2. ask for the Pages that long-lived token manages (me/accounts), which
+         carries each Page's own token -- and Meta's documentation says a
+         long-lived Page token does not have an expiration date
+      3. keep THIS house's Page's token, and ask Meta about it again
+
+    Which Page is the house's: the Page ID when there is one, otherwise the
+    Page the Instagram account is linked to. Never simply the first one
+    listed -- a person who manages two Pages would have the house posting as
+    the other.
+
+    NOTHING IS REPLACED UNLESS EVERY STEP WORKED. A swap that stopped halfway
+    and wrote the long-lived PERSON's token over a working one would be a
+    token that lapses in sixty days, put there by the thing meant to stop that.
+    """
+    token = meta_setting(conn, "meta_access_token")
+    app_id = meta_setting(conn, "meta_app_id")
+    secret = meta_setting(conn, "meta_app_secret")
+    page_id = meta_setting(conn, "meta_page_id")
+    ig_user = meta_setting(conn, "meta_ig_user_id")
+    if not (token and app_id and secret and (page_id or ig_user)):
+        return False, ("Swapping to the Page's own token needs the token, the "
+                       "app ID and secret, and the Page or Instagram ID.")
+    ok, long_lived = meta_request("oauth/access_token", {
+        "grant_type": "fb_exchange_token", "client_id": app_id,
+        "client_secret": secret, "fb_exchange_token": token}, method="GET")
+    if not ok or not (long_lived or {}).get("access_token"):
+        return False, "Meta would not extend the token: %s" % long_lived
+    # instagram_business_account only when it is needed to find the Page: it
+    # is the one field here that asks for an Instagram permission.
+    fields = "id,access_token" + ("" if page_id else ",instagram_business_account")
+    ok, pages = meta_request("me/accounts", {
+        "fields": fields, "limit": "100",
+        "access_token": long_lived["access_token"]}, method="GET")
+    if not ok:
+        return False, "Meta would not list the Pages the token manages: %s" % pages
+
+    def ours(page):
+        if page_id:
+            return str(page.get("id") or "") == page_id
+        linked = page.get("instagram_business_account") or {}
+        return str(linked.get("id") or "") == ig_user
+
+    match = next((p for p in (pages or {}).get("data") or []
+                  if ours(p) and p.get("access_token")), None)
+    if not match:
+        return False, ("Meta lists no %s among the Pages this token manages, so "
+                       "there is no Page token to swap to. Make the token as "
+                       "somebody who manages the Page, with pages_show_list "
+                       "ticked." % ("Page %s" % page_id if page_id
+                                    else "Page linked to that Instagram account"))
+    _set_meta(conn, "meta_access_token", match["access_token"])
+    for key in META_VERDICT_KEYS:
+        _set_meta(conn, key, "")
+    # The CHANGE, never the value -- as on the connect form.
+    log_audit(conn, "meta_token_swapped_for_page_token",
+              target=str(match.get("id") or ""))
+    checked, said = check_meta_token(conn)
+    return checked, "Swapped for the Page's own token. " + said
+
+
+def settle_meta_token(conn):
+    """Ask Meta about the token, and make it last if it is the kind that lapses.
+
+    The ONE sequence the save, the button and the daily job all run, so none
+    of them can quietly do it differently -- the bulk-action lesson, where
+    the behaviour lived in one route and never happened anywhere else.
+    """
+    ok, said = check_meta_token(conn)
+    if ok and meta_token_state(conn)["kind"] == "expires":
+        ok, said = make_meta_token_last(conn)
+    return ok, said
+
+
+def run_meta_token_job(conn):
+    """Daily: ask Meta about the token, and make it last if it lapses.
+
+    Sends nothing at all until the accounts are connected and the app's id
+    and secret are in, so a house that has not set up publishing asks nobody.
+
+    A token Meta says is dead is an ANSWER, and the owner home already
+    carries it as a blocker. Meta not answering, or refusing the swap, is the
+    job not doing its work -- so that raises, and two days of it becomes a
+    task like any other job that has stopped working. Returning the sentence
+    instead would record a success that said "failed" in its own words.
+    """
+    if not (meta_configured(conn) and meta_can_ask(conn)):
+        return "not connected"
+    ok, said = settle_meta_token(conn)
+    conn.commit()
+    if not ok and meta_token_state(conn)["kind"] != "invalid":
+        raise JobFailed(said)
+    return said
 
 
 def ensure_publish_token(conn, post_id):
@@ -60716,8 +60999,15 @@ def publish_social_post(conn, post):
     if not meta_configured(conn):
         return False, ("Instagram and the Page are not connected yet — see "
                        "DEPLOY.md")
-    left = meta_token_days_left(conn)
+    state = meta_token_state(conn)
+    left = state["days_left"]
     token = meta_setting(conn, "meta_access_token")
+    if state["kind"] == "invalid":
+        # Not tried. Meta has already said this token is dead, and the job
+        # asking it to publish every five minutes regardless would be a door
+        # knocked on long after it was shut.
+        return False, ("Meta says the token no longer works (%s) — paste a new "
+                       "one on the connect page" % state["problem"])
     if left is not None and left < 0:
         return False, ("the Meta token lapsed %d days ago and has to be "
                        "renewed" % abs(left))
@@ -60836,14 +61126,19 @@ def social_photo_public(token):
     return resp
 
 
-def meta_token_tail(conn):
-    """The last four characters of the token, or "" if there is none.
+def credential_tail(value):
+    """The last four characters of a credential, or "" if there is none.
 
-    Enough to tell one token from another when you are looking at two tabs,
-    and not enough to be worth anything to anybody who sees the screen.
+    Enough to tell one from another when you are looking at two tabs, and not
+    enough to be worth anything to anybody who sees the screen.
     """
-    token = meta_setting(conn, "meta_access_token")
-    return token[-4:] if len(token) > 8 else ("set" if token else "")
+    value = value or ""
+    return value[-4:] if len(value) > 8 else ("set" if value else "")
+
+
+def meta_token_tail(conn):
+    """The last four characters of the token, or "" if there is none."""
+    return credential_tail(meta_setting(conn, "meta_access_token"))
 
 
 @app.route("/management/social/connect", methods=["GET", "POST"])
@@ -60856,76 +61151,112 @@ def connect_social_accounts():
     characters in the HTML, so anybody looking over a shoulder at View Source,
     and every cache and history between here and there, has it. The page shows
     the last four characters and nothing else, which is enough to tell one
-    token from another and worth nothing to anybody who sees the screen.
+    token from another and worth nothing to anybody who sees the screen. The
+    app secret is handled the same way, because with the app id it is what
+    lets anybody ask Meta about, and swap, the house's token.
 
     AND AN EMPTY BOX MEANS "LEAVE IT ALONE", not "delete it". Otherwise
     correcting the expiry date -- the field somebody actually comes back to
     edit -- would silently disconnect the account, and the first sign would be
-    a post that did not go out.
+    a post that did not go out. A box that is not on the page at all means the
+    same: once Meta answers for the expiry there is no date box, and a date box
+    that is not there is not a request to clear the date.
 
-    THE EXPIRY IS TYPED RATHER THAN INFERRED. Meta shows it on the token
-    itself; guessing sixty days from today would be a date the app made up,
-    and a warning built on a made-up date is worse than no warning, because it
-    is believed.
+    THE EXPIRY IS META'S WHEN META CAN BE ASKED, and typed only until then.
+    Guessing sixty days from today would be a date the app made up, and a
+    warning built on a made-up date is worse than no warning, because it is
+    believed.
+
+    AND A NEW TOKEN IS ASKED ABOUT AS IT IS SAVED, not tomorrow. The Graph API
+    Explorer's token lasts about an hour; left for the daily job it would be
+    dead before anybody asked Meta to make it last.
     """
     conn = get_db()
     if request.method == "POST":
         changed = []
         for key, field in (("meta_page_id", "page_id"),
-                           ("meta_ig_user_id", "ig_user_id")):
+                           ("meta_ig_user_id", "ig_user_id"),
+                           ("meta_app_id", "app_id")):
+            if field not in request.form:
+                continue
             value = (request.form.get(field) or "").strip()
             if value != meta_setting(conn, key):
-                conn.execute(
-                    "INSERT INTO app_settings (key, value) VALUES (?, ?) "
-                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                    (key, value))
+                _set_meta(conn, key, value)
                 changed.append(field.replace("_", " "))
 
         token = (request.form.get("access_token") or "").strip()
-        if token:
-            conn.execute(
-                "INSERT INTO app_settings (key, value) VALUES "
-                "('meta_access_token', ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (token,))
+        if token and token != meta_setting(conn, "meta_access_token"):
+            _set_meta(conn, "meta_access_token", token)
+            # What Meta said was about the OLD token -- its expiry, its kind,
+            # whether it worked. Kept, the page would show a verdict on a
+            # token that is no longer here.
+            for key in META_VERDICT_KEYS:
+                _set_meta(conn, key, "")
             changed.append("the token")
 
-        when_raw = (request.form.get("expires_on") or "").strip()
-        if when_raw and not parse_date(when_raw):
-            conn.close()
-            flash("That expiry date could not be read. Use the date picker, "
-                  "or leave it blank to say nobody knows.", "error")
-            return redirect(url_for("connect_social_accounts"))
-        if when_raw != meta_setting(conn, "meta_token_expires_at"):
-            conn.execute(
-                "INSERT INTO app_settings (key, value) VALUES "
-                "('meta_token_expires_at', ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (when_raw,))
-            changed.append("when it runs out")
+        secret = (request.form.get("app_secret") or "").strip()
+        if secret and secret != meta_setting(conn, "meta_app_secret"):
+            _set_meta(conn, "meta_app_secret", secret)
+            changed.append("the app secret")
+
+        if "expires_on" in request.form:
+            when_raw = (request.form.get("expires_on") or "").strip()
+            if when_raw and not parse_date(when_raw):
+                conn.close()
+                flash("That expiry date could not be read. Use the date picker, "
+                      "or leave it blank to say nobody knows.", "error")
+                return redirect(url_for("connect_social_accounts"))
+            if when_raw != meta_setting(conn, "meta_token_expires_at"):
+                _set_meta(conn, "meta_token_expires_at", when_raw)
+                changed.append("when it runs out")
 
         # The CHANGE is recorded, never the value. An audit trail holding a
         # live credential is a second place it has to be kept safe.
         if changed:
             log_audit(conn, "social_accounts_connected",
                       target=", ".join(changed))
+        asked = None
+        if (set(changed) & {"the token", "the app secret", "app id"}
+                and meta_can_ask(conn)):
+            asked = settle_meta_token(conn)
         conn.commit()
         conn.close()
         flash("Saved." if changed else "Nothing was different.", "success")
+        if asked:
+            flash(asked[1], "success" if asked[0] else "error")
         return redirect(url_for("connect_social_accounts"))
 
+    token_state = meta_token_state(conn)
     state = {
         "page_id": meta_setting(conn, "meta_page_id"),
         "ig_user_id": meta_setting(conn, "meta_ig_user_id"),
+        "app_id": meta_setting(conn, "meta_app_id"),
         "token_tail": meta_token_tail(conn),
+        "secret_tail": credential_tail(meta_setting(conn, "meta_app_secret")),
+        "token_state": token_state,
+        "can_ask_meta": meta_can_ask(conn),
         "expires_on": meta_setting(conn, "meta_token_expires_at"),
-        "days_left": meta_token_days_left(conn),
+        "days_left": token_state["days_left"],
         "ready": meta_configured(conn),
         "publishing_on": get_automation_settings(conn)
                              .get("automation_social_publish_enabled") == "1",
+        "permissions": META_PERMISSIONS_TO_TICK,
+        "portfolio_permissions": META_PERMISSIONS_IF_PORTFOLIO,
     }
     conn.close()
     return render_template("management_social_connect.html", state=state)
+
+
+@app.route("/management/social/connect/check", methods=["POST"])
+@owner_required
+def check_social_token():
+    """Ask Meta about the token now, and make it last if it lapses."""
+    conn = get_db()
+    ok, said = settle_meta_token(conn)
+    conn.commit()
+    conn.close()
+    flash(said, "success" if ok else "error")
+    return redirect(url_for("connect_social_accounts"))
 
 
 @app.route("/management/social/<int:post_id>/approve", methods=["POST"])
@@ -70116,6 +70447,10 @@ AUTOMATION_JOBS = [
     # means to whoever set the time.
     ("social_publish", "automation_social_publish_enabled", None, 300,
      run_social_publish_job),
+    # Daily. Asks Meta what the token is and, if it lapses, swaps it for the
+    # Page's own token, which does not. Sends nothing until connected.
+    ("meta_token", "automation_meta_token_enabled", None, 24 * 3600,
+     run_meta_token_job),
     ("campaign_triggers", "automation_campaign_triggers_enabled", None, 21600, run_campaign_triggers_job),
     ("backup_email", "automation_backup_email_enabled", "automation_backup_interval_hours", None, run_backup_email_job),
     # Daily is enough: it works a month ahead, so a missed day costs
@@ -70358,6 +70693,7 @@ AUTOMATION_JOB_LABELS = {
     "workshop_decision": "Workshop: it will not reach the number it needs to run (once when the date is in sight, once if it passes)",
     "ical_sync": "iCal sync",
     "social_publish": "Put out approved posts whose time has come",
+    "meta_token": "Ask Meta about the Instagram token, and make it one that lasts",
     "workshop_balance_reminder": "Workshop balance-due reminders",
     "room_balance_reminder": "Room balance-due reminders (before the guest travels)",
     "event_balance_reminder": "Event balance-due reminders (a wedding balance is a bank transfer, not a tap)",

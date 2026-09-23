@@ -236,6 +236,42 @@ every = 20
 never deletes anything: the drop folder belongs to the camera, and tidying it
 is a person's decision.
 
+**Publishing to Instagram and the Page.** No App Review, and nobody at Meta
+approves anything: the house posts to its own accounts, which Standard Access
+covers. What it needs:
+
+1. The Instagram account set to **Business** and linked to the Facebook Page.
+2. A Meta app at developers.facebook.com, of type Business. Its **App ID** and
+   **App secret** are under *App settings → Basic*.
+3. A token from the **Graph API Explorer**: pick the app, *Get User Access
+   Token*, and tick the permissions the connect page lists. They are kept in
+   one place, `META_PERMISSIONS_TO_TICK` in `app.py`, so the page and this
+   note cannot disagree.
+4. The Page ID, the Instagram user ID, the token, the App ID and the App
+   secret go into the connect page (`/management/social/connect`, linked from
+   the social list). Save.
+
+Saving asks Meta about the token straight away and swaps it for the Page's own
+token, which Meta's documentation says has no expiration date. It has to be
+straight away: the Explorer's token lasts about an hour. After that the
+`meta_token` job asks Meta about it every day. A token Meta says is dead is a
+blocker on the owner home, and a day Meta cannot be reached is recorded as a
+failed run, so two in a row become a task.
+
+Then approve one post and press **Publish now**, which proves the whole chain,
+and only then switch publishing on under Automation. It stays off until
+somebody does.
+
+The one thing that still needs a person: Meta's data access lapses 90 days
+after whoever made the token last authorised the app, and Instagram's two
+permissions are not on Meta's list of those that survive it (the Page's are).
+The owner home says so two weeks ahead, by Meta's own date. The fix is step 3
+again and a paste; the app does the rest.
+
+The token and the secret are held in the database, shown only by their last
+four characters and never written to the audit trail. Being in the database,
+they are in every backup of it, so keep the backups as safe as the keys.
+
 **How production actually runs.** `python app.py` is the development server
 and is not used here. Railway reads `Procfile`, which starts gunicorn against
 `wsgi.py`. That file exists because creating the database and starting the

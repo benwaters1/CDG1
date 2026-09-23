@@ -104,6 +104,7 @@ SUITES = [
     "test_site_audit",
     "test_caption_suggestions",
     "test_social_connect",
+    "test_meta_token",
     "test_social_publishing",
     "test_camera_ingest",
     "test_reference_prefixes",
