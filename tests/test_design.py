@@ -336,4 +336,39 @@ def run():
                    + (str(small_screen[:2]) if small_screen
                       else "no small-screen rule for .g-totop at all"))
 
+    s.section("A phone carousel starts at its first card")
+    # On phones the room cards on Stay and the cards on The Estate become a
+    # sideways scroller, and .g-cards was centred. Centring a row that is
+    # wider than its container pushes half the overflow off the LEFT edge,
+    # and a browser cannot scroll to negative space -- so the first card sat
+    # at x = -667 and Chambre Emeraude could never be seen on the Stay page
+    # at all, nor La Piscine on The Estate. Nothing overflowed the DOCUMENT,
+    # which is why a sweep for sideways page-scroll passed it clean: the
+    # missing cards were inside a scroller, off its unreachable side.
+    #
+    # Checked on the source because stale exports have reverted this
+    # stylesheet three times running, and a carousel that silently loses its
+    # first two rooms looks perfectly fine to anybody who does not count them.
+    # THE LAST ONE WINS, so that is the one read. The stylesheet has thirty-
+    # five phone-width blocks; the first version of this matched the first
+    # of them, found no .g-cards in it, and failed against a file that was
+    # already correct.
+    phone_says = []
+    for block in re.finditer(
+            r"@media\s*\(max-width:\s*34rem\)\s*\{(.*?)\}\s*\}", public, re.S):
+        for rule in re.finditer(
+                r"\.g-cards[^{]*\{[^}]*?justify-content:\s*([a-z ]+?)\s*;",
+                block.group(1)):
+            phone_says.append(rule.group(1).strip())
+    s.check("at phone width the card row justifies from the start",
+            phone_says and phone_says[-1] == "start",
+            detail="phone-width .g-cards rules, in order: %s -- centring an "
+                   "overflowing scroller hides its first cards off the left "
+                   "edge, where nothing can scroll to them" % phone_says)
+    s.check("and elsewhere it centres only when it can do so safely",
+            re.search(r"\.g-cards[^{]*\{[^}]*justify-content:\s*safe\s+center",
+                      public),
+            detail="`safe center` falls back to start the moment the row "
+                   "would overflow; plain `center` does not")
+
     return s

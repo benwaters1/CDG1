@@ -9549,3 +9549,31 @@ h2.g-h2--vert,
 .g .mini-status.status-confirmed, .g .mini-status.status-paid, .g .mini-status.status-registered{ color: var(--blue-deep); border-color: var(--gilt); }
 .g .mini-status.status-pending, .g .mini-status.status-requested, .g .mini-status.status-waitlist{ color: var(--ink); }
 .g .mini-status.status-cancelled, .g .mini-status.status-declined, .g .mini-status.status-expired{ color: var(--ink-faint); text-decoration: line-through; }
+
+/* ==========================================================================
+   HOTFIX — append to the END of static/gudanes.css. Independent of the zip.
+
+   On phones (below 34rem) the room cards on Stay and the cards on The Estate
+   become a sideways carousel. `.g-cards{ justify-content: center }` and the
+   odd-count `.g-cards:has(...)` rule centre the grid; in a scroll container
+   whose tracks are wider than itself, centring pushes half the overflow off
+   the LEFT edge, which a browser cannot scroll to.
+
+   Result on the live site at 390px: the first card sits at x = -675.
+   Chambre Émeraude and Chambre du Levant can never be seen on the Stay page;
+   La Piscine can never be seen on The Estate.
+
+   "safe center" keeps the desktop centring and falls back to start when the
+   row would overflow. On phones the carousel starts at the start, and its
+   bleed matches the 16px column padding used at that width (it assumed 24px
+   and overshot the screen by 8px each side).
+   ========================================================================== */
+.g .g-cards, .g .g-cards:has(> .g-card:last-child:nth-child(odd)){ justify-content: safe center; }
+@media (max-width: 34rem){
+  .g .g-cards, .g .g-cards:has(> .g-card:last-child:nth-child(odd)){
+    justify-content: start;
+    margin-inline: calc(-1 * var(--s4));
+    padding-inline: var(--s4);
+    scroll-padding-inline: var(--s4);
+  }
+}
