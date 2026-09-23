@@ -17,8 +17,8 @@
     ========================================================================== #}
 
 {% macro approach_map(settings) %}
-{% set lat = settings.get('lat') %}
-{% set lng = settings.get('lng') %}
+{% set lat = setting(settings, 'lat') %}
+{% set lng = setting(settings, 'lng') %}
 
 <figure class="g-approach">
   <svg class="g-approach__svg g-approach__svg--wide" viewBox="0 0 720 420" role="img"

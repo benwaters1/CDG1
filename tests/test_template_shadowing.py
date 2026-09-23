@@ -27,7 +27,12 @@ TEMPLATES = os.path.join(_harness.ROOT, "templates")
 # Names the app puts in every template's namespace. A loop variable with one
 # of these names hides it for the length of the loop.
 TEMPLATE_GLOBALS = {"t", "url_for", "csrf_token", "session", "request",
-                    "icon", "emblem", "mark", "get_flashed_messages"}
+                    "icon", "emblem", "mark", "get_flashed_messages",
+                    # Read any setting off any kind of `settings`, and find the
+                    # inbox for a kind of page. Both are called as functions,
+                    # so a loop named after either would break exactly the way
+                    # t() did on staff_today.
+                    "setting", "contact_address"}
 
 
 def _loops(src):

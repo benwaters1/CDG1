@@ -7963,6 +7963,9 @@ app.jinja_env.filters["date_human"] = format_date_human
 app.jinja_env.globals["date_range"] = format_date_range
 # So a find page cannot print a prefix the app does not generate.
 app.jinja_env.globals["ref_prefix"] = REFERENCE_PREFIXES
+# Read a setting without caring what kind of object `settings` is on this page.
+app.jinja_env.globals["setting"] = lambda obj, key, default=None: read_setting(obj, key, default)
+app.jinja_env.globals["contact_address"] = lambda area: contact_address(area)
 # Money on a page was formatted inline, template by template, with
 # '%.2f'|format and a euro sign typed next to it. One definition instead, so a
 # figure reads the same wherever it appears.
@@ -22419,6 +22422,53 @@ REPLY_TO_AREAS = {
     "events": ("events", "weddings"),
     "accounts": ("accounts", "billing", "finance"),
 }
+
+
+# The address each kind of guest is told to write to, as printed on the
+# contact page. Used only when no mailbox for that area is configured -- once
+# MS_GRAPH_MAILBOXES names one, reply_to_for wins and this is not read.
+PUBLIC_CONTACT = {
+    "rooms": "ariege@chateaugudanes.com",
+    "restaurant": "ariege@chateaugudanes.com",
+    "workshops": "experience@chateaugudanes.com",
+    "events": "experience@chateaugudanes.com",
+}
+
+
+def contact_address(area):
+    """Who a guest on this kind of page should write to. Never empty.
+
+    THE LINK THIS REPLACES HAD NO ADDRESS IN IT. Four manage pages ended their
+    cancel section with "Write to us first", pointing at
+    mailto:{{ settings.get('email','') }} -- and nothing anywhere holds a
+    setting called `email`. On three of them `settings` is the allowlisted
+    site object, so the lookup came back empty and the link opened a blank
+    message to nobody; on the fourth it is a sqlite3.Row, which has no .get,
+    and the page would have answered 500 the first time that branch drew. The
+    one sentence a guest reads before cancelling had nowhere to send them.
+    """
+    return (reply_to_for(area) or PUBLIC_CONTACT.get(area)
+            or PUBLIC_CONTACT["rooms"])
+
+
+def read_setting(obj, key, default=None):
+    """One setting off whatever a template was handed as `settings`.
+
+    `settings` is not one kind of thing: the allowlisted site object on most
+    public pages, a sqlite3.Row of restaurant_settings or a workshop where a
+    route passes its own, a plain dict in the mail code, or nothing at all.
+    `settings.get(...)` works on two of those and raises on a Row -- which is
+    how the public dining page went down, twice, in two handovers. This works
+    on all four and gives `default` for a missing key, a missing column, a
+    None value, or no settings at all.
+    """
+    if obj is None:
+        return default
+    try:
+        value = obj[key]
+    except (KeyError, IndexError, TypeError):
+        return default
+    return default if value is None else value
 
 
 def reply_to_for(area):

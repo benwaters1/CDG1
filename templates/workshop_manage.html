@@ -158,7 +158,7 @@
   <details class="g-cancel-fold" style="margin-top:var(--s4);">
     <summary>I need to cancel</summary>
     <p class="g-hint" style="margin-top:var(--s3)">Registrations are non-refundable, deposit included. Write to us before you cancel — we can usually move you to another atelier instead.</p>
-    <p class="g-hint"><a href="mailto:{{ settings.get('email','') }}">Write to us first</a></p>
+    <p class="g-hint"><a href="mailto:{{ contact_address('workshops') }}">Write to us first</a></p>
     <form method="post" onsubmit="return confirm('Cancel this registration? It is non-refundable and cannot be undone.');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="cancel">

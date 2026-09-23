@@ -89,6 +89,7 @@ SUITES = [
     "test_hr_compliance",
     "test_animals",
     "test_confirmed_facts",
+    "test_settings_readable",
     "test_event_run_sheet",
     "test_card_and_rate",
     "test_seven_gaps",

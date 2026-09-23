@@ -413,7 +413,7 @@
       Write to us before you cancel — we can sometimes move your dates instead.
     </p>
     <p class="g-hint">
-      <a href="mailto:{{ settings.get('email','') }}?subject=Booking%20{{ booking['reference_code'] }}">{{ t('Write to us first') }}</a>
+      <a href="mailto:{{ contact_address('rooms') }}?subject=Booking%20{{ booking['reference_code'] }}">{{ t('Write to us first') }}</a>
     </p>
     <form method="post" onsubmit="return confirm('Cancel this booking? It is non-refundable and cannot be undone.');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

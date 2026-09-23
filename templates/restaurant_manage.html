@@ -37,7 +37,7 @@
   <details class="g-cancel-fold" style="margin-top:var(--s4);">
     <summary>I need to cancel</summary>
     <p class="g-hint" style="margin-top:var(--s3)">The kitchen cooks for one table and buys for it in advance, so tell us as early as you can.</p>
-    <p class="g-hint"><a href="mailto:{{ settings.get('email','') }}">Write to us first</a></p>
+    <p class="g-hint"><a href="mailto:{{ contact_address('restaurant') }}">Write to us first</a></p>
     <form method="post" onsubmit="return confirm('Cancel this reservation? The table is released immediately.');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="cancel">

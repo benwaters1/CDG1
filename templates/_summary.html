@@ -85,13 +85,13 @@
 
     <div class="g-recap__terms">
       <p class="g-recap__k">If you need to change it</p>
-      {% if settings.get('cancel_free_days') %}
+      {% if setting(settings, 'cancel_free_days') %}
       <p class="g-recap__t">
-        Cancel more than {{ settings.get('cancel_free_days') }} days before you
+        Cancel more than {{ setting(settings, 'cancel_free_days') }} days before you
         arrive and there is nothing to pay.
         {%- if booking.paid %} Anything already paid comes back to the same
         card within a few days.{% endif %}
-        Inside that, {{ settings.get('cancel_note',
+        Inside that, {{ setting(settings, 'cancel_note',
           'write to us and we will do what we can — this is a house, not a chain, and there is usually a way.') }}
       </p>
       {% else %}
