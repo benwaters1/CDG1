@@ -255,11 +255,26 @@ def run():
 
     s.section("The things that were already right, and must stay right")
     base = pages.get("public_base.html", "")
-    s.check("the page declares its language", '<html lang="{{ lang }}"' in base,
+    # The expression, allowing a fallback. The eleventh handover wrote
+    # {{ lang or 'en' }}, which follows the chosen language exactly as before
+    # and only adds a default -- and the literal match on {{ lang }} called
+    # that a hardcoded page. What must not happen is a fixed code.
+    lang_attr = re.search(r'<html lang="\{\{\s*lang(?:\s+or\s+\'[a-z]{2}\')?\s*\}\}"', base)
+    s.check("the page declares its language", lang_attr is not None,
             detail="hardcoded English would have a reader pronounce the French "
                    "site in English")
-    s.check("and it follows the language actually chosen", "{{ lang }}" in base,
-            detail="lang is set from current_language(), not fixed")
+    # And asked of a rendered page, because the source can read right and a
+    # context processor that stopped passing `lang` would still print "en"
+    # for everybody.
+    fr_client = _harness.m.app.test_client()
+    with fr_client.session_transaction() as sess:
+        sess["lang"] = "fr"
+    fr_page = fr_client.get("/").get_data(as_text=True)
+    s.check("and it follows the language actually chosen",
+            '<html lang="fr"' in fr_page,
+            detail="lang is set from current_language(), not fixed: "
+                   + (re.search(r'<html[^>]*>', fr_page).group(0)
+                      if re.search(r'<html[^>]*>', fr_page) else "no html tag"))
     s.check("there is a skip link past the navigation",
             'class="g-skip"' in base and 'href="#main"' in base,
             detail="without it, every page starts with the whole menu again")

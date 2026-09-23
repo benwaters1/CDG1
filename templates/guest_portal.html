@@ -15,9 +15,11 @@
   <h1>{{ profile['name'] or t('Your château account') }}</h1>
   <p class="g-p">Everything you have with us, in one place. Keep this link — it is yours, and it works without a password.</p>
 
-  {% if not stays and not ateliers and not dinners %}
+  {% if not stays and not ateliers and not dinners and not events %}
   <div class="g-mb-card">
     <p class="g-p">{{ t('Nothing booked at the moment.') }}</p>
+    {# An account with nothing in it should point at the thing to put in it. #}
+    <p style="margin-top:var(--s4)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">{{ t('Stay the night') }}</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">{{ t('The ateliers') }}</a></p>
     <p class="g-hint">Anything you book from now on will appear here.</p>
   </div>
   {% endif %}
@@ -74,8 +76,27 @@
   {% endfor %}
   {% endif %}
 
+  {# Event enquiries were missing from the account, so a couple whose only booking
+     was their wedding read "Nothing booked". Renders when the route passes `events`. #}
+  {% if events %}
+  <h2 class="section-heading">{{ t('Your events') }}</h2>
+  {% for ev in events %}
+  <div class="g-mb-card" style="margin-bottom:var(--s3);">
+    <dl class="g-facts-list">
+      <div><dt>{{ t('Occasion') }}</dt><dd>{{ ev['event_type'] }}</dd></div>
+      {% if ev['preferred_date'] %}<div><dt>{{ t('Date asked for') }}</dt><dd>{{ ev['preferred_date']|date_short }}</dd></div>{% endif %}
+      <div><dt>{{ t('Reference') }}</dt><dd>{{ ev['reference_code'] }}</dd></div>
+      <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ ev['status'] }}">{{ ev['status'] }}</span></dd></div>
+    </dl>
+    {% if ev['manage_token'] %}
+    <a href="{{ url_for('event_manage', manage_token=ev['manage_token']) }}" class="g-btn g-btn--sm" style="margin-top:var(--s2); display:inline-block;">{{ t('Manage this enquiry') }}</a>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
   <p class="g-hint" style="margin-top:var(--s4);">
-    Something not right, or something you'd like to add? Reply to any email from us and we will sort it.
+    Something not right, or something you would like to add? Reply to any email from us and we will sort it.
   </p>
 </div>
 

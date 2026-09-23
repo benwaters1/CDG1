@@ -23,8 +23,8 @@
 
     <div class="g-flex__row">
       <p class="g-field">
-        <label for="fx_when">Roughly when<span class="g-req" aria-hidden="true">*</span></label>
-        <input type="month" id="fx_when" name="rough_month" required>
+        <label for="fx_when">Roughly when <span class="g-opt">optional</span></label>
+        <input type="month" id="fx_when" name="rough_month">
       </p>
       <p class="g-field">
         <label for="fx_nights">How many nights</label>
@@ -51,6 +51,11 @@
         <option value="month">Anywhere in that month</option>
         <option value="any">Any time — tell us when it is quiet</option>
       </select>
+    </p>
+
+    <p class="g-field">
+      <label for="fx_name">Your name <span class="g-opt">optional</span></label>
+      <input type="text" id="fx_name" name="name" autocomplete="name" maxlength="120">
     </p>
 
     <p class="g-field">

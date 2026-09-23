@@ -364,16 +364,22 @@ def run():
                    "tell a right answer from a lucky one"
                    % (len(shared), len(rooms_now)))
     page = pub.get("/book").get_data(as_text=True)
+    # COUNTED ON THE ROW, not on one sentence. This counted the exact words
+    # "Shared with one other room", and the eleventh handover rewrote them to
+    # "Shared downstairs with the Chambre Tilleul" -- more specific and just as
+    # true -- so the check read zero shared rooms on a page that named both.
+    # What must hold is that each room's Bathroom row starts with the word its
+    # own column says.
+    said_shared = len(re.findall(r"<dt>Bathroom</dt><dd>\s*Shared", page))
+    said_private = len(re.findall(r"<dt>Bathroom</dt><dd>\s*Private", page))
     s.check("the page says shared exactly as often as a room shares",
-            page.count("Shared with one other room") == len(shared),
+            said_shared == len(shared),
             detail="page says shared %d time(s), %d room(s) do"
-            % (page.count("Shared with one other room"), len(shared)))
+            % (said_shared, len(shared)))
     s.check("and never calls a shared bathroom private",
-            page.count("Private, downstairs")
-            == len(rooms_now) - len(shared),
+            said_private == len(rooms_now) - len(shared),
             detail="page says private %d time(s), %d room(s) are"
-            % (page.count("Private, downstairs"),
-               len(rooms_now) - len(shared)))
+            % (said_private, len(rooms_now) - len(shared)))
 
     s.section("Nobody is told a room has no stairs unless it truly has none")
     # The room picker asks "how are you with stairs?" and, for somebody who

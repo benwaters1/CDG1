@@ -145,7 +145,7 @@
 
 <div class="g-mb-card" style="margin-top:var(--s4);">
   <h2 class="g-panel__h">{{ t('Estimated arrival time') }}</h2>
-  <p class="g-hint">{{ t("Let us know roughly when to expect you, so someone's ready.") }}</p>
+  <p class="g-hint">{{ t("Let us know roughly when to expect you, so someone is there to meet you.") }}</p>
   <form method="post" class="g-row" style="margin-top:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="arrival_time">
@@ -421,7 +421,7 @@
       <button type="submit" class="btn-text-danger">{{ t('Cancel this booking anyway') }}</button>
     </form>
   </details>
-  {% if booking['payment_status'] == 'paid' %}<p class="g-hint">Cancelling does not automatically refund a payment — contact the château about your refund.</p>{% endif %}
+  {% if booking['payment_status'] == 'paid' %}<p class="g-hint">Payments are not refunded on cancellation. Write to us first — we can often move your dates instead.</p>{% endif %}
 </div>
 
 {% endif %}

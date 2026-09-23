@@ -4,7 +4,7 @@
 <!DOCTYPE html>
 {# The real language, so a screen reader uses the right voice and the browser
    does not offer to translate a page that is already in the reader's tongue. #}
-<html lang="{{ lang }}">
+<html lang="{{ lang or 'en' }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -38,11 +38,26 @@
 <link rel="alternate" hreflang="x-default" href="{{ request.base_url }}">{% endif %}{% endif %}
 <meta property="og:site_name" content="Château de Gudanes">
 <meta property="og:type" content="website">
+{% if request %}<meta property="og:url" content="{{ request.base_url }}">
+{% endif %}<meta property="og:site_name" content="Château de Gudanes">
 <meta property="og:title" content="{% block og_title %}{{ self.title() }}{% endblock %} — Château de Gudanes">
 <meta property="og:description" content="{% block og_desc %}An eighteenth-century Class I Historic Monument in the French Pyrénées, open to guests while its restoration continues.{% endblock %}">
 <meta property="og:image" content="{% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w{% endblock %}">
+{# The large-card preview needs dimensions to render at full size rather than as
+   a thumbnail; alt describes it for the platforms that read it. The 1200x630 is
+   the standard OG ratio — the swap images destined for og:image should match it. #}
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{% block og_image_alt %}Château de Gudanes in the Ariège{% endblock %}">
 <meta property="og:locale" content="{{ 'fr_FR' if lang == 'fr' else 'en_GB' }}">
 <meta name="twitter:card" content="summary_large_image">
+{# A launch tab with a blank icon reads as unfinished. An SVG "G" in the house
+   navy carries until a real .ico/.png is dropped at these static paths. #}
+{# favicon.ico and apple-touch-icon.png taken out until the files exist: both
+   pointed at nothing in static/, so every page asked for two files and got
+   two 404s. Put them back beside the SVG when the crest is drawn as icons. #}
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2032%2032%27%3E%3Crect%20width=%2732%27%20height=%2732%27%20fill=%27%2314305f%27/%3E%3Ctext%20x=%2716%27%20y=%2722%27%20font-family=%27Georgia,serif%27%20font-size=%2720%27%20fill=%27%23e2d6c0%27%20text-anchor=%27middle%27%3EG%3C/text%3E%3C/svg%3E">
+<meta name="theme-color" content="#14305f">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
@@ -178,7 +193,7 @@
         <p class="g-navwrap__group">{{ t('Stay') }}</p>
         <a href="{{ url_for('book_rooms') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M4 20V10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10"/><path d="M4 14h16"/><path d="M9 14v6M15 14v6"/></svg>
-          {{ t('Stay Now') }}
+          {{ t('Stay the Night') }}
         </a>
         <a href="{{ url_for('workshops_public') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M12 3v6M8 5l4 4 4-4"/><path d="M6 21h12M9 21v-4a3 3 0 0 1 6 0v4"/></svg>
@@ -347,7 +362,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M4 20V10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10"/><path d="M4 14h16"/><path d="M9 14v6M15 14v6"/></svg>
           </span>
           <span class="g-bookmenu__txt">
-            <b>{{ t('Stay Now') }}</b>
+            <b>{{ t('Stay the Night') }}</b>
             <em>{{ t('A room, your own dates') }}</em>
             <span class="g-bookmenu__meta">{{ t('Five rooms · breakfast included') }}</span>
           </span>
@@ -468,8 +483,15 @@
           2 Route de Beille<br>
           Château-Verdun, Ariège 09310, France<br>
           <a href="tel:+33628069776">+33 6 28 06 97 76</a><br>
-          <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a><br>
-          <a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a>
+          {# Two bare addresses gave a guest no way to tell which to write to. The
+             contact page splits them; the footer now says so too. #}
+          <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a> <span class="g-footer__k">{{ t('stays &amp; general') }}</span><br>
+          <a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a> <span class="g-footer__k">{{ t('workshops &amp; events') }}</span>
+        </p>
+        <p class="g-footer__contact g-footer__social" style="margin:var(--s3) 0 0;">
+          <a href="{{ url_for('social_page') }}">{{ t('Photographs') }}</a> ·
+          <a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a> ·
+          <a href="https://www.facebook.com/chateaudegudanes/" rel="noopener">Facebook</a>
         </p>
       </div>
       <div>
@@ -492,22 +514,24 @@
         </ul>
       </div>
       <div>
-        <h2>{{ t('Follow') }}</h2>
+        {# Was headed "Follow" over a list that was mostly Contact, Manage a booking
+           and Terms. The social links have moved up beside the address; this is
+           the help column, and it gains the Privacy Policy the drawer already
+           carries — the footer is where a visitor expects to find it. #}
+        <h2>{{ t('Help') }}</h2>
         <ul>
-          <li><a href="{{ url_for('social_page') }}">{{ t('Photographs') }}</a></li>
-          <li><a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a></li>
-          <li><a href="https://www.facebook.com/chateaudegudanes/" rel="noopener">Facebook</a></li>
           <li><a href="/contact">{{ t('Contact') }}</a></li>
           <li><a href="{{ url_for('find_booking') }}">{{ t('Manage a booking') }}</a></li>
           <li><a href="{{ url_for('event_find') }}">{{ t('Find an enquiry') }}</a></li>
           <li><a href="{{ url_for('terms_page') }}">{{ t('Terms & Conditions') }}</a></li>
+          <li><a href="{{ url_for('privacy_page') }}">{{ t('Privacy Policy') }}</a></li>
         </ul>
       </div>
     </div>
     {# Copyright and payment share one row and one rule — they were two
        full-width bands with a rule apiece. #}
     <div class="g-footer__base">
-      <p class="g-footer__fine">© Château de Gudanes</p>
+      <p class="g-footer__fine">© <span data-year>2026</span> Château de Gudanes</p>
       <div class="g-pay">
         <ul class="g-pay__marks">
           <li>Visa</li><li>Mastercard</li><li>Amex</li>
@@ -517,6 +541,7 @@
     </div>
 </div>
 </footer>
+<script>document.querySelectorAll('[data-year]').forEach(function(e){ e.textContent=new Date().getFullYear(); });</script>
 
 {# The bar follows the page. A guest reading about weddings should be offered
    an enquiry, not a bedroom — and a guest already holding a booking should not

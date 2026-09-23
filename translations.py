@@ -635,6 +635,16 @@ FR = {
     'optional': 'facultatif',
     'total': 'au total',
     '— choose —': '— choisir —',
+    # The eleventh handover's new strings. Enquiry is demande/solicitud and ateliers stay ateliers/talleres, as elsewhere in this table.
+    'Date asked for': 'Date souhaitée',
+    'Help': 'Aide',
+    'Let us know roughly when to expect you, so someone is there to meet you.': "Dites-nous à peu près quand vous arriverez, afin que quelqu'un soit là pour vous accueillir.",
+    'Manage this enquiry': 'Gérer cette demande',
+    'Occasion': 'Occasion',
+    'The ateliers': 'Les ateliers',
+    'Your events': 'Vos événements',
+    'stays &amp; general': 'séjours et questions générales',
+    'workshops &amp; events': 'ateliers et événements',
 }
 
 ES = {
@@ -1139,6 +1149,17 @@ ES = {
     "Anything you'd like to add? (optional)": "¿Desea añadir algo? (opcional)",
     "Confirming means you've seen it, not necessarily that you agree — add a comment if you see it differently.": "Confirmar significa que la ha visto, no necesariamente que esté de acuerdo — añada un comentario si lo ve de otro modo.",
     "Notifications": "Notificaciones",
+    # The eleventh handover's new strings. Enquiry is demande/solicitud and ateliers stay ateliers/talleres, as elsewhere in this table.
+    'Date asked for': 'Fecha solicitada',
+    'Help': 'Ayuda',
+    'Let us know roughly when to expect you, so someone is there to meet you.': 'Indíquenos aproximadamente cuándo llegará, para que alguien esté allí para recibirle.',
+    'Manage this enquiry': 'Gestionar esta solicitud',
+    'Occasion': 'Ocasión',
+    'Stay the night': 'Pasar la noche',
+    'The ateliers': 'Los talleres',
+    'Your events': 'Sus eventos',
+    'stays &amp; general': 'estancias y consultas generales',
+    'workshops &amp; events': 'talleres y eventos',
 }
 
 # The public pages' own prose, kept in its own file because it is 1,900

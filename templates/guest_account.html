@@ -27,8 +27,8 @@
     <p class="g-hint" style="margin:var(--s1) 0 0;">Pay any stay below, or settle it with us when you arrive.</p>
     {% else %}
     <p class="g-hint" style="margin:var(--s1) 0 0;">
-      Card payment isn't connected yet — please settle with us directly, or reply
-      to your confirmation and we'll arrange it.
+      Card payment is not connected yet — please settle with us directly, or reply
+      to your confirmation and we will arrange it.
     </p>
     {% endif %}
   </div>
@@ -37,7 +37,7 @@
   {% set nothing = not (data.rooms or data.dinners or data.workshops or data.events) %}
   {% if nothing %}
   <div class="empty-state">
-    Nothing here yet. <a href="{{ url_for('book_rooms') }}">Look at what's available</a>.
+    Nothing here yet. <a href="{{ url_for('book_rooms') }}">Look at what is available</a>.
   </div>
   {% endif %}
 

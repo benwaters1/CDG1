@@ -1,13 +1,13 @@
 {% extends "public_base.html" %}
 {% set sticky_bar = 'none' %}
-{% block title %}My Event Inquiry{% endblock %}
+{% block title %}My Event Enquiry{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
 
 <section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
 <div class="g-mb-card">
   <p class="g-eyebrow">{{ t('Your enquiry') }}</p>
-  <h1>{{ inquiry['event_type']|capitalize }} Inquiry</h1>
+  <h1>{{ inquiry['event_type']|capitalize }} Enquiry</h1>
   <p class="g-p">Status: <span class="mini-status status-{{ inquiry['status'] }}">{{ inquiry['status'] }}</span></p>
 
   <div class="g-mb-card">
@@ -16,7 +16,7 @@
       {% if inquiry['preferred_date'] %}<div><dt>Preferred date</dt><dd>{{ inquiry['preferred_date']|date_short }}</dd></div>{% endif %}
       {% if inquiry['alternate_date'] %}<div><dt>Alternate date</dt><dd>{{ inquiry['alternate_date']|date_short }}</dd></div>{% endif %}
       {% if inquiry['guest_count'] %}<div><dt>Guests</dt><dd>{{ inquiry['guest_count'] }}</dd></div>{% endif %}
-      {% if inquiry['quoted_price'] %}<div><dt>Quoted price</dt><dd>€{{ '%.2f'|format(inquiry['quoted_price']) }}</dd></div>{% endif %}
+      {% if inquiry['quoted_price'] %}<div><dt>Quoted price</dt><dd>€{{ '{:,.2f}'.format(inquiry['quoted_price']) }}</dd></div>{% endif %}
       {# What has been received, and what is left. The page showed the quote
          and stopped, so somebody who had already sent a deposit had no way
          to see it had landed — and events had no money model at all until
@@ -47,7 +47,7 @@
     {% endif %}Leave the amount blank to pay the balance in full. Anything
     you pay now comes off the total and the rest can follow whenever suits.</p>
     {% elif bill and bill.owed > 0 %}
-    <p class="g-hint" style="margin-top:var(--s2);">Card payment isn't connected
+    <p class="g-hint" style="margin-top:var(--s2);">Card payment is not connected
     yet — do get in touch and we will arrange it.</p>
     {% endif %}
     {% if inquiry['message'] %}
@@ -61,7 +61,7 @@
   {% if inquiry['status'] == 'quoted' %}
   <p class="g-hint" style="margin-top:var(--s3);">We have sent through a quote — get in touch to confirm, or reply to the email if you have questions.</p>
   {% elif inquiry['status'] == 'new' %}
-  <p class="g-hint" style="margin-top:var(--s3);">We have received your inquiry and will be in touch shortly.</p>
+  <p class="g-hint" style="margin-top:var(--s3);">We have received your enquiry and will be in touch shortly.</p>
   {% endif %}
 
   {% if inquiry['status'] not in ('declined', 'cancelled') %}
@@ -73,10 +73,10 @@
     <summary>I need to cancel</summary>
     <p class="g-hint" style="margin-top:var(--s3)">If the date has moved rather than gone, write to us instead — an enquiry can be held.</p>
     <p class="g-hint"><a href="mailto:{{ settings.get('email','') }}">Write to us first</a></p>
-    <form method="post" onsubmit="return confirm('Cancel this inquiry? It closes the enquiry; a new one can be made at any time.');">
+    <form method="post" onsubmit="return confirm('Cancel this enquiry? It closes it; a new one can be made at any time.');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="cancel">
-      <button type="submit" class="btn-text-danger">Cancel this inquiry anyway</button>
+      <button type="submit" class="btn-text-danger">Cancel this enquiry anyway</button>
     </form>
   </details>
   {% endif %}

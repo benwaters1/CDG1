@@ -9527,3 +9527,25 @@ h2.g-h2--vert,
    only; older ones wrap as before. */
 .g h1, .g h2, .g h3, .g .g-display, .g .g-h2, .g .g-place, .g .g-step__h, .g .g-close__h{ text-wrap: balance; }
 .g .g-lede, .g .g-hero__lede, .g .g-p.g-lede-first{ text-wrap: pretty; }
+
+/* When an image fails or has not arrived, the browser paints its alt text into
+   the box as a caption — on a hero it reads as a stray label in the top-left
+   corner. color:transparent hides the painted fallback while the alt stays in
+   the accessibility tree; the box keeps its sand fill, which is the intended
+   placeholder. Relevant during the image swap, and for any slow connection. */
+.g img{ color: transparent; }
+
+/* Footer: the two addresses carry a quiet label saying which is for what. */
+.g-footer__k{ font-size: .8em; opacity: .7; margin-left: .35em; }
+
+/* At tablet width these cards run the full column before their grid kicks in, so
+   their 15px body text reached ~90 characters a line. Cap the text, not the card. */
+.g .g-incl-card__b, .g .g-homeroom__b p{ max-width: var(--m-read); }
+
+/* Status on the guest pages (portal, manage) used .mini-status / .status-*, classes
+   with no rules in this sheet — so every status rendered as plain text. A quiet
+   pill, coloured by state. The markup is already on every page; CSS only. */
+.g .mini-status{ display: inline-block; font-family: var(--ui); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; padding: .2em .65em; border: 1px solid var(--line); border-radius: 2px; color: var(--ink-soft); vertical-align: middle; }
+.g .mini-status.status-confirmed, .g .mini-status.status-paid, .g .mini-status.status-registered{ color: var(--blue-deep); border-color: var(--gilt); }
+.g .mini-status.status-pending, .g .mini-status.status-requested, .g .mini-status.status-waitlist{ color: var(--ink); }
+.g .mini-status.status-cancelled, .g .mini-status.status-declined, .g .mini-status.status-expired{ color: var(--ink-faint); text-decoration: line-through; }

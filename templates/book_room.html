@@ -129,14 +129,16 @@
           <div class="g-row">
             <p class="g-field g-field--narrow">
               <label for="br_adults">Adults<span class="g-req" aria-hidden="true">*</span></label>
+              {# max falls back to 6 when a room has no max_occupancy set, so the cap
+                 is never silently absent and a guest cannot enter twelve into a double. #}
               <input type="number" inputmode="numeric" id="br_adults" name="adults"
-                     min="1" max="{{ room['max_occupancy'] }}"
+                     min="1" max="{{ room['max_occupancy'] or 6 }}"
                      value="{{ prefill_adults or prefill_party_size or 2 }}" required>
             </p>
             <p class="g-field g-field--narrow">
               <label for="br_under18">Under 18</label>
               <input type="number" inputmode="numeric" id="br_under18" name="guests_under_18"
-                     min="0" max="{{ room['max_occupancy'] }}" value="{{ prefill_under_18 or 0 }}">
+                     min="0" max="{{ room['max_occupancy'] or 6 }}" value="{{ prefill_under_18 or 0 }}">
             </p>
           </div>
           {# Beneath both fields, not inside one — it describes the party. #}

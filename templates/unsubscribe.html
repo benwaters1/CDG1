@@ -28,7 +28,7 @@
     <strong>{{ email }}</strong> is already off the list — no announcements or
     offers are being sent to it.
   </p>
-  <p class="g-p">If you'd like to start receiving them again, just reply to any
+  <p class="g-p">If you would like to start receiving them again, just reply to any
     email from us and we will put you back on.</p>
 
 {% elif state == "done" %}
@@ -37,7 +37,7 @@
     <strong>{{ email }}</strong> will not receive any more announcements or offers.
   </p>
   <p class="g-p">
-    Emails about your own bookings will still reach you. If you'd like to be
+    Emails about your own bookings will still reach you. If you would like to be
     added back later, reply to any email from us.
   </p>
 
@@ -50,6 +50,8 @@
   <p class="g-p">
     Reply to any email from us asking to be removed and we will take care of it.
   </p>
+  {# This state had no link at all — a page with nowhere to go. #}
+  <p style="margin-top:var(--s5)"><a href="{{ url_for('preview_home') }}" class="g-btn">Back to the château</a></p>
 {% endif %}
 </div>
 </div></section>

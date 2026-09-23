@@ -38,8 +38,8 @@
             <p class="g-field">
               <label for="party_size">Guests</label>
               <input type="number" inputmode="numeric" id="party_size" name="party_size" min="1"
-                     max="{{ settings['capacity'] }}" value="{{ prefill_party_size }}" required>
-              <span class="g-hint">Up to {{ settings['capacity'] }} are seated each evening.</span>
+                     max="{{ settings['capacity'] or 20 }}" value="{{ prefill_party_size }}" required>
+              <span class="g-hint">Up to {{ settings['capacity'] or 20 }} are seated each evening.</span>
             </p>
           </div>
           <p class="g-hint">Dinner is served{% if settings['dinner_time'] %} from {{ settings['dinner_time'] }}{% endif %}. Lunch on the same terms — say so below and the kitchen buys for it.</p>

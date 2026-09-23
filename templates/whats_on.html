@@ -115,24 +115,14 @@
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/ad2839d0-7d37-4b37-914d-46ccbe96cc09/Chateau+de+Gudanes+-+Winter.jpeg?format=1000w" alt="Snow at the château" loading="lazy">
 </div>
 
-<!-- ============ THE VALLEY THROUGH THE YEAR ============ -->
-{# The page was a market list and little else. What a guest actually wants to
-   know is what the valley is like in the season they are considering. #}
-<section class="g-sec"><div class="g-wrap">
-  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M0 13h38"/><path d="M82 13h38"/>
-  <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
-  <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
-  <circle cx="60" cy="13" r="1.4"/>
-</svg>
-  <h2 class="g-place">The Valley Through the Year</h2>
-  <dl class="g-facts-list">
-    <div><dt>Spring</dt><dd>Wildflowers through the parkland, the gardens waking, and the markets filling again after winter. Snow still on the high peaks, and the transhumance beginning — herds walked up to the summer pasture, which the valley still turns out for.</dd></div>
-    <div><dt>Summer</dt><dd>The pool opens. Long evenings, dinner outside, and the vide-greniers and antique fairs at their best — Mirepoix on a Monday, Foix at the end of July. Village fêtes most weekends, and the rivers cold enough to swim in.</dd></div>
-    <div><dt>Autumn</dt><dd>Virginia creeper turns the gates scarlet. Mushrooms in the woods, the harvest through the valley, and the light that photographers come for. The quietest season here, and the one we would choose.</dd></div>
-    <div><dt>Winter</dt><dd>Ax 3 Domaines is twenty-five minutes away — eighty kilometres of piste between 1,400 and 2,400 metres. Plateau de Beille has sixty kilometres of cross-country above Les Cabannes. The thermal baths at Ax run 33–38°C all year, which is the point of them in February.</dd></div>
-  </dl>
-</div></section>
+{# Three sections were removed here, each superseded by one kept below and each
+   saying so in its own markup: THE VALLEY THROUGH THE YEAR (four seasons) by
+   MONTH BY MONTH, whose script comment reads "twelve months rather than four
+   seasons"; THE JOURNAL, PROPERLY by the standard sitewide Journal block above
+   it (the standard one carries the interest checkboxes); and THE CLOSE by THE
+   CLOSER, which is written for this page. All three had stayed on the page
+   alongside their replacements, so it had two newsletter forms and two closes,
+   with the month picker stranded after the first close. #}
 
 <!-- ============ FURTHER AFIELD ============ -->
 <section class="g-sec g-sec--sand"><div class="g-wrap">
@@ -256,8 +246,27 @@
   <p class="g-hint" style="margin-top:var(--s6)">Also within reach: Roquefixade, facing Montségur across the valley and free to walk any day of the year; the Lombrives caves; and Camon, listed among the most beautiful villages in France.</p>
 </div></section>
 
-<!-- ============ THE MARKET WEEK ============ -->
+<!-- ============ MONTH BY MONTH ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Choosing a Month</p>
+  <h2 class="g-place">The Valley, Month by Month</h2>
+  <p class="g-p">Written from this valley rather than from an average. Pick the month first and the rest follows.</p>
 
+  <div class="g-months" data-months>
+    <div class="g-months__nav" role="tablist" aria-label="Month">
+      {% for m in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+      <button type="button" class="g-months__b{% if loop.index == 5 %} is-on{% endif %}"
+              role="tab" data-m="{{ loop.index }}"
+              aria-selected="{{ 'true' if loop.index == 5 else 'false' }}">{{ m }}</button>
+      {% endfor %}
+    </div>
+    <div class="g-months__p" role="tabpanel">
+      <h3 class="g-months__t" data-m-t>May</h3>
+      <p class="g-months__d" data-m-d>The gardens come good and the parkland is full of wildflowers. Snow still on the high peaks, so the photographs have both at once. Beille has turned from ski to walking.</p>
+      <p class="g-months__x" data-m-x>Everything open, nothing busy. The best month if you only come once.</p>
+    </div>
+  </div>
+</div></section>
 
 <!-- ============ THE JOURNAL ============ -->
 {# The newsletter form was only in the menu panel. This is the same route,
@@ -292,56 +301,6 @@
 
 <div class="g-wrap g-mark__wrap">{{ mark('mountains') }}</div>
 
-
-<!-- ============ THE JOURNAL, PROPERLY ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap g-journal">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">Not Ready To Book</p>
-    <h2 class="g-place">Watch It Come Off The Wall</h2>
-    <p class="g-p">Ninety-four rooms, five open to guests. When a room opens, when something comes out from under the plaster, when the ateliers are released — that goes out first to the people reading along.</p>
-    <p class="g-p">It is the same record Vogue, AD Italia and the French press have been following since 2013.</p>
-    <form method="post" action="{{ url_for('newsletter_subscribe') }}" class="g-journal__form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="jr_email_won">Your email</label>
-      <input type="email" id="jr_email_won" name="email" placeholder="Your email" required autocomplete="email">
-      <button type="submit" class="g-btn g-btn--solid">Read along</button>
-    </form>
-    <p class="g-journal__note">A few times a year, when there is something worth sending. Unsubscribe in one click.</p>
-  </div>
-</div></section>
-
-<!-- ============ THE CLOSE ============ -->
-<section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The valley road" loading="lazy">
-  <h2 class="g-close__h">Come for a week of it</h2>
-  <p class="g-close__p">The markets, the fairs and the mountain days are all within an hour. The château is the base.</p>
-  <div class="g-close__acts">
-      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">See the ateliers</a>
-  </div>
-</div></section>
-
-<!-- ============ MONTH BY MONTH ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">Choosing a Month</p>
-  <h2 class="g-place">The Valley, Month by Month</h2>
-  <p class="g-p">Written from this valley rather than from an average. Pick the month first and the rest follows.</p>
-
-  <div class="g-months" data-months>
-    <div class="g-months__nav" role="tablist" aria-label="Month">
-      {% for m in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
-      <button type="button" class="g-months__b{% if loop.index == 5 %} is-on{% endif %}"
-              role="tab" data-m="{{ loop.index }}"
-              aria-selected="{{ 'true' if loop.index == 5 else 'false' }}">{{ m }}</button>
-      {% endfor %}
-    </div>
-    <div class="g-months__p" role="tabpanel">
-      <h3 class="g-months__t" data-m-t>May</h3>
-      <p class="g-months__d" data-m-d>The gardens come good and the parkland is full of wildflowers. Snow still on the high peaks, so the photographs have both at once. Beille has turned from ski to walking.</p>
-      <p class="g-months__x" data-m-x>Everything open, nothing busy. The best month if you only come once.</p>
-    </div>
-  </div>
-</div></section>
 
 <!-- ============ THE CLOSER ============ -->
 <section class="g-sec g-sec--dark g-closer"><div class="g-wrap">
@@ -389,3 +348,4 @@
 })();
 </script>
 {% endblock %}
+

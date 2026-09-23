@@ -9815,8 +9815,16 @@ ROOM_IDENTITY = [
      "King bed", "private", "mountain", None, None),
     ("Family Suite with Mountain View", "Les Deux Chambres",
      "Queen and doubles", "private", "mountain", 140, None),
+    # floor None, NOT "ground". No bedroom is on the ground floor -- the
+    # owner confirmed it and rooms_floor_no_ground clears the column -- but
+    # that migration runs while the table is still EMPTY on a fresh install,
+    # and this rename runs after the seed, so it wrote "ground" straight back.
+    # The live database was fine, because its rooms are already renamed and
+    # this is skipped. A new deploy, a restore to an empty volume, or the test
+    # copy got a room picker telling somebody who said stairs were difficult
+    # "it is on the ground floor, so no staircase".
     ("Double with Shared Bathroom", "Chambre Cerise",
-     "Double bed", "shared", None, None, "ground"),
+     "Double bed", "shared", None, None, None),
     ("Twin/Double with Shared Bathroom", "Chambre Tilleul",
      "Twin or double", "shared", None, None, None),
 ]
@@ -11495,6 +11503,32 @@ def _availability_picture(conn, *, fresh=False):
     if has_request_context():
         g._availability_picture = picture
     return picture
+
+
+def atelier_holding_the_house(conn, arrival, departure):
+    """The atelier that has the whole house on these nights, if that is why.
+
+    {'start_date', 'end_date'} or None. Read from the SAME picture
+    is_range_available refuses from, with the same end-inclusive overlap, so
+    the page cannot give a reason that is not the reason.
+
+    None unless it is also TRUE that the house is free the day after. The page
+    says "it is free again from the day after", and two ateliers back to back,
+    or an event booked straight after, would make that a promise that sends
+    somebody off to try a date that is also taken.
+    """
+    picture = _availability_picture(conn)
+    held = [(a, b) for a, b, why in picture["house"] if a and b]
+    for a, b, why in picture["house"]:
+        if not (a and b and arrival <= b and a < departure):
+            continue
+        if not why.startswith("Those dates are held for a workshop"):
+            continue
+        after = b + timedelta(days=1)
+        if any(x <= after <= y for x, y in held):
+            return None
+        return {"start_date": a.isoformat(), "end_date": b.isoformat()}
+    return None
 
 
 def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=None, include_pending=True):
@@ -36488,6 +36522,10 @@ def book_rooms():
             elif not ok:
                 unavailable_reason[room["id"]] = "Not available these dates"
     nothing_available = searched and rooms and not any(availability.values())
+    # A blind "no rooms free" sends somebody away from a house that is free the
+    # day after the atelier ends. Only asked when every room said no.
+    blocking_atelier = (atelier_holding_the_house(conn, arrival, departure)
+                        if nothing_available else None)
 
     grid = guest_availability_grid(conn, rooms, request.args.get("month", ""))
     featured_reviews = conn.execute(
@@ -36529,6 +36567,7 @@ def book_rooms():
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
         stay_nights=stay_nights,
         nothing_available=nothing_available, next_free=next_free,
+        blocking_atelier=blocking_atelier,
         weather=weather,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
@@ -47363,7 +47402,17 @@ def guest_portal_contents(conn, email):
            WHERE workshop_bookings.guest_email = ? COLLATE NOCASE
              AND workshop_bookings.status IN ('pending', 'confirmed')
            ORDER BY workshop_sessions.start_date DESC""", (email,)).fetchall()
-    return stays, dinners, ateliers
+    # A couple whose only booking with the house is their wedding read
+    # "Nothing booked at the moment" on their own account. Declined and
+    # cancelled enquiries are not shown, for the same reason a cancelled stay
+    # is not: the account is what they have, not everything they ever asked.
+    events = conn.execute(
+        """SELECT event_type, preferred_date, reference_code, status, manage_token
+             FROM event_inquiries
+            WHERE contact_email = ? COLLATE NOCASE
+              AND status NOT IN ('declined', 'cancelled')
+            ORDER BY preferred_date DESC""", (email,)).fetchall()
+    return stays, dinners, ateliers, events
 
 
 @app.route("/my/<token>")
@@ -47375,7 +47424,7 @@ def guest_portal(token):
     if not profile:
         conn.close()
         abort(404)
-    stays, dinners, ateliers = guest_portal_contents(conn, profile["email"])
+    stays, dinners, ateliers, events = guest_portal_contents(conn, profile["email"])
     bills = {}
     for stay in stays:
         bill = booking_bill(conn, stay["id"])
@@ -47384,6 +47433,7 @@ def guest_portal(token):
     conn.close()
     return render_template(
         "guest_portal.html", profile=profile, stays=stays, dinners=dinners,
+        events=events,
         ateliers=ateliers, bills=bills,
         today=house_today_iso(),
     )
@@ -74244,6 +74294,7 @@ def contact_page():
         return contact_notify_me()
 
     email = (request.form.get("email") or "").strip().lower()
+    name = (request.form.get("name") or "").strip()[:120]
     month = (request.form.get("rough_month") or "").strip()
     nights = (request.form.get("rough_nights") or "").strip()
     guests = (request.form.get("rough_guests") or "").strip()
@@ -74277,10 +74328,14 @@ def contact_page():
     if start:
         month_end = (date(start.year + 1, 1, 1) if start.month == 12
                      else date(start.year, start.month + 1, 1))
+    # "Not decided" posts 0, and max(1, ...) turned it into ONE NIGHT -- so an
+    # enquiry that said "we have not decided" reached the owner as a request
+    # for a single night. None means not decided and is said as such.
     try:
-        n = max(1, min(60, int(nights)))
+        n = int(nights)
+        n = max(1, min(60, n)) if n > 0 else None
     except (TypeError, ValueError):
-        n = 1
+        n = None
     try:
         party = max(1, min(40, int(guests)))
     except (TypeError, ValueError):
@@ -74289,7 +74344,8 @@ def contact_page():
     said = []
     if month:
         said.append("Around %s" % month)
-    said.append("%d night%s" % (n, "" if n == 1 else "s"))
+    said.append("%d night%s" % (n, "" if n == 1 else "s") if n
+                else "length not decided")
     said.append("%d guest%s" % (party, "" if party == 1 else "s"))
     if flex:
         said.append("flexible: %s" % flex)
@@ -74300,8 +74356,8 @@ def contact_page():
     conn.execute(
         """INSERT INTO waitlist_entries (name, email, phone, desired_arrival,
              desired_departure, party_size, notes, status, created_at)
-           VALUES ('', ?, '', ?, ?, ?, ?, 'open', ?)""",
-        (email, start.isoformat() if start else None,
+           VALUES (?, ?, '', ?, ?, ?, ?, 'open', ?)""",
+        (name, email, start.isoformat() if start else None,
          month_end.isoformat() if month_end else None,
          party, notes, datetime.now(timezone.utc).isoformat()))
     # A task, because anything that becomes a task reaches the calendar by
@@ -74311,7 +74367,7 @@ def contact_page():
         """INSERT INTO tasks (title, notes, priority, due_date, status, origin,
              created_at)
            VALUES (?, ?, 'normal', ?, 'open', 'enquiry', ?)""",
-        ("Answer an enquiry from %s" % email,
+        ("Answer an enquiry from %s" % ("%s (%s)" % (name, email) if name else email),
          notes, house_today_iso(), datetime.now(timezone.utc).isoformat()))
     conn.commit()
     to = owner_email(conn)
