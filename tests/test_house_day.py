@@ -259,9 +259,196 @@ def run():
             detail="%d site(s) spell it out; house_today() is the definition, "
                    "everything else calls it" % longhand)
 
+    _moments(s, conn, app_src)
+
     _cleanup(conn)
     conn.close()
     return s
+
+
+# What is left of the same mistake in SQL, by function, and why. Every entry is
+# somebody's to mend -- none of them is a way of doing it right. The count is
+# how many times the spelling appears there, so a second one added beside a
+# known one is still caught. Checked both ways: a new one reds the run, and so
+# does one that has been mended and is still on this list.
+UTC_DAY_SQL_KNOWN = {
+    ("pos_close_period", "date", "created_at"):
+        (1, "widened a day each way, then filed by service_day_iso in Python: right"),
+    ("pos_close_period", "date", "occurred_at"): (2, "till -- the other agent's"),
+    ("pos_close_day", "date", "opened_at"): (1, "till -- the other agent's"),
+    ("pos_archive_bundle", "date", "occurred_at"): (1, "till -- the other agent's"),
+    ("pos_archive", "strftime", "occurred_at"): (1, "till -- the other agent's"),
+    ("menu_engineering", "date", "pos_order_lines.created_at"): (1, "till -- the other agent's"),
+    ("service_times", "date", "sent_at"): (2, "till -- the other agent's"),
+    ("committed_stock", "date", "booking_extras.created_at"): (1, "stock -- the other agent's"),
+    ("supplier_price_changes", "date", "stock_movements.created_at"): (1, "stock -- the other agent's"),
+    ("wastage_rate", "date", "stock_movements.created_at"): (1, "stock -- the other agent's"),
+    ("supplier_scorecard", "date", "submitted_at"): (2, "supplier invoices -- the other agent's"),
+    ("find_duplicate_invoice", "substr", "submitted_at"): (1, "supplier invoices -- the other agent's"),
+}
+
+UTC_DAY_SQL = [
+    r"\b(date)\(\s*((?:\w+\.)?\w+_at)\s*\)",
+    r"\b(strftime)\(\s*'[^']*'\s*,\s*((?:\w+\.)?\w+_at)\s*\)",
+    r"\b(substr)\(\s*((?:\w+\.)?\w+_at)\s*,\s*1\s*,\s*10\s*\)",
+]
+
+# Summer, far enough ahead that nothing real is on these days. 22:30 UTC is
+# 00:30 the next day at the house (UTC+2): the hour the two disagree.
+LATE = "2031-07-14T22:30:00+00:00"     # the house's 15 July, UTC's 14th
+
+
+def _cleanup_moments(conn):
+    conn.execute("DELETE FROM booking_extras WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM refunds WHERE reason LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM vehicle_transfers WHERE vehicle_id IN "
+                 "(SELECT id FROM vehicles WHERE name LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM vehicles WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM event_inquiries WHERE reference_code LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM expenses WHERE description LIKE ?", (TAG + "%",))
+    conn.commit()
+
+
+def _moments(s, conn, app_src):
+    """The database files a moment under the house's day, not Greenwich's."""
+    import re
+    from datetime import date, timedelta
+
+    _cleanup_moments(conn)
+    now = m.datetime.now(m.timezone.utc).isoformat()
+
+    s.section("The database is asked the house's day too")
+    s.check("the stamp these checks use is a different day in each clock",
+            LATE[:10] == "2031-07-14" and m.house_date_iso(LATE) == "2031-07-15",
+            detail=f"UTC {LATE[:10]}, house {m.house_date_iso(LATE)}")
+    first, last = m.house_day_window("2031-07-15")
+    s.check("a house day starts at its own midnight",
+            first == "2031-07-14T22:00:00+00:00" and last == "2031-07-15T22:00:00+00:00",
+            detail=f"{first} .. {last}")
+    w = m.house_day_window("2031-10-26")      # the clocks go back that night
+    s.check("and a night the clocks change is 25 hours, not a gap",
+            w == ("2031-10-25T22:00:00+00:00", "2031-10-26T23:00:00+00:00"), detail=str(w))
+
+    # A transfer at half past midnight, counted against the leave it falls in.
+    van = conn.execute("INSERT INTO vehicles (name, created_at) VALUES (?, ?)",
+                       (TAG + " van", now)).lastrowid
+    conn.execute("INSERT INTO vehicle_transfers (vehicle_id, direction, scheduled_at, "
+                 "created_at) VALUES (?, 'pickup', ?, ?)", (van, LATE, now))
+    conn.commit()
+    on_15 = m.leave_impact(conn, "2031-07-15", "2031-07-15")["notes"]
+    on_14 = m.leave_impact(conn, "2031-07-14", "2031-07-14")["notes"]
+    s.check("a pickup at 00:30 counts on the day it happens at the house",
+            any("1 transfer" in n for n in on_15) and not any("transfer" in n for n in on_14),
+            detail=f"15th: {on_15}; 14th: {on_14}")
+
+    # A booking made at half past midnight is on the books from that day.
+    room = conn.execute("SELECT id FROM rooms ORDER BY id LIMIT 1").fetchone()["id"]
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+           guest_email, arrival_date, departure_date, party_size, status,
+           total_price, created_at)
+           VALUES (?, ?, ?, 'G', 'g@example.invalid', '2031-07-20', '2031-07-22', 2,
+                   'confirmed', 500, ?)""",
+        (room, TAG + "-B", TAG + "-Btok", LATE))
+    booking = conn.execute("SELECT id FROM bookings WHERE reference_code = ?",
+                           (TAG + "-B",)).fetchone()["id"]
+    conn.commit()
+    stays = lambda day: m.booking_pace(conn, months=1, today=day)["rows"][0]["now"]["stays"]
+    s.check("a booking made at 00:30 is on the books as at that day, not the one before",
+            stays(date(2031, 7, 15)) - stays(date(2031, 7, 14)) == 1,
+            detail=f"as at the 14th {stays(date(2031, 7, 14))}, "
+                   f"the 15th {stays(date(2031, 7, 15))}")
+
+    # An extra sold at half past midnight, on the VAT working.
+    conn.execute(
+        """INSERT INTO booking_extras (category, booking_id, name, unit_price, quantity,
+           status, created_at) VALUES ('room', ?, ?, 1234.5, 1, 'confirmed', ?)""",
+        (booking, TAG + " extra", LATE))
+    conn.commit()
+    extras = lambda a, b: sum(l["gross"] or 0 for l in m.vat_working(conn, a, b)["lines"]
+                              if l["source"] == "Extras")
+    s.check("an extra sold at 00:30 is on that day's VAT working",
+            abs(extras(date(2031, 7, 15), date(2031, 7, 16)) - 1234.5) < 0.01
+            and extras(date(2031, 7, 14), date(2031, 7, 15)) == 0,
+            detail=f"15th {extras(date(2031, 7, 15), date(2031, 7, 16))}, "
+                   f"14th {extras(date(2031, 7, 14), date(2031, 7, 15))}")
+
+    # A refund at half past midnight on the 1st belongs to the new month --
+    # in the summary and in the chart above it, which must agree.
+    conn.execute(
+        """INSERT INTO refunds (category, booking_id, amount, reason, method, created_at)
+           VALUES ('room', ?, 77, ?, 'cash', '2031-06-30T22:30:00+00:00')""",
+        (booking, TAG + " refund"))
+    conn.commit()
+    july = m.financial_month_summary(conn, date(2031, 7, 1), date(2031, 8, 1))
+    june = m.financial_month_summary(conn, date(2031, 6, 1), date(2031, 7, 1))
+    s.check("a refund at 00:30 on the 1st is the new month's",
+            abs(july["refunds_total"] - 77) < 0.01 and june["refunds_total"] == 0,
+            detail=f"July {july['refunds_total']}, June {june['refunds_total']}")
+    trend = {b["month"].strftime("%Y-%m"): b for b in
+             m.financial_trend(conn, 2, today=date(2031, 7, 15))}
+    s.check("and the chart files it in the same month as the summary",
+            abs(trend["2031-07"]["revenue"] - july["revenue"]) < 0.01
+            and abs(trend["2031-06"]["revenue"] - june["revenue"]) < 0.01,
+            detail=f"chart July {trend['2031-07']['revenue']} vs {july['revenue']}; "
+                   f"June {trend['2031-06']['revenue']} vs {june['revenue']}")
+
+    # Older than five days at the house, for the owner's queue.
+    before = m.owner_queue_totals(conn, date(2031, 7, 20))[2]
+    conn.execute("INSERT INTO expenses (kind, description, amount, status, submitted_at) "
+                 "VALUES ('staff_expense', ?, 12, 'pending', ?)", (TAG + " taxi", LATE))
+    conn.commit()
+    after = m.owner_queue_totals(conn, date(2031, 7, 20))[2]
+    s.check("a claim made at 00:30 on the cutoff day is not yet five days old",
+            after == before, detail=f"old went {before} -> {after}")
+
+    # The privacy purge, on a request that named no date of its own.
+    def enquiry(ref, filed):
+        conn.execute(
+            """INSERT INTO event_inquiries (reference_code, manage_token, event_type,
+               contact_name, contact_email, status, created_at)
+               VALUES (?, ?, 'wedding', 'Z', 'z@example.invalid', 'new', ?)""",
+            (TAG + ref, TAG + ref + "tok", filed))
+    # Cutoff 15 January 2001, winter (UTC+1): the house's day begins at 23:00 UTC.
+    enquiry("-keep", "2001-01-14T23:30:00+00:00")   # 00:30 on the 15th here
+    enquiry("-gone", "2001-01-14T21:30:00+00:00")   # 22:30 on the 14th here
+    conn.commit()
+    # Inside a request, as the automation loop runs it: it writes the audit
+    # trail, which reads the session.
+    with m.app.test_request_context("/"):
+        m.purge_dead_enquiries(conn, today=date(2002, 1, 15))
+    left = {r["reference_code"] for r in conn.execute(
+        "SELECT reference_code FROM event_inquiries WHERE reference_code LIKE ?",
+        (TAG + "%",)).fetchall()}
+    s.check("the purge keeps a request filed at 00:30 on the cutoff day",
+            TAG + "-keep" in left,
+            detail="SUBSTR(created_at, 1, 10) called it the 14th, a day past the "
+                   "twelve months the privacy notice promises")
+    s.check("and removes one filed the evening before", TAG + "-gone" not in left)
+
+    s.section("Nor does the database spell it the old way")
+    found, current = {}, None
+    for line in app_src.splitlines():
+        if line.startswith("def "):
+            current = line[4:line.index("(")]
+        if line.lstrip().startswith("#"):
+            continue
+        for pattern in UTC_DAY_SQL:
+            for fn, col in re.findall(pattern, line, re.IGNORECASE):
+                key = (current, fn.lower(), col.lower())
+                found[key] = found.get(key, 0) + 1
+    new = sorted(f"{k[0]}: {k[1]}({k[2]}) x{n}" for k, n in found.items()
+                 if n > UTC_DAY_SQL_KNOWN.get(k, (0, ""))[0])
+    mended = sorted(f"{k[0]}: {k[1]}({k[2]})" for k, (n, _why) in UTC_DAY_SQL_KNOWN.items()
+                    if found.get(k, 0) < n)
+    s.check("no query reads a stored moment as a UTC day", not new,
+            detail=("; ".join(new) + " -- compare the stored string against "
+                    "house_day_window(), or service_day_window() for the till")
+            if new else "")
+    s.check("and the list of what is left is current", not mended,
+            detail=("mended, still listed: " + "; ".join(mended)) if mended else "")
+    _cleanup_moments(conn)
 
 
 if __name__ == "__main__":

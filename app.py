@@ -8608,13 +8608,28 @@ def financial_trend(conn, months, today=None):
                   FROM event_inquiries WHERE status = 'confirmed' AND quoted_price IS NOT NULL
                     AND preferred_date >= ? AND preferred_date < ? GROUP BY m""",
                (s_iso, e_iso), "revenue")
-    accumulate("""SELECT strftime('%Y-%m', created_at) AS m, SUM(amount) AS total
-                  FROM refunds WHERE created_at >= ? AND created_at < ? GROUP BY m""",
-               (s_iso, e_iso), "revenue", sign=-1)
-    accumulate("""SELECT strftime('%Y-%m', submitted_at) AS m, SUM(amount) AS total
-                  FROM expenses WHERE status IN ('approved','paid')
-                    AND submitted_at >= ? AND submitted_at < ? GROUP BY m""",
-               (s_iso, e_iso), "expenses_total")
+    # Refunds and expenses carry a MOMENT, stored in UTC, and the month they
+    # belong to is the house's. strftime read the month in UTC, so a refund
+    # issued at half past midnight on the 1st went under the month before --
+    # here, and in financial_month_summary beside it, which agreed with this
+    # perfectly and was wrong in the same way. Bucketed in Python, where the
+    # house's clock is known; the summary asks the same instants.
+    w_from, w_to = house_day_window(start)[0], house_day_window(end)[0]
+
+    def accumulate_moments(sql, field, sign=1):
+        for r in conn.execute(sql, (w_from, w_to)).fetchall():
+            day = house_date(r["at"])
+            b = buckets.get(day.strftime("%Y-%m")) if day else None
+            if b:
+                b[field] += sign * (r["amount"] or 0)
+
+    accumulate_moments("""SELECT created_at AS at, amount FROM refunds
+                          WHERE created_at >= ? AND created_at < ?""",
+                       "revenue", sign=-1)
+    accumulate_moments("""SELECT submitted_at AS at, amount FROM expenses
+                          WHERE status IN ('approved','paid')
+                            AND submitted_at >= ? AND submitted_at < ?""",
+                       "expenses_total")
     return list(buckets.values())
 
 
@@ -8654,11 +8669,16 @@ def financial_month_summary(conn, month_start, month_end):
     # at full value forever -- overstating both revenue and net profit in every
     # figure the owner and the accountant see. Attributed to the month the
     # refund was ISSUED, which is when it actually left the business.
+    # The month's first and last instants AT THE HOUSE, for the columns that
+    # hold a moment. Compared against the bare dates, a refund at half past
+    # midnight on the 1st was the previous month's -- the same answer the
+    # chart gave, and the same mistake.
+    moments = (house_day_window(month_start)[0], house_day_window(month_end)[0])
     refunds_by_category = {
         r["category"]: r["total"] for r in conn.execute(
             """SELECT category, COALESCE(SUM(amount), 0) AS total FROM refunds
                WHERE created_at >= ? AND created_at < ? GROUP BY category""",
-            (month_start.isoformat(), month_end.isoformat()),
+            moments,
         ).fetchall()
     }
     room_refunds = refunds_by_category.get("room", 0)
@@ -8687,14 +8707,14 @@ def financial_month_summary(conn, month_start, month_end):
            WHERE status IN ('approved','paid') AND kind = 'staff_expense'
            AND is_capital = 0
            AND submitted_at >= ? AND submitted_at < ?""",
-        (month_start.isoformat(), month_end.isoformat()),
+        moments,
     ).fetchone()["total"]
     supplier_expenses = conn.execute(
         """SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
            WHERE status IN ('approved','paid') AND kind = 'supplier_invoice'
            AND is_capital = 0
            AND submitted_at >= ? AND submitted_at < ?""",
-        (month_start.isoformat(), month_end.isoformat()),
+        moments,
     ).fetchone()["total"]
 
     (labour_cost, _labour_hours, labour_unpriced,
@@ -9399,10 +9419,14 @@ def leave_impact(conn, start_date, end_date, exclude_user_id=None):
              AND leave_requests.user_id != COALESCE(?, -1)
            ORDER BY leave_requests.start_date""",
         (end_date, start_date, exclude_user_id)).fetchall()
+    # scheduled_at is a moment, stored in UTC, so the days are turned into the
+    # instants they begin and end at: date() answered in UTC, and a pickup at
+    # half past midnight counted against the day before the leave began.
+    t_from, t_to = house_day_window(start_date, end_date)
     transfers = conn.execute(
         """SELECT COUNT(*) AS n FROM vehicle_transfers
-           WHERE date(scheduled_at) BETWEEN ? AND ?""",
-        (start_date, end_date)).fetchone()["n"]
+           WHERE scheduled_at >= ? AND scheduled_at < ?""",
+        (t_from, t_to)).fetchone()["n"]
 
     notes = []
     if arrivals["n"]:
@@ -16058,6 +16082,34 @@ def service_day_window(day):
     return (start.astimezone(timezone.utc).isoformat(),
             end.astimezone(timezone.utc).isoformat())
 
+
+def house_day_window(first, last=None):
+    """The UTC instants the house's calendar days `first`..`last` run between.
+
+    For a column holding a MOMENT -- created_at, occurred_at, scheduled_at,
+    every *_at here, all stored in UTC -- when the question is about a DAY.
+    SQLite's date() on such a column answers in UTC, and so do strftime() and
+    SUBSTR(stamp, 1, 10): the database has no idea where the house is. Between
+    midnight and 02:00 here that is yesterday, so anything recorded then was
+    filed under the day before. Comparing the stored strings against these two
+    instants answers in the house's time instead.
+
+    Half-open: the second instant is the first moment of the day AFTER `last`.
+    Built from local midnights, so a night the clocks change gives a 23- or
+    25-hour day rather than a gap or an overlap. service_day_window is the
+    same thing for the till, whose day turns over at five in the morning.
+    """
+    if isinstance(first, str):
+        first = parse_date(first)
+    if isinstance(last, str):
+        last = parse_date(last)
+    last = last or first
+    after = last + timedelta(days=1)
+    start = datetime(first.year, first.month, first.day, tzinfo=LOCAL_TZ)
+    end = datetime(after.year, after.month, after.day, tzinfo=LOCAL_TZ)
+    return (start.astimezone(timezone.utc).isoformat(),
+            end.astimezone(timezone.utc).isoformat())
+
 # The events worth journalling: anything that moves money or changes the bill.
 # Kitchen state (ready, served) is deliberately absent — it is not a financial
 # event, and a journal that logs everything is one nobody reads.
@@ -17814,9 +17866,13 @@ def booking_pace(conn, months=6, today=None):
         for b in conn.execute(
                 """SELECT * FROM bookings
                     WHERE status IN ('confirmed', 'pending')
-                      AND date(created_at) <= ?
+                      AND created_at < ?
                       AND arrival_date < ? AND departure_date > ?""",
-                (as_at.isoformat(), end.isoformat(), start.isoformat())).fetchall():
+                # Made before the house's day after as_at began: date() read
+                # the moment in UTC, so a booking made at half past midnight
+                # was on the books a day before it was made.
+                (house_day_window(as_at)[1], end.isoformat(),
+                 start.isoformat())).fetchall():
             arrival = parse_date(b["arrival_date"])
             departure = parse_date(b["departure_date"])
             if not arrival or not departure:
@@ -18643,9 +18699,15 @@ def cost_per_occupied_night(conn, period):
     expenses = conn.execute(
         """SELECT COALESCE(SUM(amount), 0) AS t FROM expenses
             WHERE status = 'approved'
-              AND COALESCE(spent_on, invoice_date, DATE(submitted_at)) >= ?
-              AND COALESCE(spent_on, invoice_date, DATE(submitted_at)) < ?""",
-        (start_iso, end_iso)).fetchone()["t"]
+              AND CASE WHEN COALESCE(spent_on, invoice_date) IS NOT NULL
+                       THEN COALESCE(spent_on, invoice_date) >= ?
+                            AND COALESCE(spent_on, invoice_date) < ?
+                       ELSE submitted_at >= ? AND submitted_at < ? END""",
+        # A cost with no date of its own falls back to when it was submitted,
+        # asked as the moment against the period's instants at the house:
+        # DATE(submitted_at) was the UTC day, yesterday just after midnight.
+        (start_iso, end_iso, house_day_window(period["start"])[0],
+         house_day_window(period["end"])[0])).fetchone()["t"]
 
     def _per(x):
         return round(x / nights, 2) if nights and x is not None else None
@@ -18813,8 +18875,11 @@ def occupancy_pace(conn, months=4, today=None):
                      FROM bookings
                     WHERE status = 'confirmed'
                       AND arrival_date < ? AND departure_date > ?
-                      AND DATE(created_at) <= ?""",
-                (m_end.isoformat(), m_start.isoformat(), as_at.isoformat())).fetchall()
+                      AND created_at < ?""",
+                # Made before the house's day after as_at began, as in
+                # booking_pace: DATE() read the moment in UTC.
+                (m_end.isoformat(), m_start.isoformat(),
+                 house_day_window(as_at)[1])).fetchall()
             nights = 0
             revenue = 0.0
             for r in rows:
@@ -20396,7 +20461,7 @@ def staff_tenure(conn, today=None):
     today = today or house_today()
     rows = conn.execute(
         """SELECT id, name, job_role, status, start_date, created_at
-             FROM users ORDER BY COALESCE(start_date, DATE(created_at))""").fetchall()
+             FROM users ORDER BY COALESCE(start_date, created_at)""").fetchall()
 
     here, gone = [], []
     for r in rows:
@@ -20444,9 +20509,10 @@ def review_reply_times(conn, days=365):
              FROM guest_feedback
              LEFT JOIN users
                     ON users.id = guest_feedback.acknowledged_by_user_id
-            WHERE DATE(guest_feedback.submitted_at) >= ?
+            WHERE guest_feedback.submitted_at >= ?
             ORDER BY guest_feedback.submitted_at DESC""",
-        (since,)).fetchall()
+        # From the instant `since` began at the house, not its UTC date.
+        (house_day_window(since)[0],)).fetchall()
 
     waits, waiting, answered = [], [], []
     today = house_today()
@@ -20668,7 +20734,7 @@ def turned_away(conn, days=365, today=None):
             """SELECT desired_arrival, desired_departure, party_size, created_at
                  FROM waitlist_entries
                 WHERE desired_arrival IS NOT NULL AND desired_arrival != ''
-                  AND DATE(created_at) >= ?""", (since.isoformat(),)).fetchall():
+                  AND created_at >= ?""", (house_day_window(since)[0],)).fetchall():
         start = parse_date(r["desired_arrival"])
         finish = parse_date(r["desired_departure"]) or (start + timedelta(days=1) if start else None)
         if not (start and finish) or finish <= start:
@@ -26304,9 +26370,12 @@ def owner_queue_totals(conn, today):
            + (SELECT COUNT(*) FROM leave_requests WHERE status = 'pending')
            + (SELECT COUNT(*) FROM timesheet_corrections WHERE status = 'pending') AS n,
              (SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE status = 'pending') AS v,
-             (SELECT COUNT(*) FROM expenses WHERE status = 'pending' AND DATE(submitted_at) < ?)
-           + (SELECT COUNT(*) FROM leave_requests WHERE status = 'pending' AND DATE(requested_at) < ?)
-             AS old""", (cutoff, cutoff)).fetchone()
+             (SELECT COUNT(*) FROM expenses WHERE status = 'pending' AND submitted_at < ?)
+           + (SELECT COUNT(*) FROM leave_requests WHERE status = 'pending' AND requested_at < ?)
+             AS old""",
+        # Older than five days AT THE HOUSE: before the instant the cutoff
+        # day began here, not before its UTC date.
+        (house_day_window(cutoff)[0], house_day_window(cutoff)[0])).fetchone()
     return row["n"] or 0, row["v"] or 0.0, row["old"] or 0
 
 
@@ -66945,6 +67014,11 @@ def purge_dead_enquiries(conn, today=None):
     """
     today = today or house_today()
     cutoff = _add_months(today, -ENQUIRY_RETENTION_MONTHS).isoformat()
+    # A request that names no date of its own falls back to when it was
+    # filed -- compared as the MOMENT, against the instant the cutoff day
+    # began here. SUBSTR(created_at, 1, 10) was the date in UTC, which just
+    # after midnight is yesterday.
+    cutoff_moment = house_day_window(cutoff)[0]
     cleared = {}
 
     # Cancelled long ago, or a request for a date that passed long ago and was
@@ -66952,20 +67026,23 @@ def purge_dead_enquiries(conn, today=None):
     cleared["event_inquiries"] = conn.execute(
         """DELETE FROM event_inquiries
             WHERE status != 'confirmed'
-              AND COALESCE(end_date, preferred_date, alternate_date,
-                           SUBSTR(created_at, 1, 10)) < ?""",
-        (cutoff,)).rowcount
+              AND CASE WHEN COALESCE(end_date, preferred_date, alternate_date) IS NOT NULL
+                       THEN COALESCE(end_date, preferred_date, alternate_date) < ?
+                       ELSE created_at < ? END""",
+        (cutoff, cutoff_moment)).rowcount
 
     cleared["waitlist_entries"] = conn.execute(
         """DELETE FROM waitlist_entries
-            WHERE COALESCE(desired_departure, desired_arrival,
-                           SUBSTR(created_at, 1, 10)) < ?""",
-        (cutoff,)).rowcount
+            WHERE CASE WHEN COALESCE(desired_departure, desired_arrival) IS NOT NULL
+                       THEN COALESCE(desired_departure, desired_arrival) < ?
+                       ELSE created_at < ? END""",
+        (cutoff, cutoff_moment)).rowcount
 
     cleared["restaurant_waitlist"] = conn.execute(
         """DELETE FROM restaurant_waitlist
-            WHERE COALESCE(desired_date, SUBSTR(created_at, 1, 10)) < ?""",
-        (cutoff,)).rowcount
+            WHERE CASE WHEN desired_date IS NOT NULL THEN desired_date < ?
+                       ELSE created_at < ? END""",
+        (cutoff, cutoff_moment)).rowcount
 
     # Workshop waitlists date through their session, and a request against a
     # session that no longer exists is dead by definition.
@@ -71793,8 +71870,11 @@ def vat_working(conn, start, end):
     extras = conn.execute(
         f"""SELECT COALESCE(SUM(unit_price * quantity), 0) AS t FROM booking_extras
             WHERE {EXTRAS_COUNTED_SQL}
-              AND date(created_at) >= ? AND date(created_at) < ?""",
-        (s_iso, e_iso)).fetchone()["t"]
+              AND created_at >= ? AND created_at < ?""",
+        # The period's first and last instants at the house. date() filed an
+        # extra sold just after midnight under the day before -- and on the
+        # first of a quarter, under the quarter before.
+        (house_day_window(start)[0], house_day_window(end)[0])).fetchone()["t"]
     _estimate("Extras", extras, tax_rate(conn, "vat_extras"))
 
     # Events. The rates table showed a rate for these while no line used it,

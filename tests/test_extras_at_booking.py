@@ -309,10 +309,10 @@ def run():
 
     # The working and the economics, measured as the difference one stay makes,
     # so whatever else the copy holds cannot move the figures under the check.
-    # The working's window opens a day early: it files extras by the UTC date
-    # they were sold on, which just after midnight here is still yesterday.
+    # The window opens today, the house's today: the working files an extra by
+    # the house's day now, so one sold a minute ago is in it at any hour.
     arrival4, departure4 = _window(room, nights=2, after_days=90)
-    start, end = today - timedelta(days=1), departure4 + timedelta(days=1)
+    start, end = today, departure4 + timedelta(days=1)
 
     def vat_figures():
         conn = db()
