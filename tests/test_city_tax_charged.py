@@ -19,9 +19,10 @@ DEFAULT 0, so:
 So this suite books through the FORM and asks what the app stored. Nothing here
 writes city_tax or guests_under_18 by hand.
 """
+import re
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, house_today
+from _harness import Suite, clients, db, house_today, visible_text
 import _harness
 
 m = _harness.m
@@ -266,6 +267,33 @@ def run():
     s.check("the desk form has it too", 'name="guests_under_18"' in desk)
     ed = oc.get(f"/admin/bookings/{b['id']}/edit").get_data(as_text=True) if b else ""
     s.check("and so does the edit form", 'name="guests_under_18"' in ed)
+
+    s.section("The pages quote the rate that is charged, and say when")
+    # Three numbers for one tax. The checkout charges the tax settings' rate as
+    # its own line on the card. The pages read settings['tourist_tax'], which
+    # nothing had ever written, and fell back to whatever was typed into them:
+    # 0 on the room page's review, 1.65 on the room list's week of costs. And
+    # the panel above "Pay & book" said the tax was "charged locally on
+    # departure", so a guest who believed it expected to pay it twice.
+    shown = visible_text(page)
+    at = shown.find("Tourist tax")
+    said = shown[at:at + 160] if at >= 0 else "(no tourist tax line at all)"
+    s.check("the room page quotes the rate the card is charged",
+            "€%.2f per adult per night" % rate in said,
+            detail="charged %.2f; the page says: %s" % (rate, said))
+    s.check("and does not say it is paid later",
+            not re.search(r"(?i)departure|locally|on arrival|at the end", said),
+            detail=said)
+    rooms_page = anon.get("/book").get_data(as_text=True)
+    week = re.search(r'data-tax="([^"]*)"', rooms_page)
+    s.check("the room list's week of costs works it out at the same rate",
+            week is not None and abs(float(week.group(1)) - rate) < 0.001,
+            detail="charged %.2f, the week reckons %s" % (rate, week and week.group(1)))
+    listed = visible_text(rooms_page)
+    at = listed.find("charged per adult per night")
+    s.check("and the room list names that rate",
+            at >= 0 and ("€%.2f" % rate) in listed[at:at + 60],
+            detail=listed[at:at + 60] if at >= 0 else "(the line is missing)")
 
     s.section("Nonsense in the field cannot make the tax bigger")
     r = anon.post(f"/book/{room['id']}", data={

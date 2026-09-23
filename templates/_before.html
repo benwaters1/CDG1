@@ -59,11 +59,18 @@
     {% elif dep %}
     <div><dt>To hold the dates</dt><dd>{{ dep }}% now. The balance is due before you arrive, not on the day</dd></div>
     {% else %}
-    <div><dt>To hold the dates</dt><dd>Nothing is taken to hold them. The stay is paid in full once we confirm the booking</dd></div>
+    <div><dt>To hold the dates</dt><dd>No deposit. The stay is paid in full, and the booking is confirmed at once</dd></div>
     {% endif %}
     {% if mn %}<div><dt>Minimum stay</dt><dd>{{ mn }} night{{ '' if mn == 1 else 's' }}{% if settings and settings['min_nights_peak'] %}, {{ settings['min_nights_peak'] }} in July and August{% endif %}</dd></div>{% endif %}
-    <div><dt>Free cancellation</dt><dd>Up to {{ (settings['free_cancel_days'] if settings and settings['free_cancel_days'] else 30)|int }} days before arrival</dd></div>
-    <div><dt>Nothing is taken now</dt><dd>You are sending a request. We confirm it, and only then does anything leave your account</dd></div>
+    {#- THE POLICY, NOT A SETTING. This line read "Free cancellation: up to 30
+        days before arrival", from a free_cancel_days that nothing has ever
+        written, so it always fell back to 30 -- on the page that also says
+        Non-refundable, in the panel a guest reads before paying. The line
+        after it said "You are sending a request... only then does anything
+        leave your account", on a house that takes bookings and charges the
+        card at once. Same words as the panel further down, on purpose: one
+        policy, said once, translated once. test_booking_journey holds it. -#}
+    <div><dt>Cancellation</dt><dd>Non-refundable. Write to us and we can sometimes move your dates instead</dd></div>
   </dl>
 </div>
 {% endmacro %}

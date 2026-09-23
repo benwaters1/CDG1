@@ -15,6 +15,7 @@ depends on whether .env happens to exist is a test that fails on a colleague's
 machine for no reason.
 """
 import atexit
+import html as htmllib
 import os
 import re
 import shutil
@@ -559,6 +560,19 @@ def fill(form, answers):
         elif f["required"]:
             data[name] = ""              # rendered, required, and unanswered
     return data
+
+
+def visible_text(html):
+    """The words a person can read on a RENDERED page, on one line.
+
+    Scripts, styles and comments go, then the tags, then the entities are
+    decoded -- so "Pay &amp; book" reads as it does on screen. Every tag
+    becomes a space rather than nothing, or a <dt> runs into its <dd> and
+    "Free cancellation" and "Up to 30 days" read as one word.
+    """
+    text = re.sub(r"(?is)<script.*?</script>|<style.*?</style>|<!--.*?-->", " ", html)
+    text = htmllib.unescape(re.sub(r"<[^>]+>", " ", text))
+    return " ".join(text.split())
 
 
 def flashes(response):

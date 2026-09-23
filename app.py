@@ -60807,7 +60807,7 @@ def run_social_schedule_job(conn):
 # workshop row passed by its own route. Those are untouched: a route that
 # passes its own `settings` shadows this one, which is how they keep theirs.
 PUBLIC_SETTINGS = (
-    "tourist_tax",            # named on the room list and in the pre-submit review
+    "tourist_tax",            # the charged rate, from tax_rate() -- see _load
     "press_email",            # on the press page
     "review_recommend", "review_count",
     "instagram_followers", "facebook_followers",
@@ -60851,6 +60851,15 @@ class LazyPublicSettings:
                         r["key"]: r["value"] for r in conn.execute(
                             f"SELECT key, value FROM app_settings WHERE key IN ({marks})",
                             list(PUBLIC_SETTINGS)).fetchall()}
+                    # The rate the checkout CHARGES, never a key of its own.
+                    # Nothing wrote app_settings.tourist_tax, so the pages fell
+                    # back to figures typed into them -- 0 on the room page's
+                    # review, 1.65 on the week's cost -- while the card was
+                    # charged the tax settings' rate, 0.80 by default. Three
+                    # numbers for one tax, and the guest was quoted the wrong
+                    # two.
+                    self._data["tourist_tax"] = tax_rate(
+                        conn, "city_tax_per_adult_per_night")
                 finally:
                     conn.close()
             except Exception:
