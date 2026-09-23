@@ -8008,6 +8008,20 @@ main > .g-wrap + .g-sec{ padding-top: var(--s6); }
   .g-totop{ display: none; }
 }
 
+/* AND FOR AS LONG AS A BOOK BAR IS ON SCREEN, which is wider than 44rem.
+   The rule above hides the arrow up to 704px. But the bottom bar is drawn up
+   to 60rem (.g-stickybar) and 61.99rem (.g-bookbar, the room page), so in
+   the band between, the arrow came back pinned bottom-right and sat squarely
+   on Book -- measured at 820px on What's On and on the room page, both
+   covered. Tablets, small laptops and phones held sideways all live in that
+   band. The same reasoning as the rule above, carried to the width the bar
+   actually reaches, and tied to a bar being on the page, so a page without
+   one keeps its arrow at every width. */
+@media (max-width: 61.99rem){
+  body:has(.g-stickybar) .g-totop,
+  body:has(.g-bookbar) .g-totop{ display: none; }
+}
+
 /* ==========================================================================
    iOS ZOOMS THE PAGE WHEN A FIELD IS UNDER 16px
    Several fields render at 13.3px, so tapping one on an iPhone zooms the

@@ -336,6 +336,37 @@ def run():
                    + (str(small_screen[:2]) if small_screen
                       else "no small-screen rule for .g-totop at all"))
 
+    # AND AS FAR AS THE BAR REACHES, NOT JUST SOMEWHERE ON A PHONE. The check
+    # above asks whether any small-screen rule lifts, moves or hides the
+    # arrow, and it was green while the arrow sat on Book between 704px and
+    # 960px on the live site: the hide stopped at 44rem, and the bar is drawn
+    # to 60rem (.g-stickybar) and 61.99rem (.g-bookbar, the room page).
+    # Measured at 820px on What's On and on the room page, both covered. So
+    # this asks the second half of the question: for each bar, is the arrow
+    # kept off it up to the widest width that bar is drawn at?
+    MQ = r"@media\s*\(max-width:\s*([\d.]+)rem\)\s*\{(.*?)\}\s*\}"
+    def widest_bar(cls):
+        best = 0.0
+        for mq in re.finditer(MQ, public, re.S):
+            if re.search(re.escape(cls) + r"\s*\{[^}]*display:\s*(flex|block|grid)",
+                         mq.group(2)):
+                best = max(best, float(mq.group(1)))
+        return best
+    def arrow_hidden_to(cls):
+        best = 0.0
+        for mq in re.finditer(MQ, public, re.S):
+            if re.search(r"body:has\(" + re.escape(cls)
+                         + r"\)\s+\.g-totop[^{]*\{[^}]*display:\s*none", mq.group(2)):
+                best = max(best, float(mq.group(1)))
+        return best
+    for bar in (".g-stickybar", ".g-bookbar"):
+        reach, hidden = widest_bar(bar), arrow_hidden_to(bar)
+        s.check("the back-to-top is out of the way wherever %s is drawn" % bar,
+                reach and hidden >= reach,
+                detail="%s is drawn up to %.2frem and the arrow is only kept off "
+                       "it up to %.2frem, so in between it sits on Book"
+                       % (bar, reach, hidden))
+
     s.section("A phone carousel starts at its first card")
     # On phones the room cards on Stay and the cards on The Estate become a
     # sideways scroller, and .g-cards was centred. Centring a row that is
