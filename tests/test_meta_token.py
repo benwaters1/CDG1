@@ -56,6 +56,10 @@ PAGE_TOKEN = "EAAzz-page-token-reports-no-expiry-0002"
 OTHER_PAGE_TOKEN = "EAAzz-somebody-elses-page-token-0006"
 DEAD_TOKEN = "EAAzz-token-meta-says-is-dead-0003"
 CONNECT = "/management/social/connect"
+# Everything the house's two accounts need, as a token made by the steps on
+# the connect page would carry it.
+FULL_SCOPES = ["pages_show_list", "pages_read_engagement", "pages_manage_posts",
+               "instagram_basic", "instagram_content_publish", "public_profile"]
 
 
 def _cleanup():
@@ -105,15 +109,24 @@ class FakeGraph:
 
     def __init__(self, exchange_fails=False, page_missing=False,
                  unreachable=False, data_access_days=80, malformed=False,
-                 recheck_fails=False):
+                 recheck_fails=False, scopes=FULL_SCOPES, granular=None):
         self.calls = []
         self.exchange_fails = exchange_fails
         self.page_missing = page_missing
         self.unreachable = unreachable
         self.malformed = malformed
         self.recheck_fails = recheck_fails
+        self.scopes = scopes
+        self.granular = granular
         self.in_ten_days = _unix(10)
         self.data_access = _unix(data_access_days)
+
+    def _grants(self, answer):
+        if self.scopes is not None:
+            answer["scopes"] = list(self.scopes)
+        if self.granular is not None:
+            answer["granular_scopes"] = self.granular
+        return answer
 
     def paths(self):
         return [c[1] for c in self.calls]
@@ -134,12 +147,12 @@ class FakeGraph:
                     "error": {"message": "The session has been invalidated "
                                          "because the user changed their password."}}}
             if token in (PAGE_TOKEN, OTHER_PAGE_TOKEN):
-                return True, {"data": {"is_valid": True, "type": "PAGE",
-                                       "expires_at": 0,
-                                       "data_access_expires_at": self.data_access}}
-            return True, {"data": {"is_valid": True, "type": "USER",
-                                   "expires_at": self.in_ten_days,
-                                   "data_access_expires_at": self.data_access}}
+                return True, {"data": self._grants({
+                    "is_valid": True, "type": "PAGE", "expires_at": 0,
+                    "data_access_expires_at": self.data_access})}
+            return True, {"data": self._grants({
+                "is_valid": True, "type": "USER", "expires_at": self.in_ten_days,
+                "data_access_expires_at": self.data_access})}
         if path == "oauth/access_token":
             if self.exchange_fails:
                 return False, "Error validating client secret."
@@ -455,6 +468,45 @@ def run():
             "permissions", not _meta_lines(),
             detail=str([w["title"] for w in _meta_lines()]))
     _set(meta_ig_user_id=IG)
+
+    s.section("What the token is allowed to do")
+    # Asked about a Page token with everything this house's two accounts need.
+    _set(meta_access_token=PAGE_TOKEN, meta_ig_user_id=IG)
+    with standing_in(FakeGraph()):
+        _call(m.check_meta_token)
+    s.check("a token with every permission ticked has nothing said against it",
+            not _get("meta_token_missing") and not _meta_lines(),
+            detail=repr(_get("meta_token_missing")))
+    lacking = [p for p in FULL_SCOPES if p != "instagram_content_publish"]
+    with standing_in(FakeGraph(scopes=lacking)):
+        ok, said = _call(m.check_meta_token)
+    s.check("one that was made without instagram_content_publish is named for it",
+            "instagram_content_publish" in _get("meta_token_missing")
+            and "instagram_content_publish" in said, detail=said)
+    lines = _meta_lines()
+    s.check("on the owner home, as something to put right",
+            any("cannot do everything" in w["title"] and w["severity"] == "watch"
+                for w in lines), detail=str([(w["severity"], w["title"]) for w in lines]))
+    s.check("and on the connect page",
+            "instagram_content_publish" in oc.get(CONNECT).get_data(as_text=True))
+    with standing_in(FakeGraph(unreachable=True)):
+        _save(oc, access_token=FRESH_TOKEN)
+    s.check("a new token forgets what Meta said the old one lacked",
+            not _get("meta_token_missing"),
+            detail="it was said about a token that is no longer here")
+    with standing_in(FakeGraph(granular=[
+            {"scope": "pages_manage_posts", "target_ids": ["999000999"]},
+            {"scope": "instagram_content_publish", "target_ids": [IG]}])):
+        _call(m.check_meta_token)
+    s.check("a permission granted for somebody else's Page is caught too",
+            "pages_manage_posts is for another account" in _get("meta_token_missing")
+            and "instagram_content_publish is for another" not in _get("meta_token_missing"),
+            detail=repr(_get("meta_token_missing")))
+    with standing_in(FakeGraph(scopes=None)):
+        _call(m.check_meta_token)
+    s.check("and when Meta does not say what was granted, nothing is said",
+            not _get("meta_token_missing"),
+            detail="a warning built on an answer that was never given is believed")
 
     s.section("The daily job")
     names = [row[0] for row in m.AUTOMATION_JOBS]

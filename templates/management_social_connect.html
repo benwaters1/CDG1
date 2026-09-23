@@ -37,6 +37,11 @@
         by Meta's own answer on {{ ts.checked_at|house_day }}{% endif %}.
       {% endif %}
     </p>
+    {% if ts.missing and ts.kind != 'invalid' %}
+    {# Meta's own answer about what the token may do: a permission not ticked,
+       or one granted for somebody else's Page. #}
+    <p class="connect-bad">{{ ts.missing }}</p>
+    {% endif %}
     {% if ts.data_access_until and state.ig_user_id and ts.kind != 'invalid' %}
     <p class="g-muted">
       Meta's access for Instagram runs until

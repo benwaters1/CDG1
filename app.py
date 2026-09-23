@@ -26698,6 +26698,12 @@ def owner_home_warnings(conn, today):
                 f"{left} day{'' if left == 1 else 's'} left. Renewing it on a "
                 "quiet morning is easier than finding out because a post did "
                 "not go.", 1, "connect_social_accounts")
+        # A token that works and still cannot do the job: a permission not
+        # ticked, or granted for somebody else's Page. It closes itself the
+        # moment Meta is asked about a token that can.
+        if state.get("missing") and state["kind"] != "invalid":
+            add("watch", "The Meta token cannot do everything publishing needs",
+                state["missing"], 1, "connect_social_accounts")
         # INSTAGRAM'S OWN CLOCK, separate from the token's. Meta lists the
         # permissions that survive its ninety-day data access expiry: the
         # Page's are on the list and Instagram's two are not. So a token Meta
@@ -61121,7 +61127,18 @@ META_SETTING_KEYS = ("meta_page_id", "meta_ig_user_id", "meta_access_token",
 # for -- kept, it would be a verdict on a token that is no longer here.
 META_VERDICT_KEYS = ("meta_token_checked_at", "meta_token_type",
                      "meta_token_problem", "meta_token_no_expiry",
-                     "meta_token_expiry_from_meta", "meta_data_access_expires_at")
+                     "meta_token_expiry_from_meta", "meta_data_access_expires_at",
+                     "meta_token_missing")
+# What each connected account needs the token to carry, from Meta's own
+# documentation, and which of those are granted FOR a particular account.
+META_NEEDS = (
+    ("meta_ig_user_id", "Instagram",
+     ("instagram_basic", "instagram_content_publish", "pages_read_engagement"),
+     ("instagram_basic", "instagram_content_publish")),
+    ("meta_page_id", "the Page",
+     ("pages_manage_posts", "pages_read_engagement"),
+     ("pages_manage_posts",)),
+)
 # What to tick in the Graph API Explorer, from Meta's documentation. Instagram
 # publishing through Facebook Login needs instagram_basic,
 # instagram_content_publish and pages_read_engagement; a photograph on the
@@ -61179,7 +61196,8 @@ def meta_token_state(conn):
     state = {"checked_at": get("meta_token_checked_at"),
              "problem": get("meta_token_problem").rstrip(". "),
              "type": get("meta_token_type"),
-             "data_access_until": get("meta_data_access_expires_at")}
+             "data_access_until": get("meta_data_access_expires_at"),
+             "missing": get("meta_token_missing")}
     if not get("meta_access_token"):
         return dict(state, kind="none", days_left=None)
     if state["problem"]:
@@ -61254,6 +61272,46 @@ def _meta_date(ts):
     return house_date_iso(datetime.fromtimestamp(ts, timezone.utc).isoformat())
 
 
+def meta_token_shortfall(conn, data):
+    """What the token cannot do that the house needs, as a sentence, or "".
+
+    From debug_token's own answer, nothing inferred. `scopes` is what was
+    granted; `granular_scopes` says, permission by permission, which Pages or
+    Instagram accounts it was granted FOR. The Explorer asks which Pages to
+    allow, and a token that can post to somebody else's Page cannot post to
+    this one -- it looks exactly like a good token until the first post fails.
+
+    With no scopes in the answer, nothing is said: a warning built on an
+    answer that was never given is worse than none, because it is believed.
+    """
+    scopes = data.get("scopes")
+    if not isinstance(scopes, list) or not scopes:
+        return ""
+    have = set(scopes)
+    lacking, elsewhere = [], []
+    granted_for = {}
+    for grant in data.get("granular_scopes") or []:
+        if isinstance(grant, dict) and grant.get("target_ids"):
+            granted_for[grant.get("scope")] = {str(t) for t in grant["target_ids"]}
+    for key, where, needs, targeted in META_NEEDS:
+        account = meta_setting(conn, key)
+        if not account:
+            continue
+        lacking += [p for p in needs if p not in have and p not in lacking]
+        for p in targeted:
+            if p in granted_for and account not in granted_for[p]:
+                elsewhere.append(f"{p} is for another account, not {where} ({account})")
+    parts = []
+    if lacking:
+        parts.append("it lacks " + ", ".join(lacking))
+    parts += elsewhere
+    if not parts:
+        return ""
+    return ("The token " + "; ".join(parts) + ". Make a new one in the Graph API "
+            "Explorer with those ticked and this house's accounts chosen, and "
+            "paste it on the connect page.")
+
+
 def check_meta_token(conn):
     """Ask Meta what the stored token is. (ok, what_to_tell_somebody).
 
@@ -61298,12 +61356,16 @@ def check_meta_token(conn):
         _set_meta(conn, "meta_token_expiry_from_meta", "")
         return False, "Meta says the token no longer works: %s" % reason
     _set_meta(conn, "meta_token_problem", "")
+    shortfall = meta_token_shortfall(conn, data)
+    _set_meta(conn, "meta_token_missing", shortfall)
     expires = _meta_date(data.get("expires_at"))
     _set_meta(conn, "meta_token_expiry_from_meta", expires)
     _set_meta(conn, "meta_token_no_expiry", "" if expires else "1")
+    said = (" " + shortfall) if shortfall else ""
     if expires:
-        return True, "Meta says the token is good until %s." % expires
-    return True, "Meta says the token is good and reports no expiry date for it."
+        return True, "Meta says the token is good until %s.%s" % (expires, said)
+    return True, ("Meta says the token is good and reports no expiry date for "
+                  "it.%s" % said)
 
 
 def make_meta_token_last(conn):
