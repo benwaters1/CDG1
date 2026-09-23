@@ -23382,6 +23382,10 @@ def refundable_amount(conn, category, booking):
                      - refunded_so_far(conn, category, booking["id"])), 2)
 
 
+# The four the refunds table accepts -- its CHECK constraint says the same.
+REFUND_METHODS = ("stripe", "bank_transfer", "cash", "other")
+
+
 def issue_refund(conn, category, booking, amount, reason, method="stripe", user_id=None):
     """Issue (or record) a refund of `amount` against one booking.
 
@@ -23395,6 +23399,12 @@ def issue_refund(conn, category, booking, amount, reason, method="stripe", user_
     """
     if not reason or not reason.strip():
         return False, "A reason is required for every refund."
+    # Checked HERE, before anything else is looked at. The refunds table
+    # only takes these four, and an unknown one went all the way to the
+    # INSERT and came back as a 500 -- nothing written, but an error page
+    # where a sentence would do.
+    if method not in REFUND_METHODS:
+        return False, "Choose how the refund was made: card, bank transfer, cash or other."
     try:
         amount = round(float(amount), 2)
     except (TypeError, ValueError):

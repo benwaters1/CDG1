@@ -90,6 +90,8 @@ SUITES = [
     "test_animals",
     "test_confirmed_facts",
     "test_settings_readable",
+    "test_pages_never_answered",
+    "test_pages_behind_providers",
     "test_event_run_sheet",
     "test_card_and_rate",
     "test_seven_gaps",
@@ -456,41 +458,18 @@ def _registry_complete():
 # list is checked in BOTH directions: a fortieth name reds the run, and so
 # does a name that starts answering, because an exception list that outlives
 # its reason is how the next one gets in unnoticed.
-COVERAGE_KNOWN_GAPS = {
-    # Two of these need a real payment provider: reaching the branch that matters
-    # means a real payment provider, and arranging one in a test is not a
-    # thing to do with the château's own Stripe account.
-    #
-    # refund_restaurant_booking_admin issues money back. Its refusal when
-    # Stripe is unconfigured is already held by test_declines, which declines
-    # a paid booking and requires the failure to be reported rather than
-    # swallowed -- so what is missing here is only the branch where money
-    # actually moves.
-    #
-    # workshop_stripe_success retrieves the checkout session before it does
-    # anything, unlike its two siblings, which answer from the database first
-    # and are covered (tests/test_payment_returns.py).
-    #
-    # share_payment_success is workshop_stripe_success again: it retrieves the
-    # checkout session as its first act, so with Stripe pinned off there is
-    # nothing to answer with. The half that can be tested without a card --
-    # what somebody holding a share sees, and when the button disappears --
-    # is in tests/test_split_bill.py.
-    "refund_restaurant_booking_admin",
-    "workshop_stripe_success",
-    "share_payment_success",
-
-    # And one where the MEASURE is the awkward part rather than the test.
-    # api_draft_reply answers 503 {"error": "not configured"} with no model
-    # provider, which is the view running, deciding, and telling the add-in
-    # something it can act on -- not a refusal at the door. But a 5xx counts
-    # as unanswered here on purpose: loosening that to let this one through
-    # would let a genuinely broken page count as covered, which is the whole
-    # failure this measure exists to stop. So the judgement sits here, named
-    # and reversible, rather than in the rule. tests/test_provider_off.py
-    # does exercise it -- the token posture and the 503 both.
-    "api_draft_reply",
-}
+COVERAGE_KNOWN_GAPS = set()
+# EMPTY, and every name that was here now answers. The last four were the
+# three Stripe pages -- the dinner refund, and the atelier and split-bill
+# return pages, which retrieve the checkout session before they do anything --
+# and the Outlook add-in's draft, which needs the model. Each had a good
+# reason to be here: nothing may reach the house's own Stripe account or its
+# model bill. They run in tests/test_pages_behind_providers.py with the
+# provider STOOD IN at the one call that leaves the building, restored after,
+# and checked restored; _harness has already blanked both keys, so a stand-in
+# that leaked would meet a library with no credential.
+#
+# set(), not {}: {} is a dict, and the check below does set arithmetic on this.
 
 
 def main(argv):
@@ -539,9 +518,12 @@ def main(argv):
                 got, lost = by_area[area]["hit"], by_area[area]["miss"]
                 line = f"  {area:<14} {len(got):>3}/{len(got) + len(lost):<3}"
                 if lost:
-                    line += "  untested: " + ", ".join(lost[:3])
-                    if len(lost) > 3:
-                        line += f" +{len(lost) - 3} more"
+                    # ALL of them, by name. This printed three and "+2 more",
+                    # and the two it did not name were the two nobody could
+                    # go and test without a full run to find out which they
+                    # were -- a count where this file everywhere else insists
+                    # on a name.
+                    line += "  untested: " + ", ".join(lost)
                 print(line)
             # Reached but never answered. Every one of these was counted as
             # covered until now: the request matched the endpoint and was then
