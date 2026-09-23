@@ -56,6 +56,20 @@
            placeholder="any"
            value="{{ e['max_qty'] or '' if e is defined else '' }}">
   </div>
+  <div>
+    <label class="field-label" for="admin_extras-vat-rate">VAT %</label>
+    <input id="admin_extras-vat-rate" type="text" inputmode="decimal" name="vat_rate"
+           style="width:5em;" placeholder="{{ '%g'|format(extras_vat_default) }}">
+  </div>
+  <div>
+    {# For a mix at two rates, such as wine with food: the wine's share of the
+       price, and the rate it carries. The rest goes at the rate above. #}
+    <label class="field-label" for="admin_extras-vat-part">Of which at another rate</label>
+    <input id="admin_extras-vat-part" type="text" inputmode="decimal" name="vat_part_amount"
+           style="width:6em;" placeholder="€, if any">
+    <input aria-label="VAT % on that part" type="text" inputmode="decimal"
+           name="vat_part_rate" style="width:5em;" placeholder="%">
+  </div>
   <div style="align-self:flex-end;">
     {# Off unless asked for. Something a guest can put on their own bill
        without anybody looking is a decision, not a default. #}
@@ -149,6 +163,21 @@
     <input aria-label="Most one guest may take" type="number" name="max_qty" min="1" style="width:6em;"
            placeholder="any"
            value="{{ e['max_qty'] or '' if e is defined else '' }}">
+  </div>
+  <div>
+    <label class="field-label">VAT %</label>
+    <input aria-label="VAT %" type="text" inputmode="decimal" name="vat_rate" style="width:5em;"
+           placeholder="{{ '%g'|format(extras_vat_default) }}"
+           value="{{ '%g'|format(e['vat_rate']) if e['vat_rate'] is not none else '' }}">
+  </div>
+  <div>
+    <label class="field-label">Of which at another rate</label>
+    <input aria-label="Part of the price at another VAT rate" type="text" inputmode="decimal"
+           name="vat_part_amount" style="width:6em;" placeholder="€, if any"
+           value="{{ '%g'|format(e['vat_part_amount']) if e['vat_part_amount'] else '' }}">
+    <input aria-label="VAT % on that part" type="text" inputmode="decimal"
+           name="vat_part_rate" style="width:5em;" placeholder="%"
+           value="{{ '%g'|format(e['vat_part_rate']) if e['vat_part_rate'] is not none else '' }}">
   </div>
   <div style="align-self:flex-end;">
     {# Off unless asked for. Something a guest can put on their own bill

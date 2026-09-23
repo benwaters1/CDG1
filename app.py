@@ -4280,6 +4280,20 @@ def init_db():
         # apart.
         ("extras_revenue_category",
          "ALTER TABLE extras ADD COLUMN revenue_category TEXT"),
+        # VAT by the extra, not one rate for them all. A board of wine and
+        # charcuterie is food at one rate and wine at another, so a part of
+        # the price may carry a second rate. Empty means the house's extras
+        # rate, which is what every extra was before.
+        ("extras_vat_rate", "ALTER TABLE extras ADD COLUMN vat_rate REAL"),
+        ("extras_vat_part_amount", "ALTER TABLE extras ADD COLUMN vat_part_amount REAL"),
+        ("extras_vat_part_rate", "ALTER TABLE extras ADD COLUMN vat_part_rate REAL"),
+        # Copied onto the line when it is sold, like revenue_category: a rate
+        # changed next year must not restate what a guest was charged this.
+        ("booking_extras_vat_rate", "ALTER TABLE booking_extras ADD COLUMN vat_rate REAL"),
+        ("booking_extras_vat_part_amount",
+         "ALTER TABLE booking_extras ADD COLUMN vat_part_amount REAL"),
+        ("booking_extras_vat_part_rate",
+         "ALTER TABLE booking_extras ADD COLUMN vat_part_rate REAL"),
         ("booking_extras_revenue_category",
          "ALTER TABLE booking_extras ADD COLUMN revenue_category TEXT"),
         ("booking_extras_delivered_at",
@@ -14484,6 +14498,7 @@ def add_booking_extra(conn, category, booking_id, extra, quantity=1, *,
     both need to sell a one-off that isn't in the catalogue. Returns the new
     line-item id.
     """
+    vat_rate = vat_part_amount = vat_part_rate = None
     if isinstance(extra, str):
         name, extra_id, stock_item_id, per_unit = extra, None, None, 0
         price = unit_price or 0
@@ -14500,14 +14515,21 @@ def add_booking_extra(conn, category, booking_id, extra, quantity=1, *,
         # posting where it posted then -- the same reason total_price is stamped
         # on a booking rather than recomputed from the rate card.
         revenue_category = extra_revenue_category(extra)
+        # And its VAT, for the same reason -- copied, never looked up.
+        keys = extra.keys()
+        vat_rate = extra["vat_rate"] if "vat_rate" in keys else None
+        vat_part_amount = extra["vat_part_amount"] if "vat_part_amount" in keys else None
+        vat_part_rate = extra["vat_part_rate"] if "vat_part_rate" in keys else None
 
     conn.execute(
         """INSERT INTO booking_extras (category, booking_id, extra_id, name, unit_price,
            quantity, notes, status, scheduled_for, added_by_user_id,
-           revenue_category, in_booking_total, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           revenue_category, in_booking_total, vat_rate, vat_part_amount,
+           vat_part_rate, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (category, booking_id, extra_id, name, price, quantity, notes, status,
          scheduled_for, user_id, revenue_category, 1 if in_booking_total else 0,
+         vat_rate, vat_part_amount, vat_part_rate,
          datetime.now(timezone.utc).isoformat()),
     )
     line_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
@@ -14670,6 +14692,35 @@ def extras_for_booking(conn, category, booking_id):
 
 
 EXTRA_NOTE_MAX = 120
+
+
+def extra_vat_parts(conn, line, default=None):
+    """The (gross, rate) pieces a sold extra's price falls into, for VAT.
+
+    A line carries its own rate, copied from the catalogue when it was sold,
+    and may carry a part of its price at a second rate -- the wine in a board
+    of wine and charcuterie. A line sold before either existed carries
+    neither, and is at the house's extras rate, exactly as it always was.
+    The part is per unit, so three boards carry three bottles.
+    """
+    keys = line.keys()
+    if default is None:
+        default = tax_rate(conn, "vat_extras")
+
+    def field(name):
+        return line[name] if name in keys else None
+
+    qty = float(field("quantity") or 0) if "quantity" in keys else 1.0
+    gross = round(float(field("unit_price") or 0) * qty, 2)
+    rate = default if field("vat_rate") is None else float(field("vat_rate"))
+    part = round(min(max(float(field("vat_part_amount") or 0) * qty, 0.0), gross), 2)
+    part_rate = default if field("vat_part_rate") is None else float(field("vat_part_rate"))
+    pieces = []
+    if gross - part > 0.004:
+        pieces.append((round(gross - part, 2), rate))
+    if part > 0.004:
+        pieces.append((part, part_rate))
+    return pieces
 
 
 def extra_too_soon(extra, arrival, today=None):
@@ -33917,6 +33968,7 @@ CATALOGUE_ROOM_FIELDS = [
 CATALOGUE_EXTRA_FIELDS = [
     "name", "price", "active", "sort_order", "category", "description",
     "lead_time_days", "max_qty", "guest_bookable", "sold_in_pos", "ask_when",
+    "vat_rate", "vat_part_amount", "vat_part_rate",
 ]
 
 
@@ -46345,6 +46397,8 @@ def admin_extras():
     conn = get_db()
     extras = conn.execute("SELECT * FROM extras ORDER BY sort_order, name").fetchall()
     revenue_options = revenue_categories(conn)
+    # The rate an extra with no VAT of its own is charged at, for the placeholder.
+    extras_vat_default = tax_rate(conn, "vat_extras")
     conn.close()
     lv = list_view(
         extras, request.args,
@@ -46382,7 +46436,8 @@ def admin_extras():
     )
     return render_template("admin_extras.html", extras=lv["rows"], lv=lv,
                            categories=EXTRA_CATEGORIES,
-                           revenue_categories=revenue_options)
+                           revenue_categories=revenue_options,
+                           extras_vat_default=extras_vat_default)
 
 
 def extra_fields_from_form():
@@ -46428,7 +46483,39 @@ def extra_fields_from_form():
         # which is how a category the owner adds later gets fed.
         "revenue_category": (request.form.get("revenue_category", "") or "").strip() or None,
         "ask_when": 1 if request.form.get("ask_when") == "on" else 0,
+        # Blank is "the house's extras rate", which is what every extra was.
+        "vat_rate": _vat_rate_field("vat_rate"),
+        "vat_part_amount": (parse_money(request.form.get("vat_part_amount", ""))
+                            if (request.form.get("vat_part_amount", "") or "").strip()
+                            else None),
+        "vat_part_rate": _vat_rate_field("vat_part_rate"),
     }
+
+
+def _vat_rate_field(name):
+    """A VAT rate from the form: a number, None for blank, or "bad"."""
+    raw = (request.form.get(name, "") or "").strip().rstrip("%").replace(",", ".").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return "bad"
+    return value if 0 <= value <= 100 else "bad"
+
+
+def extra_vat_problem(fields):
+    """Why the VAT on the form cannot be saved, or None."""
+    if "bad" in (fields["vat_rate"], fields["vat_part_rate"]):
+        return "A VAT rate is a number from 0 to 100, like 10 or 5,5."
+    if (request.form.get("vat_part_amount", "") or "").strip() and fields["vat_part_amount"] is None:
+        return "That part of the price isn't a number I can read. Try 35 or 35,50."
+    if fields["vat_part_amount"]:
+        if fields["vat_part_rate"] is None:
+            return "Say which rate that part of the price is charged at."
+        if fields["vat_part_amount"] > (fields["price"] or 0):
+            return "The part at another rate can't be more than the price itself."
+    return None
 
 
 @app.route("/admin/extras/new", methods=["POST"])
@@ -46444,15 +46531,22 @@ def new_extra():
     if (request.form.get("price", "") or "").strip() and fields["price"] is None:
         flash("That price isn't a number I can read. Try 45 or 45,50.", "error")
         return redirect(url_for("admin_extras"))
+    problem = extra_vat_problem(fields)
+    if problem:
+        flash(problem, "error")
+        return redirect(url_for("admin_extras"))
     conn = get_db()
     max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM extras").fetchone()["m"]
     conn.execute(
         """INSERT INTO extras (name, price, description, category, guest_bookable,
-           lead_time_days, max_qty, revenue_category, ask_when, sort_order)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           lead_time_days, max_qty, revenue_category, ask_when, vat_rate,
+           vat_part_amount, vat_part_rate, sort_order)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (fields["name"], fields["price"] or 0, fields["description"],
          fields["category"], fields["guest_bookable"], fields["lead_time_days"],
          fields["max_qty"], fields["revenue_category"], fields["ask_when"],
+         fields["vat_rate"], fields["vat_part_amount"] or None,
+         fields["vat_part_rate"] if fields["vat_part_amount"] else None,
          max_order + 1),
     )
     conn.commit()
@@ -46471,14 +46565,21 @@ def edit_extra(extra_id):
     if (request.form.get("price", "") or "").strip() and fields["price"] is None:
         flash("That price isn't a number I can read. Try 45 or 45,50.", "error")
         return redirect(url_for("admin_extras"))
+    problem = extra_vat_problem(fields)
+    if problem:
+        flash(problem, "error")
+        return redirect(url_for("admin_extras"))
     conn = get_db()
     conn.execute(
         """UPDATE extras SET name = ?, price = ?, description = ?, category = ?,
            guest_bookable = ?, lead_time_days = ?, max_qty = ?,
-           revenue_category = ?, ask_when = ? WHERE id = ?""",
+           revenue_category = ?, ask_when = ?, vat_rate = ?, vat_part_amount = ?,
+           vat_part_rate = ? WHERE id = ?""",
         (fields["name"], fields["price"] or 0, fields["description"],
          fields["category"], fields["guest_bookable"], fields["lead_time_days"],
          fields["max_qty"], fields["revenue_category"], fields["ask_when"],
+         fields["vat_rate"], fields["vat_part_amount"] or None,
+         fields["vat_part_rate"] if fields["vat_part_amount"] else None,
          extra_id),
     )
     conn.commit()
@@ -72000,15 +72101,24 @@ def vat_working(conn, start, end):
     # Cancelled lines excluded, like every other figure in this function and
     # like the bill the guest is shown. It was the only line here with no
     # status filter, which put money on a VAT return that nobody was charged.
-    extras = conn.execute(
-        f"""SELECT COALESCE(SUM(unit_price * quantity), 0) AS t FROM booking_extras
-            WHERE {EXTRAS_COUNTED_SQL}
-              AND created_at >= ? AND created_at < ?""",
+    #
+    # By RATE, now that an extra carries its own: one line per rate, each
+    # still called Extras, so the working shows 10% and 20% side by side.
+    extras_rate = tax_rate(conn, "vat_extras")
+    extras_by_rate = {}
+    for line in conn.execute(
+        f"""SELECT unit_price, quantity, vat_rate, vat_part_amount, vat_part_rate
+              FROM booking_extras
+             WHERE {EXTRAS_COUNTED_SQL}
+               AND created_at >= ? AND created_at < ?""",
         # The period's first and last instants at the house. date() filed an
         # extra sold just after midnight under the day before -- and on the
         # first of a quarter, under the quarter before.
-        (house_day_window(start)[0], house_day_window(end)[0])).fetchone()["t"]
-    _estimate("Extras", extras, tax_rate(conn, "vat_extras"))
+        (house_day_window(start)[0], house_day_window(end)[0])).fetchall():
+        for gross, rate in extra_vat_parts(conn, line, default=extras_rate):
+            extras_by_rate[rate] = round(extras_by_rate.get(rate, 0.0) + gross, 2)
+    for rate in sorted(extras_by_rate, reverse=True):
+        _estimate("Extras", extras_by_rate[rate], rate)
 
     # Events. The rates table showed a rate for these while no line used it,
     # which reads as "included" and understated the total. Same definition
@@ -72721,8 +72831,9 @@ def guest_statement(conn, booking):
 
     vat = vat_breakdown(
         [(accommodation, tax_rate(conn, "vat_accommodation"))]
-        + [((e["unit_price"] or 0) * (e["quantity"] or 0), tax_rate(conn, "vat_extras"))
-           for e in extras])
+        # Each line at its own rate, and a board's wine at the wine's.
+        + [piece for e in extras
+           for piece in extra_vat_parts(conn, e, default=tax_rate(conn, "vat_extras"))])
     received = amount_paid_for(conn, "room", booking)
     given_back = refunded_so_far(conn, "room", booking["id"])
     paid = round(received - given_back, 2)
@@ -73669,17 +73780,18 @@ def booking_pennylane_lines(conn, statement):
     extras_rate = tax_rate(conn, "vat_extras")
     by_category = {}
     for extra in statement["extras"]:
-        gross = round(float(extra["unit_price"] or 0) * float(extra["quantity"] or 0), 2)
-        if not gross:
-            continue
         key = (extra["revenue_category"]
                if "revenue_category" in extra.keys() else None) or "extras"
-        by_category[key] = round(by_category.get(key, 0.0) + gross, 2)
+        # And by rate within it: a board's charcuterie and its wine are one
+        # sale and two VAT lines.
+        for gross, rate in extra_vat_parts(conn, extra, default=extras_rate):
+            slot = (key, rate)
+            by_category[slot] = round(by_category.get(slot, 0.0) + gross, 2)
 
     components = [("nightly", statement["accommodation"],
                    tax_rate(conn, "vat_accommodation"))]
-    components += [(key, gross, extras_rate)
-                   for key, gross in sorted(by_category.items())]
+    components += [(key, gross, rate)
+                   for (key, rate), gross in sorted(by_category.items())]
 
     lines = []
     for key, gross, rate in components:
