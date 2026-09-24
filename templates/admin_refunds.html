@@ -35,6 +35,69 @@
   </div>
 </div>
 
+{# What is still to do comes before what is done. Each line closes itself:
+   the money given back, the refund made again, the bill decided. #}
+{% if owed_back or failed or left_owing %}
+<h2>Still to do</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Who</th><th>What</th><th class="num">Amount</th><th></th></tr></thead>
+    <tbody>
+    {% for r in failed %}
+      <tr>
+        <td>{{ r.name }}<span class="cell-note">{{ r.ref }}</span></td>
+        <td>A refund that did not reach them<span class="cell-note">{{ r.why }}</span></td>
+        <td class="num">€{{ '%.2f'|format(r.amount) }}</td>
+        <td>{% if can('refund_desk') %}<a href="{{ url_for('refund_desk', category=r.category, booking_id=r.id) }}" class="btn-mini">Make it again</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    {% for r in owed_back %}
+      <tr>
+        <td>{{ r.name }}<span class="cell-note">{{ r.ref }}</span></td>
+        <td>Still held on {{ r.what }} {{ r.why }}</td>
+        <td class="num">€{{ '%.2f'|format(r.amount) }}</td>
+        <td>{% if can('refund_desk') %}<a href="{{ url_for('refund_desk', category=r.category, booking_id=r.id) }}" class="btn-mini">Give it back</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    {% for r in left_owing %}
+      <tr>
+        <td>{{ r.name }}<span class="cell-note">{{ r.ref }}</span></td>
+        <td>Refunded in Stripe's dashboard, and the bill asks for €{{ '%.2f'|format(r.owed) }} again</td>
+        <td class="num">€{{ '%.2f'|format(r.amount) }}</td>
+        <td>{% if can('refund_desk') %}<a href="{{ url_for('refund_desk', category=r.category, booking_id=r.id) }}" class="btn-mini">Decide</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if disputes %}
+<h2>Card disputes</h2>
+<p class="upload-hint">A guest's bank taking a payment back. Each has a date by which the house must answer in Stripe, or lose by default; a lost one is in the refunds below, because the money has gone back to them.</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Opened</th><th>Who</th><th class="num">Amount</th><th>Why</th>
+          <th>Where it stands</th><th>Answer by</th></tr>
+    </thead>
+    <tbody>
+    {% for d in disputes %}
+      <tr>
+        <td>{{ local_datetime_str(d['opened_at']) }}</td>
+        <td>{{ d['guest_name'] or '—' }}{% if d['reference_code'] %}<span class="cell-note">{{ d['reference_code'] }}</span>{% endif %}</td>
+        <td class="num">€{{ '%.2f'|format(d['amount']) }}</td>
+        <td>{{ dispute_words.get(d['reason'], d['reason']) }}</td>
+        <td>{{ (d['status'] or '')|replace('_', ' ')|capitalize }}{% if d['closed_at'] %}<span class="cell-note">closed</span>{% endif %}</td>
+        <td>{{ d['evidence_due_by']|date_short if d['evidence_due_by'] and not d['closed_at'] else '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<h2>Refunds made</h2>
 {% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
 
 {% if not refunds %}

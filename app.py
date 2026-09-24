@@ -4729,6 +4729,32 @@ def init_db():
          "ALTER TABLE booking_payments ADD COLUMN stripe_payment_intent_id TEXT"),
         ("event_payments_payment_intent",
          "ALTER TABLE event_payments ADD COLUMN stripe_payment_intent_id TEXT"),
+        # A refund that did not reach the guest is booked back against the one
+        # it undoes rather than deleted: the record keeps that it was tried, and
+        # every figure built on refunds comes back right by the same sums.
+        ("refunds_reverses", "ALTER TABLE refunds ADD COLUMN reverses_refund_id INTEGER"),
+        # A card payment the guest has disputed with their bank. The webhook
+        # heard checkout and nothing else, so a dispute -- which has a deadline,
+        # after which the house loses by default -- reached nobody here at all.
+        ("payment_disputes_table", """CREATE TABLE IF NOT EXISTS payment_disputes (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             stripe_dispute_id TEXT NOT NULL UNIQUE,
+             payment_intent TEXT,
+             amount REAL NOT NULL,
+             reason TEXT,
+             status TEXT NOT NULL,
+             evidence_due_by TEXT,
+             category TEXT,
+             booking_id INTEGER,
+             payment_key TEXT,
+             reference_code TEXT,
+             guest_name TEXT,
+             guest_email TEXT,
+             refund_id INTEGER,
+             opened_at TEXT NOT NULL,
+             updated_at TEXT,
+             closed_at TEXT
+         )"""),
         # What has already been sent to the accountant.
         #
         # An invoice sent twice is worse than one not sent at all: the second is
@@ -7157,6 +7183,7 @@ OWNER_ONLY_AREAS = {
     # The refund desk moves money out of the house, so it is owner-only on
     # purpose; it lives under Financial beside the list of refunds.
     "refund_desk": "financial",
+    "refund_off_the_bill": "financial",
     "reveal_bank_details": "financial",
     "reveal_vault_entry": "management",
     "save_access_preset": "management",
@@ -24494,6 +24521,10 @@ def make_refund(conn, category, booking, amount, reason, method="stripe", user_i
                 # genuine refund of the same amount is not taken for a replay.
                 refund = stripe.Refund.create(
                     payment_intent=intent, amount=cents,
+                    # Marked as ours, so the webhook that reports it back does
+                    # not record it a second time as one made elsewhere.
+                    metadata={"made_by": "gudanes", "category": category,
+                              "booking_id": str(booking["id"])},
                     idempotency_key=(f"gudanes-{category}-{booking['id']}-{payment['key']}-"
                                      f"{cents}-{refunded_so_far(conn, category, booking['id']):.2f}"))
                 stripe_refund_id = getattr(refund, "id", None)
@@ -24581,10 +24612,440 @@ def refund_booking(conn, booking, amount=None, reason="Cancelled by the château
                        "giving back by hand.")
     ok, error = issue_refund(conn, "room", booking, by_card, reason, method="stripe",
                              user_id=user_id, reason_code="declined")
+    if ok:
+        # It went unrecorded: the only refund in the house with no line in
+        # the audit trail was the one made automatically on a decline.
+        log_audit(conn, "refund_issued", target=f"room booking {booking['reference_code']}",
+                  details=f"€{by_card:.2f} — declined, back to the card")
     if ok and other > 0.005:
         return False, (f"€{by_card:.2f} went back to the card; €{other:.2f} was paid "
                        "another way and needs giving back by hand.")
     return ok, error
+
+
+# Reasons only the system writes: never offered on the refund form.
+SYSTEM_REFUND_REASONS = {
+    "stripe_dashboard": "Refunded in Stripe's dashboard",
+    "refund_failed": "The refund did not reach them",
+    "chargeback": "Lost a card dispute",
+}
+DISPUTE_OPEN_STATES = ("warning_needs_response", "warning_under_review",
+                       "needs_response", "under_review")
+DISPUTE_CLOSED_STATES = ("won", "lost", "warning_closed", "charge_refunded")
+DISPUTE_REASON_WORDS = {
+    "fraudulent": "they say they did not make it",
+    "duplicate": "they say they were charged twice",
+    "product_not_received": "they say they did not get what they paid for",
+    "product_unacceptable": "they say it was not as described",
+    "subscription_canceled": "they say it had been cancelled",
+    "unrecognized": "they do not recognise the payment",
+    "credit_not_processed": "they say a refund was promised and not made",
+    "general": "no reason given",
+}
+
+
+def _intent_of(obj):
+    intent = sval(obj, "payment_intent")
+    if intent and not isinstance(intent, str):
+        intent = sval(intent, "id")
+    return intent or None
+
+
+def payment_for_intent(conn, intent):
+    """(category, booking_id, payment_key) for a Stripe PaymentIntent, or None.
+
+    Refunds and disputes arrive from Stripe naming the payment, never the
+    booking. Payments recorded before each one kept its intent carry only their
+    Checkout session, so Stripe is asked which session the intent came from
+    before giving up.
+    """
+    if not intent:
+        return None
+    lookups = (
+        ("SELECT id, booking_id AS b FROM booking_payments WHERE stripe_payment_intent_id = ?",
+         "room", "bp"),
+        ("SELECT id, workshop_booking_id AS b FROM workshop_transactions "
+         "WHERE stripe_ref = ? AND kind = 'payment'", "workshop", "wt"),
+        ("SELECT id, event_id AS b FROM event_payments WHERE stripe_payment_intent_id = ?",
+         "event", "ep"),
+    )
+    for sql, category, prefix in lookups:
+        row = conn.execute(sql, (intent,)).fetchone()
+        if row:
+            return category, row["b"], f"{prefix}{row['id']}"
+    row = conn.execute("SELECT id FROM restaurant_bookings WHERE stripe_payment_intent_id = ?",
+                       (intent,)).fetchone()
+    if row:
+        return "restaurant", row["id"], "deposit"
+    row = conn.execute("SELECT id FROM bookings WHERE stripe_payment_intent_id = ?",
+                       (intent,)).fetchone()
+    if row:
+        return "room", row["id"], None
+    try:
+        found = stripe.checkout.Session.list(payment_intent=intent, limit=1)
+        data = list(sval(found, "data") or [])
+        session_id = sval(data[0], "id") if data else None
+    except Exception:
+        session_id = None
+    if not session_id:
+        return None
+    by_session = (
+        ("SELECT id, booking_id AS b FROM booking_payments WHERE stripe_session_id = ?",
+         "room", "bp"),
+        ("SELECT id, workshop_booking_id AS b FROM workshop_transactions "
+         "WHERE stripe_ref = ? AND kind = 'payment'", "workshop", "wt"),
+        ("SELECT id, event_id AS b FROM event_payments WHERE reference = ?", "event", "ep"),
+    )
+    for sql, category, prefix in by_session:
+        row = conn.execute(sql, (session_id,)).fetchone()
+        if row:
+            return category, row["b"], f"{prefix}{row['id']}"
+    return None
+
+
+def _booking_row(conn, category, booking_id):
+    table = REFUND_BOOKING_TABLES.get(category)
+    if not table or booking_id is None:
+        return None
+    return conn.execute(f"SELECT * FROM {table} WHERE id = ?", (booking_id,)).fetchone()
+
+
+def _mark_refunded_if_whole(conn, category, booking_id):
+    """payment_status says 'refunded' once everything taken has gone back, and
+    stops saying it the moment that is no longer true -- a refund that failed."""
+    table = REFUND_TABLES.get(category)
+    booking = _booking_row(conn, category, booking_id) if table else None
+    if not booking or "payment_status" not in booking.keys():
+        return
+    whole = refunded_so_far(conn, category, booking_id) >= \
+        amount_paid_for(conn, category, booking) - 0.005
+    if whole and booking["payment_status"] != "refunded":
+        conn.execute(f"UPDATE {table} SET payment_status = 'refunded' WHERE id = ?", (booking_id,))
+    elif not whole and booking["payment_status"] == "refunded":
+        settled = "paid"
+        if category == "room":
+            bill = booking_bill(conn, booking_id)
+            settled = "paid" if bill and bill["owed"] <= 0.005 else "unpaid"
+        conn.execute(f"UPDATE {table} SET payment_status = ? WHERE id = ?", (settled, booking_id))
+
+
+def _owed_on(conn, category, booking_id):
+    """What a booking still asks for, by the one definition for its kind."""
+    if category == "room":
+        bill = booking_bill(conn, booking_id)
+        return bill["owed"] if bill else 0.0
+    if category == "workshop":
+        return round(max(workshop_balance_due(conn, booking_id)[0], 0.0), 2)
+    if category == "event":
+        bill = event_bill(conn, booking_id)
+        return bill["owed"] if bill else 0.0
+    return 0.0
+
+
+def _payment_task(conn, title, notes):
+    """A task for the owner about money, once: a second report of the same
+    thing is the same task, not another one."""
+    if conn.execute("SELECT 1 FROM tasks WHERE title = ? AND status != 'done'",
+                    (title,)).fetchone():
+        return
+    conn.execute(
+        """INSERT INTO tasks (title, notes, priority, due_date, status, origin, created_at)
+           VALUES (?, ?, 'high', ?, 'open', 'payment', ?)""",
+        (title, notes, service_day_iso(), datetime.now(timezone.utc).isoformat()))
+
+
+def reverse_refund(conn, original, why):
+    """Book back a refund that did not reach the guest.
+
+    A row of its own, against the one it undoes, rather than deleting or editing
+    the first: the record keeps that the refund was made and failed, and
+    everything that adds refunds up -- the bill, the ceiling, revenue, the VAT
+    working -- comes back right by the same arithmetic.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    amount = round(float(original["amount"] or 0), 2)
+    off = round(float(original["reduces_bill"] or 0), 2)
+    conn.execute(
+        """INSERT INTO refunds (category, booking_id, reference_code, guest_name, guest_email,
+           amount, reason, method, stripe_refund_id, refunded_by_user_id, created_at,
+           payment_key, reason_code, reduces_bill, reverses_refund_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'stripe', NULL, NULL, ?, ?, 'refund_failed', ?, ?)""",
+        (original["category"], original["booking_id"], original["reference_code"],
+         original["guest_name"], original["guest_email"], -amount,
+         f"The refund did not reach them: {why}", now, original["payment_key"], -off,
+         original["id"]))
+    if original["category"] == "workshop":
+        # Negative lines of the same kinds, so the ledger undoes exactly what
+        # the refund did and no more: received comes back up, and whatever came
+        # off the bill goes back on it.
+        add_workshop_transaction(conn, original["booking_id"], "refund",
+                                 "Refund — did not go through, the money stayed with us",
+                                 -amount, method="stripe")
+        if off > 0.005:
+            add_workshop_transaction(conn, original["booking_id"], "discount",
+                                     "Taken off the bill — undone, the refund did not go through",
+                                     -off)
+    _mark_refunded_if_whole(conn, original["category"], original["booking_id"])
+    log_audit(conn, "refund_failed",
+              target=f"{REFUND_AUDIT_WORDS.get(original['category'], '')} "
+                     f"{original['reference_code']}".strip(),
+              details=f"€{amount:.2f} — {why}")
+    conn.commit()
+
+
+def record_refund_from_stripe(conn, refund_obj):
+    """One refund Stripe has told us about. Returns what was done, as a word.
+
+    Three kinds arrive. One this app made is recorded by the app, which marks it
+    as its own, so it is never counted twice. One made in Stripe's own dashboard
+    was invisible here: the booking still read as paid, the money had gone, and
+    nothing would ever have said so. And one that FAILED after Stripe took it --
+    a closed account, a card that no longer exists -- left the books saying the
+    guest had been paid back when they had not.
+    """
+    rid = sval(refund_obj, "id")
+    if not rid:
+        return "ignored"
+    status = (sval(refund_obj, "status") or "").lower()
+    ours = conn.execute("SELECT * FROM refunds WHERE stripe_refund_id = ?", (rid,)).fetchone()
+    if status in ("failed", "canceled"):
+        if not ours:
+            return "unknown"
+        if conn.execute("SELECT 1 FROM refunds WHERE reverses_refund_id = ?",
+                        (ours["id"],)).fetchone():
+            return "known"
+        reverse_refund(conn, ours, sval(refund_obj, "failure_reason") or status)
+        return "reversed"
+    if ours:
+        return "known"
+    if (smeta(refund_obj).get("made_by") or "") == "gudanes":
+        return "ours"
+    amount = round((sval(refund_obj, "amount") or 0) / 100.0, 2)
+    if amount <= 0:
+        return "ignored"
+    intent = _intent_of(refund_obj)
+    place = payment_for_intent(conn, intent)
+    booking = _booking_row(conn, place[0], place[1]) if place else None
+    if not booking:
+        _payment_task(conn, f"A refund in Stripe that matches no booking ({rid})",
+                      f"€{amount:.2f} was refunded in Stripe on payment {intent or 'unknown'}, "
+                      "and no booking here carries that payment. Find it in Stripe, then "
+                      "record it on the booking's refund page as 'Other' so the books match.")
+        conn.commit()
+        return "unplaced"
+    category, booking_id, key = place
+    created = sval(refund_obj, "created")
+    at = (datetime.fromtimestamp(created, timezone.utc).isoformat()
+          if isinstance(created, (int, float)) else datetime.now(timezone.utc).isoformat())
+    conn.execute(
+        """INSERT INTO refunds (category, booking_id, reference_code, guest_name, guest_email,
+           amount, reason, method, stripe_refund_id, refunded_by_user_id, created_at,
+           payment_key, reason_code, reduces_bill)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'stripe', ?, NULL, ?, ?, 'stripe_dashboard', 0)""",
+        (category, booking_id, _booking_field(booking, "reference_code"),
+         _booking_field(booking, "guest_name", "contact_name"),
+         _booking_field(booking, "guest_email", "contact_email"),
+         amount, SYSTEM_REFUND_REASONS["stripe_dashboard"], rid, at, key))
+    if category == "workshop":
+        add_workshop_transaction(conn, booking_id, "refund",
+                                 f"Refund — {SYSTEM_REFUND_REASONS['stripe_dashboard']}",
+                                 amount, method="stripe")
+    _mark_refunded_if_whole(conn, category, booking_id)
+    log_audit(conn, "refund_recorded_from_stripe",
+              target=f"{REFUND_AUDIT_WORDS[category]} {_booking_field(booking, 'reference_code')}",
+              details=f"€{amount:.2f} — made in Stripe's dashboard")
+    conn.commit()
+    return "recorded"
+
+
+def record_dispute(conn, dispute):
+    """A card payment disputed with the guest's bank, kept and followed.
+
+    A dispute has a deadline -- usually a week or two -- after which the house
+    loses by default, and it reached nobody here. Now it is a row, a task that
+    closes itself when the dispute does and, if it is lost, a refund in the
+    record, because the money has gone back to the guest by another road.
+    """
+    did = sval(dispute, "id")
+    if not did:
+        return "ignored"
+    status = (sval(dispute, "status") or "").lower()
+    amount = round((sval(dispute, "amount") or 0) / 100.0, 2)
+    reason = sval(dispute, "reason") or "general"
+    evidence = sval(dispute, "evidence_details")
+    due = sval(evidence, "due_by") if evidence else None
+    due_iso = (house_date_iso(datetime.fromtimestamp(due, timezone.utc).isoformat())
+               if isinstance(due, (int, float)) else None)
+    now = datetime.now(timezone.utc).isoformat()
+    row = conn.execute("SELECT * FROM payment_disputes WHERE stripe_dispute_id = ?",
+                       (did,)).fetchone()
+    if not row:
+        intent = _intent_of(dispute)
+        place = payment_for_intent(conn, intent)
+        booking = _booking_row(conn, place[0], place[1]) if place else None
+        conn.execute(
+            """INSERT INTO payment_disputes (stripe_dispute_id, payment_intent, amount, reason,
+               status, evidence_due_by, category, booking_id, payment_key, reference_code,
+               guest_name, guest_email, opened_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (did, intent, amount, reason, status, due_iso,
+             place[0] if booking else None, place[1] if booking else None,
+             place[2] if booking else None,
+             _booking_field(booking, "reference_code") if booking else None,
+             _booking_field(booking, "guest_name", "contact_name") if booking else None,
+             _booking_field(booking, "guest_email", "contact_email") if booking else None,
+             now, now))
+    else:
+        conn.execute(
+            """UPDATE payment_disputes SET status = ?, amount = ?, reason = ?,
+               evidence_due_by = COALESCE(?, evidence_due_by), updated_at = ? WHERE id = ?""",
+            (status, amount, reason, due_iso, now, row["id"]))
+    row = conn.execute("SELECT * FROM payment_disputes WHERE stripe_dispute_id = ?",
+                       (did,)).fetchone()
+    if status in DISPUTE_CLOSED_STATES and not row["closed_at"]:
+        conn.execute("UPDATE payment_disputes SET closed_at = ? WHERE id = ?", (now, row["id"]))
+    if status == "lost" and not row["refund_id"] and row["category"] and row["booking_id"]:
+        words = DISPUTE_REASON_WORDS.get(reason, reason)
+        cur = conn.execute(
+            """INSERT INTO refunds (category, booking_id, reference_code, guest_name, guest_email,
+               amount, reason, method, stripe_refund_id, refunded_by_user_id, created_at,
+               payment_key, reason_code, reduces_bill)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'stripe', NULL, NULL, ?, ?, 'chargeback', 0)""",
+            (row["category"], row["booking_id"], row["reference_code"], row["guest_name"],
+             row["guest_email"], amount, f"Lost a card dispute: {words}", now,
+             row["payment_key"]))
+        conn.execute("UPDATE payment_disputes SET refund_id = ? WHERE id = ?",
+                     (cur.lastrowid, row["id"]))
+        if row["category"] == "workshop":
+            add_workshop_transaction(conn, row["booking_id"], "refund",
+                                     "Refund — lost a card dispute", amount, method="stripe")
+        _mark_refunded_if_whole(conn, row["category"], row["booking_id"])
+    log_audit(conn, "card_dispute", target=row["reference_code"] or did,
+              details=f"{status} — €{amount:.2f}, {reason}")
+    conn.commit()
+    return status
+
+
+def open_disputes(conn):
+    return conn.execute(
+        f"""SELECT * FROM payment_disputes WHERE closed_at IS NULL
+             AND status IN ({','.join('?' * len(DISPUTE_OPEN_STATES))})
+             ORDER BY COALESCE(evidence_due_by, '9999'), opened_at""",
+        DISPUTE_OPEN_STATES).fetchall()
+
+
+def money_to_give_back(conn):
+    """Money still held on bookings the house said no to, or called off.
+
+    A refund here is the owner's call -- except where the house is the one
+    who said no: a request declined, a stay the house could not honour, a
+    table declined, an atelier sitting called off, an event declined. Money
+    held on any of those is the guest's, and nothing listed it. A decline by
+    somebody who may not move money, or a card refund that could not be made,
+    left it where it was and told nobody.
+    """
+    out = []
+
+    def consider(category, booking, what, why):
+        left = refundable_amount(conn, category, booking)
+        if left > 0.005:
+            out.append({
+                "category": category, "id": booking["id"],
+                "ref": _booking_field(booking, "reference_code") or f"#{booking['id']}",
+                "name": _booking_field(booking, "guest_name", "contact_name") or "a guest",
+                "amount": left, "what": what, "why": why})
+
+    for b in conn.execute(
+            """SELECT * FROM bookings
+                WHERE (status = 'declined'
+                       OR (status = 'cancelled' AND cancel_reason = 'house_could_not'))
+                  AND (COALESCE(amount_paid, 0) > 0
+                       OR payment_status IN ('paid', 'refunded'))""").fetchall():
+        consider("room", b, "a stay", "that the house said no to" if b["status"] == "declined"
+                 else "that the house could not honour")
+    for r in conn.execute(
+            """SELECT * FROM restaurant_bookings WHERE status = 'declined'
+                  AND payment_status IN ('paid', 'refunded')""").fetchall():
+        consider("restaurant", r, "a table", "that the house said no to")
+    for w in conn.execute(
+            """SELECT wb.* FROM workshop_bookings wb
+                 JOIN workshop_sessions ws ON ws.id = wb.session_id
+                WHERE wb.status = 'declined' OR ws.cancelled_at IS NOT NULL""").fetchall():
+        consider("workshop", w, "an atelier place",
+                 "that the house said no to" if w["status"] == "declined"
+                 else "on a sitting the house called off")
+    for e in conn.execute(
+            """SELECT * FROM event_inquiries WHERE status = 'declined'
+                  AND COALESCE(amount_paid, 0) > 0""").fetchall():
+        consider("event", e, "an event", "that the house said no to")
+    out.sort(key=lambda r: -r["amount"])
+    return out
+
+
+def failed_refunds_to_redo(conn):
+    """Refunds that failed after Stripe accepted them, not made again since."""
+    out = []
+    for r in conn.execute(
+            """SELECT * FROM refunds WHERE reason_code = 'refund_failed'
+                ORDER BY created_at DESC""").fetchall():
+        again = conn.execute(
+            """SELECT 1 FROM refunds WHERE category = ? AND booking_id = ? AND amount > 0
+                  AND created_at > ? LIMIT 1""",
+            (r["category"], r["booking_id"], r["created_at"])).fetchone()
+        if again:
+            continue
+        out.append({"category": r["category"], "id": r["booking_id"],
+                    "ref": r["reference_code"] or f"#{r['booking_id']}",
+                    "name": r["guest_name"] or "a guest", "amount": -round(r["amount"], 2),
+                    "why": r["reason"]})
+    return out
+
+
+def refunds_left_owing(conn):
+    """Refunds made in Stripe's dashboard on bookings still going ahead, that
+    have left the bill asking for the money again. Only the owner knows which
+    they meant -- a gesture, or money to be paid again -- so it is asked."""
+    out = []
+    for r in conn.execute(
+            """SELECT * FROM refunds WHERE reason_code = 'stripe_dashboard'
+                  AND COALESCE(reduces_bill, 0) < amount - 0.005""").fetchall():
+        booking = _booking_row(conn, r["category"], r["booking_id"])
+        if not booking or not booking_stands(r["category"], booking):
+            continue
+        owed = _owed_on(conn, r["category"], r["booking_id"])
+        if owed > 0.005:
+            out.append({"category": r["category"], "id": r["booking_id"],
+                        "ref": r["reference_code"] or f"#{r['booking_id']}",
+                        "name": r["guest_name"] or "a guest",
+                        "amount": round(r["amount"], 2), "owed": owed})
+    return out
+
+
+def refund_everything(conn, category, booking, reason, reason_code, user_id=None):
+    """Everything still held on a booking, back the way it came.
+
+    Card payments go back to their own cards, one refund each. What was paid
+    another way cannot be sent from here -- it is named, not recorded, because
+    recording it would say the money had gone when nobody has sent it.
+    Returns (refunded, by_hand, errors).
+    """
+    refunded, by_hand, errors = 0.0, [], []
+    for p in payments_received(conn, category, booking):
+        if p["refundable"] <= 0.005:
+            continue
+        if not p["card"]:
+            by_hand.append(f"€{p['refundable']:.2f} paid {p['method_label'].lower()}")
+            continue
+        ok, err, ids = make_refund(conn, category, booking, p["refundable"], reason,
+                                   method="stripe", user_id=user_id, payment_key=p["key"],
+                                   reason_code=reason_code)
+        if ids:
+            refunded += sum(r["amount"] for r in conn.execute(
+                f"SELECT amount FROM refunds WHERE id IN ({','.join('?' * len(ids))})",
+                ids).fetchall())
+        if not ok:
+            errors.append(err)
+    return round(refunded, 2), by_hand, errors
 
 
 def is_viewable(filename):
@@ -27838,6 +28299,37 @@ def owner_home_warnings(conn, today):
         add("blocker" if check["severity"] == "blocker" else "warn",
             FRONT_PAGE_READINESS[check["label"]], check["detail"], 1,
             "admin_readiness")
+
+    # MONEY GOING BACK, and money being taken back. Each closes itself.
+    disputes = open_disputes(conn)
+    if disputes:
+        n = len(disputes)
+        soonest = min((d["evidence_due_by"] for d in disputes if d["evidence_due_by"]),
+                      default=None)
+        add("blocker",
+            f"{n} card payment{'s are' if n != 1 else ' is'} being disputed",
+            (f"Answer by {format_date_human(soonest)} in Stripe, " if soonest else
+             "Answer in Stripe ") + "or the house loses by default.", n, "admin_refunds")
+    failed = failed_refunds_to_redo(conn)
+    if failed:
+        n = len(failed)
+        add("blocker", f"{n} refund{'s' if n != 1 else ''} did not reach the guest",
+            "; ".join(f"{r['name']} €{r['amount']:,.2f}" for r in failed[:3])
+            + ". The money is still theirs.", n, "admin_refunds")
+    owed_back = money_to_give_back(conn)
+    if owed_back:
+        n = len(owed_back)
+        add("warn",
+            f"€{sum(r['amount'] for r in owed_back):,.2f} still to give back",
+            "; ".join(f"{r['name']} €{r['amount']:,.2f}" for r in owed_back[:3])
+            + " — held on bookings the house said no to or called off.", n,
+            "admin_refunds")
+    left = refunds_left_owing(conn)
+    if left:
+        n = len(left)
+        add("warn", f"{n} refund{'s' if n != 1 else ''} made in Stripe to decide",
+            "Made in Stripe's dashboard, and the bill asks for the money again. "
+            "Say whether it came off the price.", n, "admin_refunds")
 
     order = {"blocker": 0, "warn": 1}
     out.sort(key=lambda w: (order.get(w["severity"], 9), -w["count"]))
@@ -38941,6 +39433,40 @@ def stripe_webhook():
             # made the next write fail with "database is locked". Re-raise so
             # Stripe sees a 500 and retries, which is the correct behaviour
             # for a payment we may not have recorded.
+            print(f"[stripe webhook] {event['type']} failed: {e}")
+            raise
+        finally:
+            conn.close()
+
+    elif event["type"] in ("charge.refunded", "refund.created", "refund.updated",
+                           "refund.failed", "charge.refund.updated"):
+        # A refund made in Stripe's dashboard, or one that failed after it was
+        # accepted. Either way the books here were wrong until now.
+        obj = event["data"]["object"]
+        conn = get_db()
+        try:
+            if event["type"] == "charge.refunded":
+                try:
+                    listed = stripe.Refund.list(payment_intent=_intent_of(obj), limit=100)
+                    refunds = list(sval(listed, "data") or [])
+                except Exception:
+                    refunds = list(sval(sval(obj, "refunds") or {}, "data") or [])
+                for r in refunds:
+                    record_refund_from_stripe(conn, r)
+            else:
+                record_refund_from_stripe(conn, obj)
+        except Exception as e:
+            print(f"[stripe webhook] {event['type']} failed: {e}")
+            raise
+        finally:
+            conn.close()
+
+    elif event["type"].startswith("charge.dispute."):
+        obj = event["data"]["object"]
+        conn = get_db()
+        try:
+            record_dispute(conn, obj)
+        except Exception as e:
             print(f"[stripe webhook] {event['type']} failed: {e}")
             raise
         finally:
@@ -50929,12 +51455,18 @@ def prepare_arrival(booking_id):
     return redirect(url_for("admin_bookings"))
 
 
-def decline_booking_by_id(conn, booking_id):
+def decline_booking_by_id(conn, booking_id, *, refund=True, user_id=None):
     """Core decline logic shared by the single-booking and bulk-decline
     routes. Only acts on a still-pending booking, mirroring
     confirm_booking_by_id's guard against re-processing. Returns a
     (declined, refunded, refund_error) tuple; leaves commit/close to the
-    caller."""
+    caller.
+
+    `refund` is whether the person declining may give money back. Refunds are
+    the owner's call, and a decline by anybody else moved it all the same --
+    straight to the card, with nobody named behind it. Left unrefunded, it is
+    on the owner's list of money to give back until it goes.
+    """
     booking = conn.execute(
         """SELECT bookings.*, rooms.name AS room_name FROM bookings
            JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ? AND bookings.status = 'pending'""",
@@ -50954,7 +51486,8 @@ def decline_booking_by_id(conn, booking_id):
     # Paid anything at all, not paid in full: a deposit taken on a request that
     # is then declined is owed back as surely as the whole price.
     was_paid = amount_paid_for(conn, "room", booking) > 0.005
-    refunded, refund_error = refund_booking(conn, booking)
+    refunded, refund_error = (refund_booking(conn, booking, user_id=user_id)
+                              if refund and was_paid else (False, None))
     refund_error = refund_error if was_paid else None
     refund_note = ""
     if refunded:
@@ -50981,7 +51514,7 @@ def decline_booking_by_id(conn, booking_id):
     return True, refunded, refund_error
 
 
-def decline_one_and_follow_up(conn, booking_id):
+def decline_one_and_follow_up(conn, booking_id, *, refund=True, user_id=None):
     """Decline a booking and do everything that follows from declining it.
 
     Not the same job as decline_booking_by_id, which is the state change and the
@@ -51004,7 +51537,8 @@ def decline_one_and_follow_up(conn, booking_id):
 
     Returns (declined, refunded, refund_error, notified).
     """
-    declined, refunded, refund_error = decline_booking_by_id(conn, booking_id)
+    declined, refunded, refund_error = decline_booking_by_id(
+        conn, booking_id, refund=refund, user_id=user_id)
     if not declined:
         return False, refunded, refund_error, []
     # Re-read: the helper has committed by now, and the dates are what the
@@ -51045,8 +51579,12 @@ def decline_booking(booking_id):
         # write that is still in a transaction when a message goes out is a
         # message that can exist with nothing behind it.
         conn.commit()
+    user = current_user()
+    may_refund = can_reach(user, "refund_desk")
+    before = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    held = amount_paid_for(conn, "room", before) if before else 0.0
     declined, refunded, refund_error, notified = decline_one_and_follow_up(
-        conn, booking_id)
+        conn, booking_id, refund=may_refund, user_id=user["id"])
     if not declined:
         conn.close()
         abort(404)
@@ -51058,7 +51596,9 @@ def decline_booking(booking_id):
         remaining = matching_waitlist_entries(conn, booking["arrival_date"], booking["departure_date"])
         waitlist_note = f" {len(remaining)} waitlist entr{'y wants' if len(remaining) == 1 else 'ies want'} overlapping dates — check the waitlist." if remaining else ""
     conn.close()
-    flash("Booking declined." + (" Payment refunded." if refunded else (f" Refund failed: {refund_error}" if refund_error else "")) + waitlist_note, "success")
+    waiting = (f" The €{held:.2f} they paid is on the owner's list to give back."
+               if held > 0.005 and not may_refund else "")
+    flash("Booking declined." + (" Payment refunded." if refunded else (f" Refund failed: {refund_error}" if refund_error else "")) + waiting + waitlist_note, "success")
     return redirect(url_for("admin_bookings"))
 
 
@@ -51067,7 +51607,10 @@ def decline_booking(booking_id):
 def bulk_decline_bookings():
     booking_ids = [int(i) for i in request.form.getlist("booking_ids") if i.isdigit()]
     conn = get_db()
+    user = current_user()
+    may_refund = can_reach(user, "refund_desk")
     declined, skipped, refund_failures, notified_total = 0, [], [], 0
+    left_for_owner = []
     for bid in booking_ids:
         # The state BEFORE the attempt, because the helper returns no reason and
         # afterwards the row looks the same whether this call declined it or
@@ -51076,7 +51619,12 @@ def bulk_decline_bookings():
             "SELECT reference_code, status FROM bookings WHERE id = ?",
             (bid,)).fetchone()
         label = was["reference_code"] if was else f"#{bid}"
-        ok, _refunded, refund_error, notified = decline_one_and_follow_up(conn, bid)
+        paid_row = conn.execute("SELECT * FROM bookings WHERE id = ?", (bid,)).fetchone()
+        paid_before = amount_paid_for(conn, "room", paid_row) if paid_row else 0.0
+        ok, _refunded, refund_error, notified = decline_one_and_follow_up(
+            conn, bid, refund=may_refund, user_id=user["id"])
+        if ok and paid_before > 0.005 and not may_refund:
+            left_for_owner.append(label)
         if not ok:
             skipped.append((label, "no longer there" if not was
                             else f"already {was['status']}"))
@@ -51098,6 +51646,9 @@ def bulk_decline_bookings():
         msg += (" Refunds did NOT go through for "
                 + ", ".join(refund_failures) + " — these need doing by hand.")
         category = "error"
+    if left_for_owner:
+        msg += (" What " + ", ".join(left_for_owner)
+                + " paid is on the owner's list to give back.")
     flash(msg, category)
     return redirect(url_for("admin_bookings"))
 
@@ -51120,12 +51671,30 @@ def cancel_booking_admin(booking_id):
     )
     conn.commit()
 
-    # Cancelling deliberately does NOT refund. House terms are non-refundable,
-    # and refunds here are a case-by-case decision — so the money only moves
-    # when the owner explicitly says so on the refund form. This used to fire
-    # a full Stripe refund automatically, which handed back every euro on a
-    # mis-click and contradicted the stated policy.
-    still_held = refundable_amount(conn, "room", booking) if booking["payment_status"] == "paid" else 0
+    # Cancelling does NOT refund on its own. House terms are non-refundable,
+    # and refunds here are a case-by-case decision -- so the money only moves
+    # when the owner says so. This used to fire a full Stripe refund
+    # automatically, which handed back every euro on a mis-click.
+    #
+    # BUT THE OWNER CAN SAY SO HERE, in the same step. The terms promise a full
+    # refund when the house is the one calling a stay off, and that meant a
+    # cancellation, then a second page, then a refund per payment.
+    refund_note = ""
+    if request.form.get("refund_paid") == "1" and can_reach(current_user(), "refund_desk"):
+        back, by_hand, errors = refund_everything(
+            conn, "room", booking, REFUND_REASON_LABELS["house_cancelled"], "house_cancelled",
+            current_user()["id"])
+        if back > 0.005:
+            log_audit(conn, "refund_issued", target=f"room booking {booking['reference_code']}",
+                      details=f"€{back:.2f} — the house called it off")
+            conn.commit()
+            send_refund_letter(conn, "room", booking_id, back, "stripe")
+            refund_note += f" €{back:.2f} refunded to the card."
+        if by_hand:
+            refund_note += " Paid another way, to give back by hand: " + ", ".join(by_hand) + "."
+        if errors:
+            refund_note += " Not refunded: " + "; ".join(errors) + "."
+    still_held = refundable_amount(conn, "room", booking)
 
     # Through write_about_stay, like the confirmation, so anybody the guest
     # asked us to copy hears the booking is gone. This went to the guest alone:
@@ -51148,7 +51717,7 @@ def cancel_booking_admin(booking_id):
     conn.close()
     money_note = (f" €{still_held:.2f} is still held — issue a refund from the booking if you want to give any of it back."
                   if still_held > 0 else "")
-    flash("Booking cancelled." + money_note + waitlist_note, "success")
+    flash("Booking cancelled." + refund_note + money_note + waitlist_note, "success")
     return redirect(url_for("admin_bookings"))
 
 
@@ -51173,9 +51742,11 @@ def refunds_view(rows, args):
             facet("how", "How", lambda r: ("To a card" if r["method"] == "stripe"
                                            else "Given back another way"),
                   order=["To a card", "Given back another way"]),
-            facet("why", "Why", lambda r: (REFUND_REASON_LABELS.get(r["reason_code"])
+            facet("why", "Why", lambda r: ((REFUND_REASON_LABELS.get(r["reason_code"])
+                                            or SYSTEM_REFUND_REASONS.get(r["reason_code"]))
                                            if r["reason_code"] else before),
-                  order=[label for _k, label in REFUND_REASONS] + [before]),
+                  order=[label for _k, label in REFUND_REASONS]
+                  + list(SYSTEM_REFUND_REASONS.values()) + [before]),
         ],
         sorts=[
             sort_option("recent", "Newest first", lambda r: r["created_at"] or "", reverse=True),
@@ -51212,8 +51783,19 @@ def admin_refunds():
         "count": len(shown),
         "taken_off": round(sum(r["reduces_bill"] or 0 for r in shown), 2),
     }
+    conn = get_db()
+    owed_back = money_to_give_back(conn)
+    failed = failed_refunds_to_redo(conn)
+    left_owing = refunds_left_owing(conn)
+    disputes = conn.execute(
+        """SELECT * FROM payment_disputes
+            ORDER BY (closed_at IS NOT NULL), COALESCE(evidence_due_by, '9999'), opened_at DESC
+            LIMIT 30""").fetchall()
+    conn.close()
     return render_template("admin_refunds.html", refunds=shown, lv=lv, totals=totals,
-                           labels=REFUND_CATEGORY_LABELS,
+                           labels=REFUND_CATEGORY_LABELS, owed_back=owed_back,
+                           failed=failed, left_owing=left_owing, disputes=disputes,
+                           dispute_words=DISPUTE_REASON_WORDS,
                            export_q=request.query_string.decode("utf-8", "replace"))
 
 
@@ -51382,6 +51964,7 @@ def refund_desk_context(conn, category, booking):
            WHERE refunds.category = ? AND refunds.booking_id = ?
            ORDER BY refunds.created_at DESC, refunds.id DESC""", (category, bid)).fetchall()
     return {
+        "category": category,
         "kind": REFUND_CATEGORY_LABELS[category], "booking": booking,
         "ref": ref, "head": head, "money": money, "payments": payments, "against": against,
         "history": history, "ceiling": refundable_amount(conn, category, booking),
@@ -51468,6 +52051,50 @@ def refund_desk_submit(conn, category, booking, form, user_id):
     if errors:
         return msg + " Not all of it went: " + "; ".join(errors), "error"
     return msg, "success"
+
+
+@app.route("/admin/refunds/<category>/<int:booking_id>/off-the-bill/<int:refund_id>",
+           methods=["POST"])
+@owner_required
+def refund_off_the_bill(category, booking_id, refund_id):
+    """Take a refund off the price after it was made.
+
+    For a refund whose price stood -- above all one made in Stripe's dashboard,
+    where nobody was asked -- that turns out to have been a gesture: the bill
+    has been asking for the money again, and this is the owner saying it
+    should not.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM refunds WHERE id = ? AND category = ? AND booking_id = ?",
+                       (refund_id, category, booking_id)).fetchone()
+    booking = _booking_row(conn, category, booking_id)
+    if not row or not booking or (row["amount"] or 0) <= 0:
+        conn.close()
+        abort(404)
+    back = url_for("refund_desk", category=category, booking_id=booking_id)
+    if not booking_stands(category, booking):
+        conn.close()
+        flash("It is not going ahead, so there is no bill to change.", "error")
+        return redirect(back)
+    take = round(min(row["amount"] - (row["reduces_bill"] or 0),
+                     _owed_on(conn, category, booking_id)), 2)
+    if take <= 0.005:
+        conn.close()
+        flash("None of it is owed, so there is nothing to take off.", "error")
+        return redirect(back)
+    conn.execute("UPDATE refunds SET reduces_bill = COALESCE(reduces_bill, 0) + ? WHERE id = ?",
+                 (take, refund_id))
+    if category == "workshop":
+        add_workshop_transaction(conn, booking_id, "discount",
+                                 f"Taken off the bill — {row['reason']}", take,
+                                 user_id=current_user()["id"])
+    log_audit(conn, "refund_taken_off_bill",
+              target=f"{REFUND_AUDIT_WORDS[category]} {_booking_field(booking, 'reference_code')}",
+              details=f"€{take:.2f}")
+    conn.commit()
+    conn.close()
+    flash(f"€{take:.2f} taken off the bill.", "success")
+    return redirect(back)
 
 
 @app.route("/admin/refunds/<category>/<int:booking_id>", methods=["GET", "POST"])
@@ -52080,9 +52707,19 @@ def decline_restaurant_booking(reservation_id):
     log_audit(conn, "restaurant_booking_declined", target=booking["reference_code"])
     conn.commit()
 
-    refunded, refund_error = refund_restaurant_booking(
-        conn, booking, reason="Reservation declined by the château",
-        user_id=current_user()["id"])
+    if can_reach(current_user(), "refund_desk"):
+        refunded, refund_error = refund_restaurant_booking(
+            conn, booking, reason="Reservation declined by the château",
+            user_id=current_user()["id"])
+    else:
+        # Refunds are the owner's call. The deposit stays, and the owner is
+        # asked, rather than it moving on somebody else's say-so or not at all.
+        refunded, refund_error = False, None
+        if refundable_amount(conn, "restaurant", booking) > 0.005:
+            _payment_task(conn, f"Refund to decide: {booking['guest_name']} ({booking['reference_code']})",
+                          "A table was declined by somebody who may not give money back. "
+                          "The deposit is still held; its refund page sends it back.")
+            conn.commit()
     refund_note = " Your payment has been refunded." if refunded else (" We'll be in touch about your refund." if booking["payment_status"] == "paid" else "")
     send_restaurant_email(conn, booking, "restaurant_declined", restaurant_email_context(booking, refund_note))
 
@@ -52116,9 +52753,19 @@ def cancel_restaurant_booking_admin(reservation_id):
     log_audit(conn, "restaurant_booking_cancelled", target=booking["reference_code"])
     conn.commit()
 
-    refunded, refund_error = refund_restaurant_booking(
-        conn, booking, reason="Reservation cancelled by the château",
-        user_id=current_user()["id"])
+    if can_reach(current_user(), "refund_desk"):
+        refunded, refund_error = refund_restaurant_booking(
+            conn, booking, reason="Reservation cancelled by the château",
+            user_id=current_user()["id"])
+    else:
+        # Refunds are the owner's call. The deposit stays, and the owner is
+        # asked, rather than it moving on somebody else's say-so or not at all.
+        refunded, refund_error = False, None
+        if refundable_amount(conn, "restaurant", booking) > 0.005:
+            _payment_task(conn, f"Refund to decide: {booking['guest_name']} ({booking['reference_code']})",
+                          "A table was cancelled by somebody who may not give money back. "
+                          "The deposit is still held; its refund page sends it back.")
+            conn.commit()
     refund_note = " Your payment has been refunded." if refunded else (" We'll be in touch about your refund." if booking["payment_status"] == "paid" else "")
     send_restaurant_email(conn, booking, "restaurant_cancelled", restaurant_email_context(booking, refund_note))
 
@@ -54578,7 +55225,9 @@ def call_off_workshop_session(session_id):
     conn = get_db()
     result = call_off_session(conn, session_id,
                               reason=request.form.get("reason", ""),
-                              user_id=session.get("user_id"))
+                              user_id=session.get("user_id"),
+                              refund=(request.form.get("refund") == "1"
+                                      and can_reach(current_user(), "refund_desk")))
     if result is None:
         conn.close()
         abort(404)
@@ -54597,6 +55246,9 @@ def call_off_workshop_session(session_id):
     if result["waitlist"]:
         extra.append(f"{result['waitlist']} on the waiting list told it is not "
                      "running")
+    if result.get("refunded"):
+        extra.append(f"EUR {sum(b for _n, b in result['refunded']):.2f} refunded to the cards "
+                     "it came from: " + ", ".join(n for n, _b in result["refunded"]))
     if result["refunds"]:
         owed = sum(r["amount"] for r in result["refunds"])
         # NAMED AND NOT MOVED. Refunds in this house are a deliberate
@@ -55778,7 +56430,7 @@ def cancel_one_registration_and_follow_up(conn, registration, *,
     return True, notified, refund_due, not registration["do_not_email"]
 
 
-def call_off_session(conn, session_id, reason=None, user_id=None):
+def call_off_session(conn, session_id, reason=None, user_id=None, refund=False):
     """Call a whole sitting off: everybody cancelled, everybody told, once.
 
     The job that spots a session which will not reach its number has existed
@@ -55811,6 +56463,7 @@ def call_off_session(conn, session_id, reason=None, user_id=None):
               AND workshop_bookings.status IN ('pending', 'confirmed')
             ORDER BY workshop_bookings.guest_name""", (session_id,)).fetchall()
     done, skipped, refunds, untold = [], [], [], []
+    refunded_back = []
     for person in people:
         cancelled, _notified, refund_due, told = cancel_one_registration_and_follow_up(
             conn, person, offer_waitlist=False, reason=reason)
@@ -55826,7 +56479,29 @@ def call_off_session(conn, session_id, reason=None, user_id=None):
         # the three never heard that their atelier is not running.
         if not told:
             untold.append(person["guest_name"])
-        if refund_due > 0.005:
+        if refund_due > 0.005 and refund:
+            # The house called it off, so what they paid is theirs. Back to
+            # each card it came from; anything paid another way is named.
+            reg = conn.execute("SELECT * FROM workshop_bookings WHERE id = ?",
+                               (person["id"],)).fetchone()
+            back, by_hand, errors = refund_everything(
+                conn, "workshop", reg, REFUND_REASON_LABELS["house_cancelled"],
+                "house_cancelled", user_id)
+            if back > 0.005:
+                log_audit(conn, "refund_issued",
+                          target=f"workshop booking {person['reference_code']}",
+                          details=f"€{back:.2f} — the house called it off")
+                conn.commit()
+                send_refund_letter(conn, "workshop", person["id"], back, "stripe")
+            refund_due = round(refund_due - back, 2)
+            if by_hand or errors:
+                refunds.append({"name": person["guest_name"],
+                                "reference": person["reference_code"],
+                                "email": person["guest_email"],
+                                "amount": max(refund_due, 0.0)})
+            if back > 0.005:
+                refunded_back.append((person["guest_name"], back))
+        elif refund_due > 0.005:
             refunds.append({"name": person["guest_name"],
                             "reference": person["reference_code"],
                             "email": person["guest_email"], "amount": refund_due})
@@ -55858,7 +56533,7 @@ def call_off_session(conn, session_id, reason=None, user_id=None):
     conn.commit()
     return {"already": False, "session": session, "done": done,
             "skipped": skipped, "refunds": refunds, "untold": untold,
-            "waitlist": len(waiting)}
+            "waitlist": len(waiting), "refunded": refunded_back}
 
 
 def instructor_sheet(conn, token):
@@ -64837,6 +65512,8 @@ WATCH_TASK_KINDS = {
     "agreement": "An agreement about to roll over while nobody decided",
     "clocks": "A night the clocks change, with people rostered through it",
     "balances": "Workshop balances due to be collected",
+    "refund": "Money the house owes back, or a refund that needs deciding",
+    "dispute": "A card payment disputed with the guest's bank",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -66676,6 +67353,41 @@ def watch_task_findings(conn, today=None):
             "\n\nManagement → Balances to collect takes them from the cards kept "
             "with the deposits, and sends a link to pay to the rest.",
             min(r["due_date"] for r in waiting), "high"))
+
+    # MONEY GOING BACK. Each closes itself: the refund made, the bill decided.
+    owed_back = []
+    for r in money_to_give_back(conn):
+        owed_back.append((
+            "refund", f"Money to give back to {r['name']} ({r['ref']})",
+            f"€{r['amount']:,.2f} is still held on {r['what']} {r['why']}. "
+            "Financial → Refunds has its refund page, which sends it back.",
+            today.isoformat(), "high"))
+    for r in failed_refunds_to_redo(conn):
+        owed_back.append((
+            "refund", f"A refund to {r['name']} did not go through ({r['ref']})",
+            f"€{r['amount']:,.2f}. {r['why']}. It is still theirs: make it again from "
+            "its refund page.", today.isoformat(), "high"))
+    for r in refunds_left_owing(conn):
+        owed_back.append((
+            "refund", f"A refund made in Stripe left {r['name']} owing ({r['ref']})",
+            f"€{r['amount']:,.2f} was refunded in Stripe's dashboard, and the booking now "
+            f"asks for €{r['owed']:,.2f} again. If it was a gesture, take it off the bill on "
+            "its refund page; if they are paying it again, leave it.",
+            today.isoformat(), "normal"))
+    found.extend(take("refund", owed_back))
+
+    # A DISPUTE HAS A DEADLINE, and missing it loses by default.
+    disputes = []
+    for d in open_disputes(conn):
+        disputes.append((
+            "dispute",
+            f"A card payment is being disputed: {d['guest_name'] or 'unknown guest'} "
+            f"({d['reference_code'] or d['payment_intent'] or d['stripe_dispute_id']})",
+            f"€{d['amount']:,.2f} — {DISPUTE_REASON_WORDS.get(d['reason'], d['reason'])}. "
+            "Answer it in Stripe with what the house has: the booking, the "
+            "correspondence, the terms they agreed to.",
+            d["evidence_due_by"] or today.isoformat(), "high"))
+    found.extend(take("dispute", disputes))
 
     return found, dropped
 

@@ -161,7 +161,7 @@
   <table class="data-table">
     <thead>
       <tr><th>When</th><th class="num">Amount</th><th>Against</th><th>How</th>
-          <th>Why</th><th>By</th></tr>
+          <th>Why</th><th>By</th><th></th></tr>
     </thead>
     <tbody>
     {% for r in history %}
@@ -177,6 +177,17 @@
         </td>
         <td>{{ r['reason'] }}</td>
         <td>{{ r['by_name'] or '—' }}</td>
+        <td>
+          {# A refund whose price stood -- above all one made in Stripe's own
+             dashboard, where nobody was asked -- can be taken off the bill
+             after the fact, once the owner says it was a gesture. #}
+          {% if stands and r['amount'] > 0 and (r['reduces_bill'] or 0) < r['amount'] - 0.005 and money.owed and money.owed > 0 %}
+          <form method="post" action="{{ url_for('refund_off_the_bill', category=category, booking_id=booking['id'], refund_id=r['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Take it off the bill</button>
+          </form>
+          {% endif %}
+        </td>
       </tr>
     {% endfor %}
     </tbody>

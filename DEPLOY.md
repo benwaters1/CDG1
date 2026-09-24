@@ -86,9 +86,21 @@ Leave `stripe listen` running in its own window, then pay with test card
 
 **In production the webhook secret is different and stable**: create the
 endpoint at Dashboard → Developers → Webhooks pointing at
-`https://<your-domain>/webhooks/stripe` for the `checkout.session.completed`
-event, and use the secret it gives you. That one *does* belong in your hosting
-platform's environment variables.
+`https://<your-domain>/webhooks/stripe`, and use the secret it gives you. That
+one *does* belong in your hosting platform's environment variables. Send it
+these events:
+
+- `checkout.session.completed` and `checkout.session.async_payment_succeeded`
+  / `checkout.session.async_payment_failed` — payments arriving
+- `charge.refunded`, `refund.created`, `refund.updated` and `refund.failed` — a
+  refund made in Stripe's own dashboard reaches the books, and one that fails
+  after Stripe accepted it is booked back
+- `charge.dispute.created`, `charge.dispute.updated` and
+  `charge.dispute.closed` — a card dispute becomes a task with its deadline,
+  and a lost one a refund in the record
+
+Without the refund and dispute events nothing breaks, but money that leaves
+through Stripe other than by the refund page goes unseen here.
 
 Why the webhook matters: the booking is created both when the guest returns
 from Stripe *and* by the webhook, so a guest who pays and immediately closes
@@ -164,8 +176,8 @@ Railway takes a folder of code and gives you a live URL. No server management.
      API keys (use the test-mode keys first to try it safely, live keys once
      you're ready for real charges). Also add `STRIPE_WEBHOOK_SECRET` from
      Dashboard → Developers → Webhooks — point the webhook at
-     `https://<your-domain>/webhooks/stripe` listening for the
-     `checkout.session.completed` event; this is what reliably creates the
+     `https://<your-domain>/webhooks/stripe` listening for the events listed
+     under "In production" above; this is what reliably creates the
      booking even if a guest closes their browser right after paying, before
      they'd otherwise land back on your site. Without these set, booking stays
      the current request-only flow with no payment step.
