@@ -7,18 +7,20 @@
   <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
-  The wording a guest receives automatically at each step — for rooms, the restaurant,
-  workshops and events. Merge tags fill in per guest, so one template covers every
-  booking rather than a copy per stay. <strong>Open one and you see the letter as a
-  guest reads it</strong>, filled in with a real-looking booking, before you save.
+  Every letter a guest receives automatically — {{ total }} of them, for rooms, the
+  restaurant, ateliers, events and the newsletter — and the moment each one goes.
+  Merge tags fill in per guest, so one template covers every booking.
+  <strong>Open one and you see the letter as it arrives</strong>, drawn the way their
+  mail app shows it and filled in with a real-looking stay, before you save. Every
+  change is kept, so any earlier version can be put back.
 </p>
 
 {% set broken = states.values()|select('equalto', 'Needs fixing')|list|length %}
 {% if broken %}
 {# These are data, not code, so a stray edit shows in no diff. The send itself
-   now refuses and uses the original wording, but the row still needs sorting. #}
+   refuses and uses the original wording, but the row still needs sorting. #}
 <div class="alert-band">
-  <strong>{{ broken }} template{{ '' if broken == 1 else 's' }} still hold{{ 's' if broken == 1 else '' }} placeholder text.</strong>
+  <strong>{{ broken }} template{{ '' if broken == 1 else 's' }} cannot go out as written.</strong>
   Guests are being sent the original wording instead, so nothing is broken —
   but these need fixing or restoring.
   <a href="{{ url_for('management_email_templates', state='Needs fixing') }}">Show them</a>
@@ -33,55 +35,71 @@
       Nothing matches that.
       <a href="{{ url_for('management_email_templates') }}">Show all {{ lv.total }}</a>
     {% else %}
-      No templates yet — they are created the first time the app sends one.
+      No templates yet — they are created the first time the app starts.
     {% endif %}
   </div>
 {% else %}
   {% for t in templates %}
   {% set key = t['template_key'] %}
   {% set state = states[key] %}
-  <div class="tpl-card {{ 'is-broken' if state == 'Needs fixing' }}">
+  {% set is_draft = draft and draft.key == key %}
+  {% set revs = history.get(key, []) %}
+  <div class="tpl-card {{ 'is-broken' if state == 'Needs fixing' }}" id="tpl-{{ key }}">
     <div class="tpl-head">
       <div>
         <strong>{{ t['label'] }}</strong>
         {% if state == 'Needs fixing' %}<span class="mini-status status-declined">needs fixing</span>
         {% elif state == 'Edited' %}<span class="mini-status status-upcoming">edited{% if t['updated_at'] %} {{ t['updated_at']|house_day }}{% endif %}</span>
         {% endif %}
+        {% if is_draft %}<span class="mini-status status-declined">not saved</span>{% endif %}
       </div>
       {# A BUTTON, not a span with an onclick. The old one could not be reached
          by keyboard and was announced as nothing at all. #}
       <button type="button" class="btn-mini btn-ghost tpl-toggle"
-              aria-expanded="false" aria-controls="edit-tpl-{{ key }}"
-              data-tpl-toggle="{{ key }}">Edit</button>
+              aria-expanded="{{ 'true' if is_draft else 'false' }}" aria-controls="edit-tpl-{{ key }}"
+              data-tpl-toggle="{{ key }}">{{ 'Close' if is_draft else 'Edit' }}</button>
     </div>
+
+    {% if info[key] %}
+    <p class="tpl-when"><span class="tpl-when__k">Goes</span> {{ info[key][0] }}
+      <span class="tpl-when__k">To</span> {{ info[key][1] }}</p>
+    {% endif %}
 
     {# What the guest actually sees, without opening the editor. #}
     <p class="tpl-subject">{{ t['subject'] }}</p>
     <p class="tpl-preview">{{ (t['body'] or '')|replace('\n', ' ')|truncate(180) }}</p>
+
+    {% if problems[key] %}
+    <ul class="tpl-problems">
+      {% for p in problems[key] %}<li>{{ p[:1]|upper }}{{ p[1:] }}.</li>{% endfor %}
+    </ul>
+    {% endif %}
 
     {% if tags[key] %}
     <p class="tpl-tags">{% for tag in tags[key] %}<code>{{ '{' }}{{ tag }}{{ '}' }}</code>{% endfor %}</p>
     {% endif %}
   </div>
 
-  <div class="tpl-editor" id="edit-tpl-{{ key }}" hidden>
+  <div class="tpl-editor" id="edit-tpl-{{ key }}" {{ '' if is_draft else 'hidden' }}>
     <div class="tpl-cols">
 
       {# ---- the wording ------------------------------------------------- #}
       <form method="post" action="{{ url_for('edit_email_template', template_key=key) }}"
-            class="tpl-write" data-tpl-form="{{ key }}">
+            class="tpl-write" data-tpl-form="{{ key }}" {{ 'data-tpl-dirty=1' if is_draft }}>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <label class="field-label" for="subj-{{ key }}">Subject</label>
         <input type="text" id="subj-{{ key }}" name="subject" required
-               value="{{ t['subject'] }}" data-tpl-subject>
+               value="{{ draft.subject if is_draft else t['subject'] }}" data-tpl-subject>
         {# Most phones cut a subject around here. Said as a count rather than a
            rule: a long subject is not wrong, it is just not all read. #}
         <p class="field-hint"><span data-tpl-sublen>—</span></p>
 
         <label class="field-label" for="body-{{ key }}" style="margin-top:10px;">Body</label>
         <textarea id="body-{{ key }}" name="body" rows="14" required data-tpl-body
-                  style="font-family:'IBM Plex Mono', monospace; font-size:12.5px;">{{ t['body'] }}</textarea>
+                  style="font-family:'IBM Plex Mono', monospace; font-size:12.5px;">{{ draft.body if is_draft else t['body'] }}</textarea>
+        <p class="field-hint">A blank line starts a new paragraph. A line that is only
+          a link becomes a button in the drawn letter, labelled with the words just before it.</p>
 
         {% if available[key] %}
         {# CLICK TO PUT ONE IN. Saving refuses a tag nothing fills, so typing
@@ -90,27 +108,36 @@
           only ones this message can fill:</p>
         <p class="tpl-tags">
           {% for tag in available[key] %}
-          <button type="button" class="tpl-tagbtn" data-tpl-insert="{{ '{' }}{{ tag }}{{ '}' }}"
-                  title="Insert {{ '{' }}{{ tag }}{{ '}' }}">{{ '{' }}{{ tag }}{{ '}' }}</button>
+          <button type="button" class="tpl-tagbtn {{ 'is-required' if tag in required[key] }}"
+                  data-tpl-insert="{{ '{' }}{{ tag }}{{ '}' }}"
+                  title="{{ 'Must stay in: ' ~ required[key][tag] if tag in required[key] else 'Insert {' ~ tag ~ '}' }}">{{ '{' }}{{ tag }}{{ '}' }}</button>
           {% endfor %}
         </p>
         <p class="field-hint">Anything else is refused when you save: nothing would
-          fill it, and a guest would read it exactly as you typed it.</p>
+          fill it, and a guest would read it exactly as you typed it.
+          {% if required[key] %}The ones underlined must stay in —
+          {% for tag, why in required[key].items() %}<code>{{ '{' }}{{ tag }}{{ '}' }}</code> because {{ why }}{{ '; ' if not loop.last else '.' }}{% endfor %}{% endif %}</p>
         {% endif %}
 
         <div class="tpl-acts">
           <button type="submit" class="btn-primary">Save</button>
+          <button type="button" class="btn-mini btn-ghost" data-tpl-test="{{ key }}"
+                  {{ 'disabled title="Your account has no email address to send it to"'|safe if not my_address }}>
+            Send me a test
+          </button>
           {% if key in edited %}
           <button type="button" class="btn-mini btn-ghost" data-tpl-showorig="{{ key }}">
             See the original wording
           </button>
           <button type="submit" class="btn-text-danger" formaction="{{ url_for('restore_email_template', template_key=key) }}"
                   formnovalidate
-                  onclick="return confirm('Put this template back to its original wording? Your changes will be lost.');">
+                  onclick="return confirm('Put this template back to its original wording? What it says now is kept in its history.');">
             Restore original wording
           </button>
           {% endif %}
         </div>
+        <p class="field-hint" data-tpl-testresult aria-live="polite"
+           data-to="{{ my_address }}"></p>
 
         {% if key in edited and shipped[key][0] %}
         {# Restore used to be a leap: a button saying your changes will be lost,
@@ -125,9 +152,20 @@
 
       {# ---- what the guest reads ---------------------------------------- #}
       <div class="tpl-read" aria-live="polite">
-        <p class="tpl-readhead">As a guest reads it</p>
+        <div class="tpl-readbar">
+          <p class="tpl-readhead">As a guest receives it</p>
+          {# The drawn letter is what nearly everybody sees. The plain text is
+             what a mail app falls back to, and what a watch or a phone's
+             notification shows first -- both are worth a look. #}
+          <div class="tpl-views" role="group" aria-label="How to show it">
+            <button type="button" class="tpl-view is-on" data-tpl-view="drawn" aria-pressed="true">Drawn</button>
+            <button type="button" class="tpl-view" data-tpl-view="text" aria-pressed="false">Plain text</button>
+          </div>
+        </div>
         <div class="tpl-warn" data-tpl-warn hidden></div>
-        <div class="tpl-letter">
+        <iframe class="tpl-frame" data-tpl-frame title="The letter as it arrives"
+                sandbox loading="lazy"></iframe>
+        <div class="tpl-letter" data-tpl-text hidden>
           <p class="tpl-letsubj" data-tpl-psubject></p>
           <pre class="tpl-letbody" data-tpl-pbody></pre>
         </div>
@@ -138,9 +176,48 @@
       </div>
 
     </div>
+
+    {% if revs %}
+    {# EVERY EARLIER VERSION. The only way back used to be the shipped wording,
+       so a good rewrite followed by a bad one lost the good one for ever. #}
+    <div class="tpl-hist">
+      <p class="tpl-readhead" style="margin-bottom:4px;">Earlier versions ({{ revs|length }})</p>
+      <p class="field-hint" style="margin-top:0;">What it said before each change,
+        newest first. Highlighted lines are different now.</p>
+      {% for r in revs %}
+      <details class="tpl-rev">
+        <summary>{{ r.when|house_when }} — {{ r.how }}{% if r.who %} by {{ r.who }}{% endif %}</summary>
+        <p class="tpl-subject {{ 'is-diff' if r.subject_changed }}">{{ r.subject }}</p>
+        <pre class="tpl-revbody">{% for line, differs in r.lines %}<span class="{{ 'is-diff' if differs }}">{{ line }}</span>
+{% endfor %}</pre>
+        <form method="post" action="{{ url_for('restore_email_template_revision', template_key=key, revision_id=r.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-mini"
+                  onclick="return confirm('Put this version back? What the template says now is kept in its history.');">
+            Put this version back
+          </button>
+        </form>
+      </details>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
   {% endfor %}
 {% endif %}
+
+{# What is NOT here, and why, so "every letter a guest receives" is a claim
+   the page can stand behind rather than one it quietly overstates. #}
+<div class="tpl-fixed">
+  <p class="tpl-readhead">Not editable here, on purpose</p>
+  <ul>
+    {% for name, why in fixed %}
+    <li><strong>{{ name }}</strong> — {{ why }}.</li>
+    {% endfor %}
+  </ul>
+  <p class="field-hint">Each of these is a key to an account or a letter you write
+    yourself. An edit that dropped the code or the link would lock somebody out,
+    and nothing on this page would show it had happened.</p>
+</div>
 
 <style>
 .tpl-card{
@@ -150,8 +227,15 @@
 .tpl-card.is-broken{ border-color:var(--danger); }
 .tpl-head{ display:flex; justify-content:space-between; gap:14px; align-items:baseline; }
 .tpl-head .mini-status{ margin-left:8px; }
+.tpl-when{ margin:6px 0 0; font-size:12.5px; color:var(--steel); line-height:1.55; }
+.tpl-when__k{
+  font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink);
+  margin-right:3px;
+}
+.tpl-when__k + .tpl-when__k, .tpl-when .tpl-when__k:nth-of-type(2){ margin-left:8px; }
 .tpl-subject{ margin:7px 0 3px; font-size:14px; }
 .tpl-preview{ margin:0; font-size:12.5px; color:var(--steel); line-height:1.6; }
+.tpl-problems{ margin:8px 0 0; padding-left:18px; font-size:12.5px; color:var(--danger); }
 .tpl-tags{ margin:8px 0 0; display:flex; gap:5px; flex-wrap:wrap; }
 .tpl-tags code{
   font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--steel);
@@ -164,14 +248,29 @@
    the letter to something nobody can judge. */
 .tpl-cols{ display:grid; gap:18px; grid-template-columns:1fr; align-items:start; }
 @media (min-width: 62rem){ .tpl-cols{ grid-template-columns:1fr 1fr; } }
-.tpl-write, .tpl-read{
+.tpl-write, .tpl-read, .tpl-hist{
   background:var(--surface); border:1px solid var(--parchment-line);
-  border-radius:10px; padding:14px 16px;
+  border-radius:10px; padding:14px 16px; min-width:0;
 }
+.tpl-hist{ margin-top:12px; }
 .tpl-acts{ display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap; }
+.tpl-readbar{ display:flex; justify-content:space-between; align-items:center; gap:10px;
+  flex-wrap:wrap; margin-bottom:10px; }
 .tpl-readhead{
-  margin:0 0 10px; font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+  margin:0; font-size:11px; letter-spacing:.08em; text-transform:uppercase;
   color:var(--steel);
+}
+.tpl-views{ display:flex; gap:4px; }
+.tpl-view{
+  font-size:12px; padding:4px 10px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--parchment-line); background:transparent; color:var(--steel);
+}
+.tpl-view.is-on{ background:var(--ink); border-color:var(--ink); color:var(--surface); }
+/* A letter is 600px wide in every mail app, so it is shown at that width and
+   scrolls sideways on a phone rather than being squeezed into a false one. */
+.tpl-frame{
+  display:block; width:100%; height:640px; border:1px solid var(--parchment-line);
+  border-radius:8px; background:#fff;
 }
 .tpl-letter{ background:var(--parchment); border-radius:8px; padding:14px 16px; }
 .tpl-letsubj{ margin:0 0 10px; font-weight:600; font-size:14px; }
@@ -186,21 +285,32 @@
 .tpl-tagbtn{
   font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--steel);
   background:var(--parchment); border:1px solid var(--parchment-line);
-  border-radius:4px; padding:2px 6px; cursor:pointer;
+  border-radius:4px; padding:2px 6px; cursor:pointer; min-height:28px;
 }
+.tpl-tagbtn.is-required{ text-decoration:underline; text-underline-offset:3px; }
 .tpl-tagbtn:hover{ border-color:var(--steel); color:var(--ink); }
 .tpl-orig{ margin-top:12px; border-top:1px solid var(--parchment-line); padding-top:10px; }
-.tpl-origbody{
-  margin:0; white-space:pre-wrap; font-family:inherit; font-size:12.5px;
-  line-height:1.6; color:var(--steel);
+.tpl-origbody, .tpl-revbody{
+  margin:0; white-space:pre-wrap; word-wrap:break-word; font-family:inherit;
+  font-size:12.5px; line-height:1.6; color:var(--steel);
 }
+.tpl-rev{ border-top:1px solid var(--parchment-line); padding:8px 0; }
+.tpl-rev summary{ cursor:pointer; font-size:13px; }
+.tpl-rev form{ margin-top:8px; }
+.tpl-revbody span{ display:block; min-height:1.6em; }
+.is-diff{ background:var(--status-warn-bg,#fff4d6); color:var(--ink); }
+.tpl-fixed{
+  margin-top:24px; padding:14px 16px; border:1px dashed var(--parchment-line);
+  border-radius:10px;
+}
+.tpl-fixed ul{ margin:8px 0; padding-left:18px; font-size:13px; line-height:1.6; }
 .tpl-over{ color:var(--danger); }
 </style>
 
 <script>
 (function(){
   /* Everything here is delegated off the document, so it works for every card
-     without one listener per template — there are twenty-odd of them. */
+     without one listener per template — there are thirty-odd of them. */
 
   function fields(key){
     var form = document.querySelector('[data-tpl-form="' + key + '"]');
@@ -211,6 +321,9 @@
       subject: form.querySelector('[data-tpl-subject]'),
       body: form.querySelector('[data-tpl-body]'),
       sublen: form.querySelector('[data-tpl-sublen]'),
+      result: form.querySelector('[data-tpl-testresult]'),
+      frame: box.querySelector('[data-tpl-frame]'),
+      text: box.querySelector('[data-tpl-text]'),
       psubject: box.querySelector('[data-tpl-psubject]'),
       pbody: box.querySelector('[data-tpl-pbody]'),
       warn: box.querySelector('[data-tpl-warn]'),
@@ -229,9 +342,9 @@
     f.sublen.className = n > 45 ? 'tpl-over' : '';
   }
 
-  /* THE PREVIEW IS ASKED OF THE SERVER, not worked out here. The substitution
-     and the two refusals live in one place, beside the send — a copy in this
-     file would agree with the letter for a while and then quietly stop. */
+  /* THE PREVIEW IS ASKED OF THE SERVER, not worked out here. The substitution,
+     the refusals and the drawing live in one place, beside the send — a copy
+     in this file would agree with the letter for a while and then quietly stop. */
   var pending = {};
   function preview(key){
     var f = fields(key);
@@ -247,12 +360,16 @@
       .then(function(d){
         f.psubject.textContent = d.subject;
         f.pbody.textContent = d.body;
+        if (f.frame) f.frame.srcdoc = d.html || '<p style="font-family:sans-serif">This letter goes as plain text only.</p>';
         if (d.refused){
           f.warn.hidden = false;
-          f.warn.innerHTML = '<strong>This would not go out as written</strong> — ' +
-            d.why + '. ' + (d.shipped_instead
-              ? 'A guest would receive the original wording below instead.'
-              : 'Nothing would be sent at all.');
+          f.warn.textContent = '';
+          var strong = document.createElement('strong');
+          strong.textContent = 'This would not go out as written';
+          f.warn.appendChild(strong);
+          f.warn.appendChild(document.createTextNode(' — ' + d.why + '. ' + (d.shipped_instead
+              ? 'A guest would receive the original wording shown here instead.'
+              : 'Nothing would be sent at all.')));
         } else {
           f.warn.hidden = true;
         }
@@ -267,12 +384,51 @@
     }, 250);
   }
 
+  /* SEND ME A TEST: the wording in the editor, saved or not, to the person
+     signed in. It says where it went, or why it did not go, in words. */
+  function sendTest(key, button){
+    var f = fields(key);
+    if (!f) return;
+    button.disabled = true;
+    f.result.textContent = 'Sending…';
+    fetch('/management/email-templates/' + encodeURIComponent(key) + '/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject: f.subject.value, body: f.body.value })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      f.result.textContent = d.sent
+        ? 'Sent to ' + d.to + ' — the wording in the editor, saved or not.' +
+          (d.refused ? ' It went in the original wording, because this one cannot go as written.' : '')
+        : 'Not sent — ' + (d.why || 'it could not be sent') + '.';
+    })
+    .catch(function(){ f.result.textContent = 'Not sent — the page could not reach the server.'; })
+    .then(function(){ button.disabled = false; });
+  }
+
+  /* UNSAVED WORK IS NOT LOST QUIETLY. Typing marks the form; leaving the page
+     or closing the editor with unsaved changes asks first. Saving clears it. */
+  function dirty(form){ return form && form.getAttribute('data-tpl-dirty') === '1'; }
+  window.addEventListener('beforeunload', function(ev){
+    if (document.querySelector('[data-tpl-form][data-tpl-dirty="1"]')){
+      ev.preventDefault(); ev.returnValue = '';
+    }
+  });
+  document.addEventListener('submit', function(ev){
+    var form = ev.target.closest('[data-tpl-form]');
+    if (form) form.removeAttribute('data-tpl-dirty');
+  });
+
   document.addEventListener('click', function(ev){
     var toggle = ev.target.closest('[data-tpl-toggle]');
     if (toggle){
       var key = toggle.getAttribute('data-tpl-toggle');
       var box = document.getElementById('edit-tpl-' + key);
       var open = box.hidden;
+      var form = document.querySelector('[data-tpl-form="' + key + '"]');
+      if (!open && dirty(form) &&
+          !confirm('Close without saving? What you changed here will be lost.')) return;
       box.hidden = !open;
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
       toggle.textContent = open ? 'Close' : 'Edit';
@@ -285,15 +441,33 @@
 
     var ins = ev.target.closest('[data-tpl-insert]');
     if (ins){
-      var form = ins.closest('[data-tpl-form]');
-      var area = form && form.querySelector('[data-tpl-body]');
+      var form2 = ins.closest('[data-tpl-form]');
+      var area = form2 && form2.querySelector('[data-tpl-body]');
       if (!area) return;
       var tag = ins.getAttribute('data-tpl-insert');
       var at = area.selectionStart || 0;
       area.value = area.value.slice(0, at) + tag + area.value.slice(area.selectionEnd || at);
       area.focus();
       area.selectionStart = area.selectionEnd = at + tag.length;
-      preview(form.getAttribute('data-tpl-form'));
+      form2.setAttribute('data-tpl-dirty', '1');
+      preview(form2.getAttribute('data-tpl-form'));
+      return;
+    }
+
+    var test = ev.target.closest('[data-tpl-test]');
+    if (test){ sendTest(test.getAttribute('data-tpl-test'), test); return; }
+
+    var view = ev.target.closest('[data-tpl-view]');
+    if (view){
+      var read = view.closest('.tpl-read');
+      var drawn = view.getAttribute('data-tpl-view') === 'drawn';
+      read.querySelector('[data-tpl-frame]').hidden = !drawn;
+      read.querySelector('[data-tpl-text]').hidden = drawn;
+      read.querySelectorAll('[data-tpl-view]').forEach(function(b){
+        var on = b === view;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
       return;
     }
 
@@ -311,11 +485,19 @@
   document.addEventListener('input', function(ev){
     var form = ev.target.closest('[data-tpl-form]');
     if (!form) return;
+    form.setAttribute('data-tpl-dirty', '1');
     var key = form.getAttribute('data-tpl-form');
     var f = fields(key);
     if (!f) return;
     if (ev.target === f.subject) countSubject(f);
     preview(key);
+  });
+
+  /* A draft the server refused comes back open. Show its letter straight away. */
+  document.querySelectorAll('[data-tpl-form][data-tpl-dirty="1"]').forEach(function(form){
+    var key = form.getAttribute('data-tpl-form');
+    var f = fields(key);
+    if (f){ countSubject(f); preview(key); f.box.scrollIntoView({ block: 'start' }); }
   });
 })();
 </script>

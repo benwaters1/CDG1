@@ -1527,6 +1527,108 @@ DEFAULT_EMAIL_TEMPLATES = [
      "Event inquiry update — Château de Gudanes",
      "Hi {contact_name},\n\nWe're sorry — we're unable to host your {event_type} on the date requested. "
      "Please get in touch if you'd like to discuss other dates.\n\n— Château de Gudanes"),
+    # EVERY LETTER A GUEST GETS, not the twenty-one that happened to be written
+    # this way first. The rest were sentences in code -- the room confirmation,
+    # the most-opened message the house sends, among them -- so the page that
+    # said "the wording a guest receives automatically at each step" could not
+    # change a word of what a room guest received. Each starts from what the
+    # code used to say, so nothing a guest reads changes until somebody edits
+    # it -- with one deliberate exception: the confirmation starts from the
+    # words its DRAWN version carried, which is what most guests read, and
+    # its plain text now says the same thing instead of a different letter.
+    # Account and security letters stay in code on purpose: an edit must
+    # never be able to lock somebody out.
+    ("room_confirmed", "Rooms: Booking confirmed",
+     "Booking confirmed — {room_name}",
+     "Your room is held, {first_name}\n\n"
+     "Five bedrooms of ninety-four are finished, and one of them is yours for "
+     "the dates below. Everything here is also on your booking page, so there is "
+     "nothing you need to keep.\n\n"
+     "{stay_details}\n\n"
+     "The walls of this house are not finished and will not be while you are "
+     "here — that is the point of it. The floors, the beds and the bathrooms are "
+     "new. If anything at all needs saying before you arrive, reply to this "
+     "message; it reaches us."),
+    ("room_request_received", "Rooms: Booking request received",
+     "Booking request received — {room_name}",
+     "Hi {guest_name},\n\nYour request for {room_name} has been received and is "
+     "awaiting confirmation.\n\n{stay_lines}\n\n"
+     "Reference code: {reference_code}\n"
+     "Check in online, manage your booking, or send us a request: {checkin_url}\n\n"
+     "— Château de Gudanes"),
+    ("room_paid_awaiting", "Rooms: Paid online, dates being confirmed",
+     "Payment received — {room_name}",
+     "Hi {guest_name},\n\nThank you — your payment of {total_price} has been "
+     "received in full.\n\nWe are confirming the dates now and will email you as "
+     "soon as that is done. Nothing further is needed from you.\n\n{stay_lines}\n\n"
+     "Reference code: {reference_code}\n"
+     "Check in online, manage your booking, or send us a request: {checkin_url}\n\n"
+     "— Château de Gudanes"),
+    ("room_declined", "Rooms: Booking request declined",
+     "Booking request declined — {room_name}",
+     "Hi {guest_name},\n\nWe're not able to accommodate your request for {room_name} "
+     "({arrival_date} to {departure_date}).{refund_note}\n\n"
+     "Reference code: {reference_code}\n\n— Château de Gudanes"),
+    ("room_cancelled", "Rooms: Booking cancelled by the house",
+     "Booking cancelled — {room_name}",
+     "Hi {guest_name},\n\nYour booking for {room_name} ({arrival_date} to "
+     "{departure_date}) has been cancelled.\n\n"
+     "Reference code: {reference_code}\n\n— Château de Gudanes"),
+    ("room_updated", "Rooms: Booking changed by the house",
+     "Booking updated — {room_name}",
+     "Hi {guest_name},\n\nYour booking for {room_name} has been updated:\n\n"
+     "Arrival: {arrival_date}\nDeparture: {departure_date}\nParty size: {party_size}\n\n"
+     "Reference code: {reference_code}\n"
+     "Check in / manage your booking: {checkin_url}\n\n— Château de Gudanes"),
+    ("room_payment_received", "Rooms: Payment received",
+     "Payment received — {room_name}",
+     "Hi {guest_name},\n\nWe've received {amount} for your stay ({reference_code}).\n"
+     "{balance_line}\n\n{account_block}\n\n— Château de Gudanes"),
+    ("room_statement", "Rooms: Statement",
+     "Your statement — {reference_code}",
+     "Hi {guest_name},\n\nYour statement for {room_name}, {arrival_date} to "
+     "{departure_date}.\n\n{statement_lines}\n\n"
+     "Reference code: {reference_code}\n"
+     "The full statement, and the way to settle it, is here:\n{statement_url}\n\n"
+     "{company_block}\n\n— Château de Gudanes"),
+    ("room_balance_before", "Rooms: Balance due, before arrival",
+     "Before you arrive — {room_name}",
+     "Hi {guest_name},\n\nWe are looking forward to seeing you on {arrival_date}.\n\n"
+     "There is {balance_amount} still outstanding on your stay. You can settle it "
+     "online before you travel, or on arrival if you would rather:\n{manage_url}\n\n"
+     "Reference code: {reference_code}\n\n— Château de Gudanes"),
+    ("room_balance_after", "Rooms: Balance still owed, after the stay",
+     "Your stay at Château de Gudanes",
+     "Hi {guest_name},\n\nWe hope you enjoyed your stay with us.\n\n"
+     "There is {balance_amount} still outstanding on it. You can settle it here "
+     "whenever suits:\n{manage_url}\n\n"
+     "Reference code: {reference_code}\n\n— Château de Gudanes"),
+    ("room_share_request", "Rooms: A share of the bill",
+     "Your share of the stay at Château de Gudanes",
+     "Hi {name},\n\nYour part of the booking at Château de Gudanes "
+     "({reference_code}, {arrival_date} to {departure_date}) comes to {amount}.\n\n"
+     "You can pay it here:\n{pay_url}\n\n{note_block}\n\n"
+     "The link pays that amount and nothing else, and stops working once it is "
+     "paid or once the stay is settled another way.\n\n— Château de Gudanes"),
+    ("workshop_not_running", "Workshop: Not running (to the waiting list)",
+     "{workshop_title} is not running",
+     "Dear {name},\n\n{workshop_title} on {workshop_date} will not be running, so we "
+     "are letting the waiting list know rather than leaving you waiting for a "
+     "place that is not coming.\n\n{reason_block}\n\n"
+     "We will write again when the next dates are set.\n\n— Château de Gudanes"),
+    ("event_quote", "Events: Quote sent",
+     "Your quote for Château de Gudanes",
+     "Dear {contact_name},\n\nYour quote for {event_type} at Château de Gudanes "
+     "comes to {quote_total}.\n\nEverything it covers, the terms, and a button to "
+     "accept it are here:\n{quote_url}\n\n"
+     "Nothing is agreed until you accept it, and we are glad to talk any of it "
+     "through first.\n\n— Château de Gudanes"),
+    ("newsletter_confirm", "Newsletter: Confirm the subscription",
+     "Confirm your subscription — Château de Gudanes",
+     "Thank you for subscribing to news from Château de Gudanes.\n\n"
+     "Please confirm your address by opening this link:\n\n{confirm_url}\n\n"
+     "If you did not ask for this, ignore this message and nothing further will "
+     "be sent."),
 ]
 
 
@@ -2478,6 +2580,23 @@ def init_db():
             body TEXT NOT NULL,
             updated_at TEXT
         );
+
+        -- What each template said BEFORE every change to it, and who changed
+        -- it. Without this the only way back from an edit was the shipped
+        -- wording, so an owner who rewrote a letter well, then had it rewritten
+        -- badly, lost their own good version with no way to get it back.
+        CREATE TABLE IF NOT EXISTS email_template_revisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            template_key TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            body TEXT NOT NULL,
+            replaced_at TEXT NOT NULL,
+            replaced_by INTEGER,
+            replaced_by_name TEXT,
+            how TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS email_template_revisions_key
+            ON email_template_revisions(template_key, id);
 
         -- Owner-written email templates for campaigns and announcements, as
         -- opposed to `email_templates` above which holds the fixed system
@@ -6689,6 +6808,9 @@ NAV_AREAS = {
         "management_social", "new_announcement", "new_campaign_template",
         "restore_email_template", "send_campaign_template", "send_email_outbox",
         "test_email_provider",
+        # The template editor's own tools: whoever may edit the wording may
+        # put back an earlier version of it, and send themselves a test.
+        "restore_email_template_revision", "test_email_template",
         "allow_texting_number", "management_texting", "run_checkin_texts_now",
         "save_checkin_text", "stop_texting_number",
         # Pages that had no area at all until now, so they were
@@ -8122,6 +8244,24 @@ def format_date_range(start_iso, end_iso):
 app.jinja_env.filters["house_day"] = house_date_iso
 app.jinja_env.filters["date_short"] = format_date_short
 app.jinja_env.filters["date_human"] = format_date_human
+
+
+def house_when(stamp):
+    """A stored UTC moment as the house reads it -- "3 October 2026, 14:20".
+
+    For a history, where the hour matters: two edits on the same morning are
+    otherwise one line twice. Local time, for the same reason house_day is.
+    """
+    when = parse_datetime_iso(stamp) if stamp else None
+    if not when:
+        return ""
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    local = when.astimezone(LOCAL_TZ)
+    return f"{format_date_human(local.date().isoformat())}, {local:%H:%M}"
+
+
+app.jinja_env.filters["house_when"] = house_when
 app.jinja_env.globals["date_range"] = format_date_range
 # So a find page cannot print a prefix the app does not generate.
 app.jinja_env.globals["ref_prefix"] = REFERENCE_PREFIXES
@@ -14452,7 +14592,7 @@ def refused_card_arrears(conn, *, today=None):
             if r["card_refused"]]
 
 
-def balance_request_email(booking, bill, *, departed):
+def balance_request_email(booking, bill, *, departed, conn=None):
     """The wording for asking a guest for what is left on their stay.
 
     Shared with the automatic reminder rather than written twice. The two differ in one respect and it matters: "we are looking forward to seeing
@@ -14465,21 +14605,25 @@ def balance_request_email(booking, bill, *, departed):
                              _external=True)
     except RuntimeError:
         manage_url = f"{PUBLIC_BASE_URL or ''}/booking/{booking['manage_token']}"
-    if departed:
-        subject = f"Your stay at Ch\u00e2teau de Gudanes"
-        opening = ("We hope you enjoyed your stay with us.\n\n"
-                   f"There is \u20ac{bill['owed']:.2f} still outstanding on it. "
-                   "You can settle it here whenever suits:")
-    else:
-        subject = f"Before you arrive \u2014 {booking['room_name']}"
-        opening = (f"We are looking forward to seeing you on "
-                   f"{format_date_human(booking['arrival_date'])}.\n\n"
-                   f"There is \u20ac{bill['owed']:.2f} still outstanding on your stay. "
-                   "You can settle it online before you travel, or on arrival if "
-                   "you would rather:")
-    body = (f"Hi {booking['guest_name']},\n\n{opening}\n{manage_url}\n\n"
-            f"Reference code: {booking['reference_code']}\n\n"
-            f"\u2014 Ch\u00e2teau de Gudanes")
+    # Two templates rather than one with a switch in it, because the owner
+    # will want to word them differently -- that difference is the point.
+    # Draw it with letter_html(subject, body): these are ordinary letters.
+    context = {
+        "guest_name": booking["guest_name"],
+        "room_name": booking["room_name"],
+        "arrival_date": format_date_human(booking["arrival_date"]),
+        "balance_amount": f"\u20ac{bill['owed']:.2f}",
+        "manage_url": manage_url,
+        "reference_code": booking["reference_code"],
+    }
+    own = conn is None
+    conn = conn or get_db()
+    try:
+        key = "room_balance_after" if departed else "room_balance_before"
+        subject, body, _problems = email_template_text(conn, key, context)
+    finally:
+        if own:
+            conn.close()
     return subject, body
 
 
@@ -15309,18 +15453,19 @@ def send_share_request(conn, share, booking):
     """
     if not (share["email"] or "").strip():
         return False, "There is no email address for that share."
-    ok = send_email(
-        share["email"],
-        f"Your share of the stay at Chateau de Gudanes",
-        f"Hi {share['name'] or 'there'},\n\n"
-        f"Your part of the booking at Chateau de Gudanes "
-        f"({booking['reference_code']}, {booking['arrival_date']} to "
-        f"{booking['departure_date']}) comes to EUR {share['amount']:.2f}.\n\n"
-        f"You can pay it here:\n{share_payment_link(share)}\n\n"
-        + ((share["note"] + "\n\n") if share["note"] else "")
-        + "The link pays that amount and nothing else, and stops working once "
-          "it is paid or once the stay is settled another way.\n\n"
-          "-- Chateau de Gudanes")
+    # It wrote the dates as the database keeps them -- "2026-10-14" -- and the
+    # money as "EUR 412.20", in the one letter that goes to somebody who may
+    # never have heard of the house.
+    subject, body, letter = render_email_template(conn, "room_share_request", {
+        "name": share["name"] or "there",
+        "reference_code": booking["reference_code"],
+        "arrival_date": format_date_human(booking["arrival_date"]),
+        "departure_date": format_date_human(booking["departure_date"]),
+        "amount": f"€{share['amount']:.2f}",
+        "pay_url": share_payment_link(share),
+        "note_block": share["note"] or "",
+    })
+    ok = bool(subject) and send_email(share["email"], subject, body, html=letter)
     if not ok:
         return False, "That message could not be sent."
     conn.execute("UPDATE booking_shares SET sent_at = ? WHERE id = ?",
@@ -15503,20 +15648,21 @@ def mark_booking_payment_paid(conn, session):
         bill = booking_bill(conn, booking_id)
         portal_token = guest_portal_token(conn, booking["guest_email"])
         conn.commit()
-        account_line = ""
-        if portal_token:
-            account_line = ("\nYour bookings and balances are always here:\n"
-                            f"{url_for('guest_portal', token=portal_token, _external=True)}\n")
-        write_about_stay(
-            booking,   # the stay side: always whoever is staying, plus any copy
-            f"Payment received — {booking['room_name']}",
-            f"Hi {booking['guest_name']},\n\n"
-            f"We've received €{amount:.2f} for your stay ({booking['reference_code']}).\n"
-            + (f"Still to pay: €{bill['owed']:.2f}.\n" if bill and bill["owed"] > 0
-               else "Your stay is now paid in full.\n")
-            + account_line
-            + f"\n— Château de Gudanes",
-        )
+        subject, body, letter = render_email_template(conn, "room_payment_received", {
+            "guest_name": booking["guest_name"],
+            "room_name": booking["room_name"],
+            "amount": f"€{amount:.2f}",
+            "reference_code": booking["reference_code"],
+            "balance_line": (f"Still to pay: €{bill['owed']:.2f}."
+                             if bill and bill["owed"] > 0
+                             else "Your stay is now paid in full."),
+            "account_block": ("Your bookings and balances are always here:\n"
+                              + url_for("guest_portal", token=portal_token, _external=True)
+                              if portal_token else ""),
+        })
+        if subject:
+            # the stay side: always whoever is staying, plus any copy
+            write_about_stay(booking, subject, body, html=letter)
 
 
 # How a tab can be settled. An iPad in a browser cannot read a card by itself,
@@ -22442,15 +22588,12 @@ def newsletter_subscribe():
         return redirect(request.referrer or url_for("preview_home"))
 
     link = url_for("newsletter_confirm", token=token, _external=True)
-    send_email(
-        email, "Confirm your subscription — Château de Gudanes",
-        "Thank you for subscribing to news from Château de Gudanes.\n\n"
-        "Please confirm your address by opening this link:\n\n"
-        f"{link}\n\n"
-        "If you did not ask for this, ignore this message and nothing further "
-        "will be sent.\n",
-    )
+    subject, body, letter = render_email_template(conn, "newsletter_confirm", {
+        "confirm_url": link,
+    })
     conn.close()
+    if subject:
+        send_email(email, subject, body, html=letter)
     flash(thanks, "success")
     return redirect(request.referrer or url_for("preview_home"))
 
@@ -23688,24 +23831,24 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
     # contradicting itself in two letters a minute apart.
     if not confirmed_now:
         if paid:
-            subject = f"Payment received — {room['name']}"
-            opening = (f"Thank you — your payment of €{total_price:.2f} has been received "
-                       f"in full.\n\nWe are confirming the dates now and will email you "
-                       f"as soon as that is done. Nothing further is needed from you.")
+            subject, body, letter = render_email_template(conn, "room_paid_awaiting", {
+                "guest_name": guest_name,
+                "room_name": room["name"],
+                "total_price": f"€{(total_price or 0):.2f}",
+                "stay_lines": "\n".join(detail_lines),
+                "reference_code": reference_code,
+                "checkin_url": checkin_url,
+            })
         else:
-            subject = f"Booking request received — {room['name']}"
-            opening = (f"Your request for {room['name']} has been received and is "
-                       f"awaiting confirmation.")
-        send_email(
-            guest_email,
-            subject,
-            f"Hi {guest_name},\n\n"
-            f"{opening}\n\n"
-            + "\n".join(detail_lines) +
-            f"\n\nReference code: {reference_code}\n"
-            f"Check in online, manage your booking, or send us a request: {checkin_url}\n\n"
-            f"— Château de Gudanes",
-        )
+            subject, body, letter = render_email_template(conn, "room_request_received", {
+                "guest_name": guest_name,
+                "room_name": room["name"],
+                "stay_lines": "\n".join(detail_lines),
+                "reference_code": reference_code,
+                "checkin_url": checkin_url,
+            })
+        if subject:
+            send_email(guest_email, subject, body, html=letter)
     owner_to = owner_email(conn)
     if owner_to:
         # Two different things to read at breakfast. "Somebody booked" is news;
@@ -35745,27 +35888,32 @@ def email_booking_statement(manage_token):
             if value:
                 who.append(value)
 
-    body = (
-        f"Hi {booking['guest_name']},\n\n"
-        f"Your statement for {booking['room_name']}, "
-        f"{format_date_human(booking['arrival_date'])} to "
-        f"{format_date_human(booking['departure_date'])}.\n\n"
-        + "\n".join(lines) + "\n\n"
-        f"  Total   €{statement['total']:.2f}\n"
-        f"  Received   €{statement['received']:.2f}\n"
-        + (f"  Refunded   €{statement['refunded']:.2f}\n"
-           if statement["refunded"] else "")
-        + f"  Still to pay   €{statement['balance'] if statement['balance'] > 0 else 0:.2f}\n\n"
-        f"Reference code: {booking['reference_code']}\n"
-        f"The full statement, and the way to settle it, is here:\n"
-        f"{url_for('booking_statement', manage_token=manage_token, _external=True)}\n"
-        + (("\n" + "\n".join(who) + "\n") if who else "")
-        + "\n— Château de Gudanes")
+    lines += ["",
+              f"  Total   €{statement['total']:.2f}",
+              f"  Received   €{statement['received']:.2f}"]
+    if statement["refunded"]:
+        lines.append(f"  Refunded   €{statement['refunded']:.2f}")
+    lines.append(f"  Still to pay   "
+                 f"€{statement['balance'] if statement['balance'] > 0 else 0:.2f}")
+    conn = get_db()
+    try:
+        subject, body, letter = render_email_template(conn, "room_statement", {
+            "guest_name": booking["guest_name"],
+            "room_name": booking["room_name"],
+            "arrival_date": format_date_human(booking["arrival_date"]),
+            "departure_date": format_date_human(booking["departure_date"]),
+            "statement_lines": "\n".join(lines),
+            "reference_code": booking["reference_code"],
+            "statement_url": url_for("booking_statement", manage_token=manage_token,
+                                     _external=True),
+            "company_block": "\n".join(who),
+        })
+    finally:
+        conn.close()
     # The bill side, so the payer is first -- and the second contact is
     # copied on the statement exactly as on everything else.
     copies = stay_recipients(booking, side="bill")[1:]
-    if write_about_stay(booking, f"Your statement — {booking['reference_code']}",
-                        body, side="bill"):
+    if subject and write_about_stay(booking, subject, body, side="bill", html=letter):
         flash(f"Sent to {address}."
               + (" Copied to " + ", ".join(copies) + "." if copies else ""),
               "success")
@@ -43050,28 +43198,50 @@ def run_room_feedback_job(conn, days_after=None):
 
     asked = 0
     for booking in departed:
-        subject, body, letter = render_email_template(conn, "room_feedback_request", {
-            "guest_name": (booking["guest_name"] or "").strip().split(" ")[0] or "there",
-            "room_name": booking["room_name"],
-            "feedback_url": url_for("guest_feedback",
-                                    token=booking["manage_token"], _external=True),
-        })
-        if not subject:
-            continue
-        # Stamped before the send and committed per booking, for the two
-        # reasons this app has learned the hard way: a stamp held open stops
-        # the NEXT guest's message being queued at all, and stamping only on
-        # success asks everybody again the day a provider is connected.
-        conn.execute("UPDATE bookings SET feedback_requested_at = ? WHERE id = ?",
-                     (datetime.now(timezone.utc).isoformat(), booking["id"]))
-        conn.commit()
-        send_email(booking["guest_email"], subject, body, html=letter,
-                   area="rooms")
-        asked += 1
+        if ask_room_feedback(conn, booking):
+            asked += 1
 
     if not departed:
         return f"nobody left {days} day(s) ago who has not been asked"
     return f"asked {asked} guest(s) how their stay was"
+
+
+def ask_room_feedback(conn, booking):
+    """Ask one departed room guest how it was -- once. True if they were asked.
+
+    THE one way a stay is asked, from the morning job and from the desk alike.
+    Checking out at the desk used to write a letter of its own: words nobody
+    could edit, sent to guests who had asked not to be written to, and
+    stamped nowhere, so the job asked the same guest again a day later. The
+    same four refusals as the job's query, here, so both paths keep them.
+    """
+    if not booking or not (booking["guest_email"] or "").strip():
+        return False
+    if booking["feedback_requested_at"] or booking["status"] != "confirmed":
+        return False
+    if conn.execute("SELECT 1 FROM guest_feedback WHERE booking_id = ?",
+                    (booking["id"],)).fetchone():
+        return False
+    if conn.execute("SELECT 1 FROM email_optouts WHERE LOWER(email) = LOWER(?)",
+                    (booking["guest_email"],)).fetchone():
+        return False
+    subject, body, letter = render_email_template(conn, "room_feedback_request", {
+        "guest_name": (booking["guest_name"] or "").strip().split(" ")[0] or "there",
+        "room_name": booking["room_name"],
+        "feedback_url": url_for("guest_feedback",
+                                token=booking["manage_token"], _external=True),
+    })
+    if not subject:
+        return False
+    # Stamped before the send and committed per booking, for the two
+    # reasons this app has learned the hard way: a stamp held open stops
+    # the NEXT guest's message being queued at all, and stamping only on
+    # success asks everybody again the day a provider is connected.
+    conn.execute("UPDATE bookings SET feedback_requested_at = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat(), booking["id"]))
+    conn.commit()
+    send_email(booking["guest_email"], subject, body, html=letter, area="rooms")
+    return True
 
 
 def run_checkin_text_job(conn, days_before=None):
@@ -43758,6 +43928,33 @@ EMAIL_TEMPLATE_TAGS = {
                                        "party_size", "price_block", "reference_code",
                                        "total_price", "workshop_title"),
     "workshop_waitlist_opening": ("dates", "name", "register_url", "workshop_title"),
+    "room_confirmed": ("arrival_date", "checkin_url", "departure_date", "first_name",
+                       "guest_name", "manage_url", "party_size", "reference_code",
+                       "room_name", "stay_details"),
+    "room_request_received": ("checkin_url", "guest_name", "reference_code",
+                              "room_name", "stay_lines"),
+    "room_paid_awaiting": ("checkin_url", "guest_name", "reference_code", "room_name",
+                           "stay_lines", "total_price"),
+    "room_declined": ("arrival_date", "departure_date", "guest_name", "reference_code",
+                      "refund_note", "room_name"),
+    "room_cancelled": ("arrival_date", "departure_date", "guest_name",
+                       "reference_code", "room_name"),
+    "room_updated": ("arrival_date", "checkin_url", "departure_date", "guest_name",
+                     "party_size", "reference_code", "room_name"),
+    "room_payment_received": ("account_block", "amount", "balance_line", "guest_name",
+                              "reference_code", "room_name"),
+    "room_statement": ("arrival_date", "company_block", "departure_date", "guest_name",
+                       "reference_code", "room_name", "statement_lines",
+                       "statement_url"),
+    "room_balance_before": ("arrival_date", "balance_amount", "guest_name",
+                            "manage_url", "reference_code", "room_name"),
+    "room_balance_after": ("arrival_date", "balance_amount", "guest_name",
+                           "manage_url", "reference_code", "room_name"),
+    "room_share_request": ("amount", "arrival_date", "departure_date", "name",
+                           "note_block", "pay_url", "reference_code"),
+    "workshop_not_running": ("name", "reason_block", "workshop_date", "workshop_title"),
+    "event_quote": ("contact_name", "event_type", "quote_total", "quote_url"),
+    "newsletter_confirm": ("confirm_url",),
 }
 
 
@@ -43773,6 +43970,96 @@ def unknown_merge_tags(template_key, subject, body):
         return []
     used = set(re.findall(r"\{(\w+)\}", (subject or "") + " " + (body or "")))
     return sorted(used - set(allowed))
+
+
+# Tags a letter is not worth sending without. Taking one out is refused when
+# the owner saves, and a row that lost one some other way goes out in the
+# shipped wording instead -- the same rule as a tag nothing fills. Each carries
+# its reason, because "required" on its own is a rule and the owner is owed
+# the why: a confirmation with no link is a guest who cannot find their booking.
+REQUIRED_MERGE_TAGS = {
+    "room_confirmed": {"stay_details": "it carries the dates, the room, the "
+                                       "reference and the link to their booking"},
+    "room_request_received": {"reference_code": "it is how they quote the booking to us"},
+    "room_paid_awaiting": {"reference_code": "it is how they quote the booking to us"},
+    "room_updated": {"arrival_date": "it is the date that changed",
+                     "departure_date": "it is the date that changed"},
+    "room_statement": {"statement_url": "it is the only way to open the statement and settle it"},
+    "room_balance_before": {"manage_url": "it is where they pay"},
+    "room_balance_after": {"manage_url": "it is where they pay"},
+    "room_share_request": {"pay_url": "it is the only way to pay the share",
+                           "amount": "it is the sum being asked for"},
+    "room_feedback_request": {"feedback_url": "it is the form they are being asked to fill in"},
+    "review_invitation": {"review_url": "it is where they leave the review"},
+    "event_quote": {"quote_url": "it is where they read and accept the quote"},
+    "newsletter_confirm": {"confirm_url": "without it nobody can confirm, and "
+                                          "the law says no confirmation, no newsletter"},
+    "room_waitlist_opening": {"book_url": "it is how they take the room"},
+    "restaurant_waitlist_opening": {"book_url": "it is how they take the table"},
+    "workshop_waitlist_opening": {"register_url": "it is how they take the place"},
+}
+
+
+def wording_problems(template_key, subject, body):
+    """Everything that would stop this wording going out as written. [] if fine.
+
+    ONE list, asked by the four places that used to ask four slightly
+    different questions: the save refuses on it, the preview says it, the
+    send falls back to the shipped wording on it, and the page marks the
+    template as needing fixing. A problem the send knew about and the page did
+    not is a letter the owner believes went out and did not.
+
+    The braces are checked here because str.format is what fills the tags,
+    and it does not skip what it cannot read -- it raises. A lone "{" typed
+    into a letter was accepted by the save, previewed without complaint, and
+    then took down the send it was part of: a diner's confirmation, a
+    workshop's deposit receipt. So is anything that is not a plain tag, such
+    as "{guest_name.title}", which format() treats as an attribute to look up.
+    """
+    subject, body = subject or "", body or ""
+    problems = []
+    stray = unknown_merge_tags(template_key, subject, body)
+    if stray:
+        problems.append("nothing fills " + ", ".join("{%s}" % s for s in stray))
+    if PLACEHOLDER_TEXT.search(subject + " " + body):
+        problems.append("it still reads as placeholder text")
+    unreadable = []
+    for part in (subject, body):
+        try:
+            for _literal, field, spec, conversion in string.Formatter().parse(part):
+                if field is None:
+                    continue
+                if not re.fullmatch(r"\w+", field) or spec or conversion:
+                    unreadable.append("{%s}" % "".join(
+                        x for x in (field, "!" + conversion if conversion else "",
+                                    ":" + spec if spec else "") if x))
+        except ValueError:
+            unreadable.append("a { or } on its own")
+    if unreadable:
+        problems.append(", ".join(unreadable) + " cannot be filled in -- braces "
+                        "are only for merge tags, so take it out, or write {{ or }} "
+                        "for a brace that should show")
+    text = subject + " " + body
+    for tag, why in REQUIRED_MERGE_TAGS.get(template_key, {}).items():
+        if "{%s}" % tag not in text:
+            problems.append("it no longer has {%s}, and %s" % (tag, why))
+    return problems
+
+
+def merge_email_text(source, context):
+    """Fill the tags in one piece of wording. Never raises.
+
+    wording_problems() stands between the owner and anything format() cannot
+    read, so this should never meet one -- but a letter about a stay is the
+    wrong place to find out, so the text goes as it is rather than not at all.
+    Three or more line breaks are closed to two: a block tag with nothing to
+    say (no add-ons, no account link) otherwise leaves a hole in the letter.
+    """
+    try:
+        text = (source or "").format(**context)
+    except (KeyError, IndexError, ValueError, AttributeError):
+        text = source or ""
+    return re.sub(r"\n[ \t]*\n(?:[ \t]*\n)+", "\n\n", text)
 
 
 # A bare URL in a letter is the complaint this answers. Kept deliberately
@@ -43816,7 +44103,7 @@ def letter_blocks(text):
             # which is what it is today and is at least readable.
             if len(found) == 1 and line == found[0]:
                 if keep:
-                    blocks.append({"kind": "text", "text": " ".join(keep)})
+                    blocks.append(_letter_text(keep))
                     keep = []
                 label = _letter_label(blocks)
                 blocks.append({"kind": "button", "href": found[0],
@@ -43824,8 +44111,20 @@ def letter_blocks(text):
             else:
                 keep.append(line)
         if keep:
-            blocks.append({"kind": "text", "text": " ".join(keep)})
+            blocks.append(_letter_text(keep))
     return blocks
+
+
+def _letter_text(lines):
+    """A paragraph, with the owner's own line breaks kept.
+
+    A line break inside a paragraph in these letters is deliberate -- a list
+    of facts, a column of figures -- and joining them made "Arrival: 14
+    October Departure: 17 October Party size: 2" one run-on sentence, and a
+    receipt's items a single line of prices. `lines` draws them as typed;
+    `text` is the same words on one line, for anything that reads it whole.
+    """
+    return {"kind": "text", "text": " ".join(lines), "lines": list(lines)}
 
 
 def _letter_label(blocks):
@@ -43862,6 +44161,69 @@ def letter_html(subject, text, settings=None):
         return render_template("email_letter.html", subject=subject,
                                blocks=blocks, settings=settings or {})
     except Exception as e:      # pragma: no cover - the text still goes
+        print(f"[email html failed] {subject}: {e}")
+        return ""
+
+
+def template_letter_html(template_key, subject, body_src, context, *, conn=None,
+                         card=None):
+    """The letter as a mail app draws it, from the wording given. "" if it cannot be.
+
+    Every letter is the owner's words poured into the one shell -- except the
+    booking confirmation, the most-opened message the house sends, which keeps
+    its own design with the stay drawn as a card. Asked of one function so the
+    editor's preview and the send cannot draw the same letter two ways.
+
+    `card` is what the design draws that is not a merge tag: what is owed, the
+    booking page, the house's coordinates for the directions. Kept out of the
+    merge context so nothing can type it into a letter.
+    """
+    if template_key == "room_confirmed":
+        return confirmation_letter_html(subject, body_src, context, conn=conn,
+                                        card=card)
+    return letter_html(subject, merge_email_text(body_src, context))
+
+
+# Where {stay_details} fell, found again after the words are filled in. A
+# character no guest name, room or sentence can contain.
+STAY_SLOT = "\x00stay\x00"
+
+
+def confirmation_letter_html(subject, body_src, context, *, conn=None, card=None):
+    """The booking confirmation in its own design, around the owner's words.
+
+    The words are the template's, split where {stay_details} sits: what comes
+    before is the heading and the opening, what comes after closes the letter,
+    and the gap is the card -- the dates, the room, the reference, anything
+    owed, the button to their booking, and how to find the house. The plain
+    text gets the same words with the same facts written out, so the drawn
+    letter and the text one say the same thing because they ARE the same thing.
+
+    The first paragraph is the heading only when it is short enough to be one;
+    a long one would be set in 27-point type across the whole letter.
+    """
+    try:
+        marked = merge_email_text(body_src, dict(context, stay_details=STAY_SLOT))
+        before, _slot, after = marked.partition(STAY_SLOT)
+        opening = letter_blocks(before)
+        heading = ""
+        if (opening and opening[0]["kind"] == "text"
+                and len(opening[0]["text"]) <= 80):
+            heading = opening.pop(0)["text"].rstrip(".")
+        card = card or {}
+        settings = card.get("house") or (house_coordinates(conn) if conn else {})
+        return render_template(
+            "email_booking_confirmed.html",
+            heading=heading, opening=opening,
+            closing=letter_blocks(after),
+            arrival_long=context.get("arrival_date", ""),
+            departure_long=context.get("departure_date", ""),
+            room_name=context.get("room_name", ""),
+            reference_code=context.get("reference_code", ""),
+            balance_due=card.get("balance_due", ""),
+            manage_url=card.get("manage_url") or context.get("manage_url", ""),
+            settings=settings)
+    except Exception as e:      # pragma: no cover - the plain letter still goes
         print(f"[email html failed] {subject}: {e}")
         return ""
 
@@ -43913,7 +44275,41 @@ SAMPLE_MERGE_VALUES = {
     "register_url": "https://chateaugudanes.com/workshops",
     "review_url": "https://chateaugudanes.com/review/9f2c1a7b",
     "feedback_url": "https://chateaugudanes.com/feedback/9f2c1a7b",
+    "first_name": "Marie",
+    "arrival_date": "14 October 2026",
+    "departure_date": "17 October 2026",
+    "workshop_date": "14 October 2026",
+    "checkin_url": "https://chateaugudanes.com/stay/9f2c1a7b/check-in",
+    "statement_url": "https://chateaugudanes.com/booking/9f2c1a7b/statement",
+    "pay_url": "https://chateaugudanes.com/share/4d81c2",
+    "quote_url": "https://chateaugudanes.com/events/quote/7be210",
+    "confirm_url": "https://chateaugudanes.com/newsletter/confirm/51ac0e",
+    "amount": "€412.20",
+    "quote_total": "€18,400.00",
+    # What the confirmation's card says in its plain-text form. The drawn
+    # letter puts the card itself in this place instead.
+    "stay_details": "Arriving: 14 October 2026\nLeaving: 17 October 2026\n"
+                    "Room: Chambre Émeraude\nReference code: GUD-4417\n\n"
+                    "Your booking page:\nhttps://chateaugudanes.com/stay/9f2c1a7b\n\n"
+                    "Check in online — confirm your arrival time, tell us about "
+                    "any requests:\nhttps://chateaugudanes.com/stay/9f2c1a7b/check-in",
+    "stay_lines": "Arrival: 14 October 2026\nDeparture: 17 October 2026\n"
+                  "Party size: 2\nTotal: €666.60",
+    "statement_lines": "3 night(s), Chambre Émeraude   €660.00\n"
+                       "Taxe de sejour   €6.60\n\n"
+                       "Total   €666.60\nReceived   €250.00\n"
+                       "Still to pay   €416.60",
+    "account_block": "Your bookings and balances are always here:\n"
+                      "https://chateaugudanes.com/you/c05d9e",
+    "note_block": "Thank you for sorting this so quickly — Marie",
+    "reason_block": "The plasterer who teaches it has broken his wrist.",
 }
+
+# The confirmation's card, for the preview: what the design draws around the
+# words that is not a merge tag. Nothing owed, so the preview shows the letter
+# most guests get -- a stay paid in full when it was booked.
+SAMPLE_CONFIRMATION_CARD = {"balance_due": "",
+                            "manage_url": SAMPLE_MERGE_VALUES["manage_url"]}
 
 
 def sample_merge_context(template_key):
@@ -43940,18 +44336,13 @@ def preview_email_template(template_key, subject_src, body_src):
     rather than the stored row, because the question being asked is about text
     that has not been saved yet.
 
-    Returns {subject, body, refused, why, shipped_instead}.
+    Returns {subject, body, html, refused, why, problems, shipped_instead}.
+    `html` is the letter DRAWN, which is what most guests actually see: the
+    plain text is the part a mail app falls back to.
     """
     subject_src = subject_src or ""
     body_src = body_src or ""
-    stray = unknown_merge_tags(template_key, subject_src, body_src)
-    placeholder = bool(PLACEHOLDER_TEXT.search(subject_src + " " + body_src))
-
-    why = []
-    if stray:
-        why.append("nothing fills " + ", ".join("{%s}" % s for s in sorted(stray)))
-    if placeholder:
-        why.append("it still reads as placeholder text")
+    why = wording_problems(template_key, subject_src, body_src)
 
     shipped = next((d for d in DEFAULT_EMAIL_TEMPLATES if d[0] == template_key), None)
     used_shipped = False
@@ -43960,20 +44351,26 @@ def preview_email_template(template_key, subject_src, body_src):
         used_shipped = True
 
     context = sample_merge_context(template_key)
-    try:
-        subject = subject_src.format(**context)
-    except (KeyError, IndexError, ValueError):
-        subject = subject_src
-    try:
-        body = body_src.format(**context)
-    except (KeyError, IndexError, ValueError):
-        body = body_src
+    subject = merge_email_text(subject_src, context).strip()
+    body = merge_email_text(body_src, context)
 
+    if template_key == "room_confirmed":
+        # Its card draws the directions, which read the house's coordinates.
+        conn = get_db()
+        try:
+            html = template_letter_html(template_key, subject, body_src, context,
+                                        conn=conn, card=SAMPLE_CONFIRMATION_CARD)
+        finally:
+            conn.close()
+    else:
+        html = template_letter_html(template_key, subject, body_src, context)
     return {
         "subject": subject,
         "body": body,
+        "html": html,
         "refused": bool(why),
         "why": "; ".join(why),
+        "problems": why,
         "shipped_instead": used_shipped,
         # Named so the page can say which are sitting unused rather than making
         # somebody compare two lists by eye.
@@ -43994,43 +44391,67 @@ def render_email_template(conn, template_key, context):
     it is not enough: the send itself has to refuse. The shipped wording is
     used instead, and the substitution is recorded so it can be found later.
     """
-    row = conn.execute("SELECT subject, body FROM email_templates WHERE template_key = ?", (template_key,)).fetchone()
-    if not row:
-        return None, None
-    subject_src, body_src = row["subject"] or "", row["body"] or ""
-    # A tag nothing fills is treated exactly like placeholder text: the shipped
-    # wording goes instead. Leaving it in was the older behaviour and it is the
-    # wrong trade -- the guest reads "{balance_amount}" and the house looks like
-    # it cannot send an email, which is worse than sending wording the owner did
-    # not write. The edit form refuses these, so reaching here means the row was
-    # changed some other way.
-    stray = unknown_merge_tags(template_key, subject_src, body_src)
-    if stray:
-        app.logger.error(
-            "Email template %r uses merge tags nothing fills (%s); sending the "
-            "shipped wording instead. Fix it at /management/email-templates.",
-            template_key, ", ".join(stray))
+    subject, body, _problems = email_template_text(conn, template_key, context)
+    if not subject:
+        # THREE, always. This returned two here and three below, so a missing
+        # row did not skip the letter the way every caller expects -- it raised
+        # at the unpacking, in the middle of whatever was sending it.
+        return None, None, None
+    return subject, body, letter_html(subject, body)
 
-    if stray or PLACEHOLDER_TEXT.search(subject_src + " " + body_src):
-        shipped = next((d for d in DEFAULT_EMAIL_TEMPLATES if d[0] == template_key), None)
+
+def email_template_text(conn, template_key, context):
+    """(subject, body, problems) as a guest would receive them, or Nones.
+
+    render_email_template without the drawing, for the letters that are drawn
+    differently -- the booking confirmation keeps its own designed shell -- and
+    for anything that needs to know WHY the shipped wording went instead.
+    """
+    subject_src, body_src, problems = email_template_source(conn, template_key)
+    if subject_src is None:
+        return None, None, problems
+    return (merge_email_text(subject_src, context).strip(),
+            merge_email_text(body_src, context), problems)
+
+
+def email_template_source(conn, template_key):
+    """(subject, body, problems): the wording that will actually go, unfilled.
+
+    The row's own wording, or the shipped wording when the row cannot go as
+    written -- or when there is no row at all. A missing row used to mean no
+    letter, silently, which for a booking confirmation is the one outcome worth
+    guarding against: the house takes the room off the market and the guest
+    hears nothing. (None, None, problems) only when there is nothing to send.
+    """
+    row = conn.execute("SELECT subject, body FROM email_templates WHERE template_key = ?", (template_key,)).fetchone()
+    shipped = next((d for d in DEFAULT_EMAIL_TEMPLATES if d[0] == template_key), None)
+    if not row:
+        if not shipped:
+            return None, None, []
+        app.logger.error("Email template %r has no row; sending the shipped wording.",
+                         template_key)
+        return shipped[2], shipped[3], ["there is no saved wording for it"]
+    subject_src, body_src = row["subject"] or "", row["body"] or ""
+    # Anything wording_problems finds is treated alike: the shipped wording
+    # goes instead. Leaving a tag nothing fills in the text was the older
+    # behaviour and the wrong trade -- the guest reads "{balance_amount}" and the
+    # house looks like it cannot send an email, which is worse than sending
+    # wording the owner did not write. The edit form refuses all of these, so
+    # reaching here means the row was changed some other way.
+    problems = wording_problems(template_key, subject_src, body_src)
+    if problems:
         if shipped:
             app.logger.error(
-                "Email template %r holds placeholder text; sending the shipped "
-                "wording instead. Fix it at /management/email-templates.", template_key)
+                "Email template %r cannot go as written (%s); sending the shipped "
+                "wording instead. Fix it at /management/email-templates.",
+                template_key, "; ".join(problems))
             subject_src, body_src = shipped[2], shipped[3]
         else:
-            app.logger.error("Email template %r holds placeholder text and has no "
-                             "shipped original; not sending.", template_key)
-            return None, None
-    try:
-        subject = subject_src.format(**context)
-    except (KeyError, IndexError):
-        subject = subject_src
-    try:
-        body = body_src.format(**context)
-    except (KeyError, IndexError):
-        body = body_src
-    return subject, body, letter_html(subject, body)
+            app.logger.error("Email template %r cannot go as written (%s) and has "
+                             "no shipped original; not sending.",
+                             template_key, "; ".join(problems))
+            return None, None, problems
+    return subject_src, body_src, problems
 
 
 # The fields a campaign template can use. Kept to things we can reliably fill
@@ -48834,15 +49255,11 @@ def confirm_booking_by_id(conn, booking_id):
         return False, "not found or not pending"
     # This is the moment the guest gets a standing profile, so it is also the
     # moment their own link becomes real — and this email is the one place a
-    # first-time guest is certain to see it. Built in code rather than from a
-    # template, so no wording anybody has edited is disturbed by adding it.
+    # first-time guest is certain to see it. It rides in {stay_details}, so no
+    # wording anybody has edited is disturbed by adding it.
     portal_token = guest_portal_token(conn, booking["guest_email"])
-    account_line = ""
-    if portal_token:
-        account_line = (
-            "\nEverything you have with us — this stay, any ateliers or dinners — "
-            "is always here:\n"
-            f"{url_for('guest_portal', token=portal_token, _external=True)}\n")
+    portal_url = (url_for("guest_portal", token=portal_token, _external=True)
+                  if portal_token else "")
     # Commit before sending. With no email provider configured send_email falls
     # back to email_outbox on its own connection, which cannot take a write lock
     # while this transaction is open — so the guest's confirmation, with its
@@ -48851,18 +49268,11 @@ def confirm_booking_by_id(conn, booking_id):
     # Safe for bulk_confirm_bookings too: it confirms in a loop, and each
     # booking being durable as it goes is what you want if the loop dies.
     conn.commit()
+    context, _card = room_confirmation_context(conn, booking, room["name"],
+                                               portal_url=portal_url)
+    subject, body, _problems = email_template_text(conn, "room_confirmed", context)
     write_about_stay(
-        booking,
-        f"Booking confirmed — {room['name']}",
-        f"Hi {booking['guest_name']},\n\nYour booking for {room['name']} "
-        f"({format_date_human(booking['arrival_date'])} to {format_date_human(booking['departure_date'])}) "
-        f"is confirmed. We look forward to hosting you.\n\n"
-        f"Reference code: {booking['reference_code']}\n"
-        f"Check in online — confirm your arrival time, tell us about any requests"
-        f"{' and your airport transfer details' if booking_has_transfer(booking) else ''}: "
-        f"{url_for('guest_checkin', manage_token=booking['manage_token'], _external=True)}\n"
-        f"{account_line}\n"
-        f"— Château de Gudanes",
+        booking, subject, body,
         ics_content=generate_booking_ics(booking, room["name"]),
         ics_filename=f"{booking['reference_code']}.ics",
         # The same letter, drawn. Empty if the template will not render, and
@@ -49060,20 +49470,21 @@ def checkout_booking(booking_id):
             """INSERT INTO tasks (assigned_to_user_id, title, room_note, priority,
                due_date, created_at, origin, booking_id)
                VALUES (?, ?, ?, 'high', ?, ?, 'checklist', ?)""",
+            # The house's day, not the UTC one: a guest checked out at one
+            # in the morning had their room's turnover filed under yesterday.
             (int(assigned_to), f"{room['name']}: {title}", room_note,
-             now.date().isoformat(), now.isoformat(), booking_id),
+             house_today_iso(), now.isoformat(), booking_id),
         )
     conn.commit()
+    # THE SAME ASK AS THE MORNING JOB, not a letter of its own. This wrote
+    # "How was your stay?" in words nobody could edit, to guests who had asked
+    # not to be written to, and stamped nothing -- so the job asked them again
+    # a day later in the template's words. Two requests for one stay.
+    ask_room_feedback(conn, conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
+        (booking_id,)).fetchone())
     conn.close()
-    if booking["guest_email"]:
-        feedback_url = url_for("guest_feedback", token=booking["manage_token"], _external=True)
-        send_email(
-            booking["guest_email"], "How was your stay at Château de Gudanes?",
-            f"Hi {booking['guest_name']},\n\n"
-            f"We hope you enjoyed your stay. If you have a moment, we'd love to hear how it went:\n"
-            f"{feedback_url}\n\n"
-            f"— Château de Gudanes",
-        )
     flash(f"Checked out. {len(CHECKOUT_CHECKLIST)} turnover tasks assigned for {room['name']}.", "success")
     return redirect(url_for("admin_bookings"))
 
@@ -50036,13 +50447,16 @@ def decline_booking_by_id(conn, booking_id):
     # cannot write while this transaction is open. Safe for bulk_decline too:
     # each booking being durable as the loop goes is what you want if it dies.
     conn.commit()
-    write_about_stay(
-        booking,
-        f"Booking request declined — {booking['room_name']}",
-        f"Hi {booking['guest_name']},\n\nWe're not able to accommodate your request for {booking['room_name']} "
-        f"({format_date_human(booking['arrival_date'])} to {format_date_human(booking['departure_date'])}).{refund_note}\n\n"
-        f"Reference code: {booking['reference_code']}\n\n— Château de Gudanes",
-    )
+    subject, body, letter = render_email_template(conn, "room_declined", {
+        "guest_name": booking["guest_name"],
+        "room_name": booking["room_name"],
+        "arrival_date": format_date_human(booking["arrival_date"]),
+        "departure_date": format_date_human(booking["departure_date"]),
+        "refund_note": refund_note,
+        "reference_code": booking["reference_code"],
+    })
+    if subject:
+        write_about_stay(booking, subject, body, html=letter)
     return True, refunded, refund_error
 
 
@@ -50192,13 +50606,18 @@ def cancel_booking_admin(booking_id):
     # mis-click and contradicted the stated policy.
     still_held = refundable_amount(conn, "room", booking) if booking["payment_status"] == "paid" else 0
 
-    send_email(
-        booking["guest_email"],
-        f"Booking cancelled — {booking['room_name']}",
-        f"Hi {booking['guest_name']},\n\nYour booking for {booking['room_name']} "
-        f"({format_date_human(booking['arrival_date'])} to {format_date_human(booking['departure_date'])}) has been cancelled.\n\n"
-        f"Reference code: {booking['reference_code']}\n\n— Château de Gudanes",
-    )
+    # Through write_about_stay, like the confirmation, so anybody the guest
+    # asked us to copy hears the booking is gone. This went to the guest alone:
+    # the copied party was told it was confirmed and never that it was not.
+    subject, body, letter = render_email_template(conn, "room_cancelled", {
+        "guest_name": booking["guest_name"],
+        "room_name": booking["room_name"],
+        "arrival_date": format_date_human(booking["arrival_date"]),
+        "departure_date": format_date_human(booking["departure_date"]),
+        "reference_code": booking["reference_code"],
+    })
+    if subject:
+        write_about_stay(booking, subject, body, html=letter)
     notified = notify_room_waitlist_opening(conn, booking["arrival_date"], booking["departure_date"])
     if notified:
         waitlist_note = f" Notified {len(notified)} waitlist guest{'s' if len(notified) != 1 else ''} automatically."
@@ -50365,18 +50784,21 @@ def edit_booking(booking_id):
         # No guest-row date sync any more: the booking IS the record of when
         # this stay is, so there is nothing left to keep in step.
 
-        send_email(
-            booking["guest_email"],
-            f"Booking updated — {booking['room_name']}",
-            f"Hi {booking['guest_name']},\n\nYour booking for {booking['room_name']} has been updated:\n\n"
-            f"Arrival: {format_date_human(arrival.isoformat())}\n"
-            f"Departure: {format_date_human(departure.isoformat())}\n"
-            f"Party size: {party_size}\n\n"
-            f"Reference code: {booking['reference_code']}\n"
-            f"Check in / manage your booking: {url_for('guest_checkin', manage_token=booking['manage_token'], _external=True)}\n\n"
-            f"— Château de Gudanes",
-        )
+        # Through write_about_stay for the same reason as the cancellation: a
+        # copied party who was sent the old dates must be sent the new ones.
+        subject, body, letter = render_email_template(conn, "room_updated", {
+            "guest_name": booking["guest_name"],
+            "room_name": booking["room_name"],
+            "arrival_date": format_date_human(arrival.isoformat()),
+            "departure_date": format_date_human(departure.isoformat()),
+            "party_size": party_size,
+            "reference_code": booking["reference_code"],
+            "checkin_url": url_for("guest_checkin", manage_token=booking["manage_token"],
+                                   _external=True),
+        })
         conn.close()
+        if subject:
+            write_about_stay(booking, subject, body, html=letter)
         flash("Booking updated.", "success")
         return redirect(url_for("admin_bookings"))
 
@@ -54575,16 +54997,14 @@ def call_off_session(conn, session_id, reason=None, user_id=None):
             WHERE session_id = ? AND status = 'open'""", (session_id,)).fetchall()
     for entry in waiting:
         if (entry["email"] or "").strip():
-            send_email(
-                entry["email"],
-                f"{session['title']} is not running",
-                f"Dear {entry['name'] or 'there'},\n\n"
-                f"{session['title']} on {session['start_date']} will not be "
-                "running, so we are letting the waiting list know rather than "
-                "leaving you waiting for a place that is not coming.\n\n"
-                + ((reason.strip() + "\n\n") if (reason or "").strip() else "")
-                + "We will write again when the next dates are set.\n\n"
-                  "-- Chateau de Gudanes")
+            subject, body, letter = render_email_template(conn, "workshop_not_running", {
+                "name": entry["name"] or "there",
+                "workshop_title": session["title"],
+                "workshop_date": format_date_human(session["start_date"]),
+                "reason_block": (reason or "").strip(),
+            })
+            if subject:
+                send_email(entry["email"], subject, body, html=letter)
     conn.execute(
         "UPDATE workshop_waitlist SET status = 'closed' WHERE session_id = ? AND status = 'open'",
         (session_id,))
@@ -57127,16 +57547,14 @@ def send_event_quote(quote_id):
         return redirect(url_for("event_agreement", inquiry_id=quote["event_id"]))
     link = url_for("event_quote", token=quote["token"], _external=True)
     net = round(float(quote["quoted_price"] or 0) - float(quote["discount_amount"] or 0), 2)
-    sent = send_email(
-        event["contact_email"],
-        f"Your quote for Ch\u00e2teau de Gudanes",
-        f"Dear {event['contact_name']},\n\n"
-        f"Your quote for {event['event_type']} at Ch\u00e2teau de Gudanes "
-        f"comes to EUR {net:.2f}.\n\n"
-        f"Everything it covers, the terms, and a button to accept it are "
-        f"here:\n{link}\n\n"
-        "Nothing is agreed until you accept it, and we are glad to talk any "
-        "of it through first.\n\n\u2014 Ch\u00e2teau de Gudanes")
+    subject, body, letter = render_email_template(conn, "event_quote", {
+        "contact_name": event["contact_name"],
+        "event_type": event["event_type"],
+        "quote_total": f"\u20ac{net:,.2f}",
+        "quote_url": link,
+    })
+    sent = bool(subject) and send_email(event["contact_email"], subject, body,
+                                        html=letter)
     if sent:
         conn.execute(
             "UPDATE event_quotes SET status = 'sent', sent_at = ? WHERE id = ?",
@@ -58497,9 +58915,10 @@ def chase_outstanding_balance(booking_id):
         flash("That booking has no email address on it.", "error")
         return redirect(url_for("management_outstanding"))
     departed = (booking["departure_date"] or "") < house_today_iso()
-    subject, body = balance_request_email(booking, bill, departed=departed)
+    subject, body = balance_request_email(booking, bill, departed=departed, conn=conn)
     conn.close()
-    if write_about_stay(booking, subject, body, side="bill"):
+    if subject and write_about_stay(booking, subject, body, side="bill",
+                                    html=letter_html(subject, body)):
         flash(f"Asked {booking['guest_name']} for \u20ac{bill['owed']:.2f}.", "success")
     else:
         flash("No email provider is connected yet, so that is being held and "
@@ -64425,23 +64844,65 @@ def booking_confirmation_html(conn, booking, room_name):
     asserts a number over the top of them.
     """
     try:
-        bill = booking_bill(conn, booking["id"])
-        owed = bill["owed"] if bill else 0
-        return render_template(
-            "email_booking_confirmed.html",
-            guest_name=(booking["guest_name"] or "").split(" ")[0] or "there",
-            arrival_long=format_date_human(booking["arrival_date"]),
-            departure_long=format_date_human(booking["departure_date"]),
-            room_name=room_name,
-            reference_code=booking["reference_code"],
-            balance_due=(f"\u20ac{owed:,.2f}" if owed and owed > 0.005 else ""),
-            manage_url=url_for("manage_booking",
-                               manage_token=booking["manage_token"], _external=True),
-            settings=house_coordinates(conn),
-        )
+        context, card = room_confirmation_context(conn, booking, room_name)
+        subject_src, body_src, _problems = email_template_source(conn, "room_confirmed")
+        if subject_src is None:
+            return ""
+        return confirmation_letter_html(
+            merge_email_text(subject_src, context).strip(), body_src, context,
+            conn=conn, card=card)
     except Exception as e:      # pragma: no cover - the plain letter still goes
         print(f"[email html failed] {booking['reference_code']}: {e}")
         return ""
+
+
+def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
+    """What the confirmation says about this stay: (merge tags, card).
+
+    One place for both halves of the letter, so the plain text and the drawn
+    one cannot disagree about a date or a reference. {stay_details} is the
+    card written out for the plain text; the drawn letter puts the card itself
+    where it sits. Uses url_for, so it needs a request.
+
+    The card is built with dict() rather than a literal on purpose: the test
+    that reads what each sender passes reads the literals, and these are not
+    merge tags -- nothing may type them into a letter.
+    """
+    manage_url = url_for("manage_booking", manage_token=booking["manage_token"],
+                         _external=True)
+    checkin_url = url_for("guest_checkin", manage_token=booking["manage_token"],
+                          _external=True)
+    bill = booking_bill(conn, booking["id"])
+    owed = bill["owed"] if bill else 0
+    balance_due = f"\u20ac{owed:,.2f}" if owed and owed > 0.005 else ""
+    arrival = format_date_human(booking["arrival_date"])
+    departure = format_date_human(booking["departure_date"])
+    details = [f"Arriving: {arrival}", f"Leaving: {departure}",
+               f"Room: {room_name}",
+               f"Reference code: {booking['reference_code']}"]
+    if balance_due:
+        details.append(f"{balance_due} is due on arrival. We take cards and cash.")
+    details += ["", "Your booking page:", manage_url, "",
+                "Check in online \u2014 confirm your arrival time, tell us about "
+                "any requests" + (" and your airport transfer details"
+                                  if booking_has_transfer(booking) else "") + ":",
+                checkin_url]
+    if portal_url:
+        details += ["", "Everything you have with us \u2014 this stay, any ateliers "
+                        "or dinners \u2014 is always here:", portal_url]
+    context = {
+        "guest_name": booking["guest_name"] or "",
+        "first_name": (booking["guest_name"] or "").split(" ")[0] or "there",
+        "room_name": room_name,
+        "arrival_date": arrival,
+        "departure_date": departure,
+        "party_size": booking["party_size"] or "",
+        "reference_code": booking["reference_code"],
+        "manage_url": manage_url,
+        "checkin_url": checkin_url,
+        "stay_details": "\n".join(details),
+    }
+    return context, dict(balance_due=balance_due, manage_url=manage_url)
 
 
 def write_about_stay(booking, subject, body, side="stay",
@@ -66685,13 +67146,106 @@ def delete_company_document(doc_id):
 # so seventeen unrelated messages sat in one flat alphabetical list.
 TEMPLATE_AREAS = [
     ("workshop", "Workshops"), ("restaurant", "Restaurant"),
-    ("event", "Events"), ("room", "Rooms"),
+    ("event", "Events"), ("room", "Rooms"), ("review", "Rooms"),
+    ("pos", "Till"), ("newsletter", "Newsletter"),
 ]
+# Checked in this order, first match wins -- so "payment" comes before
+# "received", or a payment receipt files itself as an enquiry.
 TEMPLATE_STAGES = [
+    ("payment", "Payment"), ("paid", "Payment"), ("receipt", "Payment"),
+    ("statement", "Payment"), ("share", "Payment"),
     ("received", "Enquiry received"), ("confirmed", "Confirmed"),
     ("deposit", "Deposit"), ("reminder", "Reminder"), ("balance", "Balance due"),
+    ("quote", "Quote"), ("updated", "Changed"),
     ("waitlist", "Waitlist"), ("declined", "Declined"), ("cancelled", "Cancelled"),
-    ("feedback", "After the stay"),
+    ("not_running", "Cancelled"), ("feedback", "After the stay"),
+    ("review", "After the stay"), ("newsletter", "Signing up"),
+]
+
+# WHEN EACH ONE GOES, AND TO WHOM. The page listed thirty-odd letters by name
+# and never said which moment sends which, so the only way to learn what a
+# guest gets on cancelling was to cancel something. A test holds this to the
+# shipped list in both directions: a letter added without a line here, or a
+# line left for a letter that has gone, reds the run.
+EMAIL_TEMPLATE_INFO = {
+    "room_confirmed": ("The moment a room booking is confirmed — at once for a "
+                       "booking made online, or when you confirm one that waited",
+                       "The guest, and anyone they asked us to copy"),
+    "room_request_received": ("A booking made online that could not be confirmed "
+                              "on the spot, with nothing paid", "The guest"),
+    "room_paid_awaiting": ("A booking paid by card that could not be confirmed on "
+                           "the spot", "The guest"),
+    "room_declined": ("When you decline a booking request", "The guest, and anyone "
+                                                            "they asked us to copy"),
+    "room_cancelled": ("When the house cancels a booking from the bookings list",
+                       "The guest, and anyone they asked us to copy"),
+    "room_updated": ("When the house changes a booking's dates or party",
+                     "The guest, and anyone they asked us to copy"),
+    "room_payment_received": ("When a card payment for a stay comes through",
+                              "The guest, and anyone they asked us to copy"),
+    "room_statement": ("When a guest sends themselves their statement from their "
+                       "booking page", "Whoever pays, and anyone copied"),
+    "room_balance_before": ("The automatic reminder before arrival, or when you "
+                            "chase a balance before the stay", "Whoever pays, and anyone copied"),
+    "room_balance_after": ("When you chase a balance still owed after the stay",
+                           "Whoever pays, and anyone copied"),
+    "room_share_request": ("When you ask one person for their share of a bill",
+                           "The person named on that share"),
+    "room_feedback_request": ("The days after departure, or at once when a stay is "
+                              "checked out at the desk — once per stay, never to "
+                              "anyone who asked not to be written to", "The guest"),
+    "review_invitation": ("After a guest's own feedback was glowing — asking whether "
+                          "they would say so publicly", "The guest"),
+    "room_waitlist_opening": ("When a room frees up for dates somebody is waiting "
+                              "for", "The person on the waiting list"),
+    "restaurant_reservation_received": ("When a table is booked online", "The diner"),
+    "restaurant_confirmed": ("When a reservation is confirmed", "The diner"),
+    "restaurant_declined": ("When a reservation is declined", "The diner"),
+    "restaurant_cancelled": ("When the house cancels a reservation", "The diner"),
+    "restaurant_waitlist_opening": ("When a table frees up for a night somebody is "
+                                    "waiting for", "The person on the waiting list"),
+    "pos_receipt": ("When a bill is emailed from the till, or sent on its own as "
+                    "a table is settled", "The diner who asked for it"),
+    "workshop_registration_received": ("When somebody registers for an atelier",
+                                       "The guest"),
+    "workshop_confirmed": ("When a registration is confirmed", "The guest"),
+    "workshop_declined": ("When a registration is declined", "The guest"),
+    "workshop_cancelled": ("When a registration is cancelled", "The guest"),
+    "workshop_deposit_receipt": ("When a deposit or payment for an atelier comes "
+                                 "through", "The guest"),
+    "workshop_balance_reminder": ("The automatic reminder before an atelier's "
+                                  "balance falls due", "The guest"),
+    "workshop_moved": ("When you move a registration to another date of the same "
+                       "atelier, from the registrations page", "The guest"),
+    "workshop_feedback_request": ("The days after an atelier ends", "The guest"),
+    "workshop_waitlist_opening": ("When a place frees up on an atelier somebody is "
+                                  "waiting for", "The person on the waiting list"),
+    "workshop_not_running": ("When you call off an atelier's dates", "Everybody on "
+                             "its waiting list"),
+    "event_inquiry_received": ("When somebody enquires about an event",
+                               "The person who enquired"),
+    "event_inquiry_confirmed": ("When you confirm an event", "The person who enquired"),
+    "event_inquiry_declined": ("When you decline an event enquiry",
+                               "The person who enquired"),
+    "event_quote": ("When you send a quote for an event", "The person who enquired"),
+    "event_balance_reminder": ("The automatic reminder before an event's balance "
+                               "falls due", "The person who enquired"),
+    "newsletter_confirm": ("When somebody signs up for news, before anything else "
+                           "is sent to them", "The address that signed up"),
+}
+
+# What the house sends that is NOT here, and why -- so the page can say it
+# covers everything a guest receives and mean it. Fixed on purpose: each is a
+# key to an account, and an edit that dropped the code or the link would lock
+# somebody out with nothing on this page to show it had happened.
+FIXED_GUEST_EMAILS = [
+    ("Password reset code", "Carries a one-time code to get back into an account"),
+    ("Sign-in address changed", "Tells the OLD address its sign-in was moved, in "
+                                "case that was not them"),
+    ("A guest's link to their bookings", "Is the sign-in itself: the link is the "
+                                         "key to everything they have booked"),
+    ("Replies to feedback and owner-written letters", "Are written by you each "
+                                                      "time, not from a template"),
 ]
 
 
@@ -66716,7 +67270,11 @@ def template_state(row, defaults):
     about to be sent "TEST SUBJECT". The send now refuses and substitutes the
     original, but that is a safety net, not a fix — the row still needs sorting.
     """
-    if PLACEHOLDER_TEXT.search((row["subject"] or "") + " " + (row["body"] or "")):
+    # Anything that stops the send using this wording, not only placeholder
+    # text: a tag nothing fills, a stray brace, a link taken out. The send
+    # quietly uses the shipped wording for all of them, so a page that marked
+    # only one of the four showed "Edited" over a letter nobody was receiving.
+    if wording_problems(row["template_key"], row["subject"], row["body"]):
         return "Needs fixing"
     want = defaults.get(row["template_key"])
     if want and (row["subject"], row["body"]) != want:
@@ -66727,9 +67285,23 @@ def template_state(row, defaults):
 @app.route("/management/email-templates")
 @owner_required
 def management_email_templates():
-    """What each automatic email says, and the merge tags it fills in."""
+    """What each automatic email says, when it goes, and the tags it fills in."""
+    return email_templates_page()
+
+
+def email_templates_page(draft=None):
+    """The editor page, holding a refused draft when there is one.
+
+    `draft` is {"key", "subject", "body"}: wording somebody tried to save and
+    could not. It goes back into its editor, open, with the reason above it.
+    The save used to redirect, which threw away everything typed -- and a save
+    that refuses AND loses your work teaches people to write the letter
+    somewhere else and paste it in, which is the opposite of an editor.
+    """
     conn = get_db()
     templates = conn.execute("SELECT * FROM email_templates ORDER BY label").fetchall()
+    revisions = conn.execute(
+        "SELECT * FROM email_template_revisions ORDER BY id DESC").fetchall()
     conn.close()
     defaults = {key: (subject, body) for key, _label, subject, body in DEFAULT_EMAIL_TEMPLATES}
     # Which ones have been changed from the original wording, so the editor can
@@ -66738,6 +67310,8 @@ def management_email_templates():
               if t["template_key"] in defaults
               and (t["subject"], t["body"]) != defaults[t["template_key"]]}
     states = {t["template_key"]: template_state(t, defaults) for t in templates}
+    problems = {t["template_key"]: wording_problems(t["template_key"], t["subject"], t["body"])
+                for t in templates}
     # The merge tags each template actually uses. A single global list is
     # worse than none: this page carried the workshop tags above restaurant
     # and event templates that cannot use half of them.
@@ -66749,6 +67323,25 @@ def management_email_templates():
     available = {t["template_key"]: list(EMAIL_TEMPLATE_TAGS.get(t["template_key"], ()))
                  for t in templates}
 
+    # EVERY EARLIER VERSION, newest first, each with the lines that differ from
+    # what the template says now marked -- "put this back" is only a real choice
+    # if you can see what you would be putting back.
+    current = {t["template_key"]: t for t in templates}
+    history = {}
+    for rev in revisions:
+        now = current.get(rev["template_key"])
+        if not now:
+            continue
+        now_lines = set((now["body"] or "").split("\n"))
+        history.setdefault(rev["template_key"], []).append({
+            "id": rev["id"], "subject": rev["subject"],
+            "subject_changed": rev["subject"] != now["subject"],
+            "lines": [(line, line not in now_lines)
+                      for line in (rev["body"] or "").split("\n")],
+            "when": rev["replaced_at"], "who": rev["replaced_by_name"] or "",
+            "how": rev["how"],
+        })
+
     lv = list_view(
         templates, request.args,
         search=["label", "subject", "body"],
@@ -66757,7 +67350,8 @@ def management_email_templates():
             facet("area", "Part of the house", lambda t: template_area(t["template_key"]),
                   order=[label for _p, label in TEMPLATE_AREAS] + ["Other"]),
             facet("stage", "Stage", lambda t: template_stage(t["template_key"]),
-                  order=[label for _t, label in TEMPLATE_STAGES] + ["Other"]),
+                  order=list(dict.fromkeys(label for _t, label in TEMPLATE_STAGES))
+                  + ["Other"]),
             facet("state", "Wording", lambda t: states[t["template_key"]],
                   order=["Needs fixing", "Edited", "Original wording"]),
         ],
@@ -66775,9 +67369,49 @@ def management_email_templates():
     # nothing of what you would get back.
     shipped = {t["template_key"]: defaults.get(t["template_key"], (None, None))
                for t in templates}
-    return render_template("management_email_templates.html", templates=lv["rows"], lv=lv,
-                           edited=edited, states=states, tags=tags,
-                           available=available, shipped=shipped)
+    me = current_user()
+    return render_template(
+        "management_email_templates.html", templates=lv["rows"], lv=lv,
+        edited=edited, states=states, problems=problems, tags=tags,
+        available=available, shipped=shipped, history=history,
+        info={k: EMAIL_TEMPLATE_INFO.get(k) for k in current},
+        required={k: REQUIRED_MERGE_TAGS.get(k, {}) for k in current},
+        fixed=FIXED_GUEST_EMAILS, draft=draft, total=len(templates),
+        my_address=(me["email"] if me and me["email"] else ""))
+
+
+def remember_email_template(conn, template_key, how):
+    """Keep what a template says NOW, before something replaces it.
+
+    Asked by every path that changes a template's wording -- a save, a restore
+    to the original, putting back an earlier version -- so its history is
+    complete whichever way the change came. The caller commits.
+    """
+    row = conn.execute("SELECT subject, body FROM email_templates WHERE template_key = ?",
+                       (template_key,)).fetchone()
+    if not row:
+        return
+    user = current_user()
+    conn.execute(
+        """INSERT INTO email_template_revisions
+               (template_key, subject, body, replaced_at, replaced_by,
+                replaced_by_name, how)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (template_key, row["subject"], row["body"],
+         datetime.now(timezone.utc).isoformat(),
+         user["id"] if user else None, user["name"] if user else None, how))
+
+
+def _known_template(template_key):
+    """404 unless this is a template the house has."""
+    if any(d[0] == template_key for d in DEFAULT_EMAIL_TEMPLATES):
+        return
+    conn = get_db()
+    known = conn.execute("SELECT 1 FROM email_templates WHERE template_key = ?",
+                         (template_key,)).fetchone()
+    conn.close()
+    if not known:
+        abort(404)
 
 
 @app.route("/management/email-templates/<template_key>/preview", methods=["POST"])
@@ -66791,21 +67425,52 @@ def preview_email_template_route(template_key):
     find out what anybody received was to send one.
 
     Draft text in, merged text out, using the SAME substitution and the SAME
-    two refusals the send uses -- so the preview cannot drift from the letter.
+    refusals the send uses -- so the preview cannot drift from the letter.
     A second implementation here would agree for a year and then quietly stop,
     which is the failure this app has been bitten by more than once.
     """
-    if not any(d[0] == template_key for d in DEFAULT_EMAIL_TEMPLATES):
-        conn = get_db()
-        known = conn.execute(
-            "SELECT 1 FROM email_templates WHERE template_key = ?",
-            (template_key,)).fetchone()
-        conn.close()
-        if not known:
-            abort(404)
+    _known_template(template_key)
     data = request.get_json(silent=True) or {}
     return jsonify(preview_email_template(
         template_key, data.get("subject", ""), data.get("body", "")))
+
+
+@app.route("/management/email-templates/<template_key>/test", methods=["POST"])
+@owner_required
+def test_email_template(template_key):
+    """Send the wording in the editor to the person signed in, as a guest gets it.
+
+    The preview shows the letter; this puts it in a real inbox, on a real
+    phone, which is where a subject gets cut off and a button turns out to be
+    the wrong colour on a dark screen. The DRAFT is sent, not the saved row,
+    so a change can be tried before it is saved. Filled in with the same made-
+    up stay as the preview, marked [Test] in the subject, and never filed as a
+    letter to a guest -- no guest was sent it.
+    """
+    _known_template(template_key)
+    data = request.get_json(silent=True) or request.form
+    me = current_user()
+    to = (me["email"] if me and me["email"] else "").strip()
+    if not to:
+        return jsonify(sent=False, to="", why="Your account has no email address "
+                                             "to send the test to."), 400
+    draft = preview_email_template(template_key, data.get("subject", ""),
+                                   data.get("body", ""))
+    label = next((d[1] for d in DEFAULT_EMAIL_TEMPLATES if d[0] == template_key),
+                 template_key)
+    report = {}
+    sent = send_email(
+        to, "[Test] " + draft["subject"],
+        f"This is a test of “{label}”, filled in with a made-up stay. "
+        f"No guest has been sent it.\n\n" + draft["body"],
+        html=draft["html"] or None, keep=False, report=report)
+    conn = get_db()
+    log_audit(conn, "email_template_tested", target=template_key)
+    conn.commit()
+    conn.close()
+    return jsonify(
+        sent=bool(sent), to=to, refused=draft["refused"], problems=draft["problems"],
+        why=("" if sent else (report.get("why") or "It could not be sent.")))
 
 
 @app.route("/management/email-templates/<template_key>/restore", methods=["POST"])
@@ -66815,20 +67480,66 @@ def restore_email_template(template_key):
 
     Editing these is a one-way door otherwise: the originals only ever get
     written when the row is absent, so a template rewritten badly — or left
-    holding test text — stays that way and goes out to guests.
+    holding test text — stays that way and goes out to guests. What it said
+    before the restore is kept in its history, so this is not a one-way door
+    either.
     """
     default = next((d for d in DEFAULT_EMAIL_TEMPLATES if d[0] == template_key), None)
     if not default:
         abort(404)
     _key, _label, subject, body = default
     conn = get_db()
+    row = conn.execute("SELECT subject, body FROM email_templates WHERE template_key = ?",
+                       (template_key,)).fetchone()
+    if row and (row["subject"], row["body"]) != (subject, body):
+        remember_email_template(conn, template_key, "restored to the original")
     conn.execute(
         "UPDATE email_templates SET subject = ?, body = ?, updated_at = NULL "
         "WHERE template_key = ?", (subject, body, template_key))
     log_audit(conn, "email_template_restored", target=template_key)
     conn.commit()
     conn.close()
-    flash("Restored to the original wording.", "success")
+    flash("Restored to the original wording. What it said before is in its history.",
+          "success")
+    return redirect(url_for("management_email_templates"))
+
+
+@app.route("/management/email-templates/<template_key>/history/<int:revision_id>/restore",
+           methods=["POST"])
+@owner_required
+def restore_email_template_revision(template_key, revision_id):
+    """Put back an earlier version of one template, keeping the current one.
+
+    A version written before a rule existed -- a link that is now required --
+    may not pass today. Then it is not saved: it is put in the editor, with
+    the reason, so it can be mended rather than rejected outright.
+    """
+    conn = get_db()
+    rev = conn.execute(
+        "SELECT * FROM email_template_revisions WHERE id = ? AND template_key = ?",
+        (revision_id, template_key)).fetchone()
+    exists = conn.execute("SELECT 1 FROM email_templates WHERE template_key = ?",
+                          (template_key,)).fetchone()
+    if not rev or not exists:
+        conn.close()
+        abort(404)
+    trouble = wording_problems(template_key, rev["subject"], rev["body"])
+    if trouble:
+        conn.close()
+        flash("That version cannot go out as it is — " + "; ".join(trouble)
+              + ". It is in the editor below so you can mend it before saving.", "error")
+        return email_templates_page({"key": template_key, "subject": rev["subject"],
+                                     "body": rev["body"]})
+    remember_email_template(conn, template_key, "put back an earlier version")
+    conn.execute(
+        "UPDATE email_templates SET subject = ?, body = ?, updated_at = ? WHERE template_key = ?",
+        (rev["subject"], rev["body"], datetime.now(timezone.utc).isoformat(), template_key))
+    log_audit(conn, "email_template_reverted", target=template_key,
+              details=f"revision {revision_id}")
+    conn.commit()
+    conn.close()
+    flash("Put back the earlier version. The one it replaced is in the history too.",
+          "success")
     return redirect(url_for("management_email_templates"))
 
 
@@ -66837,26 +67548,38 @@ def restore_email_template(template_key):
 def edit_email_template(template_key):
     subject = request.form.get("subject", "").strip()
     body = request.form.get("body", "").strip()
-    if not subject or not body:
-        flash("Subject and body are both required.", "error")
-        return redirect(url_for("management_email_templates"))
-
-    # REFUSED HERE, at the moment of the mistake. A tag nothing fills used to be
-    # saved happily and only showed itself in a guest's inbox, and by then the
-    # only person who could see it was the guest.
-    stray = unknown_merge_tags(template_key, subject, body)
-    if stray:
-        allowed = ", ".join("{%s}" % t for t in EMAIL_TEMPLATE_TAGS.get(template_key, ()))
-        flash("Nothing fills " + ", ".join("{%s}" % t for t in stray)
-              + " in this message, so a guest would read it exactly like that. "
-              + (f"This one can use: {allowed}." if allowed else ""), "error")
-        return redirect(url_for("management_email_templates"))
+    draft = {"key": template_key, "subject": subject, "body": body}
 
     conn = get_db()
-    existing = conn.execute("SELECT 1 FROM email_templates WHERE template_key = ?", (template_key,)).fetchone()
+    existing = conn.execute("SELECT * FROM email_templates WHERE template_key = ?",
+                            (template_key,)).fetchone()
     if not existing:
         conn.close()
         abort(404)
+    if not subject or not body:
+        conn.close()
+        flash("Subject and body are both required.", "error")
+        return email_templates_page(draft)
+
+    # REFUSED HERE, at the moment of the mistake, and the draft kept. A tag
+    # nothing fills used to be saved happily and only showed itself in a
+    # guest's inbox, and by then the only person who could see it was the
+    # guest. Every reason the send would not use this wording is named.
+    trouble = wording_problems(template_key, subject, body)
+    if trouble:
+        conn.close()
+        allowed = ", ".join("{%s}" % t for t in EMAIL_TEMPLATE_TAGS.get(template_key, ()))
+        stray = unknown_merge_tags(template_key, subject, body)
+        flash("Not saved — " + "; ".join(trouble) + ". "
+              + (f"This one can use: {allowed}. " if stray and allowed else "")
+              + "What you wrote is still in the editor.", "error")
+        return email_templates_page(draft)
+
+    if (existing["subject"], existing["body"]) == (subject, body):
+        conn.close()
+        flash("Nothing had changed, so nothing was saved.", "success")
+        return redirect(url_for("management_email_templates"))
+    remember_email_template(conn, template_key, "edited")
     conn.execute(
         "UPDATE email_templates SET subject = ?, body = ?, updated_at = ? WHERE template_key = ?",
         (subject, body, datetime.now(timezone.utc).isoformat(), template_key),
@@ -66864,7 +67587,7 @@ def edit_email_template(template_key):
     log_audit(conn, "email_template_edited", target=template_key)
     conn.commit()
     conn.close()
-    flash("Template updated.", "success")
+    flash("Template updated. The next one sent uses this wording.", "success")
     return redirect(url_for("management_email_templates"))
 
 
@@ -71451,8 +72174,9 @@ def run_room_balance_reminder_job(conn, days_before):
         owing += 1
         manage_url = url_for("manage_booking", manage_token=booking["manage_token"],
                              _external=True)
-        subject, body = balance_request_email(booking, bill, departed=False)
-        delivered = write_about_stay(booking, subject, body, side="bill")
+        subject, body = balance_request_email(booking, bill, departed=False, conn=conn)
+        delivered = bool(subject) and write_about_stay(
+            booking, subject, body, side="bill", html=letter_html(subject, body))
         if delivered:
             conn.execute(
                 "UPDATE bookings SET balance_reminder_sent_at = ? WHERE id = ?",
