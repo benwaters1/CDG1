@@ -38,6 +38,7 @@ SUITES = [
     "test_payments_counted_once",
     "test_balances_to_collect",
     "test_workshop_register",
+    "test_lists_open_on_now",
     "test_workshop_rooms",
     "test_workshop_lifecycle",
     "test_workshop_minimum",

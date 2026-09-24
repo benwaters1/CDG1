@@ -9183,7 +9183,7 @@ SAVED_VIEW_PARAMS = ("q", "sort", "page", "period", "date", "status", "state",
                      # saved view -- so a page filtered only by them offered
                      # no Save at all.
                      "room", "when", "known", "caution", "vip", "card",
-                     "session", "money", "workshop")
+                     "session", "money", "workshop", "stage", "came")
 
 
 def saved_view_query(args):
@@ -9304,8 +9304,28 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
         if value and value != LIST_ALL:
             chosen[f["key"]] = value
 
+    # A telephone number is written a dozen ways -- "06 12 34 56 78",
+    # "+33 6 12 34 56 78", "0612345678" -- and a search box that matched only
+    # the way it happened to be typed found nobody. So a search that is a
+    # telephone number is also compared digit for digit -- and by its last
+    # nine digits, which are the subscriber's number whether it was written
+    # nationally (06 ...) or with the country code (+33 6 ...), either way
+    # round. A partial number with its trunk 0 still finds the rest.
+    q_digits = (re.sub(r"\D", "", q)
+                if q and re.fullmatch(r"[\d\s+().\-/]+", q) else "")
+
     def matches_search(row):
-        return not q or q.lower() in _searchable(row, search)
+        if not q:
+            return True
+        text = _searchable(row, search)
+        if q.lower() in text:
+            return True
+        if len(q_digits) >= 6:
+            digits = re.sub(r"\D", "", text)
+            return (q_digits in digits
+                    or (len(q_digits) >= 9 and q_digits[-9:] in digits)
+                    or (q_digits.startswith("0") and q_digits[1:] in digits))
+        return False
 
     def matches_facets(row, skip=None):
         for f in facets:
@@ -35949,8 +35969,10 @@ def guests():
     in_residence = [s for s in stays if s["stay_status"] == "current"]
     upcoming = [s for s in stays if s["stay_status"] == "upcoming"]
 
+    # A profile merged into another is that other person now. Listing both
+    # was the duplicate the merge existed to remove, back again one page on.
     profiles = conn.execute(
-        "SELECT * FROM guests ORDER BY vip DESC, name").fetchall()
+        "SELECT * FROM guests WHERE merged_into_id IS NULL ORDER BY vip DESC, name").fetchall()
 
     # How many past stays each profile has, so the list conveys "returning guest"
     # at a glance rather than needing a click-through.
@@ -37257,25 +37279,70 @@ def join_waitlist():
     return redirect(url_for("book_rooms", arrival=desired_arrival, departure=desired_departure))
 
 
+def waitlist_view(rows, args, wanted, *, extra_search=()):
+    """A waitlist through the standard toolbar.
+
+    `wanted` is the last day the person wanted -- once it has passed, the
+    entry is History: somebody who wanted a table on the ninth is not waiting
+    for one on the twelfth. An entry with no date (an enquiry "sometime in
+    June") stays current until somebody closes it. Open entries come first,
+    newest first within them, because that is the order they get answered in.
+    """
+    today_iso = house_today_iso()
+    return list_view(
+        rows, args,
+        search=["name", "email", "phone", "notes", *extra_search],
+        search_hint="Search name, email, telephone or notes",
+        facets=[
+            facet("when", "When",
+                  lambda e: "History" if (wanted(e) or "9999") < today_iso else "Current",
+                  order=["Current", "History"], default="Current"),
+            facet("state", "Status", lambda e: (e["status"] or "").capitalize(),
+                  order=["Open", "Contacted", "Booked", "Closed"]),
+        ],
+        sorts=[
+            sort_option("open", "Open first, newest first", lambda e: e["status"] != "open"),
+            sort_option("wanted", "Soonest wanted", lambda e: wanted(e) or "9999"),
+            sort_option("name", "By name", lambda e: (e["name"] or "").casefold()),
+        ],
+        default_sort="open",
+    )
+
+
+def _room_waitlist_wanted(e):
+    return e["desired_departure"] or e["desired_arrival"]
+
+
+def _restaurant_waitlist_wanted(e):
+    return e["desired_date"]
+
+
+def _workshop_waitlist_wanted(e):
+    return e["end_date"] or e["start_date"]
+
+
 @app.route("/admin/waitlist")
 @owner_required
 def admin_waitlist():
     """Guests waiting for a night that is full, and who has been offered one."""
     conn = get_db()
-    entries = conn.execute(
-        "SELECT * FROM waitlist_entries ORDER BY (status != 'open'), created_at DESC"
-    ).fetchall()
+    # Newest first here; the sort that follows is stable, so it stays newest
+    # first within open and within the rest.
+    lv = waitlist_view(conn.execute(
+        "SELECT * FROM waitlist_entries ORDER BY created_at DESC").fetchall(),
+        request.args, _room_waitlist_wanted)
     conn.close()
-    return render_template("admin_waitlist.html", entries=entries)
+    return render_template("admin_waitlist.html", entries=lv["rows"], lv=lv,
+                           export_q=request.query_string.decode("utf-8", "replace"))
 
 
 @app.route("/admin/waitlist/export.csv")
 @owner_required
 def export_waitlist_csv():
     conn = get_db()
-    rows = conn.execute(
-        "SELECT * FROM waitlist_entries ORDER BY (status != 'open'), created_at DESC"
-    ).fetchall()
+    rows = waitlist_view(conn.execute(
+        "SELECT * FROM waitlist_entries ORDER BY created_at DESC").fetchall(),
+        request.args, _room_waitlist_wanted)["rows"]
     conn.close()
     fieldnames = ["name", "email", "phone", "desired_arrival", "desired_departure", "party_size",
                   "notes", "status", "created_at"]
@@ -47574,15 +47641,16 @@ def admin_bookings():
     # compute it.
     today_iso_pre = house_today_iso()
 
+    # No ORDER BY worth the name: list_view sorts. The one this had compared
+    # against date('now'), which is the UTC day, and was replaced by the sort
+    # anyway.
     all_bookings = conn.execute(
         """SELECT bookings.*, rooms.name AS room_name,
                   booking_parties.name AS party_name
              FROM bookings
              JOIN rooms ON rooms.id = bookings.room_id
              LEFT JOIN booking_parties ON booking_parties.id = bookings.party_id
-           ORDER BY (bookings.status = 'pending') DESC,
-                    (bookings.departure_date < date('now')) ASC,
-                    bookings.arrival_date"""
+           ORDER BY bookings.arrival_date"""
     ).fetchall()
 
     # THE HOUSE RULE, applied to the one list that never had it: every list
@@ -47601,34 +47669,52 @@ def admin_bookings():
         legacy["state"] = status_filter.capitalize()
     if room_filter.isdigit() and not legacy.get("room"):
         legacy["room"] = room_names.get(int(room_filter), "")
+    # WHAT IS OVER GOES INTO HISTORY. The page opened on every stay there had
+    # ever been, oldest first, so the first screen was last year. It opens on
+    # what is current now -- here, or still to come -- with History a chip
+    # away, newest first. "Here now" and "Still to come" are still chips of
+    # their own, and the old ?when= links and saved views still arrive where
+    # they meant to.
+    old_when = legacy.get("when", "")
+    if old_when in ("Here now", "Still to come"):
+        legacy.setdefault("stage", old_when)
+        legacy["when"] = "Current"
+    elif old_when == "Been and gone":
+        legacy["when"] = "History"
+
+    def _stage(b):
+        if (b["departure_date"] or "") <= today_iso_pre:
+            return None
+        return "Here now" if (b["arrival_date"] or "") <= today_iso_pre else "Still to come"
 
     lv = list_view(
         all_bookings, legacy,
-        search=["guest_name", "guest_email", "reference_code", "room_name"],
-        search_hint="Search guest, email, reference or room",
+        search=["guest_name", "guest_email", "guest_phone", "reference_code", "room_name",
+                "party_name"],
+        search_hint="Search guest, email, telephone, reference or room",
         facets=[
+            facet("when", "When",
+                  lambda b: "History" if (b["departure_date"] or "") <= today_iso_pre
+                  else "Current", order=["Current", "History"], default="Current"),
+            facet("stage", "Where they are", _stage, order=["Here now", "Still to come"]),
             # Pending first: a request nobody has answered is the only thing on
             # this page with a clock running on it.
             facet("state", "Status", lambda b: (b["status"] or "").capitalize(),
-                  order=["Pending", "Confirmed", "Checked_in", "Departed",
-                         "Cancelled", "Declined"]),
+                  order=["Pending", "Confirmed", "Cancelled", "Declined"]),
             facet("room", "Room", lambda b: b["room_name"], limit=12),
-            facet("when", "When", lambda b: (
-                "Here now" if (b["arrival_date"] or "") <= today_iso_pre
-                              < (b["departure_date"] or "")
-                else "Still to come" if (b["arrival_date"] or "") > today_iso_pre
-                else "Been and gone"),
-                  order=["Here now", "Still to come", "Been and gone"]),
         ],
         sorts=[
             sort_option("arrival", "Arriving soonest",
                         lambda b: b["arrival_date"] or "9999-12-31"),
+            sort_option("latest", "Most recent stay first",
+                        lambda b: b["departure_date"] or "", reverse=True),
             sort_option("recent", "Booked most recently",
                         lambda b: b["created_at"] or "", reverse=True),
             sort_option("name", "By guest",
                         lambda b: (b["guest_name"] or "").casefold()),
         ],
-        default_sort="arrival",
+        # History reads backwards from yesterday; what is current reads forwards.
+        default_sort="latest" if legacy.get("when") == "History" else "arrival",
     )
     bookings = lv["rows"]
 
@@ -50279,16 +50365,40 @@ def admin_restaurant():
     period = period_from_request()
     overview = restaurant_overview(conn, period, house_today())
     status_filter = request.args.get("status", "")
-    query = "SELECT * FROM restaurant_bookings"
-    params = []
-    if status_filter:
-        query += " WHERE status = ?"
-        params.append(status_filter)
-    # Past dinners sorted to the top under a plain dinner_date ASC, so the
-    # first thing on screen was the oldest history. Still-relevant service
-    # first, history after it, each in sensible order.
-    query += " ORDER BY (dinner_date < date('now')) ASC, dinner_date, created_at"
-    reservations = conn.execute(query, params).fetchall()
+    # The standard toolbar, in place of one status dropdown. Dinners that have
+    # happened are History, a chip away; the page opens on tonight and what
+    # is still to come. (The ordering this replaced compared dinner_date with
+    # date('now') -- the UTC day -- so for an hour or two after midnight last
+    # night's tables still sorted as upcoming.)
+    today_iso = house_today_iso()
+    args = request.args.to_dict()
+    if status_filter and not args.get("state"):
+        args["state"] = status_filter.capitalize()
+    lv = list_view(
+        conn.execute("SELECT * FROM restaurant_bookings ORDER BY dinner_date, created_at").fetchall(),
+        args,
+        search=["guest_name", "guest_email", "guest_phone", "reference_code", "dietary_notes"],
+        search_hint="Search guest, email, telephone or reference",
+        facets=[
+            facet("when", "When",
+                  lambda r: "History" if (r["dinner_date"] or "") < today_iso else "Current",
+                  order=["Current", "History"], default="Current"),
+            facet("state", "Status", lambda r: (r["status"] or "").capitalize(),
+                  order=["Pending", "Confirmed", "Declined", "Cancelled"]),
+            facet("came", "Did they come",
+                  lambda r: "No-show" if r["no_show_at"] else None),
+        ],
+        sorts=[
+            sort_option("date", "Soonest first", lambda r: r["dinner_date"] or "9999"),
+            sort_option("latest", "Most recent first",
+                        lambda r: r["dinner_date"] or "", reverse=True),
+            sort_option("recent", "Booked most recently",
+                        lambda r: r["created_at"] or "", reverse=True),
+            sort_option("name", "By guest", lambda r: (r["guest_name"] or "").casefold()),
+        ],
+        default_sort="latest" if args.get("when") == "History" else "date",
+    )
+    reservations = lv["rows"]
 
     pending_count = conn.execute("SELECT COUNT(*) AS c FROM restaurant_bookings WHERE status = 'pending'").fetchone()["c"]
 
@@ -50343,7 +50453,7 @@ def admin_restaurant():
             no_show_history[r["id"]] = others
     conn.close()
     return render_template(
-        "admin_restaurant.html", reservations=reservations, status_filter=status_filter,
+        "admin_restaurant.html", reservations=reservations, lv=lv, status_filter=status_filter,
         pending_count=pending_count, upcoming_covers=upcoming_covers, settings=settings,
         employees=employees, today=today, profit=profit, prev_month=prev_month, next_month=next_month,
         shifts_by_date=shifts_by_date, no_show_count=no_show_count,
@@ -52223,20 +52333,21 @@ def join_restaurant_waitlist():
 @owner_required
 def admin_restaurant_waitlist():
     conn = get_db()
-    entries = conn.execute(
-        "SELECT * FROM restaurant_waitlist ORDER BY (status != 'open'), created_at DESC"
-    ).fetchall()
+    lv = waitlist_view(conn.execute(
+        "SELECT * FROM restaurant_waitlist ORDER BY created_at DESC").fetchall(),
+        request.args, _restaurant_waitlist_wanted)
     conn.close()
-    return render_template("admin_restaurant_waitlist.html", entries=entries)
+    return render_template("admin_restaurant_waitlist.html", entries=lv["rows"], lv=lv,
+                           export_q=request.query_string.decode("utf-8", "replace"))
 
 
 @app.route("/admin/restaurant/waitlist/export.csv")
 @owner_required
 def export_restaurant_waitlist_csv():
     conn = get_db()
-    rows = conn.execute(
-        "SELECT * FROM restaurant_waitlist ORDER BY (status != 'open'), created_at DESC"
-    ).fetchall()
+    rows = waitlist_view(conn.execute(
+        "SELECT * FROM restaurant_waitlist ORDER BY created_at DESC").fetchall(),
+        request.args, _restaurant_waitlist_wanted)["rows"]
     conn.close()
     fieldnames = ["name", "email", "phone", "desired_date", "party_size", "notes", "status", "created_at"]
     return csv_response(fieldnames, rows, "restaurant_waitlist.csv")
@@ -54592,19 +54703,22 @@ def join_workshop_waitlist():
     return redirect(url_for("workshop_register", session_id=session_id))
 
 
+WORKSHOP_WAITLIST_SQL = """SELECT workshop_waitlist.*, workshop_sessions.start_date,
+           workshop_sessions.end_date, workshops.title FROM workshop_waitlist
+      JOIN workshop_sessions ON workshop_sessions.id = workshop_waitlist.session_id
+      JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+     ORDER BY workshop_waitlist.created_at DESC"""
+
+
 @app.route("/admin/workshops/waitlist")
 @owner_required
 def admin_workshop_waitlist():
     conn = get_db()
-    entries = conn.execute(
-        """SELECT workshop_waitlist.*, workshop_sessions.start_date, workshop_sessions.end_date,
-               workshops.title FROM workshop_waitlist
-           JOIN workshop_sessions ON workshop_sessions.id = workshop_waitlist.session_id
-           JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-           ORDER BY (workshop_waitlist.status != 'open'), workshop_waitlist.created_at DESC"""
-    ).fetchall()
+    lv = waitlist_view(conn.execute(WORKSHOP_WAITLIST_SQL).fetchall(), request.args,
+                       _workshop_waitlist_wanted, extra_search=("title",))
     conn.close()
-    return render_template("admin_workshop_waitlist.html", entries=entries)
+    return render_template("admin_workshop_waitlist.html", entries=lv["rows"], lv=lv,
+                           export_q=request.query_string.decode("utf-8", "replace"))
 
 
 @app.route("/admin/workshops/waitlist/export.csv")
@@ -54653,7 +54767,8 @@ def export_expenses_csv():
 @owner_required
 def export_guests_csv():
     conn = get_db()
-    rows = conn.execute("SELECT * FROM guests ORDER BY vip DESC, name").fetchall()
+    rows = conn.execute(
+        "SELECT * FROM guests WHERE merged_into_id IS NULL ORDER BY vip DESC, name").fetchall()
     conn.close()
     fieldnames = ["name", "email", "phone", "dietary_notes", "preferences", "vip", "notes", "created_at"]
     return csv_response(fieldnames, rows, "guests.csv")

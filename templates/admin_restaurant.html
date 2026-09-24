@@ -138,22 +138,10 @@
   </form>
 </div>
 
-<form method="get" class="search-bar">
-  <div>
-    <label class="field-label" for="admin_restaurant-status">Status</label>
-    <select id="admin_restaurant-status" name="status">
-      <option value="">All</option>
-      {% for s in ['pending','confirmed','declined','cancelled'] %}
-      <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <button type="submit" class="btn-mini">Filter</button>
-  {% if status_filter %}<a href="{{ url_for('admin_restaurant') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
-</form>
+{% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
 
 {% if not reservations %}
-  <div class="empty-state">{% if status_filter %}No reservations match that filter.{% else %}No dinner reservations yet.{% endif %}</div>
+  <div class="empty-state">{% if lv['total'] %}Nothing matches that. <a href="{{ url_for('admin_restaurant', when='all') }}">Show all {{ lv['total'] }}</a>.{% else %}No dinner reservations yet.{% endif %}</div>
 {% else %}
   {% for r in reservations %}
   <div class="expense-card">

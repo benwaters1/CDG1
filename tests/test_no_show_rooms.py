@@ -150,7 +150,9 @@ def run():
                    "asked for a table")
 
     s.section("It shows on the row, not only in the database")
-    body = oc.get("/admin/bookings").get_data(as_text=True)
+    # All of it: these stays are over, so they are under History, and the one
+    # still to come is not -- the page opens on what is current.
+    body = oc.get("/admin/bookings?when=all").get_data(as_text=True)
     # The FLAG, not the word. The button offering the action says "Did not
     # arrive" too, so a looser check passes with no flag on the page at all --
     # which is how it passed the first time the flag was deleted.
