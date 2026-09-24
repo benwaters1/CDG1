@@ -85,23 +85,16 @@
 
     <div class="g-recap__terms">
       <p class="g-recap__k">If you need to change it</p>
-      {% if setting(settings, 'cancel_free_days') %}
-      <p class="g-recap__t">
-        Cancel more than {{ setting(settings, 'cancel_free_days') }} days before you
-        arrive and there is nothing to pay.
-        {%- if booking.paid %} Anything already paid comes back to the same
-        card within a few days.{% endif %}
-        Inside that, {{ setting(settings, 'cancel_note',
-          'write to us and we will do what we can — this is a house, not a chain, and there is usually a way.') }}
-      </p>
-      {% else %}
-      {# Rather than invent a policy: point at the page that holds it. #}
+      {#- Rather than invent a policy: point at the page that holds it. There
+          was a branch here that promised "cancel more than N days before you
+          arrive and there is nothing to pay" whenever a cancel_free_days
+          setting existed. None does, and the house refunds nothing, so it was
+          a free-cancellation promise waiting for somebody to add a setting. -#}
       <p class="g-recap__t">
         Plans change and we would rather know early. Write to us or use your
         booking page, and the terms are set out in full on the
         <a href="{{ url_for('terms_page') }}">terms</a>.
       </p>
-      {% endif %}
 
       <p class="g-recap__t">
         <strong>What is already in the rate:</strong> breakfast, the grounds,

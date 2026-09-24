@@ -23,7 +23,7 @@ two copies of a parser is two things to keep in step. It is stdlib
 html.parser: this app has no build step and no third-party HTML library.
 """
 from _harness import (Suite, db, ensure_room, forms_on, links_on, fill,
-                      flashes, free_window, house_today)
+                      flashes, free_window, house_today, visible_text)
 
 import os
 import re
@@ -41,6 +41,58 @@ EMAIL = "zzjourney@example.invalid"
 # others it did not, which is the worst kind of test to leave lying about.
 # A documentation-range address, so it is obviously not a real one.
 GUEST_IP = "203.0.113.7"
+
+TPL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                   "templates")
+
+# The house refunds nothing a guest cancels -- the terms call any refund a
+# goodwill gesture, never an entitlement -- so these are the phrases that
+# would promise otherwise. The terms page is deliberately NOT read with them:
+# it says a stay the CHATEAU cancels is refunded in full, which is true, and is
+# the house's promise rather than the guest's.
+REFUND_PROMISES = re.compile(
+    r"free\s+cancell?ation|cancel(?:led|ling)?\s+(?:for\s+free|free\s+of\s+charge)"
+    r"|cancell?ation\s+is\s+free|free\s+to\s+cancel|cancel\s+more\s+than"
+    r"|refunded\s+in\s+full|\bfull(?:y)?\s+refund|money\s+back"
+    r"|(?<!non-)\brefundable\s+(?:up\s+to|until|if)", re.I)
+
+
+def _guest_templates():
+    """Every template a guest can be shown, with its Jinja comments taken out.
+
+    That is everything but the staff side: the pages that extend base.html,
+    and any partial that only those pages use -- the staff refund form offers
+    "Fully refund" as a button, and that is the house deciding, not a promise.
+    A partial nothing uses yet stays IN: the ones awaiting wiring are guest
+    designs, and one of them is how the last wrong promise was found.
+
+    The comments go because they are where the history of a wrong promise
+    gets written down, and nobody outside this repo ever reads one.
+    """
+    sources = {}
+    for name in sorted(os.listdir(TPL)):
+        if name.endswith(".html"):
+            with open(os.path.join(TPL, name), encoding="utf-8") as f:
+                sources[name] = re.sub(r"(?s)\{#.*?#\}", " ", f.read())
+    used_by = {name: set() for name in sources}
+    for name, src in sources.items():
+        for ref in re.findall(r"""\{%-?\s*(?:include|import|from|extends)\s+["']([^"']+)["']""", src):
+            if ref in used_by:
+                used_by[ref].add(name)
+    # admin_ pages are the owner's whatever they extend: two of them borrow
+    # the public layout, one to show photographs and one for the office wall.
+    staff = ({"base.html"} | used_by.get("base.html", set())
+             | {n for n in sources if n.startswith("admin_")})
+    grew = True
+    while grew:
+        grew = False
+        for name, users in used_by.items():
+            if name not in staff and users and users <= staff:
+                staff.add(name)
+                grew = True
+    for name in sorted(sources):
+        if name not in staff:
+            yield name, sources[name]
 
 
 def _clean(conn):
@@ -193,6 +245,76 @@ def run():
         # cheapest thing an idle person would try.
         s.check("a token that is not theirs does not",
                 guest.get("/book/confirmation/%s" % (token[:-4] + "zzzz")).status_code == 404)
+
+    s.section("A house that refunds nothing never promises a refund")
+
+    # The room page said "Cancellation: Non-refundable" in one panel and "Free
+    # cancellation: up to 30 days before arrival" in the panel above the form,
+    # on the page where the guest decides and pays. The second read a
+    # free_cancel_days setting nothing has ever written, so it always fell
+    # back to 30. The confirmation carried a branch of the same kind, dormant
+    # only because ITS setting, cancel_free_days, had never been allowlisted.
+    # So both switches are thrown before anything is read: a promise that is
+    # off because nobody has typed a number yet is still a promise.
+    s.check("the pattern sees the line it was written for, and not the policy",
+            bool(REFUND_PROMISES.search("Free cancellation Up to 30 days before arrival"))
+            and not REFUND_PROMISES.search(
+                "Non-refundable. Write to us and we can sometimes move your dates instead"))
+    switches = ("free_cancel_days", "cancel_free_days")
+    was_public = m.PUBLIC_SETTINGS
+    m.PUBLIC_SETTINGS = tuple(was_public) + switches
+    for key in switches:
+        conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, '14')",
+                     (key,))
+    conn.commit()
+    try:
+        shown = {"the room page": visible_text(guest.get(room_url).get_data(as_text=True))}
+        if token:
+            shown["the confirmation"] = visible_text(
+                guest.get("/book/confirmation/%s" % token).get_data(as_text=True))
+            shown["the guest's booking page"] = visible_text(
+                guest.get("/book/manage/%s" % token).get_data(as_text=True))
+    finally:
+        m.PUBLIC_SETTINGS = was_public
+        conn.execute("DELETE FROM app_settings WHERE key IN (?, ?)", switches)
+        conn.commit()
+    s.check("the room page says what the policy is",
+            "non-refundable" in shown["the room page"].lower(),
+            detail="everything below rests on this. If the house changes its "
+                   "policy, the terms, the pages and this change together")
+    for where, text in shown.items():
+        found = REFUND_PROMISES.search(text)
+        s.check("%s promises no refund" % where, not found,
+                detail=found and text[max(0, found.start() - 80):found.end() + 80])
+
+    # And in the source, because a partial nothing renders YET is where the
+    # next one comes from: _cancel.html, awaiting wiring, refunded "the
+    # deposit in full" on a house that takes no deposit and refunds nothing.
+    promising = ["%s: %r" % (name, hit.group(0))
+                 for name, src in _guest_templates()
+                 for hit in [REFUND_PROMISES.search(src)] if hit]
+    s.check("no template a guest can be shown promises one either",
+            not promising, detail="; ".join(promising))
+
+    s.section("And a guest who pays at once is told so")
+
+    # "Nothing is taken now: you are sending a request. We confirm it, and
+    # only then does anything leave your account." Both halves were false: the
+    # house confirms at once, and with card payments on it charges the card
+    # before the confirmation is drawn. Read with card payments ON, as the
+    # house runs -- a GET of the room page never calls Stripe.
+    real_stripe = m.stripe_enabled
+    m.stripe_enabled = lambda: True
+    try:
+        paying = visible_text(guest.get(room_url).get_data(as_text=True)).lower()
+    finally:
+        m.stripe_enabled = real_stripe
+    s.check("the page a paying guest sees offers to take payment",
+            "pay & book" in paying,
+            detail="so the checks below read the page the house actually serves")
+    for claim in ("nothing is taken now", "sending a request",
+                  "only then does anything leave"):
+        s.check("it does not say %r" % claim, claim not in paying)
 
     s.section("And the door is not held open for a script")
 

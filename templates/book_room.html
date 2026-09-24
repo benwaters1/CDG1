@@ -580,6 +580,9 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     q.set('arrival',arrive.value);
     q.set('departure',depart.value);
     if(party.value) q.set('party_size',party.value);
+    /* The tax is per adult, so the quote needs to know who is not one. */
+    var u18=f.querySelector('[name="guests_under_18"]');
+    if(u18&&u18.value) q.set('guests_under_18',u18.value);
     var promo=document.getElementById('promo_code');
     if(promo&&promo.value.trim()) q.set('promo',promo.value.trim());
     f.querySelectorAll('[name="extras"]:checked').forEach(function(cb){ q.append('extras',cb.value); });
@@ -625,6 +628,10 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     },250);
   }
   [arrive,depart,party].forEach(function(el){ el.addEventListener('change',refreshQuote); });
+  /* party_size is filled in by script, and script fires no event, so a guest
+     changing the party never re-priced the stay. The boxes they type in do. */
+  f.querySelectorAll('[name="adults"],[name="guests_under_18"]').forEach(function(el){
+    el.addEventListener('change',refreshQuote); });
   f.querySelectorAll('[name="extras"]').forEach(function(cb){ cb.addEventListener('change',refreshQuote); });
   var applyBtn=document.getElementById('promo_apply_btn');
   if(applyBtn) applyBtn.addEventListener('click',refreshQuote);
@@ -683,7 +690,10 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         <div><dt>Cancellation</dt><dd>Non-refundable. Write to us and we can sometimes move your dates instead</dd></div>
         <div><dt>Your reference</dt><dd>Emailed at once, with a link to see your booking and add to it</dd></div>
         <div><dt>Breakfast</dt><dd>Included every morning, in the rate you see</dd></div>
-        <div><dt>Tourist tax</dt><dd>Charged locally on departure, as French law requires</dd></div>
+        {#- It said "charged locally on departure". The checkout adds it to the
+            card payment as its own line, so a guest who read this expected to
+            pay it twice. The rate is the one the checkout charges. -#}
+        <div><dt>Tourist tax</dt><dd>{% if settings and settings['tourist_tax'] %}€{{ '%.2f'|format(settings['tourist_tax']|float) }} per adult per night, set by the commune. {% endif %}Added to the total when you pay</dd></div>
       </dl>
     </div>
   </div>

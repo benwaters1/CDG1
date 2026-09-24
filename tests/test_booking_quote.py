@@ -126,14 +126,23 @@ def run():
     }, follow_redirects=True)
     conn = db()
     booking = conn.execute(
-        "SELECT total_price, extras_summary FROM bookings WHERE guest_email = ?",
+        "SELECT total_price, city_tax, extras_summary FROM bookings WHERE guest_email = ?",
         (f"{TAG.lower()}@example.invalid",)).fetchone()
     conn.close()
     s.check("a booking was created", booking is not None)
     if booking:
+        # The taxe de séjour is in the quote's total, as it is on the card and
+        # in booking_bill. total_price is the stay without it, so the charge
+        # is the two together.
+        charged = round((booking["total_price"] or 0) + (booking["city_tax"] or 0), 2)
         s.check("the charge equals the quote",
-                abs((booking["total_price"] or 0) - q.get("total", 0)) < 0.01,
-                detail=f"quoted {q.get('total')}, charged {booking['total_price']}")
+                abs(charged - q.get("total", 0)) < 0.01,
+                detail=f"quoted {q.get('total')}, charged {charged} "
+                       f"({booking['total_price']} and {booking['city_tax']} tax)")
+        s.check("the tax it quoted is the tax it charged",
+                abs(float(q.get("tax") or 0) - float(booking["city_tax"] or 0)) < 0.01
+                and float(booking["city_tax"] or 0) > 0,
+                detail=f"quoted {q.get('tax')}, charged {booking['city_tax']}")
         s.check("the add-on reached the booking",
                 TAG in (booking["extras_summary"] or ""),
                 detail=f"got {booking['extras_summary']!r}")
