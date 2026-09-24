@@ -4,7 +4,7 @@
 {% block description %}Markets, brocantes, mountain days and the fairs of the Ariège — everything within an hour of Château de Gudanes, and when to catch it.{% endblock %}
 {% block og_desc %}Markets, brocantes, mountain days and the fairs of the Ariège — everything within an hour of Château de Gudanes, and when to catch it.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1200w{% endblock %}
-{% block bodyclass %} has-hero{% endblock %}
+{% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
 {% from '_marks.html' import mark %}
 
@@ -81,7 +81,7 @@
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
   <p class="g-eyebrow">The Standing Week</p>
   <h2 class="g-h2">Markets in the valley</h2>
-  <p class="g-p">Market mornings run roughly eight until one. We will drive you, and the chef will usually come too.</p>
+  <p class="g-p">Market mornings run roughly eight until one. We will drive you{% if _dm == 'open' %}, and the chef will usually come too{% endif %}.</p>
 {% if standing %}
   <div class="g-agenda" style="margin-top:var(--s6)">
     {% for e in standing %}
@@ -241,9 +241,81 @@
       <h3 class="g-find__t">The Orlu valley</h3>
       <p class="g-find__d">A national reserve half an hour away where izards graze the slopes in plain sight, and the Maison des Loups keeps wolves in wide enclosures on the mountainside. A walk in up the valley, and no road beyond it.</p>
     </div>
+    <div class="g-find">
+      <p class="g-find__k">1294–1324</p>
+      <h3 class="g-find__t">Montaillou</h3>
+      <p class="g-find__d">The village Emmanuel Le Roy Ladurie made famous in <em>Montaillou, village occitan</em>, written from the Inquisition's own interrogations of the people who lived there. About twenty live there in winter now, beneath the listed ruins of its castle. Beyond Ax, on the road to the Pays de Sault.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">The fifteenth century</p>
+      <h3 class="g-find__t">Forges de Pyrène</h3>
+      <p class="g-find__d">A hammer forge from the mid-1400s, listed as a Historic Monument, at the centre of a village of the old trades just south of Foix — the blacksmith, the clog-maker, the basket-weaver, the bread oven. Every workshop is under cover, which makes it the answer to a wet day. April to October.</p>
+    </div>
   </div>
 
   <p class="g-hint" style="margin-top:var(--s6)">Also within reach: Roquefixade, facing Montségur across the valley and free to walk any day of the year; the Lombrives caves; and Camon, listed among the most beautiful villages in France.</p>
+</div></section>
+
+<!-- ============ A DAY OUT ============ -->
+{# Researched from the tourist boards and the operators: the Yellow Train leaves from the end of the
+   line that runs through Les Cabannes; the Mas-d'Azil road runs through the cave itself. #}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">A Day Out</p>
+  <h2 class="g-place">Further, By Road or Rail</h2>
+  <p class="g-p">Two that take the whole day, and repay it.</p>
+  <div class="g-finds">
+    <div class="g-find">
+      <p class="g-find__k">Since 1910</p>
+      <h3 class="g-find__t">The Yellow Train</h3>
+      <p class="g-find__d">The line through Les Cabannes ends at Latour-de-Carol, where the Train Jaune begins: open carriages, the original rolling stock, and a climb of more than a thousand metres without a rack, through the highest station in France and down to the Vauban citadel at Villefranche-de-Conflent. No car needed at any point.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">420 metres</p>
+      <h3 class="g-find__t">Grotte du Mas-d'Azil</h3>
+      <p class="g-find__d">A cave the road drives straight through, fifty metres high, and the site that gave a whole prehistoric culture its name. The show cave behind it is open daily from April to October; book ahead.</p>
+    </div>
+  </div>
+</div></section>
+
+<!-- ============ SUMMER ============ -->
+{# The counterpart to The Estate's winter section: the site sold the valley's winter and said almost nothing about its summer. #}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">L'été<span class="g-fr__en">Summer</span></p>
+  <p class="g-eyebrow">May to September</p>
+  <h2 class="g-place">Summer in the Valley</h2>
+  <p class="g-p">The snow goes and the same mountains open the other way. Tell us before you come and we will point you to the right people.</p>
+  <div class="g-finds">
+    <div class="g-find">
+      <p class="g-find__k">On the water</p>
+      <h3 class="g-find__t">Rafting and canyoning</h3>
+      <p class="g-find__d">Rafting and canoeing on the Ariège, and canyoning in the side-streams, around Tarascon and Ax.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">On the rock</p>
+      <h3 class="g-find__t">Via ferrata and climbing</h3>
+      <p class="g-find__d">Fixed routes and natural rock, and paragliding from the ridges for anyone who would rather come down than climb up.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">On two wheels</p>
+      <h3 class="g-find__t">Ax 3 Domaines</h3>
+      <p class="g-find__d">Downhill mountain biking is the summer's main event on the same slopes the skiers use in winter.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">In the trees</p>
+      <h3 class="g-find__t">Orlu</h3>
+      <p class="g-find__d">The largest tree-top course in the Ariège — fourteen routes strung over rivers, waterfalls and canyons.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">On foot</p>
+      <h3 class="g-find__t">The high walks</h3>
+      <p class="g-find__d">Montcalm, the Pic des Trois Seigneurs, the lakes at Gardelle and the Étang d'En Beys: the walks the valley's own guides rate highest.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">Warm water</p>
+      <h3 class="g-find__t">Ussat-les-Bains</h3>
+      <p class="g-find__d">A second spa, near Tarascon, for the day after the walk.</p>
+    </div>
+  </div>
 </div></section>
 
 <!-- ============ MONTH BY MONTH ============ -->

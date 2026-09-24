@@ -9,7 +9,7 @@
     {% if state == 'done' %}
       <p class="g-eyebrow">Newsletter</p>
       <h1 class="g-display">You are on the list</h1>
-      <p class="g-p">{{ email }} is confirmed. You will hear from the château when there is
+      <p class="g-p">{% if email %}{{ email }} is{% else %}Your address is{% endif %} confirmed. You will hear from the château when there is
         something worth saying — new dates, the restoration, and the occasional
         thing we have found in a cupboard.</p>
       <p class="g-p">Every email we send carries a link to unsubscribe.</p>

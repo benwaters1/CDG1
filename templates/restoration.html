@@ -4,6 +4,7 @@
 {
   "@context": "https://schema.org",
   "@type": "LandmarksOrHistoricalBuildings",
+  "@id": "https://chateaugudanes.com/#chateau",
   "name": "Château de Gudanes",
   "description": "An eighteenth-century château by Ange-Jacques Gabriel, First Architect to Louis XV. Classified a Class I Historic Monument in 1994 and under restoration since 2013.",
   "address": {"@type":"PostalAddress","addressLocality":"Château-Verdun",
@@ -21,7 +22,7 @@
 {% block description %}Bought derelict in 2013, five hundred tonnes of stone cleared, fifteen years of work approved intervention by intervention.{% endblock %}
 {% block og_desc %}Bought derelict in 2013, five hundred tonnes of fallen stone cleared, and fifteen years of work approved intervention by intervention. A restoration, not a renovation.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1200w{% endblock %}
-{% block bodyclass %} has-hero{% endblock %}
+{% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
 {% from '_scale.html' import scale %}
 {% from '_marks.html' import mark, monogram %}
@@ -130,13 +131,14 @@
 
 <!-- ============ WHAT THE HOUSE HAS GIVEN UP ============ -->
 <section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">Discoveries</p>
   <svg class="g-medallion" viewBox="0 0 46 46" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <circle cx="23" cy="23" r="21"/><circle cx="23" cy="23" r="16"/>
   <path d="M23 9c-3.4 3.6-5 6.6-5 9.5s1.6 5.9 5 9.5c3.4-3.6 5-6.6 5-9.5S26.4 12.6 23 9z"/>
   <path d="M12 23c4-2.6 7.4-3.8 11-3.8S30 20.4 34 23M12 23c4 2.6 7.4 3.8 11 3.8S30 25.6 34 23"/>
   <circle cx="23" cy="23" r="2"/><path d="M23 37v5M18 40h10"/>
 </svg>
+  {# Medallion moved above the eyebrow: between them it left the label 110px from its heading. #}
+  <p class="g-eyebrow">Discoveries</p>
   <h2 class="g-place">What the Château Has Given Up</h2>
   <p class="g-p">A restoration this slow turns up things a renovation would have destroyed.</p>
 
@@ -237,15 +239,6 @@
 </div></section>
 
 
-<!-- ============ THE FIGURES ============ -->
-{# Twelve hundred words on the restoration and not one number. These are the
-   documented facts — the tonnage and the dates are from the château's own
-   record, the classification from the Monuments Historiques listing. #}
-
-
-
-
-
 <!-- ============ HOW IT BEGAN ============ -->
 {# Quotations from Karina Waters, published in The Good Life France, Home
    Beautiful, Domain and the Daily Mail. The bracketed detail about the
@@ -259,21 +252,21 @@
       <p class="g-story__n">01</p>
       <div>
         <h3 class="g-story__t">A drive into the Pyrénées</h3>
-        <p class="g-story__d">A taxation accountant and a neurological surgeon from Perth, looking for a house in France. A French friend had expressly forbidden them from buying three things: a historic monument, a château, or a restoration project.</p>
+        <p class="g-story__d">A taxation accountant and a urologist from Perth, looking for a house in France. A French friend had expressly forbidden them from buying three things: a historic monument, a château, or a restoration project.</p>
       </div>
     </div>
     <div class="g-story__row">
       <p class="g-story__n">02</p>
       <div>
         <h3 class="g-story__t">Four rooms out of ninety-four</h3>
-        <p class="g-story__d">The rest were unreachable — no floors, no ceilings, water through everything. <em>"All we could do was peek around the corners to see what was almost all rubble."</em> Trees were growing inside the building and on the roof.</p>
+        <p class="g-story__d">The rest were unreachable — no floors, no ceilings, water through everything. <em>“All we could do was peek around the corners to see what was almost all rubble.”</em> Trees were growing inside the building and on the roof.</p>
       </div>
     </div>
     <div class="g-story__row">
       <p class="g-story__n">03</p>
       <div>
         <h3 class="g-story__t">They bought it anyway</h3>
-        <p class="g-story__d"><em>"It was like falling in love with an echo from another time and another place. Reality lost focus and our imaginations took hold."</em> Two years of negotiation followed. The contract was signed in March 2013.</p>
+        <p class="g-story__d"><em>“It was like falling in love with an echo from another time and another place. Reality lost focus and our imaginations took hold.”</em> Two years of negotiation followed. The contract was signed in March 2013.</p>
       </div>
     </div>
     <div class="g-story__row">
@@ -416,7 +409,7 @@
       <p class="g-p g-lede-first">She had been empty since 1850, on the market four years, and owned by a foreign syndicate who had meant to make her a hotel. The plan had been abandoned.</p>
       <p class="g-p">Of ninety-four rooms, four could be walked into. The rest had caved-in roofs and trees growing through them. There was no power, no plumbing and no water. Negotiations ran two years; the contract was signed in March 2013 and the first tools went in that November.</p>
       <blockquote class="g-pull">
-        <p>It wasn't habitable. There was no power, plumbing, water.</p>
+        <p>It was not habitable. There was no power, plumbing, water.</p>
         <cite>Karina Waters, on the château as bought</cite>
       </blockquote>
     </div>
@@ -551,12 +544,6 @@
 
 <div class="g-wrap g-mark__wrap">{{ mark('plaster') }}</div>
 
-<!-- ============ THE RECORD ============ -->
-{# Publications verified against the château's own press page and the
-   individual articles. Nothing here is claimed that cannot be shown. #}
-
-
-
 <!-- ============ HOW A ROOM IS BROUGHT BACK ============ -->
 <section class="g-sec g-sec--sand" data-fold><div class="g-wrap">
   <p class="g-fr">Comment on reprend une pièce<span class="g-fr__en">How a room is taken back</span></p>
@@ -642,7 +629,7 @@
       3:['Strip','Overpaint, cement render and twentieth-century repairs come off — carefully, because what is underneath is often the thing worth keeping.','Cement was the worst thing done to this building.'],
       4:['Consolidate','What is loose is fixed back rather than replaced. Lime, injected and packed, at about a centimetre a morning on a fresco.','Class I listing means stabilise, not renew.'],
       5:['Floor','Boards lifted, sorted, relaid by hand. Where a board is gone it is replaced with old timber, not new.','The floors are the one surface guests walk on all day.'],
-      6:['Services','Wiring, water and heat, run where they can be run without cutting into anything protected. This is why the bathrooms are downstairs rather than off the bedrooms.','Ensuites are not permitted in a monument of this class.'],
+      6:['Services','Wiring, water and heat, run where they can be run without cutting into anything protected. This is why the bathrooms are on the first floor rather than off the bedrooms.','Ensuites are not permitted in a monument of this class.'],
       7:['Furnish','Antique French beds, vintage monogrammed linen, and nothing on the walls that pretends they are finished.','The contrast is the point, not a compromise.']
     };
     var T=st.parentElement.querySelector('[data-steps-t]'),

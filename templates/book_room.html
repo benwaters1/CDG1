@@ -7,7 +7,7 @@
    is the one line a search engine shows under the link, so five rooms
    competed against each other with identical copy. Falls back to the
    general sentence for a room with no rate on it yet. #}
-{% block description %}{{ room_name(room['name']) }} at Château de Gudanes, a Class I monument under restoration in the Pyrénées. Sleeps {{ room['max_occupancy'] or 2 }}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}. Dates, rates and what the room is.{% endblock %}
+{% block description %}{{ room_name(room['name']) }} at Château de Gudanes, a Class I monument under restoration in the Pyrénées.{% if room['max_occupancy'] %} Sleeps {{ room['max_occupancy'] }}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}.{% elif room['price_per_night'] %} From &euro;{{ room['price_per_night']|int }} a night.{% endif %} Dates, rates and what the room is.{% endblock %}
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
 {% set sticky_bar = 'none' %}
@@ -41,21 +41,26 @@
     <p class="g-fr">Votre chambre<span class="g-fr__en">Your room</span></p>
     <p class="g-eyebrow">Ariège · French Pyrénées</p>
     <h1 class="g-display" >{{ room_name(room['name']) }}</h1>
-  <p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Check these dates</a></p>
     <p class="g-room__meta">
-      For up to {{ room['max_occupancy'] }} guests{% if room['price_per_night'] %} · <span class="g-fig" data-eur="{{ room['price_per_night']|int }}">€{{ '%.0f'|format(room['price_per_night']) }}</span> per night{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{%- endif %}</p>
+      For up to {{ room['max_occupancy'] }} guests{% if room['price_per_night'] %} · <span class="g-fig" data-eur="{{ room['price_per_night']|int }}">€{{ '{:,.0f}'.format(room['price_per_night']) }}</span> per night{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{%- endif %}</p>
     {# The arithmetic a guest would otherwise do in their head, and the deposit
        split they would otherwise meet for the first time at the payment step.
        deposit_shown is None when the amount genuinely depends on the booking,
        and the macro says so rather than quoting a figure that changes -- the
        sketch defaults to 30% on a house whose room deposit is zero. Lost to a
        handover four rounds running now. #}
+    {# The room's own facts, as on the Stay cards: the page a guest pays from showed none of them. #}
+    {%- set _rn = room_name(room['name']) %}
+    {%- set _bl = room['bed_setup'] or ('Twin beds' if ('Twin' in _rn or 'Tilleul' in _rn) else ('Queen bed' if ('Queen' in _rn or 'Cerise' in _rn) else ('King bed' if ('King' in _rn or 'Levant' in _rn) else ('Emperor bed' if ('Gold' in _rn or 'Émeraude' in _rn) else ('Two bedrooms' if ('Family' in _rn or 'Deux' in _rn) else ''))))) %}
+    <ul class="g-tags g-roomtop__facts">{% if _bl %}<li>{{ _bl }}</li>{% endif %}{% if room['bathroom'] %}<li>{{ room['bathroom']|capitalize }} bathroom, first floor</li>{% endif %}<li>Breakfast included</li></ul>
     {% if room['price_per_night'] %}
       {% from '_nights_calc.html' import stay_cost %}
       {{ stay_cost(room, deposit_shown) }}
     {% endif %}
+    {# The button came before the price and facts; it now follows them. #}
+  <p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Check these dates</a></p>
 
-    <p class="g-room__note">Continental breakfast included. Walls left as the centuries made them — under Class I protection, they stay that way. Everything within them is new. The bedrooms are on the top floor and the bathrooms are downstairs, with a powder room up with the bedrooms; there is no lift, and a great many stairs.</p>
+    <p class="g-room__note">Continental breakfast included. Walls left as the centuries made them — under Class I protection, they stay that way. Everything within them is new. The bedrooms are on the top floor and the bathrooms are on the first floor, with a powder room up with the bedrooms; there is no lift, and a great many stairs.</p>
   </div>
 
   <div class="g-strip">
@@ -73,7 +78,9 @@
     {% endif %}
   </div>
 
-  {% if room['description'] %}<p class="g-p">{{ room_copy(room['name'], room['description'] or '') }}</p>{% endif %}
+  {# Gated on the database description, so the written copy - meant to replace that field - never showed when it was empty. #}
+  {%- set _rcopy = room_copy(room['name'], room['description'] or '')|trim %}
+  {% if _rcopy %}<p class="g-p">{{ _rcopy }}</p>{% endif %}
 
   {% if room['amenities'] %}
   <ul class="g-tags">{% for tag in room['amenities'].split(',') %}<li>{{ tag.strip() }}</li>{% endfor %}</ul>
@@ -142,7 +149,7 @@
             </p>
           </div>
           {# Beneath both fields, not inside one — it describes the party. #}
-          <p class="g-hint g-hint--row">Guests under eighteen. Children are welcome from eight. The staircases are eighteenth-century and there are no handrails in places — the bedrooms are on the top floor and the bathrooms are downstairs. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s are exempt from the taxe de sejour, so the count is what keeps a family from being overcharged and the commune's return right.</p>
+          <p class="g-hint g-hint--row">Guests under eighteen. Children are welcome from eight. The staircases are eighteenth-century and there are no handrails in places — the bedrooms are on the top floor and the bathrooms are on the first floor. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s are exempt from the taxe de sejour, so the count is what keeps a family from being overcharged and the commune's return right.</p>
           {# party_size is what the route already reads, so it is kept and
              filled from the two fields above rather than replaced. #}
           <input type="hidden" name="party_size" id="party_size" value="{{ prefill_party_size or 2 }}">
@@ -198,7 +205,7 @@
                   <b>{{ e['name'] }}</b>
                   {% if e['description'] %}<span>{{ e['description'] }}</span>{% endif %}
                 </span>
-                <span class="g-fig">€{{ '%.2f'|format(e['price']) }}</span>
+                <span class="g-fig">€{{ '{:,.2f}'.format(e['price']) }}</span>
               
                 {# The loop variable is e, and there is no 'notice' column: this
                    arrived as x['notice'] and undefined-on-a-Row is a 500, so
@@ -233,7 +240,7 @@
             </li>
             {% endfor %}
           </ul>
-          <p class="g-hint">Anything you tick here is added to the total below, and nothing else is.</p>
+          <p class="g-hint">Anything you tick here is added to your total.</p>
         </section>
         {% endif %}
 
@@ -299,7 +306,7 @@
               <span>Total</span>
               <span class="g-fig" id="quote_total">{{ '€%.2f'|format(initial_quote.total) if initial_quote and initial_quote.available }}</span>
             </p>
-            <p class="g-hint" id="quote_note">{%- if initial_quote and initial_quote.available and initial_quote.per_night %}€{{ '%.2f'|format(initial_quote.per_night) }} a night average.{%- endif %}</p>
+            <p class="g-hint" id="quote_note">{%- if initial_quote and initial_quote.available and initial_quote.per_night %}€{{ '{:,.2f}'.format(initial_quote.per_night) }} a night average.{%- endif %}</p>
           </div>
 
           <label class="g-terms" for="agree_terms">
@@ -322,7 +329,6 @@
               <div><dt>Guests</dt><dd data-rv-guests>—</dd></div>
               <div class="g-review__extras" data-rv-extras-row hidden><dt>Added</dt><dd data-rv-extras>—</dd></div>
               <div data-rv-tax-row hidden class="g-review__tax"><dt>Taxe de séjour</dt><dd data-rv-tax>—</dd></div>
-              <div><dt>Taxe de séjour</dt><dd data-rv-tax>—</dd></div>
               <div class="g-review__tot"><dt>Total</dt><dd data-rv-total>—</dd></div>
               <div><dt>To pay now</dt><dd data-rv-dep>—</dd></div>
             </dl>
@@ -641,6 +647,53 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 })();
 </script>
 
+<script>
+/* TAXE DE SÉJOUR, ITS OWN LINE ABOVE PAY & BOOK. The quote comes from the server without it,
+   and it is added when the guest pays, so the total above the button - and in the bar - was
+   not the figure charged. It is per adult per night (under-18s are exempt) at the commune's
+   rate in settings, so the sum is exact rather than a browser estimate. Additive on purpose:
+   the quote script is untouched; this watches it, re-adds its line after every refresh, and
+   steps aside entirely if the server's quote ever carries a tax line itself. */
+(function(){
+  var TAXR = Number({{ (settings['tourist_tax'] if settings and settings['tourist_tax'] else 0)|float }});
+  var f = document.getElementById('{{ book_form_id|default("book-form") }}') || document.querySelector('form[data-book], form#book-form');
+  var box = document.getElementById('quote_box'), lines = document.getElementById('quote_lines'),
+      tot = document.getElementById('quote_total');
+  if (!TAXR || !f || !box || !lines || !tot) return;
+  function val(n){ var e = f.querySelector('[name="' + n + '"]'); return e ? e.value : ''; }
+  function nights(){ var a = val('arrival_date'), d = val('departure_date'); if (!a || !d) return 0;
+    var ms = new Date(d) - new Date(a); return ms > 0 ? Math.round(ms / 86400000) : 0; }
+  function num(t){ return Number(String(t || '').replace(/[^0-9.]/g, '')); }
+  function eur2(x){ return '€' + x.toFixed(2); }
+  function eur0(x){ return '€' + Math.round(x).toLocaleString('en-GB'); }
+  function paint(){
+    var mine = lines.querySelector('[data-tax-line]'); if (mine) mine.remove();
+    var theirs = [].some.call(lines.querySelectorAll('dt'), function(dt){ return /tax/i.test(dt.textContent); });
+    /* A fresh server total is whatever is showing that we did not write. */
+    if (tot.textContent !== tot.getAttribute('data-shown')) tot.setAttribute('data-base', num(tot.textContent));
+    var base = Number(tot.getAttribute('data-base') || 0);
+    var n = nights(), ad = Number(val('adults') || 0), tax = TAXR * ad * n;
+    if (theirs || !base || box.hidden || !n || !ad) { return; }
+    var row = document.createElement('div'); row.setAttribute('data-tax-line', '');
+    var dt = document.createElement('dt'); dt.textContent = 'Taxe de séjour ';
+    var how = document.createElement('span'); how.className = 'g-opt';
+    how.textContent = '€' + TAXR.toFixed(2).replace(/\.00$/, '') + ' × ' + ad + (ad === 1 ? ' adult' : ' adults') + ' × ' + n + (n === 1 ? ' night' : ' nights');
+    dt.appendChild(how); var dd = document.createElement('dd'); dd.className = 'g-fig'; dd.textContent = eur2(tax);
+    row.appendChild(dt); row.appendChild(dd); lines.appendChild(row);
+    var shown = eur2(base + tax); tot.textContent = shown; tot.setAttribute('data-shown', shown);
+    /* The bar is further down the page than this script, so it is found when painting. */
+    var bar = document.querySelector('[data-bar-total]'); if (bar) bar.textContent = eur0(base + tax);
+  }
+  /* The quote script rebuilds the lines, then writes the total, in the same task; an observer
+     runs after both. The guest-count and date fields repaint without waiting for a refresh. */
+  var obs = new MutationObserver(function(){ obs.disconnect(); paint(); watch(); });
+  function watch(){ obs.observe(lines, { childList: true }); obs.observe(tot, { childList: true, characterData: true, subtree: true }); }
+  ['adults', 'guests_under_18', 'arrival_date', 'departure_date'].forEach(function(n){
+    var e = f.querySelector('[name="' + n + '"]'); if (e) { e.addEventListener('input', paint); e.addEventListener('change', paint); } });
+  paint(); watch();
+})();
+</script>
+
 
 
 
@@ -668,7 +721,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         <div><dt>Written about</dt><dd>Vogue, AD Italia, House &amp; Garden, and the French press</dd></div>
         <div><dt>Honoured</dt><dd>Medal of the Fondation Prince Louis de Polignac, 2016</dd></div>
         <div><dt>Still unfinished</dt><dd>Fifteen years in, and deliberately so</dd></div>
-        <div><dt>Why it continues</dt><dd>Room by room, as each one is reached — fifteen years in</dd></div>
+        <div><dt>Why it continues</dt><dd>Room by room, as each one is reached</dd></div>
       </dl>
     </div>
   </div>
@@ -693,7 +746,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         {#- It said "charged locally on departure". The checkout adds it to the
             card payment as its own line, so a guest who read this expected to
             pay it twice. The rate is the one the checkout charges. -#}
-        <div><dt>Tourist tax</dt><dd>{% if settings and settings['tourist_tax'] %}€{{ '%.2f'|format(settings['tourist_tax']|float) }} per adult per night, set by the commune. {% endif %}Added to the total when you pay</dd></div>
+        <div><dt>Tourist tax</dt><dd>{% if settings and settings['tourist_tax'] %}€{{ '{:,.2f}'.format(settings['tourist_tax']|float) }} per adult per night, set by the commune. {% endif %}Added to the total when you pay</dd></div>
       </dl>
     </div>
   </div>
@@ -876,16 +929,11 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
       taxRow.hidden=false;
       box.querySelector('[data-rv-tax]').textContent =
         eur(tax) + ' · €' + TAX.toFixed(2).replace(/\.00$/,'') +
-        ' per adult per night, paid at the end';
+        ' per adult per night, added to the total when you pay';
     } else if(taxRow) taxRow.hidden=true;
 
-    /* The taxe de séjour is per adult per night and set by the commune, not
-       by us. Shown separately because it is not ours, and included in the
-       total because a guest comparing prices needs the real number. */
-    var TAX = Number({{ (settings['tourist_tax'] if settings and settings['tourist_tax'] else 1.65)|float }});
-    var tax = TAX * ad * n;
-    box.querySelector('[data-rv-tax]').textContent =
-      n && ad ? eur(tax) + ' (€' + TAX.toFixed(2) + ' per adult per night)' : '—';
+    /* A second taxe de séjour block stood here, defaulting to €1.65 and writing into the first
+       row's cell, so the visible row stayed at a dash and the total quietly used 1.65. */
 
     var total = RATE * n + tax;
     box.querySelector('[data-rv-total]').textContent = n ? eur(total) : '—';

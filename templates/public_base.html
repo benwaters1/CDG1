@@ -1,6 +1,12 @@
 {# Endpoints registered in the app, used to guard optional links. The
    view can pass url_map; without it the guards fall back safely. #}
 {% set url_map = url_map | default([]) %}
+{# DINING SWITCH. settings.dining_mode: 'open' (default) | 'closed' (seasonally closed:
+   the dining page stays up with a notice, nothing can be reserved) | 'hidden' (switched
+   off: dining disappears from the site). settings.dining_reopens: optional text shown
+   when closed, e.g. "April 2027". Breakfast and atelier meals are not affected. #}
+{% set _dm = ((settings.get('dining_mode') if settings else '') or 'open')|lower|trim %}
+{% set _dr = ((settings.get('dining_reopens') if settings else '') or '')|trim %}
 <!DOCTYPE html>
 {# The real language, so a screen reader uses the right voice and the browser
    does not offer to translate a page that is already in the reader's tongue. #}
@@ -59,8 +65,11 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2032%2032%27%3E%3Crect%20width=%2732%27%20height=%2732%27%20fill=%27%2314305f%27/%3E%3Ctext%20x=%2716%27%20y=%2722%27%20font-family=%27Georgia,serif%27%20font-size=%2720%27%20fill=%27%23e2d6c0%27%20text-anchor=%27middle%27%3EG%3C/text%3E%3C/svg%3E">
 <meta name="theme-color" content="#14305f">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+{# The font files come from gstatic, not googleapis; without this a phone opens that connection only after the font CSS arrives. #}
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+{# style.css (the admin stylesheet, 153 KB) is no longer linked here. The rules public pages
+   needed from it are at the end of gudanes.css. Admin pages keep their own link. #}
 <link rel="stylesheet" href="{{ url_for('static', filename='gudanes.css') }}">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <script>
@@ -86,10 +95,13 @@
 {
   "@context": "https://schema.org",
   "@type": "LodgingBusiness",
+  "@id": "https://chateaugudanes.com/#chateau",
   "name": "Château de Gudanes",
   "description": "An eighteenth-century Class I Historic Monument in the French Pyrénées, open to guests while its restoration continues.",
   "url": "https://chateaugudanes.com/",
   "telephone": "+33 6 28 06 97 76",
+  "image": "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w",
+  "sameAs": ["https://www.instagram.com/chateaugudanes/", "https://www.facebook.com/chateaudegudanes/"],
   "email": "ariege@chateaugudanes.com",
   "address": {
     "@type": "PostalAddress",
@@ -129,7 +141,7 @@
 {# The nights La Table is cooking. Sourced from published menus, so the
    kitchen publishing a menu is what opens a night — there is no second
    schedule anyone has to remember to update. Empty renders nothing. #}
-<script type="application/json" id="dinner-dates">{{ (dinner_dates or [])|tojson }}</script>
+<script type="application/json" id="dinner-dates">{{ ((dinner_dates or []) if _dm == 'open' else [])|tojson }}</script>
 </head>
 <body class="g{% block bodyclass %}{% endblock %}">
 <a class="g-skip" href="#main">Skip to content</a>
@@ -146,7 +158,7 @@
 <nav class="g-nav" aria-label="{{ t('Main') }}">
       <a href="{{ url_for('book_rooms') }}"{% if NAV_HERE == 'book_rooms' %} class="is-here" aria-current="page"{% endif %}>{{ t('Stay') }}</a>
       <a href="{{ url_for('workshops_public') }}"{% if NAV_HERE == 'workshops_public' %} class="is-here" aria-current="page"{% endif %}>{{ t('Workshops') }}</a>
-      <a href="{{ url_for('restaurant_info') }}"{% if NAV_HERE == 'restaurant_info' %} class="is-here" aria-current="page"{% endif %}>{{ t('Dining') }}</a>
+      {% if _dm != 'hidden' %}<a href="{{ url_for('restaurant_info') }}"{% if NAV_HERE == 'restaurant_info' %} class="is-here" aria-current="page"{% endif %}>{{ t('Dining') }}</a>{% endif %}
       <div class="g-nav__has-sub">
         <a href="{{ url_for('events_info') }}"{% if NAV_HERE == 'events_info' %} class="is-here" aria-current="page"{% endif %} aria-haspopup="true" aria-expanded="false">{{ t('Events') }}<span class="g-nav__caret" aria-hidden="true"></span></a>
         <ul class="g-subnav">
@@ -199,21 +211,21 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M12 3v6M8 5l4 4 4-4"/><path d="M6 21h12M9 21v-4a3 3 0 0 1 6 0v4"/></svg>
           {{ t('Workshops') }}
         </a>
-        <a href="{{ url_for('restaurant_info') }}" class="g-navwrap__item">
+        {% if _dm != 'hidden' %}<a href="{{ url_for('restaurant_info') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M8 9c0-1.5 1.5-3 4-3s4 1.5 4 3"/></svg>
           {{ t('Dining') }}
-        </a>
+        </a>{% endif %}
         <a href="{{ url_for('events_info') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M6 3v7a6 6 0 0 0 12 0V3M12 17v4M8 21h8"/></svg>
           {{ t('Weddings & Celebrations') }}
         </a>
-        <a href="{{ url_for('events_info') }}" class="g-navwrap__item">
+        <a href="{{ url_for('events_photoshoots') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><rect x="3" y="6" width="14" height="12" rx="1"/><path d="M17 10l4-2v8l-4-2"/></svg>
           {{ t('Private Photo & Videoshoots') }}
         </a>
         <a href="/facilities" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M3 12h18M6 12V8a6 6 0 0 1 12 0v4"/><path d="M5 16h14M7 20h10"/></svg>
-          {{ t('Facilities & Activities') }}
+          {{ t('The Estate') }}
         </a>
         <a href="/contact" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/></svg>
@@ -379,9 +391,9 @@
           </span>
         </a>
 
-        <a href="{{ url_for('restaurant_info') }}" class="g-bookmenu__opt g-bookmenu__opt--sm">
+        {% if _dm == 'open' %}<a href="{{ url_for('restaurant_info') }}" class="g-bookmenu__opt g-bookmenu__opt--sm">
           {{ t('Dining only — a table at La Table') }}
-        </a>
+        </a>{% endif %}
         <a href="{{ url_for('find_booking') }}" class="g-bookmenu__opt g-bookmenu__opt--sm">
           {{ t('Manage an existing booking') }}
         </a>
@@ -394,7 +406,10 @@
 {% if crumbs %}
 <nav class="g-crumbs" aria-label="Breadcrumb"><div class="g-wrap">
   <ol>
-    <li><a href="{{ url_for('dashboard') }}">Château</a></li>
+    {# Was url_for('dashboard') — the only place on the site that route appears; every
+       other home link uses preview_home. If dashboard is the admin, this sent guests
+       there from every breadcrumb. #}
+    <li><a href="{{ url_for('preview_home') }}">Château</a></li>
     {% for label, href in crumbs %}
       <li>{% if href and not loop.last %}<a href="{{ href }}">{{ label }}</a>{% else %}<span aria-current="page">{{ label }}</span>{% endif %}
 {# Breadcrumbs. Pages set them with:
@@ -410,7 +425,8 @@
     {% if messages %}
       <div class="g-wrap" style="padding-top:16px;">
         {% for category, message in messages %}
-          <div class="flash flash-{{ category }}">{{ message }}</div>
+          {# An error should be announced, not just shown. #}
+          <div class="flash flash-{{ category }}" role="{{ 'alert' if category in ('error','danger','warning') else 'status' }}">{{ message }}</div>
         {% endfor %}
       </div>
     {% endif %}
@@ -505,7 +521,7 @@
         <ul>
           <li><a href="{{ url_for('book_rooms') }}">{{ t('Nightly stays') }}</a></li>
           <li><a href="{{ url_for('workshops_public') }}">Workshops</a></li>
-          <li><a href="{{ url_for('restaurant_info') }}">{{ t('Dining') }}</a></li>
+          {% if _dm != 'hidden' %}<li><a href="{{ url_for('restaurant_info') }}">{{ t('Dining') }}</a></li>{% endif %}
           <li><a href="{{ url_for('events_info') }}">{{ t('Weddings & Celebrations') }}</a></li>
           <li><a href="/restoration">{{ t('The restoration') }}</a></li>
           <li><a href="/gallery">{{ t('Gallery') }}</a></li>
@@ -557,7 +573,7 @@
     <span>Château de Gudanes</span>
   </span>
   {% if _sb == 'dining' %}
-    <a href="{{ url_for('restaurant_book') }}" class="g-btn g-stickybar__cta">{{ t('Reserve') }}</a>
+    {% if _dm == 'open' %}<a href="{{ url_for('restaurant_book') }}" class="g-btn g-stickybar__cta">{{ t('Reserve') }}</a>{% else %}<a href="{{ url_for('book_rooms') }}" class="g-btn g-stickybar__cta">{{ t('Stay the night') }}</a>{% endif %}
   {% elif _sb == 'events' %}
     <a href="{{ url_for('events_info') }}#enquire" class="g-btn g-stickybar__cta">{{ t('Enquire') }}</a>
   {% elif _sb == 'atelier' %}
@@ -958,7 +974,9 @@
   });
   master.addEventListener('change', function(){ sel.value = master.value; });
 
-  var anchor = host.querySelector('.g-eyebrow, h2') || host.firstElementChild;
+  /* After the section's heading. It anchored on '.g-eyebrow, h2', and the eyebrow comes first,
+     so the control landed between every eyebrow and its heading on the pages that show prices. */
+  var anchor = host.querySelector('h1, h2') || host.querySelector('.g-eyebrow') || host.firstElementChild;
   if (anchor && anchor.parentElement) anchor.parentElement.insertBefore(bar, anchor.nextSibling);
   else host.insertBefore(bar, host.firstChild);
 })();
@@ -1249,22 +1267,27 @@
    open there and the length is affordable. */
 (function(){
   if (!window.matchMedia('(max-width: 44rem)').matches) return;
+  /* The whole <section> used to be role=button, labelled with its heading. A button's label
+     replaces its contents for a screen reader, so an open section's text and links could
+     not be reached at all; and a tap anywhere in the open text closed it mid-read. The
+     heading is now the button. A closed section still opens from a tap anywhere; an open
+     one closes only from its heading or the "Tap to close" line. */
   document.querySelectorAll('.g-sec[data-fold]').forEach(function(s){
-    s.setAttribute('tabindex','0');
-    s.setAttribute('role','button');
-    s.setAttribute('aria-expanded','false');
-    var t = s.querySelector('h2');
-    if (t) s.setAttribute('aria-label', t.textContent.trim());
+    var h = s.querySelector('h2'); if (!h) return;
+    var wrap = s.querySelector(':scope > .g-wrap');
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'g-fold__btn'; b.setAttribute('aria-expanded', 'false');
+    while (h.firstChild) b.appendChild(h.firstChild);
+    h.appendChild(b);
     function go(){
       var open = s.classList.toggle('is-open');
-      s.setAttribute('aria-expanded', open ? 'true' : 'false');
+      b.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
+    b.addEventListener('click', go);
     s.addEventListener('click', function(e){
-      if (e.target.closest('a,button,input,select,summary')) return;
+      if (b.contains(e.target) || e.target.closest('a,button,input,select,summary,label')) return;
+      if (s.classList.contains('is-open') && e.target !== wrap) return;
       go();
-    });
-    s.addEventListener('keydown', function(e){
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
     });
   });
 })();

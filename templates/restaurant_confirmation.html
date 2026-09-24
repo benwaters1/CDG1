@@ -29,11 +29,11 @@
       <div><dt>Date</dt><dd>{{ booking['dinner_date']|date_short }}</dd></div>
       <div><dt>Guests</dt><dd>{{ booking['party_size'] }}</dd></div>
       {% if booking['total_price'] %}
-      <div><dt>Total</dt><dd><span class="g-fig">€{{ '%.2f'|format(booking['total_price']) }}</span>{% if booking['payment_status'] and booking['payment_status'] != 'unpaid' %} · {{ booking['payment_status'] }}{%- endif %}</dd></div>
+      <div><dt>Total</dt><dd><span class="g-fig">€{{ '{:,.2f}'.format(booking['total_price']) }}</span>{% if booking['payment_status'] and (booking['payment_status']|lower) != 'unpaid' %} · {{ booking['payment_status'] }}{%- endif %}</dd></div>
       {% endif %}
       {% if booking['total_price'] and booking['deposit_amount'] and booking['deposit_amount'] < booking['total_price'] %}
-      <div><dt>Deposit paid</dt><dd>€{{ '%.2f'|format(booking['deposit_amount']) }}</dd></div>
-      <div><dt>Due on the night</dt><dd>€{{ '%.2f'|format(booking['total_price'] - booking['deposit_amount']) }}</dd></div>
+      <div><dt>Deposit paid</dt><dd>€{{ '{:,.2f}'.format(booking['deposit_amount']) }}</dd></div>
+      <div><dt>Due on the night</dt><dd>€{{ '{:,.2f}'.format(booking['total_price'] - booking['deposit_amount']) }}</dd></div>
       {% endif %}
     </dl>
     {% if booking['dietary_notes'] %}

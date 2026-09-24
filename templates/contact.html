@@ -19,7 +19,7 @@
 {% block description %}Château de Gudanes, 2 Route de Beille, Château-Verdun, Ariège. An hour and three quarters from Toulouse. Every message is read at the château.{% endblock %}
 {% block og_desc %}Château de Gudanes, 2 Route de Beille, Château-Verdun, Ariège. An hour and three quarters from Toulouse. Every message is read at the château.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1200w{% endblock %}
-{% block bodyclass %} has-hero{% endblock %}
+{% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
 {# approach_map() was also called here, first in the content block with settings as its argument, so the drive diagram rendered ABOVE the hero. Its place is the On the Map section below. #}
 
@@ -45,9 +45,8 @@
 <section class="g-sec" id="write"><div class="g-two">
   <div>
     <p class="g-fr">Écrivez-nous<span class="g-fr__en">Write to us</span></p>
-    <p class="g-eyebrow">Write to Us</p>
     <h2 class="g-h2">However you would rather reach us</h2>
-    <p class="g-p">Every message is read. The booking pages are the fastest route for a stay, a workshop or a table; for anything else, write and we will answer.</p>
+    <p class="g-p">Every message is read. The booking pages are the fastest route for a stay{% if _dm == 'open' %}, a workshop or a table{% else %} or a workshop{% endif %}; for anything else, write and we will answer.</p>
 
     <dl class="g-facts-list" style="margin-top:var(--s6)">
       <div><dt>Stays &amp; general</dt><dd><a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></dd></div>
@@ -91,10 +90,8 @@
       allowfullscreen></iframe>
   </div>
   {% else %}
-  <div class="empty-state" id="map">
-    No map here yet — the coordinates of the gates have not been set. Google
-    Maps brings you to the front of the house; the road is described below.
-  </div>
+  {# Told the public "the coordinates of the gates have not been set" - a note for the admin. #}
+  <p class="g-p" id="map">The road up from the valley is described below, and we send directions with every booking.</p>
   {% endif %}
   <p class="g-hint" style="margin-top:var(--s4)">
     {# A PIN OR NOTHING. This was a Google Maps SEARCH for the house by
@@ -130,10 +127,10 @@
       <b>{{ t('Workshops') }}</b>
       <span>Every date, and what each one includes</span>
     </a>
-    <a href="{{ url_for('restaurant_info') }}" class="g-contact-link">
+    {% if _dm != 'hidden' %}<a href="{{ url_for('restaurant_info') }}" class="g-contact-link">
       <b>{{ t('Dining') }}</b>
-      <span>Reserve a table for dinner</span>
-    </a>
+      <span>{% if _dm == 'open' %}Reserve a table for dinner{% else %}Closed for the season{% endif %}</span>
+    </a>{% endif %}
     <a href="{{ url_for('find_booking') }}" class="g-contact-link">
       <b>{{ t('Manage a booking') }}</b>
       <span>Change, pay or cancel an existing reservation</span>
@@ -159,7 +156,7 @@
     <div><dt>What about the walls?</dt><dd>Bare plaster and weathered stone are protected and cannot be changed. What is within them — beds, linen, floors, bathrooms, food — is new.</dd></div>
     <div><dt>Children?</dt><dd>Welcome on nightly stays. Workshops are adult company by nature, though we will talk it through if you are asking.</dd></div>
     <div><dt>Dogs?</dt><dd>Ours are in residence. Yours, sadly, cannot be — the restoration areas make it unsafe.</dd></div>
-    <div><dt>Accessibility</dt><dd>An eighteenth-century house with original staircases and no lift, and a great many stairs — the bedrooms are on the top floor, the bathrooms downstairs, and the grounds are terraced. Do write before booking and we will be honest about what is manageable.</dd></div>
+    <div><dt>Accessibility</dt><dd>An eighteenth-century house with original staircases and no lift, and a great many stairs — the bedrooms are on the top floor, the bathrooms on the first floor, and the grounds are terraced. Do write before booking and we will be honest about what is manageable.</dd></div>
     <div><dt>Electricity</dt><dd>Limited by design. Rooms are lit by candle in the evening, and there are power outlets and bedside lamps.</dd></div>
     <div><dt>How far is it?</dt><dd>Toulouse airport is about an hour and three-quarters. Les Cabannes station is three minutes from the gates.</dd></div>
   </dl>
@@ -198,9 +195,10 @@
   <div class="g-plate">
     <div class="g-plate__row">
       <dl class="g-plate__l">
-        <div><dt>By air</dt><dd>Toulouse-Blagnac, then an hour and three quarters by road</dd></div>
+        <div><dt>By air</dt><dd>Toulouse-Blagnac, then an hour and three quarters by road; or Barcelona–El Prat, about three hours</dd></div>
         <div><dt>By train</dt><dd>To Foix, twenty minutes away. We will meet it</dd></div>
         <div><dt>By car</dt><dd>An hour and three quarters from Toulouse, three hours from Barcelona. Parking at the château</dd></div>
+        <div><dt>From Barcelona</dt><dd>About three hours by road: the C-16 north through the Cadí tunnel to Puigcerdà, across the border, then the N20 through the Puymorens tunnel to Ax-les-Thermes and down the valley. Both tunnels are tolled, and the Puymorens keeps the road open all winter. By train, the Rodalies from Barcelona to Latour-de-Carol on the border, then the French line north to Les Cabannes — tell us the train and we will meet it</dd></div>
         <div><dt>The address</dt><dd>2 Route de Beille, Château-Verdun, Ariège 09310</dd></div>
         <div><dt>Nearest village</dt><dd>Les Cabannes, three minutes below the gates</dd></div>
         <div><dt>Transfers</dt><dd>Arranged — tell us your arrival and we will send a car</dd></div>
@@ -224,11 +222,11 @@
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Or simply take a date</h2>
-  <p class="g-close__p">The booking pages are the fastest route for a stay, an atelier or a table.</p>
+  <p class="g-close__p">The booking pages are the fastest route for a stay{% if _dm == 'open' %}, an atelier or a table{% else %} or an atelier{% endif %}.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
       <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">See the ateliers</a>
-      <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Reserve a table</a>
+      {% if _dm == 'open' %}<a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Reserve a table</a>{% endif %}
   </div>
 </div></section>
 

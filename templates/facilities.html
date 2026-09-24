@@ -4,7 +4,7 @@
 {% block description %}Ten acres, a pool among the cherry trees, a tennis court lined for pickleball, and the Ariège valley beyond. All of it included with the room.{% endblock %}
 {% block og_desc %}Ten acres, a pool among the cherry trees, a tennis court lined for pickleball, and the Ariège valley beyond. All of it included with the room.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1200w{% endblock %}
-{% block bodyclass %} has-hero{% endblock %}
+{% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
 {% from '_animals.html' import animals, animals_note %}
 {% from '_stay_panel.html' import stay_panel with context %}
@@ -17,7 +17,8 @@
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Le Domaine · Ten Acres</p>
-    <h1 class="g-hero__title">{{ t('Facilities & Activities') }}</h1>
+    {# The nav says "The Estate"; the page answered to "Facilities & Activities". The <title> keeps the search wording. #}
+    <h1 class="g-hero__title">{{ t('The Estate') }}</h1>
     <p class="g-hero__lede">Ten acres of parkland, a pool among the fruit trees, and a valley that rewards every season differently.</p>
     <p class="g-hero__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
   </div>
@@ -209,7 +210,7 @@
     <div><dt>Ax 3 Domaines</dt><dd>The nearest station and the largest — all levels, and a thermal spa in the town below</dd></div>
     <div><dt>Plateau de Beille</dt><dd>Cross-country and snowshoeing, twenty minutes the other way. Quieter, and better with children</dd></div>
     <div><dt>Getting there</dt><dd>We will arrange the car, or the equipment, or both</dd></div>
-    <div><dt>Coming back</dt><dd>The fire is lit, the kitchen is warm, and dinner is at the usual hour</dd></div>
+    <div><dt>Coming back</dt><dd>The fire is lit{% if _dm == 'open' %}, the kitchen is warm, and dinner is at the usual hour{% else %} and the house is warm{% endif %}</dd></div>
   </dl>
 </div></section>
 
@@ -244,12 +245,6 @@
 
 
 <div class="g-wrap g-mark__wrap">{{ mark('chandelier') }}</div>
-
-<!-- ============ THE JOURNAL ============ -->
-{# The newsletter form was only in the menu panel. This is the same route,
-   placed where a reader who has just finished the page will see it. #}
-
-
 
 <!-- ============ THE GARDENS ============ -->
 {# From the château's own record: terraced gardens down to le parc, the lost
@@ -324,7 +319,7 @@
       <li class="g-timeline__i is-done"><span class="g-timeline__k">From Toulouse</span>
         <span class="g-timeline__v">Matabiau to Les Cabannes, direct. The last hour runs up the Ariège with the mountains closing in on both sides.</span></li>
       <li class="g-timeline__i is-done"><span class="g-timeline__k">From Barcelona</span>
-        <span class="g-timeline__v">Over the border to Latour-de-Carol, then north down the same line. Slower than driving and considerably better.</span></li>
+        <span class="g-timeline__v">The Rodalies from Barcelona to Latour-de-Carol on the border, a little over three and a half hours, then the French line north to Les Cabannes, about an hour more. Slower than driving and considerably better.</span></li>
       <li class="g-timeline__i is-done"><span class="g-timeline__k">Last three minutes</span>
         <span class="g-timeline__v">Tell us your train and someone will be at the station. There is no taxi rank.</span></li>
     </ol>
@@ -372,9 +367,9 @@
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The pool below the gardens" loading="lazy">
+  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">It is all included</h2>
-  <p class="g-close__p">The pool, the court, the parkland and the salons come with the room. Nothing above appears on your bill.</p>
+  <p class="g-close__p">The pool, the court, the parkland and the salons come with the room. None of it appears on your bill; anything we arrange beyond the gates, we price before we book it.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
       <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Join an atelier</a>

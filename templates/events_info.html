@@ -4,6 +4,7 @@
 {
   "@context": "https://schema.org",
   "@type": "EventVenue",
+  "@id": "https://chateaugudanes.com/#chateau",
   "name": "Château de Gudanes",
   "description": "One wedding at a time, with the château and its ten acres given over to it exclusively.",
   "maximumAttendeeCapacity": 40,
@@ -24,7 +25,7 @@
 {% block description %}Weddings, celebrations and film at a Class I Historic Monument in the French Pyrénées. One event at a time, and the whole château is yours.{% endblock %}
 {% block og_desc %}Weddings, celebrations and film at a Class I Historic Monument in the French Pyrénées. One event at a time, and the whole château is yours.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1200w{% endblock %}
-{% block bodyclass %} has-hero{% endblock %}
+{% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
 {% from '_bits.html' import event_tabs, fact_strip %}
 {% from '_marks.html' import mark %}
@@ -63,7 +64,9 @@
 </svg>
     <p class="g-eyebrow">What We Host</p>
   <h2 class="g-place">Three Ways to Take the Château</h2>
-  <p class="g-p">This is a restoration, not a renovation — fifteen years in, and years from finished.</p>
+  {# Was the positioning line "This is a restoration, not a renovation - fifteen years in",
+     which does not introduce the three ways the heading promises. #}
+  <p class="g-p">A wedding, a celebration, or a shoot. Whichever it is, the whole château is yours for it.</p>
     <div class="g-grid g-grid--3">
       <div class="g-panel">
         <h3 class="g-h3" id="weddings">Weddings</h3>
@@ -98,7 +101,8 @@
           <label for="event_type">What kind of event?</label>
           <select id="event_type" name="event_type" required>
             <option value="">— choose —</option>
-            {% for t in event_types %}{% set EVENT_LABEL = {
+            {# If the route ever passes no types, a required select with only "choose" makes the enquiry unsendable. #}
+            {% for t in (event_types or ['wedding', 'photoshoot', 'corporate', 'other']) %}{% set EVENT_LABEL = {
      'wedding': 'Wedding',
      'photoshoot': 'Photography or film',
      'corporate': 'Exclusive hire',
@@ -179,7 +183,7 @@
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <p class="g-eyebrow">What We Can Arrange</p>
-  <h2 class="g-place">Shaped around you, not a package</h2>
+  <h2 class="g-place">Shaped Around You, Not a Package</h2>
   <div class="g-incl-cards">
     <article class="g-incl-card">
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen" loading="lazy">
@@ -441,7 +445,7 @@
       <div class="g-scarce__i"><b class="g-fig">1</b><span>Event at a time, exclusively</span></div>
       <div class="g-scarce__i"><b class="g-fig">40</b><span>Seated inside; more in the gardens</span></div>
       <div class="g-scarce__i"><b class="g-fig">15</b><span>Sleeping in the château</span></div>
-      <div class="g-scarce__i"><b class="g-fig">6</b><span>Acres, and no neighbours</span></div>
+      <div class="g-scarce__i"><b class="g-fig">10</b><span>Acres, and no neighbours</span></div>
     </div>
     <p class="g-scarce__note">Because the work continues around it, only a handful of weddings are taken each year. Summer dates are usually spoken for a long way ahead.</p>
   </div>
@@ -451,7 +455,7 @@
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The salon set for dinner" loading="lazy">
+  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Tell us what you have in mind</h2>
   <p class="g-close__p">A wedding, a birthday, a shoot. Describe it and we will come back with what it would involve and what it would cost.</p>
   <div class="g-close__acts">
@@ -474,9 +478,12 @@
   var line = root.querySelector('[data-plan-line]');
   var notes = root.querySelector('[data-plan-notes]');
 
+  /* Days are spelled out, as the buttons are ("Three days"); the sentences started "3 days". */
+  var W = ['Zero','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten'];
+  function word(n, cap){ var w = W[n] || String(n); return cap ? w : w.toLowerCase(); }
   function paint(){
     var g = state.guests, d = state.days;
-    line.textContent = d + (d === 1 ? ' day' : ' days') + ' at the château, around '
+    line.textContent = word(d, true) + (d === 1 ? ' day' : ' days') + ' at the château, around '
       + g + ' guests, in ' + state.season.toLowerCase() + '.';
 
     var n = [];
@@ -490,7 +497,7 @@
       : 'Fifteen sleep in the château. The rest stay in the village below, three minutes down the hill.');
     /* Length. */
     if (d === 1) n.push('A single day is possible, though most couples find one evening is not enough for a place this far up a valley.');
-    else n.push(d + ' days means the château is yours throughout — no other guests, and no handover in the middle of it.');
+    else n.push(word(d, true) + ' days means the château is yours throughout — no other guests, and no handover in the middle of it.');
     /* Season. */
     if (state.season === 'Summer') n.push('Summer dates are usually spoken for a long way ahead. The gardens are cropping and the evenings run late.');
     if (state.season === 'Spring') n.push('Spring is quieter and costs less. The valley is green and the mountain still has snow on it.');
@@ -516,7 +523,7 @@
   if (go) go.addEventListener('click', function(){
     var msg = document.querySelector('[name=message]');
     if (!msg) return;
-    var text = 'We are thinking of ' + state.days + (state.days === 1 ? ' day' : ' days')
+    var text = 'We are thinking of ' + word(state.days, false) + (state.days === 1 ? ' day' : ' days')
       + ' at the château, around ' + state.guests + ' guests, in ' + state.season.toLowerCase() + '.';
     msg.value = msg.value ? (text + '\n\n' + msg.value) : text;
     setTimeout(function(){ msg.focus(); }, 400);

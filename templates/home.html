@@ -1,9 +1,9 @@
 {% extends "public_base.html" %}
 {% block title %}A Restoration in the Ariège Pyrénées{% endblock %}
-{% block description %}An eighteenth-century Class I Historic Monument in the Ariège, under restoration and open to guests. Rooms, a table, and ateliers with the artisans at work.{% endblock %}
+{% block description %}An eighteenth-century Class I Historic Monument in the Ariège, under restoration and open to guests. Rooms{% if (settings.get('dining_mode') or 'open') == 'open' %}, a table,{% endif %} and ateliers with the artisans at work.{% endblock %}
 {% block og_desc %}An eighteenth-century Class I Historic Monument in the Ariège, still under restoration and open to guests. Rooms, a table, and ateliers led by the artisans doing the work.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w{% endblock %}
-{% block bodyclass %} has-hero{% endblock %}
+{% block bodyclass %} has-hero hero--full{% endblock %}
 {% block content %}
 {% from '_proof.html' import credential, proof %}
 {% from '_stay_panel.html' import stay_panel with context %}
@@ -19,11 +19,26 @@
      and swaps to the poster still, which is what the video is showing
      anyway. `disablepictureinpicture` and `disableremoteplayback` stop the
      other two overlays Safari can add. #}
-  <video class="g-hero__video" autoplay muted loop playsinline
+  <video class="g-hero__video" muted loop playsinline
          disablepictureinpicture disableremoteplayback
-         poster="{{ url_for('static', filename='video/chateau_hero_poster.jpg') }}">
-    <source src="{{ url_for('static', filename='video/chateau_hero_loop.mp4') }}" type="video/mp4">
-  </video>
+         poster="{{ url_for('static', filename='video/chateau_hero_poster.jpg') }}"
+         data-src="{{ url_for('static', filename='video/chateau_hero_loop.mp4') }}"></video>
+  <script>
+  /* The loop is 2 MB and was fetched by every visitor. Anyone who has asked their device for
+     less motion, or whose connection is saving data or on 2G/3G, now gets the poster - the
+     same frame, still. Everyone else gets the video as before, started from here. */
+  (function(){
+    var v = document.currentScript.previousElementSibling;
+    if (!v || v.tagName !== "VIDEO") return;
+    var c = navigator.connection || {};
+    var slow = c.saveData || /(^|-)(2g|3g)$/.test(c.effectiveType || "");
+    var calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (slow || calm) { v.setAttribute("data-still", "1"); return; }
+    var s = document.createElement("source"); s.src = v.getAttribute("data-src"); s.type = "video/mp4";
+    v.appendChild(s); v.muted = true; v.autoplay = true; v.load();
+    var p = v.play(); if (p && p.catch) p.catch(function(){});
+  })();
+  </script>
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Ariège · Pyrénées · Since 1741</p>
@@ -80,6 +95,7 @@
   var btn = document.getElementById('g-hero-pause');
   var vid = document.querySelector('.g-hero__video');
   if(!btn || !vid) return;
+  if (vid.hasAttribute('data-still')) { btn.hidden = true; return; }
   btn.addEventListener('click', function(){
     if (vid.paused){ vid.play(); btn.setAttribute('aria-label','Pause video'); }
     else { vid.pause(); btn.setAttribute('aria-label','Play video'); }
@@ -98,7 +114,7 @@
   </blockquote>
 
 <p class="g-p">Much of her remains as the centuries left her: bare plaster, weathered stone, the quiet marks of two hundred and eighty years. She is protected, and so she is preserved rather than perfected. Within those walls, however, everything within them has been made anew — the floors, the bathrooms, the beds and the linen, and the food that arrives at her table.</p>
-<p class="g-p"><em>Come through the gates and the drive runs a quarter of a mile under the limes before the façade shows itself. Inside, the work is still going on around you — and so is dinner, and the fire, and the morning.</em></p>
+<p class="g-p"><em>Come through the gates and the drive runs a quarter of a mile under the limes before the façade shows itself. Inside, the work is still going on around you — and so is {% if _dm == 'open' %}dinner, and {% endif %}the fire, and the morning.</em></p>
 </div></section>
 
 
@@ -120,34 +136,52 @@
   <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
-  <p class="g-fr">Depuis 1741<span class="g-fr__en">Since 1741</span></p>
-    <p class="g-eyebrow">Stay the Night</p>
+  {# Three overlines sat on this heading - Depuis 1741, Since 1741, Stay the Night -
+     and the date pair repeats the armorial one screen above and says nothing about
+     rooms. The eyebrow alone. #}
+  <p class="g-eyebrow">Stay the Night</p>
   <h2 class="g-place">Five Rooms, Opened One at a Time</h2>
   <p class="g-p">Five bedrooms, opened one at a time as the restoration reaches them. Each is different, because the château is.</p>
 
   <div class="g-homerooms">
     {% for r in shown_rooms %}
     <article class="g-homeroom">
+      {# Fallback photos rotated by position, so a room with no photo yet could be
+         shown with ANOTHER room's picture (the pool included the Émeraude). The Stay
+         page fixed this with a per-room map; the same map here. The real photo takes
+         over the moment it is uploaded in the admin. #}
+      {# HR_IMG is keyed by the old and the new room names, so photos survive the rename. #}
+      {% set HR_IMG = {
+        'Chambre Émeraude': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w',
+        'Chambre du Levant': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1000w',
+        'Les Deux Chambres': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/cc7f6cb2-243c-47a9-ab7e-5200a66afca1/bedroom+3.jpg?format=1000w',
+        'Chambre Cerise': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1000w',
+        'Chambre Tilleul': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1000w',
+        'The Twin Room': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1000w',
+        'The Queen Room': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1000w',
+        'The King Room': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1000w',
+        'The Gold Suite': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w',
+        'The Family Suite': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/cc7f6cb2-243c-47a9-ab7e-5200a66afca1/bedroom+3.jpg?format=1000w'
+      } %}
       <img class="g-homeroom__img"
-           src="{% if r.get('img') %}{{ r['img'] }}{% elif r['photo_filename'] %}{{ url_for('room_photo', filename=r['photo_filename']) }}{% else %}{{ [
-             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1000w',
-             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1000w',
-             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583507444802-ZWPKZA5RWBS7BHZ9LJ0V/IMG_2988.jpg?format=1000w',
-             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w'
-           ][loop.index0 % 4] }}{% endif %}"
+           src="{% if r.get('img') %}{{ r['img'] }}{% elif r['photo_filename'] %}{{ url_for('room_photo', filename=r['photo_filename']) }}{% else %}{{ HR_IMG.get(room_name(r['name']), 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583507444802-ZWPKZA5RWBS7BHZ9LJ0V/IMG_2988.jpg?format=1000w') }}{% endif %}"
            alt="{{ room_name(r['name']) }}" loading="lazy">
       <div class="g-homeroom__b">
         {{ emblem(r['name']) }}
         <h3 class="g-homeroom__name">{{ room_name(r['name']) }}</h3>
         {% set _rc = room_copy(r['name'], r['description'] or '') %}
-        {% if _rc %}<p class="g-p">{{ _rc|truncate(140) }}</p>{% endif %}
+        {# truncate(140) cut on a character count - "The bathroom is downstairs and...",
+           "A dressing..." - clipping the one fact a guest was reading for. Each room's
+           first sentence is complete on its own; show that. #}
+        {% if _rc %}{% set _s1 = _rc.split('. ')[0].rstrip('.') ~ '.' %}<p class="g-p">{{ _s1 if _s1|length <= 200 else _rc|truncate(170) }}</p>{% endif %}
         <p class="g-homeroom__rate">
           {% set rate = r.get('rate') or r['price_per_night'] %}
-          {% if rate %}<span class="g-fig">from €{{ '%.0f'|format(rate) }}</span> a night{%- endif %}</p>
+          {% if rate %}<span class="g-fig">from €{{ '{:,.0f}'.format(rate) }}</span> a night{%- endif %}</p>
         {# The homepage showed no facts and no price band — a guest could not
            tell whether this was in their range without clicking through. #}
         <ul class="g-tags g-tags--sm">
-          <li>Sleeps {{ r['max_occupancy'] or 2 }}</li>
+          {# Showed 2 whenever capacity was unset - including under a card saying "sleeping five". #}
+          {% if r['max_occupancy'] %}<li>Sleeps {{ r['max_occupancy'] }}</li>{% endif %}
           {% if r['bathroom'] %}<li>{{ r['bathroom']|capitalize }} bathroom</li>{% endif %}
           {% if r['outlook'] %}<li>{{ r['outlook']|capitalize }} view</li>{% endif %}
           <li>Breakfast included</li>
@@ -205,8 +239,10 @@
 <section class="g-sec--flush"><div class="g-half">
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1500w" alt="A Place To Stay" loading="lazy">
   <div class="g-half__text">
-    <h2 class="g-place">Stay the Night</h2>
-    <p class="g-p"><em>Five bedrooms, opened one at a time as the restoration reaches them.</em></p>
+    {# This block follows the room cards directly; its heading repeated their
+       eyebrow and its first line was word for word their lede. It keeps the
+       paragraph that matters - the walls and what is new within them. #}
+    <h2 class="g-place">Old Walls, New Beds</h2>
     <p class="g-p">The walls stay exactly as the centuries left them — protected by law, and not ours to change. Everything within them is new: the beds, the linen, the floors underfoot, the bathrooms. Breakfast is included, and the mountains are at the window.</p>
     <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--line">See the rooms</a></p>
   </div>
@@ -215,21 +251,24 @@
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d05b0d21-75e0-464e-bcad-9faac533884c/IMG_4368.jpeg?format=1500w" alt="A Place To Create" loading="lazy">
   <div class="g-half__text">
     <h2 class="g-place">Château Workshops</h2>
-    <p class="g-scarcity-line">{{ workshops|length if workshops else 'A handful of' }} ateliers a year, fifteen places each. That is every seat there is.</p>
+    {# Spelled out, and singular when it is one - it read "1 ateliers a year". #}
+    {% set _wn = workshops|length if workshops else 0 %}
+    <p class="g-scarcity-line">{% if _wn and _wn <= 12 %}{{ ['One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve'][_wn-1] }} atelier{{ 's' if _wn != 1 }}{% elif _wn %}{{ _wn }} ateliers{% else %}A handful of ateliers{% endif %} a year, fifteen places each. That is every seat there is.</p>
     <p class="g-p"><em>Three to seven nights, a small group, and the château given over to it entirely.</em></p>
     <p class="g-p">Cook in the château kitchens, hunt the brocantes of the Ariège, or work on the eighteenth-century frescoes alongside the restoration team. Full board, château beverages and every excursion included. The work goes on around you.</p>
     <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--line">See the workshops</a></p>
   </div>
 </div></section>
-<section class="g-sec--flush"><div class="g-half">
+{% if _dm != 'hidden' %}<section class="g-sec--flush"><div class="g-half">
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w" alt="A Place To Dine" loading="lazy">
   <div class="g-half__text">
     <h2 class="g-place">Dine at La Table</h2>
     <p class="g-p"><em>A table laid by candlelight, in a dining room brought back from ruin — and cooking that answers to the valley rather than a menu.</em></p>
     <p class="g-p">The dining room took years to recover; the cooking in it is worth the wait. Mountain cheeses, charcuterie, foie gras, magret de canard, wild mushrooms when the season gives them — bought that morning at the village market, from producers the chef has used for twenty years, and in summer cut from the gardens below the terrace.</p>
-    <p style="margin-top:var(--s6)"><a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--line">Reserve a table</a></p>
+    {% if _dm == 'open' %}<p style="margin-top:var(--s6)"><a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--line">Reserve a table</a></p>
+    {% else %}<p class="g-hint" style="margin-top:var(--s5)">La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}.</p>{% endif %}
   </div>
-</div></section>
+</div></section>{% endif %}
 <section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg?format=1500w" alt="A Place To Celebrate" loading="lazy">
   <div class="g-half__text">
@@ -250,8 +289,11 @@
 </div></section>
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
-<h2 class="g-place">Why People Come Back</h2><p class="g-p"><em>More than a château, Gudanes is a place shaped by history, connection and the people who pass through her doors.</em></p>
-<p class="g-p">Whether staying among her ancient walls, gathering around her table, creating something lasting or celebrating life's most precious moments, guests are welcomed into the warmth and spirit of this living estate.</p>
+<h2 class="g-place">Why People Come Back</h2>
+{# Two paragraphs of brochure copy stood here ("a place shaped by history,
+   connection and the people who pass through her doors", "life's most precious
+   moments", "the warmth and spirit of this living estate") - the register the
+   rest of the site avoids, and neither answered the heading. This one does. #}
 <p class="g-p">Hers is among the most closely watched private restorations in France, and those who stay here are part of it — not observers of a finished thing, but present while it is still being made.</p>
 <div class="g-motif" aria-hidden="true">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" aria-hidden="true" focusable="false">
@@ -271,7 +313,7 @@
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
 <h2 class="g-display" style="font-style:italic; margin-bottom:var(--s6)"><em>Most châteaux this size are museums, or closed.</em></h2>
-<p class="g-p">Gudanes is neither. Scaffolding stands in rooms that are not ready and dinner is served in one that is. The gardeners are in the beds by seven, the conservators are on the frescoes by eight, and you are having breakfast between the two.</p>
+<p class="g-p">Gudanes is neither. Scaffolding stands in rooms that are not ready and {% if _dm == 'open' %}dinner{% else %}breakfast{% endif %} is served in one that is. The gardeners are in the beds by seven, the conservators are on the frescoes by eight, and you are having breakfast between the two.</p>
 <p class="g-p">Very few people have slept in a building like this while it was still being repaired. She was bought derelict in 2013, with five hundred tonnes of fallen stone to clear before anything could begin.</p>
 <p class="g-p">Fifteen years on, the conservators still measure a good morning in centimetres of fresco.</p>
 <p class="g-p"><em>The doors opened long before the work was done, and they open a little further each year as the restoration reaches the next room.</em></p>
@@ -298,8 +340,10 @@
       <figcaption class="g-say__by">A guest<span class="g-say__src">Google</span></figcaption>
     </figure>
     <figure class="g-say">
-      <blockquote class="g-say__q">Spacious rooms with private, well-equipped bathrooms</blockquote>
-      <figcaption class="g-say__by">A guest from the Netherlands<span class="g-say__src">Booking.com</span></figcaption>
+      {# Was "Spacious rooms with private, well-equipped bathrooms" - true of that
+         guest's room, but shown as a general claim beside two rooms that share. #}
+      <blockquote class="g-say__q">The breakfast was outstanding, with local produce and fresh fruit.</blockquote>
+      <figcaption class="g-say__by">Cynthia<span class="g-say__src">United States · Booking.com</span></figcaption>
     </figure>
     <figure class="g-say">
       <blockquote class="g-say__q">After years of careful restoration, the owners brought it back from a ruin. The atmosphere is warm and not spooky at all.</blockquote>
@@ -307,15 +351,17 @@
     </figure>
   </div>
 
+  {# Six hardcoded 10s attributed to Booking.com. The Stay page already reads
+     these from settings ("six 10s read as invented"); the homepage never did.
+     Same settings here, shown only when supplied. Value is left out on both
+     pages: the site does not argue price, and a Value score is that argument. #}
+  {% set SC = [('Location','score_location'), ('Cleanliness','score_cleanliness'), ('Comfort','score_comfort'), ('Staff','score_staff'), ('Facilities','score_facilities')] %}
+  {% if settings and (settings['score_location'] or settings['score_overall']) %}
   <div class="g-scores">
-    <div class="g-score"><b>10</b><span>Location</span></div>
-    <div class="g-score"><b>10</b><span>Cleanliness</span></div>
-    <div class="g-score"><b>10</b><span>Comfort</span></div>
-    <div class="g-score"><b>10</b><span>Staff</span></div>
-    <div class="g-score"><b>10</b><span>Facilities</span></div>
-    <div class="g-score"><b>10</b><span>Value</span></div>
+    {% for label, key in SC %}{% if settings[key] %}<div class="g-score"><b>{{ settings[key] }}</b><span>{{ label }}</span></div>{% endif %}{% endfor %}
   </div>
-  <p class="g-hint" style="margin-top:var(--s5)">Guest ratings on Booking.com.</p>
+  <p class="g-hint" style="margin-top:var(--s5)">{% if settings['score_overall'] %}{{ settings['score_overall'] }} overall on Booking.com{% else %}Guest ratings on Booking.com{% endif %}.</p>
+  {% endif %}
 </div></section>
 
 
@@ -387,7 +433,7 @@
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The façade from the drive" loading="lazy">
+  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Come and see it</h2>
   <p class="g-close__p">The rooms are few and the ateliers smaller still. If a date suits, take it — the work goes on, and people come.</p>
   <div class="g-close__acts">
@@ -427,6 +473,9 @@
      Falls through to the same poster the autoplay-refused path uses, so there
      is one still frame and one code path rather than two. The pause button
      above already lets anybody who wants it press play. */
+  /* The loader above left the video without a source (slow or data-saving connection, or reduced
+     motion): same still frame, same path. */
+  if (v.hasAttribute('data-still')){ still(); return; }
   var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
   if (calm && calm.matches){
     still();

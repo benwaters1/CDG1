@@ -5084,7 +5084,13 @@ main .g-hero p, main td p, main th p{ max-width: none; }
    ========================================================================== */
 main p, main li, main dd, main dt, main td, main figcaption,
 main blockquote, main label,
-main span:not([class*="__k"]):not([class*="__n"]):not([class*="__l"]):not(.g-fig__n):not(.g-opt){
+/* The :not() chain makes this span line more specific than almost any component rule, so
+   "anything that sets a larger size keeps it" was untrue for spans: the motto (27px), the
+   signature (22px), the booking-bar title (23px), the room price and the comparison-table
+   prices were all held at 15px. Measured by rendering every page with and without this
+   line's specificity; the six classes it flattened are exempt. None of them was being
+   lifted by it, so exempting them cannot make anything smaller. */
+main span:not([class*="__k"]):not([class*="__n"]):not([class*="__l"]):not(.g-fig__n):not(.g-opt):not(.g-fig):not(.g-devise__fr):not(.g-bookbar__t):not(.g-took__sigt):not(.g-gloss__en):not(.g-timeline__v){
   /* An absolute floor, not max(…, 1em): 1em is the inherited size, so the
      max() resolved to the very value it was meant to lift. */
   font-size: var(--t-small);
@@ -8415,17 +8421,9 @@ main > .g-facts{ border-bottom: 1px solid var(--line); }
 /* Two by two, then four across when there is genuinely room. Never three
    with one orphaned underneath. */
 @media (min-width: 40rem){ .g-took__facts{ grid-template-columns: 1fr 1fr; } }
-/* Four across left each fact 31 characters wide, under the measure floor.
-   Three columns gives about 42 — and the fourth centres beneath rather than
-   sitting orphaned to the left. */
-@media (min-width: 76rem){
-  .g-took__facts{ grid-template-columns: repeat(3, 1fr); }
-  .g-took__facts > div:last-child{
-    grid-column: 1 / -1;
-    max-width: calc(33.333% - var(--s6));
-    justify-self: center;
-  }
-}
+/* Four facts. Three across left the fourth alone underneath - centred, but an
+   orphan all the same, and the first thing the eye lands on. Two by two at
+   every width above phone gives each fact ~60 characters and no odd one out. */
 .g-took__facts > div{ border-top: 2px solid var(--gold); padding-top: var(--s3); }
 .g-took__facts dt{
   font-family: var(--display); font-size: clamp(21px, 2vw, 27px);
@@ -9564,30 +9562,495 @@ h2.g-h2--vert,
 .g .mini-status.status-pending, .g .mini-status.status-requested, .g .mini-status.status-waitlist{ color: var(--ink); }
 .g .mini-status.status-cancelled, .g .mini-status.status-declined, .g .mini-status.status-expired{ color: var(--ink-faint); text-decoration: line-through; }
 
+/* The bottom edge has the same problem the top had: on pages with a fixed
+   booking bar, a field the browser scrolls "into view" for validation lands
+   at the bottom of the viewport, under the bar. The Terms checkbox — the last
+   required field — is exactly the one this hit: a guest who forgot it pressed
+   Pay & book and was scrolled to a problem hidden behind that very button. */
+body:has(.g-bookbar) { scroll-padding-bottom: 112px; }
+body:has(.g-stickybar){ scroll-padding-bottom: 112px; }
+html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
+
+/* The route flashes error, info and success, but only success had a variant, so
+   an error looked identical to a neutral notice. Error gets a bronze edge and
+   the ink colour of a warning; info stays quiet. */
+.g .flash-error, .g .flash-danger, .g .flash-warning{ border-color: var(--gilt); border-left: 4px solid var(--gilt); background: #FBF3E6; color: var(--ink); }
+.g .flash-info{ border-color: var(--line); }
+
 /* ==========================================================================
-   HOTFIX — append to the END of static/gudanes.css. Independent of the zip.
+   THE HERO MUST BE AT LEAST AS TALL AS WHAT IS IN IT
+   .g-hero__in was position:absolute; bottom:0 - pinned to the hero's bottom. The
+   hero height is a fraction of the viewport, but the content is a fixed ~670px
+   on the homepage (title on two lines, rule, motto, lede, search bar). On a
+   1440x900 laptop the hero was 612px; at 1366x768, 522px. The content had
+   nowhere to go but up: the title sat behind the header, and at 1366x768 began
+   43px above the top of the page. Only 1920x1080 fitted.
+   Now the hero is a column flex box: at least its vh height, but it GROWS to
+   fit the content, which sits in flow at the bottom (where it was) with the
+   fixed header's height held clear at the top. Backgrounds (image, video,
+   wash) stay absolute and still fill it. */
+.g .g-hero{ display: flex; flex-direction: column; justify-content: flex-end; padding-top: calc(86px + var(--s5)); box-sizing: border-box; }
+.g .g-hero__in{ position: static; width: 100%; }
+.g .g-hero__img, .g .g-hero__video, .g .g-hero__wash{ position: absolute; inset: 0; }
+.g .g-hero__pause{ position: absolute; }
 
-   On phones (below 34rem) the room cards on Stay and the cards on The Estate
-   become a sideways carousel. `.g-cards{ justify-content: center }` and the
-   odd-count `.g-cards:has(...)` rule centre the grid; in a scroll container
-   whose tracks are wider than itself, centring pushes half the overflow off
-   the LEFT edge, which a browser cannot scroll to.
+/* main img:not([class]) is full-width 3:2 with no cap, so at 1440px the picture in
+   the "ninety-four rooms" section was 873px tall on a 900px screen - a whole
+   viewport of one image in the middle of a text section. Cap unclassed images
+   and the took/story figures at 68vh; object-fit: cover keeps them composed. */
+/* Scoped to the two figures that needed it. It also listed main img:not([class]),
+   which matches every unclassed image on the site and outranks the rules sizing
+   them, so while it was in place all of them took this 60vh height. Never shipped. */
+.g .g-took__media img, .g .g-story__media img{ aspect-ratio: auto; width: 100%; height: clamp(20rem, 60vh, 40rem); object-fit: cover; }
+@media (max-width: 44rem){
+  /* On a phone the column is narrow; a 60vh height would crop a landscape
+     photograph into a tall sliver. Let the 3:2 ratio govern again. */
+  .g .g-took__media img, .g .g-story__media img{ aspect-ratio: 3 / 2; height: auto; }
+}
 
-   Result on the live site at 390px: the first card sits at x = -675.
-   Chambre Émeraude and Chambre du Levant can never be seen on the Stay page;
-   La Piscine can never be seen on The Estate.
+/* A grid item with min-width:auto can grow past its track when a child has a
+   large intrinsic size - a not-yet-loaded or failed image does exactly that,
+   and on a phone the took section then ran to 1098px inside a 342px column,
+   clipped by main so nothing flagged it. Items may never exceed their track. */
+/* min-width:0 on the body's children (so the grid cannot push them wide); the
+   100% cap only on the grid and its items. Capping every body child overrode the
+   lede and close's own 40rem measure, which then ran to 992px. */
+.g .g-took__body > *{ min-width: 0; }
+.g .g-took__grid, .g .g-took__grid > *, .g .g-took__media{ min-width: 0; max-width: 100%; }
+/* The browser gives <figure> a default 40px side margin; it was never reset here,
+   so the photograph sat 40px narrower than the facts below it - two left edges. */
+.g .g-took__media, .g .g-say{ margin: 0; }
 
-   "safe center" keeps the desktop centring and falls back to start when the
-   row would overflow. On phones the carousel starts at the start, and its
-   bleed matches the 16px column padding used at that width (it assumed 24px
-   and overshot the screen by 8px each side).
-   ========================================================================== */
-.g .g-cards, .g .g-cards:has(> .g-card:last-child:nth-child(odd)){ justify-content: safe center; }
+/* ==========================================================================
+   THE FRENCH PAIR AND THE EYEBROW WERE READING AS ONE GARBLED LABEL
+   Nineteen headings open with a French line, its English gloss, then an
+   eyebrow. The gloss and the eyebrow were both small tracked capitals, one
+   directly on the other, and the eyebrow started 4px above the gloss's
+   baseline, so its 26px bar cut across the gloss's first letters like a
+   broken underline ("WRite to us", "SINce 1741").
+   The gloss is a translation, not a label: sentence case, plain, tucked
+   under the French. The eyebrow gets clear space and drops its bar, since
+   the French line already opens the stack. */
+.g .g-fr__en{ text-transform: none; letter-spacing: .01em; font-weight: 400; font-size: 13px; line-height: 1.45; margin-top: 3px; }
+.g .g-fr + .g-eyebrow{ margin-top: var(--s4); }
+.g .g-fr + .g-eyebrow::before{ display: none; }
+
+/* ==========================================================================
+   THE ROOM CARDS: THE PHOTOGRAPH IS THE PRODUCT
+   .g-homeroom__img had height: 13rem, which overrides its 3:2 aspect ratio,
+   so at desktop the room photograph was a 570x208 letterbox strip - shorter
+   than the text under it. Let the ratio govern.
+   Five rooms in a two-column grid left the fifth alone with half a row of
+   nothing beside it. When the last card is odd it spans the row and lays
+   out sideways - photograph left, text right - so it reads as a feature,
+   not a leftover. */
+.g .g-homeroom__img{ height: auto; aspect-ratio: 3 / 2; }
+@media (min-width: 60rem){
+  .g .g-homerooms > .g-homeroom:last-child:nth-child(odd){ grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
+  .g .g-homerooms > .g-homeroom:last-child:nth-child(odd) .g-homeroom__img{ aspect-ratio: auto; height: 100%; min-height: 20rem; }
+  .g .g-homerooms > .g-homeroom:last-child:nth-child(odd) .g-homeroom__b{ justify-content: center; }
+}
+
+/* The pills are spaced by the list's gap (8px); a general list rule also gave
+   each one a 24px right margin, so pills sat 32px apart - further than their
+   own padding - and read as unrelated. */
+.g .g-tags li{ margin: 0; }
+
+/* The facts band runs full-bleed, but its figures started 24px from the
+   viewport edge while every other element aligns to the content column
+   (136px at 1440). Keep the ruled band edge to edge; inset the row of five so
+   the first figure sits on the column. Separators move from the grid gap to
+   cell borders, so the inset is sand rather than a stripe of rule colour. */
+@media (min-width: 64rem){
+  .g main > .g-facts{ background: var(--sand); gap: 0; padding-inline: max(0px, calc((100% - var(--wrap)) / 2)); }
+  .g main > .g-facts li + li{ border-left: 1px solid var(--line); }
+}
+
+/* The three-up guest quotes carried four line devices at once: the heading
+   rule, a navy rule over each column, a gold bar beside each quote and a
+   second bar beside each name - indented 12px against the quote's 24px, so
+   quote and name did not share a left edge. In the grid the column rule is
+   enough (the device the "took" facts use); quote and name sit flush under it. */
+.g .g-says__grid .g-say__q, .g .g-says__grid .g-say__by{ border-left: 0; padding-left: 0; }
+
+/* ==========================================================================
+   ON A PHONE, TWO ROOMS AND THE POOL COULD NOT BE REACHED
+   Below 34rem .g-cards becomes a sideways carousel. A later rule set
+   justify-content: center on .g-cards, to centre a short last row on
+   desktop. In a scroll container whose tracks are wider than itself,
+   centring pushes half the overflow off the LEFT edge, and a browser cannot
+   scroll into negative space. On Stay the first two cards - Chambre
+   Emeraude and Chambre du Levant - sat at x = -647 and could never be
+   swiped to; on The Estate, La Piscine. Confirmed by scrolling end to end.
+   "safe" keeps the desktop centring and falls back to start the moment the
+   row would overflow; the carousel itself starts at the start explicitly.
+   Its bleed also assumed the 24px column padding, but at this width the
+   column pads 16px, so the carousel overshot the screen by 8px each side. */
+/* The culprit is the odd-count rule, .g-cards:has(> .g-card:last-child:nth-child(2n+1)):
+   its :has() argument makes it four classes specific, so it is matched here. */
+.g .g-cards, .g .g-cards:has(> .g-card:last-child:nth-child(2n+1)){ justify-content: safe center; }
 @media (max-width: 34rem){
-  .g .g-cards, .g .g-cards:has(> .g-card:last-child:nth-child(odd)){
-    justify-content: start;
-    margin-inline: calc(-1 * var(--s4));
-    padding-inline: var(--s4);
-    scroll-padding-inline: var(--s4);
-  }
+  .g .g-cards, .g .g-cards:has(> .g-card:last-child:nth-child(2n+1)){ justify-content: start; margin-inline: calc(-1 * var(--s4)); padding-inline: var(--s4); scroll-padding-inline: var(--s4);
+    /* Each card filled the screen exactly, so the next room never showed and the carousel read as a single room. At 84% the next card shows at the edge. */
+    grid-template-columns: none; grid-auto-columns: 84%; }
+}
+
+/* The hero title draws its short gold rule inside its own box, at the bottom,
+   and had no bottom margin - so on Stay, Workshops and Restoration the next
+   element (the button, the lede) started exactly on the rule and covered it.
+   The homepage escaped only because its motto brings a top margin. Sibling
+   margins collapse here, so pages that already had a gap keep it. */
+.g .g-hero__title{ margin-bottom: var(--s5); }
+
+/* Five height rules competed for the Stay page's room photo; the last,
+   .g-card--room img{ height: 17rem }, fixed it at 272px whatever the width, so
+   at desktop the rooms were a 2:1 strip - smaller than the same rooms on the
+   homepage, on the page whose job is selling them. 3:2, as on the homepage. */
+.g .g-card--room .g-card__img{ height: auto; aspect-ratio: 3 / 2; }
+
+/* The ledger rows were flex containers holding an empty ::before, the label and
+   the rest of the text; the flex gap applied between all three, so every row was
+   indented by a gap before a zero-width pseudo-element, and each label sat a gap
+   plus a literal space away from its dash. Plain text reads as written. The note
+   is a grid item, so it also inherited the 64px row gap. */
+.g .g-ledger li{ display: block; }
+.g .g-ledger li::before{ content: none; }
+.g .g-ledger li b{ display: inline; }
+@media (min-width: 46rem){ .g .g-ledger{ row-gap: var(--s4); } }
+
+/* The note spans both ledger columns; at its small size that ran past 100 characters a line. */
+.g .g-ledger__note{ max-width: var(--m-read); }
+
+/* "All Five, In Numbers": the note under each name is one line in some cards and two
+   in others (du Levant), which dropped that card's price and table 15px below its
+   neighbours', so the rows the section exists to compare did not line up. Reserve
+   two lines. */
+@media (min-width: 46rem){ .g .g-tier__n{ min-height: 3em; min-height: 2lh; } }
+
+/* `.g .g-wrap > p { margin-left: 0; margin-right: 0 }` pins prose to the column's
+   left edge, and it is more specific than the auto margins that centre these, so it
+   pinned them too: the closing lede on eleven pages (a centred line under a centred
+   heading, sitting left), both mottos, the gallery empty state, and the Events
+   enquiry button. They were meant to be centred; their own rules say so. */
+.g .g-wrap > .g-close__p, .g .g-wrap > .g-devise, .g .g-wrap > .g-empty,
+.g .g-wrap > p[style*="text-align:center"]{ margin-inline: auto; }
+
+/* Each assurance item is a grid (icon, heading, text) stretched to its row's height;
+   grid's default align-content stretches the rows into the spare space, so items with
+   less text pushed their heading 8px lower than their neighbours'. */
+.g .g-assure__grid li{ align-content: start; }
+
+/* The hero lede had no bottom margin either, so on Workshops the button sat on its
+   last line. The button row takes its own space from whatever precedes it (margins
+   collapse, so heroes that already had a gap keep it). */
+.g .g-hero__in > * + .g-hero__cta{ margin-top: var(--s5); }
+
+/* Atelier cards: an auto-fit grid cannot centre a short last row, so five ateliers
+   in three columns left a hole beside the last two. A wrapping flex row at the same
+   widths (three across, two on a tablet, one on a phone) centres whatever remains.
+   The name also sat directly on the photograph's bottom edge. */
+@media (min-width: 40rem){
+  .g .g-wscards{ display: flex; flex-wrap: wrap; justify-content: center; }
+  .g .g-wscards > .g-wscard{ flex: 0 0 calc((100% - var(--s5)) / 2); max-width: calc((100% - var(--s5)) / 2); }
+}
+@media (min-width: 64rem){
+  .g .g-wscards > .g-wscard{ flex-basis: calc((100% - 2 * var(--s5)) / 3); max-width: calc((100% - 2 * var(--s5)) / 3); }
+}
+.g .g-wscard__img{ margin-bottom: var(--s4); }
+
+/* On a phone each dated sitting was a full-width card with the atelier's photo
+   taking half of it - the same photo on every sitting of that atelier - so eleven
+   sittings ran to about 5,000px of scrolling. The dates are what is being chosen:
+   the photo becomes a thumbnail beside them, and the places-left flag moves into
+   the text column rather than trying to fit on a small image. */
+@media (max-width: 34rem){
+  .g .g-sit{ display: grid; grid-template-columns: 6.5rem 1fr; }
+  .g .g-sit__img{ grid-column: 1; grid-row: 1 / span 2; width: 100%; height: 100%; aspect-ratio: auto; object-fit: cover; }
+  .g .g-sit__flag{ position: static; grid-column: 2; grid-row: 1; justify-self: start; margin: var(--s4) var(--s4) 0; }
+  .g .g-sit__b{ grid-column: 2; grid-row: 2; padding: var(--s3) var(--s4) var(--s4); }
+}
+
+/* The day timeline's dots were placed at top: 6.75px, sized for a row without
+   padding; the rows have 24px of top padding, so each dot sat ~30px above the time
+   it marks, on the rule above. Centred on the time's line (37px into the row). */
+.g .g-timeline__i::before{ top: calc(var(--s5) + 8px); }
+
+/* The timeline label column computed at 112px, so two-word labels ("From Toulouse",
+   "From Barcelona", "Last three minutes") broke onto two lines at desktop width. */
+@media (min-width: 34.01rem){ .g .g-timeline__i{ grid-template-columns: minmax(9.5rem, 11rem) 1fr; } }
+
+/* The Journal box draws a 2px rule on top and had no top padding, so the eyebrow's
+   own bar sat directly against it - a lump in the middle of the line, on every page
+   that carries the Journal. The rule does the bar's job; the eyebrow gets room. */
+.g .g-journal__in{ padding-top: var(--s5); }
+.g .g-journal .g-eyebrow::before{ display: none; }
+
+/* .g-two pads 24px each side, and it sits inside .g-wrap, which already pads 24px -
+   so every two-column section (18 of them) started its text 24px right of the column
+   the headings above and below it use. Inside a wrap the wrap's padding is enough. */
+.g .g-wrap > .g-two{ padding-inline: 0; }
+
+/* .g-h3 was set to var(--t-h2), the section-heading size, so all 22 card and panel
+   headings on the site (14 on panels, 6 on cards) were as large as the section
+   headings above them. --t-h3 is the token the scale defines for exactly these:
+   "card and panel headings". Pre-existing in fdd551d. */
+.g .g-h3{ font-size: var(--t-h3); }
+
+/* Two figure components were designed with display-serif dt figures, and a generic
+   ".g dl dt" rule (UI face, 15px) outranked both: the homepage "took" facts
+   ("500 tonnes", "Five of ninety-four") and the Restoration room counters (0 / 0 /
+   0 / 94) rendered as small body text. Their own rules, restored. */
+.g .g-took__facts dt{ font-family: var(--display); font-size: clamp(21px, 2vw, 27px); }
+.g .g-rex__counts dt{ font-family: var(--display); font-size: clamp(30px, 3.4vw, 46px); }
+
+/* Room page: the price was 13px body text under the button. Set as a figure, with the
+   room's facts as pills beneath it, then the button. */
+.g .g-room__meta .g-fig{ font-family: var(--display); font-size: var(--t-h3); font-weight: 400; }
+.g .g-roomtop__facts{ margin: var(--s3) 0 var(--s4); }
+.g .g-roomtop__cta{ margin: var(--s4) 0 var(--s5); }
+
+/* THE DRAWER ON A CREAM GROUND. Its date search and its foot (links, phone, email, terms,
+   privacy) were coloured for a dark drawer - pale gold and pale blue - while the drawer is
+   cream: thirteen items at 1.2-1.7:1 against a 4.5 minimum, close to invisible. The page
+   audit only reads <main>, which is why it never flagged them. Pre-existing in fdd551d. */
+.g #g-mainnav .g-qbook__h{ color: #73562D; }
+.g #g-mainnav .g-qbook label, .g #g-mainnav .g-qbook__n{ color: var(--ink-soft); }
+.g #g-mainnav .g-navwrap__foot, .g #g-mainnav .g-navwrap__foot a, .g #g-mainnav .g-navwrap__foot p{ color: var(--ink-soft); }
+
+/* With the drawer open its close button sits over the header menu button, whose bars are wider
+   and showed around the X. Faded while expanded; the button stays focusable for the focus return. */
+.g .g-navbtn[aria-expanded="true"] .g-navbtn__bars{ opacity: 0; }
+
+/* The fold heading is now a real button (see public_base). It keeps the heading's look. */
+.g .g-fold__btn{ font: inherit; color: inherit; letter-spacing: inherit; text-align: inherit; background: none; border: 0; padding: 0; margin: 0; width: 100%; cursor: pointer;
+  /* A single-line heading was 31px tall: short of the 44px tap target the section used to provide. */
+  display: flex; align-items: center; min-height: 44px; }
+.g .g-fold__btn:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 4px; }
+
+/* PARTIAL LAST ROWS, CENTRED. The room comparison (five rooms, three across) and the included-
+   feature cards (odd counts, two across) left their last row pinned left with an empty slot
+   beside it. Each track is split into two half-columns and the leftover items sit on the centre
+   ones. Thresholds match the grids' own auto-fit minimums (19rem and 27rem, gap 1.5rem), read
+   from the wrapper's real width, so the column counts are exactly what they were. */
+.g .g-wrap:has(> .g-tiers), .g .g-wrap:has(> .g-incl-cards){ container-type: inline-size; }
+@container (min-width: 60rem){
+  .g .g-tiers{ grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .g .g-tiers > *{ grid-column: span 2; }
+  .g .g-tiers > :last-child:nth-child(3n+1){ grid-column: 3 / span 2; }
+  .g .g-tiers > :nth-last-child(2):nth-child(3n+1){ grid-column: 2 / span 2; }
+  .g .g-tiers > :last-child:nth-child(3n+2){ grid-column: 4 / span 2; }
+}
+@container (min-width: 39.5rem) and (max-width: 59.99rem){
+  .g .g-tiers{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .g .g-tiers > *{ grid-column: span 2; }
+  .g .g-tiers > :last-child:nth-child(2n+1){ grid-column: 2 / span 2; }
+}
+@container (min-width: 55.5rem){
+  .g .g-incl-cards{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .g .g-incl-cards > *{ grid-column: span 2; }
+  .g .g-incl-cards > :last-child:nth-child(2n+1){ grid-column: 2 / span 2; }
+}
+
+/* WORKSHOP DATES. auto-fit collapsed the empty tracks, so one date (a single atelier chosen in
+   the filter, or a thin season) stretched across the whole row: 1168px wide with a 778px photo.
+   A centred flex row at the same column counts the grid had (17rem minimum, 1.5rem gap):
+   cards keep one width whatever the count, and a partial row sits in the middle. */
+.g .g-wrap:has(> .g-sittings-grid){ container-type: inline-size; }
+.g .g-sittings-grid{ display: flex; flex-wrap: wrap; justify-content: center; }
+.g .g-sittings-grid > .g-sit{ flex: 0 0 100%; min-width: 0; }
+@container (min-width: 35.5rem){ .g .g-sittings-grid > .g-sit{ flex-basis: calc((100% - 1.5rem) / 2); } }
+@container (min-width: 54rem){ .g .g-sittings-grid > .g-sit{ flex-basis: calc((100% - 3rem) / 3); } }
+@container (min-width: 72.5rem){ .g .g-sittings-grid > .g-sit{ flex-basis: calc((100% - 4.5rem) / 4); } }
+
+/* FACTS BAND, THREE ACROSS (34-64rem): five figures left an empty tinted cell at the end of
+   the second row. The last row now shares the full width - two figures at half each, or one
+   across the whole row. Six half-columns, each figure spanning two. */
+@media (min-width: 34rem) and (max-width: 63.99rem){
+  .g .g-facts{ grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .g .g-facts > *{ grid-column: span 2; }
+  .g .g-facts > :nth-last-child(2):nth-child(3n+1), .g .g-facts > :last-child:nth-child(3n+2){ grid-column: span 3; }
+  .g .g-facts > :last-child:nth-child(3n+1){ grid-column: 1 / -1; }
+}
+
+/* FONTS AND IMAGE SPACE (speed pass).
+   - Bold asked for weight 700, which is not loaded for EB Garamond or Inter, so the browser
+     synthesised it. 600 is loaded. :where() keeps this below every component rule.
+   - The homepage's fifth room card (spanning the row, 60rem up) sized its photo from the photo
+     itself, so the page moved 69px when it arrived. 3:2 is the height it lands at anyway. */
+:where(.g) b, :where(.g) strong{ font-weight: 600; }
+@media (min-width: 60rem){
+  .g .g-homerooms > .g-homeroom:last-child:nth-child(odd) .g-homeroom__img{ aspect-ratio: 3 / 2; height: auto; min-height: 20rem; }
+}
+
+/* ==========================================================================
+   CARRIED OVER FROM style.css, WHICH PUBLIC PAGES NO LONGER LOAD
+   public_base linked the admin stylesheet (153 KB, 1,187 rules) on every public page,
+   ahead of this file. 38 of its rules styled public markup that this file does not:
+   the status pills, the "empty" notes, checkbox rows, the table wrapper, two small
+   buttons on the guest pages, and the print mode behind the stay takeaway. They are
+   here verbatim (with the variables they use), and the link is gone.
+   ========================================================================== */
+:root{ --danger: #a33; --gold-on-warn: #7B6238; --paper: #F6F2E8; --shadow: 0 2px 10px rgba(42,26,18,0.10); --status-danger-bg: #EFE3E3; --status-info-bg: #DCE8F0; --status-neutral-bg: #EEE8DA; --status-success-bg: #DCEBDC; --steel-deep: #2C4F66; }
+.btn-text-danger{ background: none; border: none; color: var(--danger); font-size: 12.5px; cursor: pointer; padding: 0px; }
+.mini-status{ font-family: "IBM Plex Mono", monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 10px; }
+.status-active{ background: var(--status-success-bg); color: var(--success); }
+.status-inactive{ background: var(--status-danger-bg); color: var(--danger); }
+.status-onshift{ background: var(--status-warn-bg); color: var(--gold-on-warn); }
+.status-current{ background: var(--status-warn-bg); color: var(--gold-on-warn); }
+.status-upcoming{ background: var(--status-info-bg); color: var(--steel-deep); }
+.status-past{ background: var(--status-neutral-bg); color: var(--ink-soft); }
+.status-pending{ background: var(--status-warn-bg); color: var(--gold-on-warn); }
+.status-approved, .status-confirmed{ background: var(--status-success-bg); color: var(--success); }
+.status-rejected, .status-declined{ background: var(--status-danger-bg); color: var(--danger); }
+.status-paid{ background: var(--status-success-bg); color: var(--success); }
+.status-unpaid{ background: var(--status-neutral-bg); color: var(--ink-soft); }
+.status-refunded{ background: var(--status-info-bg); color: var(--steel-deep); }
+.status-cancelled{ background: var(--status-neutral-bg); color: var(--ink-soft); }
+.status-available{ background: var(--status-success-bg); color: var(--success); }
+.status-unavailable{ background: var(--status-danger-bg); color: var(--danger); }
+.status-new{ background: var(--status-info-bg); color: var(--steel-deep); }
+.status-contacted, .status-quoted{ background: var(--status-warn-bg); color: var(--gold-on-warn); }
+.task-check{ width: 30px; height: 30px; border-radius: 7px; border: 1.5px solid var(--parchment-line); background: var(--surface); color: var(--success); font-size: 16px; font-weight: 700; line-height: 1; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 0px; transition: border-color 0.15s, transform 0.1s; }
+.task-check:hover{ border-color: var(--success); transform: scale(1.05); }
+.task-row.task-done .task-check{ background: var(--status-success-bg); border-color: var(--success); }
+.task-row.task-in-progress .task-check{ background: var(--status-warn-bg); border-color: var(--gold); }
+.empty-state, .empty-inline{ color: var(--ink-soft); font-size: 13.5px; font-style: italic; }
+.empty-state{ display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 34px 20px; border-radius: 12px; background: var(--paper); border: 1px solid var(--parchment-line); color: var(--ink-soft); font-size: 13.5px; }
+.empty-state svg{ opacity: 0.4; width: 26px; height: 26px; margin: 0px; }
+.doc-delete{ background: none; border: none; color: var(--danger); cursor: pointer; font-size: 14px; }
+.checkbox-row{ display: flex; align-items: center; gap: 8px; }
+.table-wrap{ overflow-x: auto; border: 1px solid var(--parchment-line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); margin-bottom: 18px; }
+.access-grid .checkbox-row{ align-items: flex-start; }
+@media (pointer: coarse){
+  .task-check{ min-width: 32px; min-height: 32px; }
+  .doc-delete, .task-check, .btn-text-danger{ min-height: 38px; min-width: 38px; }
+}
+@media print{
+  .g-top, .page-head, .receipt-print, nav, header, footer{ display: none !important; }
+  body.g-print-stay *{ visibility: hidden; }
+  body.g-print-stay .g-takeaway, body.g-print-stay .g-takeaway *{ visibility: visible; }
+  body.g-print-stay .g-takeaway{ position: absolute; left: 0px; top: 0px; width: 100%; margin: 0px; padding: 0px; }
+  body.g-print-stay .g-takeaway .no-print, body.g-print-stay .g-takeaway .no-print *{ visibility: hidden; }
+  body.g-print-stay .g-takeaway__card{ border: 1px solid rgb(0, 0, 0); }
+}
+
+/* ROOM PAGE EXTRAS (the list items; Stay's .g-extras holds <article>s and is untouched).
+   - The label was a flex row, so the notice ("3 days' notice"), written as grid-column 2 / -1,
+     became a third column beside the price and squeezed the description to a few words a line.
+     The label is now the grid that rule expected: box, text, price; the notice under the text.
+   - The card moves from the label to the list item, so "Too soon for these dates" and the
+     "When would you like it?" fields sit inside it, and a row's cards stretch to one height.
+   - An extra that is too soon now looks unavailable, not just its checkbox. */
+.g .g-extras > li{ display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3) var(--s4); background: var(--white); border: 1px solid var(--line); }
+.g .g-extras > li > .g-check{ display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: var(--s3); align-items: start; padding: 0; background: none; border: 0; min-height: 44px; }
+.g .g-extras > li > .g-hint, .g .g-extras > li > .g-extra-when{ margin: 0; padding-left: calc(18px + var(--s3)); }
+.g .g-extras > li:has(> .g-check input:disabled) > .g-check{ opacity: .55; cursor: not-allowed; }
+
+/* The browser's default checkbox side margin put the card text a few pixels right of the notes under it. */
+.g .g-extras > li > .g-check > input{ margin: 3px 0 0; }
+
+/* MANAGE BOOKING: ADD TO YOUR STAY. Each extra is a small form that was one flex row - name,
+   description, quantity, day, note and button all on a line, so the name and description were
+   squeezed to a narrow column of small text and, on a phone, the quantity box stretched to the
+   description's height. Now: what it is on its own line; the controls in a row beneath (on a
+   phone, day and note full width with quantity and Add sharing the last row); a hairline
+   between extras. Matched by its add_extra action, so the page's other forms are untouched. */
+.g .g-mb-acts:has(> input[name="action"][value="add_extra"]){ display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) minmax(0, 1.4fr) auto; column-gap: var(--s3); row-gap: var(--s2); align-items: center; }
+.g .g-mb-acts:has(> input[name="action"][value="add_extra"]) > span:first-of-type{ grid-column: 1 / -1; }
+.g .g-mb-acts:has(> input[name="action"][value="add_extra"]) > span:first-of-type > .g-hint{ display: block; margin-top: 2px; }
+.g .g-mb-acts:has(> input[name="action"][value="add_extra"]) > input[type="number"]{ width: 100% !important; }
+.g .g-mb-acts:has(> input[name="action"][value="add_extra"]) > button{ grid-column: -2 / -1; justify-self: start; }
+.g .g-mb-acts:has(> input[name="action"][value="add_extra"]) + .g-mb-acts:has(> input[name="action"][value="add_extra"]){ border-top: 1px solid var(--line); padding-top: var(--s3); }
+@media (max-width: 44rem){
+  .g .g-mb-acts:has(> input[name="action"][value="add_extra"]){ grid-template-columns: 4.5rem minmax(0, 1fr); }
+  .g .g-mb-acts:has(> input[name="action"][value="add_extra"]) > select, .g .g-mb-acts:has(> input[name="action"][value="add_extra"]) > input[type="text"]{ grid-column: 1 / -1; order: 1; }
+  .g .g-mb-acts:has(> input[name="action"][value="add_extra"]) > input[type="number"]{ order: 2; }
+  .g .g-mb-acts:has(> input[name="action"][value="add_extra"]) > button{ order: 3; grid-column: 2 / -1; }
+}
+
+/* TWO LIGHT-GROUND COLOURS ON DARK GROUNDS (found when the contrast check was widened from
+   p/li/dd/h1/h2/a to every element holding text - it had never looked at spans).
+   - The price total above Pay & book was --gilt bronze on the navy panel: 1.9:1, on the most
+     important number on the page. White, and set as large as the nights line above it.
+   - "Add dates" in the homepage hero search was --ink-soft on the dark glass: 1.9:1. */
+.g .g-dossier .g-quote__total, .g .g-dossier .g-quote__total .g-fig{ color: #fff; }
+.g .g-dossier .g-quote__total .g-fig{ font-size: var(--t-h3); }
+/* The unfilled state ("Add dates") had its own rule, .g-rp__val:not(.is-set), in --ink-soft - a
+   light-field colour - and it won; the field is transparent over the dark glass at every width. */
+.g .g-herosearch__f .g-rp__val, .g .g-herosearch__f .g-rp__val:not(.is-set){ color: rgba(255, 255, 255, .8); }
+
+/* The bill: "Total" and "Still to pay" were set exactly like the lines above them. */
+.g .g-mb-total{ font-weight: 600; }
+.g .g-mb-total > span:last-child{ font-family: var(--display); font-size: 20px; font-weight: 500; }
+
+/* GUEST ACCOUNT. "Book another stay" sat flush against the heading above it (0px); and the card's
+   action row stretched its items to the tallest, so Manage and the two text links stood 56px
+   beside a 44px Pay button. */
+.g .account-head > .g-btn{ margin-top: var(--s3); }
+.g .account-actions{ align-items: center; }
+
+/* CHECKBOXES AND RADIOS KEEP THEIR SIZE. A general "inputs fill their width" rule caught them too: the
+   feedback forms' publish-consent box stood 238px wide in its row, and the atelier auto-charge opt-out
+   416px. Measured sitewide; these were the only ones. */
+.g input[type="checkbox"], .g input[type="radio"]{ width: 18px; height: 18px; min-height: 0; flex: none; }
+
+/* "Welcome back" for a returning guest: 832px wide at desktop, wider than the reading measure the
+   text around it keeps. Capped to it. */
+.g .g-welcome{ max-width: var(--m-read); }
+
+/* THE GUEST STATEMENT (the bill business guests forward).
+   - main thead th is sticky (for the Stay comparison table). Inside the statement's scrolling
+     table wrappers that offset the headings 86px down, painted over the rows beneath - the
+     column heads appeared below the first line, and the second VAT rate was hidden under them.
+   - Row labels and the taxe de séjour explanation (inside a th) took the headings' tracked capitals.
+   - The château's details were capped at the reading measure, so the right-aligned block sat
+     towards the middle. */
+.g .statement thead th{ position: static; }
+.g .statement tbody th, .g .statement tbody th .g-hint{ text-transform: none; letter-spacing: normal; }
+.g .statement tbody th{ font-weight: 400; }
+.g .statement th, .g .statement td{ vertical-align: baseline; }
+/* Figure columns: their headings sat left-aligned over right-aligned numbers. */
+.g .statement thead th:not(:first-child){ text-align: right; }
+.g .statement-head .g-hint{ max-width: none; }
+.g .statement-to{ margin: 0 0 var(--s3); }
+
+/* Statement, continued: row labels at the size of the rows (Total, Received and Balance due were
+   the headings' small size beside larger amounts); its tables fill the width on a phone rather than
+   shrink to their content under the site-wide scrolling-table rule - a bill has no wide columns; and
+   the ornament sits over the left-aligned title rather than the middle of the page. */
+.g .statement tbody th{ font-size: var(--t-base); }
+.g .statement table{ display: table; width: 100%; white-space: normal; }
+.g .statement-head .g-fleur{ margin-left: 0; margin-right: 0; display: block; }
+
+/* Manage-page cards: a textarea is inline and was not full width, so "Request a table" sat beside
+   the dietary-notes box instead of under it. Full-width blocks, as the page's other fields are. */
+.g .g-mb-card textarea{ display: block; width: 100%; }
+
+/* ATELIERS PAGE (workshops presentation pass, 24 Sept).
+   - Who Else Is Here: five cards in a grid of two or three left the last row part-filled from the left.
+     A centred flex row with the same column counts.
+   - A day in the atelier: the timeline beside a photograph of the work, rather than a third of the
+     width beside nothing. The figure sits at the top of its column.
+   - Taking a Session Outright: the enquiry button sat against the box above it. */
+.g .g-finds{ display: flex; flex-wrap: wrap; justify-content: center; }
+.g .g-finds > .g-find{ flex: 0 1 100%; min-width: 0; }
+@media (min-width: 44rem){ .g .g-finds > .g-find{ flex-basis: calc((100% - var(--s6)) / 2); } }
+@media (min-width: 68rem){ .g .g-finds > .g-find{ flex-basis: calc((100% - 2 * var(--s6)) / 3); } }
+.g .g-day{ align-items: start; }
+.g .g-day__fig{ margin: 0; }
+.g .g-plate + .g-p{ margin-top: var(--s6); }
+
+/* The day timeline needs its width: side by side with the photograph from 60rem, stacked below. */
+@media (max-width: 60rem){ .g .g-day{ grid-template-columns: 1fr; } }
+
+/* The currency control, inside a centred hero (the atelier page), sat at the left edge under a centred title. */
+.g .g-hero .g-curbar{ justify-content: center; margin-left: auto; margin-right: auto; text-align: center; }
+
+/* The atelier filter on a phone: five chips wrapped to five rows and pushed the dates ~200px down.
+   One row that scrolls sideways, bleeding to the screen edge like the carousels. */
+@media (max-width: 44rem){
+  .g .g-datefilter{ display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    margin-inline: calc(-1 * var(--s4)); padding-inline: var(--s4); padding-bottom: 2px; }
+  .g .g-datefilter::-webkit-scrollbar{ display: none; }
+  .g .g-datefilter > .g-chip{ flex: none; white-space: nowrap; }
 }

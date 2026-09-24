@@ -1,10 +1,9 @@
 {% extends "public_base.html" %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% set sticky_bar = 'none' %}
-{% block title %}{% if booking['status'] == 'confirmed' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{% endif %}{% endblock %}
+{% block title %}{% if (booking['status']|lower) == 'confirmed' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{% endif %}{% endblock %}
 {% block content %}
 {% from '_summary.html' import what_it_comes_to %}
-{{ what_it_comes_to(recap, settings) }}
 
 {% from '_before.html' import packing, arriving %}
 {% from '_animals.html' import animals %}
@@ -23,11 +22,11 @@
     <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
     <circle cx="60" cy="13" r="1.4"/>
   </svg>
-  <p class="g-eyebrow">{%- if booking['status'] == 'confirmed' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{%- endif %}</p>
+  <p class="g-eyebrow">{%- if (booking['status']|lower) == 'confirmed' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{%- endif %}</p>
   <h1 class="g-display" >
     {{ t('Thank you') }}, {{ booking['guest_name'].split(' ')[0] }}
   </h1>
-  <p class="g-p g-lede-first">{%- if booking['status'] == 'confirmed' %}Your stay in <strong>{{ room_name(booking['room_name']) }}</strong> is booked
+  <p class="g-p g-lede-first">{%- if (booking['status']|lower) == 'confirmed' %}Your stay in <strong>{{ room_name(booking['room_name']) }}</strong> is booked
     and paid in full. There is nothing further to do — we will write again a few days before
     you travel, with directions and arrival times.{% else %}Your request for <strong>{{ room_name(booking['room_name']) }}</strong> has been received.
     We will be in touch shortly.{%- endif %}</p>
@@ -35,7 +34,7 @@
   <div class="g-conf g-plate-edge">
     <dl class="g-facts-list">
       <div><dt>{{ t('Reference code') }}</dt><dd><strong>{{ booking['reference_code'] }}</strong></dd></div>
-      <div><dt>{{ t('Status') }}</dt><dd>{{ booking['status']|capitalize }}{% if booking['payment_status'] == 'paid' %} · {{ t('paid') }}{%- endif %}</dd></div>
+      <div><dt>{{ t('Status') }}</dt><dd>{{ booking['status']|capitalize }}{% if (booking['payment_status']|lower) == 'paid' %} · {{ t('paid') }}{%- endif %}</dd></div>
       <div><dt>{{ t('Arrival') }}</dt><dd>{{ booking['arrival_date']|date_short }}</dd></div>
       <div><dt>{{ t('Departure') }}</dt><dd>{{ booking['departure_date']|date_short }}</dd></div>
       <div><dt>{{ t('Guests') }}</dt><dd>{{ booking['party_size'] }}</dd></div>
@@ -68,6 +67,11 @@
   <p class="g-sharelink">{{ url_for('guest_checkin', manage_token=booking['manage_token'], _external=True) }}</p>
 </div></section>
 
+{# The recap rendered above the thank-you, so the first thing a guest saw after paying was a
+   cancellation clause. It now follows the confirmation. #}
+{{ what_it_comes_to(recap, settings) }}
+
+
 <div class="g-band">
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w" alt="The gates in autumn" loading="lazy">
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1000w" alt="A château bedroom" loading="lazy">
@@ -85,11 +89,13 @@
   <p class="g-p">All of it can be added from your booking link, and none of it needs deciding now.</p>
 
   <div class="g-finds">
+    {% if _dm == 'open' %}
     <div class="g-find">
       <p class="g-find__k">Dinner</p>
       <h3 class="g-find__t">A table at La Table</h3>
       <p class="g-find__d">Aperitifs in the Renaissance kitchen, then dinner by candlelight. The kitchen cooks for a single table, and not every night, so it is worth claiming early.</p>
     </div>
+    {% endif %}
     <div class="g-find">
       <p class="g-find__k">Arrival</p>
       <h3 class="g-find__t">A car from Toulouse</h3>
@@ -98,7 +104,7 @@
     <div class="g-find">
       <p class="g-find__k">The valley</p>
       <h3 class="g-find__t">Something to do with the days</h3>
-      <p class="g-find__d">Market mornings with the chef, guided walks, the brocantes, electric bikes, or the mountain between December and April.</p>
+      <p class="g-find__d">Market mornings{% if _dm == 'open' %} with the chef{% endif %}, guided walks, the brocantes, electric bikes, or the mountain between December and April.</p>
     </div>
       <p style="margin-top:var(--s6)">
       <a href="{{ url_for('manage_booking', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid">{{ t('Add to your stay') }}</a>

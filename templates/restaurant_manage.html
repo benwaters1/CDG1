@@ -8,17 +8,17 @@
 <div class="g-mb-card">
   <p class="g-eyebrow">{{ t('Your table') }}</p>
   <h1>Dinner Reservation</h1>
-  <p class="g-p">Status: <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span></p>
+  <p class="g-p">Status: <span class="mini-status status-{{ (booking['status']|string)|lower }}">{{ booking['status'] }}</span></p>
 
   <div class="g-mb-card">
     <dl class="g-facts-list">
       <div><dt>Reference code</dt><dd>{{ booking['reference_code'] }}</dd></div>
       <div><dt>Date</dt><dd>{{ booking['dinner_date']|date_short }}</dd></div>
       <div><dt>Party size</dt><dd>{{ booking['party_size'] }}</dd></div>
-      {% if booking['total_price'] %}<div><dt>Total</dt><dd>€{{ '%.2f'|format(booking['total_price']) }}{% if booking['payment_status'] and booking['payment_status'] != 'unpaid' %} <span class="mini-status status-{{ booking['payment_status'] }}">{{ booking['payment_status'] }}</span>{%- endif %}</dd></div>{% endif %}
+      {% if booking['total_price'] %}<div><dt>Total</dt><dd>€{{ '{:,.2f}'.format(booking['total_price']) }}{% if booking['payment_status'] and (booking['payment_status']|lower) != 'unpaid' %} <span class="mini-status status-{{ (booking['payment_status']|string)|lower }}">{{ booking['payment_status'] }}</span>{%- endif %}</dd></div>{% endif %}
       {% if booking['total_price'] and booking['deposit_amount'] and booking['deposit_amount'] < booking['total_price'] %}
-      <div><dt>Deposit paid</dt><dd>€{{ '%.2f'|format(booking['deposit_amount']) }}</dd></div>
-      <div><dt>Due at the restaurant</dt><dd>€{{ '%.2f'|format(booking['total_price'] - booking['deposit_amount']) }}</dd></div>
+      <div><dt>Deposit paid</dt><dd>€{{ '{:,.2f}'.format(booking['deposit_amount']) }}</dd></div>
+      <div><dt>Due at the restaurant</dt><dd>€{{ '{:,.2f}'.format(booking['total_price'] - booking['deposit_amount']) }}</dd></div>
       {% endif %}
     </dl>
     {% if booking['dietary_notes'] %}
@@ -29,7 +29,7 @@
     {% endif %}
   </div>
 
-  {% if booking['status'] in ('pending', 'confirmed') %}
+  {% if (booking['status']|lower) in ('pending', 'confirmed') %}
   {# Not offered as a standing button. It was one click behind a generic
      browser confirm, with nothing said about money beforehand. Still
      reachable — a guest must be able to cancel — but the terms come
@@ -56,7 +56,7 @@
   <path d="M0 32 L58 18 L96 24 L150 6 L196 20 L236 11 L286 25 L330 14 L378 27 L424 19 L480 30"/>
   <path d="M0 33.5h480" opacity=".5"/>
 </svg>
-  {% if booking['status'] in ('pending', 'confirmed') %}
+  {% if (booking['status']|lower) in ('pending', 'confirmed') %}
   <div class="g-mb-card" style="margin-top:var(--s4)">
     <p class="g-mb-dt">Change your reservation</p>
     <form method="post">

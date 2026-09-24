@@ -5,7 +5,8 @@
 {# Without this class the print rules below never fire, and the button that
    says "everything else on this page is left off" prints the whole booking
    page, payment form included. #}
-{% block bodyclass %} g-print-stay{% endblock %}
+{# The g-print-stay print mode showed only a .g-takeaway card that no template renders any more,
+   so printing this page gave a blank sheet. It now prints with the site's normal print styles. #}
 {% block content %}
 
 <div class="g-mb-card">
@@ -17,20 +18,20 @@
   </svg>
   <p class="g-eyebrow">{{ t('Your booking') }}</p>
   <h1>{{ booking['room_name'] }}</h1>
-  <p class="g-p">Status: <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span>
-    {% if booking['payment_status'] != 'unpaid' %}· Payment: <span class="mini-status status-{{ booking['payment_status'] }}">{{ booking['payment_status'] }}</span>{% endif %}
+  <p class="g-p">Status: <span class="mini-status status-{{ (booking['status']|string)|lower }}">{{ booking['status'] }}</span>
+    {% if booking['payment_status'] and (booking['payment_status']|lower) != 'unpaid' %}· Payment: <span class="mini-status status-{{ (booking['payment_status']|string)|lower }}">{{ booking['payment_status'] }}</span>{% endif %}
   </p>
   {#- Their days here, on one page. A guest knew their arrival date and
       nothing else: whether the restaurant served on the Tuesday, whether
       there was an atelier on while they were here, what they had already
       booked themselves. All of it was in the app and none of it was in front
       of the person it concerned. -#}
-  {% if booking['status'] in ('pending', 'confirmed') %}
+  {% if (booking['status']|lower) in ('pending', 'confirmed') %}
   <p class="g-p">
     <a class="g-btn" href="{{ url_for('stay_itinerary_page', manage_token=booking['manage_token']) }}">What is on while you are here</a>
   </p>
   {% endif %}
-  {% if booking['status'] in ('pending', 'confirmed') %}<p class="g-hint">Check in online below — confirm your arrival time, tell us about any requests, and manage your booking.</p>{% endif %}
+  {% if (booking['status']|lower) in ('pending', 'confirmed') %}<p class="g-hint">Check in online below — confirm your arrival time, tell us about any requests, and manage your booking.</p>{% endif %}
 
   <div class="g-mb-card">
     <dl class="g-facts-list">
@@ -38,7 +39,7 @@
       <div><dt>{{ t('Party size') }}</dt><dd>{{ booking['party_size'] }}</dd></div>
       <div><dt>{{ t('Arrival') }}</dt><dd>{{ booking['arrival_date']|date_short }}</dd></div>
       <div><dt>{{ t('Departure') }}</dt><dd>{{ booking['departure_date']|date_short }}</dd></div>
-      {% if booking['total_price'] %}<div><dt>{{ t('Total') }}</dt><dd><span class="g-fig">€{{ '%.2f'|format(booking['total_price']) }}</span></dd></div>{% endif %}
+      {% if booking['total_price'] %}<div><dt>{{ t('Total') }}</dt><dd><span class="g-fig">€{{ '{:,.2f}'.format(booking['total_price']) }}</span></dd></div>{% endif %}
     </dl>
     {% if booking['extras_summary'] %}
     <div class="g-mb-note">
@@ -54,14 +55,14 @@
     {% endif %}
   </div>
 
-  {% if booking['status'] in ('pending', 'confirmed') %}
+  {% if (booking['status']|lower) in ('pending', 'confirmed') %}
   <p class="g-hint" style="margin-top:var(--s4);"><a href="{{ url_for('booking_calendar_ics', manage_token=booking['manage_token']) }}" style="color:var(--steel);">{{ t('Add to calendar (.ics)') }}</a></p>
   {% endif %}
-  {% if booking['status'] == 'confirmed' %}
+  {% if (booking['status']|lower) == 'confirmed' %}
   <p class="g-hint" style="margin-top:var(--s4);"><a href="{{ url_for('guest_feedback', token=booking['manage_token']) }}" style="color:var(--steel);">Share feedback about your stay</a></p>
   {% endif %}
 
-{% if booking['status'] in ('pending', 'confirmed') %}
+{% if (booking['status']|lower) in ('pending', 'confirmed') %}
 
 <div class="g-mb-card" style="margin-top:var(--s4);">
   <h2 class="g-panel__h">{{ t('Your details') }}</h2>
@@ -128,7 +129,7 @@
       <button type="submit" class="g-btn">Stop the link working</button>
     </form>
   {% else %}
-    <p class="g-hint">Arrival details, directions and the dinner time &mdash; without your bill,
+    <p class="g-hint">Arrival details{% if _dm == 'open' %}, directions and the dinner time{% else %} and directions{% endif %} &mdash; without your bill,
       and without the ability to change or cancel anything. Nothing is made until you ask.</p>
     <form method="post" action="{{ url_for('toggle_share_link', manage_token=booking['manage_token']) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -173,10 +174,10 @@
 <div class="g-mb-card" style="margin-top:var(--s4);">
   <h2 class="g-panel__h">{{ t('Change your dates') }}</h2>
   <p class="g-hint">
-    {% if booking['status'] == 'pending' and booking['payment_status'] != 'paid' %}
+    {% if (booking['status']|lower) == 'pending' and (booking['payment_status']|lower) != 'paid' %}
       Pick new dates and they'll update right away, as long as the room is free.
     {% else %}
-      Pick new dates and we will confirm availability and get back to you — this booking is already {{ 'confirmed' if booking['status'] == 'confirmed' else 'paid' }}, so we review changes rather than applying them instantly.
+      Pick new dates and we will confirm availability and get back to you — this booking is already {{ 'confirmed' if (booking['status']|lower) == 'confirmed' else 'paid' }}, so we review changes rather than applying them instantly.
     {% endif %}
     {% if room and room['min_nights'] and room['min_nights'] > 1 %} This room requires a {{ room['min_nights'] }}-night minimum stay.{% endif %}
   </p>
@@ -238,7 +239,7 @@
     {% for r in guest_requests %}
     <div class="g-mb-row">
       <span class="g-mb-rowt">{{ r['notes'] or r['title'] }}</span>
-      <span class="mini-status {{ 'status-active' if r['status'] == 'done' else 'status-pending' }}">{{ 'done' if r['status'] == 'done' else 'received' }}</span>
+      <span class="mini-status {{ 'status-active' if (r['status']|lower) == 'done' else 'status-pending' }}">{{ 'done' if (r['status']|lower) == 'done' else 'received' }}</span>
     </div>
     {% endfor %}
   </div>
@@ -267,30 +268,30 @@
           <button type="submit" class="btn-text-danger" style="font-size:12px;">take off</button>
         </form>
         {% endif %}
-      </span><span>€{{ '%.2f'|format(line.amount) }}</span>
+      </span><span>€{{ '{:,.2f}'.format(line.amount) }}</span>
     </div>
     {% endfor %}
-    <div class="g-mb-total"><span>{{ t('Total') }}</span><span>€{{ '%.2f'|format(bill.total) }}</span></div>
+    <div class="g-mb-total"><span>{{ t('Total') }}</span><span>€{{ '{:,.2f}'.format(bill.total) }}</span></div>
     {% if bill.paid %}
     <div class="g-mb-line" style="margin-top:var(--s1);">
-      <span>{{ t('Received') }}</span><span>&minus;€{{ '%.2f'|format(bill.paid) }}</span>
+      <span>{{ t('Received') }}</span><span>&minus;€{{ '{:,.2f}'.format(bill.paid) }}</span>
     </div>
     {% endif %}
     {% if bill.refunded %}
-    <div class="g-mb-line"><span>{{ t('Refunded to you') }}</span><span>€{{ '%.2f'|format(bill.refunded) }}</span></div>
+    <div class="g-mb-line"><span>{{ t('Refunded to you') }}</span><span>€{{ '{:,.2f}'.format(bill.refunded) }}</span></div>
     {% endif %}
     {% if bill.owed > 0 %}
-    <div class="g-mb-total"><span>{{ t('Still to pay') }}</span><span>€{{ '%.2f'|format(bill.owed) }}</span></div>
+    <div class="g-mb-total"><span>{{ t('Still to pay') }}</span><span>€{{ '{:,.2f}'.format(bill.owed) }}</span></div>
     {% if bill.balance_overdue %}
     {# The bill has always known this and never said it. Plainly, and
        without dunning language: the house's position is that a refund is
        a decision somebody makes, not a rule, and a guest's own page is
        not the place to sound like a collections letter. #}
     <p class="g-p" style="margin-top:var(--s1);">{{ t('This was due on') }}
-      {{ bill.balance_due_date }}.</p>
+      {{ bill.balance_due_date|date_short }}.</p>
     {% endif %}
-    {% if stripe_enabled and booking['status'] in ('pending', 'confirmed') %}
-    <a href="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s2); display:inline-block;">Pay €{{ '%.2f'|format(bill.owed) }} now</a>
+    {% if stripe_enabled and (booking['status']|lower) in ('pending', 'confirmed') %}
+    <a href="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s2); display:inline-block;">Pay €{{ '{:,.2f}'.format(bill.owed) }} now</a>
 
     {# Paying some of it. A stay is often settled in two or three goes — one card
        now, the rest nearer the time, or split between the people travelling —
@@ -324,7 +325,7 @@
     <p class="g-hint">We will take this on arrival unless you hear otherwise.</p>
     {% endif %}
     {% elif bill.overpaid > 0 %}
-    <div class="g-mb-total"><span>{{ t('In credit') }}</span><span>€{{ '%.2f'|format(bill.overpaid) }}</span></div>
+    <div class="g-mb-total"><span>{{ t('In credit') }}</span><span>€{{ '{:,.2f}'.format(bill.overpaid) }}</span></div>
     {% else %}
     <p class="g-hint" style="margin-top:var(--s2);">{{ t('Paid in full — thank you.') }}</p>
     {% endif %}
@@ -334,7 +335,7 @@
 
 {# Things a guest can add to a stay they have already booked. Goes on the bill
    rather than asking for a card each time — the balance is settled once. #}
-{% if addable and booking['status'] in ('pending', 'confirmed') %}
+{% if addable and (booking['status']|lower) in ('pending', 'confirmed') %}
 <div class="g-mb-card" style="margin-top:var(--s4);">
   <h2 class="g-panel__h">{{ t('Add to your stay') }}</h2>
   <p class="g-hint">Added to your bill, settled with the rest.</p>
@@ -344,7 +345,7 @@
     <input type="hidden" name="action" value="add_extra">
     <input type="hidden" name="extra_id" value="{{ e['id'] }}">
     <span style="flex:1; min-width:0;">
-      {{ e['name'] }} — €{{ '%.2f'|format(e['price'] or 0) }}
+      {{ e['name'] }} — €{{ '{:,.2f}'.format(e['price'] or 0) }}
       {% if e['description'] %}<span class="g-hint">{{ e['description'] }}</span>{% endif %}
     </span>
     {# One id per extra: the page lists several, and a repeated id is a
@@ -361,7 +362,7 @@
       {% endfor %}
     </select>
     <input type="text" name="extra_note" maxlength="120"
-           placeholder="A time, or anything we should know"
+           placeholder="A time, or a note"
            aria-label="A time, or anything we should know about the {{ e['name'] }}">
     {% endif %}
     <button type="submit" class="g-btn g-btn--sm">Add</button>
@@ -370,12 +371,12 @@
 </div>
 {% endif %}
 
-{% if dinner_available %}
+{% if dinner_available and _dm == 'open' %}
 <div class="g-mb-card" style="margin-top:var(--s4);">
   <h3>Book dinner</h3>
   <p class="g-hint">
     Join us in the dining room during your stay.
-    {% if restaurant_settings['price_per_person'] %}€{{ '%.0f'|format(restaurant_settings['price_per_person']) }} per person, {% endif %}
+    {% if restaurant_settings['price_per_person'] %}€{{ '{:,.0f}'.format(restaurant_settings['price_per_person']) }} per person, {% endif %}
     payment at the restaurant.
   </p>
   <form method="post" style="margin-top:var(--s2);">
@@ -392,7 +393,7 @@
       </div>
     </div>
     <label for="mb_dinner_dietary_notes" class="g-mb-label" style="margin-top:var(--s2); display:block;">Dietary needs or anything else?</label>
-    <textarea id="mb_dinner_dietary_notes" name="dinner_dietary_notes" rows="2" placeholder="Allergies, vegetarian, celebrating an occasion..."></textarea>
+    <textarea id="mb_dinner_dietary_notes" name="dinner_dietary_notes" rows="2" placeholder="Allergies, vegetarian, celebrating an occasion…"></textarea>
     <button type="submit" class="g-btn g-btn--solid" style="margin-top:var(--s2);">Request a table</button>
   </form>
   {% if dinner_bookings %}
@@ -400,7 +401,7 @@
     {% for d in dinner_bookings %}
     <div class="g-mb-row">
       <span class="g-mb-rowt">{{ d['dinner_date']|date_short }} — party of {{ d['party_size'] }}</span>
-      <span class="mini-status status-{{ d['status'] }}">{{ d['status'] }}</span>
+      <span class="mini-status status-{{ (d['status']|string)|lower }}">{{ d['status'] }}</span>
     </div>
     {% endfor %}
   </div>
@@ -435,7 +436,7 @@
       <button type="submit" class="btn-text-danger">{{ t('Cancel this booking anyway') }}</button>
     </form>
   </details>
-  {% if booking['payment_status'] == 'paid' %}<p class="g-hint">Payments are not refunded on cancellation. Write to us first — we can often move your dates instead.</p>{% endif %}
+  {% if (booking['payment_status']|lower) == 'paid' %}<p class="g-hint">Payments are not refunded on cancellation. Write to us first — we can often move your dates instead.</p>{% endif %}
 </div>
 
 {% endif %}

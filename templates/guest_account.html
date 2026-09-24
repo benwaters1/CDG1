@@ -50,7 +50,7 @@
     <div class="account-card-head">
       <div>
         <strong>{{ b['room_name'] }}</strong>
-        <span class="mini-status status-{{ b['status'] }}">{{ b['status'] }}</span>
+        <span class="mini-status status-{{ (b['status']|string)|lower }}">{{ b['status'] }}</span>
         {% if not upcoming %}<span class="mini-status status-inactive">past</span>{% endif %}
       </div>
       <span class="g-hint">{{ b['reference_code'] }}</span>
@@ -64,7 +64,7 @@
     {% if money and money.owed > 0 %}
     <p class="account-owed">
       <strong>€{{ '{:,.2f}'.format(money.owed) }}</strong> still to pay
-      {%- if money.paid %} · €{{ '%.2f'|format(money.paid) }} received{% endif %}
+      {%- if money.paid %} · €{{ '{:,.2f}'.format(money.paid) }} received{% endif %}
       {%- if money.due_date %} · due {{ money.due_date|date_short }}{% endif %}
     </p>
     {% endif %}
@@ -84,12 +84,12 @@
       {% endif %}
     </div>
 
-    {% if upcoming and b['status'] == 'confirmed' %}
+    {% if upcoming and (b['status']|lower) == 'confirmed' %}
     {# Adding to a stay you already have should not mean starting a new booking. #}
     <details class="account-add">
       <summary>Add something to this stay</summary>
       <div class="account-add-body">
-        {% if restaurant_open %}
+        {% if restaurant_open and _dm == 'open' %}
         <p class="g-hint">
           <a href="{{ url_for('restaurant_info') }}">Book dinner</a> during your stay — tables are
           limited, so earlier is better.
@@ -102,7 +102,7 @@
           <li>
             <span>{{ e['name'] }}</span>
             <span class="g-hint">
-              {% if e['price'] %}€{{ '%.2f'|format(e['price']) }}{% endif %}
+              {% if e['price'] %}€{{ '{:,.2f}'.format(e['price']) }}{% endif %}
               {%- if e['lead_time_days'] %} · {{ e['lead_time_days'] }} days' notice{% endif %}
             </span>
             <form method="post"
@@ -143,7 +143,7 @@
     <div class="account-card-head">
       <div>
         <strong>{{ w['workshop_title'] }}</strong>
-        <span class="mini-status status-{{ w['status'] }}">{{ w['status'] }}</span>
+        <span class="mini-status status-{{ (w['status']|string)|lower }}">{{ w['status'] }}</span>
       </div>
       <span class="g-hint">{{ w['reference_code'] }}</span>
     </div>
@@ -189,12 +189,12 @@
     <div class="account-card-head">
       <div>
         <strong>{{ d['dinner_date']|date_short }}</strong>
-        <span class="mini-status status-{{ d['status'] }}">{{ d['status'] }}</span>
+        <span class="mini-status status-{{ (d['status']|string)|lower }}">{{ d['status'] }}</span>
       </div>
       <span class="g-hint">{{ d['reference_code'] }}</span>
     </div>
     <p class="g-hint" style="margin:var(--s1) 0;">
-      Table for {{ d['party_size'] }}{% if d['total_price'] %} · €{{ '%.2f'|format(d['total_price']) }}{% endif %}
+      Table for {{ d['party_size'] }}{% if d['total_price'] %} · €{{ '{:,.2f}'.format(d['total_price']) }}{% endif %}
     </p>
     <div class="account-actions">
       <a href="{{ url_for('restaurant_manage', manage_token=d['manage_token']) }}" class="g-btn g-btn--sm">
@@ -213,7 +213,7 @@
     <div class="account-card-head">
       <div>
         <strong>{{ e['event_type']|capitalize }}</strong>
-        <span class="mini-status status-{{ 'confirmed' if e['status'] == 'confirmed' else 'pending' }}">{{ e['status'] }}</span>
+        <span class="mini-status status-{{ 'confirmed' if (e['status']|lower) == 'confirmed' else 'pending' }}">{{ e['status'] }}</span>
       </div>
       <span class="g-hint">{{ e['reference_code'] }}</span>
     </div>
@@ -238,7 +238,8 @@
   </div>
 
   <p class="g-hint" style="margin-top:var(--s4);">
-    This link is yours and expires {{ expires[:10] }}. If it stops working,
+    {# Printed the raw date, and "expires ." when there was none. #}
+    This link is yours{% if expires %} and expires on {{ expires[:10]|date_short }}{% endif %}. If it stops working,
     <a href="{{ url_for('guest_account_request') }}">ask for a new one</a>.
     Please do not forward it — it opens your bookings.
   </p>

@@ -10,7 +10,7 @@
 {% block description %}Five bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
 {% block og_desc %}Five bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
-{% block bodyclass %} has-hero{% endblock %}
+{% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
 {% from '_proof.html' import credential, proof %}
 {% from '_exclusive.html' import exclusive %}
@@ -28,12 +28,19 @@
 {% from '_marks.html' import mark, monogram %}
 {# Nights for the whole page, from the dates already in scope. Computed here
    so no route change is needed; if the view later passes stay_nights it wins. #}
+{% macro _jdn(y, m, d) -%}
+  {%- set y2 = y - (1 if m <= 2 else 0) -%}{%- set era = y2 // 400 -%}{%- set yoe = y2 - era * 400 -%}
+  {%- set doy = (153 * (m + (-3 if m > 2 else 9)) + 2) // 5 + d - 1 -%}
+  {{- era * 146097 + yoe * 365 + yoe // 4 - yoe // 100 + doy -}}
+{%- endmacro %}
 {% if stay_nights is not defined %}
   {% set stay_nights = 0 %}
   {% if arrival and departure and arrival|length == 10 and departure|length == 10 %}
     {% set _a = arrival.split('-')|map('int')|list %}
     {% set _d = departure.split('-')|map('int')|list %}
-    {% set stay_nights = ((_d[0]-_a[0])*365) + ((_d[1]-_a[1])*30) + (_d[2]-_a[2]) %}
+    {# Was (years x 365) + (months x 30) + days: every month 30 days long, so 30 Jan - 2 Feb came out
+       as 2 nights and the room totals with it. Exact day numbers now (days from the civil calendar). #}
+    {% set stay_nights = (_jdn(_d[0], _d[1], _d[2])|int) - (_jdn(_a[0], _a[1], _a[2])|int) %}
     {% if stay_nights < 0 %}{% set stay_nights = 0 %}{% endif %}
   {% endif %}
 {% endif %}
@@ -46,6 +53,8 @@
 <div class="g-hero__in">
   <p class="g-hero__eyebrow">Cinq Chambres · Ariège</p>
     <h1 class="g-hero__title">Stay the Night</h1>
+    {# The page's first priority had a title and a button and nothing between them. #}
+    <p class="g-hero__lede">The walls as the centuries left them. The beds, the linen and the bathrooms new.</p>
     <p class="g-hero__cta"><a href="#rooms" class="g-btn g-btn--solid">See the rooms</a></p>
 </div>
 </section>
@@ -65,14 +74,16 @@
 <!-- ============ THE CONSTRAINT, STATED EARLY ============ -->
 {# The full scarcity block sits near the foot of the page, which is too late
    to frame a decision. This is the same fact, one line, near the top. #}
-<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Availability</span>Five bedrooms, of ninety-four rooms. They open one at a time, as the restoration reaches them.</p></div>
+{# An "Availability" callout stood here - "Five bedrooms, of ninety-four rooms. They
+   open one at a time..." - directly over a lede that opens "Five bedrooms inside a
+   restoration". It said nothing about availability. The lede carries it. #}
 
 <section class="g-sec"><div class="g-wrap">
   <div class="g-two">
     <div>
       <p class="g-p g-lede-first">Five bedrooms inside a restoration followed by Vogue, AD Italia and the French press — a Class I Historic Monument still being brought back, and open to guests while the work goes on.</p>
       <p class="g-p">The walls are bare plaster and weathered stone. They are protected under French law and cannot be changed, so they stay as two hundred and eighty years left them. Everything within them is new. The beds are very good ones, dressed in hand-embroidered vintage linen found and collected over years rather than ordered by the crate — so no two rooms are made up the same. The floors and the bathrooms are new throughout.</p>
-      <p class="g-p">Both things are true at once. It is an old house and behaves like one: original staircases and no lift, bedrooms on the top floor with the bathrooms downstairs, and electricity kept deliberately low. These are not oversights — they are the conditions under which a monument of this class is permitted to be lived in at all. In practice it means the evenings are lit by candle, and nobody has ever complained about that.</p>
+      <p class="g-p">Both things are true at once. It is an old house and behaves like one: original staircases and no lift, bedrooms on the top floor with the bathrooms on the first floor, and electricity kept deliberately low. These are not oversights — they are the conditions under which a monument of this class is permitted to be lived in at all. In practice it means the evenings are lit by candle, and nobody has ever complained about that.</p>
       <blockquote class="g-quote g-quote--bord">The rooms open one at a time, as the restoration reaches them.</blockquote>
     </div>
     <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1500w" alt="Restoration work in progress" loading="lazy">
@@ -98,12 +109,13 @@
     <button type="submit" class="g-btn g-search__go">Check availability</button>
   </form>
   <p class="g-book-bar__note">
-    Rooms are reserved here and confirmed by the château.
+    {# Was "reserved here and confirmed by the château" - the request model; a stay is confirmed at payment. #}
+    Booked here, and confirmed the moment you pay.
     <a class="g-inline-link" href="{{ url_for('find_booking') }}">Manage an existing booking</a>
   </p>
 </div></section>
 
-<div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1500w" alt="A bedroom under restoration, bare walls and new linen" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1500w" alt="Chambre Émeraude" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w" alt="A bathroom, restored" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/edc68ec5-2523-4935-8d27-ad2bbda74d96/day_1_19.jpg?format=1500w" alt="The château de Gudanes" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w" alt="The château de Gudanes" loading="lazy"></div>
+<div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1500w" alt="A bedroom under restoration, bare walls and new linen" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1500w" alt="One of the five bedrooms" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w" alt="A bathroom, restored" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/edc68ec5-2523-4935-8d27-ad2bbda74d96/day_1_19.jpg?format=1500w" alt="The château de Gudanes" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w" alt="The château de Gudanes" loading="lazy"></div>
 
 <!-- ============ WHY THE WALLS STAY ============ -->
 <section class="g-sec g-sec--sand g-sec--terre"><div class="g-wrap">
@@ -171,12 +183,16 @@
 {# Each named room mapped to the photograph that actually shows it. The pool
    below rotates by position, which meant the Suite could be illustrated with
    a photo of the Classic Double. Rooms not named here still rotate. #}
+{# RM_FOR is keyed by the old and the new room names (Tilleul -> Twin, Cerise -> Double, du Levant -> King,
+   Émeraude -> Gold Suite, Les Deux Chambres -> Family Suite), so photos survive the rename. #}
 {% set RM_FOR = {
   'Chambre Émeraude': RM_IMG[5],
   'Chambre du Levant': RM_IMG[0],
   'Les Deux Chambres': RM_IMG[4],
   'Chambre Cerise': RM_IMG[3],
-  'Chambre Tilleul': RM_IMG[1]
+  'Chambre Tilleul': RM_IMG[1],
+  'The Twin Room': RM_IMG[1], 'The Queen Room': RM_IMG[3], 'The King Room': RM_IMG[0],
+  'The Gold Suite': RM_IMG[5], 'The Family Suite': RM_IMG[4]
 } %}
 {# Written descriptions per room, used when the database field is thin.
    Anything entered in the admin overrides these. #}
@@ -192,13 +208,14 @@
         {% set _n = stay_nights | default(0) | int %}
         <p class="g-card__rate">{%- if _n > 0 %}
             <b data-eur="{{ (room['price_per_night'] * _n)|int }}">€{{ '{:,.0f}'.format(room['price_per_night'] * _n) }}</b>
-            <span>total · {{ _n }} night{{ '' if _n == 1 else 's' }}</span>
+            {# "total" - but the taxe de séjour is added at payment, so it is the room for those nights. #}
+            <span>for {{ _n }} night{{ '' if _n == 1 else 's' }}</span>
             {# On a single night the total and the nightly rate are the same
                figure, so printing both says nothing twice. #}
-            {% if _n > 1 %}<span class="g-card__per">€{{ '%.0f'|format(room['price_per_night']) }} a night</span>{% endif %}
+            {% if _n > 1 %}<span class="g-card__per">€{{ '{:,.0f}'.format(room['price_per_night']) }} a night</span>{% endif %}
           {% else %}
-            <b data-eur="{{ room['price_per_night']|int }}">From €{{ '%.0f'|format(room['price_per_night']) }}</b>
-            <span>/ night</span>
+            <b data-eur="{{ room['price_per_night']|int }}">From €{{ '{:,.0f}'.format(room['price_per_night']) }}</b>
+            <span>a night</span>
           {%- endif %}</p>
         {% endif %}
         {# Prefer the written description. The database column holds imported
@@ -219,10 +236,10 @@
                 one on the page a guest books from. Anything unset says
                 nothing rather than guessing: the wrong guess here is the one
                 that costs an apology. -#}
-            <li>Sleeps {{ room['max_occupancy'] or 2 }}</li>
+            {% if room['max_occupancy'] %}<li>Sleeps {{ room['max_occupancy'] }}</li>{% endif %}
             {% if room['size_sqm'] %}<li>{{ room['size_sqm']|int }} m²</li>{% endif %}
             {% if room['bed_setup'] %}<li>{{ room['bed_setup'] }}</li>
-            {% else %}<li>Double bed</li>{% endif %}
+            {% else %}{# Was "Double bed" on every card, whatever the room. A room it does not recognise gets no bed line rather than a guess - set bed_setup. #}{%- set _rn = room_name(room['name']) %}{%- set _bl = 'Twin beds' if ('Twin' in _rn or 'Tilleul' in _rn) else ('Queen bed' if ('Queen' in _rn or 'Cerise' in _rn) else ('King bed' if ('King' in _rn or 'Levant' in _rn) else ('Emperor bed' if ('Gold' in _rn or 'Émeraude' in _rn) else ('Two bedrooms' if ('Family' in _rn or 'Deux' in _rn) else '')))) %}{% if _bl %}<li>{{ _bl }}</li>{% endif %}{% endif %}
             {% if room['bathroom'] %}<li>{{ room['bathroom']|capitalize }} bathroom</li>{% endif %}
             {% if room['outlook'] %}<li>{{ room['outlook']|capitalize }} view</li>{% endif %}
             <li>Breakfast included</li>
@@ -294,7 +311,7 @@
 {{ room_pick(rooms) }}
 
 
-<!-- ============ LA CUISINE ============ -->
+{% if _dm != 'hidden' %}<!-- ============ LA CUISINE ============ -->
 {# Matches the workshops page — same voice, same claims, adjusted for a
    nightly guest who books dinner rather than cooks it. #}
 <section class="g-sec g-sec--sand"><div class="g-two">
@@ -304,8 +321,10 @@
     <p class="g-p g-lede-first">Candlelight, the fire lit in winter, and whatever the valley gave up that morning.</p>
     <p class="g-p">Continental breakfast every morning, and dinner cooked in the château's own Renaissance kitchen. There is no fixed menu — what appears depends on the Sunday market in the village square, on producers the chef has bought from for twenty years, and in summer on the gardens below the terrace.</p>
     <p class="g-p">Mountain cheeses from the farms above the village, charcuterie, foie gras, magret de canard, wild mushrooms when the season gives them, and desserts drawn from a recipe book written at Gudanes in the 1700s.</p>
-    <p class="g-p">Dinner is served by candlelight in the dining room, and in winter the fire is lit. Tell us when you book, and the kitchen buys for it.</p>
+    {# The section opens "Candlelight, the fire lit in winter"; this repeated it. #}
+    {% if _dm == 'open' %}<p class="g-p">If you would like dinner, tell us when you book, and the kitchen buys for it.</p>
     <p style="margin-top:var(--s5)"><a href="{{ url_for('restaurant_info') }}" class="g-btn">What dinner is like</a></p>
+    {% else %}<p class="g-hint">La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}. Breakfast is served every morning as usual.</p>{% endif %}
   </div>
   <div class="g-two__media">
     <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1500w" alt="A table laid outside with the mountains beyond" loading="lazy">
@@ -325,9 +344,9 @@
     <p class="g-eyebrow">Bathing</p>
     <h2 class="g-h2">Les Salles de Bains</h2>
     <p class="g-p g-lede-first">Floral papers, a cast-iron freestanding bath, and a dressing room to yourself.</p>
-    <p class="g-p">Three bathrooms downstairs, each with its own character.</p>
-    <p class="g-p">Émeraude, du Levant and Les Deux Chambres each have a private bathroom downstairs. Cerise and Tilleul share a bathroom set between them.</p>
-    <p class="g-p">Brass fittings, hexagonal terracotta underfoot, and cast-iron baths deep enough to disappear into. Ensuite bathrooms are not permitted under Class I rules — which is why they sit downstairs rather than behind your bed, and why they are among the newest rooms in a building that is mostly not. There is a powder room on the bedroom floor for the night.</p>
+    <p class="g-p">Every room has its own bathroom, each with its own character.</p>
+    <p class="g-p">None is in the bedroom itself: each is on the first floor and yours alone. The King Room also has a bath and a basin in the bedroom.</p>
+    <p class="g-p">Brass fittings, hexagonal terracotta underfoot, and cast-iron baths deep enough to disappear into. Ensuite bathrooms are not permitted under Class I rules — which is why they sit on the first floor rather than behind your bed, and why they are among the newest rooms in a building that is mostly not. There is a powder room on the bedroom floor for the night.</p>
     <p style="margin-top:var(--s6)">
       <a href="#book" class="g-btn g-btn--solid">Check dates</a>
     </p>
@@ -383,11 +402,13 @@
 
 <section class="g-sec g-sec--tight g-sec--terre" data-fold><div class="g-wrap g-wrap--narrow">
   <h2 class="g-place">What the Rooms Are Made Of</h2>
-  <p class="g-p">Château de Gudanes is under restoration, having been a ruin until recent years — work is ongoing throughout the estate. The bedrooms are all on the top floor. The bathrooms are downstairs, each privately allocated to its room — aside from the shared rooms, which share one between the two. A powder room sits on the bedroom floor, so the stairs are for bathing rather than for the night.</p>
+  <p class="g-p">Château de Gudanes is under restoration, having been a ruin until recent years — work is ongoing throughout the estate.</p>
+  {# Its bathroom sentences (and the powder room) are said in full by Les Salles de Bains above. #}
   <p class="g-p">The château is home to one resident French Bulldog — naturally — and a few cats.</p>
   <p class="g-p"><em>Estate grounds of approximately ten acres, in the Ariège, at the foot of the Pyrénées.</em></p>
 </div></section>
 
+{% endif %}
 <!-- ============ COMPARE THE ROOMS ============ -->
 {# Driven by the same `rooms` the cards above use, so it can never disagree
    with them. Scrolls sideways on a phone rather than shrinking to nothing. #}
@@ -415,7 +436,7 @@
         {% for r in rooms %}
         <tr>
           <th scope="row">{{ room_name(r['name']) }}</th>
-          <td>{% if r['price_per_night'] %}<span class="g-fig" data-eur="{{ r['price_per_night']|int }}">€{{ '%.0f'|format(r['price_per_night']) }}</span>{% else %}—{% endif %}</td>
+          <td>{% if r['price_per_night'] %}<span class="g-fig" data-eur="{{ r['price_per_night']|int }}">€{{ '{:,.0f}'.format(r['price_per_night']) }}</span>{% else %}—{% endif %}</td>
           <td>{{ r['max_occupancy'] or '—' }}</td>
           <td>
             {%- set am = (r['amenities'] or '')|lower -%}
@@ -444,7 +465,7 @@
    Every line below is checked against what the app actually does. #}
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <p class="g-eyebrow">No Surprises</p>
-  <h2 class="g-place">What You Are Paying For</h2>
+  <h2 class="g-place">What Is Included</h2>
 
   <div class="g-ledger">
     <div class="g-ledger__col g-ledger--in">
@@ -467,13 +488,15 @@
         Arranged separately
       </p>
       <ul>
-        <li>Dinner at La Table — booked in advance, priced per person</li>
+        {% if _dm == 'open' %}<li>Dinner at La Table — booked in advance, priced per person</li>{% elif _dm == 'closed' %}<li>Dinner at La Table — closed for the season{% if _dr %}, reopening {{ _dr }}{% endif %}</li>{% endif %}
         <li>Transfers from Toulouse or the train at Foix — we will arrange the car</li>
         <li>Carriage rides, market mornings, brocante tours</li>
-        <li>Tourist tax — charged locally, as French law requires</li>
+        <li>Tourist tax — added to the total when you pay, as French law requires</li>
       </ul>
     </div>
-    <p class="g-ledger__note">Rates are per room per night. Nothing above appears on your bill unless you ask for it.</p>
+    {# "Nothing above appears on your bill unless you ask for it" - the tourist tax is
+   listed above, and the law requires it whether you ask or not. #}
+<p class="g-ledger__note">Rates are per room per night. Nothing arranged separately is charged unless you ask for it, apart from the tourist tax, which the law requires.</p>
       <p style="margin-top:var(--s6)">
       <a href="#book" class="g-btn g-btn--solid">Check your dates</a>
     </p>
@@ -482,12 +505,13 @@
 
 <section class="g-sec"><div class="g-wrap">
   <details class="g-extras-fold">
-    <summary>Things you can add to a stay — private dinners, riding, transfers, and more</summary>
+    <summary>Things you can add to a stay — {% if _dm == 'open' %}private dinners, {% endif %}riding, transfers, and more</summary>
     <section class="g-sec" style="background:var(--blue-pale)"><div class="g-wrap">
   <h2 class="g-place">Things to Do With the Days</h2>
   <p class="g-p">Optional experiences to add to your stay — chosen when you book, subject to season and an additional charge.</p>
   <div class="g-extras" style="margin-top:var(--s7)">
 
+    {% if _dm == 'open' %}
     <article class="g-extra">
     <div class="g-extra__b">
       <p class="g-extra__k">The Kitchen</p>
@@ -496,6 +520,7 @@
       <p class="g-extra__p">Priced per person on the menu agreed · book at least a week ahead</p>
     </div>
   </article>
+    {% endif %}
 
   <article class="g-extra">
     <div class="g-extra__b">
@@ -524,6 +549,7 @@
     </div>
   </article>
 
+  {% if _dm == 'open' %}
   <article class="g-extra">
     <div class="g-extra__b">
       <p class="g-extra__k">Late</p>
@@ -532,6 +558,7 @@
       <p class="g-extra__p">Weather and wind permitting · not available when work is underway in those rooms</p>
     </div>
   </article>
+  {% endif %}
 
   <article class="g-extra">
     <div class="g-extra__b">
@@ -645,11 +672,15 @@
 </svg>
   <h2 class="g-place">What Guests Say</h2>
 
-  {% if featured_reviews %}
+  {# A review with a rating but no comment was printed as "A very good stay." in
+     quotation marks under the guest's name - words nobody wrote. Only reviews
+     with a comment are quoted. #}
+  {% set _fr = (featured_reviews or [])|selectattr('comment')|list %}
+  {% if _fr %}
   <div class="g-says__grid">
-    {% for r in featured_reviews %}
+    {% for r in _fr %}
     <figure class="g-say">
-      <blockquote class="g-say__q">{{ r['comment'] or 'A very good stay.' }}</blockquote>
+      <blockquote class="g-say__q">{{ r['comment'] }}</blockquote>
       <figcaption class="g-say__by">
         {{ (r['guest_name'] or 'A guest').split(' ')[0] }}
         <span class="g-say__src">
@@ -674,8 +705,10 @@
       <figcaption class="g-say__by">A guest<span class="g-say__src">Google</span></figcaption>
     </figure>
     <figure class="g-say">
-      <blockquote class="g-say__q">Spacious rooms with private, well-equipped bathrooms</blockquote>
-      <figcaption class="g-say__by">A guest from the Netherlands<span class="g-say__src">Booking.com</span></figcaption>
+      {# Was "Spacious rooms with private, well-equipped bathrooms" - true of that
+         guest's room, but shown as a general claim beside two rooms that share. #}
+      <blockquote class="g-say__q">The breakfast was outstanding, with local produce and fresh fruit.</blockquote>
+      <figcaption class="g-say__by">Cynthia<span class="g-say__src">United States · Booking.com</span></figcaption>
     </figure>
     <figure class="g-say">
       <blockquote class="g-say__q">After years of careful restoration, the owners brought it back from a ruin. The atmosphere is warm and not spooky at all.</blockquote>
@@ -689,7 +722,7 @@
      without editing a template. From settings, and only what is supplied. #}
   {%- set SC = [('Location','score_location'), ('Cleanliness','score_cleanliness'),
                 ('Comfort','score_comfort'), ('Staff','score_staff'),
-                ('Facilities','score_facilities'), ('Value','score_value')] -%}
+                ('Facilities','score_facilities')] -%}{# Value left out: the site does not argue price. #}
   {%- set shown = SC | selectattr('1') | list -%}
   {% if settings and (settings['score_location'] or settings['score_overall']) %}
   <div class="g-scores">
@@ -709,23 +742,23 @@
 {% from '_faq.html' import faq %}
 {{ faq([
   ('Is there a lift?',
-   'No. Gudanes is a Class I Historic Monument and a lift cannot be installed. The staircases are the originals, with no handrail in places, and there are a great many of them: the bedrooms are on the top floor, the bathrooms downstairs, and the grounds are terraced, so it is stairs outside as well as in. There is a powder room on the bedroom floor. If stairs are difficult, write to us before booking and we will tell you honestly whether it will work.'),
+   'No. Gudanes is a Class I Historic Monument and a lift cannot be installed. The staircases are the originals, with no handrail in places, and there are a great many of them: the bedrooms are on the top floor, the bathrooms on the first floor, and the grounds are terraced, so it is stairs outside as well as in. There is a powder room on the bedroom floor. If stairs are difficult, write to us before booking and we will tell you honestly whether it will work.'),
   ('Why are the walls unfinished?',
    'Because the law requires it. Class I classification means the walls stay as the centuries left them — bare plaster, weathered stone — and every intervention is approved before a tool is lifted. Everything within them is new: the beds, the linen, the floors, the bathrooms.'),
   ('When do I pay?',
    'A room is paid in full when you book it, by card, through Stripe. We never see or store your card details. Ateliers hold with a deposit and take the balance closer to the date.'),
   ('Is breakfast included?',
-   'Yes, every morning. So are the pool, the tennis court, the parkland, the salons, tea and coffee through the day, Wi-Fi and parking. Dinner at La Table is arranged separately.'),
+   'Yes, every morning. So are the pool, the tennis court, the parkland, the salons, tea and coffee through the day, Wi-Fi and parking.' ~ (' Dinner at La Table is arranged separately.' if _dm == 'open' else '')),
   ('How do I get there without a car?',
-   'Fly to Toulouse, then an hour and three quarters by road. Or take the train to Foix and we will meet it. Tell us your arrival and we will arrange the car.'),
+   'Fly to Toulouse, then an hour and three quarters by road. Or take the train to Foix and we will meet it. From Barcelona, the train runs to Latour-de-Carol on the border and on down the valley. Tell us your arrival and we will arrange the car.'),
   ('Can I bring children?',
-   'Children of eight and over are welcome. Les Deux Chambres sleeps five across two bedrooms, and the kitchen will cook for them. Below that age the building is not suitable — original staircases, unrestored rooms, and a working site in parts.'),
+   'Children of eight and over are welcome. The Family Suite has two bedrooms opening into one another' ~ (', and the kitchen will cook for them.' if _dm == 'open' else '.') ~ ' Below that age the building is not suitable — original staircases, unrestored rooms, and a working site in parts.'),
   ('Can I bring my dog?',
    'Not at present — Bruce, the château\'s French bulldog, has the run of the house, and four cats have the grounds. Adding to that is more than the house can hold. Write to us if it matters.'),
   ('Is there Wi-Fi?',
    'Starlink, in select areas of the château. Electricity is deliberately limited elsewhere — the evenings are lit by candle, which is part of the point.'),
   ('Can I visit without staying?',
-   'The château is a private home under restoration, not a museum. Dinner at La Table is the usual way in for non-residents, subject to the night.'),
+   'The château is a private home under restoration, not a museum.' ~ (' Dinner at La Table is the usual way in for non-residents, subject to the night.' if _dm == 'open' else ' Staying the night, or an atelier, is the way in.')),
   ('What about the tourist tax?',
    'Charged locally on departure, as French law requires. It is the only thing not in the rate.')
 ], 'Before You Book', 'The Questions That Come Up') }}
@@ -764,6 +797,7 @@
     <div><dt>By air</dt><dd>Toulouse-Blagnac, then an hour and three quarters by road. We can send a car.</dd></div>
     <div><dt>By train</dt><dd>Les Cabannes, on the Toulouse&ndash;Latour-de-Carol line. Three minutes from the gates.</dd></div>
     <div><dt>By car</dt><dd>The N20 south from Toulouse, then the D8 through Ch&acirc;teau-Verdun. Parking at the ch&acirc;teau.</dd></div>
+    <div><dt>From Barcelona</dt><dd>About three hours by road: the C-16 north through the Cadí tunnel to Puigcerdà, across the border, then the N20 through the Puymorens tunnel to Ax-les-Thermes and down the valley. Both tunnels are tolled, and the Puymorens keeps the road open all winter. By train, the Rodalies from Barcelona to Latour-de-Carol on the border, then the French line north to Les Cabannes — tell us the train and we will meet it.</dd></div>
     <div><dt>The address</dt><dd>2 Route de Beille, Ch&acirc;teau-Verdun, Ari&egrave;ge 09310, France</dd></div>
   </div>
   <p class="g-hint" style="margin-top:var(--s4)">
@@ -786,33 +820,7 @@
 
 <!-- ============ WHAT A NIGHT INCLUDES ============ -->
 
-<!-- ============ THE ROOMS, AS FACTS ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-fr">Les cinq chambres<span class="g-fr__en">The five rooms</span></p>
-  <p class="g-eyebrow">Side By Side</p>
-  <h2 class="g-place">All Five, In Numbers</h2>
-  <p class="g-p">Five rooms, no two alike, because the restoration kept the original layout rather than imposing a plan on it. Each is named rather than numbered — Émeraude for the green silk found under the later paper, Cerise for the cherry trees below its window.</p>
-
-  <ul class="g-tiers">
-    {% for r in rooms %}
-    <li class="g-tier">
-      <h3 class="g-tier__t">{{ room_name(r['name']) }}</h3>
-      {% if room_note(r['name']) %}<p class="g-tier__n">{{ room_note(r['name']) }}</p>{% endif %}
-      <p class="g-tier__p"><b>From €{{ '%.0f'|format(r['price_per_night']) }}</b> a night</p>
-      <dl class="g-tier__f">
-        <div><dt>Sleeps</dt><dd>{{ r['max_occupancy'] or 2 }}</dd></div>
-        {# A guest choosing between the two rooms that share wants to know they share with EACH OTHER, not with an unnamed neighbour. The pairing is fixed. #}
-        <div><dt>Bathroom</dt><dd>{%- if r['bathroom'] == 'shared' %}Shared downstairs with the {% if 'Cerise' in r['name'] %}Chambre Tilleul{% elif 'Tilleul' in r['name'] %}Chambre Cerise{% else %}room next door{% endif %}{% else %}Private, downstairs{%- endif %}</dd></div>
-        <div><dt>Breakfast</dt><dd>Included</dd></div>
-        <div><dt>Minimum</dt><dd>{{ r['min_nights'] or 1 }} night{{ '' if (r['min_nights'] or 1) == 1 else 's' }}</dd></div>
-      </dl>
-      <p class="g-tier__a"><a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn">See this room</a></p>
-    </li>
-    {% endfor %}
-  </ul>
-  <p class="g-limit"><span class="g-limit__k">On top</span>The taxe de séjour is set by the commune, not by us, and charged per adult per night{% if settings and settings['tourist_tax'] %} — €{{ '%.2f'|format(settings['tourist_tax']) }}{% endif %}. It is the only thing added to the rates above.</p>
-  <p class="g-limit"><span class="g-limit__k">No ensuites</span>The bedrooms are on the top floor and the bathrooms are downstairs, privately allocated. Ensuites are not permitted in a monument of this class.</p>
-</div></section>
+{# "All Five, In Numbers" stood here: the third presentation of the rooms, after the cards and the comparison table, repeating the cards fact for fact. #}
 
 <!-- ============ NO DATES YET ============ -->
 
@@ -844,7 +852,7 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Payment</p>
-      <p class="g-key__v">Charged in euro, handled by Stripe.<br>A stay is paid in full when you book; nothing is charged until the château confirms your dates.</p>
+      <p class="g-key__v">Charged in euro, handled by Stripe.<br>A stay is paid in full when you book, and your dates are confirmed the moment payment goes through.</p>
     </div>
   </div>
 </div></section>
@@ -853,7 +861,7 @@
 
 <div class="g-wrap">
   <p class="g-devise">
-    <span class="g-devise__fr">« Cinq chambres prêtes. Quatre-vingt-neuf attendent. »</span>
+    <span class="g-devise__fr">« Cinq chambres ouvertes. Quatre-vingt-neuf attendent. »</span>
     <span class="g-devise__en">Five rooms open to guests. Eighty-nine waiting</span>
   </p>
 </div>
@@ -862,12 +870,13 @@
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Linen turned down" loading="lazy">
+  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Take a room</h2>
-  <p class="g-close__p">Five bedrooms, opened one at a time as the restoration reaches them.</p>
+  {# The page already says this near the top; the close gets the two facts that decide it. #}
+  <p class="g-close__p">Breakfast is included, and your dates are confirmed the moment you book.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check your dates</a>
-      <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Keep the evening</a>
+      {% if _dm == 'open' %}<a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Keep the evening</a>{% endif %}
       <a href="{{ url_for('facilities_page') }}" class="g-btn g-btn">Walk the grounds</a>
   </div>
 </div></section>
@@ -893,6 +902,7 @@
 {
   "@context": "https://schema.org",
   "@type": "Hotel",
+  "@id": "https://chateaugudanes.com/#chateau",
   "name": "Château de Gudanes",
   "url": "{{ url_for('book_rooms', _external=True) }}",
   "address": {
@@ -918,8 +928,9 @@
     {% for r in rooms %}{
       "@type": "HotelRoom",
       "name": {{ room_name(r['name'])|trim|tojson }},
-      "occupancy": {"@type":"QuantitativeValue","maxValue": {{ (r['max_occupancy'] or 2)|int }}},
-      "bed": {"@type":"BedDetails","numberOfBeds": 1},
+      {# No occupancy is better than a wrong one (Les Deux Chambres sleeps five, not the old default of two), and it has two bedrooms, so no single-bed claim. #}
+      {% if r['max_occupancy'] %}"occupancy": {"@type":"QuantitativeValue","maxValue": {{ r['max_occupancy']|int }}},{% endif %}
+      {% if 'Deux' not in r['name'] and 'Family' not in r['name'] %}"bed": {"@type":"BedDetails","numberOfBeds": {{ 2 if ('Twin' in r['name'] or 'Tilleul' in r['name']) else 1 }}},{% endif %}
       "potentialAction": {
         "@type": "ReserveAction",
         "target": "{{ url_for('book_room', room_id=r['id'], _external=True) }}"

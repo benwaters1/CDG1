@@ -8,7 +8,7 @@
 <div class="g-mb-card">
   <p class="g-eyebrow">{{ t('Your enquiry') }}</p>
   <h1>{{ inquiry['event_type']|capitalize }} Enquiry</h1>
-  <p class="g-p">Status: <span class="mini-status status-{{ inquiry['status'] }}">{{ inquiry['status'] }}</span></p>
+  <p class="g-p">Status: <span class="mini-status status-{{ (inquiry['status']|string)|lower }}">{{ inquiry['status'] }}</span></p>
 
   <div class="g-mb-card">
     <dl class="g-facts-list">
@@ -21,10 +21,10 @@
          and stopped, so somebody who had already sent a deposit had no way
          to see it had landed — and events had no money model at all until
          now, so there was nothing to show. #}
-      {% if bill and bill.paid %}<div><dt>Received</dt><dd>€{{ '%.2f'|format(bill.paid) }}</dd></div>{% endif %}
-      {% if bill and bill.deposit and not bill.deposit_paid %}<div><dt>Deposit to hold the date</dt><dd><strong>€{{ '%.2f'|format(bill.deposit) }}</strong></dd></div>{% endif %}
+      {% if bill and bill.paid %}<div><dt>Received</dt><dd>€{{ '{:,.2f}'.format(bill.paid) }}</dd></div>{% endif %}
+      {% if bill and bill.deposit and not bill.deposit_paid %}<div><dt>Deposit to hold the date</dt><dd><strong>€{{ '{:,.2f}'.format(bill.deposit) }}</strong></dd></div>{% endif %}
       {% if bill and bill.due_date %}<div><dt>Balance due by</dt><dd>{{ bill.due_date|date_short }}</dd></div>{% endif %}
-      {% if bill and bill.owed %}<div><dt>Still to pay</dt><dd><strong>€{{ '%.2f'|format(bill.owed) }}</strong></dd></div>
+      {% if bill and bill.owed %}<div><dt>Still to pay</dt><dd><strong>€{{ '{:,.2f}'.format(bill.owed) }}</strong></dd></div>
       {% elif bill and bill.quoted and bill.settled %}<div><dt>Settled</dt><dd>Thank you</dd></div>{% endif %}
     </dl>
 
@@ -58,13 +58,13 @@
     {% endif %}
   </div>
 
-  {% if inquiry['status'] == 'quoted' %}
+  {% if (inquiry['status']|lower) == 'quoted' %}
   <p class="g-hint" style="margin-top:var(--s3);">We have sent through a quote — get in touch to confirm, or reply to the email if you have questions.</p>
-  {% elif inquiry['status'] == 'new' %}
+  {% elif (inquiry['status']|lower) == 'new' %}
   <p class="g-hint" style="margin-top:var(--s3);">We have received your enquiry and will be in touch shortly.</p>
   {% endif %}
 
-  {% if inquiry['status'] not in ('declined', 'cancelled') %}
+  {% if (inquiry['status']|lower) not in ('declined', 'cancelled') %}
   {# Not offered as a standing button. It was one click behind a generic
      browser confirm, with nothing said about money beforehand. Still
      reachable — a guest must be able to cancel — but the terms come
@@ -91,7 +91,7 @@
   <path d="M0 32 L58 18 L96 24 L150 6 L196 20 L236 11 L286 25 L330 14 L378 27 L424 19 L480 30"/>
   <path d="M0 33.5h480" opacity=".5"/>
 </svg>
-  {% if inquiry['status'] in ('pending', 'new', 'open') %}
+  {% if (inquiry['status']|lower) in ('pending', 'new', 'open') %}
   <div class="g-mb-card" style="margin-top:var(--s4)">
     <p class="g-mb-dt">Update your enquiry</p>
     <form method="post">

@@ -1,8 +1,17 @@
 {% extends "public_base.html" %}
 {% set sticky_bar = 'dining' %}
-{% set crumbs = [('La Table', url_for('restaurant_info')), ('Reserve', None)] %}
+{# Crumbs are set before the base template reads the dining switch, so read it here. #}
+{% set crumbs = [('Dining', url_for('restaurant_info') if ((settings.get('dining_mode') if settings else '') or 'open')|lower|trim != 'hidden' else None), ('Reserve', None)] %}
 {% block title %}Reserve a Table{% endblock %}
-{% block content %}
+{% block content %}{% if _dm != 'open' %}
+{# Shown when settings.dining_mode is not "open". #}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">La Table</p>
+  <h1 class="g-place">{% if _dm == 'closed' %}Closed for the Season{% else %}Not Serving at the Moment{% endif %}</h1>
+  <p class="g-p">{% if _dm == 'closed' %}La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}.{% else %}The château's table is not taking reservations at the moment.{% endif %} Breakfast is served every morning for guests staying in the house, and the ateliers are full board as always.</p>
+  <p class="g-p" style="margin-top:var(--s5)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">See the ateliers</a></p>
+</div></section>
+{% else %}
 {% from '_formkeep.html' import form_keep %}
 
 
@@ -19,7 +28,7 @@
 
   <p class="g-eyebrow">La Table · Château de Gudanes</p>
   <h1 class="g-display" >Reserve a table</h1>
-  <p class="g-lede" style="margin-bottom:var(--s2)">{%- if settings['price_per_person'] %}<span class="g-fig" data-eur="{{ settings['price_per_person']|int }}">€{{ '%.0f'|format(settings['price_per_person']) }}</span> per person{% endif %}{% if settings['dinner_time'] %} · seating from {{ settings['dinner_time'] }}{% endif %}{% if settings['capacity'] %} · up to {{ settings['capacity'] }} guests each evening{%- endif %}</p>
+  <p class="g-lede" style="margin-bottom:var(--s2)">{%- if settings['price_per_person'] %}<span class="g-fig" data-eur="{{ settings['price_per_person']|int }}">€{{ '{:,.0f}'.format(settings['price_per_person']) }}</span> per person{% endif %}{% if settings['dinner_time'] %} · seating from {{ settings['dinner_time'] }}{% endif %}{% if settings['capacity'] %} · up to {{ settings['capacity'] }} guests each evening{%- endif %}</p>
 
   <form id="restaurant_book-form" method="post" class="g-resform">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -97,7 +106,7 @@
             <div><dt>Date</dt><dd data-mirror="dinner_date">—</dd></div>
             <div><dt>Guests</dt><dd data-mirror="party_size">—</dd></div>
             {% if settings['dinner_time'] %}<div><dt>Seating</dt><dd>{{ settings['dinner_time'] }}</dd></div>{% endif %}
-            {% if settings['price_per_person'] %}<div><dt>Per person</dt><dd>€{{ '%.0f'|format(settings['price_per_person']) }}</dd></div>{% endif %}
+            {% if settings['price_per_person'] %}<div><dt>Per person</dt><dd>€{{ '{:,.0f}'.format(settings['price_per_person']) }}</dd></div>{% endif %}
           </dl>
 
           {% if stripe_enabled and settings['price_per_person'] %}
@@ -193,4 +202,5 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 </div></section>
 
 {{ form_keep('restaurant_book-form', 'gudanes.table') }}
+{% endif %}
 {% endblock %}

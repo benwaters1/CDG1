@@ -19,13 +19,15 @@
       </p>
     </div>
     <div style="text-align:right;">
-      <strong>{{ employer }}</strong>
+      {# The company being billed and the château issuing the bill shared one block, unlabelled. #}
+      {% if employer %}<p class="statement-to"><span class="g-hint">Billed to</span><br><strong>{{ employer }}</strong></p>{% endif %}
       <div class="g-hint">
         Château de Gudanes
         {% if company and company['registered_address'] %}<br>{{ company['registered_address'] }}{% endif %}
         {% if company and company['registration_number'] %}<br>SIRET {{ company['registration_number'] }}{% endif %}
         {% if company and company['vat_number'] %}<br>TVA {{ company['vat_number'] }}{% endif %}
-        {% if not (company and company['registration_number'] and company['vat_number']) %}
+        {# A note for staff; this page is the guest's bill, which business guests forward. #}
+{% if not (company and company['registration_number'] and company['vat_number']) and session and session.get('user_id') %}
         <br><span class="statement-missing">SIRET and TVA number missing —
           set them under Management, Company info</span>
         {% endif %}
@@ -57,12 +59,12 @@
     <tbody>
       <tr>
         <td>Accommodation — {{ s.nights }} night{{ '' if s.nights == 1 else 's' }}</td>
-        <td class="num">€{{ '%.2f'|format(s.accommodation) }}</td>
+        <td class="num">€{{ '{:,.2f}'.format(s.accommodation) }}</td>
       </tr>
       {% for e in s.extras %}
       <tr>
         <td>{{ e['name'] }}{% if e['quantity'] > 1 %} × {{ e['quantity'] }}{% endif %}</td>
-        <td class="num">€{{ '%.2f'|format((e['unit_price'] or 0) * (e['quantity'] or 0)) }}</td>
+        <td class="num">€{{ '{:,.2f}'.format((e['unit_price'] or 0) * (e['quantity'] or 0)) }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -78,9 +80,9 @@
       {% for v in s.vat %}
       <tr>
         <td>{{ '%.1f'|format(v.rate) }}%</td>
-        <td class="num">€{{ '%.2f'|format(v.net) }}</td>
-        <td class="num">€{{ '%.2f'|format(v.vat) }}</td>
-        <td class="num">€{{ '%.2f'|format(v.gross) }}</td>
+        <td class="num">€{{ '{:,.2f}'.format(v.net) }}</td>
+        <td class="num">€{{ '{:,.2f}'.format(v.vat) }}</td>
+        <td class="num">€{{ '{:,.2f}'.format(v.gross) }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -98,13 +100,13 @@
         <th scope="row">
           <strong>Taxe de séjour</strong>
           <div class="g-hint">
-            €{{ '%.2f'|format(s.city_tax_rate) }} per adult per night ·
+            €{{ '{:,.2f}'.format(s.city_tax_rate) }} per adult per night ·
             {{ s.adults }} adult{{ '' if s.adults == 1 else 's' }} × {{ s.nights }} night{{ '' if s.nights == 1 else 's' }}
             {%- if s.children %} · under-18s exempt{% endif %}
             <br>Collected on behalf of the commune. Not subject to VAT.
           </div>
         </th>
-        <td class="num">€{{ '%.2f'|format(s.city_tax) }}</td>
+        <td class="num">€{{ '{:,.2f}'.format(s.city_tax) }}</td>
       </tr>
     </tbody>
     </table>
@@ -116,16 +118,16 @@
     <tbody>
       <tr>
         <th scope="row"><strong>Total</strong></th>
-        <td class="num"><strong>€{{ '%.2f'|format(s.total) }}</strong></td>
+        <td class="num"><strong>€{{ '{:,.2f}'.format(s.total) }}</strong></td>
       </tr>
       {% if s.received %}
-      <tr><th scope="row">Received</th><td class="num">−€{{ '%.2f'|format(s.received) }}</td></tr>
+      <tr><th scope="row">Received</th><td class="num">−€{{ '{:,.2f}'.format(s.received) }}</td></tr>
       {% endif %}
       {% if s.refunded %}
       {# Shown rather than netted away in silence. A guest reading a smaller
          "paid" figure with no explanation has no way to tell a refund from a
          payment we failed to record. #}
-      <tr><th scope="row">Refunded</th><td class="num">+€{{ '%.2f'|format(s.refunded) }}</td></tr>
+      <tr><th scope="row">Refunded</th><td class="num">+€{{ '{:,.2f}'.format(s.refunded) }}</td></tr>
       {% endif %}
       {# Unconditional. This row used to sit inside "if paid", so a stay with
          nothing paid on it -- every stay awaiting confirmation, every stay on
@@ -133,7 +135,7 @@
          bill with no bottom line at all. #}
       <tr>
         <th scope="row"><strong>{{ 'Balance due' if s.balance > 0 else 'Settled' }}</strong></th>
-        <td class="num"><strong>€{{ '%.2f'|format(s.balance if s.balance > 0 else 0) }}</strong></td>
+        <td class="num"><strong>€{{ '{:,.2f}'.format(s.balance if s.balance > 0 else 0) }}</strong></td>
       </tr>
     </tbody>
     </table>

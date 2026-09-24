@@ -1,6 +1,7 @@
 {% extends "public_base.html" %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
-{% set sticky_bar = 'atelier' %}
+{# The atelier bar's button jumps to a dates section this page does not have; the form ends in its own Pay & register. #}
+{% set sticky_bar = 'none' %}
 {% set crumbs = [('Workshops', url_for('workshops_public')), ('Register', None)] %}
 {% block title %}Register — {{ session['title'] }}{% endblock %}
 {% block content %}
@@ -26,7 +27,9 @@
     <p class="g-room__meta">
       {{ date_range(session['start_date'], session['end_date']) }}{% if session['instructor_name'] %} · with {{ session['instructor_name'] }}{% endif %}{% if session['price_per_person'] %} · <span class="g-fig" data-eur="{{ session['price_per_person']|int }}">€{{ '{:,.0f}'.format(session['price_per_person']) }}</span> per person{%- endif %}</p>
     {% if session['inclusions'] %}
-    <p class="g-room__note"><b>Includes:</b> {{ session['inclusions'] }}</p>
+    {# On live this field holds the price basis ("Per person, sharing a room."), which read as "Includes: Per person". #}
+    {%- set _inc = (session['inclusions'] or '')|trim %}
+    {% if _inc.lower().startswith('per person') %}<p class="g-room__note">Prices are {{ _inc[:1]|lower }}{{ _inc[1:] }}</p>{% elif _inc %}<p class="g-room__note"><b>Includes:</b> {{ _inc }}</p>{% endif %}
     {% endif %}
   </div>
 
@@ -42,8 +45,8 @@
           <div class="g-field g-field--narrow">
             <label for="party_size">How many of you</label>
             <input type="number" inputmode="numeric" id="party_size" name="party_size" min="1"
-                   max="{{ session['capacity'] or 15 }}" value="{{ prefill_party_size }}" required>
-            <p class="g-hint">Up to {{ session['capacity'] }} on this workshop.</p>
+                   max="{{ session['capacity'] or 15 }}" value="{{ (prefill_party_size) or 1 }}" required>
+            {% if session and session['capacity'] %}<p class="g-hint">Up to {{ session['capacity'] }} on this workshop.</p>{% endif %}
             {% if session['price_per_person'] %}
             <p class="g-hint" id="occupancy_total"></p>
             {% endif %}
@@ -51,9 +54,7 @@
 
           <p class="g-hint g-hint--block">
             Arranged for two, and a third bed goes in if you need it —
-            tell us below and we will arrange it. Solo travellers are paired
-            thoughtfully with a like-minded guest, or given a room to themselves
-            where one is free.
+            tell us below and we will arrange it. Coming alone, you share with another guest travelling solo, or take a room to yourself with a single supplement.
           </p>
 
 
@@ -106,7 +107,7 @@
           </div>
 
           <div class="g-field">
-            <label for="medical_notes">Relevant medical issues <span class="g-opt">optional</span></label>
+            <label for="medical_notes">Anything medical we should know <span class="g-opt">optional</span></label>
             <textarea id="medical_notes" name="medical_notes" rows="2"
                       placeholder="Anything our team should be aware of">{{ prefill_medical_notes | default('') }}</textarea>
           </div>
@@ -165,11 +166,13 @@
         <dl class="g-dossier__l">
           <div><dt>Dates</dt><dd>{{ date_range(session['start_date'], session['end_date']) }}</dd></div>
           {% if session['instructor_name'] %}<div><dt>With</dt><dd>{{ session['instructor_name'] }}</dd></div>{% endif %}
-          {% if session['price_per_person'] %}<div><dt>Per person</dt><dd>€{{ '%.0f'|format(session['price_per_person']) }}</dd></div>{% endif %}
+          {% if session['price_per_person'] %}<div><dt>Per person</dt><dd>€{{ '{:,.0f}'.format(session['price_per_person']) }}</dd></div>{% endif %}
         </dl>
 
         {% if session['price_per_person'] %}
-        <p class="g-foot-note">A {{ session['deposit_percent'] }}% deposit is due at booking; the balance is due {{ windows.workshop_balance_days }} days before the stay, or in full if you are booking within {{ windows.workshop_balance_days }} days of it.</p>
+        {# Without the route's windows (or a deposit percent) this read "the balance is due  days before". #}
+        {%- set _bd = windows.workshop_balance_days if windows else none %}
+        <p class="g-foot-note">{% if session['deposit_percent'] %}A {{ session['deposit_percent'] }}% deposit is due at booking; {% else %}Nothing is due at booking; {% endif %}{% if _bd %}the balance is due {{ _bd }} days before the stay, or in full if you are booking within {{ _bd }} days of it.{% else %}the balance is due before the stay.{% endif %}</p>
         {% endif %}
 
         <button type="submit" class="g-btn g-submit">Pay &amp; register</button>
@@ -292,9 +295,9 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   <div class="g-plate">
     <div class="g-plate__row">
       <dl class="g-plate__l">
-        <div><dt>Included</dt><dd>Every meal, wine with dinner, the excursions, the teaching, and the bed</dd></div>
+        <div><dt>Included</dt><dd>Every meal, the château's wines and spirits, the transfers from Toulouse, the excursions, the teaching and your room</dd></div>
         <div><dt>Not included</dt><dd>Flights, travel insurance, and whatever you buy at the brocantes</dd></div>
-        <div><dt>Transfers</dt><dd>Toulouse or the train at Foix, at the arranged times</dd></div>
+        <div><dt>Transfers</dt><dd>Together from central Toulouse at 11am on the first day, and back by about one on the last</dd></div>
         <div><dt>To hold a place</dt><dd>A deposit now. The balance closer to the date, or pay it yourself</dd></div>
         <div><dt>Children</dt><dd>Eight and over, and welcome at the table</dd></div>
         <div><dt>Sharing</dt><dd>Rooms are arranged for two. A single supplement applies if you would rather not</dd></div>
@@ -308,7 +311,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Still deciding?</h2>
-  <p class="g-close__p">Five ateliers, and each leads with something different. The comparison is the quickest way to choose.</p>
+  <p class="g-close__p">Each atelier leads with something different. The comparison is the quickest way to choose.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Compare the ateliers</a>
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us</a>

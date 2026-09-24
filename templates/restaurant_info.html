@@ -1,9 +1,10 @@
 {% extends "public_base.html" %}
-{% block schema %}
+{% block schema %}{% if _dm != 'hidden' %}
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "Restaurant",
+  "containedInPlace": {"@id": "https://chateaugudanes.com/#chateau"},
   "name": "La Table — Château de Gudanes",
   "servesCuisine": ["French", "Occitan", "Pyrenean"],
   "priceRange": "€€€",
@@ -16,46 +17,57 @@
     "opens":"19:00","closes":"23:00"}
 }
 </script>
-{% endblock %}
+{% endif %}{% endblock %}
 {% set sticky_bar = 'dining' %}
-{% set crumbs = [('La Table', None)] %}
+{% set crumbs = [('Dining', None)] %}
 {% block title_fr %}La Table{% endblock %}
 {% block description_fr %}Un seul service par soir, dans la salle à manger du château. Cuisiné dans la cuisine Renaissance à partir du marché du dimanche et du potager.{% endblock %}
 {% block title %}Dining in a French Château, Ariège{% endblock %}
 {% block description %}One table, one sitting, in the dining salon of a Class I French château. Cooked from the Sunday market and the château gardens.{% endblock %}
 {% block og_desc %}Dinner at Château de Gudanes, cooked in the château's own Renaissance kitchen from the Sunday market and the gardens. Candlelight, and a fire in winter.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1200w{% endblock %}
-{% block bodyclass %} has-hero{% endblock %}
+{% block bodyclass %}{% if _dm != 'hidden' %} has-hero hero--short{% endif %}{% endblock %}
 {% block content %}
 {% from '_proof.html' import credential, proof %}
 {% from '_marks.html' import mark %}
+{% if _dm == 'hidden' %}
+{# Shown when settings.dining_mode is not "open". #}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">La Table</p>
+  <h1 class="g-place">{% if _dm == 'closed' %}Closed for the Season{% else %}Not Serving at the Moment{% endif %}</h1>
+  <p class="g-p">{% if _dm == 'closed' %}La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}.{% else %}The château's table is not taking reservations at the moment.{% endif %} Breakfast is served every morning for guests staying in the house, and the ateliers are full board as always.</p>
+  <p class="g-p" style="margin-top:var(--s5)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">See the ateliers</a></p>
+</div></section>
+{% else %}
 <section class="g-hero">
 <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w" alt="The dining room at Château de Gudanes">
 <div class="g-hero__wash"></div>
 <div class="g-hero__in"><p class="g-hero__eyebrow">Dining · Château de Gudanes</p>
     <h1 class="g-hero__title">La Table</h1>
-    <p class="g-hero__cta"><a href="{{ url_for('restaurant_book') }}" class="g-btn g-btn--solid">Reserve a table</a></p>
+    {% if _dm == 'open' %}<p class="g-hero__cta"><a href="{{ url_for('restaurant_book') }}" class="g-btn g-btn--solid">Reserve a table</a></p>{% else %}<p class="g-hero__lede">Closed for the season{% if _dr %}, reopening {{ _dr }}{% endif %}.</p>{% endif %}
   </div>
 </section>
 
 <!-- ============ THE CONSTRAINT, STATED EARLY ============ -->
 {# The full scarcity block sits near the foot of the page, which is too late
    to frame a decision. This is the same fact, one line, near the top. #}
-<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">The table</span>One table, one sitting, on the nights the kitchen is open. Residents are seated first.</p></div>
+{# Callout moved into the reading column below: in its own full-width wrap it
+   started 336px left of the centred paragraphs it introduces. #}
 
 
 
-<section class="g-sec"><div class="g-wrap"><p class="g-p g-lede-first">Dinner at the château, cooked by our own chefs and served in the dining room by candlelight.</p>
+<section class="g-sec"><div class="g-wrap"><p class="g-limit"><span class="g-limit__k">The table</span>One table, one sitting, on the nights the kitchen is open. Residents are seated first.</p>
+<p class="g-p g-lede-first">Dinner at the château, cooked by our own chefs and served in the dining room by candlelight.</p>
 <p class="g-p">Meals are arranged in advance rather than served to order, so that the kitchen buys for the table it is cooking for. Lunch runs on the same terms, and is often carried out to the terrace.</p>
 <p class="g-p">There is no fixed menu. What you eat depends on the Sunday market in the village, on the producers the chef buys from, and in summer on the château gardens.</p></div></section>
 
-<section class="g-book-bar"><div class="g-wrap">
+{% if _dm == 'open' %}<section class="g-book-bar"><div class="g-wrap">
   <div class="g-table-cta">
     <div>
       <h2 class="g-h3" style="margin-bottom:var(--s2)">Reserve a table</h2>
       <p class="g-table-cta__d">
         {%- if settings and settings['price_per_person'] -%}
-          <span class="g-fig" data-eur="{{ settings['price_per_person']|int }}">€{{ '%.0f'|format(settings['price_per_person']) }}</span> per person ·
+          <span class="g-fig" data-eur="{{ settings['price_per_person']|int }}">€{{ '{:,.0f}'.format(settings['price_per_person']) }}</span> per person ·
         {%- endif -%}
         {%- if settings and settings['dinner_time'] %} from {{ settings['dinner_time'] }} · {% endif -%}
         {# Always true, so the line is never empty even before the settings
@@ -65,7 +77,7 @@
       </p>
     </div>
     {% if settings and settings['enabled'] %}
-      <a href="{{ url_for('restaurant_book') }}" class="g-btn g-btn--solid">Reserve</a>
+      {% if _dm == 'open' %}<a href="{{ url_for('restaurant_book') }}" class="g-btn g-btn--solid">Reserve</a>{% endif %}
     {% else %}
       <span class="g-btn g-btn--off">Reservations opening shortly</span>
     {% endif %}
@@ -74,7 +86,9 @@
     We will confirm by email, and send the menu before you arrive.
     <a href="{{ url_for('restaurant_find') }}">Manage an existing reservation</a>
   </p>
-</div></section>
+</div></section>{% else %}
+<section class="g-sec"><div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Closed for the season</span>La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}. Breakfast is served every morning for guests staying in the house.</p></div></section>
+{% endif %}
 
 <div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1500w" alt="The dining room laid for dinner" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w" alt="The kitchen gardens in late summer" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1500w" alt="The long table before service" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1500w" alt="Produce from the Sunday market" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1728027560330-AOHMYTLQV9BVVSYW5FS3/Gardens+-+Formal+Gardens+2.jpg?format=1500w" alt="The formal gardens" loading="lazy"></div>
 
@@ -101,7 +115,7 @@
 </svg>
   <h2 class="g-place">La Salle à Manger</h2><p class="g-p"><em>The room in which dinner is served was among the most damaged in the château.</em></p>
 <p class="g-p">Its ceiling had gone. What remained of the panelling was under later paint, and the floor beneath it had rotted through in places. It took several years to bring back — the plaster consolidated rather than replaced, the panelling cleaned by hand, and a new floor laid in oak beneath walls left deliberately as they were found.</p>
-<p class="g-p">Dinner is served by candlelight in the dining room. In winter the fire is lit.</p></div>
+<p class="g-p">Dinner is served in it, and in winter the fire is lit.</p></div>
 </div></section>
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
@@ -118,12 +132,13 @@
   <div style="margin-top:var(--s6)">
   {% for category in menu_categories %}
     {% if items_by_category.get(category) %}
-    <h3 class="g-h3" style="margin-top:var(--s6)">{{ category }}s</h3>
+    {# "s" was added to every category ("Petits fourss", "Plat principals"); only to a single word not already plural. #}
+        <h3 class="g-h3" style="margin-top:var(--s6)">{{ category if (' ' in category or category.endswith('s')) else category ~ 's' }}</h3>
     <ul class="g-time" style="margin:0">
       {% for item in items_by_category[category] %}
       <li style="grid-template-columns:1fr auto">
         <span><b>{{ item['name'] }}</b>{% if item['description'] %}<br><span>{{ item['description'] }}</span>{% endif %}</span>
-        {% if item['price'] %}<span class="g-fig">€{{ '%.0f'|format(item['price']) }}</span>{% endif %}
+        {% if item['price'] %}<span class="g-fig">€{{ '{:,.0f}'.format(item['price']) }}</span>{% endif %}
       </li>
       {% endfor %}
     </ul>
@@ -137,7 +152,7 @@
 
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
   <h2 class="g-place">Through The Day</h2>
-  <ul class="g-time"><li><b>Petit-déjeuner</b><span>Eight until ten, included with every stay. Viennoiseries from the village, local yoghurts and preserves, and teas made from herbs grown in the gardens.</span></li><li><b>Salon de Thé</b><span>Open from morning until evening. French and local teas, coffee, and hot water refreshed through the day.</span></li><li><b>Déjeuner</b><span>By arrangement, and often taken outside when the weather allows — beneath the façade, or in the gardens above the valley.</span></li><li><b>Dîner</b><span>Served from half past seven, by candlelight in the dining room.</span></li></ul>
+  <ul class="g-time"><li><b>Petit-déjeuner</b><span>Eight until ten, included with every stay. Viennoiseries from the village, local yoghurts and preserves, and teas made from herbs grown in the gardens.</span></li><li><b>Salon de Thé</b><span>Open from morning until evening. French and local teas, coffee, and hot water refreshed through the day.</span></li><li><b>Déjeuner</b><span>By arrangement, and often taken outside when the weather allows — beneath the façade, or in the gardens above the valley.</span></li><li><b>Dîner</b><span>Served from half past seven in the dining room.</span></li></ul>
 </div></section>
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
@@ -219,7 +234,7 @@
     <div class="g-find">
       <p class="g-find__k">Half past seven</p>
       <h3 class="g-find__t">Dinner</h3>
-      <p class="g-find__d">By candlelight in the dining room, or en plein air under the sky if the evening is warm. Family style, plated, or laid out to help yourself — it depends on the night.</p>
+      <p class="g-find__d">In the dining room, or en plein air under the sky if the evening is warm. Family style, plated, or laid out to help yourself — it depends on the night.</p>
     </div>
     <div class="g-find">
       <p class="g-find__k">Occasionally</p>
@@ -305,23 +320,33 @@
   </div>
 </div></section>
 
-<!-- ============ THE KITCHEN, THEN AND NOW ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">The Kitchen</p>
-  <h2 class="g-place">A Camping Stove, Once</h2>
-  <p class="g-p">The first chef to cook here in the restoration arrived to no fridge, no sink, and a camping stove.</p>
+{# "A Camping Stove, Once" (the kitchen then and now) removed at the owner's request: rough-living anecdotes do not belong on the pages that sell. #}
+<!-- ============ THE CHEF ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">Aux fourneaux<span class="g-fr__en">At the stove</span></p>
+  <p class="g-eyebrow">Who Cooks</p>
+  <h2 class="g-place">Tom</h2>
 
-  <div class="g-plate">
-    <div class="g-plate__row">
-      <dl class="g-plate__l">
-        <div><dt>Now</dt><dd>A working Renaissance kitchen in the medieval part of the building</dd></div>
-        <div><dt>The team</dt><dd>Chefs de cuisine, French and international</dd></div>
-        <div><dt>Pâtisserie</dt><dd>Classic French, made here in the château kitchen</dd></div>
-        <div><dt>Bought</dt><dd>From the Sunday market at Les Cabannes and producers of twenty years</dd></div>
-        <div><dt>Grown</dt><dd>From the château gardens through the summer</dd></div>
-        <div><dt>Cooked from</dt><dd>The eighteenth-century Gudanes recipe book, and everything since</dd></div>
-        <div><dt>Served</dt><dd>Family style, plated, or servez-vous — it depends on the night</dd></div>
-      </dl>
+  <div class="g-chef">
+    {# A slot, not a file somebody has to remember to ship: the handover asked
+       for static/img/tom.jpg and has not carried it twice now, and on a public
+       page a missing file is a broken image rather than a missing one. Upload
+       it at /admin/images and it appears; until then the copy stands on its
+       own and the frame is not drawn. #}
+    {% set chef_photo = site_image('restaurant.chef') %}
+    {% if chef_photo %}
+    <div class="g-chef__img">
+      <img src="{{ chef_photo }}"
+           alt="Tom, Chef de Cuisine, carrying two plates down the château steps"
+           loading="lazy" decoding="async">
+    </div>
+    {% endif %}
+    <div class="g-chef__b">
+      <p class="g-chef__role">Chef de Cuisine</p>
+      <p class="g-p g-lede-first">Tom owned his own restaurant for more than twenty years before he came here, and it was recognised by the Michelin Guide throughout.</p>
+      <p class="g-p">He cooks classically and seasonally, which at this altitude means the menu is decided by what the Sunday market and the château gardens give that week rather than by what a card says. Herbs, flowers and produce come from twenty metres away.</p>
+      <p class="g-p">He is one of the few chefs equally serious about the savoury and the sweet, which is why the afternoon tea here is not an afterthought. Ask him about French cooking and you will get the history as well as the method.</p>
+      <p class="g-limit"><span class="g-limit__k">Why it matters</span>Cooking for one table means he cooks for a room rather than a service. Dietary requirements sent early are designed into the menu, not worked around.</p>
     </div>
   </div>
 </div></section>
@@ -375,7 +400,7 @@
   <p class="g-eyebrow">From the Table</p>
   <figure class="g-say" style="margin:0">
     <blockquote class="g-say__q">The breakfast was outstanding, with local produce and fresh fruit.</blockquote>
-    <figcaption class="g-say__by">A guest<span class="g-say__src">Google</span></figcaption>
+    <figcaption class="g-say__by">Cynthia<span class="g-say__src">United States · Booking.com</span></figcaption>
   </figure>
 </div></section>
 
@@ -448,7 +473,7 @@
     <div class="g-scarce__grid">
       <div class="g-scarce__i"><b class="g-fig">1</b><span>Sitting, when it runs</span></div>
       <div class="g-scarce__i"><b class="g-fig">40</b><span>Seated at most, in the main salon</span></div>
-      <div class="g-scarce__i"><b class="g-fig">7:30</b><span>At table, by candlelight</span></div>
+      <div class="g-scarce__i"><b class="g-fig">7:30</b><span>At table</span></div>
       <div class="g-scarce__i"><b class="g-fig">317</b><span>People in the village that feeds it</span></div>
     </div>
     <p class="g-scarce__note">Residents are seated first. Non-residents are welcome when there is room, which in summer means asking early.</p>
@@ -466,8 +491,10 @@
       <p class="g-key__v">2 Route de Beille<br>Château-Verdun, Ariège 09310<br>France</p>
     </div>
     <div class="g-key__i">
-      <p class="g-key__k">Arrival</p>
-      <p class="g-key__v">From 4pm. Departure by 11am.<br>Someone will meet you at the gates.</p>
+      {# Was the stay block's check-in and check-out ("From 4pm. Departure by 11am"),
+         which on the dining page reads as when a diner should arrive. #}
+      <p class="g-key__k">Dinner</p>
+      <p class="g-key__v">Aperitif from seven, at table at half past.<br>Someone will meet you at the gates.</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Getting here</p>
@@ -490,47 +517,18 @@
 </div></section>
 
 
-<!-- ============ THE CHEF ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-fr">Aux fourneaux<span class="g-fr__en">At the stove</span></p>
-  <p class="g-eyebrow">Who Cooks</p>
-  <h2 class="g-place">Tom</h2>
-
-  <div class="g-chef">
-    {# A slot, not a file somebody has to remember to ship: the handover asked
-       for static/img/tom.jpg and has not carried it twice now, and on a public
-       page a missing file is a broken image rather than a missing one. Upload
-       it at /admin/images and it appears; until then the copy stands on its
-       own and the frame is not drawn. #}
-    {% set chef_photo = site_image('restaurant.chef') %}
-    {% if chef_photo %}
-    <div class="g-chef__img">
-      <img src="{{ chef_photo }}"
-           alt="Tom, Chef de Cuisine, carrying two plates down the château steps"
-           loading="lazy" decoding="async">
-    </div>
-    {% endif %}
-    <div class="g-chef__b">
-      <p class="g-chef__role">Chef de Cuisine</p>
-      <p class="g-p g-lede-first">Tom owned his own restaurant for more than twenty years before he came here, and it was recognised by the Michelin Guide throughout.</p>
-      <p class="g-p">He cooks classically and seasonally, which at this altitude means the menu is decided by what the Sunday market and the château gardens give that week rather than by what a card says. Herbs, flowers and produce come from twenty metres away.</p>
-      <p class="g-p">He is one of the few chefs equally serious about the savoury and the sweet, which is why the afternoon tea here is not an afterthought. Ask him about French cooking and you will get the history as well as the method.</p>
-      <p class="g-limit"><span class="g-limit__k">Why it matters</span>Cooking for one table means he cooks for a room rather than a service. Dietary requirements sent early are designed into the menu, not worked around.</p>
-    </div>
-  </div>
-</div></section>
-
 <!-- ============ THE CLOSE ============ -->
 <section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The table laid by candlelight" loading="lazy">
+  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Come to the table</h2>
   <p class="g-close__p">Meals are arranged in advance so the kitchen buys for the table it is cooking for. Tell us when you book.</p>
   <div class="g-close__acts">
-      <a href="{{ url_for('restaurant_book') }}" class="g-btn g-btn--solid">Reserve a table</a>
+      {% if _dm == 'open' %}<a href="{{ url_for('restaurant_book') }}" class="g-btn g-btn--solid">Reserve a table</a>{% endif %}
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn">Stay the night</a>
   </div>
 </div></section>
 
 <div class="g-wrap">{{ proof(settings) }}</div>
 
+{% endif %}
 {% endblock %}

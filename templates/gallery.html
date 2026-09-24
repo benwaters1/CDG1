@@ -1,6 +1,8 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('Gallery', None)] %}
 {% block title %}Gallery{% endblock %}
+{# No bodyclass: this page has no hero. I had added has-hero hero--full from the stylesheet's
+   (stale) list of full-hero pages; the header only looked right because its script falls back. #}
 {% block description %}Château de Gudanes photographed over a decade of restoration — by Vogue, AD Italia, Zimmermann, and the people living in the middle of the work.{% endblock %}
 {% block og_desc %}Château de Gudanes photographed over a decade of restoration — by Vogue, AD Italia, Zimmermann, and the people living in the middle of the work.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/115c409a-1d7f-445b-97e2-dd7a7b74ce87/DJI_0275-2-Edit.jpg?format=1200w{% endblock %}
@@ -23,10 +25,10 @@
     {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1500w", 'caption': 'The kitchen'},
     {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w", 'caption': 'The dining room'},
     {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w", 'caption': 'The kitchen table in winter'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w", 'caption': 'Chambre des Fleurs'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1500w", 'caption': 'Chambre Bleue'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1500w", 'caption': 'Chambre du Parc'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1500w", 'caption': 'Chambre Emeraude'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w", 'caption': 'A bedroom'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1500w", 'caption': 'A bedroom'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1500w", 'caption': 'A bedroom'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1500w", 'caption': 'The Gold Suite'},
     {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w", 'caption': 'The bathrooms'}
   ],
   'grounds': [
@@ -64,7 +66,8 @@
   <p class="g-p">There is no styling here and very little tidying. Rooms are photographed as they are on the day — some restored, some with the plaster still open and the scaffolding up. That is the point of the record.</p>
 
 
-    <p class="g-lede">Bare plaster and restored salons, the grounds in every season, and the work itself. No staging, and nothing hidden.</p>
+    {# A larger-type lede stood here, after the body copy, restating it ("No styling ... as they
+       are on the day" -> "No staging, and nothing hidden"). #}
     <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
   </div>
 </section>

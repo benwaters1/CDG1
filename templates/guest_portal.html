@@ -32,10 +32,10 @@
       <div><dt>{{ t('Room') }}</dt><dd>{{ stay['room_name'] }}</dd></div>
       <div><dt>{{ t('Dates') }}</dt><dd>{{ stay['arrival_date']|date_short }} → {{ stay['departure_date']|date_short }}</dd></div>
       <div><dt>{{ t('Reference') }}</dt><dd>{{ stay['reference_code'] }}</dd></div>
-      <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ stay['status'] }}">{{ stay['status'] }}</span></dd></div>
+      <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ (stay['status']|string)|lower }}">{{ stay['status'] }}</span></dd></div>
     </dl>
     {% if bills.get(stay['id']) %}
-    <p class="g-p" style="margin-top:var(--s2);">Still to pay: <strong>€{{ '%.2f'|format(bills[stay['id']].owed) }}</strong></p>
+    <p class="g-p" style="margin-top:var(--s2);">Still to pay: <strong>€{{ '{:,.2f}'.format(bills[stay['id']].owed) }}</strong></p>
     {% endif %}
     <a href="{{ url_for('manage_booking', manage_token=stay['manage_token']) }}" class="g-btn g-btn--sm" style="margin-top:var(--s2); display:inline-block;">
       {% if stay['arrival_date'] >= today %}{{ t('Manage this stay') }}{% else %}{{ t('View this stay') }}{% endif %}
@@ -52,7 +52,7 @@
       <div><dt>Atelier</dt><dd>{{ reg['workshop_title'] }}</dd></div>
       <div><dt>{{ t('Dates') }}</dt><dd>{{ reg['start_date']|date_short }}{% if reg['end_date'] != reg['start_date'] %} → {{ reg['end_date']|date_short }}{%- endif %}</dd></div>
       <div><dt>{{ t('Reference') }}</dt><dd>{{ reg['reference_code'] }}</dd></div>
-      <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ reg['status'] }}">{{ reg['status'] }}</span></dd></div>
+      <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ (reg['status']|string)|lower }}">{{ reg['status'] }}</span></dd></div>
     </dl>
     <a href="{{ url_for('workshop_manage', manage_token=reg['manage_token']) }}" class="g-btn g-btn--sm" style="margin-top:var(--s2); display:inline-block;">{{ t('Manage this registration') }}</a>
   </div>
@@ -67,7 +67,7 @@
       <div><dt>Date</dt><dd>{{ dinner['dinner_date']|date_short }}</dd></div>
       <div><dt>{{ t('Party size') }}</dt><dd>{{ dinner['party_size'] }}</dd></div>
       <div><dt>{{ t('Reference') }}</dt><dd>{{ dinner['reference_code'] }}</dd></div>
-      <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ dinner['status'] }}">{{ dinner['status'] }}</span></dd></div>
+      <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ (dinner['status']|string)|lower }}">{{ dinner['status'] }}</span></dd></div>
     </dl>
     {% if dinner['manage_token'] %}
     <a href="{{ url_for('restaurant_manage', manage_token=dinner['manage_token']) }}" class="g-btn g-btn--sm" style="margin-top:var(--s2); display:inline-block;">{{ t('Manage this booking') }}</a>
@@ -86,7 +86,7 @@
       <div><dt>{{ t('Occasion') }}</dt><dd>{{ ev['event_type'] }}</dd></div>
       {% if ev['preferred_date'] %}<div><dt>{{ t('Date asked for') }}</dt><dd>{{ ev['preferred_date']|date_short }}</dd></div>{% endif %}
       <div><dt>{{ t('Reference') }}</dt><dd>{{ ev['reference_code'] }}</dd></div>
-      <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ ev['status'] }}">{{ ev['status'] }}</span></dd></div>
+      <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ (ev['status']|string)|lower }}">{{ ev['status'] }}</span></dd></div>
     </dl>
     {% if ev['manage_token'] %}
     <a href="{{ url_for('event_manage', manage_token=ev['manage_token']) }}" class="g-btn g-btn--sm" style="margin-top:var(--s2); display:inline-block;">{{ t('Manage this enquiry') }}</a>

@@ -4,10 +4,10 @@
 {% block title_fr %}Les Ateliers{% endblock %}
 {% block description_fr %}Ateliers de restauration au château : enduits à la chaux, dorure, conservation de fresques du XVIIIe siècle. Quinze places, un atelier à la fois.{% endblock %}
 {% block title %}Craft Workshops in a French Château{% endblock %}
-{% block description %}Plaster, gilding and fresco conservation taught by the artisans restoring a Class I French château. Fifteen places, the house to yourselves, full board.{% endblock %}
-{% block og_desc %}Five ateliers at Château de Gudanes — restoration, cooking, and the brocantes of the Ariège. Never more than fifteen guests, and the château takes no others.{% endblock %}
+{% block description %}Small-group ateliers inside a Class I French château under restoration: the brocantes, the kitchen, the frescoes and the crafts. Fifteen places, full board.{% endblock %}
+{% block og_desc %}{% set _on = workshops|length if workshops else 0 %}{% if 1 < _on <= 12 %}{{ ['One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve'][_on-1] }} ateliers{% elif _on == 1 %}An atelier{% else %}Ateliers{% endif %} at Château de Gudanes — restoration, cooking, and the brocantes of the Ariège. Never more than fifteen guests, and the château takes no others.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1200w{% endblock %}
-{% block bodyclass %} has-hero{% endblock %}
+{% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
 {% from '_proof.html' import credential, proof %}
 {% from '_exclusive.html' import exclusive %}
@@ -23,9 +23,10 @@
   <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ WS_HERO }}" alt="Château Workshops">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
-    <p class="g-hero__eyebrow">{%- if workshops %}{{ workshops|length }} Atelier{{ '' if workshops|length == 1 else 's' }} · {% endif %}Château de Gudanes</p>
+    {% set _wn = workshops|length if workshops else 0 %}{% set _ww = (['One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve'][_wn-1] if 0 < _wn <= 12 else _wn|string) %}
+    <p class="g-hero__eyebrow">{%- if workshops %}{{ _ww }} Atelier{{ '' if _wn == 1 else 's' }} · {% endif %}Château de Gudanes</p>
     <h1 class="g-hero__title">Château Workshops</h1>
-    <p class="g-hero__lede">{%- if workshops %}{{ workshops|length }} atelier{{ '' if workshops|length == 1 else 's' }}{% else %}Time{% endif %} inside a working restoration — and the real luxury of French food, antiques and craft around them.</p>
+    <p class="g-hero__lede">{%- if workshops %}{{ _ww }} atelier{{ '' if _wn == 1 else 's' }}{% else %}Time{% endif %} inside a working restoration, taught by the people doing the work — with the table, the cellar and the brocantes of the Ariège around them.</p>
   
     <p class="g-hero__cta"><a href="#dates" class="g-btn g-btn--solid">See every date</a></p>
   </div>
@@ -39,21 +40,22 @@
 
 
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-p g-drop-cap g-lede-first">{%- if workshops %}{{ workshops|length }} ateliers, and the length you choose decides what you spend your days doing.{% else %}The length you choose decides what you spend your days doing.{% endif %} Three nights is given to the brocantes, five to the kitchen, seven to the restoration itself. Noël and the artisan atelier stand apart — one seasonal, one built entirely around making.</p>
+  <p class="g-p g-drop-cap g-lede-first">{%- if workshops %}{{ _ww }} atelier{{ '' if _wn == 1 else 's' }}, and the length you choose decides what you spend your days doing.{% else %}The length you choose decides what you spend your days doing.{% endif %} Three nights are given to the brocantes, five to the kitchen, seven to the restoration itself; Noël and the artisans' atelier stand apart — one seasonal, one built entirely around making.</p>
 
   <div class="g-split" style="margin-top:var(--s6)">
     <div>
       <p class="g-p">A château is not a hotel that happens to be old. There is no reception, because someone comes out to meet you. There is a house that has been standing since 1741, four of whose ninety-four rooms were habitable when the family bought it, and a decade of work since to bring back the rest — approved intervention by approved intervention, because France does not allow a Class I monument to be renovated in the ordinary sense.</p>
       <p class="g-p">What that means for a guest is unusual. You are not visiting a finished thing. Bare plaster and weathered stone are protected and will stay; the beds, the linen, the floors and the bathrooms are new and are very good indeed. Both facts are true at once, and neither is an apology.</p>
+      {# This paragraph repeated the dining section almost word for word. #}
+<p class="g-p">The teaching is the real thing. Each atelier is led by the people who do the work here — the conservators on the walls, the chef in the kitchen, the dealers who have furnished the house — and it happens in the rooms it is for, not in a studio set aside for visitors.</p>
     </div>
     <div>
-        <figure class="g-fig-block" style="margin:var(--s7) 0">
+        <figure class="g-fig-block" style="margin:0 0 var(--s5)">
     <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1200w" alt="The kitchen table mid-morning" loading="lazy">
     <figcaption>The kitchen at eleven. Whatever came back from the market that morning, on the table it will be cooked on.</figcaption>
   </figure>
 
-<p class="g-p">Meals matter here more than the schedule does. The chefs cook from the Sunday market in the village square, from producers they have used for years, and in summer from the château's own gardens. Breakfast runs long. Lunch is often outside under the lime trees. Dinner is by candlelight in the dining room.</p>
-      <p class="g-p">Between the working hours there is a pool below the formal gardens, a tennis court in the trees, ten acres of parkland to walk at any hour, and the salons — the drawing room, the music room, the two dining rooms — to sit in and do nothing at all. Electricity is limited by design. In the evening the rooms are lit by candle.</p>
+      <p class="g-p">Between the working hours there is a pool below the formal gardens, a tennis court in the trees, ten acres of parkland to walk at any hour, and the salons — the drawing room, the music room, the two dining rooms — to sit in and do nothing at all.</p>
     </div>
   </div>
 
@@ -65,7 +67,7 @@
   </svg>
 
   <p class="g-p" style="margin-left:auto;margin-right:auto;text-align:center">
-    Never more than fifteen guests, and the château takes no others while an atelier runs. Full board, château beverages, every activity and the transfers from Toulouse are included in one price.
+    Full board, the château's wines and spirits, every activity and the transfers from Toulouse come with every atelier.
   </p>
 </div></section>
 
@@ -79,15 +81,10 @@
 {{ atelier_glance(glance_workshop, settings, glance_from) }}
 
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
-  <h2 class="g-place">{% if workshops and workshops|length > 1 %}{{ workshops|length }} Ateliers, One House{% else %}One Atelier at a Time{% endif %}</h2>
-  <p class="g-p">Five ateliers across the year, each a few nights inside the working restoration. What each one is:</p>
-  <dl class="g-facts-list" style="margin-bottom:var(--s7)">
-    <div><dt>Three nights</dt><dd>The brocantes — antique fairs, vide-greniers and the dealers worth the detour</dd></div>
-    <div><dt>Five nights</dt><dd>The kitchen — market mornings, hands-on classes, and the château's own 1700s recipe book</dd></div>
-    <div><dt>Seven nights</dt><dd>The restoration — real hours beside the conservators on the frescoes, plus cooking and the fairs</dd></div>
-    <div><dt>Noël</dt><dd>Four nights in December, once a year. The house at Christmas, which is not like the château at any other time</dd></div>
-    <div><dt>The Artisans</dt><dd>Four nights given to making — the crafts the restoration itself depends on, taught by the people who do them</dd></div>
-  </dl>
+  <h2 class="g-place">{% if _wn > 1 %}{{ _ww }} Ateliers, One House{% else %}One Atelier at a Time{% endif %}</h2>
+  <p class="g-p">{% if _wn > 1 %}{{ _ww }} ateliers across the year, each a few nights inside the working restoration.{% else %}A few nights inside the working restoration.{% endif %}</p>
+  {# A static list of the five formats stood here ("The brocantes", "The kitchen", "The restoration"...), naming them
+     differently from the cards below it and repeating the opening paragraph. The cards say it, by their real names. #}
 
   {% if workshops %}
   <div class="g-wscards">
@@ -113,7 +110,9 @@
         <p class="g-wscard__dates">{% for r in rows[:3] %}{{ r.session['start_date']|date_short }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
         {% endif %}
       </div>
-      {% if w['description'] %}<p class="g-p g-wscard__blurb">{{ w['description']|truncate(180) }}</p>{% endif %}
+      {# Cut at a sentence, not at 180 characters ("in a house being...", "with someone who knows..."). #}
+      {%- if w['description'] %}{% set _bl = namespace(t='') %}{% for sent in (w['description']|striptags|trim).replace('\n', ' ').split('. ') %}{% if _bl.t|length < 120 %}{% set _bl.t = (_bl.t ~ ' ' ~ sent|trim)|trim %}{% if not _bl.t.endswith(('.', '!', '?')) %}{% set _bl.t = _bl.t ~ '.' %}{% endif %}{% endif %}{% endfor %}
+      <p class="g-p g-wscard__blurb">{{ _bl.t }}</p>{% endif %}
       <div class="g-wscard__foot">
         {% if w['price_per_person'] %}
         <p class="g-wscard__price">
@@ -126,14 +125,14 @@
     </article>
     {% endfor %}
   </div>
-  <p class="g-hint" style="margin-top:var(--s5)">All prices are charged in Euros. Other currencies shown are an approximate live conversion for reference only.</p>
+  <p class="g-hint" style="margin-top:var(--s5)">All prices are charged in euros. Other currencies shown are an approximate live conversion for reference only.</p>
   {% else %}
   <p class="g-p">Dates for the coming season are being finalised. They are released here first, and to the newsletter before that.</p>
   {% endif %}
 </div></section>
 
 <div class="g-quote-band">
-  <p class="g-quote-band__t">Every atelier is taught in the rooms it is restoring — the fresco you gild is the one on the wall around you, not a copy of it.</p>
+  <p class="g-quote-band__t">Every atelier is taught in the rooms it is restoring — the fresco you clean is the one on the wall around you, not a copy of it.</p>
 </div>
 
 <!-- ============ EVERY DATE, IN ONE PLACE ============ -->
@@ -159,12 +158,14 @@
     {% endfor %}
   </div>
 
+  {# The same photograph per atelier as the cards above. This map had bedrooms for the
+     Cooking, Artisans and Seven-night ateliers (Chambre Bleue, bedroom 3, Chambre du Parc). #}
   {% set WS_PIC = {
     'Antique': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w",
-    'Artisan': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/cc7f6cb2-243c-47a9-ab7e-5200a66afca1/bedroom+3.jpg?format=1000w",
+    'Artisan': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w",
     'Noël':    "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/03ca0108-8c1e-423f-a790-84ed2b154fac/Chateau+de+Gudanes+In+Winter+2.png?format=1000w",
-    'Cooking': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1000w",
-    'Seven':   "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1000w"
+    'Cooking': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1000w",
+    'Seven':   "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1000w"
   } %}
 
   <p class="g-p" style="margin-top:calc(var(--s2)*-1)">Every date across the year, in one place — filter by atelier above.</p>
@@ -212,8 +213,8 @@
   <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
-  <h2 class="g-place">What the Price Already Covers</h2>
-  <p class="g-p">One price, and nothing added to it once you are here.</p>
+  <h2 class="g-place">Included in Every Atelier</h2>
+  <p class="g-p">One price, and nothing added once you are here.</p>
 
   <div class="g-incl-cards">
     <article class="g-incl-card">
@@ -228,7 +229,7 @@
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1000w" alt="A château bedroom" loading="lazy">
       <div class="g-incl-card__b">
         <h3 class="g-incl-card__t">Your Room</h3>
-        <p>An antique French bed dressed in vintage monogrammed linen, and a beautifully appointed shared bathroom downstairs. Laundry whenever you need it.</p>
+        <p>An antique French bed dressed in vintage monogrammed linen, and a beautifully appointed private bathroom on the first floor. Laundry whenever you need it.</p>
       </div>
     </article>
 
@@ -253,7 +254,7 @@
 
   <dl class="g-facts-list">
     <div><dt>Group size</dt><dd>Never more than fifteen, and the château takes no other guests while a workshop runs</dd></div>
-    <div><dt>Rooms</dt><dd>Arranged for two. A third bed if you need it. Solo travellers paired, or given a room where one is free</dd></div>
+    <div><dt>Rooms</dt><dd>Arranged for two, with a third bed if you need one. Coming alone, you share with another guest travelling solo, or take a room to yourself with a single supplement</dd></div>
     {# Read from the workshops rather than stated. deposit_percent is a column
        with a default of 30, not a house rule, and this line printed it as one.
        And it left out the part that costs a guest money: inside the balance
@@ -266,10 +267,10 @@
       {% else %}It depends on the workshop &mdash; the figure is on the
       session you choose.
       {% endif %}
-      Booking inside {{ balance_days }} days? The whole amount is due then,
-      not a deposit.
+      {% if balance_days %}Booking inside {{ balance_days }} days? The whole amount is due then,
+      not a deposit.{% endif %}
     </dd></div>
-    <div><dt>Insurance</dt><dd>Required. Mountains, old floors, and a long way from Toulouse</dd></div>
+    <div><dt>Insurance</dt><dd>Travel insurance is required, covering the journey and the days of work</dd></div>
   </dl>
 </div></section>
 
@@ -310,6 +311,8 @@
   <p class="g-fr">Une journée d'atelier<span class="g-fr__en">A day in the atelier</span></p>
   <p class="g-eyebrow">Hour by Hour</p>
   <h2 class="g-place">What a Day Actually Looks Like</h2>
+  {# The timeline held the left third of the page beside an empty two-thirds; the work is shown beside it. #}
+  <div class="g-split g-day">
   <div class="g-timeline">
     <ol class="g-timeline__l">
       <li class="g-timeline__i is-done"><span class="g-timeline__k">8.00</span>
@@ -324,6 +327,11 @@
         <span class="g-timeline__v">Dinner together at one table. This is the part people write about afterwards.</span></li>
     </ol>
   </div>
+  <figure class="g-fig-block g-day__fig">
+    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1000w" alt="Work in progress on one of the restored walls" loading="lazy">
+    <figcaption>Work in progress. What is done on an atelier stays on the wall.</figcaption>
+  </figure>
+  </div>
   <p class="g-limit"><span class="g-limit__k">Physical</span>You are on your feet, often on a platform, often with your arms above your head. Say if that is a problem and we will place you where it is not.</p>
 </div></section>
 
@@ -332,12 +340,12 @@
    mentioned it. Same voice as the nightly page. #}
 <section class="g-sec"><div class="g-two">
   <div>
-    <p class="g-fr">On apprend en faisant<span class="g-fr__en">You learn by doing it</span></p>
+    <p class="g-fr">Ce que la vallée donne<span class="g-fr__en">What the valley gives</span></p>
     <p class="g-eyebrow">Dining</p>
     <h2 class="g-h2">À Table</h2>
     <p class="g-p g-lede-first">Candlelight, the fire lit in winter, and whatever the valley gave up that morning.</p>
-    <p class="g-p">Every meal is cooked in the château's own Renaissance kitchen, still hung with the copper that came with the château. There is no fixed menu on any atelier — what appears depends on the Sunday market in the village square, on producers the chef has bought from for twenty years, and in summer on the gardens below the terrace.</p>
-    <p class="g-p">Breakfast runs long. Lunch is often outside under the lime trees, or packed and carried up the valley. Dinner is by candlelight in the dining room, the whole group together.</p>
+    <p class="g-p">Every meal is cooked in the château's own Renaissance kitchen, still hung with the copper that came with the château. There is no fixed menu on any atelier — what appears depends on the Sunday market in the village square, on the farms up and down the valley, and in summer on the gardens below the terrace.</p>
+    <p class="g-p">Breakfast runs long. Lunch is often outside under the lime trees, or packed and carried up the valley. Dinner is in the dining room, the whole group together.</p>
     <p class="g-p">Mountain cheeses from the farms above the village, charcuterie, foie gras, magret de canard, wild mushrooms when the season gives them, and desserts drawn from a recipe book written at Gudanes in the 1700s. A private selection of local wines, spirits and soft drinks is poured with every meal and included in the price.</p>
   </div>
   <div class="g-two__media">
@@ -361,8 +369,8 @@
     <p class="g-eyebrow">Bathing</p>
     <h2 class="g-h2">Les Salles de Bains</h2>
     <p class="g-p g-lede-first">Floral papers, a cast-iron freestanding bath, and a dressing room to yourself.</p>
-    <p class="g-p">Three downstairs, each papered differently — brass fittings, hexagonal terracotta underfoot, deep towels, and a window onto the valley. They are the most recently restored rooms in the building, and it shows.</p>
-    <p class="g-p">Ensuite bathrooms are not permitted under historic preservation rules, which is why they sit together downstairs rather than off each bedroom. It also means they are among the most modern rooms in the building. On a workshop they are shared between the group and privately allocated.</p>
+    <p class="g-p">One to each bedroom, on the first floor, each papered differently — brass fittings, hexagonal terracotta underfoot, deep towels, and a window onto the valley. They are the most recently restored rooms in the building, and it shows.</p>
+    <p class="g-p">Ensuite bathrooms are not permitted under historic preservation rules, which is why they sit together on the first floor rather than off each bedroom. On an atelier, as on any stay, each bedroom is given its own — no one else uses it.</p>
   </div>
 </div></section>
 
@@ -412,12 +420,13 @@
   <hr class="g-rule--double">
 
   <dl class="g-facts-list">
-    <div><dt>Salon de thé</dt><dd>Tea and coffee all day, in a room that took four years to make usable</dd></div>
-    <div><dt>Games</dt><dd>A tennis court with a mountain behind it, and a gym in a room that was a ruin</dd></div>
+    {# Games dropped (the Outdoors card says it); the room's lamp and outlets now sit in Evenings below. #}
+    <div><dt>Salon de thé</dt><dd>Tea and coffee laid out all day</dd></div>
+    <div><dt>The pool</dt><dd>Below the formal gardens, open through the warm months</dd></div>
     <div><dt>Laundry</dt><dd>Available throughout your stay</dd></div>
     <div><dt>Wi-Fi</dt><dd>Starlink. No cable reaches this valley, so it comes by satellite — and works</dd></div>
-    <div><dt>In your room</dt><dd>Sockets and a lamp to read by — neither of which existed here in 2013</dd></div>
-    <div><dt>Evenings</dt><dd>Electricity is limited by design — rooms are lit by candle</dd></div>
+    {# Restored, in the Contact page's words: a house fact, stated plainly for a stay of several nights. #}
+    <div><dt>Evenings</dt><dd>Electricity is limited by design. Rooms are lit by candle in the evening, with power outlets and a bedside lamp</dd></div>
   </dl>
 </div></section>
 
@@ -466,7 +475,7 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Arrival</p>
-      <p class="g-key__v">From 4pm. Departure by 11am.<br>Someone will meet you at the gates.</p>
+      <p class="g-key__v">Together from Toulouse: we meet at 11am in the city centre and drive up.<br>Coming on your own, the gates open from 4pm.</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Getting here</p>
@@ -516,7 +525,7 @@
       </ul>
     </div>
   </div>
-  <p class="g-limit"><span class="g-limit__k">No experience</span>None is needed. Half of every atelier has never held a trowel, and the artisans are used to it.</p>
+  <p class="g-limit"><span class="g-limit__k">No experience</span>None is needed. Most people who come have never held a trowel, and the artisans are used to it.</p>
 </div></section>
 
 <!-- ============ THE WORD ============ -->
@@ -546,7 +555,7 @@
   ('Where do I sleep?',
    'In the château itself. Bedrooms here, not a hotel down the valley.'),
   ('Is everything included?',
-   'Every meal, wine with dinner, the excursions and the teaching. Flights, insurance and whatever you buy at the brocantes are not.'),
+   'Every meal, the château wines and spirits, the transfers from Toulouse, the excursions and the teaching. Flights, insurance and whatever you buy at the brocantes are not.'),
   ('Can I come on my own?',
    'Most people do. Rooms are arranged for two, and a single supplement applies if you would rather not share.'),
   ('What if I need to change my dates?',
@@ -588,14 +597,10 @@
       <h3 class="g-find__t">Working conservators</h3>
       <p class="g-find__d">The restoration ateliers have been led by professional conservators, working the way they work — not a demonstration arranged for visitors.</p>
     </div>
-    <div class="g-find">
-      <p class="g-find__k">Never more than</p>
-      <h3 class="g-find__t">Fifteen at a time</h3>
-      <p class="g-find__d">The château takes no other guests while an atelier runs. You are not sharing the building with anyone who is not part of it.</p>
-    </div>
+    {# A "Never more than fifteen" card stood here: the sixth time the page said it. #}
     <div class="g-find">
       <p class="g-find__k">The village</p>
-      <h3 class="g-find__t">Forty-nine people</h3>
+      <h3 class="g-find__t">Forty-one people</h3>
       <p class="g-find__d">Château-Verdun. Some of them have cooked in this kitchen, and their mothers cooked in it before them.</p>
     </div>
   </div>
@@ -607,14 +612,17 @@
 
 
 <!-- ============ WHAT PARTICIPANTS SAY ============ -->
+{# Shown only once there are atelier reviews: without them it was a "Not yet" placeholder on a selling page. #}
+{% if (atelier_reviews or [])|selectattr('text')|list %}
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">From the Ateliers</p>
   <h2 class="g-place">What People Who Did the Work Say</h2>
   <p class="g-p">Reviews from guests who stayed the night tell you about the beds. These are from people who spent four days lifting overpaint off a wall, which is a different question.</p>
 
-  {% if atelier_reviews %}
+  {% set _ar = (atelier_reviews or [])|selectattr('text')|list %}
+  {% if _ar %}
   <div class="g-grid g-grid--2">
-    {% for r in atelier_reviews %}
+    {% for r in _ar %}
     <blockquote class="g-panel g-say">
       <p class="g-say__q">{{ r['text'] }}</p>
       <footer class="g-say__by">
@@ -625,19 +633,15 @@
     {% endfor %}
   </div>
   {% else %}
-  {# The fallback said "Not yet — we have not gathered these properly". A real
-     atelier review exists on Google; the ellipsis marks one omitted sentence
-     that used the word "renovation". Shows until atelier_reviews is populated. #}
-  <div class="g-grid g-grid--2">
-    <blockquote class="g-panel g-say">
-      <p class="g-say__q">This was a dream lived as I had been following this Chateau since 2014. … Karina, her family, and the wonderful staff deserve all the accolades for the attention to the culinary experiences, lush table settings, and wonderful entertainment and activities. No other place in our worldly travels has matched the vacation we had here.</p>
-      <footer class="g-say__by">A guest<span class="g-say__src">Google</span></footer>
-    </blockquote>
-  </div>
+  {# Restored. I had replaced this with a Google review about the table and the
+     entertainment - the kind of review the note below says the page will not let
+     stand in for a review of the work. The honest fallback fits the section. #}
+  <p class="g-limit"><span class="g-limit__k">Not yet</span>We have not gathered these properly. If you have done an atelier here and would write two sentences, <a href="{{ url_for('contact_page') }}">tell us</a> — it is worth more to the next person than anything we could write.</p>
   {% endif %}
 
   <p class="g-hint">Google reviews for the château cover the stay, the table and the ateliers together. We would rather separate them than let a review of the breakfast stand in for a review of the work.</p>
 </div></section>
+{% endif %}
 
 
 
@@ -656,12 +660,12 @@
   <p class="g-eyebrow">The Whole Year</p>
   <h2 class="g-place">{{ _seats.total }} Places, All Year</h2>
   <div class="g-figs">
-    <div class="g-figs__i"><span class="g-figs__n">{{ _seats.sittings }}</span><span class="g-figs__l">Ateliers running</span></div>
+    <div class="g-figs__i"><span class="g-figs__n">{{ _seats.sittings }}</span><span class="g-figs__l">Session{{ '' if _seats.sittings == 1 else 's' }} this year</span></div>
     <div class="g-figs__i"><span class="g-figs__n">{{ _seats.total }}</span><span class="g-figs__l">Places in total</span></div>
     <div class="g-figs__i"><span class="g-figs__n">{{ _seats.left }}</span><span class="g-figs__l">Still open</span></div>
     <div class="g-figs__i"><span class="g-figs__n">1</span><span class="g-figs__l">Atelier at a time</span></div>
   </div>
-  <p class="g-p">That is the whole year. Not a marketing figure — the number of chairs that exist.</p>
+  <p class="g-p">That is the whole year: every place there is.</p>
 </div></section>
 {% endif %}
 
@@ -707,7 +711,7 @@
   </dl></div></div>
 
   <p class="g-p"><a href="{{ url_for('contact_page') }}" class="g-btn g-btn--solid">Enquire about a whole session</a></p>
-  <p class="g-limit"><span class="g-limit__k">Why we mention it</span>One atelier runs at a time and there are one hundred and sixty-five places in a year. A cohort takes fifteen of them at once, which is why those dates go first.</p>
+  <p class="g-limit"><span class="g-limit__k">Why we mention it</span>One atelier runs at a time and there are {% if _seats.total %}{{ _seats.total }}{% else %}only so many{% endif %} places in a year. A cohort takes fifteen of them at once, which is why those dates go first.</p>
 </div></section>
 
 
@@ -730,7 +734,12 @@
     <li class="g-programme__i{% if r.remaining <= 0 %} is-full{% endif %}">
       <span class="g-programme__n">{{ '%02d'|format(loop.index) }}</span>
       <div class="g-programme__b">
-        <p class="g-programme__d">{%- if r.start_date %}{{ r.start_date }}{% if r.end_date %} — {{ r.end_date }}{% endif %}{% else %}Dates to be confirmed{%- endif %}</p>
+        {# Read r.start_date, but the session rows carry their dates in r.session (as the
+           cards and sittings above read them), so every session in the programme said
+           "Dates to be confirmed" beside its places-left count. Reads either shape, and
+           formats the range like the rest of the site instead of printing raw dates. #}
+        {%- set _s = r.session if r.session else r %}
+        <p class="g-programme__d">{%- if _s['start_date'] %}{{ date_range(_s['start_date'], _s['end_date'] or _s['start_date']) }}{% else %}Dates to be confirmed{%- endif %}</p>
         <h3 class="g-programme__t">{{ w['title'] }}</h3>
         {% if w['lead_name'] %}<p class="g-programme__w">With {{ w['lead_name'] }}{% if w['lead_role'] %}, {{ w['lead_role'] }}{%- endif %}</p>{% endif %}
         {% if w['summary'] %}<p class="g-programme__s">{{ w['summary']|truncate(140) }}</p>{% endif %}
@@ -789,15 +798,41 @@
 
 {# A second reviews block looped featured_reviews — the STAY reviews — under the atelier section that opens "Reviews from guests who stayed the night tell you about the beds; these are from people who spent four days at the workbench." Removed. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The workshop table" loading="lazy">
-  <h2 class="g-close__h">Take a week of it</h2>
-  <p class="g-close__p">Fifteen guests at most, and the château takes no others while an atelier runs. The dates that suit you are unlikely to come round twice.</p>
+  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
+  <h2 class="g-close__h">Take a few days of it</h2>
+  <p class="g-close__p">Each session is small, dated, and taught in the rooms it restores. The dates that suit you are unlikely to come round twice.</p>
   <div class="g-close__acts">
       <a href="#dates" class="g-btn g-btn--solid">See every date</a>
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn">Stay the night instead</a>
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us something</a>
   </div>
 </div></section>
+
+
+{# Each dated atelier as an event, so the sessions can appear in Google's event listings. Built with
+   tojson, so titles and descriptions are escaped; a session without a start date is left out. #}
+{%- set _evs = [] -%}
+{%- for w in workshops -%}{%- for r in sessions_by_workshop.get(w['id'], []) -%}{%- if r.session and r.session['start_date'] -%}
+{%- set _ev = {
+  "@context": "https://schema.org", "@type": "EducationEvent",
+  "name": w['title'] ~ " — an atelier at Château de Gudanes",
+  "startDate": (r.session['start_date']|string)[:10],
+  "endDate": ((r.session['end_date'] or r.session['start_date'])|string)[:10],
+  "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+  "eventStatus": "https://schema.org/EventScheduled",
+  "location": {"@type": "Place", "@id": "https://chateaugudanes.com/#chateau", "name": "Château de Gudanes",
+               "address": {"@type": "PostalAddress", "streetAddress": "2 Route de Beille", "addressLocality": "Château-Verdun", "postalCode": "09310", "addressRegion": "Ariège", "addressCountry": "FR"}},
+  "organizer": {"@type": "Organization", "name": "Château de Gudanes", "url": "https://chateaugudanes.com/"},
+  "description": ((w['description'] or '')|striptags|trim|truncate(300, True, '…')) or "A small-group atelier inside a Class I French château under restoration.",
+  "image": [WS_PIC['Cooking']],
+  "url": "https://chateaugudanes.com" ~ url_for('workshop_detail', workshop_id=w['id'])
+} -%}
+{%- if w['price_per_person'] -%}{%- set _ = _ev.update({"offers": {"@type": "Offer", "price": w['price_per_person'], "priceCurrency": "EUR",
+  "availability": "https://schema.org/SoldOut" if r.remaining <= 0 else "https://schema.org/InStock",
+  "url": "https://chateaugudanes.com" ~ url_for('workshop_detail', workshop_id=w['id'])}}) -%}{%- endif -%}
+{%- set _ = _evs.append(_ev) -%}
+{%- endif -%}{%- endfor -%}{%- endfor -%}
+{% if _evs %}<script type="application/ld+json">{{ _evs|tojson }}</script>{% endif %}
 
 {% endblock %}
 

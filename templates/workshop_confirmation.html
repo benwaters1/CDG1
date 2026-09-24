@@ -17,10 +17,11 @@
   </svg>
   <p class="g-eyebrow">Your place is held</p>
   <h1 class="g-display" >
-    Thank you, {{ booking['guest_name'].split(' ')[0] }}
+    {%- set _fn = (booking['guest_name'] or '').split(' ')[0] %}
+    Thank you{% if _fn %}, {{ _fn }}{% endif %}
   </h1>
   <p class="g-p g-lede-first">
-    Your place on <strong>{{ booking['title'] }}</strong> is confirmed and held.
+    Your place{% if booking['title'] %} on <strong>{{ booking['title'] }}</strong>{% endif %} is confirmed and held.
     Everything below is also in your email.
   </p>
 
@@ -31,13 +32,13 @@
       <div><dt>Dates</dt><dd>{{ date_range(booking['start_date'], booking['end_date']) }}</dd></div>
       <div><dt>Guests</dt><dd>{{ booking['party_size'] }}</dd></div>
       {% if booking['total_price'] %}
-      <div><dt>Estimated total</dt><dd><span class="g-fig">€{{ '%.2f'|format(booking['total_price']) }}</span></dd></div>
+      <div><dt>Estimated total</dt><dd><span class="g-fig">€{{ '{:,.2f}'.format(booking['total_price']) }}</span></dd></div>
       {% endif %}
       {% if booking['deposit_amount'] %}
-      <div><dt>Deposit</dt><dd>€{{ '%.2f'|format(booking['deposit_amount']) }} · {{ 'paid' if booking['deposit_paid_at'] else 'due' }}</dd></div>
+      <div><dt>Deposit</dt><dd>€{{ '{:,.2f}'.format(booking['deposit_amount']) }} · {{ 'paid' if booking['deposit_paid_at'] else 'due' }}</dd></div>
       {% endif %}
       {% if booking['balance_amount'] %}
-      <div><dt>Balance</dt><dd>€{{ '%.2f'|format(booking['balance_amount']) }}{% if booking['balance_due_date'] %} · due {{ booking['balance_due_date']|date_short }}{%- endif %}</dd></div>
+      <div><dt>Balance</dt><dd>€{{ '{:,.2f}'.format(booking['balance_amount']) }}{% if booking['balance_due_date'] %} · due {{ booking['balance_due_date']|date_short }}{%- endif %}</dd></div>
       {% endif %}
     </dl>
 
@@ -84,12 +85,12 @@
   <div class="g-plate">
     <div class="g-plate__row">
       <dl class="g-plate__l">
-        <div><dt>Getting here</dt><dd>Toulouse-Blagnac, or the train to Foix. Tell us and we will meet you</dd></div>
+        <div><dt>Getting here</dt><dd>We meet in central Toulouse at 11am on the first day and drive up together. Coming another way? Tell us and we will meet you</dd></div>
         <div><dt>To bring</dt><dd>Clothes you do not mind marking, and shoes for uneven floors</dd></div>
         <div><dt>The weather</dt><dd>Mountain weather. Warm days, cold evenings, whatever the season</dd></div>
         <div><dt>Dietary needs</dt><dd>Tell us from your booking link and the kitchen will work around them</dd></div>
         <div><dt>Arriving early</dt><dd>Rooms can often be taken the night before. Ask</dd></div>
-        <div><dt>Everything else</dt><dd>Meals, wine, excursions and teaching are already included</dd></div>
+        <div><dt>Everything else</dt><dd>Meals, the château's wines, the transfers, the excursions and the teaching are already included</dd></div>
       </dl>
     </div>
   </div>
