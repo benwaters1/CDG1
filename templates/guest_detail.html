@@ -4,6 +4,11 @@
 {% block content %}
 
 {% set g = record.guest %}
+{% if merged_into %}
+<p class="flash flash-error">This profile was merged into
+  <a href="{{ url_for('guest_detail', guest_id=merged_into['id']) }}">{{ merged_into['name'] }}</a>.
+  Everything it held is on theirs; anything written here now is not.</p>
+{% endif %}
 
 <div class="page-head">
   <h1>
@@ -31,6 +36,8 @@
     {% endif %}
     {% if g['email'] %}<div><dt>Email</dt><dd><a href="mailto:{{ g['email'] }}">{{ g['email'] }}</a></dd></div>{% endif %}
     {% if g['phone'] %}<div><dt>Telephone</dt><dd><a href="tel:{{ g['phone'] }}">{{ g['phone'] }}</a></dd></div>{% endif %}
+    {% if g['language'] %}<div><dt>Reads in</dt><dd>{{ languages.get(g['language'], g['language']) }}</dd></div>{% endif %}
+    {% if g['usual_arrival_time'] %}<div><dt>Usually arrives</dt><dd>{{ g['usual_arrival_time'] }}</dd></div>{% endif %}
     {% if record.first_seen %}
     <div><dt>Known since</dt><dd>{{ record.first_seen|date_short }}</dd></div>
     {% endif %}
@@ -59,8 +66,28 @@
     <span class="pass-short-row">{{ g['dietary_notes'] }}</span>
   </div>
   {% endif %}
+  {% if g['access_needs'] %}
+  {# Beside the dietary note, for the same reason: it is what somebody needs
+     to know before the guest reaches the stairs, not after. #}
+  <div class="pass-short" style="margin-top:10px;">
+    <strong>Access</strong>
+    <span class="pass-short-row">{{ g['access_needs'] }}</span>
+    {% if g['access_needs_updated_at'] %}<span class="upload-hint">told us {{ g['access_needs_updated_at']|house_day|date_short }}</span>{% endif %}
+  </div>
+  {% endif %}
   {% if g['preferences'] %}
   <p class="upload-hint"><strong>Prefers:</strong> {{ g['preferences'] }}</p>
+  {% endif %}
+  {% if own_link %}
+  {# The one address that is them. A new one stops the old working at once --
+     for a link forwarded to the wrong person, or left in a shared inbox. #}
+  <form method="post" action="{{ url_for('reissue_portal_link_page', guest_id=g['id']) }}"
+        onsubmit="return confirm('Their current link will stop working. Issue a new one?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="upload-hint">Their own link: <input type="text" readonly value="{{ own_link }}" aria-label="Their own link" style="width:auto;"></p>
+    <label class="checkbox-row"><input type="checkbox" name="send" value="1" checked> <span>send it to them</span></label>
+    <button type="submit" class="btn-mini">Issue a new link</button>
+  </form>
   {% endif %}
   {% if g['notes'] %}<p class="manual-body">{{ g['notes'] }}</p>{% endif %}
 </div>
@@ -150,7 +177,9 @@
         {%- elif bill %}—{% else %}—{% endif %}
       </td>
       {% endif %}
-      <td><a href="{{ url_for('booking_statement', manage_token=b['manage_token']) }}" class="small-link">Bill</a></td>
+      <td><a href="{{ url_for('booking_statement', manage_token=b['manage_token']) }}" class="small-link">Bill</a>
+        {% with kind='booking', category='room', item=b %}{% include "_record_row_links.html" %}{% endwith %}
+      </td>
     </tr>
     {% endfor %}
   </tbody>
@@ -178,7 +207,7 @@
 <h2 class="section-heading">At the table ({{ record.dinners|length }})</h2>
 <div class="table-wrap">
 <table class="data-table">
-  <thead><tr><th>When</th><th>Covers</th><th>Status</th><th>Notes</th></tr></thead>
+  <thead><tr><th>When</th><th>Covers</th><th>Status</th><th>Notes</th><th></th></tr></thead>
   <tbody>
     {% for d in record.dinners %}
     <tr>
@@ -186,6 +215,7 @@
       <td>{{ d['party_size'] }}</td>
       <td><span class="mini-status status-{{ d['status'] }}">{{ d['status'] }}</span></td>
       <td><span class="upload-hint">{{ d['dietary_notes'] or '—' }}</span></td>
+      <td>{% with kind='restaurant_booking', category='restaurant', item=d %}{% include "_record_row_links.html" %}{% endwith %}</td>
     </tr>
     {% endfor %}
   </tbody>
@@ -197,7 +227,7 @@
 <h2 class="section-heading">Ateliers ({{ record.workshops|length }})</h2>
 <div class="table-wrap">
 <table class="data-table">
-  <thead><tr><th>When</th><th>Workshop</th><th>Status</th>{% if is_owner %}<th class="num">Charged</th><th class="num">Owed</th>{% endif %}</tr></thead>
+  <thead><tr><th>When</th><th>Workshop</th><th>Status</th>{% if is_owner %}<th class="num">Charged</th><th class="num">Owed</th>{% endif %}<th></th></tr></thead>
   <tbody>
     {% for w in record.workshops %}
     {% set wm = record.workshop_money.get(w['id']) %}
@@ -209,6 +239,7 @@
       <td class="num">{% if wm and w['status'] == 'confirmed' %}€{{ '%.2f'|format(wm.charged) }}{% else %}—{% endif %}</td>
       <td class="num">{% if wm and w['status'] == 'confirmed' and wm.owed > 0.005 %}<strong>€{{ '%.2f'|format(wm.owed) }}</strong>{% else %}—{% endif %}</td>
       {% endif %}
+      <td>{% with kind='workshop_booking', category='workshop', item=w %}{% include "_record_row_links.html" %}{% endwith %}</td>
     </tr>
     {% endfor %}
   </tbody>
@@ -220,7 +251,7 @@
 <h2 class="section-heading">Enquiries ({{ record.events|length }})</h2>
 <div class="table-wrap">
 <table class="data-table">
-  <thead><tr><th>Date wanted</th><th>Kind</th><th>Status</th>{% if is_owner %}<th class="num">Quoted</th><th class="num">Owed</th>{% endif %}</tr></thead>
+  <thead><tr><th>Date wanted</th><th>Kind</th><th>Status</th>{% if is_owner %}<th class="num">Quoted</th><th class="num">Owed</th>{% endif %}<th></th></tr></thead>
   <tbody>
     {% for e in record.events %}
     {% set em = record.event_money.get(e['id']) %}
@@ -232,6 +263,7 @@
       <td class="num">{% if em and em.quoted %}€{{ '%.2f'|format(em.quoted) }}{% else %}—{% endif %}</td>
       <td class="num">{% if em and e['status'] == 'confirmed' and em.owed > 0.005 %}<strong>€{{ '%.2f'|format(em.owed) }}</strong>{% else %}—{% endif %}</td>
       {% endif %}
+      <td>{% with kind='event', category='event', item=e %}{% include "_record_row_links.html" %}{% endwith %}</td>
     </tr>
     {% endfor %}
   </tbody>

@@ -1619,6 +1619,12 @@ DEFAULT_EMAIL_TEMPLATES = [
      "Hi {guest_name},\n\nYour statement with us{period}.\n\n{statement_lines}\n\n"
      "{balance_line}\n\nIt is always here, with a way to settle anything outstanding:\n"
      "{statement_url}\n\n{company_block}\n\n— Château de Gudanes"),
+    ("guest_link_updated", "Guests: A new private link",
+     "A new link for {link_for}",
+     "Hi {guest_name},\n\nAs you asked, here is a new link for {link_for}. The "
+     "one you had before no longer works, so nobody else holding it can open "
+     "anything.\n\n{new_link}\n\nIt works without a password, so keep it the way "
+     "you would keep one.\n\n— Château de Gudanes"),
     ("refund_issued", "Refunds: Money sent back",
      "Your refund — {reference_code}",
      "Hi {guest_name},\n\nWe have refunded {amount} {what_for}.\n{refund_how}\n\n"
@@ -6918,7 +6924,8 @@ NAV_AREAS = {
         "cancel_booking_extra_line", "delete_guest", "delete_police_fiche", "delete_room",
         "delete_room_photo", "delete_room_rate_override", "disband_booking_party", "export_bookings_csv",
         "export_guests_csv", "guest_full_statement", "guest_statement_csv",
-        "email_guest_account_statement", "write_to_guest", "import_catalogue",
+        "email_guest_account_statement", "write_to_guest", "reissue_booking_link_page",
+        "reissue_portal_link_page", "import_catalogue",
         "link_guest_bookings",
         "new_booking_party", "new_room_rate_override", "police_register_page", "prepare_arrival",
         "repeat_guests_page", "reply_to_feedback", "sync_all_ical_sources", "toggle_feedback_featured",
@@ -37795,6 +37802,60 @@ def write_to_guest(guest_id):
     return redirect(back)
 
 
+def link_reissued_page(what, link, to, asked, sent, why, back):
+    """The new link, shown once, and never cached: it is a key."""
+    response = app.make_response(render_template(
+        "admin_link_reissued.html", what=what, link=link, to=to, asked=asked,
+        sent=sent, why=why, back=back))
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.route("/admin/new-link/<category>/<int:booking_id>", methods=["POST"])
+@owner_required
+def reissue_booking_link_page(category, booking_id):
+    """A new private link for a booking, because the old one went astray."""
+    if category not in MANAGE_LINKS:
+        abort(404)
+    conn = get_db()
+    row, link = reissue_booking_link(conn, category, booking_id)
+    if not row:
+        conn.close()
+        abort(404)
+    conn.commit()
+    keys = row.keys()
+    to = (row["contact_email"] if "contact_email" in keys else row["guest_email"]) or ""
+    name = (row["contact_name"] if "contact_name" in keys else row["guest_name"]) or ""
+    asked = request.form.get("send") == "1"
+    sent, why = (send_new_link(conn, to, name, f"your booking {row['reference_code']}", link)
+                 if asked else (False, None))
+    guest_id = request.form.get("guest_id", "")
+    conn.close()
+    back = (url_for("guest_detail", guest_id=int(guest_id)) if guest_id.isdigit()
+            else url_for({"room": "admin_bookings", "workshop": "admin_workshop_registrations",
+                          "restaurant": "admin_restaurant", "event": "admin_events"}[category]))
+    return link_reissued_page(f"{REFUND_CATEGORY_LABELS[category]} {row['reference_code']}",
+                              link, to, asked, sent, why, back)
+
+
+@app.route("/guests/<int:guest_id>/new-link", methods=["POST"])
+@owner_required
+def reissue_portal_link_page(guest_id):
+    """A new link to somebody's own account, because the old one went astray."""
+    conn = get_db()
+    row, link = reissue_portal_link(conn, guest_id)
+    if not row:
+        conn.close()
+        abort(404)
+    conn.commit()
+    asked = request.form.get("send") == "1"
+    sent, why = (send_new_link(conn, row["email"], row["name"], "your account with us", link)
+                 if asked else (False, None))
+    conn.close()
+    return link_reissued_page(f"{row['name']}'s own link", link, row["email"] or "", asked,
+                              sent, why, url_for("guest_detail", guest_id=guest_id))
+
+
 @app.route("/guests/<int:guest_id>/note", methods=["POST"])
 @login_required
 def add_guest_note_route(guest_id):
@@ -38044,6 +38105,14 @@ def guest_detail(guest_id):
         record["guest"]["phone"], exclude_id=guest_id) if is_owner else []
     merged_from = conn.execute(
         "SELECT id, name FROM guests WHERE merged_into_id = ?", (guest_id,)).fetchall()
+    # A profile folded into another is that other person now, and its page
+    # said nothing of it: whoever opened it read half a history as the whole.
+    merged_into = (conn.execute("SELECT id, name FROM guests WHERE id = ?",
+                                (record["guest"]["merged_into_id"],)).fetchone()
+                   if record["guest"]["merged_into_id"] else None)
+    # Their own standing link, for the owner to pass on or replace.
+    own_link = (url_for("guest_portal", token=record["guest"]["portal_token"], _external=True)
+                if is_owner and record["guest"]["portal_token"] else None)
     party_of = {}
     for b in record["stays"]:
         if b["party_id"]:
@@ -38082,7 +38151,8 @@ def guest_detail(guest_id):
                            contact_channels=CONTACT_CHANNELS,
                            reply_areas=list(REPLY_TO_AREAS),
                            rebook_rooms=rebook_rooms, usual_nights=usual_nights,
-                           today=house_today_iso())
+                           today=house_today_iso(), merged_into=merged_into,
+                           own_link=own_link)
 
 
 @app.route("/guests/<int:guest_id>/statement")
@@ -38285,15 +38355,40 @@ def edit_guest(guest_id):
         flash("Guest profile updated.", "success")
         return redirect(url_for("guests"))
 
+    holdings = guest_holdings(conn, guest_id)
     conn.close()
-    return render_template("guest_form.html", guest=guest)
+    return render_template("guest_form.html", guest=guest, holdings=holdings)
 
 
 @app.route("/guests/<int:guest_id>/delete", methods=["POST"])
 @owner_required
 def delete_guest(guest_id):
+    """Remove a profile that holds nothing: a typing mistake, a duplicate made
+    in error before anything was put on it.
+
+    It deleted whatever it was pointed at, with nothing on the audit trail: a
+    profile with ten stays went in one click, and its notes, its letters, its
+    conversations and every yes and no it held went with it, while the stays
+    were left pointing at nobody. The page said "their bookings are kept".
+    What holds a history is merged into the right profile -- or, where the
+    person asked to be forgotten, erased from what we hold about them, which
+    keeps the sales the law requires.
+    """
     conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        conn.close()
+        abort(404)
+    held = guest_holdings(conn, guest_id)
+    if held:
+        conn.close()
+        flash(f"Not deleted: this profile holds {', '.join(held)}. Merge it into the right "
+              "profile, or, if they asked to be forgotten, erase them from what we hold about "
+              "them — that keeps the sales the law requires.", "error")
+        return redirect(url_for("edit_guest", guest_id=guest_id))
     conn.execute("DELETE FROM guests WHERE id = ?", (guest_id,))
+    log_audit(conn, "guest_deleted", target=f"guest {guest_id}",
+              details="a profile that held nothing")
     conn.commit()
     conn.close()
     flash("Guest removed.", "success")
@@ -42169,6 +42264,18 @@ def update_event_inquiry(inquiry_id):
     status_changed_to_decided = status in ("confirmed", "declined") and inquiry["status"] != status
     decided_at = datetime.now(timezone.utc).isoformat() if status_changed_to_decided else inquiry["decided_at"]
 
+    # A standing instruction is read before a date is promised, as it is for a
+    # stay, an atelier and a table.
+    if status == "confirmed" and inquiry["status"] != "confirmed":
+        caution = guest_caution_for(conn, email=inquiry["contact_email"],
+                                    name=inquiry["contact_name"])
+        if caution and caution["caution_level"] == "refuse":
+            conn.close()
+            flash(f"Not confirmed: there is a standing instruction not to accept a booking "
+                  f"from {caution['name']} ({caution['caution']}) — lift it on their profile "
+                  "if that has changed.", "error")
+            return redirect(url_for("admin_events"))
+
     # A promo code, honoured against the quote.
     #
     # An event is quoted rather than priced off a rate card, so the code cannot
@@ -42232,6 +42339,10 @@ def update_event_inquiry(inquiry_id):
     conn.commit()
 
     inquiry = conn.execute("SELECT * FROM event_inquiries WHERE id = ?", (inquiry_id,)).fetchone()
+    if status_changed_to_decided and status == "confirmed":
+        ensure_guest_profile(conn, inquiry["contact_name"], inquiry["contact_email"],
+                             inquiry["contact_phone"])
+        conn.commit()
     if status_changed_to_decided:
         if status == "confirmed":
             send_event_email(conn, inquiry, "event_inquiry_confirmed", event_email_context(inquiry))
@@ -45785,6 +45896,7 @@ PLACEHOLDER_TEXT = re.compile(r"\bTEST\b|\bTODO\b|\bFIXME\b|\bXXX\b|lorem ipsum"
 EMAIL_TEMPLATE_TAGS = {
     "guest_account_statement": ("balance_line", "company_block", "guest_name", "period",
                                 "statement_lines", "statement_url"),
+    "guest_link_updated": ("guest_name", "link_for", "new_link"),
     "refund_issued": ("amount", "balance_line", "guest_name", "reference_code",
                       "refund_how", "what_for"),
     "event_balance_reminder": ("balance_amount", "balance_due_date", "contact_name",
@@ -45899,6 +46011,8 @@ REQUIRED_MERGE_TAGS = {
     "refund_issued": {"amount": "it is the sum that went back"},
     "guest_account_statement": {"statement_url": "it is where they read the statement and "
                                                  "settle anything outstanding"},
+    "guest_link_updated": {"new_link": "it is the new way in; without it the letter says the "
+                                       "old one has stopped and gives them nothing"},
     "room_share_request": {"pay_url": "it is the only way to pay the share",
                            "amount": "it is the sum being asked for"},
     "room_feedback_request": {"feedback_url": "it is the form they are being asked to fill in"},
@@ -46149,6 +46263,8 @@ def confirmation_letter_html(subject, body_src, context, *, conn=None, card=None
 # thousands separator. These are the shapes the real values take.
 SAMPLE_MERGE_VALUES = {
     "guest_name": "Marie Dubois",
+    "link_for": "your booking GUD-4417",
+    "new_link": "https://chateaugudanes.com/book/manage/a-new-link",
     "contact_name": "Marie Dubois",
     "name": "Marie Dubois",
     "reference_code": "GUD-4417",
@@ -50962,6 +51078,119 @@ def guest_portal_token(conn, email):
     return token
 
 
+# Every private link a guest holds on a booking: the table it lives on and the
+# page it opens. Everything the link opens -- the booking, its bill, its
+# calendar entry, its check-in -- hangs off the one token.
+MANAGE_LINKS = {
+    "room": ("bookings", "manage_booking"),
+    "workshop": ("workshop_bookings", "workshop_manage"),
+    "restaurant": ("restaurant_bookings", "restaurant_manage"),
+    "event": ("event_inquiries", "event_manage"),
+}
+
+
+def reissue_booking_link(conn, category, booking_id):
+    """A new private link for one booking; the old one stops working at once.
+
+    The privacy notice tells guests to treat the link like a password and to
+    tell us if it went astray, "and we will issue a new one". Nothing could:
+    a confirmation forwarded to the wrong person, or left in a shared inbox,
+    stayed a way into the booking for as long as the booking lasted.
+
+    Returns (booking, new_link), or (None, None).
+    """
+    table, endpoint = MANAGE_LINKS[category]
+    row = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (booking_id,)).fetchone()
+    if not row:
+        return None, None
+    token = secrets.token_urlsafe(24)
+    conn.execute(f"UPDATE {table} SET manage_token = ? WHERE id = ?", (token, booking_id))
+    log_audit(conn, "booking_link_reissued",
+              target=f"{REFUND_AUDIT_WORDS[category]} {row['reference_code']}",
+              details="the old link stopped working")
+    return row, url_for(endpoint, manage_token=token, _external=True)
+
+
+def reissue_portal_link(conn, guest_id):
+    """A new link to somebody's own account; the old one stops working at once."""
+    row = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not row:
+        return None, None
+    token = secrets.token_urlsafe(24)
+    conn.execute("UPDATE guests SET portal_token = ? WHERE id = ?", (token, guest_id))
+    log_audit(conn, "guest_link_reissued", target=f"guest {guest_id}",
+              details="the old link stopped working")
+    return row, url_for("guest_portal", token=token, _external=True)
+
+
+def send_new_link(conn, to, name, link_for, link):
+    """Send somebody their new link. (sent, why not)."""
+    if "@" not in (to or ""):
+        return False, "there is no address to send it to"
+    subject, body, letter = render_email_template(conn, "guest_link_updated", {
+        "guest_name": (name or "").split(" ")[0] or name or "there",
+        "link_for": link_for, "new_link": link})
+    if not subject:
+        return False, "the letter would not draw"
+    why = {}
+    # keep=False: the letter IS the key. Queued, or copied onto their record,
+    # it would be a working way in, sitting in a table.
+    if send_email(to, subject, body, html=letter, keep=False, report=why):
+        return True, None
+    return False, why.get("why") or "it could not be sent"
+
+
+def ensure_guest_profile(conn, name, email, phone=None):
+    """The standing profile of whoever a booking is for, made if there is none.
+
+    A stay made one when it was confirmed; a table, an atelier and an event did
+    not, so somebody who only ever dined here had no record, no link of their
+    own and no history -- the house knew them as a string in three tables.
+    """
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        return None
+    found = guest_for_contact(conn, address=email)
+    if found:
+        return found
+    cur = conn.execute(
+        "INSERT INTO guests (name, email, phone, created_at) VALUES (?, ?, ?, ?)",
+        ((name or "").strip() or email, email, (phone or "").strip() or None,
+         datetime.now(timezone.utc).isoformat()))
+    return cur.lastrowid
+
+
+def guest_holdings(conn, guest_id):
+    """What hangs off a profile, in words, for anybody about to delete it."""
+    g = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not g:
+        return []
+    email = (g["email"] or "").strip().lower() or "\u0000"
+    out = []
+    for one, many, sql, args in (
+            ("stay", "stays", "SELECT COUNT(*) FROM bookings WHERE linked_guest_id = ? "
+                              "OR LOWER(TRIM(guest_email)) = ?", (guest_id, email)),
+            ("table", "tables", "SELECT COUNT(*) FROM restaurant_bookings "
+                                "WHERE LOWER(TRIM(guest_email)) = ?", (email,)),
+            ("atelier place", "atelier places", "SELECT COUNT(*) FROM workshop_bookings "
+                                                "WHERE LOWER(TRIM(guest_email)) = ?", (email,)),
+            ("event", "events", "SELECT COUNT(*) FROM event_inquiries "
+                                "WHERE LOWER(TRIM(contact_email)) = ?", (email,)),
+            ("letter", "letters", "SELECT COUNT(*) FROM guest_messages WHERE guest_id = ?",
+             (guest_id,)),
+            ("conversation", "conversations",
+             "SELECT COUNT(*) FROM guest_contacts WHERE guest_id = ?", (guest_id,)),
+            ("note", "notes", "SELECT COUNT(*) FROM guest_notes WHERE guest_id = ?", (guest_id,)),
+            ("yes or no on record", "yeses and noes on record",
+             "SELECT COUNT(*) FROM consent_events WHERE guest_id = ?", (guest_id,)),
+            ("profile merged into it", "profiles merged into it",
+             "SELECT COUNT(*) FROM guests WHERE merged_into_id = ?", (guest_id,))):
+        n = conn.execute(sql, args).fetchone()[0]
+        if n:
+            out.append(f"{n} {one if n == 1 else many}")
+    return out
+
+
 def guest_portal_contents(conn, email):
     """Everything of this guest's, in the order they would look for it.
 
@@ -53693,6 +53922,16 @@ def confirm_restaurant_booking(reservation_id):
     if not booking:
         conn.close()
         abort(404)
+    # A STANDING INSTRUCTION MEANS THE HOUSE, and the house includes its table.
+    # A stay and an atelier have refused a cautioned guest for a while; a
+    # dinner never asked.
+    caution = guest_caution_for(conn, email=booking["guest_email"], name=booking["guest_name"])
+    if caution and caution["caution_level"] == "refuse":
+        conn.close()
+        flash(f"Not confirmed: there is a standing instruction not to accept a booking from "
+              f"{caution['name']} ({caution['caution']}) — lift it on their profile if that "
+              "has changed.", "error")
+        return redirect(url_for("admin_restaurant"))
     cur = conn.execute(
         "UPDATE restaurant_bookings SET status = 'confirmed', decided_at = ? WHERE id = ? AND status = 'pending'",
         (datetime.now(timezone.utc).isoformat(), reservation_id),
@@ -53701,6 +53940,8 @@ def confirm_restaurant_booking(reservation_id):
         conn.close()
         abort(404)
     log_audit(conn, "restaurant_booking_confirmed", target=booking["reference_code"])
+    ensure_guest_profile(conn, booking["guest_name"], booking["guest_email"],
+                         booking["guest_phone"])
     conn.commit()
 
     confirmed_total = conn.execute(
@@ -57386,6 +57627,8 @@ def confirm_workshop_registration_by_id(conn, registration_id, via=None):
     )
     if cur.rowcount == 0:
         return False, "not found or not pending", ""
+    ensure_guest_profile(conn, booking["guest_name"], booking["guest_email"],
+                         booking["guest_phone"] if "guest_phone" in booking.keys() else None)
     log_audit(conn, "workshop_registration_confirmed",
               target=booking["reference_code"], via=via)
     conn.commit()
@@ -67167,11 +67410,27 @@ def merge_guest_profiles(conn, keep_id, merge_id, user_id=None):
     fills = {}
     for column in ("email", "phone", "dietary_notes", "preferences",
                    "name_pronunciation", "birthday", "anniversary",
-                   "caution", "caution_level"):
+                   "caution", "caution_level", "access_needs", "language",
+                   "usual_arrival_time"):
         if column not in keep.keys():
             continue
         if not (keep[column] or "").strip() and (merge[column] or "").strip():
             fills[column] = merge[column]
+    # With what goes with them, so a filled field keeps its date and its author.
+    for column, partner in (("access_needs", "access_needs_updated_at"),
+                            ("caution", "caution_set_at"),
+                            ("caution", "caution_set_by_user_id")):
+        if column in fills and partner in merge.keys():
+            fills[partner] = merge[partner]
+    # An answer about photographs beats "not asked", and a VIP stays one. The
+    # merge took neither, so folding a VIP's second profile in could lose the
+    # flag, and a no to photographs could vanish into "not asked".
+    if ((keep["photo_consent"] or "unknown") == "unknown"
+            and (merge["photo_consent"] or "unknown") != "unknown"):
+        fills["photo_consent"] = merge["photo_consent"]
+        fills["photo_consent_at"] = merge["photo_consent_at"]
+    if merge["vip"] and not keep["vip"]:
+        fills["vip"] = 1
     # The email is the one field a unique index can refuse. Only take it if the
     # survivor has none, and the merged profile's has to be released first or
     # the index refuses the update.
@@ -67181,6 +67440,10 @@ def merge_guest_profiles(conn, keep_id, merge_id, user_id=None):
         sets = ", ".join(f"{c} = ?" for c in fills)
         conn.execute(f"UPDATE guests SET {sets} WHERE id = ?",
                      list(fills.values()) + [keep_id])
+        # On the survivor's history, as any other change to a profile is.
+        record_profile_changes(conn, keep, {
+            c: fills.get(c, keep[c]) for c, _label, _kind in GUEST_PROFILE_FIELDS
+            if c in keep.keys()}, user_id)
 
     conn.execute("UPDATE guest_notes SET guest_id = ? WHERE guest_id = ?",
                  (keep_id, merge_id))
@@ -70592,6 +70855,10 @@ EMAIL_TEMPLATE_INFO = {
     "guest_account_statement": ("When you send somebody their statement from their "
                                 "record, for the period on screen",
                                 "The guest, at the address on their profile"),
+    "guest_link_updated": ("When you issue a new private link for one of their bookings, or "
+                           "for their own account, and choose to send it",
+                           "The guest, at the address on the booking or profile. Never "
+                           "kept or queued: the letter is itself a key"),
     "refund_issued": ("When you make a refund from its booking's refund page and "
                       "leave \u201cTell them\u201d ticked \u2014 a stay, an atelier, a "
                       "dinner or an event", "Whoever paid, and on a stay anyone "

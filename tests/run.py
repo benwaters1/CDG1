@@ -49,6 +49,7 @@ SUITES = [
     "test_contact_history",
     "test_who_changed_a_booking",
     "test_consent_and_profile_history",
+    "test_links_and_the_record",
     "test_workshop_rooms",
     "test_workshop_lifecycle",
     "test_workshop_minimum",
