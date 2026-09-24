@@ -388,8 +388,9 @@ def _run(s, oc, ec, owner, emp):
     s.check("is kept in full, as theirs to us",
             asked and asked[0]["body"] == words.strip()[:2000] and asked[0]["guest_id"] == gid,
             detail=str([dict(x) for x in asked]))
+    # By their profile: the trail no longer writes the address down.
     audit = _rows("SELECT details FROM audit_log WHERE action = 'guest_wrote_in' AND target = ? "
-                  "ORDER BY id DESC LIMIT 1", maker)
+                  "ORDER BY id DESC LIMIT 1", f"guest {gid}")
     s.check("and not copied into the audit trail, which is kept for ever",
             audit and "dog" not in (audit[0][0] or ""), detail=str([tuple(a) for a in audit]))
 

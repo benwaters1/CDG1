@@ -177,6 +177,8 @@ def run():
                        "guest's address in it is a breach, not a bug")
 
     s.section("The portable form the notice promises")
+    exports_before = _one("SELECT COUNT(*) AS c FROM audit_log "
+                          "WHERE action = 'guest_data_exported'")["c"]
     r = oc.get(f"/admin/data-requests/export.json?email={WHO}")
     s.check("it downloads", r.status_code == 200, detail=str(r.status_code))
     s.check("as a file, not a page",
@@ -188,9 +190,13 @@ def run():
     s.check("carrying the same rows the page showed",
             payload["row_count"] == export["row_count"],
             detail=f"{payload['row_count']} vs {export['row_count']}")
-    s.check("and the download is on the record",
-            _one("SELECT COUNT(*) AS c FROM audit_log WHERE action = 'guest_data_exported' "
-                 "AND target = ?", (WHO,))["c"] == 1,
+    # Counted, not looked up by the address: the trail outlives an erasure,
+    # so it records that a copy was handed over and never to whom.
+    s.check("and the download is on the record, without the address",
+            _one("SELECT COUNT(*) AS c FROM audit_log WHERE action = 'guest_data_exported'")["c"]
+            == exports_before + 1
+            and not _one("SELECT COUNT(*) AS c FROM audit_log WHERE action = 'guest_data_exported' "
+                         "AND (target = ? OR details LIKE ?)", (WHO, f"%{WHO}%"))["c"],
             detail="handing somebody a copy of everything is worth writing down")
 
     s.section("Erasure keeps what the law says to keep")

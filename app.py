@@ -5695,6 +5695,7 @@ def init_db():
     hold_legacy_balance_stamps(conn)
     link_held_letters(conn)
     backfill_consent_history(conn)
+    redact_stored_links(conn)
 
     # `guests` used to be a per-STAY register carrying arrival/departure/party_size,
     # duplicating what `bookings` already owns. The two could never be kept in
@@ -23407,7 +23408,8 @@ def discard_email_outbox(outbox_id):
     conn.execute("DELETE FROM email_outbox WHERE id = ?", (outbox_id,))
     mark_letters_withdrawn(conn, [outbox_id])
     if row:
-        log_audit(conn, "email_outbox_discarded", target=row["to_address"],
+        # The letter, not the address it was for: this trail outlives an erasure.
+        log_audit(conn, "email_outbox_discarded", target="a held letter",
                   details=row["subject"])
     conn.commit()
     conn.close()
@@ -23943,6 +23945,59 @@ def guest_for_contact(conn, address=None, phone=None):
 MESSAGE_ABOUT = ("room", "workshop", "restaurant", "event")
 
 
+# THE PRIVATE LINKS, as the app itself defines them: every page opened by a
+# token rather than a password. Read from the routes, not listed, so a page
+# added tomorrow is covered the day it is added; each route's whole shape, so a
+# public page under the same first word keeps its link.
+_PRIVATE_LINK_PATTERNS = []
+PRIVATE_LINK_KEPT_AS = "[their private link, not kept]"
+_URL_IN_TEXT = re.compile(r"https?://[^\s<>\"')\]]+")
+
+
+def private_link_patterns():
+    if not _PRIVATE_LINK_PATTERNS:
+        for rule in app.url_map.iter_rules():
+            if any("token" in arg for arg in rule.arguments):
+                _PRIVATE_LINK_PATTERNS.append(re.compile(
+                    "^" + re.sub(r"<[^>]+>", r"[^/?#]+", re.escape(str(rule))) + "$"))
+    return _PRIVATE_LINK_PATTERNS
+
+
+def without_private_links(text):
+    """Words as they are kept: every link that is itself a key taken out.
+
+    The privacy notice says a message whose text is a key is never kept, and
+    every confirmation carries the link that opens the booking without a
+    password -- so every copy kept was a key to somebody's stay, sitting in a
+    table, shown on a page, exported with their data.
+    """
+    if not text or "http" not in text:
+        return text
+    patterns = private_link_patterns()
+
+    def one(m):
+        path = urlparse(m.group(0)).path
+        return PRIVATE_LINK_KEPT_AS if any(p.match(path) for p in patterns) else m.group(0)
+
+    return _URL_IN_TEXT.sub(one, text)
+
+
+def redact_stored_links(conn):
+    """Take the private links out of the copies already kept. At startup; finds
+    nothing once the old copies are through it."""
+    changed = 0
+    for r in conn.execute("SELECT id, subject, body FROM guest_messages "
+                          "WHERE body LIKE '%http%' OR subject LIKE '%http%'").fetchall():
+        body, subject = without_private_links(r["body"]), without_private_links(r["subject"])
+        if (body, subject) != (r["body"], r["subject"]):
+            conn.execute("UPDATE guest_messages SET body = ?, subject = ? WHERE id = ?",
+                         (body, subject, r["id"]))
+            changed += 1
+    if changed:
+        conn.commit()
+    return changed
+
+
 def write_guest_messages(rows):
     """File a batch of messages against the person they were to, and what they
     were about.
@@ -23989,8 +24044,10 @@ def write_guest_messages(rows):
                        about_id, template_key, direction, outbox_id, failure,
                        sent_by_user_id, delivered_at)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (booking_id, channel, row["to_address"], row.get("subject"),
-                     row.get("body") or "", 1 if row.get("delivered") else 0, now,
+                    (booking_id, channel, row["to_address"],
+                     without_private_links(row.get("subject")),
+                     without_private_links(row.get("body") or ""),
+                     1 if row.get("delivered") else 0, now,
                      guest_id, about[0], about[1], row.get("template_key"),
                      row.get("direction") or "out", row.get("outbox_id"),
                      None if row.get("delivered") else row.get("failure"),
@@ -36535,7 +36592,7 @@ def record_texting_consent():
 
     conn = get_db()
     record_sms_consent(conn, number, source=source or "recorded by hand")
-    log_audit(conn, "sms_consent_recorded", target=number,
+    log_audit(conn, "sms_consent_recorded", target="a number",
               details=source or "recorded by hand")
     conn.commit()
     conn.close()
@@ -36575,7 +36632,7 @@ def allow_texting_number(optout_id):
         conn.close()
         abort(404)
     conn.execute("DELETE FROM sms_optouts WHERE id = ?", (optout_id,))
-    log_audit(conn, "sms_optout_lifted", target=row["phone"])
+    log_audit(conn, "sms_optout_lifted", target="a number")
     record_consent(conn, "texts", 1, "the stop taken off, at their request", phone=row["phone"])
     conn.commit()
     conn.close()
@@ -37170,7 +37227,8 @@ def guest_account_message(token):
     # The audit line says they wrote, not what: what a guest writes is theirs,
     # and the audit trail is kept forever. What they wrote is kept with the
     # rest of their correspondence, on the same two-year rule.
-    log_audit(conn, "guest_wrote_in", target=session_row["email"],
+    who = guest_for_contact(conn, address=session_row["email"])
+    log_audit(conn, "guest_wrote_in", target=f"guest {who}" if who else "a guest",
               details=f"{len(message)} characters, kept with their correspondence")
     keep_guest_message(session_row["email"], "They wrote through their account page",
                        message, channel="form", delivered=True, direction="in")
@@ -44565,7 +44623,8 @@ def file_guest_text(conn, number, body, *, delivered, channel="sms"):
         """INSERT INTO guest_messages (booking_id, channel, to_address,
            subject, body, delivered, created_at, guest_id, direction, delivered_at)
            VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'out', ?)""",
-        (booking_id, channel if channel in ("sms", "whatsapp") else "sms", number, body,
+        (booking_id, channel if channel in ("sms", "whatsapp") else "sms", number,
+         without_private_links(body),
          1 if delivered else 0, now, guest_id, now if delivered else None))
 
 
@@ -52644,7 +52703,7 @@ def data_request_export():
         abort(400)
     conn = get_db()
     export = guest_data_export(conn, email)
-    log_audit(conn, "guest_data_exported", target=email,
+    log_audit(conn, "guest_data_exported", target="a guest",
               details=f"{export['row_count']} rows" if export else "nothing held")
     conn.commit()
     conn.close()
@@ -67157,11 +67216,22 @@ NOT_GUEST_TABLES = {
 # requires the record of a sale. The person is removed from them; the money
 # stays. Anything not listed here is deleted outright.
 ANONYMISE_RATHER_THAN_DELETE = {
-    "bookings": ("guest_name", "guest_email", "guest_phone"),
-    "restaurant_bookings": ("guest_name", "guest_email", "guest_phone"),
+    # And what else on the sale is about a person: the words they wrote, the
+    # somebody-else they asked us to copy or to bill. Left as they were, an
+    # "anonymised" stay still said who had stayed.
+    "bookings": ("guest_name", "guest_email", "guest_phone", "special_requests",
+                 "second_contact_name", "second_contact_email", "booked_by_name",
+                 "booked_by_email"),
+    "restaurant_bookings": ("guest_name", "guest_email", "guest_phone", "dietary_notes"),
     "workshop_bookings": ("guest_name", "guest_email", "guest_phone"),
     "refunds": ("guest_name", "guest_email"),
     "promo_code_redemptions": ("guest_email",),
+    # Three sales an erasure DELETED: an event, with its payments and its
+    # quote; a share of a split bill, which the bill still adds up; and a card
+    # dispute, which the bank still holds. The law keeps a sale, not a person.
+    "event_inquiries": ("contact_name", "contact_email", "contact_phone", "message"),
+    "booking_shares": ("name", "email", "note"),
+    "payment_disputes": ("guest_name", "guest_email"),
 }
 
 ERASED_MARKER = "[erased at the guest's request]"
@@ -68160,14 +68230,14 @@ def guest_messages(conn, guest, limit=60):
                         "body": r["body"], "sent": bool(r["sent_at"]),
                         "note": r["reason"] or "", "incoming": False})
     if phone:
+        filed = {r["body"] for r in conn.execute(
+            """SELECT body FROM guest_messages
+                WHERE channel IN ('sms', 'whatsapp') AND to_address = ?""", (phone,))}
         for r in conn.execute(
                 """SELECT body, purpose, reason, created_at, sent_at FROM sms_outbox
-                    WHERE phone = ?
-                      AND NOT EXISTS (SELECT 1 FROM guest_messages gm
-                                       WHERE gm.channel IN ('sms', 'whatsapp')
-                                         AND gm.to_address = sms_outbox.phone
-                                         AND gm.body = sms_outbox.body)
-                    ORDER BY id DESC LIMIT ?""", (phone, limit)).fetchall():
+                    WHERE phone = ? ORDER BY id DESC LIMIT ?""", (phone, limit)).fetchall():
+            if r["body"] in filed or without_private_links(r["body"]) in filed:
+                continue
             out.append({"kind": "text", "when": r["created_at"], "subject": r["purpose"],
                         "body": r["body"], "sent": bool(r["sent_at"]),
                         "note": r["reason"] or "", "incoming": False})
@@ -68984,6 +69054,104 @@ def guest_filed_rows(conn, guests):
     return out
 
 
+# Kept by the number a text went to, not by an address.
+GUEST_NUMBER_TABLES = ("sms_outbox", "sms_optouts", "sms_consents", "consent_events")
+
+
+def guest_numbers(conn, email, *, as_written=False):
+    """Every number somebody is known by, read from their profiles and their
+    bookings of every kind, as the house writes a number -- or, `as_written`,
+    as each was typed, which is how the old audit lines hold them."""
+    email = (email or "").strip().lower()
+    if not email:
+        return []
+    raw = []
+    ids = sorted({i for r in conn.execute(
+        "SELECT id FROM guests WHERE LOWER(TRIM(email)) = ?", (email,)).fetchall()
+        for i in guest_profile_ids(conn, r["id"])})
+    if ids:
+        raw += [r[0] for r in conn.execute(
+            f"SELECT phone FROM guests WHERE id IN ({','.join('?' * len(ids))})", ids)]
+    for table, number, address in (("bookings", "guest_phone", "guest_email"),
+                                   ("restaurant_bookings", "guest_phone", "guest_email"),
+                                   ("workshop_bookings", "guest_phone", "guest_email"),
+                                   ("event_inquiries", "contact_phone", "contact_email")):
+        try:
+            raw += [r[0] for r in conn.execute(
+                f"SELECT {number} FROM {table} WHERE LOWER(TRIM({address})) = ?", (email,))]
+        except sqlite3.OperationalError:
+            continue
+    if as_written:
+        return sorted({(p or "").strip() for p in raw if (p or "").strip()})
+    return sorted({n for n in (normalise_phone(p or "") for p in raw) if n})
+
+
+def guest_number_rows(conn, email):
+    """(table, rows) for everything kept by somebody's numbers: the texts held
+    or sent, a stop, a yes to marketing texts, and their history."""
+    numbers = guest_numbers(conn, email)
+    if not numbers:
+        return []
+    marks = ",".join("?" * len(numbers))
+    out = []
+    for table in GUEST_NUMBER_TABLES:
+        try:
+            out.append((table, conn.execute(
+                f"SELECT * FROM {table} WHERE phone IN ({marks})", numbers).fetchall()))
+        except sqlite3.OperationalError:
+            continue
+    # A text filed as correspondence, by the number it went to however it was
+    # written down.
+    wanted = set(numbers)
+    out.append(("guest_messages", [
+        r for r in conn.execute(
+            "SELECT * FROM guest_messages WHERE channel IN ('sms', 'whatsapp')").fetchall()
+        if normalise_phone(r["to_address"] or "") in wanted]))
+    return out
+
+
+def guest_names(conn, email):
+    """The names somebody is known by, for taking them out of the audit trail."""
+    email = (email or "").strip().lower()
+    names = set()
+    for sql in ("SELECT name FROM guests WHERE LOWER(TRIM(email)) = ?",
+                "SELECT guest_name FROM bookings WHERE LOWER(TRIM(guest_email)) = ?",
+                "SELECT guest_name FROM restaurant_bookings WHERE LOWER(TRIM(guest_email)) = ?",
+                "SELECT guest_name FROM workshop_bookings WHERE LOWER(TRIM(guest_email)) = ?",
+                "SELECT contact_name FROM event_inquiries WHERE LOWER(TRIM(contact_email)) = ?"):
+        try:
+            names.update((r[0] or "").strip() for r in conn.execute(sql, (email,)))
+        except sqlite3.OperationalError:
+            continue
+    # Long enough to be a name and not a word: "Ann" is inside half the log.
+    return sorted(n for n in names if len(n) >= 5 and n != ERASED_MARKER)
+
+
+AUDIT_ERASED = "[erased at the guest's request]"
+
+
+def scrub_audit_trail(conn, identifiers):
+    """Take a person out of the record of who did what: where a line was about
+    them by address, number or name, it now says that it was about somebody
+    erased. The line stays -- who acted, what they did, when -- because that is
+    what the trail is for; the person does not."""
+    changed = 0
+    for ident in sorted({i for i in identifiers if i}, key=len, reverse=True):
+        rows = conn.execute(
+            "SELECT id, target, details FROM audit_log WHERE target = ? OR target LIKE ? "
+            "OR details LIKE ?", (ident, f"% {ident}", f"%{ident}%")).fetchall()
+        for r in rows:
+            target = r["target"]
+            if target == ident or (target or "").endswith(f" {ident}"):
+                target = (target[:-len(ident)] + AUDIT_ERASED) if target != ident else AUDIT_ERASED
+            details = (r["details"] or "").replace(ident, AUDIT_ERASED) if r["details"] else r["details"]
+            if (target, details) != (r["target"], r["details"]):
+                conn.execute("UPDATE audit_log SET target = ?, details = ? WHERE id = ?",
+                             (target, details, r["id"]))
+                changed += 1
+    return changed
+
+
 def guest_data_export(conn, email):
     """Everything held about one person, by email and by what hangs off it.
 
@@ -69045,6 +69213,13 @@ def guest_data_export(conn, email):
         more = [dict(r) for r in rows if r["id"] not in have]
         if more:
             found.setdefault(table, []).extend(more)
+    # And by their numbers: a text is kept by the number it went to, so the
+    # search by address never found a text, a stop, or a yes to more.
+    for table, rows in guest_number_rows(conn, email):
+        have = {r.get("id") for r in found.get(table, [])}
+        more = [dict(r) for r in rows if r["id"] not in have]
+        if more:
+            found.setdefault(table, []).extend(more)
 
     return {
         "email": email,
@@ -69079,12 +69254,22 @@ def guest_data_erase(conn, email):
     # to say which rows are theirs. A text is filed by the number and a
     # letter may be filed by an address from before a merge; searching for
     # this address alone left both behind.
+    # Who they are, while the rows that say so are still here: their numbers,
+    # for what is kept by the number, and their names, for the audit trail.
+    numbers = guest_numbers(conn, email) + guest_numbers(conn, email, as_written=True)
+    names = guest_names(conn, email)
+    by_number = guest_number_rows(conn, email)
     profiles = conn.execute("SELECT id FROM guests WHERE LOWER(TRIM(email)) = ?",
                             (email,)).fetchall()
     for table, _column, rows in guest_filed_rows(conn, profiles):
         if rows:
             conn.executemany(f"DELETE FROM {table} WHERE id = ?", [(r["id"],) for r in rows])
             deleted[table] = deleted.get(table, 0) + len(rows)
+    for table, rows in by_number:
+        if rows:
+            cur = conn.executemany(f"DELETE FROM {table} WHERE id = ?", [(r["id"],) for r in rows])
+            if cur.rowcount > 0:
+                deleted[table] = deleted.get(table, 0) + cur.rowcount
 
     for table, keys in guest_data_tables(conn).items():
         where = " OR ".join(f"LOWER(TRIM({k})) = ?" for k in keys)
@@ -69126,6 +69311,10 @@ def guest_data_erase(conn, email):
         if cur.rowcount:
             deleted[table] = deleted.get(table, 0) + cur.rowcount
 
+    # And out of the record of who did what, which outlives everything else.
+    scrubbed = scrub_audit_trail(conn, [email] + numbers + names)
+    if scrubbed:
+        anonymised["audit_log"] = scrubbed
     return {"deleted": deleted, "anonymised": anonymised,
             "kept_because": "French accounting law requires the record of a "
                             "sale to be kept. The money stays; the person has "
@@ -73201,6 +73390,33 @@ def purge_guest_messages(conn, *, today=None):
 SUBMISSION_LOG_KEEP_DAYS = 7
 
 
+def purge_held_texts(conn, *, now=None):
+    """Texts past the two years the house keeps what it has written.
+
+    The mail queue has been cleared on that rule for a while; the text queue
+    never was, so every text the house could not send -- the number and the
+    words -- was kept for ever.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=int(GUEST_MESSAGE_KEEP_MONTHS * 30.44))).isoformat()
+    cur = conn.execute("DELETE FROM sms_outbox WHERE COALESCE(sent_at, created_at) < ?",
+                       (cutoff,))
+    return {"held texts": cur.rowcount or 0}
+
+
+GUEST_SESSION_KEEP_DAYS = 30
+
+
+def purge_guest_sessions(conn, *, now=None):
+    """Sign-in links to somebody's account, a month after they stopped working.
+    Each is an address and the internet address that asked for it; nothing
+    ever deleted one."""
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=GUEST_SESSION_KEEP_DAYS)).isoformat()
+    cur = conn.execute("DELETE FROM guest_sessions WHERE expires_at < ?", (cutoff,))
+    return {"old account sign-in links": cur.rowcount or 0}
+
+
 def purge_submission_log(conn, *, now=None):
     """Drop rate-limit rows older than any limit can still see.
 
@@ -73243,6 +73459,8 @@ def run_health_notes_purge_job(conn):
     # guests at all -- somebody who opened the availability calendar and left.
     cleared.update(purge_submission_log(conn))
     cleared.update(purge_sent_outbox(conn))
+    cleared.update(purge_held_texts(conn))
+    cleared.update(purge_guest_sessions(conn))
     # The keys that make an offline action safe to send twice. No handset is
     # still holding a tap from a month ago, and a row per tap for ever is a
     # table somebody eventually clears out in a hurry.

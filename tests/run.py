@@ -51,6 +51,7 @@ SUITES = [
     "test_consent_and_profile_history",
     "test_links_and_the_record",
     "test_tags_and_the_guest_list",
+    "test_everything_we_hold",
     "test_workshop_rooms",
     "test_workshop_lifecycle",
     "test_workshop_minimum",
