@@ -36,6 +36,14 @@ def _iso(days):
 
 
 def _cleanup(conn):
+    # The atelier made below goes too. It was left behind, active, with the
+    # column's old default deposit of 30%, so every suite after this one saw
+    # the house's ateliers asking two different deposits -- and the check
+    # that the house has one answer, 10%, failed in a full run and passed on
+    # its own.
+    conn.execute("DELETE FROM workshop_bookings WHERE reference_code LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM workshop_sessions WHERE notes LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM workshops WHERE title LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM cash_bankings WHERE reference LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM pos_closures WHERE period LIKE '20991%'")
