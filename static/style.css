@@ -447,6 +447,11 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
    because most rows are read rather than acted on, and wrapping so the
    three fields do not push the table sideways on a laptop. */
 .owed-take>summary{ cursor:pointer; font-size:12.5px; }
+/* Under the list of balances to collect: the button that takes them, and the
+   one that sends a link to the rest. */
+.collect-actions{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0 6px; }
+/* A note under a figure in a table cell: its own line, and quieter. */
+.cell-note{ display:block; font-size:11px; color:var(--ink-soft); margin-top:2px; }
 .owed-take__form{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;
   align-items:center; }
 .owed-take__form input[type=number]{ width:7em; }

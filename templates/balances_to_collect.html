@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}Balances to collect{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Balances to collect</h1>
+  <a href="{{ url_for('management_outstanding') }}" class="btn-mini">Everything we're owed</a>
+</div>
+
+{#
+  The day a workshop balance falls due -- thirty days before the atelier -- it
+  arrives here, and the owner takes it from the card the guest paid the
+  deposit with. Nothing takes a card on its own: this page is the decision,
+  so it says who, how much, and whether there is a card, before anything
+  moves.
+#}
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if due_count else 'stat-tile-icon-steel' }}">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '{:,.2f}'.format(due_total) }}</span>
+      <span class="stat-tile-label">Due now, {{ due_count }} balance{{ '' if due_count == 1 else 's' }}</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('receipt', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '{:,.2f}'.format(ready_total) }}</span>
+      <span class="stat-tile-label">On a card, {{ ready_count }} ready to take</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '{:,.2f}'.format(coming_total) }}</span>
+      <span class="stat-tile-label">Coming in {{ ahead_days }} days, {{ coming_count }}</span>
+    </span>
+  </div>
+</div>
+
+{% if not stripe_on %}
+<p class="upload-hint">Card payments are not connected, so nothing can be taken from a card
+here. Links to pay can still be sent.</p>
+{% endif %}
+
+{% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
+
+{% if not lv['rows'] %}
+<div class="empty-state">
+  {% if lv['total'] %}
+    Nothing matches that. <a href="{{ url_for('balances_to_collect') }}">Show all {{ lv['total'] }}</a>.
+  {% else %}
+    No workshop balance is due, and none falls due in the next {{ ahead_days }} days.
+  {% endif %}
+</div>
+{% else %}
+<form method="post" id="collect-form" action="{{ url_for('collect_balances') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="back_q" value="{{ back_q }}">
+
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th><span class="g-vh">Choose</span></th>
+          <th>Guest</th><th>Workshop</th><th>Due</th>
+          <th class="num">Owed</th><th>Needs</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in lv['rows'] %}
+        <tr>
+          <td>
+            {% if r['state'] == 'ready' %}
+            {# Ticked by default: these are the ones the page exists for.
+               The amount rides with the tick, so what is taken is the figure
+               that was on the screen and nothing else. #}
+            <input type="checkbox" name="reg_id" value="{{ r['id'] }}" checked
+                   data-collect-take data-owed="{{ '%.2f'|format(r['owed']) }}"
+                   aria-label="Take €{{ '%.2f'|format(r['owed']) }} from {{ r['who'] }}'s card">
+            <input type="hidden" name="expect_{{ r['id'] }}" value="{{ '%.2f'|format(r['owed']) }}">
+            {% elif r['state'] in ('no_card', 'opted_out', 'refused') %}
+            <input type="checkbox" name="link_id" value="{{ r['id'] }}"
+                   aria-label="Send {{ r['who'] }} a link to pay">
+            {% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('admin_workshop_registrations', session_id=r['row']['session_id']) }}">{{ r['who'] }}</a>
+            <span class="cell-note">{{ r['reference'] }}</span>
+          </td>
+          <td>
+            {{ r['what'] }}
+            <span class="cell-note">{{ r['start_date']|date_short }}{% if r['end_date'] and r['end_date'] != r['start_date'] %} to {{ r['end_date']|date_short }}{% endif %}</span>
+          </td>
+          <td>
+            {{ r['due_date']|date_short }}
+            {% if r['days_late'] > 0 %}
+            <span class="cell-note">{{ r['days_late'] }} day{{ '' if r['days_late'] == 1 else 's' }} ago</span>
+            {% elif r['days_late'] == 0 %}
+            <span class="cell-note">today</span>
+            {% else %}
+            <span class="cell-note">in {{ -r['days_late'] }} day{{ '' if r['days_late'] == -1 else 's' }}</span>
+            {% endif %}
+          </td>
+          <td class="num"><strong>€{{ '{:,.2f}'.format(r['owed']) }}</strong></td>
+          <td>
+            {% if r['state'] == 'ready' %}
+            <span class="mini-status status-confirmed">{{ r['state_label'] }}</span>
+            <span class="cell-note">card kept from the deposit</span>
+            {% elif r['state'] == 'held' %}
+            <span class="mini-status status-overdue">{{ r['state_label'] }}</span>
+            <span class="cell-note">{{ r['hold'] }}</span>
+            {% elif r['state'] == 'refused' %}
+            <span class="mini-status status-overdue">{{ r['state_label'] }}</span>
+            {% if r['refused_at'] %}<span class="cell-note">{{ r['refused_at']|house_day|date_short }}; they were sent a link</span>{% endif %}
+            {% elif r['state'] == 'coming' %}
+            <span class="mini-status status-inactive">{{ r['state_label'] }}</span>
+            {% else %}
+            <span class="mini-status status-pending">{{ r['state_label'] }}</span>
+            {% if r['state'] == 'no_card' %}<span class="cell-note">send them a link to pay</span>{% endif %}
+            {% endif %}
+            {% if r['do_not_email'] %}<span class="cell-note">asked not to be emailed</span>{% endif %}
+          </td>
+          <td>
+            {# Buttons for other forms, outside this one: a form cannot sit
+               inside a form, so each names the one it belongs to. #}
+            {% if r['state'] == 'held' %}
+            <button type="submit" form="release-{{ r['id'] }}" class="btn-mini"
+                    onclick="return confirm('Checked in Stripe, and nothing more came in for {{ r['reference'] }}?');">Checked, release it</button>
+            {% elif r['state'] == 'refused' and stripe_on %}
+            <button type="submit" form="retry-{{ r['id'] }}" class="btn-mini"
+                    onclick="return confirm('Try the card again for {{ r['reference'] }}, €{{ '%.2f'|format(r['owed']) }}?');">Try the card again</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="collect-actions">
+    {% if stripe_on %}
+    <button type="submit" class="btn-primary" id="collect-take-btn">Take <span id="collect-take-sum">the ticked balances</span> from the cards</button>
+    {% endif %}
+    <button type="submit" class="btn-mini" formaction="{{ url_for('send_balance_links') }}"
+            onclick="return confirm('Email a link to pay to everyone ticked for one?');">Send a link to pay to those ticked for one</button>
+  </div>
+  <p class="upload-hint">Each balance is taken from the card the guest paid the deposit with,
+    for the amount shown, and the guest is sent a receipt. Anything not taken is named,
+    with the reason, and a card that is refused is not tried again unless you try it.</p>
+</form>
+
+{% for r in lv['rows'] if r['state'] == 'held' %}
+<form method="post" id="release-{{ r['id'] }}" action="{{ url_for('release_balance_hold', registration_id=r['id']) }}" hidden>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="back_q" value="{{ back_q }}">
+</form>
+{% endfor %}
+{% for r in lv['rows'] if r['state'] == 'refused' %}
+<form method="post" id="retry-{{ r['id'] }}" action="{{ url_for('retry_balance_card', registration_id=r['id']) }}" hidden>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="back_q" value="{{ back_q }}">
+  <input type="hidden" name="expect" value="{{ '%.2f'|format(r['owed']) }}">
+</form>
+{% endfor %}
+
+<script>
+(function () {
+  // The button says what it will do: how much, from how many cards. Without
+  // the script it still works; it just says "the ticked balances".
+  var boxes = document.querySelectorAll('[data-collect-take]');
+  var btn = document.getElementById('collect-take-btn');
+  var sum = document.getElementById('collect-take-sum');
+  if (!btn || !sum) return;
+  function ticked() {
+    var n = 0, total = 0;
+    boxes.forEach(function (b) { if (b.checked) { n += 1; total += parseFloat(b.dataset.owed); } });
+    return { n: n, total: total };
+  }
+  function money(v) {
+    return '€' + v.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function draw() {
+    var t = ticked();
+    sum.textContent = money(t.total);
+    btn.disabled = t.n === 0;
+  }
+  boxes.forEach(function (b) { b.addEventListener('change', draw); });
+  btn.addEventListener('click', function (e) {
+    var t = ticked();
+    if (!window.confirm('Take ' + money(t.total) + ' from ' + t.n + ' card' + (t.n === 1 ? '' : 's') + '?')) {
+      e.preventDefault();
+    }
+  });
+  draw();
+})();
+</script>
+{% endif %}
+
+{% endblock %}

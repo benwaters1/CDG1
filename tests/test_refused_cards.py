@@ -174,7 +174,9 @@ def run():
     s.check("and saying nothing more happens on its own",
             hit and "will not try the card again" in hit["detail"],
             detail=str(hit)[:190])
-    s.check("with somewhere to act", hit and "outstanding" in hit["href"],
+    # The balances page, where a refused card can be tried again or the guest
+    # sent a link -- the list of what is owed has neither button.
+    s.check("with somewhere to act", hit and "balances" in hit["href"],
             detail=str(hit))
 
     s.section("And the ageing report adds up to what is owed")

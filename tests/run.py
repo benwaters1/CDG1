@@ -36,6 +36,7 @@ SUITES = [
     "test_part_payments",
     "test_autocharge",
     "test_payments_counted_once",
+    "test_balances_to_collect",
     "test_workshop_rooms",
     "test_workshop_lifecycle",
     "test_workshop_minimum",

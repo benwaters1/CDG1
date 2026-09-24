@@ -256,6 +256,7 @@
         <a href="{{ url_for('expenses') }}" class="{{ 'active' if request.endpoint in ['expenses','decide_expense'] }}">{{ icon('receipt') }}Expenses &amp; Invoices</a>
         <a href="{{ url_for('management_financials') }}" class="{{ 'active' if request.endpoint=='management_financials' }}">{{ icon('financial') }}Financials</a>
         <a href="{{ url_for('management_outstanding') }}" class="{{ 'active' if request.endpoint=='management_outstanding' }}">{{ icon('financial') }}What We're Owed</a>
+        {% if can('balances_to_collect') %}<a href="{{ url_for('balances_to_collect') }}" class="{{ 'active' if request.endpoint=='balances_to_collect' }}">{{ icon('financial') }}Balances To Collect</a>{% endif %}
         <a href="{{ url_for('management_debtors') }}" class="{{ 'active' if request.endpoint=='management_debtors' }}">{{ icon('financial') }}Debtor Ageing</a>
         <a href="{{ url_for('management_cash_banking') }}" class="{{ 'active' if request.endpoint=='management_cash_banking' }}">{{ icon('financial') }}Cash Banking</a>
         <a href="{{ url_for('management_on_the_books') }}" class="{{ 'active' if request.endpoint=='management_on_the_books' }}">{{ icon('financial') }}On The Books</a>
@@ -310,6 +311,7 @@
         <a href="{{ url_for('admin_workshops') }}" class="{{ 'active' if request.endpoint=='admin_workshops' }}">{{ icon('workshop') }}Workshops &amp; Sessions</a>
         <a href="{{ url_for('admin_workshop_registrations') }}" class="{{ 'active' if request.endpoint=='admin_workshop_registrations' }}">{{ icon('approvals') }}Registrations{% if pending_workshop_count %} ({{ pending_workshop_count }}){% endif %}</a>
         <a href="{{ url_for('admin_workshop_waitlist') }}" class="{{ 'active' if request.endpoint=='admin_workshop_waitlist' }}">{{ icon('leave') }}Waitlist</a>
+        {% if can('balances_to_collect') %}<a href="{{ url_for('balances_to_collect') }}" class="{{ 'active' if request.endpoint=='balances_to_collect' }}">{{ icon('financial') }}Balances To Collect</a>{% endif %}
         <a href="{{ url_for('admin_workshop_feedback') }}" class="{{ 'active' if request.endpoint=='admin_workshop_feedback' }}">{{ icon('contacts') }}Feedback</a>
       </div>
     </div>

@@ -138,7 +138,7 @@ from datetime import datetime, timezone, timedelta, date, time as dtime
 from functools import wraps
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
-from urllib.parse import quote, urlencode, urlparse
+from urllib.parse import quote, urlencode, urlparse, parse_qsl
 from zoneinfo import ZoneInfo
 from calendar import monthrange
 
@@ -312,6 +312,9 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_event_balance_reminder_enabled": "1",
     # Off by default. See AUTOMATION_JOBS for why.
     "automation_workshop_autocharge_enabled": "0",
+    # On by default, unlike the charge: this moves no money. It tells the
+    # owner the day balances fall due, because nothing else collects them.
+    "automation_balance_due_notice_enabled": "1",
     "automation_workshop_balance_reminder_days_before": "7",
     # Longer than the other two on purpose. A wedding balance is thousands of
     # euros and often a bank transfer somebody has to arrange, so a week's
@@ -5299,6 +5302,11 @@ def init_db():
         # card on a guess is how a guest pays twice.
         ("workshop_bookings_collect_hold",
          "ALTER TABLE workshop_bookings ADD COLUMN collect_hold TEXT"),
+        # When the owner was told this balance had fallen due. Once each: a
+        # notification repeated every morning until it is dealt with is one
+        # people learn to swipe away.
+        ("workshop_bookings_balance_due_noticed_at",
+         "ALTER TABLE workshop_bookings ADD COLUMN balance_due_noticed_at TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -6844,6 +6852,11 @@ NAV_AREAS = {
         # promised that only the owner sees them, and this is the only area no
         # non-owner preset grants.
         "admin_hr_notes", "handle_hr_note",
+        # Taking money from a guest's card. The owner's, for the same reason:
+        # this is the one area no other preset grants, and moving money is not
+        # a thing to hand out along with the right to read a balance.
+        "balances_to_collect", "collect_balances", "send_balance_links",
+        "release_balance_hold", "retry_balance_card",
         "admin_vat", "export_vat_csv",
         "supplier_agreements_page",
         "admin_automation", "admin_deposit_rules", "save_room_deposit_settings",
@@ -26866,7 +26879,26 @@ def owner_home_warnings(conn, today):
             + ". They have been emailed a link to pay it themselves and the "
               "app will not try the card again, so nothing more happens "
               "unless somebody follows it up.",
-            len(refused), "management_outstanding")
+            len(refused), "balances_to_collect")
+
+    # Workshop balances that have fallen due. Nothing takes a card on its own,
+    # so until the owner presses the button the money is simply not collected
+    # -- which is why this is here every morning until it is, and closes itself
+    # the moment it is collected, paid or settled. A refused card is left to
+    # the line above rather than counted twice.
+    balances = [r for r in workshop_balances_due(conn, today=today)
+                if r["state"] not in ("coming", "refused")]
+    if balances:
+        ready = [r for r in balances if r["state"] == "ready"]
+        held = [r for r in balances if r["state"] == "held"]
+        add("blocker" if held else "attention",
+            f"{len(balances)} workshop balance{'' if len(balances) == 1 else 's'} due, "
+            f"{euro(sum(r['owed'] for r in balances))} to collect",
+            (f"{len(ready)} can be taken from the card kept with the deposit"
+             if ready else "None of them has a card to take it from")
+            + (f"; {len(held)} {'is' if len(held) == 1 else 'are'} held until "
+               f"somebody has checked Stripe" if held else "")
+            + ".", len(balances), "balances_to_collect")
 
     # Lines taken off a bill that was already settled. The till records who
     # voided what, when and why, and has done since it was written; until the
@@ -32278,6 +32310,8 @@ PALETTE_PAGES = [
     ("Financials", "management_financials", "revenue profit money"),
     ("What we're owed", "management_outstanding",
      "outstanding balance debtors owing unpaid chase arrears"),
+    ("Balances to collect", "balances_to_collect",
+     "workshop balance due collect charge card take direct debit deposit"),
     ("Gift vouchers", "management_vouchers",
      "voucher vouchers gift card present balance redeem"),
     ("Spend by supplier", "spend_by_vendor_page", "vendor paid purchase totals"),
@@ -62611,6 +62645,7 @@ WATCH_TASK_KINDS = {
     "access": "A guest who told us something, in a room that asks something",
     "agreement": "An agreement about to roll over while nobody decided",
     "clocks": "A night the clocks change, with people rostered through it",
+    "balances": "Workshop balances due to be collected",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -64340,6 +64375,24 @@ def watch_task_findings(conn, today=None):
             "and a gate nobody is at; one with no telephone number is a guest "
             "who cannot be reached on the day they get lost.",
             r["arrival"], "normal"))
+
+    # Workshop balances waiting to be collected. One task while any are, not
+    # one per guest: collecting them is a single visit to one page. The title
+    # carries no count because it is the dedupe key; the count is in the note,
+    # which is rewritten in place.
+    waiting = [r for r in workshop_balances_due(conn, today=today) if r["state"] != "coming"]
+    if waiting:
+        names = "; ".join(f"{r['who']} €{r['owed']:,.2f} ({r['state_label'].lower()})"
+                          for r in waiting[:8])
+        if len(waiting) > 8:
+            names += f"; and {len(waiting) - 8} more"
+        found.append((
+            "balances",
+            "Workshop balances to collect",
+            f"{len(waiting)} due, €{sum(r['owed'] for r in waiting):,.2f} in all: {names}."
+            "\n\nManagement → Balances to collect takes them from the cards kept "
+            "with the deposits, and sends a link to pay to the rest.",
+            min(r["due_date"] for r in waiting), "high"))
 
     return found, dropped
 
@@ -70479,23 +70532,41 @@ def run_workshop_balance_reminder_job(conn, days_before):
     ).fetchall()
     sent = settled = 0
     for booking in due:
-        # What is LEFT, from the ledger. balance_amount is the figure set the
-        # day they booked; a guest who has paid half of it since was being
-        # asked for all of it.
-        left, _, _ = workshop_balance_due(conn, booking["id"])
-        if left <= 0.005:
+        result, _left = send_workshop_balance_request(conn, booking)
+        if result == "nothing_owed":
             settled += 1
             continue
-        context = workshop_email_context(booking)
-        context["balance_amount"] = f"{left:.2f}"
-        send_workshop_email(conn, booking, "workshop_balance_reminder", context)
-        conn.execute(
-            "UPDATE workshop_bookings SET balance_reminder_sent_at = ? WHERE id = ?",
-            (datetime.now(timezone.utc).isoformat(), booking["id"]),
-        )
-        conn.commit()      # before the next guest's send, not after the loop
         sent += 1
     return f"reminded {sent} of {len(due) - settled} due booking(s)"
+
+
+def send_workshop_balance_request(conn, booking):
+    """Ask a workshop guest for what is left of their balance, with the link to
+    pay it. Returns (result, amount): "sent", "nothing_owed" or "do_not_email".
+
+    The reminder before the due date and the owner's "send the pay link" after
+    it are this one function, so both quote the same figure and leave the same
+    record. The figure is what is LEFT, from the ledger: balance_amount is what
+    they owed the day they booked, and a guest who has paid half of it since
+    was being asked for all of it.
+
+    `booking` needs the session's dates and the workshop's title, as
+    workshop_email_context reads them.
+    """
+    left, _, _ = workshop_balance_due(conn, booking["id"])
+    if left <= 0.005:
+        return "nothing_owed", 0.0
+    if booking["do_not_email"]:
+        return "do_not_email", left
+    context = workshop_email_context(booking)
+    context["balance_amount"] = f"{left:.2f}"
+    send_workshop_email(conn, booking, "workshop_balance_reminder", context)
+    conn.execute(
+        "UPDATE workshop_bookings SET balance_reminder_sent_at = ? WHERE id = ?",
+        (datetime.now(timezone.utc).isoformat(), booking["id"]),
+    )
+    conn.commit()      # before the next guest's send, not after the loop
+    return "sent", left
 
 
 def run_event_balance_reminder_job(conn, days_before):
@@ -70687,6 +70758,7 @@ def charge_workshop_balance(conn, row):
       unknown       no clear answer: HELD and the owner told. The guest is NOT
                     told their card was refused, because it may not have been
       config        our Stripe keys were refused; nothing was attempted
+      refused_before  refused on an earlier try; only retry_balance_card tries again
     """
     due, _, _ = workshop_balance_due(conn, row["id"])
     if due <= 0.005:
@@ -70695,6 +70767,11 @@ def charge_workshop_balance(conn, row):
         return "held", due, row["collect_hold"]
     if row["autocharge_opt_out"]:
         return "opted_out", due, "they asked to pay it themselves"
+    # Refused once, tried again only by somebody choosing to (retry_balance_card
+    # clears this first). The job's query already leaves these out; this is so
+    # that no other caller -- a ticked list, a crafted form -- can forget to.
+    if row["autocharge_failed_at"]:
+        return "refused_before", due, "the card was refused before"
     if not (row["stripe_customer_id"] and row["stripe_payment_method_id"]):
         return "no_card", due, "no card was kept from the deposit"
     if not stripe_enabled():
@@ -70760,6 +70837,387 @@ def charge_workshop_balance(conn, row):
     conn.commit()
     send_autocharge_taken_email(conn, row, due)
     return "taken", due, ""
+
+
+# What a balance that has fallen due needs from the owner, in the order the
+# page reads: what one press of a button settles, then what needs a person,
+# then what is on its way.
+COLLECT_STATES = {
+    "ready": "Take from the card",
+    "held": "Check Stripe first",
+    "refused": "Card refused",
+    "opted_out": "Paying it themselves",
+    "no_card": "No card kept",
+    "coming": "Coming up",
+}
+COLLECT_AHEAD_DAYS = 14
+
+# The outcomes of charge_workshop_balance in which Stripe was actually asked.
+# Those go in the audit log with who pressed the button; the rest touched
+# nothing, and a log of non-events is how a log stops being read.
+CHARGE_ATTEMPTED = ("taken", "refused", "unknown", "config")
+
+# Why a ticked balance was not taken, said to the person who ticked it.
+COLLECT_SKIP_REASONS = {
+    "nothing_owed": "nothing is owed now",
+    "held": "it is held until Stripe has been checked",
+    "opted_out": "they asked to pay it themselves",
+    "no_card": "no card was kept from the deposit",
+    "no_stripe": "card payments are not connected",
+    "unknown": "Stripe gave no clear answer, so it is held: check Stripe before trying again",
+    "config": "Stripe refused the app's keys, so nothing was attempted",
+    "refused_before": "the card was refused before, and is only tried again from its own "
+                      "button, by somebody choosing to",
+}
+
+
+def workshop_balances_due(conn, today=None, ahead_days=COLLECT_AHEAD_DAYS):
+    """Confirmed registrations with a balance due by `ahead_days` from today,
+    each with what it needs (COLLECT_STATES).
+
+    What is owed is the LEDGER'S figure, worked out for every registration in
+    one grouped query rather than a lookup each. balance_amount is what they
+    owed the day they booked; a guest who has part-paid since would be charged
+    all of it again.
+    """
+    today = today or house_today()
+    horizon = (today + timedelta(days=ahead_days)).isoformat()
+    today_iso = today.isoformat()
+    ledger = {r["id"]: r for r in conn.execute(
+        """SELECT wb.id,
+                  COALESCE(wb.total_price, 0)
+                    + COALESCE(SUM(CASE t.kind WHEN 'charge' THEN t.amount
+                                               WHEN 'discount' THEN -t.amount
+                                               ELSE 0 END), 0) AS charged,
+                  COALESCE(SUM(CASE t.kind WHEN 'payment' THEN t.amount
+                                           WHEN 'refund' THEN -t.amount
+                                           ELSE 0 END), 0) AS paid
+             FROM workshop_bookings wb
+             LEFT JOIN workshop_transactions t ON t.workshop_booking_id = wb.id
+            WHERE wb.status = 'confirmed' AND wb.balance_due_date IS NOT NULL
+              AND wb.balance_due_date <= ?
+            GROUP BY wb.id""", (horizon,)).fetchall()}
+    out = []
+    for row in conn.execute(
+            """SELECT wb.*, workshops.title, workshop_sessions.start_date,
+                      workshop_sessions.end_date
+                 FROM workshop_bookings wb
+                 JOIN workshop_sessions ON workshop_sessions.id = wb.session_id
+                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                WHERE wb.status = 'confirmed' AND wb.balance_due_date IS NOT NULL
+                  AND wb.balance_due_date <= ?
+                ORDER BY wb.balance_due_date, wb.id""", (horizon,)).fetchall():
+        money = ledger.get(row["id"])
+        owed = round(money["charged"] - money["paid"], 2) if money else 0.0
+        if owed <= 0.005:
+            continue
+        due_on = row["balance_due_date"]
+        if due_on > today_iso:
+            state = "coming"
+        elif row["collect_hold"]:
+            state = "held"
+        elif row["autocharge_failed_at"]:
+            state = "refused"
+        elif row["autocharge_opt_out"]:
+            state = "opted_out"
+        elif not (row["stripe_customer_id"] and row["stripe_payment_method_id"]):
+            state = "no_card"
+        else:
+            state = "ready"
+        out.append({
+            "row": row, "id": row["id"], "who": row["guest_name"],
+            "email": row["guest_email"], "reference": row["reference_code"],
+            "what": row["title"], "start_date": row["start_date"],
+            "end_date": row["end_date"], "due_date": due_on,
+            "days_late": (today - date.fromisoformat(due_on)).days,
+            "owed": owed, "state": state, "state_label": COLLECT_STATES[state],
+            "hold": row["collect_hold"], "refused_at": row["autocharge_failed_at"],
+            "noticed_at": row["balance_due_noticed_at"],
+            "do_not_email": bool(row["do_not_email"]),
+        })
+    return out
+
+
+def run_balance_due_notice_job(conn):
+    """Tell the owner the day workshop balances fall due, once each.
+
+    The owner takes balances by hand, from Balances to collect -- nothing
+    charges a card on its own -- so the morning a balance falls due has to
+    reach a person or it is simply not collected. One notification names
+    whatever has fallen due since the last, and each registration is noticed
+    once: a notification repeated daily until dealt with is one people learn
+    to swipe away. What is still waiting stays on the owner home and as a
+    task until it is collected, which is the half of this that closes itself.
+    """
+    due = [r for r in workshop_balances_due(conn)
+           if r["state"] != "coming" and not r["noticed_at"]]
+    if not due:
+        return "nothing newly due"
+    owner = conn.execute(
+        "SELECT id FROM users WHERE role = 'owner' ORDER BY id LIMIT 1").fetchone()
+    if not owner:
+        raise JobFailed("there is no owner account to tell")
+    total = sum(r["owed"] for r in due)
+    ready = [r for r in due if r["state"] == "ready"]
+    lines = [f"{r['who']} — €{r['owed']:,.2f}, {r['what']} ({r['reference']})"
+             + ("" if r["state"] == "ready" else f": {r['state_label'].lower()}")
+             for r in due[:12]]
+    if len(due) > 12:
+        lines.append(f"and {len(due) - 12} more")
+    lines.append("")
+    lines.append(f"{len(ready)} of them can be taken from the card kept with the deposit."
+                 if ready else "None of them has a card to take it from.")
+    send_notification(
+        conn, owner["id"], "balance_due",
+        f"{len(due)} workshop balance{'' if len(due) == 1 else 's'} due — "
+        f"€{total:,.2f} to collect",
+        body="\n".join(lines), link=url_for("balances_to_collect"))
+    now = datetime.now(timezone.utc).isoformat()
+    conn.executemany(
+        "UPDATE workshop_bookings SET balance_due_noticed_at = ? WHERE id = ?",
+        [(now, r["id"]) for r in due])
+    conn.commit()
+    return f"told the owner about {len(due)} balance(s), €{total:,.2f}"
+
+
+def _balances_back():
+    """Back to the balances page with the filters it was sent from. Rebuilt
+    from parsed pairs rather than pasted, so the field cannot send anybody
+    anywhere else."""
+    pairs = parse_qsl(request.form.get("back_q", ""), keep_blank_values=False)
+    return url_for("balances_to_collect", **{k: v for k, v in pairs
+                                             if k in ("q", "sort", "state", "workshop")})
+
+
+def _registration_for_collect(conn, registration_id):
+    return conn.execute(
+        """SELECT wb.*, workshops.title, workshop_sessions.start_date,
+                  workshop_sessions.end_date
+             FROM workshop_bookings wb
+             JOIN workshop_sessions ON workshop_sessions.id = wb.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE wb.id = ?""", (registration_id,)).fetchone()
+
+
+@app.route("/management/balances")
+@owner_required
+def balances_to_collect():
+    """Workshop balances that have fallen due, and the button that takes them.
+
+    A balance falls due thirty days before the atelier, and the house takes it
+    from the card the guest paid the deposit with -- when the owner says so,
+    here, and not before: nothing charges a card on its own. So this page is
+    the whole of the decision. Who is due, how much, whether there is a card to
+    take it from, and why not where there is not.
+    """
+    conn = get_db()
+    today = house_today()
+    items = workshop_balances_due(conn, today=today)
+    conn.close()
+    lv = list_view(
+        items, request.args,
+        search=["who", "email", "reference", "what"],
+        search_hint="Search guest, email, reference or workshop",
+        facets=[
+            facet("state", "Needs", lambda r: r["state_label"],
+                  order=list(COLLECT_STATES.values())),
+            facet("workshop", "Workshop", lambda r: r["what"], limit=8),
+        ],
+        sorts=[
+            sort_option("late", "Most overdue", lambda r: -r["days_late"]),
+            sort_option("largest", "Largest first", lambda r: -r["owed"]),
+            sort_option("due", "Due soonest", lambda r: r["due_date"]),
+            sort_option("name", "By guest", lambda r: (r["who"] or "").casefold()),
+        ],
+        default_sort="late",
+    )
+    due_now = [r for r in items if r["state"] != "coming"]
+    ready = [r for r in due_now if r["state"] == "ready"]
+    coming = [r for r in items if r["state"] == "coming"]
+    return render_template(
+        "balances_to_collect.html", lv=lv, today=today,
+        due_count=len(due_now), due_total=round(sum(r["owed"] for r in due_now), 2),
+        ready_count=len(ready), ready_total=round(sum(r["owed"] for r in ready), 2),
+        coming_count=len(coming), coming_total=round(sum(r["owed"] for r in coming), 2),
+        ahead_days=COLLECT_AHEAD_DAYS, stripe_on=stripe_enabled(),
+        back_q=request.query_string.decode("utf-8", "replace"),
+    )
+
+
+@app.route("/management/balances/collect", methods=["POST"])
+@owner_required
+def collect_balances():
+    """Take the ticked balances from the cards kept with their deposits.
+
+    Each one is charge_workshop_balance, the daily job's own function, so this
+    is the same action done many times rather than a second version of it.
+    What it did NOT do is said by name, including any whose amount changed
+    after the page was drawn: the figure beside the tick is the figure the
+    owner agreed to, and a guest who paid something in the meantime is not
+    charged a sum nobody looked at.
+    """
+    ids = []
+    for raw in request.form.getlist("reg_id"):
+        if raw.isdigit() and int(raw) not in ids:
+            ids.append(int(raw))
+    conn = get_db()
+    today_iso = house_today_iso()
+    done, skipped, taken = 0, [], 0.0
+    for rid in ids:
+        row = _registration_for_collect(conn, rid)
+        if not row:
+            skipped.append((f"#{rid}", "it no longer exists"))
+            continue
+        label = f"{row['guest_name']} ({row['reference_code']})"
+        if row["status"] != "confirmed":
+            skipped.append((label, f"the registration is {row['status']}"))
+            continue
+        if not row["balance_due_date"] or row["balance_due_date"] > today_iso:
+            skipped.append((label, "it is not due yet"))
+            continue
+        owed, _, _ = workshop_balance_due(conn, rid)
+        expected = parse_money(request.form.get(f"expect_{rid}"))
+        if expected is None or abs(owed - expected) > 0.005:
+            skipped.append((label, f"what is owed changed after the page was drawn "
+                                   f"(it is €{owed:,.2f} now), so nothing was taken"))
+            continue
+        outcome, amount, detail = charge_workshop_balance(conn, row)
+        if outcome in CHARGE_ATTEMPTED:
+            log_audit(conn, "workshop_balance_collect", target=row["reference_code"],
+                      details=f"{outcome}: €{amount:.2f}" + (f" — {detail}" if detail else ""))
+            conn.commit()
+        if outcome == "taken":
+            done += 1
+            taken += amount
+        elif outcome == "refused":
+            skipped.append((label, f"the card was refused ({detail}), and they have "
+                                   f"been sent a link to pay it themselves"))
+        else:
+            skipped.append((label, COLLECT_SKIP_REASONS.get(outcome, detail)))
+    conn.close()
+    flash(*bulk_message("Collected", "balance", done, skipped,
+                        detail=f"€{taken:,.2f}" if done else ""))
+    return redirect(_balances_back())
+
+
+@app.route("/management/balances/send-links", methods=["POST"])
+@owner_required
+def send_balance_links():
+    """Email the ticked guests a link to pay what they owe themselves.
+
+    For the balances no card can settle -- no card kept, a card refused, a
+    guest who asked to pay it themselves -- and it is the reminder's own
+    function, so the figure asked for is the ledger's and the record is the
+    same one.
+    """
+    ids = []
+    for raw in request.form.getlist("link_id"):
+        if raw.isdigit() and int(raw) not in ids:
+            ids.append(int(raw))
+    conn = get_db()
+    done, skipped = 0, []
+    for rid in ids:
+        row = _registration_for_collect(conn, rid)
+        if not row:
+            skipped.append((f"#{rid}", "it no longer exists"))
+            continue
+        label = f"{row['guest_name']} ({row['reference_code']})"
+        if row["status"] != "confirmed":
+            skipped.append((label, f"the registration is {row['status']}"))
+            continue
+        if not (row["guest_email"] or "").strip():
+            skipped.append((label, "there is no email address to send it to"))
+            continue
+        result, left = send_workshop_balance_request(conn, row)
+        if result == "sent":
+            log_audit(conn, "workshop_balance_link_sent", target=row["reference_code"],
+                      details=f"€{left:.2f}")
+            conn.commit()
+            done += 1
+        elif result == "do_not_email":
+            skipped.append((label, "they asked not to be emailed"))
+        else:
+            skipped.append((label, "nothing is owed now"))
+    conn.close()
+    flash(*bulk_message("Sent", "pay link", done, skipped))
+    return redirect(_balances_back())
+
+
+@app.route("/management/balances/<int:registration_id>/release", methods=["POST"])
+@owner_required
+def release_balance_hold(registration_id):
+    """Somebody has looked in Stripe, and the balance may be collected again.
+
+    The note and the reason for the hold both go in the audit line, so the
+    record says who decided and on what -- the hold existed because nobody
+    knew whether money had already moved.
+    """
+    note = (request.form.get("note") or "").strip()[:300]
+    conn = get_db()
+    row = conn.execute("SELECT id, reference_code, collect_hold FROM workshop_bookings "
+                       "WHERE id = ?", (registration_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    if not row["collect_hold"]:
+        conn.close()
+        flash("That registration was not held.", "error")
+        return redirect(_balances_back())
+    conn.execute("UPDATE workshop_bookings SET collect_hold = NULL WHERE id = ?",
+                 (registration_id,))
+    # The task the hold raised is answered by this, so it closes with it.
+    conn.execute(
+        "UPDATE tasks SET status = 'done', completed_at = ? WHERE origin = 'payment' "
+        "AND status != 'done' AND title LIKE ?",
+        (datetime.now(timezone.utc).isoformat(), f"Check Stripe before charging %({row['reference_code']})"))
+    log_audit(conn, "workshop_collect_hold_released", target=row["reference_code"],
+              details=f"{note or 'checked'} — the hold said: {row['collect_hold'][:300]}")
+    conn.commit()
+    conn.close()
+    flash(f"{row['reference_code']} can be collected again. If Stripe showed a payment "
+          f"that is not on the ledger, record it on the registration first.", "success")
+    return redirect(_balances_back())
+
+
+@app.route("/management/balances/<int:registration_id>/retry", methods=["POST"])
+@owner_required
+def retry_balance_card(registration_id):
+    """Try a refused card once more, because the owner has chosen to.
+
+    The refusal is what stops the card being tried again, and rightly -- a card
+    retried by itself every morning is a guest with a bank alert a day. A
+    person deciding to try it, having perhaps heard from the guest, is a
+    different thing, and it goes through the same charge as everything else.
+    """
+    conn = get_db()
+    row = _registration_for_collect(conn, registration_id)
+    if not row:
+        conn.close()
+        abort(404)
+    owed, _, _ = workshop_balance_due(conn, registration_id)
+    expected = parse_money(request.form.get("expect"))
+    if expected is None or abs(owed - expected) > 0.005:
+        conn.close()
+        flash(f"What is owed changed after the page was drawn (it is €{owed:,.2f} now), "
+              f"so nothing was taken.", "error")
+        return redirect(_balances_back())
+    conn.execute("UPDATE workshop_bookings SET autocharge_failed_at = NULL WHERE id = ?",
+                 (registration_id,))
+    conn.commit()
+    row = _registration_for_collect(conn, registration_id)
+    outcome, amount, detail = charge_workshop_balance(conn, row)
+    log_audit(conn, "workshop_balance_collect", target=row["reference_code"],
+              details=f"retried — {outcome}: €{amount:.2f}" + (f" — {detail}" if detail else ""))
+    conn.commit()
+    conn.close()
+    if outcome == "taken":
+        flash(f"€{amount:,.2f} taken from {row['guest_name']}'s card.", "success")
+    elif outcome == "refused":
+        flash(f"The card was refused again ({detail}). They have been sent a link "
+              f"to pay it themselves.", "error")
+    else:
+        flash(f"Nothing was taken: {COLLECT_SKIP_REASONS.get(outcome, detail)}.", "error")
+    return redirect(_balances_back())
 
 
 def hold_workshop_collection(conn, row, reason):
@@ -71470,6 +71928,10 @@ AUTOMATION_JOBS = [
     # has been charged end to end in Stripe test mode, including a card
     # made to decline on purpose.
     ("workshop_autocharge", "automation_workshop_autocharge_enabled", None, 24 * 3600, run_workshop_autocharge_job),
+    # Daily. The owner collects balances by hand, so the morning one falls due
+    # is the morning somebody has to hear about it.
+    ("balance_due_notice", "automation_balance_due_notice_enabled", None, 24 * 3600,
+     run_balance_due_notice_job),
     # Daily, and deliberately not switchable per-interval: the privacy notice
     # states this happens once the event is over, so it is not a preference.
     ("health_notes_purge", "automation_health_notes_purge_enabled", None, 24 * 3600,
@@ -71674,6 +72136,7 @@ AUTOMATION_JOB_LABELS = {
     "page_translation": "Translate new public-page text into French and Spanish",
     "daily_digest": "Daily owner digest email",
     "workshop_autocharge": "Workshop: charge the balance on its due date",
+    "balance_due_notice": "Workshop: tell the owner when balances fall due (once each)",
     "workshop_decision": "Workshop: it will not reach the number it needs to run (once when the date is in sight, once if it passes)",
     "ical_sync": "iCal sync",
     "social_publish": "Put out approved posts whose time has come",
@@ -71825,6 +72288,14 @@ def run_automation_job_now(job_name):
     if job_name not in registry and job_name not in PARAMETERISED_JOBS:
         conn.close()
         abort(404)
+    # Not run blind. This button took every due balance from every card at
+    # once, whether or not the job was switched on, with nothing on screen to
+    # say who or how much. The balances page shows both first.
+    if job_name == "workshop_autocharge":
+        conn.close()
+        flash("Balances are taken from here, where you can see who is charged, "
+              "and how much, before anything is.", "success")
+        return redirect(url_for("balances_to_collect"))
     try:
         if job_name in REMINDER_DAYS_SETTING:
             result = run_balance_reminder(conn, settings, job_name)
