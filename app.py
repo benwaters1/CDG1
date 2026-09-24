@@ -37243,14 +37243,21 @@ def api_validate_promo_code():
 
 
 def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code="",
-                     party_size=None):
+                     party_size=None, guests_under_18=None):
     """What this stay costs, itemised.
 
     Uses the same functions that charge for it — compute_room_total for the
-    room, validate_promo_code for the discount — because a quote calculated
-    separately from the charge is one that will eventually disagree with the
-    charge, and the guest will be right. validate_promo_code only reads, so
-    quoting cannot burn a code.
+    room, validate_promo_code for the discount, compute_city_tax for the
+    taxe de séjour — because a quote calculated separately from the charge is
+    one that will eventually disagree with the charge, and the guest will be
+    right. validate_promo_code only reads, so quoting cannot burn a code.
+
+    The tax is a line of its own, marked kind "tax", and is in the total: the
+    card is charged it as its own line, and booking_bill counts it in what the
+    stay owes, so a total without it is a figure the guest never pays. It is
+    only quoted for a known party, because it is charged per adult and a
+    figure for nobody would be invented. With no line here the page adds its
+    own from settings['tourist_tax'], which is the same rate.
 
     Also answers "can I have these dates at all", so the guest finds out before
     filling the form in rather than on submit.
@@ -37258,7 +37265,7 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
     nights = (departure - arrival).days if (arrival and departure) else 0
     quote = {"nights": nights, "available": True, "reason": None, "lines": [],
              "room_total": 0.0, "extras_total": 0.0, "discount": 0.0,
-             "promo_error": None, "total": 0.0, "per_night": None,
+             "promo_error": None, "tax": 0.0, "total": 0.0, "per_night": None,
              "too_soon": []}
 
     if nights < 1:
@@ -37314,7 +37321,19 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
                                    "amount": -quote["discount"]})
         else:
             quote["promo_error"] = error
-    quote["total"] = round(subtotal - quote["discount"], 2)
+    if party_size:
+        # Cleaned exactly as book_room cleans it before charging: the children
+        # never more than the party, and never fewer than none.
+        under = max(0, min(int(guests_under_18 or 0), party_size))
+        tax, adults, _rate = compute_city_tax(conn, party_size, under, nights)
+        if tax:
+            quote["tax"] = tax
+            quote["lines"].append({
+                "label": (f"Tourist tax (taxe de séjour), {adults} "
+                          f"adult{'' if adults == 1 else 's'} × {nights} "
+                          f"night{'' if nights == 1 else 's'}"),
+                "amount": tax, "kind": "tax"})
+    quote["total"] = round(subtotal - quote["discount"] + quote["tax"], 2)
     return quote
 
 
@@ -37384,11 +37403,13 @@ def api_quote():
         if not room:
             return jsonify(error="no such room"), 404
         party_raw = request.args.get("party_size", "")
+        under_raw = request.args.get("guests_under_18", "").strip()
         quote = build_stay_quote(
             conn, room, arrival, departure,
             [int(i) for i in request.args.getlist("extras") if i.isdigit()],
             request.args.get("promo", "").strip(),
-            int(party_raw) if party_raw.isdigit() else None)
+            int(party_raw) if party_raw.isdigit() else None,
+            int(under_raw) if under_raw.isdigit() else 0)
     finally:
         conn.close()
     return jsonify(quote)
@@ -37439,6 +37460,25 @@ def public_form_prefill(form, mapping):
             for name, field in mapping.items()}
 
 
+def party_adults(adults, party_size, under_18):
+    """The Adults box, refilled: what was typed, or the party less the children.
+
+    The box used to refill from party_size, which is adults AND children, and
+    the page then added the under-18 count back on top. So a family of two
+    adults and two children, sent back by a validation error, came back as four
+    adults and two children -- a party of six -- and a family returning from an
+    abandoned card payment came back with its children counted as adults. Both
+    are charged the taxe de séjour per adult, so either one, resubmitted, paid
+    for children as grown-ups.
+    """
+    if str(adults or "").isdigit():
+        return str(adults)
+    party, under = str(party_size or ""), str(under_18 or "")
+    if not party.isdigit():
+        return ""
+    return str(max(1, int(party) - (int(under) if under.isdigit() else 0)))
+
+
 def book_room_prefill(form=None, conn=None):
     """What the guest typed, ready to hand straight back to book_room.html.
 
@@ -37459,6 +37499,8 @@ def book_room_prefill(form=None, conn=None):
         "prefill_email": field("guest_email"),
         "prefill_phone": field("guest_phone"),
         "prefill_party_size": field("party_size"),
+        "prefill_adults": party_adults(field("adults"), field("party_size"),
+                                       field("guests_under_18")),
         "prefill_under_18": field("guests_under_18"),
         "prefill_requests": field("special_requests"),
         "prefill_promo": field("promo_code"),
@@ -37808,6 +37850,7 @@ def book_room(room_id):
     prefill_email = request.args.get("email", "")
     prefill_phone = request.args.get("phone", "")
     prefill_party_size = request.args.get("party_size", "")
+    prefill_under_18 = request.args.get("guests_under_18", "")
     prefill_requests = prefill_promo = ""
     prefill_extras = set()
     prefill_extra_when, prefill_extra_note = {}, {}
@@ -37830,6 +37873,9 @@ def book_room(room_id):
         prefill_email = prefill_email or stashed.get("guest_email", "")
         prefill_phone = prefill_phone or stashed.get("guest_phone", "")
         prefill_party_size = prefill_party_size or stashed.get("party_size", "")
+        # Stashed on the way out and never handed back, so the children came
+        # back as adults -- see party_adults.
+        prefill_under_18 = prefill_under_18 or str(stashed.get("guests_under_18") or "")
         prefill_requests = stashed.get("special_requests", "")
         prefill_promo = stashed.get("promo_code", "")
         prefill_extras = set(stashed.get("extras", []))
@@ -37845,7 +37891,8 @@ def book_room(room_id):
     if arrival_d and departure_d:
         initial_quote = build_stay_quote(
             conn, room, arrival_d, departure_d,
-            party_size=int(prefill_party_size) if prefill_party_size.isdigit() else None)
+            party_size=int(prefill_party_size) if prefill_party_size.isdigit() else None,
+            guests_under_18=int(prefill_under_18) if prefill_under_18.isdigit() else 0)
     # AND WHAT THE PROFILE ALREADY KNOWS, in the blanks only. This is the
     # first render -- the one a guest actually sees -- so filling it here is
     # the whole point; the error paths below were never the moment that
@@ -37862,6 +37909,8 @@ def book_room(room_id):
         "book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras,
         stripe_enabled=stripe_enabled(), prefill_name=prefill_name, prefill_email=prefill_email,
         prefill_phone=prefill_phone, prefill_party_size=prefill_party_size, gallery_photos=gallery_photos,
+        prefill_adults=party_adults("", prefill_party_size, prefill_under_18),
+        prefill_under_18=prefill_under_18,
         prefill_requests=prefill_requests, prefill_promo=prefill_promo,
         prefill_extras=prefill_extras, initial_quote=initial_quote,
         prefill_extra_when=prefill_extra_when, prefill_extra_note=prefill_extra_note,
