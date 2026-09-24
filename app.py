@@ -5276,12 +5276,53 @@ def init_db():
         # back to SMS while the others do not.
         ("sms_outbox_channel",
          "ALTER TABLE sms_outbox ADD COLUMN channel TEXT NOT NULL DEFAULT 'sms'"),
+
+        # WHICH STRIPE PAYMENT A LEDGER LINE CAME FROM, so each is written once.
+        #
+        # A workshop balance paid online in two parts was recorded once. The
+        # first part stamped the balance paid; the second found the stamp and
+        # wrote nothing, though Stripe had taken the money -- and the ledger,
+        # still showing it owed, is what the charge on the due date reads.
+        # Every line that came through Stripe now names its Checkout Session
+        # or PaymentIntent, and the index turns a second report of the same
+        # one (the webhook and the guest's return page both send it) into an
+        # IntegrityError instead of a second payment.
+        ("workshop_transactions_stripe_ref",
+         "ALTER TABLE workshop_transactions ADD COLUMN stripe_ref TEXT"),
+        ("workshop_transactions_stripe_ref_once",
+         "CREATE UNIQUE INDEX IF NOT EXISTS workshop_transactions_stripe_ref_once "
+         "ON workshop_transactions(stripe_ref) WHERE stripe_ref IS NOT NULL"),
+        # A registration nobody may charge until a person has looked, and why:
+        # a balance the old recording marked paid while the ledger still shows
+        # money owed, or a charge Stripe gave no clear answer to. Either way
+        # nobody knows whether the money has already moved, and charging a
+        # card on a guess is how a guest pays twice.
+        ("workshop_bookings_collect_hold",
+         "ALTER TABLE workshop_bookings ADD COLUMN collect_hold TEXT"),
     ):
         try:
             conn.execute(ddl)
             conn.commit()
         except sqlite3.OperationalError:
             pass  # column already exists
+
+    # Each Stripe checkout credited to an event once. The return page checked
+    # before writing and the webhook never wrote at all, so that check was the
+    # whole guard, and two reports arriving together could both pass it.
+    # Scoped to Stripe's own session ids: a reference the owner types for a
+    # bank transfer may perfectly well repeat. Outside the loop because rows
+    # written before the index can already hold a duplicate, and a unique index
+    # that cannot be built raises IntegrityError -- which would stop the app
+    # starting, over a guard.
+    try:
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS event_payments_checkout_once "
+            "ON event_payments(reference) WHERE substr(reference, 1, 3) = 'cs_'")
+        conn.commit()
+    except (sqlite3.OperationalError, sqlite3.IntegrityError) as e:
+        print(f"[init] event_payments: checkout-once index not built ({e})")
+
+    hold_legacy_balance_stamps(conn)
 
     # `guests` used to be a per-STAY register carrying arrival/departure/party_size,
     # duplicating what `bookings` already owns. The two could never be kept in
@@ -38076,6 +38117,12 @@ def stripe_webhook():
                 ).fetchone()
                 if not existing and sval(session, "payment_status") == "paid":
                     create_restaurant_booking_from_stripe_session(conn, session)
+            elif meta.get("kind") == "event_payment":
+                # Credited here as well as on the return page. It was only ever
+                # credited THERE, so somebody who paid towards a wedding and
+                # closed the tab before it loaded had paid, was shown as owing,
+                # and was chased for it by the balance reminder.
+                record_event_checkout(conn, session)
             elif meta.get("kind") == "room_balance":
                 # Must be matched explicitly: the fall-through below CREATES a
                 # booking from the session, so a guest paying off an existing
@@ -39724,6 +39771,35 @@ def event_pay(manage_token):
     return redirect(url, code=303)
 
 
+def record_event_checkout(conn, session):
+    """Credit one paid Stripe checkout to its event, once. True if this call did.
+
+    The webhook and the contact's return page both report the same payment,
+    and a reload reports it again. Once is decided by the session id written
+    as the payment's reference, and held to by an index, so two reports that
+    arrive together cannot both pass the check.
+    """
+    meta = smeta(session)
+    event_id = str(meta.get("event_id") or "").strip()
+    if not event_id.isdigit() or sval(session, "payment_status") != "paid":
+        return False
+    session_id = session["id"]
+    if conn.execute("SELECT 1 FROM event_payments WHERE reference = ?",
+                    (session_id,)).fetchone():
+        return False
+    amount = (sval(session, "amount_total") or 0) / 100.0
+    if amount <= 0:
+        return False
+    try:
+        record_event_payment(conn, int(event_id), amount, method="card_link",
+                             reference=session_id)
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return False
+    conn.commit()
+    return True
+
+
 @app.route("/events/paid/<manage_token>")
 def event_stripe_success(manage_token):
     """Where they land after paying.
@@ -39751,14 +39827,14 @@ def event_stripe_success(manage_token):
         conn.close()
         flash("That payment wasn't completed. Nothing has been charged.", "error")
         return redirect(url_for("event_manage", manage_token=manage_token))
-    already = conn.execute(
-        "SELECT 1 FROM event_payments WHERE reference = ?", (session_id,)).fetchone()
-    if not already:
-        amount = (sval(checkout, "amount_total") or 0) / 100.0
-        if amount > 0:
-            record_event_payment(conn, event["id"], amount, method="card_link",
-                                 reference=session_id)
-            conn.commit()
+    # A session paid for some other event is not this page's to thank anybody
+    # for. It is credited to the event it paid for, all the same.
+    if str(smeta(checkout).get("event_id") or "") != str(event["id"]):
+        record_event_checkout(conn, checkout)
+        conn.close()
+        flash("That payment was not for this event.", "error")
+        return redirect(url_for("event_manage", manage_token=manage_token))
+    record_event_checkout(conn, checkout)
     bill = event_bill(conn, event["id"])
     conn.close()
     left = bill["owed"] if bill else 0
@@ -43205,13 +43281,85 @@ def workshop_balance_due(conn, booking_id):
     return round(total - paid, 2), round(total, 2), round(paid, 2)
 
 
-def add_workshop_transaction(conn, booking_id, kind, description, amount, method=None, user_id=None):
+def add_workshop_transaction(conn, booking_id, kind, description, amount, method=None, user_id=None,
+                             stripe_ref=None):
+    """One line on a registration's ledger, and the paid stamp kept true to it.
+
+    `stripe_ref` names the Checkout Session or PaymentIntent the money came
+    through. A line carrying one can be written once only, so a caller that
+    hears about the same payment twice gets sqlite3.IntegrityError the second
+    time and treats it as already recorded.
+
+    The ledger is what a registration owes. balance_paid_at is only a stamp
+    saying the ledger has reached nothing, and it is restamped after every
+    line. It used to be set by whichever balance payment came first, so half a
+    balance paid read as all of it -- and every list that filters on the stamp
+    stopped chasing money that was still owed.
+    """
     conn.execute(
         """INSERT INTO workshop_transactions
-           (workshop_booking_id, kind, description, amount, method, created_by_user_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (booking_id, kind, description, amount, method, user_id, datetime.now(timezone.utc).isoformat()),
+           (workshop_booking_id, kind, description, amount, method, created_by_user_id, created_at,
+            stripe_ref)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (booking_id, kind, description, amount, method, user_id, datetime.now(timezone.utc).isoformat(),
+         stripe_ref),
     )
+    restamp_workshop_balance(conn, booking_id)
+
+
+def restamp_workshop_balance(conn, booking_id):
+    """Set balance_paid_at when the ledger owes nothing; clear it when it does.
+
+    Cleared as well as set: a charge added after the balance was paid -- a
+    breakage, a supplement agreed late -- is money owed again, and a stamp left
+    in place would hide it from the reminder and from the collection list.
+    """
+    row = conn.execute("SELECT balance_paid_at FROM workshop_bookings WHERE id = ?",
+                       (booking_id,)).fetchone()
+    if not row:
+        return
+    due, _, paid = workshop_balance_due(conn, booking_id)
+    if due <= 0.005 and paid > 0 and not row["balance_paid_at"]:
+        conn.execute("UPDATE workshop_bookings SET balance_paid_at = ? WHERE id = ?",
+                     (datetime.now(timezone.utc).isoformat(), booking_id))
+    elif due > 0.005 and row["balance_paid_at"]:
+        conn.execute("UPDATE workshop_bookings SET balance_paid_at = NULL WHERE id = ?",
+                     (booking_id,))
+
+
+def hold_legacy_balance_stamps(conn):
+    """Registrations the old recording marked paid while money was still owed.
+
+    Before each Stripe payment was written once by its own id, the first
+    balance payment stamped the balance paid and any later one was taken by
+    Stripe and never written. So a registration stamped paid while its ledger
+    still shows money owed is one of two things: a guest who really does still
+    owe it, or one who paid online and was never credited. Only Stripe knows
+    which. The stamp comes off, so the debt shows again, and the registration
+    is HELD from being charged until somebody has looked. Charging it on a
+    guess is how a guest pays twice.
+
+    Runs at startup and finds nothing once the old rows are through it, since
+    restamp_workshop_balance keeps every new line consistent with the stamp.
+    """
+    held = 0
+    for row in conn.execute(
+            "SELECT id, reference_code FROM workshop_bookings WHERE balance_paid_at IS NOT NULL"
+    ).fetchall():
+        due, _, _ = workshop_balance_due(conn, row["id"])
+        if due <= 0.005:
+            continue
+        conn.execute(
+            "UPDATE workshop_bookings SET balance_paid_at = NULL, "
+            "collect_hold = COALESCE(collect_hold, ?) WHERE id = ?",
+            (f"The balance was marked paid with \u20ac{due:.2f} still owing on the ledger. "
+             f"Before September 2026 a second online payment towards a balance was taken "
+             f"by Stripe without being recorded, so look for {row['reference_code']} in "
+             f"Stripe before collecting anything.", row["id"]))
+        held += 1
+    if held:
+        conn.commit()
+    return held
 
 
 PLACEHOLDER_TEXT = re.compile(r"\bTEST\b|\bTODO\b|\bFIXME\b|\bXXX\b|lorem ipsum", re.I)
@@ -43841,6 +43989,26 @@ def start_workshop_stripe_payment(conn, booking_id, kind, amount_override=None):
         label = "Part payment" if amount_override is not None else "Balance"
     if not amount or amount <= 0 or blocked:
         return None
+    # Keep the card at deposit time so the balance can be taken on the due
+    # date without the guest coming back. Only on the deposit — later payments
+    # reuse what this saved. A guest who has opted out gets an ordinary one-off
+    # charge, so nothing is stored that we have said we would not use.
+    #
+    # AND A CUSTOMER TO KEEP IT ON. Stripe attaches a saved card to a Customer
+    # or to nothing, and a Checkout given only an email creates no Customer in
+    # payment mode. So the card was "saved" to nobody: remember_workshop_card
+    # found no customer on the payment, stored nothing, and the balance could
+    # never be taken from it. The Customer is made here rather than left to
+    # Checkout so that failing to make one costs only the convenience -- the
+    # deposit still goes through, as a one-off -- and never the deposit.
+    payer = {"customer_email": booking["guest_email"]}
+    keep_card = {}
+    if kind == "deposit" and not booking["autocharge_opt_out"]:
+        customer_id = booking["stripe_customer_id"] or workshop_stripe_customer(conn, booking)
+        if customer_id:
+            # Stripe takes one or the other; the Customer already has the email.
+            payer = {"customer": customer_id}
+            keep_card = {"payment_intent_data": {"setup_future_usage": "off_session"}}
     try:
         checkout_session = stripe.checkout.Session.create(
             mode="payment",
@@ -43853,22 +44021,41 @@ def start_workshop_stripe_payment(conn, booking_id, kind, amount_override=None):
                 },
                 "quantity": 1,
             }],
-            # Keep the card at deposit time so the balance can be taken on the
-            # due date without the guest coming back. Only on the deposit —
-            # later payments reuse what this saved. A guest who has opted out
-            # of automatic payment gets an ordinary one-off charge, so nothing
-            # is stored that we have said we would not use.
-            payment_intent_data=(
-                {"setup_future_usage": "off_session"}
-                if kind == "deposit" and not booking["autocharge_opt_out"] else {}),
-            customer_email=booking["guest_email"],
             success_url=url_for("workshop_stripe_success", manage_token=booking["manage_token"], kind=kind, _external=True) + "&session_id={CHECKOUT_SESSION_ID}",
             cancel_url=url_for("workshop_stripe_cancel", manage_token=booking["manage_token"], _external=True),
             metadata={"workshop_booking_id": str(booking_id), "kind": f"workshop_{kind}"},
+            **payer, **keep_card,
         )
     except Exception:
         return None
     return checkout_session.url
+
+
+def workshop_stripe_customer(conn, booking):
+    """A Stripe Customer for a deposit's card to be kept on, or None.
+
+    Kept on the registration as soon as it exists, so a guest who abandons the
+    first checkout and comes back gets the same Customer rather than a second.
+    Named and tagged with the reference, so whoever opens Stripe to look for a
+    payment can find the person by the code on the booking.
+    """
+    try:
+        customer = stripe.Customer.create(
+            email=booking["guest_email"],
+            name=booking["guest_name"],
+            metadata={"workshop_booking_id": str(booking["id"]),
+                      "reference": booking["reference_code"]},
+            idempotency_key=f"wscus-{booking['id']}",
+        )
+    except Exception as e:
+        print(f"[workshop card] no customer for {booking['reference_code']}: {e}")
+        return None
+    customer_id = sval(customer, "id")
+    if customer_id:
+        conn.execute("UPDATE workshop_bookings SET stripe_customer_id = ? WHERE id = ?",
+                     (customer_id, booking["id"]))
+        conn.commit()
+    return customer_id
 
 
 def remember_workshop_card(conn, booking_id, session):
@@ -43898,56 +44085,78 @@ def remember_workshop_card(conn, booking_id, session):
 
 
 def mark_workshop_payment_paid(conn, session):
-    """Shared by the success redirect and the webhook — whichever fires
-    first wins via the WHERE ...IS NULL guard, so a race just means the
-    second call's UPDATE affects zero rows. Also logs the payment to the
-    ledger and, for a deposit, emails a receipt."""
+    """Credit one paid Stripe checkout to a registration, once.
+
+    Shared by the success redirect and the webhook, which both report the same
+    payment. Each checkout is written to the ledger once, under its own session
+    id; a second report of it is an IntegrityError and nothing more. The guard
+    used to be the registration's paid STAMP -- one per registration, not one
+    per payment -- so the first part payment towards a balance was recorded,
+    and the second, taken by Stripe all the same, was not.
+
+    The deposit stamp is still set once, and the saved card and the receipt go
+    with the first deposit only. Whether the balance is paid is the ledger's
+    to say (restamp_workshop_balance), not this function's.
+    """
     meta = smeta(session)
     kind = meta.get("kind", "")
     booking_id = meta.get("workshop_booking_id")
     if not booking_id or kind not in ("workshop_deposit", "workshop_balance"):
         return
     booking_id = int(booking_id)
-    now = datetime.now(timezone.utc).isoformat()
-    if kind == "workshop_deposit":
-        cur = conn.execute(
-            "UPDATE workshop_bookings SET deposit_paid_at = ?, deposit_stripe_session_id = ? "
-            "WHERE id = ? AND deposit_paid_at IS NULL",
-            (now, session["id"], booking_id),
-        )
-    else:
-        cur = conn.execute(
-            "UPDATE workshop_bookings SET balance_paid_at = ?, balance_stripe_session_id = ? "
-            "WHERE id = ? AND balance_paid_at IS NULL",
-            (now, session["id"], booking_id),
-        )
-    if cur.rowcount:
-        label = "Deposit" if kind == "workshop_deposit" else "Balance"
-        amount = (sval(session, "amount_total") or 0) / 100
-        add_workshop_transaction(conn, booking_id, "payment", f"{label} — Stripe", amount, method="stripe")
-        if kind == "workshop_deposit":
-            # Keep the customer and the card the deposit was taken on, so the
-            # balance can be charged on the due date. Both come off the
-            # PaymentIntent rather than the session; a failure to fetch them
-            # must not lose the payment we have just recorded, so it is caught
-            # — the balance simply falls back to being paid by hand.
-            remember_workshop_card(conn, booking_id, session)
-            booking = conn.execute(
-                """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date, workshops.title
-                   FROM workshop_bookings
-                   JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
-                   JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-                   WHERE workshop_bookings.id = ?""",
-                (booking_id,),
-            ).fetchone()
-            # Commit the payment before sending the receipt. If no provider is
-            # configured, send_email falls back to writing the message into
-            # email_outbox on its own connection, which cannot take a write lock
-            # while this transaction is open — so the guest's deposit receipt was
-            # being lost to "database is locked" instead of held for later.
-            conn.commit()
-            send_workshop_email(conn, booking, "workshop_deposit_receipt",
-                                workshop_email_context(booking))
+    session_id = session["id"]
+    stamped = conn.execute(
+        "SELECT deposit_stripe_session_id, balance_stripe_session_id FROM workshop_bookings "
+        "WHERE id = ?", (booking_id,)).fetchone()
+    if not stamped:
+        return
+    # Credited by the recording this replaced, which kept the session on the
+    # registration instead of on the line. Those ledger lines carry no
+    # stripe_ref, so without this a webhook retry for one of them would be
+    # credited again. Both columns keep the FIRST session for that reason.
+    if session_id in (stamped["deposit_stripe_session_id"], stamped["balance_stripe_session_id"]):
+        return
+    label = "Deposit" if kind == "workshop_deposit" else "Balance"
+    amount = (sval(session, "amount_total") or 0) / 100
+    try:
+        add_workshop_transaction(conn, booking_id, "payment", f"{label} — Stripe", amount,
+                                 method="stripe", stripe_ref=session_id)
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return                       # the other report got here first
+    if kind == "workshop_balance":
+        conn.execute(
+            "UPDATE workshop_bookings SET balance_stripe_session_id = "
+            "COALESCE(balance_stripe_session_id, ?) WHERE id = ?", (session_id, booking_id))
+        conn.commit()
+        return
+    first_deposit = conn.execute(
+        "UPDATE workshop_bookings SET deposit_paid_at = ?, deposit_stripe_session_id = ? "
+        "WHERE id = ? AND deposit_paid_at IS NULL",
+        (datetime.now(timezone.utc).isoformat(), session_id, booking_id)).rowcount
+    if first_deposit:
+        # Keep the customer and the card the deposit was taken on, so the
+        # balance can be charged on the due date. Both come off the
+        # PaymentIntent rather than the session; a failure to fetch them
+        # must not lose the payment we have just recorded, so it is caught
+        # — the balance simply falls back to being paid by hand.
+        remember_workshop_card(conn, booking_id, session)
+        booking = conn.execute(
+            """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date, workshops.title
+               FROM workshop_bookings
+               JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+               JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+               WHERE workshop_bookings.id = ?""",
+            (booking_id,),
+        ).fetchone()
+        # Commit the payment before sending the receipt. If no provider is
+        # configured, send_email falls back to writing the message into
+        # email_outbox on its own connection, which cannot take a write lock
+        # while this transaction is open — so the guest's deposit receipt was
+        # being lost to "database is locked" instead of held for later.
+        conn.commit()
+        send_workshop_email(conn, booking, "workshop_deposit_receipt",
+                            workshop_email_context(booking))
     conn.commit()
 
 
@@ -44378,9 +44587,20 @@ def workshop_manage(manage_token):
             "WHERE id = ?", (1 if wants else 0, booking["id"]))
         conn.commit()
         conn.close()
-        flash("We won't take the balance automatically — please pay it when you're ready."
-              if wants else
-              "The balance will be taken from your card on the due date.", "success")
+        due_on = (format_date_human(booking["balance_due_date"])
+                  if booking["balance_due_date"] else "the due date")
+        if wants:
+            said = f"We won't take the balance from your card. Please pay it by {due_on}."
+        elif booking["stripe_payment_method_id"]:
+            said = f"Whatever is left on {due_on} will be taken from the card you paid the deposit with."
+        elif not booking["deposit_paid_at"]:
+            said = f"Your card will be kept when you pay the deposit, for whatever is left on {due_on}."
+        else:
+            # Saying the card will be charged when there is no card to charge
+            # is a promise the house cannot keep -- and the guest who believed
+            # it does not pay.
+            said = f"There is no card on file for this booking, so please pay it by {due_on}."
+        flash(said, "success")
         return redirect(url_for("workshop_manage", manage_token=manage_token))
 
     if request.method == "POST" and request.form.get("action") == "change_session":
@@ -44491,14 +44711,14 @@ def workshop_manage(manage_token):
             if workshop_session_remaining_capacity(conn, s["id"]) >= booking["party_size"]
         ]
 
-    # Read before the connection closes — whether the job is switched on is
-    # what decides whether this page promises the guest anything.
-    autocharge_enabled = (
-        get_automation_settings(conn)["automation_workshop_autocharge_enabled"] == "1")
     conn.close()
+    # Whether the automatic job is switched on no longer decides what the page
+    # promises: the house takes a balance from the card by hand as well, so
+    # what matters is whether there IS a card.
+    card_on_file = bool(booking["stripe_customer_id"] and booking["stripe_payment_method_id"])
     return render_template(
         "workshop_manage.html", booking=booking, stripe_enabled=stripe_enabled(), guests=guests,
-        part_payment_minimum=PART_PAYMENT_MINIMUM, autocharge_enabled=autocharge_enabled,
+        part_payment_minimum=PART_PAYMENT_MINIMUM, card_on_file=card_on_file,
         custom_fields=custom_fields, custom_responses=custom_responses,
         balance_due=balance_due, total_charged=total_charged, total_paid=total_paid,
         other_sessions=other_sessions,
@@ -53615,22 +53835,33 @@ def mark_workshop_deposit_paid(registration_id):
 @app.route("/admin/workshops/registrations/<int:registration_id>/mark-balance-paid", methods=["POST"])
 @owner_required
 def mark_workshop_balance_paid(registration_id):
+    """The rest of a balance, received some other way: recorded as what the
+    ledger says is left.
+
+    It recorded `balance_amount`, the figure set the day they booked. After a
+    part payment, a discount or a charge taken from the card, that is not what
+    is left -- and the button stayed on screen after a balance was settled
+    from the card, so pressing it recorded the balance a second time.
+    """
     method = request.form.get("method", "other").strip() or "other"
     conn = get_db()
-    booking = conn.execute("SELECT * FROM workshop_bookings WHERE id = ?", (registration_id,)).fetchone()
+    booking = conn.execute("SELECT id, reference_code FROM workshop_bookings WHERE id = ?",
+                           (registration_id,)).fetchone()
     if not booking:
         conn.close()
         abort(404)
-    cur = conn.execute(
-        "UPDATE workshop_bookings SET balance_paid_at = ? WHERE id = ? AND balance_paid_at IS NULL",
-        (datetime.now(timezone.utc).isoformat(), registration_id),
-    )
-    if cur.rowcount and booking["balance_amount"]:
-        add_workshop_transaction(conn, registration_id, "payment", "Balance", booking["balance_amount"],
-                                  method=method, user_id=current_user()["id"])
+    due, _, _ = workshop_balance_due(conn, registration_id)
+    if due <= 0.005:
+        conn.close()
+        flash("Nothing is owed on this registration, so nothing was recorded.", "error")
+        return redirect(url_for("admin_workshop_registrations"))
+    add_workshop_transaction(conn, registration_id, "payment", "Balance", due,
+                             method=method, user_id=current_user()["id"])
+    log_audit(conn, "workshop_balance_marked_paid",
+              target=booking["reference_code"], details=f"€{due:.2f} by {method}")
     conn.commit()
     conn.close()
-    flash("Balance marked as paid.", "success")
+    flash(f"€{due:.2f} recorded as received. Nothing is owed now.", "success")
     return redirect(url_for("admin_workshop_registrations"))
 
 
@@ -70246,16 +70477,25 @@ def run_workshop_balance_reminder_job(conn, days_before):
              AND workshop_bookings.balance_due_date IS NOT NULL AND workshop_bookings.balance_due_date <= ?""",
         (cutoff,),
     ).fetchall()
-    sent = 0
+    sent = settled = 0
     for booking in due:
-        send_workshop_email(conn, booking, "workshop_balance_reminder", workshop_email_context(booking))
+        # What is LEFT, from the ledger. balance_amount is the figure set the
+        # day they booked; a guest who has paid half of it since was being
+        # asked for all of it.
+        left, _, _ = workshop_balance_due(conn, booking["id"])
+        if left <= 0.005:
+            settled += 1
+            continue
+        context = workshop_email_context(booking)
+        context["balance_amount"] = f"{left:.2f}"
+        send_workshop_email(conn, booking, "workshop_balance_reminder", context)
         conn.execute(
             "UPDATE workshop_bookings SET balance_reminder_sent_at = ? WHERE id = ?",
             (datetime.now(timezone.utc).isoformat(), booking["id"]),
         )
         conn.commit()      # before the next guest's send, not after the loop
         sent += 1
-    return f"reminded {sent} of {len(due)} due booking(s)"
+    return f"reminded {sent} of {len(due) - settled} due booking(s)"
 
 
 def run_event_balance_reminder_job(conn, days_before):
@@ -70389,43 +70629,151 @@ def run_workshop_autocharge_job(conn):
               AND workshop_bookings.status = 'confirmed'
               AND workshop_bookings.autocharge_opt_out = 0
               AND workshop_bookings.autocharge_failed_at IS NULL
+              AND workshop_bookings.collect_hold IS NULL
               AND workshop_bookings.stripe_payment_method_id IS NOT NULL""",
         (today,),
     ).fetchall()
 
     charged, failed = 0, 0
     for row in rows:
-        due, _, _ = workshop_balance_due(conn, row["id"])
-        if due <= 0:
-            continue                       # already settled, in part or in full
-        try:
-            stripe.PaymentIntent.create(
-                amount=int(round(due * 100)),
-                currency="eur",
-                customer=row["stripe_customer_id"],
-                payment_method=row["stripe_payment_method_id"],
-                off_session=True,
-                confirm=True,
-                description=f"Balance — {row['reference_code']}",
-                idempotency_key=f"wsbal-{row['id']}-{today}",
-            )
-        except Exception as e:
-            # Declined, or authentication required. Either way the guest has to
-            # act, so record it, tell them, and never try again unprompted.
+        outcome, _amount, _why = charge_workshop_balance(conn, row)
+        if outcome == "taken":
+            charged += 1
+        elif outcome in ("refused", "unknown"):
+            failed += 1
+    conn.commit()
+    return {"charged": charged, "failed": failed}
+
+
+def stripe_error_kind(e):
+    """What a Stripe exception means for the money: refused, config or unknown.
+
+    'refused' is Stripe answering no -- a card declined, a bank wanting the
+    cardholder, a saved card that can no longer be used. Nothing moved, and
+    only the guest can put it right. 'config' is our own keys being refused:
+    nothing was even attempted. Anything else -- a timeout, a dropped
+    connection, Stripe's own 500 -- is 'unknown', because the charge may have
+    gone through with the answer lost on the way back.
+
+    Decided by class NAME, parents included, so it reads the same across
+    Stripe library versions (stripe.error.CardError became stripe.CardError)
+    and against the tests' stand-ins.
+    """
+    names = {c.__name__ for c in type(e).__mro__}
+    if names & {"CardError", "InvalidRequestError"}:
+        return "refused"
+    if names & {"AuthenticationError", "PermissionError"}:
+        return "config"
+    return "unknown"
+
+
+def charge_workshop_balance(conn, row):
+    """Take what is left on one registration from the card saved with its deposit.
+
+    THE one place a workshop balance is charged. The daily job and the owner's
+    collect button both call it, so a bulk collection is this done many times,
+    never a second version of it that forgot a guard.
+
+    `row` is a workshop_bookings row with its workshop's title. Returns
+    (outcome, amount, detail):
+
+      taken         charged, written to the ledger under its PaymentIntent, receipt sent
+      nothing_owed  the ledger is settled, so Stripe was not asked
+      held          somebody has to look first; `detail` says why
+      opted_out     the guest asked to pay it themselves
+      no_card       no card was kept from the deposit
+      no_stripe     card payments are not connected
+      refused       Stripe said no: recorded on the registration, the guest sent a link
+      unknown       no clear answer: HELD and the owner told. The guest is NOT
+                    told their card was refused, because it may not have been
+      config        our Stripe keys were refused; nothing was attempted
+    """
+    due, _, _ = workshop_balance_due(conn, row["id"])
+    if due <= 0.005:
+        return "nothing_owed", 0.0, "nothing is owed"
+    if row["collect_hold"]:
+        return "held", due, row["collect_hold"]
+    if row["autocharge_opt_out"]:
+        return "opted_out", due, "they asked to pay it themselves"
+    if not (row["stripe_customer_id"] and row["stripe_payment_method_id"]):
+        return "no_card", due, "no card was kept from the deposit"
+    if not stripe_enabled():
+        return "no_stripe", due, "card payments are not connected"
+    cents = int(round(due * 100))
+    today = house_today_iso()
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=cents,
+            currency="eur",
+            customer=row["stripe_customer_id"],
+            payment_method=row["stripe_payment_method_id"],
+            off_session=True,
+            confirm=True,
+            description=f"Balance — {row['reference_code']}",
+            metadata={"workshop_booking_id": str(row["id"]), "kind": "workshop_balance_charge"},
+            # Stripe answers a repeated key with the first charge instead of
+            # making a second: a double click, a retry, the job and the button
+            # on the same morning. The amount is part of it, so a balance that
+            # has changed since is a new request rather than a clash.
+            idempotency_key=f"wsbal-{row['id']}-{cents}-{today}",
+        )
+    except Exception as e:
+        kind = stripe_error_kind(e)
+        reason = str(getattr(e, "user_message", None) or e)
+        if kind == "refused":
             conn.execute(
                 "UPDATE workshop_bookings SET autocharge_failed_at = ? WHERE id = ?",
                 (datetime.now(timezone.utc).isoformat(), row["id"]))
             conn.commit()
-            send_autocharge_failed_email(conn, row, due, str(getattr(e, "user_message", None) or e))
-            failed += 1
-            continue
-        add_workshop_transaction(conn, row["id"], "payment",
-                                 "Balance — charged automatically", due, method="stripe")
+            send_autocharge_failed_email(conn, row, due, reason)
+            return "refused", due, reason
+        if kind == "config":
+            return "config", due, "Stripe refused the app's keys, so nothing was attempted"
+        hold_workshop_collection(
+            conn, row,
+            f"Stripe gave no clear answer when \u20ac{due:.2f} was charged on "
+            f"{format_date_human(today)} ({type(e).__name__}). It may have gone through: "
+            f"look for {row['reference_code']} in Stripe before trying again.")
+        return "unknown", due, "Stripe gave no clear answer"
+    status = sval(intent, "status")
+    if status == "processing":
+        hold_workshop_collection(
+            conn, row,
+            f"Stripe was still processing the \u20ac{due:.2f} charged on "
+            f"{format_date_human(today)}. Check it arrived before recording or charging anything.")
+        return "unknown", due, "Stripe is still processing it"
+    if status != "succeeded":
+        # requires_action or requires_payment_method: the bank wants the
+        # cardholder, and off-session there is nobody to ask.
+        conn.execute(
+            "UPDATE workshop_bookings SET autocharge_failed_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), row["id"]))
         conn.commit()
-        send_autocharge_taken_email(conn, row, due)
-        charged += 1
+        send_autocharge_failed_email(conn, row, due, "the bank wants the cardholder to confirm it")
+        return "refused", due, "the bank wants the cardholder to confirm it"
+    try:
+        add_workshop_transaction(conn, row["id"], "payment", "Balance — taken from the card on file",
+                                 due, method="stripe", stripe_ref=sval(intent, "id"))
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return "nothing_owed", 0.0, "already recorded"
     conn.commit()
-    return {"charged": charged, "failed": failed}
+    send_autocharge_taken_email(conn, row, due)
+    return "taken", due, ""
+
+
+def hold_workshop_collection(conn, row, reason):
+    """Stop one registration being charged until somebody has looked -- and
+    put that on the owner's list, because a hold nobody knows about is only a
+    debt that quietly stopped being collected."""
+    conn.execute("UPDATE workshop_bookings SET collect_hold = ? WHERE id = ?",
+                 (reason, row["id"]))
+    conn.execute(
+        """INSERT INTO tasks (title, notes, priority, due_date, status, origin, created_at)
+           VALUES (?, ?, 'high', ?, 'open', 'payment', ?)""",
+        (f"Check Stripe before charging {row['guest_name']} ({row['reference_code']})",
+         reason, house_today_iso(), datetime.now(timezone.utc).isoformat()))
+    conn.commit()
 
 
 def send_autocharge_taken_email(conn, booking, amount):
@@ -70463,11 +70811,11 @@ def send_autocharge_failed_email(conn, booking, amount, reason):
     if owner_to:
         send_email(
             owner_to,
-            f"Balance auto-charge failed — {booking['reference_code']}",
+            f"Balance not taken — {booking['reference_code']}",
             f"{booking['guest_name']} — €{amount:.2f} for {booking['title']}.\n"
             f"Stripe said: {reason}\n\n"
-            f"They have been emailed a link to pay it themselves. This booking "
-            f"will not be tried again automatically.\n",
+            f"They have been emailed a link to pay it themselves. The card will "
+            f"not be tried again unless you try it from the balances page.\n",
         )
 
 
@@ -70926,6 +71274,29 @@ PARAMETERISED_JOBS = ("workshop_balance_reminder", "room_balance_reminder",
                       "event_balance_reminder", "stale_shift_cleanup")
 
 
+# How much notice each balance reminder gives, read the same way by the timer
+# and by Run now. It was read in two places, and Run now had only ever learned
+# about one of the three: pressing it for rooms or events looked the job up in
+# a registry it was never in, and recorded the KeyError as the job failing.
+REMINDER_DAYS_SETTING = {
+    "workshop_balance_reminder": ("automation_workshop_balance_reminder_days_before", 7),
+    "room_balance_reminder": ("automation_room_balance_reminder_days_before", 7),
+    "event_balance_reminder": ("automation_event_balance_reminder_days_before", 21),
+}
+
+
+def run_balance_reminder(conn, settings, job_name):
+    key, default = REMINDER_DAYS_SETTING[job_name]
+    try:
+        days_before = int(settings[key])
+    except (TypeError, ValueError, KeyError):
+        days_before = default
+    job = {"workshop_balance_reminder": run_workshop_balance_reminder_job,
+           "room_balance_reminder": run_room_balance_reminder_job,
+           "event_balance_reminder": run_event_balance_reminder_job}[job_name]
+    return job(conn, days_before)
+
+
 class JobFailed(Exception):
     """A job that finished without raising but did not do its work.
 
@@ -71225,15 +71596,17 @@ def automation_tick():
                     print(f"[automation] room_balance_reminder failed: {e}")
 
         if settings["automation_workshop_balance_reminder_enabled"] == "1":
-            try:
-                days_before = int(settings["automation_workshop_balance_reminder_days_before"])
-            except (TypeError, ValueError):
-                days_before = 7
             if claim_job_run(conn, "workshop_balance_reminder", 24 * 3600):
+                # Recorded, like the room and event reminders beside it. It
+                # only printed, so the Job status table showed its last manual
+                # run and nothing about the ones that happened every morning.
                 try:
-                    result = run_workshop_balance_reminder_job(conn, days_before)
+                    result = run_balance_reminder(conn, settings, "workshop_balance_reminder")
+                    record_job_run(conn, "workshop_balance_reminder", True, result)
                     print(f"[automation] workshop_balance_reminder: {result}")
                 except Exception as e:
+                    record_job_run(conn, "workshop_balance_reminder", False,
+                                   f"{type(e).__name__}: {e}")
                     print(f"[automation] workshop_balance_reminder failed: {e}")
 
         if settings["automation_event_balance_reminder_enabled"] == "1":
@@ -71453,12 +71826,8 @@ def run_automation_job_now(job_name):
         conn.close()
         abort(404)
     try:
-        if job_name == "workshop_balance_reminder":
-            try:
-                days_before = int(settings["automation_workshop_balance_reminder_days_before"])
-            except (TypeError, ValueError):
-                days_before = 7
-            result = run_workshop_balance_reminder_job(conn, days_before)
+        if job_name in REMINDER_DAYS_SETTING:
+            result = run_balance_reminder(conn, settings, job_name)
         elif job_name == "stale_shift_cleanup":
             try:
                 stale_hours = float(settings["automation_stale_shift_hours"])

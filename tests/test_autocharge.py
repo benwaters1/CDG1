@@ -27,38 +27,55 @@ m = _harness.m
 TAG = "ZZAC"
 
 
-class FakeStripeError(Exception):
-    """Stands in for stripe.error.CardError, which carries a guest-facing
-    message separate from the developer one."""
-    def __init__(self, message):
+class CardError(Exception):
+    """Stands in for stripe.CardError -- and is NAMED like it, because the app
+    tells a refusal from a lost answer by the class name. Like the real one it
+    carries a guest-facing message separate from the developer one."""
+    def __init__(self, message, code="card_declined"):
         super().__init__(message)
         self.user_message = message
+        self.code = code
+
+
+class APIConnectionError(Exception):
+    """Stands in for stripe.APIConnectionError: the request went out and no
+    answer came back, so nobody knows whether the card was charged."""
+
+
+class AuthenticationError(Exception):
+    """Stands in for stripe.AuthenticationError: our key was refused before
+    anything was attempted."""
 
 
 class FakeIntents:
-    """Records every charge asked for, and can be told to refuse."""
-    def __init__(self, fail_with=None):
+    """Records every charge asked for, and can be told to refuse, to lose its
+    answer, or to answer with something other than success."""
+    def __init__(self, fail_with=None, raise_=None, status="succeeded"):
         self.calls = []
         self.fail_with = fail_with
+        self.raise_ = raise_
+        self.status = status
         self.keys = set()
 
     def create(self, **kw):
         if self.fail_with:
-            raise FakeStripeError(self.fail_with)
+            raise CardError(self.fail_with)
+        if self.raise_:
+            raise self.raise_
         # A real Stripe would return the first charge for a repeated key
         # rather than making a second one. Mirrored so a double-run here
         # behaves the way production would.
         key = kw.get("idempotency_key")
         if key in self.keys:
-            return {"id": "pi_repeat", "status": "succeeded"}
+            return {"id": "pi_repeat", "status": self.status}
         self.keys.add(key)
         self.calls.append(kw)
-        return {"id": f"pi_{len(self.calls)}", "status": "succeeded"}
+        return {"id": f"pi_{len(self.calls)}", "status": self.status}
 
 
 class FakeStripe:
-    def __init__(self, fail_with=None):
-        self.PaymentIntent = FakeIntents(fail_with)
+    def __init__(self, fail_with=None, raise_=None, status="succeeded"):
+        self.PaymentIntent = FakeIntents(fail_with, raise_, status)
 
 
 def _cleanup():
@@ -69,6 +86,7 @@ def _cleanup():
     conn.execute("DELETE FROM workshop_sessions WHERE notes LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM workshops WHERE title LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM email_outbox WHERE subject LIKE '%Balance%' OR subject LIKE '%did not go through%'")
+    conn.execute("DELETE FROM tasks WHERE origin = 'payment' AND title LIKE ?", (f"%{TAG}%",))
     conn.commit()
     conn.close()
 
@@ -159,8 +177,21 @@ def run():
             bool(fake.PaymentIntent.calls[0].get("idempotency_key")))
     conn = db()
     due_after = m.workshop_balance_due(conn, bid)[0]
+    line = conn.execute(
+        "SELECT stripe_ref FROM workshop_transactions WHERE workshop_booking_id = ? "
+        "AND description LIKE 'Balance%'", (bid,)).fetchone()
+    stamp = conn.execute("SELECT balance_paid_at FROM workshop_bookings WHERE id = ?",
+                         (bid,)).fetchone()["balance_paid_at"]
     conn.close()
     s.check("and the ledger shows nothing left owing", due_after == 0.0, detail=f"got {due_after}")
+    # The charge was written with no reference to Stripe at all, so a refund
+    # or a query about it had nothing to find the payment by.
+    s.check("the line names the PaymentIntent it came through",
+            line is not None and line["stripe_ref"] == "pi_1",
+            detail=f"got {line['stripe_ref'] if line else None}")
+    # And the stamp: left unset, the "mark balance paid" button stayed on
+    # screen, and pressing it recorded the balance a second time.
+    s.check("and the balance is stamped paid", bool(stamp), detail="balance_paid_at is empty")
 
     s.section("Running it again takes nothing more")
     # The realistic accident: a restart, a retry, two workers.
@@ -217,7 +248,80 @@ def run():
     s.check("the guest is emailed a way to pay it themselves", mail >= 1,
             detail=f"{mail} emails held")
 
-    s.section("And not tried again the next day")
+    s.section("A charge that loses its answer is held, and the guest is not told it was refused")
+    # A timeout after Stripe has taken the money looks exactly like a timeout
+    # before it. Telling the guest "nothing has been taken" would be a guess,
+    # and trying again tomorrow under a new key could charge them twice.
+    _cleanup()
+    bid = _booking("Lost", today)
+    out = _run(FakeStripe(raise_=APIConnectionError("read timed out")))
+    conn = db()
+    row = conn.execute("SELECT autocharge_failed_at, collect_hold FROM workshop_bookings "
+                       "WHERE id = ?", (bid,)).fetchone()
+    told = conn.execute(
+        "SELECT COUNT(*) AS c FROM email_outbox WHERE subject LIKE '%did not go through%'"
+    ).fetchone()["c"]
+    task = conn.execute("SELECT COUNT(*) AS c FROM tasks WHERE origin = 'payment' "
+                        "AND title LIKE ?", (f"%{TAG}Lost%",)).fetchone()["c"]
+    owed = m.workshop_balance_due(conn, bid)[0]
+    conn.close()
+    s.check("it is counted as not taken", out["failed"] == 1 and out["charged"] == 0,
+            detail=f"got {out}")
+    s.check("the registration is held, saying to look in Stripe",
+            bool(row["collect_hold"]) and "Stripe" in (row["collect_hold"] or ""),
+            detail=f"hold is {row['collect_hold']!r}")
+    s.check("the guest is not emailed that their card was refused", told == 0,
+            detail=f"{told} refusal emails held")
+    s.check("the owner has a task to check it", task == 1, detail=f"{task} tasks")
+    s.check("and no payment is invented", owed == 1400.0, detail=f"balance is {owed}")
+    fake = FakeStripe()
+    out = _run(fake)
+    s.check("a held registration is not charged on the next run",
+            out["charged"] == 0 and not fake.PaymentIntent.calls,
+            detail=f"got {out}, {len(fake.PaymentIntent.calls)} calls")
+
+    s.section("A bank that wants the cardholder is a refusal, not a payment")
+    # An answer that is not "succeeded" was being written to the ledger as
+    # money received, because only an exception counted as failure.
+    _cleanup()
+    bid = _booking("Auth", today)
+    out = _run(FakeStripe(status="requires_action"))
+    conn = db()
+    owed = m.workshop_balance_due(conn, bid)[0]
+    failed_at = conn.execute("SELECT autocharge_failed_at FROM workshop_bookings WHERE id = ?",
+                             (bid,)).fetchone()["autocharge_failed_at"]
+    conn.close()
+    s.check("nothing is recorded as paid", owed == 1400.0, detail=f"balance is {owed}")
+    s.check("and it is recorded as refused, so it is not retried", bool(failed_at))
+
+    s.section("A charge still processing is held rather than recorded")
+    _cleanup()
+    bid = _booking("Slow", today)
+    _run(FakeStripe(status="processing"))
+    conn = db()
+    owed = m.workshop_balance_due(conn, bid)[0]
+    hold = conn.execute("SELECT collect_hold FROM workshop_bookings WHERE id = ?",
+                        (bid,)).fetchone()["collect_hold"]
+    conn.close()
+    s.check("nothing is recorded yet", owed == 1400.0, detail=f"balance is {owed}")
+    s.check("and it is held until somebody checks", bool(hold))
+
+    s.section("Our own keys being refused touches nothing")
+    _cleanup()
+    bid = _booking("Keys", today)
+    _run(FakeStripe(raise_=AuthenticationError("Invalid API Key provided")))
+    conn = db()
+    row = conn.execute("SELECT autocharge_failed_at, collect_hold FROM workshop_bookings "
+                       "WHERE id = ?", (bid,)).fetchone()
+    conn.close()
+    s.check("the guest's registration is neither failed nor held",
+            not row["autocharge_failed_at"] and not row["collect_hold"],
+            detail=f"failed {row['autocharge_failed_at']!r}, hold {row['collect_hold']!r}")
+
+    s.section("And a refused card is not tried again the next day")
+    _cleanup()
+    bid = _booking("Decline", today)
+    _run(FakeStripe(fail_with="Your card was declined."))
     fake = FakeStripe()          # a working card this time
     out = _run(fake)
     s.check("the failed booking is skipped on the next run",
@@ -261,8 +365,10 @@ def run():
             detail="the opt-out has been deleted from templates/workshop_manage.html "
                    "— the balance is charged automatically with no way for the "
                    "guest to decline")
+    # From what is on file, not from whether the job is switched on: the
+    # house takes balances from the card by hand as well.
     s.check("and the notice saying what will happen is with it",
-            "balance_due_date" in tpl and "autocharge_enabled" in tpl,
+            "balance_due_date" in tpl and "card_on_file" in tpl,
             detail="the guest is not told their card will be charged")
 
     _cleanup()

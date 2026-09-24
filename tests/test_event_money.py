@@ -327,9 +327,12 @@ def run():
         m.stripe_enabled = lambda: True
         m.stripe.checkout.Session = _Retrieve
         _Retrieve.sessions = {
+            # As start_event_stripe_payment makes them: the event it paid
+            # for rides in the metadata, and the page credits that event.
             "sess_evt": {"id": "sess_evt", "payment_status": "paid",
                          "amount_total": 60000,
-                         "metadata": {"kind": "event_payment"}},
+                         "metadata": {"kind": "event_payment",
+                                      "event_id": str(landing["id"])}},
             "sess_unpaid": {"id": "sess_unpaid", "payment_status": "unpaid",
                             "amount_total": 60000, "metadata": {}},
         }

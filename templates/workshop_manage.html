@@ -81,25 +81,6 @@
       </div>
       <p class="g-hint">Anything from €{{ '%.0f'|format(part_payment_minimum) }} upwards — what is left stays on your balance.</p>
     </form>
-
-    {% if booking['balance_due_date'] and autocharge_enabled %}
-    <p class="g-hint" style="margin-top:var(--s4)">
-      {% if booking['autocharge_opt_out'] %}
-        We will not take this automatically — please pay it by {{ booking['balance_due_date']|date_short }}.
-      {% else %}
-        Whatever is left on {{ booking['balance_due_date']|date_short }} will be charged to the card you paid the deposit with.
-      {% endif %}
-    </p>
-    <form method="post" style="margin-top:var(--s2)">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="action" value="autocharge">
-      <label class="g-check">
-        <input type="checkbox" name="autocharge_opt_out" {{ 'checked' if booking['autocharge_opt_out'] }}>
-        <span class="g-check__t"><b>I would rather pay it myself</b></span>
-      </label>
-      <button type="submit" class="g-btn" style="margin-top:var(--s3)">Save</button>
-    </form>
-    {% endif %}
     {% endif %}
   </div>
   {% endif %}
@@ -130,23 +111,33 @@
   {% endif %}
 
 
-  {% if booking['status'] in ('pending', 'confirmed') and booking['balance_amount'] %}
+  {% if booking['status'] in ('pending', 'confirmed') and booking['balance_amount'] and balance_due > 0 %}
+  {# What happens to the balance, said from what is actually on file. This used
+     to promise "taken from the card on file" to everybody -- including guests
+     whose deposit had kept no card, who then did not pay, because they had
+     been told they need not. #}
   <div class="g-mb-card" style="margin-top:var(--s4)">
     <p class="g-mb-dt">The balance</p>
-    <form method="post">
+    {% if booking['autocharge_opt_out'] %}
+    <p class="g-hint">We will not take it from your card. Please pay it by {{ booking['balance_due_date']|date_short }}.</p>
+    {% elif card_on_file %}
+    <p class="g-hint">Whatever is left on {{ booking['balance_due_date']|date_short }} will be taken from the card you paid the deposit with. You can pay it yourself before then.</p>
+    {% elif not booking['deposit_paid_at'] %}
+    <p class="g-hint">The card you pay the deposit with is kept for the balance, and whatever is left on {{ booking['balance_due_date']|date_short }} is taken from it.</p>
+    {% else %}
+    <p class="g-hint">Please pay it by {{ booking['balance_due_date']|date_short }}.</p>
+    {% endif %}
+    {% if card_on_file or not booking['deposit_paid_at'] or booking['autocharge_opt_out'] %}
+    <form method="post" style="margin-top:var(--s2)">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="autocharge">
-      <p class="g-opt">
-        <label>
-          <input type="checkbox" name="autocharge_opt_out" value="on"
-                 {% if booking['autocharge_opt_out'] %}checked{% endif %}>
-          Do not take the balance automatically — I will pay it myself
-        </label>
-      </p>
-      <p class="g-hint">Leave this unticked and the balance is taken from the card on file
-        closer to the date. Tick it and we will send you the details instead.</p>
-      <button type="submit" class="g-btn">Save this preference</button>
+      <label class="g-check">
+        <input type="checkbox" name="autocharge_opt_out" value="on" {{ 'checked' if booking['autocharge_opt_out'] }}>
+        <span class="g-check__t"><b>I would rather pay it myself</b></span>
+      </label>
+      <button type="submit" class="g-btn" style="margin-top:var(--s3)">Save</button>
     </form>
+    {% endif %}
   </div>
   {% endif %}
 
