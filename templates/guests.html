@@ -84,6 +84,7 @@
     </div>
     <p class="manual-body">
       {{ s['room_name'] }} · {{ s['arrival_date'] }} → {{ s['departure_date'] }}
+      {%- if s['channel'] %} · booked through {{ s['channel'] }}{% endif %}
       {%- if s['party_size'] %} · Party of {{ s['party_size'] }}{% endif -%}
     </p>
     {% if s['notes'] %}<p class="manual-body">{{ s['notes'] }}</p>{% endif %}
@@ -108,6 +109,7 @@
     </div>
     <p class="manual-body">
       {{ s['room_name'] }} · {{ s['arrival_date'] }} → {{ s['departure_date'] }}
+      {%- if s['channel'] %} · booked through {{ s['channel'] }}{% endif %}
       {%- if s['party_size'] %} · Party of {{ s['party_size'] }}{% endif -%}
     </p>
   </div>
