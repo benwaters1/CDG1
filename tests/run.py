@@ -41,6 +41,7 @@ SUITES = [
     "test_lists_open_on_now",
     "test_owed_everywhere",
     "test_customer_record",
+    "test_events_list",
     "test_workshop_rooms",
     "test_workshop_lifecycle",
     "test_workshop_minimum",

@@ -40089,47 +40089,82 @@ def event_stripe_success(manage_token):
 def admin_events():
     """Weddings and private hire: every enquiry, and where each one stands."""
     conn = get_db()
-    status_filter = request.args.get("status", "")
-    query = "SELECT * FROM event_inquiries"
-    params = []
-    if status_filter:
-        query += " WHERE status = ?"
-        params.append(status_filter)
-    query += " ORDER BY (status = 'new') DESC, created_at DESC"
-    inquiries = conn.execute(query, params).fetchall()
-    new_count = conn.execute("SELECT COUNT(*) AS c FROM event_inquiries WHERE status = 'new'").fetchone()["c"]
-    confirmed_count = conn.execute("SELECT COUNT(*) AS c FROM event_inquiries WHERE status = 'confirmed'").fetchone()["c"]
+    everything = conn.execute("SELECT * FROM event_inquiries ORDER BY created_at DESC").fetchall()
+    new_count = sum(1 for e in everything if e["status"] == "new")
+    confirmed_count = sum(1 for e in everything if e["status"] == "confirmed")
     types = event_types(conn)
     # What each one has actually been paid, read before the close like
     # everything else here. The route to record a payment existed and
     # nothing on this page linked to it, so the only way to use it was to
     # know the URL.
-    bills = {e["id"]: event_bill(conn, e["id"]) for e in inquiries}
+    bills = {e["id"]: event_bill(conn, e["id"]) for e in everything}
     # Read before the close, like everything else on this page.
     terms_text = event_terms(conn)
     conn.close()
-
-    # Split by whether the event has actually happened yet. Previously one
-    # flat list mixed a wedding from two years ago in with next month's, and
-    # because it sorted on created_at the oldest history could sit above the
-    # work still to do. An enquiry with no date yet is still live work, so it
-    # groups with upcoming rather than being treated as past.
-    today_iso = house_today_iso()
-    upcoming, past = [], []
-    for r in inquiries:
-        # A three-day wedding is still upcoming on day two, so judge by the
-        # end date where one is set.
-        day = r["end_date"] or r["preferred_date"] or ""
-        (past if (day and day < today_iso) else upcoming).append(r)
-    upcoming.sort(key=lambda r: (r["status"] != "new", r["preferred_date"] or "9999-99-99"))
-    past.sort(key=lambda r: r["preferred_date"] or "", reverse=True)
-
+    lv = events_view(everything, request.args, bills)
     return render_template(
-        "admin_events.html", inquiries=inquiries, upcoming=upcoming, past=past,
-        status_filter=status_filter, today=house_today(),
-        new_count=new_count, confirmed_count=confirmed_count, event_types=types,
-        bills=bills, payment_methods=MANUAL_PAYMENT_METHODS,
+        "admin_events.html", inquiries=lv["rows"], lv=lv, today=house_today(),
+        new_count=new_count, confirmed_count=confirmed_count,
+        current_count=sum(1 for e in everything if _event_when(e) == "Current"),
+        event_types=types, bills=bills, payment_methods=MANUAL_PAYMENT_METHODS,
         event_terms_text=terms_text,
+        export_q=request.query_string.decode("utf-8", "replace"),
+    )
+
+
+def _event_when(e):
+    """Current until the event's last day has passed, History after. A
+    three-day wedding is still current on day two, so the end date decides
+    where there is one; an enquiry with no date yet is live work."""
+    day = e["end_date"] or e["preferred_date"] or ""
+    return "History" if day and day < house_today_iso() else "Current"
+
+
+def events_view(rows, args, bills):
+    """The events list through the standard toolbar, for the page and its CSV.
+
+    It had one status dropdown and two hand-built halves -- upcoming, and a
+    fold of past events -- which is the History chip done once, by hand, on
+    one page. An old ?status= link is the Status chip.
+    """
+    args = args.to_dict() if hasattr(args, "to_dict") else dict(args)
+    if args.get("status") and "state" not in args:
+        args["state"] = str(args["status"]).capitalize()
+
+    def owed(e):
+        bill = bills.get(e["id"])
+        return bill["owed"] if bill else 0.0
+
+    def money(e):
+        if e["status"] != "confirmed" or not (bills.get(e["id"]) or {}).get("quoted"):
+            return None
+        return "Owes money" if owed(e) > 0.005 else "Paid in full"
+
+    return list_view(
+        rows, args,
+        search=["contact_name", "contact_email", "contact_phone", "reference_code",
+                "event_type", "spaces", "message"],
+        search_hint="Search name, email, telephone, reference or what it is",
+        facets=[
+            facet("when", "When", _event_when, order=["Current", "History"], default="Current"),
+            facet("state", "Status", lambda e: (e["status"] or "").capitalize(),
+                  order=["New", "Contacted", "Quoted", "Confirmed", "Declined", "Cancelled"]),
+            facet("kind", "Kind", lambda e: (e["event_type"] or "").capitalize() or None, limit=8),
+            facet("money", "Money", money),
+        ],
+        sorts=[
+            # New first: an enquiry nobody has answered is the one with a
+            # clock running on it. Then soonest.
+            sort_option("date", "New first, then soonest",
+                        lambda e: (e["status"] != "new", e["preferred_date"] or "9999-99-99")),
+            sort_option("latest", "Most recent date first",
+                        lambda e: e["preferred_date"] or "", reverse=True),
+            sort_option("recent", "Newest enquiry first",
+                        lambda e: e["created_at"] or "", reverse=True),
+            sort_option("name", "By name", lambda e: (e["contact_name"] or "").casefold()),
+            sort_option("owed", "Most owed", lambda e: -owed(e)),
+        ],
+        default_sort="latest" if args.get("when") == "History" else "date",
     )
 
 
@@ -40424,9 +40459,13 @@ def update_event_inquiry(inquiry_id):
 @app.route("/admin/events/export.csv")
 @owner_required
 def export_events_csv():
+    """The view it was exported from -- it was every enquiry there had ever
+    been, whatever the page was showing."""
     conn = get_db()
-    rows = conn.execute("SELECT * FROM event_inquiries ORDER BY created_at DESC").fetchall()
+    everything = conn.execute("SELECT * FROM event_inquiries ORDER BY created_at DESC").fetchall()
+    bills = {e["id"]: event_bill(conn, e["id"]) for e in everything}
     conn.close()
+    rows = events_view(everything, request.args, bills)["rows"]
     fieldnames = ["reference_code", "event_type", "contact_name", "contact_email", "contact_phone",
                   "preferred_date", "alternate_date", "guest_count", "status", "quoted_price",
                   "owner_note", "created_at"]

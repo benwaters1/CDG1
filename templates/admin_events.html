@@ -7,7 +7,7 @@
   <h1>Events</h1>
   <div style="display:flex; gap:10px; align-items:center;">
     <a href="{{ url_for('events_info') }}" class="btn-ghost">Public page</a>
-    <a href="{{ url_for('export_events_csv') }}" class="btn-ghost">Export CSV</a>
+    <a href="{{ url_for('export_events_csv') }}{{ '?' + export_q if export_q }}" class="btn-ghost">Export this view</a>
     <button type="button" class="btn-primary" style="margin-top:0;" onclick="toggleAddEvent()">+ Add event</button>
   </div>
 </div>
@@ -24,7 +24,7 @@
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ upcoming|length }}</span><span class="stat-tile-label">Upcoming &amp; undated</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ current_count }}</span><span class="stat-tile-label">Upcoming &amp; undated</span></span>
   </div>
 </div>
 
@@ -116,19 +116,7 @@
   </form>
 </details>
 
-<form method="get" class="search-bar">
-  <div>
-    <label class="field-label" for="admin_events-status-2">Status</label>
-    <select id="admin_events-status-2" name="status">
-      <option value="">All</option>
-      {% for s in ['new','contacted','quoted','confirmed','declined','cancelled'] %}
-      <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <button type="submit" class="btn-mini">Filter</button>
-  {% if status_filter %}<a href="{{ url_for('admin_events') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
-</form>
+{% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
 
 {% macro event_card(e) %}
 <div class="expense-card">
@@ -136,7 +124,9 @@
     <div>
       <strong>{{ e['contact_name'] }}</strong> — {{ e['event_type']|capitalize }}
       <span class="mini-status status-{{ e['status'] }}" style="margin-left:8px;">{{ e['status'] }}</span>
-      {% if e['preferred_date'] and e['preferred_date'] < today.isoformat() %}
+      {# Over when its LAST day has passed. Reading the first day only put a
+         "past" badge on a three-day wedding on its second day. #}
+      {% if (e['end_date'] or e['preferred_date']) and (e['end_date'] or e['preferred_date']) < today.isoformat() %}
       <span class="mini-status status-inactive" style="margin-left:4px;">past</span>
       {% endif %}
     </div>
@@ -240,25 +230,9 @@
 {% endmacro %}
 
 {% if not inquiries %}
-  <div class="empty-state">{% if status_filter %}No inquiries match that filter.{% else %}No events yet — add one above, or wait for the public enquiry form.{% endif %}</div>
+  <div class="empty-state">{% if lv['total'] %}Nothing matches that. <a href="{{ url_for('admin_events', when='all') }}">Show all {{ lv['total'] }}</a>.{% else %}No events yet — add one above, or wait for the public enquiry form.{% endif %}</div>
 {% else %}
-
-  <h2 class="section-heading" style="margin-top:0;">Upcoming &amp; undated{% if upcoming %} — {{ upcoming|length }}{% endif %}</h2>
-  {% if not upcoming %}
-    <div class="empty-state">Nothing upcoming.</div>
-  {% else %}
-    {% for e in upcoming %}{{ event_card(e) }}{% endfor %}
-  {% endif %}
-
-  {% if past %}
-  <details style="margin-top:26px;">
-    <summary class="section-heading" style="cursor:pointer; display:inline-block;">Past events ({{ past|length }})</summary>
-    <div style="margin-top:12px;">
-      {% for e in past %}{{ event_card(e) }}{% endfor %}
-    </div>
-  </details>
-  {% endif %}
-
+  {% for e in inquiries %}{{ event_card(e) }}{% endfor %}
 {% endif %}
 
 <script>

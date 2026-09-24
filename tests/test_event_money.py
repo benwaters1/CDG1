@@ -230,7 +230,8 @@ def run():
     # deposit could only be entered by somebody who knew the URL. The nav check
     # cannot see this: it is a POST, and POSTs are not browsed to.
     fresh = _event("G", price=1200.0)
-    html = oc.get("/admin/events").get_data(as_text=True)
+    # All of it: this event is dated in the past, which is History now.
+    html = oc.get("/admin/events?when=all").get_data(as_text=True)
     s.check("the page opens with an event on it", f"{TAG} G" in html,
             detail="nothing below is being looked at")
     s.check("it shows what is still owed", "still to pay" in html.lower(),
