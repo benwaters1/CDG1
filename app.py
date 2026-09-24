@@ -4842,6 +4842,45 @@ def init_db():
              logged_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
              created_at TEXT NOT NULL
          )"""),
+        # WHAT CHANGED ON A GUEST'S PROFILE, and who changed it. An edit wrote
+        # over the old address, number and name with nothing kept, so an
+        # address typed wrong -- which moves every letter to somebody else --
+        # could not be seen, let alone put back. Deleted with the profile.
+        ("guest_profile_changes_table", """CREATE TABLE IF NOT EXISTS guest_profile_changes (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             guest_id INTEGER NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+             field TEXT NOT NULL,
+             old_value TEXT,
+             new_value TEXT,
+             changed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             created_at TEXT NOT NULL
+         )"""),
+        ("idx_guest_profile_changes_guest",
+         "CREATE INDEX IF NOT EXISTS idx_guest_profile_changes_guest "
+         "ON guest_profile_changes(guest_id)"),
+        # EVERY YES AND NO, and how it was said. The lists hold only where
+        # somebody stands now: confirming the newsletter DELETES the earlier
+        # opt-out, so "when did they say no, and how" was gone the moment they
+        # said yes -- and being able to show that somebody was asked is the
+        # point of asking.
+        ("consent_events_table", """CREATE TABLE IF NOT EXISTS consent_events (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             channel TEXT NOT NULL,
+             granted INTEGER,
+             how TEXT NOT NULL,
+             email TEXT,
+             phone TEXT,
+             guest_id INTEGER REFERENCES guests(id) ON DELETE CASCADE,
+             recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             created_at TEXT NOT NULL
+         )"""),
+        ("idx_consent_events_email",
+         "CREATE INDEX IF NOT EXISTS idx_consent_events_email "
+         "ON consent_events(LOWER(TRIM(email)))"),
+        ("idx_consent_events_phone",
+         "CREATE INDEX IF NOT EXISTS idx_consent_events_phone ON consent_events(phone)"),
+        ("idx_consent_events_guest",
+         "CREATE INDEX IF NOT EXISTS idx_consent_events_guest ON consent_events(guest_id)"),
         ("refunds_reverses", "ALTER TABLE refunds ADD COLUMN reverses_refund_id INTEGER"),
         # A card payment the guest has disputed with their bank. The webhook
         # heard checkout and nothing else, so a dispute -- which has a deadline,
@@ -5617,6 +5656,7 @@ def init_db():
 
     hold_legacy_balance_stamps(conn)
     link_held_letters(conn)
+    backfill_consent_history(conn)
 
     # `guests` used to be a per-STAY register carrying arrival/departure/party_size,
     # duplicating what `bookings` already owns. The two could never be kept in
@@ -22540,11 +22580,15 @@ def campaign_unsubscribe(token):
 
     email = (row["recipient_email"] or "").strip().lower()
     if request.method == "POST":
-        conn.execute(
+        now = datetime.now(timezone.utc).isoformat()
+        cur = conn.execute(
             "INSERT OR IGNORE INTO email_optouts (email, reason, created_at) VALUES (?, ?, ?)",
-            (email, "Unsubscribed from a campaign email",
-             datetime.now(timezone.utc).isoformat()),
+            (email, "Unsubscribed from a campaign email", now),
         )
+        # Once: pressing it twice is not saying no twice.
+        if cur.rowcount:
+            record_consent(conn, "marketing_email", 0, "the unsubscribe link in a campaign letter",
+                           email=email, at=now)
         conn.commit()
         conn.close()
         return render_template("unsubscribe.html", state="done", email=email)
@@ -22796,6 +22840,9 @@ def newsletter_subscribe():
         conn.execute(
             """INSERT INTO newsletter_subscribers (email, token, source, created_at)
                VALUES (?, ?, 'site', ?)""", (email, token, now_iso))
+        record_consent(conn, "newsletter", None,
+                       "asked to join on the site, and was sent a link to confirm",
+                       email=email, at=now_iso)
     else:
         token = row["token"]
 
@@ -22836,12 +22883,20 @@ def newsletter_confirm(token):
         conn.close()
         return render_template("newsletter_confirmed.html", state="unknown"), 404
     if not row["confirmed_at"]:
+        now = datetime.now(timezone.utc).isoformat()
         conn.execute(
             "UPDATE newsletter_subscribers SET confirmed_at = ?, unsubscribed_at = NULL WHERE id = ?",
-            (datetime.now(timezone.utc).isoformat(), row["id"]))
+            (now, row["id"]))
+        record_consent(conn, "newsletter", 1, "confirmed by the link sent to them",
+                       email=row["email"], at=now)
         # Confirming is an explicit, deliberate opt-in, so it clears an older
         # opt-out for the same address rather than being silently overridden.
-        conn.execute("DELETE FROM email_optouts WHERE email = ?", (row["email"],))
+        # The no it lifts stays in the history, which is where it went missing.
+        lifted = conn.execute("DELETE FROM email_optouts WHERE email = ?", (row["email"],))
+        if lifted.rowcount:
+            record_consent(conn, "marketing_email", 1,
+                           "their earlier no lifted, by confirming the newsletter",
+                           email=row["email"], at=now)
         conn.commit()
     conn.close()
     return render_template("newsletter_confirmed.html", state="done", email=row["email"])
@@ -22862,12 +22917,21 @@ def newsletter_unsubscribe(token):
     email = row["email"]
     if request.method == "POST":
         now_iso = datetime.now(timezone.utc).isoformat()
-        conn.execute(
-            "UPDATE newsletter_subscribers SET unsubscribed_at = ?, confirmed_at = NULL WHERE id = ?",
+        left = conn.execute(
+            "UPDATE newsletter_subscribers SET unsubscribed_at = ?, confirmed_at = NULL "
+            "WHERE id = ? AND unsubscribed_at IS NULL",
             (now_iso, row["id"]))
-        conn.execute(
+        stopped = conn.execute(
             "INSERT OR IGNORE INTO email_optouts (email, reason, created_at) VALUES (?, ?, ?)",
             (email, "Unsubscribed from the newsletter", now_iso))
+        # Each only when it changes something: pressing it twice is not
+        # saying no twice.
+        if left.rowcount:
+            record_consent(conn, "newsletter", 0, "the unsubscribe link in the newsletter",
+                           email=email, at=now_iso)
+        if stopped.rowcount:
+            record_consent(conn, "marketing_email", 0, "the unsubscribe link in the newsletter",
+                           email=email, at=now_iso)
         conn.commit()
         conn.close()
         return render_template("unsubscribe.html", state="done", email=email)
@@ -22897,11 +22961,13 @@ def add_email_optout():
         flash("Enter an email address.", "error")
         return redirect(url_for("admin_emails"))
     conn = get_db()
-    conn.execute(
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
         "INSERT OR IGNORE INTO email_optouts (email, reason, created_at) VALUES (?, ?, ?)",
-        (email, request.form.get("reason", "").strip() or None,
-         datetime.now(timezone.utc).isoformat()),
+        (email, request.form.get("reason", "").strip() or None, now),
     )
+    if cur.rowcount:
+        record_consent(conn, "marketing_email", 0, "recorded by hand", email=email, at=now)
     conn.commit()
     conn.close()
     flash(f"{email} will no longer receive campaign email.", "success")
@@ -36312,6 +36378,7 @@ def allow_texting_number(optout_id):
         abort(404)
     conn.execute("DELETE FROM sms_optouts WHERE id = ?", (optout_id,))
     log_audit(conn, "sms_optout_lifted", target=row["phone"])
+    record_consent(conn, "texts", 1, "the stop taken off, at their request", phone=row["phone"])
     conn.commit()
     conn.close()
     flash(f"{row['phone']} can be texted again.", "success")
@@ -38007,6 +38074,7 @@ def edit_guest(guest_id):
             conn.close()
             flash(f"Another guest profile already uses the email {email}.", "error")
             return redirect(url_for("edit_guest", guest_id=guest_id))
+        now = datetime.now(timezone.utc).isoformat()
         conn.execute(
             """UPDATE guests SET name=?, email=?, phone=?, dietary_notes=?,
                preferences=?, vip=?, notes=?, access_needs=?,
@@ -38022,11 +38090,26 @@ def edit_guest(guest_id):
                WHERE id=?""",
             (name, email, phone or None, dietary_notes or None,
              preferences or None, vip, notes or None, access_needs or None,
-             datetime.now(timezone.utc).isoformat() if access_needs else None,
+             now if access_needs else None,
              language or None, photo_consent,
-             photo_consent, datetime.now(timezone.utc).isoformat(),
+             photo_consent, now,
              guest_id),
         )
+        # WHAT CHANGED, and who changed it. An address typed wrong moves every
+        # letter to somebody else, and nothing kept what it had been.
+        changed = record_profile_changes(conn, guest, {
+            "name": name, "email": email, "phone": phone or None,
+            "dietary_notes": dietary_notes or None, "preferences": preferences or None,
+            "vip": vip, "notes": notes or None, "access_needs": access_needs or None,
+            "language": language or None, "photo_consent": photo_consent},
+            current_user()["id"], at=now)
+        if changed:
+            # What changed by name, never by value: this trail outlives an erasure.
+            log_audit(conn, "guest_profile_edited", target=f"guest {guest_id}",
+                      details=", ".join(changed))
+        if (guest["photo_consent"] or "unknown") != photo_consent:
+            record_consent(conn, "photos", PHOTO_CONSENT_GRANTED.get(photo_consent),
+                           "recorded on their profile", guest_id=guest_id, email=email, at=now)
         conn.commit()
         conn.close()
         flash("Guest profile updated.", "success")
@@ -44049,10 +44132,15 @@ def record_sms_optout(conn, raw_number, reason=None):
     number = normalise_phone(raw_number)
     if not number:
         return None
-    conn.execute(
+    now = datetime.now(timezone.utc).isoformat()
+    stopped = conn.execute(
         "INSERT OR IGNORE INTO sms_optouts (phone, reason, created_at) VALUES (?, ?, ?)",
-        (number, reason, datetime.now(timezone.utc).isoformat()))
-    conn.execute("DELETE FROM sms_consents WHERE phone = ?", (number,))
+        (number, reason, now))
+    dropped = conn.execute("DELETE FROM sms_consents WHERE phone = ?", (number,))
+    if stopped.rowcount:
+        record_consent(conn, "texts", 0, reason or "recorded by hand", phone=number, at=now)
+    if dropped.rowcount:
+        record_consent(conn, "marketing_texts", 0, "withdrawn with the stop", phone=number, at=now)
     return number
 
 
@@ -44066,10 +44154,17 @@ def record_sms_consent(conn, raw_number, source=None):
     number = normalise_phone(raw_number)
     if not number:
         return None
-    conn.execute("DELETE FROM sms_optouts WHERE phone = ?", (number,))
-    conn.execute(
+    now = datetime.now(timezone.utc).isoformat()
+    lifted = conn.execute("DELETE FROM sms_optouts WHERE phone = ?", (number,))
+    granted = conn.execute(
         "INSERT OR IGNORE INTO sms_consents (phone, source, granted_at) VALUES (?, ?, ?)",
-        (number, source, datetime.now(timezone.utc).isoformat()))
+        (number, source, now))
+    if lifted.rowcount:
+        record_consent(conn, "texts", 1, "their stop lifted, by saying yes to marketing texts",
+                       phone=number, at=now)
+    if granted.rowcount:
+        record_consent(conn, "marketing_texts", 1, source or "recorded by hand",
+                       phone=number, at=now)
     return number
 
 
@@ -45429,6 +45524,62 @@ def link_held_letters(conn):
     if linked or sent > 0:
         conn.commit()
     return linked
+
+
+# How it was said, when nothing wrote that down at the time.
+CONSENT_HOW_UNKNOWN = "how it was said was not written down"
+
+
+def backfill_consent_history(conn):
+    """Put every yes and no already on the lists into the history of them.
+
+    Once for each: a row whose moment is already in the history is skipped,
+    and everything that changes a list writes its line at the list's own
+    moment -- so this finds nothing new unless something wrote to a list
+    without saying so, and then it is recorded rather than lost.
+    """
+    before = conn.total_changes
+    for channel, granted, source, how, key, stamp in (
+            ("marketing_email", 0, "email_optouts", "reason", "email", "created_at"),
+            ("newsletter", 1, "newsletter_subscribers", None, "email", "confirmed_at"),
+            ("newsletter", 0, "newsletter_subscribers", None, "email", "unsubscribed_at"),
+            ("texts", 0, "sms_optouts", "reason", "phone", "created_at"),
+            ("marketing_texts", 1, "sms_consents", "source", "phone", "granted_at")):
+        said = f"COALESCE(NULLIF(TRIM({how}), ''), ?)" if how else "?"
+        match = ("LOWER(TRIM(c.email)) = LOWER(TRIM(s.email))" if key == "email"
+                 else "c.phone = s.phone")
+        conn.execute(
+            f"""INSERT INTO consent_events (channel, granted, how, {key}, created_at)
+                SELECT ?, ?, {said}, {'LOWER(TRIM(s.email))' if key == 'email' else 's.phone'},
+                       s.{stamp}
+                  FROM {source} s
+                 WHERE s.{stamp} IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM consent_events c
+                                    WHERE c.channel = ? AND c.created_at = s.{stamp}
+                                      AND {match})""",
+            (channel, granted, CONSENT_HOW_UNKNOWN, channel))
+    conn.execute(
+        """INSERT INTO consent_events (channel, granted, how, email, guest_id, created_at)
+           SELECT 'photos', CASE photo_consent WHEN 'yes' THEN 1 WHEN 'no' THEN 0 END, ?,
+                  LOWER(TRIM(email)), id, photo_consent_at
+             FROM guests g
+            WHERE photo_consent_at IS NOT NULL
+              AND COALESCE(photo_consent, 'unknown') != 'unknown'
+              AND NOT EXISTS (SELECT 1 FROM consent_events c
+                               WHERE c.channel = 'photos' AND c.guest_id = g.id
+                                 AND c.created_at = g.photo_consent_at)""",
+        (CONSENT_HOW_UNKNOWN,))
+    # Against the person too, where the house knows them: an erasure goes by
+    # the profile, and a number on its own is nobody's.
+    for r in conn.execute(
+            "SELECT id, email, phone FROM consent_events WHERE guest_id IS NULL").fetchall():
+        who = guest_for_contact(conn, address=r["email"], phone=r["phone"])
+        if who:
+            conn.execute("UPDATE consent_events SET guest_id = ? WHERE id = ?", (who, r["id"]))
+    added = conn.total_changes - before
+    if added:
+        conn.commit()
+    return added
 
 
 PLACEHOLDER_TEXT = re.compile(r"\bTEST\b|\bTODO\b|\bFIXME\b|\bXXX\b|lorem ipsum", re.I)
@@ -66895,8 +67046,21 @@ def guest_record(conn, guest_id):
         else:
             marketing = ("Has not signed up to the newsletter", None)
 
+    # And about being texted: the do-not-text list, and the yeses to more.
+    texting = None
+    number = normalise_phone(guest["phone"] or "")
+    if number:
+        stop = conn.execute("SELECT created_at FROM sms_optouts WHERE phone = ?",
+                            (number,)).fetchone()
+        yes = conn.execute("SELECT granted_at FROM sms_consents WHERE phone = ?",
+                           (number,)).fetchone()
+        texting = (("Asked not to be texted", stop["created_at"]) if stop else
+                   ("Said yes to marketing texts", yes["granted_at"]) if yes else
+                   ("Texted about their stays only", None))
+
     return {
         "marketing": marketing,
+        "texting": texting,
         # The id and the address, which the "book them again" box on the
         # profile asked for and never got -- so the box never appeared.
         "id": guest["id"], "email": guest["email"],
@@ -67316,7 +67480,7 @@ def guest_messages(conn, guest, limit=60):
 # What a colleague does not see on a guest's history: the money and the
 # letters are the owner's, as they are on the record itself.
 TIMELINE_OWNER_KINDS = ("Money", "Letter", "Text", "They wrote", "Newsletter & offers",
-                        "Consent")
+                        "Consent", "Profile")
 MESSAGE_CHANNEL_WORDS = {"email": "email", "sms": "text", "whatsapp": "WhatsApp",
                          "form": "they wrote"}
 CONTACT_CHANNELS = {
@@ -67351,6 +67515,122 @@ def correspondence_for(conn, guest_id, limit=500):
              WHERE {' OR '.join(clauses)}
              ORDER BY guest_messages.created_at DESC, guest_messages.id DESC LIMIT ?""",
         params + [limit]).fetchall()
+
+
+# What somebody may say yes or no to, in words.
+CONSENT_CHANNELS = {
+    "marketing_email": "Marketing email", "newsletter": "The newsletter",
+    "texts": "Texts", "marketing_texts": "Marketing texts", "photos": "Photographs",
+}
+PHOTO_CONSENT_GRANTED = {"yes": 1, "no": 0}
+
+
+def record_consent(conn, channel, granted, how, *, email=None, phone=None, guest_id=None,
+                   at=None):
+    """Write down that somebody said yes, or no, and how.
+
+    `granted` is 1, 0, or None for "asked, and not answered yet". `at` is the
+    moment the list itself was changed, so the two agree to the second and the
+    startup backfill can tell a line already written from one never written.
+    Who recorded it is whoever is signed in: a person writing down what they
+    were told, or nobody -- the guest, by a link.
+    """
+    user = current_user() if has_request_context() else None
+    email = (email or "").strip().lower() or None
+    if guest_id is None:
+        guest_id = guest_for_contact(conn, address=email, phone=phone)
+    conn.execute(
+        """INSERT INTO consent_events (channel, granted, how, email, phone, guest_id,
+                                       recorded_by_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (channel, granted, (how or CONSENT_HOW_UNKNOWN)[:300], email, phone or None,
+         guest_id, user["id"] if user else None,
+         at or datetime.now(timezone.utc).isoformat()))
+
+
+def consent_history(conn, guest_id):
+    """Every yes and no one person has given, newest first: by their profile and
+    any merged into it, the addresses they have used, and their numbers."""
+    ids = guest_profile_ids(conn, guest_id)
+    idq = ",".join("?" * len(ids))
+    addresses = guest_addresses(conn, guest_id)
+    phones = sorted({normalise_phone(r["phone"]) or r["phone"].strip() for r in conn.execute(
+        f"SELECT phone FROM guests WHERE id IN ({idq}) AND COALESCE(phone, '') != ''",
+        ids).fetchall()})
+    clauses, params = [f"consent_events.guest_id IN ({idq})"], list(ids)
+    if addresses:
+        clauses.append(f"LOWER(TRIM(consent_events.email)) IN ({','.join('?' * len(addresses))})")
+        params += addresses
+    if phones:
+        clauses.append(f"consent_events.phone IN ({','.join('?' * len(phones))})")
+        params += phones
+    return conn.execute(
+        f"""SELECT consent_events.*, users.name AS recorded_by FROM consent_events
+              LEFT JOIN users ON users.id = consent_events.recorded_by_user_id
+             WHERE {' OR '.join(clauses)}
+             ORDER BY consent_events.created_at DESC, consent_events.id DESC""",
+        params).fetchall()
+
+
+def consent_words(row):
+    """One yes or no, as a line on somebody's history."""
+    said = {1: "yes", 0: "no"}.get(row["granted"], "asked, not yet answered")
+    if row["channel"] == "photos":
+        said = {1: "happy to appear", 0: "would rather not appear"}.get(row["granted"], "not asked")
+    return (f"{CONSENT_CHANNELS.get(row['channel'], row['channel'])}: {said} — {row['how']}"
+            + (f", recorded by {row['recorded_by']}" if row["recorded_by"] else ""))
+
+
+# What a profile holds, and how its history shows each change: by value, or
+# only that it changed. Anything about health, and anything typed freely about
+# a person, is the second: the dietary and access notes are deleted once the
+# stay or event is over, as the privacy notice promises, and a history that
+# kept what they said would keep exactly what that purge deletes.
+GUEST_PROFILE_FIELDS = (
+    ("name", "Name", "value"), ("email", "Email", "value"),
+    ("phone", "Telephone", "value"), ("vip", "VIP", "yesno"),
+    ("language", "Language", "value"), ("photo_consent", "Photographs", "value"),
+    ("dietary_notes", "Dietary notes", "private"), ("access_needs", "Access needs", "private"),
+    ("preferences", "Preferences", "private"), ("notes", "Notes", "private"),
+)
+
+
+def record_profile_changes(conn, before, after, user_id=None, at=None):
+    """Write down what an edit changed on a profile. Returns what changed, in words."""
+    at = at or datetime.now(timezone.utc).isoformat()
+    changed = []
+    for column, label, kind in GUEST_PROFILE_FIELDS:
+        if column not in after or column not in before.keys():
+            continue
+        if kind == "yesno":
+            old, new = ("yes" if before[column] else "no"), ("yes" if after[column] else "no")
+        else:
+            old = str(before[column]).strip() if before[column] not in (None, "") else None
+            new = str(after[column]).strip() if after[column] not in (None, "") else None
+        if column == "photo_consent":
+            # Nothing on file and "not asked" are the same answer.
+            old, new = old or "unknown", new or "unknown"
+        if old == new:
+            continue
+        kept = kind != "private"
+        conn.execute(
+            """INSERT INTO guest_profile_changes (guest_id, field, old_value, new_value,
+                                                  changed_by_user_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (before["id"], column, old if kept else None, new if kept else None, user_id, at))
+        changed.append(label)
+    return changed
+
+
+def profile_change_words(row):
+    """One change to a profile, as a line on its history."""
+    label = next((lab for col, lab, _k in GUEST_PROFILE_FIELDS if col == row["field"]),
+                 row["field"])
+    if row["old_value"] is None and row["new_value"] is None:
+        return f"{label} changed"
+    show = (lambda v: PHOTO_CONSENT.get(v or "unknown", v)) if row["field"] == "photo_consent" \
+        else (lambda v: v or "nothing")
+    return f"{label}: {show(row['old_value'])} → {show(row['new_value'])}"
 
 
 def guest_timeline(conn, guest_id):
@@ -67390,17 +67670,18 @@ def guest_timeline(conn, guest_id):
             add(r["created_at"], "Newsletter & offers",
                 r["subject"] or r["template_name"] or "A campaign",
                 "sent" if (r["status"] or "") == "sent" else (r["status"] or ""))
-        for r in conn.execute(
-                f"SELECT created_at FROM email_optouts WHERE LOWER(TRIM(email)) IN ({marks})",
-                addresses).fetchall():
-            add(r["created_at"], "Consent", "Asked not to be sent marketing email")
-        for r in conn.execute(
-                f"""SELECT confirmed_at, unsubscribed_at FROM newsletter_subscribers
-                     WHERE LOWER(TRIM(email)) IN ({marks})""", addresses).fetchall():
-            add(r["confirmed_at"], "Consent", "Signed up to the newsletter")
-            add(r["unsubscribed_at"], "Consent", "Left the newsletter")
+    # Every yes and no as it was said -- the link, the form, the person who
+    # wrote it down -- and not only the state it left behind.
+    for r in consent_history(conn, guest_id):
+        add(r["created_at"], "Consent", consent_words(r))
     ids = guest_profile_ids(conn, guest_id)
     idq = ",".join("?" * len(ids))
+    for r in conn.execute(
+            f"""SELECT guest_profile_changes.*, users.name AS by_name FROM guest_profile_changes
+                  LEFT JOIN users ON users.id = guest_profile_changes.changed_by_user_id
+                 WHERE guest_profile_changes.guest_id IN ({idq})""", ids).fetchall():
+        add(r["created_at"], "Profile", profile_change_words(r)
+            + (f", by {r['by_name']}" if r["by_name"] else ""))
     for r in conn.execute(
             f"""SELECT guest_contacts.*, users.name AS by_name FROM guest_contacts
                   LEFT JOIN users ON users.id = guest_contacts.logged_by_user_id
@@ -67457,7 +67738,7 @@ def guest_timeline_view(items, args):
         facets=[facet("kind", "What", lambda x: x["kind"],
                       order=["Letter", "Text", "They wrote", "Conversation", "Note",
                              "Booking", "Money", "Feedback", "Newsletter & offers",
-                             "Consent"])],
+                             "Consent", "Profile"])],
         sorts=[sort_option("recent", "Newest first", lambda x: x["at"], reverse=True),
                sort_option("oldest", "Oldest first", lambda x: x["at"])],
         default_sort="recent")
@@ -67910,6 +68191,8 @@ def guest_data_tables(conn):
 
 # Filed against a guest's profile rather than an address.
 GUEST_FILED_TABLES = ("guest_notes", "guest_contacts", "guest_messages")
+# And the history of the profile itself: what changed on it, and every yes and no.
+GUEST_FILED_TABLES += ("guest_profile_changes", "consent_events")
 
 
 def guest_filed_rows(conn, guests):

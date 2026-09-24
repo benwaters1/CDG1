@@ -15,6 +15,9 @@
     {% if is_owner %}
     <a href="{{ url_for('guest_full_statement', guest_id=g['id']) }}" class="btn-mini">Statement</a>
     {% endif %}
+    {% if can('record_history_page') %}
+    <a href="{{ url_for('record_history_page', kind='guest', record_id=g['id']) }}" class="btn-mini">What changed</a>
+    {% endif %}
   </div>
 </div>
 
@@ -34,7 +37,16 @@
     {% if is_owner and record.marketing %}
     <div><dt>Marketing</dt><dd>{{ record.marketing[0] }}{% if record.marketing[1] %}, {{ record.marketing[1]|house_day|date_short }}{% endif %}</dd></div>
     {% endif %}
+    {% if is_owner and record.texting %}
+    <div><dt>Texts</dt><dd>{{ record.texting[0] }}{% if record.texting[1] %}, {{ record.texting[1]|house_day|date_short }}{% endif %}</dd></div>
+    {% endif %}
+    {# Everybody's to read: whoever is holding the camera needs it. #}
+    <div><dt>Photographs</dt><dd>{{ photo_consent_choices.get(g['photo_consent'] or 'unknown', 'Not asked') }}{% if g['photo_consent_at'] and (g['photo_consent'] or 'unknown') != 'unknown' %}, {{ g['photo_consent_at']|house_day|date_short }}{% endif %}</dd></div>
   </dl>
+  {% if is_owner %}
+  {# The state above, and here how and when they said it. #}
+  <p class="upload-hint"><a href="{{ url_for('guest_history', guest_id=g['id'], kind='Consent') }}" class="small-link">How and when they said yes or no</a></p>
+  {% endif %}
   {% if is_owner and g['email'] %}
   {# Everything the house holds about them, as the file they are entitled to
      ask for -- one click from their record rather than a search elsewhere. #}

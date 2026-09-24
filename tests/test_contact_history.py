@@ -409,10 +409,9 @@ def _run(s, oc, ec, owner, emp):
                  "VALUES (?, 400, 'cash', ?)", (bid, _harness.datetime_now()))
     conn.execute("INSERT INTO guest_notes (guest_id, body, created_at) VALUES (?, ?, ?)",
                  (gid, f"{TAG} prefers the room at the back", _harness.datetime_now()))
-    conn.execute("INSERT INTO email_optouts (email, created_at) VALUES (?, ?)",
-                 (maker, _harness.datetime_now()))
     conn.commit()
     conn.close()
+    oc.post("/admin/emails/optout", data={"email": maker})
     items = _rows_of(m.guest_timeline, gid)
     kinds = {x["kind"] for x in items}
     s.check("letters, texts, conversations, notes, bookings, money and consent are all on it",
