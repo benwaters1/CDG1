@@ -475,33 +475,41 @@ def run():
     # arrival. The rooms table has carried a `bathroom` column the whole
     # time, and _roompick.html was already reading it, so the right answer
     # was one column away in a file alongside.
+    # SINCE 24 SEPTEMBER EVERY ROOM IS PRIVATE, so the live data can no longer
+    # tell a page that reads the column from one that simply says "Private"
+    # everywhere. The switch is thrown instead: one room is made shared for
+    # the length of this check, and the page must say so for that room and
+    # that room only. Put back whatever happens.
     truth = db()
     rooms_now = truth.execute(
-        "SELECT name, bathroom FROM rooms WHERE active = 1").fetchall()
-    truth.close()
-    shared = [r for r in rooms_now if (r["bathroom"] or "") == "shared"]
-    s.check("some rooms share a bathroom and some do not",
-            shared and len(shared) < len(rooms_now),
-            detail="%d of %d share; with none or all the check below cannot "
-                   "tell a right answer from a lucky one"
-                   % (len(shared), len(rooms_now)))
-    page = pub.get("/book").get_data(as_text=True)
-    # COUNTED ON THE ROW, not on one sentence. This counted the exact words
-    # "Shared with one other room", and the eleventh handover rewrote them to
-    # "Shared downstairs with the Chambre Tilleul" -- more specific and just as
-    # true -- so the check read zero shared rooms on a page that named both.
-    # What must hold is that each room's Bathroom row starts with the word its
-    # own column says.
-    said_shared = len(re.findall(r"<dt>Bathroom</dt><dd>\s*Shared", page))
-    said_private = len(re.findall(r"<dt>Bathroom</dt><dd>\s*Private", page))
-    s.check("the page says shared exactly as often as a room shares",
-            said_shared == len(shared),
-            detail="page says shared %d time(s), %d room(s) do"
-            % (said_shared, len(shared)))
-    s.check("and never calls a shared bathroom private",
-            said_private == len(rooms_now) - len(shared),
+        "SELECT id, name, bathroom FROM rooms WHERE active = 1 ORDER BY id").fetchall()
+    probe = rooms_now[0] if rooms_now else None
+    try:
+        if probe:
+            truth.execute("UPDATE rooms SET bathroom = 'shared' WHERE id = ?", (probe["id"],))
+            truth.commit()
+        page = pub.get("/book").get_data(as_text=True)
+    finally:
+        if probe:
+            truth.execute("UPDATE rooms SET bathroom = ? WHERE id = ?",
+                          (probe["bathroom"], probe["id"]))
+            truth.commit()
+        truth.close()
+    # COUNTED IN THE COMPARISON TABLE'S BATHROOM COLUMN, one cell a room. It
+    # has been counted three ways as the pages were redrawn -- a sentence, a
+    # card's Bathroom row, now a table -- and each time what must hold is the
+    # same: the word each room shows is the word its own column says.
+    table = page[page.find('<th scope="col">Bathroom</th>'):]
+    table = table[:table.find("</table>")]
+    said_shared = len(re.findall(r"<td>\s*Shared\s*</td>", table))
+    said_private = len(re.findall(r"<td>\s*Private\s*</td>", table))
+    s.check("the page says shared for the room that shares, and only for it",
+            said_shared == 1,
+            detail="page says shared %d time(s) with one room sharing" % said_shared)
+    s.check("and private for every other room",
+            said_private == len(rooms_now) - 1,
             detail="page says private %d time(s), %d room(s) are"
-            % (said_private, len(rooms_now) - len(shared)))
+            % (said_private, len(rooms_now) - 1))
 
     s.section("Nobody is told a room has no stairs unless it truly has none")
     # The room picker asks "how are you with stairs?" and, for somebody who

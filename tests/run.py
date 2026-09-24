@@ -132,6 +132,8 @@ SUITES = [
     "test_rates_and_replies",
     "test_email_templates",
     "test_template_editor",
+    "test_room_lineup",
+    "test_dining_switch",
     "test_newsletter",
     "test_gallery",
     "test_site_images",

@@ -1,12 +1,15 @@
 {# Endpoints registered in the app, used to guard optional links. The
    view can pass url_map; without it the guards fall back safely. #}
 {% set url_map = url_map | default([]) %}
-{# DINING SWITCH. settings.dining_mode: 'open' (default) | 'closed' (seasonally closed:
+{# DINING SWITCH. dining_mode: 'open' (default) | 'closed' (seasonally closed:
    the dining page stays up with a notice, nothing can be reserved) | 'hidden' (switched
-   off: dining disappears from the site). settings.dining_reopens: optional text shown
-   when closed, e.g. "April 2027". Breakfast and atelier meals are not affected. #}
-{% set _dm = ((settings.get('dining_mode') if settings else '') or 'open')|lower|trim %}
-{% set _dr = ((settings.get('dining_reopens') if settings else '') or '')|trim %}
+   off: dining disappears from the site). dining_reopens: optional text shown
+   when closed, e.g. "April 2027". Breakfast and atelier meals are not affected.
+   Read from `site`, the house-wide settings, and never from `settings`: on the
+   dining pages `settings` is the restaurant's own row, which has no .get, and
+   reading the switch there took both dining pages down. #}
+{% set _dm = (setting(site, 'dining_mode') or 'open')|lower|trim %}
+{% set _dr = (setting(site, 'dining_reopens') or '')|trim %}
 <!DOCTYPE html>
 {# The real language, so a screen reader uses the right voice and the browser
    does not offer to translate a page that is already in the reader's tongue. #}

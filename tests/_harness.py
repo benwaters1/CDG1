@@ -583,7 +583,7 @@ def flashes(response):
     """
     html = response.get_data(as_text=True)
     return [" ".join(x.split())
-            for x in re.findall(r'class="flash flash-\w+">(.*?)</div>', html, re.S)]
+            for x in re.findall(r'class="flash flash-\w+"[^>]*>(.*?)</div>', html, re.S)]
 
 
 def ensure_owner():

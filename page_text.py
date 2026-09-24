@@ -44,15 +44,9 @@ FR = {
     "Groups": "Groupes",
 
     # -- Stay: the promise made above the fold --------------------------
-    "Five bedrooms, of ninety-four rooms. They open one at a time, as the "
-    "restoration reaches them.":
-        "Cinq chambres, sur quatre-vingt-quatorze pièces. Elles ouvrent une à "
-        "une, à mesure que la restauration les atteint.",
     "The rooms open one at a time, as the restoration reaches them.":
         "Les chambres ouvrent une à une, à mesure que la restauration les "
         "atteint.",
-    "Rooms are reserved here and confirmed by the château.":
-        "Les chambres se réservent ici et sont confirmées par le château.",
 
     # -- Stay: what the walls are, which is the thing guests ask about --
     "Not a Compromise": "Non pas un compromis",
@@ -93,15 +87,9 @@ ES = {
     "Groups": "Grupos",
 
     # -- Stay: the promise made above the fold --------------------------
-    "Five bedrooms, of ninety-four rooms. They open one at a time, as the "
-    "restoration reaches them.":
-        "Cinco habitaciones, de noventa y cuatro estancias. Se abren una a "
-        "una, a medida que la restauración llega a ellas.",
     "The rooms open one at a time, as the restoration reaches them.":
         "Las habitaciones se abren una a una, a medida que la restauración "
         "llega a ellas.",
-    "Rooms are reserved here and confirmed by the château.":
-        "Las habitaciones se reservan aquí y las confirma el château.",
 
     # -- Stay: what the walls are, which is the thing guests ask about --
     "Not a Compromise": "No es una renuncia",

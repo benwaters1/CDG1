@@ -116,6 +116,7 @@ no build step, no background job runner.
 
 import os
 import re
+import unicodedata
 import io
 import zipfile
 import csv
@@ -6120,6 +6121,12 @@ def init_db():
                      ("rooms_initial_order_set", datetime.now(timezone.utc).isoformat()))
         conn.commit()
 
+    # The owner's room line-up of 24 September 2026. Once, by the old names --
+    # see apply_room_lineup -- and AFTER the rename above, which it follows
+    # on: on a fresh database the rooms only have the names it looks for once
+    # ROOM_IDENTITY has given them.
+    apply_room_lineup(conn)
+
     # WHERE THE GATES ARE.
     #
     # house_coordinates() has refused to guess since it was written, and said
@@ -10157,16 +10164,18 @@ def guests_in_residence(conn, today):
 # The channels every château has, seeded so a message always has an obvious
 # home. Fixed rather than user-created on purpose: ad-hoc channels in a team of
 # a dozen produce five near-duplicates and then nobody knows where to post.
-# The order the owner asked for on the front page: the Suite leads, then the
-# Double, the King, the Family Suite and the Twin/Double. Applied once, as a
-# correction to the arbitrary order the rooms were seeded in — after that the
-# Rooms page owns it and this list is only a record of where it started.
+# The order the owner asked for on the site: by price, since the line-up of 24
+# September 2026 (it was the Suite first, then the Double, the King, the Family
+# Suite and the Twin/Double). Applied once, as a correction to the arbitrary
+# order the rooms were seeded in -- after that the Rooms page owns it and this
+# list is only a record of where it started. apply_room_lineup sets the same
+# order on a database that already had the old one.
 HOME_ROOM_ORDER = [
-    "Chambre Émeraude",
-    "Chambre Cerise",
-    "Chambre du Levant",
-    "Les Deux Chambres",
-    "Chambre Tilleul",
+    "The Twin Room",
+    "The Queen Room",
+    "The King Room",
+    "The Gold Suite",
+    "The Family Suite",
 ]
 
 # Giving the rooms their own names, and moving what the old names carried into
@@ -35793,12 +35802,14 @@ def guest_account(token):
     # profile, in which case the form does not render -- there is nothing to
     # write to, and a form that silently saves nowhere is worse than none.
     own = guest_own_record(conn, session_row["email"])
+    dining_open = dining_mode(conn) == "open"
     conn.close()
     return render_template(
         "guest_account.html", email=session_row["email"], token=token,
         data=data, today=today, extras=extras, balance=balance,
         can_pay_online=stripe_enabled(), own=own,
-        restaurant_open=bool(restaurant_settings and restaurant_settings["enabled"]),
+        restaurant_open=bool(restaurant_settings and restaurant_settings["enabled"]
+                             and dining_open),
         expires=session_row["expires_at"])
 
 
@@ -39424,7 +39435,8 @@ def manage_booking(manage_token):
 
     elif action == "book_dinner" and booking["status"] == "confirmed":
         restaurant_settings = get_restaurant_settings(conn)
-        if not restaurant_settings or not restaurant_settings["enabled"]:
+        if (not restaurant_settings or not restaurant_settings["enabled"]
+                or dining_mode(conn) != "open"):
             flash("Dinner reservations aren't open yet.", "error")
             conn.close()
             return redirect(url_for("manage_booking", manage_token=manage_token))
@@ -39470,7 +39482,8 @@ def manage_booking(manage_token):
     restaurant_settings = get_restaurant_settings(conn)
     dinner_min_date = dinner_max_date = None
     dinner_available = False
-    if restaurant_settings and restaurant_settings["enabled"] and booking["status"] == "confirmed":
+    if (restaurant_settings and restaurant_settings["enabled"]
+            and booking["status"] == "confirmed" and dining_mode(conn) == "open"):
         stay_start, stay_end = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
         opening = parse_date(restaurant_settings["opening_date"]) if restaurant_settings["opening_date"] else stay_start
         dinner_min_date = max(stay_start, opening).isoformat()
@@ -40637,6 +40650,108 @@ def export_events_csv():
 
 def make_restaurant_reference_code():
     return REFERENCE_PREFIXES["restaurant"] + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+
+
+# The house's dining switch, and what each position means on the site.
+DINING_MODES = {
+    "open": "Open — reservations taken as now",
+    "closed": "Closed for the season — the dining page stays up with a notice, "
+              "and nothing can be reserved",
+    "hidden": "Switched off — dining disappears from the site; the dining "
+              "addresses show a short notice",
+}
+
+
+# THE ROOM LINE-UP OF 24 SEPTEMBER 2026 -- the owner's, through the design
+# side. Every room has a private bathroom, on the first floor below the
+# bedrooms (none is ensuite); the two that shared, no longer do.
+#
+# RENAMED, NOT RECREATED, so photographs, bookings, reviews and the channel
+# mapping follow the row. And keyed on the OLD name, which is what makes it
+# happen once: the migration list above runs on every boot, so a plain UPDATE
+# there would put these prices back on every deploy, over whatever the owner
+# set in the meantime. Once a row carries its new name nothing here matches it
+# again, and the owner's own edits are left alone for good.
+#
+# old name, new name, price a night, sleeps, beds, place on the site (by price)
+ROOM_LINEUP = [
+    ("Chambre Tilleul", "The Twin Room", 280, 3, "Twin beds", 1),
+    ("Chambre Cerise", "The Queen Room", 280, 2, "Queen bed", 2),
+    ("Chambre du Levant", "The King Room", 380, 2, "King bed", 3),
+    ("Chambre \u00c9meraude", "The Gold Suite", 480, 2, "Emperor bed", 4),
+    ("Les Deux Chambres", "The Family Suite", 580, 5, "Queen and doubles", 5),
+]
+# The words each room is described in, the same as _room_copy.html's. The
+# stored description is only a fallback behind that file, but it said "shared
+# with one neighbouring room" for two rooms that no longer share, and a
+# fallback is exactly where an untrue sentence waits to be shown.
+ROOM_LINEUP_WORDS = {
+    "The Twin Room": "Two beds that can be made up as a twin or pushed together "
+                     "as a double, whichever suits, and a private bathroom on the "
+                     "first floor. The most straightforward room in the house.",
+    "The Queen Room": "A quiet room with a queen bed, floral papers and a marble "
+                      "chimneypiece, and a private bathroom on the first floor. "
+                      "Brass fittings and hexagonal terracotta underfoot, among "
+                      "the most recently restored work in the building.",
+    "The King Room": "A king bed set against hand-painted panelling, with the "
+                     "mountains filling the window from first light. A bath and "
+                     "a basin stand in the room itself, and the bathroom on the "
+                     "first floor is yours alone.",
+    "The Gold Suite": "The largest room in the house, on the top floor with the "
+                      "others, with two windows onto the valley and the peaks "
+                      "behind it. An emperor bed, a dressing room of your own, "
+                      "and a cast-iron bath on the first floor that is yours "
+                      "alone. The walls are as the eighteenth century left them; "
+                      "everything you sleep in and wash in is new.",
+    "The Family Suite": "Two bedrooms opening into one another, sleeping five, "
+                        "with the valley on both sides. Children of eight and over "
+                        "are welcome. A private bathroom on the first floor.",
+}
+
+
+def _room_key(name):
+    return unicodedata.normalize("NFC", name or "").strip().casefold()
+
+
+def apply_room_lineup(conn):
+    """Rename the five rooms to the line-up, once. Returns how many changed.
+
+    A row is only touched while it still has its old name. If the new name is
+    already taken by another row, that one is left alone rather than making two
+    rooms answer to one name.
+    """
+    rows = conn.execute("SELECT id, name FROM rooms").fetchall()
+    ids = {_room_key(r["name"]): r["id"] for r in rows}
+    changed = 0
+    for old, new, price, sleeps, beds, order in ROOM_LINEUP:
+        room_id = ids.get(_room_key(old))
+        if room_id is None or _room_key(new) in ids:
+            continue
+        conn.execute(
+            """UPDATE rooms SET name = ?, price_per_night = ?, bathroom = 'private',
+                   max_occupancy = ?, bed_setup = ?, sort_order = ?, description = ?
+               WHERE id = ?""",
+            (new, price, sleeps, beds, order, ROOM_LINEUP_WORDS[new], room_id))
+        ids[_room_key(new)] = room_id
+        changed += 1
+    if changed:
+        conn.commit()
+        print(f"[rooms] the 24 September line-up: {changed} room(s) renamed and repriced")
+    return changed
+
+
+def dining_mode(conn):
+    """'open', 'closed' (for the season) or 'hidden' (switched off). 'open' if unset.
+
+    Every public page reads the same setting through `site` to decide what to
+    show. The routes ask here as well, because hiding a form is not closing
+    it: a page saved while dining was open, or a POST made directly, would
+    otherwise still book a table in a restaurant that is not serving.
+    """
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'dining_mode'").fetchone()
+    mode = ((row["value"] if row else "") or "open").strip().lower()
+    return mode if mode in DINING_MODES else "open"
 
 
 def get_restaurant_settings(conn):
@@ -41999,6 +42114,14 @@ def restaurant_book():
         conn.close()
         return render_template("restaurant_closed.html"), 200
     min_date = parse_date(settings["opening_date"]) if settings["opening_date"] else house_today()
+
+    if request.method == "POST" and dining_mode(conn) != "open":
+        # The page draws no form while dining is closed or off; this is for a
+        # form saved while it was open, and for anything posting directly.
+        conn.close()
+        flash("The restaurant is not taking reservations at the moment, so "
+              "nothing was booked.", "error")
+        return redirect(url_for("restaurant_book"))
 
     if request.method == "POST":
         if rate_limited(conn, "book_restaurant", BOOKING_RATE_LIMIT_PER_HOUR):
@@ -51388,6 +51511,18 @@ def admin_restaurant_settings():
              1 if request.form.get("auto_email_receipt") else 0,
              datetime.now(timezone.utc).isoformat()),
         )
+        # The dining switch lives in app_settings, not on this row, because
+        # every public page reads it through `site` and this row is not
+        # public. Saved from the same form because it is the same decision.
+        mode = (request.form.get("dining_mode", "") or "open").strip().lower()
+        if mode in DINING_MODES:
+            reopens = " ".join(request.form.get("dining_reopens", "").split())[:60]
+            for key, value in (("dining_mode", mode), ("dining_reopens", reopens)):
+                conn.execute(
+                    """INSERT INTO app_settings (key, value) VALUES (?, ?)
+                       ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+                    (key, value))
+            log_audit(conn, "dining_mode_set", target=mode, details=reopens or None)
         log_audit(conn, "restaurant_settings_updated")
         conn.commit()
         conn.close()
@@ -51395,11 +51530,16 @@ def admin_restaurant_settings():
         return redirect(url_for("admin_restaurant_settings"))
 
     settings = get_restaurant_settings(conn)
+    mode_now = dining_mode(conn)
+    reopens_row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'dining_reopens'").fetchone()
     employees = conn.execute("SELECT * FROM users WHERE role IN ('owner', 'employee') ORDER BY role DESC, name").fetchall()
     rate_overrides = conn.execute("SELECT * FROM restaurant_rate_overrides ORDER BY start_date").fetchall()
     conn.close()
     return render_template(
         "admin_restaurant_settings.html", settings=settings, employees=employees, rate_overrides=rate_overrides,
+        dining_modes=DINING_MODES, dining_mode=mode_now,
+        dining_reopens=(reopens_row["value"] if reopens_row else "") or "",
     )
 
 
@@ -62400,6 +62540,10 @@ PUBLIC_SETTINGS = (
     # prints. It was hardcoded 10 out of 10 from 4 reviews while the page and
     # Booking.com both said 9.8 from 6.
     "score_overall",
+    # The dining switch: open / closed for the season / switched off, and when
+    # it reopens. Every public page reads it, through `site`. Set on the
+    # restaurant settings page; the restaurant's booking route refuses too.
+    "dining_mode", "dining_reopens",
 )
 
 

@@ -255,7 +255,9 @@ def run():
     s.check("their page opens", page.status_code == 200, detail=f"HTTP {page.status_code}")
     s.check("the deposit they sent is shown", "900.00" in html,
             detail="a contact who paid had no way to see it arrive")
-    s.check("and what is left on it", "2100.00" in html, detail=f"{html.count('2100')}")
+    # Printed with a thousands separator since 24 September ("€2,100.00").
+    s.check("and what is left on it", "2,100.00" in html,
+            detail=f"{html.count('2,100')} -- a balance of three thousand less nine hundred")
 
     s.section("Paying part of it, which is the norm for an event")
     was_enabled = m.stripe_enabled

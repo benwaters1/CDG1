@@ -104,8 +104,11 @@ def run():
                 "The pin is the gates" not in page,
                 detail="the caption is a claim; it stands or falls with a "
                        "checked pin")
+        # Either wording: "telephone when you leave Les Cabannes" in the drive
+        # note, "telephone from Les Cabannes" under the map since 24 September.
         s.check("but still says how to actually get in",
-                "Telephone when you leave Les Cabannes" in page,
+                re.search(r"(?i)telephone (?:when you leave|from) Les Cabannes", page)
+                is not None,
                 detail="which is true whether or not anybody has measured "
                        "anything")
         s.check("and Google is told nothing rather than something wrong",
@@ -203,13 +206,17 @@ def run():
         # because the prose above the map uses the word too -- a rewrite of
         # this check that could not fail, which is worse than the brittle one
         # it replaced.
-        box = re.search(r'class="empty-state"[^>]*>(.*?)</div>', page, re.S)
-        said = (box.group(1) if box else "").strip()
-        s.check("and the page says why rather than showing an empty box",
-                len(said) > 40 and "coordinate" in said.lower(),
+        #
+        # AND SINCE 24 SEPTEMBER THERE IS NO BOX AT ALL, rather than an empty one
+        # with the reason in it. "The coordinates of the gates have not been
+        # set" was a note for the owner, printed to the public; the page now
+        # points the guest at the written directions instead. What the empty
+        # box guarded still has to hold: nobody is shown a map-shaped nothing,
+        # and the page says where to look instead of a map.
+        s.check("and draws no empty map box, pointing at the directions instead",
+                'class="g-map"' not in page and "described below" in page,
                 detail="an empty box explains nothing, and a guest who cannot "
-                       "see where the gates are is a guest who drives past: "
-                       + (repr(said[:60]) if said else "no empty state at all"))
+                       "see where the gates are is a guest who drives past")
         _pin("42.8083", "1.6528")
         page = anon.get("/contact").get_data(as_text=True)
         s.check("with a pin the embedded map uses it",

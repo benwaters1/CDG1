@@ -1,7 +1,7 @@
 {% extends "public_base.html" %}
 {% set sticky_bar = 'dining' %}
 {# Crumbs are set before the base template reads the dining switch, so read it here. #}
-{% set crumbs = [('Dining', url_for('restaurant_info') if ((settings.get('dining_mode') if settings else '') or 'open')|lower|trim != 'hidden' else None), ('Reserve', None)] %}
+{% set crumbs = [('Dining', url_for('restaurant_info') if (setting(site, 'dining_mode') or 'open')|lower|trim != 'hidden' else None), ('Reserve', None)] %}
 {% block title %}Reserve a Table{% endblock %}
 {% block content %}{% if _dm != 'open' %}
 {# Shown when settings.dining_mode is not "open". #}

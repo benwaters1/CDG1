@@ -760,7 +760,7 @@
   ('Can I visit without staying?',
    'The château is a private home under restoration, not a museum.' ~ (' Dinner at La Table is the usual way in for non-residents, subject to the night.' if _dm == 'open' else ' Staying the night, or an atelier, is the way in.')),
   ('What about the tourist tax?',
-   'Charged locally on departure, as French law requires. It is the only thing not in the rate.')
+   'The taxe de séjour is set by the commune, not by us' ~ ((', €' ~ ('%.2f'|format(setting(site, 'tourist_tax')|float)) ~ ' per adult per night') if setting(site, 'tourist_tax') else '') ~ ', and it is added to the total when you pay. It is the only thing not in the rate.')
 ], 'Before You Book', 'The Questions That Come Up') }}
 
 <!-- ============ THE JOURNAL ============ -->

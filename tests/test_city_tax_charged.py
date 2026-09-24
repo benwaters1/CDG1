@@ -339,10 +339,22 @@ def run():
             week is not None and abs(float(week.group(1)) - rate) < 0.001,
             detail="charged %.2f, the week reckons %s" % (rate, week and week.group(1)))
     listed = visible_text(rooms_page)
-    at = listed.find("charged per adult per night")
     s.check("and the room list names that rate",
-            at >= 0 and ("€%.2f" % rate) in listed[at:at + 60],
-            detail=listed[at:at + 60] if at >= 0 else "(the line is missing)")
+            "€%.2f per adult per night" % rate in listed,
+            detail="charged %.2f; no '€%.2f per adult per night' on the room list"
+                   % (rate, rate))
+    # EVERY MENTION, not one sentence. The line above was right and the FAQ
+    # three screens below said "charged locally on departure" -- it came back
+    # with the 24 September handover, a day after the room page was mended,
+    # because this read one line and the FAQ was another.
+    later = []
+    for page_text in (listed, shown):
+        for hit in re.finditer(r"(?i)tourist tax|taxe de s[ée]jour", page_text):
+            near = page_text[hit.start():hit.start() + 200]
+            if re.search(r"(?i)on departure|locally|at the end of", near):
+                later.append(near[:120])
+    s.check("and no mention of the tax, on either page, says it is paid later",
+            not later, detail=" | ".join(later[:2]))
     src = open(os.path.join(TPL, "book_room.html"), encoding="utf-8").read()
     asks = src[src.find("function refreshQuote"):src.find('url_for("api_quote")')]
     # SENT, not merely mentioned: reading the box and not passing it on is the

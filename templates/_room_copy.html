@@ -1,48 +1,36 @@
 {# Written room descriptions, shared by every page that describes a room.
-   The database column holds imported listing copy — generic, and in one case
-   factually wrong — so this takes precedence. A macro rather than a set,
-   because {% raw %}{% include %}{% endraw %} does not share scope with the including page. #}
+   The database column holds a fallback only, so this takes precedence. A
+   macro rather than a set, because {% raw %}{% include %}{% endraw %} does not share scope with the including page.
+
+   THE 24 SEPTEMBER LINE-UP. Every room has a private bathroom, on the first
+   floor below the bedrooms -- none is ensuite, which a monument of this class
+   does not permit -- and the King Room has a bath and a basin in the room
+   itself. The two rooms that shared a bathroom no longer do. The facts are
+   carried over from each room's old words; the Family Suite no longer
+   promises that "the kitchen will cook for them", which this macro could not
+   take back when the dining switch closes the restaurant. #}
 {% macro room_copy(name, fallback='') -%}
 {%- set RM_DESC = {
-  'Chambre Émeraude':
-    'The largest room in the house, upstairs, with two windows onto the valley and the peaks behind it. A cast-iron bath and a dressing room of your own. The walls are as the eighteenth century left them; everything you sleep in and wash in is new.',
-  'Chambre du Levant':
-    'A king bed set against hand-painted panelling, with the mountains filling the window from first light. The bathroom is downstairs and yours alone — ensuites are not permitted in a monument of this class.',
-  'Les Deux Chambres':
-    'Two bedrooms opening into one another, sleeping five, with the valley on both sides. Children of eight and over are welcome, and the kitchen will cook for them. A private bathroom sits downstairs.',
-  'Chambre Cerise':
-    'A quiet double upstairs, floral papers and a marble chimneypiece, sharing a bathroom with one other room downstairs. Brass fittings and hexagonal terracotta underfoot, among the most recently finished work in the building.',
-  'Chambre Tilleul':
-    'Two beds that can be made up as a twin or pushed together as a double, whichever suits. Shares a bathroom downstairs with the Chambre Cerise. The most straightforward room in the house.'
+  'The Twin Room':
+    'Two beds that can be made up as a twin or pushed together as a double, whichever suits, and a private bathroom on the first floor. The most straightforward room in the house.',
+  'The Queen Room':
+    'A quiet room with a queen bed, floral papers and a marble chimneypiece, and a private bathroom on the first floor. Brass fittings and hexagonal terracotta underfoot, among the most recently restored work in the building.',
+  'The King Room':
+    'A king bed set against hand-painted panelling, with the mountains filling the window from first light. A bath and a basin stand in the room itself, and the bathroom on the first floor is yours alone.',
+  'The Gold Suite':
+    'The largest room in the house, on the top floor with the others, with two windows onto the valley and the peaks behind it. An emperor bed, a dressing room of your own, and a cast-iron bath on the first floor that is yours alone. The walls are as the eighteenth century left them; everything you sleep in and wash in is new.',
+  'The Family Suite':
+    'Two bedrooms opening into one another, sleeping five, with the valley on both sides. Children of eight and over are welcome. A private bathroom on the first floor.'
 } -%}
 {{- RM_DESC.get(name) or fallback -}}
 {%- endmacro %}
 
-{# Display names. The database keeps its own names — bookings, references and
-   the admin all still key on those — and this maps them for the site only.
-   Anything not listed falls through unchanged. #}
-{# The house's French room names, NOT LANDED, and deliberately so.
-
-   A room's name is DATA, not presentation. confirm_booking_by_id builds
-   the confirmation email from room['name'] out of the database, so
-   landing this map alone means a guest books one name and is written to
-   about another -- and so are their bill, statement and arrival card.
-
-   Renaming the rooms properly is one UPDATE on the rooms table, after
-   which every page and every email agrees without a map anywhere. #}
-{# The house's French room names, NOT LANDED, and deliberately so.
-
-   A room's name is DATA, not presentation. confirm_booking_by_id builds
-   the confirmation email from room['name'] out of the database, so
-   landing this map alone means a guest books one name and is written to
-   about another -- and so are their bill, statement and arrival card.
-
-   Renaming the rooms properly is one UPDATE on the rooms table, after
-   which every page and every email agrees without a map anywhere. #}
-{# The rename has happened: the rooms are called these things in the
-   database, so this hands the name straight back. Kept as a macro rather
-   than deleted because four templates call it, and a pass-through is a
-   smaller thing to carry than fourteen edits that could each go wrong. #}
+{# The rooms are called these things in the database, so this hands the name
+   straight back. A room's name is DATA, not presentation: the confirmation,
+   the bill, the statement and the arrival card are all written from
+   room['name'], so a name that lived only here would have a guest book one
+   room and be written to about another. Kept as a macro rather than deleted
+   because four templates call it. #}
 {% macro room_name(db_name) -%}
 {{- db_name -}}
 {%- endmacro %}
@@ -51,11 +39,11 @@
    guest needs to know what they are choosing. #}
 {% macro room_note(db_name) -%}
 {%- set MAP = {
-  'Chambre Émeraude':        'the largest room, upstairs, two windows onto the valley',
-  'Chambre du Levant':    'a king bed against hand-painted panelling, east-facing',
-  'Les Deux Chambres': 'two bedrooms opening into one another, sleeping five',
-  'Chambre Cerise':     'a quiet double upstairs, shared bathroom downstairs',
-  'Chambre Tilleul':'twin or double, shared bathroom, the simplest room'
+  'The Twin Room':    'two beds, twin or double, with a private bathroom',
+  'The Queen Room':   'a queen bed, floral papers and a marble chimneypiece',
+  'The King Room':    'a king bed against hand-painted panelling, with a bath in the room',
+  'The Gold Suite':   'the largest room, an emperor bed and a dressing room of its own',
+  'The Family Suite': 'two bedrooms opening into one another, sleeping five'
 } -%}
 {{- MAP.get(db_name, '') -}}
 {%- endmacro %}

@@ -5,8 +5,11 @@
 {# Without this class the print rules below never fire, and the button that
    says "everything else on this page is left off" prints the whole booking
    page, payment form included. #}
-{# The g-print-stay print mode showed only a .g-takeaway card that no template renders any more,
-   so printing this page gave a blank sheet. It now prints with the site's normal print styles. #}
+{# Kept, against a note in the 24 September handover that removed it: this page
+   DOES render the .g-takeaway card -- print_stay(), from _print_stay.html, near
+   the foot -- so the print mode has something to show. Without the class the
+   whole booking page prints, payment form included. #}
+{% block bodyclass %} g-print-stay{% endblock %}
 {% block content %}
 
 <div class="g-mb-card">

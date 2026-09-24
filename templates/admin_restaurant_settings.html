@@ -63,6 +63,23 @@
   tab.</p>
   <p class="upload-hint" style="margin-top:6px;">Leave this off until the dining room is actually ready — the reservations queue and settings stay usable either way.</p>
 
+  {# THE DINING SWITCH. What the public site says about dinner, everywhere it
+     says it -- nav, drawer, footer, the Book menu, the homepage, Stay, Contact,
+     the FAQs. Breakfast and atelier meals are shown in every position. Tables
+     already booked stay visible to their guests, who can still cancel. #}
+  <fieldset style="margin-top:20px; border:1px solid var(--parchment-line); border-radius:8px; padding:12px 14px;">
+    <legend class="field-label" style="padding:0 6px;">Dining on the website</legend>
+    {% for value, meaning in dining_modes.items() %}
+    <label style="display:flex; align-items:flex-start; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin:6px 0;">
+      <input type="radio" name="dining_mode" value="{{ value }}" {{ 'checked' if dining_mode == value }}>
+      <span>{{ meaning }}</span>
+    </label>
+    {% endfor %}
+    <label class="field-label" for="admin_restaurant_settings-dining-reopens" style="margin-top:10px;">Reopens (shown when closed for the season, optional)</label>
+    <input id="admin_restaurant_settings-dining-reopens" type="text" name="dining_reopens" maxlength="60"
+           value="{{ dining_reopens }}" placeholder="April 2027">
+  </fieldset>
+
   <button type="submit" class="btn-primary" style="margin-top:18px;">Save settings</button>
 </form>
 
