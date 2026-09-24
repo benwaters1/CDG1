@@ -312,6 +312,9 @@ ENDPOINT_ARGS = {
     # Reports are keyed by a slug that is a key of REPORT_BUILDERS rather than
     # a row anywhere, so it is a literal.
     ("admin_report", "slug"): "financial",
+    # The refund desk takes the KIND of booking before its id; a stay's desk
+    # reads the same page every kind does.
+    ("refund_desk", "category"): "room",
     ("pay_statement_page", "year"): "2026",
     ("pay_statement_page", "month"): "1",
 }

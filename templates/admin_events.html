@@ -150,6 +150,13 @@
      so a wedding deposit could only be entered by somebody who knew the URL.
      More than is owed is refused rather than clamped — a number typed here
      with the file open is more likely a slip than an intention. #}
+  {# Money came in, so money can go back. Events had no way to refund at all. #}
+  {% if bill and (bill.paid > 0 or bill.refunded > 0) %}
+    {% with refund_url = url_for('refund_desk', category='event', booking_id=e['id']),
+            already_refunded = bill.refunded, remaining = bill.paid %}
+      {% include "_refund_form.html" %}
+    {% endwith %}
+  {% endif %}
   {% if bill and bill.quoted > 0 and bill.owed > 0 %}
   <details class="owed-take">
     <summary>Record a payment</summary>
