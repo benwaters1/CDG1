@@ -243,6 +243,7 @@
         <a href="{{ url_for('admin_email_outbox') }}" class="{{ 'active' if request.endpoint=='admin_email_outbox' }}">{{ icon('bell') }}Held Email</a>
         <a href="{{ url_for('management_email_templates') }}" class="{{ 'active' if request.endpoint=='management_email_templates' }}">{{ icon('megaphone') }}Email Wording</a>
         <a href="{{ url_for('admin_inbox_flags') }}" class="{{ 'active' if request.endpoint=='admin_inbox_flags' }}">{{ icon('bell') }}Inbox Flags{% if open_email_flags_count %} ({{ open_email_flags_count }}){% endif %}</a>
+        <a href="{{ url_for('management_booking_com') }}" class="{{ 'active' if request.endpoint=='management_booking_com' }}">{{ icon('bell') }}Booking.com</a>
       </div>
     </div>
     {% endif %}

@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}Booking.com{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Booking.com</h1>
+  <a href="{{ url_for('admin_inbox_flags') }}" class="small-link" style="color:var(--steel);">Inbox flags →</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Everything Booking.com emails the house — guests' messages, new, changed and cancelled
+  bookings, reviews, invoices and the rest — read from its own mailbox, sorted, and kept
+  whole. What each email says about a booking is shown beside the email it came from.
+</p>
+
+{# ---- where it comes from ------------------------------------------------ #}
+<div class="detail-card" style="margin-bottom:16px;">
+  {% if mailbox and graph_on %}
+  <p style="margin:0;"><strong>Reading {{ mailbox }}</strong> every ten minutes.</p>
+  {% elif mailbox %}
+  <p style="margin:0;"><strong>{{ mailbox }} is set, and not being read yet:</strong> the
+    site reads mailboxes through Microsoft 365, and that connection is not set up.
+    Until it is, emails can be added below.</p>
+  {% else %}
+  <p style="margin:0;"><strong>No mailbox is set for Booking.com yet.</strong> Until one is,
+    emails can be added below.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('set_booking_com_mailbox') }}" class="search-bar" style="margin-top:10px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field-label" for="bc-mailbox" style="margin:0 8px 0 0;">Booking.com's mailbox</label>
+    <input id="bc-mailbox" type="email" name="mailbox" value="{{ mailbox }}" placeholder="bookingcom@chateaugudanes.com">
+    <button type="submit" class="btn-mini">Save</button>
+  </form>
+  <details style="margin-top:10px;">
+    <summary class="bc-sum">Setting it up in Booking.com</summary>
+    <ol class="upload-hint" style="margin:8px 0 0 18px; line-height:1.7;">
+      <li><strong>Extranet → your account → Contacts:</strong> give the
+        <em>Reservations</em> topic this mailbox (and <em>Invoices</em> and
+        <em>Essential communications</em> if you want those here too).</li>
+      <li><strong>Account → Notification settings:</strong> choose email for new
+        reservations, changes, cancellations and new guest messages.</li>
+      <li><strong>Property → Messaging preferences → Security settings:</strong> add
+        <code>@chateaugudanes.com</code> to the approved email addresses — Booking.com
+        drops, without a word, any email to a guest from an address not on that list, so
+        answering from here depends on it — and <code>chateaugudanes.com</code> to the
+        approved links, or links to the site arrive as "[Link was removed]".</li>
+    </ol>
+  </details>
+</div>
+
+{# ---- guests waiting ----------------------------------------------------- #}
+{% if waiting %}
+<div class="alert-band" style="margin-bottom:12px;">
+  <strong>{{ waiting|length }} guest{{ '' if waiting|length == 1 else 's' }} waiting for an answer.</strong>
+  Booking.com leaves a message open for a reply for {{ reply_days }} days.
+  <a class="btn-mini" href="{{ url_for('management_booking_com', answer='Waiting for an answer') }}">Show them</a>
+</div>
+{% endif %}
+
+{# ---- the bookings the emails describe ----------------------------------- #}
+{% if reservations %}
+<h2 class="section-heading">Bookings, as Booking.com's emails describe them</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Reservation</th><th>Guest</th><th>Stay</th><th>Room</th><th>Guests</th>
+    <th>Price</th><th>Status</th><th>On the calendar</th></tr></thead>
+  <tbody>
+  {% for r in reservations %}
+  <tr>
+    <td>{{ r['reservation_number'] }}</td>
+    <td>{{ r['guest_name'] or '—' }}</td>
+    <td>{% if r['arrival_date'] and r['departure_date'] %}{{ date_range(r['arrival_date'], r['departure_date']) }}{% elif r['arrival_date'] %}{{ r['arrival_date']|date_short }}{% else %}—{% endif %}</td>
+    <td>{{ rooms.get(r['room_id']) or r['room_label'] or '—' }}</td>
+    <td>{{ r['guests'] or '—' }}</td>
+    <td>{% if r['amount'] %}€{{ '{:,.2f}'.format(r['amount']) }}{% else %}—{% endif %}</td>
+    <td><span class="mini-status {{ 'status-declined' if r['status'] == 'cancelled' else 'status-confirmed' }}">{{ r['status'] }}</span></td>
+    <td>
+      {%- if r['status'] == 'cancelled' %}—
+      {%- elif r['room_id'] and r['arrival_date'] and r['departure_date'] %}
+        {%- if (r['room_id'], r['arrival_date'], r['departure_date']) in blocked %}Yes
+        {%- else %}<span class="tpl-over" title="The calendar sync has not blocked these dates in this room — the next sync should, and if it does not, the room could be sold twice">Not yet</span>{% endif %}
+      {%- else %}<span class="upload-hint">Room or dates not stated</span>{% endif -%}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{# ---- every email -------------------------------------------------------- #}
+<h2 class="section-heading">Everything Booking.com has sent</h2>
+{% include "_list_toolbar.html" %}
+
+{% if not rows %}
+  <div class="empty-state">
+    {% if lv.filtered %}Nothing matches that. <a href="{{ url_for('management_booking_com') }}">Show all {{ lv.total }}</a>
+    {% else %}Nothing from Booking.com yet.{% endif %}
+  </div>
+{% else %}
+  {% for r in rows %}
+  <div class="detail-card bc-mail {{ 'is-waiting' if r['id'] in waiting_ids }}" id="m{{ r['id'] }}" style="margin-bottom:10px;">
+    <div class="bc-head">
+      <div class="bc-chips">
+        <span class="mini-status status-upcoming">{{ kinds.get(r['kind'], 'Something else') }}</span>
+        {% if not r['from_booking_com'] %}<span class="mini-status status-declined" title="Anybody can write to this address and call themselves Booking.com">not from booking.com</span>{% endif %}
+        {% if r['id'] in waiting_ids %}<span class="mini-status status-declined">waiting for an answer</span>
+        {% elif r['kind'] == 'message' and (r['replied_at'] or r['handled_at']) %}<span class="mini-status status-confirmed">answered</span>{% endif %}
+      </div>
+      <span class="upload-hint">{{ r['received_at']|house_when }}</span>
+    </div>
+    <strong class="bc-subject">{{ r['subject'] or '(no subject)' }}</strong>
+
+    {# What the email does not say about the stay, the booking on record may:
+       a guest's message names its reservation and nothing else. #}
+    {% set stay = stays.get(r['reservation_number']) if r['reservation_number'] else None %}
+    {% set arrive = r['arrival_date'] or (stay['arrival_date'] if stay else None) %}
+    {% set leave = r['departure_date'] or (stay['departure_date'] if stay else None) %}
+    {% set room_id = r['room_id'] or (stay['room_id'] if stay else None) %}
+    {% set room_label = r['room_label'] or (stay['room_label'] if stay else None) %}
+    {% set facts = [] %}
+    {% if r['guest_name'] %}{% set _ = facts.append(('Guest', r['guest_name'])) %}{% endif %}
+    {% if r['reservation_number'] %}{% set _ = facts.append(('Reservation', r['reservation_number'])) %}{% endif %}
+    {% if arrive %}{% set _ = facts.append(('Stay', date_range(arrive, leave) if leave else (arrive|date_short))) %}{% endif %}
+    {% if room_label or room_id %}{% set _ = facts.append(('Room', rooms.get(room_id) or room_label)) %}{% endif %}
+    {% if stay and stay['status'] == 'cancelled' and r['kind'] != 'reservation_cancelled' %}{% set _ = facts.append(('Booking', 'cancelled')) %}{% endif %}
+    {% if r['guests'] %}{% set _ = facts.append(('Guests', r['guests'])) %}{% endif %}
+    {% if r['amount'] %}{% set _ = facts.append(('Amount', '€' ~ '{:,.2f}'.format(r['amount']))) %}{% endif %}
+    {% if facts %}
+    <dl class="bc-facts">
+      {% for label, value in facts %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}
+    </dl>
+    {% endif %}
+
+    {% if r['kind'] == 'account' %}
+    <p class="upload-hint">A security email. Its text is not kept here — a sign-in code
+      is a key — so open it in the mailbox itself.</p>
+    {% elif r['message_text'] %}
+    <blockquote class="bc-message">{{ r['message_text'] }}</blockquote>
+    {% endif %}
+
+    {% if r['reply_text'] %}
+    <p class="upload-hint" style="margin-top:8px;"><strong>Answered from here {{ r['replied_at']|house_when }}:</strong></p>
+    <blockquote class="bc-message bc-reply">{{ r['reply_text'] }}</blockquote>
+    {% endif %}
+
+    {% set links = links_of(r) %}
+    {% if r['body_text'] or links %}
+    <details style="margin-top:8px;">
+      <summary class="bc-sum">The whole email</summary>
+      <p class="upload-hint" style="margin:6px 0;">From {{ r['from_name'] or '' }} &lt;{{ r['from_address'] }}&gt;{% if r['reply_to'] %} · reply to {{ r['reply_to'] }}{% endif %}</p>
+      {% if r['body_text'] %}<pre class="bc-body">{{ r['body_text'] }}</pre>{% endif %}
+      {% if links %}
+      <p class="upload-hint" style="margin:8px 0 4px;">Links in it{% if links|selectattr('safe', 'equalto', false)|list %} — only those going to booking.com open from here{% endif %}:</p>
+      <ul class="bc-links">
+        {% for l in links %}
+        <li>{% if l.safe %}<a href="{{ l.href }}" target="_blank" rel="noopener noreferrer">{{ l.text or l.href }}</a>
+            {% else %}{{ l.text or '' }} <code>{{ l.href[:90] }}</code>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </details>
+    {% endif %}
+
+    {% if r['kind'] == 'message' and r['from_booking_com'] %}
+    <div class="bc-acts">
+      {% set extranet = links|selectattr('safe')|list %}
+      {% if extranet %}<a class="btn-mini" href="{{ extranet[0].href }}" target="_blank" rel="noopener noreferrer">Open in Booking.com</a>{% endif %}
+      {% if not (r['handled_at'] or r['replied_at']) %}
+      <form method="post" action="{{ url_for('booking_com_answered', mail_id=r['id']) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini btn-ghost">Answered in Booking.com</button>
+      </form>
+      {% endif %}
+    </div>
+    {% if ((r['reply_to'] or r['from_address'] or '')|lower).endswith('@guest.booking.com') %}
+    <details class="bc-replybox" {{ 'open' if r['id'] in waiting_ids }}>
+      <summary class="bc-sum">Answer from here</summary>
+      <form method="post" action="{{ url_for('reply_booking_com_message', mail_id=r['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <textarea name="reply" rows="5" required placeholder="Write to {{ r['guest_name'] or 'the guest' }}…"></textarea>
+        <p class="upload-hint" style="margin:6px 0;">Goes to the guest through Booking.com. It only arrives
+          if the site's address is on your approved list in the extranet (see "Setting it up" above) —
+          Booking.com drops it silently otherwise, so this cannot tell you it arrived.
+          {% if not can_send %}<strong>No email provider is connected yet, so it will be held and
+          sent once one is.</strong>{% endif %}</p>
+        <button type="submit" class="btn-primary">Send</button>
+      </form>
+    </details>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+{% endif %}
+
+{# ---- adding emails by hand ---------------------------------------------- #}
+<div class="detail-card" style="margin-top:20px;">
+  <h2 class="section-heading" style="margin-top:0;">Add emails by hand</h2>
+  <p class="upload-hint">For what arrived before the mailbox was set up, or to see how one is
+    read. In Outlook: open the email, then <em>File → Save As</em> (or drag it to the desktop)
+    to get a <code>.eml</code> file. Or paste the email's source.</p>
+  <form method="post" action="{{ url_for('upload_booking_com_email') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="emails" accept=".eml,message/rfc822" multiple aria-label="Email files">
+    <label class="field-label" for="bc-source" style="margin-top:10px;">Or paste the source</label>
+    <textarea id="bc-source" name="source" rows="4" placeholder="From: …&#10;Subject: …"></textarea>
+    <button type="submit" class="btn-mini" style="margin-top:8px;">Add</button>
+  </form>
+</div>
+
+<style>
+.bc-mail.is-waiting{ border-color: var(--danger); }
+.bc-head{ display:flex; justify-content:space-between; gap:6px 12px; align-items:baseline; flex-wrap:wrap; }
+.bc-chips{ display:flex; flex-wrap:wrap; gap:6px; }
+.bc-subject{ display:block; margin-top:6px; }
+.bc-sum{ cursor:pointer; }
+.bc-facts{ display:flex; flex-wrap:wrap; gap:6px 18px; margin:10px 0 0; font-size:13px; }
+.bc-facts div{ display:flex; gap:6px; }
+.bc-facts dt{ color:var(--steel); }
+.bc-facts dd{ margin:0; font-weight:600; }
+.bc-message{ margin:10px 0 0; padding:10px 14px; background:var(--parchment); border-left:3px solid var(--steel);
+  white-space:pre-wrap; word-wrap:break-word; font-size:14px; line-height:1.6; }
+.bc-reply{ border-left-color: var(--ink); }
+.bc-body{ margin:0; white-space:pre-wrap; word-wrap:break-word; font-family:inherit; font-size:12.5px;
+  line-height:1.55; color:var(--steel); max-height:420px; overflow:auto; }
+.bc-links{ margin:0; padding-left:18px; font-size:12.5px; word-break:break-all; }
+.bc-acts{ display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+.bc-replybox{ margin-top:10px; }
+.bc-replybox textarea{ width:100%; margin-top:6px; }
+/* Fingers, not a mouse: a summary line and a link in a list are a thumb's
+   width apart or they are two taps at the wrong thing. */
+@media (pointer: coarse){
+  .bc-sum{ padding:10px 0; }
+  .bc-links li{ padding:6px 0; }
+}
+</style>
+{% endblock %}

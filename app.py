@@ -303,6 +303,9 @@ AUTOMATION_SETTING_DEFAULTS = {
     # It costs nothing until a guest actually reads a page in one of them,
     # because the work is only ever what was served.
     "automation_page_translation_enabled": "1",
+    # ON: it does nothing until a Booking.com mailbox and Microsoft Graph are
+    # both set up, and then it is the thing the owner asked for.
+    "automation_booking_com_mail_enabled": "1",
     "automation_weather_enabled": "1",
     "automation_exchange_rates_enabled": "1",
     "automation_photo_mirror_enabled": "1",
@@ -2598,6 +2601,66 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS email_template_revisions_key
             ON email_template_revisions(template_key, id);
+
+        -- Every email Booking.com sends the house, kept whole and sorted --
+        -- see ingest_booking_com_email. source_id is the Message-ID, so one
+        -- email read by the mailbox job and uploaded as well is kept once.
+        CREATE TABLE IF NOT EXISTS ota_mail (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel TEXT NOT NULL DEFAULT 'booking.com',
+            source TEXT NOT NULL,
+            source_id TEXT,
+            mailbox TEXT,
+            received_at TEXT NOT NULL,
+            from_address TEXT,
+            from_name TEXT,
+            reply_to TEXT,
+            subject TEXT,
+            kind TEXT NOT NULL,
+            reservation_number TEXT,
+            guest_name TEXT,
+            arrival_date TEXT,
+            departure_date TEXT,
+            room_label TEXT,
+            room_id INTEGER,
+            guests INTEGER,
+            amount REAL,
+            currency TEXT,
+            message_text TEXT,
+            body_text TEXT,
+            links TEXT,
+            from_booking_com INTEGER NOT NULL DEFAULT 0,
+            ota_reservation_id INTEGER,
+            handled_at TEXT,
+            handled_by INTEGER,
+            reply_text TEXT,
+            replied_at TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS ota_mail_source_once
+            ON ota_mail(source_id) WHERE source_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS ota_mail_kind ON ota_mail(kind, received_at);
+
+        -- A Booking.com reservation as its emails describe it, one row per
+        -- reservation number. The calendar sync only ever knew its dates.
+        CREATE TABLE IF NOT EXISTS ota_reservations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel TEXT NOT NULL DEFAULT 'booking.com',
+            reservation_number TEXT NOT NULL,
+            status TEXT NOT NULL,
+            guest_name TEXT,
+            arrival_date TEXT,
+            departure_date TEXT,
+            room_label TEXT,
+            room_id INTEGER,
+            guests INTEGER,
+            amount REAL,
+            currency TEXT,
+            first_seen_at TEXT NOT NULL,
+            last_event_at TEXT,
+            updated_at TEXT NOT NULL,
+            UNIQUE(channel, reservation_number)
+        );
 
         -- Owner-written email templates for campaigns and announcements, as
         -- opposed to `email_templates` above which holds the fixed system
@@ -6818,6 +6881,9 @@ NAV_AREAS = {
         # The template editor's own tools: whoever may edit the wording may
         # put back an earlier version of it, and send themselves a test.
         "restore_email_template_revision", "test_email_template",
+        # Booking.com's email, read into the site.
+        "management_booking_com", "set_booking_com_mailbox", "upload_booking_com_email",
+        "booking_com_answered", "reply_booking_com_message",
         "allow_texting_number", "management_texting", "run_checkin_texts_now",
         "save_checkin_text", "stop_texting_number",
         # Pages that had no area at all until now, so they were
@@ -27444,6 +27510,16 @@ def owner_home_warnings(conn, today):
     # tokens are optional; a panel that lists everything gets scrolled past,
     # which is the failure it exists to avoid. Each closes itself the moment
     # the setting arrives.
+    # Guests who wrote through Booking.com and are still waiting. Answering,
+    # or marking it answered, takes the line off; so does the end of the
+    # fortnight Booking.com allows for a reply.
+    written = booking_com_waiting(conn)
+    if written:
+        add("warn", "Booking.com guests waiting for an answer",
+            ", ".join(r["guest_name"] or "a guest" for r in written[:4])
+            + (f" and {len(written) - 4} more" if len(written) > 4 else ""),
+            len(written), "management_booking_com")
+
     for check in readiness_checks(conn, include_slow=False):
         if check["ok"] or check["label"] not in FRONT_PAGE_READINESS:
             continue
@@ -32615,6 +32691,8 @@ PALETTE_PAGES = [
     ("Email templates", "management_email_templates", "merge tags"),
     ("Automation", "admin_automation", "jobs scheduled"),
     ("Inbox flags", "admin_inbox_flags", "unanswered email"),
+    ("Booking.com", "management_booking_com",
+     "booking.com messages reservations guest ota extranet reviews"),
     ("Vault", "management_vault", "passwords secrets"),
     ("Go-live checklist", "admin_readiness", "deploy setup ready configuration"),
     ("A photograph in", "photo_intake",
@@ -64113,6 +64191,7 @@ WATCH_TASK_KINDS = {
     "agreement": "An agreement about to roll over while nobody decided",
     "clocks": "A night the clocks change, with people rostered through it",
     "balances": "Workshop balances due to be collected",
+    "booking_com": "A Booking.com guest waiting for an answer",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -65952,6 +66031,24 @@ def watch_task_findings(conn, today=None):
             "\n\nManagement → Balances to collect takes them from the cards kept "
             "with the deposits, and sends a link to pay to the rest.",
             min(r["due_date"] for r in waiting), "high"))
+
+    # Guests who wrote through Booking.com and have had no answer. One task
+    # while any are waiting; it closes itself when each is answered or marked
+    # answered, and when the fortnight Booking.com allows for a reply is up.
+    written = booking_com_waiting(conn)
+    if written:
+        names = "; ".join(f"{r['guest_name'] or 'a guest'} ({house_date_iso(r['received_at'])})"
+                          for r in written[:8])
+        if len(written) > 8:
+            names += f"; and {len(written) - 8} more"
+        found.append((
+            "booking_com",
+            "Answer the guests who wrote through Booking.com",
+            f"{len(written)} waiting: {names}.\n\nComms \u2192 Booking.com shows what "
+            "each wrote, and answers them.",
+            # Due the day the longest-waiting guest wrote: a message is owed an
+            # answer that day, and one still open next morning reads as late.
+            house_date_iso(written[0]["received_at"]), "high"))
 
     return found, dropped
 
@@ -69482,6 +69579,7 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_stale_access_needs(conn))
     cleared.update(purge_spent_access_codes(conn))
     cleared.update(purge_guest_messages(conn))
+    cleared.update(purge_booking_com_mail(conn))
     # The only one of these holding an identifier for people who never became
     # guests at all -- somebody who opened the availability calendar and left.
     cleared.update(purge_submission_log(conn))
@@ -73369,8 +73467,13 @@ def run_email_inbox_scan_job(conn):
     # per-mailbox: a conversation in restaurant@ is unrelated to one in
     # bookings@, so the sent-items reply map must not be shared between them
     # or a reply in one inbox would silently mark another's email answered.
+    booking_com_box = booking_com_mailbox(conn)
     for mb in mailboxes:
         mailbox = mb["mailbox"]
+        # Booking.com's mailbox is read by its own job, into its own page:
+        # an automated notice is not an email waiting on somebody's reply.
+        if booking_com_box and mailbox.lower() == booking_com_box:
+            continue
         # Resolved per scan, not per config: for an inbox set to follow the
         # rota this is whoever is clocked in right now, skipping anyone on
         # leave or recorded absent.
@@ -73683,6 +73786,857 @@ def run_photo_mirror_job(conn):
     return ", ".join(parts)
 
 
+# ==========================================================================
+# BOOKING.COM, BY EMAIL
+# ==========================================================================
+#
+# Booking.com tells a property what happens by email: a new booking, a change,
+# a cancellation, a guest's message, a review, an invoice. Those landed in a
+# person's inbox and stayed there, so the site knew a Booking.com stay only as
+# the dates the calendar sync had blocked -- no name, no party, no price, and
+# no word that the guest had written and was waiting. A mailbox that receives
+# nothing but Booking.com's mail (bookingcom@) is read here; each email is kept
+# whole, sorted, and turned into what it is about.
+#
+# THE FORMATS ARE NOT PUBLISHED, and they change. So the reading is tolerant by
+# design: every email is kept with its full text and its links even when
+# nothing in it is understood, and a kind not yet recognised still arrives on
+# the page, as "something else". What is pulled out -- the reservation number,
+# the dates, the guest, the room -- is pulled out only where the email states
+# it plainly, and is shown beside the email it came from, so a wrong reading
+# is visible rather than silently believed.
+#
+# Two things are never kept: the text of a security email (a sign-in code is a
+# key, and the privacy notice says keys are never stored), and a link to
+# anywhere but booking.com, which is shown but not made clickable -- anybody
+# can send mail to that address and sign it "Booking.com".
+
+OTA_KINDS = {
+    "message": "Guest message",
+    "reservation_new": "New booking",
+    "reservation_changed": "Booking changed",
+    "reservation_cancelled": "Booking cancelled",
+    "request": "Guest request",
+    "review": "Review",
+    "invoice": "Invoice",
+    "payout": "Payment or payout",
+    "account": "Account and security",
+    "promotion": "Tips and promotions",
+    "other": "Something else",
+}
+# The ones somebody should hear about as they arrive. Invoices, payouts and
+# promotions wait on the page; a guest who has written does not.
+OTA_NOTIFY_KINDS = ("message", "reservation_new", "reservation_changed",
+                    "reservation_cancelled", "request", "review")
+OTA_RESERVATION_KINDS = ("reservation_new", "reservation_changed", "reservation_cancelled")
+# Booking.com leaves a guest's message open for a reply for fourteen days; a
+# message older than that is not somebody waiting, it is somebody the house
+# can no longer answer there.
+BOOKING_COM_REPLY_DAYS = 14
+BOOKING_COM_LOOKBACK_DAYS = 14
+BOOKING_COM_UPLOAD_MAX_BYTES = 3 * 1024 * 1024
+
+
+def is_booking_com_address(address):
+    """True for an address at booking.com or any of its subdomains."""
+    domain = (address or "").strip().lower().rpartition("@")[2]
+    return domain == "booking.com" or domain.endswith(".booking.com")
+
+
+def is_booking_com_link(href):
+    """True for a link whose host is booking.com or one of its subdomains."""
+    host = (urlparse(href or "").hostname or "").lower()
+    return host == "booking.com" or host.endswith(".booking.com")
+
+
+class _MailText(HTMLParser):
+    """An email's HTML as the text a reader sees, and the links in it."""
+
+    BLOCK = {"p", "div", "br", "tr", "li", "table", "section", "blockquote",
+             "h1", "h2", "h3", "h4", "h5", "h6", "hr"}
+    SKIP = {"style", "script", "head", "title"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts, self.links = [], []
+        self._skip, self._href, self._link_text = 0, None, []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.SKIP:
+            self._skip += 1
+            return
+        if tag in self.BLOCK:
+            self.parts.append("\n")
+        if tag == "td":
+            self.parts.append(" ")
+        if tag == "a":
+            self._href = dict(attrs).get("href") or ""
+            self._link_text = []
+
+    def handle_endtag(self, tag):
+        if tag in self.SKIP:
+            self._skip = max(0, self._skip - 1)
+            return
+        if tag in self.BLOCK:
+            self.parts.append("\n")
+        if tag == "a" and self._href is not None:
+            text = " ".join("".join(self._link_text).split())
+            if self._href.startswith(("http://", "https://")):
+                self.links.append({"text": text[:120], "href": self._href[:2000]})
+            self._href = None
+
+    def handle_data(self, data):
+        if self._skip:
+            return
+        self.parts.append(data)
+        if self._href is not None:
+            self._link_text.append(data)
+
+
+def mail_html_to_text(html):
+    """(text, links) for an email's HTML. Lines kept, blank runs closed."""
+    parser = _MailText()
+    try:
+        parser.feed(html or "")
+        parser.close()
+    except Exception:           # a malformed email is still an email
+        pass
+    lines = [" ".join(line.split()) for line in "".join(parser.parts).split("\n")]
+    out, blank = [], False
+    for line in lines:
+        if not line:
+            if out and not blank:
+                out.append("")
+            blank = True
+            continue
+        out.append(line)
+        blank = False
+    return "\n".join(out).strip(), parser.links
+
+
+_OTA_MONTHS = {
+    "january": 1, "janvier": 1, "janv": 1, "jan": 1,
+    "february": 2, "février": 2, "fevrier": 2, "févr": 2, "fevr": 2, "feb": 2, "fév": 2, "fev": 2,
+    "march": 3, "mars": 3, "mar": 3,
+    "april": 4, "avril": 4, "avr": 4, "apr": 4,
+    "may": 5, "mai": 5,
+    "june": 6, "juin": 6, "jun": 6,
+    "july": 7, "juillet": 7, "juil": 7, "jul": 7,
+    "august": 8, "août": 8, "aout": 8, "aug": 8,
+    "september": 9, "septembre": 9, "sept": 9, "sep": 9,
+    "october": 10, "octobre": 10, "oct": 10,
+    "november": 11, "novembre": 11, "nov": 11,
+    "december": 12, "décembre": 12, "decembre": 12, "déc": 12, "dec": 12,
+}
+_OTA_MONTH_RE = "|".join(sorted((re.escape(k) for k in _OTA_MONTHS), key=len, reverse=True))
+_OTA_DATE_RES = (
+    (re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b"), "ymd"),
+    (re.compile(r"\b(\d{1,2})(?:st|nd|rd|th|er)?\s+(" + _OTA_MONTH_RE
+                + r")(?![a-zà-ÿ])\.?,?\s+(\d{4})\b", re.I), "dmy_name"),
+    (re.compile(r"\b(" + _OTA_MONTH_RE + r")(?![a-zà-ÿ])\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b",
+                re.I), "mdy_name"),
+    (re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b"), "dmy"),
+)
+
+
+def ota_dates(text):
+    """Every date the text states, in order, as (position, ISO date)."""
+    found = {}
+    for rx, shape in _OTA_DATE_RES:
+        for m in rx.finditer(text or ""):
+            try:
+                if shape == "ymd":
+                    y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                elif shape == "dmy_name":
+                    d, mo, y = int(m.group(1)), _OTA_MONTHS[m.group(2).lower()], int(m.group(3))
+                elif shape == "mdy_name":
+                    mo, d, y = _OTA_MONTHS[m.group(1).lower()], int(m.group(2)), int(m.group(3))
+                else:   # the house writes day first, and so does Booking.com in Europe
+                    d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                found.setdefault(m.start(), date(y, mo, d).isoformat())
+            except (ValueError, KeyError):
+                continue
+    return sorted(found.items())
+
+
+_OTA_ARRIVE = re.compile(r"(?i)\b(?:check[\s-]?in|arrival|arriving|arriv[ée]e)\b")
+_OTA_LEAVE = re.compile(r"(?i)\b(?:check[\s-]?out|departure|departing|leaving|d[ée]part)\b")
+
+
+def _ota_date_after(label_re, text, dates):
+    """The first date within a line or so after a label, or None."""
+    for m in label_re.finditer(text or ""):
+        for pos, iso in dates:
+            if m.end() <= pos <= m.end() + 90:
+                return iso
+    return None
+
+
+_OTA_RESNUM = re.compile(
+    r"(?i)(?:reservation|booking|r[ée]servation|confirmation)\s*(?:number|no\.?|n[°º]\.?|nr\.?|id|#)?"
+    r"\s*[:#]?\s*(\d{4}[.\s]?\d{3}[.\s]?\d{3})\b")
+# Ten digits, not starting with a nought: a French telephone number is ten
+# digits too, and always starts with one.
+_OTA_TEN_DIGITS = re.compile(r"(?<![\d.+])([1-9]\d{9})(?![\d.])")
+# A figure's digits stay on one line -- "Nights: 2" above "460 EUR" is not 2460.
+_OTA_MONEY = re.compile(r"(?i)(€|\bEUR)[ \t\u00a0]?(\d[\d \t.,\u00a0\u202f]*\d)"
+                        r"|(\d[\d \t.,\u00a0\u202f]*\d)[ \t\u00a0]?(€|EUR\b|euros?\b)")
+_OTA_TOTAL = re.compile(r"(?i)\b(?:total price|total|price|prix total|montant total|montant|prix)\b")
+_OTA_GUESTS = (
+    re.compile(r"(?i)(?:number of guests|guests|personnes|voyageurs|occupancy)\s*[:\-]\s*(\d{1,2})\b"),
+    re.compile(r"(?i)\b(\d{1,2})\s+(?:guests?|adults?|people|persons?|personnes?|adultes?|voyageurs?)\b"),
+)
+_OTA_NAME_LABEL = re.compile(
+    r"(?im)^\s*(?:guest name|guest|booker name|booker|booked by|name of (?:the )?guest|"
+    r"nom du client|nom du voyageur|client|nom)\s*[:\-]\s*(.{2,80})$")
+_OTA_NAME_SUBJECT = (
+    re.compile(r"(?i)\bmessage from\s+(.{2,60}?)\s*(?:[\-|(\[:]|$)"),
+    re.compile(r"(?i)\bnouveau message de\s+(.{2,60}?)\s*(?:[\-|(\[:]|$)"),
+    re.compile(r"(?i)^\s*(.{2,60}?)\s+(?:has sent you|sent you|vous a envoy[ée]|a envoy[ée])\s+(?:a|un)\s+message"),
+)
+_OTA_ROOM_LABEL = re.compile(
+    r"(?im)^\s*(?:room type|room|unit type|unit|accommodation|type de chambre|chambre|"
+    r"h[ée]bergement|logement)\s*[:\-]\s*(.{2,100})$")
+_OTA_MSG_START = re.compile(
+    r"(?im)^\s*(?:message|guest message|message from (?:the |your )?guest|message du client|"
+    r"le message|votre message|.{2,60}?\s+(?:wrote|a [ée]crit))\s*:?\s*$")
+_OTA_MSG_END = re.compile(
+    r"(?im)^\s*(?:reply|respond|r[ée]pondre|view (?:the )?(?:message|conversation)|voir le message|"
+    r"open (?:the )?conversation|to reply|pour r[ée]pondre|--|—|booking\.com b\.v\.|copyright|©)")
+_OTA_BOILERPLATE = re.compile(
+    r"(?i)booking\.com b\.v\.|copyright|©|privacy|confidentialit|unsubscribe|d[ée]sinscri|"
+    r"this (?:e-?mail|message) (?:was|is) (?:sent|intended)|cet e-?mail|you(?:'re| are) receiving|"
+    r"vous recevez|download the (?:pulse )?app|t[ée]l[ée]chargez")
+_OTA_KIND_RULES = (
+    ("account", re.compile(
+        r"(?i)password|mot de passe|verification code|code de v[ée]rification|security code|"
+        r"code de s[ée]curit[ée]|sign[\s-]?in\b|log[\s-]?in\b|connexion|two[\s-]?factor|\b2fa\b|authenticat")),
+    ("reservation_cancelled", re.compile(r"(?i)\bcancel|annul")),
+    ("reservation_changed", re.compile(r"(?i)\bmodif|\bchang|\bamend")),
+    ("reservation_new", re.compile(
+        r"(?i)new (?:booking|reservation)|nouvelle r[ée]servation|booking confirmed|"
+        r"you(?:'ve| have) (?:a )?new booking|you(?:'ve| have) been booked|r[ée]servation confirm[ée]e|"
+        r"\bbooked\b")),
+    ("request", re.compile(r"(?i)\brequest|\bdemande")),
+    ("review", re.compile(r"(?i)\breview|commentaire|\bavis\b|[ée]valuation|\brated\b")),
+    ("invoice", re.compile(r"(?i)invoice|facture")),
+    ("payout", re.compile(r"(?i)payout|payment|paiement|versement|virement|reimburs|rembours")),
+    ("promotion", re.compile(
+        r"(?i)genius|promotion|\bdeals?\b|\boffers?\b|opportunit|\btips?\b|insight|newsletter|webinar|"
+        r"performance|visibility|visibilit[ée]|partner hub|conseils|early bird|last[\s-]minute")),
+)
+
+
+def _ota_amount(raw):
+    """A money figure as written -- 1,234.56 or 1.234,56 or 1 234,56 -- as a float."""
+    s = re.sub(r"[\s\u00a0\u202f]", "", raw or "")
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".") if s.rfind(",") > s.rfind(".") else s.replace(",", "")
+    elif "," in s:
+        head, _sep, tail = s.rpartition(",")
+        s = head.replace(",", "") + "." + tail if len(tail) == 2 else s.replace(",", "")
+    elif s.count(".") > 1 or (s.count(".") == 1 and len(s.rpartition(".")[2]) == 3):
+        s = s.replace(".", "")
+    try:
+        return round(float(s), 2)
+    except ValueError:
+        return None
+
+
+# What Booking.com calls somebody when it does not say who: "a message from a
+# guest", "nouveau message d'un voyageur". Not a name, so not shown as one.
+_OTA_NOT_A_NAME = re.compile(
+    r"(?i)booking\.com|no-?reply|partner|extranet|"
+    r"^(?:(?:a|an|the|your|our|one|new|un|une|le|la|votre|vos|d'un|d'une)\s*)?"
+    r"(?:guests?|customers?|clients?|travell?ers?|bookers?|voyageu(?:r|se)s?|h[\u00f4o]tes?)$")
+
+
+def _ota_clean_name(name):
+    name = re.sub(r"(?i)\s*[(\[]?\s*via booking\.com\s*[)\]]?\s*$", "", (name or "").strip())
+    name = re.sub(r"(?i)\s*[-|]\s*booking\.com.*$", "", name).strip(" .,:;\"'")
+    if not name or _OTA_NOT_A_NAME.search(name):
+        return None
+    return name[:80]
+
+
+def classify_booking_com_email(subject, from_address="", reply_to="", body=""):
+    """Which of OTA_KINDS an email is. Its subject decides; the body's opening
+    only when the subject says nothing either way."""
+    if any((a or "").strip().lower().endswith("@guest.booking.com")
+           for a in (from_address, reply_to)):
+        return "message"
+    for text in (subject or "", (body or "")[:400]):
+        if re.search(r"(?i)\bmessages?\b", text) and not re.search(
+                r"(?i)partner hub|newsletter|genius", text):
+            return "message"
+        for kind, rx in _OTA_KIND_RULES:
+            if rx.search(text):
+                return kind
+    return "other"
+
+
+def parse_booking_com_email(subject, from_address, from_name, reply_to, body, links, rooms=()):
+    """What one Booking.com email says, as fields. Anything not stated is None.
+
+    `rooms` is [(id, name, channel_name)]: a room named in the email by the
+    name Booking.com uses for it is the room.
+    """
+    subject, body = subject or "", body or ""
+    kind = classify_booking_com_email(subject, from_address, reply_to, body)
+    whole = subject + "\n" + body
+    got = {"kind": kind, "reservation_number": None, "guest_name": None,
+           "arrival_date": None, "departure_date": None, "room_label": None,
+           "room_id": None, "guests": None, "amount": None, "currency": None,
+           "message_text": None}
+
+    # A reservation number belongs to an email about one stay. A commission
+    # invoice lists a month of them, and its own number is ten digits too.
+    m = None
+    if kind not in ("invoice", "payout", "promotion", "account"):
+        m = _OTA_RESNUM.search(whole)
+    if not m and kind in OTA_RESERVATION_KINDS + ("message", "request"):
+        m = _OTA_TEN_DIGITS.search(subject) or _OTA_TEN_DIGITS.search(body)
+    if m:
+        got["reservation_number"] = re.sub(r"\D", "", m.group(1))
+
+    dates = ota_dates(whole)
+    got["arrival_date"] = _ota_date_after(_OTA_ARRIVE, whole, dates)
+    got["departure_date"] = _ota_date_after(_OTA_LEAVE, whole, dates)
+    if kind in OTA_RESERVATION_KINDS and not (got["arrival_date"] and got["departure_date"]):
+        # No labels: two dates a stay apart, in order, are the stay.
+        distinct = list(dict.fromkeys(iso for _pos, iso in dates))
+        if len(distinct) >= 2:
+            a, b = distinct[0], distinct[1]
+            if a < b and (date.fromisoformat(b) - date.fromisoformat(a)).days <= 60:
+                got["arrival_date"] = got["arrival_date"] or a
+                got["departure_date"] = got["departure_date"] or b
+    if (got["arrival_date"] and got["departure_date"]
+            and got["departure_date"] <= got["arrival_date"]):
+        got["departure_date"] = None
+
+    for rx in _OTA_NAME_SUBJECT:
+        m = rx.search(subject)
+        if m and _ota_clean_name(m.group(1)):
+            got["guest_name"] = _ota_clean_name(m.group(1))
+            break
+    if not got["guest_name"]:
+        m = _OTA_NAME_LABEL.search(body)
+        if m:
+            got["guest_name"] = _ota_clean_name(m.group(1))
+    if not got["guest_name"] and kind == "message":
+        got["guest_name"] = _ota_clean_name(from_name)
+
+    candidates = []
+    for room_id, name, channel_name in rooms:
+        for label in (channel_name, name, re.sub(r"(?i)^(?:(?:the|la|le|les)\s+|l['’]\s*)", "", name or "")):
+            label = (label or "").strip()
+            if len(label) >= 4:
+                candidates.append((len(label), label, room_id))
+    for _n, label, room_id in sorted(candidates, reverse=True):
+        if re.search(r"(?<!\w)" + re.escape(label) + r"(?!\w)", whole, re.I):
+            got["room_id"], got["room_label"] = room_id, label
+            break
+    if not got["room_label"]:
+        m = _OTA_ROOM_LABEL.search(body)
+        if m:
+            got["room_label"] = m.group(1).strip()[:100]
+
+    if kind in OTA_RESERVATION_KINDS and not (got["reservation_number"] or got["arrival_date"]):
+        kind = got["kind"] = "other"
+
+    for rx in _OTA_GUESTS:
+        m = rx.search(whole)
+        if m and 0 < int(m.group(1)) <= 30:
+            got["guests"] = int(m.group(1))
+            break
+
+    money = [(mm.start(), mm) for mm in _OTA_MONEY.finditer(whole)]
+    if money:
+        chosen = None
+        for label in _OTA_TOTAL.finditer(whole):
+            chosen = next((mm for pos, mm in money if label.end() <= pos <= label.end() + 40), None)
+            if chosen:
+                break
+        if chosen is None and kind in OTA_RESERVATION_KINDS + ("invoice", "payout"):
+            chosen = money[0][1]
+        if chosen is not None:
+            got["amount"] = _ota_amount(chosen.group(2) or chosen.group(3))
+            got["currency"] = "EUR" if got["amount"] is not None else None
+
+    if kind == "message":
+        lines = body.split("\n")
+        start = next((i for i, line in enumerate(lines) if _OTA_MSG_START.match(line)), None)
+        text = ""
+        if start is not None:
+            taken = []
+            for line in lines[start + 1:]:
+                if _OTA_MSG_END.match(line):
+                    break
+                taken.append(line)
+            text = "\n".join(taken).strip()
+        if not text:
+            text = "\n".join(line for line in lines
+                             if line and not _OTA_BOILERPLATE.search(line)).strip()
+        got["message_text"] = text[:4000] or None
+    return got
+
+
+def booking_com_mailbox(conn):
+    """The one mailbox read for Booking.com's email, or ''."""
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'booking_com_mailbox'").fetchone()
+    chosen = ((row["value"] if row else "") or "").strip().lower()
+    if chosen:
+        return chosen
+    return next((mb.lower() for mb in MS_GRAPH_MAILBOXES
+                 if mb.lower().split("@")[0] in ("bookingcom", "booking.com", "booking-com")), "")
+
+
+def booking_com_handler(conn):
+    """Who hears about Booking.com's email: whoever that inbox is routed to."""
+    mailbox = booking_com_mailbox(conn)
+    if mailbox:
+        mb = conn.execute("SELECT * FROM mailbox_routing WHERE LOWER(mailbox) = ?",
+                          (mailbox,)).fetchone()
+        if mb:
+            who = resolve_inbox_owner(conn, mb)
+            if who:
+                return who
+    owner = conn.execute("SELECT id FROM users WHERE role = 'owner' ORDER BY id LIMIT 1").fetchone()
+    return owner["id"] if owner else None
+
+
+def _ota_page_link(mail_id):
+    if has_request_context():
+        return url_for("management_booking_com") + f"#m{mail_id}"
+    return f"/management/booking-com#m{mail_id}"
+
+
+def _ota_reservation(conn, got, received_at, now_iso):
+    """Keep the booking an email is about up to date. Its id, or None.
+
+    Emails can arrive, or be read, out of order -- a mailbox read newest first,
+    a backlog uploaded in a pile -- so an email only CHANGES a booking if it is
+    no older than the last one that did. An older one may still fill a gap.
+    """
+    number = got.get("reservation_number")
+    if not number or got["kind"] not in OTA_RESERVATION_KINDS:
+        return None
+    fields = {k: got.get(k) for k in ("guest_name", "arrival_date", "departure_date",
+                                      "room_label", "room_id", "guests", "amount", "currency")}
+    status = "cancelled" if got["kind"] == "reservation_cancelled" else "confirmed"
+    row = conn.execute(
+        "SELECT * FROM ota_reservations WHERE channel = 'booking.com' AND reservation_number = ?",
+        (number,)).fetchone()
+    if not row:
+        cur = conn.execute(
+            """INSERT INTO ota_reservations (channel, reservation_number, status, guest_name,
+                   arrival_date, departure_date, room_label, room_id, guests, amount, currency,
+                   first_seen_at, last_event_at, updated_at)
+               VALUES ('booking.com', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (number, status, *fields.values(), now_iso, received_at, now_iso))
+        return cur.lastrowid
+    newer = received_at >= (row["last_event_at"] or "")
+    sets = {}
+    for key, value in fields.items():
+        if value in (None, ""):
+            continue
+        if newer or row[key] in (None, ""):
+            sets[key] = value
+    if newer:
+        sets["status"] = status
+        sets["last_event_at"] = received_at
+    if sets:
+        sets["updated_at"] = now_iso
+        conn.execute("UPDATE ota_reservations SET " + ", ".join(f"{k} = ?" for k in sets)
+                     + " WHERE id = ?", (*sets.values(), row["id"]))
+    return row["id"]
+
+
+def _ota_notify(conn, mail_id, got, received_at):
+    """Tell whoever handles Booking.com about what somebody should see now."""
+    if got["kind"] not in OTA_NOTIFY_KINDS:
+        return
+    # An email a fortnight old arriving in a first read, or an old one uploaded,
+    # is history, not news -- a phone buzzing thirty times on the first morning
+    # teaches everybody to ignore it.
+    when = parse_datetime_iso(received_at)
+    if when and datetime.now(timezone.utc) - when > timedelta(days=2):
+        return
+    who = booking_com_handler(conn)
+    if not who:
+        return
+    guest = got.get("guest_name") or "A guest"
+    stay = ""
+    if got.get("arrival_date") and got.get("departure_date"):
+        stay = f"{format_date_human(got['arrival_date'])} to {format_date_human(got['departure_date'])}"
+    titles = {
+        "message": f"Booking.com: {guest} has written",
+        "reservation_new": f"Booking.com: new booking — {guest}",
+        "reservation_changed": f"Booking.com: booking changed — {guest}",
+        "reservation_cancelled": f"Booking.com: booking cancelled — {guest}",
+        "request": f"Booking.com: a request from {guest}",
+        "review": "Booking.com: a new review",
+    }
+    body = (got.get("message_text") or "")[:160] if got["kind"] == "message" else \
+        " · ".join(x for x in (stay, got.get("room_label") or "",
+                                    ("€%s" % f"{got['amount']:,.2f}") if got.get("amount") else "")
+                        if x)
+    send_notification(conn, who, "booking_com", titles[got["kind"]], body=body or None,
+                      link=_ota_page_link(mail_id))
+
+
+def ingest_booking_com_email(conn, *, source, source_id, received_at, from_address="",
+                             from_name="", reply_to="", subject="", html="", text="",
+                             mailbox=None):
+    """Keep one Booking.com email, read and sorted. (row id, kind, new?).
+
+    The same email read twice -- by the mailbox job and again from an upload --
+    is kept once: source_id is the Message-ID where there is one.
+    """
+    if source_id:
+        seen = conn.execute("SELECT id, kind FROM ota_mail WHERE source_id = ?",
+                            (source_id,)).fetchone()
+        if seen:
+            return seen["id"], seen["kind"], False
+    body, links = mail_html_to_text(html) if html else ((text or "").strip(), [])
+    if html and text and len(text.strip()) > len(body):
+        body = text.strip()
+    rooms = [(r["id"], r["name"], r["channel_name"])
+             for r in conn.execute("SELECT id, name, channel_name FROM rooms").fetchall()]
+    got = parse_booking_com_email(subject, from_address, from_name, reply_to, body, links, rooms)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    # One spelling of a moment. Graph writes "...Z", an .eml file "+01:00", and
+    # these are compared as text -- which is newer, what is still in the reply
+    # window -- so a stamp in another zone would be ordered by the wrong hour.
+    when = parse_datetime_iso(received_at)
+    received_at = when.astimezone(timezone.utc).isoformat() if when else now_iso
+    # A security email's text is a key. Its subject and arrival are kept, so it
+    # can be seen that one came; what it said is left in the mailbox.
+    keep_text = got["kind"] != "account"
+    cur = conn.execute(
+        """INSERT INTO ota_mail (channel, source, source_id, mailbox, received_at,
+               from_address, from_name, reply_to, subject, kind, reservation_number,
+               guest_name, arrival_date, departure_date, room_label, room_id, guests,
+               amount, currency, message_text, body_text, links, from_booking_com,
+               created_at)
+           VALUES ('booking.com', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (source, source_id, mailbox, received_at, (from_address or "")[:200],
+         (from_name or "")[:200], (reply_to or "")[:200], (subject or "")[:500], got["kind"],
+         got["reservation_number"], got["guest_name"], got["arrival_date"],
+         got["departure_date"], got["room_label"], got["room_id"], got["guests"],
+         got["amount"], got["currency"],
+         got["message_text"] if keep_text else None,
+         body[:40000] if keep_text else None,
+         json.dumps(links[:60]) if keep_text else "[]",
+         1 if is_booking_com_address(from_address) else 0, now_iso))
+    mail_id = cur.lastrowid
+    reservation_id = _ota_reservation(conn, got, received_at, now_iso)
+    if reservation_id:
+        conn.execute("UPDATE ota_mail SET ota_reservation_id = ? WHERE id = ?",
+                     (reservation_id, mail_id))
+    conn.commit()
+    # Only Booking.com's own mail raises a notification. Anybody can write to
+    # the address and call themselves Booking.com; that email is kept and
+    # shown, marked, and nobody's phone buzzes for it.
+    if is_booking_com_address(from_address):
+        _ota_notify(conn, mail_id, got, received_at)
+    return mail_id, got["kind"], True
+
+
+def run_booking_com_mail_job(conn):
+    """Read the Booking.com mailbox, keeping each new email. Every ten minutes.
+
+    A no-op, not a failure, until both the mailbox and Microsoft Graph are set
+    up -- the same as every other optional connection here. Oldest first, so a
+    cancellation read in the same run as its booking lands after it.
+    """
+    mailbox = booking_com_mailbox(conn)
+    if not mailbox:
+        return "no Booking.com mailbox set"
+    if not graph_enabled():
+        return "Microsoft Graph not configured"
+    token = get_graph_token()
+    if not token:
+        return "could not get a Graph token"
+    since = (datetime.now(timezone.utc) - timedelta(days=BOOKING_COM_LOOKBACK_DAYS)
+             ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    page = graph_get(
+        f"/users/{mailbox}/mailFolders/inbox/messages", token,
+        params={"$select": "id,internetMessageId,receivedDateTime,from,replyTo,subject,body",
+                "$filter": f"receivedDateTime ge {since}",
+                "$orderby": "receivedDateTime asc", "$top": "100"})
+    if page is None:
+        return f"could not read {mailbox}"
+    new = {}
+    for msg in page.get("value", []):
+        sender = (msg.get("from") or {}).get("emailAddress") or {}
+        reply = next(((r.get("emailAddress") or {}).get("address") or ""
+                      for r in (msg.get("replyTo") or [])), "")
+        body = msg.get("body") or {}
+        html = body.get("content") if (body.get("contentType") or "").lower() == "html" else ""
+        text = body.get("content") if not html else ""
+        _id, kind, fresh = ingest_booking_com_email(
+            conn, source="graph", source_id=msg.get("internetMessageId") or msg.get("id"),
+            received_at=msg.get("receivedDateTime"), from_address=sender.get("address", ""),
+            from_name=sender.get("name", ""), reply_to=reply, subject=msg.get("subject") or "",
+            html=html or "", text=text or "", mailbox=mailbox)
+        if fresh:
+            new[kind] = new.get(kind, 0) + 1
+    if not new:
+        return f"nothing new in {mailbox}"
+    return "kept " + ", ".join(f"{n} × {OTA_KINDS[k].lower()}" for k, n in sorted(new.items()))
+
+
+def booking_com_waiting(conn, *, now=None):
+    """Guest messages from the reply window nobody has dealt with, oldest first.
+
+    The window is measured from the MOMENT each arrived, against a moment --
+    received_at is a UTC timestamp, and comparing it with a bare date would
+    close the window up to a day early or late depending on the hour.
+    """
+    now = now or datetime.now(timezone.utc)
+    since = (now - timedelta(days=BOOKING_COM_REPLY_DAYS)).isoformat()
+    return conn.execute(
+        """SELECT * FROM ota_mail
+            WHERE kind = 'message' AND handled_at IS NULL AND from_booking_com = 1
+              AND received_at >= ?
+            ORDER BY received_at""", (since,)).fetchall()
+
+
+def purge_booking_com_mail(conn, *, today=None):
+    """What the privacy notice promises: two years after the stay, then gone.
+
+    The stay's departure where the email names one, and otherwise when it
+    arrived -- a review or an invoice is kept as long as a letter is.
+    """
+    today = today or house_today()
+    cutoff_day = today - timedelta(days=int(GUEST_MESSAGE_KEEP_MONTHS * 30.44))
+    # A departure is a day and is compared with a day; an arrival time is a
+    # moment and is compared with the moment the house's cutoff day began.
+    cutoff_moment = (datetime.combine(cutoff_day, dtime(0, 0), tzinfo=LOCAL_TZ)
+                     .astimezone(timezone.utc).isoformat())
+    cur = conn.execute(
+        """DELETE FROM ota_mail
+            WHERE (COALESCE(departure_date, '') != '' AND departure_date < ?)
+               OR (COALESCE(departure_date, '') = '' AND received_at < ?)""",
+        (cutoff_day.isoformat(), cutoff_moment))
+    conn.commit()
+    return {"old Booking.com email": cur.rowcount if cur.rowcount > 0 else 0}
+
+
+def _eml_parts(raw):
+    """(fields for ingest) from one .eml file's bytes, or None if it is not one."""
+    from email import message_from_bytes, policy
+    from email.utils import getaddresses, parsedate_to_datetime
+    try:
+        msg = message_from_bytes(raw, policy=policy.default)
+    except Exception:
+        return None
+    if not msg.get("From") and not msg.get("Subject"):
+        return None
+    sender = getaddresses([str(msg.get("From", ""))])
+    reply = getaddresses([str(msg.get("Reply-To", ""))])
+    try:
+        when = parsedate_to_datetime(str(msg.get("Date"))).astimezone(timezone.utc).isoformat()
+    except Exception:
+        when = None
+    html = text = ""
+    try:
+        part = msg.get_body(preferencelist=("html",))
+        html = part.get_content() if part else ""
+        part = msg.get_body(preferencelist=("plain",))
+        text = part.get_content() if part else ""
+    except Exception:
+        pass
+    message_id = str(msg.get("Message-ID", "") or "").strip()
+    return {
+        "source_id": message_id or ("sha1:" + hashlib.sha1(raw).hexdigest()),
+        "received_at": when,
+        "from_address": sender[0][1] if sender else "",
+        "from_name": sender[0][0] if sender else "",
+        "reply_to": reply[0][1] if reply else "",
+        "subject": str(msg.get("Subject", "") or ""),
+        "html": html or "", "text": text or "",
+    }
+
+
+@app.route("/management/booking-com")
+@owner_required
+def management_booking_com():
+    """Everything Booking.com has sent, as what it is about."""
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM ota_mail ORDER BY received_at DESC, id DESC").fetchall()
+    reservations = conn.execute(
+        "SELECT * FROM ota_reservations ORDER BY COALESCE(arrival_date, '9999') DESC").fetchall()
+    rooms = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
+    # On the calendar: the sync blocks a Booking.com stay's dates in its room,
+    # departure exclusive, which is the day Booking.com calls check-out.
+    blocked = {(r["room_id"], r["start_date"], r["end_date"]) for r in conn.execute(
+        "SELECT room_id, start_date, end_date FROM blocked_dates WHERE ical_source_id IS NOT NULL")}
+    waiting = booking_com_waiting(conn)
+    mailbox = booking_com_mailbox(conn)
+    conn.close()
+    waiting_ids = {r["id"] for r in waiting}
+
+    def state(r):
+        # Only a guest's message, from Booking.com, has an answer to wait for;
+        # everything else is left out of this question rather than given a
+        # chip of its own that nobody would click.
+        if r["kind"] != "message" or not r["from_booking_com"]:
+            return None
+        if r["id"] in waiting_ids:
+            return "Waiting for an answer"
+        return "Answered" if (r["handled_at"] or r["replied_at"]) else "Past the reply window"
+
+    lv = list_view(
+        rows, request.args,
+        search=["subject", "guest_name", "reservation_number", "body_text", "room_label"],
+        search_hint="Search guest, reservation number or wording",
+        facets=[
+            facet("kind", "What it is", lambda r: OTA_KINDS.get(r["kind"], "Something else"),
+                  order=list(OTA_KINDS.values())),
+            facet("answer", "Messages", state,
+                  order=["Waiting for an answer", "Answered", "Past the reply window"],
+                  labels={}, hide_empty=True),
+        ],
+        sorts=[sort_option("newest", "Newest first", lambda r: r["received_at"] or "", reverse=True),
+               sort_option("guest", "Guest", lambda r: (r["guest_name"] or "~").lower())],
+        default_sort="newest",
+    )
+    stays = {r["reservation_number"]: r for r in reservations}
+    return render_template(
+        "management_booking_com.html", rows=lv["rows"], lv=lv, kinds=OTA_KINDS,
+        reservations=reservations, stays=stays, rooms=rooms, blocked=blocked, waiting=waiting,
+        waiting_ids=waiting_ids, mailbox=mailbox, graph_on=graph_enabled(),
+        can_send=email_enabled(), reply_days=BOOKING_COM_REPLY_DAYS,
+        links_of=lambda r: [dict(l, safe=is_booking_com_link(l.get("href")))
+                            for l in json.loads(r["links"] or "[]")])
+
+
+@app.route("/management/booking-com/mailbox", methods=["POST"])
+@owner_required
+def set_booking_com_mailbox():
+    address = (request.form.get("mailbox") or "").strip().lower()
+    if address and not EMAIL_RE.match(address):
+        flash("That does not look like an email address.", "error")
+        return redirect(url_for("management_booking_com"))
+    conn = get_db()
+    conn.execute("""INSERT INTO app_settings (key, value) VALUES ('booking_com_mailbox', ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value""", (address,))
+    log_audit(conn, "booking_com_mailbox_set", target=address or "(none)")
+    conn.commit()
+    conn.close()
+    flash(f"Booking.com's email is read from {address}." if address else
+          "No mailbox is read for Booking.com now.", "success")
+    return redirect(url_for("management_booking_com"))
+
+
+@app.route("/management/booking-com/upload", methods=["POST"])
+@owner_required
+def upload_booking_com_email():
+    """Emails saved from the mailbox (.eml), or pasted source, read like the rest.
+
+    For what came before the mailbox was set up, and for checking how a new
+    kind of email is read before one arrives on its own.
+    """
+    items = []
+    for f in request.files.getlist("emails"):
+        raw = f.read(BOOKING_COM_UPLOAD_MAX_BYTES + 1)
+        if raw:
+            items.append((f.filename or "an email", raw))
+    pasted = (request.form.get("source") or "").strip()
+    if pasted:
+        items.append(("the pasted email", pasted.encode("utf-8", errors="replace")))
+    done, skipped, kept = 0, [], []
+    conn = get_db()
+    for label, raw in items:
+        if len(raw) > BOOKING_COM_UPLOAD_MAX_BYTES:
+            skipped.append((label, "it is larger than 3 MB"))
+            continue
+        parts = _eml_parts(raw)
+        if not parts:
+            skipped.append((label, "it is not an email this can read"))
+            continue
+        _id, kind, fresh = ingest_booking_com_email(conn, source="upload", mailbox=None, **parts)
+        if fresh:
+            done += 1
+            kept.append(OTA_KINDS.get(kind, kind).lower())
+        else:
+            skipped.append((label, "it is already here"))
+    conn.close()
+    message, category = bulk_message(
+        "Kept", "email", done, skipped, detail=", ".join(kept) if kept else "")
+    flash(message, category)
+    return redirect(url_for("management_booking_com"))
+
+
+@app.route("/management/booking-com/<int:mail_id>/answered", methods=["POST"])
+@owner_required
+def booking_com_answered(mail_id):
+    """Answered somewhere else -- the extranet, the Pulse app -- so off the list."""
+    conn = get_db()
+    row = conn.execute("SELECT id FROM ota_mail WHERE id = ? AND kind = 'message'",
+                       (mail_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    user = current_user()
+    conn.execute("UPDATE ota_mail SET handled_at = ?, handled_by = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat(), user["id"] if user else None, mail_id))
+    log_audit(conn, "booking_com_message_answered", target=str(mail_id))
+    conn.commit()
+    conn.close()
+    flash("Marked as answered.", "success")
+    return redirect(url_for("management_booking_com") + f"#m{mail_id}")
+
+
+@app.route("/management/booking-com/<int:mail_id>/reply", methods=["POST"])
+@owner_required
+def reply_booking_com_message(mail_id):
+    """Answer a guest through Booking.com, by writing to the address it gave.
+
+    Booking.com relays mail to the guest from an address on the property's
+    approved list, and drops it silently from any other -- so the page says so
+    beside the box, and this cannot tell whether it arrived.
+    """
+    text = (request.form.get("reply") or "").strip()
+    conn = get_db()
+    row = conn.execute("SELECT * FROM ota_mail WHERE id = ? AND kind = 'message'",
+                       (mail_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    alias = (row["reply_to"] or row["from_address"] or "").strip()
+    # Only for Booking.com's own mail: an email that merely claims to be from
+    # it has not earned an answer from the house, whatever address it gives.
+    if not row["from_booking_com"] or not alias.lower().endswith("@guest.booking.com"):
+        conn.close()
+        flash("This message did not come with an address to answer it at, so it has "
+              "to be answered in the Booking.com extranet.", "error")
+        return redirect(url_for("management_booking_com") + f"#m{mail_id}")
+    if not text:
+        conn.close()
+        flash("There was nothing in the reply.", "error")
+        return redirect(url_for("management_booking_com") + f"#m{mail_id}")
+    subject = row["subject"] or "Your stay at Château de Gudanes"
+    subject = subject if subject.lower().startswith("re:") else "Re: " + subject
+    sent = send_email(alias, subject, text[:6000], area="rooms")
+    user = current_user()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """UPDATE ota_mail SET reply_text = ?, replied_at = ?, handled_at = COALESCE(handled_at, ?),
+               handled_by = COALESCE(handled_by, ?) WHERE id = ?""",
+        (text[:6000], now_iso, now_iso, user["id"] if user else None, mail_id))
+    log_audit(conn, "booking_com_message_replied", target=str(mail_id))
+    conn.commit()
+    conn.close()
+    flash("Sent to the guest through Booking.com." if sent else
+          "Held: no email provider is connected yet, so it goes out as soon as one is.",
+          "success" if sent else "error")
+    return redirect(url_for("management_booking_com") + f"#m{mail_id}")
+
+
 AUTOMATION_JOBS = [
     ("housekeeping", "automation_housekeeping_enabled", None, 600, run_housekeeping_job),
     # Every ten minutes, and the interval is the feature: a handover that
@@ -73691,6 +74645,10 @@ AUTOMATION_JOBS = [
     # series of small calls instead of one enormous one.
     ("page_translation", "automation_page_translation_enabled", None, 600,
      run_page_translation_job),
+    # Every ten minutes: a guest who has written through Booking.com is waiting,
+    # and the reply window is a fortnight. A no-op until the mailbox is set.
+    ("booking_com_mail", "automation_booking_com_mail_enabled", None, 600,
+     run_booking_com_mail_job),
     # Hourly. The page reads a cache and never the network, so a slow morning
     # at Open-Meteo is a page with no weather on it rather than a slow page.
     ("weather", "automation_weather_enabled", None, 3600, run_weather_job),
@@ -73956,6 +74914,7 @@ AUTOMATION_JOB_LABELS = {
     "exchange_rates": "What a euro is worth, for the price converter",
     "housekeeping": "Housekeeping (expire stale bookings, prep arrivals)",
     "page_translation": "Translate new public-page text into French and Spanish",
+    "booking_com_mail": "Read Booking.com's email into the site",
     "daily_digest": "Daily owner digest email",
     "workshop_autocharge": "Workshop: charge the balance on its due date",
     "balance_due_notice": "Workshop: tell the owner when balances fall due (once each)",

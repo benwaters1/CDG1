@@ -72,6 +72,7 @@ MAY_WRITE_IN_CODE = {
     "guest_account_request": "the link is the sign-in itself",
     # written by a person each time, or already rendered elsewhere
     "reply_to_feedback": "the owner writes the reply",
+    "reply_booking_com_message": "the owner writes the reply, to the guest's Booking.com address",
     "send_campaign": "a campaign the owner wrote on the campaigns page",
     "send_email_outbox": "re-sends letters already written and held",
     "test_email_provider": "a test of the provider, to the owner",
