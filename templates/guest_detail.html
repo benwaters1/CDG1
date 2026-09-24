@@ -265,7 +265,7 @@
     {% for msg in messages %}
     <tr>
       <th scope="row">{{ (msg.when or '')[:16]|replace('T', ' ') }}</th>
-      <td>{{ msg.kind }}</td>
+      <td>{{ msg.kind }}{% if msg.incoming %}<span class="cell-note">to us</span>{% endif %}</td>
       <td>
         {{ msg.subject }}
         {% if msg.body %}<br><span class="upload-hint">{{ msg.body[:110] }}{% if msg.body|length > 110 %}…{% endif %}</span>{% endif %}
@@ -281,6 +281,92 @@
 </table>
 </div>
 {% endif %}
+{% endif %}
+
+{# ---- everything that has passed between us ---------------------------
+   Letters and texts either way, conversations, notes, bookings, money and
+   consent, in one list. They lived on eleven pages. #}
+<h2 style="margin-top:28px;">History</h2>
+{% if not timeline %}
+  <div class="empty-state">Nothing has passed between the house and them yet.</div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>When</th><th>What</th><th>Detail</th></tr></thead>
+  <tbody>
+    {% for x in timeline %}
+    <tr>
+      <th scope="row">{{ x.day|date_short }}</th>
+      <td>{{ x.kind }}{% if x.ref %}<span class="cell-note">{{ x.ref }}</span>{% endif %}</td>
+      <td>{{ x.title }}{% if x.detail %}<span class="cell-note">{{ x.detail[:160] }}{% if x.detail|length > 160 %}…{% endif %}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+<p><a href="{{ url_for('guest_history', guest_id=g['id']) }}" class="btn-mini">All of it</a></p>
+
+{# The telephone left no trace, so the next person to ring them started from
+   nothing. A date to follow up on becomes a task on the calendar. #}
+<details class="refund-box">
+  <summary>Write down a conversation</summary>
+  <form method="post" action="{{ url_for('log_guest_contact', guest_id=g['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div class="register-field">
+        <label class="field-label" for="gc-channel">How</label>
+        <select id="gc-channel" name="channel">
+          {% for key, label in contact_channels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="register-field">
+        <label class="field-label" for="gc-direction">Who got in touch</label>
+        <select id="gc-direction" name="direction">
+          <option value="in">They did</option>
+          <option value="out">We did</option>
+        </select>
+      </div>
+      <div class="register-field">
+        <label class="field-label" for="gc-follow">Follow up on</label>
+        <input id="gc-follow" type="date" name="follow_up_on">
+      </div>
+      <div class="refund-reason">
+        <label class="field-label" for="gc-summary">What was said</label>
+        <textarea id="gc-summary" name="summary" rows="2" required></textarea>
+      </div>
+    </div>
+    <button type="submit" class="btn-mini">Write it down</button>
+  </form>
+</details>
+
+{% if is_owner and g['email'] %}
+{# Written here, it goes from the house and is kept with everything else they
+   have been sent -- a letter from somebody's own mail program never was. #}
+<details class="refund-box">
+  <summary>Write to them</summary>
+  <form method="post" action="{{ url_for('write_to_guest', guest_id=g['id']) }}"
+        onsubmit="return confirm('Send this to {{ g['email'] }}?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div class="refund-reason">
+        <label class="field-label" for="gw-subject">Subject</label>
+        <input id="gw-subject" type="text" name="subject" maxlength="200" required>
+      </div>
+      <div class="refund-reason">
+        <label class="field-label" for="gw-body">Letter</label>
+        <textarea id="gw-body" name="body" rows="6" required></textarea>
+      </div>
+      <div class="register-field">
+        <label class="field-label" for="gw-area">Their reply goes to</label>
+        <select id="gw-area" name="area">
+          {% for key in reply_areas %}<option value="{{ key }}">{{ key|capitalize }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn-mini">Send it</button>
+  </form>
+</details>
 {% endif %}
 
 {# ---- the running note -------------------------------------------------

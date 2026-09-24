@@ -4800,6 +4800,48 @@ def init_db():
         # A refund that did not reach the guest is booked back against the one
         # it undoes rather than deleted: the record keeps that it was tried, and
         # every figure built on refunds comes back right by the same sums.
+        # CORRESPONDENCE WITH A PERSON, not only with a stay. A letter was kept
+        # only if its address matched a room booking, so everything written to
+        # somebody who had booked an atelier, a table or an event -- and every
+        # letter delivered to anybody, which the record never read -- was
+        # nowhere a person could find it.
+        ("guest_messages_guest_id", "ALTER TABLE guest_messages ADD COLUMN guest_id INTEGER"),
+        ("guest_messages_about_category", "ALTER TABLE guest_messages ADD COLUMN about_category TEXT"),
+        ("guest_messages_about_id", "ALTER TABLE guest_messages ADD COLUMN about_id INTEGER"),
+        ("guest_messages_template_key", "ALTER TABLE guest_messages ADD COLUMN template_key TEXT"),
+        ("guest_messages_direction",
+         "ALTER TABLE guest_messages ADD COLUMN direction TEXT NOT NULL DEFAULT 'out'"),
+        ("guest_messages_outbox_id", "ALTER TABLE guest_messages ADD COLUMN outbox_id INTEGER"),
+        ("guest_messages_failure", "ALTER TABLE guest_messages ADD COLUMN failure TEXT"),
+        ("guest_messages_sent_by", "ALTER TABLE guest_messages ADD COLUMN sent_by_user_id INTEGER"),
+        ("guest_messages_delivered_at", "ALTER TABLE guest_messages ADD COLUMN delivered_at TEXT"),
+        ("idx_guest_messages_guest",
+         "CREATE INDEX IF NOT EXISTS idx_guest_messages_guest ON guest_messages(guest_id)"),
+        ("idx_guest_messages_outbox",
+         "CREATE INDEX IF NOT EXISTS idx_guest_messages_outbox ON guest_messages(outbox_id)"),
+        # By address, as every reader of both asks: a person's letters are
+        # found by the address they went to, however it was capitalised.
+        ("idx_email_outbox_to",
+         "CREATE INDEX IF NOT EXISTS idx_email_outbox_to ON email_outbox(LOWER(TRIM(to_address)))"),
+        ("idx_guest_messages_to",
+         "CREATE INDEX IF NOT EXISTS idx_guest_messages_to "
+         "ON guest_messages(LOWER(TRIM(to_address)))"),
+        # A telephone call, a word at the desk, a text from somebody's own
+        # phone: nothing recorded any of them, so the most common way a guest
+        # talks to a house like this one left no trace at all.
+        ("guest_contacts_table", """CREATE TABLE IF NOT EXISTS guest_contacts (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             guest_id INTEGER NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+             channel TEXT NOT NULL,
+             direction TEXT NOT NULL DEFAULT 'in',
+             summary TEXT NOT NULL,
+             about_category TEXT,
+             about_id INTEGER,
+             follow_up_on TEXT,
+             task_id INTEGER,
+             logged_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             created_at TEXT NOT NULL
+         )"""),
         ("refunds_reverses", "ALTER TABLE refunds ADD COLUMN reverses_refund_id INTEGER"),
         # A card payment the guest has disputed with their bank. The webhook
         # heard checkout and nothing else, so a dispute -- which has a deadline,
@@ -5574,6 +5616,7 @@ def init_db():
         print(f"[init] event_payments: checkout-once index not built ({e})")
 
     hold_legacy_balance_stamps(conn)
+    link_held_letters(conn)
 
     # `guests` used to be a per-STAY register carrying arrival/departure/party_size,
     # duplicating what `bookings` already owns. The two could never be kept in
@@ -6814,7 +6857,8 @@ NAV_AREAS = {
         "cancel_booking_extra_line", "delete_guest", "delete_police_fiche", "delete_room",
         "delete_room_photo", "delete_room_rate_override", "disband_booking_party", "export_bookings_csv",
         "export_guests_csv", "guest_full_statement", "guest_statement_csv",
-        "email_guest_account_statement", "import_catalogue", "link_guest_bookings",
+        "email_guest_account_statement", "write_to_guest", "import_catalogue",
+        "link_guest_bookings",
         "new_booking_party", "new_room_rate_override", "police_register_page", "prepare_arrival",
         "repeat_guests_page", "reply_to_feedback", "sync_all_ical_sources", "toggle_feedback_featured",
         # Pages that had no area at all until now, so they were
@@ -22902,20 +22946,30 @@ def send_email_outbox():
     for row in rows:
         # keep=False: this row IS the queue entry. Re-queueing on failure
         # would add a duplicate every time the owner pressed the button.
+        why = {}
         ok = send_email(row["to_address"], row["subject"], row["body"],
-                        row["ics_content"], row["ics_filename"], keep=False)
+                        row["ics_content"], row["ics_filename"], keep=False, report=why)
+        now = datetime.now(timezone.utc).isoformat()
         if ok:
             sent += 1
             conn.execute(
                 "UPDATE email_outbox SET sent_at = ?, attempts = attempts + 1 WHERE id = ?",
-                (datetime.now(timezone.utc).isoformat(), row["id"]))
+                (now, row["id"]))
+            # The record of the letter said it did not go; now it has. Left
+            # alone, a confirmation held one morning and sent that afternoon
+            # read "did not go" on the guest's record forever.
+            conn.execute(
+                """UPDATE guest_messages SET delivered = 1, delivered_at = ?, failure = NULL
+                    WHERE outbox_id = ?""", (now, row["id"]))
         else:
             failed += 1
             skipped.append((f"{row['subject'] or 'no subject'} to "
                             f"{row['to_address']}", "the provider refused it"))
+            # WHY, not "retry failed": that overwrote the reason the provider
+            # gave with a phrase that says only that it happened again.
             conn.execute(
                 "UPDATE email_outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?",
-                ("retry failed", row["id"]))
+                (why.get("why") or "retry failed", row["id"]))
         conn.commit()
     if sent:
         log_audit(conn, "email_outbox_sent", details=f"{sent} sent, {failed} failed")
@@ -23025,6 +23079,19 @@ def test_email_provider():
     return redirect(url_for("admin_email_outbox"))
 
 
+LETTER_WITHDRAWN = "taken out of the queue by the house, so never sent"
+
+
+def mark_letters_withdrawn(conn, outbox_ids):
+    """The guest's copy of a letter the house took out of the queue.
+
+    It read "held" for ever after, which says the letter is still on its way.
+    """
+    conn.executemany(
+        "UPDATE guest_messages SET failure = ? WHERE outbox_id = ? AND delivered = 0",
+        [(LETTER_WITHDRAWN, i) for i in outbox_ids])
+
+
 @app.route("/admin/email-outbox/discard-stale", methods=["POST"])
 @owner_required
 def discard_stale_email_outbox():
@@ -23049,6 +23116,7 @@ def discard_stale_email_outbox():
     oldest = max(held_mail_age_days(r) or 0 for r in stale)
     conn.executemany("DELETE FROM email_outbox WHERE id = ?",
                      [(r["id"],) for r in stale])
+    mark_letters_withdrawn(conn, [r["id"] for r in stale])
     log_audit(conn, "email_outbox_discarded_stale", None,
               f"{len(stale)} message(s), up to {oldest} days old")
     conn.commit()
@@ -23066,6 +23134,7 @@ def discard_email_outbox(outbox_id):
     row = conn.execute("SELECT to_address, subject FROM email_outbox WHERE id = ?",
                        (outbox_id,)).fetchone()
     conn.execute("DELETE FROM email_outbox WHERE id = ?", (outbox_id,))
+    mark_letters_withdrawn(conn, [outbox_id])
     if row:
         log_audit(conn, "email_outbox_discarded", target=row["to_address"],
                   details=row["subject"])
@@ -23458,7 +23527,7 @@ def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reas
     try:
         conn = get_db()
         try:
-            conn.execute(
+            cur = conn.execute(
                 """INSERT INTO email_outbox (to_address, subject, body, ics_content,
                    ics_filename, reason, last_error, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -23466,10 +23535,14 @@ def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reas
                  datetime.now(timezone.utc).isoformat()),
             )
             conn.commit()
+            # Which row, so the letter's record can say "held" and be put right
+            # the day it is sent from here.
+            return cur.lastrowid
         finally:
             conn.close()
     except Exception as e:                     # pragma: no cover - last resort
         print(f"[outbox write failed] To: {to_address} | Subject: {subject} | Error: {e}")
+    return None
 
 
 # How long a message to a guest is kept. Two years past the stay: long enough
@@ -23561,8 +23634,52 @@ def booking_for_contact(conn, address=None, phone=None):
     return sorted(rows, key=lambda r: r["arrival_date"] or "")[0]["id"]
 
 
+def guest_for_contact(conn, address=None, phone=None):
+    """The profile an address or a number belongs to, followed through any
+    merge to the one it lives in now. None if there is none.
+
+    A telephone number is compared by its last nine digits, the subscriber's
+    number however it was written: nationally, with the country code, or with
+    the spaces somebody typed.
+    """
+    row = None
+    address = (address or "").strip().casefold()
+    if address:
+        row = conn.execute(
+            "SELECT id, merged_into_id FROM guests WHERE LOWER(TRIM(email)) = ?",
+            (address,)).fetchone()
+    digits = "".join(c for c in (phone or "") if c.isdigit())[-9:]
+    if not row and len(digits) == 9:
+        for g in conn.execute(
+                "SELECT id, merged_into_id, phone FROM guests "
+                "WHERE COALESCE(phone, '') != ''").fetchall():
+            if "".join(c for c in g["phone"] if c.isdigit())[-9:] == digits:
+                row = g
+                break
+    seen = set()
+    while row and row["merged_into_id"] and row["id"] not in seen:
+        seen.add(row["id"])
+        onward = conn.execute("SELECT id, merged_into_id FROM guests WHERE id = ?",
+                              (row["merged_into_id"],)).fetchone()
+        if not onward:
+            break
+        row = onward
+    return row["id"] if row else None
+
+
+# Where a message to a guest is about, when the sender knows: a stay, an
+# atelier, a table or an event, by id.
+MESSAGE_ABOUT = ("room", "workshop", "restaurant", "event")
+
+
 def write_guest_messages(rows):
-    """File a batch of sent messages against the stays they belong to.
+    """File a batch of messages against the person they were to, and what they
+    were about.
+
+    Kept when the address or number is somebody the house knows -- a profile,
+    or a stay -- or when the sender said what it was about. A letter was kept
+    only if its address matched a ROOM booking, so everything written to
+    somebody who had booked an atelier, a table or an event went nowhere.
 
     Its own connection, and everything swallowed. This is bookkeeping about a
     side effect: losing the record of a letter must never lose the letter, and
@@ -23574,20 +23691,39 @@ def write_guest_messages(rows):
     try:
         conn = get_db()
         try:
-            for to_address, subject, body, channel, delivered in rows:
-                booking_id = booking_for_contact(
-                    conn, address=to_address if channel == "email" else None,
-                    phone=to_address if channel == "sms" else None)
-                if not booking_id:
+            for row in rows:
+                if not isinstance(row, dict):
+                    to_address, subject, body, channel, delivered = row
+                    row = {"to_address": to_address, "subject": subject, "body": body,
+                           "channel": channel, "delivered": delivered}
+                channel = row.get("channel") or "email"
+                by_mail = channel in ("email", "form")
+                about = row.get("about") or (None, None)
+                if about[0] not in MESSAGE_ABOUT:
+                    about = (None, None)
+                address = row["to_address"] if by_mail else None
+                number = None if by_mail else row["to_address"]
+                booking_id = (about[1] if about[0] == "room" else
+                              None if about[0] else
+                              booking_for_contact(conn, address=address, phone=number))
+                guest_id = guest_for_contact(conn, address=address, phone=number)
+                if not booking_id and not guest_id and not about[0]:
                     # Staff mail, a supplier, the accountant. Not correspondence
                     # with a guest, and not kept here.
                     continue
+                now = datetime.now(timezone.utc).isoformat()
                 conn.execute(
                     """INSERT INTO guest_messages (booking_id, channel, to_address,
-                       subject, body, delivered, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (booking_id, channel, to_address, subject, body,
-                     1 if delivered else 0, datetime.now(timezone.utc).isoformat()))
+                       subject, body, delivered, created_at, guest_id, about_category,
+                       about_id, template_key, direction, outbox_id, failure,
+                       sent_by_user_id, delivered_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (booking_id, channel, row["to_address"], row.get("subject"),
+                     row.get("body") or "", 1 if row.get("delivered") else 0, now,
+                     guest_id, about[0], about[1], row.get("template_key"),
+                     row.get("direction") or "out", row.get("outbox_id"),
+                     None if row.get("delivered") else row.get("failure"),
+                     row.get("sent_by"), now if row.get("delivered") else None))
                 written += 1
             conn.commit()
         finally:
@@ -23597,7 +23733,7 @@ def write_guest_messages(rows):
     return written
 
 
-def keep_guest_message(to_address, subject, body, channel="email", delivered=False):
+def keep_guest_message(to_address, subject, body, channel="email", delivered=False, **more):
     """Hold one message until it is safe to write it down.
 
     NOT written here. Inside a request this waits in g and is flushed after
@@ -23611,7 +23747,9 @@ def keep_guest_message(to_address, subject, body, channel="email", delivered=Fal
     """
     if not to_address:
         return
-    row = (to_address, subject, body, channel, delivered)
+    # what it was about, the template, the held copy, who wrote it, which way
+    row = dict(more, to_address=to_address, subject=subject, body=body, channel=channel,
+               delivered=delivered)
     if has_request_context():
         pending = g.get("_guest_messages")
         if pending is None:
@@ -23622,7 +23760,8 @@ def keep_guest_message(to_address, subject, body, channel="email", delivered=Fal
 
 
 def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
-               keep=True, html=None, report=None, area=None):
+               keep=True, html=None, report=None, area=None, about=None,
+               template_key=None, sent_by=None):
     """Send one message, and if it cannot go out, keep it.
 
     `keep=False` for anything whose body is itself a credential — a password
@@ -23656,6 +23795,11 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         keep = False
     if not to_address:
         return False
+    # Which letter this is, when a template made it: render_email_template
+    # leaves the key by the subject, so nothing that sends has to pass it.
+    if not template_key and has_request_context():
+        template_key = (g.get("_rendered_keys") or {}).get(subject)
+    filed = {"about": about, "template_key": template_key, "sent_by": sent_by}
     # Filed whether it goes or not, and marked with which. "We wrote to them
     # and it bounced" is a different fact from "we never wrote", and the whole
     # point of keeping this is being able to tell somebody which happened.
@@ -23667,23 +23811,25 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                                           reply_to=reply_to_for(area))
         if went:
             if keep:
-                keep_guest_message(to_address, subject, body, delivered=True)
+                keep_guest_message(to_address, subject, body, delivered=True, **filed)
             return True
         if report is not None:
             report["why"] = why
         if keep:
-            queue_undelivered(to_address, subject, body, ics_content, ics_filename,
-                              "provider rejected it", why or "Resend API call failed")
-            keep_guest_message(to_address, subject, body)
+            held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
+                                     "provider rejected it", why or "Resend API call failed")
+            keep_guest_message(to_address, subject, body, outbox_id=held,
+                               failure=why or "the provider refused it", **filed)
         return False
     if not email_enabled():
         print(f"[email held — no email provider configured] To: {to_address} | Subject: {subject}")
         if report is not None:
             report["why"] = "No email provider is configured."
         if keep:
-            queue_undelivered(to_address, subject, body, ics_content, ics_filename,
-                              "no email provider configured")
-            keep_guest_message(to_address, subject, body)
+            held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
+                                     "no email provider configured")
+            keep_guest_message(to_address, subject, body, outbox_id=held,
+                               failure="no email provider configured", **filed)
         return False
     try:
         # Assigning headers can itself raise (e.g. a crafted guest_email
@@ -23721,16 +23867,17 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
         if keep:
-            keep_guest_message(to_address, subject, body, delivered=True)
+            keep_guest_message(to_address, subject, body, delivered=True, **filed)
         return True
     except Exception as e:
         print(f"[email failed] To: {to_address} | Subject: {subject} | Error: {e}")
         if report is not None:
             report["why"] = "The mail server refused it: %s" % (e,)
         if keep:
-            queue_undelivered(to_address, subject, body, ics_content, ics_filename,
-                              "send failed", str(e))
-            keep_guest_message(to_address, subject, body)
+            held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
+                                     "send failed", str(e))
+            keep_guest_message(to_address, subject, body, outbox_id=held,
+                               failure=f"the mail server refused it: {e}", **filed)
         return False
 
 
@@ -36719,8 +36866,13 @@ def guest_account_message(token):
         return redirect(url_for("guest_account", token=token))
 
     owner_to = owner_email(conn)
+    # The audit line says they wrote, not what: what a guest writes is theirs,
+    # and the audit trail is kept forever. What they wrote is kept with the
+    # rest of their correspondence, on the same two-year rule.
     log_audit(conn, "guest_wrote_in", target=session_row["email"],
-              details=message[:200])
+              details=f"{len(message)} characters, kept with their correspondence")
+    keep_guest_message(session_row["email"], "They wrote through their account page",
+                       message, channel="form", delivered=True, direction="in")
     # Committed before the send: send_email falls back to the outbox on its own
     # connection, which cannot write while this transaction is open. That is
     # the fault that lost six routes' worth of held mail.
@@ -37264,6 +37416,112 @@ def new_guest():
     return render_template("guest_form.html", guest=None)
 
 
+@app.route("/guests/<int:guest_id>/history")
+@login_required
+def guest_history(guest_id):
+    """Everything that has passed between the house and one person."""
+    conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        conn.close()
+        abort(404)
+    is_owner = (current_user() or {})["role"] == "owner"
+    items = [x for x in guest_timeline(conn, guest_id)
+             if is_owner or x["kind"] not in TIMELINE_OWNER_KINDS]
+    conn.close()
+    lv = guest_timeline_view(items, request.args)
+    return render_template("guest_history.html", guest=guest, items=lv["rows"], lv=lv)
+
+
+@app.route("/guests/<int:guest_id>/contact", methods=["POST"])
+@login_required
+def log_guest_contact(guest_id):
+    """Write down that somebody spoke to them, and what about.
+
+    The telephone is how most guests reach a house like this, and it left no
+    trace: the next person to ring them back started from nothing. A date to
+    follow up on becomes a task, so it is on the calendar and somebody's list.
+    """
+    conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        conn.close()
+        abort(404)
+    back = url_for("guest_detail", guest_id=guest_id)
+    summary = " ".join((request.form.get("summary") or "").split())[:1000]
+    channel = request.form.get("channel") or "phone"
+    if channel not in CONTACT_CHANNELS:
+        channel = "other"
+    direction = "out" if request.form.get("direction") == "out" else "in"
+    if not summary:
+        conn.close()
+        flash("Say what was said, in a line or two.", "error")
+        return redirect(back)
+    follow = parse_date(request.form.get("follow_up_on") or "")
+    user = current_user()
+    now = datetime.now(timezone.utc).isoformat()
+    task_id = None
+    if follow:
+        cur = conn.execute(
+            """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
+                 status, origin, created_at)
+               VALUES (?, ?, ?, 'normal', ?, 'open', 'guest_contact', ?)""",
+            (user["id"], f"Follow up with {guest['name']}", summary, follow.isoformat(), now))
+        task_id = cur.lastrowid
+    conn.execute(
+        """INSERT INTO guest_contacts (guest_id, channel, direction, summary, follow_up_on,
+           task_id, logged_by_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (guest_id, channel, direction, summary, follow.isoformat() if follow else None,
+         task_id, user["id"], now))
+    log_audit(conn, "guest_contact_logged", target=guest["name"],
+              details=CONTACT_CHANNELS[channel])
+    conn.commit()
+    conn.close()
+    flash("Written down." + (f" A task to follow up on {format_date_human(follow.isoformat())} "
+                             "is on the calendar." if follow else ""), "success")
+    return redirect(back)
+
+
+@app.route("/guests/<int:guest_id>/write", methods=["POST"])
+@owner_required
+def write_to_guest(guest_id):
+    """Write to them from their record, and keep the letter with the rest.
+
+    The record offered a mailto: link, so a letter written from it went out
+    from somebody's own mail program and was never seen here again -- the one
+    kind of letter to a guest this system could not show.
+    """
+    conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        conn.close()
+        abort(404)
+    back = url_for("guest_detail", guest_id=guest_id)
+    email = (guest["email"] or "").strip()
+    subject = " ".join((request.form.get("subject") or "").split())[:200]
+    body = (request.form.get("body") or "").strip()[:8000]
+    area = request.form.get("area") or "rooms"
+    if area not in REPLY_TO_AREAS:
+        area = "rooms"
+    if "@" not in email:
+        conn.close()
+        flash("This profile has no address to write to.", "error")
+        return redirect(back)
+    if not subject or not body:
+        conn.close()
+        flash("A letter needs a subject and something to say.", "error")
+        return redirect(back)
+    log_audit(conn, "guest_written_to", target=guest["name"], details=subject)
+    conn.commit()
+    conn.close()
+    went = send_email(email, subject, body, html=letter_html(subject, body), area=area,
+                      sent_by=current_user()["id"])
+    flash(f"Sent to {email}." if went else
+          f"Kept to send later: {email} could not be written to just now.",
+          "success" if went else "error")
+    return redirect(back)
+
+
 @app.route("/guests/<int:guest_id>/note", methods=["POST"])
 @login_required
 def add_guest_note_route(guest_id):
@@ -37500,6 +37758,11 @@ def guest_detail(guest_id):
         abort(404)
     is_owner = (current_user() or {})["role"] == "owner"
     messages = guest_messages(conn, record["guest"]) if is_owner else []
+    # The latest of everything, with the way to the whole of it. A colleague
+    # sees what was said on the telephone and what is booked -- that is theirs
+    # to act on -- and not the money or the letters, which are the owner's.
+    timeline = [x for x in guest_timeline(conn, guest_id)
+                if is_owner or x["kind"] not in TIMELINE_OWNER_KINDS][:12]
     notes = guest_notes(conn, guest_id)
     # Profiles that might be the same person, offered here rather than on a
     # separate page: the merge is a thing you do while looking at one of them.
@@ -37542,7 +37805,9 @@ def guest_detail(guest_id):
                            notes=notes, duplicates=duplicates,
                            merged_from=merged_from, caution_levels=CAUTION_LEVELS,
                            messages=messages, is_owner=is_owner,
-                           party_of=party_of,
+                           party_of=party_of, timeline=timeline,
+                           contact_channels=CONTACT_CHANNELS,
+                           reply_areas=list(REPLY_TO_AREAS),
                            rebook_rooms=rebook_rooms, usual_nights=usual_nights,
                            today=house_today_iso())
 
@@ -40863,7 +41128,8 @@ def send_event_email(conn, inquiry, template_key, context):
     subject, body, letter = render_email_template(conn, template_key, context)
     if not subject:
         return
-    send_email(inquiry["contact_email"], subject, body, html=letter)
+    send_email(inquiry["contact_email"], subject, body, html=letter,
+               about=("event", inquiry["id"]), template_key=template_key)
 
 
 @app.route("/events")
@@ -43027,7 +43293,8 @@ def send_restaurant_email(conn, booking, template_key, context):
     # area=: a reply to a dinner confirmation belongs in the restaurant's
     # inbox, not in whichever one RESEND_FROM happens to name.
     send_email(booking["guest_email"], subject, body, html=letter,
-               area="restaurant")
+               area="restaurant", about=("restaurant", booking["id"]),
+               template_key=template_key)
 
 
 def refund_restaurant_booking(conn, booking, reason="Reservation cancelled by the château", user_id=None):
@@ -43749,7 +44016,7 @@ def record_sms_consent(conn, raw_number, source=None):
     return number
 
 
-def file_guest_text(conn, number, body, *, delivered):
+def file_guest_text(conn, number, body, *, delivered, channel="sms"):
     """Keep a copy of a text to a guest, against their stay.
 
     On the caller's connection, unlike the mail side. send_sms already joins
@@ -43760,14 +44027,18 @@ def file_guest_text(conn, number, body, *, delivered):
     say "we wrote, it did not reach you" as readily as "we never wrote".
     """
     booking_id = booking_for_contact(conn, phone=number)
-    if not booking_id:
+    guest_id = guest_for_contact(conn, phone=number)
+    if not booking_id and not guest_id:
         return
+    # By the channel it went on: a WhatsApp filed as a text is a record that
+    # says the guest was told on a channel they were not.
+    now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """INSERT INTO guest_messages (booking_id, channel, to_address,
-           subject, body, delivered, created_at)
-           VALUES (?, 'sms', ?, NULL, ?, ?, ?)""",
-        (booking_id, number, body, 1 if delivered else 0,
-         datetime.now(timezone.utc).isoformat()))
+           subject, body, delivered, created_at, guest_id, direction, delivered_at)
+           VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'out', ?)""",
+        (booking_id, channel if channel in ("sms", "whatsapp") else "sms", number, body,
+         1 if delivered else 0, now, guest_id, now if delivered else None))
 
 
 def send_sms(conn, raw_number, body, purpose="transactional", hold=True,
@@ -43808,7 +44079,7 @@ def send_sms(conn, raw_number, body, purpose="transactional", hold=True,
                channel) VALUES (?, ?, ?, 'no provider configured', ?, ?)""",
             (number, body, purpose, datetime.now(timezone.utc).isoformat(),
              channel))
-        file_guest_text(conn, number, body, delivered=False)
+        file_guest_text(conn, number, body, delivered=False, channel=channel)
         return False, None          # held, not refused
     ok, result = sms_provider_send(number, body, channel, template_id, variables)
     # `note` carries the reason a channel was CHOSEN, which is the question
@@ -43824,7 +44095,7 @@ def send_sms(conn, raw_number, body, purpose="transactional", hold=True,
          datetime.now(timezone.utc).isoformat(),
          datetime.now(timezone.utc).isoformat() if ok else None,
          result if ok else None, None if ok else str(result)[:400], channel))
-    file_guest_text(conn, number, body, delivered=ok)
+    file_guest_text(conn, number, body, delivered=ok, channel=channel)
     return bool(ok), None
 
 
@@ -45060,6 +45331,49 @@ def hold_legacy_balance_stamps(conn):
     return held
 
 
+def link_held_letters(conn):
+    """Join each letter filed before copies carried their place in the queue
+    to the held copy of it.
+
+    A letter the house could not send was filed as not gone, and queued, with
+    nothing joining the two. So once the queue was sent the record still said
+    it had not gone, and the guest's record listed it twice: once as filed and
+    once as queued. On a house that has never had a way to send mail, that is
+    every letter it has written.
+
+    By address, subject and words, one at a time, so the same letter held
+    twice pairs first with first and second with second rather than both
+    claiming one. Runs at startup and finds nothing once the old rows are
+    through it: send_email files every held letter with its place in the queue.
+    """
+    linked = 0
+    for r in conn.execute(
+            """SELECT id, to_address, subject, body FROM guest_messages
+                WHERE outbox_id IS NULL AND channel = 'email' AND delivered = 0
+                ORDER BY id""").fetchall():
+        held = conn.execute(
+            """SELECT id FROM email_outbox
+                WHERE LOWER(TRIM(to_address)) = LOWER(TRIM(?)) AND subject IS ? AND body = ?
+                  AND NOT EXISTS (SELECT 1 FROM guest_messages gm
+                                   WHERE gm.outbox_id = email_outbox.id)
+                ORDER BY id LIMIT 1""", (r["to_address"], r["subject"], r["body"])).fetchone()
+        if held:
+            conn.execute("UPDATE guest_messages SET outbox_id = ? WHERE id = ?",
+                         (held["id"], r["id"]))
+            linked += 1
+    # And those sent from the queue since, now that the two are joined.
+    sent = conn.execute(
+        """UPDATE guest_messages SET delivered = 1, failure = NULL,
+             delivered_at = (SELECT sent_at FROM email_outbox
+                              WHERE email_outbox.id = guest_messages.outbox_id)
+            WHERE delivered = 0 AND outbox_id IS NOT NULL
+              AND (SELECT sent_at FROM email_outbox
+                    WHERE email_outbox.id = guest_messages.outbox_id) IS NOT NULL""").rowcount
+    if linked or sent > 0:
+        conn.commit()
+    return linked
+
+
 PLACEHOLDER_TEXT = re.compile(r"\bTEST\b|\bTODO\b|\bFIXME\b|\bXXX\b|lorem ipsum", re.I)
 
 
@@ -45606,6 +45920,14 @@ def render_email_template(conn, template_key, context):
         # row did not skip the letter the way every caller expects -- it raised
         # at the unpacking, in the middle of whatever was sending it.
         return None, None, None
+    # Which letter, left where send_email can find it by the subject -- so the
+    # record of every letter says which template it was without two hundred
+    # call sites having to pass the key along.
+    if has_request_context():
+        keys = g.get("_rendered_keys")
+        if keys is None:
+            keys = g._rendered_keys = {}
+        keys[subject] = template_key
     return subject, body, letter_html(subject, body)
 
 
@@ -45885,7 +46207,8 @@ def send_workshop_email(conn, booking, template_key, context):
         log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "skipped — opted out")
         return
     sent = send_email(booking["guest_email"], subject, body, html=letter,
-                      area="workshops")
+                      area="workshops", about=("workshop", booking["id"]),
+                      template_key=template_key)
     log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "sent" if sent else "failed")
 
 
@@ -66774,17 +67097,45 @@ def guest_messages(conn, guest, limit=60):
     phone = normalise_phone(guest["phone"] or "") or (guest["phone"] or "").strip()
     out = []
 
-    if email:
+    # THE CORRESPONDENCE, which this used to skip. It read the failure queue,
+    # which holds only what did NOT go -- so once a provider was working, every
+    # letter that reached somebody was missing from the list of what they had
+    # been sent, and the list looked complete.
+    for r in correspondence_for(conn, guest["id"], limit=limit):
+        out.append({"kind": MESSAGE_CHANNEL_WORDS.get(r["channel"], r["channel"]),
+                    "when": r["created_at"], "subject": r["subject"] or "",
+                    "body": r["body"], "sent": bool(r["delivered"]),
+                    "note": r["failure"] or (f"written by {r['sent_by_name']}"
+                                             if r["sent_by_name"] else ""),
+                    "incoming": r["direction"] == "in"})
+    # What only the delivery queues know about: a letter held before letters
+    # were filed against the person, and a text to a number no profile or stay
+    # carries. Listed once -- a letter filed since carries its queue row, and a
+    # text filed since carries its words and number, so neither shows twice.
+    addresses = guest_addresses(conn, guest["id"]) or ([email] if email else [])
+    if addresses:
         for r in conn.execute(
-                """SELECT subject, body, created_at, sent_at, reason
-                     FROM email_outbox WHERE LOWER(TRIM(to_address)) = ?
-                    ORDER BY id DESC LIMIT ?""", (email, limit)).fetchall():
-            out.append({"kind": "email", "when": r["created_at"],
-                        "subject": r["subject"], "body": r["body"],
-                        # Held is not sent. A page that showed both the same
-                        # way would say the house had written to somebody it
-                        # had not.
-                        "sent": bool(r["sent_at"]), "note": r["reason"]})
+                f"""SELECT subject, body, created_at, sent_at, reason FROM email_outbox
+                     WHERE LOWER(TRIM(to_address)) IN ({','.join('?' * len(addresses))})
+                       AND id NOT IN (SELECT outbox_id FROM guest_messages
+                                       WHERE outbox_id IS NOT NULL)
+                     ORDER BY id DESC LIMIT ?""", addresses + [limit]).fetchall():
+            out.append({"kind": "email", "when": r["created_at"], "subject": r["subject"],
+                        "body": r["body"], "sent": bool(r["sent_at"]),
+                        "note": r["reason"] or "", "incoming": False})
+    if phone:
+        for r in conn.execute(
+                """SELECT body, purpose, reason, created_at, sent_at FROM sms_outbox
+                    WHERE phone = ?
+                      AND NOT EXISTS (SELECT 1 FROM guest_messages gm
+                                       WHERE gm.channel IN ('sms', 'whatsapp')
+                                         AND gm.to_address = sms_outbox.phone
+                                         AND gm.body = sms_outbox.body)
+                    ORDER BY id DESC LIMIT ?""", (phone, limit)).fetchall():
+            out.append({"kind": "text", "when": r["created_at"], "subject": r["purpose"],
+                        "body": r["body"], "sent": bool(r["sent_at"]),
+                        "note": r["reason"] or "", "incoming": False})
+    if email:
         for r in conn.execute(
                 """SELECT template_name, subject, status, detail, created_at
                      FROM campaign_sends
@@ -66796,18 +67147,159 @@ def guest_messages(conn, guest, limit=60):
                         # status carries whether it actually went; a campaign
                         # that failed is not a campaign the guest received.
                         "sent": (r["status"] or "") == "sent",
-                        "note": r["detail"] or r["template_name"]})
-    if phone:
-        for r in conn.execute(
-                """SELECT body, purpose, reason, created_at, sent_at
-                     FROM sms_outbox WHERE phone = ?
-                    ORDER BY id DESC LIMIT ?""", (phone, limit)).fetchall():
-            out.append({"kind": "text", "when": r["created_at"],
-                        "subject": r["purpose"], "body": r["body"],
-                        "sent": bool(r["sent_at"]), "note": r["reason"]})
-
+                        "note": r["detail"] or r["template_name"], "incoming": False})
     out.sort(key=lambda x: x["when"] or "", reverse=True)
     return out[:limit]
+
+
+# What a colleague does not see on a guest's history: the money and the
+# letters are the owner's, as they are on the record itself.
+TIMELINE_OWNER_KINDS = ("Money", "Letter", "Text", "They wrote", "Newsletter & offers",
+                        "Consent")
+MESSAGE_CHANNEL_WORDS = {"email": "email", "sms": "text", "whatsapp": "WhatsApp",
+                         "form": "they wrote"}
+CONTACT_CHANNELS = {
+    "phone": "Telephone", "in_person": "In person",
+    "message": "A text or WhatsApp from a phone",
+    "email_elsewhere": "An email outside this system", "other": "Something else",
+}
+
+
+def correspondence_for(conn, guest_id, limit=500):
+    """Every message to and from one person, newest first: by their profile,
+    any profile merged into it, the addresses those used, and their stays."""
+    ids = guest_profile_ids(conn, guest_id)
+    addresses = guest_addresses(conn, guest_id)
+    stays = [r["id"] for r in conn.execute(
+        f"""SELECT id FROM bookings WHERE linked_guest_id IN ({','.join('?' * len(ids))})
+              OR LOWER(TRIM(guest_email)) IN ({','.join('?' * len(addresses)) or 'NULL'})""",
+        ids + addresses).fetchall()]
+    clauses = [f"guest_id IN ({','.join('?' * len(ids))})"]
+    params = list(ids)
+    if addresses:
+        clauses.append(f"LOWER(TRIM(to_address)) IN ({','.join('?' * len(addresses))})")
+        params += addresses
+    if stays:
+        clauses.append(f"booking_id IN ({','.join('?' * len(stays))})")
+        params += stays
+    # With who wrote it, for a letter somebody wrote by hand: kept and never
+    # shown, it was a name nobody could read back.
+    return conn.execute(
+        f"""SELECT guest_messages.*, users.name AS sent_by_name FROM guest_messages
+              LEFT JOIN users ON users.id = guest_messages.sent_by_user_id
+             WHERE {' OR '.join(clauses)}
+             ORDER BY guest_messages.created_at DESC, guest_messages.id DESC LIMIT ?""",
+        params + [limit]).fetchall()
+
+
+def guest_timeline(conn, guest_id):
+    """Everything that has passed between the house and one person, in one
+    list, newest first.
+
+    Letters and texts either way, calls and conversations, notes, each booking
+    asked for and decided, money in and out, what they said about their stay,
+    and what they said about being written to. They lived on eleven pages, and
+    "what happened with this guest" meant opening all of them.
+    """
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        return []
+    out = []
+
+    def add(at, kind, title, detail="", ref=None):
+        if at:
+            out.append({"at": at, "day": house_date_iso(at), "kind": kind,
+                        "title": title, "detail": detail or "", "ref": ref})
+
+    for r in correspondence_for(conn, guest_id):
+        word = MESSAGE_CHANNEL_WORDS.get(r["channel"], r["channel"])
+        if r["direction"] == "in":
+            kind, title = "They wrote", r["subject"] or "A message"
+        else:
+            kind = "Text" if r["channel"] in ("sms", "whatsapp") else "Letter"
+            title = ((r["subject"] or f"A {word}") + ("" if r["delivered"] else " (held, not sent)")
+                     + (f", written by {r['sent_by_name']}" if r["sent_by_name"] else ""))
+        add(r["created_at"], kind, title, (r["body"] or "")[:240])
+    addresses = guest_addresses(conn, guest_id)
+    if addresses:
+        marks = ",".join("?" * len(addresses))
+        for r in conn.execute(
+                f"""SELECT subject, template_name, status, created_at FROM campaign_sends
+                     WHERE LOWER(TRIM(recipient_email)) IN ({marks})""", addresses).fetchall():
+            add(r["created_at"], "Newsletter & offers",
+                r["subject"] or r["template_name"] or "A campaign",
+                "sent" if (r["status"] or "") == "sent" else (r["status"] or ""))
+        for r in conn.execute(
+                f"SELECT created_at FROM email_optouts WHERE LOWER(TRIM(email)) IN ({marks})",
+                addresses).fetchall():
+            add(r["created_at"], "Consent", "Asked not to be sent marketing email")
+        for r in conn.execute(
+                f"""SELECT confirmed_at, unsubscribed_at FROM newsletter_subscribers
+                     WHERE LOWER(TRIM(email)) IN ({marks})""", addresses).fetchall():
+            add(r["confirmed_at"], "Consent", "Signed up to the newsletter")
+            add(r["unsubscribed_at"], "Consent", "Left the newsletter")
+    ids = guest_profile_ids(conn, guest_id)
+    idq = ",".join("?" * len(ids))
+    for r in conn.execute(
+            f"""SELECT guest_contacts.*, users.name AS by_name FROM guest_contacts
+                  LEFT JOIN users ON users.id = guest_contacts.logged_by_user_id
+                 WHERE guest_contacts.guest_id IN ({idq})""", ids).fetchall():
+        add(r["created_at"], "Conversation",
+            f"{CONTACT_CHANNELS.get(r['channel'], r['channel'])}, "
+            + ("they got in touch" if r["direction"] == "in" else "we got in touch")
+            + (f" — {r['by_name']}" if r["by_name"] else ""),
+            r["summary"] + (f" Follow up on {format_date_human(r['follow_up_on'])}."
+                            if r["follow_up_on"] else ""))
+    for r in conn.execute(
+            f"""SELECT guest_notes.*, users.name AS by_name FROM guest_notes
+                  LEFT JOIN users ON users.id = guest_notes.written_by_user_id
+                 WHERE guest_notes.guest_id IN ({idq})""", ids).fetchall():
+        add(r["created_at"], "Note", r["by_name"] or "A note", r["body"])
+    statement = guest_account_statement(conn, guest_id)
+    for b in statement["bookings"] if statement else []:
+        table = REFUND_BOOKING_TABLES.get(b["category"])
+        row = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (b["id"],)).fetchone()
+        if not row:
+            continue
+        add(row["created_at"], "Booking", f"{b['kind']} asked for: {b['what']}", ref=b["ref"])
+        if "decided_at" in row.keys() and row["decided_at"]:
+            add(row["decided_at"], "Booking",
+                f"{b['kind']} {(row['status'] or '').lower()}: {b['what']}", ref=b["ref"])
+    for x in (statement["lines"] if statement else []):
+        if x["paid"]:
+            add(x["at"], "Money", f"{x['what']}: €{x['paid']:,.2f}", ref=x["ref"])
+        elif x["back"]:
+            add(x["at"], "Money", f"{x['what']}: €{x['back']:,.2f} back to them", ref=x["ref"])
+    stays = [b["id"] for b in (statement["bookings"] if statement else [])
+             if b["category"] == "room"]
+    if stays:
+        for r in conn.execute(
+                f"""SELECT guest_feedback.*, bookings.reference_code FROM guest_feedback
+                      JOIN bookings ON bookings.id = guest_feedback.booking_id
+                     WHERE booking_id IN ({','.join('?' * len(stays))})""", stays).fetchall():
+            keys = r.keys()
+            said = (r["comments"] if "comments" in keys else "") or ""
+            rating = r["rating"] if "rating" in keys else None
+            add(r["submitted_at"] if "submitted_at" in keys else None, "Feedback",
+                f"Rated their stay {rating} of 5" if rating else "Wrote about their stay",
+                said, ref=r["reference_code"])
+    out.sort(key=lambda x: x["at"], reverse=True)
+    return out
+
+
+def guest_timeline_view(items, args):
+    """The timeline through the standard toolbar."""
+    return list_view(
+        items, args,
+        search=["title", "detail", "ref", "kind"],
+        search_hint="Search what was said, written or done",
+        facets=[facet("kind", "What", lambda x: x["kind"],
+                      order=["Letter", "Text", "They wrote", "Conversation", "Note",
+                             "Booking", "Money", "Feedback", "Newsletter & offers",
+                             "Consent"])],
+        sorts=[sort_option("recent", "Newest first", lambda x: x["at"], reverse=True),
+               sort_option("oldest", "Oldest first", lambda x: x["at"])],
+        default_sort="recent")
 
 
 def party_for_booking(conn, booking_id):
@@ -66986,8 +67478,9 @@ def write_about_stay(booking, subject, body, side="stay",
     people = stay_recipients(booking, side=side)
     if not people:
         return False
+    about = ("room", booking["id"])
     delivered = send_email(people[0], subject, body, ics_content=ics_content,
-                           ics_filename=ics_filename, html=html)
+                           ics_filename=ics_filename, html=html, about=about)
     # WHY THEY ARE GETTING THIS. A bill landing in a stranger's inbox with no
     # explanation reads as a mistake, or worse as a scam -- so the copy says
     # who asked us to write to them, and the original does not carry the line.
@@ -67002,7 +67495,7 @@ def write_about_stay(booking, subject, body, side="stay",
         # the explanation is worth more to the person reading it than a
         # prettier one without. Revisit when the shell has a slot for it.
         send_email(address, subject, body + note,
-                   ics_content=ics_content, ics_filename=ics_filename)
+                   ics_content=ics_content, ics_filename=ics_filename, about=about)
     return delivered
 
 
@@ -67254,6 +67747,28 @@ def guest_data_tables(conn):
     return out
 
 
+# Filed against a guest's profile rather than an address.
+GUEST_FILED_TABLES = ("guest_notes", "guest_contacts", "guest_messages")
+
+
+def guest_filed_rows(conn, guests):
+    """(table, column, rows) for what is filed by these profiles, and any
+    merged into them."""
+    ids = sorted({i for g in guests for i in guest_profile_ids(conn, g["id"])})
+    if not ids:
+        return []
+    marks = ",".join("?" * len(ids))
+    out = []
+    for table in GUEST_FILED_TABLES:
+        try:
+            rows = conn.execute(f"SELECT * FROM {table} WHERE guest_id IN ({marks})",
+                                ids).fetchall()
+        except sqlite3.OperationalError:
+            continue                     # table not in this database yet
+        out.append((table, "guest_id", rows))
+    return out
+
+
 def guest_data_export(conn, email):
     """Everything held about one person, by email and by what hangs off it.
 
@@ -67305,6 +67820,17 @@ def guest_data_export(conn, email):
             if rows:
                 found.setdefault(table, []).extend(dict(r) for r in rows)
 
+    # What hangs off the person themselves, and any profile merged into
+    # theirs: the notes on their record, the conversations written down, and
+    # the letters and texts filed by the profile -- a text is filed by the
+    # number, so the address sweep never finds it. An answer to "everything
+    # you hold" without what was said on the telephone is not everything.
+    for table, column, rows in guest_filed_rows(conn, found.get("guests", [])):
+        have = {r.get("id") for r in found.get(table, [])}
+        more = [dict(r) for r in rows if r["id"] not in have]
+        if more:
+            found.setdefault(table, []).extend(more)
+
     return {
         "email": email,
         "taken_at": datetime.now(timezone.utc).isoformat(),
@@ -67333,6 +67859,17 @@ def guest_data_erase(conn, email):
     if not email:
         return None
     deleted, anonymised = {}, {}
+
+    # First what is filed by their profile, while the profile is still there
+    # to say which rows are theirs. A text is filed by the number and a
+    # letter may be filed by an address from before a merge; searching for
+    # this address alone left both behind.
+    profiles = conn.execute("SELECT id FROM guests WHERE LOWER(TRIM(email)) = ?",
+                            (email,)).fetchall()
+    for table, _column, rows in guest_filed_rows(conn, profiles):
+        if rows:
+            conn.executemany(f"DELETE FROM {table} WHERE id = ?", [(r["id"],) for r in rows])
+            deleted[table] = deleted.get(table, 0) + len(rows)
 
     for table, keys in guest_data_tables(conn).items():
         where = " OR ".join(f"LOWER(TRIM({k})) = ?" for k in keys)
@@ -71419,8 +71956,19 @@ def purge_guest_messages(conn, *, today=None):
                SELECT id FROM bookings
                 WHERE COALESCE(departure_date, arrival_date, '') != ''
                   AND COALESCE(departure_date, arrival_date) < ?)""", (cutoff,))
+    gone = cur.rowcount if cur.rowcount > 0 else 0
+    # A letter about no stay -- an atelier, a table, a question -- is kept two
+    # years from when it was written, the same two years the notice states.
+    # Without this they were kept for ever: nothing else ever deleted them.
+    moment = house_day_window(date.fromisoformat(cutoff))[0]
+    cur = conn.execute("DELETE FROM guest_messages WHERE booking_id IS NULL AND created_at < ?",
+                       (moment,))
+    gone += cur.rowcount if cur.rowcount > 0 else 0
+    # And a note of a conversation, on the same rule.
+    spoken = conn.execute("DELETE FROM guest_contacts WHERE created_at < ?", (moment,))
     conn.commit()
-    return {"old guest correspondence": cur.rowcount if cur.rowcount > 0 else 0}
+    return {"old guest correspondence": gone,
+            "old notes of conversations": spoken.rowcount if spoken.rowcount > 0 else 0}
 
 
 SUBMISSION_LOG_KEEP_DAYS = 7
