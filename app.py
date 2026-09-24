@@ -2662,6 +2662,26 @@ def init_db():
             UNIQUE(channel, reservation_number)
         );
 
+        -- The police register for guests who booked through Booking.com.
+        -- police_register ties every fiche to a booking of the house's own,
+        -- NOT NULL, and a Booking.com stay has none -- so its fiches live
+        -- here, field for field the same, and the register page reads both.
+        -- A table of its own rather than a rebuild of that one: it is a legal
+        -- register with real entries in it, and a migration that copies a
+        -- table to change one constraint is how a register loses a page.
+        CREATE TABLE IF NOT EXISTS channel_police_register (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ota_reservation_id INTEGER NOT NULL REFERENCES ota_reservations(id) ON DELETE CASCADE,
+            surname TEXT NOT NULL,
+            first_names TEXT NOT NULL,
+            born_on TEXT,
+            born_at TEXT,
+            nationality TEXT NOT NULL,
+            home_address TEXT,
+            recorded_at TEXT NOT NULL,
+            recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+        );
+
         -- Owner-written email templates for campaigns and announcements, as
         -- opposed to `email_templates` above which holds the fixed system
         -- messages (booking confirmed, balance due). These are created and
@@ -6759,6 +6779,7 @@ NAV_AREAS = {
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         "add_police_fiche", "bulk_confirm_bookings", "bulk_decline_bookings", "cancel_booking_admin",
+        "add_channel_police_fiche", "delete_channel_police_fiche",
         "cancel_booking_extra_line", "delete_guest", "delete_police_fiche", "delete_room",
         "delete_room_photo", "delete_room_rate_override", "disband_booking_party", "export_bookings_csv",
         "export_guests_csv", "guest_full_statement", "import_catalogue", "link_guest_bookings",
@@ -10107,7 +10128,61 @@ def management_overview(conn, period, today):
     ]
 
 
-def stays_with_status(conn, today, statuses=("confirmed",)):
+OTA_CHANNEL_LABELS = {"booking.com": "Booking.com"}
+
+
+def channel_stays(conn):
+    """Stays booked through Booking.com, shaped like the house's own bookings.
+
+    Every list the house works from -- who is here, who arrives today, the
+    room board, breakfast, the kitchen, changeovers -- reads `bookings`, and a
+    Booking.com guest is not in it. They were not anonymous there; they were
+    absent: the room board called a room with a guest asleep in it "Ready".
+
+    And they must not be put in it. A row in `bookings` is sent the house's
+    letters, asked for a balance at the house's own rates, counted as revenue,
+    and exported on the calendar feed back to the channel it came from. So the
+    stays Booking.com's emails describe are read from their own table, and each
+    list takes them alongside its own.
+
+    Only a stay that is confirmed and dated. One the house has ALSO entered by
+    hand -- same room, same nights -- is left out, so nobody is counted twice.
+    Keys are the bookings row's where a list reads one (guest_name, room_name,
+    party_size, ...), with `channel` saying where it came from.
+    """
+    rooms = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
+    own = {(r["room_id"], r["arrival_date"], r["departure_date"]) for r in conn.execute(
+        """SELECT room_id, arrival_date, departure_date FROM bookings
+            WHERE status IN ('pending', 'confirmed')""")}
+    out = []
+    for r in conn.execute(
+            """SELECT * FROM ota_reservations
+                WHERE status = 'confirmed'
+                  AND COALESCE(arrival_date, '') != '' AND COALESCE(departure_date, '') != ''
+                  AND departure_date > arrival_date
+                ORDER BY arrival_date, guest_name""").fetchall():
+        if r["room_id"] and (r["room_id"], r["arrival_date"], r["departure_date"]) in own:
+            continue
+        channel = OTA_CHANNEL_LABELS.get(r["channel"], r["channel"])
+        out.append({
+            "channel": channel,
+            "ota_reservation_id": r["id"],
+            "reference_code": r["reservation_number"],
+            "guest_name": r["guest_name"] or f"A {channel} guest",
+            "named": bool(r["guest_name"]),
+            "room_id": r["room_id"],
+            "room_name": rooms.get(r["room_id"]) or r["room_label"] or None,
+            "arrival_date": r["arrival_date"], "departure_date": r["departure_date"],
+            "party_size": r["guests"],
+            # What a bookings row has and a channel stay does not: said as
+            # nothing rather than left out, so a list reading them finds None.
+            "guest_email": None, "special_requests": None, "estimated_arrival_time": None,
+            "arrival_prepped_at": None, "checked_out_at": None,
+        })
+    return out
+
+
+def stays_with_status(conn, today, statuses=("confirmed",), channels=True):
     """Every stay, derived from `bookings` -- the single source of truth for who
     is physically at the château. Replaces the old `guests`-table register, which
     duplicated these dates and drifted out of sync (a cancelled booking left its
@@ -10119,6 +10194,10 @@ def stays_with_status(conn, today, statuses=("confirmed",)):
 
     Each row carries the guest's profile fields (notes/dietary/VIP) where one is
     linked, so callers can show standing preferences alongside the current stay.
+
+    Booking.com's guests are here too (see channel_stays), with `channel` set
+    and no booking_id -- they are just as physically at the château.
+    `channels=False` for a caller that acts on the booking itself.
     """
     placeholders = ",".join("?" * len(statuses))
     rows = conn.execute(
@@ -10126,7 +10205,7 @@ def stays_with_status(conn, today, statuses=("confirmed",)):
                    bookings.guest_email AS email, bookings.arrival_date,
                    bookings.departure_date, bookings.party_size,
                    bookings.special_requests, bookings.reference_code,
-                   bookings.status, rooms.name AS room_name,
+                   bookings.status, rooms.name AS room_name, bookings.room_id,
                    guests.id AS profile_id, guests.notes AS profile_notes,
                    guests.dietary_notes, guests.vip
             FROM bookings
@@ -10166,7 +10245,29 @@ def stays_with_status(conn, today, statuses=("confirmed",)):
             "party_size": r["party_size"], "reference_code": r["reference_code"],
             "notes": " · ".join(note_parts) or None, "vip": bool(r["vip"]),
             "stay_status": status, "stay_status_label": label,
+            "room_id": r["room_id"], "channel": None, "ota_reservation_id": None,
         })
+    if channels and "confirmed" in statuses:
+        for st in channel_stays(conn):
+            arrival, departure = parse_date(st["arrival_date"]), parse_date(st["departure_date"])
+            if departure and departure <= today:
+                status, label = "past", "Past stay"
+            elif arrival and arrival > today:
+                status, label = "upcoming", "Upcoming"
+            else:
+                status, label = "current", "In residence"
+            stays.append({
+                "booking_id": None, "profile_id": None,
+                "name": st["guest_name"], "email": None,
+                "room_name": st["room_name"] or "Room not stated",
+                "arrival_date": st["arrival_date"], "departure_date": st["departure_date"],
+                "party_size": st["party_size"], "reference_code": st["reference_code"],
+                "notes": None, "vip": False,
+                "stay_status": status, "stay_status_label": label,
+                "room_id": st["room_id"], "channel": st["channel"],
+                "ota_reservation_id": st["ota_reservation_id"],
+            })
+        stays.sort(key=lambda s: (s["arrival_date"] or "", s["name"] or ""))
     return stays
 
 
@@ -10903,9 +11004,11 @@ def guest_recognition_cards(conn, today, viewer_role="employee"):
         # `notes` string, which is right for a list row and wrong here: this
         # screen needs them apart, so the greeting line can differ from what the
         # kitchen has to know. So fetch the parts.
+        # A Booking.com stay has no booking row to ask; what the guest asked
+        # for there is in their messages, on the Booking.com page.
         requests = conn.execute(
             "SELECT special_requests FROM bookings WHERE id = ?", (stay["booking_id"],)
-        ).fetchone()["special_requests"]
+        ).fetchone()["special_requests"] if stay["booking_id"] else None
         profile = None
         if stay["profile_id"]:
             profile = conn.execute(
@@ -10941,6 +11044,7 @@ def guest_recognition_cards(conn, today, viewer_role="employee"):
             "stay_number": stay_number,
             "returning": stay_number > 1,
             "highlight": highlight,
+            "channel": stay.get("channel"),
             # Shown on tap, not on the home screen. Dietary requirements are
             # operationally necessary but nobody needs them thrust at them while
             # they're checking what time their shift starts.
@@ -11144,6 +11248,31 @@ def build_overview(conn, view, anchor, fetch_window=None):
                 "short": f"↑ {b['guest_name']}",
                 "detail": f"Party of {b['party_size']}",
                 "assignee_id": None, "assignee_name": None, "id": b["id"], "link": booking_link,
+            })
+
+    # Booking.com's guests arrive and leave on the same calendar. Their link is
+    # the Booking.com page, where their emails are; there is no booking of the
+    # house's own to open.
+    lo, hi = query_start.isoformat(), query_end.isoformat()
+    for st in channel_stays(conn):
+        link = url_for("management_booking_com", q=st["reference_code"]) if st["reference_code"] \
+            else url_for("management_booking_com")
+        room = st["room_name"] or "room not stated"
+        party = (f"Party of {st['party_size']}" if st["party_size"]
+                 else "Party size not stated")
+        for day, verb, arrow in ((st["arrival_date"], "arrives", "↓"),
+                                 (st["departure_date"], "departs", "↑")):
+            if not (lo <= day < hi):
+                continue
+            rows.append({
+                "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
+                "scheduled": True, "status": "confirmed", "acknowledgment_status": None,
+                "priority": None, "repeat_weekly": 0, "date": day,
+                "title": f"{st['guest_name']} {verb} — {room} · {st['channel']}",
+                "short": f"{arrow} {st['guest_name']}",
+                "detail": f"{party} · booked through {st['channel']}",
+                "assignee_id": None, "assignee_name": None,
+                "id": f"ota{st['ota_reservation_id']}", "link": link,
             })
 
     dinners = conn.execute(
@@ -12570,6 +12699,14 @@ def build_office_display_stats(conn, today, who_is_here):
     departures = conn.execute(
         f"SELECT COUNT(*) AS c FROM bookings WHERE status IN {active} AND departure_date = ?", (iso,),
     ).fetchone()["c"]
+    # Booking.com's stays, counted the same way, so the strip agrees with the
+    # Current Guests list under it -- which already names them.
+    active_rooms = {r["id"] for r in conn.execute("SELECT id FROM rooms WHERE active = 1")}
+    for st in channel_stays(conn):
+        if st["room_id"] in active_rooms and st["arrival_date"] <= iso < st["departure_date"]:
+            occupied += 1
+        arrivals += st["arrival_date"] == iso
+        departures += st["departure_date"] == iso
     # Named to avoid shadowing the module-level guests_in_residence() helper,
     # which would silently break any later call added inside this function.
     guest_headcount = sum((g["party_size"] or 1) for g in who_is_here)
@@ -19133,6 +19270,13 @@ def turnaround_report(conn, days=60, on_day=None):
     by_room = {}
     for r in rows:
         by_room.setdefault(r["room_id"], []).append(r)
+    # A Booking.com guest leaving the morning one of the house's own arrives is
+    # the same changeover, and the busiest days are exactly the ones the house
+    # fills from both.
+    s_iso, e_iso = start.isoformat(), end.isoformat()
+    for st in channel_stays(conn):
+        if st["room_id"] and st["departure_date"] >= s_iso and st["arrival_date"] < e_iso:
+            by_room.setdefault(st["room_id"], []).append(st)
 
     changeovers = []
     for room_id, stays in by_room.items():
@@ -27553,6 +27697,23 @@ def owner_home_day(conn, today, user):
                      "title": f"{b['guest_name']} departing",
                      "detail": b["room_name"], "assignee": None,
                      "done": bool(b["checked_out_at"])})
+    # Booking.com's arrivals and departures are part of the day as much as the
+    # house's own. Nothing in the app marks them done, so they are never shown
+    # ticked -- a tick nobody made would be the worse mistake.
+    iso = today.isoformat()
+    for st in channel_stays(conn):
+        room = st["room_name"] or "room not stated"
+        if st["arrival_date"] == iso:
+            party = f"party of {st['party_size']}" if st["party_size"] else "party size not stated"
+            rows.append({"time": "", "kind": "arrival",
+                         "title": f"{st['guest_name']} arriving",
+                         "detail": f"{room} · {party} · {st['channel']}",
+                         "assignee": None, "done": False})
+        if st["departure_date"] == iso:
+            rows.append({"time": "", "kind": "departure",
+                         "title": f"{st['guest_name']} departing",
+                         "detail": f"{room} · {st['channel']}", "assignee": None,
+                         "done": False})
     covers = conn.execute(
         """SELECT COALESCE(SUM(party_size), 0) AS c FROM restaurant_bookings
            WHERE status = 'confirmed' AND dinner_date = ?""",
@@ -27644,18 +27805,23 @@ def owner_home_occupancy(conn, today):
 
 def owner_home_guests(conn, today):
     """Who is in the house right now."""
-    return [{
-        "name": r["guest_name"],
-        "room": f"{r['room_name']} · party of {r['party_size']}",
-        "checkout": format_date_human(r["departure_date"]),
-        "initials": "".join(p[0] for p in (r["guest_name"] or "?").split()[:2]).upper(),
-    } for r in conn.execute(
+    iso = today.isoformat()
+    here = [dict(r) for r in conn.execute(
         """SELECT bookings.*, rooms.name AS room_name FROM bookings
            JOIN rooms ON rooms.id = bookings.room_id
            WHERE bookings.status = 'confirmed' AND bookings.arrival_date <= ?
-             AND bookings.departure_date > ? AND bookings.checked_out_at IS NULL
-           ORDER BY bookings.departure_date""",
-        (today.isoformat(), today.isoformat())).fetchall()]
+             AND bookings.departure_date > ? AND bookings.checked_out_at IS NULL""",
+        (iso, iso)).fetchall()]
+    here += [st for st in channel_stays(conn) if st["arrival_date"] <= iso < st["departure_date"]]
+    here.sort(key=lambda r: r["departure_date"])
+    return [{
+        "name": r["guest_name"],
+        "room": (f"{r['room_name'] or 'Room not stated'}"
+                 + (f" · party of {r['party_size']}" if r["party_size"] else "")
+                 + (f" · {r['channel']}" if r.get("channel") else "")),
+        "checkout": format_date_human(r["departure_date"]),
+        "initials": "".join(p[0] for p in (r["guest_name"] or "?").split()[:2]).upper(),
+    } for r in here]
 
 
 def owner_home_next_up(conn, today, day_rows):
@@ -34142,6 +34308,10 @@ def breakfast():
     guest_count = sum(g["party_size"] or 1 for g in guests_here)
     guest_notes = [g for g in guests_here if g["notes"]]
     occupied_today = occupied_rooms_by_date(conn, today, today + timedelta(days=1)).get(today.isoformat(), 0)
+    # occupied_rooms_by_date is the house's own sold nights, which is right for
+    # the accounts and short by every Booking.com room at the breakfast table.
+    # The guests counted above include those; so do the rooms.
+    occupied_today += sum(1 for g in guests_here if g.get("channel"))
     conn.close()
     by_category = {}
     for i in items:
@@ -43157,6 +43327,18 @@ def morning_digest(conn, today=None):
         """SELECT COUNT(*) AS c FROM bookings
            WHERE status = 'confirmed' AND arrival_date <= ? AND departure_date > ?""",
         (iso, iso)).fetchone()["c"]
+    # Booking.com's guests come and go on the same morning as the house's own.
+    arriving, leaving = [dict(b) for b in arriving], [dict(b) for b in leaving]
+    for st in channel_stays(conn):
+        shown = dict(st, room_name=st["room_name"] or "Room not stated",
+                     guest_name=f"{st['guest_name']} ({st['channel']})")
+        if st["arrival_date"] == iso:
+            arriving.append(shown)
+        if st["departure_date"] == iso:
+            leaving.append(shown)
+        staying += st["arrival_date"] <= iso < st["departure_date"]
+    arriving.sort(key=lambda b: b["room_name"] or "")
+    leaving.sort(key=lambda b: b["room_name"] or "")
     dinners = conn.execute(
         """SELECT * FROM restaurant_bookings
            WHERE status = 'confirmed' AND dinner_date = ?
@@ -43170,8 +43352,11 @@ def morning_digest(conn, today=None):
         lines.append(f"Arriving ({len(arriving)}):")
         for b in arriving:
             when = f" — {b['estimated_arrival_time']}" if b["estimated_arrival_time"] else ""
-            lines.append(f"  {b['room_name']}: {b['guest_name']}, "
-                         f"party of {b['party_size'] or 1}{when}")
+            # "party of 1" is the house's own convention for a booking with no
+            # number on it; a Booking.com email that gave none is said as such.
+            party = ("party size not stated" if b.get("channel") and not b["party_size"]
+                     else f"party of {b['party_size'] or 1}")
+            lines.append(f"  {b['room_name']}: {b['guest_name']}, {party}{when}")
         lines.append("")
     if leaving:
         lines.append(f"Leaving ({len(leaving)}):")
@@ -47264,6 +47449,13 @@ def admin_calendar():
 
     conn = get_db()
     rooms = conn.execute("SELECT * FROM rooms ORDER BY sort_order, name").fetchall()
+    # The calendar sync blocks a Booking.com stay's nights and knows nothing
+    # else; the emails know who it is. So the named stay is drawn first, and the
+    # anonymous block under it only where no email has said who is coming.
+    named_by_room = {}
+    for st in channel_stays(conn):
+        if st["room_id"]:
+            named_by_room.setdefault(st["room_id"], []).append(st)
     room_rows = []
     for room in rooms:
         bookings = conn.execute(
@@ -47291,6 +47483,14 @@ def admin_calendar():
                     status, label = b["status"], b["guest_name"]
                     key, link = f"b{b['id']}", url_for("edit_booking", booking_id=b["id"])
                     break
+            if status == "free":
+                for st in named_by_room.get(room["id"], []):
+                    if parse_date(st["arrival_date"]) <= d < parse_date(st["departure_date"]):
+                        status = "external"
+                        label = f"{st['guest_name']} · {st['channel']}"
+                        key = f"o{st['ota_reservation_id']}"
+                        link = url_for("management_booking_com", q=st["reference_code"])
+                        break
             if status == "free":
                 for bl in blocked:
                     bl_start, bl_end = parse_date(bl["start_date"]), parse_date(bl["end_date"])
@@ -49774,51 +49974,58 @@ def cancel_booking_extra_line(line_id):
     return redirect(request.referrer or url_for("admin_bookings"))
 
 
-@app.route("/admin/bookings/<int:booking_id>/register", methods=["POST"])
-@owner_required
-def add_police_fiche(booking_id):
-    """Record one guest on the police register for this stay.
+def police_fiche_fields(form):
+    """One fiche from the register form, read and checked: (fields, problem).
 
     Only the fields the arrêté asks for. No passport number and no scan of
     anything: the list is closed, and collecting more because a form happens
     to be open is how a guest register becomes a data breach with extra steps.
+
+    Both registers -- the house's own bookings and Booking.com's stays -- read
+    their form here, so a fiche is the same fiche whichever way the guest came.
     """
+    surname = form.get("surname", "").strip()[:100]
+    first_names = form.get("first_names", "").strip()[:120]
+    nationality = form.get("nationality", "").strip()[:60]
+    born_on_raw = form.get("born_on", "").strip()
+    born_at = form.get("born_at", "").strip()[:120]
+    home_address = form.get("home_address", "").strip()[:300]
+    if not surname or not first_names or not nationality:
+        return None, "A surname, first names and nationality are what the register asks for."
+    born_on = parse_date(born_on_raw) if born_on_raw else None
+    if born_on_raw and not born_on:
+        return None, "That date of birth could not be read."
+    if born_on and born_on > house_today():
+        return None, "That date of birth is in the future."
+    return {"surname": surname, "first_names": first_names,
+            "born_on": born_on.isoformat() if born_on else None, "born_at": born_at or None,
+            "nationality": nationality, "home_address": home_address or None,
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "recorded_by_user_id": current_user()["id"] if current_user() else None}, None
+
+
+@app.route("/admin/bookings/<int:booking_id>/register", methods=["POST"])
+@owner_required
+def add_police_fiche(booking_id):
+    """Record one guest on the police register for this stay."""
     conn = get_db()
     booking = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
     if not booking:
         conn.close()
         abort(404)
-    surname = request.form.get("surname", "").strip()[:100]
-    first_names = request.form.get("first_names", "").strip()[:120]
-    nationality = request.form.get("nationality", "").strip()[:60]
-    born_on_raw = request.form.get("born_on", "").strip()
-    born_at = request.form.get("born_at", "").strip()[:120]
-    home_address = request.form.get("home_address", "").strip()[:300]
-
-    if not surname or not first_names or not nationality:
+    fiche, problem = police_fiche_fields(request.form)
+    if problem:
         conn.close()
-        flash("A surname, first names and nationality are what the register asks for.",
-              "error")
-        return redirect(url_for("police_register_page"))
-    born_on = parse_date(born_on_raw) if born_on_raw else None
-    if born_on_raw and not born_on:
-        conn.close()
-        flash("That date of birth could not be read.", "error")
-        return redirect(url_for("police_register_page"))
-    if born_on and born_on > house_today():
-        conn.close()
-        flash("That date of birth is in the future.", "error")
+        flash(problem, "error")
         return redirect(url_for("police_register_page"))
 
     conn.execute(
         """INSERT INTO police_register (booking_id, surname, first_names, born_on,
            born_at, nationality, home_address, recorded_at, recorded_by_user_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (booking_id, surname, first_names,
-         born_on.isoformat() if born_on else None, born_at or None,
-         nationality, home_address or None,
-         datetime.now(timezone.utc).isoformat(),
-         current_user()["id"] if current_user() else None))
+        (booking_id, fiche["surname"], fiche["first_names"], fiche["born_on"],
+         fiche["born_at"], fiche["nationality"], fiche["home_address"],
+         fiche["recorded_at"], fiche["recorded_by_user_id"]))
     # The name is not in the audit line. Who touched the register and when is
     # worth recording; copying a guest's name into a second table that is not
     # purged with the first would be keeping it after the fiche has gone.
@@ -49843,6 +50050,61 @@ def delete_police_fiche(fiche_id):
     conn.execute("DELETE FROM police_register WHERE id = ?", (fiche_id,))
     log_audit(conn, "police_fiche_removed",
               target=booking["reference_code"] if booking else str(row["booking_id"]))
+    conn.commit()
+    conn.close()
+    flash("Removed from the register.", "success")
+    return redirect(url_for("police_register_page"))
+
+
+@app.route("/admin/booking-com/stays/<int:reservation_id>/register", methods=["POST"])
+@owner_required
+def add_channel_police_fiche(reservation_id):
+    """Record one guest on the police register, for a Booking.com stay.
+
+    The obligation does not care where the guest booked. A stay that has
+    been cancelled is not one anybody arrived for, so it takes no fiche.
+    """
+    conn = get_db()
+    stay = conn.execute("SELECT * FROM ota_reservations WHERE id = ? AND status = 'confirmed'",
+                        (reservation_id,)).fetchone()
+    if not stay:
+        conn.close()
+        abort(404)
+    fiche, problem = police_fiche_fields(request.form)
+    if problem:
+        conn.close()
+        flash(problem, "error")
+        return redirect(url_for("police_register_page"))
+    conn.execute(
+        """INSERT INTO channel_police_register (ota_reservation_id, surname, first_names,
+               born_on, born_at, nationality, home_address, recorded_at, recorded_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (reservation_id, fiche["surname"], fiche["first_names"], fiche["born_on"],
+         fiche["born_at"], fiche["nationality"], fiche["home_address"],
+         fiche["recorded_at"], fiche["recorded_by_user_id"]))
+    # As for the house's own: the act is recorded, the name is not.
+    log_audit(conn, "police_fiche_recorded", target=f"Booking.com {stay['reservation_number']}")
+    conn.commit()
+    conn.close()
+    flash("Added to the register.", "success")
+    return redirect(url_for("police_register_page"))
+
+
+@app.route("/admin/register/channel/<int:fiche_id>/delete", methods=["POST"])
+@owner_required
+def delete_channel_police_fiche(fiche_id):
+    """Remove a Booking.com stay's fiche, for the reason one is ever removed."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT channel_police_register.id, ota_reservations.reservation_number
+             FROM channel_police_register
+             JOIN ota_reservations ON ota_reservations.id = channel_police_register.ota_reservation_id
+            WHERE channel_police_register.id = ?""", (fiche_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM channel_police_register WHERE id = ?", (fiche_id,))
+    log_audit(conn, "police_fiche_removed", target=f"Booking.com {row['reservation_number']}")
     conn.commit()
     conn.close()
     flash("Removed from the register.", "success")
@@ -50560,6 +50822,21 @@ def police_register_page():
             WHERE bookings.arrival_date >= ? AND bookings.arrival_date <= ?
             ORDER BY bookings.arrival_date, police_register.surname""",
         (start.isoformat(), end.isoformat())).fetchall()
+    # The same register, for guests who booked through Booking.com: one list,
+    # because the question it answers -- who was staying here that week -- does
+    # not care how anybody booked.
+    rows = [dict(r) for r in rows] + [dict(r) for r in conn.execute(
+        """SELECT channel_police_register.*,
+                  ota_reservations.reservation_number AS reference_code,
+                  ota_reservations.arrival_date, ota_reservations.departure_date,
+                  rooms.name AS room_name, users.name AS recorded_by
+             FROM channel_police_register
+             JOIN ota_reservations ON ota_reservations.id = channel_police_register.ota_reservation_id
+             LEFT JOIN rooms ON rooms.id = ota_reservations.room_id
+             LEFT JOIN users ON users.id = channel_police_register.recorded_by_user_id
+            WHERE ota_reservations.arrival_date >= ? AND ota_reservations.arrival_date <= ?""",
+        (start.isoformat(), end.isoformat())).fetchall()]
+    rows.sort(key=lambda r: (r["arrival_date"] or "", r["surname"] or ""))
     missing = stays_missing_fiches(conn, today)
     conn.close()
     return render_template(
@@ -64299,7 +64576,32 @@ def stays_missing_fiches(conn, today=None, days_back=30):
         state = police_register_needed(conn, b["id"])
         if state and state["outstanding"]:
             out.append(state)
+    # And Booking.com's, which the obligation covers just the same.
+    for st in channel_stays(conn):
+        if since <= st["arrival_date"] <= day.isoformat():
+            state = channel_register_needed(conn, st)
+            if state["outstanding"]:
+                out.append(state)
+    out.sort(key=lambda x: x["booking"]["arrival_date"] or "")
     return out
+
+
+def channel_register_needed(conn, stay):
+    """police_register_needed, for a Booking.com stay from channel_stays().
+
+    Where the email did not say how many are coming, the register asks for
+    one -- somebody certainly arrived -- and says the number is not known, so
+    nobody reads "1 of 1" as the whole party.
+    """
+    have = conn.execute(
+        "SELECT * FROM channel_police_register WHERE ota_reservation_id = ? ORDER BY id",
+        (stay["ota_reservation_id"],)).fetchall()
+    exempt = sum(1 for f in have if is_french_national(f["nationality"]))
+    party = stay["party_size"] or 1
+    return {"booking": stay, "fiches": have, "party": party,
+            "party_known": bool(stay["party_size"]), "channel": stay["channel"],
+            "recorded": len(have), "exempt": exempt,
+            "outstanding": max(0, party - len(have))}
 
 
 def purge_police_register(conn, today=None):
@@ -64316,7 +64618,14 @@ def purge_police_register(conn, today=None):
                SELECT id FROM bookings
                 WHERE departure_date IS NOT NULL AND departure_date < ?)""",
         (cutoff,))
-    return {"police register entries": cur.rowcount}
+    gone = max(0, cur.rowcount)
+    # Booking.com's fiches, on the same six months from the same departure.
+    cur = conn.execute(
+        """DELETE FROM channel_police_register WHERE ota_reservation_id IN (
+               SELECT id FROM ota_reservations
+                WHERE COALESCE(departure_date, '') != '' AND departure_date < ?)""",
+        (cutoff,))
+    return {"police register entries": gone + max(0, cur.rowcount)}
 
 
 # Tables that are not a guest's, whatever columns they have. Staff, job
@@ -65342,6 +65651,12 @@ def room_board(conn, today=None):
     """
     day = today or house_today()
     iso = day.isoformat()
+    # A Booking.com guest is in a room as surely as one of the house's own,
+    # and the board called that room "Ready" because it only asked bookings.
+    by_room = {}
+    for st in channel_stays(conn):
+        if st["room_id"]:
+            by_room.setdefault(st["room_id"], []).append(st)
     out = []
     for room in conn.execute(
             "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall():
@@ -65368,6 +65683,13 @@ def room_board(conn, today=None):
                 WHERE tasks.origin = 'checklist' AND tasks.status != 'done'
                   AND bookings.room_id = ?
                 ORDER BY tasks.id""", (room["id"],)).fetchall()
+        for st in by_room.get(room["id"], []):
+            if not here and st["arrival_date"] < iso < st["departure_date"]:
+                here = st
+            if not leaving and st["departure_date"] == iso:
+                leaving = st
+            if not arriving and st["arrival_date"] == iso:
+                arriving = st
 
         if here:
             state = "occupied"
@@ -71442,14 +71764,24 @@ def arrivals_sheet(conn, day=None):
             "access_needs": (profile["access_needs"] or "").strip() if profile else "",
             "missing": missing,
         })
+    # Booking.com's guests, on their own list: the sheet's rows are the house's
+    # bookings with everything that hangs off them -- codes, transfers, a
+    # telephone to ring -- and a Booking.com stay has none of that to show.
+    channel = channel_stays(conn)
+    channel_arriving = [st for st in channel if st["arrival_date"] == iso]
+    channel_leaving = [st for st in channel if st["departure_date"] == iso]
     return {
         "day": day,
         "arriving": rows,
         "leaving": leaving,
-        "beds": sum((b["party_size"] or 0) for b in arriving),
+        "channel_arriving": channel_arriving,
+        "channel_leaving": channel_leaving,
+        "beds": (sum((b["party_size"] or 0) for b in arriving)
+                 + sum((st["party_size"] or 0) for st in channel_arriving)),
+        "beds_unknown": sum(1 for st in channel_arriving if not st["party_size"]),
         # Said plainly, because an empty sheet and a sheet nobody built look
         # identical otherwise.
-        "nothing_doing": not arriving and not leaving,
+        "nothing_doing": not (arriving or leaving or channel_arriving or channel_leaving),
     }
 
 
@@ -74288,20 +74620,31 @@ def _ota_notify(conn, mail_id, got, received_at):
 
 def ingest_booking_com_email(conn, *, source, source_id, received_at, from_address="",
                              from_name="", reply_to="", subject="", html="", text="",
-                             mailbox=None):
+                             mailbox=None, notify=True):
     """Keep one Booking.com email, read and sorted. (row id, kind, new?).
 
     The same email read twice -- by the mailbox job and again from an upload --
     is kept once: source_id is the Message-ID where there is one.
+
+    `notify=False` for an email somebody has added by hand: they are looking
+    at the page it lands on, and it may be weeks old whatever its date says.
     """
     if source_id:
         seen = conn.execute("SELECT id, kind FROM ota_mail WHERE source_id = ?",
                             (source_id,)).fetchone()
         if seen:
             return seen["id"], seen["kind"], False
-    body, links = mail_html_to_text(html) if html else ((text or "").strip(), [])
+    # Outlook writes its plain text with Windows line endings; everything that
+    # reads the text below splits it into lines on "\n".
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    body, links = mail_html_to_text(html) if html else (text.strip(), [])
     if html and text and len(text.strip()) > len(body):
         body = text.strip()
+    if not links and text:
+        # A plain-text email writes its links out -- "View booking
+        # <https://admin.booking.com/...>" -- and they are the same links.
+        links = [{"text": "", "href": u.rstrip(".,;:)>]")}
+                 for u in LETTER_URL.findall(text)][:60]
     rooms = [(r["id"], r["name"], r["channel_name"])
              for r in conn.execute("SELECT id, name, channel_name FROM rooms").fetchall()]
     got = parse_booking_com_email(subject, from_address, from_name, reply_to, body, links, rooms)
@@ -74339,7 +74682,7 @@ def ingest_booking_com_email(conn, *, source, source_id, received_at, from_addre
     # Only Booking.com's own mail raises a notification. Anybody can write to
     # the address and call themselves Booking.com; that email is kept and
     # shown, marked, and nobody's phone buzzes for it.
-    if is_booking_com_address(from_address):
+    if notify and is_booking_com_address(from_address):
         _ota_notify(conn, mail_id, got, received_at)
     return mail_id, got["kind"], True
 
@@ -74421,8 +74764,21 @@ def purge_booking_com_mail(conn, *, today=None):
             WHERE (COALESCE(departure_date, '') != '' AND departure_date < ?)
                OR (COALESCE(departure_date, '') = '' AND received_at < ?)""",
         (cutoff_day.isoformat(), cutoff_moment))
+    mail_gone = cur.rowcount if cur.rowcount > 0 else 0
+    # And what the emails said about the stay. The notice promises the two
+    # together -- "those emails and what they say about your stay" -- and a
+    # booking kept on after its emails are gone is the same name and dates,
+    # kept for ever in a table nobody thinks of as correspondence.
+    stale = [r["id"] for r in conn.execute(
+        """SELECT id FROM ota_reservations
+            WHERE (COALESCE(departure_date, '') != '' AND departure_date < ?)
+               OR (COALESCE(departure_date, '') = '' AND COALESCE(last_event_at, first_seen_at) < ?)""",
+        (cutoff_day.isoformat(), cutoff_moment))]
+    for rid in stale:
+        conn.execute("UPDATE ota_mail SET ota_reservation_id = NULL WHERE ota_reservation_id = ?", (rid,))
+        conn.execute("DELETE FROM ota_reservations WHERE id = ?", (rid,))
     conn.commit()
-    return {"old Booking.com email": cur.rowcount if cur.rowcount > 0 else 0}
+    return {"old Booking.com email": mail_gone, "old Booking.com stays": len(stale)}
 
 
 def _eml_parts(raw):
@@ -74459,6 +74815,226 @@ def _eml_parts(raw):
         "subject": str(msg.get("Subject", "") or ""),
         "html": html or "", "text": text or "",
     }
+
+
+# Classic Outlook saves an email as .msg, never .eml -- dragged to a folder or
+# through File > Save As -- so an upload that only read .eml turned away every
+# email from the Outlook this house has on its desk. A .msg is a compound file:
+# a small file system inside one file, its sectors chained through an
+# allocation table, with each of the message's properties as a stream.
+_CFB_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+_CFB_MAXREG = 0xFFFFFFFA         # above this a sector number is a marker, not a sector
+
+
+def _cfb_streams(raw):
+    """{name: bytes} for the streams directly under a compound file's root.
+
+    Only the root's own: a .msg keeps each recipient and attachment in a
+    storage of its own, holding streams with the very same names -- an
+    attachment has a subject too -- so reading the whole tree would take an
+    attachment's for the message's. None for anything that is not a compound
+    file, or is one that does not hold together.
+    """
+    import struct
+    try:
+        if len(raw) < 512 or raw[:8] != _CFB_MAGIC:
+            return None
+        major = struct.unpack_from("<H", raw, 26)[0]
+        sector = 1 << struct.unpack_from("<H", raw, 30)[0]
+        mini = 1 << struct.unpack_from("<H", raw, 32)[0]
+        (n_fat, first_dir, _sig, cutoff, first_minifat, n_minifat,
+         first_difat, n_difat) = struct.unpack_from("<8I", raw, 44)
+        per_sector = sector // 4
+        n_sectors = len(raw) // sector - 1
+
+        def read_sector(n):
+            if n >= n_sectors:
+                raise ValueError("sector outside the file")
+            return raw[(n + 1) * sector:(n + 2) * sector]
+
+        # Where the allocation table itself lives: 109 places in the header,
+        # then a chain of sectors each naming more.
+        difat = list(struct.unpack_from("<109I", raw, 76))
+        nxt, hops = first_difat, 0
+        while nxt <= _CFB_MAXREG and hops <= n_difat:
+            block = struct.unpack(f"<{per_sector}I", read_sector(nxt))
+            difat.extend(block[:-1])
+            nxt, hops = block[-1], hops + 1
+        fat = []
+        for s in [s for s in difat if s <= _CFB_MAXREG][:n_fat]:
+            fat.extend(struct.unpack(f"<{per_sector}I", read_sector(s)))
+
+        def chain(start, table):
+            out, n = [], start
+            while n <= _CFB_MAXREG:
+                if n >= len(table) or len(out) > len(table):
+                    raise ValueError("a chain that leaves its table, or loops")
+                out.append(n)
+                n = table[n]
+            return out
+
+        def read_chain(start, size=None):
+            data = b"".join(read_sector(s) for s in chain(start, fat))
+            return data if size is None else data[:size]
+
+        entries = []
+        directory = read_chain(first_dir)
+        for i in range(len(directory) // 128):
+            e = directory[i * 128:(i + 1) * 128]
+            name_len = struct.unpack_from("<H", e, 64)[0]
+            left, right, child = struct.unpack_from("<3I", e, 68)
+            start, size = struct.unpack_from("<IQ", e, 116)
+            if major == 3:
+                size &= 0xFFFFFFFF    # version 3 leaves the high half undefined
+            entries.append({"name": e[:max(0, name_len - 2)].decode("utf-16-le", "replace"),
+                            "kind": e[66], "left": left, "right": right, "child": child,
+                            "start": start, "size": size})
+        if not entries or entries[0]["kind"] != 5:
+            return None
+        root = entries[0]
+        # Anything under the cutoff lives in the mini stream, in 64-byte
+        # pieces chained through a table of its own.
+        mini_stream = read_chain(root["start"], root["size"]) if root["start"] <= _CFB_MAXREG else b""
+        minifat = []
+        if n_minifat and first_minifat <= _CFB_MAXREG:
+            data = read_chain(first_minifat)
+            minifat = list(struct.unpack(f"<{len(data) // 4}I", data))
+
+        def read_stream(entry):
+            if not entry["size"]:
+                return b""
+            if entry["size"] < cutoff:
+                return b"".join(mini_stream[s * mini:(s + 1) * mini]
+                                for s in chain(entry["start"], minifat))[:entry["size"]]
+            return read_chain(entry["start"], entry["size"])
+
+        # The root's children are a tree of siblings; every node is one.
+        out, stack, seen = {}, [root["child"]], set()
+        while stack:
+            i = stack.pop()
+            if i > _CFB_MAXREG or i >= len(entries) or i in seen:
+                continue
+            seen.add(i)
+            entry = entries[i]
+            stack.extend((entry["left"], entry["right"]))
+            if entry["kind"] == 2:
+                out[entry["name"]] = read_stream(entry)
+        return out
+    except (struct.error, ValueError, IndexError, OverflowError):
+        return None
+
+
+def _mail_bytes_text(data, codepage=None):
+    """8-bit text from a .msg, in the code page it says, else the likely ones."""
+    known = {65001: "utf-8", 1252: "cp1252", 28591: "latin-1", 20127: "ascii",
+             28605: "iso8859-15", 1200: "utf-16-le"}
+    tries = ([known.get(codepage) or f"cp{codepage}"] if codepage else []) + ["utf-8", "cp1252"]
+    for enc in tries:
+        try:
+            return data.decode(enc)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return data.decode("latin-1")
+
+
+def _msg_parts(raw):
+    """(fields for ingest) from one .msg file's bytes, or None if it is not one.
+
+    Outlook keeps the headers the email arrived with, whole, as one property,
+    and they are the best source of who sent it, the address to reply to, when
+    it came and its Message-ID -- the same Message-ID the mailbox job keys on,
+    so an email uploaded and then read from the mailbox is kept once. Where
+    they are missing, Outlook's own properties stand in for them.
+    """
+    import struct
+    from email import policy
+    from email.parser import Parser
+    from email.utils import getaddresses, parsedate_to_datetime
+    streams = _cfb_streams(raw)
+    if streams is None:
+        return None
+    props = {}
+    for name, data in streams.items():
+        m = re.fullmatch(r"__substg1\.0_([0-9A-Fa-f]{4})([0-9A-Fa-f]{4})", name)
+        if m:
+            props[(int(m.group(1), 16), int(m.group(2), 16))] = data
+    # The fixed-width properties -- numbers and times -- share one stream:
+    # a 32-byte header, then 16 bytes each.
+    longs, times = {}, {}
+    fixed = streams.get("__properties_version1.0", b"")
+    for off in range(32, len(fixed) - 15, 16):
+        tag, _flags, value = struct.unpack_from("<IIQ", fixed, off)
+        pid, ptype = tag >> 16, tag & 0xFFFF
+        if ptype == 0x0003:
+            longs[pid] = value & 0xFFFFFFFF
+        elif ptype == 0x0040 and value:
+            try:
+                times[pid] = datetime(1601, 1, 1, tzinfo=timezone.utc) + timedelta(microseconds=value // 10)
+            except OverflowError:
+                pass
+    codepage = longs.get(0x3FFD) or longs.get(0x3FDE)
+
+    def prop_text(pid):
+        if (pid, 0x001F) in props:
+            return props[(pid, 0x001F)].decode("utf-16-le", "replace").rstrip("\x00")
+        if (pid, 0x001E) in props:
+            return _mail_bytes_text(props[(pid, 0x001E)], codepage).rstrip("\x00")
+        return ""
+
+    headers = None
+    head_text = prop_text(0x007D)
+    if head_text.strip():
+        try:
+            headers = Parser(policy=policy.default).parsestr(head_text, headersonly=True)
+        except Exception:
+            headers = None
+
+    def header(name):
+        try:
+            return str(headers.get(name, "") or "").strip() if headers is not None else ""
+        except Exception:
+            return ""
+
+    sender = getaddresses([header("From")]) if header("From") else []
+    reply = getaddresses([header("Reply-To")]) if header("Reply-To") else []
+    # Outlook's own sender properties, where the headers are gone. The plain
+    # "sender address" is an Exchange directory path for anyone inside the
+    # organisation, so only an address that is one counts.
+    from_address = (sender[0][1] if sender else "") or next(
+        (a for a in (prop_text(0x5D01), prop_text(0x0C1F), prop_text(0x5D02), prop_text(0x0065))
+         if "@" in a), "")
+    from_name = (sender[0][0] if sender else "") or prop_text(0x0C1A) or prop_text(0x0042)
+    when = None
+    if header("Date"):
+        try:
+            when = parsedate_to_datetime(header("Date")).astimezone(timezone.utc)
+        except Exception:
+            when = None
+    when = when or times.get(0x0E06) or times.get(0x0039)
+    subject = prop_text(0x0037) or header("Subject")
+    if not subject and not from_address:
+        return None
+    if (0x1013, 0x0102) in props:
+        html = _mail_bytes_text(props[(0x1013, 0x0102)], longs.get(0x3FDE) or codepage)
+    else:
+        html = prop_text(0x1013)
+    message_id = header("Message-ID") or prop_text(0x1035)
+    return {
+        "source_id": message_id or ("sha1:" + hashlib.sha1(raw).hexdigest()),
+        "received_at": when.isoformat() if when else None,
+        "from_address": from_address,
+        "from_name": from_name,
+        "reply_to": reply[0][1] if reply else "",
+        "subject": subject,
+        "html": html or "", "text": prop_text(0x1000),
+    }
+
+
+def _mail_file_parts(raw):
+    """An uploaded email, whichever Outlook saved it: .msg or .eml (or source)."""
+    if raw[:8] == _CFB_MAGIC:
+        return _msg_parts(raw)
+    return _eml_parts(raw)
 
 
 @app.route("/management/booking-com")
@@ -74554,11 +75130,12 @@ def upload_booking_com_email():
         if len(raw) > BOOKING_COM_UPLOAD_MAX_BYTES:
             skipped.append((label, "it is larger than 3 MB"))
             continue
-        parts = _eml_parts(raw)
+        parts = _mail_file_parts(raw)
         if not parts:
             skipped.append((label, "it is not an email this can read"))
             continue
-        _id, kind, fresh = ingest_booking_com_email(conn, source="upload", mailbox=None, **parts)
+        _id, kind, fresh = ingest_booking_com_email(conn, source="upload", mailbox=None,
+                                                    notify=False, **parts)
         if fresh:
             done += 1
             kept.append(OTA_KINDS.get(kind, kind).lower())
@@ -76060,8 +76637,24 @@ def kitchen_sheet(conn, day):
             rows.append({"who": booking["guest_name"],
                          "where": booking["room_name"] or "room to be confirmed",
                          "party": booking["party_size"], "notes": notes})
+    # Booking.com's guests eat breakfast too. Their party size is counted where
+    # the email gave it; where it did not, the sheet says so rather than
+    # quietly counting nobody.
+    unknown_party = 0
+    for st in channel_stays(conn):
+        if not (st["arrival_date"] <= day_iso < st["departure_date"]):
+            continue
+        if st["party_size"]:
+            covers += int(st["party_size"])
+        else:
+            unknown_party += 1
+            rows.append({"who": st["guest_name"],
+                         "where": st["room_name"] or "room to be confirmed",
+                         "party": None,
+                         "notes": [f"Booked through {st['channel']}; the booking did not say "
+                                   "how many are coming."]})
     sections.append({"title": "Staying in the house", "covers": covers,
-                     "rows": rows, "kind": "room"})
+                     "rows": rows, "kind": "room", "unknown_party": unknown_party})
 
     # Dinner. Restaurant reservations are stamped with a dinner_date, which is
     # the service day rather than a UTC calendar date -- see service_day().
@@ -78303,8 +78896,12 @@ def assistant_read_tool(conn, user, name, args):
         sheet = arrivals_sheet(conn, day)
         if sheet["nothing_doing"]:
             return f"Nobody arriving or leaving on {day.isoformat()}."
-        lines = [f"{day.isoformat()}: {len(sheet['arriving'])} arriving, "
-                 f"{len(sheet['leaving'])} leaving, {sheet['beds']} bed(s)."]
+        lines = [f"{day.isoformat()}: "
+                 f"{len(sheet['arriving']) + len(sheet['channel_arriving'])} arriving, "
+                 f"{len(sheet['leaving']) + len(sheet['channel_leaving'])} leaving, "
+                 f"{sheet['beds']} bed(s)"
+                 + (f" and {sheet['beds_unknown']} booking(s) that did not say how many."
+                    if sheet["beds_unknown"] else ".")]
         for r in sheet["arriving"]:
             b = r["booking"]
             bits = [f"ARRIVING {b['guest_name']} — {b['room_name']}, "
@@ -78324,14 +78921,23 @@ def assistant_read_tool(conn, user, name, args):
             lines.append(" · ".join(bits))
         for b in sheet["leaving"]:
             lines.append(f"LEAVING {b['guest_name']} — {b['room_name']}")
+        for verb, stays in (("ARRIVING", sheet["channel_arriving"]),
+                            ("LEAVING", sheet["channel_leaving"])):
+            for st in stays:
+                party = f", party of {st['party_size']}" if st["party_size"] else ""
+                lines.append(f"{verb} {st['guest_name']} — {st['room_name'] or 'room not stated'}"
+                             f"{party} (through {st['channel']}, {st['reference_code']})")
         return "\n".join(lines)
 
     if name == "who_is_here":
         here = guests_in_residence(conn, today)
         if not here:
             return "Nobody is staying tonight."
+        # `name`: these are stays, not booking rows, and `guest_name` raised
+        # a KeyError the first time anybody was staying.
         return "In the house now:\n" + "\n".join(
-            f"{g['guest_name']} — {g['room_name']}, until {g['departure_date']}"
+            f"{g['name']} — {g['room_name']}, until {g['departure_date']}"
+            + (f" (through {g['channel']})" if g.get("channel") else "")
             for g in here)
 
     if name == "find_guest":

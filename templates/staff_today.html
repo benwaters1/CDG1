@@ -51,11 +51,16 @@
 
     {% if r.in_house %}
       <span class="guest-card-meta">{{ r.in_house['guest_name'] }}
+        {%- if r.in_house['channel'] %} · {{ r.in_house['channel'] }}{% endif %}
         {%- if r.leaving %} · {{ t('leaving today') }}{% endif %}</span>
     {% elif r.arriving %}
       <span class="guest-card-meta">{{ r.arriving['guest_name'] }}
         {{ t('arriving today') }}{% if r.arriving['estimated_arrival_time'] %}
-        · {{ r.arriving['estimated_arrival_time'] }}{% endif %}</span>
+        · {{ r.arriving['estimated_arrival_time'] }}{% endif %}
+        {%- if r.arriving['channel'] %} · {{ r.arriving['channel'] }}{% endif %}</span>
+    {% elif r.leaving %}
+      <span class="guest-card-meta">{{ r.leaving['guest_name'] }} · {{ t('leaving today') }}
+        {%- if r.leaving['channel'] %} · {{ r.leaving['channel'] }}{% endif %}</span>
     {% endif %}
 
     {% if r.outstanding %}
@@ -123,6 +128,7 @@
         <span class="guest-card-meta">
           {{ g.room }}
           {%- if g.party_size %} · party of {{ g.party_size }}{% endif -%}
+          {%- if g.channel %} · {{ t('booked through') }} {{ g.channel }}{% endif -%}
           {%- if g.returning %} · <strong>{{ g.stay_number }}{{ 'st' if g.stay_number % 10 == 1 and g.stay_number != 11 else ('nd' if g.stay_number % 10 == 2 and g.stay_number != 12 else ('rd' if g.stay_number % 10 == 3 and g.stay_number != 13 else 'th')) }} stay</strong>{% endif -%}
         </span>
         {% if g.highlight %}<span class="guest-highlight">{{ g.highlight }}</span>{% endif %}

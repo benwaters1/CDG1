@@ -196,11 +196,17 @@
 <div class="detail-card" style="margin-top:20px;">
   <h2 class="section-heading" style="margin-top:0;">Add emails by hand</h2>
   <p class="upload-hint">For what arrived before the mailbox was set up, or to see how one is
-    read. In Outlook: open the email, then <em>File → Save As</em> (or drag it to the desktop)
-    to get a <code>.eml</code> file. Or paste the email's source.</p>
+    read. Several can be added at once.</p>
+  <ul class="upload-hint bc-how">
+    <li><strong>Outlook on the desktop:</strong> select the emails and drag them onto a folder —
+      each becomes a <code>.msg</code> file.</li>
+    <li><strong>Outlook in a browser, or the new Outlook:</strong> open the email, then
+      <em>… → Download</em> (or <em>Save as</em>) for a <code>.eml</code> file.</li>
+    <li>Or paste an email's source into the box.</li>
+  </ul>
   <form method="post" action="{{ url_for('upload_booking_com_email') }}" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="file" name="emails" accept=".eml,message/rfc822" multiple aria-label="Email files">
+    <input type="file" name="emails" accept=".msg,.eml,message/rfc822,application/vnd.ms-outlook" multiple aria-label="Email files">
     <label class="field-label" for="bc-source" style="margin-top:10px;">Or paste the source</label>
     <textarea id="bc-source" name="source" rows="4" placeholder="From: …&#10;Subject: …"></textarea>
     <button type="submit" class="btn-mini" style="margin-top:8px;">Add</button>
@@ -225,6 +231,7 @@
 .bc-links{ margin:0; padding-left:18px; font-size:12.5px; word-break:break-all; }
 .bc-acts{ display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
 .bc-replybox{ margin-top:10px; }
+.bc-how{ margin:6px 0 10px 18px; padding:0; line-height:1.6; }
 .bc-replybox textarea{ width:100%; margin-top:6px; }
 /* Fingers, not a mouse: a summary line and a link in a list are a thumb's
    width apart or they are two taps at the wrong thing. */

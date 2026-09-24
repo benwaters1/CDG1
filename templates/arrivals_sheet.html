@@ -21,6 +21,8 @@
 <p class="upload-hint" style="margin-bottom:18px;">
   {{ day.strftime('%A, %e %B %Y') }}{% if day == today %} · today{% endif %}
   {%- if sheet.beds %} · {{ sheet.beds }} coming{% endif %}
+  {%- if sheet.beds_unknown %}, and {{ sheet.beds_unknown }} Booking.com
+  booking{{ '' if sheet.beds_unknown == 1 else 's' }} that did not say how many{% endif %}
 </p>
 
 {% if sheet.nothing_doing %}
@@ -154,6 +156,39 @@
         <th scope="row">{{ b['guest_name'] }}</th>
         <td>{{ b['room_name'] }}</td>
         <td>{{ b['reference_code'] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if sheet.channel_arriving or sheet.channel_leaving %}
+{# Booking.com's guests. Only what its emails said: no telephone, no arrival
+   time, no card on file here -- those are in the extranet, and the link goes
+   to what the house does know. #}
+<h2 class="section-heading">Through Booking.com</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">Guest</th><th scope="col"></th><th scope="col">Room</th>
+      <th scope="col">Party</th><th scope="col">Reservation</th></tr></thead>
+    <tbody>
+      {% for st in sheet.channel_arriving %}
+      <tr>
+        <th scope="row">{{ st['guest_name'] }}</th>
+        <td>arriving</td>
+        <td>{{ st['room_name'] or 'not stated' }}</td>
+        <td>{{ st['party_size'] or 'not stated' }}</td>
+        <td>{% if can('management_booking_com') %}<a href="{{ url_for('management_booking_com', q=st['reference_code']) }}" class="small-link">{{ st['reference_code'] }}</a>{% else %}{{ st['reference_code'] }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% for st in sheet.channel_leaving %}
+      <tr>
+        <th scope="row">{{ st['guest_name'] }}</th>
+        <td>leaving</td>
+        <td>{{ st['room_name'] or 'not stated' }}</td>
+        <td>{{ st['party_size'] or 'not stated' }}</td>
+        <td>{% if can('management_booking_com') %}<a href="{{ url_for('management_booking_com', q=st['reference_code']) }}" class="small-link">{{ st['reference_code'] }}</a>{% else %}{{ st['reference_code'] }}{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

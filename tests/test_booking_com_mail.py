@@ -38,6 +38,7 @@ they are, so a stand-in that missed a path fails loudly instead of going out.
 import io
 import json
 import re
+import struct
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import format_datetime
@@ -123,6 +124,154 @@ def _eml(subject, html="", text="", sender="Booking.com <noreply@booking.com>",
     if html:
         msg.add_alternative(html, subtype="html")
     return msg.as_bytes()
+
+
+def _cfb(streams, storages=None):
+    """A compound file -- the container classic Outlook saves a .msg in.
+
+    `streams` go under the root and `storages` ({name: {stream: bytes}}) beside
+    them, the way a .msg keeps each attachment. Written from the format's
+    specification rather than from the reader, so the two cannot share one
+    misreading: 512-byte sectors, and anything under 4096 bytes in the mini
+    stream, chained through a table of its own.
+    """
+    SECT, MINI, CUTOFF = 512, 64, 4096
+    FREE = NOSTREAM = 0xFFFFFFFF
+    END, FATSECT = 0xFFFFFFFE, 0xFFFFFFFD
+    nodes = [{"name": "Root Entry", "kind": 5, "kids": []}]
+
+    def add(name, kind, data=None):
+        nodes.append({"name": name, "kind": kind, "data": data, "kids": []})
+        return len(nodes) - 1
+    for name, data in streams.items():
+        nodes[0]["kids"].append(add(name, 2, data))
+    for sname, inner in (storages or {}).items():
+        sid = add(sname, 1)
+        nodes[0]["kids"].append(sid)
+        for name, data in inner.items():
+            nodes[sid]["kids"].append(add(name, 2, data))
+    for node in nodes:
+        node.update(left=NOSTREAM, right=NOSTREAM, child=NOSTREAM, start=0, size=0)
+    for node in nodes:
+        # Siblings as a run of right-hand children, in the order the format
+        # sorts names -- shorter first, then letter by letter ignoring case.
+        # All black, which the specification allows: a plain binary tree.
+        # Unsorted, Windows' own reader lists half of them and stops.
+        kids = sorted(node["kids"], key=lambda i: (len(nodes[i]["name"]), nodes[i]["name"].upper()))
+        if kids:
+            node["child"] = kids[0]
+            for a, b in zip(kids, kids[1:]):
+                nodes[a]["right"] = b
+
+    mini, minifat, big = bytearray(), [], []
+    for i, node in enumerate(nodes):
+        if node["kind"] != 2:
+            continue
+        data = node["data"]
+        node["size"] = len(data)
+        if not data:
+            node["start"] = END
+        elif len(data) < CUTOFF:
+            first, count = len(minifat), (len(data) + MINI - 1) // MINI
+            minifat.extend(list(range(first + 1, first + count)) + [END])
+            mini += data + b"\0" * (count * MINI - len(data))
+            node["start"] = first
+        else:
+            big.append(i)
+    n_dir = (len(nodes) + 3) // 4
+    n_minifat = (len(minifat) * 4 + SECT - 1) // SECT
+    n_mini = (len(mini) + SECT - 1) // SECT
+    big_counts = [(len(nodes[i]["data"]) + SECT - 1) // SECT for i in big]
+    rest = n_dir + n_minifat + n_mini + sum(big_counts)
+    n_fat = 1
+    while n_fat * (SECT // 4) < n_fat + rest:
+        n_fat += 1
+    fat = [FREE] * (n_fat * (SECT // 4))
+    for sec in range(n_fat):
+        fat[sec] = FATSECT
+    cursor = [n_fat]
+
+    def run(count):
+        first = cursor[0]
+        for sec in range(first, first + count - 1):
+            fat[sec] = sec + 1
+        fat[first + count - 1] = END
+        cursor[0] += count
+        return first
+    dir_start = run(n_dir)
+    minifat_start = run(n_minifat) if n_minifat else END
+    mini_start = run(n_mini) if n_mini else END
+    for i, count in zip(big, big_counts):
+        nodes[i]["start"] = run(count)
+    nodes[0]["start"], nodes[0]["size"] = mini_start, len(mini)
+
+    def entry(node):
+        if node is None:
+            return (b"\0" * 64 + struct.pack("<HBB3I", 0, 0, 0, NOSTREAM, NOSTREAM, NOSTREAM)
+                    + b"\0" * 36 + struct.pack("<IQ", 0, 0))
+        name = (node["name"] + "\0").encode("utf-16-le")
+        return (name.ljust(64, b"\0")
+                + struct.pack("<HBB3I", len(name), node["kind"], 1,
+                              node["left"], node["right"], node["child"])
+                + b"\0" * 36 + struct.pack("<IQ", node["start"], node["size"]))
+
+    def pad(data):
+        return bytes(data) + b"\0" * ((-len(data)) % SECT)
+    header = (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 16
+              + struct.pack("<5H", 0x3E, 3, 0xFFFE, 9, 6) + b"\0" * 6
+              + struct.pack("<9I", 0, n_fat, dir_start, 0, CUTOFF, minifat_start, n_minifat, END, 0)
+              + struct.pack("<109I", *(list(range(n_fat)) + [FREE] * (109 - n_fat))))
+    out = header + struct.pack(f"<{len(fat)}I", *fat)
+    out += b"".join(entry(n) for n in nodes) + entry(None) * (n_dir * 4 - len(nodes))
+    if n_minifat:
+        slots = n_minifat * SECT // 4
+        out += struct.pack(f"<{slots}I", *(minifat + [FREE] * (slots - len(minifat))))
+    out += pad(mini)
+    for i in big:
+        out += pad(nodes[i]["data"])
+    return out
+
+
+def _msg_file(subject, *, body="", html=b"", headers="", sender=None, delivered=None,
+              codepage=None, subject_8bit=False, attachment_subject=None, extra=None):
+    """An Outlook .msg: its properties as streams, the way Outlook writes them.
+
+    `extra` is {property id: text} for anything else to set.
+    """
+    streams = {}
+
+    def put(pid, value):
+        streams["__substg1.0_%04X001F" % pid] = value.encode("utf-16-le")
+    for pid, value in (extra or {}).items():
+        put(pid, value)
+    if subject_8bit:
+        streams["__substg1.0_0037001E"] = subject.encode("cp1252")
+    else:
+        put(0x0037, subject)
+    if body:
+        put(0x1000, body)
+    if html:
+        streams["__substg1.0_10130102"] = html
+    if headers:
+        put(0x007D, headers)
+    if sender:
+        put(0x0C1A, sender[0])
+        # Inside the organisation the plain sender address is a directory path.
+        put(0x0C1F, "/O=EXCHANGELABS/OU=EXCHANGE ADMINISTRATIVE GROUP/CN=RECIPIENTS/CN=ZZBC")
+        put(0x5D01, sender[1])
+    fixed = b"\0" * 32
+    if delivered:
+        gap = delivered - datetime(1601, 1, 1, tzinfo=timezone.utc)
+        ticks = (gap.days * 86400 + gap.seconds) * 10_000_000 + gap.microseconds * 10
+        fixed += struct.pack("<IIQ", 0x0E060040, 2, ticks)
+    if codepage:
+        fixed += struct.pack("<IIQ", 0x3FDE0003, 2, codepage)
+    streams["__properties_version1.0"] = fixed
+    storages = {}
+    if attachment_subject:
+        storages["__attach_version1.0_#00000000"] = {
+            "__substg1.0_0037001F": attachment_subject.encode("utf-16-le")}
+    return _cfb(streams, storages)
 
 
 def _ingest(conn, n, subject, html="", text="", sender="noreply@booking.com",
@@ -683,6 +832,119 @@ def _run(s, oc, ec, owner, emp, conn, room):
                 content_type="multipart/form-data", follow_redirects=True)
     s.check("and pasted twice, it is kept once", "already here" in " ".join(flashes(r)),
             detail=str(flashes(r)))
+    fresh_eml = _eml("We received this message from Omar Haddad",
+                     html=message_html(guest="Omar Haddad"), reply_to="omar.h@guest.booking.com",
+                     message_id=_mid("up-now"))
+    oc.post("/management/booking-com/upload", data={"emails": [(io.BytesIO(fresh_eml), "now.eml")]},
+            content_type="multipart/form-data")
+    now_row = conn.execute("SELECT id FROM ota_mail WHERE source_id = ?", (_mid("up-now"),)).fetchone()
+    s.check("and nor does one written this minute -- whoever uploads it is looking at the page",
+            now_row is not None and not _told(conn, now_row["id"]))
+
+    # ------------------------------------------------------------------
+    s.section("Classic Outlook's .msg files")
+    # The Outlook on this house's desk has no way to save a .eml at all:
+    # dragging an email out, or File > Save As, makes a .msg. So these are
+    # what an upload will mostly be.
+    arrived = datetime.now(timezone.utc) - timedelta(hours=3)
+    headers = ("Received: from mail.booking.com by outlook.office365.com\r\n"
+               "From: Booking.com <noreply@booking.com>\r\n"
+               f"To: {MAILBOX}\r\n"
+               f"Subject: Booking.com - New booking! (9876500006, Friday, 11 December 2026)\r\n"
+               f"Date: {format_datetime(arrived)}\r\n"
+               f"Message-ID: {_mid('msg-1')}\r\n"
+               "MIME-Version: 1.0\r\n")
+    big_html = new_booking_html(number="9876500006", guest="Hana Sato",
+                                arrive="Friday, 11 December 2026", leave="Monday, 14 December 2026",
+                                guests="3 adults").replace("</body>", "<!--" + "x" * 5000 + "--></body>")
+    booking_msg = _msg_file("Booking.com - New booking! (9876500006, Friday, 11 December 2026)",
+                            html=big_html.encode("utf-8"), headers=headers, codepage=65001,
+                            attachment_subject="ZZBC an attachment's own subject")
+    streams = m._cfb_streams(booking_msg)
+    s.check("a compound file is read, down to its streams",
+            streams is not None and "__substg1.0_0037001F" in streams, detail=str(sorted(streams or {}))[:200])
+    s.check("only the message's own -- not an attachment's, which carries the same names",
+            streams is not None and streams["__substg1.0_0037001F"].decode("utf-16-le").startswith("Booking.com - New"),
+            detail=repr(streams["__substg1.0_0037001F"][:80]) if streams else "")
+    s.check("and a stream too big for the mini stream is read whole",
+            streams is not None and len(streams.get("__substg1.0_10130102", b"")) == len(big_html.encode("utf-8")))
+
+    message_msg = _msg_file(
+        "We received this message from Luca Bianchi",
+        body=("Reservation number: 9876500006\r\n\r\nLuca Bianchi wrote:\r\n"
+              "Could we check in at noon?\r\nWe land at ten.\r\n\r\nReply <" + MESSAGES + ">\r\n"),
+        headers=("From: Booking.com <noreply@booking.com>\r\n"
+                 "Reply-To: luca.b@guest.booking.com\r\n"
+                 f"Date: {format_datetime(datetime.now(timezone.utc) - timedelta(hours=1))}\r\n"
+                 f"Message-ID: {_mid('msg-2')}\r\n"))
+    # An en dash, which the old Windows code page and Latin-1 write differently:
+    # read in the wrong one, it arrives as a control character.
+    bare_msg = _msg_file("Booking.com – Réservation annulée (9876500007, samedi 2 janvier 2027)",
+                         body="Numéro de réservation : 9876500007\r\nArrivée : samedi 2 janvier 2027\r\n"
+                              "Départ : lundi 4 janvier 2027\r\n",
+                         sender=("Booking.com", "noreply@booking.com"),
+                         delivered=datetime.now(timezone.utc) - timedelta(days=2),
+                         codepage=1252, subject_8bit=True)
+    broken = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 600
+    r = oc.post("/management/booking-com/upload", data={"emails": [
+        (io.BytesIO(booking_msg), "New booking.msg"), (io.BytesIO(message_msg), "Luca.msg"),
+        (io.BytesIO(bare_msg), "Annulation.msg"), (io.BytesIO(broken), "damaged.msg")]},
+        content_type="multipart/form-data", follow_redirects=True)
+    said = " ".join(flashes(r))
+    s.check("Outlook's .msg files are read", "Kept 3 of 4 emails" in said, detail=said)
+    s.check("and a damaged one is named, not guessed at",
+            "damaged.msg: it is not an email this can read" in said, detail=said)
+    got = conn.execute("SELECT * FROM ota_mail WHERE source_id = ?", (_mid("msg-1"),)).fetchone()
+    s.check("a booking saved as .msg is read like any other",
+            got is not None and got["kind"] == "reservation_new" and got["guest_name"] == "Hana Sato"
+            and got["arrival_date"] == "2026-12-11" and got["guests"] == 3,
+            detail=str(dict(got)) if got else "nothing kept under its Message-ID")
+    s.check("with the subject that is the message's own",
+            got is not None and got["subject"].startswith("Booking.com - New booking!"),
+            detail=got["subject"] if got else "")
+    s.check("from Booking.com, by the headers it arrived with",
+            got is not None and got["from_address"] == "noreply@booking.com" and got["from_booking_com"] == 1)
+    when = m.parse_datetime_iso(got["received_at"]) if got else None
+    s.check("dated when it arrived", when is not None and abs(when - arrived) < timedelta(seconds=2),
+            detail=got["received_at"] if got else "")
+    s.check("and its links kept", got is not None and EXTRANET in (got["links"] or ""))
+    luca = conn.execute("SELECT * FROM ota_mail WHERE source_id = ?", (_mid("msg-2"),)).fetchone()
+    s.check("a guest's message as .msg keeps the address to answer them at",
+            luca is not None and luca["kind"] == "message" and luca["reply_to"] == "luca.b@guest.booking.com",
+            detail=str(dict(luca)) if luca else "")
+    s.check("and what they wrote, line by line",
+            luca is not None and luca["message_text"] == "Could we check in at noon?\nWe land at ten.",
+            detail=repr(luca["message_text"]) if luca else "")
+    s.check("a plain-text email's links are its links too",
+            luca is not None and MESSAGES in (luca["links"] or ""), detail=(luca["links"] or "")[:120] if luca else "")
+    s.check("and the reply box is there for it", luca is not None and
+            f"/management/booking-com/{luca['id']}/reply" in oc.get("/management/booking-com").get_data(as_text=True))
+    bare = conn.execute("SELECT * FROM ota_mail WHERE reservation_number = '9876500007'").fetchone()
+    s.check("a .msg without its headers still says who sent it, from Outlook's own record",
+            bare is not None and bare["from_address"] == "noreply@booking.com" and bare["from_booking_com"] == 1,
+            detail=str(dict(bare)) if bare else "")
+    bare_when = m.parse_datetime_iso(bare["received_at"]) if bare else None
+    s.check("and when it arrived",
+            bare_when is not None and abs(bare_when - (datetime.now(timezone.utc) - timedelta(days=2)))
+            < timedelta(minutes=5), detail=bare["received_at"] if bare else "")
+    s.check("with a subject in the old 8-bit code page read in that code page",
+            bare is not None and bare["subject"].startswith("Booking.com – Réservation annulée")
+            and bare["kind"] == "reservation_cancelled", detail=repr(bare["subject"]) if bare else "")
+    parts = m._msg_parts(_msg_file(
+        "We received this message from Ada", body="Ada wrote:\r\nHello\r\n",
+        extra={0x0C1F: "/O=EXCHANGELABS/OU=EXCHANGE ADMINISTRATIVE GROUP/CN=RECIPIENTS/CN=ZZBC",
+               0x0065: "noreply@booking.com", 0x0C1A: "Booking.com"}))
+    s.check("an Exchange directory path is never taken for the sender's address",
+            parts is not None and parts["from_address"] == "noreply@booking.com",
+            detail=repr(parts["from_address"]) if parts else "not read")
+    same = _eml("Booking.com - New booking! (9876500006, Friday, 11 December 2026)",
+                html=big_html, message_id=_mid("msg-1"))
+    r = oc.post("/management/booking-com/upload", data={"emails": [(io.BytesIO(same), "same.eml")]},
+                content_type="multipart/form-data", follow_redirects=True)
+    s.check("the same email saved from another Outlook, as .eml, is kept once",
+            "already here" in " ".join(flashes(r)), detail=str(flashes(r)))
+    s.check("nothing else is mistaken for a .msg", m._cfb_streams(b"From: x\r\n\r\nhello") is None
+            and m._cfb_streams(broken) is None)
 
     # ------------------------------------------------------------------
     s.section("The mailbox, and reading it")
@@ -794,6 +1056,14 @@ def _run(s, oc, ec, owner, emp, conn, room):
     _aged("recent-stay", kind="reservation_new", departure_date=(today - timedelta(days=700)).isoformat())
     _aged("old-review", received_at=_ago(days=760))
     _aged("new-review", received_at=_ago(days=30))
+    for number, left in (("9876500090", today - timedelta(days=760)),
+                         ("9876500091", today - timedelta(days=700))):
+        conn.execute(
+            """INSERT INTO ota_reservations (channel, reservation_number, status, guest_name,
+                   arrival_date, departure_date, first_seen_at, last_event_at, updated_at)
+               VALUES ('booking.com', ?, 'confirmed', 'ZZBC Old Guest', ?, ?, ?, ?, ?)""",
+            (number, (left - timedelta(days=2)).isoformat(), left.isoformat(),
+             _ago(days=800), _ago(days=800), _ago(days=800)))
     conn.commit()
     with m.app.test_request_context("/"):
         cleared = m.purge_booking_com_mail(conn)
@@ -805,6 +1075,14 @@ def _run(s, oc, ec, owner, emp, conn, room):
     s.check("an email with no stay goes two years after it arrived", not _there("old-review"))
     s.check("and a recent one is kept", _there("new-review"))
     s.check("it says what it cleared", cleared.get("old Booking.com email", 0) >= 2, detail=str(cleared))
+
+    def _stay_kept(number):
+        return conn.execute("SELECT 1 FROM ota_reservations WHERE reservation_number = ?",
+                            (number,)).fetchone() is not None
+    s.check("and what the emails said about a stay goes with them -- the notice promises both",
+            not _stay_kept("9876500090") and cleared.get("old Booking.com stays", 0) >= 1,
+            detail=str(cleared))
+    s.check("while a stay under two years ago is kept", _stay_kept("9876500091"))
     src = open(m.__file__.replace(".pyc", ".py"), encoding="utf-8").read()
     s.check("the daily retention pass runs it",
             "purge_booking_com_mail(conn)" in src.split("def run_health_notes_purge_job")[1][:1500],

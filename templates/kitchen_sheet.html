@@ -49,6 +49,8 @@
 <h3 style="margin-top:26px;">
   {{ section.title }} — {{ section.covers }}
   {{ 'cover' if section.covers == 1 else 'covers' }}
+  {%- if section.unknown_party %}, and {{ section.unknown_party }} more
+  room{{ '' if section.unknown_party == 1 else 's' }} whose number is not known{% endif %}
 </h3>
 {% if not section.rows %}
   <p class="upload-hint">{{ section.covers }}

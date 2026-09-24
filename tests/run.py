@@ -133,6 +133,7 @@ SUITES = [
     "test_email_templates",
     "test_template_editor",
     "test_booking_com_mail",
+    "test_booking_com_stays",
     "test_room_lineup",
     "test_dining_switch",
     "test_newsletter",
