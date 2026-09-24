@@ -26,6 +26,31 @@
   </div>
 </div>
 
+{# The words the house has put on them, to find them again. #}
+{% if guest_tags or can('tag_guest') %}
+<div class="detail-card">
+  {% for t in guest_tags %}
+  <span class="mini-status status-upcoming" title="{{ 'put on by ' ~ t['by_name'] if t['by_name'] else '' }}">{{ t['tag'] }}
+    {% if can('tag_guest') %}
+    <form method="post" action="{{ url_for('tag_guest', guest_id=g['id']) }}" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="remove" value="{{ t['tag'] }}">
+      <button type="submit" class="btn-mini" aria-label="Take off {{ t['tag'] }}">×</button>
+    </form>
+    {% endif %}
+  </span>
+  {% endfor %}
+  {% if can('tag_guest') %}
+  <form method="post" action="{{ url_for('tag_guest', guest_id=g['id']) }}" style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="tag" maxlength="40" list="known-tags" aria-label="Tag them" placeholder="Tag them" style="width:auto;">
+    <datalist id="known-tags">{% for t in known_tags %}<option value="{{ t }}">{% endfor %}</datalist>
+    <button type="submit" class="btn-mini">Tag</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
 {# How to greet them, and what not to serve them. First, because it is what a
    colleague needs before they walk round the corner — the money below is the
    owner's business and this is everybody's. #}

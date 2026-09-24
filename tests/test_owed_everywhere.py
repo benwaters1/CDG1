@@ -138,8 +138,11 @@ def run():
     conn.close()
     s.check("owed is the stay, the atelier and the event -- and nothing declined or unconfirmed",
             abs(rec["owed"] - 3100.0) < 0.01, detail=f"owed {rec['owed']}")
-    s.check("spent is what was charged for those three",
-            abs(rec["spent"] - (800 + 2000 + 3000)) < 0.01, detail=f"spent {rec['spent']}")
+    # The statement's figure, which is the record's now: those three, and the
+    # 600 the cancelled atelier kept under the terms -- money the house has,
+    # and keeps. It nets to nothing owed, so "owed" above is unchanged.
+    s.check("spent is what was charged for those three, and what the cancelled one kept",
+            abs(rec["spent"] - (800 + 2000 + 3000 + 600)) < 0.01, detail=f"spent {rec['spent']}")
     s.check("and the three lines add up", abs(rec["spent"] - rec["paid"] - rec["owed"]) < 0.01,
             detail=f"{rec['spent']} - {rec['paid']} != {rec['owed']}")
     page = oc.get(f"/guests/{gid}").get_data(as_text=True)

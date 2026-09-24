@@ -4907,6 +4907,18 @@ def init_db():
          "CREATE INDEX IF NOT EXISTS idx_consent_events_phone ON consent_events(phone)"),
         ("idx_consent_events_guest",
          "CREATE INDEX IF NOT EXISTS idx_consent_events_guest ON consent_events(guest_id)"),
+        # WORDS THE HOUSE PUTS ON A PERSON -- "wine", "returns every June",
+        # "press" -- to find them again. The notes held them as prose, which no
+        # list can filter by and no letter can be sent to.
+        ("guest_tags_table", """CREATE TABLE IF NOT EXISTS guest_tags (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             guest_id INTEGER NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+             tag TEXT NOT NULL,
+             added_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             created_at TEXT NOT NULL,
+             UNIQUE (guest_id, tag)
+         )"""),
+        ("idx_guest_tags_tag", "CREATE INDEX IF NOT EXISTS idx_guest_tags_tag ON guest_tags(tag)"),
         ("refunds_reverses", "ALTER TABLE refunds ADD COLUMN reverses_refund_id INTEGER"),
         # A card payment the guest has disputed with their bank. The webhook
         # heard checkout and nothing else, so a dispute -- which has a deadline,
@@ -6925,6 +6937,7 @@ NAV_AREAS = {
         "delete_room_photo", "delete_room_rate_override", "disband_booking_party", "export_bookings_csv",
         "export_guests_csv", "guest_full_statement", "guest_statement_csv",
         "email_guest_account_statement", "write_to_guest", "reissue_booking_link_page",
+        "tag_guest", "bulk_tag_guests",
         "reissue_portal_link_page", "import_catalogue",
         "link_guest_bookings",
         "new_booking_party", "new_room_rate_override", "police_register_page", "prepare_arrival",
@@ -9652,7 +9665,7 @@ def _searchable(row, fields):
 SAVED_VIEW_PARAMS = ("q", "sort", "page", "period", "date", "status", "state",
                      "category", "supplier", "where", "applies", "employee_id",
                      "room_id", "kind", "area", "level", "days", "month", "year",
-                     "tab", "who", "facet",
+                     "tab", "who", "facet", "tag",
                      # Chips that existed and were silently dropped from a
                      # saved view -- so a page filtered only by them offered
                      # no Save at all.
@@ -9806,7 +9819,13 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
             want = chosen.get(f["key"])
             if not want or f["key"] == skip:
                 continue
-            if str(f["bucket"](row) or "") != want:
+            got = f["bucket"](row)
+            # A row may sit in several groups at once -- a guest carries more
+            # than one tag -- and matches any of them.
+            if isinstance(got, (list, tuple, set, frozenset)):
+                if want not in {str(v) for v in got}:
+                    return False
+            elif str(got or "") != want:
                 return False
         return True
 
@@ -9819,9 +9838,11 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
         counts = {}
         for r in pool:
             b = f["bucket"](r)
-            if b is None or b == "":
-                continue
-            counts[str(b)] = counts.get(str(b), 0) + 1
+            # Counted under each group it sits in.
+            for v in (b if isinstance(b, (list, tuple, set, frozenset)) else (b,)):
+                if v is None or v == "":
+                    continue
+                counts[str(v)] = counts.get(str(v), 0) + 1
         keys = [k for k in f["order"] if k in counts] if f["order"] else []
         keys += sorted(k for k in counts if k not in keys)
         hidden = 0
@@ -37580,6 +37601,31 @@ def guests():
     in_residence = [s for s in stays if s["stay_status"] == "current"]
     upcoming = [s for s in stays if s["stay_status"] == "upcoming"]
 
+    lv, stay_counts, tags = guests_list_view(conn, request.args)
+    known_tags = sorted({t for ts in tags.values() for t in ts})
+    conn.close()
+    # The who-is-here lists follow the same search, so one box narrows the
+    # whole page rather than only the half below it.
+    if lv["q"]:
+        lowered = lv["q"].lower()
+        in_residence = [x for x in in_residence
+                        if lowered in (x["name"] or "").lower()]
+        upcoming = [x for x in upcoming
+                    if lowered in (x["name"] or "").lower()]
+    return render_template(
+        "guests.html", in_residence=in_residence, upcoming=upcoming,
+        profiles=lv["rows"], lv=lv, stay_counts=stay_counts,
+        overview=overview, period=period, tags=tags, known_tags=known_tags,
+        export_args=request.args.to_dict(),
+    )
+
+
+def guests_list_view(conn, args):
+    """The guest profiles as the page and its file both see them.
+
+    Shared deliberately, as the audit log's is: a button that says "download
+    this view" and writes a file of everybody is worse than no button.
+    """
     # A profile merged into another is that other person now. Listing both
     # was the duplicate the merge existed to remove, back again one page on.
     profiles = conn.execute(
@@ -37594,11 +37640,11 @@ def guests():
                GROUP BY linked_guest_id"""
         ).fetchall()
     }
-    conn.close()
+    tags = tags_by_guest(conn)
     lv = list_view(
-        profiles, request.args,
+        profiles, args,
         search=["name", "email", "phone", "notes", "preferences",
-                "dietary_notes"],
+                "dietary_notes", lambda g: " ".join(tags.get(g["id"], []))],
         search_hint="Name, address, telephone or something in their notes",
         facets=[
             # The two questions actually asked of a guest list, and neither
@@ -37611,6 +37657,7 @@ def guests():
                   lambda g: (CAUTION_LEVELS.get(g["caution_level"])
                              if (g["caution_level"] or "").strip() else None)),
             facet("vip", "VIP", lambda g: "VIP" if g["vip"] else None),
+            facet("tag", "Tag", lambda g: tags.get(g["id"], []), limit=12),
         ],
         sorts=[
             sort_option("name", "By name",
@@ -37620,19 +37667,59 @@ def guests():
         ],
         default_sort="name",
     )
-    # The who-is-here lists follow the same search, so one box narrows the
-    # whole page rather than only the half below it.
-    if lv["q"]:
-        lowered = lv["q"].lower()
-        in_residence = [x for x in in_residence
-                        if lowered in (x["name"] or "").lower()]
-        upcoming = [x for x in upcoming
-                    if lowered in (x["name"] or "").lower()]
-    return render_template(
-        "guests.html", in_residence=in_residence, upcoming=upcoming,
-        profiles=lv["rows"], lv=lv, stay_counts=stay_counts,
-        overview=overview, period=period,
-    )
+    return lv, stay_counts, tags
+
+
+@app.route("/guests/<int:guest_id>/tags", methods=["POST"])
+@owner_required
+def tag_guest(guest_id):
+    """Put a tag on a profile, or take one off."""
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM guests WHERE id = ?", (guest_id,)).fetchone():
+        conn.close()
+        abort(404)
+    user = current_user()
+    if request.form.get("remove"):
+        remove_guest_tag(conn, guest_id, request.form.get("remove"), user["id"])
+    elif not add_guest_tag(conn, guest_id, request.form.get("tag", ""), user["id"]):
+        flash("Nothing added: that tag is empty, or already on them.", "error")
+    conn.commit()
+    conn.close()
+    return redirect(url_for("guest_detail", guest_id=guest_id))
+
+
+@app.route("/guests/bulk-tag", methods=["POST"])
+@owner_required
+def bulk_tag_guests():
+    """One tag on every ticked profile -- the same act as tagging one, many
+    times, and it names any it did not do and why."""
+    tag = normalise_tag(request.form.get("tag", ""))
+    back = request.form.get("back") or url_for("guests")
+    if not back.startswith("/guests"):
+        back = url_for("guests")
+    if not tag:
+        flash("Write the tag to put on them first.", "error")
+        return redirect(back)
+    ids = [int(i) for i in request.form.getlist("guest_ids") if i.isdigit()]
+    conn = get_db()
+    user = current_user()
+    done, skipped = 0, []
+    for gid in ids:
+        g = conn.execute("SELECT id, name, merged_into_id FROM guests WHERE id = ?",
+                         (gid,)).fetchone()
+        if not g:
+            skipped.append((f"profile #{gid}", "no such profile"))
+        elif g["merged_into_id"]:
+            skipped.append((g["name"], "merged into another profile, which carries it now"))
+        elif add_guest_tag(conn, gid, tag, user["id"]):
+            done += 1
+        else:
+            skipped.append((g["name"], f"already tagged “{tag}”"))
+    conn.commit()
+    conn.close()
+    message, category = bulk_message("Tagged", "guest", done, skipped)
+    flash(message, category)
+    return redirect(back)
 
 
 @app.route("/guests/new", methods=["GET", "POST"])
@@ -38110,6 +38197,13 @@ def guest_detail(guest_id):
     merged_into = (conn.execute("SELECT id, name FROM guests WHERE id = ?",
                                 (record["guest"]["merged_into_id"],)).fetchone()
                    if record["guest"]["merged_into_id"] else None)
+    # What the house has tagged them with, and who put each one on.
+    guest_tags = conn.execute(
+        """SELECT guest_tags.*, users.name AS by_name FROM guest_tags
+             LEFT JOIN users ON users.id = guest_tags.added_by_user_id
+            WHERE guest_tags.guest_id = ? ORDER BY guest_tags.tag""", (guest_id,)).fetchall()
+    known_tags = [r["tag"] for r in conn.execute(
+        "SELECT DISTINCT tag FROM guest_tags ORDER BY tag").fetchall()] if is_owner else []
     # Their own standing link, for the owner to pass on or replace.
     own_link = (url_for("guest_portal", token=record["guest"]["portal_token"], _external=True)
                 if is_owner and record["guest"]["portal_token"] else None)
@@ -38152,7 +38246,8 @@ def guest_detail(guest_id):
                            reply_areas=list(REPLY_TO_AREAS),
                            rebook_rooms=rebook_rooms, usual_nights=usual_nights,
                            today=house_today_iso(), merged_into=merged_into,
-                           own_link=own_link)
+                           own_link=own_link, guest_tags=guest_tags,
+                           known_tags=known_tags)
 
 
 @app.route("/guests/<int:guest_id>/statement")
@@ -58295,11 +58390,37 @@ def export_expenses_csv():
 @app.route("/admin/guests/export.csv")
 @owner_required
 def export_guests_csv():
+    """The guest list as a file -- the view on screen, not every profile.
+
+    It wrote out everybody whatever the page was showing, so "the guests
+    tagged press" could not be taken away without the other three hundred.
+    Now the same search, chips and order as the page, with the tags, the
+    stays, and what each has spent and still owes from their statement: the
+    one figure for it, so the file and the record cannot disagree. On the audit
+    trail by how many and which view, never by who: it is a file of names and
+    addresses, and the trail outlives an erasure.
+    """
     conn = get_db()
-    rows = conn.execute(
-        "SELECT * FROM guests WHERE merged_into_id IS NULL ORDER BY vip DESC, name").fetchall()
+    lv, stay_counts, tags = guests_list_view(conn, request.args)
+    rows = []
+    for g in lv["rows"]:
+        st = guest_account_statement(conn, g["id"])
+        rows.append(dict(g, tags="; ".join(tags.get(g["id"], [])),
+                         stays=stay_counts.get(g["id"], 0),
+                         # As numbers: the formula guard leaves numbers alone,
+                         # and a credit written as text "-300.00" would come
+                         # out of it as '-300.00, which no spreadsheet adds up.
+                         spent_with_us=round(st["lifetime_charged"], 2) if st else "",
+                         balance=round(st["balance"], 2) if st else "",
+                         caution=CAUTION_LEVELS.get(g["caution_level"] or "", "")))
+    view = ", ".join(f"{k}={v}" for k, v in sorted(request.args.items()) if k != "q")
+    log_audit(conn, "guests_exported",
+              details=f"{len(rows)} profile(s)" + (f" — {view}" if view else "")
+              + (" — searched" if lv["q"] else ""))
+    conn.commit()
     conn.close()
-    fieldnames = ["name", "email", "phone", "dietary_notes", "preferences", "vip", "notes", "created_at"]
+    fieldnames = ["name", "email", "phone", "dietary_notes", "preferences", "vip", "notes",
+                  "created_at", "tags", "stays", "spent_with_us", "balance", "caution"]
     return csv_response(fieldnames, rows, "guests.csv")
 
 
@@ -67447,6 +67568,10 @@ def merge_guest_profiles(conn, keep_id, merge_id, user_id=None):
 
     conn.execute("UPDATE guest_notes SET guest_id = ? WHERE guest_id = ?",
                  (keep_id, merge_id))
+    # Its tags too, once each: the survivor may carry the same one already.
+    for r in conn.execute("SELECT tag FROM guest_tags WHERE guest_id = ?", (merge_id,)).fetchall():
+        add_guest_tag(conn, keep_id, r["tag"], user_id)
+    conn.execute("DELETE FROM guest_tags WHERE guest_id = ?", (merge_id,))
     moved = conn.execute("SELECT changes() AS c").fetchone()["c"]
     # The old profile's free-text note is kept as a dated entry rather than
     # thrown away or pasted over the survivor's.
@@ -67581,10 +67706,24 @@ def guest_record(conn, guest_id):
         if e["status"] == "confirmed":
             charged += e_bill["quoted"]
             received += e_bill["paid"]
-    at_table = round(sum(float(d["total_price"] or 0) for d in dinners
-                         if d["status"] == "confirmed" and not d["no_show_at"]), 2)
     spent, paid = round(charged, 2), round(received, 2)
     owed = round(spent - paid, 2)
+    # ONE FIGURE, THE STATEMENT'S. Added up here by a second rule, it left out
+    # what a cancellation kept and what the house owes back on a stay it called
+    # off: the record could say nothing was owed while the statement, and the
+    # list of money to give back, said the house owed them.
+    statement = guest_account_statement(conn, guest_id)
+    if statement:
+        spent = statement["lifetime_charged"]
+        paid = statement["lifetime_paid"]
+        owed = round(statement["balance"], 2)
+    # And the rest of each evening at the table, which the till settles: the
+    # statement carries what was paid towards a table, and adding the whole
+    # dinner here counted that part twice.
+    at_table = round(sum(
+        max(float(d["total_price"] or 0)
+            - sum(p["amount"] for p in payments_received(conn, "restaurant", d)), 0.0)
+        for d in dinners if d["status"] == "confirmed" and not d["no_show_at"]), 2)
 
     said = conn.execute(
         """SELECT guest_feedback.*, bookings.reference_code
@@ -68164,7 +68303,53 @@ GUEST_PROFILE_FIELDS = (
     ("language", "Language", "value"), ("photo_consent", "Photographs", "value"),
     ("dietary_notes", "Dietary notes", "private"), ("access_needs", "Access needs", "private"),
     ("preferences", "Preferences", "private"), ("notes", "Notes", "private"),
+    # Never on the edit form, so an edit never reports one; written by the tag
+    # helpers, so a tag put on or taken off is on the history like the rest.
+    ("tags", "Tag", "value"),
 )
+
+
+def normalise_tag(text):
+    """One tag as it is kept: plain lower case, single spaces, a sensible length."""
+    return " ".join((text or "").strip().lower().split())[:40]
+
+
+def add_guest_tag(conn, guest_id, tag, user_id=None):
+    """Put a tag on a profile. True if it was not already there."""
+    tag = normalise_tag(tag)
+    if not tag:
+        return False
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        """INSERT OR IGNORE INTO guest_tags (guest_id, tag, added_by_user_id, created_at)
+           VALUES (?, ?, ?, ?)""", (guest_id, tag, user_id, now))
+    if cur.rowcount:
+        conn.execute(
+            """INSERT INTO guest_profile_changes (guest_id, field, old_value, new_value,
+                                                  changed_by_user_id, created_at)
+               VALUES (?, 'tags', NULL, ?, ?, ?)""", (guest_id, tag, user_id, now))
+    return bool(cur.rowcount)
+
+
+def remove_guest_tag(conn, guest_id, tag, user_id=None):
+    """Take a tag off a profile. True if it was there."""
+    tag = normalise_tag(tag)
+    cur = conn.execute("DELETE FROM guest_tags WHERE guest_id = ? AND tag = ?", (guest_id, tag))
+    if cur.rowcount:
+        conn.execute(
+            """INSERT INTO guest_profile_changes (guest_id, field, old_value, new_value,
+                                                  changed_by_user_id, created_at)
+               VALUES (?, 'tags', ?, NULL, ?, ?)""",
+            (guest_id, tag, user_id, datetime.now(timezone.utc).isoformat()))
+    return bool(cur.rowcount)
+
+
+def tags_by_guest(conn):
+    """{guest_id: [tag, ...]} for every profile that has one."""
+    out = {}
+    for r in conn.execute("SELECT guest_id, tag FROM guest_tags ORDER BY tag").fetchall():
+        out.setdefault(r["guest_id"], []).append(r["tag"])
+    return out
 
 
 def record_profile_changes(conn, before, after, user_id=None, at=None):
@@ -68778,6 +68963,7 @@ def guest_data_tables(conn):
 GUEST_FILED_TABLES = ("guest_notes", "guest_contacts", "guest_messages")
 # And the history of the profile itself: what changed on it, and every yes and no.
 GUEST_FILED_TABLES += ("guest_profile_changes", "consent_events")
+GUEST_FILED_TABLES += ("guest_tags",)
 
 
 def guest_filed_rows(conn, guests):
