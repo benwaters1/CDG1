@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Register — {{ session['title'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head no-print">
+  <h1>Register</h1>
+  <div class="register-head-actions">
+    <a href="{{ url_for('admin_workshop_registrations', session_id=session['id']) }}" class="btn-mini">Back to the registrations</a>
+    <button type="button" class="btn-mini" onclick="window.print()">Print</button>
+  </div>
+</div>
+
+{#
+  The owner's register for one session: the same people as the running sheet,
+  with how to reach each of them and where their money stands. Confirmed
+  first, then anybody still pending -- the first is who is coming, the second
+  who might be. Diet and medical notes are here because this is the sheet
+  somebody holds when a guest is taken ill; the running sheet has them too.
+#}
+<h2 class="section-heading">{{ session['title'] }}</h2>
+<p class="manual-body">
+  {{ session['start_date']|date_short }}{% if session['end_date'] and session['end_date'] != session['start_date'] %} to {{ session['end_date']|date_short }}{% endif %}
+  · {{ people }} {{ 'person' if people == 1 else 'people' }} of {{ session['capacity'] }}
+  {% if owed %}· €{{ '{:,.2f}'.format(owed) }} still owed{% endif %}
+</p>
+
+{% if not rows %}
+<div class="empty-state">Nobody is registered on this session.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table register-table">
+    <thead>
+      <tr>
+        <th>Guest</th><th class="num">Party</th><th>Room</th><th>Diet and medical</th>
+        <th>Contact</th><th class="num">Paid</th><th class="num">Owed</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      {% set b = r['row'] %}
+      <tr>
+        <td>
+          <strong>{{ r['who'] }}</strong>
+          {% if r['status'] != 'confirmed' %}<span class="mini-status status-pending">{{ r['status'] }}</span>{% endif %}
+          <span class="cell-note">{{ r['reference'] }}</span>
+          {% if r['party_names']|length > 1 %}<span class="cell-note">with {{ r['party_names'][1:]|join(', ') }}</span>{% endif %}
+        </td>
+        <td class="num">{{ r['party_size'] }}</td>
+        <td>
+          {{ r['room'] or '—' }}
+          <span class="cell-note">{{ (b['occupancy_type'] or 'double')|capitalize }}{% if b['requested_roommate'] %}, with {{ b['requested_roommate'] }}{% endif %}</span>
+        </td>
+        <td>
+          {% if b['dietary_notes'] %}{{ b['dietary_notes'] }}{% endif %}
+          {% if b['medical_notes'] %}<span class="cell-note">Medical: {{ b['medical_notes'] }}</span>{% endif %}
+          {% if not b['dietary_notes'] and not b['medical_notes'] %}—{% endif %}
+        </td>
+        <td>
+          {% if r['phone'] %}{{ r['phone'] }}<br>{% endif %}
+          <span class="cell-note">{{ r['email'] }}</span>
+        </td>
+        <td class="num">€{{ '{:,.2f}'.format(r['paid']) }}</td>
+        <td class="num">{% if r['owed'] > 0.005 %}<strong>€{{ '{:,.2f}'.format(r['owed']) }}</strong>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

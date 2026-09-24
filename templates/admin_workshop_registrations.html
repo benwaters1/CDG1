@@ -4,43 +4,107 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>Workshop Registrations</h1>
-  <div style="display:flex; gap:10px; align-items:center;">
+  <h1>{% if panel %}{{ panel.title }}{% else %}Workshop Registrations{% endif %}</h1>
+  <div class="register-head-actions">
     <a href="{{ url_for('admin_workshops') }}" class="btn-mini">Workshops &amp; Sessions</a>
-    <a href="{{ url_for('export_workshop_registrations_csv') }}" class="btn-mini">Export CSV</a>
+    {% if can('balances_to_collect') %}<a href="{{ url_for('balances_to_collect') }}" class="btn-mini">Balances to collect</a>{% endif %}
+    {# The view on screen, not every registration there has ever been. #}
+    <a href="{{ url_for('export_workshop_registrations_csv') }}{{ '?' + export_q if export_q }}" class="btn-mini">Export this view</a>
   </div>
 </div>
+
+{% if panel %}
+{#
+  One session: who is coming, how many places are left, what it is owed, and
+  everything done from here -- print it, the kitchen's sheet, the rooms, a
+  word to everybody, and somebody booked on the telephone.
+#}
+<div class="detail-card register-panel">
+  <p class="register-panel__when">
+    {{ panel.start_date|date_short }}{% if panel.end_date and panel.end_date != panel.start_date %} to {{ panel.end_date|date_short }}{% endif %}
+    {% if panel.called_off %}<span class="mini-status status-overdue">called off</span>{% elif panel.over %}<span class="mini-status status-inactive">over</span>{% endif %}
+  </p>
+  <div class="detail-grid">
+    <div><span class="detail-label">Coming</span>{{ panel.people }} {{ 'person' if panel.people == 1 else 'people' }}, {{ panel.confirmed }} confirmed{% if panel.pending %}, {{ panel.pending }} pending{% endif %}</div>
+    <div><span class="detail-label">Places left</span>{{ panel.places_left }} of {{ panel.capacity }}</div>
+    <div><span class="detail-label">Charged</span>€{{ '{:,.2f}'.format(panel.charged) }}</div>
+    <div><span class="detail-label">Paid</span>€{{ '{:,.2f}'.format(panel.paid) }}</div>
+    <div><span class="detail-label">Still owed</span><strong>€{{ '{:,.2f}'.format(panel.owed) }}</strong></div>
+  </div>
+  <div class="register-panel__actions">
+    <a href="{{ url_for('workshop_register_print', session_id=panel.session_id) }}" class="btn-mini">Print the register</a>
+    <a href="{{ url_for('workshop_running_sheet', session_id=panel.session_id) }}" class="btn-mini">Running sheet</a>
+    <a href="{{ url_for('workshop_rooming', session_id=panel.session_id) }}" class="btn-mini">Rooming</a>
+    {% if panel.emails %}
+    {# Written in Outlook, like every other reply: the addresses go in the
+       blind copy, so nobody on the session is handed everybody's email. #}
+    <a href="mailto:?bcc={{ panel.emails|join(',') }}&amp;subject={{ ('About ' ~ panel.title)|urlencode }}" class="btn-mini">Email everyone ({{ panel.emails|length }})</a>
+    {% endif %}
+  </div>
+  {% if not panel.over and not panel.called_off %}
+  <details class="register-add">
+    <summary class="small-link">Add somebody by hand</summary>
+    <form method="post" action="{{ url_for('add_workshop_registration', session_id=panel.session_id) }}" class="register-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="register-field"><label class="field-label" for="add_name">Name</label>
+        <input type="text" id="add_name" name="guest_name" required maxlength="200"></div>
+      <div class="register-field"><label class="field-label" for="add_email">Email</label>
+        <input type="email" id="add_email" name="guest_email" required></div>
+      <div class="register-field"><label class="field-label" for="add_phone">Phone</label>
+        <input type="tel" id="add_phone" name="guest_phone"></div>
+      <div class="register-field"><label class="field-label" for="add_party">How many</label>
+        <input type="number" id="add_party" name="party_size" min="1" value="1" required></div>
+      <div class="register-field"><label class="field-label" for="add_occ">Arrangement</label>
+        <select id="add_occ" name="occupancy_type">
+          <option value="double">Double (shared)</option>
+          <option value="triple">Triple</option>
+          <option value="solo">Solo (private room)</option>
+        </select></div>
+      <div class="register-field"><label class="field-label" for="add_diet">Dietary</label>
+        <input type="text" id="add_diet" name="dietary_notes" maxlength="500"></div>
+      <div class="register-field"><label class="field-label" for="add_med">Medical</label>
+        <input type="text" id="add_med" name="medical_notes" maxlength="500"></div>
+      <div class="register-field"><label class="field-label" for="add_notes">Notes</label>
+        <input type="text" id="add_notes" name="notes" maxlength="500"></div>
+      <label class="checkbox-row"><input type="checkbox" name="over_capacity"> <span>Over capacity if need be</span></label>
+      <button type="submit" class="btn-mini">Register them</button>
+      <p class="upload-hint">Confirmed straight away, and sent the same letter as anybody booking online, with the link to pay the deposit.</p>
+    </form>
+  </details>
+  {% endif %}
+</div>
+{% endif %}
 
 <div class="stat-tiles">
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('approvals', 19) }}</span>
     <span class="stat-tile-body"><span class="stat-tile-value">{{ pending_count }}</span><span class="stat-tile-label">Pending</span></span>
   </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '{:,.2f}'.format(owed_shown) }}</span><span class="stat-tile-label">Owed on what is shown</span></span>
+  </div>
 </div>
 
-<form method="get" class="search-bar">
-  <div>
-    <label class="field-label" for="admin_workshop_registrations-status">Status</label>
-    <select id="admin_workshop_registrations-status" name="status">
-      <option value="">All</option>
-      {% for s in ['pending','confirmed','declined','cancelled'] %}
-      <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <button type="submit" class="btn-mini">Filter</button>
-  {% if status_filter %}<a href="{{ url_for('admin_workshop_registrations') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
-</form>
+{% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
 
 {% if not registrations %}
-  <div class="empty-state">{% if status_filter %}No registrations match that filter.{% else %}No workshop registrations yet.{% endif %}</div>
+  <div class="empty-state">
+    {% if lv['total'] %}
+      Nothing matches that. <a href="{{ url_for('admin_workshop_registrations', when='all') }}">Show all {{ lv['total'] }}</a>.
+    {% else %}
+      No workshop registrations yet.
+    {% endif %}
+  </div>
 {% else %}
   {% for r in registrations %}
+  {% set reg = register_by_booking[r['id']] %}
   <div class="expense-card">
     <div class="expense-head">
       <div>
         <strong>{{ r['guest_name'] }}</strong> — {{ r['title'] }}
         <span class="mini-status status-{{ r['status'] }}" style="margin-left:8px;">{{ r['status'] }}</span>
+        {% if reg['money'] %}<span class="mini-status {{ 'status-overdue' if reg['money'] in ('Deposit unpaid', 'Balance owed') else 'status-inactive' }}">{{ reg['money'] }}</span>{% endif %}
       </div>
       <span class="upload-hint">{{ r['reference_code'] }}</span>
     </div>
@@ -48,7 +112,11 @@
       {{ r['start_date'] }}{% if r['end_date'] != r['start_date'] %} → {{ r['end_date'] }}{% endif %}
       · Party of {{ r['party_size'] }} · {{ r['occupancy_type']|capitalize }}{% if r['single_supplement'] %} (+€{{ '%.0f'|format(r['single_supplement']) }} pp single){% endif %}{% if r['total_price'] %} · €{{ '%.2f'|format(r['total_price']) }}{% endif %}
     </p>
-    <p class="upload-hint">{{ r['guest_email'] }}{% if r['guest_phone'] %} · {{ r['guest_phone'] }}{% endif %} · <a href="{{ url_for('guest_booking_history', email=r['guest_email']) }}" class="small-link" style="color:var(--steel);">full history</a></p>
+    {# Links, not text: an address you can click is one you write to. #}
+    <p class="upload-hint">
+      <a href="mailto:{{ r['guest_email'] }}">{{ r['guest_email'] }}</a>{% if r['guest_phone'] %} · <a href="tel:{{ r['guest_phone'] }}">{{ r['guest_phone'] }}</a>{% endif %}
+      · <a href="{{ url_for('guest_booking_history', email=r['guest_email']) }}" class="small-link" style="color:var(--steel);">full history</a>
+    </p>
     {% if r['requested_roommate'] %}<p class="upload-hint">Requested roommate: {{ r['requested_roommate'] }}</p>{% endif %}
     {% if r['dietary_notes'] %}<p class="upload-hint">Dietary: {{ r['dietary_notes'] }}</p>{% endif %}
     {% if r['medical_notes'] %}<p class="upload-hint">Medical: {{ r['medical_notes'] }}</p>{% endif %}
@@ -82,6 +150,61 @@
       </form>
       <p class="upload-hint" style="margin-top:4px;">Only a private room carries a supplement; it is cleared automatically on a shared arrangement.</p>
     </details>
+
+    {# Put right what was typed, or what has changed since: the name goes on
+       the rooming list, the email is where every receipt and link goes. #}
+    <details class="register-edit">
+      <summary class="small-link">Correct their details</summary>
+      <form method="post" action="{{ url_for('edit_workshop_registration', registration_id=r['id']) }}" class="register-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="register-field"><label class="field-label" for="ed_name_{{ r['id'] }}">Name</label>
+          <input type="text" id="ed_name_{{ r['id'] }}" name="guest_name" value="{{ r['guest_name'] }}" required maxlength="200"></div>
+        <div class="register-field"><label class="field-label" for="ed_email_{{ r['id'] }}">Email</label>
+          <input type="email" id="ed_email_{{ r['id'] }}" name="guest_email" value="{{ r['guest_email'] }}" required></div>
+        <div class="register-field"><label class="field-label" for="ed_phone_{{ r['id'] }}">Phone</label>
+          <input type="tel" id="ed_phone_{{ r['id'] }}" name="guest_phone" value="{{ r['guest_phone'] or '' }}"></div>
+        <div class="register-field"><label class="field-label" for="ed_party_{{ r['id'] }}">How many</label>
+          <input type="number" id="ed_party_{{ r['id'] }}" name="party_size" min="1" value="{{ r['party_size'] }}" required></div>
+        <div class="register-field"><label class="field-label" for="ed_room_{{ r['id'] }}">Requested roommate</label>
+          <input type="text" id="ed_room_{{ r['id'] }}" name="requested_roommate" value="{{ r['requested_roommate'] or '' }}" maxlength="200"></div>
+        <div class="register-field"><label class="field-label" for="ed_diet_{{ r['id'] }}">Dietary</label>
+          <input type="text" id="ed_diet_{{ r['id'] }}" name="dietary_notes" value="{{ r['dietary_notes'] or '' }}" maxlength="500"></div>
+        <div class="register-field"><label class="field-label" for="ed_med_{{ r['id'] }}">Medical</label>
+          <input type="text" id="ed_med_{{ r['id'] }}" name="medical_notes" value="{{ r['medical_notes'] or '' }}" maxlength="500"></div>
+        <div class="register-field"><label class="field-label" for="ed_occ_{{ r['id'] }}">Occasion</label>
+          <input type="text" id="ed_occ_{{ r['id'] }}" name="special_occasion" value="{{ r['special_occasion'] or '' }}" maxlength="200"></div>
+        <div class="register-field"><label class="field-label" for="ed_notes_{{ r['id'] }}">Notes</label>
+          <input type="text" id="ed_notes_{{ r['id'] }}" name="notes" value="{{ r['notes'] or '' }}" maxlength="500"></div>
+        <label class="checkbox-row"><input type="checkbox" name="over_capacity"> <span>Over capacity if a bigger party needs it</span></label>
+        <button type="submit" class="btn-mini">Save</button>
+        <p class="upload-hint">A bigger or smaller party is repriced the way the booking was; a deposit already paid stays paid.</p>
+      </form>
+    </details>
+
+    {% set other_dates = (moves.get(reg['workshop_id']) or [])|rejectattr('id', 'equalto', r['session_id'])|list %}
+    {% if r['status'] in ('pending', 'confirmed') and other_dates %}
+    {# The control the guest's own "move me" request pointed at, and which
+       did not exist: their request became a task telling the owner to apply it
+       from here. #}
+    <details class="register-move">
+      <summary class="small-link">Move to another date</summary>
+      <form method="post" action="{{ url_for('move_workshop_registration', registration_id=r['id']) }}" class="register-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="register-field"><label class="field-label" for="mv_{{ r['id'] }}">New date</label>
+          <select id="mv_{{ r['id'] }}" name="new_session_id" required>
+            <option value="">Choose a date</option>
+            {% for s_ in other_dates %}
+            <option value="{{ s_['id'] }}">{{ s_['start_date']|date_short }}{% if s_['end_date'] != s_['start_date'] %} to {{ s_['end_date']|date_short }}{% endif %}</option>
+            {% endfor %}
+          </select></div>
+        <label class="checkbox-row"><input type="checkbox" name="tell_guest" checked> <span>Email them their new dates</span></label>
+        <label class="checkbox-row"><input type="checkbox" name="over_capacity"> <span>Over capacity if need be</span></label>
+        <button type="submit" class="btn-mini">Move them</button>
+        <p class="upload-hint">The deposit they paid stays paid; the balance falls due thirty days before the new date, or now if that has passed.</p>
+      </form>
+    </details>
+    {% endif %}
+
     {% if custom_responses_by_booking.get(r['id']) %}
     {% for cr in custom_responses_by_booking[r['id']] %}<p class="upload-hint">{{ cr['label'] }}: {{ cr['value'] }}</p>{% endfor %}
     {% endif %}
@@ -97,7 +220,12 @@
         <div><span class="detail-label">Total charged</span>€{{ '%.2f'|format(balance[1]) }}</div>
         <div><span class="detail-label">Paid</span>€{{ '%.2f'|format(balance[2]) }}</div>
         <div><span class="detail-label">Balance due</span><span style="color:{{ 'var(--danger)' if balance[0] > 0 else 'inherit' }};">€{{ '%.2f'|format(balance[0]) }}</span></div>
+        {% if r['deposit_amount'] %}<div><span class="detail-label">Deposit</span>€{{ '%.2f'|format(r['deposit_amount']) }} {{ 'paid' if r['deposit_paid_at'] else 'not paid yet' }}</div>{% endif %}
+        {% if r['balance_due_date'] and balance[0] > 0 %}<div><span class="detail-label">Balance falls due</span>{{ r['balance_due_date']|date_short }}</div>{% endif %}
+        {# Whether the balance can be taken from a card, and if not, why not. #}
+        <div><span class="detail-label">Card</span>{{ reg['card'] }}</div>
       </div>
+      {% if r['collect_hold'] %}<p class="upload-hint register-hold">{{ r['collect_hold'] }}</p>{% endif %}
       {% if transactions_by_booking.get(r['id']) %}
       <div class="mini-list" style="margin-top:8px;">
         {% for t in transactions_by_booking[r['id']] %}
@@ -129,16 +257,6 @@
         <button type="submit" class="btn-mini">Add</button>
       </form>
 
-      {# A real refund: unlike the ledger row above, this actually returns the
-         money via Stripe and lands in the cross-category refunds record. #}
-      {% set already_refunded = refunded_by_registration.get(r['id'], 0) %}
-      {% set remaining = (paid_by_registration.get(r['id'], 0)) - already_refunded %}
-      {% if remaining > 0 or already_refunded > 0 %}
-        {% with action = url_for('refund_workshop_admin', registration_id=r['id']) %}
-          {% include "_refund_form.html" %}
-        {% endwith %}
-      {% endif %}
-
       {% if not r['deposit_paid_at'] and r['deposit_amount'] %}
       <form method="post" action="{{ url_for('mark_workshop_deposit_paid', registration_id=r['id']) }}" style="display:inline-block; margin-top:6px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -146,13 +264,26 @@
         <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">Quick: mark deposit (€{{ '%.2f'|format(r['deposit_amount']) }}) paid</button>
       </form>
       {% endif %}
-      {% if not r['balance_paid_at'] and r['balance_amount'] %}
+      {% if not r['balance_paid_at'] and balance[0] > 0 and r['deposit_paid_at'] %}
       <form method="post" action="{{ url_for('mark_workshop_balance_paid', registration_id=r['id']) }}" style="display:inline-block; margin-top:6px; margin-left:10px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="method" value="other">
-        <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">Quick: mark balance (€{{ '%.2f'|format(r['balance_amount']) }}) paid</button>
+        <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">Quick: mark the rest (€{{ '%.2f'|format(balance[0]) }}) paid</button>
       </form>
       {% endif %}
+      {% endif %}
+
+      {# A real refund: unlike the ledger row above, this actually returns the
+         money and lands in the cross-category refunds record. It stays for a
+         cancelled registration -- that is exactly when a refund is decided,
+         and calling a session off tells the owner to refund each one from
+         here. #}
+      {% set already_refunded = refunded_by_registration.get(r['id'], 0) %}
+      {% set remaining = (paid_by_registration.get(r['id'], 0)) - already_refunded %}
+      {% if remaining > 0 or already_refunded > 0 %}
+        {% with action = url_for('refund_workshop_admin', registration_id=r['id']) %}
+          {% include "_refund_form.html" %}
+        {% endwith %}
       {% endif %}
     </div>
     {% endif %}
@@ -179,7 +310,7 @@
         {% for m in messages_by_booking[r['id']] %}
         <div class="mini-row">
           <span class="mini-name">{{ m['subject'] }}</span>
-          <span class="mini-role">{{ m['created_at'][:16]|replace('T', ' ') }} · {{ m['recipient'] }}</span>
+          <span class="mini-role">{{ m['created_at']|house_day }} · {{ m['recipient'] }}</span>
           <span class="mini-status status-{{ 'onshift' if m['status'] == 'sent' else 'inactive' }}">{{ m['status'] }}</span>
         </div>
         {% endfor %}

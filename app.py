@@ -1454,6 +1454,12 @@ DEFAULT_EMAIL_TEMPLATES = [
      "{balance_due_date}. You can settle it here, in whole or in part:\n"
      "{manage_url}\n\n"
      "Reference: {reference_code}\n\n\u2014 Ch\u00e2teau de Gudanes"),
+    ("workshop_moved", "Workshop: Moved to other dates",
+     "Your new dates \u2014 {workshop_title}",
+     "Hi {guest_name},\n\nAs arranged, your place on {workshop_title} has moved to "
+     "{dates}.\n{balance_line}\n"
+     "Reference: {reference_code}\n"
+     "Manage your registration: {manage_url}\n\n\u2014 Ch\u00e2teau de Gudanes"),
     ("workshop_balance_reminder", "Workshop: Balance due reminder",
      "Balance due soon — {workshop_title}",
      "Hi {guest_name},\n\nA friendly reminder that the balance of €{balance_amount} for {workshop_title} "
@@ -6794,6 +6800,10 @@ NAV_AREAS = {
         "consume_workshop_materials", "delete_workshop_custom_field", "edit_workshop_session", "mark_workshop_balance_paid",
         "mark_workshop_deposit_paid", "new_workshop_custom_field", "remove_workshop_material", "set_workshop_occupancy",
         "toggle_workshop_do_not_email", "workshop_rooming",
+        # The register's own: printing it, adding somebody by hand, moving or
+        # correcting a registration.
+        "workshop_register_print", "add_workshop_registration",
+        "move_workshop_registration", "edit_workshop_registration",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         
@@ -9109,7 +9119,14 @@ def overview_cell(label, value, sub=None, alert=False, hint=None, delta=None, en
 # and they can pass `paged=True` to keep the toolbar and do their own slicing.
 # ---------------------------------------------------------------------------
 
-def facet(key, label, bucket, *, order=None, labels=None, hide_empty=True, limit=None):
+# The chip that means "no filter" on a facet that has a default. Without a
+# value of its own it could not be told apart from arriving with nothing in
+# the query string, which is when the default applies.
+LIST_ALL = "all"
+
+
+def facet(key, label, bucket, *, order=None, labels=None, hide_empty=True, limit=None,
+          default=None):
     """One way of classifying a list.
 
     `bucket` maps a row to a group name, or to None to leave it out of this
@@ -9122,10 +9139,15 @@ def facet(key, label, bucket, *, order=None, labels=None, hide_empty=True, limit
     open-ended — every distinct audit action, every supplier — and forty chips
     is not a filter, it is a second list to read. Whatever is currently chosen
     always survives the cut, or clicking a chip would make it disappear.
+
+    `default` is the chip chosen when the query string says nothing about this
+    facet -- how a list opens on what is current, with what is over one chip
+    away under History rather than filling the top of the page. ?key=all
+    (LIST_ALL) is the explicit "everything".
     """
     return {"key": key, "label": label, "bucket": bucket,
             "order": list(order or []), "labels": dict(labels or {}),
-            "hide_empty": hide_empty, "limit": limit}
+            "hide_empty": hide_empty, "limit": limit, "default": default}
 
 
 def sort_option(key, label, keyfn, *, reverse=False):
@@ -9156,7 +9178,12 @@ def _searchable(row, fields):
 SAVED_VIEW_PARAMS = ("q", "sort", "page", "period", "date", "status", "state",
                      "category", "supplier", "where", "applies", "employee_id",
                      "room_id", "kind", "area", "level", "days", "month", "year",
-                     "tab", "who", "facet")
+                     "tab", "who", "facet",
+                     # Chips that existed and were silently dropped from a
+                     # saved view -- so a page filtered only by them offered
+                     # no Save at all.
+                     "room", "when", "known", "caution", "vip", "card",
+                     "session", "money", "workshop")
 
 
 def saved_view_query(args):
@@ -9267,8 +9294,15 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
     rows = list(rows)
     args = args or {}
     q = (args.get("q") or "").strip()
-    chosen = {f["key"]: (args.get(f["key"]) or "").strip() for f in facets}
-    chosen = {k: v for k, v in chosen.items() if v}
+    chosen, explicit = {}, False
+    for f in facets:
+        if f["key"] in args:
+            value = (args.get(f["key"]) or "").strip()
+            explicit = explicit or value not in ("", f.get("default") or "")
+        else:
+            value = f.get("default") or ""
+        if value and value != LIST_ALL:
+            chosen[f["key"]] = value
 
     def matches_search(row):
         return not q or q.lower() in _searchable(row, search)
@@ -9312,6 +9346,7 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
         facet_state.append({
             "key": f["key"], "label": f["label"], "options": options,
             "selected": chosen.get(f["key"], ""), "total": len(pool), "hidden": hidden,
+            "default": f.get("default") or "",
         })
 
     sorts = list(sorts)
@@ -9336,7 +9371,11 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
         "sorts": sorts,
         "sort": active_sort if chosen_sort else "",
         "chosen": chosen,
-        "filtered": bool(q or chosen),
+        # A default is not a filter somebody chose, so it does not offer to be
+        # cleared -- clearing would only put it back. What it hides is still
+        # said, as "Showing 12 of 140", so nothing is quietly out of view.
+        "filtered": bool(q or explicit),
+        "defaulted": not (q or explicit) and len(visible) < len(rows),
     }
 
 
@@ -43484,6 +43523,10 @@ EMAIL_TEMPLATE_TAGS = {
     "review_invitation": ("guest_name", "review_url"),
     "room_feedback_request": ("feedback_url", "guest_name", "room_name"),
     "room_waitlist_opening": ("book_url", "desired_arrival", "desired_departure", "name"),
+    "workshop_moved": ("balance_amount", "balance_due_date", "balance_line",
+                       "dates", "deposit_amount", "guest_name", "manage_url",
+                       "party_size", "price_block", "reference_code",
+                       "total_price", "workshop_title"),
     "workshop_balance_reminder": ("balance_amount", "balance_due_date", "balance_line",
                                   "dates", "deposit_amount", "guest_name", "manage_url",
                                   "party_size", "price_block", "reference_code",
@@ -52590,6 +52633,12 @@ def admin_workshops():
     stock_choices = conn.execute(
         "SELECT id, name, unit FROM stock_items WHERE active = 1 ORDER BY name"
     ).fetchall()
+    register_by_session = {}
+    for reg_row in workshop_register_rows(conn, today):
+        if reg_row["live"]:
+            tally = register_by_session.setdefault(reg_row["session_id"], {"booked": 0, "owed": 0.0})
+            tally["booked"] += 1
+            tally["owed"] = round(tally["owed"] + max(reg_row["owed"], 0), 2)
     sessions_by_workshop, past_by_workshop = {}, {}
     for w in workshops:
         sessions = conn.execute(
@@ -52607,6 +52656,7 @@ def admin_workshops():
                 "session": s, "remaining": workshop_session_remaining_capacity(conn, s["id"]),
                 "rooms_assigned": rooms_assigned,
                 "at_risk": at_risk_by_session.get(s["id"]),
+                "register": register_by_session.get(s["id"], {"booked": 0, "owed": 0.0}),
                 # Only where there is a list to plan against, so a workshop
                 # with no materials costs nothing per session.
                 "materials": (session_materials(conn, s["id"])
@@ -53338,30 +53388,190 @@ def workshop_running_sheet(session_id):
                            sheet=sheet)
 
 
+# Where a registration's money stands, in the order the register's chips read.
+REGISTER_MONEY = ("Deposit unpaid", "Balance owed", "In credit", "Paid in full", "Money held")
+
+
+def workshop_register_rows(conn, today=None):
+    """Every registration, as the register shows it.
+
+    Money is the ledger's, for all of them in one grouped query: the figures
+    set the day somebody booked are what they owed THEN. `when` is Current
+    until the session's last day has passed and History after, so a session
+    that is over leaves the page's first view and stays one chip away, instead
+    of every registration ever filling the top of it oldest first.
+    """
+    today = today or house_today()
+    iso = today.isoformat()
+    money = {r["id"]: r for r in conn.execute(
+        """SELECT wb.id,
+                  COALESCE(wb.total_price, 0)
+                    + COALESCE(SUM(CASE t.kind WHEN 'charge' THEN t.amount
+                                               WHEN 'discount' THEN -t.amount
+                                               ELSE 0 END), 0) AS charged,
+                  COALESCE(SUM(CASE t.kind WHEN 'payment' THEN t.amount
+                                           WHEN 'refund' THEN -t.amount
+                                           ELSE 0 END), 0) AS paid
+             FROM workshop_bookings wb
+             LEFT JOIN workshop_transactions t ON t.workshop_booking_id = wb.id
+            GROUP BY wb.id""").fetchall()}
+    party = {}
+    for g in conn.execute("SELECT workshop_booking_id, guest_name FROM workshop_booking_guests "
+                          "ORDER BY is_lead DESC, id").fetchall():
+        party.setdefault(g["workshop_booking_id"], []).append(g["guest_name"])
+    out = []
+    for r in conn.execute(
+            """SELECT wb.*, ws.start_date, ws.end_date, ws.capacity AS session_capacity,
+                      ws.cancelled_at AS session_called_off, w.title, w.id AS workshop_id,
+                      rooms.name AS assigned_room_name
+                 FROM workshop_bookings wb
+                 JOIN workshop_sessions ws ON ws.id = wb.session_id
+                 JOIN workshops w ON w.id = ws.workshop_id
+                 LEFT JOIN rooms ON rooms.id = wb.assigned_room_id""").fetchall():
+        sums = money.get(r["id"])
+        charged = round(sums["charged"], 2) if sums else 0.0
+        paid = round(sums["paid"], 2) if sums else 0.0
+        owed = round(charged - paid, 2)
+        live = r["status"] in ("pending", "confirmed")
+        if not live:
+            money_state = "Money held" if paid > 0.005 else None
+        elif r["deposit_amount"] and not r["deposit_paid_at"]:
+            money_state = "Deposit unpaid"
+        elif owed > 0.005:
+            money_state = "Balance owed"
+        elif owed < -0.005:
+            money_state = "In credit"
+        else:
+            money_state = "Paid in full" if paid > 0.005 or not charged else "Balance owed"
+        if r["collect_hold"]:
+            card = "Held: check Stripe"
+        elif r["autocharge_failed_at"]:
+            card = "Card refused"
+        elif r["autocharge_opt_out"]:
+            card = "Paying it themselves"
+        elif r["stripe_customer_id"] and r["stripe_payment_method_id"]:
+            card = "Card kept"
+        else:
+            card = "No card kept"
+        last_day = r["end_date"] or r["start_date"] or ""
+        out.append({
+            "row": r, "id": r["id"], "who": r["guest_name"], "email": r["guest_email"],
+            "phone": r["guest_phone"], "reference": r["reference_code"], "what": r["title"],
+            "workshop_id": r["workshop_id"], "session_id": r["session_id"],
+            "session_label": f"{r['title']} · {format_date_short(r['start_date'])}",
+            "start_date": r["start_date"], "end_date": r["end_date"],
+            "when": "History" if last_day < iso else "Current",
+            "status": r["status"], "live": live, "party_size": r["party_size"] or 0,
+            "party_names": party.get(r["id"], []),
+            "charged": charged, "paid": paid, "owed": owed, "money": money_state,
+            "card": card, "due_date": r["balance_due_date"],
+            "room": r["assigned_room_name"],
+        })
+    return out
+
+
+def workshop_register_view(conn, args, today=None):
+    """The register's rows and toolbar for a set of query arguments -- shared by
+    the page and its CSV, so "export this view" exports this view.
+
+    Old links still work: ?session_id=12 from the workshops page opens that
+    session whether or not it is over, and ?status=pending from a bookmark is
+    the Status chip.
+    """
+    today = today or house_today()
+    items = workshop_register_rows(conn, today)
+    args = args.to_dict() if hasattr(args, "to_dict") else dict(args)
+    sid = str(args.get("session_id") or "")
+    if sid.isdigit() and "session" not in args:
+        label = next((r["session_label"] for r in items if r["session_id"] == int(sid)), None)
+        if label:
+            args["session"] = label
+            args.setdefault("when", LIST_ALL)
+    if args.get("status") and "state" not in args:
+        args["state"] = str(args["status"]).capitalize()
+    by_date = sorted({(r["start_date"] or "", r["session_label"]) for r in items})
+    lv = list_view(
+        items, args,
+        search=["who", "email", "phone", "reference", "what",
+                lambda r: " ".join(r["party_names"])],
+        search_hint="Search guest, email, phone, reference or workshop",
+        facets=[
+            facet("when", "When", lambda r: r["when"], order=["Current", "History"],
+                  default="Current"),
+            facet("session", "Session", lambda r: r["session_label"],
+                  order=[label for _d, label in by_date], limit=10),
+            facet("state", "Status", lambda r: r["status"].capitalize(),
+                  order=["Pending", "Confirmed", "Declined", "Cancelled"]),
+            facet("money", "Money", lambda r: r["money"], order=list(REGISTER_MONEY)),
+        ],
+        sorts=[
+            sort_option("session", "By session",
+                        lambda r: (r["start_date"] or "9999", r["row"]["created_at"] or "")),
+            sort_option("recent", "Booked most recently",
+                        lambda r: r["row"]["created_at"] or "", reverse=True),
+            sort_option("name", "By guest", lambda r: (r["who"] or "").casefold()),
+            sort_option("owed", "Most owed", lambda r: -r["owed"]),
+        ],
+        default_sort="session",
+    )
+    return items, lv
+
+
+def workshop_session_panel(conn, items, label):
+    """The head of the register when it is showing one session: who, how many
+    places are left, and what the session is owed, with everything that is done
+    from there."""
+    mine = [r for r in items if r["session_label"] == label]
+    if not mine:
+        return None
+    first = mine[0]
+    live = [r for r in mine if r["live"]]
+    confirmed = [r for r in live if r["status"] == "confirmed"]
+    return {
+        "session_id": first["session_id"], "workshop_id": first["workshop_id"],
+        "title": first["what"], "start_date": first["start_date"], "end_date": first["end_date"],
+        "capacity": first["row"]["session_capacity"],
+        "places_left": workshop_session_remaining_capacity(conn, first["session_id"]),
+        "people": sum(r["party_size"] for r in live),
+        "confirmed": len(confirmed), "pending": len(live) - len(confirmed),
+        "gone": len(mine) - len(live),
+        "charged": round(sum(r["charged"] for r in live), 2),
+        "paid": round(sum(r["paid"] for r in live), 2),
+        "owed": round(sum(max(r["owed"], 0) for r in live), 2),
+        "emails": sorted({(r["email"] or "").strip() for r in live if (r["email"] or "").strip()}),
+        "called_off": first["row"]["session_called_off"],
+        "over": first["when"] == "History",
+    }
+
+
 @app.route("/admin/workshops/registrations")
 @owner_required
 def admin_workshop_registrations():
-    """Who is booked onto which session, and what each of them owes."""
+    """Who is coming to each session, what each of them owes, and what to do.
+
+    The register. It opens on what is current -- sessions still to come or
+    running -- with everything over under History, one chip away. Choose a
+    session and its head says how many places are left and what it is owed,
+    and it prints, exports and takes somebody by hand from there.
+    """
     conn = get_db()
-    status_filter = request.args.get("status", "")
-    session_filter = request.args.get("session_id", "")
-    query = """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date,
-                   workshops.title, rooms.name AS assigned_room_name FROM workshop_bookings
-               JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
-               JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-               LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
-               WHERE 1=1"""
-    params = []
-    if status_filter:
-        query += " AND workshop_bookings.status = ?"
-        params.append(status_filter)
-    if session_filter.isdigit():
-        query += " AND workshop_bookings.session_id = ?"
-        params.append(int(session_filter))
-    query += " ORDER BY workshop_sessions.start_date, workshop_bookings.created_at"
-    registrations = conn.execute(query, params).fetchall()
-    pending_count = conn.execute("SELECT COUNT(*) AS c FROM workshop_bookings WHERE status = 'pending'").fetchone()["c"]
+    today = house_today()
+    items, lv = workshop_register_view(conn, request.args, today)
+    registrations = [r["row"] for r in lv["rows"]]
+    shown_ids = [r["id"] for r in lv["rows"]]
+    panel = (workshop_session_panel(conn, items, lv["chosen"]["session"])
+             if lv["chosen"].get("session") else None)
+    pending_count = sum(1 for r in items if r["status"] == "pending")
+    owed_shown = round(sum(max(r["owed"], 0) for r in lv["rows"] if r["live"]), 2)
     rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    # Where each registration could be moved to: the same atelier's other
+    # sessions that have not started and have not been called off.
+    moves = {}
+    for s_ in conn.execute(
+            """SELECT id, workshop_id, start_date, end_date FROM workshop_sessions
+                WHERE start_date >= ? AND cancelled_at IS NULL ORDER BY start_date""",
+            (today.isoformat(),)).fetchall():
+        moves.setdefault(s_["workshop_id"], []).append(s_)
     guests_by_booking = {}
     for row in conn.execute(
         "SELECT * FROM workshop_booking_guests ORDER BY is_lead DESC, id"
@@ -53376,14 +53586,18 @@ def admin_workshop_registrations():
            ORDER BY workshop_custom_fields.sort_order"""
     ).fetchall():
         custom_responses_by_booking.setdefault(row["workshop_booking_id"], []).append(row)
+    # The ledger lines for what is on screen, in one query rather than one per
+    # registration; the totals come from the register rows, which already
+    # have them.
     transactions_by_booking = {}
-    balance_by_booking = {}
-    for r in registrations:
-        txns = conn.execute(
-            "SELECT * FROM workshop_transactions WHERE workshop_booking_id = ? ORDER BY created_at", (r["id"],)
-        ).fetchall()
-        transactions_by_booking[r["id"]] = txns
-        balance_by_booking[r["id"]] = workshop_balance_due(conn, r["id"])
+    if shown_ids:
+        for t in conn.execute(
+                "SELECT * FROM workshop_transactions WHERE workshop_booking_id IN ({}) "
+                "ORDER BY created_at".format(",".join("?" * len(shown_ids))),
+                shown_ids).fetchall():
+            transactions_by_booking.setdefault(t["workshop_booking_id"], []).append(t)
+    balance_by_booking = {r["id"]: (r["owed"], r["charged"], r["paid"]) for r in lv["rows"]}
+    register_by_booking = {r["id"]: r for r in lv["rows"]}
     messages_by_booking = {}
     for row in conn.execute("SELECT * FROM workshop_messages ORDER BY created_at DESC").fetchall():
         messages_by_booking.setdefault(row["workshop_booking_id"], []).append(row)
@@ -53405,13 +53619,269 @@ def admin_workshop_registrations():
     }
     conn.close()
     return render_template(
-        "admin_workshop_registrations.html", registrations=registrations, status_filter=status_filter,
-        pending_count=pending_count, rooms=rooms,
+        "admin_workshop_registrations.html", registrations=registrations, lv=lv, panel=panel,
+        pending_count=pending_count, owed_shown=owed_shown, rooms=rooms, moves=moves,
+        register_by_booking=register_by_booking,
         guests_by_booking=guests_by_booking, custom_responses_by_booking=custom_responses_by_booking,
         transactions_by_booking=transactions_by_booking, balance_by_booking=balance_by_booking,
         messages_by_booking=messages_by_booking,
         refunded_by_registration=refunded_by_registration, paid_by_registration=paid_by_registration,
+        export_q=request.query_string.decode("utf-8", "replace"),
     )
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/register")
+@owner_required
+def workshop_register_print(session_id):
+    """One session's register, to print or to hand to whoever is running it.
+
+    The owner's version of the running sheet: the same people, with how to
+    reach them and where their money stands. Confirmed first, then anybody
+    still pending, because the first is who is coming and the second is who
+    might be.
+    """
+    conn = get_db()
+    session_row = conn.execute(
+        """SELECT ws.*, w.title FROM workshop_sessions ws
+             JOIN workshops w ON w.id = ws.workshop_id WHERE ws.id = ?""",
+        (session_id,)).fetchone()
+    if not session_row:
+        conn.close()
+        abort(404)
+    rows = [r for r in workshop_register_rows(conn) if r["session_id"] == session_id and r["live"]]
+    rows.sort(key=lambda r: (r["status"] != "confirmed", (r["who"] or "").casefold()))
+    conn.close()
+    return render_template(
+        "workshop_register_print.html", session=session_row, rows=rows,
+        people=sum(r["party_size"] for r in rows),
+        owed=round(sum(max(r["owed"], 0) for r in rows), 2))
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/add", methods=["POST"])
+@owner_required
+def add_workshop_registration(session_id):
+    """Somebody booked by telephone, over dinner, or by email: registered by hand.
+
+    The same registration the public form makes -- create_workshop_booking,
+    the same price, deposit and due date, the same letter with the link to pay
+    -- so a place taken on the telephone is not a second kind of booking. The
+    session's own capacity is kept unless the owner says otherwise, and says
+    so on the record; the house's legal occupancy is not the owner's to wave.
+    """
+    conn = get_db()
+    session_row = conn.execute(
+        """SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
+                  workshops.instructor_name, workshops.instructor_user_id, workshops.active,
+                  workshops.deposit_percent, workshops.single_supplement
+             FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_sessions.id = ?""", (session_id,)).fetchone()
+    if not session_row:
+        conn.close()
+        abort(404)
+    back = url_for("admin_workshop_registrations", session_id=session_id)
+    name = (request.form.get("guest_name") or "").strip()[:200]
+    email = (request.form.get("guest_email") or "").strip().lower()
+    phone = phone_from_form("guest_phone")
+    raw_party = (request.form.get("party_size") or "").strip()
+    party_size = int(raw_party) if raw_party.isdigit() else 0
+    occupancy = (request.form.get("occupancy_type") or "double").strip()
+    over_capacity = request.form.get("over_capacity") == "on"
+    error = None
+    if session_row["cancelled_at"]:
+        error = "This session has been called off."
+    elif parse_date(session_row["end_date"] or session_row["start_date"]) < house_today():
+        error = "This session is over."
+    elif not name or not email:
+        error = "A name and an email address are needed: the email is where the link to pay goes."
+    elif not EMAIL_RE.match(email):
+        error = "That email address does not look right."
+    elif party_size < 1:
+        error = "How many are coming?"
+    elif occupancy not in ALL_OCCUPANCY_TYPES:
+        error = "Choose a room arrangement."
+    if not error:
+        left = claim_workshop_places(conn, session_id)
+        if left < party_size and not over_capacity:
+            error = (f"The session has {max(left, 0)} place{'' if left == 1 else 's'} left. "
+                     f"Tick \"over capacity\" to take them anyway.")
+        if not error:
+            session_end = parse_date(session_row["end_date"] or session_row["start_date"])
+            error = house_capacity_error(conn, parse_date(session_row["start_date"]),
+                                         session_end + timedelta(days=1), party_size)
+    if error:
+        conn.commit()
+        conn.close()
+        flash(error, "error")
+        return redirect(back)
+    workshop = conn.execute("SELECT * FROM workshops WHERE id = ?",
+                            (session_row["workshop_id"],)).fetchone()
+    reference_code, _token, booking_row_id = create_workshop_booking(
+        conn, session_row, workshop, name, email, phone or None, party_size,
+        (request.form.get("notes") or "").strip()[:500],
+        occupancy_type=occupancy,
+        dietary_notes=(request.form.get("dietary_notes") or "").strip()[:500] or None,
+        medical_notes=(request.form.get("medical_notes") or "").strip()[:500] or None,
+        confirm_now=True)
+    conn.execute(
+        "INSERT INTO workshop_booking_guests (workshop_booking_id, guest_name, is_lead, created_at) "
+        "VALUES (?, ?, 1, ?)", (booking_row_id, name, datetime.now(timezone.utc).isoformat()))
+    log_audit(conn, "workshop_registration_added", target=reference_code,
+              details=f"{name}, party of {party_size}" + (" — over capacity" if over_capacity and
+                                                          left < party_size else ""))
+    conn.commit()
+    conn.close()
+    flash(f"{name} is registered ({reference_code}). They have been sent the confirmation, "
+          f"with the link to pay the deposit.", "success")
+    return redirect(back)
+
+
+@app.route("/admin/workshops/registrations/<int:registration_id>/move", methods=["POST"])
+@owner_required
+def move_workshop_registration(registration_id):
+    """Move a registration to another date of the same atelier.
+
+    A guest could ask to move from their own page, and for anybody who had
+    paid it became a task telling the owner to "apply the change from the
+    workshop registrations page" -- which had no such control. This is it.
+    Same atelier, so the same price; the deposit already taken stays taken,
+    and the balance falls due thirty days before the NEW date (today, if that
+    is already past). The request task, if there was one, is answered by this
+    and closes.
+    """
+    conn = get_db()
+    reg = conn.execute(
+        """SELECT wb.*, ws.workshop_id, ws.start_date AS old_start FROM workshop_bookings wb
+             JOIN workshop_sessions ws ON ws.id = wb.session_id WHERE wb.id = ?""",
+        (registration_id,)).fetchone()
+    if not reg:
+        conn.close()
+        abort(404)
+    raw = (request.form.get("new_session_id") or "").strip()
+    target = conn.execute(
+        """SELECT * FROM workshop_sessions WHERE id = ? AND workshop_id = ?
+              AND cancelled_at IS NULL""",
+        (int(raw) if raw.isdigit() else 0, reg["workshop_id"])).fetchone()
+    back = url_for("admin_workshop_registrations", session_id=reg["session_id"])
+    error = None
+    if reg["status"] not in ("pending", "confirmed"):
+        error = f"A {reg['status']} registration cannot be moved."
+    elif not target or target["id"] == reg["session_id"]:
+        error = "Choose another date of the same atelier."
+    elif parse_date(target["start_date"]) < house_today():
+        error = "That session has already started."
+    elif (claim_workshop_places(conn, target["id"]) < (reg["party_size"] or 1)
+          and request.form.get("over_capacity") != "on"):
+        error = "That date has not got the places. Tick \"over capacity\" to move them anyway."
+    if error:
+        conn.commit()
+        conn.close()
+        flash(error, "error")
+        return redirect(back)
+    conn.execute("UPDATE workshop_bookings SET session_id = ?, assigned_room_id = NULL "
+                 "WHERE id = ?", (target["id"], registration_id))
+    reprice_workshop_registration(conn, registration_id, total_price=reg["total_price"],
+                                  start_date=target["start_date"])
+    conn.execute(
+        "UPDATE tasks SET status = 'done', completed_at = ? WHERE status != 'done' AND title = ?",
+        (datetime.now(timezone.utc).isoformat(),
+         f"Workshop date change request — {reg['reference_code']}"))
+    log_audit(conn, "workshop_registration_moved", target=reg["reference_code"],
+              details=f"{reg['old_start']} → {target['start_date']}")
+    conn.commit()
+    tell = request.form.get("tell_guest") == "on"
+    if tell:
+        booking = conn.execute(
+            """SELECT wb.*, ws.start_date, ws.end_date, w.title FROM workshop_bookings wb
+                 JOIN workshop_sessions ws ON ws.id = wb.session_id
+                 JOIN workshops w ON w.id = ws.workshop_id WHERE wb.id = ?""",
+            (registration_id,)).fetchone()
+        send_workshop_email(conn, booking, "workshop_moved", workshop_email_context(booking))
+        conn.commit()
+    conn.close()
+    flash(f"{reg['guest_name']} moved to {format_date_short(target['start_date'])}. The room "
+          f"they had is released; place them on the new session's rooming."
+          + (" They have been sent their new dates." if tell else ""), "success")
+    return redirect(url_for("admin_workshop_registrations", session_id=target["id"]))
+
+
+@app.route("/admin/workshops/registrations/<int:registration_id>/edit", methods=["POST"])
+@owner_required
+def edit_workshop_registration(registration_id):
+    """Put right what somebody typed, or what has changed since.
+
+    A misspelt name goes on the rooming list and the running sheet; a wrong
+    email means the receipt, the reminder and the link to pay go nowhere. A
+    party that grows or shrinks is repriced through the same arithmetic as the
+    booking, the places checked the same way. Each change is on the record,
+    field by field.
+    """
+    conn = get_db()
+    reg = conn.execute(
+        """SELECT wb.*, ws.start_date, w.price_per_person, w.id AS workshop_id
+             FROM workshop_bookings wb
+             JOIN workshop_sessions ws ON ws.id = wb.session_id
+             JOIN workshops w ON w.id = ws.workshop_id WHERE wb.id = ?""",
+        (registration_id,)).fetchone()
+    if not reg:
+        conn.close()
+        abort(404)
+    back = url_for("admin_workshop_registrations", session_id=reg["session_id"])
+    fields = {
+        "guest_name": (request.form.get("guest_name") or "").strip()[:200],
+        "guest_email": (request.form.get("guest_email") or "").strip().lower(),
+        "guest_phone": phone_from_form("guest_phone") or None,
+        "requested_roommate": (request.form.get("requested_roommate") or "").strip()[:200] or None,
+        "dietary_notes": (request.form.get("dietary_notes") or "").strip()[:500] or None,
+        "medical_notes": (request.form.get("medical_notes") or "").strip()[:500] or None,
+        "special_occasion": (request.form.get("special_occasion") or "").strip()[:200] or None,
+        "notes": (request.form.get("notes") or "").strip()[:500] or None,
+    }
+    raw_party = (request.form.get("party_size") or "").strip()
+    party_size = int(raw_party) if raw_party.isdigit() else reg["party_size"]
+    error = None
+    if not fields["guest_name"] or not fields["guest_email"]:
+        error = "A registration needs a name and an email address."
+    elif not EMAIL_RE.match(fields["guest_email"]):
+        error = "That email address does not look right."
+    elif party_size < 1:
+        error = "A party is at least one person."
+    elif (party_size > (reg["party_size"] or 0) and reg["status"] in ("pending", "confirmed")
+          and claim_workshop_places(conn, reg["session_id"], exclude_id=registration_id) < party_size
+          and request.form.get("over_capacity") != "on"):
+        error = "The session has not got the places. Tick \"over capacity\" to save it anyway."
+    if error:
+        conn.commit()
+        conn.close()
+        flash(error, "error")
+        return redirect(back)
+    changed = [k for k, v in fields.items() if (reg[k] or None) != (v or None)]
+    conn.execute(
+        "UPDATE workshop_bookings SET {} WHERE id = ?".format(
+            ", ".join(f"{k} = ?" for k in fields)),
+        (*fields.values(), registration_id))
+    if party_size != reg["party_size"]:
+        changed.append("party_size")
+        workshop = conn.execute("SELECT * FROM workshops WHERE id = ?",
+                                (reg["workshop_id"],)).fetchone()
+        subtotal, _supplement = workshop_subtotal(workshop, party_size, reg["occupancy_type"] or "double")
+        discount = reg["discount_amount"] or 0.0
+        total_price = round(subtotal - discount, 2) if subtotal else None
+        conn.execute("UPDATE workshop_bookings SET party_size = ? WHERE id = ?",
+                     (party_size, registration_id))
+        reprice_workshop_registration(conn, registration_id, total_price=total_price,
+                                      start_date=reg["start_date"])
+    # The lead's name is the first of the party; a corrected name corrects it.
+    if "guest_name" in changed:
+        conn.execute("UPDATE workshop_booking_guests SET guest_name = ? "
+                     "WHERE workshop_booking_id = ? AND is_lead = 1",
+                     (fields["guest_name"], registration_id))
+    if changed:
+        log_audit(conn, "workshop_registration_edited", target=reg["reference_code"],
+                  details=", ".join(changed))
+    conn.commit()
+    conn.close()
+    flash(f"{reg['reference_code']} saved." if changed else "Nothing had changed.", "success")
+    return redirect(back)
 
 
 @app.route("/admin/workshops/registrations/<int:registration_id>/occupancy", methods=["POST"])
@@ -53462,22 +53932,13 @@ def set_workshop_occupancy(registration_id):
     subtotal = round((price + supplement) * reg["party_size"], 2) if price else 0
     discount = reg["discount_amount"] or 0.0
     total_price = round(subtotal - discount, 2) if subtotal else None
-    deposit_percent = resolve_deposit_percent(
-        conn, "workshop", reg["start_date"], reg["party_size"], reg["deposit_percent"])
-    deposit_amount, balance_amount, balance_due_date = compute_workshop_payment_terms(
-        total_price, deposit_percent, parse_date(reg["start_date"]))
-    # A deposit already paid is not re-taken; only what is still owed moves.
-    if reg["deposit_paid_at"]:
-        deposit_amount = reg["deposit_amount"]
-        balance_amount = round((total_price or 0) - (deposit_amount or 0), 2)
 
     conn.execute(
-        """UPDATE workshop_bookings
-           SET occupancy_type = ?, single_supplement = ?, total_price = ?,
-               deposit_amount = ?, balance_amount = ?, balance_due_date = ?
-           WHERE id = ?""",
-        (occupancy, supplement or None, total_price, deposit_amount, balance_amount,
-         balance_due_date, registration_id))
+        "UPDATE workshop_bookings SET occupancy_type = ?, single_supplement = ? WHERE id = ?",
+        (occupancy, supplement or None, registration_id))
+    # A deposit already paid is not re-taken; only what is still owed moves.
+    reprice_workshop_registration(conn, registration_id, total_price=total_price,
+                                  start_date=reg["start_date"])
     log_audit(conn, "workshop_occupancy_set", target=reg["reference_code"],
               details=f"{occupancy}, supplement €{supplement:.2f}")
     conn.commit()
@@ -53488,6 +53949,50 @@ def set_workshop_occupancy(registration_id):
     else:
         flash(f"Room arrangement saved for {reg['reference_code']}.", "success")
     return redirect(url_for("admin_workshop_registrations"))
+
+
+def reprice_workshop_registration(conn, registration_id, *, total_price, start_date):
+    """Set what a registration owes, and when, after something about it changed.
+
+    The room arrangement, the party size and the dates all move it, and each
+    did its own arithmetic. Two things were wrong in it: a deposit already paid
+    for dates now inside the thirty days left a balance with NO due date --
+    compute_workshop_payment_terms answers "all of it now" by returning none --
+    so it never reached a reminder or the list of balances to collect; and the
+    paid stamp was not looked at, so a place repriced upwards after it was paid
+    in full still read as settled.
+
+    A deposit already taken is kept as taken; only what is left moves. A
+    changed due date is a new one, so the reminder and the owner's notice for
+    it are re-armed.
+    """
+    reg = conn.execute(
+        """SELECT wb.*, w.deposit_percent FROM workshop_bookings wb
+             JOIN workshop_sessions ws ON ws.id = wb.session_id
+             JOIN workshops w ON w.id = ws.workshop_id
+            WHERE wb.id = ?""", (registration_id,)).fetchone()
+    deposit_percent = resolve_deposit_percent(
+        conn, "workshop", start_date, reg["party_size"], reg["deposit_percent"])
+    deposit_amount, balance_amount, balance_due_date = compute_workshop_payment_terms(
+        total_price, deposit_percent, parse_date(start_date))
+    if reg["deposit_paid_at"]:
+        deposit_amount = reg["deposit_amount"]
+        balance_amount = round((total_price or 0) - (deposit_amount or 0), 2)
+        if balance_amount > 0.005 and not balance_due_date:
+            balance_due_date = house_today_iso()      # inside the thirty days: due now
+    if balance_amount is not None and balance_amount <= 0.005:
+        balance_due_date = None
+    moved = balance_due_date != reg["balance_due_date"]
+    conn.execute(
+        """UPDATE workshop_bookings SET total_price = ?, deposit_amount = ?, balance_amount = ?,
+               balance_due_date = ?,
+               balance_reminder_sent_at = CASE WHEN ? THEN NULL ELSE balance_reminder_sent_at END,
+               balance_due_noticed_at = CASE WHEN ? THEN NULL ELSE balance_due_noticed_at END
+             WHERE id = ?""",
+        (total_price, deposit_amount, balance_amount, balance_due_date, moved, moved,
+         registration_id))
+    restamp_workshop_balance(conn, registration_id)
+    return deposit_amount, balance_amount, balance_due_date
 
 
 def confirm_workshop_registration_by_id(conn, registration_id, via=None):
@@ -54001,25 +54506,38 @@ def toggle_workshop_do_not_email(registration_id):
 @app.route("/admin/workshops/registrations/export.csv")
 @owner_required
 def export_workshop_registrations_csv():
+    """The register as a spreadsheet -- the view it was exported from.
+
+    It used to be every registration there had ever been, whatever the page
+    was showing, and carried the figures set on booking day rather than what
+    had been paid. Now it is the rows on screen, with the ledger's money.
+    """
     conn = get_db()
-    rows = conn.execute(
-        """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date,
-               workshops.title AS workshop_title, rooms.name AS assigned_room_name,
-               (SELECT GROUP_CONCAT(guest_name, ', ') FROM workshop_booking_guests
-                WHERE workshop_booking_id = workshop_bookings.id) AS party_names
-           FROM workshop_bookings
-           JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
-           JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-           LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
-           ORDER BY workshop_sessions.start_date"""
-    ).fetchall()
+    _items, lv = workshop_register_view(conn, request.args)
     conn.close()
-    fieldnames = ["workshop_title", "reference_code", "guest_name", "party_names", "guest_email", "guest_phone",
-                  "start_date", "end_date", "party_size", "occupancy_type", "single_supplement",
-                  "assigned_room_name",
-                  "requested_roommate", "dietary_notes", "medical_notes", "special_occasion", "status",
-                  "total_price", "deposit_amount", "deposit_paid_at", "balance_amount", "balance_due_date",
-                  "balance_paid_at", "notes", "created_at"]
+    fieldnames = ["workshop_title", "reference_code", "guest_name", "party_names", "guest_email",
+                  "guest_phone", "start_date", "end_date", "party_size", "occupancy_type",
+                  "single_supplement", "assigned_room_name", "requested_roommate",
+                  "dietary_notes", "medical_notes", "special_occasion", "status",
+                  "total_charged", "paid", "owed", "balance_due_date", "card",
+                  "notes", "created_at"]
+    rows = []
+    for r in lv["rows"]:
+        b = r["row"]
+        rows.append({
+            "workshop_title": r["what"], "reference_code": r["reference"],
+            "guest_name": r["who"], "party_names": ", ".join(r["party_names"]),
+            "guest_email": r["email"], "guest_phone": r["phone"],
+            "start_date": r["start_date"], "end_date": r["end_date"],
+            "party_size": b["party_size"], "occupancy_type": b["occupancy_type"],
+            "single_supplement": b["single_supplement"], "assigned_room_name": r["room"],
+            "requested_roommate": b["requested_roommate"], "dietary_notes": b["dietary_notes"],
+            "medical_notes": b["medical_notes"], "special_occasion": b["special_occasion"],
+            "status": b["status"], "total_charged": f"{r['charged']:.2f}",
+            "paid": f"{r['paid']:.2f}", "owed": f"{r['owed']:.2f}",
+            "balance_due_date": r["due_date"], "card": r["card"],
+            "notes": b["notes"], "created_at": b["created_at"],
+        })
     return csv_response(fieldnames, rows, "workshop_registrations.csv")
 
 

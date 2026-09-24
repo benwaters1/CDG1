@@ -87,7 +87,7 @@
             <button type="submit" class="small-link" style="background:none;border:0;padding:0;cursor:pointer;color:var(--steel);">Take out of stock</button>
           </form>
           {% endif %}
-          <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Registrations</a>
+          <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Who is coming ({{ row.register.booked }}){% if row.register.owed %} · €{{ '{:,.0f}'.format(row.register.owed) }} owed{% endif %}</a>
           <a href="{{ url_for('workshop_running_sheet', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Running sheet</a>
           <a href="{{ url_for('workshop_rooming', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Rooming</a>
           {# The public workshops page promises dates reach the newsletter
@@ -154,7 +154,7 @@
             · {{ row.attended }}/{{ s['capacity'] }} attended
             {% if s['notes'] %} <span class="upload-hint">— {{ s['notes'] }}</span>{% endif %}
           </span>
-          <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Registrations</a>
+          <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Who came ({{ row.register.booked }}){% if row.register.owed %} · €{{ '{:,.0f}'.format(row.register.owed) }} owed{% endif %}</a>
           <a href="{{ url_for('workshop_running_sheet', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Running sheet</a>
           <a href="{{ url_for('workshop_rooming', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Rooming</a>
         </div>
