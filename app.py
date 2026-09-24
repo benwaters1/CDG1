@@ -3909,7 +3909,9 @@ def init_db():
         ("bookings_estimated_arrival_time", "ALTER TABLE bookings ADD COLUMN estimated_arrival_time TEXT"),
         ("tasks_booking_id", "ALTER TABLE tasks ADD COLUMN booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL"),
         ("expenses_restaurant_related", "ALTER TABLE expenses ADD COLUMN restaurant_related INTEGER NOT NULL DEFAULT 0"),
-        ("workshops_deposit_percent", "ALTER TABLE workshops ADD COLUMN deposit_percent INTEGER NOT NULL DEFAULT 30"),
+        # 10: the owner's figure (WORKSHOP_DEPOSIT_PERCENT). Only a fresh
+        # database takes this; the one-off in init_db moves an existing one.
+        ("workshops_deposit_percent", "ALTER TABLE workshops ADD COLUMN deposit_percent INTEGER NOT NULL DEFAULT 10"),
         ("workshops_inclusions", "ALTER TABLE workshops ADD COLUMN inclusions TEXT"),
         # The published price assumes a shared room, so a guest travelling alone
         # who wants their own pays a supplement. Per person, because two people
@@ -6057,7 +6059,7 @@ def init_db():
             fields.update({"active": 1, "default_capacity": 15,
                            "created_at": datetime.now(timezone.utc).isoformat()})
             if "deposit_percent" in ws_cols:
-                fields["deposit_percent"] = 30
+                fields["deposit_percent"] = WORKSHOP_DEPOSIT_PERCENT
             fields = {k: v for k, v in fields.items() if k in ws_cols}
             conn.execute(
                 f"INSERT INTO workshops ({', '.join(fields)}) "
@@ -6112,7 +6114,7 @@ def init_db():
             fields.update({"active": 1, "default_capacity": 15,
                            "created_at": datetime.now(timezone.utc).isoformat()})
             if "deposit_percent" in ws_cols:
-                fields["deposit_percent"] = 30
+                fields["deposit_percent"] = WORKSHOP_DEPOSIT_PERCENT
             fields = {k: v for k, v in fields.items() if k in ws_cols}
             conn.execute(
                 f"INSERT INTO workshops ({', '.join(fields)}) "
@@ -6130,6 +6132,11 @@ def init_db():
         if added:
             print(f"Added {len(added)} atelier(s) missing from this database: "
                   f"{', '.join(added)}")
+
+    moved, repriced = apply_workshop_deposit_percent(conn)
+    if moved or repriced:
+        print(f"Workshop deposit set to {WORKSHOP_DEPOSIT_PERCENT}%: {moved} atelier(s), "
+              f"{repriced} unpaid deposit(s) repriced")
 
     # 2a. Rewritten copy. Applied only where the description is still one of
     #     the wordings WE seeded, so anything written by hand survives a
@@ -24186,6 +24193,7 @@ def house_windows():
         "cert_warning_days": CERT_EXPIRY_WARNING_DAYS,
         "guest_session_hours": GUEST_SESSION_HOURS,
         "workshop_balance_days": WORKSHOP_BALANCE_DAYS,
+        "workshop_deposit_percent": WORKSHOP_DEPOSIT_PERCENT,
     }
 
 
@@ -42215,12 +42223,13 @@ def workshop_deposit_to_show(conn):
     who sees 30% on the public page and is charged 50% at checkout has been
     told a wrong figure about their own money on the page where they decided.
 
-    deposit_percent is a column on each workshop with a default of 30, not a
-    house rule. The page has always stated it as one.
+    deposit_percent is a column on each workshop -- WORKSHOP_DEPOSIT_PERCENT
+    unless somebody sets another -- not a house rule. The page used to state
+    it as one.
     """
     rows = conn.execute(
-        "SELECT DISTINCT COALESCE(deposit_percent, 30) AS pct FROM workshops "
-        "WHERE active = 1").fetchall()
+        "SELECT DISTINCT COALESCE(deposit_percent, ?) AS pct FROM workshops "
+        "WHERE active = 1", (WORKSHOP_DEPOSIT_PERCENT,)).fetchall()
     percents = {int(r["pct"]) for r in rows}
     if len(percents) != 1:
         return None
@@ -42232,6 +42241,48 @@ def workshop_deposit_to_show(conn):
 # state a different one -- which is exactly how the deposit came to be wrong
 # on four pages at once.
 WORKSHOP_BALANCE_DAYS = 30
+
+# What an atelier takes to reserve a place, unless the owner sets another on
+# the atelier itself or a deposit rule says otherwise. The owner's figure: 10%
+# (24 September 2026). It was 30, written as a bare number in the seed, the
+# column's default, the fallback and the form -- so the house's deposit was
+# whatever that number happened to be, four times over.
+WORKSHOP_DEPOSIT_PERCENT = 10
+
+
+def apply_workshop_deposit_percent(conn):
+    """Once: every atelier still on the old seeded 30% goes to the house's
+    figure, and a registration whose deposit is not paid yet asks for the new
+    one.
+
+    Recorded in app_settings and never repeated, so an owner who later puts
+    one atelier back to 30 on purpose is not overruled on the next deploy.
+    Only ateliers still AT 30 move: one set to anything else was set by
+    somebody. A deposit already paid stays paid -- that registration keeps the
+    terms it was made on -- and an unpaid one is repriced through the one
+    function that does it, which moves only what is owed. Returns
+    (ateliers moved, registrations repriced).
+    """
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'workshop_deposit_percent_done'").fetchone():
+        return 0, 0
+    moved = conn.execute("UPDATE workshops SET deposit_percent = ? WHERE deposit_percent = 30",
+                         (WORKSHOP_DEPOSIT_PERCENT,)).rowcount
+    repriced = 0
+    for reg in conn.execute(
+            """SELECT wb.id, wb.total_price, wb.reference_code, ws.start_date
+                 FROM workshop_bookings wb
+                 JOIN workshop_sessions ws ON ws.id = wb.session_id
+                 JOIN workshops w ON w.id = ws.workshop_id
+                WHERE wb.status IN ('pending', 'confirmed') AND wb.deposit_paid_at IS NULL
+                  AND ws.start_date >= ? AND w.deposit_percent = ?""",
+            (house_today_iso(), WORKSHOP_DEPOSIT_PERCENT)).fetchall():
+        reprice_workshop_registration(conn, reg["id"], total_price=reg["total_price"],
+                                      start_date=reg["start_date"])
+        repriced += 1
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('workshop_deposit_percent_done', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    return moved, repriced
 
 
 def compute_workshop_payment_terms(total_price, deposit_percent, start_date):
@@ -48855,6 +48906,15 @@ def bulk_confirm_bookings():
             f"SELECT id, reference_code FROM bookings "
             f"WHERE id IN ({','.join('?' * len(booking_ids))})",
             tuple(booking_ids))}
+    # Their status before anything moves: a confirmed stay can be ticked now,
+    # to tie a party, and "somebody else dealt with it" is not the reason one
+    # the owner confirmed last week was skipped.
+    was = {}
+    if booking_ids:
+        was = {r["id"]: r["status"] for r in conn.execute(
+            f"SELECT id, status FROM bookings "
+            f"WHERE id IN ({','.join('?' * len(booking_ids))})",
+            tuple(booking_ids))}
     confirmed, skipped = 0, []
     for bid in booking_ids:
         ok, reason = confirm_booking_by_id(conn, bid)
@@ -48866,7 +48926,8 @@ def bulk_confirm_bookings():
         # ten it means somebody else has already dealt with that one -- which
         # is worth saying, and used to be dropped from the count entirely.
         if reason == "not found or not pending":
-            reason = "already dealt with by somebody else"
+            reason = (f"it was already {was[bid]}" if was.get(bid) not in (None, "pending")
+                      else "already dealt with by somebody else")
         skipped.append((refs.get(bid, f"#{bid}"), reason))
     conn.commit()
     conn.close()
@@ -52987,7 +53048,7 @@ def new_workshop():
              int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0
              else DEFAULT_WORKSHOP_CAPACITY,
              max_order + 1,
-             int(deposit_percent_raw) if deposit_percent_raw.isdigit() else 30,
+             int(deposit_percent_raw) if deposit_percent_raw.isdigit() else WORKSHOP_DEPOSIT_PERCENT,
              inclusions or None, itinerary or None, supplement,
              datetime.now(timezone.utc).isoformat()),
         )
@@ -53455,13 +53516,34 @@ def edit_workshop_session(session_id):
             WHERE id = ?""",
         (capacity, start.isoformat(), end.isoformat(),
          (request.form.get("notes") or "").strip() or None, session_id))
+    # NEW DATES MOVE THE MONEY. A balance falls due thirty days before the
+    # atelier, and this changed the atelier's date and not one balance's --
+    # so the notice that they had fallen due, the reminder and the list of
+    # balances to collect all kept to the old calendar, a month early or a
+    # month late. Each live registration is repriced through the one
+    # function that does it, which keeps a deposit already paid and re-arms
+    # the reminder and the notice for the new date.
+    moved = 0
+    if start.isoformat() != session_row["start_date"]:
+        for reg in conn.execute(
+                """SELECT id, total_price FROM workshop_bookings
+                    WHERE session_id = ? AND status IN ('pending', 'confirmed')""",
+                (session_id,)).fetchall():
+            reprice_workshop_registration(conn, reg["id"], total_price=reg["total_price"],
+                                          start_date=start.isoformat())
+            moved += 1
     # Capacity is what places are sold against, so a change to it is a change
     # to what the house has promised, not a settings tweak.
     log_audit(conn, "workshop_session_edited", target=str(session_id),
-              details=f"capacity {session_row['capacity']} -> {capacity}")
+              details=f"capacity {session_row['capacity']} -> {capacity}"
+                      + (f"; dates {session_row['start_date']} -> {start.isoformat()}, "
+                         f"{moved} balance(s) re-dated" if moved else ""))
     conn.commit()
     conn.close()
-    flash("Session updated.", "success")
+    flash("Session updated." + (
+        f" {moved} registration{'' if moved == 1 else 's'} now fall{'s' if moved == 1 else ''} due "
+        f"thirty days before the new date. They have not been told: the register's "
+        f"\"Email everyone\" is the way to." if moved else ""), "success")
     return redirect(url_for("admin_workshops"))
 
 

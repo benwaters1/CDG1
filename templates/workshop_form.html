@@ -53,7 +53,7 @@
     <p class="upload-hint">The price above assumes a shared room. This is what a guest pays on top for a room to themselves — a common request, and the only way it gets charged. Left empty, a solo room is offered at no extra cost.</p>
 
     <label class="field-label" for="workshop_form-deposit-percent">Deposit required at booking (%)</label>
-    <input id="workshop_form-deposit-percent" type="number" name="deposit_percent" min="0" max="100" value="{{ workshop['deposit_percent'] if workshop else 30 }}">
+    <input id="workshop_form-deposit-percent" type="number" name="deposit_percent" min="0" max="100" value="{{ workshop['deposit_percent'] if workshop else windows.workshop_deposit_percent }}">
     <p class="upload-hint">The rest is due as a balance {{ windows.workshop_balance_days }} days before the session starts (or in full, if booked within {{ windows.workshop_balance_days }} days).</p>
 
     {% if workshop %}

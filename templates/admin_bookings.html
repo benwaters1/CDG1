@@ -132,8 +132,14 @@
     <p class="upload-hint">Submitted {{ b['created_at']|house_day }}{% if b['decided_at'] %} · Decided {{ b['decided_at']|house_day }}{% endif %}</p>
 
     <div class="expense-actions">
+      {# A tick box on confirmed stays too. "Tie together as a party" is for
+         bookings that are usually confirmed by the time a party is obvious --
+         and only pending ones could be ticked, so it could not be used. #}
+      {% if b['status'] in ('pending', 'confirmed') %}
+      <input type="checkbox" value="{{ b['id'] }}" class="bulk-check" style="margin-right:4px;"
+             aria-label="Choose {{ b['reference_code'] }}">
+      {% endif %}
       {% if b['status'] == 'pending' %}
-      <input type="checkbox" value="{{ b['id'] }}" class="bulk-check" style="margin-right:4px;">
       <form method="post" action="{{ url_for('confirm_booking', booking_id=b['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Confirm</button></form>
       {# Why, asked at the moment somebody knows the answer. Optional on
          purpose: refusing a decline over a missing dropdown means somebody
