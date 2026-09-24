@@ -31,7 +31,15 @@
     {% if record.first_seen %}
     <div><dt>Known since</dt><dd>{{ record.first_seen|date_short }}</dd></div>
     {% endif %}
+    {% if is_owner and record.marketing %}
+    <div><dt>Marketing</dt><dd>{{ record.marketing[0] }}{% if record.marketing[1] %}, {{ record.marketing[1]|house_day|date_short }}{% endif %}</dd></div>
+    {% endif %}
   </dl>
+  {% if is_owner and g['email'] %}
+  {# Everything the house holds about them, as the file they are entitled to
+     ask for -- one click from their record rather than a search elsewhere. #}
+  <p class="upload-hint"><a href="{{ url_for('data_requests', email=g['email']) }}" class="small-link">What we hold about them</a></p>
+  {% endif %}
 
   {% if g['dietary_notes'] %}
   <div class="pass-short" style="margin-top:10px;">
@@ -177,13 +185,18 @@
 <h2 class="section-heading">Ateliers ({{ record.workshops|length }})</h2>
 <div class="table-wrap">
 <table class="data-table">
-  <thead><tr><th>When</th><th>Workshop</th><th>Status</th></tr></thead>
+  <thead><tr><th>When</th><th>Workshop</th><th>Status</th>{% if is_owner %}<th class="num">Charged</th><th class="num">Owed</th>{% endif %}</tr></thead>
   <tbody>
     {% for w in record.workshops %}
+    {% set wm = record.workshop_money.get(w['id']) %}
     <tr>
       <th scope="row">{{ w['start_date']|date_short }}</th>
       <td>{{ w['title'] }}</td>
       <td><span class="mini-status status-{{ w['status'] }}">{{ w['status'] }}</span></td>
+      {% if is_owner %}
+      <td class="num">{% if wm and w['status'] == 'confirmed' %}€{{ '%.2f'|format(wm.charged) }}{% else %}—{% endif %}</td>
+      <td class="num">{% if wm and w['status'] == 'confirmed' and wm.owed > 0.005 %}<strong>€{{ '%.2f'|format(wm.owed) }}</strong>{% else %}—{% endif %}</td>
+      {% endif %}
     </tr>
     {% endfor %}
   </tbody>
@@ -195,13 +208,18 @@
 <h2 class="section-heading">Enquiries ({{ record.events|length }})</h2>
 <div class="table-wrap">
 <table class="data-table">
-  <thead><tr><th>Date wanted</th><th>Kind</th><th>Status</th></tr></thead>
+  <thead><tr><th>Date wanted</th><th>Kind</th><th>Status</th>{% if is_owner %}<th class="num">Quoted</th><th class="num">Owed</th>{% endif %}</tr></thead>
   <tbody>
     {% for e in record.events %}
+    {% set em = record.event_money.get(e['id']) %}
     <tr>
       <th scope="row">{{ e['preferred_date'] or '—' }}</th>
       <td>{{ e['event_type'] }}</td>
       <td><span class="mini-status status-{{ e['status'] }}">{{ e['status'] }}</span></td>
+      {% if is_owner %}
+      <td class="num">{% if em and em.quoted %}€{{ '%.2f'|format(em.quoted) }}{% else %}—{% endif %}</td>
+      <td class="num">{% if em and e['status'] == 'confirmed' and em.owed > 0.005 %}<strong>€{{ '%.2f'|format(em.owed) }}</strong>{% else %}—{% endif %}</td>
+      {% endif %}
     </tr>
     {% endfor %}
   </tbody>

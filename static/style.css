@@ -464,6 +464,8 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
 .register-field{ display:flex; flex-direction:column; flex:1 1 9rem; min-width:9rem; }
 .register-hold{ color:var(--rust); margin-top:6px; }
 .register-table td{ vertical-align:top; }
+/* What a stay still owes, on the bookings list. */
+.owed-flag{ color:var(--rust); }
 .owed-take__form{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;
   align-items:center; }
 .owed-take__form input[type=number]{ width:7em; }

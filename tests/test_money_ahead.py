@@ -119,6 +119,12 @@ def run():
                  deposit_paid_at, balance_amount, balance_due_date, created_at)
                VALUES (?, ?, ?, ?, 'x@example.com', 'confirmed', 4800, 1440, ?, 3360, ?, ?)""",
             (session["id"], TAG + "W1", TAG + "wtok", TAG + "Atelier", now, d(45), now))
+        # And the deposit on the ledger, as every real deposit writes it: the
+        # forecast reads what the ledger says is left, not the figure fixed the
+        # day they booked.
+        wb = conn.execute("SELECT id FROM workshop_bookings WHERE reference_code = ?",
+                          (TAG + "W1",)).fetchone()["id"]
+        m.add_workshop_transaction(conn, wb, "payment", "Deposit", 1440, method="stripe")
         conn.commit()
         ahead = m.money_ahead(conn, days=90, today=today)
         bal = [i for i in ahead["incoming"] if TAG + "Atelier" in i["label"]]

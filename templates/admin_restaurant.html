@@ -159,7 +159,7 @@
     {% if r['total_price'] and r['deposit_amount'] and r['deposit_amount'] < r['total_price'] %}
     <p class="upload-hint"><span class="mini-status status-paid">deposit €{{ '%.2f'|format(r['deposit_amount']) }} paid</span> · <strong>€{{ '%.2f'|format(r['total_price'] - r['deposit_amount']) }} due onsite</strong></p>
     {% endif %}
-    <p class="upload-hint">{{ r['guest_email'] }}{% if r['guest_phone'] %} · {{ r['guest_phone'] }}{% endif %} · <a href="{{ url_for('guest_booking_history', email=r['guest_email']) }}" class="small-link" style="color:var(--steel);">full history</a></p>
+    <p class="upload-hint">{{ r['guest_email'] }}{% if r['guest_phone'] %} · {{ r['guest_phone'] }}{% endif %} · <a href="{{ url_for('guest_by_email', email=r['guest_email']) }}" class="small-link" style="color:var(--steel);">their record</a></p>
     {% if no_show_history.get(r['id']) %}
     {# Shown before Confirm, not after — the point is to decide with it. #}
     <p class="no-show-warning">

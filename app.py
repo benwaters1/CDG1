@@ -6542,6 +6542,7 @@ NAV_AREAS = {
         "arrivals_sheet_page", "issue_access_code", "access_code_returned",
         "walk_in_booking", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
+        "guest_by_email",
         "save_list_view", "delete_list_view",
         "guest_duplicates",
         "admin_turnarounds", "export_turnarounds_csv",
@@ -7849,6 +7850,66 @@ def rostered_labour_cost(conn, start_iso, end_iso):
     }
 
 
+def expected_money_in(conn, today=None):
+    """What guests have agreed to pay and not yet paid, and when it is due.
+
+    ONE list for every forecast, each figure from its own one definition -- a
+    stay's bill, an atelier's ledger, an event's bill -- so the cash outlook,
+    money due and money ahead cannot each work it out a different way. That is
+    how they came to disagree: the outlook took a stay's discount off a second
+    time and left out its extras and tax, counted an event's whole quote
+    however much of it had already been paid, and read an atelier's balance
+    from the figure fixed the day they booked.
+
+    Confirmed only: a maybe is not money. An unpaid deposit was due when they
+    booked, so it is dated today; what is left after it falls on its own date.
+    """
+    today = today or house_today()
+    iso = today.isoformat()
+    out = []
+    for b in conn.execute(
+            """SELECT bookings.id, bookings.guest_name, bookings.reference_code,
+                      bookings.arrival_date, bookings.balance_due_date, rooms.name AS room_name
+                 FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.status = 'confirmed'""").fetchall():
+        bill = booking_bill(conn, b["id"])
+        if bill and bill["owed"] > 0.005:
+            out.append({"date": b["balance_due_date"] or b["arrival_date"], "kind": "Room",
+                        "amount": round(bill["owed"], 2), "ref": b["reference_code"],
+                        "who": b["guest_name"] or "A guest", "what": "Room balance",
+                        "title": b["room_name"] or "Room", "part": "balance"})
+    for w in conn.execute(
+            """SELECT workshop_bookings.*, workshops.title, workshop_sessions.start_date
+                 FROM workshop_bookings
+                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                WHERE workshop_bookings.status = 'confirmed'""").fetchall():
+        owed, _charged, _paid = workshop_balance_due(conn, w["id"])
+        if owed <= 0.005:
+            continue
+        deposit = min(float(w["deposit_amount"] or 0), owed) if not w["deposit_paid_at"] else 0.0
+        if deposit > 0.005:
+            out.append({"date": iso, "kind": "Workshop", "amount": round(deposit, 2),
+                        "ref": w["reference_code"], "who": w["guest_name"] or "A guest",
+                        "what": "Atelier deposit", "title": w["title"], "part": "deposit"})
+        rest = round(owed - deposit, 2)
+        if rest > 0.005:
+            out.append({"date": w["balance_due_date"] or w["start_date"], "kind": "Workshop",
+                        "amount": rest, "ref": w["reference_code"],
+                        "who": w["guest_name"] or "A guest", "what": "Atelier balance",
+                        "title": w["title"], "part": "balance"})
+    for e in conn.execute(
+            "SELECT id FROM event_inquiries WHERE status = 'confirmed'").fetchall():
+        bill = event_bill(conn, e["id"])
+        if bill and bill["owed"] > 0.005:
+            ev = bill["event"]
+            out.append({"date": ev["balance_due_date"] or ev["preferred_date"], "kind": "Event",
+                        "amount": round(bill["owed"], 2), "ref": ev["reference_code"],
+                        "who": ev["contact_name"] or "An event", "what": "Event balance",
+                        "title": ev["event_type"] or "Event", "part": "balance"})
+    return [x for x in out if x["date"]]
+
+
 def cash_outlook(conn, months=6, today=None):
     """What is already committed out, against what is already expected in.
 
@@ -7867,6 +7928,7 @@ def cash_outlook(conn, months=6, today=None):
     today = today or house_today()
     first = today.replace(day=1)
     rows = []
+    expected = expected_money_in(conn, today)
     for i in range(max(1, months)):
         year, month = divmod(first.month - 1 + i, 12)
         start = date(first.year + year, month + 1, 1)
@@ -7874,26 +7936,16 @@ def cash_outlook(conn, months=6, today=None):
                else date(start.year, start.month + 1, 1))
         s_iso, e_iso = start.isoformat(), end.isoformat()
 
-        rooms = conn.execute(
-            """SELECT COALESCE(SUM(MAX(COALESCE(total_price, 0)
-                                      - COALESCE(discount_amount, 0)
-                                      - COALESCE(amount_paid, 0), 0)), 0) AS due
-               FROM bookings
-               WHERE status = 'confirmed'
-                 AND COALESCE(balance_due_date, arrival_date) >= ?
-                 AND COALESCE(balance_due_date, arrival_date) < ?""",
-            (s_iso, e_iso)).fetchone()["due"]
-        ateliers = conn.execute(
-            """SELECT COALESCE(SUM(COALESCE(balance_amount, 0)), 0) AS due
-               FROM workshop_bookings
-               WHERE status = 'confirmed' AND balance_paid_at IS NULL
-                 AND balance_due_date >= ? AND balance_due_date < ?""",
-            (s_iso, e_iso)).fetchone()["due"]
-        events = conn.execute(
-            """SELECT COALESCE(SUM(COALESCE(quoted_price, 0)), 0) AS due
-               FROM event_inquiries
-               WHERE status = 'confirmed' AND preferred_date >= ? AND preferred_date < ?""",
-            (s_iso, e_iso)).fetchone()["due"]
+        # From the one list of what is agreed and not yet in. This worked out
+        # a stay as total less discount less paid -- the discount a second
+        # time, since total is already net of it, and no extras or tax --
+        # and an event as its whole quote whatever had been paid.
+        def month_in(kind):
+            return sum(x["amount"] for x in expected
+                       if x["kind"] == kind and s_iso <= x["date"] < e_iso)
+        rooms = month_in("Room")
+        ateliers = month_in("Workshop")
+        events = month_in("Event")
 
         monthly_costs = conn.execute(
             """SELECT COALESCE(SUM(amount), 0) AS out FROM recurring_costs
@@ -20786,35 +20838,13 @@ def money_due(conn, weeks=12, today=None):
         slot["items"].append({"date": day.isoformat(), "who": label,
                               "amount": round(float(amount or 0), 2), "what": what})
 
-    # What is left is what the bill says is left -- booking_bill, the one the
-    # Pay button, the chase and the guest's own page read. total_price less
-    # what was paid left out the taxe de sejour and anything added since.
-    for r in conn.execute(
-            """SELECT id, guest_name, balance_due_date FROM bookings
-                WHERE status = 'confirmed' AND balance_due_date IS NOT NULL
-                  AND balance_due_date >= ? AND balance_due_date <= ?""",
-            (today.isoformat(), end.isoformat())).fetchall():
-        bill = booking_bill(conn, r["id"])
-        outstanding = bill["owed"] if bill else 0.0
-        if outstanding > 0.005:
-            add(r["balance_due_date"], r["guest_name"] or "A guest", outstanding, "Room balance")
-
-    for r in conn.execute(
-            """SELECT guest_name, balance_due_date, total_price, deposit_amount
-                 FROM workshop_bookings
-                WHERE status = 'confirmed' AND balance_due_date IS NOT NULL
-                  AND balance_paid_at IS NULL""").fetchall():
-        owed = float(r["total_price"] or 0) - float(r["deposit_amount"] or 0)
-        if owed > 0.005:
-            add(r["balance_due_date"], r["guest_name"] or "A guest", owed, "Atelier balance")
-
-    for r in conn.execute(
-            """SELECT contact_name, balance_due_date, quoted_price, amount_paid
-                 FROM event_inquiries
-                WHERE status = 'confirmed' AND balance_due_date IS NOT NULL""").fetchall():
-        owed = float(r["quoted_price"] or 0) - float(r["amount_paid"] or 0)
-        if owed > 0.005:
-            add(r["balance_due_date"], r["contact_name"] or "An event", owed, "Event balance")
+    # What is left is what each kind's own bill says is left: booking_bill
+    # for a stay, the ledger for an atelier, event_bill for an event -- one
+    # list, expected_money_in, the same one the cash outlook reads. An
+    # atelier's figure used to be total less deposit, as though nothing had
+    # been paid since, and an event's ignored its discount.
+    for x in expected_money_in(conn, today):
+        add(x["date"], x["who"], x["amount"], x["what"])
 
     weeks_out = sorted(buckets.values(), key=lambda b: b["week"])
     return {
@@ -26939,6 +26969,22 @@ def owner_home_warnings(conn, today):
               "app will not try the card again, so nothing more happens "
               "unless somebody follows it up.",
             len(refused), "balances_to_collect")
+
+    # Money guests owe that is LATE: a stay whose guest has left, or whose
+    # balance date has passed; an event past its. Every one of these was on
+    # What we're owed and nowhere anybody looks in the morning. Workshop
+    # balances have their own line below, where the button is.
+    late = [r for r in outstanding_balances(conn, today=today)
+            if r["kind"] in ("stay", "event") and r["state"] in ("gone", "overdue")]
+    if late:
+        worst = max(late, key=lambda r: r["days_late"])
+        add("attention",
+            f"{euro(sum(r['owed'] for r in late))} owed by "
+            f"{len(late)} guest{'' if len(late) == 1 else 's'}, and late",
+            f"The longest: {worst['who']}, {euro(worst['owed'])}, "
+            f"{worst['days_late']} day{'' if worst['days_late'] == 1 else 's'}"
+            + (" since they left." if worst["state"] == "gone" else " past the date it was due."),
+            len(late), "management_outstanding")
 
     # Workshop balances that have fallen due. Nothing takes a card on its own,
     # so until the owner presses the button the money is simply not collected
@@ -36339,12 +36385,17 @@ def guest_detail(guest_id):
     if is_owner:
         overview = [
             overview_cell("Stays", len([b for b in record["stays"]
-                                        if b["status"] != "cancelled"]),
+                                        if b["status"] == "confirmed"]),
                           hint=f"{record['nights']} night(s)"),
             overview_cell("Spent with us", euro(record["spent"]),
-                          hint="gross, everything included"),
-            overview_cell("Still owed", euro(record["owed"]),
-                          alert=record["owed"] > 0),
+                          hint="gross: stays, ateliers and events"
+                               + (f", and {euro(record['at_table'])} at the table"
+                                  if record["at_table"] else "")),
+            (overview_cell("In credit", euro(-record["owed"]),
+                           hint="more has come in than was charged")
+             if record["owed"] < -0.005 else
+             overview_cell("Still owed", euro(record["owed"]),
+                           alert=record["owed"] > 0.005)),
             overview_cell("Known since", house_date_iso(record["first_seen"]) or "\u2014"),
         ]
     # For the rebook box: the rooms it could be, and how long they usually
@@ -47658,6 +47709,13 @@ def admin_bookings():
     # one-off search box. This page had its own, so it was the only list in the
     # app with no counts on its filters, no sort, and no saved views.
     #
+    # What each stay still owes, from What we're owed's own list -- which is
+    # booking_bill for every confirmed stay not settled -- so the two pages
+    # cannot disagree. The list showed the price and a paid/unpaid chip, and a
+    # stay with an extra added since, or a tax charged, read as paid.
+    owed_by_booking = {r["booking"]["id"]: r["owed"]
+                       for r in outstanding_balances(conn) if r["kind"] == "stay"}
+
     # THE OLD PARAMETERS STILL WORK. ?status=pending and ?room_id=3 are in
     # bookmarks, in links somebody has sent, and on the second screen at the
     # desk; a conversion that quietly stopped honouring them would look like the
@@ -47702,10 +47760,12 @@ def admin_bookings():
             facet("state", "Status", lambda b: (b["status"] or "").capitalize(),
                   order=["Pending", "Confirmed", "Cancelled", "Declined"]),
             facet("room", "Room", lambda b: b["room_name"], limit=12),
+            facet("money", "Money", lambda b: "Owes money" if owed_by_booking.get(b["id"]) else None),
         ],
         sorts=[
             sort_option("arrival", "Arriving soonest",
                         lambda b: b["arrival_date"] or "9999-12-31"),
+            sort_option("owed", "Most owed", lambda b: -owed_by_booking.get(b["id"], 0)),
             sort_option("latest", "Most recent stay first",
                         lambda b: b["departure_date"] or "", reverse=True),
             sort_option("recent", "Booked most recently",
@@ -47769,7 +47829,7 @@ def admin_bookings():
 
     conn.close()
     return render_template(
-        "admin_bookings.html", bookings=bookings, counts=counts, rooms=rooms, employees=employees,
+        "admin_bookings.html", owed_by_booking=owed_by_booking, bookings=bookings, counts=counts, rooms=rooms, employees=employees,
         lv=lv,
         caution_by_booking=caution_by_booking, caution_levels=CAUTION_LEVELS,
         # status_filter / room_filter are no longer handed over: the toolbar renders
@@ -48515,6 +48575,38 @@ def guest_portal(token):
     )
 
 
+@app.route("/guests/find")
+@owner_required
+def guest_by_email():
+    """The person behind an address: their profile if they have one, and the
+    history of everything under that address if not.
+
+    The registrations, dinners and events pages each linked "full history" to
+    the older address-keyed page, so the profile -- with its notes, what they
+    owe across everything, what they have been sent -- was one page further
+    away than it needed to be from anybody looking at one of their bookings.
+    """
+    email = (request.args.get("email") or "").strip()
+    if not email:
+        abort(404)
+    conn = get_db()
+    profile = conn.execute(
+        "SELECT id, merged_into_id FROM guests WHERE LOWER(TRIM(email)) = LOWER(TRIM(?)) "
+        "ORDER BY merged_into_id IS NOT NULL, id LIMIT 1", (email,)).fetchone()
+    # An address that only a merged-away profile carried is an old address of
+    # the person it was merged into, so it goes to them -- followed as far as
+    # merges go, and no further than there are profiles.
+    seen = set()
+    while profile and profile["merged_into_id"] and profile["id"] not in seen:
+        seen.add(profile["id"])
+        profile = conn.execute("SELECT id, merged_into_id FROM guests WHERE id = ?",
+                               (profile["merged_into_id"],)).fetchone()
+    conn.close()
+    if profile:
+        return redirect(url_for("guest_detail", guest_id=profile["id"]))
+    return redirect(url_for("guest_booking_history", email=email))
+
+
 @app.route("/admin/bookings/guest/<email>")
 @owner_required
 def guest_booking_history(email):
@@ -48530,27 +48622,38 @@ def guest_booking_history(email):
            ORDER BY arrival_date DESC""",
         (email,),
     ).fetchall()
+    # The rest matched exactly, so the stays above found "Ben@Chateau.com"
+    # and the dinner, the atelier and the wedding under the same person did
+    # not -- the history split in two a line after the comment saying why it
+    # must not.
     dinners = conn.execute(
-        "SELECT * FROM restaurant_bookings WHERE guest_email = ? ORDER BY dinner_date DESC", (email,)
+        "SELECT * FROM restaurant_bookings WHERE LOWER(TRIM(guest_email)) = LOWER(TRIM(?)) "
+        "ORDER BY dinner_date DESC", (email,)
     ).fetchall()
     workshop_regs = conn.execute(
         """SELECT workshop_bookings.*, workshops.title AS workshop_title, workshop_sessions.start_date
            FROM workshop_bookings
            JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
            JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-           WHERE workshop_bookings.guest_email = ? ORDER BY workshop_sessions.start_date DESC""",
+           WHERE LOWER(TRIM(workshop_bookings.guest_email)) = LOWER(TRIM(?))
+           ORDER BY workshop_sessions.start_date DESC""",
         (email,),
     ).fetchall()
     events = conn.execute(
-        "SELECT * FROM event_inquiries WHERE contact_email = ? ORDER BY created_at DESC", (email,)
+        "SELECT * FROM event_inquiries WHERE LOWER(TRIM(contact_email)) = LOWER(TRIM(?)) "
+        "ORDER BY created_at DESC", (email,)
     ).fetchall()
     promo_redemptions = conn.execute(
         """SELECT promo_code_redemptions.*, promo_codes.code
            FROM promo_code_redemptions JOIN promo_codes ON promo_codes.id = promo_code_redemptions.promo_code_id
-           WHERE promo_code_redemptions.guest_email = ? ORDER BY promo_code_redemptions.redeemed_at DESC""",
+           WHERE LOWER(TRIM(promo_code_redemptions.guest_email)) = LOWER(TRIM(?))
+           ORDER BY promo_code_redemptions.redeemed_at DESC""",
         (email,),
     ).fetchall()
-    profile = conn.execute("SELECT * FROM guests WHERE email = ?", (email,)).fetchone()
+    # The profile, not one merged into it: that one is this person now.
+    profile = conn.execute(
+        "SELECT * FROM guests WHERE LOWER(TRIM(email)) = LOWER(TRIM(?)) AND merged_into_id IS NULL",
+        (email,)).fetchone()
     # So the owner can send a guest their own link when they ask for one.
     portal_token = guest_portal_token(conn, email)
     conn.commit()
@@ -54991,27 +55094,16 @@ def money_ahead(conn, *, days=90, today=None):
                              "label": f"{b['guest_name']} — {b['room_name'] or 'room'}",
                              "kind": "Room", "ref": b["reference_code"]})
 
-    # Workshops. The deposit is due when they register and the balance on its
-    # own date, so an unpaid one of either is money genuinely still to come.
-    for w in conn.execute(
-            """SELECT workshop_bookings.*, workshops.title,
-                      workshop_sessions.start_date
-                 FROM workshop_bookings
-                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
-                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-                WHERE workshop_bookings.status IN ('confirmed', 'pending')""").fetchall():
-        if (w["deposit_amount"] or 0) > 0 and not w["deposit_paid_at"]:
-            when = w["balance_due_date"] or w["start_date"]
-            if when and today.isoformat() <= when <= last.isoformat():
-                incoming.append({"date": when, "amount": round(w["deposit_amount"], 2),
-                                 "label": f"{w['guest_name']} — {w['title']} deposit",
-                                 "kind": "Workshop", "ref": w["reference_code"]})
-        if (w["balance_amount"] or 0) > 0 and not w["balance_paid_at"]:
-            when = w["balance_due_date"] or w["start_date"]
-            if when and today.isoformat() <= when <= last.isoformat():
-                incoming.append({"date": when, "amount": round(w["balance_amount"], 2),
-                                 "label": f"{w['guest_name']} — {w['title']} balance",
-                                 "kind": "Workshop", "ref": w["reference_code"]})
+    # Workshops, from the ledger, through the same list the other forecasts
+    # read. An unpaid deposit was due when they registered, so it is money
+    # expected now rather than on the balance date it used to be filed under;
+    # the balance is what the ledger says is left, not the figure fixed the
+    # day they booked.
+    for x in expected_money_in(conn, today):
+        if x["kind"] == "Workshop" and today.isoformat() <= x["date"] <= last.isoformat():
+            incoming.append({"date": x["date"], "amount": x["amount"],
+                             "label": f"{x['who']} — {x['title']} {x['part']}",
+                             "kind": "Workshop", "ref": x["ref"]})
 
     # The restaurant. Paid on the night, less any deposit already taken.
     for r in conn.execute(
@@ -63967,24 +64059,45 @@ def guest_record(conn, guest_id):
             WHERE ? != '' AND LOWER(TRIM(contact_email)) = ?
             ORDER BY COALESCE(preferred_date, '') DESC""", (email, email)).fetchall()
 
-    # THE MONEY. Per stay from its own bill, so the figures here and the
-    # figures on the guest's own statement cannot disagree.
-    bills, spent, owed, paid = {}, 0.0, 0.0, 0.0
+    # THE MONEY, across everything the house sells this person, each from its
+    # own one definition -- a stay's bill, an atelier's ledger, an event's
+    # bill -- so nothing here is a second way of working one out.
+    #
+    # Only what is CONFIRMED counts. A request declined, or one nobody has
+    # confirmed yet, is not money anybody is owed -- and it was being added to
+    # "spent with us" and to "still owed" both, while ateliers and events
+    # were left out of what is owed altogether. Now the three lines add up:
+    # charged, less received, is what is outstanding (in credit, if more came
+    # in than was charged). A dinner is settled at the table, on the till, so
+    # it is counted apart rather than guessed into what is owed.
+    bills, workshop_money, event_money = {}, {}, {}
+    charged = received = 0.0
     for b in stays:
         bill = booking_bill(conn, b["id"])
         if not bill:
             continue
         bills[b["id"]] = bill
-        if b["status"] != "cancelled":
-            spent += bill["total"]
-            owed += bill["owed"]
-            paid += bill["paid"]
+        if b["status"] == "confirmed":
+            charged += bill["total"]
+            received += bill["paid"]
     for w in workshops:
-        if w["status"] != "cancelled":
-            spent += float(w["total_price"] or 0)
-    for d in dinners:
-        if d["status"] == "confirmed":
-            spent += float(d["total_price"] or 0) if "total_price" in d.keys() else 0.0
+        w_owed, w_charged, w_paid = workshop_balance_due(conn, w["id"])
+        workshop_money[w["id"]] = {"charged": w_charged, "paid": w_paid, "owed": w_owed}
+        if w["status"] == "confirmed":
+            charged += w_charged
+            received += w_paid
+    for e in events:
+        e_bill = event_bill(conn, e["id"])
+        if not e_bill:
+            continue
+        event_money[e["id"]] = e_bill
+        if e["status"] == "confirmed":
+            charged += e_bill["quoted"]
+            received += e_bill["paid"]
+    at_table = round(sum(float(d["total_price"] or 0) for d in dinners
+                         if d["status"] == "confirmed" and not d["no_show_at"]), 2)
+    spent, paid = round(charged, 2), round(received, 2)
+    owed = round(spent - paid, 2)
 
     said = conn.execute(
         """SELECT guest_feedback.*, bookings.reference_code
@@ -63995,18 +64108,47 @@ def guest_record(conn, guest_id):
                 ",".join("?" * len(stays)) or "NULL"),
         tuple(b["id"] for b in stays)).fetchall() if stays else []
 
+    # What they have said about being written to. Kept in two places -- the
+    # newsletter's own list, and the opt-outs every campaign honours -- and
+    # shown on neither the profile nor anywhere else a person looks before
+    # writing to somebody.
+    marketing = None
+    if email:
+        sub = conn.execute(
+            "SELECT confirmed_at, unsubscribed_at FROM newsletter_subscribers "
+            "WHERE LOWER(TRIM(email)) = ?", (email,)).fetchone()
+        opted_out = conn.execute(
+            "SELECT created_at FROM email_optouts WHERE LOWER(TRIM(email)) = ?",
+            (email,)).fetchone()
+        if opted_out:
+            marketing = ("Asked not to be sent marketing email", opted_out["created_at"])
+        elif sub and sub["unsubscribed_at"]:
+            marketing = ("Unsubscribed from the newsletter", sub["unsubscribed_at"])
+        elif sub and sub["confirmed_at"]:
+            marketing = ("Subscribed to the newsletter", sub["confirmed_at"])
+        elif sub:
+            marketing = ("Signed up to the newsletter, not yet confirmed", None)
+        else:
+            marketing = ("Has not signed up to the newsletter", None)
+
     return {
+        "marketing": marketing,
+        # The id and the address, which the "book them again" box on the
+        # profile asked for and never got -- so the box never appeared.
+        "id": guest["id"], "email": guest["email"],
         "guest": guest, "stays": stays, "dinners": dinners,
         "workshops": workshops, "events": events, "bills": bills,
+        "workshop_money": workshop_money, "event_money": event_money,
         "feedback": said,
         "linked_count": len(linked), "by_email_count": len(by_email),
-        "spent": round(spent, 2), "owed": round(owed, 2), "paid": round(paid, 2),
+        "spent": spent, "owed": owed, "paid": paid, "at_table": at_table,
+        # Nights spent here: confirmed stays, not every request ever made.
         "nights": sum(
             max(0, ((parse_date(b["departure_date"]) - parse_date(b["arrival_date"])).days
                     if b["arrival_date"] and b["departure_date"]
                     and parse_date(b["arrival_date"]) and parse_date(b["departure_date"])
                     else 0))
-            for b in stays if b["status"] != "cancelled"),
+            for b in stays if b["status"] == "confirmed"),
         "first_seen": min((b["arrival_date"] for b in stays if b["arrival_date"]),
                           default=None),
         "last_seen": max((b["departure_date"] for b in stays if b["departure_date"]),

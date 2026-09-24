@@ -115,7 +115,7 @@
     {# Links, not text: an address you can click is one you write to. #}
     <p class="upload-hint">
       <a href="mailto:{{ r['guest_email'] }}">{{ r['guest_email'] }}</a>{% if r['guest_phone'] %} · <a href="tel:{{ r['guest_phone'] }}">{{ r['guest_phone'] }}</a>{% endif %}
-      · <a href="{{ url_for('guest_booking_history', email=r['guest_email']) }}" class="small-link" style="color:var(--steel);">full history</a>
+      · <a href="{{ url_for('guest_by_email', email=r['guest_email']) }}" class="small-link" style="color:var(--steel);">their record</a>
     </p>
     {% if r['requested_roommate'] %}<p class="upload-hint">Requested roommate: {{ r['requested_roommate'] }}</p>{% endif %}
     {% if r['dietary_notes'] %}<p class="upload-hint">Dietary: {{ r['dietary_notes'] }}</p>{% endif %}

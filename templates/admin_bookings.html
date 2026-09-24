@@ -120,6 +120,7 @@
     <p class="manual-body">
       {{ b['arrival_date'] }} → {{ b['departure_date'] }} · Party of {{ b['party_size'] }}
       {% if b['total_price'] %} · €{{ '%.2f'|format(b['total_price']) }}{% endif %}
+      {% if owed_by_booking.get(b['id']) %} · <strong class="owed-flag">€{{ '%.2f'|format(owed_by_booking[b['id']]) }} still owed</strong>{% endif %}
     </p>
     <p class="upload-hint">{{ b['guest_email'] }}{% if b['guest_phone'] %} · {{ b['guest_phone'] }}{% endif %}</p>
     {% if b['special_requests'] %}<p class="upload-hint">Notes: {{ b['special_requests'] }}</p>{% endif %}

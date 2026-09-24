@@ -182,7 +182,7 @@
   {% endif %}
   <p class="upload-hint">
     {{ e['contact_email'] or 'no email' }}{% if e['contact_phone'] %} · {{ e['contact_phone'] }}{% endif %}
-    {%- if e['contact_email'] %} · <a href="{{ url_for('guest_booking_history', email=e['contact_email']) }}" class="small-link" style="color:var(--steel);">full history</a>{% endif %}
+    {%- if e['contact_email'] %} · <a href="{{ url_for('guest_by_email', email=e['contact_email']) }}" class="small-link" style="color:var(--steel);">their record</a>{% endif %}
   </p>
   {% if e['message'] %}<p class="upload-hint">Asked for: {{ e['message'] }}</p>{% endif %}
   {% if e['owner_note'] %}<p class="upload-hint">Note: {{ e['owner_note'] }}</p>{% endif %}

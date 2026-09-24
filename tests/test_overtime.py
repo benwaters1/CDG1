@@ -28,6 +28,11 @@ def _cleanup(conn):
     conn.execute("DELETE FROM time_entries WHERE user_id IN "
                  "(SELECT id FROM users WHERE email LIKE ?)", (TAG + "%",))
     conn.execute("DELETE FROM users WHERE email LIKE ?", (TAG + "%",))
+    # The stay "what was on that week" needs. It was left behind, unpaid and
+    # departed, and every suite after this one inherited a guest owing 750 --
+    # which the owner home now says out loud, and the check that the panel
+    # can be empty caught.
+    conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
     conn.commit()
 
 

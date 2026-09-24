@@ -143,6 +143,9 @@ UNREADABLE = {
     "view_expense_file": "no file in the run's uploads",
     # Answers 400 without an id, which is the correct answer to no id.
     "data_request_export": "needs an id",
+    # Answers 404 without an address; with one it is a redirect to the person,
+    # never a page of its own.
+    "guest_by_email": "needs an address",
 }
 
 # The pages somebody who does not work here has to get through on their own.

@@ -34,7 +34,7 @@
 
 {% for b in record.stays %}
 {% set bill = record.bills.get(b['id']) %}
-{% if bill and b['status'] != 'cancelled' %}
+{% if bill and b['status'] == 'confirmed' %}
 <h2 class="section-heading">
   {{ b['room_name'] }} — {{ b['arrival_date']|date_short }} to {{ b['departure_date']|date_short }}
   <span class="upload-hint">{{ b['reference_code'] }}</span>
@@ -72,15 +72,42 @@
 <h2 class="section-heading">Ateliers</h2>
 <div class="table-wrap">
 <table class="data-table">
-  <thead><tr><th>When</th><th>Workshop</th><th class="num">Price</th></tr></thead>
+  <thead><tr><th>When</th><th>Workshop</th><th class="num">Charged</th><th class="num">Received</th><th class="num">Owed</th></tr></thead>
   <tbody>
-    {% for w in record.workshops %}{% if w['status'] != 'cancelled' %}
+    {% for w in record.workshops %}{% if w['status'] == 'confirmed' %}
+    {% set wm = record.workshop_money[w['id']] %}
     <tr>
       <th scope="row">{{ w['start_date']|date_short }}</th>
       <td>{{ w['title'] }}</td>
-      <td class="num">€{{ '%.2f'|format(w['total_price'] or 0) }}</td>
+      <td class="num">€{{ '%.2f'|format(wm.charged) }}</td>
+      <td class="num">€{{ '%.2f'|format(wm.paid) }}</td>
+      <td class="num">€{{ '%.2f'|format(wm.owed) }}</td>
     </tr>
     {% endif %}{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% set confirmed_events = record.events|selectattr('status', 'equalto', 'confirmed')|list %}
+{% if confirmed_events %}
+<h2 class="section-heading">Events</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Date</th><th>Event</th><th class="num">Quoted</th><th class="num">Received</th><th class="num">Owed</th></tr></thead>
+  <tbody>
+    {% for e in confirmed_events %}
+    {% set em = record.event_money.get(e['id']) %}
+    {% if em %}
+    <tr>
+      <th scope="row">{{ e['preferred_date']|date_short if e['preferred_date'] else '—' }}</th>
+      <td>{{ e['event_type'] }}</td>
+      <td class="num">€{{ '%.2f'|format(em.quoted) }}</td>
+      <td class="num">€{{ '%.2f'|format(em.paid) }}</td>
+      <td class="num">€{{ '%.2f'|format(em.owed) }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
   </tbody>
 </table>
 </div>
@@ -90,23 +117,27 @@
 <div class="table-wrap">
 <table class="data-table">
   <tbody>
+    {# Three lines that add up: everything taken, less what was received, is what is outstanding. It
+       used to charge ateliers and dinners and then receive and owe for the
+       stays alone, so the arithmetic on a guest's own statement was wrong. #}
     <tr>
       <th scope="row"><strong>Everything taken</strong></th>
       <td class="num"><strong>€{{ '%.2f'|format(record.spent) }}</strong></td>
     </tr>
     <tr><th scope="row">Received</th><td class="num">−€{{ '%.2f'|format(record.paid) }}</td></tr>
     <tr>
-      <th scope="row"><strong>{{ 'Outstanding' if record.owed > 0 else 'Settled' }}</strong></th>
-      <td class="num"><strong>€{{ '%.2f'|format(record.owed) }}</strong></td>
+      <th scope="row"><strong>{{ 'Outstanding' if record.owed > 0.005 else ('In credit' if record.owed < -0.005 else 'Settled') }}</strong></th>
+      <td class="num"><strong>€{{ '%.2f'|format(record.owed|abs) }}</strong></td>
     </tr>
   </tbody>
 </table>
 </div>
 
 <p class="pay-disclaimer">
-  Figures are gross, VAT included, as on each stay's own bill. Cancelled
-  bookings are left out entirely rather than shown at zero — a cancelled stay
-  is not a line on a statement.
+  Figures are gross, VAT included, as on each booking's own bill. Only
+  confirmed bookings are here: one cancelled, declined or never confirmed is
+  not a line on a statement.{% if record.at_table %} Dinners, €{{ '%.2f'|format(record.at_table) }},
+  are settled at the table and are not in these totals.{% endif %}
 </p>
 
 <style>
