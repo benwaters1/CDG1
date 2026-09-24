@@ -1614,6 +1614,11 @@ DEFAULT_EMAIL_TEMPLATES = [
      "You can pay it here:\n{pay_url}\n\n{note_block}\n\n"
      "The link pays that amount and nothing else, and stops working once it is "
      "paid or once the stay is settled another way.\n\n— Château de Gudanes"),
+    ("guest_account_statement", "Guests: Statement of account",
+     "Your statement — Château de Gudanes",
+     "Hi {guest_name},\n\nYour statement with us{period}.\n\n{statement_lines}\n\n"
+     "{balance_line}\n\nIt is always here, with a way to settle anything outstanding:\n"
+     "{statement_url}\n\n{company_block}\n\n— Château de Gudanes"),
     ("refund_issued", "Refunds: Money sent back",
      "Your refund — {reference_code}",
      "Hi {guest_name},\n\nWe have refunded {amount} {what_for}.\n{refund_how}\n\n"
@@ -6808,7 +6813,8 @@ NAV_AREAS = {
         "add_police_fiche", "bulk_confirm_bookings", "bulk_decline_bookings", "cancel_booking_admin",
         "cancel_booking_extra_line", "delete_guest", "delete_police_fiche", "delete_room",
         "delete_room_photo", "delete_room_rate_override", "disband_booking_party", "export_bookings_csv",
-        "export_guests_csv", "guest_full_statement", "import_catalogue", "link_guest_bookings",
+        "export_guests_csv", "guest_full_statement", "guest_statement_csv",
+        "email_guest_account_statement", "import_catalogue", "link_guest_bookings",
         "new_booking_party", "new_room_rate_override", "police_register_page", "prepare_arrival",
         "repeat_guests_page", "reply_to_feedback", "sync_all_ical_sources", "toggle_feedback_featured",
         # Pages that had no area at all until now, so they were
@@ -37551,12 +37557,87 @@ def guest_full_statement(guest_id):
     charged this person, ever" \u2014 and that question had no answer anywhere.
     """
     conn = get_db()
-    record = guest_record(conn, guest_id)
+    date_from, date_to = statement_period(request.args)
+    statement = guest_account_statement(conn, guest_id, date_from, date_to)
+    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
     conn.close()
-    if not record:
+    if not statement:
         abort(404)
-    return render_template("guest_full_statement.html", record=record,
-                           today=house_today_iso())
+    return render_template("guest_full_statement.html", st=statement, company=company,
+                           today=house_today_iso(),
+                           query=request.query_string.decode("utf-8", "replace"))
+
+
+@app.route("/guests/<int:guest_id>/statement.csv")
+@owner_required
+def guest_statement_csv(guest_id):
+    """The same account, as a spreadsheet: for the accountant, or a dispute."""
+    conn = get_db()
+    date_from, date_to = statement_period(request.args)
+    statement = guest_account_statement(conn, guest_id, date_from, date_to)
+    conn.close()
+    if not statement:
+        abort(404)
+    rows = [{"date": x["day"], "for": x["kind"], "reference": x["ref"], "what": x["what"],
+             "charged": f"{x['charge']:.2f}" if x["charge"] else "",
+             "paid": f"{x['paid']:.2f}" if x["paid"] else "",
+             "refunded": f"{x['back']:.2f}" if x["back"] else "",
+             "balance": f"{x['balance']:.2f}"} for x in statement["lines"]]
+    return csv_response(["date", "for", "reference", "what", "charged", "paid", "refunded",
+                         "balance"], rows, f"statement-{guest_id}.csv")
+
+
+@app.route("/guests/<int:guest_id>/statement/email", methods=["POST"])
+@owner_required
+def email_guest_account_statement(guest_id):
+    """Send somebody their statement, for the period on screen.
+
+    The only statement a guest could be sent was one stay's, and only by
+    themselves from that stay's page. "Could you send me everything for my
+    accountant" had no answer but copying figures into an email by hand.
+    """
+    conn = get_db()
+    date_from, date_to = statement_period(request.form)
+    statement = guest_account_statement(conn, guest_id, date_from, date_to)
+    if not statement:
+        conn.close()
+        abort(404)
+    guest = statement["guest"]
+    email = (guest["email"] or "").strip()
+    back = url_for("guest_full_statement", guest_id=guest_id,
+                   **{k: v for k, v in (("from", statement["period_from"]),
+                                        ("to", statement["period_to"])) if v})
+    if "@" not in email:
+        conn.close()
+        flash("This profile has no address to send it to.", "error")
+        return redirect(back)
+    token = guest_portal_token(conn, email)
+    conn.commit()
+    period = ""
+    if statement["period_from"] or statement["period_to"]:
+        period = (f", {format_date_human(statement['period_from'])}" if statement["period_from"]
+                  else ", from the start")
+        period += (f" to {format_date_human(statement['period_to'])}"
+                   if statement["period_to"] else " to today")
+    subject, body, letter = render_email_template(conn, "guest_account_statement", {
+        "guest_name": guest["name"],
+        "period": period,
+        "statement_lines": statement_text_lines(statement),
+        "balance_line": statement_balance_line(statement["closing"]),
+        "statement_url": url_for("guest_portal_statement", token=token, _external=True),
+        "company_block": company_block_text(conn),
+    })
+    # Not the address: the audit trail is kept for ever and outlives an
+    # erasure, so it says what was sent and to whose record, and no more.
+    log_audit(conn, "guest_statement_sent", target=guest["name"],
+              details="statement" + (period or ", everything"))
+    conn.commit()
+    conn.close()
+    if subject:
+        send_email(email, subject, body, html=letter, area="accounts")
+    flash(f"Statement sent to {email}." if subject else "The statement letter could not be made.",
+          "success" if subject else "error")
+    return redirect(back)
 
 
 @app.route("/guests/<int:guest_id>/link-bookings", methods=["POST"])
@@ -44995,6 +45076,8 @@ PLACEHOLDER_TEXT = re.compile(r"\bTEST\b|\bTODO\b|\bFIXME\b|\bXXX\b|lorem ipsum"
 # edit form refuses a tag that is not here, and a test compares this against
 # what the senders actually pass so the two cannot drift.
 EMAIL_TEMPLATE_TAGS = {
+    "guest_account_statement": ("balance_line", "company_block", "guest_name", "period",
+                                "statement_lines", "statement_url"),
     "refund_issued": ("amount", "balance_line", "guest_name", "reference_code",
                       "refund_how", "what_for"),
     "event_balance_reminder": ("balance_amount", "balance_due_date", "contact_name",
@@ -45107,6 +45190,8 @@ REQUIRED_MERGE_TAGS = {
     "room_balance_before": {"manage_url": "it is where they pay"},
     "room_balance_after": {"manage_url": "it is where they pay"},
     "refund_issued": {"amount": "it is the sum that went back"},
+    "guest_account_statement": {"statement_url": "it is where they read the statement and "
+                                                 "settle anything outstanding"},
     "room_share_request": {"pay_url": "it is the only way to pay the share",
                            "amount": "it is the sum being asked for"},
     "room_feedback_request": {"feedback_url": "it is the form they are being asked to fill in"},
@@ -45386,6 +45471,7 @@ SAMPLE_MERGE_VALUES = {
     "dietary_line": "No shellfish, and one guest is coeliac.",
     "refund_note": "Nothing has been charged.",
     "what_for": "for your stay in Chambre \u00c9meraude, 14 to 17 October 2026",
+    "period": ", 1 September 2026 to 30 September 2026",
     "refund_how": ("It is going back to the card you paid with. Banks usually take "
                    "five to ten working days to show it."),
     "status_line": "Paid in full",
@@ -50207,6 +50293,36 @@ def guest_portal(token):
         ateliers=ateliers, bills=bills,
         today=house_today_iso(),
     )
+
+
+@app.route("/my/<token>/statement")
+def guest_portal_statement(token):
+    """Their statement, from the link they already keep.
+
+    The portal said what was booked and what a stay still owed, and nothing
+    about what had been paid or given back -- so a guest reconciling a card
+    statement had to ask. A profile merged into another opens the one it was
+    merged into, which is where its bookings are now.
+    """
+    conn = get_db()
+    profile = conn.execute("SELECT * FROM guests WHERE portal_token = ?", (token,)).fetchone()
+    if not profile:
+        conn.close()
+        abort(404)
+    seen = {profile["id"]}
+    while profile["merged_into_id"]:
+        survivor = conn.execute("SELECT * FROM guests WHERE id = ?",
+                                (profile["merged_into_id"],)).fetchone()
+        if not survivor or survivor["id"] in seen:
+            break
+        seen.add(survivor["id"])
+        profile = survivor
+    date_from, date_to = statement_period(request.args)
+    statement = guest_account_statement(conn, profile["id"], date_from, date_to)
+    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    conn.close()
+    return render_template("guest_portal_statement.html", st=statement, token=token,
+                           company=company, today=house_today_iso())
 
 
 @app.route("/guests/find")
@@ -66320,6 +66436,330 @@ def guest_record(conn, guest_id):
     }
 
 
+STATEMENT_KINDS = {"room": "Stay", "workshop": "Atelier", "event": "Event",
+                   "restaurant": "Dinner"}
+
+
+def guest_profile_ids(conn, guest_id):
+    """This profile and every profile merged into it, however many deep."""
+    seen, todo = [], [guest_id]
+    while todo:
+        gid = todo.pop()
+        if gid in seen:
+            continue
+        seen.append(gid)
+        todo += [r["id"] for r in conn.execute(
+            "SELECT id FROM guests WHERE merged_into_id = ?", (gid,)).fetchall()]
+    return seen
+
+
+def guest_addresses(conn, guest_id):
+    """Every address this person has booked under: their own, and those of the
+    profiles merged into theirs.
+
+    A merge kept the absorbed address only as a line in a note, so a stay booked
+    under the address somebody used before the merge fell off their record and
+    off any statement of it.
+    """
+    ids = guest_profile_ids(conn, guest_id)
+    rows = conn.execute(f"SELECT email FROM guests WHERE id IN ({','.join('?' * len(ids))})",
+                        ids).fetchall()
+    return sorted({(r["email"] or "").strip().lower() for r in rows
+                   if (r["email"] or "").strip()})
+
+
+def held_money_is_theirs(category, booking, session_called_off=False):
+    """Whether money still held on a booking that no longer stands is the
+    guest's, or the house's.
+
+    The house's terms are non-refundable: a guest who cancels has paid for the
+    cancellation, and what was taken is kept. Except where the house is the one
+    who said no -- a request declined, a stay the house could not honour, an
+    atelier sitting it called off. There the money is theirs, and owed back.
+    The same rule as money_to_give_back, which lists exactly these.
+    """
+    status = (booking["status"] or "").lower()
+    if status == "declined":
+        return True
+    if category == "room":
+        return (status == "cancelled" and "cancel_reason" in booking.keys()
+                and booking["cancel_reason"] == "house_could_not")
+    if category == "workshop":
+        return bool(session_called_off)
+    return False
+
+
+def guest_account_statement(conn, guest_id, date_from=None, date_to=None):
+    """One account for one person, across everything the house has sold them.
+
+    Every charge, payment and refund as a dated line with a running balance, the
+    way a statement of account reads. "What have we charged you, what have you
+    paid, what went back, and what is left" had four half-answers: one bill per
+    stay, a ledger per atelier, an event's bill, and a lifetime page that netted
+    refunds away in silence and dated nothing.
+
+    Built from each kind's own definition -- a stay's bill, an atelier's ledger,
+    an event's bill -- and adding up to it, booking by booking, which a test
+    holds it to. Only a booking that STANDS is charged its price. One that came
+    to nothing and moved no money is left off. One cancelled with money on it
+    shows the money -- and whose it is: kept under the non-refundable terms, as
+    a line of its own, or the guest's, as credit, where the house said no.
+
+    `date_from` / `date_to` are house days. Lines before the period are carried
+    in as the opening balance, so a statement for October still ends on what is
+    truly owed at the end of October.
+    """
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        return None
+    ids = guest_profile_ids(conn, guest_id)
+    addresses = guest_addresses(conn, guest_id)
+    idq = ",".join("?" * len(ids))
+    adq = ",".join("?" * len(addresses)) or "NULL"
+    entries, bookings = [], []
+
+    def add(at, category, row, what, charge=0.0, paid=0.0, back=0.0):
+        entries.append({
+            "at": at or "", "day": house_date_iso(at) if at else "",
+            "kind": STATEMENT_KINDS[category], "category": category,
+            "ref": row["reference_code"] or f"#{row['id']}", "booking_id": row["id"],
+            "what": what, "charge": round(charge or 0.0, 2), "paid": round(paid or 0.0, 2),
+            "back": round(back or 0.0, 2)})
+
+    def charged_when(row):
+        keys = row.keys()
+        return (row["decided_at"] if "decided_at" in keys and row["decided_at"]
+                else row["created_at"])
+
+    def refunds_of(category, bid):
+        return conn.execute(
+            """SELECT * FROM refunds WHERE category = ? AND booking_id = ?
+               ORDER BY created_at, id""", (category, bid)).fetchall()
+
+    def refund_words(r):
+        if (r["amount"] or 0) < 0:
+            return "A refund that did not reach you, put back"
+        how = ("to the card" if r["method"] == "stripe"
+               else (r["method"] or "other").replace("_", " "))
+        return f"Refunded, {how}"
+
+    def kept_line(category, row, payments, refunds, theirs):
+        """What a cancellation kept, as a charge, so a deposit kept under the
+        terms does not read as money the house owes back."""
+        if theirs:
+            return
+        held = round(sum(p["amount"] for p in payments)
+                     - sum((r["amount"] or 0) for r in refunds), 2)
+        if held > 0.005:
+            add(charged_when(row), category, row,
+                "Kept on cancellation, under the non-refundable terms", charge=held)
+
+    def money_lines(category, row, payments, refunds, stands):
+        for p in payments:
+            add(p["at"], category, row, f"Paid, {p['method_label'].lower()}"
+                + (f" ({p['payer']})" if p["payer"] else ""), paid=p["amount"])
+        for r in refunds:
+            add(r["created_at"], category, row, refund_words(r), back=r["amount"])
+            if stands and (r["reduces_bill"] or 0):
+                add(r["created_at"], category, row, "Reduction, refunded",
+                    charge=-(r["reduces_bill"] or 0))
+
+    def summary(category, row, what, status, stands, **more):
+        bookings.append(dict(category=category, kind=STATEMENT_KINDS[category],
+                             ref=row["reference_code"] or f"#{row['id']}", id=row["id"],
+                             what=what, status=status, stands=stands,
+                             manage_token=row["manage_token"] if "manage_token" in row.keys() else None,
+                             **more))
+
+    stays = conn.execute(
+        f"""SELECT bookings.*, rooms.name AS room_name FROM bookings
+              JOIN rooms ON rooms.id = bookings.room_id
+             WHERE bookings.linked_guest_id IN ({idq})
+                OR LOWER(TRIM(bookings.guest_email)) IN ({adq})
+             ORDER BY bookings.arrival_date""", ids + addresses).fetchall()
+    for b in stays:
+        bill = booking_bill(conn, b["id"])
+        if not bill:
+            continue
+        stands = b["status"] == "confirmed"
+        payments = payments_received(conn, "room", b)
+        refunds = refunds_of("room", b["id"])
+        if not stands and not payments and not refunds:
+            continue          # a request that came to nothing, and moved no money
+        when = charged_when(b)
+        dates = format_date_range(b["arrival_date"], b["departure_date"])
+        if stands:
+            extra_at = {e["id"]: e["created_at"]
+                        for e in extras_for_booking(conn, "room", b["id"])}
+            for line in bill["lines"]:
+                if line["kind"] == "refund_reduction":
+                    continue      # listed refund by refund, below
+                at = extra_at.get(line.get("line_id"), when) if line["kind"] == "extra" else when
+                label = (f"{line['label']}, {dates}" if line["kind"] == "room"
+                         else line["label"])
+                add(at, "room", b, label, charge=line["amount"])
+        else:
+            kept_line("room", b, payments, refunds, held_money_is_theirs("room", b))
+        money_lines("room", b, payments, refunds, stands)
+        summary("room", b, f"{b['room_name']}, {dates}", b["status"], stands,
+                bill=bill if stands else None)
+
+    ateliers = conn.execute(
+        f"""SELECT wb.*, ws.start_date, ws.end_date, ws.cancelled_at AS session_called_off,
+                   w.title FROM workshop_bookings wb
+              JOIN workshop_sessions ws ON ws.id = wb.session_id
+              JOIN workshops w ON w.id = ws.workshop_id
+             WHERE LOWER(TRIM(wb.guest_email)) IN ({adq})
+             ORDER BY ws.start_date""", addresses).fetchall()
+    for w in ateliers:
+        stands = w["status"] == "confirmed"
+        ledger = conn.execute(
+            """SELECT * FROM workshop_transactions WHERE workshop_booking_id = ?
+                ORDER BY created_at, id""", (w["id"],)).fetchall()
+        if not stands and not any(t["kind"] in ("payment", "refund") for t in ledger):
+            continue
+        label = f"{w['title']}, {format_date_range(w['start_date'], w['end_date'])}"
+        if stands and (w["total_price"] or 0):
+            add(charged_when(w), "workshop", w, label, charge=w["total_price"] or 0)
+        elif not stands and not held_money_is_theirs("workshop", w, w["session_called_off"]):
+            held = round(sum(t["amount"] for t in ledger if t["kind"] == "payment")
+                         - sum(t["amount"] for t in ledger if t["kind"] == "refund"), 2)
+            if held > 0.005:
+                add(charged_when(w), "workshop", w,
+                    "Kept on cancellation, under the non-refundable terms", charge=held)
+        # The ledger is the atelier's truth: its refund lines are the refunds,
+        # so the refunds table is not read again here.
+        for t in ledger:
+            if t["kind"] == "charge" and stands:
+                add(t["created_at"], "workshop", w, t["description"], charge=t["amount"])
+            elif t["kind"] == "discount" and stands:
+                add(t["created_at"], "workshop", w, t["description"], charge=-t["amount"])
+            elif t["kind"] == "payment":
+                add(t["created_at"], "workshop", w, f"Paid: {t['description']}",
+                    paid=t["amount"])
+            elif t["kind"] == "refund":
+                add(t["created_at"], "workshop", w, t["description"], back=t["amount"])
+        due, charged, paid = workshop_balance_due(conn, w["id"])
+        summary("workshop", w, label, w["status"], stands,
+                money={"charged": charged, "paid": paid, "owed": due})
+
+    events = conn.execute(
+        f"""SELECT * FROM event_inquiries WHERE LOWER(TRIM(contact_email)) IN ({adq})
+             ORDER BY COALESCE(preferred_date, '')""", addresses).fetchall()
+    for e in events:
+        bill = event_bill(conn, e["id"])
+        if not bill:
+            continue
+        stands = e["status"] == "confirmed"
+        payments = payments_received(conn, "event", e)
+        refunds = refunds_of("event", e["id"])
+        if not stands and not payments and not refunds:
+            continue
+        label = (e["event_type"] or "event").capitalize() + (
+            f", {format_date_human(e['preferred_date'])}" if e["preferred_date"] else "")
+        if stands:
+            add(charged_when(e), "event", e, f"{label}, as quoted", charge=bill["gross_quote"])
+            if bill["discount"]:
+                add(charged_when(e), "event", e, "Discount", charge=-bill["discount"])
+        else:
+            kept_line("event", e, payments, refunds, held_money_is_theirs("event", e))
+        money_lines("event", e, payments, refunds, stands)
+        summary("event", e, label, e["status"], stands, money=bill)
+
+    dinners = conn.execute(
+        f"""SELECT * FROM restaurant_bookings WHERE LOWER(TRIM(guest_email)) IN ({adq})
+             ORDER BY dinner_date""", addresses).fetchall()
+    for d in dinners:
+        payments = payments_received(conn, "restaurant", d)
+        refunds = refunds_of("restaurant", d["id"])
+        if not payments and not refunds:
+            continue          # settled at the table, on the till
+        stands = d["status"] == "confirmed"
+        label = f"Dinner, {format_date_human(d['dinner_date'])}"
+        if stands:
+            # The deposit is taken off the table's bill on the night, so what it
+            # buys is the deposit itself; the rest of the evening is the till's.
+            add(charged_when(d), "restaurant", d, f"{label}, deposit towards the table",
+                charge=sum(p["amount"] for p in payments))
+        else:
+            kept_line("restaurant", d, payments, refunds, held_money_is_theirs("restaurant", d))
+        money_lines("restaurant", d, payments, refunds, stands)
+        summary("restaurant", d, label, d["status"], stands)
+
+    entries.sort(key=lambda x: (x["at"], x["kind"]))
+    net = lambda x: x["charge"] - x["paid"] + x["back"]
+    for b in bookings:
+        mine = [x for x in entries if x["category"] == b["category"]
+                and x["booking_id"] == b["id"]]
+        b["charged"] = round(sum(x["charge"] for x in mine), 2)
+        b["paid"] = round(sum(x["paid"] for x in mine), 2)
+        b["back"] = round(sum(x["back"] for x in mine), 2)
+        b["net"] = round(sum(net(x) for x in mine), 2)
+
+    lo = date_from.isoformat() if date_from else None
+    hi = date_to.isoformat() if date_to else None
+    opening = round(sum(net(x) for x in entries if lo and x["day"] < lo), 2)
+    shown = [dict(x) for x in entries
+             if (not lo or x["day"] >= lo) and (not hi or x["day"] <= hi)]
+    running = opening
+    for x in shown:
+        running = round(running + net(x), 2)
+        x["balance"] = running
+    balance = round(sum(net(x) for x in entries), 2)
+    return {
+        "guest": guest, "addresses": addresses, "lines": shown,
+        "opening": opening, "closing": round(running, 2),
+        "period_from": lo, "period_to": hi,
+        "charged": round(sum(x["charge"] for x in shown), 2),
+        "paid": round(sum(x["paid"] for x in shown), 2),
+        "back": round(sum(x["back"] for x in shown), 2),
+        "balance": balance, "owed": round(max(balance, 0.0), 2),
+        "credit": round(max(-balance, 0.0), 2), "bookings": bookings,
+        "lifetime_charged": round(sum(x["charge"] for x in entries), 2),
+        "lifetime_paid": round(sum(x["paid"] - x["back"] for x in entries), 2),
+    }
+
+
+def statement_period(args):
+    """(from, to) house days from a query string; either may be None."""
+    return parse_date(args.get("from") or ""), parse_date(args.get("to") or "")
+
+
+def statement_text_lines(statement):
+    """The account as plain lines, for the letter and nothing else."""
+    out = []
+    if statement["period_from"]:
+        out.append(f"  Brought forward   €{statement['opening']:.2f}")
+    for x in statement["lines"]:
+        if x["charge"]:
+            money = f"€{x['charge']:.2f}"
+        elif x["paid"]:
+            money = f"-€{x['paid']:.2f} paid"
+        else:
+            money = f"+€{x['back']:.2f} back to you"
+        out.append(f"  {format_date_human(x['day'])}  {x['what']} ({x['ref']})   {money}")
+    return "\n".join(out) or "  Nothing in this period."
+
+
+def statement_balance_line(amount):
+    if amount > 0.005:
+        return f"There is €{amount:.2f} outstanding."
+    if amount < -0.005:
+        return f"You are €{-amount:.2f} in credit with us."
+    return "Nothing is owed."
+
+
+def company_block_text(conn):
+    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    who = []
+    if company:
+        for key in ("legal_name", "registered_address", "registration_number", "vat_number"):
+            value = " ".join((company[key] or "").split())
+            if value:
+                who.append(value)
+    return "\n".join(who)
+
+
 def guest_messages(conn, guest, limit=60):
     """Every word the house has sent this person, in one list.
 
@@ -68824,6 +69264,7 @@ TEMPLATE_AREAS = [
     ("workshop", "Workshops"), ("restaurant", "Restaurant"),
     ("event", "Events"), ("room", "Rooms"), ("review", "Rooms"),
     ("pos", "Till"), ("newsletter", "Newsletter"), ("refund", "Refunds"),
+    ("guest", "Guests"),
 ]
 # Checked in this order, first match wins -- so "payment" comes before
 # "received", or a payment receipt files itself as an enquiry.
@@ -68845,6 +69286,9 @@ TEMPLATE_STAGES = [
 # shipped list in both directions: a letter added without a line here, or a
 # line left for a letter that has gone, reds the run.
 EMAIL_TEMPLATE_INFO = {
+    "guest_account_statement": ("When you send somebody their statement from their "
+                                "record, for the period on screen",
+                                "The guest, at the address on their profile"),
     "refund_issued": ("When you make a refund from its booking's refund page and "
                       "leave \u201cTell them\u201d ticked \u2014 a stay, an atelier, a "
                       "dinner or an event", "Whoever paid, and on a stay anyone "

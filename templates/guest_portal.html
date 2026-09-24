@@ -95,6 +95,7 @@
   {% endfor %}
   {% endif %}
 
+  <p style="margin-top:var(--s4)"><a href="{{ url_for('guest_portal_statement', token=profile['portal_token']) }}" class="g-btn g-btn--sm">{{ t('Your statement') }}</a></p>
   <p class="g-hint" style="margin-top:var(--s4);">
     Something not right, or something you would like to add? Reply to any email from us and we will sort it.
   </p>

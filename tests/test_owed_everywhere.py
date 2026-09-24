@@ -150,7 +150,7 @@ def run():
             f"/guests/{gid}/rebook" in page,
             detail="it asked the record for an id and an address it was never given")
     stmt = oc.get(f"/guests/{gid}/statement").get_data(as_text=True)
-    s.check("the statement lists the event", "Events" in stmt and "wedding" in stmt)
+    s.check("the statement lists the event", "Events" in stmt and "wedding" in stmt.lower())
     s.check("and its outstanding line is the same figure", "€3100.00" in stmt,
             detail="it charged ateliers and received and owed for stays alone")
     s.check("a declined stay is not on it", f"{TAG}-Declined" not in stmt)
