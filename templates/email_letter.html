@@ -33,7 +33,7 @@
       {# line-height and size matched to _email.html so a letter drawn here
          and the booking confirmation drawn there read as the same house. #}
       <p style="margin:0 0 18px; font-family:Helvetica,Arial,sans-serif; font-size:16px;
-                line-height:1.7; color:#2C3E50;">{{ block.text }}</p>
+                line-height:1.7; color:#2C3E50;">{% for line in block.lines or [block.text] %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
     {% endif %}
   {% endfor %}
 

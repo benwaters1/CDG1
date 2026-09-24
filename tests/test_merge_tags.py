@@ -88,6 +88,19 @@ def _senders_from_source():
                 r'(?:send_\w+_email|render_email_template)\(\s*conn\s*,\s*(?:\w+\s*,\s*)?'
                 r'"([a-z0-9_]+)"\s*,\s*' + name, src):
             passed[call.group(1)] |= keys
+
+    # Letters whose context one function builds and hands over under a key the
+    # call does not spell out: the confirmation, whose plain and drawn halves
+    # share a builder so they cannot disagree, and the two balance letters,
+    # one function choosing between them. Named, so neither escapes the check.
+    for key, name in (("room_confirmed", "room_confirmation_context"),
+                      ("room_balance_before", "balance_request_email"),
+                      ("room_balance_after", "balance_request_email")):
+        fn = re.search(r"def " + name + r"\(", src)
+        if not fn:
+            continue
+        end = src.find("\ndef ", fn.end())
+        passed[key] |= set(re.findall(r'"([a-z0-9_]+)"\s*:', src[fn.start():end]))
     return passed
 
 

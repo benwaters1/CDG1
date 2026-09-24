@@ -129,6 +129,7 @@ SUITES = [
     "test_email_provider",
     "test_rates_and_replies",
     "test_email_templates",
+    "test_template_editor",
     "test_newsletter",
     "test_gallery",
     "test_site_images",

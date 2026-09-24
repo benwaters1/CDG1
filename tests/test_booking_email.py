@@ -36,8 +36,12 @@ def _book(payment_status, price=900.0, offset=400):
     """Make a booking through the real helper and capture the guest's email."""
     sent = []
 
-    def capture(to, subject, body, ics_content=None, ics_filename=None, keep=True):
-        sent.append({"to": to, "subject": subject, "body": body})
+    # The real send_email's keywords, all of them: a stand-in narrower than the
+    # thing it replaces fails the day a letter starts passing its drawn copy.
+    def capture(to, subject, body, ics_content=None, ics_filename=None, keep=True,
+                **other):
+        sent.append({"to": to, "subject": subject, "body": body,
+                     "html": other.get("html") or ""})
         return True
 
     room = _harness.ensure_room()
