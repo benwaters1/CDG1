@@ -106,7 +106,7 @@
         <span class="mini-status status-{{ r['status'] }}" style="margin-left:8px;">{{ r['status'] }}</span>
         {% if reg['money'] %}<span class="mini-status {{ 'status-overdue' if reg['money'] in ('Deposit unpaid', 'Balance owed') else 'status-inactive' }}">{{ reg['money'] }}</span>{% endif %}
       </div>
-      <span class="upload-hint">{{ r['reference_code'] }}</span>
+      <span class="upload-hint">{{ r['reference_code'] }}{% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='workshop_booking', record_id=r['id']) }}" class="small-link">What changed</a>{% endif %}</span>
     </div>
     <p class="manual-body">
       {{ r['start_date'] }}{% if r['end_date'] != r['start_date'] %} → {{ r['end_date'] }}{% endif %}

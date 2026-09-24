@@ -8448,7 +8448,14 @@ app.jinja_env.globals["contact_address"] = lambda area: contact_address(area)
 app.jinja_env.globals["euro"] = lambda v: euro(v)
 
 
-def log_audit(conn, action, target=None, details=None, via=None):
+# Who did it, when that is not whoever happens to be signed in. A job run on
+# somebody's page load is not that person's decision: the stale-request expiry
+# runs on the dashboard, so every request it declined was written down as
+# declined by whoever opened it.
+ACTOR_SIGNED_IN = object()
+
+
+def log_audit(conn, action, target=None, details=None, via=None, *, actor=ACTOR_SIGNED_IN):
     """Records who did what to something sensitive, and when — deletions,
     status changes, vault/bank-detail edits, backup downloads. Separate from
     recent_activity() (which is a general-interest feed for the dashboard);
@@ -8460,13 +8467,38 @@ def log_audit(conn, action, target=None, details=None, via=None):
     the actor would be a lie about who is accountable. But "approved" and
     "approved through the assistant" are different things to read back when
     working out how a decision got made, so the line says which."""
-    user = current_user()
+    if actor is ACTOR_SIGNED_IN:
+        user = current_user()
+        actor = user["id"] if user else None
     if via:
         details = f"{details} — via {via}" if details else f"via {via}"
     conn.execute(
         "INSERT INTO audit_log (actor_user_id, action, target, details, created_at) VALUES (?, ?, ?, ?, ?)",
-        (user["id"] if user else None, action, target, details, datetime.now(timezone.utc).isoformat()),
+        (actor, action, target, details, datetime.now(timezone.utc).isoformat()),
     )
+
+
+# What the guest did on their own booking, with nobody signed in. Anything else
+# with no name against it is a job, and saying "a scheduled job" cancelled a
+# stay the guest cancelled themselves is a record that points the wrong way.
+GUEST_AUDIT_ACTIONS = frozenset({
+    "booking_confirmed_online", "booking_cancelled_by_guest",
+    "booking_dates_changed_by_guest", "booking_change_asked_by_guest",
+    "booking_contact_changed_by_guest", "guest_extended_stay", "guest_added_extra",
+    "guest_wrote_in",
+})
+
+
+def audit_who(entry):
+    """Who an audit line is against, in words: a person, the guest, or a job."""
+    if entry["actor_name"]:
+        return entry["actor_name"]
+    if (entry["action"] or "") in GUEST_AUDIT_ACTIONS:
+        return "The guest"
+    return "A scheduled job"
+
+
+app.jinja_env.globals["audit_who"] = audit_who
 
 
 def recent_activity(conn, limit=15):
@@ -8737,7 +8769,8 @@ def expire_stale_pending_bookings(conn, hours=STALE_PENDING_BOOKING_HOURS):
     ).fetchall()
     count = 0
     for row in stale:
-        declined, _refunded, _refund_error = decline_booking_by_id(conn, row["id"])
+        declined, _refunded, _refund_error = decline_booking_by_id(
+            conn, row["id"], via=f"no answer within {hours} hours")
         if declined:
             count += 1
     if count:
@@ -24086,7 +24119,9 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
     # which is the right answer for both of those.
     confirmed_now = False
     if confirm_now and new_row:
-        confirmed_now, _why = confirm_booking_by_id(conn, new_row["id"])
+        confirmed_now, _why = confirm_booking_by_id(
+            conn, new_row["id"],
+            online="the site, paid for online" if payment_status == "paid" else "the site")
 
     checkin_url = url_for("guest_checkin", manage_token=manage_token, _external=True)
     detail_lines = [
@@ -25698,6 +25733,7 @@ def inject_user():
         "site": LazyPublicSettings(),
         "photo_consent_choices": PHOTO_CONSENT,
         "decline_reasons": DECLINE_REASONS,
+        "cancel_reasons": CANCEL_REASONS,
         # WHICH AREA THIS PAGE IS IN, from the one list that decides it.
         # The nav used to answer that question from its own hand-typed
         # copies of every area's contents, and the two had drifted: 73
@@ -40436,6 +40472,8 @@ def manage_booking(manage_token):
             "UPDATE bookings SET status = 'cancelled', decided_at = ? WHERE id = ? AND status IN ('pending', 'confirmed')",
             (datetime.now(timezone.utc).isoformat(), booking["id"]),
         )
+        if cur.rowcount:
+            log_audit(conn, "booking_cancelled_by_guest", target=booking["reference_code"])
         conn.commit()
         if cur.rowcount:
             owner_to = owner_email(conn)
@@ -40542,6 +40580,13 @@ def manage_booking(manage_token):
         conn.execute(
             "UPDATE bookings SET guest_name = ?, guest_phone = ? WHERE id = ?",
             (new_name, new_phone or None, booking["id"]))
+        # That they changed, not to what: the trail outlives an erasure.
+        said = [label for label, old, new in (
+            ("name", booking["guest_name"], new_name),
+            ("phone", booking["guest_phone"] or None, new_phone or None)) if old != new]
+        if said:
+            log_audit(conn, "booking_contact_changed_by_guest", target=booking["reference_code"],
+                      details=" and ".join(said) + " changed")
         conn.commit()
         # Said plainly, because a number the app cannot use looks identical to
         # a good one once it is sitting in the box.
@@ -40600,6 +40645,15 @@ def manage_booking(manage_token):
                 stamp_room_total(conn, booking["id"], new_room_portion,
                                  new_arrival.isoformat(), new_departure.isoformat())
                 restamp_stay(conn, booking["id"])
+                log_audit(conn, "booking_dates_changed_by_guest",
+                          target=booking["reference_code"],
+                          details="; ".join(booking_edit_changes(booking, {
+                              "arrival_date": new_arrival.isoformat(),
+                              "departure_date": new_departure.isoformat(),
+                              "total_price": new_total or None,
+                              **{c: booking[c] for c, _l, _k in BOOKING_EDIT_FIELDS
+                                 if c not in ("arrival_date", "departure_date",
+                                              "total_price")}})))
                 conn.commit()
                 owner_to = owner_email(conn)
                 if owner_to:
@@ -40628,6 +40682,9 @@ def manage_booking(manage_token):
                     (f"Date change request — {booking['reference_code']}", note,
                      f"{booking['room_name']} — {booking['guest_name']}", new_arrival.isoformat(), now, booking["id"]),
                 )
+                log_audit(conn, "booking_change_asked_by_guest", target=booking["reference_code"],
+                          details=f"to {format_date_human(new_arrival.isoformat())} to "
+                                  f"{format_date_human(new_departure.isoformat())}")
                 conn.commit()
                 owner = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
                 if owner:
@@ -50745,7 +50802,7 @@ def guest_booking_history(email):
     )
 
 
-def confirm_booking_by_id(conn, booking_id):
+def confirm_booking_by_id(conn, booking_id, *, online=None):
     """Core confirm logic shared by the single-booking and bulk-confirm
     routes. Only acts on a still-pending booking (so a stray double-submit
     or a stale bulk selection can't re-send the confirmation email), and
@@ -50815,6 +50872,13 @@ def confirm_booking_by_id(conn, booking_id):
         # the guest record insert above is harmless to leave in place
         # (guest_id just goes unused), but the email below must not fire.
         return False, "not found or not pending"
+    # On the stay's own history: who took it -- or, `online`, that it was
+    # booked or paid for on the site and so took itself.
+    log_audit(conn, "booking_confirmed_online" if online else "booking_confirmed",
+              target=booking["reference_code"],
+              details=f"{room['name']}, {format_date_human(booking['arrival_date'])} to "
+                      f"{format_date_human(booking['departure_date'])}",
+              via=online)
     # This is the moment the guest gets a standing profile, so it is also the
     # moment their own link becomes real — and this email is the one place a
     # first-time guest is certain to see it. It rides in {stay_details}, so no
@@ -51023,6 +51087,7 @@ def checkout_booking(booking_id):
         conn.close()
         flash("This booking was already checked out.", "error")
         return redirect(url_for("admin_bookings"))
+    log_audit(conn, "booking_checked_out", target=booking["reference_code"])
     room_note = f"{booking['guest_name']} checked out, party of {booking['party_size']}."
     for i, title in enumerate(CHECKOUT_CHECKLIST):
         # booking_id has been on this table the whole time and neither
@@ -51972,7 +52037,7 @@ def prepare_arrival(booking_id):
     return redirect(url_for("admin_bookings"))
 
 
-def decline_booking_by_id(conn, booking_id, *, refund=True, user_id=None):
+def decline_booking_by_id(conn, booking_id, *, refund=True, user_id=None, via=None):
     """Core decline logic shared by the single-booking and bulk-decline
     routes. Only acts on a still-pending booking, mirroring
     confirm_booking_by_id's guard against re-processing. Returns a
@@ -51999,6 +52064,14 @@ def decline_booking_by_id(conn, booking_id, *, refund=True, user_id=None):
         # Lost a race with another confirm/decline — bail before attempting
         # a refund or sending an email a second time.
         return False, False, None
+    # Against the person who decided, named by the caller: this also runs from
+    # the expiry, on the dashboard, where the signed-in user decided nothing.
+    # The reason if one was given -- never the note, which is free text about
+    # a person, and this trail is kept for ever.
+    why = (DECLINE_REASONS.get(booking["decline_reason"] or "")
+           if "decline_reason" in booking.keys() else None)
+    log_audit(conn, "booking_declined", target=booking["reference_code"], details=why,
+              via=via, actor=user_id)
 
     # Paid anything at all, not paid in full: a deposit taken on a request that
     # is then declined is owed back as surely as the whole price.
@@ -52182,10 +52255,26 @@ def cancel_booking_admin(booking_id):
     if not booking:
         conn.close()
         abort(404)
-    conn.execute(
-        "UPDATE bookings SET status='cancelled', decided_at=? WHERE id=?",
-        (datetime.now(timezone.utc).isoformat(), booking_id),
+    # WHY, at the time, when the owner knows it. It decides whose any money
+    # still held is -- the house's under the terms, or the guest's where the
+    # house could not do what it promised -- and it could only be put on
+    # afterwards, from the cancellations page, so it was almost always blank.
+    why = request.form.get("cancel_reason", "")
+    why = why if why in CANCEL_REASONS else None
+    # Once. A second press sent the guest a second cancellation and would
+    # write a second line against a stay that went once.
+    cur = conn.execute(
+        """UPDATE bookings SET status='cancelled', decided_at=?,
+                  cancel_reason=COALESCE(?, cancel_reason)
+            WHERE id=? AND status IN ('pending', 'confirmed')""",
+        (datetime.now(timezone.utc).isoformat(), why, booking_id),
     )
+    if not cur.rowcount:
+        conn.close()
+        flash("That booking was already cancelled or decided.", "error")
+        return redirect(url_for("admin_bookings"))
+    log_audit(conn, "booking_cancelled", target=booking["reference_code"],
+              details=CANCEL_REASONS.get(why) if why else None)
     conn.commit()
 
     # Cancelling does NOT refund on its own. House terms are non-refundable,
@@ -52644,6 +52733,43 @@ def refund_desk(category, booking_id):
     return render_template("admin_refund_desk.html", **context)
 
 
+# What an edit to a stay can change, and how each is written on its history:
+# by value for the stay's own facts, by name only for anything about a person.
+BOOKING_EDIT_FIELDS = (
+    ("arrival_date", "arrival", "date"), ("departure_date", "departure", "date"),
+    ("party_size", "party", "value"), ("guests_under_18", "under 18", "value"),
+    ("total_price", "total", "euro"), ("source", "came through", "value"),
+    ("heard_via", "heard of us", "value"),
+    ("guest_phone", "phone", "person"), ("special_requests", "special requests", "person"),
+    ("booked_by_name", "payer's name", "person"), ("booked_by_email", "payer's address", "person"),
+    ("second_contact_name", "second contact's name", "person"),
+    ("second_contact_email", "second contact's address", "person"),
+)
+
+
+def booking_edit_changes(before, after):
+    """The changes an edit made to a stay, in words, for its history."""
+    out = []
+    for column, label, kind in BOOKING_EDIT_FIELDS:
+        old, new = before[column], after.get(column)
+        if kind == "euro":
+            old, new = round(old or 0, 2), round(new or 0, 2)
+        elif kind == "value" and column == "guests_under_18":
+            old, new = old or 0, new or 0
+        else:
+            old = old if old not in ("", None) else None
+            new = new if new not in ("", None) else None
+        if old == new:
+            continue
+        if kind == "person":
+            out.append(f"{label} changed")
+            continue
+        show = {"date": lambda v: format_date_human(v) if v else "—",
+                "euro": lambda v: f"€{v:,.2f}"}.get(kind, lambda v: "—" if v is None else str(v))
+        out.append(f"{label} {show(old)} → {show(new)}")
+    return out
+
+
 @app.route("/admin/bookings/<int:booking_id>/edit", methods=["GET", "POST"])
 @owner_required
 def edit_booking(booking_id):
@@ -52713,7 +52839,15 @@ def edit_booking(booking_id):
         # room was AGREED at, never out of a fresh quote.
         old_room_portion = quoted_room_total(conn, booking, room_for_pricing)
         extras_portion = (booking["total_price"] or 0) - old_room_portion
-        new_room_portion = compute_room_total(conn, room_for_pricing, arrival, departure)
+        if (arrival.isoformat(), departure.isoformat()) == (booking["arrival_date"],
+                                                            booking["departure_date"]):
+            # The same nights, at the price they were agreed at. Quoting them
+            # afresh re-priced the stay at whatever the rate card said today
+            # on any save at all -- so correcting a phone number could change
+            # what the guest owed, and nothing said so.
+            new_room_portion = old_room_portion
+        else:
+            new_room_portion = compute_room_total(conn, room_for_pricing, arrival, departure)
         new_total = new_room_portion + extras_portion
         new_total = new_total or None
 
@@ -52729,6 +52863,19 @@ def edit_booking(booking_id):
         under_18 = int(under_18_raw) if under_18_raw.isdigit() else (booking["guests_under_18"] or 0)
         under_18 = max(0, min(under_18, party_size))
 
+        # WHAT MOVED, written down. This page links to its own history and
+        # wrote nothing to it, so "who moved these dates" -- the question the
+        # history exists for -- had no answer for the change it is most asked
+        # about. The stay's own facts by value; anything about a person by
+        # name only, since this trail is kept for ever and outlives an erasure.
+        changes = booking_edit_changes(booking, {
+            "arrival_date": arrival.isoformat(), "departure_date": departure.isoformat(),
+            "party_size": party_size, "guests_under_18": under_18,
+            "total_price": new_total, "source": source, "heard_via": heard_via,
+            "guest_phone": guest_phone or None, "special_requests": special_requests or None,
+            "booked_by_name": booked_by_name or None, "booked_by_email": booked_by_email or None,
+            "second_contact_name": second_name or None,
+            "second_contact_email": second_email or None})
         conn.execute(
             """UPDATE bookings SET arrival_date=?, departure_date=?, party_size=?, guest_phone=?,
                special_requests=?, total_price=?, guests_under_18=?,
@@ -52746,6 +52893,9 @@ def edit_booking(booking_id):
         # The tax used to be recomputed inline right here and the schedule not
         # at all, which is how one of nine cells came to be covered.
         restamp_stay(conn, booking_id)
+        if changes:
+            log_audit(conn, "booking_edited", target=booking["reference_code"],
+                      details="; ".join(changes))
         conn.commit()
 
         # No guest-row date sync any more: the booking IS the record of when
@@ -52764,9 +52914,17 @@ def edit_booking(booking_id):
                                    _external=True),
         })
         conn.close()
-        if subject:
+        # The letter gives the dates and the party, so it goes when one of
+        # those moved. It went on every save: a corrected phone number sent the
+        # guest -- and anybody copied -- "your booking has been updated", with
+        # nothing different in it to find.
+        told = (booking["arrival_date"] != arrival.isoformat()
+                or booking["departure_date"] != departure.isoformat()
+                or booking["party_size"] != party_size)
+        if subject and told:
             write_about_stay(booking, subject, body, html=letter)
-        flash("Booking updated.", "success")
+        flash(("Booking updated." + (" The guest has been sent the new details." if told else ""))
+              if changes else "Nothing had changed.", "success")
         return redirect(url_for("admin_bookings"))
 
     group = booking_group(conn, booking["id"])
@@ -61207,7 +61365,7 @@ def set_cancel_reason(booking_id):
     """
     conn = get_db()
     row = conn.execute(
-        "SELECT guest_name, status FROM bookings WHERE id = ?",
+        "SELECT guest_name, status, reference_code FROM bookings WHERE id = ?",
         (booking_id,)).fetchone()
     if not row:
         conn.close()
@@ -61225,6 +61383,9 @@ def set_cancel_reason(booking_id):
     conn.execute(
         "UPDATE bookings SET cancel_reason = ?, cancel_note = ? WHERE id = ?",
         (reason or None, note or None, booking_id))
+    # It changes whose money is still held, so it is on the stay's history.
+    log_audit(conn, "booking_cancel_reason_set", target=row["reference_code"],
+              details=CANCEL_REASONS.get(reason) if reason else "taken off")
     conn.commit()
     conn.close()
     flash(f"Noted against {row['guest_name']}.", "success")
@@ -70588,6 +70749,14 @@ HISTORY_KINDS = {
     "guest": ("guest", "guests", ["name", "id"], "guest"),
     "expense": ("invoice or claim", "expenses", ["id"], "expense"),
     "workshop_session": ("sitting", "workshop_sessions", ["id"], "workshop"),
+    # A booking of each other kind, by its reference. The word is the whole
+    # action prefix, not "workshop": a place and a sitting share ids, and a
+    # sitting's lines are logged under the bare number.
+    "workshop_booking": ("atelier place", "workshop_bookings", ["reference_code", "id"],
+                         "workshop_registration"),
+    "restaurant_booking": ("table", "restaurant_bookings", ["reference_code", "id"],
+                           "restaurant_booking"),
+    "event": ("event", "event_inquiries", ["reference_code", "id"], "event_"),
 }
 
 
@@ -70722,7 +70891,7 @@ def audit_list_view(conn, args):
         facets=[
             facet("kind", "Kind", lambda e: audit_kind(e["action"]),
                   order=[label for label, _t in AUDIT_KINDS] + ["Other"]),
-            facet("who", "Who", lambda e: e["actor_name"] or "Unknown", limit=8),
+            facet("who", "Who", audit_who, limit=8),
             facet("when", "When", when,
                   order=["Today", "Last 7 days", "Last 30 days", "This year", "Older"]),
             facet("action", "Action", lambda e: (e["action"] or "").replace("_", " "),

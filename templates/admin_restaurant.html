@@ -153,7 +153,7 @@
         {% if r['booking_id'] %}<span class="mini-status status-upcoming" style="margin-left:4px;">linked to a stay</span>{% endif %}
         {% if r['no_show_at'] %}<span class="mini-status status-declined" style="margin-left:4px;">no-show</span>{% endif %}
       </div>
-      <span class="upload-hint">{{ r['reference_code'] }}</span>
+      <span class="upload-hint">{{ r['reference_code'] }}{% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='restaurant_booking', record_id=r['id']) }}" class="small-link">What changed</a>{% endif %}</span>
     </div>
     <p class="manual-body">{{ r['dinner_date'] }}{% if r['total_price'] %} · €{{ '%.2f'|format(r['total_price']) }}{% endif %}</p>
     {% if r['total_price'] and r['deposit_amount'] and r['deposit_amount'] < r['total_price'] %}

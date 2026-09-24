@@ -130,7 +130,7 @@
       <span class="mini-status status-inactive" style="margin-left:4px;">past</span>
       {% endif %}
     </div>
-    <span class="upload-hint">{{ e['reference_code'] }}</span>
+    <span class="upload-hint">{{ e['reference_code'] }}{% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='event', record_id=e['id']) }}" class="small-link">What changed</a>{% endif %}</span>
   </div>
   <p class="manual-body">
     {% if e['preferred_date'] %}{{ e['preferred_date'] }}{% if e['end_date'] %} → {{ e['end_date'] }}{% endif %}{% else %}No date set yet{% endif %}

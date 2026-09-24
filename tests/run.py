@@ -47,6 +47,7 @@ SUITES = [
     "test_refund_followups",
     "test_guest_account_statement",
     "test_contact_history",
+    "test_who_changed_a_booking",
     "test_workshop_rooms",
     "test_workshop_lifecycle",
     "test_workshop_minimum",
