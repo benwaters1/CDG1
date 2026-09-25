@@ -40,6 +40,14 @@ def _now():
 
 
 def _cleanup(conn):
+    # The turnover checklist first: when a stay is deleted its tasks keep going
+    # with the link cleared, and a task that has lost it cannot be found here.
+    # (Its fiches go with it, by the foreign key; deleted here all the same.)
+    ours = """(SELECT id FROM ota_reservations
+                WHERE guest_name LIKE ? OR reservation_number LIKE '98766%')"""
+    conn.execute(f"DELETE FROM tasks WHERE ota_reservation_id IN {ours}", (f"%{TAG}%",))
+    conn.execute(f"DELETE FROM channel_police_register WHERE ota_reservation_id IN {ours}",
+                 (f"%{TAG}%",))
     conn.execute("DELETE FROM ota_reservations WHERE guest_name LIKE ? OR reservation_number LIKE '98766%'",
                  (f"%{TAG}%",))
     conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
@@ -210,6 +218,63 @@ def _run(s, oc, ec, owner, conn):
     with m.app.test_request_context("/"):
         m.photo_declines(conn, today)
     s.check("a guest with no profile or address is simply not among the photo refusals", True)
+
+    s.section("Turning the room round after a Booking.com departure")
+    # The owner's home was opened just above, and it makes the checklist the
+    # same way it prepares arrivals.
+    rid = {r["reservation_number"]: r["id"] for r in conn.execute(
+        "SELECT id, reservation_number FROM ota_reservations WHERE reservation_number LIKE '98766%'")}
+    tom_id, zoe_rid = rid["9876600003"], rid["9876600001"]
+
+    def _turnover(reservation_id):
+        return conn.execute("SELECT * FROM tasks WHERE ota_reservation_id = ? ORDER BY id",
+                            (reservation_id,)).fetchall()
+    work = _turnover(tom_id)
+    s.check("the room a Booking.com guest leaves today gets its turnover checklist",
+            len(work) == len(m.CHECKOUT_CHECKLIST), detail=f"{len(work)} tasks")
+    s.check("the house's own checklist, on that room, due today",
+            bool(work) and all(t["title"].startswith(f"{b['name']}: ") and t["due_date"] == iso
+                               and t["origin"] == "checklist" for t in work)
+            and {t["title"].split(": ", 1)[1] for t in work} == set(m.CHECKOUT_CHECKLIST),
+            detail=str([t["title"] for t in work])[:200])
+    s.check("saying who left and how they booked",
+            bool(work) and work[0]["room_note"] == f"Tom {TAG} Vale leaving today, booked through "
+                                                  "Booking.com, party of 3.",
+            detail=work[0]["room_note"] if work else "")
+    with m.app.test_request_context("/"):
+        again = m.prep_channel_departures(conn, today)
+    s.check("made once, however often it is asked", again == 0 and len(_turnover(tom_id)) == len(work))
+    s.check("while the room a Booking.com guest is still in gets none", not _turnover(zoe_rid))
+    _stay(conn, "9876600009", f"Nia {TAG} Kerr", None, today - timedelta(days=2), today, 2)
+    _stay(conn, "9876600010", f"Yan {TAG} Past", a["id"], today - timedelta(days=4), today - timedelta(days=1), 2)
+    conn.commit()
+    with m.app.test_request_context("/"):
+        made = m.prep_channel_departures(conn, today)
+    extra = [r["id"] for r in conn.execute(
+        "SELECT id FROM ota_reservations WHERE reservation_number IN ('9876600009', '9876600010')")]
+    s.check("nor one whose room the email did not name, nor one that left yesterday",
+            made == 0 and not any(_turnover(x) for x in extra))
+    conn.execute("DELETE FROM ota_reservations WHERE reservation_number IN ('9876600009', '9876600010')")
+    conn.commit()
+    with m.app.test_request_context("/"):
+        board = {r["room"]["id"]: r for r in m.room_board(conn, today)}
+    s.check("and the room board says the room needs turning over, not Ready",
+            board[b["id"]]["state"] == "turnover", detail=board[b["id"]]["state"])
+    s.check("urgently, because somebody arrives in it today", board[b["id"]]["urgent"] is True)
+    text = visible_text(oc.get("/today").get_data(as_text=True))
+    s.check("on the Today page too", "Needs turning over" in text
+            and "Somebody arrives today and this room is not done." in text)
+    conn.execute("UPDATE tasks SET status = 'done', completed_at = ? WHERE ota_reservation_id = ?",
+                 (_now(), tom_id))
+    conn.commit()
+    with m.app.test_request_context("/"):
+        board = {r["room"]["id"]: r for r in m.room_board(conn, today)}
+    s.check("ticked off, the room is ready for the guest coming in",
+            board[b["id"]]["state"] == "arriving", detail=board[b["id"]]["state"])
+    src = open(m.__file__.replace(".pyc", ".py"), encoding="utf-8").read()
+    s.check("and the ten-minute housekeeping job makes it too, for a morning nobody opens the page",
+            "prep_channel_departures(conn, today)" in src.split("def run_housekeeping_job")[1][:900],
+            detail="a checklist only the owner's home makes is one that waits for the owner")
 
     s.section("Owner's home and the morning note")
     user = dict(owner) if not isinstance(owner, dict) else owner
