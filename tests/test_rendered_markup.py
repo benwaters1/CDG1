@@ -290,6 +290,7 @@ ENDPOINT_ARGS = {
     ("guest_feedback", "token"): ("bookings", "manage_token"),
     ("guest_portal", "token"): ("guests", "portal_token"),
     ("guest_portal_statement", "token"): ("guests", "portal_token"),
+    ("guest_portal_data", "token"): ("guests", "portal_token"),
     ("instructor_page", "token"): ("workshop_sessions", "instructor_token"),
     ("newsletter_confirm", "token"): ("newsletter_subscribers", "token"),
     ("newsletter_unsubscribe", "token"): ("newsletter_subscribers", "token"),

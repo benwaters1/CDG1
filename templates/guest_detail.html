@@ -4,6 +4,11 @@
 {% block content %}
 
 {% set g = record.guest %}
+{% if restriction and restriction['restricted_at'] %}
+<p class="flash flash-error">They asked us to stop using their details
+  {{ restriction['restricted_at']|house_day|date_short }} &mdash; {{ restriction['restricted_how'] }}{% if restriction['by_name'] %}, written down by {{ restriction['by_name'] }}{% endif %}.
+  Nothing is sent to them now but what their bookings need.</p>
+{% endif %}
 {% if merged_into %}
 <p class="flash flash-error">This profile was merged into
   <a href="{{ url_for('guest_detail', guest_id=merged_into['id']) }}">{{ merged_into['name'] }}</a>.
@@ -535,6 +540,28 @@
   room is given, not after. Choosing "No caution" lifts it, and either way the
   change is recorded in the note above.</p>
   <button type="submit" class="btn-mini">Save caution</button>
+</form>
+
+{# ---- using their details ------------------------------------------------
+   The right the notice lists. Set when they ask; lifted only when they ask
+   again, as a stop on texts is. #}
+<h2 style="margin-top:28px;">Using their details</h2>
+<form method="post" action="{{ url_for('restrict_guest', guest_id=g['id']) }}" style="max-width:640px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if restriction and restriction['restricted_at'] %}
+  <input type="hidden" name="on" value="0">
+  <label class="field-label" for="gr_how">How they asked to start again</label>
+  <input id="gr_how" type="text" name="how" maxlength="200" placeholder="by email, on the 4th">
+  <button type="submit" class="btn-mini">They asked us to start again</button>
+  {% else %}
+  <input type="hidden" name="on" value="1">
+  <label class="field-label" for="gr_how">How they asked</label>
+  <input id="gr_how" type="text" name="how" maxlength="200" placeholder="on the telephone">
+  <button type="submit" class="btn-mini">They asked us to stop using their details</button>
+  <p class="upload-hint">We keep what we hold, and send them nothing but what their bookings
+  need: no newsletter, no offers, no marketing texts, no invitation to review us, no request
+  for feedback, no greeting on a date that matters.</p>
+  {% endif %}
 </form>
 
 {# ---- duplicates and merging ------------------------------------------- #}

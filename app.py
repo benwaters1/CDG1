@@ -5408,6 +5408,13 @@ def init_db():
         # stay, and they can empty it whenever they like.
         ("guests_own_notes_at", "ALTER TABLE guests ADD COLUMN own_notes_updated_at TEXT"),
         ("guests_usual_arrival", "ALTER TABLE guests ADD COLUMN usual_arrival_time TEXT"),
+        # THEY ASKED US TO STOP USING WHAT WE HOLD. The privacy notice has long
+        # listed the right, and nothing recorded that anybody had used it, so
+        # nothing could honour it.
+        ("guests_restricted_at", "ALTER TABLE guests ADD COLUMN restricted_at TEXT"),
+        ("guests_restricted_by",
+         "ALTER TABLE guests ADD COLUMN restricted_by_user_id INTEGER REFERENCES users(id)"),
+        ("guests_restricted_how", "ALTER TABLE guests ADD COLUMN restricted_how TEXT"),
         ("guest_access_needs", "ALTER TABLE guests ADD COLUMN access_needs TEXT"),
         ("guest_access_needs_at", "ALTER TABLE guests ADD COLUMN access_needs_updated_at TEXT"),
         # "Nothing is published without asking you first" is on the form
@@ -6938,6 +6945,7 @@ NAV_AREAS = {
         "delete_room_photo", "delete_room_rate_override", "disband_booking_party", "export_bookings_csv",
         "export_guests_csv", "guest_full_statement", "guest_statement_csv",
         "email_guest_account_statement", "write_to_guest", "reissue_booking_link_page",
+        "restrict_guest",
         "tag_guest", "bulk_tag_guests",
         "reissue_portal_link_page", "import_catalogue",
         "link_guest_bookings",
@@ -8567,7 +8575,8 @@ GUEST_AUDIT_ACTIONS = frozenset({
     "booking_confirmed_online", "booking_cancelled_by_guest",
     "booking_dates_changed_by_guest", "booking_change_asked_by_guest",
     "booking_contact_changed_by_guest", "guest_extended_stay", "guest_added_extra",
-    "guest_wrote_in",
+    "guest_wrote_in", "guest_restricted", "guest_asked_to_be_forgotten",
+    "guest_downloaded_their_data",
 })
 
 
@@ -22716,12 +22725,13 @@ def send_campaign_template(template_id):
         return redirect(url_for("edit_campaign_template", template_id=template_id))
 
     result = send_campaign(conn, template, audience, user["id"])
+    held = campaign_held_back_note(result["withheld"])
     log_audit(conn, "campaign_sent", target=template["name"],
-              details=f"{result['sent']} sent, {result['failed']} failed")
+              details=f"{result['sent']} sent, {result['failed']} failed{held}")
     conn.commit()
     conn.close()
     flash(f"Sent to {result['sent']} recipient(s)"
-          + (f", {result['failed']} failed" if result["failed"] else "") + ".",
+          + (f", {result['failed']} failed" if result["failed"] else "") + held + ".",
           "success" if not result["failed"] else "error")
     return redirect(url_for("edit_campaign_template", template_id=template_id))
 
@@ -23119,11 +23129,14 @@ def newsletter_recipients(conn):
     an address to email_optouts by hand, and that must suppress the newsletter
     too, not only campaign sends.
     """
-    return conn.execute(
+    held_back = restricted_addresses(conn)
+    return [r for r in conn.execute(
         """SELECT email FROM newsletter_subscribers
            WHERE confirmed_at IS NOT NULL AND unsubscribed_at IS NULL
              AND email NOT IN (SELECT email FROM email_optouts)
            ORDER BY confirmed_at""").fetchall()
+        # Nor anybody who asked us to stop using their details.
+        if (r["email"] or "").strip().lower() not in held_back]
 
 
 @app.route("/admin/emails/optout", methods=["POST"])
@@ -38001,6 +38014,27 @@ def reissue_portal_link_page(guest_id):
                               sent, why, url_for("guest_detail", guest_id=guest_id))
 
 
+@app.route("/guests/<int:guest_id>/restrict", methods=["POST"])
+@owner_required
+def restrict_guest(guest_id):
+    """Record that they asked us to stop using their details, or, at their
+    request, that they asked us to start again."""
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM guests WHERE id = ?", (guest_id,)).fetchone():
+        conn.close()
+        abort(404)
+    on = request.form.get("on") == "1"
+    how = " ".join((request.form.get("how") or "").split())[:200] or (
+        "they asked us" if on else "they asked us to start again")
+    changed = set_guest_restriction(conn, guest_id, on, how, current_user()["id"])
+    conn.commit()
+    conn.close()
+    flash(("Recorded: nothing is sent to them now but what their bookings need." if on else
+           "Recorded: they are written to again as anybody is.") if changed
+          else "That was already so.", "success" if changed else "error")
+    return redirect(url_for("guest_detail", guest_id=guest_id))
+
+
 @app.route("/guests/<int:guest_id>/note", methods=["POST"])
 @login_required
 def add_guest_note_route(guest_id):
@@ -38262,6 +38296,11 @@ def guest_detail(guest_id):
             WHERE guest_tags.guest_id = ? ORDER BY guest_tags.tag""", (guest_id,)).fetchall()
     known_tags = [r["tag"] for r in conn.execute(
         "SELECT DISTINCT tag FROM guest_tags ORDER BY tag").fetchall()] if is_owner else []
+    # Whether they asked us to stop using their details, how, and who wrote it down.
+    restriction = conn.execute(
+        """SELECT guests.restricted_at, guests.restricted_how, users.name AS by_name
+             FROM guests LEFT JOIN users ON users.id = guests.restricted_by_user_id
+            WHERE guests.id = ?""", (guest_id,)).fetchone()
     # Their own standing link, for the owner to pass on or replace.
     own_link = (url_for("guest_portal", token=record["guest"]["portal_token"], _external=True)
                 if is_owner and record["guest"]["portal_token"] else None)
@@ -38304,7 +38343,7 @@ def guest_detail(guest_id):
                            reply_areas=list(REPLY_TO_AREAS),
                            rebook_rooms=rebook_rooms, usual_nights=usual_nights,
                            today=house_today_iso(), merged_into=merged_into,
-                           own_link=own_link, guest_tags=guest_tags,
+                           own_link=own_link, guest_tags=guest_tags, restriction=restriction,
                            known_tags=known_tags)
 
 
@@ -44553,6 +44592,8 @@ def can_text(conn, raw_number, purpose="transactional"):
         if not conn.execute("SELECT 1 FROM sms_consents WHERE phone = ?",
                             (number,)).fetchone():
             return None, "no consent on file for marketing"
+        if guest_restricted(conn, phone=number):
+            return None, "they asked us to stop using their details"
     return number, None
 
 
@@ -45211,8 +45252,10 @@ def run_review_invitation_job(conn, days_after=None):
                   (SELECT LOWER(email) FROM email_optouts)""",
         (cutoff,)).fetchall()
     asked = 0
+    held_back = restricted_addresses(conn)
     for answer in answers:
-        if not may_ask_for_a_review(answer):
+        if (not may_ask_for_a_review(answer)
+                or (answer["email"] or "").strip().lower() in held_back):
             # Stamped anyway, so the job does not reconsider the same
             # disappointed guest every morning for ever. The stamp means "we
             # have decided about this one", not "we wrote to them".
@@ -45295,6 +45338,8 @@ def ask_room_feedback(conn, booking):
         return False
     if conn.execute("SELECT 1 FROM email_optouts WHERE LOWER(email) = LOWER(?)",
                     (booking["guest_email"],)).fetchone():
+        return False
+    if guest_restricted(conn, email=booking["guest_email"]):
         return False
     subject, body, letter = render_email_template(conn, "room_feedback_request", {
         "guest_name": (booking["guest_name"] or "").strip().split(" ")[0] or "there",
@@ -46694,7 +46739,8 @@ def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False
     """Who a campaign would go to: {email: name}, de-duplicated.
 
     Builds on the existing segment logic, then removes anyone who has opted
-    out. A guest with a stay AND a dinner is emailed once, not twice.
+    out or asked us to stop using their details. A guest with a stay AND a
+    dinner is emailed once, not twice.
     """
     recipients = dict(promo_blast_recipients(conn, segments, since_date_iso))
     if "profiles" in segments:
@@ -46706,6 +46752,10 @@ def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False
     recipients = {(e or "").strip().lower(): n for e, n in recipients.items() if e and e.strip()}
     if not include_optouts:
         opted_out = {r["email"] for r in conn.execute("SELECT email FROM email_optouts").fetchall()}
+        # The segments leave them out already; a profile is added here
+        # directly, and this is the count the owner is shown and types back to
+        # send. Counted in, they would be a number that never goes.
+        opted_out |= restricted_addresses(conn)
         recipients = {e: n for e, n in recipients.items() if e not in opted_out}
     return recipients
 
@@ -46757,8 +46807,14 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None,
     doesn't show up in the send history as if guests had been mailed.
     """
     now_iso = datetime.now(timezone.utc).isoformat()
-    sent = failed = skipped = 0
+    sent = failed = skipped = withheld = 0
+    # Not to anybody who asked us to stop using their details. Here, where every
+    # campaign goes, so no audience anybody builds can send round it.
+    held_back = restricted_addresses(conn)
     for email, name in recipients.items():
+        if not as_test and (email or "").strip().lower() in held_back:
+            withheld += 1
+            continue
         key = f"{dedupe_key}:{email}" if dedupe_key else None
         if key and conn.execute(
             "SELECT 1 FROM campaign_sends WHERE dedupe_key = ?", (key,)
@@ -46801,7 +46857,19 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None,
             sent += 1
         elif status == "failed":
             failed += 1
-    return {"sent": sent, "failed": failed, "skipped": skipped, "total": len(recipients)}
+    return {"sent": sent, "failed": failed, "skipped": skipped, "withheld": withheld,
+            "total": len(recipients)}
+
+
+def campaign_held_back_note(withheld):
+    """What a send did not do, for the line that says what it did.
+
+    Nobody who asked us to stop using their details is sent a campaign, however
+    the audience came to include them -- and a total smaller than the count the
+    owner typed, with no reason beside it, reads as mail gone missing.
+    """
+    return (f", {withheld} held back because they asked us to stop using their details"
+            if withheld else "")
 
 
 def run_campaign_triggers_job(conn):
@@ -46817,7 +46885,7 @@ def run_campaign_triggers_job(conn):
         return "no active triggers"
 
     opted_out = {r["email"] for r in conn.execute("SELECT email FROM email_optouts").fetchall()}
-    total = 0
+    total = held = 0
     for t in templates:
         offset = t["trigger_offset_days"] or 0
         # Negative offset = before the event, positive = after.
@@ -46848,7 +46916,8 @@ def run_campaign_triggers_job(conn):
         result = send_campaign(conn, t, audience, user_id=None,
                                dedupe_key=f"trigger:{t['id']}:{target}")
         total += result["sent"]
-    return f"{total} automated email(s) sent"
+        held += result["withheld"]
+    return f"{total} automated email(s) sent" + campaign_held_back_note(held)
 
 
 def log_workshop_message(conn, booking_id, subject, recipient, status):
@@ -50246,6 +50315,9 @@ def ask_for_a_review(feedback_id):
         problem = (f"{answer['guest_name']} gave the house "
                    f"{answer['rating']} out of 5. Asking them to say that in "
                    "public is not a favour to anybody.")
+    elif guest_restricted(conn, email=answer["email"]):
+        problem = (f"{answer['guest_name']} asked us to stop using their details, "
+                   "so they are not asked for anything.")
     if problem:
         conn.close()
         flash(problem, "error")
@@ -51407,6 +51479,126 @@ def guest_portal(token):
         ateliers=ateliers, bills=bills,
         today=house_today_iso(),
     )
+
+
+def portal_profile(conn, token):
+    """The profile a portal link opens, followed through any merge."""
+    profile = conn.execute("SELECT * FROM guests WHERE portal_token = ?", (token,)).fetchone()
+    seen = set()
+    while profile and profile["merged_into_id"] and profile["id"] not in seen:
+        seen.add(profile["id"])
+        profile = conn.execute("SELECT * FROM guests WHERE id = ?",
+                               (profile["merged_into_id"],)).fetchone() or profile
+    return profile
+
+
+PORTAL_HOW = "from their own account page"
+
+
+@app.route("/my/<token>/data.json")
+def guest_portal_data(token):
+    """A copy of everything we hold about them, in the portable form the
+    notice promises -- theirs to take without asking anybody."""
+    conn = get_db()
+    profile = portal_profile(conn, token)
+    if not profile or not (profile["email"] or "").strip():
+        conn.close()
+        abort(404)
+    export = guest_data_export(conn, profile["email"])
+    # On their record, as theirs. Its own action rather than the owner's
+    # export's: that one is by an address that may have no profile, and a line
+    # whose owner account has since gone would read as the guest's. By the
+    # profile, never the address -- the trail outlives what it describes.
+    log_audit(conn, "guest_downloaded_their_data", target=f"guest {profile['id']}",
+              details=f"{export['row_count']} rows, {PORTAL_HOW}", actor=None)
+    conn.commit()
+    conn.close()
+    return app.response_class(
+        json.dumps(export, indent=2, default=str, ensure_ascii=False),
+        mimetype="application/json",
+        headers={"Content-Disposition": 'attachment; filename="what-we-hold.json"',
+                 "Cache-Control": "no-store"})
+
+
+@app.route("/my/<token>/stop-offers", methods=["POST"])
+def guest_portal_stop_offers(token):
+    """No newsletter, no offers, no marketing texts: one press, their own."""
+    conn = get_db()
+    profile = portal_profile(conn, token)
+    if not profile:
+        conn.close()
+        abort(404)
+    now = datetime.now(timezone.utc).isoformat()
+    for email in guest_addresses(conn, profile["id"]):
+        if conn.execute("INSERT OR IGNORE INTO email_optouts (email, reason, created_at) "
+                        "VALUES (?, ?, ?)", (email, PORTAL_HOW, now)).rowcount:
+            record_consent(conn, "marketing_email", 0, PORTAL_HOW, email=email, at=now)
+        if conn.execute("UPDATE newsletter_subscribers SET unsubscribed_at = ?, confirmed_at = NULL "
+                        "WHERE LOWER(TRIM(email)) = ? AND unsubscribed_at IS NULL",
+                        (now, email)).rowcount:
+            record_consent(conn, "newsletter", 0, PORTAL_HOW, email=email, at=now)
+    number = normalise_phone(profile["phone"] or "")
+    if number and conn.execute("DELETE FROM sms_consents WHERE phone = ?", (number,)).rowcount:
+        record_consent(conn, "marketing_texts", 0, PORTAL_HOW, phone=number, at=now)
+    conn.commit()
+    conn.close()
+    flash(t("Done. We will not send you the newsletter, offers or marketing texts."), "success")
+    return redirect(url_for("guest_portal", token=token))
+
+
+@app.route("/my/<token>/stop-using", methods=["POST"])
+def guest_portal_stop_using(token):
+    """Stop using my details -- recorded at once, and the owner told."""
+    conn = get_db()
+    profile = portal_profile(conn, token)
+    if not profile:
+        conn.close()
+        abort(404)
+    if set_guest_restriction(conn, profile["id"], True, PORTAL_HOW):
+        conn.execute(
+            """INSERT INTO tasks (title, notes, priority, due_date, status, origin, created_at)
+               VALUES (?, ?, 'normal', ?, 'open', 'guest_request', ?)""",
+            (f"A guest asked us to stop using their details (profile #{profile['id']})",
+             "Recorded on their profile already: nothing is sent to them now but what their "
+             "bookings need. Nothing to do unless something is sent by hand.",
+             house_today_iso(), datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash(t("Recorded. We will use your details for nothing but the bookings you have with us."),
+          "success")
+    return redirect(url_for("guest_portal", token=token))
+
+
+# The law gives a month to answer a request to be forgotten.
+FORGET_WITHIN_DAYS = 30
+
+
+@app.route("/my/<token>/forget", methods=["POST"])
+def guest_portal_forget(token):
+    """Ask to be forgotten. Not done by the page itself: an erasure cannot be
+    undone and keeps the sales the law requires, so it is the owner's act --
+    which is why the request becomes a task with the month on it."""
+    conn = get_db()
+    profile = portal_profile(conn, token)
+    if not profile:
+        conn.close()
+        abort(404)
+    due = (house_today() + timedelta(days=FORGET_WITHIN_DAYS)).isoformat()
+    title = f"A guest asked to be forgotten (profile #{profile['id']})"
+    if not conn.execute("SELECT 1 FROM tasks WHERE title = ? AND status = 'open'",
+                        (title,)).fetchone():
+        conn.execute(
+            """INSERT INTO tasks (title, notes, priority, due_date, status, origin, created_at)
+               VALUES (?, ?, 'high', ?, 'open', 'guest_request', ?)""",
+            (title, "Erase them from What we hold about them, on their record: it keeps the "
+                    "sales the law requires and deletes the rest. The law gives a month.",
+             due, datetime.now(timezone.utc).isoformat()))
+        log_audit(conn, "guest_asked_to_be_forgotten", target=f"guest {profile['id']}",
+                  details=f"to be done by {due}", actor=None)
+    conn.commit()
+    conn.close()
+    flash(t("We have your request. It will be done within a month."), "success")
+    return redirect(url_for("guest_portal", token=token))
 
 
 @app.route("/my/<token>/statement")
@@ -55765,6 +55957,12 @@ def promo_blast_recipients(conn, segments, since_date_iso=None):
     # opt-out box by hand is the one that would silently fail to match, and
     # that is exactly the case that matters.
     if recipients:
+        # And anybody who asked us to stop using their details, before the
+        # count the owner is shown, for the same reason.
+        held_back = restricted_addresses(conn)
+        recipients = {email: name for email, name in recipients.items()
+                      if (email or "").strip().lower() not in held_back}
+    if recipients:
         opted_out = {
             (r["email"] or "").strip().lower()
             for r in conn.execute("SELECT email FROM email_optouts").fetchall()
@@ -55860,12 +56058,13 @@ def send_promo_code_blast(code_id):
         user["id"] if user else None,
         extra_context={"promo_code": promo["code"]},
     )
+    held = campaign_held_back_note(result["withheld"])
     log_audit(conn, "promo_blast_sent", target=promo["code"],
-              details=f"{result['sent']} sent, {result['failed']} failed")
+              details=f"{result['sent']} sent, {result['failed']} failed{held}")
     conn.commit()
     conn.close()
     flash(f"Sent to {result['sent']} of {result['total']} guest(s)"
-          + (f", {result['failed']} failed" if result["failed"] else "") + ".",
+          + (f", {result['failed']} failed" if result["failed"] else "") + held + ".",
           "error" if result["failed"] else "success")
     return redirect(url_for("admin_promo_codes"))
 
@@ -67428,7 +67627,7 @@ def upcoming_guest_dates(conn, within_days=30, today=None):
     rows = []
     for guest in conn.execute(
             """SELECT * FROM guests
-                WHERE merged_into_id IS NULL
+                WHERE merged_into_id IS NULL AND restricted_at IS NULL
                   AND (COALESCE(birthday, '') != '' OR COALESCE(anniversary, '') != '')
              """).fetchall():
         for kind, value in (("birthday", guest["birthday"]),
@@ -67622,6 +67821,11 @@ def merge_guest_profiles(conn, keep_id, merge_id, user_id=None):
         fills["photo_consent_at"] = merge["photo_consent_at"]
     if merge["vip"] and not keep["vip"]:
         fills["vip"] = 1
+    # And an instruction to stop using their details, which is theirs, not a
+    # profile's: folding the profile in must not undo it.
+    if merge["restricted_at"] and not keep["restricted_at"]:
+        for column in ("restricted_at", "restricted_by_user_id", "restricted_how"):
+            fills[column] = merge[column]
     # The email is the one field a unique index can refuse. Only take it if the
     # survivor has none, and the merged profile's has to be released first or
     # the index refuses the update.
@@ -68302,7 +68506,54 @@ def correspondence_for(conn, guest_id, limit=500):
 CONSENT_CHANNELS = {
     "marketing_email": "Marketing email", "newsletter": "The newsletter",
     "texts": "Texts", "marketing_texts": "Marketing texts", "photos": "Photographs",
+    "use": "Using their details",
 }
+
+
+def guest_restricted(conn, email=None, phone=None, guest_id=None):
+    """Whether somebody has asked the house to stop using what it holds."""
+    gid = guest_id or guest_for_contact(conn, address=email, phone=phone)
+    if not gid:
+        return False
+    row = conn.execute("SELECT restricted_at FROM guests WHERE id = ?", (gid,)).fetchone()
+    return bool(row and row["restricted_at"])
+
+
+def restricted_addresses(conn):
+    """Every address of everybody who has asked us to stop using their details,
+    the addresses of profiles merged into theirs included."""
+    out = set()
+    for r in conn.execute("SELECT id FROM guests WHERE restricted_at IS NOT NULL").fetchall():
+        out.update(guest_addresses(conn, r["id"]))
+    return out
+
+
+def set_guest_restriction(conn, guest_id, on, how, user_id=None):
+    """Record that somebody asked us to stop using their details -- or, at their
+    request, to start again. True if it changed anything.
+
+    What it stops is everything the house sends for its own reasons: the
+    newsletter, campaigns and offers, marketing texts, the invitation to review
+    us, the request for feedback, the greeting on a date that matters. What it
+    does not stop is what their bookings need -- the confirmation, the bill,
+    the note about their arrival -- because using the details for the stay
+    they booked is the stay.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    if on:
+        cur = conn.execute(
+            """UPDATE guests SET restricted_at = ?, restricted_by_user_id = ?, restricted_how = ?
+                WHERE id = ? AND restricted_at IS NULL""", (now, user_id, how, guest_id))
+    else:
+        cur = conn.execute(
+            """UPDATE guests SET restricted_at = NULL, restricted_by_user_id = NULL,
+                      restricted_how = NULL WHERE id = ? AND restricted_at IS NOT NULL""",
+            (guest_id,))
+    if cur.rowcount:
+        record_consent(conn, "use", 0 if on else 1, how, guest_id=guest_id, at=now)
+        log_audit(conn, "guest_restricted" if on else "guest_restriction_lifted",
+                  target=f"guest {guest_id}", details=how)
+    return bool(cur.rowcount)
 PHOTO_CONSENT_GRANTED = {"yes": 1, "no": 0}
 
 
@@ -68547,7 +68798,7 @@ def guest_timeline(conn, guest_id):
                       JOIN bookings ON bookings.id = guest_feedback.booking_id
                      WHERE booking_id IN ({','.join('?' * len(stays))})""", stays).fetchall():
             keys = r.keys()
-            said = (r["comments"] if "comments" in keys else "") or ""
+            said = (r["comment"] if "comment" in keys else "") or ""
             rating = r["rating"] if "rating" in keys else None
             add(r["submitted_at"] if "submitted_at" in keys else None, "Feedback",
                 f"Rated their stay {rating} of 5" if rating else "Wrote about their stay",

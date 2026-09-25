@@ -96,6 +96,28 @@
   {% endif %}
 
   <p style="margin-top:var(--s4)"><a href="{{ url_for('guest_portal_statement', token=profile['portal_token']) }}" class="g-btn g-btn--sm">{{ t('Your statement') }}</a></p>
+
+  {# What they may ask of us, done here rather than by writing in and waiting:
+     the rights the privacy notice lists, each one press. #}
+  <h2 class="section-heading">{{ t('Your details') }}</h2>
+  <p class="g-p"><a href="{{ url_for('guest_portal_data', token=profile['portal_token']) }}" class="g-btn g-btn--sm">{{ t('A copy of everything we hold about you') }}</a></p>
+  <form method="post" action="{{ url_for('guest_portal_stop_offers', token=profile['portal_token']) }}" style="margin-top:var(--s2);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="g-btn g-btn--sm">{{ t('No more newsletter, offers or marketing texts') }}</button>
+  </form>
+  {% if not profile['restricted_at'] %}
+  <form method="post" action="{{ url_for('guest_portal_stop_using', token=profile['portal_token']) }}" style="margin-top:var(--s2);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="g-btn g-btn--sm">{{ t('Stop using my details for anything but my bookings') }}</button>
+  </form>
+  {% else %}
+  <p class="g-hint">{{ t('You asked us to stop using your details. We use them for nothing but the bookings you have with us.') }}</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('guest_portal_forget', token=profile['portal_token']) }}" style="margin-top:var(--s2);"
+        onsubmit="return confirm({{ t('Ask us to delete what we hold about you? It cannot be undone.')|tojson }});">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="g-btn g-btn--sm">{{ t('Ask us to delete what we hold about you') }}</button>
+  </form>
   <p class="g-hint" style="margin-top:var(--s4);">
     Something not right, or something you would like to add? Reply to any email from us and we will sort it.
   </p>

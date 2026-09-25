@@ -46,6 +46,8 @@ def _cleanup():
         conn.execute("DELETE FROM guest_messages WHERE guest_id IN "
                      "(SELECT id FROM guests WHERE name LIKE ?)", (TAG + "%",))
         conn.execute(f"DELETE FROM booking_payments WHERE booking_id IN {stays}", (TAG + "%",))
+        # Kept when its stay goes (the link is set to nothing), so by its name.
+        conn.execute("DELETE FROM guest_feedback WHERE guest_name LIKE ?", (TAG + "%",))
         conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
         conn.execute("""DELETE FROM workshop_bookings WHERE reference_code LIKE ?""",
                      (TAG + "%",))
@@ -410,11 +412,17 @@ def _run(s, oc, ec, owner, emp):
                  "VALUES (?, 400, 'cash', ?)", (bid, _harness.datetime_now()))
     conn.execute("INSERT INTO guest_notes (guest_id, body, created_at) VALUES (?, ?, ?)",
                  (gid, f"{TAG} prefers the room at the back", _harness.datetime_now()))
+    conn.execute("""INSERT INTO guest_feedback (booking_id, guest_name, rating, comment,
+                    submitted_at) VALUES (?, ?, 5, ?, ?)""",
+                 (bid, f"{TAG} Maker", f"{TAG} the view from the tower", _harness.datetime_now()))
     conn.commit()
     conn.close()
     oc.post("/admin/emails/optout", data={"email": maker})
     items = _rows_of(m.guest_timeline, gid)
     kinds = {x["kind"] for x in items}
+    s.check("what they said about their stay is on it, in their words",
+            any(x["kind"] == "Feedback" and "the view from the tower" in x["detail"] for x in items),
+            detail=str([(x["title"], x["detail"]) for x in items if x["kind"] == "Feedback"]))
     s.check("letters, texts, conversations, notes, bookings, money and consent are all on it",
             {"Letter", "Text", "They wrote", "Conversation", "Note", "Booking", "Money",
              "Consent"} <= kinds, detail=str(sorted(kinds)))
