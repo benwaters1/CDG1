@@ -232,6 +232,38 @@ def _call(fn, *args, **kw):
         conn.close()
 
 
+def _stay_refunds(booking_id, cols="id"):
+    """The refunds against one stay, oldest first.
+
+    refunds.booking_id is a number in whichever table `category` names, so a
+    stay and an atelier place can carry the same one, and asked by the number
+    alone a stay reads the atelier's refund as its own. That is how "no money
+    moves on their say-so" went red over money that never went near the stay:
+    the atelier place refunded and failed further up had the same number as the
+    request declined below -- which happened only when the suites run before
+    this one had brought the two counts level. Every lookup names the category.
+    """
+    return _q(f"SELECT {cols} FROM refunds WHERE category = 'room' AND booking_id = ? "
+              "ORDER BY id", booking_id)
+
+
+def _refund_mark():
+    """Where the refunds table stands, so a step can be asked what it wrote."""
+    return _q("SELECT COALESCE(MAX(id), 0) FROM refunds")[0][0]
+
+
+def _refunds_since(mark):
+    """Every refund recorded after `mark`, whichever booking it names.
+
+    "Nothing moved" is a claim about what one step did, so it is asked of the
+    rows written since, not of the booking: a row that was already there is not
+    the step's doing, and one the step wrote against the wrong booking still is.
+    """
+    return [tuple(r) for r in _q(
+        "SELECT category, booking_id, amount, reason_code FROM refunds WHERE id > ? "
+        "ORDER BY id", mark)]
+
+
 def _titles():
     found, _dropped = _call(m.watch_task_findings, house_today())
     return [title for _k, title, _n, _d, _p in found]
@@ -264,23 +296,22 @@ def _run(s, oc, sent):
     refund = {"id": f"re_{TAG}d1", "amount": 10000, "payment_intent": "pi_dash",
               "status": "succeeded", "metadata": {}, "created": 1790000000}
     _hook(oc, fake, "refund.created", refund)
-    rows = _q("SELECT * FROM refunds WHERE booking_id = ? AND category = 'room'", dash["id"])
+    rows = _stay_refunds(dash["id"], "*")
     s.check("it is recorded against the payment it came from",
             [(r["amount"], r["reason_code"], r["stripe_refund_id"]) for r in rows]
             == [(100.0, "stripe_dashboard", f"re_{TAG}d1")] and rows[0]["payment_key"],
             detail=str([dict(r) for r in rows]))
     _hook(oc, fake, "refund.updated", refund)
     s.check("and Stripe telling us twice records it once",
-            len(_q("SELECT id FROM refunds WHERE booking_id = ?", dash["id"])) == 1)
+            len(_stay_refunds(dash["id"])) == 1)
     _hook(oc, fake, "refund.created", dict(refund, id=f"re_{TAG}own",
                                            metadata={"made_by": "gudanes"}))
     s.check("while a refund this app made is left for the app to record",
-            len(_q("SELECT id FROM refunds WHERE booking_id = ?", dash["id"])) == 1)
+            len(_stay_refunds(dash["id"])) == 1)
     fake.listed["pi_dash"] = [dict(refund, id=f"re_{TAG}d2", amount=5000)]
     _hook(oc, fake, "charge.refunded", {"id": "ch_dash", "payment_intent": "pi_dash"})
     s.check("a charge refunded in the dashboard is read refund by refund",
-            sorted(r["amount"] for r in _q("SELECT amount FROM refunds WHERE booking_id = ?",
-                                           dash["id"])) == [50.0, 100.0])
+            sorted(r["amount"] for r in _stay_refunds(dash["id"], "amount")) == [50.0, 100.0])
     s.check("the stay now asks for it again, and the owner is asked what was meant",
             any(f"left {TAG} Guest DASH owing" in t for t in _titles())
             and any("made in Stripe to decide" in w for w in _warnings()),
@@ -301,8 +332,7 @@ def _run(s, oc, sent):
                                        "payment_intent": "pi_old", "status": "succeeded",
                                        "metadata": {}})
     s.check("a payment kept only by its Checkout session is still found",
-            [r["amount"] for r in _q("SELECT amount FROM refunds WHERE booking_id = ?",
-                                     old["id"])] == [20.0])
+            [r["amount"] for r in _stay_refunds(old["id"], "amount")] == [20.0])
     _hook(oc, fake, "refund.created", {"id": f"re_{TAG}nowhere", "amount": 700,
                                        "payment_intent": "pi_nobody", "status": "succeeded",
                                        "metadata": {}})
@@ -323,7 +353,7 @@ def _run(s, oc, sent):
     _hook(oc, fake, "refund.failed", {"id": rid, "amount": 40000, "payment_intent": "pi_gone",
                                       "status": "failed",
                                       "failure_reason": "expired_or_canceled_card"})
-    rows = _q("SELECT * FROM refunds WHERE booking_id = ? ORDER BY id", gone["id"])
+    rows = _stay_refunds(gone["id"], "*")
     s.check("a failure is booked back against the refund it undoes",
             [r["amount"] for r in rows] == [400.0, -400.0] and rows[1]["reverses_refund_id"] == ids[0],
             detail=str([(r["amount"], r["reverses_refund_id"]) for r in rows]))
@@ -332,7 +362,7 @@ def _run(s, oc, sent):
             and _q("SELECT payment_status FROM bookings WHERE id = ?", gone["id"])[0][0] != "refunded")
     _hook(oc, fake, "refund.failed", {"id": rid, "amount": 40000, "status": "failed"})
     s.check("and a second report of the same failure books nothing more",
-            len(_q("SELECT id FROM refunds WHERE booking_id = ?", gone["id"])) == 2)
+            len(_stay_refunds(gone["id"])) == 2)
     s.check("the owner is told it did not reach them",
             any(f"refund to {TAG} Guest GONE did not go through" in t for t in _titles())
             and any("did not reach the guest" in w for w in _warnings()),
@@ -370,34 +400,36 @@ def _run(s, oc, sent):
             any(f"disputed: {TAG} Guest DISP" in t for t in _titles())
             and any("being disputed" in w for w in _warnings()))
     _hook(oc, fake, "charge.dispute.closed", dict(dispute, status="lost"))
-    back = _q("SELECT amount, reason_code FROM refunds WHERE booking_id = ?", disp["id"])
+    back = _stay_refunds(disp["id"], "amount, reason_code")
     s.check("lost, the money is a refund in the record, once",
             [(r["amount"], r["reason_code"]) for r in back] == [(400.0, "chargeback")],
             detail=str([tuple(r) for r in back]))
     _hook(oc, fake, "charge.dispute.closed", dict(dispute, status="lost"))
     s.check("however often Stripe says so",
-            len(_q("SELECT id FROM refunds WHERE booking_id = ?", disp["id"])) == 1)
+            len(_stay_refunds(disp["id"])) == 1)
     s.check("and the task closes itself", not any(f"disputed: {TAG} Guest DISP" in t
                                                   for t in _titles()))
-    won = _stay("WON", payments=[(400.0, "stripe", "pi_won", "cs_won")])
+    _stay("WON", payments=[(400.0, "stripe", "pi_won", "cs_won")])
+    mark = _refund_mark()
     _hook(oc, fake, "charge.dispute.created", dict(dispute, id=f"dp_{TAG}2",
                                                    payment_intent="pi_won"))
     _hook(oc, fake, "charge.dispute.closed", dict(dispute, id=f"dp_{TAG}2",
                                                   payment_intent="pi_won", status="won"))
-    s.check("a dispute won takes nothing away",
-            not _q("SELECT id FROM refunds WHERE booking_id = ?", won["id"]))
+    s.check("a dispute won takes nothing away", not _refunds_since(mark),
+            detail=str(_refunds_since(mark)))
 
     s.section("A decline by somebody who may not give money back moves nothing")
     desk_staff = _preset_client(["guests"], "g")
     asked = _stay("ASK", status="pending", payments=[(150.0, "stripe", "pi_ask", "cs_ask")])
     fake = _FakeStripe()
+    mark = _refund_mark()
     r = _with_stripe(fake, lambda: desk_staff.post(f"/admin/bookings/{asked['id']}/decline",
                                                    follow_redirects=True))
     s.check("the request is declined", _q("SELECT status FROM bookings WHERE id = ?",
                                           asked["id"])[0][0] == "declined")
-    s.check("but no money moves on their say-so",
-            not fake.refunds and not _q("SELECT id FROM refunds WHERE booking_id = ?", asked["id"]),
-            detail=str(fake.refunds))
+    moved = _refunds_since(mark)
+    s.check("but no money moves on their say-so", not fake.refunds and not moved,
+            detail=f"sent to Stripe {fake.refunds}, recorded {moved}")
     s.check("and the page says it is on the owner's list",
             any("owner's list" in html.unescape(f) for f in flashes(r)), detail=str(flashes(r)))
     s.check("which it is, until it goes back",
@@ -417,8 +449,8 @@ def _run(s, oc, sent):
                  f"%{TAG}MINE")[0][0]
     s.check("the owner's own decline refunds, with who did it written down",
             [k["payment_intent"] for k in fake.refunds] == ["pi_mine"] and audited == 1
-            and _q("SELECT refunded_by_user_id FROM refunds WHERE booking_id = ?",
-                   mine["id"])[0][0], detail=f"{fake.refunds} audited {audited}")
+            and _stay_refunds(mine["id"], "refunded_by_user_id")[0][0],
+            detail=f"{fake.refunds} audited {audited}")
 
     s.section("The house calls it off, and gives it back in the same step")
     off = _stay("OFF", payments=[(400.0, "stripe", "pi_off", "cs_off")])
@@ -426,7 +458,7 @@ def _run(s, oc, sent):
     sent.clear()
     _with_stripe(fake, lambda: oc.post(f"/admin/bookings/{off['id']}/cancel",
                                        data={"refund_paid": "1"}, follow_redirects=True))
-    rows = _q("SELECT amount, reason_code FROM refunds WHERE booking_id = ?", off["id"])
+    rows = _stay_refunds(off["id"], "amount, reason_code")
     s.check("ticked, what they paid goes back to the card",
             [k["payment_intent"] for k in fake.refunds] == ["pi_off"]
             and [(r["amount"], r["reason_code"]) for r in rows] == [(400.0, "house_cancelled")],
@@ -436,15 +468,17 @@ def _run(s, oc, sent):
             detail=str([x[1] for x in sent]))
     keep = _stay("KEEP", payments=[(400.0, "stripe", "pi_keep", "cs_keep")])
     fake = _FakeStripe()
+    mark = _refund_mark()
     _with_stripe(fake, lambda: oc.post(f"/admin/bookings/{keep['id']}/cancel"))
     s.check("unticked, cancelling moves no money", not fake.refunds
-            and not _q("SELECT id FROM refunds WHERE booking_id = ?", keep["id"]))
+            and not _refunds_since(mark), detail=str(_refunds_since(mark)))
     theirs = _stay("THEIRS", payments=[(400.0, "stripe", "pi_theirs", "cs_theirs")])
     fake = _FakeStripe()
+    mark = _refund_mark()
     _with_stripe(fake, lambda: desk_staff.post(f"/admin/bookings/{theirs['id']}/cancel",
                                                data={"refund_paid": "1"}))
     s.check("and ticked by somebody who may not refund, it still moves none",
-            not fake.refunds and not _q("SELECT id FROM refunds WHERE booking_id = ?", theirs["id"]))
+            not fake.refunds and not _refunds_since(mark), detail=str(_refunds_since(mark)))
 
     sid = _session("CALL")
     card = _reg(sid, "CARD", paid=900.0, stripe_ref="pi_wscard")
@@ -477,9 +511,10 @@ def _run(s, oc, sent):
     conn.commit()
     conn.close()
     fake = _FakeStripe()
+    mark = _refund_mark()
     _with_stripe(fake, lambda: kitchen.post(f"/admin/restaurant/{tid}/decline"))
     s.check("the deposit does not move on their say-so", not fake.refunds
-            and not _q("SELECT id FROM refunds WHERE booking_id = ? AND category = 'restaurant'", tid))
+            and not _refunds_since(mark), detail=str(_refunds_since(mark)))
     s.check("and the owner is asked to decide it",
             _q("SELECT id FROM tasks WHERE title LIKE ? AND status != 'done'",
                f"Refund to decide: {TAG} Diner%"))
