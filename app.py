@@ -5518,6 +5518,17 @@ def init_db():
         # people learn to swipe away.
         ("workshop_bookings_balance_due_noticed_at",
          "ALTER TABLE workshop_bookings ADD COLUMN balance_due_noticed_at TEXT"),
+        # A Booking.com departure's turnover checklist, and which stay it is
+        # for -- the house's own checkout ties its checklist to the booking,
+        # and a Booking.com stay has none, so the room board could not tell
+        # its room had been turned round. SET NULL, not the default: the stay
+        # is deleted two years on, and a task must not stop that.
+        ("tasks_ota_reservation_id",
+         "ALTER TABLE tasks ADD COLUMN ota_reservation_id INTEGER "
+         "REFERENCES ota_reservations(id) ON DELETE SET NULL"),
+        # When that checklist was made, so it is made once.
+        ("ota_reservations_turnover_prepped_at",
+         "ALTER TABLE ota_reservations ADD COLUMN turnover_prepped_at TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -8796,6 +8807,55 @@ def auto_prep_upcoming_arrivals(conn, today, days_ahead=ARRIVAL_PREP_DAYS):
     if prepped_count:
         conn.commit()
     return prepped_count
+
+
+def prep_channel_departures(conn, today=None):
+    """The turnover checklist for a Booking.com guest leaving today.
+
+    The house's own checkout makes it when somebody presses Check out, and the
+    room board reads it: open work means the room is not ready. A Booking.com
+    guest has no Check out here, so their room never had any work on it -- and
+    the board called it Ready while the beds were still unmade. So the same
+    checklist is made on the morning they leave, and the room reads "Needs
+    turning over" until it is done, as any other room would.
+
+    Today's departures only: a checklist for a stay that ended last week is
+    work nobody can do. A stay whose room the email did not name gets none,
+    because there is no room to put it on. Made once, guarded the way the
+    arrival prep is -- a conditional UPDATE, so two runs racing cannot make
+    two checklists. Assigned like the arrival prep: to whoever is on shift,
+    or to nobody, which still shows on the owner's list.
+    """
+    day = today or house_today()
+    iso = day.isoformat()
+    now = datetime.now(timezone.utc).isoformat()
+    made = 0
+    for st in channel_stays(conn):
+        if st["departure_date"] != iso or not st["room_id"]:
+            continue
+        cur = conn.execute(
+            """UPDATE ota_reservations SET turnover_prepped_at = ?
+                WHERE id = ? AND turnover_prepped_at IS NULL""",
+            (now, st["ota_reservation_id"]))
+        if cur.rowcount == 0:
+            continue
+        scheduled = conn.execute(
+            "SELECT user_id FROM shifts WHERE shift_date = ? ORDER BY start_time LIMIT 1",
+            (iso,)).fetchone()
+        party = (f"party of {st['party_size']}" if st["party_size"]
+                 else "party size not stated")
+        note = f"{st['guest_name']} leaving today, booked through {st['channel']}, {party}."
+        for title in CHECKOUT_CHECKLIST:
+            conn.execute(
+                """INSERT INTO tasks (assigned_to_user_id, title, room_note, priority,
+                       due_date, created_at, origin, ota_reservation_id)
+                   VALUES (?, ?, ?, 'high', ?, ?, 'checklist', ?)""",
+                (scheduled["user_id"] if scheduled else None, f"{st['room_name']}: {title}",
+                 note, iso, now, st["ota_reservation_id"]))
+        made += 1
+    if made:
+        conn.commit()
+    return made
 
 
 def leave_setting(conn, key, cast=float):
@@ -27930,6 +27990,10 @@ def staff_dashboard():
                 f"Auto-prepped {auto_prepped_count} arriving booking{'' if auto_prepped_count == 1 else 's'} "
                 f"— room setup tasks assigned.", "success",
             )
+        # And the Booking.com rooms emptying today, for the same reason the
+        # arrival prep is here: the job runs every ten minutes, and the owner
+        # opening the page at 00:05 should not see a room called Ready.
+        prep_channel_departures(conn, today)
         expired_count = expire_stale_pending_bookings(conn)
         if expired_count:
             flash(
@@ -65677,12 +65741,15 @@ def room_board(conn, today=None):
             """SELECT * FROM bookings
                 WHERE room_id = ? AND status = 'confirmed' AND arrival_date = ?""",
             (room["id"], iso)).fetchone()
+        # The checklist belongs to a booking of the house's own or to a
+        # Booking.com stay (prep_channel_departures); either way, to this room.
         open_work = conn.execute(
             """SELECT tasks.* FROM tasks
-                 JOIN bookings ON bookings.id = tasks.booking_id
+                 LEFT JOIN bookings ON bookings.id = tasks.booking_id
+                 LEFT JOIN ota_reservations ON ota_reservations.id = tasks.ota_reservation_id
                 WHERE tasks.origin = 'checklist' AND tasks.status != 'done'
-                  AND bookings.room_id = ?
-                ORDER BY tasks.id""", (room["id"],)).fetchall()
+                  AND (bookings.room_id = ? OR ota_reservations.room_id = ?)
+                ORDER BY tasks.id""", (room["id"], room["id"])).fetchall()
         for st in by_room.get(room["id"], []):
             if not here and st["arrival_date"] < iso < st["departure_date"]:
                 here = st
@@ -72466,8 +72533,10 @@ def run_housekeeping_job(conn):
     told = notify_bookings_awaiting_answer(conn)
     expired = expire_stale_pending_bookings(conn)
     prepped = auto_prep_upcoming_arrivals(conn, today)
+    turned = prep_channel_departures(conn, today)
     return (f"told about {told} waiting request(s), expired {expired} stale "
-            f"booking(s), prepped {prepped} arrival(s)")
+            f"booking(s), prepped {prepped} arrival(s), "
+            f"{turned} Booking.com room(s) to turn round")
 
 
 LANGUAGE_NAMES = {"fr": "French", "es": "Spanish"}
