@@ -21,7 +21,9 @@ Three things carry this file.
   EVERY READER, NOT ONE. The gate (is_range_available), the picker
   (nights_already_taken), the room page's calendar (unavailable_nights), the
   "free again from" line, the front page's next free nights, the legal head
-  count and the owner's event clash warning. They had separate queries and
+  count, the owner's event clash warning, and the owner's empty-nights page,
+  which takes a live atelier's nights out of the gaps it offers and must put
+  a called-off one's back. They had separate queries and
   could disagree with each other; now they share one definition, and each of
   them is asked here anyway.
 
@@ -186,6 +188,17 @@ def _quiet_window(room_id, span, after_days):
         after_days = (day - m.house_today()).days + 1
 
 
+def _listed_empty(room_id, first, span):
+    """The nights the empty-nights page lists as empty for one room, as ISO
+    dates, and the page's own figures beside them."""
+    data = _ask(m.empty_nights, days=span, today=first)
+    out = set()
+    for r in data["runs"]:
+        if r["room"]["id"] == room_id:
+            out.update(_days(m.parse_date(r["from"]), m.parse_date(r["to"])))
+    return out, data
+
+
 def _next_free_from(room_id, first_night):
     """Where next_free_nights starts this room's first opening, asked as if
     today were NEXT_FREE_LEAD_DAYS before first_night."""
@@ -254,6 +267,11 @@ def run():
         s.check("the room page's calendar greys them out",
                 all(f"{TAG} CALLED" in (nights.get(d) or "") for d in off_days),
                 detail=f"{ {d: nights.get(d) for d in off_days} }")
+        empty, page = _listed_empty(room["id"], w_off, span)
+        s.check("the empty-nights page leaves them out of the room's gaps",
+                not set(off_days) & empty and any(
+                    h["label"] == f"Held for {TAG} CALLED" for h in page["house"]),
+                detail=f"listed: {sorted(set(off_days) & empty)}, held: {page['house']}")
         held = _ask(m.atelier_holding_the_house, off_start, off_start + timedelta(days=1))
         s.check("and names it as what is holding the house",
                 held == {"start_date": off_start.isoformat(), "end_date": off_end.isoformat()},
@@ -292,6 +310,13 @@ def run():
         nights = _ask(m.unavailable_nights, room["id"], w_off, w_off + timedelta(days=span))
         s.check("the room page's calendar is back to how it was", nights == base_nights_off,
                 detail=f"{nights} against {base_nights_off}")
+        empty, page = _listed_empty(room["id"], w_off, span)
+        s.check("the empty-nights page lists its nights as empty again",
+                set(off_days) <= empty
+                and not any(f"{TAG} CALLED" in h["label"] for h in page["house"]),
+                detail=f"still missing: {sorted(set(off_days) - empty)}, held: "
+                       f"{page['house']} -- a week the house could sell, left off "
+                       "the gaps and named as held")
         held = _ask(m.atelier_holding_the_house, off_start, off_start + timedelta(days=1))
         s.check("nothing is named as holding the house", held is None, detail=f"{held}")
         s.check("next free nights offer the dates it had",
@@ -322,6 +347,11 @@ def run():
                 and all(nights.get(d) == base_nights_live.get(d)
                         for d in nights if d not in live_days),
                 detail=f"{nights}")
+        empty, page = _listed_empty(room["id"], w_live, span)
+        s.check("the empty-nights page still leaves them out",
+                not set(live_days) & empty and any(
+                    h["label"] == f"Held for {TAG} LIVE" for h in page["house"]),
+                detail=f"listed: {sorted(set(live_days) & empty)}, held: {page['house']}")
         held = _ask(m.atelier_holding_the_house, live_start, live_start + timedelta(days=1))
         s.check("and it is still named as holding the house",
                 held == {"start_date": live_start.isoformat(), "end_date": live_end.isoformat()},
@@ -355,7 +385,7 @@ def run():
                 "sessions_holding_the_house(" in src and "FROM workshop_sessions" not in src,
                 detail="reading workshop_sessions directly is how the called-off "
                        "filter went missing in the first place")
-        for fn in (m.unavailable_nights, m.nights_already_taken):
+        for fn in (m.unavailable_nights, m.nights_already_taken, m.empty_nights):
             src = inspect.getsource(fn)
             s.check(f"{fn.__name__} asks it too, or the picture",
                     ("sessions_holding_the_house(" in src or "_availability_picture(" in src)

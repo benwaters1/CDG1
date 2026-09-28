@@ -17,6 +17,12 @@
 <p class="page-intro">
   {{ gaps.free_nights }} unsold room-nights in the next {{ days }} days,
   worth about &euro;{{ '%.0f'|format(gaps.value_at_rate or 0) }} at the rate card.
+  {% if gaps.house_nights %}
+  Not counted: {{ gaps.house_nights }} night{{ '' if gaps.house_nights == 1 else 's' }}
+  held for the whole house by an atelier, an event or a hold. No room can be sold
+  then, so there is nobody to offer {{ 'it' if gaps.house_nights == 1 else 'them' }} to
+  (<a href="{{ url_for('empty_nights_page', days=days) }}">which nights</a>).
+  {% endif %}
   Pick a run and see who is most likely to take it.
 </p>
 
