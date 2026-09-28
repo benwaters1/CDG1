@@ -37,4 +37,7 @@
     {% endif %}
   {% endfor %}
 
+  {# A receipt is a statement too: the booking's, beneath the words. #}
+  {% if statement %}{% include "_email_statement.html" %}{% endif %}
+
 {% endcall %}

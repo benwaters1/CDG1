@@ -1447,6 +1447,21 @@ DEFAULT_EMAIL_TEMPLATES = [
      "Registration cancelled — {workshop_title}",
      "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}) has been cancelled. Get in touch "
      "if you'd like to rebook.\n\n— Château de Gudanes"),
+    ("workshop_payment_received", "Workshop: Payment received",
+     "Payment received — {workshop_title}",
+     "Hi {guest_name},\n\nThank you: we have received {amount} towards {workshop_title} "
+     "({dates}).\n\n{balance_line}\n\nYour statement is below, and always here:\n"
+     "{statement_url}\n\nReference code: {reference_code}\n\n— Château de Gudanes"),
+    ("event_payment_received", "Events: Payment received",
+     "Payment received — {reference_code}",
+     "Hi {contact_name},\n\nThank you: we have received {amount} towards your "
+     "{event_type}.\n\n{balance_line}\n\nEverything about it is here:\n{manage_url}\n\n"
+     "Reference code: {reference_code}\n\n— Château de Gudanes"),
+    ("house_payment_received", "House: Payment received",
+     "Payment received from {guest_name}",
+     "A guest has made a payment.\n\nFor: {what_for}\nReference: {reference_code}\n"
+     "Name: {guest_name}\nEmail: {guest_email}\nAmount: {amount}\nWhen: {paid_at}\n"
+     "How: {paid_how}\n\n{balance_line}\n\nThe booking's payments:\n{booking_url}"),
     ("workshop_deposit_receipt", "Workshop: Deposit receipt",
      "Deposit received — {workshop_title}",
      "Hi {guest_name},\n\nWe've received your deposit of €{deposit_amount} for {workshop_title} ({dates}).\n"
@@ -16169,8 +16184,15 @@ def mark_booking_payment_paid(conn, session):
                               if portal_token else ""),
         })
         if subject:
+            # Which card, asked now so the receipt can say; and the statement
+            # beneath the words, so a receipt is a statement too.
+            remember_card(conn, _intent_id(session) or session_id)
+            conn.commit()
+            body, letter = letter_with_statement(conn, subject, body, "room", booking_id)
             # the stay side: always whoever is staying, plus any copy
             write_about_stay(booking, subject, body, html=letter)
+        tell_house_of_payment(conn, "room", booking_id, amount,
+                              _intent_id(session) or session_id)
 
 
 # How a tab can be settled. An iPad in a browser cannot read a card by itself,
@@ -23723,6 +23745,145 @@ def read_setting(obj, key, default=None):
     except (KeyError, IndexError, TypeError):
         return default
     return default if value is None else value
+
+
+def external_url(endpoint, **values):
+    """A full link to one of the site's pages, inside a request or out of one.
+
+    Outside a request -- the nightly jobs, the atelier auto-charge -- url_for
+    cannot say what the site is called, so the configured public address stands
+    in, the way the unsubscribe footer has always done it.
+    """
+    try:
+        return url_for(endpoint, _external=True, **values)
+    except RuntimeError:
+        with app.test_request_context():
+            path = url_for(endpoint, **values)
+        return f"{PUBLIC_BASE_URL or ''}{path}"
+
+
+def statement_text(view):
+    """One booking's statement written out for the plain half of a letter: the
+    lines and totals the drawn half shows, because it is the same view."""
+    if not view:
+        return ""
+    money = lambda x: f"-€{-x:,.2f}" if x < 0 else f"€{x:,.2f}"
+    out = ["Statement" + (f": {view['booking']['what']}" if view["booking"] else "")]
+    for x in view["charges"]:
+        out.append(f"  {format_date_short(x['day'])}  {x['what']}  {money(x['charge'])}")
+    if view["reductions"]:
+        out.append(f"  Subtotal  €{view['subtotal']:,.2f}")
+        out.append(f"  Discounts and reductions  -€{view['reductions']:,.2f}")
+    out.append(f"  Total  €{view['total']:,.2f}")
+    out += ["", "Payments"]
+    for x in view["payments"]:
+        how = ", ".join(w for w in (x["method"], x["card_words"]) if w)
+        out.append(f"  {format_date_short(x['day'])}  {x['note'] or 'Payment'}"
+                   + (f" ({how})" if how else "") + f"  €{x['paid']:,.2f}")
+    for x in view["refunds"]:
+        back = f"+€{-x['back']:,.2f}" if x["back"] < 0 else f"-€{x['back']:,.2f}"
+        out.append(f"  {format_date_short(x['day'])}  {x['what']}"
+                   + (f" ({x['card_words']})" if x["card_words"] else "") + f"  {back}")
+    if not view["payments"] and not view["refunds"]:
+        out.append("  Nothing received yet.")
+    out.append(f"  Total paid  €{view['total_paid']:,.2f}")
+    out.append(f"  {'Balance due' if view['owed'] else 'Settled'}  €{view['owed']:,.2f}")
+    if view["credit"]:
+        out.append(f"  In credit, and yours: given back on request  €{view['credit']:,.2f}")
+    return "\n".join(out)
+
+
+def letter_with_statement(conn, subject, body, category, booking_id):
+    """A letter's two halves with the booking's statement beneath the words:
+    drawn as tables in the one, written out in the other, from one view -- so a
+    receipt is a statement too, and the two halves cannot disagree about it."""
+    view = booking_statement_view(conn, category, booking_id)
+    if not view:
+        return body, letter_html(subject, body)
+    return (body.rstrip() + "\n\n" + statement_text(view) + "\n",
+            letter_html(subject, body, statement=view))
+
+
+# Which inbox looks after each kind of booking, in REPLY_TO_AREAS' words.
+HOUSE_AREAS = {"room": "rooms", "workshop": "workshops", "event": "events",
+               "restaurant": "restaurant"}
+
+
+def house_address_for(conn, area):
+    """Where the house reads about its own business in one area: the area's own
+    mailbox when one is connected, the address the site gives guests for it
+    when not, and the owner when there is neither."""
+    return reply_to_for(area) or PUBLIC_CONTACT.get(area) or owner_email(conn)
+
+
+def tell_house_of_payment(conn, category, booking_id, amount, ref=None):
+    """"Payment received from ..." to the inbox that looks after this kind of
+    booking: who, for what, how much, when, by which card, the statement, and
+    the way to the booking's payments.
+
+    Never filed as the guest's correspondence: it is not to them. The card is
+    named from what is kept, asked of Stripe just before by whoever recorded
+    the payment.
+    """
+    view = booking_statement_view(conn, category, booking_id)
+    if not view or not view["booking"]:
+        return False
+    row = view["row"]
+    keys = row.keys()
+    name = row["contact_name"] if "contact_name" in keys else row["guest_name"]
+    email = row["contact_email"] if "contact_email" in keys else row["guest_email"]
+    card = card_labels(conn, [ref]).get(_card_ref(ref)) if ref else None
+    subject, body, _letter = render_email_template(conn, "house_payment_received", {
+        "guest_name": name or "A guest",
+        "guest_email": email or "",
+        "what_for": f"{view['kind']}: {view['booking']['what']}",
+        "reference_code": view["booking"]["ref"],
+        "amount": f"€{amount:,.2f}",
+        "paid_at": local_datetime_str(datetime.now(timezone.utc).isoformat()),
+        "paid_how": "Card, online" + (f", {card}" if card else ""),
+        "balance_line": (f"Still to pay: €{view['owed']:,.2f}." if view["owed"]
+                         else "Now paid in full."),
+        "booking_url": external_url("refund_desk", category=category, booking_id=booking_id),
+    })
+    if not subject:
+        return False
+    body, letter = letter_with_statement(conn, subject, body, category, booking_id)
+    area = HOUSE_AREAS.get(category, "accounts")
+    return send_email(house_address_for(conn, area), subject, body, html=letter, area=area,
+                      template_key="house_payment_received")
+
+
+def workshop_payment_context(conn, booking, amount):
+    """What a receipt for money towards an atelier says, from the ledger as it
+    stands once the payment is on it."""
+    due, _charged, _paid = workshop_balance_due(conn, booking["id"])
+    return {
+        "guest_name": booking["guest_name"],
+        "workshop_title": booking["title"],
+        "dates": format_date_range(booking["start_date"], booking["end_date"]),
+        "amount": f"€{amount:,.2f}",
+        "balance_line": (f"Still to pay: €{due:,.2f}." if due > 0.005
+                         else "Your place is now paid in full."),
+        "reference_code": booking["reference_code"],
+        "statement_url": external_url("workshop_statement", manage_token=booking["manage_token"]),
+    }
+
+
+def event_payment_context(conn, inquiry, amount):
+    """What a receipt for money towards an event says, from its bill as it
+    stands once the payment is on it."""
+    bill = event_bill(conn, inquiry["id"])
+    owed = bill["owed"] if bill else 0.0
+    return {
+        "contact_name": inquiry["contact_name"],
+        "event_type": inquiry["event_type"] or "event",
+        "amount": f"€{amount:,.2f}",
+        "balance_line": (f"Still to pay: €{owed:,.2f}." if owed > 0.005
+                         else "It is now paid in full."),
+        "reference_code": inquiry["reference_code"] or f"#{inquiry['id']}",
+        "manage_url": (external_url("event_manage", manage_token=inquiry["manage_token"])
+                       if inquiry["manage_token"] else ""),
+    }
 
 
 def reply_to_for(area):
@@ -37639,22 +37800,16 @@ def email_booking_statement(manage_token):
         return redirect(url_for("manage_booking", manage_token=manage_token))
 
     statement = guest_statement(conn, booking)
+    # The page's own statement, line for line -- every charge, every payment
+    # with its card, every refund -- and then the VAT bands the invoice owes.
+    view = booking_statement_view(conn, "room", booking["id"])
     company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
     conn.close()
 
-    # Built from the statement's own fields: accommodation, each extra by name,
-    # taxe de sejour on its own because it carries no VAT, then the VAT bands.
-    lines = [f"  {statement['nights']} night(s), {booking['room_name']}"
-             f"   €{statement['accommodation']:.2f}"]
-    for extra in statement["extras"]:
-        amount = (extra["unit_price"] or 0) * (extra["quantity"] or 0)
-        lines.append(f"  {extra['quantity']} x {extra['name']}   €{amount:.2f}")
-    if statement["city_tax"]:
-        lines.append(f"  Taxe de sejour   €{statement['city_tax']:.2f}")
-    if statement["taken_off"]:
-        lines.append(f"  Reduction, refunded to you   -€{statement['taken_off']:.2f}")
-    for band in statement["vat"]:
-        lines.append(f"  of which VAT at {band['rate']}%   €{band['vat']:.2f}")
+    lines = [statement_text(view)] if view else []
+    if view and view["stands"]:
+        for band in statement["vat"]:
+            lines.append(f"  of which VAT at {band['rate']}%   €{band['vat']:.2f}")
 
     who = []
     if company:
@@ -37664,13 +37819,6 @@ def email_booking_statement(manage_token):
             if value:
                 who.append(value)
 
-    lines += ["",
-              f"  Total   €{statement['total']:.2f}",
-              f"  Received   €{statement['received']:.2f}"]
-    if statement["refunded"]:
-        lines.append(f"  Refunded   €{statement['refunded']:.2f}")
-    lines.append(f"  Still to pay   "
-                 f"€{statement['balance'] if statement['balance'] > 0 else 0:.2f}")
     conn = get_db()
     try:
         subject, body, letter = render_email_template(conn, "room_statement", {
@@ -41999,10 +42147,12 @@ def event_email_context(inquiry):
     }
 
 
-def send_event_email(conn, inquiry, template_key, context):
+def send_event_email(conn, inquiry, template_key, context, statement=False):
     subject, body, letter = render_email_template(conn, template_key, context)
     if not subject:
         return
+    if statement:
+        body, letter = letter_with_statement(conn, subject, body, "event", inquiry["id"])
     send_email(inquiry["contact_email"], subject, body, html=letter,
                about=("event", inquiry["id"]), template_key=template_key)
 
@@ -42422,6 +42572,16 @@ def record_event_checkout(conn, session):
         conn.rollback()
         return False
     conn.commit()
+    # A card payment on an event was taken in silence, both ways. It has a
+    # receipt now, with the statement, and the house is told.
+    ref = _intent_id(session) or session_id
+    remember_card(conn, ref)
+    conn.commit()
+    inquiry = conn.execute("SELECT * FROM event_inquiries WHERE id = ?", (int(event_id),)).fetchone()
+    if inquiry and inquiry["contact_email"]:
+        send_event_email(conn, inquiry, "event_payment_received",
+                         event_payment_context(conn, inquiry, amount), statement=True)
+    tell_house_of_payment(conn, "event", int(event_id), amount, ref)
     return True
 
 
@@ -46421,6 +46581,13 @@ EMAIL_TEMPLATE_TAGS = {
                                  "party_size", "price_block", "reference_code",
                                  "total_price", "workshop_title"),
     "workshop_feedback_request": ("feedback_url", "guest_name", "workshop_title"),
+    "workshop_payment_received": ("amount", "balance_line", "dates", "guest_name",
+                                  "reference_code", "statement_url", "workshop_title"),
+    "event_payment_received": ("amount", "balance_line", "contact_name", "event_type",
+                               "manage_url", "reference_code"),
+    "house_payment_received": ("amount", "balance_line", "booking_url", "guest_email",
+                               "guest_name", "paid_at", "paid_how", "reference_code",
+                               "what_for"),
     "workshop_registration_received": ("balance_amount", "balance_due_date", "balance_line",
                                        "dates", "deposit_amount", "guest_name", "manage_url",
                                        "party_size", "price_block", "reference_code",
@@ -46486,6 +46653,10 @@ REQUIRED_MERGE_TAGS = {
     "room_balance_before": {"manage_url": "it is where they pay"},
     "room_balance_after": {"manage_url": "it is where they pay"},
     "refund_issued": {"amount": "it is the sum that went back"},
+    "workshop_payment_received": {"amount": "it is the sum they paid"},
+    "event_payment_received": {"amount": "it is the sum they paid"},
+    "house_payment_received": {"amount": "it is the sum that came in",
+                               "booking_url": "it is the way to the booking's payments"},
     "guest_account_statement": {"statement_url": "it is where they read the statement and "
                                                  "settle anything outstanding"},
     "guest_link_updated": {"new_link": "it is the new way in; without it the letter says the "
@@ -46650,19 +46821,22 @@ def _letter_label(blocks):
     return "Open the page"
 
 
-def letter_html(subject, text, settings=None):
+def letter_html(subject, text, settings=None, statement=None):
     """One of the twenty-one letters, drawn, or "" if it cannot be.
 
     Empty rather than raising, the same rule the booking confirmation follows:
     a shell that will not render is a reason to send a plainer letter, never a
     reason for the guest to hear nothing.
+
+    `statement` is a booking_statement_view, drawn beneath the words.
     """
     try:
         blocks = letter_blocks(text)
         if not blocks:
             return ""
         return render_template("email_letter.html", subject=subject,
-                               blocks=blocks, settings=settings or {})
+                               blocks=blocks, settings=settings or {},
+                               statement=statement)
     except Exception as e:      # pragma: no cover - the text still goes
         print(f"[email html failed] {subject}: {e}")
         return ""
@@ -47205,17 +47379,22 @@ def log_workshop_message(conn, booking_id, subject, recipient, status):
     )
 
 
-def send_workshop_email(conn, booking, template_key, context):
+def send_workshop_email(conn, booking, template_key, context, statement=False):
     """Sends a lifecycle email built from the admin-editable template,
     honouring the guest's do-not-email opt-out and always leaving an
     auditable row in workshop_messages — sent, skipped, or failed — so the
-    registration's message history is complete regardless of outcome."""
+    registration's message history is complete regardless of outcome.
+
+    `statement` puts the registration's statement beneath the words: a receipt
+    is a statement too."""
     subject, body, letter = render_email_template(conn, template_key, context)
     if not subject:
         return
     if booking["do_not_email"]:
         log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "skipped — opted out")
         return
+    if statement:
+        body, letter = letter_with_statement(conn, subject, body, "workshop", booking["id"])
     sent = send_email(booking["guest_email"], subject, body, html=letter,
                       area="workshops", about=("workshop", booking["id"]),
                       template_key=template_key)
@@ -47381,6 +47560,23 @@ def remember_workshop_card(conn, booking_id, session):
         "WHERE id = ?", (customer_id, method_id, booking_id))
 
 
+def send_workshop_payment_receipt(conn, booking_id, amount, ref=None):
+    """A receipt for money towards an atelier -- any payment but the first
+    deposit, which has a letter of its own -- with the statement beneath it."""
+    booking = conn.execute(
+        """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date,
+                  workshops.title FROM workshop_bookings
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_bookings.id = ?""", (booking_id,)).fetchone()
+    if not booking:
+        return
+    remember_card(conn, ref)
+    conn.commit()
+    send_workshop_email(conn, booking, "workshop_payment_received",
+                        workshop_payment_context(conn, booking, amount), statement=True)
+
+
 def mark_workshop_payment_paid(conn, session):
     """Credit one paid Stripe checkout to a registration, once.
 
@@ -47426,6 +47622,10 @@ def mark_workshop_payment_paid(conn, session):
             "UPDATE workshop_bookings SET balance_stripe_session_id = "
             "COALESCE(balance_stripe_session_id, ?) WHERE id = ?", (session_id, booking_id))
         conn.commit()
+        # A balance used to be taken in silence: the money moved, the ledger
+        # moved, and the guest was told nothing. Every payment has a receipt.
+        send_workshop_payment_receipt(conn, booking_id, amount, session_id)
+        tell_house_of_payment(conn, "workshop", booking_id, amount, session_id)
         return
     first_deposit = conn.execute(
         "UPDATE workshop_bookings SET deposit_paid_at = ?, deposit_stripe_session_id = ? "
@@ -47452,8 +47652,14 @@ def mark_workshop_payment_paid(conn, session):
         # while this transaction is open — so the guest's deposit receipt was
         # being lost to "database is locked" instead of held for later.
         conn.commit()
+        remember_card(conn, session_id)
+        conn.commit()
         send_workshop_email(conn, booking, "workshop_deposit_receipt",
-                            workshop_email_context(booking))
+                            workshop_email_context(booking), statement=True)
+    else:
+        # A second payment towards the deposit, or one after it: its own receipt.
+        send_workshop_payment_receipt(conn, booking_id, amount, session_id)
+    tell_house_of_payment(conn, "workshop", booking_id, amount, session_id)
     conn.commit()
 
 
@@ -58684,7 +58890,8 @@ def mark_workshop_deposit_paid(registration_id):
         # this route's Stripe twin and sends the identical template; this is the
         # bank-transfer and cash path, where a receipt is the guest's only proof.
         conn.commit()
-        send_workshop_email(conn, booking, "workshop_deposit_receipt", workshop_email_context(booking))
+        send_workshop_email(conn, booking, "workshop_deposit_receipt", workshop_email_context(booking),
+                            statement=True)
     conn.commit()
     conn.close()
     flash("Deposit marked as paid.", "success")
@@ -71995,6 +72202,14 @@ EMAIL_TEMPLATE_INFO = {
     "workshop_cancelled": ("When a registration is cancelled", "The guest"),
     "workshop_deposit_receipt": ("When a deposit or payment for an atelier comes "
                                  "through", "The guest"),
+    "workshop_payment_received": ("When any payment towards an atelier comes through "
+                                  "after the first deposit, with the statement beneath",
+                                  "The guest"),
+    "event_payment_received": ("When a card payment towards an event comes through, "
+                               "with the statement beneath", "The contact"),
+    "house_payment_received": ("When a guest pays by card, for a stay, an atelier or an "
+                               "event, with the statement beneath",
+                               "The inbox that looks after that kind of booking"),
     "workshop_balance_reminder": ("The automatic reminder before an atelier's "
                                   "balance falls due", "The guest"),
     "workshop_moved": ("When you move a registration to another date of the same "
