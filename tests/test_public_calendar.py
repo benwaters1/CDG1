@@ -168,12 +168,17 @@ def run():
            created_at) VALUES (?, ?, ?, ?, ?)""",
         (maybe, hold_day.isoformat(), hold_day.isoformat(),
          (datetime.now(timezone.utc) + timedelta(days=10)).isoformat(), now))
+    # A block belongs to ONE room, like a booking, so it closes a night only
+    # when every room is blocked. This check used to block one room and
+    # expect the whole house gone -- which pinned the bug that turned away
+    # every other room's guests. test_nights_struck_out has the rest.
     block_day = _clear(base + timedelta(days=80))
-    conn.execute(
-        """INSERT INTO room_blocks (room_id, start_date, end_date, reason, created_at)
-           VALUES (?, ?, ?, ?, ?)""",
-        (rooms[0]["id"], block_day.isoformat(),
-         (block_day + timedelta(days=2)).isoformat(), TAG, now))
+    for room in rooms:
+        conn.execute(
+            """INSERT INTO room_blocks (room_id, start_date, end_date, reason, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (room["id"], block_day.isoformat(),
+             (block_day + timedelta(days=2)).isoformat(), TAG, now))
     conn.commit()
     taken = _taken()
     s.check("an atelier closes its whole run",
@@ -187,7 +192,7 @@ def run():
             hold_day.isoformat() in taken,
             detail="a guest offered a night the desk would then refuse has "
                    "been told something untrue")
-    s.check("and dates the owner has blocked",
+    s.check("and dates the owner has blocked on every room",
             block_day.isoformat() in taken)
 
     s.section("A hold that has run out stops closing anything")
