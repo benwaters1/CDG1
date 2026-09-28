@@ -161,13 +161,19 @@ def run():
     today = m.house_today()
     quiet = next((d for d in (today + timedelta(days=n) for n in range(25, 25 + 366))
                   if _nothing_on(conn, d.isoformat())), None)
+    # And somebody rostered on it, or the check cannot fail: a day nothing has
+    # touched never enters cover_gaps' working set, so with the line that drops
+    # days without work taken out, an untouched empty day still stayed off the
+    # list. A shift brings it in; only that line keeps it out.
+    if quiet:
+        _shift(conn, who, quiet.isoformat())
     rows = m.cover_gaps(conn, _iso(0),
                         max(quiet or today, today + timedelta(days=30)).isoformat())
     s.check("an empty day is not listed at all",
             quiet is not None and _day(rows, quiet.isoformat()) is None,
-            detail=(f"used {quiet} (day +{(quiet - today).days}), empty by the tables;"
-                    " if cover_gaps now counts a new kind of work, _nothing_on must too"
-                    if quiet else
+            detail=(f"used {quiet} (day +{(quiet - today).days}), empty by the tables"
+                    " and listed: cover_gaps lists days without work, or counts a"
+                    " kind of work _nothing_on does not" if quiet else
                     "no day in the year from day +25 has nothing on to test with"))
     # Otherwise a window that came back empty would pass the check above.
     s.check("while the same window still lists the stay",
