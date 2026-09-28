@@ -309,6 +309,9 @@ ENDPOINT_ARGS = {
     ("workshop_pay_balance", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_pay_deposit", "manage_token"): ("workshop_bookings", "manage_token"),
     ("guest_booking_history", "email"): ("bookings", "guest_email"),
+    # A Booking.com stay's own door link. Read, never pressed: only the
+    # button (a POST) opens the lock, which is why a sweep may visit it.
+    ("channel_door", "door_token"): ("ota_reservations", "door_token"),
     # Reports are keyed by a slug that is a key of REPORT_BUILDERS rather than
     # a row anywhere, so it is a literal.
     ("admin_report", "slug"): "financial",

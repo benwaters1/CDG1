@@ -52,6 +52,36 @@ def _day(rows, iso):
     return next((r for r in rows if r["date"] == iso), None)
 
 
+def _quiet_day(conn, first, last):
+    """The first day from today+first to today+last with nothing on it.
+
+    ASKED OF THE TABLES cover_gaps reads, not assumed from an offset. This
+    used to be "+25 days is empty" -- and the ateliers are seeded relative to
+    today, so every fixed offset is eventually a day with one on it. On 28
+    September 2026 +25 fell on an atelier's first morning and the check went
+    red with nothing changed but the date.
+    """
+    for n in range(first, last + 1):
+        d = _iso(n)
+        busy = (
+            conn.execute("""SELECT 1 FROM bookings WHERE status = 'confirmed'
+                             AND arrival_date <= ? AND departure_date >= ? LIMIT 1""",
+                         (d, d)).fetchone()
+            or conn.execute("""SELECT 1 FROM restaurant_bookings WHERE status = 'confirmed'
+                                AND dinner_date = ? LIMIT 1""", (d,)).fetchone()
+            or conn.execute("""SELECT 1 FROM workshop_sessions WHERE start_date <= ?
+                                AND COALESCE(end_date, start_date) >= ? LIMIT 1""",
+                            (d, d)).fetchone()
+            or conn.execute("""SELECT 1 FROM event_inquiries WHERE status = 'confirmed'
+                                AND preferred_date IS NOT NULL AND preferred_date <= ?
+                                AND COALESCE(end_date, preferred_date) >= ? LIMIT 1""",
+                            (d, d)).fetchone()
+            or conn.execute("SELECT 1 FROM shifts WHERE shift_date = ? LIMIT 1", (d,)).fetchone())
+        if not busy:
+            return d
+    return None
+
+
 def run():
     s = Suite("cover gaps")
     oc, _ec, _owner, _emp = clients()
@@ -132,9 +162,12 @@ def run():
             detail="a departed employee's leftover shift read as cover")
 
     s.section("A day with nothing on is not a gap")
-    quiet = _day(rows, _iso(25))
-    s.check("an empty day is not listed at all", quiet is None,
-            detail="an empty house needing nobody is not a failure")
+    quiet_iso = _quiet_day(conn, 15, 30)
+    s.check("there is a day in the window with nothing on it (a precondition)",
+            quiet_iso is not None, detail="every day from +15 to +30 has something on")
+    s.check("an empty day is not listed at all",
+            quiet_iso is not None and _day(rows, quiet_iso) is None,
+            detail=f"{quiet_iso}: an empty house needing nobody is not a failure")
 
     s.section("The page")
     page = oc.get("/admin/cover?days=60").get_data(as_text=True)
