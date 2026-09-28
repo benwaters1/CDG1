@@ -125,7 +125,7 @@
       <input type="hidden" name="back" value="{{ url_for('arrivals_sheet_page', date=day.isoformat()) }}">
       <select name="kind" aria-label="Code or key">
         <option value="code">Door code</option>
-        <option value="key">Key</option>
+        <option value="key">Key or door remote</option>
       </select>
       <input type="text" name="value" placeholder="What was given" maxlength="60" aria-label="What was given">
       <input type="text" name="issued_to" placeholder="To whom (defaults to the guest)" maxlength="120" aria-label="To whom">
