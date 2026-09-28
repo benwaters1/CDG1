@@ -16,6 +16,9 @@ What this holds:
     refunds, and the export is the view, totals and all.
   - A chip counts what clicking it gives; search finds a card by its last four.
   - The period is the period: last month's payment is under last month.
+  - The house's day, not UTC's: half an hour past midnight here on the 1st is
+    the new month, though in UTC it is still the old; the month ends where the
+    next begins; a dinner's deposit is charged in the month it was confirmed.
   - Somebody with no profile is still named; an employee cannot see the page.
 """
 import csv
@@ -49,6 +52,7 @@ def _cleanup():
         events = "(SELECT id FROM event_inquiries WHERE reference_code LIKE ?)"
         conn.execute(f"DELETE FROM event_payments WHERE event_id IN {events}", like)
         conn.execute("DELETE FROM event_inquiries WHERE reference_code LIKE ?", like)
+        conn.execute("DELETE FROM restaurant_bookings WHERE reference_code LIKE ?", like)
         conn.execute("DELETE FROM payment_cards WHERE ref LIKE ?", (f"%{TAG}%",))
         conn.execute("DELETE FROM guests WHERE LOWER(email) LIKE ?", (TAG.lower() + "%",))
         conn.commit()
@@ -140,7 +144,9 @@ def _run(s):
     conn.commit()
     this_month = m.resolve_period("month", today.isoformat())
     rows = m.house_transactions(conn, this_month["start_iso"], this_month["end_iso"])
-    account = m.guest_account_statement(conn, gid, this_month["start"], this_month["end"])
+    # The statement's "to" is the last day; the period's end is the day after.
+    account = m.guest_account_statement(conn, gid, this_month["start"],
+                                        this_month["end"] - timedelta(days=1))
     conn.close()
     mine = _mine(rows)
 
@@ -229,6 +235,53 @@ def _run(s):
             any(x["ref"] == f"{TAG}W" and x["paid"] == 120.0 for x in earlier)
             and any(x["ref"] == f"{TAG}W" and x["charge"] == 500.0 for x in earlier),
             detail=str([(x["ref"], x["charge"], x["paid"]) for x in earlier]))
+
+    s.section("The house's day, not UTC's")
+    # Midnight here as this month begins -- in UTC, still an evening of last month.
+    turn = m.datetime.fromisoformat(m.house_moment(this_month["start"]))
+    late = (turn - timedelta(minutes=30)).isoformat()
+    early = (turn + timedelta(minutes=30)).isoformat()
+    next_month = (m.datetime.fromisoformat(m.house_moment(this_month["end"]))
+                  + timedelta(hours=12)).isoformat()
+    last_day = (this_month["start"] - timedelta(days=1)).isoformat()
+    conn = db()
+    conn.execute("""INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+                    guest_email, arrival_date, departure_date, party_size, status, total_price,
+                    amount_paid, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 2, 'confirmed', 0, 90, ?)""",
+                 (room["id"], f"{TAG}N", f"{TAG}ntok".lower(), f"{TAG} Night",
+                  f"{TAG.lower()}.night@example.invalid", (arrive + timedelta(days=5)).isoformat(),
+                  (arrive + timedelta(days=6)).isoformat(), late))
+    night = conn.execute("SELECT id FROM bookings WHERE reference_code = ?", (f"{TAG}N",)).fetchone()["id"]
+    for amount, at in ((20, late), (30, early), (40, next_month)):
+        conn.execute("""INSERT INTO booking_payments (booking_id, amount, method, created_at)
+                        VALUES (?, ?, 'cash', ?)""", (night, amount, at))
+    # A table: its deposit paid on the 6th of last month, the booking confirmed today.
+    conn.execute("""INSERT INTO restaurant_bookings (reference_code, manage_token, guest_name,
+                    guest_email, party_size, dinner_date, status, payment_status, deposit_amount,
+                    created_at, decided_at) VALUES (?, ?, ?, ?, 2, ?, 'confirmed', 'paid', 60, ?, ?)""",
+                 (f"{TAG}R", f"{TAG}rtok".lower(), f"{TAG} Diner", f"{TAG.lower()}.diner@example.invalid",
+                  (today + timedelta(days=995)).isoformat(), last_month, now))
+    conn.commit()
+    this_time = _mine(m.house_transactions(conn, this_month["start_iso"], this_month["end_iso"]))
+    last_time = _mine(m.house_transactions(conn, before["start_iso"], before["end_iso"]))
+    conn.close()
+    paid_in = lambda xs: sorted((x["paid"], x["day"]) for x in xs if x["ref"] == f"{TAG}N" and x["paid"])
+    s.check("half an hour past midnight here on the 1st is this month, dated the 1st, "
+            "though in UTC it is still last month",
+            (30.0, this_month["start_iso"]) in paid_in(this_time)
+            and not any(p == 30.0 for p, _d in paid_in(last_time)),
+            detail=f"this month {paid_in(this_time)}, last month {paid_in(last_time)}")
+    s.check("and half an hour before it is last month, dated its last day",
+            (20.0, last_day) in paid_in(last_time)
+            and not any(p == 20.0 for p, _d in paid_in(this_time)),
+            detail=f"this month {paid_in(this_time)}, last month {paid_in(last_time)}")
+    s.check("the month ends where the next begins: the 1st of next month is not in it",
+            not any(p == 40.0 for p, _d in paid_in(this_time)),
+            detail=str(paid_in(this_time)))
+    table = lambda xs: [(x["line"], x["charge"], x["paid"]) for x in xs if x["ref"] == f"{TAG}R"]
+    s.check("a table's deposit is charged in the month it was confirmed, and paid in the month it was paid",
+            table(this_time) == [("deposit", 60.0, 0.0)] and table(last_time) == [("payment", 0.0, 60.0)],
+            detail=f"this month {table(this_time)}, last month {table(last_time)}")
 
     s.section("Who may see it")
     s.check("an employee cannot", ec.get("/admin/transactions").status_code in (302, 403))

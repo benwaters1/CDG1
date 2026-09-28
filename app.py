@@ -54539,9 +54539,12 @@ def _transaction_candidates(conn, lo, hi):
     """Which bookings of each kind have anything dated between two moments.
 
     Only these are worked out: a statement's lines are cheap one booking at a
-    time and dear for every booking the house has ever taken. The window is
-    wider than the period by a day at each end, because a line is dated on the
-    house's day and the moments it is found by are kept in UTC.
+    time and dear for every booking the house has ever taken. Every line is
+    dated on the house's day of a moment kept in UTC -- a payment's, a
+    refund's, the booking's own, or the one it was decided at -- so the two
+    moments are where the house's first day starts and the day after its last
+    begins (house_moment), and each moment a line can be dated by is looked
+    for here.
     """
     found = {"room": set(), "workshop": set(), "event": set(), "restaurant": set()}
     queries = (
@@ -54555,6 +54558,8 @@ def _transaction_candidates(conn, lo, hi):
         ("event", "SELECT id FROM event_inquiries WHERE COALESCE(decided_at, created_at) >= ? AND COALESCE(decided_at, created_at) < ?"),
         ("event", "SELECT id FROM event_inquiries WHERE created_at >= ? AND created_at < ?"),
         ("restaurant", "SELECT id FROM restaurant_bookings WHERE created_at >= ? AND created_at < ?"),
+        # A table's deposit is charged on the day it was confirmed.
+        ("restaurant", "SELECT id FROM restaurant_bookings WHERE COALESCE(decided_at, created_at) >= ? AND COALESCE(decided_at, created_at) < ?"),
     )
     for category, sql in queries:
         try:
@@ -54589,16 +54594,16 @@ def _profile_ids_by_address(conn):
 
 
 def house_transactions(conn, start_iso, end_iso):
-    """Every charge, payment and refund dated on the house's days between two
-    dates, one row each, with who it was, what it was for, and how.
+    """Every charge, payment and refund dated on the house's days from
+    `start_iso` up to `end_iso` and not including it -- resolve_period's
+    window, whose end is the day after the last -- one row each, with who it
+    was, what it was for, and how.
 
     The lines are each booking's statement lines (booking_money_lines) and
     nothing else, so a person's rows here are their statement's, and the
     booking's own statement adds up to the same.
     """
-    lo = (parse_date(start_iso) - timedelta(days=1)).isoformat()
-    hi = (parse_date(end_iso) + timedelta(days=2)).isoformat()
-    candidates = _transaction_candidates(conn, lo, hi)
+    candidates = _transaction_candidates(conn, house_moment(start_iso), house_moment(end_iso))
     profiles = _profile_ids_by_address(conn)
     rows = []
     for category, ids in candidates.items():
@@ -54619,7 +54624,7 @@ def house_transactions(conn, start_iso, end_iso):
                        else None) or profiles.get(email)
                 token = row["manage_token"] if "manage_token" in keys else None
                 for x in lines:
-                    if not (start_iso <= x["day"] <= end_iso):
+                    if not (start_iso <= x["day"] < end_iso):
                         continue
                     words, group = TRANSACTION_TYPES.get(x["line"], (x["line"], "Charge"))
                     rows.append(dict(
