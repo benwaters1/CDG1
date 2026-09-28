@@ -394,6 +394,7 @@ SUITES = [
     "test_payment_ledger",
     "test_event_agreement",
     "test_public_calendar",
+    "test_nights_struck_out",
     "test_event_day",
     "test_event_worth",
     "test_pay_statement",

@@ -26300,68 +26300,65 @@ def nights_already_taken(conn, *, days=None):
     provisional hold takes the dates somebody has been promised. A guest
     offered a night the desk would then refuse has been told something untrue
     by the calendar that exists to prevent exactly that.
+
+    READ FROM THE PICTURE THE BOOKING CHECK REFUSES FROM, not from questions
+    of its own. It used to keep its own list, and the list was wrong twice,
+    both times in front of a guest. A block the owner put on ONE room struck
+    the night out for the whole house, turning away every other room's guests.
+    And a room let on Booking.com or Airbnb -- the iCal sync's blocked_dates --
+    was never counted, so a night with every room gone showed as free and the
+    guest was refused only after filling in the form. Reading
+    _availability_picture asks the picker exactly what is_range_available is
+    asked: the same rows, the same boundaries, the same rooms for sale.
+
+    So a night is taken when
+      - something holds the whole house: a workshop, a confirmed event or a
+        live hold, end-INCLUSIVE, as is_range_available reads them; or
+      - every room for sale is gone that night, counted as DISTINCT rooms. A
+        booking, a channel block and a manual block on the same room are one
+        room gone, not three, and each ends on the morning the room is free
+        again, like a departure.
     """
     days = PUBLIC_CALENDAR_DAYS if days is None else max(0, int(days))
     today = house_today()
     horizon = today + timedelta(days=days)
+    # Rebuilt, not taken from `g`: a page drawn after this request wrote a
+    # booking must show it, and the picture held on `g` can predate the
+    # write. It costs about what the queries it replaced did.
+    picture = _availability_picture(conn, fresh=True)
     taken = set()
 
-    def _span(start_iso, end_iso, *, inclusive_end):
-        start, end = parse_date(start_iso), parse_date(end_iso)
-        if not start:
-            return
-        end = end or start
-        if end < start:
-            start, end = end, start
-        day = max(start, today)
-        last = min(end, horizon)
-        while day <= last:
-            # A departure day is sellable again; an event's last day is not.
-            if inclusive_end or day < end:
-                taken.add(day.isoformat())
-            day += timedelta(days=1)
-
-    # A night is only unsellable when EVERY room is gone, so rooms are counted
-    # per night rather than added to the set one booking at a time.
-    total_rooms = conn.execute(
-        "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
-    per_night = {}
-    for row in conn.execute(
-            """SELECT arrival_date, departure_date FROM bookings
-                WHERE status IN ('pending', 'confirmed')
-                  AND COALESCE(departure_date, '') >= ?
-                  AND COALESCE(arrival_date, '') <= ?""",
-            (today.isoformat(), horizon.isoformat())).fetchall():
-        start, end = parse_date(row["arrival_date"]), parse_date(row["departure_date"])
-        if not start or not end:
+    for start, end, _why in picture["house"]:
+        if not (start and end):
             continue
         day = max(start, today)
-        while day < min(end, horizon + timedelta(days=1)):
-            per_night[day.isoformat()] = per_night.get(day.isoformat(), 0) + 1
+        while day <= min(end, horizon):
+            taken.add(day)
             day += timedelta(days=1)
-    if total_rooms:
-        taken.update(d for d, n in per_night.items() if n >= total_rooms)
 
-    # Asked of the same definition the booking gate refuses on, so a sitting
-    # that has been called off stops striking nights here the moment it stops
-    # refusing them there.
-    for row in sessions_holding_the_house(conn, today, horizon):
-        _span(row["start_date"], row["end_date"], inclusive_end=True)
-    for row in conn.execute(
-            """SELECT preferred_date, end_date FROM event_inquiries
-                WHERE status = 'confirmed' AND preferred_date IS NOT NULL""").fetchall():
-        _span(row["preferred_date"], row["end_date"], inclusive_end=True)
-    for row in conn.execute(
-            """SELECT start_date, end_date FROM event_holds
-                WHERE released_at IS NULL AND expires_at > ?""",
-            (datetime.now(timezone.utc).isoformat(),)).fetchall():
-        _span(row["start_date"], row["end_date"], inclusive_end=True)
-    for row in conn.execute(
-            """SELECT start_date, end_date FROM room_blocks
-                WHERE end_date >= ? AND start_date <= ?""",
-            (today.isoformat(), horizon.isoformat())).fetchall():
-        _span(row["start_date"], row["end_date"], inclusive_end=False)
-    return sorted(taken)
+    # Only the rooms the house sells by the night. A workshop-only room is
+    # active = 0, and nothing on it opens or closes a night for a guest. With
+    # no room for sale at all there is nothing to count, so the rooms close
+    # no night; the house-wide holds above still do.
+    for_sale = {r["id"] for r in conn.execute(
+        "SELECT id FROM rooms WHERE active = 1").fetchall()}
+    spans = [(room_id, start, end)
+             for room_id, rows in picture["bookings"].items()
+             for _id, _status, start, end in rows]
+    spans += [(room_id, start, end)
+              for kind in ("blocked", "manual")
+              for room_id, rows in picture[kind].items()
+              for start, end in rows]
+    gone = {}
+    for room_id, start, end in spans:
+        if room_id not in for_sale or not (start and end):
+            continue
+        day = max(start, today)
+        while day < end and day <= horizon:
+            gone.setdefault(day, set()).add(room_id)
+            day += timedelta(days=1)
+    taken.update(day for day, rooms in gone.items() if rooms == for_sale)
+    return sorted(day.isoformat() for day in taken)
 
 
 def nights_la_table_is_cooking(conn, *, days=None):

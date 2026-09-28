@@ -271,8 +271,12 @@ def run():
                    count_word=WORD.get(facts["count"] + 1))
     would_flag = [f"{name}:{i}" for name, i, line, said in claims()
                   if not historical(name, line) and said != pretend["count"]]
+    # Seven since 24 September: the home page's room section dropped the
+    # sentence that repeated its own heading ("Five Rooms, Opened One at a
+    # Time"). Fewer sentences, all still saying five -- the floor follows the
+    # copy, and the check above is what proves they agree.
     s.check("a sixth room would red the run and name the lines",
-            len(would_flag) >= 8,
+            len(would_flag) >= 7,
             detail=f"{len(would_flag)} line(s) would need changing — the "
                    "site cannot quietly lie about how many rooms it lets, "
                    "and the run says where to go")
