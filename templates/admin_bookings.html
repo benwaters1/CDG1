@@ -115,11 +115,15 @@
            title="{{ c['caution'] }}">{{ caution_levels[c['caution_level']] }}</a>
         {%- endif %}
         {% if b['status'] in ('pending', 'confirmed') %} · <a href="{{ url_for('edit_booking', booking_id=b['id']) }}" class="small-link" style="color:var(--steel);">Edit</a>{% endif %}
+        {#- On every stay, whatever became of it: the edit page is the only
+            other way to it, and a declined or cancelled stay has none. -#}
+        {% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='booking', record_id=b['id']) }}" class="small-link" style="color:var(--steel);">What changed</a>{% endif %}
       </span>
     </div>
     <p class="manual-body">
       {{ b['arrival_date'] }} → {{ b['departure_date'] }} · Party of {{ b['party_size'] }}
       {% if b['total_price'] %} · €{{ '%.2f'|format(b['total_price']) }}{% endif %}
+      {% if owed_by_booking.get(b['id']) %} · <strong class="owed-flag">€{{ '%.2f'|format(owed_by_booking[b['id']]) }} still owed</strong>{% endif %}
     </p>
     <p class="upload-hint">{{ b['guest_email'] }}{% if b['guest_phone'] %} · {{ b['guest_phone'] }}{% endif %}</p>
     {% if b['special_requests'] %}<p class="upload-hint">Notes: {{ b['special_requests'] }}</p>{% endif %}
@@ -131,8 +135,14 @@
     <p class="upload-hint">Submitted {{ b['created_at']|house_day }}{% if b['decided_at'] %} · Decided {{ b['decided_at']|house_day }}{% endif %}</p>
 
     <div class="expense-actions">
+      {# A tick box on confirmed stays too. "Tie together as a party" is for
+         bookings that are usually confirmed by the time a party is obvious --
+         and only pending ones could be ticked, so it could not be used. #}
+      {% if b['status'] in ('pending', 'confirmed') %}
+      <input type="checkbox" value="{{ b['id'] }}" class="bulk-check" style="margin-right:4px;"
+             aria-label="Choose {{ b['reference_code'] }}">
+      {% endif %}
       {% if b['status'] == 'pending' %}
-      <input type="checkbox" value="{{ b['id'] }}" class="bulk-check" style="margin-right:4px;">
       <form method="post" action="{{ url_for('confirm_booking', booking_id=b['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Confirm</button></form>
       {# Why, asked at the moment somebody knows the answer. Optional on
          purpose: refusing a decline over a missing dropdown means somebody
@@ -148,7 +158,22 @@
         <button type="submit" class="btn-mini btn-mini-danger">Decline</button>
       </form>
       {% elif b['status'] == 'confirmed' %}
-      <form method="post" action="{{ url_for('cancel_booking_admin', booking_id=b['id']) }}" onsubmit="return confirm('Cancel this confirmed booking?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Cancel booking</button></form>
+      <form method="post" action="{{ url_for('cancel_booking_admin', booking_id=b['id']) }}" onsubmit="return confirm('Cancel this confirmed booking?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {# The terms promise a full refund when the house calls a stay off, so
+           the owner can give it back in the same step rather than on a second
+           page. Unticked: cancelling moves no money by itself. #}
+        {% if can('refund_desk') and ((b['amount_paid'] or 0) > 0 or b['payment_status'] == 'paid') %}
+        <label class="checkbox-row"><input type="checkbox" name="refund_paid" value="1"> <span>and refund what they paid, to the card</span></label>
+        {% endif %}
+        {# Why, now, while it is known. "Something the house could not do"
+           makes anything still held the guest's to have back. #}
+        <select name="cancel_reason" aria-label="Why? (optional)" style="width:auto;">
+          <option value="">Why? (optional)</option>
+          {% for key, label in cancel_reasons.items() %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn-text-danger">Cancel booking</button></form>
       {# A stay that was confirmed and never arrived. Offered only once the
          arrival has actually passed -- a guest arriving at eleven at night is
          not a no-show at six, and a stay written off early is a room somebody
@@ -157,17 +182,20 @@
       <form method="post" action="{{ url_for('mark_booking_no_show', booking_id=b['id']) }}"
             onsubmit="return confirm('Mark {{ b['reference_code'] }} as never arrived? Nothing is charged or refunded.');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="text" name="note" placeholder="What happened (optional)" maxlength="300">
+        <input aria-label="What happened (optional)" type="text" name="note" placeholder="What happened (optional)" maxlength="300">
         <button type="submit" class="btn-text-danger">Did not arrive</button>
       </form>
       {% endif %}
       {% endif %}
     </div>
 
+    {# Anything paid at all, not only paid in full: a stay part-paid by a
+       deposit, at the desk or by one share of a split bill is refundable too. #}
     {% set already_refunded = refunded_by_booking.get(b['id'], 0) %}
-    {% set remaining = (b['total_price'] or 0) - already_refunded %}
-    {% if b['payment_status'] in ('paid', 'refunded') and (remaining > 0 or already_refunded > 0) %}
-      {% with action = url_for('refund_booking_admin', booking_id=b['id']) %}
+    {% set taken = (b['amount_paid'] or 0) if b['amount_paid'] else ((b['total_price'] or 0) if b['payment_status'] in ('paid', 'refunded') else 0) %}
+    {% set remaining = taken - already_refunded %}
+    {% if taken > 0 or already_refunded > 0 %}
+      {% with refund_url = url_for('refund_desk', category='room', booking_id=b['id']) %}
         {% include "_refund_form.html" %}
       {% endwith %}
     {% endif %}

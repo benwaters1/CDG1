@@ -13,17 +13,18 @@
   </svg>
   <p class="g-eyebrow">{{ t('Your atelier') }}</p>
   <h1>{{ booking['title'] }}</h1>
-  <p class="g-p">Status: <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span></p>
+  <p class="g-p">Status: <span class="mini-status status-{{ (booking['status']|string)|lower }}">{{ booking['status'] }}</span></p>
 
   <div class="g-mb-card">
     <dl class="g-facts-list">
       <div><dt>Reference code</dt><dd>{{ booking['reference_code'] }}</dd></div>
       <div><dt>Dates</dt><dd>{{ booking['start_date']|date_short }}{% if booking['end_date'] != booking['start_date'] %} → {{ booking['end_date']|date_short }}{% endif %}</dd></div>
       <div><dt>Party size</dt><dd>{{ booking['party_size'] }}</dd></div>
-      {% if booking['total_price'] %}<div><dt>Estimated total</dt><dd>€{{ '%.2f'|format(booking['total_price']) }}</dd></div>{% endif %}
-      <div><dt>Room arrangement</dt><dd>{{ booking['occupancy_type']|capitalize }}{% if booking['single_supplement'] %} <span class="g-hint">(private room, +€{{ '%.0f'|format(booking['single_supplement']) }} per person)</span>{% endif %}</dd></div>
+      {% if booking['total_price'] %}<div><dt>Estimated total</dt><dd>€{{ '{:,.2f}'.format(booking['total_price']) }}</dd></div>{% endif %}
+      <div><dt>Room arrangement</dt><dd>{{ booking['occupancy_type']|capitalize }}{% if booking['single_supplement'] %} <span class="g-hint">(private room, +€{{ '{:,.0f}'.format(booking['single_supplement']) }} per person)</span>{% endif %}</dd></div>
       {% if booking['assigned_room_name'] %}<div><dt>Your room</dt><dd>{{ booking['assigned_room_name'] }}</dd></div>{% endif %}
     </dl>
+    <p class="g-hint" style="margin-top:var(--s4);"><a href="{{ url_for('workshop_calendar_ics', manage_token=booking['manage_token']) }}" style="color:var(--steel);">Add to calendar (.ics)</a></p>
     {% if guests and guests|length > 1 %}
     <div class="g-mb-note">
       <span class="g-mb-dt">Party</span>
@@ -57,17 +58,17 @@
     {% endif %}
   </div>
 
-  {% if booking['status'] not in ('declined', 'cancelled') and total_charged %}
+  {% if (booking['status']|lower) not in ('declined', 'cancelled') and total_charged %}
   <div class="g-mb-card" style="margin-top:var(--s3);">
     <dl class="g-facts-list">
-      <div><dt>Total charged</dt><dd>€{{ '%.2f'|format(total_charged) }}</dd></div>
-      <div><dt>Paid</dt><dd>€{{ '%.2f'|format(total_paid) }}</dd></div>
-      <div><dt>Balance due</dt><dd>€{{ '%.2f'|format(balance_due) }}</dd></div>
+      <div><dt>Total charged</dt><dd>€{{ '{:,.2f}'.format(total_charged) }}</dd></div>
+      <div><dt>Paid</dt><dd>€{{ '{:,.2f}'.format(total_paid) }}</dd></div>
+      <div><dt>Balance due</dt><dd>€{{ '{:,.2f}'.format(balance_due) }}</dd></div>
     </dl>
     {% if stripe_enabled and booking['deposit_amount'] and not booking['deposit_paid_at'] %}
-    <a href="{{ url_for('workshop_pay_deposit', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s3);">Pay deposit — €{{ '%.2f'|format(booking['deposit_amount']) }}</a>
+    <a href="{{ url_for('workshop_pay_deposit', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s3);">Pay deposit — €{{ '{:,.2f}'.format(booking['deposit_amount']) }}</a>
     {% elif stripe_enabled and booking['deposit_paid_at'] and balance_due > 0 %}
-    <a href="{{ url_for('workshop_pay_balance', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s3);">Pay balance — €{{ '%.2f'|format(balance_due) }}</a>
+    <a href="{{ url_for('workshop_pay_balance', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s3);">Pay balance — €{{ '{:,.2f}'.format(balance_due) }}</a>
 
     <form method="post" action="{{ url_for('workshop_pay_balance', manage_token=booking['manage_token']) }}" class="g-field" style="margin-top:var(--s4)">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -78,27 +79,8 @@
                step="0.01" placeholder="{{ '%.2f'|format(balance_due) }}">
         <button type="submit">Pay this amount</button>
       </div>
-      <p class="g-hint">Anything from €{{ '%.0f'|format(part_payment_minimum) }} upwards — what is left stays on your balance.</p>
+      <p class="g-hint">{% if part_payment_minimum %}Anything from €{{ '{:,.0f}'.format(part_payment_minimum) }} upwards{% else %}Any amount{% endif %} — what is left stays on your balance.</p>
     </form>
-
-    {% if booking['balance_due_date'] and autocharge_enabled %}
-    <p class="g-hint" style="margin-top:var(--s4)">
-      {% if booking['autocharge_opt_out'] %}
-        We will not take this automatically — please pay it by {{ booking['balance_due_date']|date_short }}.
-      {% else %}
-        Whatever is left on {{ booking['balance_due_date']|date_short }} will be charged to the card you paid the deposit with.
-      {% endif %}
-    </p>
-    <form method="post" style="margin-top:var(--s2)">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="action" value="autocharge">
-      <label class="g-check">
-        <input type="checkbox" name="autocharge_opt_out" {{ 'checked' if booking['autocharge_opt_out'] }}>
-        <span class="g-check__t"><b>I would rather pay it myself</b></span>
-      </label>
-      <button type="submit" class="g-btn" style="margin-top:var(--s3)">Save</button>
-    </form>
-    {% endif %}
     {% endif %}
   </div>
   {% endif %}
@@ -107,10 +89,10 @@
   <div class="g-mb-card" style="margin-top:var(--s3);">
     <h3>Move to a different date</h3>
     <p class="g-hint">
-      {% if booking['status'] == 'pending' and not booking['deposit_paid_at'] %}
+      {% if (booking['status']|lower) == 'pending' and not booking['deposit_paid_at'] %}
         Pick a new date and you will be moved right away, as long as there is room.
       {% else %}
-        Pick a new date and we will confirm availability and get back to you — this registration is already {{ 'confirmed' if booking['status'] == 'confirmed' else 'paid' }}, so we review changes rather than applying them instantly.
+        Pick a new date and we will confirm availability and get back to you — this registration is already {{ 'confirmed' if (booking['status']|lower) == 'confirmed' else 'paid' }}, so we review changes rather than applying them instantly.
       {% endif %}
     </p>
     <form method="post" class="g-row" style="margin-top:var(--s2);">
@@ -129,32 +111,51 @@
   {% endif %}
 
 
-  {% if booking['status'] in ('pending', 'confirmed') and booking['balance_amount'] %}
+  {% if (booking['status']|lower) in ('pending', 'confirmed') and booking['balance_amount'] and balance_due > 0 %}
+  {# What happens to the balance, said from what is actually on file. This used
+     to promise "taken from the card on file" to everybody -- including guests
+     whose deposit had kept no card, who then did not pay, because they had
+     been told they need not. #}
   <div class="g-mb-card" style="margin-top:var(--s4)">
     <p class="g-mb-dt">The balance</p>
-    <form method="post">
+    {% if booking['autocharge_opt_out'] %}
+    <p class="g-hint">We will not take it from your card. Please pay it by {{ booking['balance_due_date']|date_short }}.</p>
+    {% elif card_on_file %}
+    <p class="g-hint">Whatever is left on {{ booking['balance_due_date']|date_short }} will be taken from the card you paid the deposit with. You can pay it yourself before then.</p>
+    {% elif not booking['deposit_paid_at'] %}
+    <p class="g-hint">The card you pay the deposit with is kept for the balance, and whatever is left on {{ booking['balance_due_date']|date_short }} is taken from it.</p>
+    {% else %}
+    <p class="g-hint">Please pay it by {{ booking['balance_due_date']|date_short }}.</p>
+    {% endif %}
+    {% if card_on_file or not booking['deposit_paid_at'] or booking['autocharge_opt_out'] %}
+    <form method="post" style="margin-top:var(--s2)">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="autocharge">
-      <p class="g-opt">
-        <label>
-          <input type="checkbox" name="autocharge_opt_out" value="on"
-                 {% if booking['autocharge_opt_out'] %}checked{% endif %}>
-          Do not take the balance automatically — I will pay it myself
-        </label>
-      </p>
-      <p class="g-hint">Leave this unticked and the balance is taken from the card on file
-        closer to the date. Tick it and we will send you the details instead.</p>
-      <button type="submit" class="g-btn">Save this preference</button>
+      <label class="g-check">
+        <input type="checkbox" name="autocharge_opt_out" value="on" {{ 'checked' if booking['autocharge_opt_out'] }}>
+        <span class="g-check__t"><b>I would rather pay it myself</b></span>
+      </label>
+      <button type="submit" class="g-btn" style="margin-top:var(--s3)">Save</button>
     </form>
+    {% endif %}
   </div>
   {% endif %}
 
-  {% if booking['status'] in ('pending', 'confirmed') %}
-  <form method="post" onsubmit="return confirm('Cancel this registration? This cannot be undone.');" style="margin-top:var(--s4);">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="action" value="cancel">
-    <button type="submit" class="btn-text-danger">Cancel this registration</button>
-  </form>
+  {% if (booking['status']|lower) in ('pending', 'confirmed') %}
+  {# Not offered as a standing button. It was one click behind a generic
+     browser confirm, with nothing said about money beforehand. Still
+     reachable — a guest must be able to cancel — but the terms come
+     first and it takes a deliberate second action to open. #}
+  <details class="g-cancel-fold" style="margin-top:var(--s4);">
+    <summary>I need to cancel</summary>
+    <p class="g-hint" style="margin-top:var(--s3)">Registrations are non-refundable, deposit included. Write to us before you cancel — we can usually move you to another atelier instead.</p>
+    <p class="g-hint"><a href="mailto:{{ contact_address('workshops') }}">Write to us first</a></p>
+    <form method="post" onsubmit="return confirm('Cancel this registration? It is non-refundable and cannot be undone.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="cancel">
+      <button type="submit" class="btn-text-danger">Cancel this registration anyway</button>
+    </form>
+  </details>
   {% endif %}
 </div>
 

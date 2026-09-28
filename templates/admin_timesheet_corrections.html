@@ -30,11 +30,11 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div>
         <label class="field-label">Corrected clock in (optional)</label>
-        <input type="time" name="clock_in_time">
+        <input aria-label="Corrected clock in (optional)" type="time" name="clock_in_time">
       </div>
       <div>
         <label class="field-label">Corrected clock out (optional)</label>
-        <input type="time" name="clock_out_time">
+        <input aria-label="Corrected clock out (optional)" type="time" name="clock_out_time">
       </div>
       <button type="submit" class="btn-mini">Apply & resolve</button>
     </form>

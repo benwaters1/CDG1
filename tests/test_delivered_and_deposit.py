@@ -159,12 +159,15 @@ def run():
 
     # ---------------------------------------------------------- the deposit
     s.section("What a workshop costs to reserve is read, not stated")
-    s.check("the house has one answer today",
-            m.workshop_deposit_to_show(conn) == 30,
-            detail=str(m.workshop_deposit_to_show(conn)))
+    # The owner's figure since 24 September 2026 -- and the page is checked
+    # against what the ateliers actually carry, not against the constant.
+    carried = m.workshop_deposit_to_show(conn)
+    s.check("the house has one answer today, and it is 10%",
+            carried == 10, detail=str(carried))
     page = " ".join(m.app.test_client().get("/workshops")
                     .get_data(as_text=True).split())
-    s.check("and the page prints that answer", "30% to reserve" in page)
+    s.check("and the page prints that answer", f"{carried}% to reserve" in page,
+            detail=page[page.find("to reserve") - 40:page.find("to reserve") + 20])
     # Against what the MONEY does, not against the constant. Asking whether
     # the page says WORKSHOP_BALANCE_DAYS days reads the same variable on
     # both sides, so changing it changed both and the check followed along.
@@ -204,7 +207,7 @@ def run():
                 detail="a guest shown 30% who is charged 55% has been told a "
                        "wrong figure about their own money")
         s.check("without printing either number as though it were the rule",
-                "30% to reserve" not in varied and "55% to reserve" not in varied,
+                f"{carried}% to reserve" not in varied and "55% to reserve" not in varied,
                 detail=varied[varied.find("Deposit"):][:160])
         conn.execute("UPDATE workshops SET deposit_percent = ? WHERE id = ?",
                      (one["deposit_percent"], one["id"]))

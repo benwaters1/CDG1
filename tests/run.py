@@ -21,6 +21,9 @@ SUITES = [
     "test_staff_today",
     "test_owner_home",
     "test_chat",
+    "test_assistant",
+    "test_guest_import",
+    "test_way_back_in",
     "test_access_levels",
     "test_booking_quote",
     "test_booking_bill",
@@ -32,6 +35,24 @@ SUITES = [
     "test_workshop_money",
     "test_part_payments",
     "test_autocharge",
+    "test_payments_counted_once",
+    "test_balances_to_collect",
+    "test_workshop_register",
+    "test_lists_open_on_now",
+    "test_owed_everywhere",
+    "test_customer_record",
+    "test_events_list",
+    "test_deposit_and_dates",
+    "test_refund_desk",
+    "test_refund_followups",
+    "test_guest_account_statement",
+    "test_contact_history",
+    "test_who_changed_a_booking",
+    "test_consent_and_profile_history",
+    "test_links_and_the_record",
+    "test_tags_and_the_guest_list",
+    "test_everything_we_hold",
+    "test_stop_using_my_details",
     "test_workshop_rooms",
     "test_workshop_lifecycle",
     "test_workshop_minimum",
@@ -85,16 +106,30 @@ SUITES = [
     "test_house_crud",
     "test_hr_compliance",
     "test_animals",
+    "test_confirmed_facts",
+    "test_settings_readable",
+    "test_pages_never_answered",
+    "test_pages_behind_providers",
     "test_event_run_sheet",
     "test_card_and_rate",
     "test_seven_gaps",
     "test_photo_mirror",
     "test_booking_bar",
     "test_booking_journey",
+    "test_the_whole_way_through",
     "test_funnel_forms",
     "test_pass",
     "test_site_audit",
+    "test_caption_suggestions",
+    "test_social_connect",
+    "test_meta_token",
+    "test_social_publishing",
+    "test_camera_ingest",
+    "test_reference_prefixes",
+    "test_workshop_calendar",
     "test_photo_intake",
+    "test_photo_tray",
+    "test_photo_sizes",
     "test_house_day",
     "test_house_operations",
     "test_house_reports",
@@ -103,10 +138,19 @@ SUITES = [
     "test_campaign_email",
     "test_workshop_announce",
     "test_email_outbox",
+    "test_email_provider",
+    "test_rates_and_replies",
     "test_email_templates",
+    "test_template_editor",
+    "test_booking_com_mail",
+    "test_booking_com_stays",
+    "test_door_lock",
+    "test_room_lineup",
+    "test_dining_switch",
     "test_newsletter",
     "test_gallery",
     "test_site_images",
+    "test_site_photo_swap",
     "test_exports",
     "test_destructive",
     "test_money_ahead",
@@ -125,6 +169,7 @@ SUITES = [
     "test_vehicles",
     "test_offline",
     "test_translations",
+    "test_page_translation",
     "test_staff_language",
     "test_whats_on",
     "test_ateliers",
@@ -147,6 +192,11 @@ SUITES = [
     "test_repeat_guests",
     "test_room_economics",
     "test_still_out",
+    "test_roll_call",
+    "test_what_a_night_earns",
+    "test_hours_and_tips",
+    "test_road_notice",
+    "test_salvage_handover",
     "test_sick_note",
     "test_insurer_notice",
     "test_home_warnings",
@@ -173,6 +223,8 @@ SUITES = [
     "test_pennylane_split",
     "test_revenue_categories",
     "test_extras_due",
+    "test_extras_at_booking",
+    "test_extra_vat",
     "test_ics_feeds",
     "test_shift_actions",
     "test_guest_account",
@@ -259,6 +311,7 @@ SUITES = [
     "test_publish_consent",
     "test_room_checks",
     "test_no_show_rooms",
+    "test_what_a_stay_owes",
     "test_orphan_templates",
     "test_guest_page",
     "test_stay_cost",
@@ -314,6 +367,7 @@ SUITES = [
     "test_guests_and_staff",
     "test_template_shadowing",
     "test_empty_nights",
+    "test_room_calendar_agrees",
     "test_booking_parties",
     "test_guest_record",
     "test_guest_preferences_apply",
@@ -326,6 +380,11 @@ SUITES = [
     "test_one_search_box",
     "test_offline_actions",
     "test_html_email",
+    "test_letters_drawn",
+    "test_mail_redirect",
+    "test_chef_program",
+    "test_where_the_gates_are",
+    "test_columns_that_exist",
     "test_review_invitation",
     "test_itinerary",
     "test_price_agreed",
@@ -337,6 +396,8 @@ SUITES = [
     "test_event_worth",
     "test_pay_statement",
     "test_calling_it_off",
+    "test_called_off_frees_the_house",
+    "test_called_off_is_not_on",
     "test_guest_record_fields",
     "test_guest_management",
     "test_merge_tags",
@@ -347,6 +408,10 @@ SUITES = [
     "test_unreachable_code",
     "test_handover_check",
     "test_repair_handover",
+    "test_room_channel_name",
+    "test_job_hour_windows",
+    "test_whatsapp_channel",
+    "test_till_touch_targets",
 ]
 
 
@@ -427,64 +492,37 @@ def _registry_complete():
 # does a name that starts answering, because an exception list that outlives
 # its reason is how the next one gets in unnoticed.
 COVERAGE_KNOWN_GAPS = {
-    # Two of these need a real payment provider: reaching the branch that matters
-    # means a real payment provider, and arranging one in a test is not a
-    # thing to do with the château's own Stripe account.
+    # TWENTY WHOSE ONLY TEST IS THE APP SAYING NO.
     #
-    # refund_restaurant_booking_admin issues money back. Its refusal when
-    # Stripe is unconfigured is already held by test_declines, which declines
-    # a paid booking and requires the failure to be reported rather than
-    # swallowed -- so what is missing here is only the branch where money
-    # actually moves.
+    # This list was emptied on main, and rightly -- everything that used
+    # to be here now has a real test, including the Stripe pages and the
+    # add-in draft, exercised with the provider stood in at the one call
+    # that leaves the building. None of that is undone.
     #
-    # workshop_stripe_success retrieves the checkout session before it does
-    # anything, unlike its two siblings, which answer from the database first
-    # and are covered (tests/test_payment_returns.py).
+    # What refilled it is a STRICTER measure, merged in from the other
+    # side. Coverage already counted the answer rather than the knock;
+    # this counts whether the answer was YES. A view answering "no" is
+    # still a view answering, so an empty POST -- which is what
+    # test_empty_form_crashes does to every POST in the app, on purpose
+    # and correctly -- made a route count as covered on the strength of
+    # the sentence it composes when it declines.
     #
-    # share_payment_success is workshop_stripe_success again: it retrieves the
-    # checkout session as its first act, so with Stripe pinned off there is
-    # nothing to answer with. The half that can be tested without a card --
-    # what somebody holding a share sees, and when the button disappears --
-    # is in tests/test_split_bill.py.
-    "refund_restaurant_booking_admin",
-    "workshop_stripe_success",
-    "share_payment_success",
-
-    # And one where the MEASURE is the awkward part rather than the test.
-    # api_draft_reply answers 503 {"error": "not configured"} with no model
-    # provider, which is the view running, deciding, and telling the add-in
-    # something it can act on -- not a refusal at the door. But a 5xx counts
-    # as unanswered here on purpose: loosening that to let this one through
-    # would let a genuinely broken page count as covered, which is the whole
-    # failure this measure exists to stop. So the judgement sits here, named
-    # and reversible, rather than in the rule. tests/test_provider_off.py
-    # does exercise it -- the token posture and the 503 both.
-    "api_draft_reply",
-
-    # ------------------------------------------------------------------
-    # AND EIGHTEEN WHOSE ONLY TEST IS THE APP SAYING NO.
+    # It can be told apart because of a convention the app keeps without
+    # exception: every flash carries a category, and there are only two
+    # of them in the whole file. So the app states, on every form,
+    # whether the post did the thing or refused to -- the one question a
+    # 302 cannot answer, since a rejected form and a successful one both
+    # redirect back to a page.
     #
-    # These were all reading as covered until the measure learned to tell a
-    # form that worked from one that was refused. Both answer 302 back to a
-    # page, so the status code cannot separate them -- but every one of the
-    # app's 742 flashes carries a category, and there are only two, so the
-    # app states on every form which happened. A response that flashed an
-    # error and no success is now a refusal, in the same sense a 403 is.
-    #
-    # What reached each of these was tests/test_empty_form_crashes sweeping
-    # every POST with an empty body to prove none of them 500s. That is a
-    # real check and it stays -- but it tests the sentence the route composes
-    # when it declines, and nothing else. The working branch of all eighteen
-    # has never run.
-    #
-    # Listed rather than silently re-covered, and checked in both directions
-    # like everything else here: write a real post for one of these and the
-    # run reds until the name comes off. Four of them (the Stripe cancels and
-    # the two workshop payment starts) need a payment provider and belong
-    # with the three above; sync_pennylane is stood down at import on purpose.
-    # The other thirteen are ordinary owner-side writes with no excuse.
+    # Four of these need a payment provider and one (sync_pennylane) is
+    # stood down at import on purpose. The rest are ordinary owner-side
+    # writes whose working branch has never run. Checked both ways, as
+    # before: write a real post for one and the run reds until the name
+    # comes off.
     "add_bill_share",
     "assign_access_preset",
+    "assistant_say_route",
+    "bulk_tag_guests",
     "edit_menu_day",
     "paste_event_guests",
     "pos_pay_link",
@@ -493,7 +531,7 @@ COVERAGE_KNOWN_GAPS = {
     "restaurant_stripe_cancel",
     "save_access_preset",
     "scan_expense",
-    "send_campaign_template",
+    "send_balance_links",
     "send_event_revenue",
     "send_workshop_revenue",
     "stripe_cancel",
@@ -501,6 +539,56 @@ COVERAGE_KNOWN_GAPS = {
     "workshop_pay_balance",
     "workshop_pay_deposit",
     "workshop_stripe_cancel",
+}
+# EMPTY, and every name that was here now answers. The last four were the
+# three Stripe pages -- the dinner refund, and the atelier and split-bill
+# return pages, which retrieve the checkout session before they do anything --
+# and the Outlook add-in's draft, which needs the model. Each had a good
+# reason to be here: nothing may reach the house's own Stripe account or its
+# model bill. They run in tests/test_pages_behind_providers.py with the
+# provider STOOD IN at the one call that leaves the building, restored after,
+# and checked restored; _harness has already blanked both keys, so a stand-in
+# that leaked would meet a library with no credential.
+#
+# set(), not {}: {} is a dict, and the check below does set arithmetic on this.
+
+
+# Queries that compare a stored moment (a *_at column, an instant in UTC) with
+# a bare date, by the function that asked and the column -- measured on every
+# full run by _harness, which watches each statement with its values filled
+# in. A bare date there is midnight UTC, an hour or two into the house's day.
+#
+# What is left, and why. Checked both ways like COVERAGE_KNOWN_GAPS: a new one
+# reds the run, and so does one that has been mended and is still here.
+BARE_DATE_KNOWN = {
+    # NOT DIAGNOSED, and not from this side. workshops_overview is
+    # byte-identical to main and this check is main's own, so the merge did
+    # not cause it; it is listed rather than fixed because fixing somebody
+    # else's finding on a guess is worse than naming it.
+    #
+    # What is known: the query compares refunds.created_at against
+    # period["start_at"], and the period builder at the one site read here
+    # fills that with house_moment(), which is exactly what this check asks
+    # for. So either another caller passes a bare date, or the finding is
+    # data-dependent and main simply has not hit the path. Wants the eye of
+    # whoever wrote the check.
+    ("workshops_overview", "created_at"):
+        "period['start_at'] is house_moment() at the builder read here — "
+        "either another caller passes a bare date, or main has not hit it",
+    ("owner_home_figures", "clock_in_at"):
+        "widened a day each way, then each shift filed by house_date_iso: right",
+    ("admin_incidents", "occurred_at"):
+        "the time as somebody typed it, local and without a zone: a date "
+        "compares with it correctly",
+    ("delivery_shortfalls", "stock_movements.created_at"): "stock -- the other agent's",
+    ("night_cost", "stock_movements.created_at"): "stock -- the other agent's",
+    ("price_changes", "stock_movements.created_at"): "stock -- the other agent's",
+    ("waste_log", "stock_movements.created_at"): "stock -- the other agent's",
+    ("fridge_log", "fridge_readings.read_at"): "kitchen -- the other agent's",
+    ("what_sells", "pos_order_lines.created_at"): "till -- the other agent's",
+    ("service_times", "sent_at"): "till -- the other agent's",
+    ("spend_by_vendor", "submitted_at"): "supplier invoices -- the other agent's",
+    ("supplier_statement", "submitted_at"): "supplier invoices -- the other agent's",
 }
 
 
@@ -550,9 +638,12 @@ def main(argv):
                 got, lost = by_area[area]["hit"], by_area[area]["miss"]
                 line = f"  {area:<14} {len(got):>3}/{len(got) + len(lost):<3}"
                 if lost:
-                    line += "  untested: " + ", ".join(lost[:3])
-                    if len(lost) > 3:
-                        line += f" +{len(lost) - 3} more"
+                    # ALL of them, by name. This printed three and "+2 more",
+                    # and the two it did not name were the two nobody could
+                    # go and test without a full run to find out which they
+                    # were -- a count where this file everywhere else insists
+                    # on a name.
+                    line += "  untested: " + ", ".join(lost)
                 print(line)
             # Reached but never answered. Every one of these was counted as
             # covered until now: the request matched the endpoint and was then
@@ -588,6 +679,26 @@ def main(argv):
         except Exception as e:                       # pragma: no cover
             print(f"\n(coverage report unavailable: {e})")
 
+    # Stored moments asked about with a bare date, as measured while the
+    # suites above ran. Full runs only: a partial run does not reach every
+    # query, so an absence proves nothing about whether one was mended.
+    moments_ok = True
+    if not wanted:
+        seen = _harness.BARE_DATE_SEEN
+        fresh = sorted(k for k in seen if k not in BARE_DATE_KNOWN)
+        mended = sorted(k for k in BARE_DATE_KNOWN if k not in seen)
+        print(f"\nMOMENTS — {len(seen)} place(s) compared a stored moment with "
+              f"a bare date, {len(fresh)} of them new")
+        for fn, col in fresh:
+            print(f"    NEW  {fn}: {col} (x{seen[(fn, col)]}) -- compare with "
+                  "house_moment() or house_day_window(), or service_day_window() "
+                  "for the till")
+        if mended:
+            print("  ON THE KNOWN LIST AND NOT SEEN ANY MORE — take these off it:")
+            for fn, col in mended:
+                print(f"    {fn}: {col}")
+        moments_ok = not fresh and not mended
+
     print("\n" + "=" * 64)
     total = total_passed + len(all_failed)
     print(f"{total_passed}/{total} checks passed across {len(names)} suite(s)")
@@ -606,8 +717,11 @@ def main(argv):
     if not registry_ok:
         print("\nA suite file was written and never registered — the total"
               " above does not cover it.")
+    if not moments_ok:
+        print("\nA query compares a stored moment with a bare date, or one on "
+              "the known list has been mended — see MOMENTS above.")
     return 0 if (not all_failed and not crashed and control_ok
-                 and registry_ok and coverage_ok) else 1
+                 and registry_ok and coverage_ok and moments_ok) else 1
 
 
 if __name__ == "__main__":

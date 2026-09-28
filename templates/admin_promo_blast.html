@@ -52,7 +52,7 @@
       apply to them.</p>
     <div style="margin-top:10px; max-width:260px;">
       <label class="field-label">Only guests who visited in the last (months, optional)</label>
-      <input type="number" name="since_months" min="1" value="{{ since_months }}" placeholder="Any time">
+      <input aria-label="Any time" type="number" name="since_months" min="1" value="{{ since_months }}" placeholder="Any time">
     </div>
     <button type="submit" class="btn-mini" style="margin-top:10px;">Update count</button>
   </form>
@@ -65,10 +65,10 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% for s in segments %}<input type="hidden" name="segment" value="{{ s }}">{% endfor %}
     <input type="hidden" name="since_months" value="{{ since_months }}">
-    <label class="field-label">Subject</label>
-    <input type="text" name="subject" value="A little something from Château de Gudanes" required>
-    <label class="field-label">Message</label>
-    <textarea name="body" rows="8" required>Hi {guest_name},
+    <label class="field-label" for="admin_promo_blast-subject">Subject</label>
+    <input id="admin_promo_blast-subject" type="text" name="subject" value="A little something from Château de Gudanes" required>
+    <label class="field-label" for="admin_promo_blast-body">Message</label>
+    <textarea id="admin_promo_blast-body" name="body" rows="8" required>Hi {guest_name},
 
 We'd love to welcome you back. Use the code {promo_code} on your next booking for a little something extra.
 

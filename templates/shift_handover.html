@@ -18,7 +18,7 @@
 <form method="post" class="detail-card">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <h2 class="section-heading">Leave a note</h2>
-  <textarea name="body" rows="4" style="width:100%;"
+  <textarea aria-label="Anything the next shift would want to know" name="body" rows="4" style="width:100%;"
             placeholder="Anything the next shift would want to know"></textarea>
   <div style="display:flex; gap:10px; align-items:center; margin-top:8px;">
     <input type="date" name="for_date" value="{{ today }}">

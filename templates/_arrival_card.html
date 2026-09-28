@@ -21,7 +21,9 @@
       <dt>Where</dt>
       <dd>
         Château de Gudanes, 2 Route de Beille, 09310 Château-Verdun, Ariège
-        <a class="g-arrive__map" href="https://www.google.com/maps/search/?api=1&query=Ch%C3%A2teau+de+Gudanes+Ch%C3%A2teau-Verdun" rel="noopener">Open in maps</a>
+        {# A pin or nothing: this was a search by name, and from outside
+           Europe it answered in Tokyo. #}
+        {% if house_maps %}<a class="g-arrive__map" href="{{ house_maps.google }}" rel="noopener">Open in maps</a>{% endif %}
       </dd>
     </div>
     <div>

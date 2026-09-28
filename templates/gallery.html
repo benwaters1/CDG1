@@ -1,6 +1,8 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('Gallery', None)] %}
 {% block title %}Gallery{% endblock %}
+{# No bodyclass: this page has no hero. I had added has-hero hero--full from the stylesheet's
+   (stale) list of full-hero pages; the header only looked right because its script falls back. #}
 {% block description %}Château de Gudanes photographed over a decade of restoration — by Vogue, AD Italia, Zimmermann, and the people living in the middle of the work.{% endblock %}
 {% block og_desc %}Château de Gudanes photographed over a decade of restoration — by Vogue, AD Italia, Zimmermann, and the people living in the middle of the work.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/115c409a-1d7f-445b-97e2-dd7a7b74ce87/DJI_0275-2-Edit.jpg?format=1200w{% endblock %}
@@ -23,10 +25,10 @@
     {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1500w", 'caption': 'The kitchen'},
     {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w", 'caption': 'The dining room'},
     {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w", 'caption': 'The kitchen table in winter'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w", 'caption': 'Chambre des Fleurs'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1500w", 'caption': 'Chambre Bleue'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1500w", 'caption': 'Chambre du Parc'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1500w", 'caption': 'Chambre Emeraude'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w", 'caption': 'A bedroom'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1500w", 'caption': 'A bedroom'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1500w", 'caption': 'A bedroom'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1500w", 'caption': 'The Gold Suite'},
     {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w", 'caption': 'The bathrooms'}
   ],
   'grounds': [
@@ -61,10 +63,11 @@
     <p class="g-eyebrow">The Record · Fifteen Years</p>
     <h1 class="g-pagehead">The château, as it is</h1>
   <p class="g-p g-lede-first">Photographs taken across the seasons, mostly by guests and by the family, over a decade of work.</p>
-  <p class="g-p">There is no styling here and very little tidying. Rooms are photographed as they are on the day — some finished, some with the plaster still open and the scaffolding up. That is the point of the record.</p>
+  <p class="g-p">There is no styling here and very little tidying. Rooms are photographed as they are on the day — some restored, some with the plaster still open and the scaffolding up. That is the point of the record.</p>
 
 
-    <p class="g-lede">Bare plaster and finished salons, the grounds in every season, and the work itself. No staging, and nothing hidden.</p>
+    {# A larger-type lede stood here, after the body copy, restating it ("No styling ... as they
+       are on the day" -> "No staging, and nothing hidden"). #}
     <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
   </div>
 </section>
@@ -109,23 +112,7 @@
   </div>
 </section>
 
-<section class="g-sec">
-  <div class="g-wrap">
-    <div class="g-panel g-panel--dark">
-      <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M0 13h38"/><path d="M82 13h38"/>
-  <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
-  <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
-  <circle cx="60" cy="13" r="1.4"/>
-</svg>
-  <h2 class="g-h2">Stay while the <em>work continues</em></h2>
-      <p class="g-p">Every photograph here is a room that was, at some point, unusable. Four of the ninety-four were habitable in 2013; the rest had caved-in roofs and trees growing through them.</p>
-      <p class="g-p">The work continues because people come. A night, a table, a week at an atelier — and then the next room, the next window, the next stretch of fresco lifted out from under a century of overpaint.</p>
-      <p style="line-height:1.8; max-width:52ch; margin:0 0 24px;">Five bedrooms, open to guests. Breakfast, a private tour and a guided walk of the gardens and village are included with every one.</p>
-      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check availability</a>
-    </div>
-  </div>
-</section>
+
 
 
 <section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
@@ -246,57 +233,10 @@
       <dl class="g-plate__l">
         <div><dt>Taken by</dt><dd>The family, the guests, and the magazines that have come</dd></div>
         <div><dt>Not styled</dt><dd>Rooms are photographed as they are that morning</dd></div>
-        <div><dt>Not finished</dt><dd>Every room here was unusable at some point in the last fifteen years</dd></div>
+        <div><dt>Not restored yet</dt><dd>Every room here was unusable at some point in the last fifteen years</dd></div>
         <div><dt>The walls</dt><dd>Bare by law, and the reason the photographs look the way they do</dd></div>
       </dl>
     </div>
-  </div>
-</div></section>
-
-
-<!-- ============ THE JOURNAL ============ -->
-{# The newsletter form was only in the menu panel. This is the same route,
-   placed where a reader who has just finished the page will see it. #}
-<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">The Journal</p>
-    <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
-    <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
-      <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
-             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
-        <fieldset class="g-interests">
-          <legend>What would you like to hear about?</legend>
-          <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
-          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
-          <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
-        </fieldset>
-      <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
-    </form>
-        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
-    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
-  </div>
-</div></section>
-
-<div class="g-wrap g-mark__wrap">{{ mark('vine') }}</div>
-
-
-<!-- ============ THE JOURNAL, PROPERLY ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap g-journal">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">Not Ready To Book</p>
-    <h2 class="g-place">Watch It Come Off The Wall</h2>
-    <p class="g-p">Ninety-four rooms, five finished. When a room opens, when something comes out from under the plaster, when the ateliers are released — that goes out first to the people reading along.</p>
-    <p class="g-p">It is the same record Vogue, AD Italia and the French press have been following since 2013. Rooms are usually spoken for before they reach the booking page.</p>
-    <form method="post" action="{{ url_for('newsletter_subscribe') }}" class="g-journal__form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="jr_email_gal">Your email</label>
-      <input type="email" id="jr_email_gal" name="email" placeholder="Your email" required autocomplete="email">
-      <button type="submit" class="g-btn g-btn--solid">Read along</button>
-    </form>
-    <p class="g-journal__note">A few times a year, when there is something worth sending. Unsubscribe in one click.</p>
   </div>
 </div></section>
 
@@ -307,18 +247,18 @@
   <p class="g-eyebrow">Fifteen Years of It</p>
   <h2 class="g-place">Rooms That No Longer Look Like This</h2>
 
-  <p class="g-p g-lede-first">Photographs taken since 2013, of rooms in states that have gone and will not come back. A wall opened, a floor lifted, a ceiling before it was consolidated. Once a room is finished, that version of it exists only here.</p>
-  <p class="g-p">It is the reason the record was kept at all. It is also, unexpectedly, the most useful thing on this site for anyone scouting a location — the same room can be seen stripped to stone and finished, which is a choice no other building can offer.</p>
+  <p class="g-p g-lede-first">Photographs taken since 2013, of rooms in states that have gone and will not come back. A wall opened, a floor lifted, a ceiling before it was consolidated. Once a room is restored, that version of it exists only here.</p>
+  <p class="g-p">It is the reason the record was kept at all. It is also, unexpectedly, the most useful thing on this site for anyone scouting a location — the same room can be seen stripped to stone and restored, which is a choice no other building can offer.</p>
 
   <div class="g-grid g-grid--2">
     <div class="g-panel">
       <h3 class="g-h3">For anyone reading along</h3>
-      <p class="g-p">The archive is the long version of the journal. Ninety-four rooms, five finished, and every one of the others photographed as it was found.</p>
+      <p class="g-p">The archive is the long version of the journal. Ninety-four rooms, five open to guests, and every one of the others photographed as it was found.</p>
       
     </div>
     <div class="g-panel">
       <h3 class="g-h3">For location scouts</h3>
-      <p class="g-p">Tell us the condition you need and we will send what we have of it — bare stone, open plaster, part-restored, or finished. Usage is agreed in writing before a shoot, not after.</p>
+      <p class="g-p">Tell us the condition you need and we will send what we have of it — bare stone, open plaster, part-restored, or fully restored. Usage is agreed in writing before a shoot, not after.</p>
       <p class="g-p"><a href="{{ url_for('events_photoshoots') }}" class="g-btn">Location hire</a></p>
     </div>
   </div>
@@ -346,7 +286,7 @@
   <p class="g-fr">Au jour le jour<span class="g-fr__en">Day by day</span></p>
   <p class="g-eyebrow">Before It Reaches Here</p>
   <h2 class="g-place">The Work, As It Happens</h2>
-  <p class="g-p g-lede-first">What comes off a wall goes out the same week. This page is the edited version; the account is the unedited one, and rooms are usually spoken for before they reach the booking page.</p>
+  <p class="g-p g-lede-first">What comes off a wall goes out the same week. This page is the edited version; the account is the unedited one.</p>
   <p class="g-p">
     <a href="https://www.instagram.com/chateaugudanes/" class="g-btn g-btn--solid" rel="me noopener">Instagram</a>
     <a href="https://www.facebook.com/chateaugudanes/" class="g-btn" rel="me noopener">Facebook</a>
@@ -360,4 +300,41 @@
 {{ lightbox() }}
 {{ stay_panel() }}
 
+{# THE JOURNAL, PROPERLY was removed here: a second newsletter form directly under
+   the standard sitewide Journal block, so the page asked for an email twice. The
+   Journal now sits last, after the content, where a reader who has finished is. #}
+
+<!-- ============ THE JOURNAL ============ -->
+{# The newsletter form was only in the menu panel. This is the same route,
+   placed where a reader who has just finished the page will see it. #}
+<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
+  <div class="g-journal__in">
+    <p class="g-eyebrow">The Journal</p>
+    <h2 class="g-journal__h">Follow the Restoration</h2>
+    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
+    <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {# One id, set once. Calling random twice produced a different number for
+         the label and the input, so the `for` pointed at nothing. #}
+      {% set j_id = 'j-email-' ~ range(1000,9999)|random %}
+      <label class="g-vh" for="{{ j_id }}">{{ t('Email address') }}</label>
+      <input type="email" inputmode="email" name="email" id="{{ j_id }}"
+             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
+        <fieldset class="g-interests">
+          <legend>What would you like to hear about?</legend>
+          <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
+        </fieldset>
+      <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
+    </form>
+        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
+    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
+  </div>
+</div></section>
+
+<div class="g-wrap g-mark__wrap">{{ mark('vine') }}</div>
+
+
 {% endblock %}
+

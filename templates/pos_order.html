@@ -82,7 +82,7 @@
     <form method="post" action="{{ url_for('pos_email_receipt', order_id=order['id']) }}"
           class="till-receipt__email">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="email" name="email" inputmode="email" autocomplete="off"
+      <input aria-label="Email the receipt to…" type="email" name="email" inputmode="email" autocomplete="off"
              placeholder="Email the receipt to…"
              value="{{ receipt_email_default or '' }}">
       <button type="submit" class="btn-mini">Send</button>
@@ -223,16 +223,16 @@
         <form method="post" action="{{ url_for('pos_add_item', order_id=order['id']) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="refund-fields">
-            <div><label class="field-label">Item</label><input type="text" name="name" required></div>
-            <div><label class="field-label">Price (€)</label><input type="text" name="unit_price" inputmode="decimal" placeholder="0.00"></div>
-            <div><label class="field-label">Quantity</label><input type="number" name="quantity" min="1" value="1"></div>
+            <div><label class="field-label" for="pos_order-name">Item</label><input id="pos_order-name" type="text" name="name" required></div>
+            <div><label class="field-label" for="pos_order-unit-price">Price (€)</label><input id="pos_order-unit-price" type="text" name="unit_price" inputmode="decimal" placeholder="0.00"></div>
+            <div><label class="field-label" for="pos_order-quantity">Quantity</label><input id="pos_order-quantity" type="number" name="quantity" min="1" value="1"></div>
             <div>
-              <label class="field-label">Course</label>
-              <select name="course">
+              <label class="field-label" for="pos_order-course">Course</label>
+              <select id="pos_order-course" name="course">
                 {% for k, v in courses.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
               </select>
             </div>
-            <div><label class="field-label">Note for the kitchen</label><input type="text" name="notes" placeholder="no garlic"></div>
+            <div><label class="field-label" for="pos_order-notes">Note for the kitchen</label><input id="pos_order-notes" type="text" name="notes" placeholder="no garlic"></div>
           </div>
           <button type="submit" class="btn-mini">Add</button>
         </form>
@@ -392,9 +392,9 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="kind" value="discount">
             <div class="refund-fields">
-              <div><label class="field-label">% off</label><input type="text" name="percent" inputmode="decimal" placeholder="10"></div>
-              <div><label class="field-label">or € off</label><input type="text" name="amount" inputmode="decimal" placeholder="0.00"></div>
-              <div><label class="field-label">Reason (required)</label><input type="text" name="reason" placeholder="Long wait for mains"></div>
+              <div><label class="field-label" for="pos_order-percent">% off</label><input id="pos_order-percent" type="text" name="percent" inputmode="decimal" placeholder="10"></div>
+              <div><label class="field-label" for="pos_order-amount">or € off</label><input id="pos_order-amount" type="text" name="amount" inputmode="decimal" placeholder="0.00"></div>
+              <div><label class="field-label" for="pos_order-reason">Reason (required)</label><input id="pos_order-reason" type="text" name="reason" placeholder="Long wait for mains"></div>
             </div>
             <button type="submit" class="btn-mini">Apply discount</button>
           </form>
@@ -402,8 +402,8 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="kind" value="service">
             <div class="refund-fields">
-              <div><label class="field-label">Service %</label><input type="text" name="percent" inputmode="decimal" placeholder="10"></div>
-              <div><label class="field-label">or €</label><input type="text" name="amount" inputmode="decimal" placeholder="0.00"></div>
+              <div><label class="field-label" for="pos_order-percent-2">Service %</label><input id="pos_order-percent-2" type="text" name="percent" inputmode="decimal" placeholder="10"></div>
+              <div><label class="field-label" for="pos_order-amount-2">or €</label><input id="pos_order-amount-2" type="text" name="amount" inputmode="decimal" placeholder="0.00"></div>
             </div>
             <button type="submit" class="btn-mini">Add service</button>
           </form>
@@ -413,16 +413,16 @@
           <summary>Move or merge</summary>
           <form method="post" action="{{ url_for('pos_move_table', order_id=order['id']) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label class="field-label">Rename this table</label>
-            <input type="text" name="table_label" value="{{ order['table_label'] }}">
+            <label class="field-label" for="pos_order-table-label">Rename this table</label>
+            <input id="pos_order-table-label" type="text" name="table_label" value="{{ order['table_label'] }}">
             <button type="submit" class="btn-mini" style="margin-top:8px;">Rename</button>
           </form>
           {% if other_tables %}
           <form method="post" action="{{ url_for('pos_move_table', order_id=order['id']) }}" style="margin-top:10px;"
                 onsubmit="return confirm('Move every item on this tab onto that table?');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label class="field-label">Merge into</label>
-            <select name="merge_into">
+            <label class="field-label" for="pos_order-merge-into">Merge into</label>
+            <select id="pos_order-merge-into" name="merge_into">
               {% for t in other_tables %}<option value="{{ t['id'] }}">{{ t['table_label'] }}</option>{% endfor %}
             </select>
             <button type="submit" class="btn-mini" style="margin-top:8px;">Merge</button>
@@ -538,8 +538,8 @@
             class="till-room-charge">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="method" value="room">
-        <label class="field-label">Charge to a room</label>
-        <select name="room_booking_id" required>
+        <label class="field-label" for="pos_order-room-booking-id">Charge to a room</label>
+        <select id="pos_order-room-booking-id" name="room_booking_id" required>
           <option value="">— which guest —</option>
           {% for b in in_house %}
           <option value="{{ b['id'] }}">{{ b['guest_name'] }} — {{ b['reference_code'] }}</option>

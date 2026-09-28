@@ -11,6 +11,16 @@
     sprinkled through the sentences.
 
     The plain-text body still goes out alongside this.
+
+    THE WORDS ARE NOT HERE ANY MORE. They are the "Rooms: Booking confirmed"
+    template, which the owner edits under Management, Email templates, like
+    every other letter. This file drew its own sentences while the plain text
+    said different ones, so an edit reached the few guests whose mail app shows
+    text and none of the rest. The template is split where {stay_details}
+    sits: `heading` and `opening` come before it, `closing` after, and the card
+    below is what goes in the gap. The shipped wording is the wording this file
+    used to carry, so this letter looks exactly as it did until somebody edits
+    it. (Its plain text changed: it now says the same thing as this.)
     ========================================================================== #}
 {% from '_email.html' import email_shell, email_button, email_fact, email_directions, email_extras %}
 
@@ -20,15 +30,19 @@
 
   <p style="margin:0 0 4px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
             letter-spacing:.14em; text-transform:uppercase; color:#73562D;">C'est confirmé</p>
+  {% if heading %}
   <p style="margin:0 0 20px; font-family:Georgia,'Times New Roman',serif; font-size:27px;
-            line-height:1.25; color:#14305F;">Your room is held, {{ guest_name }}</p>
+            line-height:1.25; color:#14305F;">{{ heading }}</p>
+  {% endif %}
 
-  <p style="margin:0 0 26px; font-family:Helvetica,Arial,sans-serif; font-size:16px;
-            line-height:1.7; color:#2C3E50;">
-    Five bedrooms of ninety-four are finished, and one of them is yours for
-    the dates below. Everything here is also on your booking page, so there is
-    nothing you need to keep.
-  </p>
+  {% for block in opening %}
+    {% if block.kind == 'button' %}
+      {{ email_button(block.href, block.label) }}
+    {% else %}
+  <p style="margin:0 0 {{ '26' if loop.last else '18' }}px; font-family:Helvetica,Arial,sans-serif; font-size:16px;
+            line-height:1.7; color:#2C3E50;">{% for line in block.lines or [block.text] %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
+    {% endif %}
+  {% endfor %}
 
   {{ email_fact('Arriving', arrival_long) }}
   {{ email_fact('Leaving', departure_long) }}
@@ -55,17 +69,22 @@
   {{ email_extras(manage_url, settings) }}
   {{ email_directions(settings) }}
 
+  {% if closing %}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
          style="margin:28px 0 0; border-top:1px solid #E6DCC8;">
     <tr>
       <td style="padding:20px 0 0; font-family:Helvetica,Arial,sans-serif; font-size:14px;
                  line-height:1.7; color:#4A6076;">
-        The walls of this house are not finished and will not be while you are
-        here — that is the point of it. The floors, the beds and the bathrooms
-        are new. If anything at all needs saying before you arrive, reply to
-        this message; it reaches us.
+        {% for block in closing %}
+          {% if block.kind == 'button' %}
+            {{ email_button(block.href, block.label, 'quiet') }}
+          {% else %}
+        <p style="margin:0 0 {{ '0' if loop.last else '14' }}px;">{% for line in block.lines or [block.text] %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
+          {% endif %}
+        {% endfor %}
       </td>
     </tr>
   </table>
+  {% endif %}
 
 {% endcall %}

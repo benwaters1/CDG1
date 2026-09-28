@@ -48,16 +48,16 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="kind" value="supplier_invoice">
     <div>
-      <label class="field-label">Photograph a bill</label>
-      <input type="file" name="invoice" accept="image/*,application/pdf" capture="environment">
+      <label class="field-label" for="expenses-invoice">Photograph a bill</label>
+      <input id="expenses-invoice" type="file" name="invoice" accept="image/*,application/pdf" capture="environment">
     </div>
     <div>
-      <label class="field-label">Who from</label>
-      <input type="text" name="vendor_name" placeholder="Supplier">
+      <label class="field-label" for="expenses-vendor-name">Who from</label>
+      <input id="expenses-vendor-name" type="text" name="vendor_name" placeholder="Supplier">
     </div>
     <div>
-      <label class="field-label">Amount (€)</label>
-      <input type="text" name="amount" inputmode="decimal" placeholder="0.00" style="width:110px;">
+      <label class="field-label" for="expenses-amount">Amount (€)</label>
+      <input id="expenses-amount" type="text" name="amount" inputmode="decimal" placeholder="0.00" style="width:110px;">
     </div>
     <button type="submit" class="btn-primary" style="margin-top:0;">Add it</button>
   </form>

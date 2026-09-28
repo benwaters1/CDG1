@@ -40,20 +40,23 @@ reset_owner_password.py
 # current main, so a committed copy could only ever be a stale one.
 gudanes-design-current.zip
 
+# Written by export_catalogue.py, for carrying rooms and extras to another
+# install. A generated file, and the copy sitting here was already stale --
+# it held the old Booking.com room names months after the rooms were renamed
+# to the French ones. Regenerate it when it is wanted rather than keeping a
+# version that quietly stops being true.
+catalogue.json
+
 # Everything the Squarespace account still holds, brought down by
 # tools/harvest_photos.py so the photographs can be looked at and sorted.
-# Several hundred pictures are not a repository anybody can clone, and the
-# ones that get chosen go to the volume via /admin/site-images anyway.
+# Several hundred pictures are not a repository anybody can clone.
 photo_harvest/
 
-# A dump of the live rooms and their prices, taken so the design side could
-# read the copy without a database. It is data, not code: committed, it goes
-# stale the first time a price changes and is then a second answer to a
-# question the database already answers. The list of untested routes goes the
-# same way -- tests/run.py works that out on every run, from the run itself.
-catalogue.json
+# A list of untested routes, generated once by hand. tests/run.py works the
+# same thing out on every run, from the run itself, so a kept copy is a
+# second answer that goes stale.
 _untested.txt
 
-# The camera roll's card-reader key, generated for the owner to paste
-# into .env themselves. One line, one copy, never in git.
+# The camera roll's card-reader key, generated for the owner to paste into
+# .env themselves. One line, one copy, never in git.
 INGEST-KEY.txt

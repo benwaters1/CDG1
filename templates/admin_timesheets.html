@@ -13,8 +13,8 @@
 
 <form method="get" class="search-bar">
   <div>
-    <label class="field-label">Employee</label>
-    <select name="employee_id">
+    <label class="field-label" for="admin_timesheets-employee-id">Employee</label>
+    <select id="admin_timesheets-employee-id" name="employee_id">
       <option value="">Everyone</option>
       {% for e in employees %}
       <option value="{{ e['id'] }}" {{ 'selected' if employee_id == e['id']|string }}>{{ e['name'] }}</option>
@@ -22,12 +22,12 @@
     </select>
   </div>
   <div>
-    <label class="field-label">From</label>
-    <input type="date" name="start" value="{{ start.isoformat() }}">
+    <label class="field-label" for="admin_timesheets-start">From</label>
+    <input id="admin_timesheets-start" type="date" name="start" value="{{ start.isoformat() }}">
   </div>
   <div>
-    <label class="field-label">To</label>
-    <input type="date" name="end" value="{{ end.isoformat() }}">
+    <label class="field-label" for="admin_timesheets-end">To</label>
+    <input id="admin_timesheets-end" type="date" name="end" value="{{ end.isoformat() }}">
   </div>
   <button type="submit" class="btn-mini">Filter</button>
   <a href="{{ url_for('admin_timesheets') }}" class="small-link" style="color:var(--steel); align-self:center;">Reset</a>
@@ -97,7 +97,7 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div>
           <label class="field-label">Actual clock-out</label>
-          <input type="datetime-local" name="clock_out_at" required>
+          <input aria-label="Actual clock-out" type="datetime-local" name="clock_out_at" required>
         </div>
         <button type="submit" name="action" value="set" class="btn-mini">Correct it</button>
         <button type="submit" name="action" value="void" class="btn-mini btn-mini-danger"

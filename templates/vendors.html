@@ -93,12 +93,12 @@
     </div>
     <form method="post" action="{{ url_for('edit_vendor', vendor_id=v['id']) }}" id="edit-vendor-{{ v['id'] }}" class="upload-form" style="display:none;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="name" value="{{ v['name'] }}" placeholder="Name" required>
-      <input type="text" name="contact_person" value="{{ v['contact_person'] or '' }}" placeholder="Contact person">
-      <input type="text" name="phone" value="{{ v['phone'] or '' }}" placeholder="Phone">
-      <input type="email" name="email" value="{{ v['email'] or '' }}" placeholder="Email" autocomplete="email">
-      <input type="text" name="payment_terms" value="{{ v['payment_terms'] or '' }}" placeholder="Payment terms (e.g. Net 30)">
-      <input type="text" name="notes" value="{{ v['notes'] or '' }}" placeholder="Notes">
+      <input aria-label="Name" type="text" name="name" value="{{ v['name'] }}" placeholder="Name" required>
+      <input aria-label="Contact person" type="text" name="contact_person" value="{{ v['contact_person'] or '' }}" placeholder="Contact person">
+      <input aria-label="Phone" type="text" name="phone" value="{{ v['phone'] or '' }}" placeholder="Phone">
+      <input aria-label="Email" type="email" name="email" value="{{ v['email'] or '' }}" placeholder="Email" autocomplete="email">
+      <input aria-label="Payment terms (e.g. Net 30)" type="text" name="payment_terms" value="{{ v['payment_terms'] or '' }}" placeholder="Payment terms (e.g. Net 30)">
+      <input aria-label="Notes" type="text" name="notes" value="{{ v['notes'] or '' }}" placeholder="Notes">
       <button type="submit" class="btn-mini">Save</button>
     </form>
     {% endfor %}
@@ -109,12 +109,12 @@
   <h3>Add a vendor</h3>
   <form method="post" action="{{ url_for('new_vendor') }}" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" name="name" placeholder="Name" required>
-    <input type="text" name="contact_person" placeholder="Contact person">
-    <input type="text" name="phone" placeholder="Phone">
-    <input type="email" name="email" placeholder="Email" autocomplete="email">
-    <input type="text" name="payment_terms" placeholder="Payment terms (e.g. Net 30)">
-    <input type="text" name="notes" placeholder="Notes (optional)">
+    <input aria-label="Name" type="text" name="name" placeholder="Name" required>
+    <input aria-label="Contact person" type="text" name="contact_person" placeholder="Contact person">
+    <input aria-label="Phone" type="text" name="phone" placeholder="Phone">
+    <input aria-label="Email" type="email" name="email" placeholder="Email" autocomplete="email">
+    <input aria-label="Payment terms (e.g. Net 30)" type="text" name="payment_terms" placeholder="Payment terms (e.g. Net 30)">
+    <input aria-label="Notes (optional)" type="text" name="notes" placeholder="Notes (optional)">
     <button type="submit" class="btn-mini">Add vendor</button>
   </form>
 </div>

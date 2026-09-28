@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}Refund — {{ ref }}{% endblock %}
+{% block content %}
+
+{# One booking's money going back. Every payment it came in by is listed with
+   what has already gone back against it, because a refund goes back against
+   a PAYMENT: a stay paid in three card payments has three cards behind it,
+   and "refund it" has to say which. #}
+<div class="page-head">
+  <h1>Refund · {{ head.who }}</h1>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <a href="{{ head.back }}" class="btn-ghost">Back to the {{ kind|lower }}</a>
+    {% if email %}<a href="{{ url_for('guest_by_email', email=email) }}" class="btn-ghost">Their record</a>{% endif %}
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  {{ kind }} · {{ head.what }} · {{ head.when }} · {{ ref }} · {{ (booking['status'] or '')|capitalize }}
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">€{{ '%.2f'|format(money.cost) }}</span>
+    <span class="stat-tile-label">{{ 'What it costs' if stands else 'What it would have cost' }}</span>
+  </span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">€{{ '%.2f'|format(money.received) }}</span>
+    <span class="stat-tile-label">Received, after refunds</span>
+  </span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">€{{ '%.2f'|format(money.refunded) }}</span>
+    <span class="stat-tile-label">Refunded{% if money.taken_off %}, €{{ '%.2f'|format(money.taken_off) }} of it off the bill{% endif %}</span>
+  </span></div>
+  {% if money.owed is not none %}
+  <div class="stat-tile"><span class="stat-tile-body">
+    {% if money.credit > 0 %}
+    <span class="stat-tile-value">€{{ '%.2f'|format(money.credit) }}</span>
+    <span class="stat-tile-label">In credit: more paid than it costs</span>
+    {% else %}
+    <span class="stat-tile-value">€{{ '%.2f'|format(money.owed) }}</span>
+    <span class="stat-tile-label">Still owed</span>
+    {% endif %}
+  </span></div>
+  {% endif %}
+</div>
+
+<h2>What came in</h2>
+{% if not payments %}
+  <div class="empty-state">No payment is recorded against this {{ kind|lower }}, so there is nothing to give back.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>When</th><th>How</th><th>From</th><th class="num">Paid</th>
+          <th class="num">Gone back</th><th class="num">Can go back</th></tr>
+    </thead>
+    <tbody>
+    {% for p in payments %}
+      <tr>
+        <td>{{ p.at|house_day if p.at else '—' }}</td>
+        <td>{{ p.method_label }}
+          {% if p.label %}<span class="cell-note">{{ p.label }}</span>{% endif %}
+          {% if p.card %}<span class="cell-note">can go back to the card</span>
+          {% elif p.reference %}<span class="cell-note">{{ p.reference }}</span>{% endif %}
+        </td>
+        <td>{{ p.payer or p.taken_by or '—' }}</td>
+        <td class="num">€{{ '%.2f'|format(p.amount) }}</td>
+        <td class="num">{{ '€%.2f'|format(p.refunded) if p.refunded else '—' }}</td>
+        <td class="num">{{ '€%.2f'|format(p.refundable) if p.refundable else '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if ceiling > 0 %}
+<h2>Give money back</h2>
+<form method="post" onsubmit="return confirm('Make this refund? A refund to a card moves real money.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <fieldset class="refund-fields">
+    <legend class="field-label">Against which payment</legend>
+    {% for p in payments if p.refundable > 0 %}
+    <label class="checkbox-row refund-reason">
+      <input type="radio" name="payment" value="{{ p.key }}" {{ 'checked' if loop.first }}>
+      <span>{{ p.method_label }}, {{ p.at|house_day if p.at else 'earlier' }}: €{{ '%.2f'|format(p.refundable) }} can go back{% if p.payer %} ({{ p.payer }}'s share){% endif %}</span>
+    </label>
+    {% endfor %}
+    {% if refundable_count > 1 %}
+    <label class="checkbox-row refund-reason">
+      <input type="radio" name="payment" value="all">
+      <span>All of it, €{{ '%.2f'|format(ceiling) }}: each payment back the way it came</span>
+    </label>
+    {% endif %}
+  </fieldset>
+
+  <div class="refund-fields">
+    <div class="register-field">
+      <label class="field-label" for="refund-amount">How much (€)</label>
+      <input id="refund-amount" type="number" name="amount" step="0.01" min="0.01"
+             max="{{ '%.2f'|format(ceiling) }}" placeholder="All that payment can">
+      <span class="upload-hint">Blank gives back all that payment can.</span>
+    </div>
+    <div class="register-field">
+      <label class="field-label" for="refund-method">How it goes back</label>
+      <select id="refund-method" name="method">
+        <option value="">The way it was paid</option>
+        <option value="stripe">To the card, through Stripe</option>
+        <option value="bank_transfer">Bank transfer, recorded here</option>
+        <option value="cash">Cash, recorded here</option>
+        <option value="other">Some other way, recorded here</option>
+      </select>
+    </div>
+    <div class="register-field">
+      <label class="field-label" for="refund-why">Why</label>
+      <select id="refund-why" name="reason_code" required>
+        <option value="">Choose…</option>
+        {% for code, label in reasons %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="refund-reason">
+      <label class="field-label" for="refund-note">Note</label>
+      <input id="refund-note" type="text" name="note" maxlength="300"
+             placeholder="What happened, in a line. Needed for “Something else”.">
+    </div>
+  </div>
+
+  {% if stands %}
+  <fieldset class="refund-fields">
+    <legend class="field-label">What it does to the bill</legend>
+    <label class="checkbox-row refund-reason">
+      <input type="radio" name="bill" value="{{ bill_reduced }}" checked>
+      <span>They pay less: take it off the bill, so nothing becomes owed</span>
+    </label>
+    <label class="checkbox-row refund-reason">
+      <input type="radio" name="bill" value="{{ bill_stands }}">
+      <span>The price stands: they still owe it, and will pay it again</span>
+    </label>
+    {% if money.credit > 0 %}
+    <p class="upload-hint refund-reason">The first €{{ '%.2f'|format(money.credit) }} only hands back what they overpaid, and changes no bill either way.</p>
+    {% endif %}
+  </fieldset>
+  {% endif %}
+
+  {% if email %}
+  <label class="checkbox-row">
+    <input type="checkbox" name="tell_guest" value="1" checked>
+    <span>Tell them: a letter to {{ email }} saying what went back and how</span>
+  </label>
+  {% endif %}
+  <p><button type="submit" class="btn-mini btn-mini-danger">Make the refund</button></p>
+</form>
+{% else %}
+  <p class="upload-hint">Nothing is left to give back on this {{ kind|lower }}.</p>
+{% endif %}
+
+<h2>Refunds made</h2>
+{% if not history %}
+  <div class="empty-state">None yet.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>When</th><th class="num">Amount</th><th>Against</th><th>How</th>
+          <th>Why</th><th>By</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for r in history %}
+      <tr>
+        <td>{{ local_datetime_str(r['created_at']) }}</td>
+        <td class="num">€{{ '%.2f'|format(r['amount']) }}
+          {% if r['reduces_bill'] %}<span class="cell-note">€{{ '%.2f'|format(r['reduces_bill']) }} off the bill</span>{% endif %}
+        </td>
+        <td>{{ against.get(r['payment_key'], 'A payment since changed') if r['payment_key'] else 'The booking as a whole' }}</td>
+        <td>{{ 'To the card' if r['method'] == 'stripe' else r['method']|replace('_', ' ')|capitalize }}
+          {% if r['stripe_refund_id'] %}<span class="cell-note">{{ r['stripe_refund_id'] }}</span>{% endif %}
+          {% if r['guest_told_at'] %}<span class="cell-note">they were told</span>{% endif %}
+        </td>
+        <td>{{ r['reason'] }}</td>
+        <td>{{ r['by_name'] or '—' }}</td>
+        <td>
+          {# A refund whose price stood -- above all one made in Stripe's own
+             dashboard, where nobody was asked -- can be taken off the bill
+             after the fact, once the owner says it was a gesture. #}
+          {% if stands and r['amount'] > 0 and (r['reduces_bill'] or 0) < r['amount'] - 0.005 and money.owed and money.owed > 0 %}
+          <form method="post" action="{{ url_for('refund_off_the_bill', category=category, booking_id=booking['id'], refund_id=r['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Take it off the bill</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -24,6 +24,14 @@
         <label class="field-label" for="name">Name</label>
         <input type="text" id="name" name="name" required
                value="{{ room['name'] if room else '' }}" placeholder="Chambre du Levant">
+        <label class="field-label" for="channel_name" style="margin-top:10px;">Name on Booking.com</label>
+        <input type="text" id="channel_name" name="channel_name"
+               value="{{ room['channel_name'] or '' if room else '' }}"
+               placeholder="Double Room with Mountain View">
+        <p class="field-hint">What the channels list this room as, if it is not
+          the house name. Shown beside the real name wherever staff see rooms,
+          so an arrival off a feed does not have to be translated from memory.
+          Leave it blank if they match.</p>
       </div>
       <div>
         <label class="field-label" for="floor">Where it is</label>
@@ -260,16 +268,16 @@
       <input type="date" name="start_date" required>
     </div>
     <div>
-      <label class="field-label">To (last night)</label>
-      <input type="date" name="end_date" required>
+      <label class="field-label" for="room_form-end-date">To (last night)</label>
+      <input id="room_form-end-date" type="date" name="end_date" required>
     </div>
     <div>
-      <label class="field-label">Rate (€/night)</label>
-      <input type="number" name="price_per_night" step="1" min="0" required style="width:120px;">
+      <label class="field-label" for="room_form-price-per-night">Rate (€/night)</label>
+      <input id="room_form-price-per-night" type="number" name="price_per_night" step="1" min="0" required style="width:120px;">
     </div>
     <div style="flex:1 1 160px;">
-      <label class="field-label">Why</label>
-      <input type="text" name="label" placeholder="New Year, Peak season…">
+      <label class="field-label" for="room_form-label">Why</label>
+      <input id="room_form-label" type="text" name="label" placeholder="New Year, Peak season…">
     </div>
     <button type="submit" class="btn-mini">Add rate</button>
   </form>

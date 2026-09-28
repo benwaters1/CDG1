@@ -43,9 +43,13 @@ def _stay(conn, ref, room_id, arrive, nights, total, extras=0.0, status="confirm
     if extras:
         bid = conn.execute("SELECT id FROM bookings WHERE reference_code = ?",
                            (TAG + ref,)).fetchone()["id"]
+        # Chosen WITH the stay, so its price is inside the total above -- which
+        # is what in_booking_total says. An extra added afterwards is not, and
+        # room_economics now takes out only the ones that are.
         conn.execute(
             """INSERT INTO booking_extras (category, booking_id, name, unit_price,
-               quantity, created_at) VALUES ('room', ?, 'Hamper', ?, 1, ?)""",
+               quantity, in_booking_total, created_at)
+               VALUES ('room', ?, 'Hamper', ?, 1, 1, ?)""",
             (bid, extras, datetime.now(timezone.utc).isoformat()))
         conn.commit()
 

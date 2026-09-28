@@ -37,7 +37,7 @@
   <form method="post" action="{{ url_for('save_review_link') }}"
         style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="url" name="review_link_url" value="{{ review_url }}"
+    <input aria-label="https://g.page/r/..." type="url" name="review_link_url" value="{{ review_url }}"
            placeholder="https://g.page/r/..." style="flex:1; min-width:260px;">
     <button type="submit" class="btn-mini">Save</button>
   </form>

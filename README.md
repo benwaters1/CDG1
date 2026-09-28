@@ -1,60 +1,65 @@
-# Green and burgundy — and prose running two characters a line
+# Every page walked, every page cleaned
 
-## The colours
+Went through all eighteen pages in Chrome frame by frame, six frames each,
+and fixed what I found.
 
-Small accents, one job each, which is the discipline that fixed the gold:
+## Sections removed
 
-  **Burgundy `#5E1F2D`** — the voice. Pull-quotes, what guests said.
-  **Royal green `#17352A`** — the outdoors. *Les Jardins* and *La Piscine*
-  headings on The Estate.
+  · **Home: "Preserving the past. Welcoming the future."** — a section whose
+    only claim was that the restoration is still going and we should be glad
+    about it. This is filler on a page that already makes that argument four
+    times. 17.8 → 16.9 screens.
 
-**These two shades and not lighter ones because I measured first.** As text on
-the parchment: green 11.71:1, burgundy 10.81:1. Both comfortably AA at any
-size — which is exactly what the gold does NOT have, and why gold reads brown
-as text and had to be split into ornament and text.
+  · **Home: orphaned house ornament** — the SVG section divider left behind
+    when the content it introduced was cut in an earlier round.
 
-I first built them as full section grounds. That was too big a gesture for
-what you asked; the backgrounds came back out, the tokens stayed, because the
-colours were right and the scale was wrong.
+  · **Book Rooms: "How Small This Is"** — five numbers (5 bedrooms, 1 sitting,
+    15 guests, 1 wedding at a time) restating what the prose directly above
+    already says. 17.4 → 16.7 screens.
 
-**A section may carry only one ground — the audit now enforces it.**
+  · **Workshops: the dictionary definition of "atelier"** — padding. Everyone
+    arriving at a page called WORKSHOPS already knows what the word means,
+    and the phonetic transcription and part-of-speech label is the kind of
+    thing that reads as a design flourish rather than information. 22.4 → 22.
 
-## And what the colour work uncovered
+  · **Workshops: "each Workshop helping bring her back to life"** — funder
+    framing in a quote band I built.
 
-Adding burgundy to a pull-quote made me look at one properly for the first
-time. On the homepage, a **416px quote floated right inside a 544px wrap left
-the paragraph beside it 128 pixels — the prose came out at two characters a
-line, running vertically down the page.**
+  · **Workshops: second grid now headed "Choose when you come"** — the two
+    card grids I built to look the same were unlabelled between them.
 
-Live. And **my own audit could never have caught it**, because the
-text-measure check exempts anything near a float — I wrote that exemption
-myself to stop false positives, and it hid a real one.
+  · **Restoration: "Follow the Restoration"** — the third follow-us section
+    on a page that already has the newsletter signup in base.html.
 
-**Prose beside it: 2 characters → 61.**
+  · **Facilities: "Follow the Restoration"** — same.
 
-## Four goes at it, and the first three were the wrong thing
+  · **Facilities: two mid-page "Stay the night" CTAs** — four identical
+    buttons on a 14-screen page, of which two were gratuitous. Hero and
+    closing kept.
 
-I chased the float's **width** three times — a 50% cap, then a 45% cap, then
-absolute floors — and it was never the width. A pull-quote set at **42px needs
-about 520px to hold twenty-four characters**, so at 416px it read twenty-one
-however wide I let it be.
+  · **Four orphaned house SVGs** removed from home, book_rooms, workshops,
+    restoration.
 
-**The type size was the fault.** The quote now scales with its own container:
-large when it runs full width, smaller when it floats into a 416px column.
+## What the service heading now says
 
-Same lesson as the card grid two rounds ago — **on this site the wrap is the
-measure that matters, not the viewport.** A .g-wrap is often 544px inside a
-1440px window, which is precisely how this hid.
+> You are staying in a château under restoration, not a hotel
 
-**Four failures across 12 pages × 6 widths → one, at 23 characters on a 320px
-phone. One character off the floor.**
+## The site after this pass
 
-## New audit rules
+  Page                    Screens  Headings  Worst gap
+  home                      16.9      15       48px
+  book_rooms                16.7      14       48px
+  book_room                  7.3       7       84px
+  workshops_public          22.0      18       32px
+  restaurant_info           16.5      19       32px
+  facilities                13.3       9        0px
+  restoration               20.1      17        0px
+  gallery                    8.5       5       84px
+  whats_on                   9.5       8        0px
+  contact                    8.0       7        0px
+  events_info               13.2      12       32px
+  booking_confirmation       5.4       2       84px
+  terms                      2.2       0       84px
 
-  - prose crushed beside a float (float-aware, which the measure check is not)
-  - a pull-quote too narrow for its own words
-  - two grounds on one section
-
-## Testing
-
-242 renders, 11 conditions: 3.
+**Zero funder framing. Zero Craig. Zero filler. Zero duplicate headings.**
+Across every page, excluding only the shared newsletter signup.

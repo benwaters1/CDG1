@@ -103,7 +103,7 @@
   </p>
   <form method="post" action="{{ url_for('paste_event_guests', event_id=data.event['id']) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <textarea name="names" rows="8" placeholder="Marie Dubois, Table 3, no shellfish"></textarea>
+    <textarea aria-label="Marie Dubois, Table 3, no shellfish" name="names" rows="8" placeholder="Marie Dubois, Table 3, no shellfish"></textarea>
     <button type="submit" class="btn-primary" style="margin-top:8px;">Add them</button>
   </form>
 </div>
@@ -117,10 +117,10 @@
         <input type="text" name="name" required>
       </label>
       <label>Sitting
-        <input type="text" name="seating" placeholder="Table 3">
+        <input aria-label="Table 3" type="text" name="seating" placeholder="Table 3">
       </label>
       <label>Cannot eat
-        <input type="text" name="dietary_notes" placeholder="No shellfish">
+        <input aria-label="No shellfish" type="text" name="dietary_notes" placeholder="No shellfish">
       </label>
       <label>Anything else
         <input type="text" name="note">

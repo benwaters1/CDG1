@@ -37,6 +37,19 @@
 <div class="flash flash-error" style="margin-bottom:16px;">
   <strong>Email isn't connected yet.</strong> Nothing here can be sent until <code>RESEND_API_KEY</code> or the <code>SMTP_*</code> settings are configured — see DEPLOY.md. Until then these are being kept, not dropped.
 </div>
+{% else %}
+{# Outside the "is there held mail" block on purpose: the moment you most want
+   to prove the provider works is the moment there is nothing waiting. #}
+<div class="filter-bar" style="margin-bottom:16px;">
+  <form method="post" action="{{ url_for('test_email_provider') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-ghost">Send a test message to myself</button>
+  </form>
+  <span class="muted" style="align-self:center;">
+    It goes to your own address and nowhere else. If it does not arrive, the
+    reason the provider gave is shown here rather than in a log.
+  </span>
+</div>
 {% endif %}
 
 {% if waiting %}

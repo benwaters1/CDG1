@@ -139,11 +139,16 @@ FR = {
     "Contact us": "Nous contacter",
     "Groups": "Groupes",
     "Change or cancel a reservation": "Modifier ou annuler une réservation",
+    "Manage your booking": "Gérer ma réservation",
+    "I need to cancel": "Je dois annuler",
+    "Write to us first": "Écrivez-nous d'abord",
+    "Cancel this booking anyway": "Annuler la réservation malgré tout",
     "Terms & Conditions": "Conditions générales",
     "Privacy Policy": "Politique de confidentialité",
     "Visit": "Visiter",
     "Nightly stays": "Séjours à la nuitée",
     "La Table": "La Table",
+    "Dining": "La Table",
     "The restoration": "La restauration",
     "Gallery": "Galerie",
     "Follow": "Nous suivre",
@@ -159,6 +164,7 @@ FR = {
     "Currency": "Devise",
     "Language": "Langue",
     "Password": "Mot de passe",
+    "Change sign-in address": "Changer l'adresse de connexion",
     "Log out": "Déconnexion",
     "charged in EUR": "débité en EUR",
     "Ariège · French Pyrénées · Restored since 2013":
@@ -229,6 +235,30 @@ FR = {
     "Your ateliers": "Vos ateliers",
     "Your dinners": "Vos dîners",
     "Your account": "Votre compte",
+    # The guest's statement of account.
+    "Your statement": "Votre relevé",
+    "Nothing charged or paid yet.": "Rien n'a encore été facturé ni payé.",
+    "Pay for this stay": "Régler ce séjour",
+    "Pay for this atelier": "Régler cet atelier",
+    "Pay towards this event": "Régler une partie de cet événement",
+    "Back to your account": "Retour à votre compte",
+    "Print": "Imprimer",
+    # What a guest may ask of us, from their own page.
+    "Your details": "Vos données",
+    "A copy of everything we hold about you": "Une copie de tout ce que nous conservons à votre sujet",
+    "No more newsletter, offers or marketing texts": "Plus de lettre d'information, d'offres ni de SMS promotionnels",
+    "Stop using my details for anything but my bookings": "N'utilisez mes données que pour mes réservations",
+    "You asked us to stop using your details. We use them for nothing but the bookings you have with us.":
+        "Vous nous avez demandé de cesser d'utiliser vos données. Nous ne les utilisons plus que pour les réservations que vous avez chez nous.",
+    "Ask us to delete what we hold about you": "Nous demander de supprimer vos données",
+    "Ask us to delete what we hold about you? It cannot be undone.":
+        "Nous demander de supprimer ce que nous conservons à votre sujet ? C'est irréversible.",
+    "Done. We will not send you the newsletter, offers or marketing texts.":
+        "C'est fait. Nous ne vous enverrons plus la lettre d'information, les offres ni les SMS promotionnels.",
+    "Recorded. We will use your details for nothing but the bookings you have with us.":
+        "C'est noté. Nous n'utiliserons vos données que pour les réservations que vous avez chez nous.",
+    "We have your request. It will be done within a month.":
+        "Nous avons bien reçu votre demande. Elle sera traitée sous un mois.",
     "Your booking": "Votre réservation",
     "Your atelier": "Votre atelier",
     "Your table": "Votre table",
@@ -258,6 +288,7 @@ FR = {
     "A room, your own dates": "Une chambre, à vos dates",
     "Dining only — a table at La Table": "Dîner seulement — une table à La Table",
     "Five rooms · from €{price} a night · breakfast included": "Cinq chambres · à partir de {price} € la nuit · petit-déjeuner compris",
+    "Five rooms · breakfast included": "Cinq chambres · petit-déjeuner compris",
     "Three to seven nights · full board · itinerary included": "De trois à sept nuits · pension complète · programme compris",
     "Fixed dates, a small group": "Dates fixes, en petit groupe",
     "Manage an existing booking": "Gérer une réservation existante",
@@ -338,6 +369,14 @@ FR = {
     "Ready": "Prête",
     "leaving today": "départ aujourd'hui",
     "arriving today": "arrivée aujourd'hui",
+    "booked through": "réservé via",
+    "The front door": "La porte d'entrée",
+    "Your stay": "Votre séjour",
+    "Open the front door": "Ouvrir la porte d'entrée",
+    "The door locks itself again once it is shut.": "La porte se verrouille d'elle-même une fois refermée.",
+    "Last opened from here": "Dernière ouverture depuis cette page",
+    "This link is the key to the house while you are here — please keep it to your party. If the door does not open, use the remote we gave you, or ring the house.": "Ce lien est la clé de la maison pendant votre séjour — merci de le garder pour votre groupe. Si la porte ne s'ouvre pas, utilisez la télécommande que nous vous avons remise, ou appelez la maison.",
+    "It opens from your phone during your stay — there is no key or code.": "Elle s'ouvre depuis votre téléphone pendant votre séjour — il n'y a ni clé ni code.",
     "still to do": "encore à faire",
     "Somebody arrives today and this room is not done.": "Quelqu'un arrive aujourd'hui et cette chambre n'est pas prête.",
     "Arriving today": "Arrivées aujourd'hui",
@@ -628,6 +667,16 @@ FR = {
     'optional': 'facultatif',
     'total': 'au total',
     '— choose —': '— choisir —',
+    # The eleventh handover's new strings. Enquiry is demande/solicitud and ateliers stay ateliers/talleres, as elsewhere in this table.
+    'Date asked for': 'Date souhaitée',
+    'Help': 'Aide',
+    'Let us know roughly when to expect you, so someone is there to meet you.': "Dites-nous à peu près quand vous arriverez, afin que quelqu'un soit là pour vous accueillir.",
+    'Manage this enquiry': 'Gérer cette demande',
+    'Occasion': 'Occasion',
+    'The ateliers': 'Les ateliers',
+    'Your events': 'Vos événements',
+    'stays &amp; general': 'séjours et questions générales',
+    'workshops &amp; events': 'ateliers et événements',
 }
 
 ES = {
@@ -736,11 +785,16 @@ ES = {
     "Contact us": "Contáctenos",
     "Groups": "Grupos",
     "Change or cancel a reservation": "Modificar o cancelar una reserva",
+    "Manage your booking": "Gestionar mi reserva",
+    "I need to cancel": "Necesito cancelar",
+    "Write to us first": "Escríbanos primero",
+    "Cancel this booking anyway": "Cancelar la reserva de todos modos",
     "Terms & Conditions": "Términos y condiciones",
     "Privacy Policy": "Política de privacidad",
     "Visit": "Visitar",
     "Nightly stays": "Estancias por noche",
     "La Table": "La Table",
+    "Dining": "La Table",
     "The restoration": "La restauración",
     "Gallery": "Galería",
     "Follow": "Síganos",
@@ -753,6 +807,7 @@ ES = {
     "Currency": "Moneda",
     "Language": "Idioma",
     "Password": "Contraseña",
+    "Change sign-in address": "Cambiar la dirección de acceso",
     "Log out": "Cerrar sesión",
     "charged in EUR": "cobrado en EUR",
     "Ariège · French Pyrénées · Restored since 2013":
@@ -823,6 +878,30 @@ ES = {
     "Your ateliers": "Sus talleres",
     "Your dinners": "Sus cenas",
     "Your account": "Su cuenta",
+    # The guest's statement of account.
+    "Your statement": "Su estado de cuenta",
+    "Nothing charged or paid yet.": "Todavía no se ha cobrado ni pagado nada.",
+    "Pay for this stay": "Pagar esta estancia",
+    "Pay for this atelier": "Pagar este taller",
+    "Pay towards this event": "Pagar una parte de este evento",
+    "Back to your account": "Volver a su cuenta",
+    "Print": "Imprimir",
+    # What a guest may ask of us, from their own page.
+    "Your details": "Sus datos",
+    "A copy of everything we hold about you": "Una copia de todo lo que conservamos sobre usted",
+    "No more newsletter, offers or marketing texts": "Ni boletín, ni ofertas, ni mensajes promocionales",
+    "Stop using my details for anything but my bookings": "Usen mis datos solo para mis reservas",
+    "You asked us to stop using your details. We use them for nothing but the bookings you have with us.":
+        "Nos pidió que dejáramos de usar sus datos. Solo los usamos para las reservas que tiene con nosotros.",
+    "Ask us to delete what we hold about you": "Pedirnos que borremos sus datos",
+    "Ask us to delete what we hold about you? It cannot be undone.":
+        "¿Pedirnos que borremos lo que conservamos sobre usted? No se puede deshacer.",
+    "Done. We will not send you the newsletter, offers or marketing texts.":
+        "Hecho. No le enviaremos el boletín, ofertas ni mensajes promocionales.",
+    "Recorded. We will use your details for nothing but the bookings you have with us.":
+        "Anotado. Solo usaremos sus datos para las reservas que tiene con nosotros.",
+    "We have your request. It will be done within a month.":
+        "Hemos recibido su solicitud. Se atenderá en el plazo de un mes.",
     "Your booking": "Su reserva",
     "Your atelier": "Su taller",
     "Your table": "Su mesa",
@@ -852,6 +931,7 @@ ES = {
     "A room, your own dates": "Una habitación, en sus fechas",
     "Dining only — a table at La Table": "Solo cena — una mesa en La Table",
     "Five rooms · from €{price} a night · breakfast included": "Cinco habitaciones · desde {price} € la noche · desayuno incluido",
+    "Five rooms · breakfast included": "Cinco habitaciones · desayuno incluido",
     "Three to seven nights · full board · itinerary included": "De tres a siete noches · pensión completa · programa incluido",
     "Fixed dates, a small group": "Fechas fijas, en grupo reducido",
     "Manage an existing booking": "Gestionar una reserva existente",
@@ -932,6 +1012,14 @@ ES = {
     "Ready": "Lista",
     "leaving today": "salida hoy",
     "arriving today": "llegada hoy",
+    "booked through": "reservado a través de",
+    "The front door": "La puerta principal",
+    "Your stay": "Su estancia",
+    "Open the front door": "Abrir la puerta principal",
+    "The door locks itself again once it is shut.": "La puerta se vuelve a cerrar sola al cerrarla.",
+    "Last opened from here": "Última apertura desde aquí",
+    "This link is the key to the house while you are here — please keep it to your party. If the door does not open, use the remote we gave you, or ring the house.": "Este enlace es la llave de la casa durante su estancia — guárdelo solo para su grupo. Si la puerta no se abre, use el mando que le dimos o llame a la casa.",
+    "It opens from your phone during your stay — there is no key or code.": "Se abre desde su teléfono durante su estancia — no hay llave ni código.",
     "still to do": "aún por hacer",
     "Somebody arrives today and this room is not done.": "Hoy llega alguien y esta habitación no está lista.",
     "Arriving today": "Llegadas de hoy",
@@ -1125,7 +1213,30 @@ ES = {
     "Anything you'd like to add? (optional)": "¿Desea añadir algo? (opcional)",
     "Confirming means you've seen it, not necessarily that you agree — add a comment if you see it differently.": "Confirmar significa que la ha visto, no necesariamente que esté de acuerdo — añada un comentario si lo ve de otro modo.",
     "Notifications": "Notificaciones",
+    # The eleventh handover's new strings. Enquiry is demande/solicitud and ateliers stay ateliers/talleres, as elsewhere in this table.
+    'Date asked for': 'Fecha solicitada',
+    'Help': 'Ayuda',
+    'Let us know roughly when to expect you, so someone is there to meet you.': 'Indíquenos aproximadamente cuándo llegará, para que alguien esté allí para recibirle.',
+    'Manage this enquiry': 'Gestionar esta solicitud',
+    'Occasion': 'Ocasión',
+    'Stay the night': 'Pasar la noche',
+    'The ateliers': 'Los talleres',
+    'Your events': 'Sus eventos',
+    'stays &amp; general': 'estancias y consultas generales',
+    'workshops &amp; events': 'talleres y eventos',
 }
+
+# The public pages' own prose, kept in its own file because it is 1,900
+# sentences and would bury the strings above. Merged rather than looked up
+# separately, so there is still ONE answer to what a word is in French: a
+# string that is both a t() call and page prose cannot translate two ways.
+#
+# The entries here lose to the ones above on a clash. Those were written for
+# a specific button or label and are the more deliberate of the two.
+import page_text
+
+FR = dict(page_text.FR, **FR)
+ES = dict(page_text.ES, **ES)
 
 TABLES = {"fr": FR, "es": ES}
 

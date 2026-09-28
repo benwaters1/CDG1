@@ -132,7 +132,39 @@ def run():
     conn.commit()
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (room["id"],)).fetchone()
 
-    arrival = m.house_today() + timedelta(days=90)
+
+    # Nights this room can actually take, asked of the same function the edit
+    # route refuses on. Three dates here were fixed offsets from today -- + 90,
+    # + 290 and + 340 -- and as the calendar rolled two of them walked into
+    # workshops: Noel at Gudanes and Cooking in the Cuisine. The move was
+    # refused, the stay never went anywhere, and a check about what a re-quote
+    # does to a stored total failed on a booking that had not moved.
+    #
+    # test_booking_source learned this first and carries the same helper. A
+    # fixed offset into a real calendar is a date that is free until one day
+    # it is not, and the day it stops being free is a morning somebody spends
+    # reading a diff that changed nothing.
+    #
+    # The harness owns the scan now (_harness.free_window), because free was
+    # only half of what this suite needs from a window.
+    def _free(after, nights=2, plain_rate=False):
+        return _harness.free_window(
+            room["id"], nights,
+            after_days=(after - m.house_today()).days,
+            clear_of_rate_overrides=plain_rate)
+
+    # AND CLEAR OF SEASONAL RATES, which free-and-available does not give you.
+    # Every figure below is written out as two nights at 200 -- 400 stamped,
+    # 490 on the books once a 90 euro transfer is added, 290 after a move to
+    # 100 a night. None of that is true of a window somebody has priced
+    # differently, and the scan was only ever asked whether the nights were
+    # free. It landed on a window carrying an override and the stamp came back
+    # 1199: the check reading 400 went red, and the two stored totals read
+    # -509, which is the same wrong figure subtracted back out of the extras.
+    # Nobody had touched pricing. The calendar had moved, which is the failure
+    # this whole scan exists to stop, in the one dimension it was not asking
+    # about.
+    arrival = _free(m.house_today() + timedelta(days=90), plain_rate=True)
     departure = arrival + timedelta(days=2)
     try:
         with m.app.test_request_context("/"):
@@ -146,6 +178,20 @@ def run():
                      (booking["id"],))
         conn.commit()
         bid = booking["id"]
+
+        s.section("The window this is measured in")
+        # Asked of the pricing code itself, before a single figure is read
+        # against it. An expectation the fixture cannot vouch for is a check
+        # that goes red for reasons that have nothing to do with the code, and
+        # when it does it names the wrong thing -- "the room line is stamped"
+        # is a lie about what broke if what broke was the window.
+        with m.app.test_request_context("/"):
+            rate_card = m.compute_room_total(conn, room, arrival, departure)
+        s.check("the rate card prices these nights at two hundred a night",
+                abs(rate_card - 400) < 0.01,
+                detail=f"{rate_card} for {arrival} to {departure} — a seasonal "
+                       "rate over these nights makes every figure below wrong "
+                       "about a code path that is working perfectly")
 
         s.section("What was agreed is written down")
         after = _row(bid)
@@ -283,12 +329,19 @@ def run():
         conn.close()
         # Somewhere cheaper, so the figure after the move is unmistakably the
         # new nights and not a leftover.
-        # Not a bare offset: the ateliers hold the WHOLE château for their
-        # runs, so a date reached by arithmetic is refused whenever one falls
-        # there — and which days those are moves with the real calendar. This
-        # went red the morning arrival-plus-200 became 6 December, which is
-        # the middle of Noël at Gudanes.
-        elsewhere = _first_free(room["id"], arrival + timedelta(days=200))
+        elsewhere = _free(arrival + timedelta(days=200))
+        conn = db()
+        try:
+            with m.app.test_request_context("/"):
+                for _try in range(400):
+                    ok, _why = m.is_range_available(
+                        conn, room["id"], elsewhere,
+                        elsewhere + timedelta(days=2))
+                    if ok:
+                        break
+                    elsewhere += timedelta(days=1)
+        finally:
+            conn.close()
         conn = db()
         _override(conn, room["id"], elsewhere, elsewhere + timedelta(days=2), 100)
         conn.close()
@@ -341,7 +394,7 @@ def run():
         _override(conn, room["id"], arrival, departure, 350)
         conn.commit()
         conn.close()
-        their_dates = arrival + timedelta(days=250)
+        their_dates = _free(arrival + timedelta(days=250))
         conn = db()
         _override(conn, room["id"], their_dates, their_dates + timedelta(days=2), 100)
         conn.close()

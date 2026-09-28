@@ -15,6 +15,7 @@ depends on whether .env happens to exist is a test that fails on a colleague's
 machine for no reason.
 """
 import atexit
+import html as htmllib
 import os
 import re
 import shutil
@@ -158,6 +159,12 @@ m._pennylane_request = _refuse(
 # was added once the key already worked, and every run in between was covered
 # by nothing but a conditional.
 m.SMS_PROVIDER_SID = m.SMS_PROVIDER_TOKEN = m.SMS_FROM_NUMBER = None
+# WhatsApp goes out through the same account and the same function, so the
+# stand-in below covers the send either way -- but whatsapp_enabled() reads
+# this number rather than the three above, and a suite that left it set would
+# have every guest text CHOOSE the WhatsApp path. Cleared so the default in a
+# test is the same default a house without WhatsApp has.
+m.WHATSAPP_FROM_NUMBER = ""
 m.sms_provider_send = _refuse(
     "the SMS provider",
     "every message costs money; stand in for sms_provider_send in the test")
@@ -172,6 +179,14 @@ m.send_email_via_resend = _refuse(
 m.fetch_weather = _refuse(
     "Open-Meteo",
     "the page reads a cached reading; stand in for fetch_weather in the test")
+
+# Frankfurter, for exactly the reason above. It needs no key and costs nothing,
+# which is the category that gets left out -- and the whole point of moving
+# this call off the guest's browser was that the house makes it, so a suite
+# that reached it would be making it from a laptop several hundred times a run.
+m.fetch_exchange_rates = _refuse(
+    "Frankfurter",
+    "the page reads cached rates; stand in for fetch_exchange_rates in the test")
 
 # Anthropic, for the same reason texting is here and one the file already
 # learned the hard way. Three routes build a real client - reading a supplier
@@ -223,6 +238,32 @@ m.fetch_one_image = _refuse(
     "the Squarespace CDN",
     "stand in for fetch_one_image in the test; a real run downloads 93 images")
 
+# Meta, which is the newest of these and the one with the loudest failure.
+# publish_social_post puts a photograph and a caption on the house's real
+# Instagram and its real Page, and the copied database is full of real posts
+# with real captions on them -- a run that reached it would not cost money, it
+# would PUBLISH. There is no undo for that beyond deleting it afterwards and
+# hoping nobody was looking.
+#
+# Stood down at meta_request rather than at meta_configured, for the reason
+# the Stripe hole taught this file: a conditional at the call site with a live
+# credential behind it is one `if` away from going out.
+m.meta_request = _refuse(
+    "the Meta Graph API",
+    "a real call PUBLISHES to the house's Instagram and Page; stand in for "
+    "meta_request in the test, not for meta_configured")
+
+# Tuya, the cloud behind the front door's lock. Of everything here this is the
+# one whose mistake is physical: a run that reached it would OPEN THE HOUSE'S
+# FRONT DOOR, with nobody there, as many times as a suite pressed the button.
+# The credentials are cleared as well, and it is stood down at tuya_request --
+# the one function every call goes through -- rather than at tuya_configured,
+# for the reason the Stripe hole taught this file.
+m.TUYA_ACCESS_ID = m.TUYA_ACCESS_SECRET = None
+m.tuya_request = _refuse(
+    "Tuya, the front door's cloud",
+    "a real call OPENS THE FRONT DOOR; stand in for tuya_request in the test")
+
 # Proof, rather than the assumption this file used to make. Each of these was
 # true only by accident of what happens to be in .env on one machine.
 assert not m.stripe_enabled(), "Stripe is still enabled under test"
@@ -231,6 +272,9 @@ assert not getattr(m.stripe, "api_key", None), (
     "blanking STRIPE_SECRET_KEY afterwards does not undo that")
 assert not m.PENNYLANE_API_TOKEN, "the live Pennylane token is still set under test"
 assert not m.sms_enabled(), "a texting provider is configured under test"
+assert not m.whatsapp_enabled(), "a WhatsApp sender is configured under test"
+assert m.fetch_exchange_rates.__name__ == "_blocked", (
+    "the exchange rate fetch is not blocked under test")
 assert m.fetch_weather.__name__ == "_blocked", (
     "the weather fetch is not blocked under test — it needs no key and costs "
     "nothing, which is why it is the one that gets forgotten")
@@ -247,6 +291,12 @@ assert not m.claude_configured(), (
     "ANTHROPIC_API_KEY is still set under test — app.py read it into a module "
     "global at import, and _load_dotenv puts the environment variable back, so "
     "clearing os.environ before the import does not undo it")
+assert m.meta_request.__name__ == "_blocked", (
+    "the Meta Graph call is not blocked under test — reaching it would post "
+    "to the house's real Instagram, not merely spend money")
+assert m.tuya_request.__name__ == "_blocked" and not m.tuya_configured(), (
+    "the Tuya call is not blocked under test — reaching it would open the "
+    "house's front door")
 assert not (m.email_enabled() or m.resend_enabled()), (
     "an email provider is configured under test — a run would send real mail "
     "to the real guest addresses in the copied database")
@@ -362,6 +412,56 @@ def _record_answer(response):    # pragma: no cover - bookkeeping, not behaviour
     if not refused:
         RENDERED.add(request.endpoint)
     return response
+
+
+# ---------------------------------------------------------------------------
+# A STORED MOMENT, ASKED ABOUT WITH A BARE DATE.
+#
+# Every *_at column holds an instant in UTC. Compared with '2026-09-01', the
+# date is read as midnight UTC -- an hour or two into the house's day -- so
+# whatever happened in that hour lands on the wrong side of the line: a shift
+# started at half past midnight on the 1st paid in the month before, a refund
+# issued then taken off the wrong month's takings.
+#
+# Reading the code for it found ten. Measuring found forty-nine, because the
+# date is nearly always in a variable and only the running query knows what
+# it held. So it is MEASURED, on every run: SQLite hands each statement over
+# with its values filled in, and any that compares a *_at column with a bare
+# date is recorded under the app.py function that asked. run.py names them at
+# the end against its known list, in both directions.
+BARE_DATE_SEEN = {}
+_APP_FILE = os.path.abspath(m.__file__)
+_BARE = r"'\d{4}-\d{2}-\d{2}'"
+_BARE_DATE = [
+    re.compile(r"\b((?:\w+\.)?\w+_at)\s*(?:>=|<=|>|<|=)\s*" + _BARE, re.I),
+    re.compile(_BARE + r"\s*(?:>=|<=|>|<)\s*((?:\w+\.)?\w+_at)\b", re.I),
+    re.compile(r"\b((?:\w+\.)?\w+_at)\s+BETWEEN\s+" + _BARE, re.I),
+]
+
+
+def _moment_against_date(sql):
+    columns = {col.lower() for rx in _BARE_DATE for col in rx.findall(sql)}
+    if not columns:
+        return
+    import traceback
+    for frame in reversed(traceback.extract_stack()[:-1]):
+        if os.path.abspath(frame.filename) == _APP_FILE:
+            for col in columns:
+                key = (frame.name, col)
+                BARE_DATE_SEEN[key] = BARE_DATE_SEEN.get(key, 0) + 1
+            return
+
+
+_real_connect = sqlite3.connect
+
+
+def _connect_watched(*args, **kwargs):
+    conn = _real_connect(*args, **kwargs)
+    conn.set_trace_callback(_moment_against_date)
+    return conn
+
+
+sqlite3.connect = _connect_watched
 
 
 def coverage_report():
@@ -521,6 +621,19 @@ def fill(form, answers):
     return data
 
 
+def visible_text(html):
+    """The words a person can read on a RENDERED page, on one line.
+
+    Scripts, styles and comments go, then the tags, then the entities are
+    decoded -- so "Pay &amp; book" reads as it does on screen. Every tag
+    becomes a space rather than nothing, or a <dt> runs into its <dd> and
+    "Free cancellation" and "Up to 30 days" read as one word.
+    """
+    text = re.sub(r"(?is)<script.*?</script>|<style.*?</style>|<!--.*?-->", " ", html)
+    text = htmllib.unescape(re.sub(r"<[^>]+>", " ", text))
+    return " ".join(text.split())
+
+
 def flashes(response):
     """The user-facing messages on a rendered page.
 
@@ -529,7 +642,7 @@ def flashes(response):
     """
     html = response.get_data(as_text=True)
     return [" ".join(x.split())
-            for x in re.findall(r'class="flash flash-\w+">(.*?)</div>', html, re.S)]
+            for x in re.findall(r'class="flash flash-\w+"[^>]*>(.*?)</div>', html, re.S)]
 
 
 def ensure_owner():
@@ -632,6 +745,69 @@ def ensure_room(min_occupancy=1):
             "SELECT id, name FROM rooms WHERE name = ?", (name,)).fetchone()
     finally:
         conn.close()
+
+
+def free_window(room_id, nights, after_days=30, clear_of_ateliers=False,
+                clear_of_rate_overrides=False):
+    """The first arrival from today+after_days with `nights` genuinely free.
+
+    ASKED, NOT COUNTED, and that is the whole point. A suite that writes
+    `house_today() + timedelta(days=40)` is not choosing a date, it is
+    choosing an OFFSET -- and what sits at that offset changes every day the
+    calendar moves, because the seeded ateliers are placed relative to today
+    as well. Both then drift, at different speeds, until one lands on the
+    other.
+
+    That is exactly what happened: two suites picked +40 days, an atelier was
+    seeded across the same window, and the booking they posted was refused
+    with "those dates are held for a workshop". Nothing about either suite had
+    changed. The calendar had. Four checks went red on a morning when nobody
+    had touched the code they test, which is the worst kind of red there is --
+    it teaches people that a failure means nothing.
+
+    `clear_of_ateliers` is for suites that assert what is ON during a stay: a
+    seeded atelier overlapping the window is not a bug, it is another atelier,
+    and a test that says "nothing else is offered" needs a window with nothing
+    else in it.
+
+    `clear_of_rate_overrides` is the same argument about MONEY, and it is the
+    half that free-and-available does not cover. A seasonal rate sitting over
+    the window leaves the nights perfectly bookable and silently changes what
+    they cost, so a suite that writes its expected figures as "two nights at
+    200" needs nights the rate card alone prices. One night of margin past the
+    stay is included, because a suite that extends a booking buys the night
+    after it too. Ask for this rather than hardcoding a total the calendar can
+    move out from under: test_price_agreed read 400 and was handed 1199.
+    """
+    from datetime import timedelta
+    conn = db()
+    try:
+        day = house_today() + timedelta(days=after_days)
+        for _ in range(900):
+            end = day + timedelta(days=nights)
+            with m.app.test_request_context("/"):
+                ok, _why = m.is_range_available(conn, room_id, day, end)
+            if ok and clear_of_ateliers:
+                clash = conn.execute(
+                    """SELECT 1 FROM workshop_sessions
+                        WHERE start_date < ? AND end_date >= ? LIMIT 1""",
+                    (end.isoformat(), day.isoformat())).fetchone()
+                ok = not clash
+            if ok and clear_of_rate_overrides:
+                # `end` rather than the last night, so the margin night counts.
+                priced = conn.execute(
+                    """SELECT 1 FROM room_rate_overrides
+                        WHERE room_id = ? AND start_date <= ? AND end_date >= ?
+                        LIMIT 1""",
+                    (room_id, end.isoformat(), day.isoformat())).fetchone()
+                ok = not priced
+            if ok:
+                return day
+            day += timedelta(days=1)
+    finally:
+        conn.close()
+    raise AssertionError(
+        "no free %d-night window for room %s within 900 days" % (nights, room_id))
 
 
 def secrets_token():

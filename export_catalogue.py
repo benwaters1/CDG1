@@ -31,7 +31,8 @@ ROOM_FIELDS = [
 ]
 EXTRA_FIELDS = [
     "name", "price", "active", "sort_order", "category", "description",
-    "lead_time_days", "max_qty", "guest_bookable", "sold_in_pos",
+    "lead_time_days", "max_qty", "guest_bookable", "sold_in_pos", "ask_when",
+    "vat_rate", "vat_part_amount", "vat_part_rate",
 ]
 
 

@@ -1,10 +1,19 @@
 {# Endpoints registered in the app, used to guard optional links. The
    view can pass url_map; without it the guards fall back safely. #}
 {% set url_map = url_map | default([]) %}
+{# DINING SWITCH. dining_mode: 'open' (default) | 'closed' (seasonally closed:
+   the dining page stays up with a notice, nothing can be reserved) | 'hidden' (switched
+   off: dining disappears from the site). dining_reopens: optional text shown
+   when closed, e.g. "April 2027". Breakfast and atelier meals are not affected.
+   Read from `site`, the house-wide settings, and never from `settings`: on the
+   dining pages `settings` is the restaurant's own row, which has no .get, and
+   reading the switch there took both dining pages down. #}
+{% set _dm = (setting(site, 'dining_mode') or 'open')|lower|trim %}
+{% set _dr = (setting(site, 'dining_reopens') or '')|trim %}
 <!DOCTYPE html>
 {# The real language, so a screen reader uses the right voice and the browser
    does not offer to translate a page that is already in the reader's tongue. #}
-<html lang="{{ lang }}">
+<html lang="{{ lang or 'en' }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -39,20 +48,41 @@
    real translated paths, as /fr/les-chambres rather than ?lang=fr — these use
    it. Without it they fall back to the query form, which works but ranks
    less well. Path prefixes with translated slugs are the better shape. #}
-{% for code in languages %}
+{# Gated with the switcher (TRANSLATION_GAP option 1): 10,700 words of prose are
+   English-only, so advertising fr/es alternates to search engines promises pages
+   that do not exist. Flip show_language_switcher on when the prose is translated. #}
+{% if site.get('show_language_switcher') %}{% for code in languages %}
 <link rel="alternate" hreflang="{{ code }}" href="{% if alt_urls and alt_urls.get(code) %}{{ alt_urls[code] }}{% else %}{{ request.base_url }}{% if code != 'en' %}?lang={{ code }}{% endif %}{% endif %}">
 {% endfor %}
-<link rel="alternate" hreflang="x-default" href="{{ request.base_url }}">{% endif %}
+<link rel="alternate" hreflang="x-default" href="{{ request.base_url }}">{% endif %}{% endif %}
 <meta property="og:site_name" content="Château de Gudanes">
 <meta property="og:type" content="website">
+{% if request %}<meta property="og:url" content="{{ request.base_url }}">
+{% endif %}<meta property="og:site_name" content="Château de Gudanes">
 <meta property="og:title" content="{% block og_title %}{{ self.title() }}{% endblock %} — Château de Gudanes">
 <meta property="og:description" content="{% block og_desc %}An eighteenth-century Class I Historic Monument in the French Pyrénées, open to guests while its restoration continues.{% endblock %}">
 <meta property="og:image" content="{% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w{% endblock %}">
+{# The large-card preview needs dimensions to render at full size rather than as
+   a thumbnail; alt describes it for the platforms that read it. The 1200x630 is
+   the standard OG ratio — the swap images destined for og:image should match it. #}
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{% block og_image_alt %}Château de Gudanes in the Ariège{% endblock %}">
 <meta property="og:locale" content="{{ 'fr_FR' if lang == 'fr' else 'en_GB' }}">
 <meta name="twitter:card" content="summary_large_image">
+{# A launch tab with a blank icon reads as unfinished. An SVG "G" in the house
+   navy carries until a real .ico/.png is dropped at these static paths. #}
+{# favicon.ico and apple-touch-icon.png taken out until the files exist: both
+   pointed at nothing in static/, so every page asked for two files and got
+   two 404s. Put them back beside the SVG when the crest is drawn as icons. #}
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2032%2032%27%3E%3Crect%20width=%2732%27%20height=%2732%27%20fill=%27%2314305f%27/%3E%3Ctext%20x=%2716%27%20y=%2722%27%20font-family=%27Georgia,serif%27%20font-size=%2720%27%20fill=%27%23e2d6c0%27%20text-anchor=%27middle%27%3EG%3C/text%3E%3C/svg%3E">
+<meta name="theme-color" content="#14305f">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+{# The font files come from gstatic, not googleapis; without this a phone opens that connection only after the font CSS arrives. #}
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+{# style.css (the admin stylesheet, 153 KB) is no longer linked here. The rules public pages
+   needed from it are at the end of gudanes.css. Admin pages keep their own link. #}
 <link rel="stylesheet" href="{{ url_for('static', filename='gudanes.css') }}">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <script>
@@ -78,10 +108,13 @@
 {
   "@context": "https://schema.org",
   "@type": "LodgingBusiness",
+  "@id": "https://chateaugudanes.com/#chateau",
   "name": "Château de Gudanes",
   "description": "An eighteenth-century Class I Historic Monument in the French Pyrénées, open to guests while its restoration continues.",
   "url": "https://chateaugudanes.com/",
-  "telephone": "+33 5 61 64 96 82",
+  "telephone": "+33 6 28 06 97 76",
+  "image": "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w",
+  "sameAs": ["https://www.instagram.com/chateaugudanes/", "https://www.facebook.com/chateaudegudanes/"],
   "email": "ariege@chateaugudanes.com",
   "address": {
     "@type": "PostalAddress",
@@ -91,7 +124,7 @@
     "addressRegion": "Ariège",
     "addressCountry": "FR"
   },
-  "geo": { "@type": "GeoCoordinates", "latitude": 42.8083, "longitude": 1.6528 },
+  {% if house_pin %}"geo": { "@type": "GeoCoordinates", "latitude": {{ house_pin.lat }}, "longitude": {{ house_pin.lng }} },{% endif %}
   "priceRange": "€€€",
   "currenciesAccepted": "EUR",
   "paymentAccepted": "Credit Card",
@@ -102,14 +135,18 @@
     { "@type": "LocationFeatureSpecification", "name": "Free parking", "value": true },
     { "@type": "LocationFeatureSpecification", "name": "Wi-Fi", "value": true },
     { "@type": "LocationFeatureSpecification", "name": "Breakfast included", "value": true }
-  ],
+  ]{% if site.get('score_overall') and site.get('review_count') %},
+  {# Read from the same settings the Stay page displays, so the figure Google
+     shows can never differ from the one a guest reads on the site. Was hardcoded
+     10 from 4 while the page and Booking.com said otherwise. Omitted when the
+     settings are empty rather than inventing a number. #}
   "aggregateRating": {
     "@type": "AggregateRating",
-    "ratingValue": "10",
+    "ratingValue": "{{ site.get('score_overall') }}",
     "bestRating": "10",
-    "ratingCount": "4",
-    "reviewCount": "4"
-  }
+    "ratingCount": "{{ site.get('review_count')|int }}",
+    "reviewCount": "{{ site.get('review_count')|int }}"
+  }{% endif %}
 }
 </script>
 {% block schema %}{% endblock %}
@@ -117,7 +154,7 @@
 {# The nights La Table is cooking. Sourced from published menus, so the
    kitchen publishing a menu is what opens a night — there is no second
    schedule anyone has to remember to update. Empty renders nothing. #}
-<script type="application/json" id="dinner-dates">{{ (dinner_dates or [])|tojson }}</script>
+<script type="application/json" id="dinner-dates">{{ ((dinner_dates or []) if _dm == 'open' else [])|tojson }}</script>
 </head>
 <body class="g{% block bodyclass %}{% endblock %}">
 <a class="g-skip" href="#main">Skip to content</a>
@@ -134,7 +171,7 @@
 <nav class="g-nav" aria-label="{{ t('Main') }}">
       <a href="{{ url_for('book_rooms') }}"{% if NAV_HERE == 'book_rooms' %} class="is-here" aria-current="page"{% endif %}>{{ t('Stay') }}</a>
       <a href="{{ url_for('workshops_public') }}"{% if NAV_HERE == 'workshops_public' %} class="is-here" aria-current="page"{% endif %}>{{ t('Workshops') }}</a>
-      <a href="{{ url_for('restaurant_info') }}"{% if NAV_HERE == 'restaurant_info' %} class="is-here" aria-current="page"{% endif %}>{{ t('La Table') }}</a>
+      {% if _dm != 'hidden' %}<a href="{{ url_for('restaurant_info') }}"{% if NAV_HERE == 'restaurant_info' %} class="is-here" aria-current="page"{% endif %}>{{ t('Dining') }}</a>{% endif %}
       <div class="g-nav__has-sub">
         <a href="{{ url_for('events_info') }}"{% if NAV_HERE == 'events_info' %} class="is-here" aria-current="page"{% endif %} aria-haspopup="true" aria-expanded="false">{{ t('Events') }}<span class="g-nav__caret" aria-hidden="true"></span></a>
         <ul class="g-subnav">
@@ -175,33 +212,33 @@
             </span>
           </div>
           <button type="submit" class="g-btn g-btn--solid g-qbook__go">{{ t('Check availability') }}</button>
-          <p class="g-qbook__n">{{ t('Five rooms · from €{price} a night · breakfast included', price=(house_rooms.from_price if house_rooms else 220)) }}</p>
+          <p class="g-qbook__n">{{ t('Five rooms · breakfast included') }}</p>
         </form>
 
         <p class="g-navwrap__group">{{ t('Stay') }}</p>
         <a href="{{ url_for('book_rooms') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M4 20V10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10"/><path d="M4 14h16"/><path d="M9 14v6M15 14v6"/></svg>
-          {{ t('Stay Now') }}
+          {{ t('Stay the Night') }}
         </a>
         <a href="{{ url_for('workshops_public') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M12 3v6M8 5l4 4 4-4"/><path d="M6 21h12M9 21v-4a3 3 0 0 1 6 0v4"/></svg>
           {{ t('Workshops') }}
         </a>
-        <a href="{{ url_for('restaurant_info') }}" class="g-navwrap__item">
+        {% if _dm != 'hidden' %}<a href="{{ url_for('restaurant_info') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M8 9c0-1.5 1.5-3 4-3s4 1.5 4 3"/></svg>
-          {{ t('La Table') }}
-        </a>
+          {{ t('Dining') }}
+        </a>{% endif %}
         <a href="{{ url_for('events_info') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M6 3v7a6 6 0 0 0 12 0V3M12 17v4M8 21h8"/></svg>
           {{ t('Weddings & Celebrations') }}
         </a>
-        <a href="{{ url_for('events_info') }}" class="g-navwrap__item">
+        <a href="{{ url_for('events_photoshoots') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><rect x="3" y="6" width="14" height="12" rx="1"/><path d="M17 10l4-2v8l-4-2"/></svg>
           {{ t('Private Photo & Videoshoots') }}
         </a>
         <a href="/facilities" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M3 12h18M6 12V8a6 6 0 0 1 12 0v4"/><path d="M5 16h14M7 20h10"/></svg>
-          {{ t('Facilities & Activities') }}
+          {{ t('The Estate') }}
         </a>
         <a href="/contact" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/></svg>
@@ -284,10 +321,13 @@
         </div>
 
         <div class="g-navwrap__linkgrid">
-          <a href="mailto:experience@chateaugudanes.com">{{ t('Contact us') }}</a>
+          {# Was a mailto to experience@, the workshops-and-events inbox, while the
+             general address ariege@ sat three lines below. The contact page explains
+             which inbox is which, so send people there. #}
+          <a href="{{ url_for('contact_page') }}">{{ t('Contact us') }}</a>
           <a href="{{ url_for('press') }}">{{ t('Press') }}</a>
           <a href="{{ url_for('workshops_public') }}">{{ t('Groups') }}</a>
-          <a href="{{ url_for('find_booking') }}">{{ t('Change or cancel a reservation') }}</a>
+          <a href="{{ url_for('find_booking') }}">{{ t('Manage your booking') }}</a>
         </div>
 
         <p class="g-navwrap__group" style="margin-top:var(--s6)">Château de Gudanes</p>
@@ -295,7 +335,13 @@
         <p><a href="tel:+33628069776">+33 6 28 06 97 76</a></p>
         <p><a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></p>
 
+        {# The switcher is hidden until the prose is translated (TRANSLATION_GAP
+           option 1). Without the guard on the box itself, hiding the switcher left an
+           empty bordered panel on every page whenever there were no fx rates either. #}
+        {% set _show_lang = site.get('show_language_switcher') %}
+        {% if _show_lang or fx_rates %}
         <div class="g-navwrap__prefs">
+          {% if _show_lang %}
           <span class="g-navwrap__prefs-row">
             <span class="g-navwrap__prefs-label">{{ t('Language') }}</span>
             <span class="g-lang">
@@ -306,17 +352,23 @@
               {% endfor %}
             </span>
           </span>
+          {% endif %}
+          {% if fx_rates %}
           <span class="g-navwrap__prefs-row">
             <span class="g-navwrap__prefs-label">{{ t('Currency') }}</span>
+            {# Only the currencies there is actually a rate for. Offering one
+               the page cannot convert is the fault this replaced. #}
             <select id="g-currency" aria-label="{{ t('Display currency') }}">
               <option value="EUR" selected>EUR €</option>
-              <option value="USD">USD $</option>
-              <option value="GBP">GBP £</option>
-              <option value="AUD">AUD $</option>
+              {% for code in ['USD', 'GBP', 'AUD'] if fx_rates.get(code) %}
+              <option value="{{ code }}">{{ code }} {{ {'USD':'$','GBP':'£','AUD':'A$'}[code] }}</option>
+              {% endfor %}
             </select>
   <p class="g-cur__note">A guide only. Every transaction is processed in euro, and your bank sets the rate on the day.</p>
           </span>
+          {% endif %}
         </div>
+        {% endif %}
 
         <div class="g-navwrap__legal">
           <a href="{{ url_for('terms_page') }}">{{ t('Terms & Conditions') }}</a>
@@ -335,9 +387,9 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M4 20V10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10"/><path d="M4 14h16"/><path d="M9 14v6M15 14v6"/></svg>
           </span>
           <span class="g-bookmenu__txt">
-            <b>{{ t('Stay Now') }}</b>
+            <b>{{ t('Stay the Night') }}</b>
             <em>{{ t('A room, your own dates') }}</em>
-            <span class="g-bookmenu__meta">{{ t('Five rooms · from €{price} a night · breakfast included', price=(house_rooms.from_price if house_rooms else 220)) }}</span>
+            <span class="g-bookmenu__meta">{{ t('Five rooms · breakfast included') }}</span>
           </span>
         </a>
 
@@ -352,9 +404,9 @@
           </span>
         </a>
 
-        <a href="{{ url_for('restaurant_info') }}" class="g-bookmenu__opt g-bookmenu__opt--sm">
+        {% if _dm == 'open' %}<a href="{{ url_for('restaurant_info') }}" class="g-bookmenu__opt g-bookmenu__opt--sm">
           {{ t('Dining only — a table at La Table') }}
-        </a>
+        </a>{% endif %}
         <a href="{{ url_for('find_booking') }}" class="g-bookmenu__opt g-bookmenu__opt--sm">
           {{ t('Manage an existing booking') }}
         </a>
@@ -367,7 +419,10 @@
 {% if crumbs %}
 <nav class="g-crumbs" aria-label="Breadcrumb"><div class="g-wrap">
   <ol>
-    <li><a href="{{ url_for('dashboard') }}">Château</a></li>
+    {# Was url_for('dashboard') — the only place on the site that route appears; every
+       other home link uses preview_home. If dashboard is the admin, this sent guests
+       there from every breadcrumb. #}
+    <li><a href="{{ url_for('preview_home') }}">Château</a></li>
     {% for label, href in crumbs %}
       <li>{% if href and not loop.last %}<a href="{{ href }}">{{ label }}</a>{% else %}<span aria-current="page">{{ label }}</span>{% endif %}
 {# Breadcrumbs. Pages set them with:
@@ -383,13 +438,27 @@
     {% if messages %}
       <div class="g-wrap" style="padding-top:16px;">
         {% for category, message in messages %}
-          <div class="flash flash-{{ category }}">{{ message }}</div>
+          {# An error should be announced, not just shown. #}
+          <div class="flash flash-{{ category }}" role="{{ 'alert' if category in ('error','danger','warning') else 'status' }}">{{ message }}</div>
         {% endfor %}
       </div>
     {% endif %}
   {% endwith %}
 
   
+{# What the road is doing, above the page rather than inside it: a guest
+   reading the directions on the morning they set off is exactly who this is
+   for, and burying it under the content is the same as not having it. It
+   expires on its own, so it cannot be the notice nobody took down. #}
+{% if road_now %}
+<div class="g-roadnote g-roadnote--{{ road_now['severity'] }}" role="status">
+  <div class="g-wrap">
+    <strong>{{ road_now['headline'] }}</strong>
+    {% if road_now['detail'] %}<span>{{ road_now['detail'] }}</span>{% endif %}
+  </div>
+</div>
+{% endif %}
+
 {% block content %}{% endblock %}
 
 <p class="g-cred">
@@ -443,8 +512,15 @@
           2 Route de Beille<br>
           Château-Verdun, Ariège 09310, France<br>
           <a href="tel:+33628069776">+33 6 28 06 97 76</a><br>
-          <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a><br>
-          <a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a>
+          {# Two bare addresses gave a guest no way to tell which to write to. The
+             contact page splits them; the footer now says so too. #}
+          <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a> <span class="g-footer__k">{{ t('stays &amp; general') }}</span><br>
+          <a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a> <span class="g-footer__k">{{ t('workshops &amp; events') }}</span>
+        </p>
+        <p class="g-footer__contact g-footer__social" style="margin:var(--s3) 0 0;">
+          <a href="{{ url_for('social_page') }}">{{ t('Photographs') }}</a> ·
+          <a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a> ·
+          <a href="https://www.facebook.com/chateaudegudanes/" rel="noopener">Facebook</a>
         </p>
       </div>
       <div>
@@ -458,7 +534,7 @@
         <ul>
           <li><a href="{{ url_for('book_rooms') }}">{{ t('Nightly stays') }}</a></li>
           <li><a href="{{ url_for('workshops_public') }}">Workshops</a></li>
-          <li><a href="{{ url_for('restaurant_info') }}">{{ t('La Table') }}</a></li>
+          {% if _dm != 'hidden' %}<li><a href="{{ url_for('restaurant_info') }}">{{ t('Dining') }}</a></li>{% endif %}
           <li><a href="{{ url_for('events_info') }}">{{ t('Weddings & Celebrations') }}</a></li>
           <li><a href="/restoration">{{ t('The restoration') }}</a></li>
           <li><a href="/gallery">{{ t('Gallery') }}</a></li>
@@ -467,22 +543,24 @@
         </ul>
       </div>
       <div>
-        <h2>{{ t('Follow') }}</h2>
+        {# Was headed "Follow" over a list that was mostly Contact, Manage a booking
+           and Terms. The social links have moved up beside the address; this is
+           the help column, and it gains the Privacy Policy the drawer already
+           carries — the footer is where a visitor expects to find it. #}
+        <h2>{{ t('Help') }}</h2>
         <ul>
-          <li><a href="{{ url_for('social_page') }}">{{ t('Photographs') }}</a></li>
-          <li><a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a></li>
-          <li><a href="https://www.facebook.com/chateaudegudanes/" rel="noopener">Facebook</a></li>
           <li><a href="/contact">{{ t('Contact') }}</a></li>
           <li><a href="{{ url_for('find_booking') }}">{{ t('Manage a booking') }}</a></li>
           <li><a href="{{ url_for('event_find') }}">{{ t('Find an enquiry') }}</a></li>
           <li><a href="{{ url_for('terms_page') }}">{{ t('Terms & Conditions') }}</a></li>
+          <li><a href="{{ url_for('privacy_page') }}">{{ t('Privacy Policy') }}</a></li>
         </ul>
       </div>
     </div>
     {# Copyright and payment share one row and one rule — they were two
        full-width bands with a rule apiece. #}
     <div class="g-footer__base">
-      <p class="g-footer__fine">© Château de Gudanes</p>
+      <p class="g-footer__fine">© <span data-year>2026</span> Château de Gudanes</p>
       <div class="g-pay">
         <ul class="g-pay__marks">
           <li>Visa</li><li>Mastercard</li><li>Amex</li>
@@ -492,6 +570,7 @@
     </div>
 </div>
 </footer>
+<script>document.querySelectorAll('[data-year]').forEach(function(e){ e.textContent=new Date().getFullYear(); });</script>
 
 {# The bar follows the page. A guest reading about weddings should be offered
    an enquiry, not a bedroom — and a guest already holding a booking should not
@@ -507,7 +586,7 @@
     <span>Château de Gudanes</span>
   </span>
   {% if _sb == 'dining' %}
-    <a href="{{ url_for('restaurant_book') }}" class="g-btn g-stickybar__cta">{{ t('Reserve') }}</a>
+    {% if _dm == 'open' %}<a href="{{ url_for('restaurant_book') }}" class="g-btn g-stickybar__cta">{{ t('Reserve') }}</a>{% else %}<a href="{{ url_for('book_rooms') }}" class="g-btn g-stickybar__cta">{{ t('Stay the night') }}</a>{% endif %}
   {% elif _sb == 'events' %}
     <a href="{{ url_for('events_info') }}#enquire" class="g-btn g-stickybar__cta">{{ t('Enquire') }}</a>
   {% elif _sb == 'atelier' %}
@@ -528,7 +607,6 @@
 (function () {
   var sel = document.getElementById('g-currency');
   if (!sel) return;
-  var KEY = 'gud-fx', DAY = 864e5;
 
   function symbol(c){ return {EUR:'€', USD:'$', GBP:'£', AUD:'A$'}[c] || ''; }
 
@@ -546,18 +624,15 @@
     });
   }
 
-  function withRates(cb) {
-    var cached = null;
-    try { cached = JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch (e) {}
-    if (cached && (Date.now() - cached.t) < DAY) return cb(cached.r);
-    fetch('https://api.frankfurter.app/latest?from=EUR&to=USD,GBP,AUD')
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        try { sessionStorage.setItem(KEY, JSON.stringify({t: Date.now(), r: d.rates})); } catch (e) {}
-        cb(d.rates);
-      })
-      .catch(function () { cb(null); });
-  }
+  /* Rendered by the house, not fetched by this browser. The fetch that used
+     to be here was refused for want of a CORS header, the catch passed null,
+     and every conversion silently did nothing -- so the selector sat on every
+     page and changed no figure on it. Nothing errored and nothing was logged.
+     Server-side it is one call a day for the whole site, it cannot be blocked
+     by something the château does not control, and the numbers are in the
+     HTML before any of this runs. */
+  var RATES = {{ fx_rates|tojson }};
+  function withRates(cb) { cb(RATES); }
 
   var saved = null;
   try { saved = localStorage.getItem('gud-cur'); } catch (e) {}
@@ -578,12 +653,41 @@
   var overlay=document.getElementById('g-panel-overlay');
   var closeBtn=document.querySelector('.g-navwrap__close');
   if(!b||!w) return;
-  function openPanel(){ w.classList.add('is-open'); if(overlay) overlay.classList.add('is-open'); b.setAttribute('aria-expanded','true'); document.body.style.overflow='hidden'; }
-  function closePanel(){ w.classList.remove('is-open'); if(overlay) overlay.classList.remove('is-open'); b.setAttribute('aria-expanded','false'); document.body.style.overflow=''; }
+  /* While the drawer is open the rest of the page is behind an overlay and
+     cannot be seen — but Tab could still reach it: it left the drawer, landed
+     on the header's Book button, then walked through the page underneath.
+     Everything outside the drawer is made inert while it is open. The drawer
+     sits inside the header, so inerting body's children would inert the
+     header and the drawer with it; instead walk up from the drawer and inert
+     every sibling not on the path to it or to the overlay. */
+  var rest=[];
+  function setInert(on){
+    if(!on){ rest.forEach(function(el){ el.inert=false; }); rest=[]; return; }
+    var keep=[w, overlay]; var n=w; while(n && n!==document.body){ keep.push(n); n=n.parentElement; }
+    n=w; while(n && n!==document.body){
+      [].slice.call(n.parentElement.children).forEach(function(el){
+        if(keep.indexOf(el)===-1 && el.tagName!=='SCRIPT'){ el.inert=true; rest.push(el); }
+      });
+      n=n.parentElement;
+    }
+  }
+  function openPanel(){ w.classList.add('is-open'); if(overlay) overlay.classList.add('is-open'); b.setAttribute('aria-expanded','true'); document.body.style.overflow='hidden'; setInert(true); var first=w.querySelector('.g-navwrap__close, a, button, input'); if(first) first.focus(); }
+  function closePanel(){ setInert(false); w.classList.remove('is-open'); if(overlay) overlay.classList.remove('is-open'); b.setAttribute('aria-expanded','false'); document.body.style.overflow=''; b.focus(); }
   b.addEventListener('click', function(){ w.classList.contains('is-open') ? closePanel() : openPanel(); });
   if(overlay) overlay.addEventListener('click', closePanel);
   if(closeBtn) closeBtn.addEventListener('click', closePanel);
-  document.addEventListener('keydown', function(e){ if(e.key==='Escape') closePanel(); });
+  document.addEventListener('keydown', function(e){
+    if(e.key==='Escape'){ closePanel(); return; }
+    /* Wrap Tab within the drawer, so the last item leads to the first rather
+       than out to the browser's own controls. */
+    if(e.key!=='Tab' || !w.classList.contains('is-open')) return;
+    var f=[].slice.call(w.querySelectorAll('a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])'))
+      .filter(function(el){ return !el.disabled && el.offsetParent!==null && getComputedStyle(el).visibility!=='hidden'; });
+    if(!f.length) return;
+    var first=f[0], last=f[f.length-1];
+    if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+  });
 })();
 </script>
 
@@ -883,7 +987,9 @@
   });
   master.addEventListener('change', function(){ sel.value = master.value; });
 
-  var anchor = host.querySelector('.g-eyebrow, h2') || host.firstElementChild;
+  /* After the section's heading. It anchored on '.g-eyebrow, h2', and the eyebrow comes first,
+     so the control landed between every eyebrow and its heading on the pages that show prices. */
+  var anchor = host.querySelector('h1, h2') || host.querySelector('.g-eyebrow') || host.firstElementChild;
   if (anchor && anchor.parentElement) anchor.parentElement.insertBefore(bar, anchor.nextSibling);
   else host.insertBefore(bar, host.firstChild);
 })();
@@ -902,17 +1008,43 @@
   var fields = document.querySelectorAll('[data-rp-open]');
   if (!fields.length) return;
 
-  /* Bind by name, so the picker works on any page carrying an arrival and
-     departure pair — not only the homepage it was first written for. */
-  var aIn = document.querySelector('input[type=date][name=arrival]');
-  var dIn = document.querySelector('input[type=date][name=departure]');
-  if (!aIn || !dIn) return;
+  /* SCOPED TO THE FORM THE BUTTON IS IN, not to the document.
 
-  /* JavaScript is running, so show the buttons and hide the raw inputs. */
-  document.querySelectorAll('[data-rp-open]').forEach(function(b){
-    var f = b.parentElement; if (f) f.classList.add('is-rp', 'g-rp__f');
-  });
-  fields.forEach(function(b){ b.hidden = false; });
+     These were document.querySelector, which returns the FIRST match on the
+     page. The homepage carries TWO forms with arrival and departure inputs —
+     the quick-book widget in the header and the hero search — so picking
+     dates in the hero wrote them into the widget, and the hero form posted
+     empty: /book?arrival=&departure=. The guest saw a calendar accept their
+     dates and a results page that had never been given any.
+
+     Resolved on every open instead, from the anchor outwards, so a page with
+     one pair behaves exactly as before and a page with two stops guessing. */
+  var scope = document;
+  var aIn = null, dIn = null;
+  function bindTo(anchor){
+    scope = (anchor && anchor.closest('form')) || document;
+    aIn = scope.querySelector('input[type=date][name=arrival]');
+    dIn = scope.querySelector('input[type=date][name=departure]');
+    return !!(aIn && dIn);
+  }
+  if (!bindTo(fields[0])) return;
+
+  /* The swap to the custom picker happens at the END of this function, in
+     takeOver(), once everything is built and bound — not here. Hiding the
+     native inputs first meant any later failure left the guest with the
+     inputs hidden AND a button that did nothing: no way to enter dates at
+     all. Swapping last means a broken picker degrades to two working date
+     fields rather than to nothing. */
+  function takeOver(){
+    document.querySelectorAll('[data-rp-open]').forEach(function(b){
+      var f = b.parentElement; if (f) f.classList.add('is-rp', 'g-rp__f');
+    });
+    fields.forEach(function(b){
+      b.hidden = false;
+      b.setAttribute('aria-haspopup', 'dialog');
+      b.setAttribute('aria-controls', 'g-rp-panel');
+    });
+  }
 
   var MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
@@ -928,6 +1060,7 @@
 
   var panel = document.createElement('div');
   panel.className = 'g-rp';
+  panel.id = 'g-rp-panel';
   panel.setAttribute('role','dialog');
   panel.setAttribute('aria-label','Choose your dates');
   panel.hidden = true;
@@ -945,9 +1078,9 @@
 
   function paintFields(){
     var n = nights();
-    var la = document.querySelector('[data-rp-label=arrival]');
-    var ld = document.querySelector('[data-rp-label=departure]');
-    var ln = document.querySelector('[data-rp-nights]');
+    var la = scope.querySelector('[data-rp-label=arrival]');
+    var ld = scope.querySelector('[data-rp-label=departure]');
+    var ln = scope.querySelector('[data-rp-nights]');
     if (la) la.textContent = pretty(start) || 'Add dates';
     if (ld) ld.textContent = pretty(end) || 'Add dates';
     if (ln) ln.textContent = n ? (n + (n===1 ? ' night' : ' nights')) : '';
@@ -1047,6 +1180,10 @@
   var openAnchor = null;
   function open(anchor){
     openAnchor = anchor;
+    /* Re-pointed every time: the guest may open the widget's picker and then
+       the hero's, and the second must not carry the first one's dates. */
+    if (!bindTo(anchor)) return;
+    start = parse(aIn.value); end = parse(dIn.value); hover = null;
     cursor = new Date((start||today).getFullYear(), (start||today).getMonth(), 1);
     draw(); panel.hidden = false; place(anchor);
     document.addEventListener('keydown', onKey);
@@ -1115,6 +1252,7 @@
   });
   window.addEventListener('resize', function(){ if(!panel.hidden && openAnchor) place(openAnchor); });
 
+  takeOver();
   paintFields();
 })();
 </script>
@@ -1142,22 +1280,27 @@
    open there and the length is affordable. */
 (function(){
   if (!window.matchMedia('(max-width: 44rem)').matches) return;
+  /* The whole <section> used to be role=button, labelled with its heading. A button's label
+     replaces its contents for a screen reader, so an open section's text and links could
+     not be reached at all; and a tap anywhere in the open text closed it mid-read. The
+     heading is now the button. A closed section still opens from a tap anywhere; an open
+     one closes only from its heading or the "Tap to close" line. */
   document.querySelectorAll('.g-sec[data-fold]').forEach(function(s){
-    s.setAttribute('tabindex','0');
-    s.setAttribute('role','button');
-    s.setAttribute('aria-expanded','false');
-    var t = s.querySelector('h2');
-    if (t) s.setAttribute('aria-label', t.textContent.trim());
+    var h = s.querySelector('h2'); if (!h) return;
+    var wrap = s.querySelector(':scope > .g-wrap');
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'g-fold__btn'; b.setAttribute('aria-expanded', 'false');
+    while (h.firstChild) b.appendChild(h.firstChild);
+    h.appendChild(b);
     function go(){
       var open = s.classList.toggle('is-open');
-      s.setAttribute('aria-expanded', open ? 'true' : 'false');
+      b.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
+    b.addEventListener('click', go);
     s.addEventListener('click', function(e){
-      if (e.target.closest('a,button,input,select,summary')) return;
+      if (b.contains(e.target) || e.target.closest('a,button,input,select,summary,label')) return;
+      if (s.classList.contains('is-open') && e.target !== wrap) return;
       go();
-    });
-    s.addEventListener('keydown', function(e){
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
     });
   });
 })();

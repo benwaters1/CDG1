@@ -19,13 +19,21 @@ DEFAULT 0, so:
 So this suite books through the FORM and asks what the app stored. Nothing here
 writes city_tax or guests_under_18 by hand.
 """
+import os
+import re
 from datetime import date, datetime, timedelta, timezone
+from urllib.parse import urlencode
 
-from _harness import Suite, clients, db, house_today
+from _harness import Suite, clients, db, forms_on, house_today, visible_text
 import _harness
 
 m = _harness.m
 TAG = "ZZCTAX"
+TPL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                   "templates")
+# Its own address for the form that is refused on purpose, so it spends none
+# of the booking form's hourly allowance the bookings below need.
+FAMILY_IP = "203.0.113.18"
 
 
 def _cleanup():
@@ -53,6 +61,15 @@ def _rate(conn):
     return m.tax_rate(conn, "city_tax_per_adult_per_night")
 
 
+def _party_boxes(html):
+    """What the booking form's adults, under-18 and party_size fields hold."""
+    for form in forms_on(html):
+        values = {f["name"]: f["value"] for f in form["fields"]}
+        if "guest_email" in values:
+            return {k: values.get(k) for k in ("adults", "guests_under_18", "party_size")}
+    return {}
+
+
 def _booked(reference_like):
     conn = db()
     try:
@@ -76,8 +93,40 @@ def run():
         if hasattr(m, "house_setting") else "18"
     conn.close()
 
-    arrival = house_today() + timedelta(days=40)
+    # Asked, not counted. +40 days walked onto a seeded atelier the morning
+    # the calendar moved, and the booking below was refused for a reason that
+    # had nothing to do with the tax this suite is about.
+    arrival = _harness.free_window(room["id"], 3, after_days=40)
     departure = arrival + timedelta(days=3)          # 3 nights
+
+    s.section("The quote carries the tax, worked out as the card is charged")
+    # Asked BEFORE the booking below, for the same room, dates and family, so
+    # the two can be compared: the figure a guest reads before paying against
+    # the figure the house stamped and charged. The quote asks compute_city_tax,
+    # the function the checkout charges with, rather than doing sums of its own.
+    def _quote(**party):
+        params = {"room_id": room["id"], "arrival": arrival.isoformat(),
+                  "departure": departure.isoformat()}
+        params.update(party)
+        return anon.get("/api/quote?" + urlencode(params)).get_json() or {}
+
+    quoted = _quote(party_size=4, guests_under_18=2)
+    taxed = [l for l in quoted.get("lines", []) if l.get("kind") == "tax"]
+    s.check("the quote has one tax line, and says so in its label",
+            len(taxed) == 1 and "tax" in taxed[0]["label"].lower(),
+            detail=str(quoted.get("lines")))
+    s.check("charged for the two adults, not the four guests",
+            bool(taxed) and abs(taxed[0]["amount"] - round(2 * 3 * rate, 2)) < 0.01,
+            detail=f"{taxed[0]['amount'] if taxed else None} against "
+                   f"{round(2 * 3 * rate, 2)}")
+    s.check("and the lines add up to the total",
+            abs(sum(l["amount"] for l in quoted.get("lines", []))
+                - (quoted.get("total") or 0)) < 0.01,
+            detail=f"lines {[l['amount'] for l in quoted.get('lines', [])]}, "
+                   f"total {quoted.get('total')}")
+    s.check("with no party given, no tax is invented",
+            not any(l.get("kind") == "tax" for l in _quote().get("lines", [])),
+            detail="it is charged per adult, and a figure for nobody is a guess")
 
     s.section("A booking made through the form carries the tax")
     r = anon.post(f"/book/{room['id']}", data={
@@ -104,6 +153,10 @@ def run():
         s.check("children are not charged as adults",
                 abs(float(b["city_tax"] or 0) - round(4 * 3 * rate, 2)) > 0.01,
                 detail="a family of four with two children paid for four")
+        s.check("and it is the figure the quote showed before they booked",
+                bool(taxed) and abs(taxed[0]["amount"] - float(b["city_tax"] or 0)) < 0.01,
+                detail=f"quoted {taxed[0]['amount'] if taxed else None}, "
+                       f"charged {b['city_tax']}")
 
     s.section("The bill and the statement agree, to the cent")
     # They did not. The statement computed the tax and added it; booking_bill had
@@ -167,7 +220,7 @@ def run():
     # in full. Stamped or nothing.
     conn = db()
     old_room = _room(conn, 2)
-    old_arrival = house_today() + timedelta(days=300)
+    old_arrival = _harness.free_window(old_room["id"], 2, after_days=300)
     old_departure = old_arrival + timedelta(days=2)
     # Priced from the rate card, with no discount_amount, because that is the
     # only consistent state. total_price, discount_amount and the rate card are a
@@ -208,7 +261,7 @@ def run():
                    f"{legacy_stmt['total']:.2f}")
 
     s.section("A walk-in taken at the desk carries it too")
-    wi_arrival = house_today() + timedelta(days=60)
+    wi_arrival = _harness.free_window(room["id"], 2, after_days=60)
     r = oc.post("/admin/bookings/walk-in", data={
         "room_id": str(room["id"]),
         "arrival_date": wi_arrival.isoformat(),
@@ -263,6 +316,94 @@ def run():
     s.check("the desk form has it too", 'name="guests_under_18"' in desk)
     ed = oc.get(f"/admin/bookings/{b['id']}/edit").get_data(as_text=True) if b else ""
     s.check("and so does the edit form", 'name="guests_under_18"' in ed)
+
+    s.section("The pages quote the rate that is charged, and say when")
+    # Three numbers for one tax. The checkout charges the tax settings' rate as
+    # its own line on the card. The pages read settings['tourist_tax'], which
+    # nothing had ever written, and fell back to whatever was typed into them:
+    # 0 on the room page's review, 1.65 on the room list's week of costs. And
+    # the panel above "Pay & book" said the tax was "charged locally on
+    # departure", so a guest who believed it expected to pay it twice.
+    shown = visible_text(page)
+    at = shown.find("Tourist tax")
+    said = shown[at:at + 160] if at >= 0 else "(no tourist tax line at all)"
+    s.check("the room page quotes the rate the card is charged",
+            "€%.2f per adult per night" % rate in said,
+            detail="charged %.2f; the page says: %s" % (rate, said))
+    s.check("and does not say it is paid later",
+            not re.search(r"(?i)departure|locally|on arrival|at the end", said),
+            detail=said)
+    rooms_page = anon.get("/book").get_data(as_text=True)
+    week = re.search(r'data-tax="([^"]*)"', rooms_page)
+    s.check("the room list's week of costs works it out at the same rate",
+            week is not None and abs(float(week.group(1)) - rate) < 0.001,
+            detail="charged %.2f, the week reckons %s" % (rate, week and week.group(1)))
+    listed = visible_text(rooms_page)
+    s.check("and the room list names that rate",
+            "€%.2f per adult per night" % rate in listed,
+            detail="charged %.2f; no '€%.2f per adult per night' on the room list"
+                   % (rate, rate))
+    # EVERY MENTION, not one sentence. The line above was right and the FAQ
+    # three screens below said "charged locally on departure" -- it came back
+    # with the 24 September handover, a day after the room page was mended,
+    # because this read one line and the FAQ was another.
+    later = []
+    for page_text in (listed, shown):
+        for hit in re.finditer(r"(?i)tourist tax|taxe de s[ée]jour", page_text):
+            near = page_text[hit.start():hit.start() + 200]
+            if re.search(r"(?i)on departure|locally|at the end of", near):
+                later.append(near[:120])
+    s.check("and no mention of the tax, on either page, says it is paid later",
+            not later, detail=" | ".join(later[:2]))
+    src = open(os.path.join(TPL, "book_room.html"), encoding="utf-8").read()
+    asks = src[src.find("function refreshQuote"):src.find('url_for("api_quote")')]
+    # SENT, not merely mentioned: reading the box and not passing it on is the
+    # same as not reading it.
+    s.check("the page tells the quote how many of the party are children",
+            bool(re.search(r"""q\.(?:set|append)\(\s*['"]guests_under_18['"]""", asks)),
+            detail="without it every guest is quoted the tax as an adult")
+
+    s.section("A form handed back keeps the family as it was typed")
+    # The Adults box refilled from party_size, which is adults AND children,
+    # and the page then added the children on top again. A family of two and
+    # two sent back by a validation error came back as a party of six, and one
+    # returning from an abandoned card payment came back with its children
+    # counted as adults. Resubmitted, either one paid the tax for children.
+    fam = m.app.test_client()
+    fam.environ_base["REMOTE_ADDR"] = FAMILY_IP
+    later = _harness.free_window(room["id"], 3, after_days=160)
+    stay = {"arrival_date": later.isoformat(),
+            "departure_date": (later + timedelta(days=3)).isoformat(),
+            "guest_name": f"{TAG} Back", "guest_email": "zzctax.back@example.invalid",
+            "guest_phone": "", "special_requests": ""}
+    # No agree_terms, so it is refused and handed back to be finished.
+    refused = fam.post(f"/book/{room['id']}", data=dict(
+        stay, adults="2", guests_under_18="2", party_size="4"))
+    boxes = _party_boxes(refused.get_data(as_text=True))
+    s.check("a refused form comes back to be finished", bool(boxes),
+            detail=f"HTTP {refused.status_code}; "
+                   + "; ".join(_harness.flashes(refused)[:2]))
+    s.check("with two adults in the adults box, as typed",
+            boxes.get("adults") == "2", detail=str(boxes))
+    s.check("and two children, so the party is still four",
+            boxes.get("guests_under_18") == "2"
+            and boxes.get("party_size") == "4", detail=str(boxes))
+
+    with fam.session_transaction() as sess:
+        sess["abandoned_booking"] = {
+            "room_id": room["id"], "arrival": stay["arrival_date"],
+            "departure": stay["departure_date"], "guest_name": stay["guest_name"],
+            "guest_email": stay["guest_email"], "guest_phone": "",
+            "party_size": "4", "guests_under_18": 2, "special_requests": "",
+            "promo_code": "", "extras": []}
+    back = fam.get(f"/book/{room['id']}").get_data(as_text=True)
+    boxes = _party_boxes(back)
+    s.check("back from an abandoned card payment, the children are still children",
+            boxes.get("adults") == "2" and boxes.get("guests_under_18") == "2",
+            detail=str(boxes))
+    s.check("and the price waiting for them charges the tax for two adults",
+            "2 adults × 3 nights" in visible_text(back),
+            detail="the quote on the page it came back to")
 
     s.section("Nonsense in the field cannot make the tax bigger")
     r = anon.post(f"/book/{room['id']}", data={

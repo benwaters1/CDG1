@@ -4,7 +4,7 @@
 {% block description %}Markets, brocantes, mountain days and the fairs of the Ariège — everything within an hour of Château de Gudanes, and when to catch it.{% endblock %}
 {% block og_desc %}Markets, brocantes, mountain days and the fairs of the Ariège — everything within an hour of Château de Gudanes, and when to catch it.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1200w{% endblock %}
-{% block bodyclass %} has-hero{% endblock %}
+{% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
 {% from '_marks.html' import mark %}
 
@@ -13,7 +13,7 @@
 {# Needs route /whats-on — see WHATS_ON_SETUP.md for the table, routes and admin. #}
 
 <section class="g-hero">
-  <img loading="lazy" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1500w" alt="The Ariège">
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1500w" alt="The Ariège">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">The Valley · Within an Hour</p>
@@ -81,7 +81,7 @@
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
   <p class="g-eyebrow">The Standing Week</p>
   <h2 class="g-h2">Markets in the valley</h2>
-  <p class="g-p">Market mornings run roughly eight until one. We will drive you, and the chef will usually come too.</p>
+  <p class="g-p">Market mornings run roughly eight until one. We will drive you{% if _dm == 'open' %}, and the chef will usually come too{% endif %}.</p>
 {% if standing %}
   <div class="g-agenda" style="margin-top:var(--s6)">
     {% for e in standing %}
@@ -115,24 +115,14 @@
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/ad2839d0-7d37-4b37-914d-46ccbe96cc09/Chateau+de+Gudanes+-+Winter.jpeg?format=1000w" alt="Snow at the château" loading="lazy">
 </div>
 
-<!-- ============ THE VALLEY THROUGH THE YEAR ============ -->
-{# The page was a market list and little else. What a guest actually wants to
-   know is what the valley is like in the season they are considering. #}
-<section class="g-sec"><div class="g-wrap">
-  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M0 13h38"/><path d="M82 13h38"/>
-  <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
-  <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
-  <circle cx="60" cy="13" r="1.4"/>
-</svg>
-  <h2 class="g-place">The Valley Through the Year</h2>
-  <dl class="g-facts-list">
-    <div><dt>Spring</dt><dd>Wildflowers through the parkland, the gardens waking, and the markets filling again after winter. Snow still on the high peaks.</dd></div>
-    <div><dt>Summer</dt><dd>The pool opens. Long evenings, dinner outside, and the vide-greniers and antique fairs at their best — Mirepoix on a Monday, Foix at the end of July.</dd></div>
-    <div><dt>Autumn</dt><dd>Virginia creeper turns the gates scarlet. Mushrooms in the woods, the harvest through the valley, and the light that photographers come for.</dd></div>
-    <div><dt>Winter</dt><dd>Ax 3 Domaines is twenty-five minutes away — eighty kilometres of piste between 1,400 and 2,400 metres. The thermal baths at Ax run 33–38°C all year.</dd></div>
-  </dl>
-</div></section>
+{# Three sections were removed here, each superseded by one kept below and each
+   saying so in its own markup: THE VALLEY THROUGH THE YEAR (four seasons) by
+   MONTH BY MONTH, whose script comment reads "twelve months rather than four
+   seasons"; THE JOURNAL, PROPERLY by the standard sitewide Journal block above
+   it (the standard one carries the interest checkboxes); and THE CLOSE by THE
+   CLOSER, which is written for this page. All three had stayed on the page
+   alongside their replacements, so it had two newsletter forms and two closes,
+   with the month picker stranded after the first close. #}
 
 <!-- ============ FURTHER AFIELD ============ -->
 <section class="g-sec g-sec--sand"><div class="g-wrap">
@@ -166,9 +156,11 @@
 
 <section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
   <p class="g-p" style="text-align:center;margin:0 auto">
-    Class I protection means the walls stay as they were found. Everything within
-    them — beds, linen, floors, bathrooms — is new, and finished to a standard
-    the building around it has not reached yet. The imperfection is deliberate, and the valley outside is no more polished than the house.
+    This house was abandoned in 1850 and stood empty for over a century and a
+    half. Class I protection means the walls stay as that left them. Everything
+    within them — beds, linen, floors, bathrooms — is new, and finished to a
+    standard the building around it has not reached yet. The imperfection is
+    deliberate, and the valley outside is no more polished than the house.
   </p>
 </div></section>
 
@@ -219,70 +211,110 @@
       <h3 class="g-find__t">Labouiche</h3>
       <p class="g-find__d">An underground river you travel by boat, near Foix. Europe's longest navigable one, and much better than it sounds.</p>
     </div>
+    <div class="g-find">
+      <p class="g-find__k">39 kilometres</p>
+      <h3 class="g-find__t">Grotte de Lombrives</h3>
+      <p class="g-find__d">The largest cave system in Europe, ten minutes down the valley at Ussat. A refuge for the Cathars, a Bronze Age burial place, and a chamber with acoustics good enough that concerts are held in it. Henri IV walked four hundred metres in and left his name on the wall in 1578.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">965 metres</p>
+      <h3 class="g-find__t">Château de Lordat</h3>
+      <p class="g-find__d">One of the largest medieval fortresses in the Ariège, on the spur directly above this valley. Ruined, open, and almost always empty. Ten minutes, and the whole valley laid out beneath you.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">33–38°C</p>
+      <h3 class="g-find__t">The baths at Ax</h3>
+      <p class="g-find__d">Thermal water the Romans used and the town was built on, twenty minutes up the road. Open all year, and best in falling snow. The Bassin des Ladres in the square outside is free, and locals still put their feet in it.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">Prehistory, outdoors</p>
+      <h3 class="g-find__t">Parc de la Préhistoire</h3>
+      <p class="g-find__d">At Tarascon, fifteen minutes away. Life-size animals through a wooded park, workshops in spear-throwing and fire-making, and the best explanation of what is on the cave walls at Niaux. The one that works with children.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">Another country</p>
+      <h3 class="g-find__t">Andorra</h3>
+      <p class="g-find__d">An hour and a quarter up the valley and over the pass. Duty-free, high mountain, and a strange small principality that has never belonged to France or Spain. Take a passport.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">Izards and wolves</p>
+      <h3 class="g-find__t">The Orlu valley</h3>
+      <p class="g-find__d">A national reserve half an hour away where izards graze the slopes in plain sight, and the Maison des Loups keeps wolves in wide enclosures on the mountainside. A walk in up the valley, and no road beyond it.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">1294–1324</p>
+      <h3 class="g-find__t">Montaillou</h3>
+      <p class="g-find__d">The village Emmanuel Le Roy Ladurie made famous in <em>Montaillou, village occitan</em>, written from the Inquisition's own interrogations of the people who lived there. About twenty live there in winter now, beneath the listed ruins of its castle. Beyond Ax, on the road to the Pays de Sault.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">The fifteenth century</p>
+      <h3 class="g-find__t">Forges de Pyrène</h3>
+      <p class="g-find__d">A hammer forge from the mid-1400s, listed as a Historic Monument, at the centre of a village of the old trades just south of Foix — the blacksmith, the clog-maker, the basket-weaver, the bread oven. Every workshop is under cover, which makes it the answer to a wet day. April to October.</p>
+    </div>
   </div>
 
   <p class="g-hint" style="margin-top:var(--s6)">Also within reach: Roquefixade, facing Montségur across the valley and free to walk any day of the year; the Lombrives caves; and Camon, listed among the most beautiful villages in France.</p>
 </div></section>
 
-<!-- ============ THE MARKET WEEK ============ -->
-
-
-<!-- ============ THE JOURNAL ============ -->
-{# The newsletter form was only in the menu panel. This is the same route,
-   placed where a reader who has just finished the page will see it. #}
-<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">The Journal</p>
-    <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
-    <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
-      <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
-             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
-        <fieldset class="g-interests">
-          <legend>What would you like to hear about?</legend>
-          <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
-          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
-          <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
-        </fieldset>
-      <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
-    </form>
-        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
-    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
+<!-- ============ A DAY OUT ============ -->
+{# Researched from the tourist boards and the operators: the Yellow Train leaves from the end of the
+   line that runs through Les Cabannes; the Mas-d'Azil road runs through the cave itself. #}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">A Day Out</p>
+  <h2 class="g-place">Further, By Road or Rail</h2>
+  <p class="g-p">Two that take the whole day, and repay it.</p>
+  <div class="g-finds">
+    <div class="g-find">
+      <p class="g-find__k">Since 1910</p>
+      <h3 class="g-find__t">The Yellow Train</h3>
+      <p class="g-find__d">The line through Les Cabannes ends at Latour-de-Carol, where the Train Jaune begins: open carriages, the original rolling stock, and a climb of more than a thousand metres without a rack, through the highest station in France and down to the Vauban citadel at Villefranche-de-Conflent. No car needed at any point.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">420 metres</p>
+      <h3 class="g-find__t">Grotte du Mas-d'Azil</h3>
+      <p class="g-find__d">A cave the road drives straight through, fifty metres high, and the site that gave a whole prehistoric culture its name. The show cave behind it is open daily from April to October; book ahead.</p>
+    </div>
   </div>
 </div></section>
 
-<div class="g-wrap"></div>
-
-<div class="g-wrap g-mark__wrap">{{ mark('mountains') }}</div>
-
-
-<!-- ============ THE JOURNAL, PROPERLY ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap g-journal">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">Not Ready To Book</p>
-    <h2 class="g-place">Watch It Come Off The Wall</h2>
-    <p class="g-p">Ninety-four rooms, five finished. When a room opens, when something comes out from under the plaster, when the ateliers are released — that goes out first to the people reading along.</p>
-    <p class="g-p">It is the same record Vogue, AD Italia and the French press have been following since 2013. Rooms are usually spoken for before they reach the booking page.</p>
-    <form method="post" action="{{ url_for('newsletter_subscribe') }}" class="g-journal__form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="jr_email_won">Your email</label>
-      <input type="email" id="jr_email_won" name="email" placeholder="Your email" required autocomplete="email">
-      <button type="submit" class="g-btn g-btn--solid">Read along</button>
-    </form>
-    <p class="g-journal__note">A few times a year, when there is something worth sending. Unsubscribe in one click.</p>
-  </div>
-</div></section>
-
-<!-- ============ THE CLOSE ============ -->
-<section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The valley road" loading="lazy">
-  <h2 class="g-close__h">Come for a week of it</h2>
-  <p class="g-close__p">The markets, the fairs and the mountain days are all within an hour. The château is the base.</p>
-  <div class="g-close__acts">
-      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">See the ateliers</a>
+<!-- ============ SUMMER ============ -->
+{# The counterpart to The Estate's winter section: the site sold the valley's winter and said almost nothing about its summer. #}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">L'été<span class="g-fr__en">Summer</span></p>
+  <p class="g-eyebrow">May to September</p>
+  <h2 class="g-place">Summer in the Valley</h2>
+  <p class="g-p">The snow goes and the same mountains open the other way. Tell us before you come and we will point you to the right people.</p>
+  <div class="g-finds">
+    <div class="g-find">
+      <p class="g-find__k">On the water</p>
+      <h3 class="g-find__t">Rafting and canyoning</h3>
+      <p class="g-find__d">Rafting and canoeing on the Ariège, and canyoning in the side-streams, around Tarascon and Ax.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">On the rock</p>
+      <h3 class="g-find__t">Via ferrata and climbing</h3>
+      <p class="g-find__d">Fixed routes and natural rock, and paragliding from the ridges for anyone who would rather come down than climb up.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">On two wheels</p>
+      <h3 class="g-find__t">Ax 3 Domaines</h3>
+      <p class="g-find__d">Downhill mountain biking is the summer's main event on the same slopes the skiers use in winter.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">In the trees</p>
+      <h3 class="g-find__t">Orlu</h3>
+      <p class="g-find__d">The largest tree-top course in the Ariège — fourteen routes strung over rivers, waterfalls and canyons.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">On foot</p>
+      <h3 class="g-find__t">The high walks</h3>
+      <p class="g-find__d">Montcalm, the Pic des Trois Seigneurs, the lakes at Gardelle and the Étang d'En Beys: the walks the valley's own guides rate highest.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">Warm water</p>
+      <h3 class="g-find__t">Ussat-les-Bains</h3>
+      <p class="g-find__d">A second spa, near Tarascon, for the day after the walk.</p>
+    </div>
   </div>
 </div></section>
 
@@ -307,6 +339,40 @@
     </div>
   </div>
 </div></section>
+
+<!-- ============ THE JOURNAL ============ -->
+{# The newsletter form was only in the menu panel. This is the same route,
+   placed where a reader who has just finished the page will see it. #}
+<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
+  <div class="g-journal__in">
+    <p class="g-eyebrow">The Journal</p>
+    <h2 class="g-journal__h">Follow the Restoration</h2>
+    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
+    <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {# One id, set once. Calling random twice produced a different number for
+         the label and the input, so the `for` pointed at nothing. #}
+      {% set j_id = 'j-email-' ~ range(1000,9999)|random %}
+      <label class="g-vh" for="{{ j_id }}">{{ t('Email address') }}</label>
+      <input type="email" inputmode="email" name="email" id="{{ j_id }}"
+             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
+        <fieldset class="g-interests">
+          <legend>What would you like to hear about?</legend>
+          <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
+        </fieldset>
+      <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
+    </form>
+        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
+    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
+  </div>
+</div></section>
+
+<div class="g-wrap"></div>
+
+<div class="g-wrap g-mark__wrap">{{ mark('mountains') }}</div>
+
 
 <!-- ============ THE CLOSER ============ -->
 <section class="g-sec g-sec--dark g-closer"><div class="g-wrap">
@@ -354,3 +420,4 @@
 })();
 </script>
 {% endblock %}
+

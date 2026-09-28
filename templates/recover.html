@@ -1,0 +1,46 @@
+{% extends "public_base.html" %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block title %}Set a password{% endblock %}
+{% block content %}
+
+{#  Deliberately plain and deliberately noindex. This page only exists while
+    a recovery token is set, which should be minutes.  #}
+
+<section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
+<div class="g-mb-card">
+
+  {% if done %}
+  <h1>Done</h1>
+  <p class="g-p">
+    The password for <strong>{{ who }}</strong> has been set. You can
+    <a href="{{ url_for('login') }}">sign in</a> now.
+  </p>
+  <p class="g-p">
+    <strong>Now remove the recovery token.</strong> In Railway, delete the
+    <code>OWNER_RECOVERY_TOKEN</code> variable. While it is set, this page
+    works for anybody who has it.
+  </p>
+  {% else %}
+  <h1>Set a password</h1>
+  <p class="g-p">
+    For <strong>{{ who }}</strong>. At least ten characters. Nothing is shown
+    back to you and nothing is emailed — type something you will remember.
+  </p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field-label" for="p1">New password</label>
+    <input type="password" name="password" id="p1" required minlength="10"
+           autocomplete="new-password">
+    <label class="field-label" for="p2">The same again</label>
+    <input type="password" name="password_again" id="p2" required minlength="10"
+           autocomplete="new-password">
+    <button type="submit" class="g-btn g-btn--solid" style="margin-top:12px;">
+      Set it
+    </button>
+  </form>
+  {% endif %}
+
+</div>
+</div></section>
+
+{% endblock %}

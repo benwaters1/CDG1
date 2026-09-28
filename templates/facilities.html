@@ -1,10 +1,10 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('The Estate', None)] %}
 {% block title %}Facilities &amp; Activities{% endblock %}
-{% block description %}Six acres, a pool among the cherry trees, a tennis court lined for pickleball, and the Ariège valley beyond. All of it included with the room.{% endblock %}
-{% block og_desc %}Six acres, a pool among the cherry trees, a tennis court lined for pickleball, and the Ariège valley beyond. All of it included with the room.{% endblock %}
+{% block description %}Ten acres, a pool among the cherry trees, a tennis court lined for pickleball, and the Ariège valley beyond. All of it included with the room.{% endblock %}
+{% block og_desc %}Ten acres, a pool among the cherry trees, a tennis court lined for pickleball, and the Ariège valley beyond. All of it included with the room.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1200w{% endblock %}
-{% block bodyclass %} has-hero{% endblock %}
+{% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
 {% from '_animals.html' import animals, animals_note %}
 {% from '_stay_panel.html' import stay_panel with context %}
@@ -13,19 +13,20 @@
 {# Needs: @app.route("/facilities") -> render_template("facilities.html") #}
 
 <section class="g-hero">
-  <img loading="lazy" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="The château grounds">
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="The château grounds">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
-    <p class="g-hero__eyebrow">Le Domaine · Six Acres</p>
-    <h1 class="g-hero__title">{{ t('Facilities & Activities') }}</h1>
-    <p class="g-hero__lede">Six acres of parkland, a pool among the fruit trees, and a valley that rewards every season differently.</p>
+    <p class="g-hero__eyebrow">Le Domaine · Ten Acres</p>
+    {# The nav says "The Estate"; the page answered to "Facilities & Activities". The <title> keeps the search wording. #}
+    <h1 class="g-hero__title">{{ t('The Estate') }}</h1>
+    <p class="g-hero__lede">Ten acres of parkland, a pool among the fruit trees, and a valley that rewards every season differently.</p>
     <p class="g-hero__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
   </div>
 </section>
 
 <!-- ====================== AT THE CHÂTEAU ====================== -->
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-fr">Le domaine, six hectares<span class="g-fr__en">The estate, six acres</span></p>
+  <p class="g-fr">Le domaine, quatre hectares<span class="g-fr__en">The estate, ten acres</span></p>
     <p class="g-eyebrow">At the Château</p>
   <h2 class="g-h2">Yours, simply by staying</h2>
   <p class="g-p">Nothing below is charged as an extra. It is part of the château, as it would be if you were staying with friends who happened to own a château.</p>
@@ -42,7 +43,7 @@
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1000w" alt="The gardens" loading="lazy" style="width:100%;height:14rem;object-fit:cover">
       <div class="g-card__b">
         <h3 class="g-h3 g-h2--vert">Les Jardins</h3>
-        <p class="g-p">Formal beds nearest the château, then six acres of parkland running up toward the mountain. Walk it at any hour.</p>
+        <p class="g-p">Formal beds nearest the château, then ten acres of parkland running up toward the mountain. Walk it at any hour.</p>
       </div>
     </article>
     <article class="g-card">
@@ -59,10 +60,10 @@
   <dl class="g-facts-list">
     <div><dt>Salon de thé</dt><dd>Tea and coffee all day, in a room that took four years to make usable</dd></div>
     <div><dt>Breakfast</dt><dd>Bread from the village, three minutes down the hill. Included</dd></div>
-    <div><dt>Children</dt><dd>Eight and over. Original staircases and unrestored rooms make it unsuitable below that</dd></div>
+    <div><dt>Children</dt><dd>Eight and over. Original staircases, a great many of them, and unrestored rooms make it unsuitable below that</dd></div>
     <div><dt>Lounges</dt><dd>Four salons. You will not meet anyone in three of them</dd></div>
     <div><dt>Games</dt><dd>A tennis court with a mountain behind it, and a gym in a room that was a ruin</dd></div>
-    <div><dt>Outdoors</dt><dd>Six acres, and nobody to meet in them at two in the morning</dd></div>
+    <div><dt>Outdoors</dt><dd>Ten acres, and nobody to meet in them at two in the morning</dd></div>
     <div><dt>Laundry</dt><dd>Available throughout your stay</dd></div>
     <div><dt>Wi-Fi</dt><dd>Starlink. No cable reaches this valley, so it comes by satellite — and works</dd></div>
     <div><dt>In your room</dt><dd>Sockets and a lamp to read by — neither of which existed here in 2013</dd></div>
@@ -73,9 +74,7 @@
     <div><dt>Evenings</dt><dd>Electricity is limited by design — rooms are lit by candle</dd></div>
   </dl>
 
-  <p style="margin-top:var(--s7);text-align:center">
-    <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-  </p>
+  
 </div></section>
 
 <div class="g-wrap g-mark__wrap">{{ mark('peaks') }}</div>
@@ -115,13 +114,13 @@
 
 <!-- ====================== ARRANGED FOR YOU ====================== -->
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Arranged For You</p>
   <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M0 13h38"/><path d="M82 13h38"/>
   <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
   <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
+  <p class="g-eyebrow">Arranged For You</p>
   <h2 class="g-h2">Ask, and it is organised</h2>
   <p class="g-p">Say the word before you come, or on the morning. Some carry a cost and some do not; we will tell you which without being asked twice.</p>
 
@@ -130,7 +129,7 @@
       <img class="g-card__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1000w" alt="The drive at dusk" loading="lazy">
       <div class="g-card__b">
         <h3 class="g-h3">L'Arrivée</h3>
-        <p class="g-p">The drive runs a quarter of a mile under the limes before the façade shows itself — built that way, for an approach at walking pace. Horses and a carriage can be arranged. On foot works too, and is free. Best an hour before dinner, when the stone goes gold.</p>
+        <p class="g-p">The drive runs a quarter of a mile under the limes before the façade shows itself — built that way, for an approach at walking pace. The château's own carriage can be arranged, with horses brought up for it. On foot works too, and is free. Best an hour before dinner, when the stone goes gold.</p>
       </div>
     </article>
     <article class="g-card">
@@ -161,10 +160,7 @@
     <li>Airport transfer — Toulouse</li>
   </ul>
 
-  <p style="margin-top:var(--s7)">
-    <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">{{ t('Stay the Night') }}</a>
-    <a href="/whats-on" class="g-btn" style="margin-left:var(--s3)">{{ t("What's On") }}</a>
-  </p>
+  
 </div></section>
 
 <div class="g-band">
@@ -214,7 +210,7 @@
     <div><dt>Ax 3 Domaines</dt><dd>The nearest station and the largest — all levels, and a thermal spa in the town below</dd></div>
     <div><dt>Plateau de Beille</dt><dd>Cross-country and snowshoeing, twenty minutes the other way. Quieter, and better with children</dd></div>
     <div><dt>Getting there</dt><dd>We will arrange the car, or the equipment, or both</dd></div>
-    <div><dt>Coming back</dt><dd>The fire is lit, the kitchen is warm, and dinner is at the usual hour</dd></div>
+    <div><dt>Coming back</dt><dd>The fire is lit{% if _dm == 'open' %}, the kitchen is warm, and dinner is at the usual hour{% else %} and the house is warm{% endif %}</dd></div>
   </dl>
 </div></section>
 
@@ -238,7 +234,7 @@
     <div class="g-figure"><b>94</b><span>Rooms</span></div>
     <div class="g-figure"><b>5</b><span>Floors</span></div>
     <div class="g-figure"><b>43,000</b><span>Square feet · about 4,000 m²</span></div>
-    <div class="g-figure"><b>6</b><span>Acres of grounds · 2.4 hectares</span></div>
+    <div class="g-figure"><b>10</b><span>Acres of grounds · 4 hectares</span></div>
     <div class="g-figure"><b>1741</b><span>Begun, to a design by Ange-Jacques Gabriel</span></div>
     <div class="g-figure"><b>5</b><span>Bedrooms open to guests so far</span></div>
   </div>
@@ -249,33 +245,6 @@
 
 
 <div class="g-wrap g-mark__wrap">{{ mark('chandelier') }}</div>
-
-<!-- ============ THE JOURNAL ============ -->
-{# The newsletter form was only in the menu panel. This is the same route,
-   placed where a reader who has just finished the page will see it. #}
-<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">The Journal</p>
-    <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
-    <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
-      <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
-             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
-        <fieldset class="g-interests">
-          <legend>What would you like to hear about?</legend>
-          <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
-          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
-          <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
-        </fieldset>
-      <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
-    </form>
-        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
-    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
-  </div>
-</div></section>
-
 
 <!-- ============ THE GARDENS ============ -->
 {# From the château's own record: terraced gardens down to le parc, the lost
@@ -290,6 +259,7 @@
       <p class="g-p g-lede-first">The ground falls away from the house in stages. Formal terraces first, then steps, then <em>le parc</em> — the wooded parkland that runs to the boundary.</p>
       <p class="g-p">Old photographs show those terraces fenced with intricate ironwork. A few iron posts are still standing, and that is all that survives of it. The rest is known only from the pictures.</p>
       <p class="g-p">The limestone walls around the estate are original. They were here before the house was.</p>
+      <p class="g-p">Worth knowing before you come: the terracing means steps between almost every level of the garden, and there are a great many of them. Getting from the house down to the parkland is a walk on stairs, not a stroll on the flat.</p>
     </div>
     <figure class="g-fig-block">
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1000w" alt="The terraced gardens in September" loading="lazy">
@@ -349,7 +319,7 @@
       <li class="g-timeline__i is-done"><span class="g-timeline__k">From Toulouse</span>
         <span class="g-timeline__v">Matabiau to Les Cabannes, direct. The last hour runs up the Ariège with the mountains closing in on both sides.</span></li>
       <li class="g-timeline__i is-done"><span class="g-timeline__k">From Barcelona</span>
-        <span class="g-timeline__v">Over the border to Latour-de-Carol, then north down the same line. Slower than driving and considerably better.</span></li>
+        <span class="g-timeline__v">The Rodalies from Barcelona to Latour-de-Carol on the border, a little over three and a half hours, then the French line north to Les Cabannes, about an hour more. Slower than driving and considerably better.</span></li>
       <li class="g-timeline__i is-done"><span class="g-timeline__k">Last three minutes</span>
         <span class="g-timeline__v">Tell us your train and someone will be at the station. There is no taxi rank.</span></li>
     </ol>
@@ -397,9 +367,9 @@
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The pool below the gardens" loading="lazy">
+  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">It is all included</h2>
-  <p class="g-close__p">The pool, the court, the parkland and the salons come with the room. Nothing above appears on your bill.</p>
+  <p class="g-close__p">The pool, the court, the parkland and the salons come with the room. None of it appears on your bill; anything we arrange beyond the gates, we price before we book it.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
       <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Join an atelier</a>

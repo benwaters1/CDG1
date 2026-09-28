@@ -4,11 +4,12 @@
 {
   "@context": "https://schema.org",
   "@type": "LandmarksOrHistoricalBuildings",
+  "@id": "https://chateaugudanes.com/#chateau",
   "name": "Château de Gudanes",
   "description": "An eighteenth-century château by Ange-Jacques Gabriel, First Architect to Louis XV. Classified a Class I Historic Monument in 1994 and under restoration since 2013.",
   "address": {"@type":"PostalAddress","addressLocality":"Château-Verdun",
     "postalCode":"09310","addressRegion":"Ariège","addressCountry":"FR"},
-  "geo": {"@type":"GeoCoordinates","latitude":42.7847,"longitude":1.6733},
+  {% if house_pin %}"geo": {"@type":"GeoCoordinates","latitude":{{ house_pin.lat }},"longitude":{{ house_pin.lng }}},{% endif %}
   "isAccessibleForFree": false,
   "publicAccess": true
 }
@@ -21,7 +22,7 @@
 {% block description %}Bought derelict in 2013, five hundred tonnes of stone cleared, fifteen years of work approved intervention by intervention.{% endblock %}
 {% block og_desc %}Bought derelict in 2013, five hundred tonnes of fallen stone cleared, and fifteen years of work approved intervention by intervention. A restoration, not a renovation.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1200w{% endblock %}
-{% block bodyclass %} has-hero{% endblock %}
+{% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
 {% from '_scale.html' import scale %}
 {% from '_marks.html' import mark, monogram %}
@@ -31,7 +32,7 @@
    def restoration_page(): return render_template('restoration.html')  #}
 
 <section class="g-hero">
-  <img loading="lazy" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1500w" alt="Restoration work in progress">
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1500w" alt="Restoration work in progress">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Class I Historic Monument · Since 2013</p>
@@ -52,25 +53,12 @@
       <li><b>2014</b><span>The first winter Karina stays inside. There is no electricity, no heating and no water. She pitches a tent in one of the rooms to keep warm.</span></li>
       <li><b>Eight months</b><span>Spent clearing more than 500 tonnes of fallen stone, debris and rubble before restoration could begin.</span></li>
       <li><b>2016</b><span>The Fondation Prince Louis de Polignac awards the restoration its Medal of Honour, presented by Prince Albert II of Monaco. The château opens to guests for the first time.</span></li>
-      <li><b>Now</b><span>Rooms are finished one at a time. Cream overpaint is lifted by hand to find frescoes hidden for generations. Wherever possible the original stonework, timber and detail is kept rather than replaced.</span></li>
+      <li><b>Now</b><span>Rooms open one at a time. Cream overpaint is lifted by hand to find frescoes hidden for generations. Wherever possible the original stonework, timber and detail is kept rather than replaced.</span></li>
     </ul>
   </div>
 </section>
 
-<section class="g-sec g-sec--sand">
-  <div class="g-wrap">
-    <div class="g-two">
-      <div>
-        <p class="g-fr">Rien ne se fait vite ici<span class="g-fr__en">Nothing here is done quickly</span></p>
-    <p class="g-eyebrow">How the work is governed</p>
-        <h2 class="g-h2">Nothing here begins with a decision. <em>It begins with a dossier.</em></h2>
-        <p class="g-p">Because the château is Class I listed, every intervention is applied for and approved by the Monuments Historiques before a tool is lifted. Restorers work alongside artisans from the valley. New work is done so that it could one day be removed without harming what was there.</p>
-        <p class="g-p">The aim is not to return the château to a single moment in time. It is to let it go on.</p>
-      </div>
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1500w" alt="Original stonework" loading="lazy">
-    </div>
-  </div>
-</section>
+
 
 <section class="g-sec">
   <div class="g-wrap">
@@ -109,7 +97,7 @@
   <div>
     <p class="g-eyebrow">Staying Here</p>
     <h2 class="g-h2">Guests are part of it</h2>
-    <p class="g-p">Every night booked and every workshop taken funds the next room. That is not a donation — it is how the work continues, and why Gudanes is open at all while it is still being made.</p>
+    <p class="g-p">The house is open while it is still being made, which is an unusual thing to be able to say. Guests are here in the middle of the work rather than after it — bare walls on one side of the door, new floors and linen on the other, and the restoration going on around them.</p>
     <p style="margin-top:var(--s5)">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the Night</a>
       <a href="{{ url_for('workshops_public') }}" class="g-btn" style="margin-left:var(--s3)">Workshops</a>
@@ -143,13 +131,14 @@
 
 <!-- ============ WHAT THE HOUSE HAS GIVEN UP ============ -->
 <section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">Discoveries</p>
   <svg class="g-medallion" viewBox="0 0 46 46" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <circle cx="23" cy="23" r="21"/><circle cx="23" cy="23" r="16"/>
   <path d="M23 9c-3.4 3.6-5 6.6-5 9.5s1.6 5.9 5 9.5c3.4-3.6 5-6.6 5-9.5S26.4 12.6 23 9z"/>
   <path d="M12 23c4-2.6 7.4-3.8 11-3.8S30 20.4 34 23M12 23c4 2.6 7.4 3.8 11 3.8S30 25.6 34 23"/>
   <circle cx="23" cy="23" r="2"/><path d="M23 37v5M18 40h10"/>
 </svg>
+  {# Medallion moved above the eyebrow: between them it left the label 110px from its heading. #}
+  <p class="g-eyebrow">Discoveries</p>
   <h2 class="g-place">What the Château Has Given Up</h2>
   <p class="g-p">A restoration this slow turns up things a renovation would have destroyed.</p>
 
@@ -180,13 +169,13 @@
 
 <!-- ============ EIGHT HUNDRED YEARS ============ -->
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Eight Hundred Years</p>
   <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M0 13h38"/><path d="M82 13h38"/>
   <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
   <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
+  <p class="g-eyebrow">Eight Hundred Years</p>
   <h2 class="g-place">Before Any of This</h2>
   <ul class="g-timeline">
     <li><b>1213</b><span>First recorded here — a fortification among the holdings of the Counts of Foix. The site sheltered Cathars fleeing the Inquisition; Alesta and Serena de Château-Verdun left for Lombardy rather than recant.</span></li>
@@ -250,25 +239,6 @@
 </div></section>
 
 
-<div class="g-wrap"><svg class="g-house" viewBox="0 0 64 30" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M2 28h60"/><path d="M6 28V12l26-9 26 9v16"/>
-  <path d="M6 12h52"/><path d="M14 28v-8h5v8M27 28v-8h5v8M40 28v-8h5v8"/>
-  <path d="M20 8v-3M32 5v-3M44 8v-3"/>
-</svg></div>
-
-
-
-<div class="g-wrap g-mark__wrap">{{ mark('trowel') }}</div>
-
-<!-- ============ THE FIGURES ============ -->
-{# Twelve hundred words on the restoration and not one number. These are the
-   documented facts — the tonnage and the dates are from the château's own
-   record, the classification from the Monuments Historiques listing. #}
-
-
-
-
-
 <!-- ============ HOW IT BEGAN ============ -->
 {# Quotations from Karina Waters, published in The Good Life France, Home
    Beautiful, Domain and the Daily Mail. The bracketed detail about the
@@ -282,21 +252,21 @@
       <p class="g-story__n">01</p>
       <div>
         <h3 class="g-story__t">A drive into the Pyrénées</h3>
-        <p class="g-story__d">A taxation accountant and a neurological surgeon from Perth, looking for a house in France. A French friend had expressly forbidden them from buying three things: a historic monument, a château, or a restoration project.</p>
+        <p class="g-story__d">A taxation accountant and a urologist from Perth, looking for a house in France. A French friend had expressly forbidden them from buying three things: a historic monument, a château, or a restoration project.</p>
       </div>
     </div>
     <div class="g-story__row">
       <p class="g-story__n">02</p>
       <div>
         <h3 class="g-story__t">Four rooms out of ninety-four</h3>
-        <p class="g-story__d">The rest were unreachable — no floors, no ceilings, water through everything. <em>"All we could do was peek around the corners to see what was almost all rubble."</em> Trees were growing inside the building and on the roof.</p>
+        <p class="g-story__d">The rest were unreachable — no floors, no ceilings, water through everything. <em>“All we could do was peek around the corners to see what was almost all rubble.”</em> Trees were growing inside the building and on the roof.</p>
       </div>
     </div>
     <div class="g-story__row">
       <p class="g-story__n">03</p>
       <div>
         <h3 class="g-story__t">They bought it anyway</h3>
-        <p class="g-story__d"><em>"It was like falling in love with an echo from another time and another place. Reality lost focus and our imaginations took hold."</em> Two years of negotiation followed. The contract was signed in March 2013.</p>
+        <p class="g-story__d"><em>“It was like falling in love with an echo from another time and another place. Reality lost focus and our imaginations took hold.”</em> Two years of negotiation followed. The contract was signed in March 2013.</p>
       </div>
     </div>
     <div class="g-story__row">
@@ -310,7 +280,7 @@
       <p class="g-story__n">05</p>
       <div>
         <h3 class="g-story__t">The gates opened</h3>
-        <p class="g-story__d">Guests have been welcomed every year since 2016. Nothing leaves the estate. It goes back into the building.</p>
+        <p class="g-story__d">Guests have been welcomed every year since 2016, in the middle of the work rather than after it.</p>
       </div>
     </div>
   </div>
@@ -439,7 +409,7 @@
       <p class="g-p g-lede-first">She had been empty since 1850, on the market four years, and owned by a foreign syndicate who had meant to make her a hotel. The plan had been abandoned.</p>
       <p class="g-p">Of ninety-four rooms, four could be walked into. The rest had caved-in roofs and trees growing through them. There was no power, no plumbing and no water. Negotiations ran two years; the contract was signed in March 2013 and the first tools went in that November.</p>
       <blockquote class="g-pull">
-        <p>It wasn't habitable. There was no power, plumbing, water.</p>
+        <p>It was not habitable. There was no power, plumbing, water.</p>
         <cite>Karina Waters, on the château as bought</cite>
       </blockquote>
     </div>
@@ -569,117 +539,17 @@
 </div></section>
 
 <!-- ============ WHO DOES THE WORK ============ -->
-<section class="g-sec g-paper"><div class="g-wrap">
-  <p class="g-eyebrow">The Hands</p>
-  <h2 class="g-place">Who Does the Work</h2>
 
-  <dl class="g-facts-list">
-    <div><dt>Versailles</dt><dd>French conservation experts from Versailles advise on what may be touched and how</dd></div>
-    <div><dt>A retired plasterer</dt><dd>A local man in his eighties came out of retirement — the skills needed are no longer commonly known</dd></div>
-    <div><dt>Monuments Historiques</dt><dd>Every intervention approved before a tool is lifted. Reference PA00132943</dd></div>
-    <div><dt>A team of six</dt><dd>The core building team, working through the year</dd></div>
-    <div><dt>Guests</dt><dd>Taught alongside the conservators on the eighteenth-century frescoes in the dining room</dd></div>
-    <div><dt>The family</dt><dd>Karina oversees the work in France. Jasmine, who studied art history, on the research</dd></div>
-  </dl>
-
-  <blockquote class="g-pull">
-    <p>Many years passed, and in between we began slowly decorating and using the room just as it was.</p>
-    <cite>On waiting for permits to restore one room's beams and walls — work resumed in 2021</cite>
-  </blockquote>
-</div></section>
 
 
 <div class="g-wrap g-mark__wrap">{{ mark('plaster') }}</div>
-
-<!-- ============ THE RECORD ============ -->
-{# Publications verified against the château's own press page and the
-   individual articles. Nothing here is claimed that cannot be shown. #}
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">The Record</p>
-  <h2 class="g-place">Who Has Been Watching</h2>
-  <p class="g-p">The restoration has been followed since the year it began.</p>
-
-  <div class="g-masthead">
-    <div class="g-masthead__i"><b>Vogue</b><span>Netherlands</span></div>
-    <div class="g-masthead__i"><b>AD</b><span>Architectural Digest Italia</span></div>
-    <div class="g-masthead__i"><b>House &amp; Garden</b><span>December 2018</span></div>
-    <div class="g-masthead__i"><b>Lonely Planet</b><span>2018</span></div>
-    <div class="g-masthead__i"><b>Daily Mail</b><span>On opening the gates</span></div>
-    <div class="g-masthead__i"><b>Domain</b><span>Australia</span></div>
-    <div class="g-masthead__i"><b>Home Beautiful</b><span>Australia</span></div>
-    <div class="g-masthead__i"><b>The Good Life France</b><span>Ten years on</span></div>
-  </div>
-
-  <div class="g-medal">
-    <p class="g-medal__k">2016</p>
-    <p class="g-medal__t">Medal of Honour</p>
-    <p class="g-medal__d">Awarded by the Fondation Prince Louis de Polignac in recognition of the restoration.</p>
-  </div>
-
-  <p class="g-p" style="margin-top:var(--s7)">The château has also been chosen as a setting by <em>Zimmermann</em>, <em>Cire Trudon</em>, <em>Sézane</em>, <em>Dôen</em>, <em>Mango</em> and <em>Rosemary Hallgarten</em>. The fees stay in the building.</p>
-</div></section>
-
-
-<!-- ============ THE JOURNAL ============ -->
-{# The newsletter form was only in the menu panel. This is the same route,
-   placed where a reader who has just finished the page will see it. #}
-<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">The Journal</p>
-    <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
-    <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
-      <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
-             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required autocomplete="email">
-        <fieldset class="g-interests">
-          <legend>What would you like to hear about?</legend>
-          <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
-          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
-          <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
-        </fieldset>
-      <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
-    </form>
-        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
-    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
-  </div>
-</div></section>
-
-
-<!-- ============ THE JOURNAL, PROPERLY ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap g-journal">
-  <div class="g-journal__in">
-    <p class="g-eyebrow">Not Ready To Book</p>
-    <h2 class="g-place">Watch It Come Off The Wall</h2>
-    <p class="g-p">Ninety-four rooms, five finished. When a room opens, when something comes out from under the plaster, when the ateliers are released — that goes out first to the people reading along.</p>
-    <p class="g-p">It is the same record Vogue, AD Italia and the French press have been following since 2013. Rooms are usually spoken for before they reach the booking page.</p>
-    <form method="post" action="{{ url_for('newsletter_subscribe') }}" class="g-journal__form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-vh" for="jr_email_rest">Your email</label>
-      <input type="email" id="jr_email_rest" name="email" placeholder="Your email" required autocomplete="email">
-      <button type="submit" class="g-btn g-btn--solid">Read along</button>
-    </form>
-    <p class="g-journal__note">A few times a year, when there is something worth sending. Unsubscribe in one click.</p>
-  </div>
-</div></section>
-
-
-<div class="g-wrap">
-  <p class="g-devise">
-    <span class="g-devise__fr">« Un centimètre, c'est une bonne matinée. »</span>
-    <span class="g-devise__en">A centimetre is a good morning</span>
-  </p>
-</div>
-
-
 
 <!-- ============ HOW A ROOM IS BROUGHT BACK ============ -->
 <section class="g-sec g-sec--sand" data-fold><div class="g-wrap">
   <p class="g-fr">Comment on reprend une pièce<span class="g-fr__en">How a room is taken back</span></p>
   <p class="g-eyebrow">The Actual Sequence</p>
   <h2 class="g-place">Seven Steps, In This Order</h2>
-  <p class="g-p">Every finished room went through these, in this order, and the order is not negotiable — doing any of them early undoes the one before.</p>
+  <p class="g-p">Every room now open to guests went through these, in this order, and the order is not negotiable — doing any of them early undoes the one before.</p>
 
   <ol class="g-steps" data-steps>
     <li><button type="button" class="g-steps__b is-on" data-step="1"><span class="g-steps__n">1</span>Record</button></li>
@@ -700,33 +570,6 @@
 
 
 
-<!-- ============ WHERE IT IS POSTED FIRST ============ -->
-<section class="g-sec"><div class="g-wrap g-insta">
-  <p class="g-fr">Au jour le jour<span class="g-fr__en">Day by day</span></p>
-  <p class="g-eyebrow">Before It Reaches Here</p>
-  <h2 class="g-place">The Work, As It Happens</h2>
-  <p class="g-p g-lede-first">What comes off a wall goes out the same week. This page is the edited version; the account is the unedited one, and rooms are usually spoken for before they reach the booking page.</p>
-  <p class="g-p">
-    <a href="https://www.instagram.com/chateaugudanes/" class="g-btn g-btn--solid" rel="me noopener">Instagram</a>
-    <a href="https://www.facebook.com/chateaugudanes/" class="g-btn" rel="me noopener">Facebook</a>
-  </p>
-  <p class="g-limit"><span class="g-limit__k">If you would rather not</span>The journal goes out a few times a year by email, and carries the same things without an account.</p>
-</div></section>
-
-<!-- ============ THE CLOSE ============ -->
-<section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Scaffolding in an unfinished room" loading="lazy">
-  <h2 class="g-close__h">The work continues because people come</h2>
-  <p class="g-close__p">A night, a table, a week at an atelier. Then the next room, the next window, the next stretch of fresco.</p>
-  <div class="g-close__acts">
-      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Work on it yourself</a>
-      <a href="{{ url_for('gallery_page') }}" class="g-btn g-btn">See the record</a>
-  </div>
-</div></section>
-
-
-
 {% from '_explorer.html' import restoration_explorer %}
 {% from '_interactive.html' import the_reveal %}
 {{ restoration_explorer(settings) }}
@@ -738,8 +581,8 @@
 <section class="g-sec g-sec--dark g-closer"><div class="g-wrap">
   <p class="g-fr">Restons-en là pour l'instant<span class="g-fr__en">Enough for now</span></p>
   <p class="g-eyebrow">The Part You Can Do</p>
-  <h2 class="g-place">Five Rooms Are Ready</h2>
-  <p class="g-p g-lede-first">The rest of this takes as long as it takes. Five rooms are finished, and they are open now.</p>
+  <h2 class="g-place">Five Rooms Are Open to Guests</h2>
+  <p class="g-p g-lede-first">The rest of this takes as long as it takes. Five rooms are open to guests; the other eighty-nine are the years ahead.</p>
   <p class="g-p">
     <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See the rooms</a>
     <a href="{{ url_for('workshops_public') }}">Or learn a craft here</a>
@@ -766,7 +609,7 @@
       2023:['Ten years','A decade in, and followed from the beginning by Vogue, AD Italia and House and Garden.','Long enough to see what lime does that cement cannot.'],
       2024:['Reversible','New work is done so that it could one day be removed without harming what was there.','The aim is not to return the château to a single moment in time.'],
       2025:['Recorded, not restored','Rooms opened up, photographed and left as found. Some will stay that way for years.','Everything is recorded before anyone touches it.'],
-      2026:['Now','Five rooms ready, one atelier at a time, one event at a time, and eighty-nine rooms still waiting.','It is let to go on, rather than finished.']
+      2026:['Now','Five rooms open to guests, one atelier at a time, one event at a time, and eighty-nine rooms still waiting.','It is let to go on, rather than finished.']
     };
     var R=yr.querySelector('[data-years-range]'),
         Yy=yr.querySelector('[data-years-y]'), Yt=yr.querySelector('[data-years-t]'),
@@ -786,7 +629,7 @@
       3:['Strip','Overpaint, cement render and twentieth-century repairs come off — carefully, because what is underneath is often the thing worth keeping.','Cement was the worst thing done to this building.'],
       4:['Consolidate','What is loose is fixed back rather than replaced. Lime, injected and packed, at about a centimetre a morning on a fresco.','Class I listing means stabilise, not renew.'],
       5:['Floor','Boards lifted, sorted, relaid by hand. Where a board is gone it is replaced with old timber, not new.','The floors are the one surface guests walk on all day.'],
-      6:['Services','Wiring, water and heat, run where they can be run without cutting into anything protected. This is why bathrooms are along the corridor.','Ensuites are not permitted in a monument of this class.'],
+      6:['Services','Wiring, water and heat, run where they can be run without cutting into anything protected. This is why the bathrooms are on the first floor rather than off the bedrooms.','Ensuites are not permitted in a monument of this class.'],
       7:['Furnish','Antique French beds, vintage monogrammed linen, and nothing on the walls that pretends they are finished.','The contrast is the point, not a compromise.']
     };
     var T=st.parentElement.querySelector('[data-steps-t]'),

@@ -29,7 +29,7 @@ you a working private URL. Everything after that is optional and can wait.
    recovery configured yet, so this is the only way in. Save it, log in,
    change it immediately.
 6. **Set `PUBLIC_BASE_URL`** to the address Railway gives you (e.g.
-   `https://cdg1-production.up.railway.app`, no trailing slash). Links inside
+   `https://cdg1-production-9186.up.railway.app`, no trailing slash). Links inside
    automated email have nothing to point at until you do.
 7. **Then, in whatever order suits you**: real email (`RESEND_API_KEY`),
    live payments (`STRIPE_*`), a custom domain, the Vault key, the scheduled
@@ -86,9 +86,21 @@ Leave `stripe listen` running in its own window, then pay with test card
 
 **In production the webhook secret is different and stable**: create the
 endpoint at Dashboard → Developers → Webhooks pointing at
-`https://<your-domain>/webhooks/stripe` for the `checkout.session.completed`
-event, and use the secret it gives you. That one *does* belong in your hosting
-platform's environment variables.
+`https://<your-domain>/webhooks/stripe`, and use the secret it gives you. That
+one *does* belong in your hosting platform's environment variables. Send it
+these events:
+
+- `checkout.session.completed` and `checkout.session.async_payment_succeeded`
+  / `checkout.session.async_payment_failed` — payments arriving
+- `charge.refunded`, `refund.created`, `refund.updated` and `refund.failed` — a
+  refund made in Stripe's own dashboard reaches the books, and one that fails
+  after Stripe accepted it is booked back
+- `charge.dispute.created`, `charge.dispute.updated` and
+  `charge.dispute.closed` — a card dispute becomes a task with its deadline,
+  and a lost one a refund in the record
+
+Without the refund and dispute events nothing breaks, but money that leaves
+through Stripe other than by the refund page goes unseen here.
 
 Why the webhook matters: the booking is created both when the guest returns
 from Stripe *and* by the webhook, so a guest who pays and immediately closes
@@ -96,6 +108,16 @@ the browser still gets their booking. A unique index on the Stripe session id
 means those two paths can never produce a duplicate.
 
 ---
+
+> **THE LIVE SITE IS `cdg1-production-9186.up.railway.app`.**
+>
+> There are two Railway services deploying this repo and their names
+> differ by four digits. `cdg1-production.up.railway.app` — no 9186 —
+> is the other one: it has **no volume**, so its database is wiped on
+> every deploy, and it can be running old code while the real site is
+> current. Checking the wrong one has now cost two afternoons; the
+> giveaway is `/status`, which answers on the real one and 404s on a
+> stale build.
 
 ## Option A — Railway (easiest, ~10 minutes, free tier works for this size)
 
@@ -134,13 +156,28 @@ Railway takes a folder of code and gives you a live URL. No server management.
      If both are set, Resend takes priority. Without either set, the app
      runs exactly as it does today: no emails sent, guests get their
      reference code/link on screen only.
+
+     **Put these on Railway, not in the `.env` on a development machine.**
+     The local database is a copy of the real one, with real guest addresses
+     in it, and the nightly jobs send — balance reminders, review
+     invitations, the daily summary. A key in a local `.env` means the next
+     `python app.py` on a laptop writes to actual guests from the château's
+     verified domain. (The test suite is safe either way: `tests/_harness.py`
+     blanks the key, replaces the transport with one that raises, and asserts
+     both before a single test runs.)
+
+     Once it is set, prove it before it carries anything: **Emails → Held
+     email → "Send a test message to myself"**. It goes to your own address
+     and nowhere else, and if the provider refuses it the page shows the
+     reason Resend gave — "the domain is not verified", "the from address is
+     not on the domain" — rather than a log line nobody reads.
    - **To turn on real payment collection at booking time**: `STRIPE_SECRET_KEY`
      and `STRIPE_PUBLISHABLE_KEY` from your Stripe Dashboard → Developers →
      API keys (use the test-mode keys first to try it safely, live keys once
      you're ready for real charges). Also add `STRIPE_WEBHOOK_SECRET` from
      Dashboard → Developers → Webhooks — point the webhook at
-     `https://<your-domain>/webhooks/stripe` listening for the
-     `checkout.session.completed` event; this is what reliably creates the
+     `https://<your-domain>/webhooks/stripe` listening for the events listed
+     under "In production" above; this is what reliably creates the
      booking even if a guest closes their browser right after paying, before
      they'd otherwise land back on your site. Without these set, booking stays
      the current request-only flow with no payment step.
@@ -159,7 +196,7 @@ Railway takes a folder of code and gives you a live URL. No server management.
      somewhere separate from the database (a password manager's secure notes,
      for instance). Without it set, the Vault page just says it isn't
      configured yet.
-5. Railway gives you a URL like `gudanes-hr.up.railway.app`
+5. Railway gives you a URL like `cdg1-production-9186.up.railway.app`
 6. **Point your own domain at it** (optional but nicer): in Railway, add a
    custom domain like `staff.chateaugudanes.com`, then add the DNS record
    Railway gives you into your Squarespace domain settings
@@ -177,10 +214,75 @@ one variable:
 GUDANES_DB_PATH=/data/gudanes_hr.db
 ```
 
-That single setting moves all three: uploads and room photos default to
-sitting beside the database, so they follow it onto the volume. (They can be
-split out with `GUDANES_UPLOAD_DIR` and `GUDANES_ROOM_PHOTO_DIR` if you ever
-want them elsewhere, but there's no reason to.)
+That single setting moves all of them: uploads, room photos and the resized
+copies of photographs all default to sitting beside the database, so they
+follow it onto the volume. (They can be split out with `GUDANES_UPLOAD_DIR`,
+`GUDANES_ROOM_PHOTO_DIR` and `GUDANES_PHOTO_SIZE_DIR` if you ever want them
+elsewhere, but there's no reason to.)
+
+The resized copies are the one folder here that can be safely deleted: every
+size is made from the master on first ask and kept, so losing them costs one
+slow page load each and nothing else. They are on the volume because making
+them again on every view is wasteful, not because they are precious.
+
+**Photographs from the camera.** The GH5 sends over Wi-Fi to a shared folder
+on a machine at the house — Wi-Fi Function, New Connection, *Send Images
+Stored in the Camera*, then PC, so only the frames picked on the camera's own
+screen are sent. Nothing about that can reach Railway, so `tools/photo_watcher.py`
+runs on that machine and forwards what lands to `/api/photographs`. It is
+stdlib only, so it runs on whatever Python is already there.
+
+Its token is generated on first boot and lives in `app_settings` under
+`camera_ingest_token`. Read it out of the database and paste it into
+`tools/photo_watcher.ini` beside the script — never into chat or email:
+
+```
+[watcher]
+folder = C:/LumixDrop
+url = https://<the château>/api/photographs
+token = <from app_settings>
+every = 20
+```
+
+`--once` does a single pass, which is the way to test the setup. The watcher
+never deletes anything: the drop folder belongs to the camera, and tidying it
+is a person's decision.
+
+**Publishing to Instagram and the Page.** No App Review, and nobody at Meta
+approves anything: the house posts to its own accounts, which Standard Access
+covers. What it needs:
+
+1. The Instagram account set to **Business** and linked to the Facebook Page.
+2. A Meta app at developers.facebook.com, of type Business. Its **App ID** and
+   **App secret** are under *App settings → Basic*.
+3. A token from the **Graph API Explorer**: pick the app, *Get User Access
+   Token*, and tick the permissions the connect page lists. They are kept in
+   one place, `META_PERMISSIONS_TO_TICK` in `app.py`, so the page and this
+   note cannot disagree.
+4. The Page ID, the Instagram user ID, the token, the App ID and the App
+   secret go into the connect page (`/management/social/connect`, linked from
+   the social list). Save.
+
+Saving asks Meta about the token straight away and swaps it for the Page's own
+token, which Meta's documentation says has no expiration date. It has to be
+straight away: the Explorer's token lasts about an hour. After that the
+`meta_token` job asks Meta about it every day. A token Meta says is dead is a
+blocker on the owner home, and a day Meta cannot be reached is recorded as a
+failed run, so two in a row become a task.
+
+Then approve one post and press **Publish now**, which proves the whole chain,
+and only then switch publishing on under Automation. It stays off until
+somebody does.
+
+The one thing that still needs a person: Meta's data access lapses 90 days
+after whoever made the token last authorised the app, and Instagram's two
+permissions are not on Meta's list of those that survive it (the Page's are).
+The owner home says so two weeks ahead, by Meta's own date. The fix is step 3
+again and a paste; the app does the rest.
+
+The token and the secret are held in the database, shown only by their last
+four characters and never written to the audit trail. Being in the database,
+they are in every backup of it, so keep the backups as safe as the keys.
 
 **How production actually runs.** `python app.py` is the development server
 and is not used here. Railway reads `Procfile`, which starts gunicorn against

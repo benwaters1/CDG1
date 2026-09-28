@@ -48,27 +48,27 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="refund-fields">
       <div>
-        <label class="field-label">Job role</label>
-        <input type="text" name="job_role" list="known-roles" required placeholder="e.g. Housekeeping">
+        <label class="field-label" for="admin_compliance-job-role">Job role</label>
+        <input id="admin_compliance-job-role" type="text" name="job_role" list="known-roles" required placeholder="e.g. Housekeeping">
         <datalist id="known-roles">
           {% for r in known_roles %}<option value="{{ r }}">{% endfor %}
         </datalist>
       </div>
       <div>
-        <label class="field-label">Requires</label>
-        <input type="text" name="requirement" required placeholder="e.g. Food hygiene">
+        <label class="field-label" for="admin_compliance-requirement">Requires</label>
+        <input id="admin_compliance-requirement" type="text" name="requirement" required placeholder="e.g. Food hygiene">
         <span class="upload-hint">Match the name as it's entered on their profile.</span>
       </div>
       <div>
-        <label class="field-label">Held as</label>
-        <select name="requirement_type">
+        <label class="field-label" for="admin_compliance-requirement-type">Held as</label>
+        <select id="admin_compliance-requirement-type" name="requirement_type">
           <option value="certification">A certification</option>
           <option value="document">A document</option>
         </select>
       </div>
       <div class="refund-reason">
-        <label class="field-label">Note (optional)</label>
-        <input type="text" name="notes" placeholder="Why it's required, renewal interval…">
+        <label class="field-label" for="admin_compliance-notes">Note (optional)</label>
+        <input id="admin_compliance-notes" type="text" name="notes" placeholder="Why it's required, renewal interval…">
       </div>
     </div>
     <button type="submit" class="btn-mini">Add</button>

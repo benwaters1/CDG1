@@ -40,28 +40,28 @@
   <form method="post" action="{{ url_for('new_stock_item') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="refund-fields">
-      <div><label class="field-label">Name</label><input type="text" name="name" required placeholder="e.g. Champagne — Ruinart Brut"></div>
+      <div><label class="field-label" for="admin_stock-name">Name</label><input id="admin_stock-name" type="text" name="name" required placeholder="e.g. Champagne — Ruinart Brut"></div>
       <div>
-        <label class="field-label">Category</label>
-        <select name="category">
+        <label class="field-label" for="admin_stock-category">Category</label>
+        <select id="admin_stock-category" name="category">
           {% for k, v in stock_categories.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
         </select>
       </div>
-      <div><label class="field-label">Unit</label><input type="text" name="unit" value="bottle" placeholder="bottle, kg, each"></div>
-      <div><label class="field-label">How many now</label><input type="text" name="opening_qty" inputmode="decimal" placeholder="0"></div>
+      <div><label class="field-label" for="admin_stock-unit">Unit</label><input id="admin_stock-unit" type="text" name="unit" value="bottle" placeholder="bottle, kg, each"></div>
+      <div><label class="field-label" for="admin_stock-opening-qty">How many now</label><input id="admin_stock-opening-qty" type="text" name="opening_qty" inputmode="decimal" placeholder="0"></div>
       <div>
-        <label class="field-label">Tell me when it drops to</label>
-        <input type="text" name="reorder_level" inputmode="decimal" placeholder="6">
+        <label class="field-label" for="admin_stock-reorder-level">Tell me when it drops to</label>
+        <input id="admin_stock-reorder-level" type="text" name="reorder_level" inputmode="decimal" placeholder="6">
       </div>
-      <div><label class="field-label">Cost each (€)</label><input type="text" name="unit_cost" inputmode="decimal" placeholder="0.00"></div>
+      <div><label class="field-label" for="admin_stock-unit-cost">Cost each (€)</label><input id="admin_stock-unit-cost" type="text" name="unit_cost" inputmode="decimal" placeholder="0.00"></div>
       <div>
-        <label class="field-label">Usual supplier</label>
-        <select name="vendor_id">
+        <label class="field-label" for="admin_stock-vendor-id">Usual supplier</label>
+        <select id="admin_stock-vendor-id" name="vendor_id">
           <option value="">— none —</option>
           {% for v in vendors %}<option value="{{ v['id'] }}">{{ v['name'] }}</option>{% endfor %}
         </select>
       </div>
-      <div><label class="field-label">Where it's kept</label><input type="text" name="location" placeholder="Cellar, cold room"></div>
+      <div><label class="field-label" for="admin_stock-location">Where it's kept</label><input id="admin_stock-location" type="text" name="location" placeholder="Cellar, cold room"></div>
     </div>
     <button type="submit" class="btn-mini">Add</button>
   </form>

@@ -8,9 +8,9 @@
     <h1>Staff Sign In</h1>
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="field-label">Email</label>
-      <input type="email" name="email" required autofocus autocomplete="email">
-      <label class="field-label">Password</label>
+      <label class="field-label" for="login-email">Email</label>
+      <input id="login-email" type="email" name="email" required autofocus autocomplete="email">
+      <label class="field-label" for="login-password">Password</label>
       <div class="password-field">
         <input type="password" name="password" id="login-password" required>
         {{ password_toggle('login-password') }}

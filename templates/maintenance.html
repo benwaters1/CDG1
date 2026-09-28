@@ -93,16 +93,16 @@
       <h3 style="margin-top:0;">Record it done</h3>
       <div class="refund-fields">
         <div><label class="field-label">When</label>
-          <input type="date" name="done_on" value="{{ today.isoformat() }}" required></div>
+          <input aria-label="When" type="date" name="done_on" value="{{ today.isoformat() }}" required></div>
         <div><label class="field-label">Who by</label>
-          <input type="text" name="done_by" placeholder="{{ sc.vendor_name or 'the company or person' }}"></div>
+          <input aria-label="Who by" type="text" name="done_by" placeholder="{{ sc.vendor_name or 'the company or person' }}"></div>
         <div><label class="field-label">Cost (€)</label>
-          <input type="text" name="cost" inputmode="decimal"></div>
+          <input aria-label="Cost (€)" type="text" name="cost" inputmode="decimal"></div>
         <div><label class="field-label">Certificate</label>
-          <input type="file" name="certificate">
+          <input aria-label="Certificate" type="file" name="certificate">
           <p class="field-hint">Kept against this visit, not left in an inbox.</p></div>
         <div style="grid-column:1 / -1;"><label class="field-label">Notes</label>
-          <input type="text" name="notes"></div>
+          <input aria-label="Notes" type="text" name="notes"></div>
       </div>
       <button type="submit" class="btn-primary" style="margin-top:8px;">
         Done — next one falls {{ sc.every_months }} month{{ '' if sc.every_months == 1 else 's' }} later

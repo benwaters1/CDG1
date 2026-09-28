@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Put this on the site{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Put this photograph on the site</h1>
+  <a href="{{ url_for('photo_tray') }}" class="btn-mini">Back to the tray</a>
+  <a href="{{ url_for('site_photographs') }}" class="btn-mini">What has been swapped</a>
+</div>
+
+<div class="use-on-site__yours">
+  <img src="{{ url_for('photo_at_size', size='web', filename=arrival['filename']) }}"
+       alt="{{ arrival['original_name'] or 'The photograph you chose' }}"
+       width="320" height="240">
+  <div>
+    <p><strong>{{ arrival['original_name'] or 'From the camera' }}</strong></p>
+    <p class="g-muted">
+      {% if arrival['taken_on'] %}Taken {{ arrival['taken_on'] }}.{% endif %}
+      Choose the picture on the site it should replace. Nothing is edited in
+      any template — the swap is made as the page is sent, so it survives the
+      next handover from the design side, and it can be put back at any time.
+    </p>
+  </div>
+</div>
+
+<h2>The site's photographs</h2>
+<p class="g-muted">
+  {{ choices|length }} in all, read out of the templates rather than a list, so
+  one added last week is here too.
+</p>
+
+<div class="site-grid">
+  {% for url in choices %}
+  <figure class="site-item{{ ' is-swapped' if url in swapped }}">
+    <img src="{{ swapped[url] if url in swapped else url }}"
+         alt="A photograph currently on the site" loading="lazy"
+         width="180" height="135">
+    <figcaption>
+      {% if url in swapped %}
+      <span class="site-item__state">Already one of ours</span>
+      {% endif %}
+      <form method="post" action="{{ url_for('arrival_to_site', arrival_id=arrival['id']) }}"
+            onsubmit="return confirm('Replace this picture on the public site?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="source_url" value="{{ url }}">
+        <button type="submit" class="g-btn g-btn--solid btn-mini">
+          {{ 'Replace this one' if url not in swapped else 'Replace it again' }}
+        </button>
+      </form>
+    </figcaption>
+  </figure>
+  {% endfor %}
+</div>
+
+<style>
+  .use-on-site__yours {
+    display: flex; gap: var(--s3, 1rem); align-items: flex-start;
+    flex-wrap: wrap; margin-bottom: var(--s4, 1.5rem);
+  }
+  .use-on-site__yours img {
+    width: 320px; max-width: 100%; height: auto; border-radius: 4px;
+  }
+  .use-on-site__yours > div { flex: 1; min-width: 240px; }
+  .site-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: var(--s3, 1rem);
+  }
+  .site-item { margin: 0; }
+  .site-item img {
+    width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover;
+    border-radius: 4px; background: rgba(0, 0, 0, .04); display: block;
+  }
+  .site-item.is-swapped img { outline: 2px solid var(--steel, #6b7f8f); }
+  .site-item figcaption { padding-top: .4rem; font-size: .85rem; }
+  .site-item__state { display: block; color: var(--muted, #6b6b6b); font-style: italic; }
+  @media (pointer: coarse) { .site-item .btn-mini { min-height: 44px; } }
+</style>
+{% endblock %}

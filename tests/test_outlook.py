@@ -108,6 +108,13 @@ def _booking(ref, arrival, total, paid, status="confirmed"):
         (room["id"], f"{TAG}-{ref}", f"tok{TAG}{ref}", f"{TAG} Guest {ref}",
          arrival.isoformat(), (arrival + timedelta(days=2)).isoformat(), status,
          total, paid, datetime.now(timezone.utc).isoformat()))
+    # Stamped, as create_booking stamps every real booking. The outlook reads
+    # booking_bill now, which trusts the stamp and falls back to the rate card
+    # without one -- so an unstamped fixture's total_price was read as whatever
+    # the card says those nights cost.
+    conn.execute("UPDATE bookings SET room_total_quoted = total_price, "
+                 "room_total_quoted_for = arrival_date || '|' || departure_date "
+                 "WHERE reference_code = ?", (f"{TAG}-{ref}",))
     conn.commit()
     conn.close()
 

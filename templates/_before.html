@@ -59,11 +59,18 @@
     {% elif dep %}
     <div><dt>To hold the dates</dt><dd>{{ dep }}% now. The balance is due before you arrive, not on the day</dd></div>
     {% else %}
-    <div><dt>To hold the dates</dt><dd>Nothing is taken to hold them. The stay is paid in full once we confirm the booking</dd></div>
+    <div><dt>To hold the dates</dt><dd>No deposit. The stay is paid in full, and the booking is confirmed at once</dd></div>
     {% endif %}
     {% if mn %}<div><dt>Minimum stay</dt><dd>{{ mn }} night{{ '' if mn == 1 else 's' }}{% if settings and settings['min_nights_peak'] %}, {{ settings['min_nights_peak'] }} in July and August{% endif %}</dd></div>{% endif %}
-    <div><dt>Free cancellation</dt><dd>Up to {{ (settings['free_cancel_days'] if settings and settings['free_cancel_days'] else 30)|int }} days before arrival</dd></div>
-    <div><dt>Nothing is taken now</dt><dd>You are sending a request. We confirm it, and only then does anything leave your account</dd></div>
+    {#- THE POLICY, NOT A SETTING. This line read "Free cancellation: up to 30
+        days before arrival", from a free_cancel_days that nothing has ever
+        written, so it always fell back to 30 -- on the page that also says
+        Non-refundable, in the panel a guest reads before paying. The line
+        after it said "You are sending a request... only then does anything
+        leave your account", on a house that takes bookings and charges the
+        card at once. Same words as the panel further down, on purpose: one
+        policy, said once, translated once. test_booking_journey holds it. -#}
+    <div><dt>Cancellation</dt><dd>Non-refundable. Write to us and we can sometimes move your dates instead</dd></div>
   </dl>
 </div>
 {% endmacro %}
@@ -79,7 +86,7 @@
     <div><dt>A layer more than you think</dt><dd>Stone walls a metre thick hold the cold as well as the heat. Warm in August, genuinely cold in the unrestored rooms in winter</dd></div>
     <div><dt>Shoes for the valley</dt><dd>The parkland, the drive and anything at Montségur or Beille. Not for the house — the floors are new</dd></div>
     <div><dt>A torch, if you wake in the night</dt><dd>Electricity is limited by design. There is light where you need it and not much beyond that</dd></div>
-    <div><dt>Whatever you take for an allergy</dt><dd>Six cats, two dogs and an old house with open doors</dd></div>
+    <div><dt>Whatever you take for an allergy</dt><dd>Four cats, a French bulldog and an old house with open doors</dd></div>
     <div><dt>Cash for the markets</dt><dd>Most stalls at Les Cabannes and Mirepoix do not take cards</dd></div>
     <div><dt>Not a hairdryer or an adaptor</dt><dd>Both are in the rooms. European sockets, and towels and linen are ours</dd></div>
   </dl></div></div>
@@ -102,7 +109,7 @@
       <p class="g-arrive__p">Not at a desk. We will have your arrival time from the booking, and whoever is on that day will come out to the steps. If nobody appears within a minute or two, the number on your confirmation rings a phone in the kitchen.</p></div></li>
     <li><span class="g-arrive__n">3</span><div>
       <h3 class="g-arrive__t">Your bags go up, and so do you</h3>
-      <p class="g-arrive__p">There is no lift and the original staircase is the only way to the first floor. Tell us in advance if that is a problem and we will put you on the ground floor.</p></div></li>
+      <p class="g-arrive__p">There is no lift. Every bedroom is upstairs and the bathrooms are downstairs, so the original staircase is part of every stay, day and night. If stairs are difficult for anyone in your party, tell us before you book and we will talk it through honestly.</p></div></li>
     <li><span class="g-arrive__n">4</span><div>
       <h3 class="g-arrive__t">Then you are left alone</h3>
       <p class="g-arrive__p">Tea, coffee and the salons are yours from the moment you arrive. Dinner, if it is running that night, is at {{ settings['dinner_time'] if settings and settings['dinner_time'] else 'eight' }}. Nobody will knock.</p></div></li>

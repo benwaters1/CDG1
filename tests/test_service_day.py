@@ -172,14 +172,36 @@ def run():
     s.section("Tonight's card is the one being served")
     # At 02:00 the chef opening the menu page wants the card on the pass, not
     # an empty tomorrow. Testing that at whatever o'clock the suite happens to
-    # run would prove nothing — for most of the day the two dates agree. So
-    # push the rollover past now, which makes the service day yesterday, and
-    # the page has to follow it rather than the calendar.
-    original_hour = m.POS_SERVICE_ROLLOVER_HOUR
+    # run would prove nothing, because for most of the day the two dates agree.
+    #
+    # THE CLOCK IS PINNED RATHER THAN THE ROLLOVER MOVED. This used to set
+    # POS_SERVICE_ROLLOVER_HOUR = 23 to "push the rollover past now", which
+    # works for twenty-three hours a day and cannot work for the twenty-fourth:
+    # at 23:xx there is no hour left to push it to, so the service day and the
+    # calendar day are necessarily the same and the check's own premise fails.
+    # The suite went red for an hour every night, and a test that fails once a
+    # day is one everybody learns to scroll past.
+    #
+    # Pinning 02:00 tests the REAL configured rollover at the real hour the
+    # paragraph above describes, instead of bending the setting until today's
+    # clock happens to disagree with itself.
+    real_datetime = m.datetime
+
+    class _At0200(m.datetime):
+        """now() pinned to 02:00 in the Ariège, tz-aware for either zone."""
+
+        _at = None
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls._at.astimezone(tz) if tz else cls._at.replace(tzinfo=None)
+
+    _At0200._at = (datetime.now(timezone.utc).astimezone(PARIS)
+                   .replace(hour=2, minute=0, second=0, microsecond=0))
     try:
-        m.POS_SERVICE_ROLLOVER_HOUR = 23
+        m.datetime = _At0200
         wanted = m.service_day_iso()
-        calendar_today = datetime.now(timezone.utc).astimezone(PARIS).date().isoformat()
+        calendar_today = _At0200._at.date().isoformat()
         s.check("the two dates genuinely differ, so this proves something",
                 wanted != calendar_today, detail=f"{wanted} vs {calendar_today}")
         r = oc.get("/admin/restaurant/menu/day")
@@ -195,7 +217,7 @@ def run():
                 r.status_code == 200 and wanted.encode() in r.data,
                 detail=str(r.status_code))
     finally:
-        m.POS_SERVICE_ROLLOVER_HOUR = original_hour
+        m.datetime = real_datetime
 
     _cleanup(conn)
     conn.close()

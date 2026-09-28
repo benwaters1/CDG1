@@ -56,6 +56,34 @@ self.addEventListener('fetch', function(event) {
   // has to be current; the offline page appears only when the network really
   // is not there.
   if (request.mode === 'navigate') {
+    // THE ONE EXCEPTION, and it is a short list on purpose. The shopping list
+    // is read in a supermarket an hour and three quarters away with no signal,
+    // which is the whole reason it exists as its own page — and it is the only
+    // page here with nothing personal on it. A cached page lives on a device
+    // that goes in a van and gets left in a car park; a cached guest allergy
+    // would be a copy of a medical note in a car park, which is not what the
+    // privacy notice says the house does with them.
+    //
+    // Still network FIRST. The copy is a fallback for no signal, never a
+    // shortcut past a list somebody has since added to, and the page carries
+    // the time it was fetched so a stale one is obvious rather than quietly
+    // wrong.
+    if (new URL(request.url).pathname === '/chef/shopping') {
+      event.respondWith(
+        fetch(request).then(function(response) {
+          if (response && response.ok) {
+            var copy = response.clone();
+            caches.open(CACHE).then(function(cache) { cache.put(request, copy); });
+          }
+          return response;
+        }).catch(function() {
+          return caches.match(request).then(function(page) {
+            return page || caches.match('/static/offline.html');
+          });
+        })
+      );
+      return;
+    }
     event.respondWith(
       fetch(request).catch(function() {
         return caches.match('/static/offline.html').then(function(page) {

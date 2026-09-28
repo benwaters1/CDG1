@@ -162,35 +162,35 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="refund-fields">
       <div>
-        <label class="field-label">Who</label>
-        <select name="user_id" required>
+        <label class="field-label" for="admin_wages-user-id">Who</label>
+        <select id="admin_wages-user-id" name="user_id" required>
           <option value="">— choose —</option>
           {% for p in people %}<option value="{{ p['id'] }}">{{ p['name'] }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label class="field-label">Paid by</label>
-        <select name="basis" required>
+        <label class="field-label" for="admin_wages-basis">Paid by</label>
+        <select id="admin_wages-basis" name="basis" required>
           <option value="hourly">The hour</option>
           <option value="monthly">The month</option>
         </select>
       </div>
       <div>
-        <label class="field-label">Gross amount (€)</label>
-        <input type="text" name="gross_amount" inputmode="decimal" placeholder="12.50" required>
+        <label class="field-label" for="admin_wages-gross-amount">Gross amount (€)</label>
+        <input id="admin_wages-gross-amount" type="text" name="gross_amount" inputmode="decimal" placeholder="12.50" required>
       </div>
       <div>
-        <label class="field-label">Starts from</label>
-        <input type="date" name="effective_from" required>
+        <label class="field-label" for="admin_wages-effective-from">Starts from</label>
+        <input id="admin_wages-effective-from" type="date" name="effective_from" required>
       </div>
       <div>
-        <label class="field-label">Employer contributions (%)</label>
-        <input type="text" name="employer_rate" inputmode="decimal"
+        <label class="field-label" for="admin_wages-employer-rate">Employer contributions (%)</label>
+        <input id="admin_wages-employer-rate" type="text" name="employer_rate" inputmode="decimal"
                placeholder="blank uses {{ '%g'|format(employer_rate) }}%">
       </div>
       <div>
-        <label class="field-label">Note</label>
-        <input type="text" name="note" placeholder="e.g. end of trial period">
+        <label class="field-label" for="admin_wages-note">Note</label>
+        <input id="admin_wages-note" type="text" name="note" placeholder="e.g. end of trial period">
       </div>
     </div>
     <button type="submit" class="btn-mini">Record it</button>
@@ -208,8 +208,8 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="refund-fields">
       <div>
-        <label class="field-label">Employer contributions, % of gross</label>
-        <input type="text" name="employer_contribution_percent" inputmode="decimal"
+        <label class="field-label" for="admin_wages-employer-contribution-percent">Employer contributions, % of gross</label>
+        <input id="admin_wages-employer-contribution-percent" type="text" name="employer_contribution_percent" inputmode="decimal"
                value="{{ '%g'|format(employer_rate) }}">
       </div>
     </div>

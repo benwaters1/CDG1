@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Front door{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Front door</h1>
+  <a href="{{ url_for('arrivals_sheet_page') }}" class="small-link" style="color:var(--steel);">Arrivals →</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The Nivian lock on the front door has no keypad, so there is no code to give anybody.
+  Guests open it from their phone instead, on their stay's own page, and only while their stay
+  is on. Every guest should still be given a remote — the lock takes up to ten — in case the
+  internet, the batteries or Tuya let them down.
+</p>
+
+{% if problem %}
+<div class="alert-band" style="margin-bottom:12px;"><strong>{{ problem }}</strong></div>
+{% endif %}
+
+{# ---- the lock ------------------------------------------------------------ #}
+<div class="detail-card" style="margin-bottom:16px;">
+  {% if not status.connected %}
+  <p style="margin:0;"><strong>Not connected yet.</strong> The site reaches the lock through Tuya,
+    the service behind the Smart Life app. Until it is connected, nothing here can open the door
+    and guests are not offered the button.</p>
+  {% elif not status.ready %}
+  <p style="margin:0;"><strong>Connected to Tuya — now say which lock is the front door.</strong>
+    The device ID is in the Smart Life app: open the lock, tap the pencil at the top right, then
+    <em>Device information</em> (it is the <em>Virtual ID</em>).</p>
+  {% elif status.error %}
+  <p style="margin:0;"><strong>The lock could not be reached:</strong> {{ status.error }}</p>
+  {% else %}
+  <dl class="door-facts">
+    <div><dt>Lock</dt><dd>{{ status.name or status.device_id }}</dd></div>
+    <div><dt>Online</dt><dd>{{ 'Yes' if status.online else 'No — no Wi-Fi, or flat batteries' }}</dd></div>
+    <div><dt>Batteries</dt><dd>{% if status.battery is not none %}{{ status.battery }}%{% elif status.battery_word %}{{ status.battery_word }}{% else %}not reported{% endif %}{% if status.battery_low %} — <strong>low</strong>{% endif %}</dd></div>
+    <div><dt>Door</dt><dd>{% if status.door_open is none %}not reported{% elif status.door_open %}open{% else %}shut{% endif %}</dd></div>
+    <div><dt>Opening without a code</dt><dd>
+      {%- if status.remote and status.remote.get('error') %}the lock did not say ({{ status.remote['error'] }})
+      {%- elif status.remote and status.remote.get('open') %}switched on
+      {%- elif status.remote %}<strong>switched off</strong> — turn remote unlocking on in the Smart Life app
+      {%- else %}the lock did not say{% endif %}</dd></div>
+  </dl>
+  {% if status.codes %}
+  <details style="margin-top:8px;"><summary class="door-sum">What the lock reports</summary>
+    <p class="upload-hint" style="margin:6px 0 0;">{{ status.codes|join(', ') }}</p>
+  </details>
+  {% endif %}
+  <form method="post" action="{{ url_for('open_door_now') }}" style="margin-top:12px;"
+        onsubmit="return confirm('Open the front door now?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-primary">Open the front door now</button>
+    <span class="upload-hint">For a delivery, or a guest at the door. It is recorded below.</span>
+  </form>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('save_door_settings') }}" class="door-settings">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div>
+      <label class="field-label" for="door-device">Lock's device ID</label>
+      <input id="door-device" type="text" name="device_id" value="{{ status.device_id }}" maxlength="40"
+             autocomplete="off" spellcheck="false" placeholder="from the Smart Life app">
+    </div>
+    <div>
+      <label class="field-label" for="door-opens">Opens on the day they arrive</label>
+      <input id="door-opens" type="time" name="opens" value="{{ settings.opens }}" required>
+    </div>
+    <div>
+      <label class="field-label" for="door-closes">Closes on the day they leave</label>
+      <input id="door-closes" type="time" name="closes" value="{{ settings.closes }}" required>
+    </div>
+    <label class="door-check"><input type="checkbox" name="guest_access" value="1" {{ 'checked' if settings.guest_access }}>
+      Guests may open the door from their phone</label>
+    <button type="submit" class="btn-mini">Save</button>
+  </form>
+
+  <details style="margin-top:12px;">
+    <summary class="door-sum">Connecting the lock to the site</summary>
+    <ol class="upload-hint" style="margin:8px 0 0 18px; line-height:1.7;">
+      <li>At <strong>iot.tuya.com</strong>, create a free account, then <em>Cloud → Development →
+        Create Cloud Project</em>: any name, industry <em>Smart Home</em>, data centre
+        <em>Central Europe</em>. Add the <em>Smart Lock Open Service</em> API when it asks.</li>
+      <li>In the project, <em>Devices → Link Tuya App Account</em>, and scan the code with the
+        Smart Life app (<em>Me</em> → the scan icon at the top). The lock appears in the list.</li>
+      <li>From the project's <em>Overview</em>, put the <em>Access ID</em> and <em>Access Secret</em>
+        into Railway as <code>TUYA_ACCESS_ID</code> and <code>TUYA_ACCESS_SECRET</code>
+        (and <code>TUYA_REGION</code> = <code>{{ region }}</code> for Central Europe). They are
+        a key to the house — Railway only, never in an email.</li>
+      <li>Copy the lock's device ID into the box above, and in the Smart Life app switch
+        <em>remote unlocking</em> on for the lock.</li>
+      <li>Tuya's free plan runs six months at a time: when it lapses, <em>Cloud → My Services →
+        Extend trial period</em> (a short form, approved in a day or two). The site warns you
+        if the lock stops answering.</li>
+    </ol>
+  </details>
+</div>
+
+{# ---- who can open it ----------------------------------------------------- #}
+<h2 class="section-heading">Stays, and whether they can open the door</h2>
+<p class="upload-hint">Now and the next fortnight. A stay's door link is its key while the stay is
+  on — anyone holding it could open the door then — so a stay can be switched off here. At most
+  {{ rate[0] }} openings in {{ rate[1] }} minutes from one stay.</p>
+{% if not stays %}
+<div class="empty-state">Nobody is staying, or arriving in the next fortnight.</div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Guest</th><th>Room</th><th>Stay</th><th>The door</th><th>Their link</th><th></th></tr></thead>
+  <tbody>
+  {% for st in stays %}
+  <tr id="stay-{{ st.kind }}-{{ st.id }}">
+    <td>{{ st.guest_name or '—' }}{% if st.channel %}<br><span class="upload-hint">{{ st.channel }} · {{ st.reference }}</span>{% endif %}</td>
+    <td>{{ st.room_name or '—' }}</td>
+    <td>{{ date_range(st.arrival_date, st.departure_date) }}</td>
+    <td>{% if st.access.can_open %}<span class="mini-status status-confirmed">can open it now</span>
+        {% else %}<span class="upload-hint">{{ st.access.message }}</span>{% endif %}</td>
+    <td>
+      {%- if st.link %}<input type="text" readonly value="{{ st.link }}" class="door-link" aria-label="Door link for {{ st.guest_name }}" onclick="this.select()">
+        {%- if st.channel %}<br><span class="upload-hint">Send it in a Booking.com message. It only gets through if chateaugudanes.com is on your approved links in the extranet.</span>{% endif %}
+      {%- elif st.channel %}
+      <form method="post" action="{{ url_for('make_channel_door_link', reservation_id=st.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini">Make a door link</button>
+      </form>
+      {%- endif %}
+    </td>
+    <td>
+      <form method="post" action="{{ url_for('set_stay_door_access') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="kind" value="{{ st.kind }}">
+        <input type="hidden" name="id" value="{{ st.id }}">
+        <input type="hidden" name="off" value="{{ '0' if st.off else '1' }}">
+        <button type="submit" class="btn-mini {{ '' if st.off else 'btn-ghost' }}">{{ 'Switch back on' if st.off else 'Switch off' }}</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{# ---- every opening -------------------------------------------------------- #}
+<h2 class="section-heading">Every time the site opened the door</h2>
+<p class="upload-hint">Kept {{ keep_months }} months, then deleted, as the privacy notice says.
+  Openings with the remotes or the Smart Life app are the lock's own and are not here.</p>
+{% include "_list_toolbar.html" %}
+{% if not rows %}
+<div class="empty-state">{% if lv.filtered %}Nothing matches that. <a href="{{ url_for('door_lock_page') }}">Show all {{ lv.total }}</a>{% else %}The site has not opened the door yet.{% endif %}</div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>When</th><th>Who</th><th>How</th><th>Result</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r['opened_at']|house_when }}</td>
+    <td>{{ who(r) }}</td>
+    <td>{{ labels.get(r['via'], r['via']) }}</td>
+    <td>{% if r['ok'] %}<span class="mini-status status-confirmed">opened</span>
+        {% else %}<span class="mini-status status-declined">did not open</span>
+        {% if r['detail'] %}<br><span class="upload-hint">{{ r['detail'] }}</span>{% endif %}{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<style>
+.door-facts{ display:flex; flex-wrap:wrap; gap:6px 22px; margin:0; font-size:14px; }
+.door-facts div{ display:flex; gap:6px; }
+.door-facts dt{ color:var(--steel); }
+.door-facts dd{ margin:0; font-weight:600; }
+.door-settings{ display:flex; flex-wrap:wrap; gap:10px 16px; align-items:flex-end; margin-top:14px;
+  padding-top:12px; border-top:1px dashed var(--parchment-line); }
+.door-check{ display:flex; gap:6px; align-items:center; }
+.door-link{ width:100%; min-width:220px; font-size:12px; }
+.door-sum{ cursor:pointer; }
+@media (pointer: coarse){ .door-sum{ padding:10px 0; } }
+</style>
+{% endblock %}

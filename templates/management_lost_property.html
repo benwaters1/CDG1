@@ -20,11 +20,11 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <h2 class="section-heading">Something was left behind</h2>
   <div class="field-row-2">
-    <input type="text" name="what" placeholder="What it is" required>
+    <input aria-label="What it is" type="text" name="what" placeholder="What it is" required>
     <input type="date" name="found_on" value="{{ today }}">
   </div>
   <div class="field-row-2">
-    <input type="text" name="found_where" placeholder="Where it was found">
+    <input aria-label="Where it was found" type="text" name="found_where" placeholder="Where it was found">
     <select name="booking_id">
       <option value="">Whose stay, if known</option>
       {% for b in recent %}
@@ -33,8 +33,8 @@
     </select>
   </div>
   <div class="field-row-2">
-    <input type="text" name="guest_name" placeholder="Or a name, if the stay is not listed" autocomplete="name" spellcheck="false" autocapitalize="words">
-    <input type="text" name="guest_contact" placeholder="How to reach them">
+    <input aria-label="Or a name, if the stay is not listed" type="text" name="guest_name" placeholder="Or a name, if the stay is not listed" autocomplete="name" spellcheck="false" autocapitalize="words">
+    <input aria-label="How to reach them" type="text" name="guest_contact" placeholder="How to reach them">
   </div>
   <button type="submit" class="btn-mini">Into the drawer</button>
 </form>

@@ -28,7 +28,7 @@
       <form method="post" action="{{ url_for('edit_company_document', doc_id=d['id']) }}" id="edit-doc-{{ d['id'] }}" class="search-bar" style="display:none; margin-top:6px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div style="flex:1;">
-          <input type="text" name="title" value="{{ d['title'] }}" placeholder="Title" required>
+          <input aria-label="Title" type="text" name="title" value="{{ d['title'] }}" placeholder="Title" required>
         </div>
         <div>
           <input type="date" name="expiry_date" value="{{ d['expiry_date'] or '' }}">
@@ -43,10 +43,10 @@
 
   <form method="post" action="{{ url_for('upload_company_document') }}" enctype="multipart/form-data" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" name="title" placeholder="Document title (e.g. Public liability insurance 2026)" required>
+    <input aria-label="Document title (e.g. Public liability insurance 2026)" type="text" name="title" placeholder="Document title (e.g. Public liability insurance 2026)" required>
     <input type="file" name="document" required>
-    <label class="field-label">Expiry date (optional)</label>
-    <input type="date" name="expiry_date">
+    <label class="field-label" for="management_documents-expiry-date">Expiry date (optional)</label>
+    <input id="management_documents-expiry-date" type="date" name="expiry_date">
     <button type="submit" class="btn-mini">Upload</button>
     <p class="upload-hint">PDF, image, or Word doc, up to 15MB.</p>
   </form>

@@ -155,17 +155,17 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field-row-2">
       <label>Whose share
-        <input type="text" name="name" placeholder="Their name">
+        <input aria-label="Their name" type="text" name="name" placeholder="Their name">
       </label>
       <label>Their email
-        <input type="email" name="email" placeholder="So they can be sent the link" autocomplete="email">
+        <input aria-label="So they can be sent the link" type="email" name="email" placeholder="So they can be sent the link" autocomplete="email">
       </label>
       <label>Amount (&euro;)
         <input type="text" name="amount" inputmode="decimal" required
                placeholder="{{ '%.2f'|format(state.unassigned) }}">
       </label>
       <label>A line for them
-        <input type="text" name="note" placeholder="Optional — appears in the email">
+        <input aria-label="Optional — appears in the email" type="text" name="note" placeholder="Optional — appears in the email">
       </label>
     </div>
     <div style="display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap;">

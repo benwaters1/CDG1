@@ -230,7 +230,8 @@ def run():
     # deposit could only be entered by somebody who knew the URL. The nav check
     # cannot see this: it is a POST, and POSTs are not browsed to.
     fresh = _event("G", price=1200.0)
-    html = oc.get("/admin/events").get_data(as_text=True)
+    # All of it: this event is dated in the past, which is History now.
+    html = oc.get("/admin/events?when=all").get_data(as_text=True)
     s.check("the page opens with an event on it", f"{TAG} G" in html,
             detail="nothing below is being looked at")
     s.check("it shows what is still owed", "still to pay" in html.lower(),
@@ -254,7 +255,9 @@ def run():
     s.check("their page opens", page.status_code == 200, detail=f"HTTP {page.status_code}")
     s.check("the deposit they sent is shown", "900.00" in html,
             detail="a contact who paid had no way to see it arrive")
-    s.check("and what is left on it", "2100.00" in html, detail=f"{html.count('2100')}")
+    # Printed with a thousands separator since 24 September ("€2,100.00").
+    s.check("and what is left on it", "2,100.00" in html,
+            detail=f"{html.count('2,100')} -- a balance of three thousand less nine hundred")
 
     s.section("Paying part of it, which is the norm for an event")
     was_enabled = m.stripe_enabled
@@ -327,9 +330,12 @@ def run():
         m.stripe_enabled = lambda: True
         m.stripe.checkout.Session = _Retrieve
         _Retrieve.sessions = {
+            # As start_event_stripe_payment makes them: the event it paid
+            # for rides in the metadata, and the page credits that event.
             "sess_evt": {"id": "sess_evt", "payment_status": "paid",
                          "amount_total": 60000,
-                         "metadata": {"kind": "event_payment"}},
+                         "metadata": {"kind": "event_payment",
+                                      "event_id": str(landing["id"])}},
             "sess_unpaid": {"id": "sess_unpaid", "payment_status": "unpaid",
                             "amount_total": 60000, "metadata": {}},
         }

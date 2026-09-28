@@ -16,18 +16,18 @@
   <form method="post" action="{{ url_for('new_dining_table') }}" class="search-bar">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
-      <label class="field-label">{{ t('Number or name') }}</label>
-      <input type="text" name="label" required placeholder="6" autocomplete="off">
+      <label class="field-label" for="admin_dining_tables-label">{{ t('Number or name') }}</label>
+      <input id="admin_dining_tables-label" type="text" name="label" required placeholder="6" autocomplete="off">
     </div>
     <div>
-      <label class="field-label">{{ t('Where') }}</label>
-      <select name="area">
+      <label class="field-label" for="admin_dining_tables-area">{{ t('Where') }}</label>
+      <select id="admin_dining_tables-area" name="area">
         {% for key, title in areas %}<option value="{{ key }}">{{ t(title) }}</option>{% endfor %}
       </select>
     </div>
     <div>
-      <label class="field-label">{{ t('Seats') }}</label>
-      <input type="number" name="seats" min="1" step="1" value="2">
+      <label class="field-label" for="admin_dining_tables-seats">{{ t('Seats') }}</label>
+      <input id="admin_dining_tables-seats" type="number" name="seats" min="1" step="1" value="2">
     </div>
     <button type="submit" class="btn-primary" style="margin-top:0;">{{ t('Add') }}</button>
   </form>

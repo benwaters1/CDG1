@@ -107,20 +107,35 @@ def _mix(start, end):
         conn.close()
 
 
-def _first_free(from_date, room_id, nights=2):
-    """The first date from here the house would actually accept."""
+def free_nights(room_id, after, nights=2):
+    """The first day from `after` with `nights` genuinely free.
+
+    AT MODULE LEVEL so the first booking in the suite can use it as well. It
+    used to be defined half way down, and the booking above it counted days
+    forward and hoped -- which held until a seeded atelier drifted onto day
+    forty-five and the whole suite went down.
+
+    NOT A RETRY LOOP AROUND THE POST. Every refused attempt still spends a
+    booking against BOOKING_RATE_LIMIT_PER_HOUR, which is five, and this suite
+    makes four -- so retrying the first one is how the fourth comes to be
+    turned away for a reason that has nothing to do with what is being tested.
+    Ask first, post once.
+    """
     conn = db()
     try:
-        day = from_date
-        for _ in range(200):
-            ok, _why = m.is_range_available(
-                conn, room_id, day, day + timedelta(days=nights))
-            if ok:
-                return day
+        day = after
+        for _ in range(600):
+            with m.app.test_request_context():
+                # (ok, reason), not a bool: a two-element tuple is truthy
+                # whichever way the answer went.
+                ok, _why = m.is_range_available(
+                    conn, room_id, day, day + timedelta(days=nights))
+                if ok:
+                    return day
             day += timedelta(days=1)
-        return from_date
     finally:
         conn.close()
+    raise AssertionError("no free %d nights in 600 days from %s" % (nights, after))
 
 
 def run():
@@ -131,12 +146,7 @@ def run():
 
     s.section("The path stamps it, so nobody has to remember")
     room = _room()
-    # Not a bare offset. The ateliers hold the whole château for their runs,
-    # so a date reached by arithmetic is refused whenever one happens to fall
-    # there — and which days those are moves with the real calendar. This
-    # went red on the morning that today-plus-forty-five became the day
-    # before Immersive Artisan Workshops, having passed for months.
-    arrival = _first_free(house_today() + timedelta(days=45), room["id"])
+    arrival = free_nights(room["id"], house_today() + timedelta(days=45))
     r = anon.post(f"/book/{room['id']}", data={
         "arrival_date": arrival.isoformat(),
         "departure_date": (arrival + timedelta(days=2)).isoformat(),
@@ -148,11 +158,15 @@ def run():
     s.check("a website booking is taken", web is not None,
             detail=f"HTTP {r.status_code}")
     s.check("and marked direct", web and web["source"] == "direct",
-            detail=f"{web['source']!r} if web else None — a field somebody has to "
-                   "set is a field that is mostly wrong")
+            detail=(repr(web["source"]) if web else "no booking was taken")
+                   + " — a field somebody has to set is a field that is "
+                     "mostly wrong")
 
     s.section("The desk says desk")
-    wi = house_today() + timedelta(days=60)
+    # The last fixed offset in this suite. It is free today, which is exactly
+    # what + 45 was until an atelier drifted onto it — so it goes through the
+    # helper with the rest rather than waiting its turn to break.
+    wi = free_nights(room["id"], house_today() + timedelta(days=60), nights=1)
     oc.post("/admin/bookings/walk-in", data={
         "room_id": str(room["id"]),
         "arrival_date": wi.isoformat(),
@@ -179,28 +193,7 @@ def run():
     # happened. A fixed offset into a real calendar is a date that is free
     # until one day it is not.
     def _free(after, nights=2):
-        # Its own connection, opened and closed, like every other helper here:
-        # this suite keeps none open across a check, and one held while the
-        # test client writes through another is how a reader sees a stay that
-        # is not there yet.
-        c = db()
-        try:
-            day = after
-            for _ in range(600):
-                with m.app.test_request_context():
-                    # (ok, reason), not a bool. A bare `if` on this is always
-                    # true -- a two-element tuple is truthy whichever way the
-                    # answer went -- so the first version of this helper handed
-                    # back the very first day it was asked about, workshop and
-                    # all, and the refusal read exactly as it had before.
-                    ok, _why = m.is_range_available(
-                        c, room["id"], day, day + timedelta(days=nights))
-                    if ok:
-                        return day
-                day += timedelta(days=1)
-        finally:
-            c.close()
-        raise AssertionError("no free %d nights in 600 days from %s" % (nights, after))
+        return free_nights(room["id"], after, nights)
 
     again = _free(house_today() + timedelta(days=90))
     anon2 = m.app.test_client()
@@ -280,7 +273,39 @@ def run():
     # Four one-night stays from an agent against one guest taking a fortnight is
     # not four to one in any sense the owner would act on.
     _cleanup()
-    start = house_today() + timedelta(days=200)
+    # A THIRTY-DAY SPAN WITH NOTHING ELSE IN IT, FOUND RATHER THAN ASSUMED.
+    #
+    # Every check below adds one stay and then asserts the WHOLE window's
+    # totals, so it only means anything if the window is otherwise empty.
+    # It took today + 200 on faith, and on 2026-09-28 that landed on a stay
+    # called "Date Change Test" left in the database in August -- seven nights
+    # became nine and the straddle check went red on nothing anybody had
+    # changed.
+    #
+    # This is the same fault as the one in test_cover_gaps, which was fixed
+    # three times on three branches before one landed: a fixed offset into a
+    # real calendar is quiet until the day it is not. Walk until it is true.
+    start = None
+    probe_conn = db()
+    try:
+        day = house_today() + timedelta(days=200)
+        for _ in range(48):                      # four years, a month at a time
+            busy = probe_conn.execute(
+                """SELECT COUNT(*) c FROM bookings
+                    WHERE status = 'confirmed'
+                      AND arrival_date < ? AND departure_date > ?""",
+                ((day + timedelta(days=30)).isoformat(),
+                 (day - timedelta(days=10)).isoformat())).fetchone()["c"]
+            if not busy:
+                start = day
+                break
+            day += timedelta(days=30)
+    finally:
+        probe_conn.close()
+    s.check("there is a quiet month to measure in", start is not None,
+            detail="every check below adds one stay and reads the whole "
+                   "window's totals, so anything else in it is counted too")
+    start = start or (house_today() + timedelta(days=200))
     end = start + timedelta(days=30)
     _own_the_month(start, end)
     for i in range(4):

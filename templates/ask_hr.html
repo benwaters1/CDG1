@@ -10,8 +10,8 @@
 <div class="detail-card" style="max-width:560px;">
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field-label">{{ t("What's on your mind?") }}</label>
-    <textarea name="body" placeholder="Anything you'd rather raise privately than mention in passing." required></textarea>
+    <label class="field-label" for="ask_hr-body">{{ t("What's on your mind?") }}</label>
+    <textarea id="ask_hr-body" name="body" placeholder="Anything you'd rather raise privately than mention in passing." required></textarea>
     <button type="submit" class="btn-primary" style="margin-top:14px;">{{ t('Send privately') }}</button>
   </form>
 </div>

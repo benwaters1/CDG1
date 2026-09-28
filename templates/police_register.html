@@ -22,45 +22,50 @@
 {% if missing %}
 <h2 class="section-heading">Waiting to be filled in</h2>
 {% for st in missing %}
+{# A Booking.com stay has no booking of the house's own: its fiches go to their
+   own register, through their own form, and are listed with the rest. #}
+{% set key = ('o' ~ st.booking['ota_reservation_id']) if st.channel else ('b' ~ st.booking['id']) %}
 <div class="expense-card">
   <div class="expense-head">
     <div>
       <strong>{{ st.booking['guest_name'] }}</strong>
       <span class="upload-hint">{{ st.booking['reference_code'] }} ·
-        {{ st.booking['arrival_date'] }} → {{ st.booking['departure_date'] }}</span>
+        {{ st.booking['arrival_date'] }} → {{ st.booking['departure_date'] }}
+        {%- if st.channel %} · booked through {{ st.channel }}{% endif %}</span>
       <span class="mini-status status-pending" style="margin-left:8px;">
-        {{ st.recorded }} of {{ st.party }} recorded
+        {% if st.channel and not st.party_known %}{{ st.recorded }} recorded — the booking did not say how many are staying
+        {% else %}{{ st.recorded }} of {{ st.party }} recorded{% endif %}
       </span>
     </div>
   </div>
 
-  <form method="post" action="{{ url_for('add_police_fiche', booking_id=st.booking['id']) }}"
+  <form method="post" action="{{ url_for('add_channel_police_fiche', reservation_id=st.booking['ota_reservation_id']) if st.channel else url_for('add_police_fiche', booking_id=st.booking['id']) }}"
         class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="g-row" style="display:flex; gap:8px; flex-wrap:wrap;">
       <div style="flex:1 1 160px;">
-        <label class="field-label" for="sn_{{ st.booking['id'] }}">Surname</label>
-        <input type="text" id="sn_{{ st.booking['id'] }}" name="surname" required maxlength="100" autocomplete="family-name" spellcheck="false" autocapitalize="words">
+        <label class="field-label" for="sn_{{ key }}">Surname</label>
+        <input type="text" id="sn_{{ key }}" name="surname" required maxlength="100" autocomplete="family-name" spellcheck="false" autocapitalize="words">
       </div>
       <div style="flex:1 1 180px;">
-        <label class="field-label" for="fn_{{ st.booking['id'] }}">First names</label>
-        <input type="text" id="fn_{{ st.booking['id'] }}" name="first_names" required maxlength="120">
+        <label class="field-label" for="fn_{{ key }}">First names</label>
+        <input type="text" id="fn_{{ key }}" name="first_names" required maxlength="120">
       </div>
       <div style="flex:1 1 140px;">
-        <label class="field-label" for="nat_{{ st.booking['id'] }}">Nationality</label>
-        <input type="text" id="nat_{{ st.booking['id'] }}" name="nationality" required maxlength="60">
+        <label class="field-label" for="nat_{{ key }}">Nationality</label>
+        <input type="text" id="nat_{{ key }}" name="nationality" required maxlength="60">
       </div>
       <div style="flex:1 1 140px;">
-        <label class="field-label" for="dob_{{ st.booking['id'] }}">Date of birth</label>
-        <input type="date" id="dob_{{ st.booking['id'] }}" name="born_on">
+        <label class="field-label" for="dob_{{ key }}">Date of birth</label>
+        <input type="date" id="dob_{{ key }}" name="born_on">
       </div>
       <div style="flex:1 1 160px;">
-        <label class="field-label" for="pob_{{ st.booking['id'] }}">Place of birth</label>
-        <input type="text" id="pob_{{ st.booking['id'] }}" name="born_at" maxlength="120">
+        <label class="field-label" for="pob_{{ key }}">Place of birth</label>
+        <input type="text" id="pob_{{ key }}" name="born_at" maxlength="120">
       </div>
       <div style="flex:2 1 260px;">
-        <label class="field-label" for="addr_{{ st.booking['id'] }}">Home address</label>
-        <input type="text" id="addr_{{ st.booking['id'] }}" name="home_address" maxlength="300">
+        <label class="field-label" for="addr_{{ key }}">Home address</label>
+        <input type="text" id="addr_{{ key }}" name="home_address" maxlength="300">
       </div>
     </div>
     <button type="submit" class="btn-mini" style="margin-top:8px;">Add to the register</button>
@@ -79,7 +84,7 @@
           <td>{{ f['nationality'] }}</td>
           <td>{{ f['born_on'] or '—' }}{% if f['born_at'] %} · {{ f['born_at'] }}{% endif %}</td>
           <td>
-            <form method="post" action="{{ url_for('delete_police_fiche', fiche_id=f['id']) }}"
+            <form method="post" action="{{ url_for('delete_channel_police_fiche', fiche_id=f['id']) if st.channel else url_for('delete_police_fiche', fiche_id=f['id']) }}"
                   onsubmit="return confirm('Remove this entry from the register?');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn-text-danger">Remove</button>
@@ -125,7 +130,7 @@
       <td>{{ r['born_on'] or '—' }}{% if r['born_at'] %}<br><span class="upload-hint">{{ r['born_at'] }}</span>{% endif %}</td>
       <td>{{ r['nationality'] }}</td>
       <td><span class="upload-hint">{{ r['home_address'] or '—' }}</span></td>
-      <td>{{ r['room_name'] }}</td>
+      <td>{{ r['room_name'] or '—' }}</td>
       <td>{{ r['arrival_date'] }}</td>
       <td>{{ r['departure_date'] }}</td>
     </tr>

@@ -22,13 +22,13 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="refund-fields">
         <div>
-          <label class="field-label">Deposit on a stay (%)</label>
-          <input type="number" name="room_deposit_percent" min="0" max="100" step="1"
+          <label class="field-label" for="admin_deposit_rules-room-deposit-percent">Deposit on a stay (%)</label>
+          <input id="admin_deposit_rules-room-deposit-percent" type="number" name="room_deposit_percent" min="0" max="100" step="1"
                  value="{{ '%g'|format(room_percent) }}">
         </div>
         <div>
-          <label class="field-label">Balance due this many days before arrival</label>
-          <input type="number" name="room_balance_due_days_before" min="0" step="1"
+          <label class="field-label" for="admin_deposit_rules-room-balance-due-days-before">Balance due this many days before arrival</label>
+          <input id="admin_deposit_rules-room-balance-due-days-before" type="number" name="room_balance_due_days_before" min="0" step="1"
                  value="{{ room_days }}">
         </div>
       </div>
@@ -60,40 +60,40 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field-row-2">
       <div>
-        <label class="field-label">Applies to</label>
+        <label class="field-label" for="admin_deposit_rules-category">Applies to</label>
         {# Rendered from DEPOSIT_RULE_CATEGORIES rather than typed out here.
            This list and the table's CHECK were separate, so a category the
            database accepted could be impossible to choose on the page --
            which is exactly what happened when events were added. #}
-        <select name="category">
+        <select id="admin_deposit_rules-category" name="category">
           {% for key, label in categories %}
           <option value="{{ key }}">{{ label }}</option>
           {% endfor %}
         </select>
       </div>
       <div>
-        <label class="field-label">Deposit (%)</label>
-        <input type="number" name="deposit_percent" min="0" max="100" step="1" required>
+        <label class="field-label" for="admin_deposit_rules-deposit-percent">Deposit (%)</label>
+        <input id="admin_deposit_rules-deposit-percent" type="number" name="deposit_percent" min="0" max="100" step="1" required>
       </div>
     </div>
     <div class="field-row-2">
       <div>
-        <label class="field-label">From date (optional)</label>
-        <input type="date" name="start_date">
+        <label class="field-label" for="admin_deposit_rules-start-date">From date (optional)</label>
+        <input id="admin_deposit_rules-start-date" type="date" name="start_date">
       </div>
       <div>
-        <label class="field-label">To date (optional)</label>
-        <input type="date" name="end_date">
+        <label class="field-label" for="admin_deposit_rules-end-date">To date (optional)</label>
+        <input id="admin_deposit_rules-end-date" type="date" name="end_date">
       </div>
     </div>
     <div class="field-row-2">
       <div>
-        <label class="field-label">Minimum party size (optional)</label>
-        <input type="number" name="min_party_size" min="1" placeholder="Any size">
+        <label class="field-label" for="admin_deposit_rules-min-party-size">Minimum party size (optional)</label>
+        <input id="admin_deposit_rules-min-party-size" type="number" name="min_party_size" min="1" placeholder="Any size">
       </div>
       <div>
-        <label class="field-label">Label (optional)</label>
-        <input type="text" name="label" placeholder="e.g. New Year's Eve, or Large groups">
+        <label class="field-label" for="admin_deposit_rules-label">Label (optional)</label>
+        <input id="admin_deposit_rules-label" type="text" name="label" placeholder="e.g. New Year's Eve, or Large groups">
       </div>
     </div>
     <p class="upload-hint" style="margin-top:2px;">Leave both dates blank to apply regardless of date; leave party size blank to apply regardless of size. At least one of the three must be set.</p>

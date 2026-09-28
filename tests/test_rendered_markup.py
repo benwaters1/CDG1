@@ -78,11 +78,37 @@ FIELD = re.compile(r"<(input|select|textarea)\b([^>]*)>", re.S | re.I)
 # up — a filename, a slug, a month. A ceiling, so a new page
 # behind an unknown argument is noticed rather than skipped.
 #
-# It did that: uploaded_file was added for the photograph intake and takes a
-# stored filename, which is the same shape as room_photo and mirrored_photo
-# beside it. Six now, and the six are export_report_csv, mirrored_photo,
-# room_ics_feed, room_photo, set_language and uploaded_file.
-NO_RULE = 6
+# It did that twice. uploaded_file was added for the photograph intake and
+# takes a stored filename, which is the same shape as room_photo and
+# mirrored_photo beside it. Then recover_owner_password, whose argument is a
+# SECRET rather than an id — it is the recovery token itself, read from the
+# environment, and the whole point of that route is that nothing can reach it
+# without the value. There is nothing to teach here and there must not be.
+#
+# And a third time, for the same reason as the first: photo_at_size serves one
+# photograph at one size, so its arguments are a size name and a stored
+# filename. There is no id to teach, and what comes back is a JPEG rather than
+# markup, so this sweep could not read it even if it could build the URL.
+# test_photo_sizes is what proves that route answers.
+#
+# And twice more, both photographs behind a token rather than an id, and both
+# for the same reason the token exists at all. site_photo serves one of the
+# house's own pictures in place of one on the public site, and its token
+# changes every time the picture does — a name that always meant the same
+# bytes is what the thirty-day cache on its neighbour rests on.
+# social_photo_public is the one link Meta is given to fetch a photograph it is
+# about to publish, unguessable precisely so there is nothing to walk.
+# Neither has an id to teach and neither returns markup, so this sweep could
+# not read them even if it could build the URLs. test_site_photo_swap and
+# test_social_publishing are what prove they answer.
+#
+# arrival_id went the other way and was TAUGHT rather than exempted: it is an
+# id of a row in photo_inbox, which is exactly what this map is for.
+#
+# Ten now: export_report_csv, mirrored_photo, photo_at_size,
+# recover_owner_password, room_ics_feed, room_photo, set_language, site_photo,
+# social_photo_public and uploaded_file.
+NO_RULE = 10
 
 # What the sweep fetched and could not read.
 #
@@ -117,6 +143,9 @@ UNREADABLE = {
     "view_expense_file": "no file in the run's uploads",
     # Answers 400 without an id, which is the correct answer to no id.
     "data_request_export": "needs an id",
+    # Answers 404 without an address; with one it is a redirect to the person,
+    # never a page of its own.
+    "guest_by_email": "needs an address",
 }
 
 # The pages somebody who does not work here has to get through on their own.
@@ -212,6 +241,7 @@ def _read(page, html, found):
 # for.
 ID_TABLES = {
     "booking_id": ("bookings", "id"),
+    "arrival_id": ("photo_inbox", "id"),
     "user_id": ("users", "id"),
     "order_id": ("pos_orders", "id"),
     "room_id": ("rooms", "id"),
@@ -261,6 +291,8 @@ ENDPOINT_ARGS = {
     ("guest_account", "token"): ("guest_sessions", "token"),
     ("guest_feedback", "token"): ("bookings", "manage_token"),
     ("guest_portal", "token"): ("guests", "portal_token"),
+    ("guest_portal_statement", "token"): ("guests", "portal_token"),
+    ("guest_portal_data", "token"): ("guests", "portal_token"),
     ("instructor_page", "token"): ("workshop_sessions", "instructor_token"),
     ("newsletter_confirm", "token"): ("newsletter_subscribers", "token"),
     ("newsletter_unsubscribe", "token"): ("newsletter_subscribers", "token"),
@@ -275,14 +307,21 @@ ENDPOINT_ARGS = {
     ("event_stripe_success", "manage_token"): ("event_inquiries", "manage_token"),
     ("restaurant_confirmation", "manage_token"): ("restaurant_bookings", "manage_token"),
     ("restaurant_manage", "manage_token"): ("restaurant_bookings", "manage_token"),
+    ("workshop_calendar_ics", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_confirmation", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_manage", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_pay_balance", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_pay_deposit", "manage_token"): ("workshop_bookings", "manage_token"),
     ("guest_booking_history", "email"): ("bookings", "guest_email"),
+    # A Booking.com stay's own door link. Read, never pressed: only the
+    # button (a POST) opens the lock, which is why a sweep may visit it.
+    ("channel_door", "door_token"): ("ota_reservations", "door_token"),
     # Reports are keyed by a slug that is a key of REPORT_BUILDERS rather than
     # a row anywhere, so it is a literal.
     ("admin_report", "slug"): "financial",
+    # The refund desk takes the KIND of booking before its id; a stay's desk
+    # reads the same page every kind does.
+    ("refund_desk", "category"): "room",
     ("pay_statement_page", "year"): "2026",
     ("pay_statement_page", "month"): "1",
 }

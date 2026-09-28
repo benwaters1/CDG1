@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}The site's photographs{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Photographs swapped on the site</h1>
+  <a href="{{ url_for('photo_tray') }}" class="btn-mini">Photographs waiting</a>
+  <a href="{{ url_for('admin_photo_mirror') }}" class="btn-mini">The photo mirror</a>
+</div>
+
+<p class="g-muted">
+  {{ rows|length }} of the site's {{ total }} photographs have been replaced
+  with the house's own. The swap happens as the page is sent, so no template
+  has been edited and nothing here can be undone by a handover from the design
+  side. Putting one back returns it to the mirrored copy that was there
+  before — never to hotlinking.
+</p>
+
+{% if rows %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Now showing</th>
+        <th>In place of</th>
+        <th>Swapped</th>
+        <th>By</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>
+          <img src="{{ url_for('photo_at_size', size='thumb', filename=r['filename']) }}"
+               alt="The photograph now shown" width="70" height="70"
+               style="border-radius:4px;object-fit:cover;">
+        </td>
+        {# The FILENAME, not the whole URL. The response layer rewrites every
+           one of these URLs in any HTML it sends — including one printed as
+           words here — so the page whose job is to say which picture was
+           replaced was showing the replacement's own path instead. #}
+        <td style="word-break:break-all;font-size:.8rem;"
+            title="{{ r['source_url']|replace('https://', '') }}">
+          {{ r['source_url'].rsplit('/', 1)[-1] }}
+        </td>
+        <td>{{ r['set_at']|house_day }}</td>
+        <td>{{ r['set_by_name'] or '—' }}</td>
+        <td>
+          <form method="post"
+                action="{{ url_for('put_back_site_photo', override_id=r['id']) }}"
+                onsubmit="return confirm('Put the original picture back on the site?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-text-danger">Put it back</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  None yet. Pick a photograph from the tray and choose what it should replace.
+</div>
+{% endif %}
+{% endblock %}

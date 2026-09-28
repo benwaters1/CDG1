@@ -32,6 +32,8 @@ neither is worth a check that cries wolf, because a check nobody trusts is
 one everybody learns to skip — and it will be skipped on the commit that
 mattered.
 """
+import glob
+import io
 import os
 import re
 
@@ -125,6 +127,99 @@ def run():
     s.check("no field is left to a placeholder alone", not unlabelled,
             detail=f"{len(unlabelled)}: {unlabelled[:2]}" if unlabelled else "")
 
+    s.section("Six hundred labels were associated at once, so: two rules")
+
+    # tools/fix_labels.py wired 618 controls to their labels across 100
+    # templates. Both of the faults below were IN that pass and both are worse
+    # than the missing label they replaced, because a wrong name is acted on
+    # where a missing one is asked about. Guarded at the source, across EVERY
+    # template rather than the public ones, since almost all of it was staff-side.
+    every = sorted(glob.glob(os.path.join(_harness.ROOT, "templates", "*.html")))
+
+    # ONE. A label that wraps its control must not also carry for=. When it has
+    # both, `for` wins -- and the pass pointed twenty-four of them at whatever
+    # field came next. room_form.html had "Bookable - guests can choose this
+    # room" addressing the start-date box.
+    crossed = []
+    for path in every:
+        body = io.open(path, encoding="utf-8").read()
+        for mo in re.finditer(r'<label\b[^>]*\bfor="([^"]+)"[^>]*>(.*?)</label>',
+                              body, re.S | re.I):
+            inner = re.search(r'<(input|select|textarea)\b[^>]*>', mo.group(2), re.I)
+            if not inner:
+                continue
+            got = re.search(r'\bid="([^"]+)"', inner.group(0))
+            if not got or got.group(1) != mo.group(1):
+                crossed.append("%s: for=%s" % (os.path.basename(path), mo.group(1)))
+    s.check("no label points past the control it already wraps", not crossed,
+            detail="%d: %s" % (len(crossed), crossed[:3]))
+
+    # TWO. A partial can be included more than once on a page, so a literal id
+    # in one is emitted more than once -- invalid HTML, which breaks both the
+    # association being made and getElementById. Eleven of them came from
+    # _menu_fields.html, included once per course. Partials use aria-label.
+    repeated = []
+    for path in every:
+        stem = os.path.basename(path)
+        if not stem.startswith("_"):
+            continue
+        body = io.open(path, encoding="utf-8").read()
+        # Only the ones the label pass would MINT, which are `<stem>-<slug>`.
+        # A hand-written id in a partial is a different question: twenty-eight
+        # of those predate this and most are in partials included once, where
+        # a literal id is fine. Narrowed so the guard reports the regression it
+        # is for rather than a standing argument about somebody else's markup.
+        minted = stem[:-5] + "-"
+        for mo in re.finditer(r'<(input|select|textarea)\b[^>]*>', body, re.I):
+            fid = re.search(r'\bid="([^"]+)"', mo.group(0))
+            if fid and fid.group(1).startswith(minted):
+                repeated.append("%s: id=%s" % (stem, fid.group(1)))
+    s.check("the label pass minted no field id inside a partial", not repeated,
+            detail="%d: %s — a partial included twice emits it twice, and "
+                   "_menu_fields.html is pulled in once per course"
+                   % (len(repeated), repeated[:3]))
+
+    s.section("The one thing on the site that moves")
+
+    home = io.open(os.path.join(_harness.ROOT, "templates", "home.html"),
+                   encoding="utf-8").read()
+
+    # SOMEBODY WHO HAS ASKED FOR LESS MOTION MUST NOT GET A MOVING PICTURE.
+    # The stylesheet's reduced-motion block turns off `transition` and
+    # `animation`, and an autoplaying looping video is neither -- so the only
+    # thing on this site that actually moves was the only thing ignoring the
+    # setting. People turn it on for vestibular disorders and for migraine,
+    # and a full-screen loop is the worst case of what it is for.
+    s.check("the hero video honours prefers-reduced-motion",
+            "prefers-reduced-motion" in home,
+            detail="the CSS block covers transition and animation; an "
+                   "autoplaying video is neither")
+    s.check("and there is a control to stop it by hand as well",
+            'id="g-hero-pause"' in home,
+            detail="the setting covers people who have found it; the button "
+                   "covers everybody else")
+
+    # A poster that 404s leaves a blank hero on every visit where autoplay is
+    # refused, which is most phones on low power. Ours, so nothing else can
+    # take it away.
+    poster = re.search(r'<video[^>]*\bposter="([^"]+)"', home, re.S)
+    s.check("the hero poster is a file this house owns",
+            poster and "squarespace" not in poster.group(1).lower(),
+            detail=poster.group(1)[:70] if poster else "no poster at all")
+    for name, cap in (("chateau_hero_loop.mp4", 4.0),
+                      ("chateau_hero_poster.jpg", 0.5)):
+        path = os.path.join(_harness.ROOT, "static", "video", name)
+        there = os.path.exists(path)
+        s.check("%s is actually there" % name, there,
+                detail="the markup references it; a missing file is a blank "
+                       "hero rather than an error anybody sees")
+        if there:
+            mb = os.path.getsize(path) / 1048576.0
+            # A ceiling rather than a target. The front page is the one every
+            # guest loads, often on a phone in a valley with one bar.
+            s.check("and is under %.1f MB (it is %.2f)" % (cap, mb), mb < cap,
+                    detail="this is the heaviest thing on the busiest page")
+
     s.section("A table of figures reads as rows, not as two columns")
     # A label/value table with no th at all is read as unrelated cells: the
     # guest hears every label, then every number, and has to hold the pairing
@@ -144,7 +239,11 @@ def run():
     # exactly the regression it was written for is not a check.
     rows = [
         ("the total", r'<th scope="row"><strong>Total</strong></th>'),
-        ("what has been paid", r'<th scope="row">Paid</th>'),
+        ("what has been received", r'<th scope="row">Received</th>'),
+        # Added when the bill stopped netting refunds away in silence. Held
+        # by name like the rest: a refund read as a loose cell leaves a guest
+        # hearing a figure with nothing to say which of the two it is.
+        ("anything refunded", r'<th scope="row">Refunded</th>'),
         ("the balance still owed", r"""<th scope="row"><strong>\{\{ 'Balance due'"""),
         ("and the tourist tax", r'<th scope="row">\s+<strong>Taxe'),
     ]
@@ -156,11 +255,26 @@ def run():
 
     s.section("The things that were already right, and must stay right")
     base = pages.get("public_base.html", "")
-    s.check("the page declares its language", '<html lang="{{ lang }}"' in base,
+    # The expression, allowing a fallback. The eleventh handover wrote
+    # {{ lang or 'en' }}, which follows the chosen language exactly as before
+    # and only adds a default -- and the literal match on {{ lang }} called
+    # that a hardcoded page. What must not happen is a fixed code.
+    lang_attr = re.search(r'<html lang="\{\{\s*lang(?:\s+or\s+\'[a-z]{2}\')?\s*\}\}"', base)
+    s.check("the page declares its language", lang_attr is not None,
             detail="hardcoded English would have a reader pronounce the French "
                    "site in English")
-    s.check("and it follows the language actually chosen", "{{ lang }}" in base,
-            detail="lang is set from current_language(), not fixed")
+    # And asked of a rendered page, because the source can read right and a
+    # context processor that stopped passing `lang` would still print "en"
+    # for everybody.
+    fr_client = _harness.m.app.test_client()
+    with fr_client.session_transaction() as sess:
+        sess["lang"] = "fr"
+    fr_page = fr_client.get("/").get_data(as_text=True)
+    s.check("and it follows the language actually chosen",
+            '<html lang="fr"' in fr_page,
+            detail="lang is set from current_language(), not fixed: "
+                   + (re.search(r'<html[^>]*>', fr_page).group(0)
+                      if re.search(r'<html[^>]*>', fr_page) else "no html tag"))
     s.check("there is a skip link past the navigation",
             'class="g-skip"' in base and 'href="#main"' in base,
             detail="without it, every page starts with the whole menu again")

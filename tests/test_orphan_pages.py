@@ -53,6 +53,12 @@ NOT_LINKED_ON_PURPOSE = {
     "legacy_rooms": "old address", "legacy_stay": "old address",
     "legacy_the_chateau": "old address", "legacy_visit": "old address",
     "legacy_weddings": "old address",
+    # Typed on purpose, and the reason is the whole point of the page: it is
+    # for when nobody can log in, so a link from inside the app would be
+    # behind the very door that is shut. Reached by typing /status, which is
+    # exactly how it was meant to be used.
+    "status_page": "typed when you cannot get in",
+
     # Stripe sends the guest back to these.
     "booking_stripe_success": "Stripe returns here",
     "stripe_success": "Stripe returns here",

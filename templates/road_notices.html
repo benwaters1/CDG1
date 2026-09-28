@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}The road{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What the road is doing</h1>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The last few miles are unlit, there is no street number, and an address
+  search puts people in the village square. All of that is in the approach copy
+  already, because it is always true. <strong>This is for the week it is worse
+  than usual</strong> &mdash; ice, a closure, works above Les Cabannes.
+</p>
+
+{% if live %}
+<div class="flash flash-{{ 'error' if live['severity'] == 'serious' else 'success' }}"
+     style="margin-bottom:16px;">
+  <strong>Up now:</strong> {{ live['headline'] }}
+  {% if live['detail'] %}&mdash; {{ live['detail'] }}{% endif %}
+  <div class="upload-hint">Showing on every public page until {{ live['ends_on'] }}.</div>
+</div>
+{% else %}
+<p class="muted">Nothing up. The public pages say nothing about the road beyond
+  the usual approach note.</p>
+{% endif %}
+
+<h2>Put one up</h2>
+<div style="margin-bottom:20px;">
+  <form method="post" action="{{ url_for('road_notices_page') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <label class="field-label" for="rn_head">The line they read at a glance</label>
+    <input type="text" id="rn_head" name="headline" maxlength="120" required
+           placeholder="Chains needed above Les Cabannes">
+
+    <label class="field-label" for="rn_detail">Anything more</label>
+    <textarea id="rn_detail" name="detail" rows="2"
+              placeholder="The D8 is gritted as far as the village. Telephone when you leave Tarascon and someone will come down."></textarea>
+
+    <label class="field-label" for="rn_sev">How loudly</label>
+    <select id="rn_sev" name="severity">
+      {% for key, label in severities.items() %}
+      <option value="{{ key }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <label class="field-label" for="rn_from">From</label>
+    <input type="date" id="rn_from" name="starts_on" value="{{ today }}" required>
+
+    <label class="field-label" for="rn_to">Until, and including</label>
+    <input type="date" id="rn_to" name="ends_on" required>
+    {# The compulsory end date is the whole design. Every notice like this
+       fails the same way: switched on in February for a real reason, still
+       there in July because taking it down is nobody's job. #}
+    <p class="g-hint">
+      <strong>An end date is required, and it cannot be more than
+      {{ max_days }} days.</strong> A snow warning still up in July is worse
+      than no warning &mdash; it is the reason nobody believes the next real
+      one, and the next real one is the night somebody drives up on ice.
+      Longer than that is a fact about the road, and belongs in the approach
+      copy where it is written once and read calmly.
+    </p>
+
+    <button type="submit" class="btn-primary">Put it up</button>
+  </form>
+</div>
+
+<h2>Everything that has been up</h2>
+{% if rows %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Line</th><th>How loudly</th><th>Put up by</th><th>From</th><th>Until</th><th></th><th></th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr{{ ' class="row-alert"'|safe if r.live and r.severity == 'serious' }}>
+        <td>
+          {{ r.headline }}
+          {% if r.detail %}<div class="upload-hint">{{ r.detail }}</div>{% endif %}
+        </td>
+        <td>{{ severities.get(r.severity, r.severity) }}</td>
+        {# Who put it up. "Is this still true?" is a question for a person,
+           and a notice with no name on it is one nobody can be asked about. #}
+        <td>{{ r.put_up_by or '—' }}</td>
+        <td>{{ r.starts_on }}</td>
+        <td>{{ r.ends_on }}</td>
+        <td>
+          {% if r.live %}<strong>Up</strong>
+          {% elif r.finished %}<span class="muted">Came down on its own</span>
+          {% else %}<span class="muted">Not yet</span>{% endif %}
+        </td>
+        <td>
+          {% if not r.finished %}
+          <form method="post" action="{{ url_for('road_notice_remove', notice_id=r.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Take it down</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="muted">Nothing has ever been put up.</p>
+{% endif %}
+
+{% endblock %}

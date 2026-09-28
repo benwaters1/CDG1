@@ -44,7 +44,7 @@ def run():
     # Created if absent, so this runs on a clean clone as well as here.
     room = ensure_room()
 
-    s.section("Room booking: public request, owner confirms")
+    s.section("Room booking: booked on the website, confirmed as it is taken")
     SOON, SOON_END = _free_window(room["id"])
     pub.post(f"/book/{room['id']}", data={
         "guest_name": f"{TAG} Guest", "guest_email": f"{TAG.lower()}@example.invalid",
@@ -54,20 +54,21 @@ def run():
     conn = db()
     bk = conn.execute("SELECT * FROM bookings WHERE guest_name LIKE ?", (TAG + "%",)).fetchone()
     conn.close()
-    s.check("a public request creates a pending booking", bk and bk["status"] == "pending",
+    s.check("a public booking creates a stay", bk is not None)
+    # THE OWNER STEP IS GONE. This read 'pending' and then pressed confirm,
+    # which is how the house used to work: a booking was a request somebody
+    # had to accept. It is a booking now, and the guest has their confirmation
+    # before they have closed the tab.
+    s.check("and it is confirmed as it is taken",
+            bk and bk["status"] == "confirmed",
             detail=f"got {bk['status'] if bk else 'no row'}")
-    if bk:
-        oc.post(f"/admin/bookings/{bk['id']}/confirm", follow_redirects=True)
-        conn = db()
-        after = conn.execute("SELECT status, linked_guest_id FROM bookings WHERE id=?",
-                             (bk["id"],)).fetchone()
-        conn.close()
-        s.check("confirming flips it to confirmed", after["status"] == "confirmed",
-                detail=f"got {after['status']}")
-        # guests is a profile table, bookings hold the stay — confirming should
-        # attach the stay to a person rather than duplicating them.
-        s.check("confirming links or creates a guest profile",
-                after["linked_guest_id"] is not None)
+    # guests is a profile table, bookings hold the stay — confirming should
+    # attach the stay to a person rather than duplicating them. Still true and
+    # still the same code doing it; it just runs a moment earlier now.
+    s.check("and it is attached to a guest profile",
+            bk and bk["linked_guest_id"] is not None,
+            detail="confirming is what mints the profile, so a stay confirmed "
+                   "at booking time must come out attached")
 
     s.section("Restaurant: public booking, owner confirms")
     conn = db()

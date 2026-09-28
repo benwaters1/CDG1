@@ -1,0 +1,111 @@
+27 files against commit 52edc21 (1 new: templates/_room_copy.html).
+Line endings preserved per file. No tools, no app.py, nothing untouched.
+
+=====================================================================
+THE ONE THAT MATTERS MOST — the date picker wrote into the wrong form
+=====================================================================
+public_base.html. The picker bound its fields with document.querySelector,
+which returns the FIRST arrival input in the document. The homepage has two
+forms with those names (quick-book widget, hero search). Picking dates in
+the hero calendar wrote them into the quick-book widget; the hero form
+submitted EMPTY. Reproduced live: /book?arrival=&departure=&party_size=2.
+Now bound per form and re-pointed on every open. Also: the native inputs
+were hidden BEFORE the picker was built, so any failure left the guest with
+nothing; the swap now happens last. aria-expanded / aria-haspopup /
+aria-controls added.
+
+=====================================================================
+NEW FILE — templates/_room_copy.html
+=====================================================================
+Rebuilt from the live render after the owner confirmed every floor and
+bathroom claim in it was wrong. All bedrooms top floor, bathrooms
+downstairs, powder room up. "first floor", "ground floor", "along the
+corridor", "a few steps away", "finished", "least expensive" all gone.
+New room_bath() macro: book_rooms.html decided shared-vs-private by testing
+whether the room NAME contained "Shared", which none did, so all five rooms
+showed "Private, downstairs" including the two that share.
+CAVEAT: room_name() is reconstructed (strips a bracketed suffix, repairs
+"Emeraude"). If a room name renders oddly after this ships, look there.
+
+=====================================================================
+LIVE BUGS CONFIRMED AND FIXED
+=====================================================================
+- Every hero image + the room photo were loading="lazy" and never fetched
+  until the guest scrolled (8s, blank). Now eager + fetchpriority=high.
+- Hero photograph sat in flow with its own height inside a min-height hero:
+  navy bands above/below (32px on Stay at phone; 180px on Events, which
+  also had an inline style="height:clamp(...)" pinning it). Fills now.
+- Header logo invisible (white on cream) on every page but home. The rule
+  for breadcrumb pages set the mask fill transparent expecting a dark FILE.
+  Mask now paints navy. No dark logo file needed — strike it off the list.
+- Sticky Book bar (z 60) sat over the open menu (z 59): Terms & Privacy
+  unreachable. Bar hidden while drawer open.
+- Two links at contrast 1.0 (navy on navy) in dark closing sections; solid
+  button there at 1.91 (navy on dark bronze --gilt). Both fixed.
+- "View itinerary" on every atelier card pointed at #w6 etc — no such
+  anchor. Dead. Now goes to the detail page. "Check dates" x3 pointed at
+  #book — target added. "How to reach us" pointed at #write — target added.
+- Print: every page printed blank (global body * visibility:hidden). Fixed.
+- Consent checkbox text at 1.15:1. Fixed (10.4:1).
+
+=====================================================================
+KEYBOARD
+=====================================================================
+- Closed menu drawer stayed visibility:visible: 10 tab stops inside an
+  invisible form. Now hidden when closed (slide still animates).
+- Open drawer let Tab escape to the page behind. Rest of page now inert
+  while open; focus moves to close button; Tab wraps; Esc returns to Menu.
+- Date inputs had no focus ring (Chrome quirk). Now get the 2px gold ring.
+
+=====================================================================
+COPY / RULES (all found live)
+=====================================================================
+- 18 rule violations: funder framing x5 ("funds the next room", "not a
+  donation", "nothing leaves the estate"), self-defeating scarcity x3,
+  "finished" as room status x11, "expensive" x1.
+- Ateliers said "Request to register / we will confirm" in 6 places incl.
+  the pay button. Room page said "confirms within a day", "If declined —
+  refund", sticky bar "Hold these dates" beside "Pay & book". All instant.
+- Cancellation: was a one-click button; now behind "I need to cancel",
+  terms first: "Bookings are non-refundable."
+- Bathrooms: four contradictory floor claims -> "downstairs" everywhere.
+- Riding arranged through the château; carriage stated as the château's own.
+- Toulouse: "two hours" vs "an hour and three quarters" (both on Contact).
+  Standardised; headings "Under Two Hours From Toulouse".
+- Google Maps now brings you to the front (owner): 5 "address search does
+  not find the gates" claims replaced.
+- Nav label "Dining" (La Table kept in page content). Drawer duplicates
+  removed (Contact us was a mailto to the events inbox).
+- Language switcher + hreflang hidden behind show_language_switcher
+  (14,000 words of untranslated prose). Empty prefs box guarded.
+- Guest quotes: German quote replaced with English Google reviews; La Table
+  and Workshops now have a quote each. Events still has none.
+- What's On: 6 -> 12 local places, researched.
+- Thousands separators on all prices > 999. Ruin history on room page.
+
+=====================================================================
+STRUCTURED DATA / SEO
+=====================================================================
+- JSON-LD phone was +33 5 61 64 96 82 (only place it appears); site shows
+  +33 6 28 06 97 76 everywhere. Aligned.
+- aggregateRating hardcoded 10/10 from 4; now from settings, omitted if
+  empty. Two titles trimmed to <60; room description to <160.
+
+=====================================================================
+FORMS
+=====================================================================
+- All four find forms keep typed values after a miss (via prefill_* or
+  request.form). Terms checkbox now re-checked on validation failure;
+  party size accepts prefill_party AND prefill_party_size.
+
+=====================================================================
+NEEDS YOU
+=====================================================================
+- GUD or CDG? Find pages disagree on the reference placeholder.
+- Add to the export: _approach.html (drive diagram still says "the square";
+  contact form requires a month, has no name field), _care.html,
+  _took.html, _faq.html, _proof.html and the other partials — most of the
+  guest-facing prose lives in them and I can only fix what I can see.
+- Settings: restaurant price_per_person is empty on live (dining page
+  shows no price); score_overall + review_count drive the rating.
+- APPROACH_FIX.txt in this zip has the exact diagram copy to paste.

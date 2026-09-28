@@ -42,8 +42,8 @@
       <div id="announcement-edit-{{ a['id'] }}" style="display:none; width:100%; margin-top:8px; padding-top:8px; border-top:1px dashed var(--parchment-line);">
         <form method="post" action="{{ url_for('edit_announcement', announcement_id=a['id']) }}" class="upload-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="text" name="title" value="{{ a['title'] }}" placeholder="Title" required>
-          <input type="text" name="body" value="{{ a['body'] or '' }}" placeholder="Details (optional)">
+          <input aria-label="Title" type="text" name="title" value="{{ a['title'] }}" placeholder="Title" required>
+          <input aria-label="Details (optional)" type="text" name="body" value="{{ a['body'] or '' }}" placeholder="Details (optional)">
           <div>
             <label class="field-label">{{ t('Show until (optional)') }}</label>
             <input type="date" name="expires_date" value="{{ a['expires_date'] or '' }}">
@@ -62,11 +62,11 @@
   <h3>{{ t('Post an announcement') }}</h3>
   <form method="post" action="{{ url_for('new_announcement') }}" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" name="title" placeholder="Title" required>
-    <input type="text" name="body" placeholder="Details (optional)">
+    <input aria-label="Title" type="text" name="title" placeholder="Title" required>
+    <input aria-label="Details (optional)" type="text" name="body" placeholder="Details (optional)">
     <div>
-      <label class="field-label">{{ t('Show until (optional)') }}</label>
-      <input type="date" name="expires_date">
+      <label class="field-label" for="announcements-expires-date">{{ t('Show until (optional)') }}</label>
+      <input id="announcements-expires-date" type="date" name="expires_date">
     </div>
     <button type="submit" class="btn-mini">{{ t('Post') }}</button>
   </form>

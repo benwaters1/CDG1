@@ -142,10 +142,10 @@
         <input type="text" name="spaces" value="{{ event['spaces'] or '' }}">
       </label>
       <label>From
-        <input type="text" name="arrival_time" value="{{ event['arrival_time'] or '' }}" placeholder="14:00">
+        <input aria-label="14:00" type="text" name="arrival_time" value="{{ event['arrival_time'] or '' }}" placeholder="14:00">
       </label>
       <label>Until
-        <input type="text" name="carriages_time" value="{{ event['carriages_time'] or '' }}" placeholder="01:00">
+        <input aria-label="01:00" type="text" name="carriages_time" value="{{ event['carriages_time'] or '' }}" placeholder="01:00">
       </label>
     </div>
     <label class="field-label" for="includes">What it covers</label>
@@ -268,7 +268,7 @@
         style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label style="margin:0;">What to call it
-      <input type="text" name="label" placeholder="Deposit, second payment, balance">
+      <input aria-label="Deposit, second payment, balance" type="text" name="label" placeholder="Deposit, second payment, balance">
     </label>
     <label style="margin:0;">Amount (&euro;)
       <input type="text" name="amount" inputmode="decimal" required

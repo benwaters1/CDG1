@@ -276,6 +276,32 @@ def run():
     dead = re.findall(r"@media[^{]*var\(--[^)]*\)", public)
     s.check("no media query is written with a custom property in it", not dead,
             detail="; ".join(d.strip()[:60] for d in dead[:3]))
+
+    # EVERY BLOCK IS CLOSED, which sounds like something a stylesheet cannot
+    # get wrong and is the second way this file has silently lost rules.
+    #
+    # A missing `}` does not break the page. The rule simply swallows
+    # everything after it: the declarations become part of the unclosed
+    # selector, the selectors after it become invalid declarations, and the
+    # browser drops them without a word. It happened on a merge -- a conflict
+    # boundary fell inside .g-care__note and the closing brace went with it --
+    # and from then on the approach map's phone variant and the road notice
+    # were both dead. Every other check here passed, because they read the
+    # TEXT of this file and the text was all present.
+    depth, opened_at = 0, []
+    for line_no, line in enumerate(public.split("\n"), 1):
+        for ch in line:
+            if ch == "{":
+                depth += 1
+                opened_at.append(line_no)
+            elif ch == "}":
+                depth -= 1
+                if opened_at:
+                    opened_at.pop()
+    s.check("every block in the public stylesheet is closed", depth == 0,
+            detail="%d unclosed, first opened near line %s — an unclosed rule "
+                   "swallows every rule after it and the browser says nothing"
+                   % (depth, opened_at[0] if opened_at else "?"))
     s.check("and the breakpoints are still declared for ordinary use",
             "--m-tight:" in public and "--m-read:" in public,
             detail="they work in a declaration; only the condition is the problem")
@@ -291,9 +317,89 @@ def run():
             detail="it was allowed to absorb all the pressure and went to 34px")
     s.check("and a ceiling so it cannot crowd out the menu",
             re.search(r"\.g-logo\s*\{[^}]*max-width:", public))
-    s.check("the back-to-top is lifted clear of the booking bar",
-            re.search(r"\.g-totop\s*\{[^}]*bottom:\s*\d", public)
-            and re.search(r"\.g-totop\s*\{[^}]*left:", public),
-            detail="pinned bottom-right it shares a corner with Book")
+    # ASKED AS THE PROPERTY, NOT THE MECHANISM. This used to require a `left:`
+    # in the base rule, because moving the arrow leftwards was how it was got
+    # out of the Book button's corner at the time. A handover raised it on
+    # small screens instead, which clears the bar just as well and keeps the
+    # arrow where a thumb reaches for it -- and this went red for a page that
+    # was fine. What must stay true is that on a phone the arrow is not left
+    # at its default offset in the same corner as Book: lifted, moved aside or
+    # taken away, any of the three will do.
+    small_screen = re.findall(
+        r"@media[^{]*max-width[^{]*\{(?:[^{}]|\{[^{}]*\})*?\.g-totop\s*\{([^}]*)\}",
+        public)
+    s.check("the back-to-top is kept out of the booking bar's corner on a phone",
+            any(re.search(r"(bottom:\s*\d|display:\s*none|left:)", rule)
+                for rule in small_screen),
+            detail="pinned bottom-right at the default offset it covers Book, "
+                   "which is the one control on the page that has to work: "
+                   + (str(small_screen[:2]) if small_screen
+                      else "no small-screen rule for .g-totop at all"))
+
+    # AND AS FAR AS THE BAR REACHES, NOT JUST SOMEWHERE ON A PHONE. The check
+    # above asks whether any small-screen rule lifts, moves or hides the
+    # arrow, and it was green while the arrow sat on Book between 704px and
+    # 960px on the live site: the hide stopped at 44rem, and the bar is drawn
+    # to 60rem (.g-stickybar) and 61.99rem (.g-bookbar, the room page).
+    # Measured at 820px on What's On and on the room page, both covered. So
+    # this asks the second half of the question: for each bar, is the arrow
+    # kept off it up to the widest width that bar is drawn at?
+    MQ = r"@media\s*\(max-width:\s*([\d.]+)rem\)\s*\{(.*?)\}\s*\}"
+    def widest_bar(cls):
+        best = 0.0
+        for mq in re.finditer(MQ, public, re.S):
+            if re.search(re.escape(cls) + r"\s*\{[^}]*display:\s*(flex|block|grid)",
+                         mq.group(2)):
+                best = max(best, float(mq.group(1)))
+        return best
+    def arrow_hidden_to(cls):
+        best = 0.0
+        for mq in re.finditer(MQ, public, re.S):
+            if re.search(r"body:has\(" + re.escape(cls)
+                         + r"\)\s+\.g-totop[^{]*\{[^}]*display:\s*none", mq.group(2)):
+                best = max(best, float(mq.group(1)))
+        return best
+    for bar in (".g-stickybar", ".g-bookbar"):
+        reach, hidden = widest_bar(bar), arrow_hidden_to(bar)
+        s.check("the back-to-top is out of the way wherever %s is drawn" % bar,
+                reach and hidden >= reach,
+                detail="%s is drawn up to %.2frem and the arrow is only kept off "
+                       "it up to %.2frem, so in between it sits on Book"
+                       % (bar, reach, hidden))
+
+    s.section("A phone carousel starts at its first card")
+    # On phones the room cards on Stay and the cards on The Estate become a
+    # sideways scroller, and .g-cards was centred. Centring a row that is
+    # wider than its container pushes half the overflow off the LEFT edge,
+    # and a browser cannot scroll to negative space -- so the first card sat
+    # at x = -667 and Chambre Emeraude could never be seen on the Stay page
+    # at all, nor La Piscine on The Estate. Nothing overflowed the DOCUMENT,
+    # which is why a sweep for sideways page-scroll passed it clean: the
+    # missing cards were inside a scroller, off its unreachable side.
+    #
+    # Checked on the source because stale exports have reverted this
+    # stylesheet three times running, and a carousel that silently loses its
+    # first two rooms looks perfectly fine to anybody who does not count them.
+    # THE LAST ONE WINS, so that is the one read. The stylesheet has thirty-
+    # five phone-width blocks; the first version of this matched the first
+    # of them, found no .g-cards in it, and failed against a file that was
+    # already correct.
+    phone_says = []
+    for block in re.finditer(
+            r"@media\s*\(max-width:\s*34rem\)\s*\{(.*?)\}\s*\}", public, re.S):
+        for rule in re.finditer(
+                r"\.g-cards[^{]*\{[^}]*?justify-content:\s*([a-z ]+?)\s*;",
+                block.group(1)):
+            phone_says.append(rule.group(1).strip())
+    s.check("at phone width the card row justifies from the start",
+            phone_says and phone_says[-1] == "start",
+            detail="phone-width .g-cards rules, in order: %s -- centring an "
+                   "overflowing scroller hides its first cards off the left "
+                   "edge, where nothing can scroll to them" % phone_says)
+    s.check("and elsewhere it centres only when it can do so safely",
+            re.search(r"\.g-cards[^{]*\{[^}]*justify-content:\s*safe\s+center",
+                      public),
+            detail="`safe center` falls back to start the moment the row "
+                   "would overflow; plain `center` does not")
 
     return s

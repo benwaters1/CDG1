@@ -321,9 +321,11 @@ def run():
             detail="somebody will price the next wedding off this page")
     guests_page = oc.get(f"/admin/events/{e['id']}/guests").get_data(as_text=True)
     s.check("the guest list opens", "Marie Dubois" in guests_page)
+    # All of it: the event is over, which puts it under History.
+    listed = oc.get("/admin/events?when=all").get_data(as_text=True)
     s.check("both are reachable from the enquiries list",
-            f"/admin/events/{e['id']}/margin" in oc.get("/admin/events").get_data(as_text=True)
-            and f"/admin/events/{e['id']}/guests" in oc.get("/admin/events").get_data(as_text=True))
+            f"/admin/events/{e['id']}/margin" in listed
+            and f"/admin/events/{e['id']}/guests" in listed)
 
     s.section("Guards")
     s.check("an unknown event has no margin page",

@@ -29,6 +29,25 @@ def run():
     body = r.get_data(as_text=True)
     s.check("but a themed one, not Flask's bare page",
             "g-wrap" in body or "g-nav" in body, detail="public shell missing")
+    # ONE ERROR PAGE, NOT TWO. A new design arrived and was appended ABOVE
+    # the one already there without the old one being removed, so a mistyped
+    # address drew the whole apology twice — "That page has moved, or never
+    # existed" with six cards, then "That page is not here" with four buttons
+    # under it. Counting the headings is what catches a second copy being
+    # pasted in; nothing about a page that renders twice is an error to Jinja.
+    s.check("the apology is made once, not twice",
+            body.count("<h1") == 1, detail="%d <h1> on the page" % body.count("<h1"))
+
+    # And it must not blame the visitor for our own fault: a 500 saying the
+    # page "never existed" is the site telling somebody they mistyped when the
+    # server fell over.
+    with m.app.test_request_context("/"):
+        from flask import render_template
+        five = render_template("error.html", code=500)
+    s.check("a server error owns the fault rather than the visitor",
+            "never existed" not in five,
+            detail="the 404 wording leaked into the 500 branch")
+
     heading = re.search(r"<h1[^>]*>([^<]+)", body)
     s.check("with a heading that says so", bool(heading),
             detail=heading.group(1).strip() if heading else "(no h1)")

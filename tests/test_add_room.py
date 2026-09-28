@@ -158,10 +158,11 @@ def run():
         "SELECT * FROM bookings WHERE guest_name = ?",
         (TAG + " Sister",)).fetchone()
     s.check("a booking is created", added is not None)
-    s.check("as a REQUEST, not a confirmed stay",
-            added and added["status"] == "pending",
-            detail="the house confirms it in the normal queue, the same as "
-                   "any other room")
+    s.check("and it is booked, the same as any other room",
+            added and added["status"] == "confirmed",
+            detail="a guest adding a second room on the website should not be\n"
+                   "told this one is awaiting confirmation while the first was\n"
+                   "instant — status is %r" % (added["status"] if added else None,))
     s.check("nothing is recorded as paid",
             added and (added["amount_paid"] or 0) == 0
             and added["payment_status"] != "paid",

@@ -28,7 +28,7 @@
     {% endif %}
     <form method="post" action="{{ url_for('handle_hr_note', note_id=n['id']) }}" style="margin-top:10px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <textarea name="response" rows="2" placeholder="Write a reply — sending it also marks this handled">{{ n['response'] or '' }}</textarea>
+      <textarea aria-label="Write a reply — sending it also marks this handled" name="response" rows="2" placeholder="Write a reply — sending it also marks this handled">{{ n['response'] or '' }}</textarea>
       <div class="expense-actions" style="margin-top:6px;">
         <button type="submit" class="btn-mini">{{ 'Update reply' if n['response'] else 'Send reply' }}</button>
       </div>

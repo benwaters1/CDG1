@@ -38,8 +38,8 @@
 
 <div class="search-bar" style="margin-bottom:18px;">
   <div>
-    <label class="field-label">Status</label>
-    <select onchange="window.location.href='{{ url_for('management_social') }}?status=' + this.value + '&platform={{ platform_filter }}'">
+    <label class="field-label" for="management_social-status">Status</label>
+    <select id="management_social-status" onchange="window.location.href='{{ url_for('management_social') }}?status=' + this.value + '&platform={{ platform_filter }}'">
       <option value="">All</option>
       {% for s in ['idea', 'drafted', 'scheduled', 'posted'] %}
       <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
@@ -48,8 +48,8 @@
   </div>
   {% if platforms %}
   <div>
-    <label class="field-label">Platform</label>
-    <select onchange="window.location.href='{{ url_for('management_social') }}?status={{ status_filter }}&platform=' + this.value">
+    <label class="field-label" for="management_social-platform">Platform</label>
+    <select id="management_social-platform" onchange="window.location.href='{{ url_for('management_social') }}?status={{ status_filter }}&platform=' + this.value">
       <option value="">All</option>
       {% for p in platforms %}
       <option value="{{ p }}" {{ 'selected' if platform_filter == p }}>{{ p }}</option>
@@ -74,7 +74,21 @@
       <span class="mini-status status-{{ 'onshift' if p['status'] == 'posted' else 'pending' }}">{{ p['status'] }}</span>
       <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleSocialEdit({{ p['id'] }})">Edit</span>
       {% if p['status'] != 'posted' %}
+      {# THE GATE. Publishing reads approved_at and nothing else, so this is
+         the only thing between a scheduled post and Instagram. #}
+      {% if p['approved_at'] %}
+      <span class="mini-status status-onshift" title="Approved {{ p['approved_at']|house_day }} by {{ p['approved_by_name'] or 'somebody' }}">approved{% if p['approved_by_name'] %} — {{ p['approved_by_name'] }}{% endif %}</span>
+      <form method="post" action="{{ url_for('unapprove_social_post', post_id=p['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Withdraw</button></form>
+      {% if p['image_filename'] %}
+      <form method="post" action="{{ url_for('publish_social_post_now', post_id=p['id']) }}" onsubmit="return confirm('Put this out now, on {{ p['platform'] }}?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Publish now</button></form>
+      {% endif %}
+      {% elif (p['caption'] or '').strip() %}
+      <form method="post" action="{{ url_for('approve_social_post', post_id=p['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Approve</button></form>
+      {% endif %}
       <form method="post" action="{{ url_for('mark_social_post_posted', post_id=p['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Mark posted</button></form>
+      {% endif %}
+      {% if p['publish_error'] %}
+      <span class="mini-role" style="color:var(--danger,#a33);" title="{{ p['publish_error'] }}">last try: {{ p['publish_error'][:60] }}</span>
       {% endif %}
       <form method="post" action="{{ url_for('delete_social_post', post_id=p['id']) }}" onsubmit="return confirm('Remove this post from the schedule?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Remove</button></form>
     </div>
@@ -98,11 +112,11 @@
       </select>
       <div>
         <label class="field-label">Scheduled date</label>
-        <input type="date" name="scheduled_date" value="{{ p['scheduled_date'] or '' }}">
+        <input aria-label="Scheduled date" type="date" name="scheduled_date" value="{{ p['scheduled_date'] or '' }}">
       </div>
       <div>
         <label class="field-label">Scheduled time</label>
-        <input type="time" name="scheduled_time" value="{{ p['scheduled_time'] or '' }}">
+        <input aria-label="Scheduled time" type="time" name="scheduled_time" value="{{ p['scheduled_time'] or '' }}">
       </div>
       <select name="assigned_to_user_id">
         <option value="">Unassigned</option>
@@ -110,9 +124,40 @@
         <option value="{{ e['id'] }}" {{ 'selected' if p['assigned_to_user_id'] == e['id'] }}>{{ e['name'] }}</option>
         {% endfor %}
       </select>
-      <textarea name="caption" placeholder="Caption / content" required>{{ p['caption'] }}</textarea>
-      <input type="text" name="link" value="{{ p['link'] or '' }}" placeholder="Link (optional)">
-      <input type="text" name="notes" value="{{ p['notes'] or '' }}" placeholder="Notes (optional)">
+      <textarea aria-label="Caption / content" name="caption" placeholder="Caption / content" required>{{ p['caption'] }}</textarea>
+      {% if p['image_filename'] %}
+      {# SUGGESTED, not written in. The caption box above is the only thing
+         that is the caption, and nothing fills it but a person. #}
+      <div class="sugg">
+        <img class="sugg__pic"
+             src="{{ url_for('photo_at_size', size='thumb', filename=p['image_filename']) }}"
+             alt="{{ p['alt_text'] or 'The photograph on this post' }}"
+             loading="lazy" width="90" height="90">
+        <div class="sugg__body">
+          {% if p['suggestions'] %}
+          <p class="field-label">Suggestions — none of these is the caption until you pick one</p>
+          {% for c in p['suggestions']['captions'] %}
+          <div class="sugg__one">
+            <span>{{ c }}</span>
+            <button type="submit" class="btn-mini"
+                    formaction="{{ url_for('use_suggested_words', post_id=p['id']) }}"
+                    formmethod="post" name="which" value="{{ loop.index0 }}">Use this</button>
+          </div>
+          {% endfor %}
+          {% if p['suggestions']['alt_text'] and not p['alt_text'] %}
+          <p class="g-muted">Alt text it offers: {{ p['suggestions']['alt_text'] }}</p>
+          {% endif %}
+          {% endif %}
+          <button type="submit" class="btn-mini"
+                  formaction="{{ url_for('suggest_post_words', post_id=p['id']) }}"
+                  formmethod="post">
+            {{ 'Suggest again' if p['suggestions'] else 'Suggest some words' }}
+          </button>
+        </div>
+      </div>
+      {% endif %}
+      <input aria-label="Link (optional)" type="text" name="link" value="{{ p['link'] or '' }}" placeholder="Link (optional)">
+      <input aria-label="Notes (optional)" type="text" name="notes" value="{{ p['notes'] or '' }}" placeholder="Notes (optional)">
       <button type="submit" class="btn-mini">Save</button>
     </form>
     {% endfor %}
@@ -135,12 +180,12 @@
       {% endfor %}
     </select>
     <div>
-      <label class="field-label">Scheduled date (optional)</label>
-      <input type="date" name="scheduled_date">
+      <label class="field-label" for="management_social-scheduled-date">Scheduled date (optional)</label>
+      <input id="management_social-scheduled-date" type="date" name="scheduled_date">
     </div>
     <div>
-      <label class="field-label">Scheduled time (optional)</label>
-      <input type="time" name="scheduled_time">
+      <label class="field-label" for="management_social-scheduled-time">Scheduled time (optional)</label>
+      <input id="management_social-scheduled-time" type="time" name="scheduled_time">
     </div>
     <select name="assigned_to_user_id">
       <option value="">Unassigned</option>
@@ -148,9 +193,9 @@
       <option value="{{ e['id'] }}">{{ e['name'] }}</option>
       {% endfor %}
     </select>
-    <textarea name="caption" placeholder="Caption / content idea" required></textarea>
-    <input type="text" name="link" placeholder="Link (optional)">
-    <input type="text" name="notes" placeholder="Notes (optional)">
+    <textarea aria-label="Caption / content idea" name="caption" placeholder="Caption / content idea" required></textarea>
+    <input aria-label="Link (optional)" type="text" name="link" placeholder="Link (optional)">
+    <input aria-label="Notes (optional)" type="text" name="notes" placeholder="Notes (optional)">
     <button type="submit" class="btn-mini">Add</button>
   </form>
 </div>
@@ -163,3 +208,16 @@ function toggleSocialEdit(id) {
 </script>
 
 {% endblock %}
+
+<style>
+  .sugg { display: flex; gap: .7rem; align-items: flex-start; margin: .4rem 0; }
+  .sugg__pic { border-radius: 4px; object-fit: cover; width: 90px; height: 90px; }
+  .sugg__body { flex: 1; min-width: 0; }
+  .sugg__one {
+    display: flex; gap: .5rem; align-items: baseline;
+    justify-content: space-between; padding: .3rem 0;
+    border-bottom: 1px solid rgba(0,0,0,.06);
+  }
+  .sugg__one span { flex: 1; }
+  @media (pointer: coarse) { .sugg .btn-mini { min-height: 44px; } }
+</style>

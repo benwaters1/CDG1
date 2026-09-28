@@ -20,15 +20,15 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <h2 class="section-heading">Write one down</h2>
   <div class="field-row-2">
-    <input type="text" name="meter" list="known-meters" placeholder="Which meter, e.g. Electricity — main" required>
+    <input aria-label="Which meter, e.g. Electricity — main" type="text" name="meter" list="known-meters" placeholder="Which meter, e.g. Electricity — main" required>
     <datalist id="known-meters">
       {% for name in meters %}<option value="{{ name }}">{% endfor %}
     </datalist>
     <input type="date" name="read_on" value="{{ today }}">
   </div>
   <div class="field-row-2">
-    <input type="text" name="reading" placeholder="What the meter says" required>
-    <input type="text" name="note" placeholder="Anything worth saying">
+    <input aria-label="What the meter says" type="text" name="reading" placeholder="What the meter says" required>
+    <input aria-label="Anything worth saying" type="text" name="note" placeholder="Anything worth saying">
   </div>
   <label class="checkbox-row" style="display:flex; align-items:center; gap:8px; margin:8px 0;">
     <input type="checkbox" name="confirm_lower">

@@ -66,10 +66,44 @@ def _bar(html):
     return html[at:at + 700] if at >= 0 else ""
 
 
+TAG = "ZZBB"
+
+
+def _ensure_booking(conn):
+    """A booking with a manage_token, made here rather than borrowed.
+
+    booking_confirmation cannot be reached without one, and reading whichever
+    booking another suite happens to have left behind means this suite goes
+    red when the run order changes. It did, and it read as the sticky bar
+    being broken rather than as a missing fixture.
+    """
+    row = conn.execute(
+        "SELECT manage_token FROM bookings WHERE manage_token IS NOT NULL "
+        "AND manage_token != '' ORDER BY id DESC LIMIT 1").fetchone()
+    if row:
+        return
+    room = conn.execute(
+        "SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+    if not room:
+        return
+    today = m.house_today()
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token,
+                   guest_name, guest_email, arrival_date, departure_date,
+                   status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)""",
+        (room["id"], TAG + "REF", TAG + "TOKEN", TAG + " Guest",
+         "zzbb@example.invalid", (today + m.timedelta(days=420)).isoformat(),
+         (today + m.timedelta(days=422)).isoformat(),
+         m.datetime.now(m.timezone.utc).isoformat()))
+    conn.commit()
+
+
 def run():
     s = Suite("the sticky bar")
     anon = m.app.test_client()
     conn = m.get_db()
+    _ensure_booking(conn)
 
     s.section("It offers what the page is about")
 
@@ -158,6 +192,8 @@ def run():
                             "booking_confirmation.html")),
             detail="one of them is quiet for some other reason")
 
+    conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
+    conn.commit()
     conn.close()
     return s
 

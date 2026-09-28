@@ -7,8 +7,8 @@
   <form method="post" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if prefill_vehicle_id %}<input type="hidden" name="vehicle_id" value="{{ prefill_vehicle_id }}">{% endif %}
-    <label class="field-label">What was it for</label>
-    <input type="text" name="vendor_name" value="{{ prefill_vendor }}" placeholder="e.g. Leroy Merlin, Total station" list="known-vendors">
+    <label class="field-label" for="expense_form-vendor-name">What was it for</label>
+    <input id="expense_form-vendor-name" type="text" name="vendor_name" value="{{ prefill_vendor }}" placeholder="e.g. Leroy Merlin, Total station" list="known-vendors">
     {% if vendors %}
     <datalist id="known-vendors">
       {% for v in vendors %}
@@ -26,8 +26,8 @@
       <option value="{{ key }}">{{ label }}</option>
       {% endfor %}
     </select>
-    <label class="field-label">Description</label>
-    <textarea name="description" required placeholder="What was purchased and why"></textarea>
+    <label class="field-label" for="expense_form-description">Description</label>
+    <textarea id="expense_form-description" name="description" required placeholder="What was purchased and why"></textarea>
     <label class="field-label" for="ex_amount">Amount (€)</label>
     <input type="number" id="ex_amount" name="amount" step="0.01" min="0.01" required>
     {# When the money actually left their pocket, which is not the day they
@@ -38,8 +38,8 @@
            value="{{ request.form.get('spent_on', today) }}">
     <p class="upload-hint">The date on the receipt. It is what the purchase is
       booked against, so a receipt found later still lands in the right month.</p>
-    <label class="field-label">Receipt</label>
-    <input type="file" name="receipt" accept="image/*,.pdf">
+    <label class="field-label" for="expense_form-receipt">Receipt</label>
+    <input id="expense_form-receipt" type="file" name="receipt" accept="image/*,.pdf">
     <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-top:6px;">
       <input type="checkbox" name="restaurant_related">
       This is a restaurant expense (ingredients, dinner service supplies)

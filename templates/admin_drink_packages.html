@@ -78,36 +78,36 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="refund-fields">
     <div style="grid-column:1 / -1;">
-      <label class="field-label">Name</label>
-      <input type="text" name="name" required placeholder="Formule boisson">
+      <label class="field-label" for="admin_drink_packages-name">Name</label>
+      <input id="admin_drink_packages-name" type="text" name="name" required placeholder="Formule boisson">
     </div>
     <div>
-      <label class="field-label">Type</label>
-      <select name="kind">
+      <label class="field-label" for="admin_drink_packages-kind">Type</label>
+      <select id="admin_drink_packages-kind" name="kind">
         <option value="allowance">Allowance — a budget per cover</option>
         <option value="fixed">Fixed — a named list of drinks</option>
       </select>
     </div>
     <div>
-      <label class="field-label">Allowance (€)</label>
-      <input type="text" name="allowance_amount" inputmode="decimal" placeholder="25">
+      <label class="field-label" for="admin_drink_packages-allowance-amount">Allowance (€)</label>
+      <input id="admin_drink_packages-allowance-amount" type="text" name="allowance_amount" inputmode="decimal" placeholder="25">
       <span class="field-hint">Only for an allowance package.</span>
     </div>
     <div>
-      <label class="field-label">Charged (€)</label>
-      <input type="text" name="price" inputmode="decimal" placeholder="0">
+      <label class="field-label" for="admin_drink_packages-price">Charged (€)</label>
+      <input id="admin_drink_packages-price" type="text" name="price" inputmode="decimal" placeholder="0">
       <span class="field-hint">Leave at 0 when it is bundled into the menu price.</span>
     </div>
     <div>
-      <label class="field-label">Per</label>
-      <select name="per">
+      <label class="field-label" for="admin_drink_packages-per">Per</label>
+      <select id="admin_drink_packages-per" name="per">
         <option value="cover">Per cover</option>
         <option value="table">Per table</option>
       </select>
     </div>
     <div style="grid-column:1 / -1;">
-      <label class="field-label">Wording for the printed card</label>
-      <input type="text" name="disclosure"
+      <label class="field-label" for="admin_drink_packages-disclosure">Wording for the printed card</label>
+      <input id="admin_drink_packages-disclosure" type="text" name="disclosure"
              placeholder="Boisson comprise : 1 verre de vin (15 cl) par personne">
       <span class="field-hint">French law requires the card to state what is included
         and in what quantity.</span>

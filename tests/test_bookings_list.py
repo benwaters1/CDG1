@@ -161,7 +161,7 @@ def run():
     s.section("An old link and a new one do not fight")
     # The legacy parameter is mapped onto the facet. If both are present the
     # explicit one wins, because that is the one somebody just clicked.
-    body = oc.get("/admin/bookings?status=pending&state=Confirmed").get_data(as_text=True)
+    body = oc.get("/admin/bookings?status=pending&state=Confirmed&when=all").get_data(as_text=True)
     s.check("the facet wins",
             _names(body) == {"CONF", "OTHER", "PAST", "NOW", "LEAVING"},
             detail=f"{_names(body)} — otherwise clicking a chip on a page reached "

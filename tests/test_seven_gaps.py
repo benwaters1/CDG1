@@ -15,6 +15,19 @@ m = _harness.m
 TAG = "ZZ7G"
 
 
+
+def _stamp(conn, ref):
+    """Stamp the room's agreed price, as create_booking does for every real booking.
+
+    money_ahead and money_due read booking_bill now -- the one definition of
+    what a stay owes -- and booking_bill trusts the stamp, falling back to the
+    rate card without one. Unstamped, a fixture's total_price would be read as
+    whatever the card says those nights cost.
+    """
+    conn.execute("UPDATE bookings SET room_total_quoted = total_price, "
+                 "room_total_quoted_for = arrival_date || '|' || departure_date "
+                 "WHERE reference_code = ?", (ref,))
+
 def _cleanup(conn):
     conn.execute("DELETE FROM waitlist_entries WHERE email LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM guest_feedback WHERE guest_name LIKE ?", (TAG + "%",))
@@ -165,6 +178,8 @@ def run():
         (room, TAG + "B3", TAG + "tk3", TAG + " Settled", TAG + "s@example.invalid",
          (today + timedelta(days=30)).isoformat(),
          (today + timedelta(days=33)).isoformat(), due_day.isoformat(), _now()))
+    _stamp(conn, TAG + "B2")
+    _stamp(conn, TAG + "B3")
     conn.commit()
     with m.app.test_request_context():
         due = m.money_due(conn, weeks=12, today=today)

@@ -42,7 +42,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="kind" value="{{ msg.kind }}">
   <label class="field-label">Before {{ msg.label }} — sent {{ msg.when }}</label>
-  <textarea name="template" rows="3" style="width:100%;">{{ msg.body }}</textarea>
+  <textarea aria-label="Before  — sent" name="template" rows="3" style="width:100%;">{{ msg.body }}</textarea>
   <p class="upload-hint" style="margin-top:6px;">
     Use <code>{guest_name}</code>, <code>{arrival_date}</code>,
     <code>{departure_date}</code>, <code>{reference}</code>,
@@ -108,8 +108,8 @@
 <form method="post" action="{{ url_for('stop_texting_number') }}" style="margin-bottom:14px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div style="display:flex; gap:8px; flex-wrap:wrap;">
-    <input type="tel" name="phone" placeholder="06 12 34 56 78" required style="max-width:220px;" autocomplete="tel">
-    <input type="text" name="reason" placeholder="Said so on the phone" style="max-width:260px;">
+    <input aria-label="06 12 34 56 78" type="tel" name="phone" placeholder="06 12 34 56 78" required style="max-width:220px;" autocomplete="tel">
+    <input aria-label="Said so on the phone" type="text" name="reason" placeholder="Said so on the phone" style="max-width:260px;">
     <button type="submit" class="btn-mini">Add</button>
   </div>
 </form>

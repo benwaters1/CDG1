@@ -143,10 +143,15 @@ def run():
                 "Nothing was confirmed" in msg2 and "Confirmed 2" not in msg2,
                 detail=f"{flashes(r2)[:1]} — the owner is told work happened "
                        "that did not")
+        # And the why is the booking's own state. It was "already dealt with
+        # by somebody else" for every one -- said here to the person who
+        # confirmed both of them a moment ago.
         s.check("and says which ones, and why",
-                a["reference_code"] in msg2 and "already dealt with" in msg2,
+                a["reference_code"] in msg2 and "already confirmed" in msg2
+                and "somebody else" not in msg2,
                 detail=f"{flashes(r2)[:1]} — a count sends somebody to work "
-                       "out which two of forty rows it meant")
+                       "out which two of forty rows it meant, and a wrong "
+                       "reason sends them to find out who")
 
         s.section("Two requests for the same room and nights")
         # Nothing stops both being REQUESTED. This is the only place that

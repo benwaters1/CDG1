@@ -14,6 +14,8 @@ not the others fails here.
 """
 from datetime import date, datetime, timedelta, timezone
 
+import re
+
 from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
@@ -55,8 +57,16 @@ def run():
                        "saving the rule 500s or is silently dropped")
 
     s.section("The form offers exactly those")
-    body = oc.get("/admin/deposit-rules").get_data(as_text=True)
-    s.check("the page opens", "<select name=\"category\"" in body)
+    r = oc.get("/admin/deposit-rules")
+    body = r.get_data(as_text=True)
+    # Answered, then the control — rather than one literal string that happened
+    # to carry both. This read `"<select name=\"category\"" in body` and went
+    # red the day an id was added in front of the name: the page opened
+    # perfectly and the check was reporting on attribute ORDER.
+    s.check("the page opens", r.status_code == 200, detail="HTTP %s" % r.status_code)
+    s.check("and offers a category to choose",
+            re.search(r'<select\b[^>]*\bname="category"', body) is not None,
+            detail="attribute order is not the subject here")
     for key, label in m.DEPOSIT_RULE_CATEGORIES:
         s.check(f"the form offers {key}", f'value="{key}"' in body,
                 detail="the database accepts this and the page gives no way to "

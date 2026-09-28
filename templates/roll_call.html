@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Roll call{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Who is in the house</h1>
+  <div class="muted">Counted at
+    <time datetime="{{ here.as_at }}">{{ here.taken_at }}</time></div>
+</div>
+
+{# The number first and large, because the only question at the assembly point
+   is how many people to look for. Everything below it is the detail you read
+   once you have started counting heads. #}
+<div class="overview-band">
+  <div class="overview-cell">
+    <div class="overview-value">{{ here.total }}</div>
+    <div class="overview-label">People expected</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">{{ here.staff_count }}</div>
+    <div class="overview-label">Staff clocked in</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">{{ here.guest_count }}</div>
+    <div class="overview-label">Guests staying</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">{{ here.rooms_occupied }}</div>
+    <div class="overview-label">Rooms occupied</div>
+  </div>
+</div>
+
+<p class="pay-disclaimer">
+  <strong>This is who is expected to be here, not who is.</strong> A guest who
+  went out to dinner is still on it, and so is anyone who forgot to clock out.
+  It is a list to count against, not a list to trust.
+</p>
+
+{% if here.doubtful %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>Clocked in for more than sixteen hours:</strong>
+  {{ here.doubtful|join(', ') }} — probably a missed clock-out rather than
+  somebody still working. Count them, but look for them first.
+</div>
+{% endif %}
+
+<h2>Staff</h2>
+{% if here.staff %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Name</th><th>Doing</th><th>Since</th><th>Hours</th><th>Telephone</th></tr></thead>
+    <tbody>
+      {% for s in here.staff %}
+      <tr{% if s.probably_forgot %} class="row-alert"{% endif %}>
+        <td>{{ s.name }}</td>
+        <td>{{ s.job_role or '—' }}</td>
+        <td>{{ s.since_time or '—' }}</td>
+        <td>{{ s.hours if s.hours is not none else '—' }}</td>
+        <td>{% if s.phone %}<a href="tel:{{ s.phone }}">{{ s.phone }}</a>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="muted">Nobody is clocked in.</p>
+{% endif %}
+
+<h2>Guests</h2>
+{% if here.guests %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Room</th><th>Name</th><th>In the party</th><th>Leaving</th><th>Telephone</th></tr></thead>
+    <tbody>
+      {% for g in here.guests %}
+      <tr>
+        <td>{{ g.room }}</td>
+        <td>{{ g.name }}</td>
+        <td>{{ g.party_size }}</td>
+        <td>{{ g.leaving }}</td>
+        <td>{% if g.phone %}<a href="tel:{{ g.phone }}">{{ g.phone }}</a>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="muted">No guests are staying tonight.</p>
+{% endif %}
+
+{% endblock %}

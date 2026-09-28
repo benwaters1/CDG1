@@ -12,24 +12,24 @@
    rather than a JavaScript dialog, so it works without script.
    ========================================================================== #}
 {% macro cancel_block(b, settings) %}
-{% set free_days = (settings['free_cancel_days'] if settings and settings['free_cancel_days'] else 30)|int %}
+{#- Not wired in yet (test_orphan_templates names it), but its terms were the
+    wrong house's: a deposit refunded in full more than 30 days out, and
+    moving the dates free at any point. This house takes no deposit, refunds
+    nothing, and re-prices a stay when its dates move. Said as the live
+    manage page says it, so wiring this in cannot change the policy. -#}
 <section class="g-panel g-cancel">
   <h2 class="g-panel__h">If you need to cancel</h2>
 
-  <p class="g-p">We would rather you moved the dates than cancelled, and moving them costs nothing at any point. If you do need to cancel, this is what happens.</p>
+  <p class="g-p">We would rather move your dates than see you cancel. If you do need to cancel, this is what happens.</p>
 
   <dl class="g-cancel__terms">
     <div>
-      <dt>More than {{ free_days }} days before arrival</dt>
-      <dd>The deposit is refunded in full.</dd>
+      <dt>At any point</dt>
+      <dd>Bookings are non-refundable. Write to us before you cancel — we can sometimes move your dates instead.</dd>
     </div>
     <div>
-      <dt>Within {{ free_days }} days</dt>
-      <dd>The deposit is kept. Nothing further is charged.</dd>
-    </div>
-    <div>
-      <dt>Any time</dt>
-      <dd>Moving to other dates costs nothing, subject to what is free.</dd>
+      <dt>Moving the dates</dt>
+      <dd>Subject to what is free. The stay is priced again for the new dates.</dd>
     </div>
   </dl>
 

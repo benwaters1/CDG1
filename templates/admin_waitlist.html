@@ -4,12 +4,14 @@
 
 <div class="page-head">
   <h1>Waitlist</h1>
-  <a href="{{ url_for('export_waitlist_csv') }}" class="btn-mini">Export CSV</a>
+  <a href="{{ url_for('export_waitlist_csv') }}{{ '?' + export_q if export_q }}" class="btn-mini">Export this view</a>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">Guests who wanted dates with nothing available — reach out if a cancellation frees them up.</p>
 
+{% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
+
 {% if not entries %}
-  <div class="empty-state">Nobody on the waitlist right now.</div>
+  <div class="empty-state">{% if lv['total'] %}Nothing matches that. <a href="{{ url_for('admin_waitlist', when='all') }}">Show all {{ lv['total'] }}</a>.{% else %}Nobody on the waitlist right now.{% endif %}</div>
 {% else %}
   {% for e in entries %}
   <div class="expense-card">

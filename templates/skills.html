@@ -91,12 +91,12 @@
 <h2 class="section-heading">Who is free on a day</h2>
 <form method="get" class="upload-form" style="max-width:640px;">
   <div>
-    <label class="field-label">Day</label>
-    <input type="date" name="day" value="{{ day.isoformat() }}">
+    <label class="field-label" for="skills-day">Day</label>
+    <input id="skills-day" type="date" name="day" value="{{ day.isoformat() }}">
   </div>
   <div>
-    <label class="field-label">With this skill (optional)</label>
-    <input type="text" name="skill" value="{{ wanted }}" placeholder="e.g. first aid" list="skill-list">
+    <label class="field-label" for="skills-skill">With this skill (optional)</label>
+    <input id="skills-skill" type="text" name="skill" value="{{ wanted }}" placeholder="e.g. first aid" list="skill-list">
     <datalist id="skill-list">
       {% for sk in matrix.skills %}<option value="{{ sk.display }}">{% endfor %}
     </datalist>

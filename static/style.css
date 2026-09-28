@@ -447,6 +447,25 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
    because most rows are read rather than acted on, and wrapping so the
    three fields do not push the table sideways on a laptop. */
 .owed-take>summary{ cursor:pointer; font-size:12.5px; }
+/* Under the list of balances to collect: the button that takes them, and the
+   one that sends a link to the rest. */
+.collect-actions{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0 6px; }
+/* A note under a figure in a table cell: its own line, and quieter. */
+.cell-note{ display:block; font-size:11px; color:var(--ink-soft); margin-top:2px; }
+/* The workshop register: one session's head, and the forms that take, move
+   and correct a registration. */
+.register-head-actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.register-panel{ margin:0 0 16px; }
+.register-panel__when{ margin:0 0 8px; font-weight:600; }
+.register-panel__actions{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 0; }
+.register-add, .register-edit, .register-move{ margin-top:8px; }
+.register-add>summary, .register-edit>summary, .register-move>summary{ cursor:pointer; color:var(--steel); }
+.register-form{ display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-top:8px; }
+.register-field{ display:flex; flex-direction:column; flex:1 1 9rem; min-width:9rem; }
+.register-hold{ color:var(--rust); margin-top:6px; }
+.register-table td{ vertical-align:top; }
+/* What a stay still owes, on the bookings list. */
+.owed-flag{ color:var(--rust); }
 .owed-take__form{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;
   align-items:center; }
 .owed-take__form input[type=number]{ width:7em; }
@@ -1429,6 +1448,31 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
   /* Small links inside page content (e.g. "Download receipt") — the topbar
      ones are handled above, these are everywhere else. */
   .small-link{ min-height:34px; display:inline-flex; align-items:center; }
+
+  /* THE TILL'S OWN CONTROLS, which this block had never reached.
+     Everything above is the app's generic furniture — buttons, chips, topbar
+     links — and the till uses none of it. It has its own classes, so it sat
+     outside the one rule in this file written for fingers. That is exactly
+     the wrong way round: the till is the ONE part of this app that is never
+     used with a mouse, and it was the only part with no touch sizing.
+     Measured on an iPad-sized viewport, the numbers were 28px, 17px, 39px. */
+
+  /* Seated · Ordered · Starters away · Mains away · Dessert · Bill dropped.
+     Tapped more often than anything else in the building during service, and
+     the six sit in one row — so a near-miss does not do nothing, it marks the
+     wrong course away. 28px tall before this. */
+  .till-state{ min-height:44px; display:inline-flex; align-items:center;
+               font-size:14px; }
+
+  /* "‹ Floor" — the way back out of a tab, and 17px tall, which is the
+     hardest thing on the screen to hit and the one most often wanted. */
+  .till-back{ min-height:44px; display:inline-flex; align-items:center;
+              padding:0 6px; }
+
+  /* The ✕ that leaves the till: 39px wide against a 44px minimum. Five pixels
+     is not a rounding error on a control that discards what is on screen. */
+  .till-bar__exit{ min-width:44px; display:inline-flex; align-items:center;
+                   justify-content:center; }
 
   /* Guest side. The footer link to the Terms is on every public page and was
      13px tall — it is the one thing a guest may genuinely need to read before
@@ -2810,3 +2854,25 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
    nothing here is lost, and an alarm colour for "not sent yet" teaches
    people to ignore the bar. */
 .pending-bar__e{ margin:6px 0 0; color:var(--gold-soft); font-weight:600; }
+
+/* THE SHOPPING ROW. A <button> rather than a checkbox and its label, because
+   this is tapped one-handed in a supermarket aisle with a trolley in the
+   other — the whole row is the target, not a 20px box at the end of it.
+   Resets the button chrome so it reads as a list row and not a form control. */
+.shop-row{
+  display:flex; align-items:center; gap:var(--s3);
+  background:none; border:0; border-bottom:1px solid var(--parchment-line);
+  font:inherit; color:inherit; cursor:pointer;
+}
+.shop-row:last-child{ border-bottom:0; }
+.shop-row .shop-tick{ display:inline-block; min-width:1.2em; color:var(--gold); }
+/* Ticked, not gone. A list that hides what was bought is a list you cannot
+   untick when you put something back on the shelf. */
+.shop-row.task-done .mini-name{ text-decoration:line-through; opacity:0.55; }
+
+/* SAID ON THE DOCUMENT, not only on a settings page. A statement is what a
+   business guest forwards to whoever pays them, and it prints a VAT
+   breakdown — so the one thing worse than no TVA number on it is a VAT
+   figure with no TVA number and nothing saying why. Same treatment
+   pos_receipt.html already gives it. */
+.statement-missing{ color:var(--status-warn-fg, #8A6A1F); font-weight:600; }

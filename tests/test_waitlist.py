@@ -92,7 +92,8 @@ def run():
 
     sent = []
 
-    def working_provider(to, subject, body, ics_content=None, ics_filename=None, keep=True):
+    def working_provider(to, subject, body, ics_content=None,
+                         ics_filename=None, keep=True, **rest):
         sent.append((to, subject, keep))
         return True
 

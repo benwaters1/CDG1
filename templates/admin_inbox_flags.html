@@ -33,16 +33,16 @@
 
 <form method="get" class="search-bar">
   <div>
-    <label class="field-label">Status</label>
-    <select name="status">
+    <label class="field-label" for="admin_inbox_flags-status">Status</label>
+    <select id="admin_inbox_flags-status" name="status">
       {% for s in ['open', 'resolved', 'dismissed', 'all'] %}
       <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
       {% endfor %}
     </select>
   </div>
   <div>
-    <label class="field-label">Type</label>
-    <select name="kind">
+    <label class="field-label" for="admin_inbox_flags-kind">Type</label>
+    <select id="admin_inbox_flags-kind" name="kind">
       <option value="all" {{ 'selected' if kind_filter == 'all' }}>All</option>
       <option value="unanswered" {{ 'selected' if kind_filter == 'unanswered' }}>Unanswered only</option>
       <option value="conflict" {{ 'selected' if kind_filter == 'conflict' }}>Conflicts only</option>

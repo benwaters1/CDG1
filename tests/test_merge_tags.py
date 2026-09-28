@@ -88,6 +88,19 @@ def _senders_from_source():
                 r'(?:send_\w+_email|render_email_template)\(\s*conn\s*,\s*(?:\w+\s*,\s*)?'
                 r'"([a-z0-9_]+)"\s*,\s*' + name, src):
             passed[call.group(1)] |= keys
+
+    # Letters whose context one function builds and hands over under a key the
+    # call does not spell out: the confirmation, whose plain and drawn halves
+    # share a builder so they cannot disagree, and the two balance letters,
+    # one function choosing between them. Named, so neither escapes the check.
+    for key, name in (("room_confirmed", "room_confirmation_context"),
+                      ("room_balance_before", "balance_request_email"),
+                      ("room_balance_after", "balance_request_email")):
+        fn = re.search(r"def " + name + r"\(", src)
+        if not fn:
+            continue
+        end = src.find("\ndef ", fn.end())
+        passed[key] |= set(re.findall(r'"([a-z0-9_]+)"\s*:', src[fn.start():end]))
     return passed
 
 
@@ -138,9 +151,18 @@ def run():
 
     s.section("The page says what is available, not only what is used")
     body = oc.get("/management/email-templates").get_data(as_text=True)
-    s.check("the available list is on it", "Available here" in body,
+    # Asked of the CONTROLS, not of the sentence above them. This read
+    # `"Available here" in body` and went red the day the wording changed,
+    # while every tag was still on the page and had just become clickable.
+    # A check on prose reports on prose.
+    offered = re.findall(r'data-tpl-insert="\{(\w+)\}"', body)
+    s.check("every tag a template can fill is offered on the page", offered,
             detail="the page showed what each template uses and never what it "
-                   "could use")
+                   "could use; %d offered" % len(offered))
+    s.check("and each is a control you can put in, not just a list",
+            body.count("data-tpl-insert=") >= len(set(offered)),
+            detail="saving refuses a tag nothing fills, so typing them by hand "
+                   "is a trap with a save button on the end of it")
     s.check("with a tag the shipped wording does not use", "{room_name}" in body
             or "room_name" in body,
             detail="the list is just the tags already in the text again")
@@ -155,7 +177,7 @@ def run():
     conn.execute("UPDATE email_templates SET body = ? WHERE template_key = ?",
                  ("Hi {guest_name}, about {not_a_real_tag}. {feedback_url}", KEY))
     conn.commit()
-    subject, rendered = m.render_email_template(
+    subject, rendered, _drawn = m.render_email_template(
         conn, KEY, {"guest_name": "Marie", "room_name": "Blue",
                     "feedback_url": "https://example.invalid/f"})
     conn.close()

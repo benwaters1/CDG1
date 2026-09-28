@@ -50,7 +50,7 @@
            the duck has run out, and it has to be one tap mid-service. #}
         <form method="post" action="{{ url_for('menu_item_availability', item_id=i['id']) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          {% if i['available'] %}<input type="text" name="note" placeholder="why (optional)" style="width:130px; margin:0;">{% endif %}
+          {% if i['available'] %}<input aria-label="why (optional)" type="text" name="note" placeholder="why (optional)" style="width:130px; margin:0;">{% endif %}
           <button type="submit" class="btn-mini">{{ 'Put back on' if not i['available'] else '86 it' }}</button>
         </form>
       </div>
@@ -83,18 +83,18 @@
           <div class="refund-fields">
             <div>
               <label class="field-label">Size</label>
-              <select name="serve_size">
+              <select aria-label="Size" name="serve_size">
                 {% for k, v in serve_sizes.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
               </select>
             </div>
             <div>
               <label class="field-label">Volume (ml)</label>
-              <input type="text" name="serve_volume_ml" inputmode="decimal" placeholder="150">
+              <input aria-label="Volume (ml)" type="text" name="serve_volume_ml" inputmode="decimal" placeholder="150">
               <span class="field-hint">Required for wine — the card must show it.</span>
             </div>
             <div>
               <label class="field-label">Price (€)</label>
-              <input type="text" name="price" inputmode="decimal" placeholder="9.00">
+              <input aria-label="Price (€)" type="text" name="price" inputmode="decimal" placeholder="9.00">
             </div>
           </div>
           <button type="submit" class="btn-mini" style="margin-top:8px;">Add pour</button>

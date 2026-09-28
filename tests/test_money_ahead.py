@@ -20,6 +20,19 @@ m = _harness.m
 TAG = "money-"
 
 
+
+def _stamp(conn, ref):
+    """Stamp the room's agreed price, as create_booking does for every real booking.
+
+    money_ahead and money_due read booking_bill now -- the one definition of
+    what a stay owes -- and booking_bill trusts the stamp, falling back to the
+    rate card without one. Unstamped, a fixture's total_price would be read as
+    whatever the card says those nights cost.
+    """
+    conn.execute("UPDATE bookings SET room_total_quoted = total_price, "
+                 "room_total_quoted_for = arrival_date || '|' || departure_date "
+                 "WHERE reference_code = ?", (ref,))
+
 def _cleanup(conn):
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM workshop_bookings WHERE guest_name LIKE ?", (TAG + "%",))
@@ -58,6 +71,7 @@ def run():
              total_price, amount_paid, created_at)
            VALUES (?, ?, ?, ?, 'x@example.com', ?, ?, 2, 'confirmed', 1000, 300, ?)""",
         (room["id"], TAG + "R1", TAG + "tok1", TAG + "Owing", d(20), d(23), now))
+    _stamp(conn, TAG + "R1")
     ahead = m.money_ahead(conn, days=90, today=today)
     owed = [i for i in ahead["incoming"] if TAG + "Owing" in i["label"]]
     s.check("it is listed once", len(owed) == 1, detail=str(_labels(ahead["incoming"])))
@@ -76,6 +90,7 @@ def run():
              total_price, amount_paid, created_at)
            VALUES (?, ?, ?, ?, 'x@example.com', ?, ?, 2, 'confirmed', 800, 800, ?)""",
         (room["id"], TAG + "R2", TAG + "tok2", TAG + "Settled", d(25), d(27), now))
+    _stamp(conn, TAG + "R2")
     conn.commit()
     ahead = m.money_ahead(conn, days=90, today=today)
     s.check("a settled booking is left out",
@@ -104,6 +119,12 @@ def run():
                  deposit_paid_at, balance_amount, balance_due_date, created_at)
                VALUES (?, ?, ?, ?, 'x@example.com', 'confirmed', 4800, 1440, ?, 3360, ?, ?)""",
             (session["id"], TAG + "W1", TAG + "wtok", TAG + "Atelier", now, d(45), now))
+        # And the deposit on the ledger, as every real deposit writes it: the
+        # forecast reads what the ledger says is left, not the figure fixed the
+        # day they booked.
+        wb = conn.execute("SELECT id FROM workshop_bookings WHERE reference_code = ?",
+                          (TAG + "W1",)).fetchone()["id"]
+        m.add_workshop_transaction(conn, wb, "payment", "Deposit", 1440, method="stripe")
         conn.commit()
         ahead = m.money_ahead(conn, days=90, today=today)
         bal = [i for i in ahead["incoming"] if TAG + "Atelier" in i["label"]]

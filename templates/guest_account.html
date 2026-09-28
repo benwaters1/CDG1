@@ -21,14 +21,14 @@
   <div class="account-balance">
     <div>
       <span class="account-balance__label">Your balance</span>
-      <span class="account-balance__figure">€{{ '%.2f'|format(balance.total) }}</span>
+      <span class="account-balance__figure">€{{ '{:,.2f}'.format(balance.total) }}</span>
     </div>
     {% if can_pay_online %}
     <p class="g-hint" style="margin:var(--s1) 0 0;">Pay any stay below, or settle it with us when you arrive.</p>
     {% else %}
     <p class="g-hint" style="margin:var(--s1) 0 0;">
-      Card payment isn't connected yet — please settle with us directly, or reply
-      to your confirmation and we'll arrange it.
+      Card payment is not connected yet — please settle with us directly, or reply
+      to your confirmation and we will arrange it.
     </p>
     {% endif %}
   </div>
@@ -37,7 +37,7 @@
   {% set nothing = not (data.rooms or data.dinners or data.workshops or data.events) %}
   {% if nothing %}
   <div class="empty-state">
-    Nothing here yet. <a href="{{ url_for('book_rooms') }}">Look at what's available</a>.
+    Nothing here yet. <a href="{{ url_for('book_rooms') }}">Look at what is available</a>.
   </div>
   {% endif %}
 
@@ -50,7 +50,7 @@
     <div class="account-card-head">
       <div>
         <strong>{{ b['room_name'] }}</strong>
-        <span class="mini-status status-{{ b['status'] }}">{{ b['status'] }}</span>
+        <span class="mini-status status-{{ (b['status']|string)|lower }}">{{ b['status'] }}</span>
         {% if not upcoming %}<span class="mini-status status-inactive">past</span>{% endif %}
       </div>
       <span class="g-hint">{{ b['reference_code'] }}</span>
@@ -59,12 +59,12 @@
       {{ b['arrival_date']|date_short }} → {{ b['departure_date']|date_short }}
       · {{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}
       {% set money = balance.per_booking.get(b['id']) if balance else None %}
-      {%- if money %} · €{{ '%.2f'|format(money.total) }}{% elif b['total_price'] %} · €{{ '%.2f'|format(b['total_price']) }}{% endif %}
+      {%- if money %} · €{{ '{:,.2f}'.format(money.total) }}{% elif b['total_price'] %} · €{{ '{:,.2f}'.format(b['total_price']) }}{% endif %}
     </p>
     {% if money and money.owed > 0 %}
     <p class="account-owed">
-      <strong>€{{ '%.2f'|format(money.owed) }}</strong> still to pay
-      {%- if money.paid %} · €{{ '%.2f'|format(money.paid) }} received{% endif %}
+      <strong>€{{ '{:,.2f}'.format(money.owed) }}</strong> still to pay
+      {%- if money.paid %} · €{{ '{:,.2f}'.format(money.paid) }} received{% endif %}
       {%- if money.due_date %} · due {{ money.due_date|date_short }}{% endif %}
     </p>
     {% endif %}
@@ -75,7 +75,7 @@
       </a>
       {% if money and money.owed > 0 and can_pay_online %}
       <a href="{{ url_for('booking_pay', manage_token=b['manage_token']) }}" class="g-btn g-btn--sm g-btn--solid">
-        Pay €{{ '%.2f'|format(money.owed) }}
+        Pay €{{ '{:,.2f}'.format(money.owed) }}
       </a>
       {% endif %}
       <a href="{{ url_for('booking_statement', manage_token=b['manage_token']) }}" class="small-link">Your bill</a>
@@ -84,12 +84,12 @@
       {% endif %}
     </div>
 
-    {% if upcoming and b['status'] == 'confirmed' %}
+    {% if upcoming and (b['status']|lower) == 'confirmed' %}
     {# Adding to a stay you already have should not mean starting a new booking. #}
     <details class="account-add">
       <summary>Add something to this stay</summary>
       <div class="account-add-body">
-        {% if restaurant_open %}
+        {% if restaurant_open and _dm == 'open' %}
         <p class="g-hint">
           <a href="{{ url_for('restaurant_info') }}">Book dinner</a> during your stay — tables are
           limited, so earlier is better.
@@ -102,7 +102,7 @@
           <li>
             <span>{{ e['name'] }}</span>
             <span class="g-hint">
-              {% if e['price'] %}€{{ '%.2f'|format(e['price']) }}{% endif %}
+              {% if e['price'] %}€{{ '{:,.2f}'.format(e['price']) }}{% endif %}
               {%- if e['lead_time_days'] %} · {{ e['lead_time_days'] }} days' notice{% endif %}
             </span>
             <form method="post"
@@ -143,7 +143,7 @@
     <div class="account-card-head">
       <div>
         <strong>{{ w['workshop_title'] }}</strong>
-        <span class="mini-status status-{{ w['status'] }}">{{ w['status'] }}</span>
+        <span class="mini-status status-{{ (w['status']|string)|lower }}">{{ w['status'] }}</span>
       </div>
       <span class="g-hint">{{ w['reference_code'] }}</span>
     </div>
@@ -189,12 +189,12 @@
     <div class="account-card-head">
       <div>
         <strong>{{ d['dinner_date']|date_short }}</strong>
-        <span class="mini-status status-{{ d['status'] }}">{{ d['status'] }}</span>
+        <span class="mini-status status-{{ (d['status']|string)|lower }}">{{ d['status'] }}</span>
       </div>
       <span class="g-hint">{{ d['reference_code'] }}</span>
     </div>
     <p class="g-hint" style="margin:var(--s1) 0;">
-      Table for {{ d['party_size'] }}{% if d['total_price'] %} · €{{ '%.2f'|format(d['total_price']) }}{% endif %}
+      Table for {{ d['party_size'] }}{% if d['total_price'] %} · €{{ '{:,.2f}'.format(d['total_price']) }}{% endif %}
     </p>
     <div class="account-actions">
       <a href="{{ url_for('restaurant_manage', manage_token=d['manage_token']) }}" class="g-btn g-btn--sm">
@@ -213,7 +213,7 @@
     <div class="account-card-head">
       <div>
         <strong>{{ e['event_type']|capitalize }}</strong>
-        <span class="mini-status status-{{ 'confirmed' if e['status'] == 'confirmed' else 'pending' }}">{{ e['status'] }}</span>
+        <span class="mini-status status-{{ 'confirmed' if (e['status']|lower) == 'confirmed' else 'pending' }}">{{ e['status'] }}</span>
       </div>
       <span class="g-hint">{{ e['reference_code'] }}</span>
     </div>
@@ -238,7 +238,8 @@
   </div>
 
   <p class="g-hint" style="margin-top:var(--s4);">
-    This link is yours and expires {{ expires[:10] }}. If it stops working,
+    {# Printed the raw date, and "expires ." when there was none. #}
+    This link is yours{% if expires %} and expires on {{ expires[:10]|date_short }}{% endif %}. If it stops working,
     <a href="{{ url_for('guest_account_request') }}">ask for a new one</a>.
     Please do not forward it — it opens your bookings.
   </p>

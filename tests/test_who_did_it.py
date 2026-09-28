@@ -204,7 +204,6 @@ def run():
         "pos_order_formules.added_by_user_id": "who added a set menu",
         "absences.recorded_by_user_id": "who recorded somebody absent",
         "workshop_feedback.acknowledged_by_user_id": "who answered it",
-        "shopping_items.added_by_user_id": "who asked for it to be bought",
         "breakfast_checklist_log.checked_by_user_id": "who ticked breakfast off",
         "meter_readings.read_by_user_id": "who read the meter",
         "maintenance_schedules.created_by_user_id": "who set the schedule",

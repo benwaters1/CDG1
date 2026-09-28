@@ -15,23 +15,23 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field-row-2">
       <div>
-        <label class="field-label">{{ t('From') }}</label>
-        <input type="date" name="start_date" required>
+        <label class="field-label" for="my_leave-start-date">{{ t('From') }}</label>
+        <input id="my_leave-start-date" type="date" name="start_date" required>
       </div>
       <div>
-        <label class="field-label">To</label>
-        <input type="date" name="end_date" required>
+        <label class="field-label" for="my_leave-end-date">To</label>
+        <input id="my_leave-end-date" type="date" name="end_date" required>
       </div>
     </div>
-    <label class="field-label">{{ t('Type') }}</label>
-    <select name="leave_type">
+    <label class="field-label" for="my_leave-leave-type">{{ t('Type') }}</label>
+    <select id="my_leave-leave-type" name="leave_type">
       <option value="vacation">{{ t('Vacation') }}</option>
       <option value="sick">{{ t('Sick') }}</option>
       <option value="personal">{{ t('Personal') }}</option>
       <option value="other">{{ t('Other') }}</option>
     </select>
-    <label class="field-label">{{ t('Reason (optional)') }}</label>
-    <input type="text" name="reason" placeholder="e.g. Family visit">
+    <label class="field-label" for="my_leave-reason">{{ t('Reason (optional)') }}</label>
+    <input id="my_leave-reason" type="text" name="reason" placeholder="e.g. Family visit">
     <button type="submit" class="btn-primary" style="margin-top:14px;">{{ t('Submit request') }}</button>
   </form>
 </div>

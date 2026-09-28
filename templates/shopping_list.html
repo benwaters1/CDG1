@@ -15,16 +15,16 @@
 <form method="post" action="{{ url_for('new_shopping_item') }}" class="search-bar">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div style="flex:2 1 200px;">
-    <label class="field-label">{{ t('Item') }}</label>
-    <input type="text" name="name" placeholder="e.g. Bin liners" required>
+    <label class="field-label" for="shopping_list-name">{{ t('Item') }}</label>
+    <input id="shopping_list-name" type="text" name="name" placeholder="e.g. Bin liners" required>
   </div>
   <div>
-    <label class="field-label">{{ t('Category') }}</label>
-    <input type="text" name="category" placeholder="e.g. Cleaning">
+    <label class="field-label" for="shopping_list-category">{{ t('Category') }}</label>
+    <input id="shopping_list-category" type="text" name="category" placeholder="e.g. Cleaning">
   </div>
   <div>
-    <label class="field-label">{{ t('Store') }}</label>
-    <input type="text" name="store" placeholder="e.g. Carrefour">
+    <label class="field-label" for="shopping_list-store">{{ t('Store') }}</label>
+    <input id="shopping_list-store" type="text" name="store" placeholder="e.g. Carrefour">
   </div>
   <button type="submit" class="btn-mini">{{ t('+ Add') }}</button>
 </form>

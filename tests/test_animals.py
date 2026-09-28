@@ -1,4 +1,4 @@
-"""The house has six cats, two dogs and chickens, and says so.
+"""The house has Bruce, a French bulldog, and four cats, and says so.
 
 Which means it has to say the other half too. Somebody with an animal allergy
 reading a warm paragraph about Bruce going where he likes needs the sentence
@@ -20,7 +20,14 @@ import _harness
 m = _harness.m
 
 # The animals by name, as the copy actually mentions them.
-NAMES = re.compile(r"\bBruce\b|six cats|two dogs", re.I)
+#
+# THIS MOVES WITH THE FACTS, and the day it did not is the reason it says so.
+# The owner confirmed Bruce and four cats -- not two dogs and six cats -- and
+# the copy was corrected. Left reading "six cats|two dogs", this would have
+# stopped seeing every page that mentions the cats without naming Bruce, and
+# the pairing check below would have gone on passing because it had stopped
+# looking. Any mention of the cats or the dog counts, whatever the number.
+NAMES = re.compile(r"\bBruce\b|\bcats\b|french bulldog", re.I)
 NOTE = re.compile(r"allerg", re.I)
 
 

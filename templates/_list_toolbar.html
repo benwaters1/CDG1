@@ -44,7 +44,10 @@
 <div class="facet-row">
   <span class="facet-label">{{ f.label }}</span>
   {% set base = keep.copy() %}{% set _ = base.pop(f.key, None) %}
-  <a href="{{ url_for(request.endpoint, **dict(base, **request.view_args or {})) }}"
+  {# On a facet with a default, "All" has to say so in the URL: an empty one
+     is how the default arrives. #}
+  {% set every = dict(base, **{f.key: 'all'}) if f.default else base %}
+  <a href="{{ url_for(request.endpoint, **dict(every, **request.view_args or {})) }}"
      class="chip {{ 'is-on' if not f.selected }}">All <span class="chip-n">{{ f.total }}</span></a>
   {% for o in f.options %}
   {% set args = base.copy() %}{% set _ = args.update({f.key: o.value}) %}
@@ -62,4 +65,6 @@
   Showing {{ lv.shown }} of {{ lv.total }}
   <a href="{{ url_for(request.endpoint, **(request.view_args or {})) }}" class="small-link">Clear filters</a>
 </p>
+{% elif lv.defaulted %}
+<p class="list-count">Showing {{ lv.shown }} of {{ lv.total }}. The rest are a chip away.</p>
 {% endif %}

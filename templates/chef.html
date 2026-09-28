@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}The kitchen{% endblock %}
+{% block content %}
+
+{#  ==========================================================================
+    THE KITCHEN'S OWN PAGE
+
+    A tablet on the kitchen wall, read from two metres by somebody holding a
+    pan. Everything here already existed somewhere — who is eating is the
+    pass, the clocks and the bills are the floor, the shortfall is the store —
+    and it was in four places, none of them the kitchen.
+
+    Read top to bottom the way the night runs: what is standing NOW, then who
+    is in the room, then what the tables owe, then what to buy tomorrow.
+
+    Nothing on this page is cached. It is bolted to a wall with a signal, and
+    a stale allergy is the one thing here that could hurt somebody. The
+    shopping page is the half that travels.
+    ========================================================================== #}
+
+<div class="page-head">
+  <h1>The kitchen</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('chef_shopping_page') }}" class="btn-ghost">Shopping</a>
+    <a href="{{ url_for('pos_kitchen') }}" class="btn-ghost">The pass</a>
+    <a href="{{ url_for('pos_home') }}" class="btn-ghost">The floor</a>
+  </div>
+</div>
+
+<p class="page-intro">
+  {{ data.covers }} {{ 'cover' if data.covers == 1 else 'covers' }} tonight
+  {%- if data.service_time %} · service at {{ data.service_time }}{% endif %}
+  {%- if data.floor %} · {{ data.floor|length }} {{ 'table' if data.floor|length == 1 else 'tables' }} open{% endif %}
+</p>
+
+{# ---- WHAT IS STANDING, first, because it is the only thing with a clock
+   running on it. A ticket with no clock is how a table waits forty minutes
+   and nobody notices. #}
+{% if data.waiting %}
+<h2 class="section-heading">Standing now</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">Table</th><th scope="col">Waiting</th>
+      <th scope="col">Who</th><th scope="col">Cannot eat</th></tr></thead>
+    <tbody>
+      {% for t in data.waiting %}
+      <tr>
+        <th scope="row">{{ t.order['table_label'] }}</th>
+        {# Over twenty minutes is the number a kitchen argues about, so it is
+           the number that changes colour rather than a bare figure. #}
+        <td><span class="mini-status status-{{ 'pending' if (t.waiting_minutes or 0) >= 20 else 'onshift' }}">{{ t.waiting_minutes }} min</span></td>
+        <td>{{ t.guest or '—' }}</td>
+        <td>{{ t.dietary or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ---- WHO IS IN THE HOUSE. The allergy line is the loudest thing on the
+   page on purpose: it is the only item here that can put somebody in
+   hospital. #}
+<h2 class="section-heading">Eating here tonight</h2>
+{% if data.allergy_count %}
+<p class="field-hint"><strong>{{ data.allergy_count }} of them
+  {{ 'has' if data.allergy_count == 1 else 'have' }} something they cannot
+  eat.</strong> It is against their name below.</p>
+{% endif %}
+{% if data.guests %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">Who</th><th scope="col">Cannot eat</th>
+      <th scope="col">Prefers</th><th scope="col">Been before</th></tr></thead>
+    <tbody>
+      {% for g in data.guests %}
+      <tr>
+        <th scope="row">{{ g.name }}{% if g.vip %} ★{% endif %}
+          {%- if g.room_name %}<br><span class="g-hint">{{ g.room_name }}{% if g.last_night %} · last night{% endif %}</span>
+          {%- else %}<br><span class="g-hint">{{ g.party }} at table</span>{% endif %}</th>
+        <td>{% if g.dietary_notes %}<strong>{{ g.dietary_notes }}</strong>{% endif %}</td>
+        <td>{{ g.preferences or '' }}</td>
+        <td>{% if g.stay_count %}{{ g.stay_count }}×{% if g.last_stay %} · {{ g.last_stay }}{% endif %}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">Nobody is booked in to eat tonight.</div>
+{% endif %}
+
+{# ---- WHAT A TABLE STILL OWES. The question a chef in a small house
+   actually gets asked at eleven at night is "can that table go", and the
+   answer was on a page in the office. #}
+{% if data.money %}
+<h2 class="section-heading">What is owed</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">Table</th><th scope="col">Bill</th>
+      <th scope="col">Taken</th><th scope="col">Still owed</th>
+      <th scope="col">Sitting</th></tr></thead>
+    <tbody>
+      {% for m in data.money %}
+      <tr>
+        <th scope="row">{{ m.table }}{% if m.guest %}<br><span class="g-hint">{{ m.guest }}</span>{% endif %}</th>
+        <td style="font-variant-numeric: tabular-nums;">€{{ '%.2f'|format(m.bill) }}</td>
+        <td style="font-variant-numeric: tabular-nums;">{% if m.taken %}€{{ '%.2f'|format(m.taken) }}{% endif %}</td>
+        <td style="font-variant-numeric: tabular-nums;">
+          {%- if m.owed > 0.005 %}<strong>€{{ '%.2f'|format(m.owed) }}</strong>
+          {%- else %}<span class="mini-status status-onshift">settled</span>{% endif %}</td>
+        <td>{% if m.sitting_minutes %}{{ m.sitting_minutes }} min{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="field-hint">€{{ '%.2f'|format(data.owed_now) }} across the room. Taking
+  the money is the floor's job — this is here so nobody clears a table that
+  has not paid.</p>
+{% endif %}
+
+{# ---- TOMORROW. Deliberately last: it is the only thing on this page that
+   is not about tonight. #}
+<h2 class="section-heading">To buy</h2>
+{% if shopping.left or shopping.short %}
+<p class="page-intro">
+  {{ shopping.left }} {{ 'thing' if shopping.left == 1 else 'things' }} on the
+  list{% if shopping.short %}, and {{ shopping.short|length }} the store says
+  {{ 'is' if shopping.short|length == 1 else 'are' }} low{% endif %}.
+</p>
+<p><a href="{{ url_for('chef_shopping_page') }}" class="btn-ghost">Open the shopping list</a>
+  — that one works with no signal.</p>
+{% else %}
+<div class="empty-state">Nothing on the list and nothing below its reorder level.</div>
+{% endif %}
+
+{% endblock %}

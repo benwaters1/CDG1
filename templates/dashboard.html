@@ -483,7 +483,9 @@ function toggleBreak() {
     {% for s in my_upcoming_sessions %}
     <div class="mini-row">
       <span class="mini-name">{{ s['title'] }}</span>
-      <span class="mini-role">{{ s['start_date'] }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date'] }}{% endif %} · {{ s['covers'] }}/{{ s['capacity'] }} confirmed</span>
+      {# Said, not dropped: the person teaching it is the one who would
+         otherwise turn up. "0/10 confirmed" on it would read as a quiet one. #}
+      <span class="mini-role">{{ s['start_date'] }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date'] }}{% endif %} · {% if s['cancelled_at'] %}<span class="mini-status status-declined">called off</span>{% else %}{{ s['covers'] }}/{{ s['capacity'] }} confirmed{% endif %}</span>
     </div>
     {% endfor %}
   </div>

@@ -49,7 +49,12 @@ def run():
     _cleanup()
     oc, _ec, _owner, _emp = clients()
     room = _harness.ensure_room()
-    arrival = m.house_today() + timedelta(days=40)
+    # Clear of the seeded ateliers, not merely free. This suite asserts that
+    # an atelier the guest is booked on is not ALSO offered to them -- and a
+    # seeded atelier overlapping the stay is a second atelier, correctly
+    # offered, which reads here as the bug.
+    arrival = _harness.free_window(room["id"], 3, after_days=40,
+                                   clear_of_ateliers=True)
     departure = arrival + timedelta(days=3)
     now = datetime.now(timezone.utc).isoformat()
     email = "zzit.guest@example.invalid"
