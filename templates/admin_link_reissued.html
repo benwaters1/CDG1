@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}A new link{% endblock %}
+{% block content %}
+
+{# SHOWN ONCE. The link is a key to the booking, so this page is never cached
+   and nothing here keeps a copy: the letter that carried it is not queued or
+   filed either. #}
+<div class="page-head">
+  <h1>A new link · {{ what }}</h1>
+  <a href="{{ back }}" class="btn-mini">Back</a>
+</div>
+
+<p class="page-intro">The old link has stopped working. This is the new one:</p>
+<p><input type="text" readonly value="{{ link }}" aria-label="The new link" style="width:100%;"></p>
+
+{% if asked and sent %}
+<p class="flash flash-success">Sent to {{ to }}.</p>
+{% elif asked %}
+<p class="flash flash-error">Not sent: {{ why }}. Pass it on yourself, the way you would a
+password — it opens the booking without one.</p>
+{% else %}
+<p class="upload-hint">Nothing was sent. Pass it on yourself, the way you would a password —
+it opens the booking without one.</p>
+{% endif %}
+
+{% endblock %}

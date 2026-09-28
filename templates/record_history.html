@@ -17,8 +17,20 @@
   <h1>What changed</h1>
   <div style="display:flex; gap:10px; align-items:center;">
     {% if data.kind == 'booking' %}
+    {# The edit page refuses a stay that is no longer pending or confirmed --
+       which is most of the stays whose history anybody asks about. #}
+    {% if data.row['status'] in ('pending', 'confirmed') %}
     <a href="{{ url_for('edit_booking', booking_id=data.row['id']) }}" class="btn-ghost">The booking</a>
+    {% else %}
+    <a href="{{ url_for('admin_bookings', q=data.row['reference_code']) }}" class="btn-ghost">The booking</a>
+    {% endif %}
     <a href="{{ url_for('booking_correspondence', booking_id=data.row['id']) }}" class="btn-ghost">What we've said</a>
+    {% elif data.kind == 'workshop_booking' %}
+    <a href="{{ url_for('admin_workshop_registrations', q=data.row['reference_code']) }}" class="btn-ghost">The registration</a>
+    {% elif data.kind == 'restaurant_booking' %}
+    <a href="{{ url_for('admin_restaurant', q=data.row['reference_code']) }}" class="btn-ghost">The table</a>
+    {% elif data.kind == 'event' %}
+    <a href="{{ url_for('admin_events', q=data.row['reference_code']) }}" class="btn-ghost">The event</a>
     {% elif data.kind == 'vendor' %}
     <a href="{{ url_for('edit_vendor', vendor_id=data.row['id']) }}" class="btn-ghost">The supplier</a>
     {% elif data.kind == 'employee' %}
@@ -47,12 +59,13 @@
     <tbody>
       {% for e in data.entries %}
       <tr>
-        <td style="white-space:nowrap;">{{ e['created_at'][:16]|replace('T', ' ') }}</td>
+        {# The house's clock. The stamp is UTC, and slicing it showed every
+           change an hour or two early -- after midnight, on the day before. #}
+        <td style="white-space:nowrap;">{{ local_datetime_str(e['created_at']) }}</td>
         <th scope="row">{{ (e['action'] or '')|replace('_', ' ')|capitalize }}</th>
-        {# Nobody, not "the system". A change with no name against it was made
-           by a job or before there were accounts, and saying which is the
-           whole value of the column. #}
-        <td>{{ e['actor_name'] or 'A scheduled job' }}</td>
+        {# A person, the guest on their own booking, or a job -- never "the
+           system", and never a job for what the guest did themselves. #}
+        <td>{{ audit_who(e) }}</td>
         <td>{{ e['details'] or '' }}</td>
       </tr>
       {% endfor %}
@@ -65,9 +78,9 @@
    is what most records look like, and is worth saying plainly rather than
    filling the space. #}
 <div class="empty-state">
-  Nothing audited has happened to this {{ data.label }} yet. Confirmations,
-  declines, refunds, deletions and changes to money all land here; ordinary
-  edits do not.
+  Nothing audited has happened to this {{ data.label }} yet. Decisions --
+  confirming, declining, cancelling -- changes of date or price, refunds and
+  deletions land here as they are made.
 </div>
 {% endif %}
 

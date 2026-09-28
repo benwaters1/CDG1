@@ -4,6 +4,16 @@
 {% block content %}
 
 {% set g = record.guest %}
+{% if restriction and restriction['restricted_at'] %}
+<p class="flash flash-error">They asked us to stop using their details
+  {{ restriction['restricted_at']|house_day|date_short }} &mdash; {{ restriction['restricted_how'] }}{% if restriction['by_name'] %}, written down by {{ restriction['by_name'] }}{% endif %}.
+  Nothing is sent to them now but what their bookings need.</p>
+{% endif %}
+{% if merged_into %}
+<p class="flash flash-error">This profile was merged into
+  <a href="{{ url_for('guest_detail', guest_id=merged_into['id']) }}">{{ merged_into['name'] }}</a>.
+  Everything it held is on theirs; anything written here now is not.</p>
+{% endif %}
 
 <div class="page-head">
   <h1>
@@ -15,8 +25,36 @@
     {% if is_owner %}
     <a href="{{ url_for('guest_full_statement', guest_id=g['id']) }}" class="btn-mini">Statement</a>
     {% endif %}
+    {% if can('record_history_page') %}
+    <a href="{{ url_for('record_history_page', kind='guest', record_id=g['id']) }}" class="btn-mini">What changed</a>
+    {% endif %}
   </div>
 </div>
+
+{# The words the house has put on them, to find them again. #}
+{% if guest_tags or can('tag_guest') %}
+<div class="detail-card">
+  {% for t in guest_tags %}
+  <span class="mini-status status-upcoming" title="{{ 'put on by ' ~ t['by_name'] if t['by_name'] else '' }}">{{ t['tag'] }}
+    {% if can('tag_guest') %}
+    <form method="post" action="{{ url_for('tag_guest', guest_id=g['id']) }}" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="remove" value="{{ t['tag'] }}">
+      <button type="submit" class="btn-mini" aria-label="Take off {{ t['tag'] }}">×</button>
+    </form>
+    {% endif %}
+  </span>
+  {% endfor %}
+  {% if can('tag_guest') %}
+  <form method="post" action="{{ url_for('tag_guest', guest_id=g['id']) }}" style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="tag" maxlength="40" list="known-tags" aria-label="Tag them" placeholder="Tag them" style="width:auto;">
+    <datalist id="known-tags">{% for t in known_tags %}<option value="{{ t }}">{% endfor %}</datalist>
+    <button type="submit" class="btn-mini">Tag</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
 
 {# How to greet them, and what not to serve them. First, because it is what a
    colleague needs before they walk round the corner — the money below is the
@@ -28,13 +66,24 @@
     {% endif %}
     {% if g['email'] %}<div><dt>Email</dt><dd><a href="mailto:{{ g['email'] }}">{{ g['email'] }}</a></dd></div>{% endif %}
     {% if g['phone'] %}<div><dt>Telephone</dt><dd><a href="tel:{{ g['phone'] }}">{{ g['phone'] }}</a></dd></div>{% endif %}
+    {% if g['language'] %}<div><dt>Reads in</dt><dd>{{ languages.get(g['language'], g['language']) }}</dd></div>{% endif %}
+    {% if g['usual_arrival_time'] %}<div><dt>Usually arrives</dt><dd>{{ g['usual_arrival_time'] }}</dd></div>{% endif %}
     {% if record.first_seen %}
     <div><dt>Known since</dt><dd>{{ record.first_seen|date_short }}</dd></div>
     {% endif %}
     {% if is_owner and record.marketing %}
     <div><dt>Marketing</dt><dd>{{ record.marketing[0] }}{% if record.marketing[1] %}, {{ record.marketing[1]|house_day|date_short }}{% endif %}</dd></div>
     {% endif %}
+    {% if is_owner and record.texting %}
+    <div><dt>Texts</dt><dd>{{ record.texting[0] }}{% if record.texting[1] %}, {{ record.texting[1]|house_day|date_short }}{% endif %}</dd></div>
+    {% endif %}
+    {# Everybody's to read: whoever is holding the camera needs it. #}
+    <div><dt>Photographs</dt><dd>{{ photo_consent_choices.get(g['photo_consent'] or 'unknown', 'Not asked') }}{% if g['photo_consent_at'] and (g['photo_consent'] or 'unknown') != 'unknown' %}, {{ g['photo_consent_at']|house_day|date_short }}{% endif %}</dd></div>
   </dl>
+  {% if is_owner %}
+  {# The state above, and here how and when they said it. #}
+  <p class="upload-hint"><a href="{{ url_for('guest_history', guest_id=g['id'], kind='Consent') }}" class="small-link">How and when they said yes or no</a></p>
+  {% endif %}
   {% if is_owner and g['email'] %}
   {# Everything the house holds about them, as the file they are entitled to
      ask for -- one click from their record rather than a search elsewhere. #}
@@ -47,8 +96,28 @@
     <span class="pass-short-row">{{ g['dietary_notes'] }}</span>
   </div>
   {% endif %}
+  {% if g['access_needs'] %}
+  {# Beside the dietary note, for the same reason: it is what somebody needs
+     to know before the guest reaches the stairs, not after. #}
+  <div class="pass-short" style="margin-top:10px;">
+    <strong>Access</strong>
+    <span class="pass-short-row">{{ g['access_needs'] }}</span>
+    {% if g['access_needs_updated_at'] %}<span class="upload-hint">told us {{ g['access_needs_updated_at']|house_day|date_short }}</span>{% endif %}
+  </div>
+  {% endif %}
   {% if g['preferences'] %}
   <p class="upload-hint"><strong>Prefers:</strong> {{ g['preferences'] }}</p>
+  {% endif %}
+  {% if own_link %}
+  {# The one address that is them. A new one stops the old working at once --
+     for a link forwarded to the wrong person, or left in a shared inbox. #}
+  <form method="post" action="{{ url_for('reissue_portal_link_page', guest_id=g['id']) }}"
+        onsubmit="return confirm('Their current link will stop working. Issue a new one?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="upload-hint">Their own link: <input type="text" readonly value="{{ own_link }}" aria-label="Their own link" style="width:auto;"></p>
+    <label class="checkbox-row"><input type="checkbox" name="send" value="1" checked> <span>send it to them</span></label>
+    <button type="submit" class="btn-mini">Issue a new link</button>
+  </form>
   {% endif %}
   {% if g['notes'] %}<p class="manual-body">{{ g['notes'] }}</p>{% endif %}
 </div>
@@ -138,7 +207,9 @@
         {%- elif bill %}—{% else %}—{% endif %}
       </td>
       {% endif %}
-      <td><a href="{{ url_for('booking_statement', manage_token=b['manage_token']) }}" class="small-link">Bill</a></td>
+      <td><a href="{{ url_for('booking_statement', manage_token=b['manage_token']) }}" class="small-link">Bill</a>
+        {% with kind='booking', category='room', item=b %}{% include "_record_row_links.html" %}{% endwith %}
+      </td>
     </tr>
     {% endfor %}
   </tbody>
@@ -166,7 +237,7 @@
 <h2 class="section-heading">At the table ({{ record.dinners|length }})</h2>
 <div class="table-wrap">
 <table class="data-table">
-  <thead><tr><th>When</th><th>Covers</th><th>Status</th><th>Notes</th></tr></thead>
+  <thead><tr><th>When</th><th>Covers</th><th>Status</th><th>Notes</th><th></th></tr></thead>
   <tbody>
     {% for d in record.dinners %}
     <tr>
@@ -174,6 +245,7 @@
       <td>{{ d['party_size'] }}</td>
       <td><span class="mini-status status-{{ d['status'] }}">{{ d['status'] }}</span></td>
       <td><span class="upload-hint">{{ d['dietary_notes'] or '—' }}</span></td>
+      <td>{% with kind='restaurant_booking', category='restaurant', item=d %}{% include "_record_row_links.html" %}{% endwith %}</td>
     </tr>
     {% endfor %}
   </tbody>
@@ -185,7 +257,7 @@
 <h2 class="section-heading">Ateliers ({{ record.workshops|length }})</h2>
 <div class="table-wrap">
 <table class="data-table">
-  <thead><tr><th>When</th><th>Workshop</th><th>Status</th>{% if is_owner %}<th class="num">Charged</th><th class="num">Owed</th>{% endif %}</tr></thead>
+  <thead><tr><th>When</th><th>Workshop</th><th>Status</th>{% if is_owner %}<th class="num">Charged</th><th class="num">Owed</th>{% endif %}<th></th></tr></thead>
   <tbody>
     {% for w in record.workshops %}
     {% set wm = record.workshop_money.get(w['id']) %}
@@ -197,6 +269,7 @@
       <td class="num">{% if wm and w['status'] == 'confirmed' %}€{{ '%.2f'|format(wm.charged) }}{% else %}—{% endif %}</td>
       <td class="num">{% if wm and w['status'] == 'confirmed' and wm.owed > 0.005 %}<strong>€{{ '%.2f'|format(wm.owed) }}</strong>{% else %}—{% endif %}</td>
       {% endif %}
+      <td>{% with kind='workshop_booking', category='workshop', item=w %}{% include "_record_row_links.html" %}{% endwith %}</td>
     </tr>
     {% endfor %}
   </tbody>
@@ -208,7 +281,7 @@
 <h2 class="section-heading">Enquiries ({{ record.events|length }})</h2>
 <div class="table-wrap">
 <table class="data-table">
-  <thead><tr><th>Date wanted</th><th>Kind</th><th>Status</th>{% if is_owner %}<th class="num">Quoted</th><th class="num">Owed</th>{% endif %}</tr></thead>
+  <thead><tr><th>Date wanted</th><th>Kind</th><th>Status</th>{% if is_owner %}<th class="num">Quoted</th><th class="num">Owed</th>{% endif %}<th></th></tr></thead>
   <tbody>
     {% for e in record.events %}
     {% set em = record.event_money.get(e['id']) %}
@@ -220,6 +293,7 @@
       <td class="num">{% if em and em.quoted %}€{{ '%.2f'|format(em.quoted) }}{% else %}—{% endif %}</td>
       <td class="num">{% if em and e['status'] == 'confirmed' and em.owed > 0.005 %}<strong>€{{ '%.2f'|format(em.owed) }}</strong>{% else %}—{% endif %}</td>
       {% endif %}
+      <td>{% with kind='event', category='event', item=e %}{% include "_record_row_links.html" %}{% endwith %}</td>
     </tr>
     {% endfor %}
   </tbody>
@@ -265,7 +339,7 @@
     {% for msg in messages %}
     <tr>
       <th scope="row">{{ (msg.when or '')[:16]|replace('T', ' ') }}</th>
-      <td>{{ msg.kind }}</td>
+      <td>{{ msg.kind }}{% if msg.incoming %}<span class="cell-note">to us</span>{% endif %}</td>
       <td>
         {{ msg.subject }}
         {% if msg.body %}<br><span class="upload-hint">{{ msg.body[:110] }}{% if msg.body|length > 110 %}…{% endif %}</span>{% endif %}
@@ -281,6 +355,92 @@
 </table>
 </div>
 {% endif %}
+{% endif %}
+
+{# ---- everything that has passed between us ---------------------------
+   Letters and texts either way, conversations, notes, bookings, money and
+   consent, in one list. They lived on eleven pages. #}
+<h2 style="margin-top:28px;">History</h2>
+{% if not timeline %}
+  <div class="empty-state">Nothing has passed between the house and them yet.</div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>When</th><th>What</th><th>Detail</th></tr></thead>
+  <tbody>
+    {% for x in timeline %}
+    <tr>
+      <th scope="row">{{ x.day|date_short }}</th>
+      <td>{{ x.kind }}{% if x.ref %}<span class="cell-note">{{ x.ref }}</span>{% endif %}</td>
+      <td>{{ x.title }}{% if x.detail %}<span class="cell-note">{{ x.detail[:160] }}{% if x.detail|length > 160 %}…{% endif %}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+<p><a href="{{ url_for('guest_history', guest_id=g['id']) }}" class="btn-mini">All of it</a></p>
+
+{# The telephone left no trace, so the next person to ring them started from
+   nothing. A date to follow up on becomes a task on the calendar. #}
+<details class="refund-box">
+  <summary>Write down a conversation</summary>
+  <form method="post" action="{{ url_for('log_guest_contact', guest_id=g['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div class="register-field">
+        <label class="field-label" for="gc-channel">How</label>
+        <select id="gc-channel" name="channel">
+          {% for key, label in contact_channels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="register-field">
+        <label class="field-label" for="gc-direction">Who got in touch</label>
+        <select id="gc-direction" name="direction">
+          <option value="in">They did</option>
+          <option value="out">We did</option>
+        </select>
+      </div>
+      <div class="register-field">
+        <label class="field-label" for="gc-follow">Follow up on</label>
+        <input id="gc-follow" type="date" name="follow_up_on">
+      </div>
+      <div class="refund-reason">
+        <label class="field-label" for="gc-summary">What was said</label>
+        <textarea id="gc-summary" name="summary" rows="2" required></textarea>
+      </div>
+    </div>
+    <button type="submit" class="btn-mini">Write it down</button>
+  </form>
+</details>
+
+{% if is_owner and g['email'] %}
+{# Written here, it goes from the house and is kept with everything else they
+   have been sent -- a letter from somebody's own mail program never was. #}
+<details class="refund-box">
+  <summary>Write to them</summary>
+  <form method="post" action="{{ url_for('write_to_guest', guest_id=g['id']) }}"
+        onsubmit="return confirm('Send this to {{ g['email'] }}?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div class="refund-reason">
+        <label class="field-label" for="gw-subject">Subject</label>
+        <input id="gw-subject" type="text" name="subject" maxlength="200" required>
+      </div>
+      <div class="refund-reason">
+        <label class="field-label" for="gw-body">Letter</label>
+        <textarea id="gw-body" name="body" rows="6" required></textarea>
+      </div>
+      <div class="register-field">
+        <label class="field-label" for="gw-area">Their reply goes to</label>
+        <select id="gw-area" name="area">
+          {% for key in reply_areas %}<option value="{{ key }}">{{ key|capitalize }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn-mini">Send it</button>
+  </form>
+</details>
 {% endif %}
 
 {# ---- the running note -------------------------------------------------
@@ -380,6 +540,28 @@
   room is given, not after. Choosing "No caution" lifts it, and either way the
   change is recorded in the note above.</p>
   <button type="submit" class="btn-mini">Save caution</button>
+</form>
+
+{# ---- using their details ------------------------------------------------
+   The right the notice lists. Set when they ask; lifted only when they ask
+   again, as a stop on texts is. #}
+<h2 style="margin-top:28px;">Using their details</h2>
+<form method="post" action="{{ url_for('restrict_guest', guest_id=g['id']) }}" style="max-width:640px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if restriction and restriction['restricted_at'] %}
+  <input type="hidden" name="on" value="0">
+  <label class="field-label" for="gr_how">How they asked to start again</label>
+  <input id="gr_how" type="text" name="how" maxlength="200" placeholder="by email, on the 4th">
+  <button type="submit" class="btn-mini">They asked us to start again</button>
+  {% else %}
+  <input type="hidden" name="on" value="1">
+  <label class="field-label" for="gr_how">How they asked</label>
+  <input id="gr_how" type="text" name="how" maxlength="200" placeholder="on the telephone">
+  <button type="submit" class="btn-mini">They asked us to stop using their details</button>
+  <p class="upload-hint">We keep what we hold, and send them nothing but what their bookings
+  need: no newsletter, no offers, no marketing texts, no invitation to review us, no request
+  for feedback, no greeting on a date that matters.</p>
+  {% endif %}
 </form>
 
 {# ---- duplicates and merging ------------------------------------------- #}

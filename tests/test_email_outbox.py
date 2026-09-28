@@ -81,7 +81,7 @@ def run():
     sent_to = []
     real_send = m.send_email
 
-    def fake_send(to, subject, body, ics=None, ics_name=None, keep=True):
+    def fake_send(to, subject, body, ics=None, ics_name=None, keep=True, **_rest):
         sent_to.append(to)
         return True
 
