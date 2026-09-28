@@ -1274,6 +1274,238 @@ csrf = CSRFProtect(app)
 FRAMEABLE_PATH_PREFIX = "/outlook-addin/"
 
 
+# ---------------------------------------------------------------------------
+# Website analytics: counted by the house, without a cookie, without keeping
+# an internet address, and without a way to follow anybody from one day to the
+# next.
+# ---------------------------------------------------------------------------
+
+ANALYTICS_BOTS = re.compile(
+    r"bot|crawl|spider|slurp|scrap|preview|monitor|uptime|pingdom|lighthouse|headless"
+    r"|curl|wget|python-requests|httpx|go-http|java/|okhttp|facebookexternalhit|embedly"
+    r"|whatsapp|telegram|discord|skype|slack", re.I)
+# Not pages a person reads: files, feeds, the hooks other services call.
+ANALYTICS_SKIP_PREFIXES = ("/static", "/uploads", "/webhooks", "/api/", "/media", "/mirror")
+# A robot trying doors for somebody else's software, dressed as a browser. Not
+# a page anybody meant to find here, and a list of pages that were not there
+# is for the ones somebody did.
+ANALYTICS_PROBES = re.compile(
+    r"\.(?:php\d?|aspx?|jsp|cgi|env|ini|sql|bak|old|swp|ya?ml)$|/wp-|/\.|xmlrpc|phpmyadmin"
+    r"|/cgi-bin|/vendor/|/actuator|/boaform|/owa/", re.I)
+# A key as this app makes them (secrets.token_urlsafe, token_hex): twenty
+# characters and more, and somewhere in them a capital, a digit or an
+# underscore. A page's own name is words and hyphens, and is left alone.
+ANALYTICS_KEYLIKE = re.compile(r"[A-Za-z0-9_-]{20,}")
+# The sites that send most people, by the name the house knows them by: a
+# search engine is one search engine in every country it answers from.
+ANALYTICS_SOURCES = [(re.compile(pattern), name) for pattern, name in (
+    (r"(^|\.)mail\.google\.com$|^com\.google\.android\.gm$", "Gmail"),
+    (r"(^|\.)google(\.[a-z]{2,3}){1,2}$|^com\.google\.android\.googlequicksearchbox$", "Google"),
+    (r"(^|\.)bing\.com$", "Bing"),
+    (r"(^|\.)duckduckgo\.com$", "DuckDuckGo"),
+    (r"(^|\.)qwant\.com$", "Qwant"),
+    (r"(^|\.)ecosia\.org$", "Ecosia"),
+    (r"(^|\.)yahoo(\.[a-z]{2,3}){1,2}$", "Yahoo"),
+    (r"(^|\.)facebook\.com$|^fb\.me$", "Facebook"),
+    (r"(^|\.)instagram\.com$", "Instagram"),
+    (r"(^|\.)pinterest(\.[a-z]{2,3}){1,2}$|^pin\.it$", "Pinterest"),
+    (r"^t\.co$|(^|\.)twitter\.com$|(^|\.)x\.com$", "X"),
+    (r"(^|\.)linkedin\.com$|^lnkd\.in$", "LinkedIn"),
+    (r"(^|\.)youtube\.com$|^youtu\.be$", "YouTube"),
+    (r"(^|\.)tiktok\.com$", "TikTok"),
+    (r"(^|\.)tripadvisor(\.[a-z]{2,3}){1,2}$", "Tripadvisor"),
+    (r"(^|\.)booking\.com$", "Booking.com"),
+    (r"(^|\.)airbnb(\.[a-z]{2,3}){1,2}$", "Airbnb"),
+    (r"(^|\.)outlook\.(live|office|office365)\.com$", "Outlook"),
+    (r"(^|\.)chatgpt\.com$|(^|\.)openai\.com$", "ChatGPT"),
+    (r"(^|\.)perplexity\.ai$", "Perplexity"),
+    (r"(^|\.)claude\.ai$", "Claude"),
+)]
+# A browser's first language, by its name. The house is in the Ariège: its
+# neighbours' languages are here as well as its guests'.
+ANALYTICS_LANGUAGES = {
+    "fr": "French", "en": "English", "es": "Spanish", "ca": "Catalan", "eu": "Basque",
+    "oc": "Occitan", "de": "German", "nl": "Dutch", "it": "Italian", "pt": "Portuguese",
+    "da": "Danish", "sv": "Swedish", "no": "Norwegian", "nb": "Norwegian", "fi": "Finnish",
+    "pl": "Polish", "cs": "Czech", "ru": "Russian", "uk": "Ukrainian", "el": "Greek",
+    "tr": "Turkish", "ar": "Arabic", "he": "Hebrew", "ja": "Japanese", "zh": "Chinese",
+    "ko": "Korean",
+}
+# The pages a booking ends on. A view of one is a booking, counted against
+# where the visit came from -- no hook in the booking itself.
+ANALYTICS_GOALS = {"booking_confirmation": "Stay", "workshop_confirmation": "Atelier",
+                   "event_confirmation": "Event enquiry", "restaurant_confirmation": "Table",
+                   "newsletter_confirm": "Newsletter"}
+# Thirteen months: what audience measurement may keep without asking.
+ANALYTICS_KEEP_DAYS = 395
+
+
+def analytics_salt(conn, day):
+    """The day's salt, made the first time it is needed; making it throws the
+    last one away. Without the old salt, yesterday's codes cannot be joined to
+    today's, nor worked back to the browser they came from."""
+    key = f"analytics_salt:{day}"
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    if row:
+        return row["value"]
+    conn.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)",
+                 (key, secrets.token_hex(16)))
+    conn.execute("DELETE FROM app_settings WHERE key LIKE 'analytics_salt:%' AND key != ?", (key,))
+    return conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()["value"]
+
+
+def analytics_visitor(salt, address, agent):
+    """One browser on one day, as a code nothing can turn back into it."""
+    return hashlib.sha256(f"{salt}|{address}|{agent}".encode("utf-8", "replace")).hexdigest()[:16]
+
+
+def analytics_device(agent):
+    """The kind of device, from the browser's own description of itself."""
+    a = (agent or "").lower()
+    if "ipad" in a or "tablet" in a or ("android" in a and "mobile" not in a):
+        return "Tablet"
+    if "mobi" in a or "iphone" in a or "android" in a:
+        return "Phone"
+    return "Computer"
+
+
+def analytics_unkeyed(path):
+    """An address with anything in it that looks like a key taken out -- a
+    guest's private link mistyped into a page that is not there, say."""
+    return ANALYTICS_KEYLIKE.sub(
+        lambda found: "…" if re.search(r"[A-Z0-9_]", found.group()) else found.group(), path)
+
+
+def analytics_source_name(host):
+    """The site that sent somebody, by its name: Google, not google.co.uk."""
+    host = host[4:] if host.startswith("www.") else host
+    for pattern, name in ANALYTICS_SOURCES:
+        if pattern.search(host):
+            return name
+    return host
+
+
+def analytics_view(response):
+    """The page view this request makes, or None when it is not one to count.
+
+    Counted: a public page a person read, found or not. Not counted: the
+    house's own people, robots, prefetches, files, anything but a page, and a
+    browser that asks not to be tracked -- Global Privacy Control or Do Not
+    Track -- which is not counted at all rather than counted less.
+    """
+    if request.method != "GET" or response.status_code not in (200, 404):
+        return None
+    if response.mimetype != "text/html" or session.get("user_id"):
+        return None
+    path = request.path
+    if path.startswith(ANALYTICS_SKIP_PREFIXES):
+        return None
+    if response.status_code == 404 and ANALYTICS_PROBES.search(path):
+        return None
+    headers = request.headers
+    agent = headers.get("User-Agent") or ""
+    if not agent or ANALYTICS_BOTS.search(agent):
+        return None
+    if headers.get("Sec-GPC") == "1" or headers.get("DNT") == "1":
+        return None
+    purpose = (headers.get("Sec-Purpose") or headers.get("Purpose")
+               or headers.get("X-Moz") or "").lower()
+    if "prefetch" in purpose:
+        return None
+    # A private link is written as its kind -- /booking/…/statement -- never its
+    # key, by the same rule the stored letters follow; and a key in an address
+    # that matched nothing is taken out of it all the same.
+    rule = request.url_rule
+    if rule is not None and any("token" in arg for arg in rule.arguments):
+        path = re.sub(r"<[^>]+>", "…", rule.rule)
+    else:
+        path = analytics_unkeyed(path)
+    referrer = None
+    if request.referrer:
+        host = (urlparse(request.referrer).hostname or "").lower()
+        own = (request.host or "").split(":")[0].lower()
+        if host and host != own:
+            # The site's name alone: the rest of an address can be somebody's.
+            referrer = analytics_source_name(host)
+    try:
+        language = ((request.accept_languages.best or "").split("-")[0].lower()[:8]) or None
+    except Exception:
+        language = None
+    args = request.args
+    return {
+        "path": path[:200], "endpoint": request.endpoint, "status": response.status_code,
+        "referrer": referrer,
+        "utm_source": (args.get("utm_source") or "").strip()[:60] or None,
+        "medium": (args.get("utm_medium") or "").strip()[:60] or None,
+        "campaign": (args.get("utm_campaign") or "").strip()[:80] or None,
+        "device": analytics_device(agent), "language": language,
+        "goal": ANALYTICS_GOALS.get(request.endpoint) if response.status_code == 200 else None,
+        # Used for the day's code and gone with this dict: never written down.
+        "address": ((headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+                    or request.remote_addr or ""),
+        "agent": agent,
+    }
+
+
+def write_page_view(view):
+    """Count one page view, once the request's own connections are closed.
+
+    The visit's first page carries where it came from -- a campaign's source,
+    or the site that sent them, or nothing -- and every later page of that
+    visit carries the same, so a booking is counted against where the visit
+    began. A confirmation the visit has already seen -- a reload, the back
+    button -- is not a second booking; two of one kind in a visit count once,
+    since telling them apart would mean keeping which booking it was.
+    Swallowed on failure: counting a page must never cost the page.
+    """
+    if not view:
+        return
+    try:
+        conn = get_db()
+        try:
+            day = house_today_iso()
+            visitor = analytics_visitor(analytics_salt(conn, day), view.pop("address"),
+                                        view.pop("agent"))
+            first = conn.execute(
+                """SELECT source, medium, campaign FROM page_views
+                    WHERE day = ? AND visitor = ? AND entry = 1 LIMIT 1""",
+                (day, visitor)).fetchone()
+            if first:
+                source, medium, campaign = first["source"], first["medium"], first["campaign"]
+            else:
+                source = view["utm_source"] or view["referrer"] or "Direct"
+                medium, campaign = view["medium"], view["campaign"]
+            goal = view["goal"]
+            if goal and first and conn.execute(
+                    "SELECT 1 FROM page_views WHERE day = ? AND visitor = ? AND goal = ? LIMIT 1",
+                    (day, visitor, goal)).fetchone():
+                goal = None
+            conn.execute(
+                """INSERT INTO page_views (day, at, visitor, path, endpoint, status, referrer,
+                       source, medium, campaign, device, language, entry, goal)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (day, datetime.now(timezone.utc).isoformat(), visitor, view["path"],
+                 view["endpoint"], view["status"], view["referrer"], source, medium, campaign,
+                 view["device"], view["language"], 0 if first else 1, goal))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:                      # pragma: no cover - last resort
+        print(f"[page view not counted] {e}")
+
+
+@app.after_request
+def count_page_view(response):
+    """Note the page view this request makes, to be written after it closes."""
+    try:
+        view = analytics_view(response)
+    except Exception:
+        view = None
+    if view:
+        g._page_view = view
+    return response
+
+
 @app.after_request
 def set_security_headers(response):
     """Response hardening, set in the app so it travels with the code.
@@ -1452,6 +1684,8 @@ def close_open_connections(exc):
     # lock; doing it inline would make every guest email wait on the caller's
     # own transaction.
     write_guest_messages(g.pop("_guest_messages", None) or [])
+    # And the page view, for the same reason.
+    write_page_view(g.pop("_page_view", None))
 
 
 # The tables a form can hand us an id for. A tuple rather than an f-string
@@ -5102,6 +5336,27 @@ def init_db():
          "CREATE INDEX IF NOT EXISTS change_log_row ON change_log(table_name, row_id)"),
         ("change_log_created_index",
          "CREATE INDEX IF NOT EXISTS change_log_created ON change_log(created_at)"),
+        # A page a visitor opened: counted by the house, no cookie, no address.
+        ("page_views_table", """CREATE TABLE IF NOT EXISTS page_views (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             day TEXT NOT NULL,
+             at TEXT NOT NULL,
+             visitor TEXT NOT NULL,
+             path TEXT NOT NULL,
+             endpoint TEXT,
+             status INTEGER NOT NULL,
+             referrer TEXT,
+             source TEXT,
+             medium TEXT,
+             campaign TEXT,
+             device TEXT,
+             language TEXT,
+             entry INTEGER NOT NULL DEFAULT 0,
+             goal TEXT
+         )"""),
+        ("page_views_day_index", "CREATE INDEX IF NOT EXISTS page_views_day ON page_views(day)"),
+        ("page_views_visit_index",
+         "CREATE INDEX IF NOT EXISTS page_views_visit ON page_views(day, visitor)"),
         ("mail_log_created_at_index",
          "CREATE INDEX IF NOT EXISTS mail_log_created_at ON mail_log(created_at)"),
         ("mail_log_outbox_index",
@@ -7248,6 +7503,7 @@ NAV_AREAS = {
         "road_notices_page", "road_notice_remove",
     ],
     "comms": [
+        "website_analytics",
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
         "admin_images", "admin_image_upload",
         "admin_inbox_flags_status", "announcements", "delete_announcement",
@@ -9827,17 +10083,23 @@ def period_from_request():
 # "this week" means the same thing in Guests as it does in Financial.
 # ---------------------------------------------------------------------------
 
-def overview_cell(label, value, sub=None, alert=False, hint=None, delta=None, endpoint=None):
+def overview_cell(label, value, sub=None, alert=False, hint=None, delta=None, endpoint=None,
+                  invert=False):
     """One figure in an overview band.
 
     `alert` turns the cell red — reserve it for things that need a decision,
     not merely for large numbers. `delta` is the change against the previous
-    equivalent window, already signed. `endpoint` is a route NAME, resolved by
-    the template, so these builders stay plain functions that can be called
-    (and tested) without a request context.
+    equivalent window, already signed. `invert` is for a figure where more is
+    worse -- visitors who left after one page -- so a rise is coloured as bad
+    news and a fall as good. `endpoint` is a route NAME, resolved by the
+    template, so these builders stay plain functions that can be called (and
+    tested) without a request context.
     """
-    return {"label": label, "value": value, "sub": sub, "alert": bool(alert),
+    cell = {"label": label, "value": value, "sub": sub, "alert": bool(alert),
             "hint": hint, "delta": delta, "endpoint": endpoint}
+    if invert:
+        cell["invert"] = True
+    return cell
 
 
 # ---------------------------------------------------------------------------
@@ -34840,6 +35102,8 @@ PALETTE_PAGES = [
      "payments charges refunds money in paid card transfer cash ledger what for"),
     ("Reports", "admin_reports", "financial occupancy labour guest"),
     ("Emails", "admin_emails", "campaigns templates marketing"),
+    ("Website visitors", "website_analytics",
+     "analytics visitors visits traffic pages referrers sources google seo bookings conversion"),
     ("Bank details", "management_bank_details", "iban account"),
     ("Recurring costs", "management_recurring_costs", "subscriptions bills"),
     ("Management", "management", "settings admin"),
@@ -74200,6 +74464,145 @@ def scrub_change_log(conn, identifiers, names=()):
     return scrubbed
 
 
+# ---------------------------------------------------------------------------
+# Website analytics: the page.
+# ---------------------------------------------------------------------------
+
+def analytics_summary(conn, start_iso, end_iso):
+    """What the site's visitors did from the house day `start_iso` up to
+    `end_iso` and not including it -- resolve_period's window, whose end is the
+    day after the last, so a month's figures stop where the next month's begin.
+
+    A visit is one browser on one day: the codes change every day, so that is
+    the most the figures can say, and they say it rather than counting the
+    same person twice as two "visitors" on two days and calling it a total.
+    """
+    rows = conn.execute("SELECT * FROM page_views WHERE day >= ? AND day < ? ORDER BY id",
+                        (start_iso, end_iso)).fetchall()
+    visits = {}
+    for r in rows:
+        v = visits.setdefault((r["day"], r["visitor"]), {
+            "pages": 0, "source": r["source"], "medium": r["medium"],
+            "campaign": r["campaign"], "entry": r["path"], "device": r["device"],
+            "language": r["language"], "goals": []})
+        v["pages"] += 1
+        if r["entry"]:
+            v.update(source=r["source"], medium=r["medium"], campaign=r["campaign"],
+                     entry=r["path"])
+        if r["goal"]:
+            v["goals"].append(r["goal"])
+
+    def tally(key):
+        out = {}
+        for v in visits.values():
+            name = key(v) or "Not said"
+            t = out.setdefault(name, {"visits": 0, "bookings": 0})
+            t["visits"] += 1
+            t["bookings"] += len(v["goals"])
+        return sorted(out.items(), key=lambda kv: (-kv[1]["visits"], kv[0]))
+
+    pages = {}
+    for r in rows:
+        p = pages.setdefault(r["path"], {"views": 0, "visits": set(), "status": r["status"]})
+        p["views"] += 1
+        p["visits"].add((r["day"], r["visitor"]))
+    entries = {}
+    for v in visits.values():
+        e = entries.setdefault(v["entry"], {"visits": 0, "bounces": 0})
+        e["visits"] += 1
+        e["bounces"] += 1 if v["pages"] == 1 else 0
+    broken = {}
+    for r in rows:
+        if r["status"] == 404:
+            b = broken.setdefault(r["path"], {"hits": 0, "from": set()})
+            b["hits"] += 1
+            if r["referrer"]:
+                b["from"].add(r["referrer"])
+    goals = {}
+    for v in visits.values():
+        for goal in v["goals"]:
+            goals.setdefault(goal, {}).setdefault(v["source"] or "Direct", 0)
+            goals[goal][v["source"] or "Direct"] += 1
+    by_day = {}
+    for (day, _visitor) in visits:
+        by_day[day] = by_day.get(day, 0) + 1
+    count = len(visits)
+    booked = sum(1 for v in visits.values() if v["goals"])
+    return {
+        "visits": count, "views": len(rows),
+        "pages_per_visit": round(len(rows) / count, 1) if count else 0.0,
+        "bounce": round(100.0 * sum(1 for v in visits.values() if v["pages"] == 1) / count, 1)
+        if count else 0.0,
+        "bookings": sum(len(v["goals"]) for v in visits.values()),
+        "converted": round(100.0 * booked / count, 1) if count else 0.0,
+        "sources": tally(lambda v: v["source"]),
+        "campaigns": [x for x in tally(lambda v: " / ".join(
+            p for p in (v["source"], v["medium"], v["campaign"]) if p) if v["campaign"] else None)
+            if x[0] != "Not said"],
+        "devices": tally(lambda v: v["device"]),
+        "languages": tally(lambda v: ANALYTICS_LANGUAGES.get(v["language"] or "", v["language"])),
+        "pages": sorted(((path, {"views": p["views"], "visits": len(p["visits"]),
+                                 "status": p["status"]}) for path, p in pages.items()),
+                        key=lambda kv: (-kv[1]["views"], kv[0])),
+        "entries": sorted(entries.items(), key=lambda kv: (-kv[1]["visits"], kv[0])),
+        "broken": sorted(((path, {"hits": b["hits"], "from": sorted(b["from"])})
+                          for path, b in broken.items()), key=lambda kv: (-kv[1]["hits"], kv[0])),
+        "goals": {goal: sorted(by.items(), key=lambda kv: (-kv[1], kv[0]))
+                  for goal, by in goals.items()},
+        "by_day": sorted(by_day.items()),
+    }
+
+
+def purge_page_views(conn, *, today=None):
+    """Page views past the thirteen months audience measurement may keep."""
+    today = today or house_today()
+    cutoff = (today - timedelta(days=ANALYTICS_KEEP_DAYS)).isoformat()
+    gone = conn.execute("DELETE FROM page_views WHERE day < ?", (cutoff,)).rowcount
+    # And any salt but today's: the one thing that could join a day's codes.
+    conn.execute("DELETE FROM app_settings WHERE key LIKE 'analytics_salt:%' AND key != ?",
+                 (f"analytics_salt:{today.isoformat()}",))
+    conn.commit()
+    return {"old page views": max(gone, 0)}
+
+
+@app.route("/admin/analytics")
+@owner_required
+def website_analytics():
+    """Who comes to the site, from where, what they read, and what they book."""
+    period = period_from_request()
+    conn = get_db()
+    now = analytics_summary(conn, period["start_iso"], period["end_iso"])
+    before = analytics_summary(conn, period["prev_start_iso"], period["prev_end_iso"])
+    conn.close()
+    change = lambda a, b: (round(a - b, 1) if isinstance(a, float) else a - b)
+    cells = [
+        overview_cell("Visits", now["visits"], hint="one browser on one day",
+                      delta=change(now["visits"], before["visits"])),
+        overview_cell("Pages read", now["views"], delta=change(now["views"], before["views"])),
+        overview_cell("Pages a visit", now["pages_per_visit"],
+                      delta=change(now["pages_per_visit"], before["pages_per_visit"])),
+        # More of these is worse, so a rise is coloured as the bad news it is.
+        overview_cell("Left after one page", now["bounce"], sub="%", invert=True,
+                      delta=change(now["bounce"], before["bounce"])),
+        overview_cell("Bookings", now["bookings"],
+                      hint="stays, ateliers, tables, event enquiries, newsletter sign-ups",
+                      delta=change(now["bookings"], before["bookings"])),
+        overview_cell("Visits that booked", now["converted"], sub="%",
+                      delta=change(now["converted"], before["converted"])),
+    ]
+    # Every day of the period, a day nobody came drawn as nobody: a chart that
+    # skipped them would put the busiest week next to the quietest.
+    counts = dict(now["by_day"])
+    days, day = [], period["start"]
+    while day < period["end"]:
+        days.append((day.isoformat(), counts.get(day.isoformat(), 0)))
+        day += timedelta(days=1)
+    peak = max((n for _d, n in days), default=0)
+    busiest = max(days, key=lambda d: (d[1], d[0])) if peak else None
+    return render_template("admin_analytics.html", period=period, s=now, cells=cells,
+                           days=days, peak=peak, busiest=busiest)
+
+
 @app.route("/admin/audit-log")
 @owner_required
 def audit_log():
@@ -75498,6 +75901,7 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_spent_access_codes(conn))
     cleared.update(purge_guest_messages(conn))
     cleared.update(purge_mail_log(conn))
+    cleared.update(purge_page_views(conn))
     cleared.update(purge_change_log(conn))
     cleared.update(purge_booking_com_mail(conn))
     cleared.update(purge_door_openings(conn))
