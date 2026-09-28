@@ -220,8 +220,8 @@ def _markers(when, days):
 def _sessions_running(first, last):
     period = {"start_iso": first.isoformat(),
               "end_iso": (last + timedelta(days=1)).isoformat(),
-              "start_at": first.isoformat(),
-              "end_at": (last + timedelta(days=1)).isoformat()}
+              "start_at": m.house_moment(first),
+              "end_at": m.house_moment(last + timedelta(days=1))}
     cells = _ask(m.workshops_overview, period, m.house_today())
     return next(c["value"] for c in cells if c["label"] == "Sessions running")
 
