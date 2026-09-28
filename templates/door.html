@@ -1,0 +1,41 @@
+{% extends "public_base.html" %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block title %}{{ t('The front door') }}{% endblock %}
+{% set sticky_bar = 'none' %}
+{% block content %}
+
+{# ONE STAY'S KEY. The link this page lives at opens the front door for the
+   length of the stay, and nothing else: the guest's name and room, the
+   window, and one button. Opening is a POST, so a link that is merely visited
+   -- a preview in a messaging app, a crawler -- cannot open the door. #}
+
+<section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
+  <p class="g-eyebrow">Château de Gudanes</p>
+  <h1 class="g-display">{{ t('The front door') }}</h1>
+  <p class="g-p">{{ guest_name or t('Your stay') }}{% if room %} · {{ room }}{% endif %}
+    {%- if arrival_date and departure_date %} · {{ date_range(arrival_date, departure_date) }}{% endif %}</p>
+
+  {% if access.can_open %}
+  <form method="post" action="{{ action_url }}" class="g-framed door-form" style="margin-top:var(--s6)">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="g-btn g-btn--solid door-button">{{ t('Open the front door') }}</button>
+    <p class="g-hint" style="margin-top:var(--s3);">{{ access.message }} {{ t('The door locks itself again once it is shut.') }}</p>
+  </form>
+  {% else %}
+  <p class="g-p door-closed" style="margin-top:var(--s6);">{{ access.message }}</p>
+  {% endif %}
+
+  {% if last_opened %}
+  <p class="g-hint" style="margin-top:var(--s4);">{{ t('Last opened from here') }}: {{ last_opened|house_when }}</p>
+  {% endif %}
+
+  <p class="g-hint" style="margin-top:var(--s6);">
+    {{ t('This link is the key to the house while you are here — please keep it to your party. If the door does not open, use the remote we gave you, or ring the house.') }}
+  </p>
+</div></section>
+
+<style>
+.door-button{ width:100%; font-size:1.15rem; padding:18px 20px; }
+.door-closed{ padding:14px 16px; border:1px solid var(--parchment-line, #ddd); border-radius:6px; }
+</style>
+{% endblock %}

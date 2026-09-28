@@ -241,6 +241,17 @@ m.meta_request = _refuse(
     "a real call PUBLISHES to the house's Instagram and Page; stand in for "
     "meta_request in the test, not for meta_configured")
 
+# Tuya, the cloud behind the front door's lock. Of everything here this is the
+# one whose mistake is physical: a run that reached it would OPEN THE HOUSE'S
+# FRONT DOOR, with nobody there, as many times as a suite pressed the button.
+# The credentials are cleared as well, and it is stood down at tuya_request --
+# the one function every call goes through -- rather than at tuya_configured,
+# for the reason the Stripe hole taught this file.
+m.TUYA_ACCESS_ID = m.TUYA_ACCESS_SECRET = None
+m.tuya_request = _refuse(
+    "Tuya, the front door's cloud",
+    "a real call OPENS THE FRONT DOOR; stand in for tuya_request in the test")
+
 # Proof, rather than the assumption this file used to make. Each of these was
 # true only by accident of what happens to be in .env on one machine.
 assert not m.stripe_enabled(), "Stripe is still enabled under test"
@@ -267,6 +278,9 @@ assert not m.claude_configured(), (
 assert m.meta_request.__name__ == "_blocked", (
     "the Meta Graph call is not blocked under test — reaching it would post "
     "to the house's real Instagram, not merely spend money")
+assert m.tuya_request.__name__ == "_blocked" and not m.tuya_configured(), (
+    "the Tuya call is not blocked under test — reaching it would open the "
+    "house's front door")
 assert not (m.email_enabled() or m.resend_enabled()), (
     "an email provider is configured under test — a run would send real mail "
     "to the real guest addresses in the copied database")

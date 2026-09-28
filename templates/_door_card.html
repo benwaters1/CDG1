@@ -1,0 +1,20 @@
+{# THE FRONT DOOR, on the guest's own booking page.
+
+   Included from manage_booking.html, which arrives from the design side as a
+   whole-file replacement: keep the one include line there when a new version
+   comes in. tests/test_door_lock.py goes red if it is lost, because the door
+   page would then exist with nothing leading a guest to it -- the confirmation
+   letter carries the link too, but this is where a guest looks.
+
+   Needs `door` (door_access for this booking) and `booking` in the context.
+   Shown only once the lock is connected and the stay is one the door will open
+   for; before the window it says when, and the page it links to says the same. #}
+{% if door and door.state in ('open', 'before') %}
+<div class="g-mb-card" style="margin-top:var(--s4);">
+  <h2 class="g-panel__h">{{ t('The front door') }}</h2>
+  <p class="g-hint">{{ t('It opens from your phone during your stay — there is no key or code.') }} {{ door.message }}</p>
+  <p class="g-p" style="margin-top:var(--s3);">
+    <a class="g-btn g-btn--solid" href="{{ url_for('guest_door', manage_token=booking['manage_token']) }}">{{ t('Open the front door') }}</a>
+  </p>
+</div>
+{% endif %}

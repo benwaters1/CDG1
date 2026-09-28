@@ -51,7 +51,7 @@ def run():
     for name in ("booking_confirmation.html", "manage_booking.html",
                  "guest_statement.html", "workshop_confirmation.html",
                  "restaurant_confirmation.html", "event_confirmation.html",
-                 "guest_feedback_form.html", "find_booking.html"):
+                 "guest_feedback_form.html", "find_booking.html", "door.html"):
         try:
             src = open(os.path.join(TPL, name), encoding="utf-8").read()
         except FileNotFoundError:
