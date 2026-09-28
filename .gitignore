@@ -39,3 +39,10 @@ reset_owner_password.py
 # hand to whoever does the design work. Rebuilt on demand and always from
 # current main, so a committed copy could only ever be a stale one.
 gudanes-design-current.zip
+
+# Written by export_catalogue.py, for carrying rooms and extras to another
+# install. A generated file, and the copy sitting here was already stale --
+# it held the old Booking.com room names months after the rooms were renamed
+# to the French ones. Regenerate it when it is wanted rather than keeping a
+# version that quietly stops being true.
+catalogue.json
