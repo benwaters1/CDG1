@@ -65,6 +65,7 @@
       <div><dt>Paid</dt><dd>€{{ '{:,.2f}'.format(total_paid) }}</dd></div>
       <div><dt>Balance due</dt><dd>€{{ '{:,.2f}'.format(balance_due) }}</dd></div>
     </dl>
+    <p class="g-p" style="margin-top:var(--s2);"><a href="{{ url_for('workshop_statement', manage_token=booking['manage_token']) }}" class="g-btn g-btn--sm">Your statement</a></p>
     {% if stripe_enabled and booking['deposit_amount'] and not booking['deposit_paid_at'] %}
     <a href="{{ url_for('workshop_pay_deposit', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s3);">Pay deposit — €{{ '{:,.2f}'.format(booking['deposit_amount']) }}</a>
     {% elif stripe_enabled and booking['deposit_paid_at'] and balance_due > 0 %}

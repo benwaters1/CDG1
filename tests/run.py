@@ -53,6 +53,7 @@ SUITES = [
     "test_tags_and_the_guest_list",
     "test_everything_we_hold",
     "test_stop_using_my_details",
+    "test_statements_line_by_line",
     "test_workshop_rooms",
     "test_workshop_lifecycle",
     "test_workshop_minimum",
