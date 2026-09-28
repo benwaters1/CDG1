@@ -115,6 +115,9 @@
            title="{{ c['caution'] }}">{{ caution_levels[c['caution_level']] }}</a>
         {%- endif %}
         {% if b['status'] in ('pending', 'confirmed') %} · <a href="{{ url_for('edit_booking', booking_id=b['id']) }}" class="small-link" style="color:var(--steel);">Edit</a>{% endif %}
+        {#- On every stay, whatever became of it: the edit page is the only
+            other way to it, and a declined or cancelled stay has none. -#}
+        {% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='booking', record_id=b['id']) }}" class="small-link" style="color:var(--steel);">What changed</a>{% endif %}
       </span>
     </div>
     <p class="manual-body">
@@ -155,7 +158,22 @@
         <button type="submit" class="btn-mini btn-mini-danger">Decline</button>
       </form>
       {% elif b['status'] == 'confirmed' %}
-      <form method="post" action="{{ url_for('cancel_booking_admin', booking_id=b['id']) }}" onsubmit="return confirm('Cancel this confirmed booking?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Cancel booking</button></form>
+      <form method="post" action="{{ url_for('cancel_booking_admin', booking_id=b['id']) }}" onsubmit="return confirm('Cancel this confirmed booking?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {# The terms promise a full refund when the house calls a stay off, so
+           the owner can give it back in the same step rather than on a second
+           page. Unticked: cancelling moves no money by itself. #}
+        {% if can('refund_desk') and ((b['amount_paid'] or 0) > 0 or b['payment_status'] == 'paid') %}
+        <label class="checkbox-row"><input type="checkbox" name="refund_paid" value="1"> <span>and refund what they paid, to the card</span></label>
+        {% endif %}
+        {# Why, now, while it is known. "Something the house could not do"
+           makes anything still held the guest's to have back. #}
+        <select name="cancel_reason" aria-label="Why? (optional)" style="width:auto;">
+          <option value="">Why? (optional)</option>
+          {% for key, label in cancel_reasons.items() %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn-text-danger">Cancel booking</button></form>
       {# A stay that was confirmed and never arrived. Offered only once the
          arrival has actually passed -- a guest arriving at eleven at night is
          not a no-show at six, and a stay written off early is a room somebody
@@ -171,10 +189,13 @@
       {% endif %}
     </div>
 
+    {# Anything paid at all, not only paid in full: a stay part-paid by a
+       deposit, at the desk or by one share of a split bill is refundable too. #}
     {% set already_refunded = refunded_by_booking.get(b['id'], 0) %}
-    {% set remaining = (b['total_price'] or 0) - already_refunded %}
-    {% if b['payment_status'] in ('paid', 'refunded') and (remaining > 0 or already_refunded > 0) %}
-      {% with action = url_for('refund_booking_admin', booking_id=b['id']) %}
+    {% set taken = (b['amount_paid'] or 0) if b['amount_paid'] else ((b['total_price'] or 0) if b['payment_status'] in ('paid', 'refunded') else 0) %}
+    {% set remaining = taken - already_refunded %}
+    {% if taken > 0 or already_refunded > 0 %}
+      {% with refund_url = url_for('refund_desk', category='room', booking_id=b['id']) %}
         {% include "_refund_form.html" %}
       {% endwith %}
     {% endif %}

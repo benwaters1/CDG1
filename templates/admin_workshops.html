@@ -122,6 +122,9 @@
                 style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input aria-label="Why (they are told)" type="text" name="reason" placeholder="Why (they are told)" style="max-width:180px;">
+            {% if can('refund_desk') %}
+            <label class="checkbox-row"><input type="checkbox" name="refund" value="1"> <span>and refund what each paid, to their cards</span></label>
+            {% endif %}
             <button type="submit" class="btn-mini btn-danger">Call it off</button>
           </form>
           {% endif %}

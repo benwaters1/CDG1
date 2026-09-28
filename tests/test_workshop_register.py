@@ -349,10 +349,12 @@ def run():
             _owed(ids["Here"]) == 300.0 and not _row(ids["Here"])["balance_paid_at"],
             detail=f"owed {_owed(ids['Here'])}, stamp {_row(ids['Here'])['balance_paid_at']}")
 
-    s.section("A cancelled registration keeps its refund form")
+    s.section("A cancelled registration keeps its way to a refund")
     page = oc.get(f"/admin/workshops/registrations?session_id={soon}&state=Cancelled").get_data(as_text=True)
-    s.check("the refund form is there when money was paid",
-            f"/admin/workshops/registrations/{ids['Cancelled']}/refund" in page,
+    # The refund is made on its own page now, one per booking; the register
+    # carries the way to it.
+    s.check("the refund is a click away when money was paid",
+            f"/admin/refunds/workshop/{ids['Cancelled']}" in page,
             detail="calling a session off tells the owner to refund each one from here")
 
     s.section("None of it answers to staff")

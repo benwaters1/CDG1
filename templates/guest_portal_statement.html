@@ -1,0 +1,59 @@
+{% extends "public_base.html" %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% set sticky_bar = 'none' %}
+{% block title %}Your statement{% endblock %}
+{% block content %}
+
+{# One person's own account: what was charged, paid and given back, dated.
+   Someone reconciling a card statement used to have to ask. #}
+<div class="g-mb-card">
+  <p class="g-eyebrow">{{ t('Your account') }}</p>
+  <h1>{{ t('Your statement') }}</h1>
+  <p class="g-p">Everything charged, paid and given back, across all you have booked with us. Statement date {{ today|date_short }}.</p>
+
+  {% if not st.lines %}
+  <p class="g-p">{{ t('Nothing charged or paid yet.') }}</p>
+  {% else %}
+  <div class="table-wrap">
+    <table class="data-table" style="margin-top:var(--s3);">
+    <thead><tr><th>Date</th><th>What</th><th class="num">Amount</th><th class="num">Balance</th></tr></thead>
+    <tbody>
+      {% for x in st.lines %}
+      <tr>
+        <td>{{ x.day|date_short if x.day else '' }}</td>
+        <td>{{ x.what }}<br><span class="g-hint">{{ x.kind }} · {{ x.ref }}</span></td>
+        <td class="num">{% if x.charge %}€{{ '{:,.2f}'.format(x.charge) }}{% elif x.paid %}−€{{ '{:,.2f}'.format(x.paid) }}{% else %}+€{{ '{:,.2f}'.format(x.back) }}{% endif %}</td>
+        <td class="num">{{ '−€{:,.2f}'.format(-x.balance) if x.balance < -0.005 else '€{:,.2f}'.format(x.balance) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    </table>
+  </div>
+  <p class="g-p" style="margin-top:var(--s3);"><strong>
+    {% if st.balance > 0.005 %}€{{ '{:,.2f}'.format(st.balance) }} is outstanding.
+    {% elif st.balance < -0.005 %}You are €{{ '{:,.2f}'.format(-st.balance) }} in credit with us.
+    {% else %}Nothing is owed.{% endif %}
+  </strong></p>
+  {% endif %}
+
+  {# Where to settle what is still owed: each booking's own page carries its
+     Pay button, because that is where the amount is worked out. #}
+  {% for b in st.bookings if b.stands and b.net > 0.005 and b.manage_token %}
+  <p class="g-p">
+    {{ b.what }}: €{{ '{:,.2f}'.format(b.net) }} to pay.
+    {% if b.category == 'room' %}<a href="{{ url_for('manage_booking', manage_token=b.manage_token) }}" class="g-btn g-btn--sm">{{ t('Pay for this stay') }}</a>
+    {% elif b.category == 'workshop' %}<a href="{{ url_for('workshop_manage', manage_token=b.manage_token) }}" class="g-btn g-btn--sm">{{ t('Pay for this atelier') }}</a>
+    {% elif b.category == 'event' %}<a href="{{ url_for('event_manage', manage_token=b.manage_token) }}" class="g-btn g-btn--sm">{{ t('Pay towards this event') }}</a>{% endif %}
+  </p>
+  {% endfor %}
+
+  <p style="margin-top:var(--s4)">
+    <a href="{{ url_for('guest_portal', token=token) }}" class="g-btn g-btn--sm">{{ t('Back to your account') }}</a>
+    <button type="button" class="g-btn g-btn--sm" onclick="window.print()">{{ t('Print') }}</button>
+  </p>
+  {% if company and company['legal_name'] %}
+  <p class="g-hint">{{ company['legal_name'] }}{% if company['registered_address'] %} · {{ company['registered_address'] }}{% endif %}{% if company['vat_number'] %} · TVA {{ company['vat_number'] }}{% endif %}</p>
+  {% endif %}
+</div>
+
+{% endblock %}
