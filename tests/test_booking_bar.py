@@ -31,7 +31,7 @@ m = _harness.m
 # endpoint -> the wording and destination the bar should carry there
 EXPECTED = {
     "restaurant_info": ("Dine at La Table", "restaurant_book"),
-    "workshops_public": ("Château Ateliers", "workshops_public"),
+    "workshops_public": ("Workshops & Retreats", "workshops_public"),
     "events_weddings": ("Weddings & Celebrations", "events_info"),
     "facilities_page": ("Stay the Night", "book_rooms"),
 }
