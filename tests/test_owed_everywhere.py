@@ -138,8 +138,11 @@ def run():
     conn.close()
     s.check("owed is the stay, the atelier and the event -- and nothing declined or unconfirmed",
             abs(rec["owed"] - 3100.0) < 0.01, detail=f"owed {rec['owed']}")
-    s.check("spent is what was charged for those three",
-            abs(rec["spent"] - (800 + 2000 + 3000)) < 0.01, detail=f"spent {rec['spent']}")
+    # The statement's figure, which is the record's now: those three, and the
+    # 600 the cancelled atelier kept under the terms -- money the house has,
+    # and keeps. It nets to nothing owed, so "owed" above is unchanged.
+    s.check("spent is what was charged for those three, and what the cancelled one kept",
+            abs(rec["spent"] - (800 + 2000 + 3000 + 600)) < 0.01, detail=f"spent {rec['spent']}")
     s.check("and the three lines add up", abs(rec["spent"] - rec["paid"] - rec["owed"]) < 0.01,
             detail=f"{rec['spent']} - {rec['paid']} != {rec['owed']}")
     page = oc.get(f"/guests/{gid}").get_data(as_text=True)
@@ -150,7 +153,7 @@ def run():
             f"/guests/{gid}/rebook" in page,
             detail="it asked the record for an id and an address it was never given")
     stmt = oc.get(f"/guests/{gid}/statement").get_data(as_text=True)
-    s.check("the statement lists the event", "Events" in stmt and "wedding" in stmt)
+    s.check("the statement lists the event", "Events" in stmt and "wedding" in stmt.lower())
     s.check("and its outstanding line is the same figure", "€3100.00" in stmt,
             detail="it charged ateliers and received and owed for stays alone")
     s.check("a declined stay is not on it", f"{TAG}-Declined" not in stmt)

@@ -1,147 +1,172 @@
 {% extends "base.html" %}
-{% block title %}Statement — {{ record.guest['name'] }}{% endblock %}
+{% block title %}Statement — {{ st.guest['name'] }}{% endblock %}
 {% block content %}
 
-{% set g = record.guest %}
+{% set g = st.guest %}
+{% macro money(v) -%}
+{{ '−€%.2f'|format(-v) if v < -0.005 else '€%.2f'|format(v) }}
+{%- endmacro %}
 
 <div class="page-head">
-  <h1>Statement</h1>
+  <h1>Statement · {{ g['name'] }}</h1>
   <div class="statement-actions no-print">
     <a href="{{ url_for('guest_detail', guest_id=g['id']) }}" class="btn-mini">Back to the record</a>
-    <button type="button" class="btn-mini" onclick="window.print()">Print</button>
+    <a href="{{ url_for('guest_statement_csv', guest_id=g['id']) }}{{ '?' + query if query }}" class="btn-mini">Download CSV</a>
+    <button type="button" class="btn-mini" onclick="window.print()">Print, or save as PDF</button>
   </div>
 </div>
 
 <p class="pay-disclaimer" style="margin-top:-10px;">
-  {# guest_statement has always been per booking, which is the right thing to
-     send somebody about a stay. It is the wrong thing to answer "what have we
-     charged this person, ever" — and that had no answer anywhere. #}
-  Everything {{ g['name'] }} has taken with us, and what is still outstanding.
-  Each stay's own bill is the authority; this adds them up rather than working
-  them out a second way.
+  {# One account per person, dated, with a running balance. It used to be one
+     bill per stay, a ledger per atelier, an event's bill, and a lifetime page
+     that netted refunds away in silence and dated nothing. #}
+  Everything charged, paid and given back, across every stay, atelier, event
+  and dinner deposit, with a running balance. Each booking's own bill is the
+  authority; this adds them up, booking by booking.
 </p>
 
 <div class="detail-card">
   <dl class="g-facts-list">
     <div><dt>Guest</dt><dd>{{ g['name'] }}</dd></div>
-    {% if g['email'] %}<div><dt>Email</dt><dd>{{ g['email'] }}</dd></div>{% endif %}
+    {% if st.addresses %}<div><dt>{{ 'Addresses' if st.addresses|length > 1 else 'Email' }}</dt><dd>{{ st.addresses|join(', ') }}</dd></div>{% endif %}
     <div><dt>Statement date</dt><dd>{{ today|date_short }}</dd></div>
-    {% if record.first_seen %}
-    <div><dt>First stay</dt><dd>{{ record.first_seen|date_short }}</dd></div>
-    {% endif %}
+    {% if company %}<div><dt>From</dt><dd>{{ company['legal_name'] or 'Château de Gudanes' }}{% if company['vat_number'] %} · TVA {{ company['vat_number'] }}{% endif %}</dd></div>{% endif %}
   </dl>
 </div>
 
-{% for b in record.stays %}
-{% set bill = record.bills.get(b['id']) %}
-{% if bill and b['status'] == 'confirmed' %}
-<h2 class="section-heading">
-  {{ b['room_name'] }} — {{ b['arrival_date']|date_short }} to {{ b['departure_date']|date_short }}
-  <span class="upload-hint">{{ b['reference_code'] }}</span>
-</h2>
+<form method="get" class="search-bar no-print" style="margin-top:12px;">
+  <label class="field-label" for="st-from">From</label>
+  <input id="st-from" type="date" name="from" value="{{ st.period_from or '' }}">
+  <label class="field-label" for="st-to">To</label>
+  <input id="st-to" type="date" name="to" value="{{ st.period_to or '' }}">
+  <button type="submit" class="btn-mini">Show</button>
+  {% if st.period_from or st.period_to %}<a href="{{ url_for('guest_full_statement', guest_id=g['id']) }}" class="btn-mini">Everything</a>{% endif %}
+</form>
+
+{% if g['email'] %}
+<form method="post" action="{{ url_for('email_guest_account_statement', guest_id=g['id']) }}"
+      class="no-print" style="margin-top:8px;"
+      onsubmit="return confirm('Send this statement to {{ g['email'] }}?');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="from" value="{{ st.period_from or '' }}">
+  <input type="hidden" name="to" value="{{ st.period_to or '' }}">
+  <button type="submit" class="btn-mini">Email it to {{ g['email'] }}</button>
+</form>
+{% endif %}
+
+<h2 class="section-heading">The account</h2>
+{% if not st.lines and not st.opening %}
+  <div class="empty-state">Nothing charged, paid or given back{{ ' in this period' if st.period_from or st.period_to }}.</div>
+{% else %}
 <div class="table-wrap">
 <table class="data-table">
-  <thead><tr><th>Description</th><th class="num">Amount</th></tr></thead>
+  <thead>
+    <tr><th>Date</th><th>For</th><th>What</th><th class="num">Charged</th>
+        <th class="num">Paid</th><th class="num">Back to them</th><th class="num">Balance</th></tr>
+  </thead>
   <tbody>
-    {% for line in bill.lines %}
+    {% if st.period_from %}
+    <tr><th scope="row">{{ st.period_from|date_short }}</th><td colspan="5">Brought forward</td>
+        <td class="num">{{ money(st.opening) }}</td></tr>
+    {% endif %}
+    {% for x in st.lines %}
     <tr>
-      <th scope="row">{{ line.label }}</th>
-      <td class="num">€{{ '%.2f'|format(line.amount) }}</td>
+      <th scope="row">{{ x.day|date_short if x.day else '—' }}</th>
+      <td>{{ x.kind }}<span class="cell-note">{{ x.ref }}</span></td>
+      <td>{{ x.what }}</td>
+      <td class="num">{{ money(x.charge) if x.charge else '' }}</td>
+      <td class="num">{{ money(x.paid) if x.paid else '' }}</td>
+      <td class="num">{{ money(x.back) if x.back else '' }}</td>
+      <td class="num">{{ money(x.balance) }}</td>
     </tr>
     {% endfor %}
     <tr>
-      <th scope="row"><strong>Stay total</strong></th>
-      <td class="num"><strong>€{{ '%.2f'|format(bill.total) }}</strong></td>
+      <th scope="row"><strong>{{ (st.period_to or today)|date_short }}</strong></th>
+      <td colspan="2"><strong>{{ 'Outstanding' if st.closing > 0.005 else ('In credit' if st.closing < -0.005 else 'Settled') }}</strong></td>
+      <td class="num">{{ money(st.charged) }}</td>
+      <td class="num">{{ money(st.paid) }}</td>
+      <td class="num">{{ money(st.back) }}</td>
+      <td class="num"><strong>€{{ '%.2f'|format(st.closing|abs) }}</strong></td>
     </tr>
-    {% if bill.paid %}
-    <tr><th scope="row">Received</th><td class="num">−€{{ '%.2f'|format(bill.paid) }}</td></tr>
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<h2 class="section-heading">Booking by booking</h2>
+{% set stays = st.bookings|selectattr('category', 'equalto', 'room')|list %}
+{% for b in stays %}
+<h3 class="field-label">{{ b.what }} <span class="upload-hint">{{ b.ref }} · {{ (b.status or '')|capitalize }}</span></h3>
+<div class="table-wrap">
+<table class="data-table">
+  <tbody>
+    {% if b.bill %}
+    {% for line in b.bill.lines %}
+    <tr><th scope="row">{{ line.label }}</th><td class="num">{{ money(line.amount) }}</td></tr>
+    {% endfor %}
+    <tr><th scope="row"><strong>Stay total</strong></th><td class="num"><strong>{{ money(b.bill.total) }}</strong></td></tr>
+    {% else %}
+    <tr><th scope="row">{{ (b.status or '')|capitalize }}, so nothing is charged</th><td class="num">€0.00</td></tr>
     {% endif %}
-    {% if bill.owed > 0 %}
+    <tr><th scope="row">Received</th><td class="num">{{ money(-b.paid) }}</td></tr>
+    {% if b.back %}<tr><th scope="row">Refunded to them</th><td class="num">{{ money(b.back) }}</td></tr>{% endif %}
+    <tr><th scope="row"><strong>{{ 'Still to pay' if b.net > 0.005 else ('In credit' if b.net < -0.005 else 'Settled') }}</strong></th>
+        <td class="num"><strong>€{{ '%.2f'|format(b.net|abs) }}</strong></td></tr>
+  </tbody>
+</table>
+</div>
+{% endfor %}
+
+{% for kind, heading in [('workshop', 'Ateliers'), ('event', 'Events'), ('restaurant', 'Dinner deposits')] %}
+{% set group = st.bookings|selectattr('category', 'equalto', kind)|list %}
+{% if group %}
+<h3 class="field-label">{{ heading }}</h3>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Reference</th><th>What</th><th class="num">Charged</th><th class="num">Received</th>
+      <th class="num">Back to them</th><th class="num">Owed</th></tr></thead>
+  <tbody>
+    {% for b in group %}
     <tr>
-      <th scope="row"><strong>Still to pay</strong></th>
-      <td class="num"><strong>€{{ '%.2f'|format(bill.owed) }}</strong></td>
+      <th scope="row">{{ b.ref }}<span class="cell-note">{{ (b.status or '')|capitalize }}</span></th>
+      <td>{{ b.what }}</td>
+      <td class="num">{{ money(b.charged) }}</td>
+      <td class="num">{{ money(b.paid) }}</td>
+      <td class="num">{{ money(b.back) }}</td>
+      <td class="num">{{ money(b.net) }}</td>
     </tr>
-    {% endif %}
+    {% endfor %}
   </tbody>
 </table>
 </div>
 {% endif %}
 {% endfor %}
 
-{% if record.workshops %}
-<h2 class="section-heading">Ateliers</h2>
-<div class="table-wrap">
-<table class="data-table">
-  <thead><tr><th>When</th><th>Workshop</th><th class="num">Charged</th><th class="num">Received</th><th class="num">Owed</th></tr></thead>
-  <tbody>
-    {% for w in record.workshops %}{% if w['status'] == 'confirmed' %}
-    {% set wm = record.workshop_money[w['id']] %}
-    <tr>
-      <th scope="row">{{ w['start_date']|date_short }}</th>
-      <td>{{ w['title'] }}</td>
-      <td class="num">€{{ '%.2f'|format(wm.charged) }}</td>
-      <td class="num">€{{ '%.2f'|format(wm.paid) }}</td>
-      <td class="num">€{{ '%.2f'|format(wm.owed) }}</td>
-    </tr>
-    {% endif %}{% endfor %}
-  </tbody>
-</table>
-</div>
-{% endif %}
-
-{% set confirmed_events = record.events|selectattr('status', 'equalto', 'confirmed')|list %}
-{% if confirmed_events %}
-<h2 class="section-heading">Events</h2>
-<div class="table-wrap">
-<table class="data-table">
-  <thead><tr><th>Date</th><th>Event</th><th class="num">Quoted</th><th class="num">Received</th><th class="num">Owed</th></tr></thead>
-  <tbody>
-    {% for e in confirmed_events %}
-    {% set em = record.event_money.get(e['id']) %}
-    {% if em %}
-    <tr>
-      <th scope="row">{{ e['preferred_date']|date_short if e['preferred_date'] else '—' }}</th>
-      <td>{{ e['event_type'] }}</td>
-      <td class="num">€{{ '%.2f'|format(em.quoted) }}</td>
-      <td class="num">€{{ '%.2f'|format(em.paid) }}</td>
-      <td class="num">€{{ '%.2f'|format(em.owed) }}</td>
-    </tr>
-    {% endif %}
-    {% endfor %}
-  </tbody>
-</table>
-</div>
-{% endif %}
-
 <h2 class="section-heading">Altogether</h2>
 <div class="table-wrap">
 <table class="data-table">
   <tbody>
-    {# Three lines that add up: everything taken, less what was received, is what is outstanding. It
-       used to charge ateliers and dinners and then receive and owe for the
-       stays alone, so the arithmetic on a guest's own statement was wrong. #}
+    {# Three lines that add up: everything taken, less what was received net
+       of refunds, is what is outstanding -- or in credit, when more came in. #}
+    <tr><th scope="row"><strong>Everything taken</strong></th><td class="num"><strong>{{ money(st.lifetime_charged) }}</strong></td></tr>
+    <tr><th scope="row">Received, less refunds</th><td class="num">{{ money(-st.lifetime_paid) }}</td></tr>
     <tr>
-      <th scope="row"><strong>Everything taken</strong></th>
-      <td class="num"><strong>€{{ '%.2f'|format(record.spent) }}</strong></td>
-    </tr>
-    <tr><th scope="row">Received</th><td class="num">−€{{ '%.2f'|format(record.paid) }}</td></tr>
-    <tr>
-      <th scope="row"><strong>{{ 'Outstanding' if record.owed > 0.005 else ('In credit' if record.owed < -0.005 else 'Settled') }}</strong></th>
-      <td class="num"><strong>€{{ '%.2f'|format(record.owed|abs) }}</strong></td>
+      <th scope="row"><strong>{{ 'Outstanding' if st.balance > 0.005 else ('In credit' if st.balance < -0.005 else 'Settled') }}</strong></th>
+      <td class="num"><strong>€{{ '%.2f'|format(st.balance|abs) }}</strong></td>
     </tr>
   </tbody>
 </table>
 </div>
 
 <p class="pay-disclaimer">
-  Figures are gross, VAT included, as on each booking's own bill. Only
-  confirmed bookings are here: one cancelled, declined or never confirmed is
-  not a line on a statement.{% if record.at_table %} Dinners, €{{ '%.2f'|format(record.at_table) }},
-  are settled at the table and are not in these totals.{% endif %}
+  Figures are gross, VAT included, as on each booking's own bill. A booking
+  declined or cancelled costs nothing and is left off, unless money moved on
+  it: then what was paid and what went back are here, so money still held
+  shows as credit. A dinner is settled at the table; only its deposit is here.
 </p>
 
 <style>
-.statement-actions{ display:flex; gap:8px; align-items:center; }
+.statement-actions{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 @media print{
   .public-footer, .public-nav, .no-print{ display:none !important; }
 }

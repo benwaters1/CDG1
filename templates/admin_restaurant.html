@@ -153,7 +153,7 @@
         {% if r['booking_id'] %}<span class="mini-status status-upcoming" style="margin-left:4px;">linked to a stay</span>{% endif %}
         {% if r['no_show_at'] %}<span class="mini-status status-declined" style="margin-left:4px;">no-show</span>{% endif %}
       </div>
-      <span class="upload-hint">{{ r['reference_code'] }}</span>
+      <span class="upload-hint">{{ r['reference_code'] }}{% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='restaurant_booking', record_id=r['id']) }}" class="small-link">What changed</a>{% endif %}</span>
     </div>
     <p class="manual-body">{{ r['dinner_date'] }}{% if r['total_price'] %} · €{{ '%.2f'|format(r['total_price']) }}{% endif %}</p>
     {% if r['total_price'] and r['deposit_amount'] and r['deposit_amount'] < r['total_price'] %}
@@ -188,7 +188,7 @@
     {% set paid_amount = r['deposit_amount'] if r['deposit_amount'] else (r['total_price'] or 0) %}
     {% set remaining = paid_amount - already_refunded %}
     {% if r['payment_status'] in ('paid', 'refunded') and (remaining > 0 or already_refunded > 0) %}
-      {% with action = url_for('refund_restaurant_booking_admin', reservation_id=r['id']) %}
+      {% with refund_url = url_for('refund_desk', category='restaurant', booking_id=r['id']) %}
         {% include "_refund_form.html" %}
       {% endwith %}
     {% endif %}

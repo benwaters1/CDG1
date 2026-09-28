@@ -151,6 +151,9 @@ def run():
         (email, TAG.lower() + "session", now.isoformat(),
          (now + timedelta(hours=48)).isoformat()))
     conn.commit()
+    # The line their message leaves carries neither their address nor what they
+    # wrote, so it is found as the one written after this.
+    before = conn.execute("SELECT COALESCE(MAX(id), 0) AS n FROM audit_log").fetchone()["n"]
     conn.close()
 
     page = anon.get(f"/my-account/{TAG.lower()}session")
@@ -171,8 +174,8 @@ def run():
         "SELECT * FROM email_outbox WHERE subject LIKE 'A guest wrote in%' ORDER BY id DESC LIMIT 1"
     ).fetchone()
     logged = conn.execute(
-        "SELECT * FROM audit_log WHERE action = 'guest_wrote_in' AND target = ?",
-        (email,)).fetchone()
+        "SELECT * FROM audit_log WHERE action = 'guest_wrote_in' AND id > ?",
+        (before,)).fetchone()
     conn.close()
     s.check("it reaches the house", written is not None, detail=str(flashes(r)))
     s.check("carrying what they wrote",
@@ -183,7 +186,11 @@ def run():
     s.check("and the address the link was issued to, not one they typed",
             written and email in (written["body"] or ""),
             detail=(written["body"] or "")[:120] if written else "")
-    s.check("it is on the record too", logged is not None)
+    s.check("it is on the record too, without their address or their words",
+            logged is not None
+            and email not in (logged["target"] or "") + (logged["details"] or "")
+            and "late on the Friday" not in (logged["details"] or ""),
+            detail=str(dict(logged)) if logged else "no line")
     s.check("and they are told it arrived",
             any("thank you" in f.lower() for f in flashes(r)), detail=str(flashes(r)))
 

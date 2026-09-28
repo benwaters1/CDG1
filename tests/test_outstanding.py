@@ -39,7 +39,9 @@ TAG = "ZZOWED"
 
 def _cleanup():
     conn = db()
-    conn.execute("DELETE FROM refunds WHERE booking_id IN "
+    # By category as well: refunds.booking_id is an id in whichever table the
+    # category names, so a stay's number alone also matches an atelier place.
+    conn.execute("DELETE FROM refunds WHERE category = 'room' AND booking_id IN "
                  "(SELECT id FROM bookings WHERE guest_name LIKE ?)", (TAG + "%",))
     conn.execute("DELETE FROM booking_payments WHERE booking_id IN "
                  "(SELECT id FROM bookings WHERE guest_name LIKE ?)", (TAG + "%",))

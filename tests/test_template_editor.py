@@ -37,6 +37,8 @@ TAG = "ZZTPLED"
 # sends and is not here, and asks no template, is a letter the owner cannot
 # edit -- which is the fault this file exists for.
 MAY_WRITE_IN_CODE = {
+    # written by hand, from the guest's record
+    "write_to_guest": "the owner writes the letter, from the guest's record",
     # the house's own notices, read by the owner and staff, not guests
     "create_booking": "the owner's 'booked' / 'needs you' notices (the guest's letter is a template)",
     "create_booking_from_stripe_session": "an urgent notice to the owner",

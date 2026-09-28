@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}History — {{ guest['name'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>History · {{ guest['name'] }}</h1>
+  <a href="{{ url_for('guest_detail', guest_id=guest['id']) }}" class="btn-mini">Back to the record</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Everything that has passed between the house and them, newest first: letters
+  and texts either way, conversations, notes, each booking asked for and
+  decided, money in and out, what they said about their stay, and what they
+  said about being written to.
+</p>
+
+{% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
+
+{% if not items %}
+  <div class="empty-state">{{ 'Nothing matches this view.' if lv.filtered else 'Nothing has passed between the house and them yet.' }}</div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>When</th><th>What</th><th>Detail</th></tr></thead>
+  <tbody>
+    {% for x in items %}
+    <tr>
+      <th scope="row">{{ local_datetime_str(x.at) }}</th>
+      <td>{{ x.kind }}{% if x.ref %}<span class="cell-note">{{ x.ref }}</span>{% endif %}</td>
+      <td>{{ x.title }}{% if x.detail %}<span class="cell-note">{{ x.detail }}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -289,6 +289,8 @@ ENDPOINT_ARGS = {
     ("guest_account", "token"): ("guest_sessions", "token"),
     ("guest_feedback", "token"): ("bookings", "manage_token"),
     ("guest_portal", "token"): ("guests", "portal_token"),
+    ("guest_portal_statement", "token"): ("guests", "portal_token"),
+    ("guest_portal_data", "token"): ("guests", "portal_token"),
     ("instructor_page", "token"): ("workshop_sessions", "instructor_token"),
     ("newsletter_confirm", "token"): ("newsletter_subscribers", "token"),
     ("newsletter_unsubscribe", "token"): ("newsletter_subscribers", "token"),
@@ -312,6 +314,9 @@ ENDPOINT_ARGS = {
     # Reports are keyed by a slug that is a key of REPORT_BUILDERS rather than
     # a row anywhere, so it is a literal.
     ("admin_report", "slug"): "financial",
+    # The refund desk takes the KIND of booking before its id; a stay's desk
+    # reads the same page every kind does.
+    ("refund_desk", "category"): "room",
     ("pay_statement_page", "year"): "2026",
     ("pay_statement_page", "month"): "1",
 }
