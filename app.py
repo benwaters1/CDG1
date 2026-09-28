@@ -54004,12 +54004,21 @@ def empty_nights_page():
     conn = get_db()
     data = empty_nights(conn, days=days)
     conn.close()
+    held = data["house_nights"]
+    # Said in the band as well as listed below, because the band is what gets
+    # read: "of 420" with an atelier week quietly missing from it looks like a
+    # smaller house, not a held one.
+    held_hint = (f", leaving out {held} night{'' if held == 1 else 's'} "
+                 f"held for the whole house" if held else "")
     overview = [
         overview_cell("Nights unsold", data["free_nights"],
                       hint=f"of {data['possible_nights']} across "
-                           f"{data['rooms']} rooms"),
-        overview_cell("Occupancy", f"{data['occupancy']}%",
-                      alert=data["occupancy"] < 30,
+                           f"{data['rooms']} rooms{held_hint}"),
+        # A window the house holds from end to end has nothing a room could
+        # have sold, and 0% in red would call that a failure to sell.
+        overview_cell("Occupancy",
+                      f"{data['occupancy']}%" if data["possible_nights"] else "\u2014",
+                      alert=bool(data["possible_nights"]) and data["occupancy"] < 30,
                       hint=f"next {data['days']} days"),
         # The wording carries the caveat, because the number on its own reads
         # as money somebody lost.
@@ -70649,6 +70658,26 @@ def empty_nights(conn, *, days=90, today=None):
     picture the booking check refuses from, so a night that check turns a
     guest away from for THIS room is never offered here as one to fill. A
     block ends on the checkout morning, like a booking.
+
+    A NIGHT HELD FOR THE WHOLE HOUSE IS NOT AN EMPTY NIGHT. An atelier, a
+    confirmed event or a live provisional hold takes every room, and the
+    booking check refuses all of them on it, to the last day INCLUSIVE: an
+    atelier finishing on the 5th still holds the 5th. This page used to read
+    only the per-room half of the picture, so an atelier week was listed as
+    empty in every room, valued at today's rates, and offered as a gap to
+    fill from the waitlist -- dates the house would then refuse the guest it
+    had just written to. Those nights are now left out of the free count,
+    the value and the runs, AND out of the nights the rooms could have sold,
+    as sellable_nights leaves them out. They were never on offer, so they
+    are neither sold nor unsold; left in the denominator they would count as
+    sold, and an atelier week would read as a good week for the rooms. A
+    night a room was already booked on stays a night sold if the house is
+    held over it afterwards, again as sellable_nights has it, so holding the
+    house moves nothing that had already happened.
+
+    They are named separately, in "house", in the calendar's own words, so a
+    week missing from the list of gaps has its reason beside it instead of
+    looking like a week that sold.
     """
     day = today or house_today()
     last = day + timedelta(days=max(1, min(730, days)))
@@ -70677,14 +70706,42 @@ def empty_nights(conn, *, days=90, today=None):
                         for room_id, rows in picture[kind].items()
                         for start, end in rows)
 
-    runs, free_by_night, total_value, free_count = [], {}, 0.0, 0
+    # Held for the whole house: every room, first night to last inclusive,
+    # read exactly as is_range_available reads it -- a span with a date that
+    # will not parse holds nothing there, so it holds nothing here. Each hold
+    # is kept as well as the set of nights, because two can cover the same
+    # night (an event and the hold before it) and the owner is told what
+    # each one is, while a room-night is only taken out once.
+    held_for_house, house = set(), []
+    for h_start, h_end, why in picture["house"]:
+        if not h_start or not h_end:
+            continue
+        first, final = max(h_start, day), min(h_end, last - timedelta(days=1))
+        if final < first:
+            continue
+        night = first
+        while night <= final:
+            held_for_house.add(night)
+            night += timedelta(days=1)
+        house.append({"from": first.isoformat(), "to": final.isoformat(),
+                      "nights": (final - first).days + 1,
+                      "label": picture["night_label"].get(why, why)})
+    house.sort(key=lambda h: (h["from"], h["to"], h["label"]))
+
+    runs, free_by_night, total_value, free_count, off_sale = [], {}, 0.0, 0, 0
     for room in rooms:
         rate = float(room["price_per_night"] or 0)
         current = []
         night = day
         while night < last:
-            busy = night in taken.get(room["id"], ()) or night in blocked.get(room["id"], ())
-            if busy:
+            closed_here = (night in taken.get(room["id"], ())
+                           or night in blocked.get(room["id"], ()))
+            # The room's own answer first: a night already booked stays a night
+            # sold when the house is held over it, as sellable_nights counts it.
+            # Only a night nothing else had is taken off sale by the house.
+            house_only = not closed_here and night in held_for_house
+            off_sale += house_only
+            if closed_here or house_only:
                 if current:
                     runs.append({"room": room,
                                  # ISO, like every other date this app hands a
@@ -70716,7 +70773,9 @@ def empty_nights(conn, *, days=90, today=None):
     # actually take, and a stray Tuesday is not.
     runs.sort(key=lambda r: (-r["nights"], r["from"]))
     sellable = [r for r in runs if not r["below_minimum"]]
-    possible = len(rooms) * (last - day).days
+    # What the rooms could have been sold: every room-night except the ones
+    # the house held and nothing else had, which were never on offer.
+    possible = len(rooms) * (last - day).days - off_sale
     return {
         "from": day.isoformat(), "to": last.isoformat(), "days": (last - day).days,
         "rooms": len(rooms), "runs": runs, "sellable": sellable,
@@ -70726,6 +70785,9 @@ def empty_nights(conn, *, days=90, today=None):
         # and a figure labelled lost gets subtracted from a plan that was never
         # real.
         "value_at_rate": round(total_value, 2),
+        # Nights, not room-nights: one atelier night is one night the whole
+        # house is held, however many rooms that happens to be.
+        "house": house, "house_nights": len(held_for_house),
     }
 
 
