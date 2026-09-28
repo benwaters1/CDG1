@@ -364,6 +364,7 @@ SUITES = [
     "test_guests_and_staff",
     "test_template_shadowing",
     "test_empty_nights",
+    "test_room_calendar_agrees",
     "test_booking_parties",
     "test_guest_record",
     "test_guest_preferences_apply",
