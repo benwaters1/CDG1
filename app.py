@@ -12128,6 +12128,46 @@ def claim_range(conn, room_id, arrival, departure, exclude_booking_id=None,
                               exclude_booking_id, include_pending)
 
 
+# A sitting that has been called off keeps its row -- why it did not run is
+# the thing worth knowing when deciding whether to put it on again -- but it
+# holds nothing: not the house, not a night on the picker, not a head in the
+# legal count. call_off_session only stamps cancelled_at, so anything that
+# asks what an atelier is holding has to leave those out, and does it with
+# this rather than each query remembering to.
+SESSION_IS_LIVE = "workshop_sessions.cancelled_at IS NULL"
+
+
+def sessions_holding_the_house(conn, first=None, last=None):
+    """The atelier sittings that take the whole château, soonest first.
+
+    ONE DEFINITION, because there were three copies and all three forgot the
+    same thing. The room gate, the room page's calendar and the public date
+    picker each read workshop_sessions for themselves with no word about
+    sittings that had been called off. So calling an atelier off cancelled
+    everybody's place and closed the house anyway: every room refused "Those
+    dates are held for a workshop" for an atelier that was not running, and
+    the picker struck its nights out, which reads to a guest as sold.
+
+    `first` and `last` (dates or ISO strings, both included) narrow it to the
+    sittings that touch that span. End-inclusive like every other reader of a
+    sitting: one finishing on the 5th still has its guests in the house that
+    morning.
+    """
+    sql = f"""SELECT workshop_sessions.id, workshop_sessions.start_date,
+                     workshop_sessions.end_date, workshops.title
+                FROM workshop_sessions
+                JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+               WHERE {SESSION_IS_LIVE}"""
+    args = []
+    if first is not None:
+        sql += " AND workshop_sessions.end_date >= ?"
+        args.append(first.isoformat() if hasattr(first, "isoformat") else first)
+    if last is not None:
+        sql += " AND workshop_sessions.start_date <= ?"
+        args.append(last.isoformat() if hasattr(last, "isoformat") else last)
+    return conn.execute(sql + " ORDER BY workshop_sessions.start_date", args).fetchall()
+
+
 def _availability_picture(conn, *, fresh=False):
     """Everything that closes a date, read once and held for the request.
 
@@ -12183,11 +12223,8 @@ def _availability_picture(conn, *, fresh=False):
     #
     # END-INCLUSIVE, like the code this replaces: a workshop finishing on the
     # 5th still holds the 5th, where a booking departing on the 5th does not.
-    for row in conn.execute(
-            """SELECT workshop_sessions.start_date, workshop_sessions.end_date,
-                      workshops.title
-                 FROM workshop_sessions
-                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id"""):
+    # A sitting that has been called off holds nothing.
+    for row in sessions_holding_the_house(conn):
         picture["house"].append((
             parse_date(row["start_date"]), parse_date(row["end_date"]),
             f"Those dates are held for a workshop ({row['title']})."))
@@ -12310,6 +12347,11 @@ def peak_guests_in_house(conn, start, end):
     true forever. Pending requests count, same as is_range_available: a
     pending request has already staked a claim on the capacity a new one
     would also want.
+
+    A place on a sitting that has been called off counts for nobody, however
+    it got there. Calling off cancels every place, but this is the ceiling
+    that turns the next guest away, and it must not do that for somebody who
+    is not coming.
     """
     nights = (end - start).days
     if nights <= 0:
@@ -12323,10 +12365,11 @@ def peak_guests_in_house(conn, start, end):
                  AND arrival_date <= ? AND departure_date > ?""", (day, day)).fetchone()["c"]
 
         ws_total = conn.execute(
-            """SELECT COALESCE(SUM(workshop_bookings.party_size), 0) AS c
+            f"""SELECT COALESCE(SUM(workshop_bookings.party_size), 0) AS c
                FROM workshop_bookings JOIN workshop_sessions
                  ON workshop_sessions.id = workshop_bookings.session_id
                WHERE workshop_bookings.status IN ('pending', 'confirmed')
+                 AND {SESSION_IS_LIVE}
                  AND workshop_sessions.start_date <= ? AND workshop_sessions.end_date > ?""",
             (day, day)).fetchone()["c"]
 
@@ -12400,10 +12443,8 @@ def unavailable_nights(conn, room_id, start, end):
             if b_start and b_end:
                 hold(b_start, b_end - timedelta(days=1), reason)
 
-    for row in conn.execute(
-        """SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.title
-           FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id"""
-    ).fetchall():
+    # The same sittings the gate refuses on, called-off ones left out.
+    for row in sessions_holding_the_house(conn, start, end):
         w_start, w_end = parse_date(row["start_date"]), parse_date(row["end_date"])
         hold(w_start, w_end, f"Held for {row['title']}")
 
@@ -24538,10 +24579,10 @@ def nights_already_taken(conn, *, days=None):
     if total_rooms:
         taken.update(d for d, n in per_night.items() if n >= total_rooms)
 
-    for row in conn.execute(
-            """SELECT start_date, end_date FROM workshop_sessions
-                WHERE end_date >= ? AND start_date <= ?""",
-            (today.isoformat(), horizon.isoformat())).fetchall():
+    # Asked of the same definition the booking gate refuses on, so a sitting
+    # that has been called off stops striking nights here the moment it stops
+    # refusing them there.
+    for row in sessions_holding_the_house(conn, today, horizon):
         _span(row["start_date"], row["end_date"], inclusive_end=True)
     for row in conn.execute(
             """SELECT preferred_date, end_date FROM event_inquiries
@@ -40912,10 +40953,8 @@ def update_event_inquiry(inquiry_id):
                AND arrival_date <= ? AND departure_date > ?""",
             (event_date, event_date),
         ).fetchone()["c"]
-        clashing_sessions = conn.execute(
-            "SELECT COUNT(*) AS c FROM workshop_sessions WHERE start_date <= ? AND end_date >= ?",
-            (event_date, event_date),
-        ).fetchone()["c"]
+        # Only sittings still running: one called off is no clash at all.
+        clashing_sessions = len(sessions_holding_the_house(conn, event_date, event_date))
         clashing_events = conn.execute(
             "SELECT COUNT(*) AS c FROM event_inquiries WHERE status = 'confirmed' AND preferred_date = ? AND id != ?",
             (event_date, inquiry_id),
