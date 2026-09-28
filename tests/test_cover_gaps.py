@@ -52,6 +52,27 @@ def _day(rows, iso):
     return next((r for r in rows if r["date"] == iso), None)
 
 
+def _nothing_on(conn, iso):
+    """Whether a day has none of the work cover_gaps counts, asked of the tables.
+
+    Not asked of cover_gaps: choosing the quiet day by what the function leaves
+    out would make the check agree with whatever it returns. And broader than
+    it on purpose -- any status, not only confirmed -- so a borderline day is
+    stepped over rather than argued about.
+    """
+    return not any(conn.execute(sql, args).fetchone() for sql, args in (
+        ("SELECT 1 FROM bookings WHERE arrival_date <= ? AND departure_date >= ?",
+         (iso, iso)),
+        ("SELECT 1 FROM restaurant_bookings WHERE dinner_date = ?", (iso,)),
+        ("""SELECT 1 FROM workshop_sessions WHERE start_date <= ?
+              AND COALESCE(NULLIF(end_date, ''), start_date) >= ?""", (iso, iso)),
+        ("""SELECT 1 FROM event_inquiries WHERE COALESCE(preferred_date, '') != ''
+              AND MIN(preferred_date, COALESCE(NULLIF(end_date, ''), preferred_date)) <= ?
+              AND MAX(preferred_date, COALESCE(NULLIF(end_date, ''), preferred_date)) >= ?""",
+         (iso, iso)),
+    ))
+
+
 def run():
     s = Suite("cover gaps")
     oc, _ec, _owner, _emp = clients()
@@ -132,9 +153,25 @@ def run():
             detail="a departed employee's leftover shift read as cover")
 
     s.section("A day with nothing on is not a gap")
-    quiet = _day(rows, _iso(25))
-    s.check("an empty day is not listed at all", quiet is None,
-            detail="an empty house needing nobody is not a failure")
+    # Found, not assumed. This read day +25 and took it on trust that nothing
+    # was on; the seeded catalogue puts an atelier on 23-27 October 2026, so at
+    # the end of September +25 fell inside it and the check failed on a day
+    # that was never empty. Any seeded session or stay does the same to a fixed
+    # offset, so walk forward from +25 to a day the tables say is empty.
+    today = m.house_today()
+    quiet = next((d for d in (today + timedelta(days=n) for n in range(25, 25 + 366))
+                  if _nothing_on(conn, d.isoformat())), None)
+    rows = m.cover_gaps(conn, _iso(0),
+                        max(quiet or today, today + timedelta(days=30)).isoformat())
+    s.check("an empty day is not listed at all",
+            quiet is not None and _day(rows, quiet.isoformat()) is None,
+            detail=(f"used {quiet} (day +{(quiet - today).days}), empty by the tables;"
+                    " if cover_gaps now counts a new kind of work, _nothing_on must too"
+                    if quiet else
+                    "no day in the year from day +25 has nothing on to test with"))
+    # Otherwise a window that came back empty would pass the check above.
+    s.check("while the same window still lists the stay",
+            _day(rows, _iso(10)) is not None)
 
     s.section("The page")
     page = oc.get("/admin/cover?days=60").get_data(as_text=True)
