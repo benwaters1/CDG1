@@ -52,6 +52,26 @@ def _day(rows, iso):
     return next((r for r in rows if r["date"] == iso), None)
 
 
+def _nothing_on(conn, iso):
+    """Whether the house has nothing at all on a day -- asked of the tables,
+    not of cover_gaps, which is the thing under test. The same four kinds of
+    work it counts: a confirmed stay from arrival to departure, a confirmed
+    dinner, an atelier sitting, a confirmed event."""
+    asks = (
+        ("SELECT 1 FROM bookings WHERE status = 'confirmed' "
+         "AND arrival_date <= ? AND departure_date >= ?", (iso, iso)),
+        ("SELECT 1 FROM restaurant_bookings WHERE status = 'confirmed' "
+         "AND dinner_date = ?", (iso,)),
+        ("SELECT 1 FROM workshop_sessions WHERE start_date <= ? "
+         "AND COALESCE(end_date, start_date) >= ?", (iso, iso)),
+        ("SELECT 1 FROM event_inquiries WHERE status = 'confirmed' "
+         "AND preferred_date IS NOT NULL "
+         "AND MIN(preferred_date, COALESCE(end_date, preferred_date)) <= ? "
+         "AND MAX(preferred_date, COALESCE(end_date, preferred_date)) >= ?", (iso, iso)),
+    )
+    return not any(conn.execute(sql, args).fetchone() for sql, args in asks)
+
+
 def run():
     s = Suite("cover gaps")
     oc, _ec, _owner, _emp = clients()
@@ -132,9 +152,21 @@ def run():
             detail="a departed employee's leftover shift read as cover")
 
     s.section("A day with nothing on is not a gap")
-    quiet = _day(rows, _iso(25))
-    s.check("an empty day is not listed at all", quiet is None,
-            detail="an empty house needing nobody is not a failure")
+    # Found, not assumed. This asked about day 25 and took it that nothing was
+    # on it -- but the house seeds its real atelier dates, so from 28 September
+    # to 2 October "Immersive Artisan Workshops" (23 to 27 October) sat on day
+    # 25, and the empty day was not empty. Every day with nothing on is asked
+    # about instead, and somebody is rostered on the first: a day nothing has
+    # touched never reaches cover_gaps' list at all, so without a shift there
+    # the check could not fail even with the line that drops empty days gone.
+    empty = [_iso(n) for n in range(121) if _nothing_on(conn, _iso(n))]
+    if empty:
+        _shift(conn, who, empty[0])
+    wide = m.cover_gaps(conn, _iso(0), _iso(120))
+    listed = [d for d in empty if _day(wide, d)]
+    s.check("an empty day is not listed at all", bool(empty) and not listed,
+            detail=(f"listed with nothing on: {listed[:3]}" if listed else
+                    "no day in the next four months has nothing on to ask about"))
 
     s.section("The page")
     page = oc.get("/admin/cover?days=60").get_data(as_text=True)
