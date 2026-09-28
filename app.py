@@ -1614,6 +1614,21 @@ DEFAULT_EMAIL_TEMPLATES = [
      "You can pay it here:\n{pay_url}\n\n{note_block}\n\n"
      "The link pays that amount and nothing else, and stops working once it is "
      "paid or once the stay is settled another way.\n\n— Château de Gudanes"),
+    ("guest_account_statement", "Guests: Statement of account",
+     "Your statement — Château de Gudanes",
+     "Hi {guest_name},\n\nYour statement with us{period}.\n\n{statement_lines}\n\n"
+     "{balance_line}\n\nIt is always here, with a way to settle anything outstanding:\n"
+     "{statement_url}\n\n{company_block}\n\n— Château de Gudanes"),
+    ("guest_link_updated", "Guests: A new private link",
+     "A new link for {link_for}",
+     "Hi {guest_name},\n\nAs you asked, here is a new link for {link_for}. The "
+     "one you had before no longer works, so nobody else holding it can open "
+     "anything.\n\n{new_link}\n\nIt works without a password, so keep it the way "
+     "you would keep one.\n\n— Château de Gudanes"),
+    ("refund_issued", "Refunds: Money sent back",
+     "Your refund — {reference_code}",
+     "Hi {guest_name},\n\nWe have refunded {amount} {what_for}.\n{refund_how}\n\n"
+     "{balance_line}\n\nReference code: {reference_code}\n\n— Château de Gudanes"),
     ("workshop_not_running", "Workshop: Not running (to the waiting list)",
      "{workshop_title} is not running",
      "Dear {name},\n\n{workshop_title} on {workshop_date} will not be running, so we "
@@ -4791,6 +4806,142 @@ def init_db():
              read_at      TEXT
          )"""),
         ("booking_payments_reference", "ALTER TABLE booking_payments ADD COLUMN reference TEXT"),
+        # WHICH PAYMENT A REFUND WENT BACK AGAINST, why, and what it did to the
+        # bill. A refund named only its booking, so a stay paid in three card
+        # payments -- one of them a friend's share -- was refunded to whichever
+        # card the booking had heard of first, and a goodwill refund on a stay
+        # still going ahead put the money straight back on the bill.
+        ("refunds_payment_key", "ALTER TABLE refunds ADD COLUMN payment_key TEXT"),
+        ("refunds_reason_code", "ALTER TABLE refunds ADD COLUMN reason_code TEXT"),
+        ("refunds_reduces_bill",
+         "ALTER TABLE refunds ADD COLUMN reduces_bill REAL NOT NULL DEFAULT 0"),
+        ("refunds_guest_told_at", "ALTER TABLE refunds ADD COLUMN guest_told_at TEXT"),
+        # The card behind each payment, kept as it arrives. A Checkout Session id
+        # is not something Stripe will refund against, and asking for the intent
+        # months later is one more thing that can fail at the moment it matters.
+        ("booking_payments_payment_intent",
+         "ALTER TABLE booking_payments ADD COLUMN stripe_payment_intent_id TEXT"),
+        ("event_payments_payment_intent",
+         "ALTER TABLE event_payments ADD COLUMN stripe_payment_intent_id TEXT"),
+        # A refund that did not reach the guest is booked back against the one
+        # it undoes rather than deleted: the record keeps that it was tried, and
+        # every figure built on refunds comes back right by the same sums.
+        # CORRESPONDENCE WITH A PERSON, not only with a stay. A letter was kept
+        # only if its address matched a room booking, so everything written to
+        # somebody who had booked an atelier, a table or an event -- and every
+        # letter delivered to anybody, which the record never read -- was
+        # nowhere a person could find it.
+        ("guest_messages_guest_id", "ALTER TABLE guest_messages ADD COLUMN guest_id INTEGER"),
+        ("guest_messages_about_category", "ALTER TABLE guest_messages ADD COLUMN about_category TEXT"),
+        ("guest_messages_about_id", "ALTER TABLE guest_messages ADD COLUMN about_id INTEGER"),
+        ("guest_messages_template_key", "ALTER TABLE guest_messages ADD COLUMN template_key TEXT"),
+        ("guest_messages_direction",
+         "ALTER TABLE guest_messages ADD COLUMN direction TEXT NOT NULL DEFAULT 'out'"),
+        ("guest_messages_outbox_id", "ALTER TABLE guest_messages ADD COLUMN outbox_id INTEGER"),
+        ("guest_messages_failure", "ALTER TABLE guest_messages ADD COLUMN failure TEXT"),
+        ("guest_messages_sent_by", "ALTER TABLE guest_messages ADD COLUMN sent_by_user_id INTEGER"),
+        ("guest_messages_delivered_at", "ALTER TABLE guest_messages ADD COLUMN delivered_at TEXT"),
+        ("idx_guest_messages_guest",
+         "CREATE INDEX IF NOT EXISTS idx_guest_messages_guest ON guest_messages(guest_id)"),
+        ("idx_guest_messages_outbox",
+         "CREATE INDEX IF NOT EXISTS idx_guest_messages_outbox ON guest_messages(outbox_id)"),
+        # By address, as every reader of both asks: a person's letters are
+        # found by the address they went to, however it was capitalised.
+        ("idx_email_outbox_to",
+         "CREATE INDEX IF NOT EXISTS idx_email_outbox_to ON email_outbox(LOWER(TRIM(to_address)))"),
+        ("idx_guest_messages_to",
+         "CREATE INDEX IF NOT EXISTS idx_guest_messages_to "
+         "ON guest_messages(LOWER(TRIM(to_address)))"),
+        # A telephone call, a word at the desk, a text from somebody's own
+        # phone: nothing recorded any of them, so the most common way a guest
+        # talks to a house like this one left no trace at all.
+        ("guest_contacts_table", """CREATE TABLE IF NOT EXISTS guest_contacts (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             guest_id INTEGER NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+             channel TEXT NOT NULL,
+             direction TEXT NOT NULL DEFAULT 'in',
+             summary TEXT NOT NULL,
+             about_category TEXT,
+             about_id INTEGER,
+             follow_up_on TEXT,
+             task_id INTEGER,
+             logged_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             created_at TEXT NOT NULL
+         )"""),
+        # WHAT CHANGED ON A GUEST'S PROFILE, and who changed it. An edit wrote
+        # over the old address, number and name with nothing kept, so an
+        # address typed wrong -- which moves every letter to somebody else --
+        # could not be seen, let alone put back. Deleted with the profile.
+        ("guest_profile_changes_table", """CREATE TABLE IF NOT EXISTS guest_profile_changes (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             guest_id INTEGER NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+             field TEXT NOT NULL,
+             old_value TEXT,
+             new_value TEXT,
+             changed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             created_at TEXT NOT NULL
+         )"""),
+        ("idx_guest_profile_changes_guest",
+         "CREATE INDEX IF NOT EXISTS idx_guest_profile_changes_guest "
+         "ON guest_profile_changes(guest_id)"),
+        # EVERY YES AND NO, and how it was said. The lists hold only where
+        # somebody stands now: confirming the newsletter DELETES the earlier
+        # opt-out, so "when did they say no, and how" was gone the moment they
+        # said yes -- and being able to show that somebody was asked is the
+        # point of asking.
+        ("consent_events_table", """CREATE TABLE IF NOT EXISTS consent_events (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             channel TEXT NOT NULL,
+             granted INTEGER,
+             how TEXT NOT NULL,
+             email TEXT,
+             phone TEXT,
+             guest_id INTEGER REFERENCES guests(id) ON DELETE CASCADE,
+             recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             created_at TEXT NOT NULL
+         )"""),
+        ("idx_consent_events_email",
+         "CREATE INDEX IF NOT EXISTS idx_consent_events_email "
+         "ON consent_events(LOWER(TRIM(email)))"),
+        ("idx_consent_events_phone",
+         "CREATE INDEX IF NOT EXISTS idx_consent_events_phone ON consent_events(phone)"),
+        ("idx_consent_events_guest",
+         "CREATE INDEX IF NOT EXISTS idx_consent_events_guest ON consent_events(guest_id)"),
+        # WORDS THE HOUSE PUTS ON A PERSON -- "wine", "returns every June",
+        # "press" -- to find them again. The notes held them as prose, which no
+        # list can filter by and no letter can be sent to.
+        ("guest_tags_table", """CREATE TABLE IF NOT EXISTS guest_tags (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             guest_id INTEGER NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+             tag TEXT NOT NULL,
+             added_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             created_at TEXT NOT NULL,
+             UNIQUE (guest_id, tag)
+         )"""),
+        ("idx_guest_tags_tag", "CREATE INDEX IF NOT EXISTS idx_guest_tags_tag ON guest_tags(tag)"),
+        ("refunds_reverses", "ALTER TABLE refunds ADD COLUMN reverses_refund_id INTEGER"),
+        # A card payment the guest has disputed with their bank. The webhook
+        # heard checkout and nothing else, so a dispute -- which has a deadline,
+        # after which the house loses by default -- reached nobody here at all.
+        ("payment_disputes_table", """CREATE TABLE IF NOT EXISTS payment_disputes (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             stripe_dispute_id TEXT NOT NULL UNIQUE,
+             payment_intent TEXT,
+             amount REAL NOT NULL,
+             reason TEXT,
+             status TEXT NOT NULL,
+             evidence_due_by TEXT,
+             category TEXT,
+             booking_id INTEGER,
+             payment_key TEXT,
+             reference_code TEXT,
+             guest_name TEXT,
+             guest_email TEXT,
+             refund_id INTEGER,
+             opened_at TEXT NOT NULL,
+             updated_at TEXT,
+             closed_at TEXT
+         )"""),
         # What has already been sent to the accountant.
         #
         # An invoice sent twice is worse than one not sent at all: the second is
@@ -5257,6 +5408,13 @@ def init_db():
         # stay, and they can empty it whenever they like.
         ("guests_own_notes_at", "ALTER TABLE guests ADD COLUMN own_notes_updated_at TEXT"),
         ("guests_usual_arrival", "ALTER TABLE guests ADD COLUMN usual_arrival_time TEXT"),
+        # THEY ASKED US TO STOP USING WHAT WE HOLD. The privacy notice has long
+        # listed the right, and nothing recorded that anybody had used it, so
+        # nothing could honour it.
+        ("guests_restricted_at", "ALTER TABLE guests ADD COLUMN restricted_at TEXT"),
+        ("guests_restricted_by",
+         "ALTER TABLE guests ADD COLUMN restricted_by_user_id INTEGER REFERENCES users(id)"),
+        ("guests_restricted_how", "ALTER TABLE guests ADD COLUMN restricted_how TEXT"),
         ("guest_access_needs", "ALTER TABLE guests ADD COLUMN access_needs TEXT"),
         ("guest_access_needs_at", "ALTER TABLE guests ADD COLUMN access_needs_updated_at TEXT"),
         # "Nothing is published without asking you first" is on the form
@@ -5553,6 +5711,9 @@ def init_db():
         print(f"[init] event_payments: checkout-once index not built ({e})")
 
     hold_legacy_balance_stamps(conn)
+    link_held_letters(conn)
+    backfill_consent_history(conn)
+    redact_stored_links(conn)
 
     # `guests` used to be a per-STAY register carrying arrival/departure/party_size,
     # duplicating what `bookings` already owns. The two could never be kept in
@@ -6793,7 +6954,12 @@ NAV_AREAS = {
         "add_channel_police_fiche", "delete_channel_police_fiche",
         "cancel_booking_extra_line", "delete_guest", "delete_police_fiche", "delete_room",
         "delete_room_photo", "delete_room_rate_override", "disband_booking_party", "export_bookings_csv",
-        "export_guests_csv", "guest_full_statement", "import_catalogue", "link_guest_bookings",
+        "export_guests_csv", "guest_full_statement", "guest_statement_csv",
+        "email_guest_account_statement", "write_to_guest", "reissue_booking_link_page",
+        "restrict_guest",
+        "tag_guest", "bulk_tag_guests",
+        "reissue_portal_link_page", "import_catalogue",
+        "link_guest_bookings",
         "new_booking_party", "new_room_rate_override", "police_register_page", "prepare_arrival",
         "repeat_guests_page", "reply_to_feedback", "sync_all_ical_sources", "toggle_feedback_featured",
         # Pages that had no area at all until now, so they were
@@ -7231,6 +7397,10 @@ OWNER_ONLY_AREAS = {
     "refund_booking_admin": "guests",
     "refund_restaurant_booking_admin": "restaurant",
     "refund_workshop_admin": "workshops",
+    # The refund desk moves money out of the house, so it is owner-only on
+    # purpose; it lives under Financial beside the list of refunds.
+    "refund_desk": "financial",
+    "refund_off_the_bill": "financial",
     "reveal_bank_details": "financial",
     "reveal_vault_entry": "management",
     "save_access_preset": "management",
@@ -8379,7 +8549,14 @@ app.jinja_env.globals["contact_address"] = lambda area: contact_address(area)
 app.jinja_env.globals["euro"] = lambda v: euro(v)
 
 
-def log_audit(conn, action, target=None, details=None, via=None):
+# Who did it, when that is not whoever happens to be signed in. A job run on
+# somebody's page load is not that person's decision: the stale-request expiry
+# runs on the dashboard, so every request it declined was written down as
+# declined by whoever opened it.
+ACTOR_SIGNED_IN = object()
+
+
+def log_audit(conn, action, target=None, details=None, via=None, *, actor=ACTOR_SIGNED_IN):
     """Records who did what to something sensitive, and when — deletions,
     status changes, vault/bank-detail edits, backup downloads. Separate from
     recent_activity() (which is a general-interest feed for the dashboard);
@@ -8391,13 +8568,39 @@ def log_audit(conn, action, target=None, details=None, via=None):
     the actor would be a lie about who is accountable. But "approved" and
     "approved through the assistant" are different things to read back when
     working out how a decision got made, so the line says which."""
-    user = current_user()
+    if actor is ACTOR_SIGNED_IN:
+        user = current_user()
+        actor = user["id"] if user else None
     if via:
         details = f"{details} — via {via}" if details else f"via {via}"
     conn.execute(
         "INSERT INTO audit_log (actor_user_id, action, target, details, created_at) VALUES (?, ?, ?, ?, ?)",
-        (user["id"] if user else None, action, target, details, datetime.now(timezone.utc).isoformat()),
+        (actor, action, target, details, datetime.now(timezone.utc).isoformat()),
     )
+
+
+# What the guest did on their own booking, with nobody signed in. Anything else
+# with no name against it is a job, and saying "a scheduled job" cancelled a
+# stay the guest cancelled themselves is a record that points the wrong way.
+GUEST_AUDIT_ACTIONS = frozenset({
+    "booking_confirmed_online", "booking_cancelled_by_guest",
+    "booking_dates_changed_by_guest", "booking_change_asked_by_guest",
+    "booking_contact_changed_by_guest", "guest_extended_stay", "guest_added_extra",
+    "guest_wrote_in", "guest_restricted", "guest_asked_to_be_forgotten",
+    "guest_downloaded_their_data",
+})
+
+
+def audit_who(entry):
+    """Who an audit line is against, in words: a person, the guest, or a job."""
+    if entry["actor_name"]:
+        return entry["actor_name"]
+    if (entry["action"] or "") in GUEST_AUDIT_ACTIONS:
+        return "The guest"
+    return "A scheduled job"
+
+
+app.jinja_env.globals["audit_who"] = audit_who
 
 
 def recent_activity(conn, limit=15):
@@ -8668,7 +8871,8 @@ def expire_stale_pending_bookings(conn, hours=STALE_PENDING_BOOKING_HOURS):
     ).fetchall()
     count = 0
     for row in stale:
-        declined, _refunded, _refund_error = decline_booking_by_id(conn, row["id"])
+        declined, _refunded, _refund_error = decline_booking_by_id(
+            conn, row["id"], via=f"no answer within {hours} hours")
         if declined:
             count += 1
     if count:
@@ -9531,7 +9735,7 @@ def _searchable(row, fields):
 SAVED_VIEW_PARAMS = ("q", "sort", "page", "period", "date", "status", "state",
                      "category", "supplier", "where", "applies", "employee_id",
                      "room_id", "kind", "area", "level", "days", "month", "year",
-                     "tab", "who", "facet",
+                     "tab", "who", "facet", "tag",
                      # Chips that existed and were silently dropped from a
                      # saved view -- so a page filtered only by them offered
                      # no Save at all.
@@ -9685,7 +9889,13 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
             want = chosen.get(f["key"])
             if not want or f["key"] == skip:
                 continue
-            if str(f["bucket"](row) or "") != want:
+            got = f["bucket"](row)
+            # A row may sit in several groups at once -- a guest carries more
+            # than one tag -- and matches any of them.
+            if isinstance(got, (list, tuple, set, frozenset)):
+                if want not in {str(v) for v in got}:
+                    return False
+            elif str(got or "") != want:
                 return False
         return True
 
@@ -9698,9 +9908,11 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
         counts = {}
         for r in pool:
             b = f["bucket"](r)
-            if b is None or b == "":
-                continue
-            counts[str(b)] = counts.get(str(b), 0) + 1
+            # Counted under each group it sits in.
+            for v in (b if isinstance(b, (list, tuple, set, frozenset)) else (b,)):
+                if v is None or v == "":
+                    continue
+                counts[str(v)] = counts.get(str(v), 0) + 1
         keys = [k for k in f["order"] if k in counts] if f["order"] else []
         keys += sorted(k for k in counts if k not in keys)
         hidden = 0
@@ -15639,10 +15851,20 @@ def booking_bill(conn, booking_id):
             # its number, which nothing displayed.
             "amount": amount, "kind": "extra", "line_id": extra["id"]})
 
+    given = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS t, COALESCE(SUM(reduces_bill), 0) AS off
+             FROM refunds WHERE category = 'room' AND booking_id = ?""",
+        (booking_id,)).fetchone()
+    refunded = given["t"] or 0.0
+    # What a refund took off the PRICE, not only out of what was received: a
+    # goodwill refund on a stay that still stands. Without a line of its own
+    # the refund came off what was received and nothing else, and the bill
+    # opened again for exactly the sum the guest had just been given.
+    taken_off = round(given["off"] or 0.0, 2)
+    if taken_off > 0.005:
+        lines.append({"label": "Reduction, refunded", "amount": -taken_off,
+                      "kind": "refund_reduction"})
     total = round(sum(l["amount"] for l in lines), 2)
-    refunded = conn.execute(
-        """SELECT COALESCE(SUM(amount), 0) AS t FROM refunds
-           WHERE category = 'room' AND booking_id = ?""", (booking_id,)).fetchone()["t"] or 0.0
     paid = round((booking["amount_paid"] or 0) - refunded, 2)
     owed = round(max(total - paid, 0.0), 2)
 
@@ -15665,6 +15887,7 @@ def booking_bill(conn, booking_id):
         "total": total,
         "paid": max(paid, 0.0),
         "refunded": round(refunded, 2),
+        "taken_off": taken_off,
         "owed": owed,
         "overpaid": round(max(paid - total, 0.0), 2),
         "deposit": round(deposit_amount, 2) if deposit_amount else None,
@@ -15944,9 +16167,10 @@ def mark_booking_payment_paid(conn, session):
         return
     try:
         conn.execute(
-            """INSERT INTO booking_payments (booking_id, amount, method, stripe_session_id, created_at)
-               VALUES (?, ?, 'stripe', ?, ?)""",
-            (booking_id, round(amount, 2), session_id, datetime.now(timezone.utc).isoformat()))
+            """INSERT INTO booking_payments (booking_id, amount, method, stripe_session_id,
+               stripe_payment_intent_id, created_at) VALUES (?, ?, 'stripe', ?, ?, ?)""",
+            (booking_id, round(amount, 2), session_id, _intent_id(session),
+             datetime.now(timezone.utc).isoformat()))
     except sqlite3.IntegrityError:
         # The success redirect and the webhook can be in flight at the same
         # moment and both clear the check above. The UNIQUE session id is the
@@ -22625,12 +22849,13 @@ def send_campaign_template(template_id):
         return redirect(url_for("edit_campaign_template", template_id=template_id))
 
     result = send_campaign(conn, template, audience, user["id"])
+    held = campaign_held_back_note(result["withheld"])
     log_audit(conn, "campaign_sent", target=template["name"],
-              details=f"{result['sent']} sent, {result['failed']} failed")
+              details=f"{result['sent']} sent, {result['failed']} failed{held}")
     conn.commit()
     conn.close()
     flash(f"Sent to {result['sent']} recipient(s)"
-          + (f", {result['failed']} failed" if result["failed"] else "") + ".",
+          + (f", {result['failed']} failed" if result["failed"] else "") + held + ".",
           "success" if not result["failed"] else "error")
     return redirect(url_for("edit_campaign_template", template_id=template_id))
 
@@ -22662,11 +22887,15 @@ def campaign_unsubscribe(token):
 
     email = (row["recipient_email"] or "").strip().lower()
     if request.method == "POST":
-        conn.execute(
+        now = datetime.now(timezone.utc).isoformat()
+        cur = conn.execute(
             "INSERT OR IGNORE INTO email_optouts (email, reason, created_at) VALUES (?, ?, ?)",
-            (email, "Unsubscribed from a campaign email",
-             datetime.now(timezone.utc).isoformat()),
+            (email, "Unsubscribed from a campaign email", now),
         )
+        # Once: pressing it twice is not saying no twice.
+        if cur.rowcount:
+            record_consent(conn, "marketing_email", 0, "the unsubscribe link in a campaign letter",
+                           email=email, at=now)
         conn.commit()
         conn.close()
         return render_template("unsubscribe.html", state="done", email=email)
@@ -22918,6 +23147,9 @@ def newsletter_subscribe():
         conn.execute(
             """INSERT INTO newsletter_subscribers (email, token, source, created_at)
                VALUES (?, ?, 'site', ?)""", (email, token, now_iso))
+        record_consent(conn, "newsletter", None,
+                       "asked to join on the site, and was sent a link to confirm",
+                       email=email, at=now_iso)
     else:
         token = row["token"]
 
@@ -22958,12 +23190,20 @@ def newsletter_confirm(token):
         conn.close()
         return render_template("newsletter_confirmed.html", state="unknown"), 404
     if not row["confirmed_at"]:
+        now = datetime.now(timezone.utc).isoformat()
         conn.execute(
             "UPDATE newsletter_subscribers SET confirmed_at = ?, unsubscribed_at = NULL WHERE id = ?",
-            (datetime.now(timezone.utc).isoformat(), row["id"]))
+            (now, row["id"]))
+        record_consent(conn, "newsletter", 1, "confirmed by the link sent to them",
+                       email=row["email"], at=now)
         # Confirming is an explicit, deliberate opt-in, so it clears an older
         # opt-out for the same address rather than being silently overridden.
-        conn.execute("DELETE FROM email_optouts WHERE email = ?", (row["email"],))
+        # The no it lifts stays in the history, which is where it went missing.
+        lifted = conn.execute("DELETE FROM email_optouts WHERE email = ?", (row["email"],))
+        if lifted.rowcount:
+            record_consent(conn, "marketing_email", 1,
+                           "their earlier no lifted, by confirming the newsletter",
+                           email=row["email"], at=now)
         conn.commit()
     conn.close()
     return render_template("newsletter_confirmed.html", state="done", email=row["email"])
@@ -22984,12 +23224,21 @@ def newsletter_unsubscribe(token):
     email = row["email"]
     if request.method == "POST":
         now_iso = datetime.now(timezone.utc).isoformat()
-        conn.execute(
-            "UPDATE newsletter_subscribers SET unsubscribed_at = ?, confirmed_at = NULL WHERE id = ?",
+        left = conn.execute(
+            "UPDATE newsletter_subscribers SET unsubscribed_at = ?, confirmed_at = NULL "
+            "WHERE id = ? AND unsubscribed_at IS NULL",
             (now_iso, row["id"]))
-        conn.execute(
+        stopped = conn.execute(
             "INSERT OR IGNORE INTO email_optouts (email, reason, created_at) VALUES (?, ?, ?)",
             (email, "Unsubscribed from the newsletter", now_iso))
+        # Each only when it changes something: pressing it twice is not
+        # saying no twice.
+        if left.rowcount:
+            record_consent(conn, "newsletter", 0, "the unsubscribe link in the newsletter",
+                           email=email, at=now_iso)
+        if stopped.rowcount:
+            record_consent(conn, "marketing_email", 0, "the unsubscribe link in the newsletter",
+                           email=email, at=now_iso)
         conn.commit()
         conn.close()
         return render_template("unsubscribe.html", state="done", email=email)
@@ -23004,11 +23253,14 @@ def newsletter_recipients(conn):
     an address to email_optouts by hand, and that must suppress the newsletter
     too, not only campaign sends.
     """
-    return conn.execute(
+    held_back = restricted_addresses(conn)
+    return [r for r in conn.execute(
         """SELECT email FROM newsletter_subscribers
            WHERE confirmed_at IS NOT NULL AND unsubscribed_at IS NULL
              AND email NOT IN (SELECT email FROM email_optouts)
            ORDER BY confirmed_at""").fetchall()
+        # Nor anybody who asked us to stop using their details.
+        if (r["email"] or "").strip().lower() not in held_back]
 
 
 @app.route("/admin/emails/optout", methods=["POST"])
@@ -23019,11 +23271,13 @@ def add_email_optout():
         flash("Enter an email address.", "error")
         return redirect(url_for("admin_emails"))
     conn = get_db()
-    conn.execute(
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
         "INSERT OR IGNORE INTO email_optouts (email, reason, created_at) VALUES (?, ?, ?)",
-        (email, request.form.get("reason", "").strip() or None,
-         datetime.now(timezone.utc).isoformat()),
+        (email, request.form.get("reason", "").strip() or None, now),
     )
+    if cur.rowcount:
+        record_consent(conn, "marketing_email", 0, "recorded by hand", email=email, at=now)
     conn.commit()
     conn.close()
     flash(f"{email} will no longer receive campaign email.", "success")
@@ -23101,20 +23355,30 @@ def send_email_outbox():
     for row in rows:
         # keep=False: this row IS the queue entry. Re-queueing on failure
         # would add a duplicate every time the owner pressed the button.
+        why = {}
         ok = send_email(row["to_address"], row["subject"], row["body"],
-                        row["ics_content"], row["ics_filename"], keep=False)
+                        row["ics_content"], row["ics_filename"], keep=False, report=why)
+        now = datetime.now(timezone.utc).isoformat()
         if ok:
             sent += 1
             conn.execute(
                 "UPDATE email_outbox SET sent_at = ?, attempts = attempts + 1 WHERE id = ?",
-                (datetime.now(timezone.utc).isoformat(), row["id"]))
+                (now, row["id"]))
+            # The record of the letter said it did not go; now it has. Left
+            # alone, a confirmation held one morning and sent that afternoon
+            # read "did not go" on the guest's record forever.
+            conn.execute(
+                """UPDATE guest_messages SET delivered = 1, delivered_at = ?, failure = NULL
+                    WHERE outbox_id = ?""", (now, row["id"]))
         else:
             failed += 1
             skipped.append((f"{row['subject'] or 'no subject'} to "
                             f"{row['to_address']}", "the provider refused it"))
+            # WHY, not "retry failed": that overwrote the reason the provider
+            # gave with a phrase that says only that it happened again.
             conn.execute(
                 "UPDATE email_outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?",
-                ("retry failed", row["id"]))
+                (why.get("why") or "retry failed", row["id"]))
         conn.commit()
     if sent:
         log_audit(conn, "email_outbox_sent", details=f"{sent} sent, {failed} failed")
@@ -23224,6 +23488,19 @@ def test_email_provider():
     return redirect(url_for("admin_email_outbox"))
 
 
+LETTER_WITHDRAWN = "taken out of the queue by the house, so never sent"
+
+
+def mark_letters_withdrawn(conn, outbox_ids):
+    """The guest's copy of a letter the house took out of the queue.
+
+    It read "held" for ever after, which says the letter is still on its way.
+    """
+    conn.executemany(
+        "UPDATE guest_messages SET failure = ? WHERE outbox_id = ? AND delivered = 0",
+        [(LETTER_WITHDRAWN, i) for i in outbox_ids])
+
+
 @app.route("/admin/email-outbox/discard-stale", methods=["POST"])
 @owner_required
 def discard_stale_email_outbox():
@@ -23248,6 +23525,7 @@ def discard_stale_email_outbox():
     oldest = max(held_mail_age_days(r) or 0 for r in stale)
     conn.executemany("DELETE FROM email_outbox WHERE id = ?",
                      [(r["id"],) for r in stale])
+    mark_letters_withdrawn(conn, [r["id"] for r in stale])
     log_audit(conn, "email_outbox_discarded_stale", None,
               f"{len(stale)} message(s), up to {oldest} days old")
     conn.commit()
@@ -23265,8 +23543,10 @@ def discard_email_outbox(outbox_id):
     row = conn.execute("SELECT to_address, subject FROM email_outbox WHERE id = ?",
                        (outbox_id,)).fetchone()
     conn.execute("DELETE FROM email_outbox WHERE id = ?", (outbox_id,))
+    mark_letters_withdrawn(conn, [outbox_id])
     if row:
-        log_audit(conn, "email_outbox_discarded", target=row["to_address"],
+        # The letter, not the address it was for: this trail outlives an erasure.
+        log_audit(conn, "email_outbox_discarded", target="a held letter",
                   details=row["subject"])
     conn.commit()
     conn.close()
@@ -23657,7 +23937,7 @@ def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reas
     try:
         conn = get_db()
         try:
-            conn.execute(
+            cur = conn.execute(
                 """INSERT INTO email_outbox (to_address, subject, body, ics_content,
                    ics_filename, reason, last_error, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -23665,10 +23945,14 @@ def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reas
                  datetime.now(timezone.utc).isoformat()),
             )
             conn.commit()
+            # Which row, so the letter's record can say "held" and be put right
+            # the day it is sent from here.
+            return cur.lastrowid
         finally:
             conn.close()
     except Exception as e:                     # pragma: no cover - last resort
         print(f"[outbox write failed] To: {to_address} | Subject: {subject} | Error: {e}")
+    return None
 
 
 # How long a message to a guest is kept. Two years past the stay: long enough
@@ -23760,8 +24044,105 @@ def booking_for_contact(conn, address=None, phone=None):
     return sorted(rows, key=lambda r: r["arrival_date"] or "")[0]["id"]
 
 
+def guest_for_contact(conn, address=None, phone=None):
+    """The profile an address or a number belongs to, followed through any
+    merge to the one it lives in now. None if there is none.
+
+    A telephone number is compared by its last nine digits, the subscriber's
+    number however it was written: nationally, with the country code, or with
+    the spaces somebody typed.
+    """
+    row = None
+    address = (address or "").strip().casefold()
+    if address:
+        row = conn.execute(
+            "SELECT id, merged_into_id FROM guests WHERE LOWER(TRIM(email)) = ?",
+            (address,)).fetchone()
+    digits = "".join(c for c in (phone or "") if c.isdigit())[-9:]
+    if not row and len(digits) == 9:
+        for g in conn.execute(
+                "SELECT id, merged_into_id, phone FROM guests "
+                "WHERE COALESCE(phone, '') != ''").fetchall():
+            if "".join(c for c in g["phone"] if c.isdigit())[-9:] == digits:
+                row = g
+                break
+    seen = set()
+    while row and row["merged_into_id"] and row["id"] not in seen:
+        seen.add(row["id"])
+        onward = conn.execute("SELECT id, merged_into_id FROM guests WHERE id = ?",
+                              (row["merged_into_id"],)).fetchone()
+        if not onward:
+            break
+        row = onward
+    return row["id"] if row else None
+
+
+# Where a message to a guest is about, when the sender knows: a stay, an
+# atelier, a table or an event, by id.
+MESSAGE_ABOUT = ("room", "workshop", "restaurant", "event")
+
+
+# THE PRIVATE LINKS, as the app itself defines them: every page opened by a
+# token rather than a password. Read from the routes, not listed, so a page
+# added tomorrow is covered the day it is added; each route's whole shape, so a
+# public page under the same first word keeps its link.
+_PRIVATE_LINK_PATTERNS = []
+PRIVATE_LINK_KEPT_AS = "[their private link, not kept]"
+_URL_IN_TEXT = re.compile(r"https?://[^\s<>\"')\]]+")
+
+
+def private_link_patterns():
+    if not _PRIVATE_LINK_PATTERNS:
+        for rule in app.url_map.iter_rules():
+            if any("token" in arg for arg in rule.arguments):
+                _PRIVATE_LINK_PATTERNS.append(re.compile(
+                    "^" + re.sub(r"<[^>]+>", r"[^/?#]+", re.escape(str(rule))) + "$"))
+    return _PRIVATE_LINK_PATTERNS
+
+
+def without_private_links(text):
+    """Words as they are kept: every link that is itself a key taken out.
+
+    The privacy notice says a message whose text is a key is never kept, and
+    every confirmation carries the link that opens the booking without a
+    password -- so every copy kept was a key to somebody's stay, sitting in a
+    table, shown on a page, exported with their data.
+    """
+    if not text or "http" not in text:
+        return text
+    patterns = private_link_patterns()
+
+    def one(m):
+        path = urlparse(m.group(0)).path
+        return PRIVATE_LINK_KEPT_AS if any(p.match(path) for p in patterns) else m.group(0)
+
+    return _URL_IN_TEXT.sub(one, text)
+
+
+def redact_stored_links(conn):
+    """Take the private links out of the copies already kept. At startup; finds
+    nothing once the old copies are through it."""
+    changed = 0
+    for r in conn.execute("SELECT id, subject, body FROM guest_messages "
+                          "WHERE body LIKE '%http%' OR subject LIKE '%http%'").fetchall():
+        body, subject = without_private_links(r["body"]), without_private_links(r["subject"])
+        if (body, subject) != (r["body"], r["subject"]):
+            conn.execute("UPDATE guest_messages SET body = ?, subject = ? WHERE id = ?",
+                         (body, subject, r["id"]))
+            changed += 1
+    if changed:
+        conn.commit()
+    return changed
+
+
 def write_guest_messages(rows):
-    """File a batch of sent messages against the stays they belong to.
+    """File a batch of messages against the person they were to, and what they
+    were about.
+
+    Kept when the address or number is somebody the house knows -- a profile,
+    or a stay -- or when the sender said what it was about. A letter was kept
+    only if its address matched a ROOM booking, so everything written to
+    somebody who had booked an atelier, a table or an event went nowhere.
 
     Its own connection, and everything swallowed. This is bookkeeping about a
     side effect: losing the record of a letter must never lose the letter, and
@@ -23773,20 +24154,41 @@ def write_guest_messages(rows):
     try:
         conn = get_db()
         try:
-            for to_address, subject, body, channel, delivered in rows:
-                booking_id = booking_for_contact(
-                    conn, address=to_address if channel == "email" else None,
-                    phone=to_address if channel == "sms" else None)
-                if not booking_id:
+            for row in rows:
+                if not isinstance(row, dict):
+                    to_address, subject, body, channel, delivered = row
+                    row = {"to_address": to_address, "subject": subject, "body": body,
+                           "channel": channel, "delivered": delivered}
+                channel = row.get("channel") or "email"
+                by_mail = channel in ("email", "form")
+                about = row.get("about") or (None, None)
+                if about[0] not in MESSAGE_ABOUT:
+                    about = (None, None)
+                address = row["to_address"] if by_mail else None
+                number = None if by_mail else row["to_address"]
+                booking_id = (about[1] if about[0] == "room" else
+                              None if about[0] else
+                              booking_for_contact(conn, address=address, phone=number))
+                guest_id = guest_for_contact(conn, address=address, phone=number)
+                if not booking_id and not guest_id and not about[0]:
                     # Staff mail, a supplier, the accountant. Not correspondence
                     # with a guest, and not kept here.
                     continue
+                now = datetime.now(timezone.utc).isoformat()
                 conn.execute(
                     """INSERT INTO guest_messages (booking_id, channel, to_address,
-                       subject, body, delivered, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (booking_id, channel, to_address, subject, body,
-                     1 if delivered else 0, datetime.now(timezone.utc).isoformat()))
+                       subject, body, delivered, created_at, guest_id, about_category,
+                       about_id, template_key, direction, outbox_id, failure,
+                       sent_by_user_id, delivered_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (booking_id, channel, row["to_address"],
+                     without_private_links(row.get("subject")),
+                     without_private_links(row.get("body") or ""),
+                     1 if row.get("delivered") else 0, now,
+                     guest_id, about[0], about[1], row.get("template_key"),
+                     row.get("direction") or "out", row.get("outbox_id"),
+                     None if row.get("delivered") else row.get("failure"),
+                     row.get("sent_by"), now if row.get("delivered") else None))
                 written += 1
             conn.commit()
         finally:
@@ -23796,7 +24198,7 @@ def write_guest_messages(rows):
     return written
 
 
-def keep_guest_message(to_address, subject, body, channel="email", delivered=False):
+def keep_guest_message(to_address, subject, body, channel="email", delivered=False, **more):
     """Hold one message until it is safe to write it down.
 
     NOT written here. Inside a request this waits in g and is flushed after
@@ -23810,7 +24212,9 @@ def keep_guest_message(to_address, subject, body, channel="email", delivered=Fal
     """
     if not to_address:
         return
-    row = (to_address, subject, body, channel, delivered)
+    # what it was about, the template, the held copy, who wrote it, which way
+    row = dict(more, to_address=to_address, subject=subject, body=body, channel=channel,
+               delivered=delivered)
     if has_request_context():
         pending = g.get("_guest_messages")
         if pending is None:
@@ -23821,7 +24225,8 @@ def keep_guest_message(to_address, subject, body, channel="email", delivered=Fal
 
 
 def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
-               keep=True, html=None, report=None, area=None):
+               keep=True, html=None, report=None, area=None, about=None,
+               template_key=None, sent_by=None):
     """Send one message, and if it cannot go out, keep it.
 
     `keep=False` for anything whose body is itself a credential — a password
@@ -23855,6 +24260,11 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         keep = False
     if not to_address:
         return False
+    # Which letter this is, when a template made it: render_email_template
+    # leaves the key by the subject, so nothing that sends has to pass it.
+    if not template_key and has_request_context():
+        template_key = (g.get("_rendered_keys") or {}).get(subject)
+    filed = {"about": about, "template_key": template_key, "sent_by": sent_by}
     # Filed whether it goes or not, and marked with which. "We wrote to them
     # and it bounced" is a different fact from "we never wrote", and the whole
     # point of keeping this is being able to tell somebody which happened.
@@ -23866,23 +24276,25 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                                           reply_to=reply_to_for(area))
         if went:
             if keep:
-                keep_guest_message(to_address, subject, body, delivered=True)
+                keep_guest_message(to_address, subject, body, delivered=True, **filed)
             return True
         if report is not None:
             report["why"] = why
         if keep:
-            queue_undelivered(to_address, subject, body, ics_content, ics_filename,
-                              "provider rejected it", why or "Resend API call failed")
-            keep_guest_message(to_address, subject, body)
+            held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
+                                     "provider rejected it", why or "Resend API call failed")
+            keep_guest_message(to_address, subject, body, outbox_id=held,
+                               failure=why or "the provider refused it", **filed)
         return False
     if not email_enabled():
         print(f"[email held — no email provider configured] To: {to_address} | Subject: {subject}")
         if report is not None:
             report["why"] = "No email provider is configured."
         if keep:
-            queue_undelivered(to_address, subject, body, ics_content, ics_filename,
-                              "no email provider configured")
-            keep_guest_message(to_address, subject, body)
+            held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
+                                     "no email provider configured")
+            keep_guest_message(to_address, subject, body, outbox_id=held,
+                               failure="no email provider configured", **filed)
         return False
     try:
         # Assigning headers can itself raise (e.g. a crafted guest_email
@@ -23920,16 +24332,17 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
         if keep:
-            keep_guest_message(to_address, subject, body, delivered=True)
+            keep_guest_message(to_address, subject, body, delivered=True, **filed)
         return True
     except Exception as e:
         print(f"[email failed] To: {to_address} | Subject: {subject} | Error: {e}")
         if report is not None:
             report["why"] = "The mail server refused it: %s" % (e,)
         if keep:
-            queue_undelivered(to_address, subject, body, ics_content, ics_filename,
-                              "send failed", str(e))
-            keep_guest_message(to_address, subject, body)
+            held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
+                                     "send failed", str(e))
+            keep_guest_message(to_address, subject, body, outbox_id=held,
+                               failure=f"the mail server refused it: {e}", **filed)
         return False
 
 
@@ -24138,7 +24551,9 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
     # which is the right answer for both of those.
     confirmed_now = False
     if confirm_now and new_row:
-        confirmed_now, _why = confirm_booking_by_id(conn, new_row["id"])
+        confirmed_now, _why = confirm_booking_by_id(
+            conn, new_row["id"],
+            online="the site, paid for online" if payment_status == "paid" else "the site")
 
     checkin_url = url_for("guest_checkin", manage_token=manage_token, _external=True)
     detail_lines = [
@@ -24290,8 +24705,9 @@ def create_booking_from_stripe_session(conn, session):
         try:
             conn.execute(
                 """INSERT INTO booking_payments (booking_id, amount, method,
-                   stripe_session_id, created_at) VALUES (?, ?, 'stripe', ?, ?)""",
-                (paid_row["id"], round(received, 2), session["id"],
+                   stripe_session_id, stripe_payment_intent_id, created_at)
+                   VALUES (?, ?, 'stripe', ?, ?, ?)""",
+                (paid_row["id"], round(received, 2), session["id"], _intent_id(session),
                  datetime.now(timezone.utc).isoformat()))
         except sqlite3.IntegrityError:
             pass
@@ -24394,8 +24810,19 @@ def amount_paid_for(conn, category, booking):
             (booking["id"],),
         ).fetchone()
         return round(row["paid"], 2)
+    if category == "event":
+        # amount_paid is additive and nothing takes refunds off it -- they live
+        # in the refunds table -- so it is the gross figure, as the rule above
+        # needs. Events had no case here at all, and fell through to a
+        # total_price column an event does not have.
+        return round(float(booking["amount_paid"] or 0), 2)
     if category == "restaurant":
         keys = booking.keys()
+        # A deposit ASKED FOR is not a deposit taken. This returned the
+        # figure whether or not it had been paid, and only a separate check on
+        # payment_status kept an unpaid table from being "refunded".
+        if "payment_status" in keys and (booking["payment_status"] or "") not in ("paid", "refunded"):
+            return 0.0
         if "deposit_amount" in keys and booking["deposit_amount"]:
             return round(booking["deposit_amount"], 2)
     if category == "room" and "amount_paid" in booking.keys():
@@ -24423,115 +24850,888 @@ def refundable_amount(conn, category, booking):
 # The four the refunds table accepts -- its CHECK constraint says the same.
 REFUND_METHODS = ("stripe", "bank_transfer", "cash", "other")
 
+# Where each kind of booking lives. Events are here and not in REFUND_TABLES,
+# which lists the tables whose payment_status a full refund flips: an event
+# has no such column, so it was never refundable at all.
+REFUND_BOOKING_TABLES = dict(REFUND_TABLES, event="event_inquiries")
+REFUND_CATEGORY_LABELS = {"room": "Stay", "workshop": "Atelier", "event": "Event",
+                          "restaurant": "Dinner"}
+# The words the audit trail has always used, so a booking's history finds a
+# refund made here beside the ones made before it.
+REFUND_AUDIT_WORDS = {"room": "room booking", "workshop": "workshop booking",
+                      "restaurant": "dinner", "event": "event"}
 
-def issue_refund(conn, category, booking, amount, reason, method="stripe", user_id=None):
-    """Issue (or record) a refund of `amount` against one booking.
+# Why money went back. Chosen rather than typed, so the refunds page can be
+# read by reason and a pattern -- the same room, the same boiler -- shows
+# itself. The note beside it says the rest.
+REFUND_REASONS = [
+    ("goodwill", "Goodwill: something fell short"),
+    ("house_cancelled", "The house called it off"),
+    ("guest_cancelled", "They cancelled, and something goes back"),
+    ("overpaid", "They paid too much, or twice"),
+    ("wrong_card", "Paid the wrong way, and it will be taken again"),
+    ("declined", "We could not take the booking"),
+    ("other", "Something else"),
+]
+REFUND_REASON_LABELS = dict(REFUND_REASONS)
 
-    Partial refunds are the point here -- the old version could only ever hand
-    back the entire payment, which made "give them half back because they
-    cancelled late" impossible. `method` distinguishes a real Stripe refund
-    from one settled outside the system (bank transfer, cash); the latter is
-    recorded but obviously moves no money here.
+# How far back "recently" reaches on the refunds page. Named once, so the tile's
+# sentence and the query behind it cannot come to disagree.
+REFUNDS_RECENT_DAYS = 30
 
-    Returns (ok, error). Nothing is written unless the money side succeeded.
+# What a refund does to the bill of a booking that still stands.
+#
+# Money going back came off what was RECEIVED and nothing else, so a goodwill
+# refund on a stay still going ahead reopened its bill: the Pay button came
+# back, the balance chase asked for the money, and on an atelier the saved
+# card stood ready to be charged it again. Which of the two a refund is, is the
+# owner's to say. "They pay less" is the default because it is the common case
+# and the one that cannot charge anybody twice.
+BILL_REDUCED, BILL_STANDS = "reduce", "stands"
+
+# How each way of paying reads to a person.
+PAYMENT_METHOD_WORDS = {
+    "stripe": "Card, online", "card_link": "Card, by payment link",
+    "online": "Online", "card_in_person": "Card, in person",
+    "card_terminal": "Card, at the terminal", "cash": "Cash",
+    "bank_transfer": "Bank transfer", "voucher": "Gift voucher", "other": "Other",
+}
+
+
+def _intent_id(session):
+    """The PaymentIntent id on a Checkout Session, whether Stripe sent it as an
+    id or as the expanded object."""
+    intent = sval(session, "payment_intent")
+    if intent and not isinstance(intent, str):
+        intent = sval(intent, "id")
+    return intent or None
+
+
+def _card_ref(value):
+    """A Stripe id a refund could be pointed at, or None."""
+    value = (value or "").strip() if isinstance(value, str) else ""
+    return value if value.startswith(("pi_", "cs_")) else None
+
+
+def _booking_field(booking, *names):
+    keys = booking.keys()
+    for name in names:
+        if name in keys and booking[name]:
+            return booking[name]
+    return None
+
+
+def booking_stands(category, booking):
+    """Whether a booking is still going ahead, so its bill still asks for money."""
+    status = (_booking_field(booking, "status") or "").lower()
+    if category == "event":
+        return status not in ("cancelled", "declined")
+    return status in ("pending", "confirmed")
+
+
+def booking_credit(conn, category, booking_id):
+    """What the house holds beyond what the booking costs. The part of a refund
+    that only hands back an overpayment changes no bill, whatever else it is."""
+    if category == "room":
+        bill = booking_bill(conn, booking_id)
+        return bill["overpaid"] if bill else 0.0
+    if category == "workshop":
+        due, _charged, _paid = workshop_balance_due(conn, booking_id)
+        return round(max(0.0, -due), 2)
+    if category == "event":
+        bill = event_bill(conn, booking_id)
+        return bill["overpaid"] if bill else 0.0
+    return 0.0
+
+
+def payments_received(conn, category, booking):
+    """Every payment on one booking, oldest first, each with what has gone back
+    against it and what still can.
+
+    A refund goes back against a PAYMENT, not a booking. A stay settled in three
+    card payments -- a deposit, the rest, a friend's share of a split bill --
+    has three cards behind it, and the engine refunded whichever the booking
+    had heard of first: on a split bill, somebody else's card. So each payment
+    carries its own card, and a card refund goes to the card the money came from.
+
+    Refunds written before they named a payment are laid against the payments
+    the old engine would have used -- the booking's first card, then the
+    oldest -- so what is shown agrees with what actually happened to them.
+    """
+    bid = booking["id"]
+    items = []
+    if category == "room":
+        for p in conn.execute(
+                """SELECT bp.*, users.name AS taken_by_name, bs.name AS share_name
+                     FROM booking_payments bp
+                     LEFT JOIN users ON users.id = bp.taken_by_user_id
+                     LEFT JOIN booking_shares bs ON bs.booking_id = bp.booking_id
+                          AND bs.stripe_session_id = bp.stripe_session_id
+                    WHERE bp.booking_id = ? ORDER BY bp.created_at, bp.id""",
+                (bid,)).fetchall():
+            card = None
+            if (p["method"] or "") == "stripe":
+                card = (_card_ref(p["stripe_payment_intent_id"])
+                        or _card_ref(p["stripe_session_id"]))
+            items.append({
+                "key": f"bp{p['id']}", "at": p["created_at"],
+                "amount": round(float(p["amount"] or 0), 2), "method": p["method"] or "other",
+                "reference": p["reference"] or p["stripe_session_id"], "card": card,
+                "payer": p["share_name"] or None, "taken_by": p["taken_by_name"],
+                "table": "booking_payments", "row_id": p["id"], "label": None})
+        # Money the stay shows as received that no payment row accounts for: a
+        # stay paid before payments were written down one by one. It came in
+        # and it is refundable, so it is listed as what it is.
+        gross = amount_paid_for(conn, "room", booking)
+        itemised = round(sum(i["amount"] for i in items), 2)
+        if gross - itemised > 0.005:
+            intent = _card_ref(_booking_field(booking, "stripe_payment_intent_id"))
+            items.insert(0, {
+                "key": "earlier", "at": _booking_field(booking, "created_at"),
+                "amount": round(gross - itemised, 2), "method": "stripe" if intent else "other",
+                "reference": intent, "card": intent, "payer": None, "taken_by": None,
+                "table": None, "row_id": None,
+                "label": "Paid before payments were listed one by one"})
+    elif category == "workshop":
+        for p in conn.execute(
+                """SELECT t.*, users.name AS taken_by_name FROM workshop_transactions t
+                     LEFT JOIN users ON users.id = t.created_by_user_id
+                    WHERE t.workshop_booking_id = ? AND t.kind = 'payment'
+                    ORDER BY t.created_at, t.id""", (bid,)).fetchall():
+            items.append({
+                "key": f"wt{p['id']}", "at": p["created_at"],
+                "amount": round(float(p["amount"] or 0), 2), "method": p["method"] or "other",
+                "reference": p["stripe_ref"], "card": _card_ref(p["stripe_ref"]),
+                "payer": None, "taken_by": p["taken_by_name"],
+                "table": "workshop_transactions", "row_id": p["id"],
+                "label": p["description"]})
+    elif category == "event":
+        for p in conn.execute(
+                """SELECT ep.*, users.name AS taken_by_name FROM event_payments ep
+                     LEFT JOIN users ON users.id = ep.taken_by_user_id
+                    WHERE ep.event_id = ? ORDER BY ep.created_at, ep.id""", (bid,)).fetchall():
+            card = None
+            if (p["method"] or "") in ("card_link", "stripe"):
+                card = _card_ref(p["stripe_payment_intent_id"]) or _card_ref(p["reference"])
+            items.append({
+                "key": f"ep{p['id']}", "at": p["created_at"],
+                "amount": round(float(p["amount"] or 0), 2), "method": p["method"] or "other",
+                "reference": p["reference"], "card": card, "payer": None,
+                "taken_by": p["taken_by_name"], "table": "event_payments", "row_id": p["id"],
+                "label": None})
+        # As for a stay: money the event shows as received that no payment row
+        # accounts for, entered before each payment was a row of its own.
+        gross = amount_paid_for(conn, "event", booking)
+        itemised = round(sum(i["amount"] for i in items), 2)
+        if gross - itemised > 0.005:
+            items.insert(0, {
+                "key": "earlier", "at": _booking_field(booking, "created_at"),
+                "amount": round(gross - itemised, 2), "method": "other", "reference": None,
+                "card": None, "payer": None, "taken_by": None, "table": None,
+                "row_id": None, "label": "Recorded before payments were listed one by one"})
+    elif category == "restaurant":
+        gross = amount_paid_for(conn, "restaurant", booking)
+        if gross > 0.005:
+            intent = _card_ref(_booking_field(booking, "stripe_payment_intent_id"))
+            items.append({
+                "key": "deposit", "at": _booking_field(booking, "created_at"), "amount": gross,
+                "method": "stripe" if intent else "other", "reference": intent, "card": intent,
+                "payer": None, "taken_by": None, "table": None, "row_id": None,
+                "label": "Deposit" if _booking_field(booking, "deposit_amount") else None})
+
+    keyed, loose = {}, 0.0
+    for r in conn.execute(
+            "SELECT payment_key, amount FROM refunds WHERE category = ? AND booking_id = ?",
+            (category, bid)).fetchall():
+        if r["payment_key"]:
+            keyed[r["payment_key"]] = keyed.get(r["payment_key"], 0.0) + (r["amount"] or 0)
+        else:
+            loose += r["amount"] or 0
+    if category == "workshop":
+        # Refund lines typed straight into the ledger, the way refunded_so_far
+        # counts them -- the ones issue_refund writes are already in `refunds`.
+        loose += conn.execute(
+            """SELECT COALESCE(SUM(amount), 0) AS t FROM workshop_transactions
+               WHERE workshop_booking_id = ? AND kind = 'refund'
+                 AND COALESCE(description, '') NOT LIKE 'Refund — %'""",
+            (bid,)).fetchone()["t"] or 0
+    for i in items:
+        i["refunded"] = round(keyed.get(i["key"], 0.0), 2)
+    first_card = _card_ref(_booking_field(booking, "stripe_payment_intent_id"))
+    left = round(loose, 2)
+    for i in sorted(items, key=lambda i: (not (first_card and i["card"] == first_card),
+                                          i["at"] or "")):
+        if left <= 0.005:
+            break
+        take = round(min(max(0.0, i["amount"] - i["refunded"]), left), 2)
+        i["refunded"] = round(i["refunded"] + take, 2)
+        left = round(left - take, 2)
+    ceiling = refundable_amount(conn, category, booking)
+    for i in items:
+        i["refundable"] = round(max(0.0, min(i["amount"] - i["refunded"], ceiling)), 2)
+        i["method_label"] = PAYMENT_METHOD_WORDS.get(
+            i["method"], (i["method"] or "other").replace("_", " ").capitalize())
+    return items
+
+
+def _refund_target(conn, payment):
+    """The PaymentIntent a card refund goes to, or None.
+
+    A payment taken through Checkout was recorded by its session id, which
+    Stripe will not refund against. The intent is read off the session the first
+    time it is needed and written back, so the next refund does not have to ask.
+    """
+    card = payment.get("card") if payment else None
+    if not card:
+        return None
+    if card.startswith("pi_"):
+        return card
+    try:
+        intent = _intent_id(stripe.checkout.Session.retrieve(card))
+    except Exception:
+        return None
+    if intent and payment.get("table") in ("booking_payments", "event_payments") \
+            and payment.get("row_id"):
+        conn.execute(f"UPDATE {payment['table']} SET stripe_payment_intent_id = ? "
+                     "WHERE id = ?", (intent, payment["row_id"]))
+    return intent
+
+
+def make_refund(conn, category, booking, amount, reason, method="stripe", user_id=None, *,
+                payment_key=None, reason_code=None, bill_effect=None):
+    """Give money back on one booking, against one payment or several.
+
+    Partial refunds are the point -- "give them half back because they cancelled
+    late" was once impossible. `method` separates a card refund through Stripe,
+    which moves money, from one settled outside the system (bank transfer,
+    cash), which is recorded and moves nothing here.
+
+    `payment_key` names the payment it goes back against. Left out, a card
+    refund goes to the card payments newest first, one Stripe refund each, so
+    a stay paid in two goes is refunded in two. `bill_effect` says whether a
+    booking that still stands costs less by the refund (BILL_REDUCED) or still
+    owes it (BILL_STANDS, and what every caller before this meant).
+
+    Returns (ok, error, refund_ids). Nothing is written for any part unless the
+    money side of that part succeeded -- and a card refund spread over two
+    payments that fails on the second keeps the first, because that money has
+    gone, and says so.
     """
     if not reason or not reason.strip():
-        return False, "A reason is required for every refund."
-    # Checked HERE, before anything else is looked at. The refunds table
-    # only takes these four, and an unknown one went all the way to the
-    # INSERT and came back as a 500 -- nothing written, but an error page
-    # where a sentence would do.
+        return False, "A reason is required for every refund.", []
+    # Checked HERE, before anything else is looked at. The refunds table only
+    # takes these four, and an unknown one went all the way to the INSERT and
+    # came back as a 500 -- nothing written, but an error page where a
+    # sentence would do.
     if method not in REFUND_METHODS:
-        return False, "Choose how the refund was made: card, bank transfer, cash or other."
+        return False, "Choose how the refund was made: card, bank transfer, cash or other.", []
     try:
         amount = round(float(amount), 2)
     except (TypeError, ValueError):
-        return False, "Enter a valid refund amount."
+        return False, "Enter a valid refund amount.", []
     if amount <= 0:
-        return False, "Refund amount must be greater than zero."
+        return False, "Refund amount must be greater than zero.", []
+    if reason_code and reason_code not in REFUND_REASON_LABELS:
+        reason_code = "other"
 
-    # Never "refund" something that was never paid -- that would invent money in
-    # the record and flip the booking to 'refunded' from 'unpaid'.
-    keys = booking.keys()
-    if "payment_status" in keys and booking["payment_status"] == "unpaid":
-        return False, "This booking hasn't been paid, so there's nothing to refund."
-
+    # Never "refund" what nobody paid -- that would invent money in the record.
+    # This was decided by payment_status, which only says 'paid' once a stay is
+    # paid IN FULL, so a stay part-paid by a deposit, at the desk or by one
+    # share of a split bill could not be refunded at all.
+    if amount_paid_for(conn, category, booking) <= 0.005:
+        return False, "This booking hasn't been paid, so there's nothing to refund.", []
     ceiling = refundable_amount(conn, category, booking)
     if ceiling <= 0:
-        return False, "There's nothing left to refund on this booking."
+        return False, "There's nothing left to refund on this booking.", []
     if amount > ceiling + 0.005:  # tolerate float noise, not real over-refunds
-        return False, f"That's more than the €{ceiling:.2f} still refundable on this booking."
+        return False, f"That's more than the €{ceiling:.2f} still refundable on this booking.", []
 
-    stripe_refund_id = None
+    payments = payments_received(conn, category, booking)
+    chosen = None
+    if payment_key:
+        chosen = next((p for p in payments if p["key"] == payment_key), None)
+        if not chosen:
+            return False, "That payment is not on this booking.", []
+        if amount > chosen["refundable"] + 0.005:
+            return False, (f"That's more than the €{chosen['refundable']:.2f} still "
+                           "refundable on that payment."), []
+
     if method == "stripe":
         if not stripe_enabled():
-            return False, "Stripe isn't configured, so a card refund can't be issued."
-        intent = booking["stripe_payment_intent_id"] if "stripe_payment_intent_id" in booking.keys() else None
-        if not intent:
-            # Workshops in particular have no single payment intent -- deposit
-            # and balance are taken as two separate Stripe sessions -- so a card
-            # refund genuinely cannot be issued from here. Say so plainly rather
-            # than nudging the owner to record a manual refund that moves no
-            # money and then reads as already-paid in the log.
+            return False, "Stripe isn't configured, so a card refund can't be issued.", []
+        if chosen and not chosen["card"]:
+            return False, ("That payment did not come through Stripe, so it cannot go back "
+                           "to a card from here. Record it as the way you gave it back."), []
+        cards = [chosen] if chosen else [p for p in reversed(payments)
+                                         if p["card"] and p["refundable"] > 0.005]
+        if not cards:
+            # Say so plainly rather than nudge the owner into recording a
+            # refund that moves no money and then reads as paid in the log.
             return False, (
-                "No single Stripe payment on record for this booking, so a card refund "
-                "can't be issued here. Refund it from the Stripe dashboard, then record "
-                "it below as 'Other' so the log matches."
-            )
-        try:
-            # Stripe works in the smallest currency unit; euros -> cents.
-            # The idempotency key makes a double-submit or a retry return the
-            # SAME refund instead of creating a second one.
-            refund = stripe.Refund.create(
-                payment_intent=intent,
-                amount=int(round(amount * 100)),
-                idempotency_key=f"gudanes-{category}-{booking['id']}-{int(round(amount * 100))}-"
-                                f"{refunded_so_far(conn, category, booking['id']):.2f}",
-            )
-            stripe_refund_id = getattr(refund, "id", None)
-        except Exception as e:
-            return False, str(e)
+                "No card payment on record that Stripe can refund for this booking. "
+                "Refund it from the Stripe dashboard, then record it here as 'Other' so "
+                "the log matches."), []
+        pieces, left = [], amount
+        for p in cards:
+            take = round(min(p["refundable"], left), 2)
+            if take > 0.005:
+                pieces.append((p, take))
+                left = round(left - take, 2)
+            if left <= 0.005:
+                break
+        if left > 0.005:
+            return False, (f"Only €{amount - left:.2f} of that was paid by card through "
+                           "Stripe. Refund the rest the way it was paid."), []
+    else:
+        pieces = [(chosen, amount)]
 
-    conn.execute(
-        """INSERT INTO refunds (category, booking_id, reference_code, guest_name, guest_email,
-           amount, reason, method, stripe_refund_id, refunded_by_user_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (category, booking["id"],
-         booking["reference_code"] if "reference_code" in booking.keys() else None,
-         booking["guest_name"] if "guest_name" in booking.keys() else None,
-         booking["guest_email"] if "guest_email" in booking.keys() else None,
-         amount, reason.strip(), method, stripe_refund_id, user_id,
-         datetime.now(timezone.utc).isoformat()),
-    )
+    to_reduce = 0.0
+    if bill_effect == BILL_REDUCED and booking_stands(category, booking):
+        to_reduce = round(max(0.0, amount - booking_credit(conn, category, booking["id"])), 2)
+
+    now = datetime.now(timezone.utc).isoformat()
+    ids, done, error = [], 0.0, None
+    for payment, take in pieces:
+        stripe_refund_id = None
+        if method == "stripe":
+            intent = _refund_target(conn, payment)
+            if not intent:
+                error = ("Stripe could not find the card payment behind it. Refund it from "
+                         "the Stripe dashboard, then record it here as 'Other'.")
+                break
+            cents = int(round(take * 100))
+            try:
+                # Stripe works in cents. The idempotency key makes a
+                # double-submit or a retry return the SAME refund instead of a
+                # second; what has gone back so far is in it, so a second
+                # genuine refund of the same amount is not taken for a replay.
+                refund = stripe.Refund.create(
+                    payment_intent=intent, amount=cents,
+                    # Marked as ours, so the webhook that reports it back does
+                    # not record it a second time as one made elsewhere.
+                    metadata={"made_by": "gudanes", "category": category,
+                              "booking_id": str(booking["id"])},
+                    idempotency_key=(f"gudanes-{category}-{booking['id']}-{payment['key']}-"
+                                     f"{cents}-{refunded_so_far(conn, category, booking['id']):.2f}"))
+                stripe_refund_id = getattr(refund, "id", None)
+            except Exception as e:
+                error = str(e)
+                break
+        reduce_here = round(min(take, to_reduce), 2)
+        to_reduce = round(to_reduce - reduce_here, 2)
+        cur = conn.execute(
+            """INSERT INTO refunds (category, booking_id, reference_code, guest_name,
+               guest_email, amount, reason, method, stripe_refund_id, refunded_by_user_id,
+               created_at, payment_key, reason_code, reduces_bill)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (category, booking["id"], _booking_field(booking, "reference_code"),
+             _booking_field(booking, "guest_name", "contact_name"),
+             _booking_field(booking, "guest_email", "contact_email"),
+             take, reason.strip(), method, stripe_refund_id, user_id, now,
+             payment["key"] if payment else None, reason_code, reduce_here))
+        ids.append(cur.lastrowid)
+        done = round(done + take, 2)
+        if category == "workshop":
+            add_workshop_transaction(conn, booking["id"], "refund", f"Refund — {reason.strip()}",
+                                     take, method=method, user_id=user_id)
+            if reduce_here > 0.005:
+                # The ledger is the atelier's truth, so what comes off the bill
+                # is a line in it: charged and received both fall, and the
+                # balance the saved card would be charged for does not move.
+                add_workshop_transaction(conn, booking["id"], "discount",
+                                         f"Taken off the bill — {reason.strip()}",
+                                         reduce_here, user_id=user_id)
+    if not ids:
+        return False, error or "Nothing was refunded.", []
 
     # Only flip the booking to 'refunded' once nothing is left outstanding --
     # a partial refund leaves it 'paid', with the real figure living in the
     # refunds table. That avoids rewriting the payment_status CHECK constraint,
     # which would mean a full table rebuild on a table other rows point at.
     table = REFUND_TABLES.get(category)
-    if table and refunded_so_far(conn, category, booking["id"]) >= amount_paid_for(conn, category, booking) - 0.005:
+    if table and refunded_so_far(conn, category, booking["id"]) >= \
+            amount_paid_for(conn, category, booking) - 0.005:
         try:
-            conn.execute(f"UPDATE {table} SET payment_status = 'refunded' WHERE id = ?", (booking["id"],))
+            conn.execute(f"UPDATE {table} SET payment_status = 'refunded' WHERE id = ?",
+                         (booking["id"],))
         except sqlite3.OperationalError:
             pass  # workshop_bookings tracks money in its ledger, not a status column
-
-    if category == "workshop":
-        add_workshop_transaction(conn, booking["id"], "refund", f"Refund — {reason.strip()}",
-                                 amount, method=method, user_id=user_id)
-
     conn.commit()
-    return True, None
+    if error:
+        return False, f"€{done:.2f} went back, but the rest did not: {error}", ids
+    return True, None, ids
+
+
+def issue_refund(conn, category, booking, amount, reason, method="stripe", user_id=None,
+                 **how):
+    """make_refund, answering (ok, error) the way every caller before the refund
+    desk expects. The keywords -- payment_key, reason_code, bill_effect -- pass
+    straight through."""
+    ok, error, _ids = make_refund(conn, category, booking, amount, reason, method=method,
+                                  user_id=user_id, **how)
+    return ok, error
 
 
 def refund_booking(conn, booking, amount=None, reason="Cancelled by the château", user_id=None):
-    """Back-compat wrapper for the automatic full refund on decline, where the
-    château is the one calling the booking off and owes the money back."""
-    if booking["payment_status"] != "paid":
-        return False, "This booking was never marked paid."
-    amount = refundable_amount(conn, "room", booking) if amount is None else amount
-    if amount <= 0:
+    """The automatic refund on decline, where the château is the one saying no
+    and owes the money back.
+
+    Everything taken by card goes back to the card it came from -- one refund
+    per payment, so a request paid in two parts is refunded in two. It used to
+    act only on a request marked paid IN FULL, so a deposit taken on a request
+    that was then declined was simply kept, and the guest was told nothing.
+    What was paid another way cannot be sent back from here, and is named as
+    needing doing by hand rather than holding up the rest.
+    """
+    if amount is not None:
+        if amount <= 0:
+            return False, "There's nothing left to refund on this booking."
+        return issue_refund(conn, "room", booking, amount, reason, method="stripe",
+                            user_id=user_id, reason_code="declined")
+    payments = payments_received(conn, "room", booking)
+    by_card = round(sum(p["refundable"] for p in payments if p["card"]), 2)
+    other = round(sum(p["refundable"] for p in payments if not p["card"]), 2)
+    if by_card <= 0.005 and other <= 0.005:
         return False, "There's nothing left to refund on this booking."
-    return issue_refund(conn, "room", booking, amount, reason, method="stripe", user_id=user_id)
+    if by_card <= 0.005:
+        return False, (f"€{other:.2f} was paid another way, not by card, and needs "
+                       "giving back by hand.")
+    ok, error = issue_refund(conn, "room", booking, by_card, reason, method="stripe",
+                             user_id=user_id, reason_code="declined")
+    if ok:
+        # It went unrecorded: the only refund in the house with no line in
+        # the audit trail was the one made automatically on a decline.
+        log_audit(conn, "refund_issued", target=f"room booking {booking['reference_code']}",
+                  details=f"€{by_card:.2f} — declined, back to the card")
+    if ok and other > 0.005:
+        return False, (f"€{by_card:.2f} went back to the card; €{other:.2f} was paid "
+                       "another way and needs giving back by hand.")
+    return ok, error
+
+
+# Reasons only the system writes: never offered on the refund form.
+SYSTEM_REFUND_REASONS = {
+    "stripe_dashboard": "Refunded in Stripe's dashboard",
+    "refund_failed": "The refund did not reach them",
+    "chargeback": "Lost a card dispute",
+}
+DISPUTE_OPEN_STATES = ("warning_needs_response", "warning_under_review",
+                       "needs_response", "under_review")
+DISPUTE_CLOSED_STATES = ("won", "lost", "warning_closed", "charge_refunded")
+DISPUTE_REASON_WORDS = {
+    "fraudulent": "they say they did not make it",
+    "duplicate": "they say they were charged twice",
+    "product_not_received": "they say they did not get what they paid for",
+    "product_unacceptable": "they say it was not as described",
+    "subscription_canceled": "they say it had been cancelled",
+    "unrecognized": "they do not recognise the payment",
+    "credit_not_processed": "they say a refund was promised and not made",
+    "general": "no reason given",
+}
+
+
+def _intent_of(obj):
+    intent = sval(obj, "payment_intent")
+    if intent and not isinstance(intent, str):
+        intent = sval(intent, "id")
+    return intent or None
+
+
+def payment_for_intent(conn, intent):
+    """(category, booking_id, payment_key) for a Stripe PaymentIntent, or None.
+
+    Refunds and disputes arrive from Stripe naming the payment, never the
+    booking. Payments recorded before each one kept its intent carry only their
+    Checkout session, so Stripe is asked which session the intent came from
+    before giving up.
+    """
+    if not intent:
+        return None
+    lookups = (
+        ("SELECT id, booking_id AS b FROM booking_payments WHERE stripe_payment_intent_id = ?",
+         "room", "bp"),
+        ("SELECT id, workshop_booking_id AS b FROM workshop_transactions "
+         "WHERE stripe_ref = ? AND kind = 'payment'", "workshop", "wt"),
+        ("SELECT id, event_id AS b FROM event_payments WHERE stripe_payment_intent_id = ?",
+         "event", "ep"),
+    )
+    for sql, category, prefix in lookups:
+        row = conn.execute(sql, (intent,)).fetchone()
+        if row:
+            return category, row["b"], f"{prefix}{row['id']}"
+    row = conn.execute("SELECT id FROM restaurant_bookings WHERE stripe_payment_intent_id = ?",
+                       (intent,)).fetchone()
+    if row:
+        return "restaurant", row["id"], "deposit"
+    row = conn.execute("SELECT id FROM bookings WHERE stripe_payment_intent_id = ?",
+                       (intent,)).fetchone()
+    if row:
+        return "room", row["id"], None
+    try:
+        found = stripe.checkout.Session.list(payment_intent=intent, limit=1)
+        data = list(sval(found, "data") or [])
+        session_id = sval(data[0], "id") if data else None
+    except Exception:
+        session_id = None
+    if not session_id:
+        return None
+    by_session = (
+        ("SELECT id, booking_id AS b FROM booking_payments WHERE stripe_session_id = ?",
+         "room", "bp"),
+        ("SELECT id, workshop_booking_id AS b FROM workshop_transactions "
+         "WHERE stripe_ref = ? AND kind = 'payment'", "workshop", "wt"),
+        ("SELECT id, event_id AS b FROM event_payments WHERE reference = ?", "event", "ep"),
+    )
+    for sql, category, prefix in by_session:
+        row = conn.execute(sql, (session_id,)).fetchone()
+        if row:
+            return category, row["b"], f"{prefix}{row['id']}"
+    return None
+
+
+def _booking_row(conn, category, booking_id):
+    table = REFUND_BOOKING_TABLES.get(category)
+    if not table or booking_id is None:
+        return None
+    return conn.execute(f"SELECT * FROM {table} WHERE id = ?", (booking_id,)).fetchone()
+
+
+def _mark_refunded_if_whole(conn, category, booking_id):
+    """payment_status says 'refunded' once everything taken has gone back, and
+    stops saying it the moment that is no longer true -- a refund that failed."""
+    table = REFUND_TABLES.get(category)
+    booking = _booking_row(conn, category, booking_id) if table else None
+    if not booking or "payment_status" not in booking.keys():
+        return
+    whole = refunded_so_far(conn, category, booking_id) >= \
+        amount_paid_for(conn, category, booking) - 0.005
+    if whole and booking["payment_status"] != "refunded":
+        conn.execute(f"UPDATE {table} SET payment_status = 'refunded' WHERE id = ?", (booking_id,))
+    elif not whole and booking["payment_status"] == "refunded":
+        settled = "paid"
+        if category == "room":
+            bill = booking_bill(conn, booking_id)
+            settled = "paid" if bill and bill["owed"] <= 0.005 else "unpaid"
+        conn.execute(f"UPDATE {table} SET payment_status = ? WHERE id = ?", (settled, booking_id))
+
+
+def _owed_on(conn, category, booking_id):
+    """What a booking still asks for, by the one definition for its kind."""
+    if category == "room":
+        bill = booking_bill(conn, booking_id)
+        return bill["owed"] if bill else 0.0
+    if category == "workshop":
+        return round(max(workshop_balance_due(conn, booking_id)[0], 0.0), 2)
+    if category == "event":
+        bill = event_bill(conn, booking_id)
+        return bill["owed"] if bill else 0.0
+    return 0.0
+
+
+def _payment_task(conn, title, notes):
+    """A task for the owner about money, once: a second report of the same
+    thing is the same task, not another one."""
+    if conn.execute("SELECT 1 FROM tasks WHERE title = ? AND status != 'done'",
+                    (title,)).fetchone():
+        return
+    conn.execute(
+        """INSERT INTO tasks (title, notes, priority, due_date, status, origin, created_at)
+           VALUES (?, ?, 'high', ?, 'open', 'payment', ?)""",
+        (title, notes, service_day_iso(), datetime.now(timezone.utc).isoformat()))
+
+
+def reverse_refund(conn, original, why):
+    """Book back a refund that did not reach the guest.
+
+    A row of its own, against the one it undoes, rather than deleting or editing
+    the first: the record keeps that the refund was made and failed, and
+    everything that adds refunds up -- the bill, the ceiling, revenue, the VAT
+    working -- comes back right by the same arithmetic.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    amount = round(float(original["amount"] or 0), 2)
+    off = round(float(original["reduces_bill"] or 0), 2)
+    conn.execute(
+        """INSERT INTO refunds (category, booking_id, reference_code, guest_name, guest_email,
+           amount, reason, method, stripe_refund_id, refunded_by_user_id, created_at,
+           payment_key, reason_code, reduces_bill, reverses_refund_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'stripe', NULL, NULL, ?, ?, 'refund_failed', ?, ?)""",
+        (original["category"], original["booking_id"], original["reference_code"],
+         original["guest_name"], original["guest_email"], -amount,
+         f"The refund did not reach them: {why}", now, original["payment_key"], -off,
+         original["id"]))
+    if original["category"] == "workshop":
+        # Negative lines of the same kinds, so the ledger undoes exactly what
+        # the refund did and no more: received comes back up, and whatever came
+        # off the bill goes back on it.
+        add_workshop_transaction(conn, original["booking_id"], "refund",
+                                 "Refund — did not go through, the money stayed with us",
+                                 -amount, method="stripe")
+        if off > 0.005:
+            add_workshop_transaction(conn, original["booking_id"], "discount",
+                                     "Taken off the bill — undone, the refund did not go through",
+                                     -off)
+    _mark_refunded_if_whole(conn, original["category"], original["booking_id"])
+    log_audit(conn, "refund_failed",
+              target=f"{REFUND_AUDIT_WORDS.get(original['category'], '')} "
+                     f"{original['reference_code']}".strip(),
+              details=f"€{amount:.2f} — {why}")
+    conn.commit()
+
+
+def record_refund_from_stripe(conn, refund_obj):
+    """One refund Stripe has told us about. Returns what was done, as a word.
+
+    Three kinds arrive. One this app made is recorded by the app, which marks it
+    as its own, so it is never counted twice. One made in Stripe's own dashboard
+    was invisible here: the booking still read as paid, the money had gone, and
+    nothing would ever have said so. And one that FAILED after Stripe took it --
+    a closed account, a card that no longer exists -- left the books saying the
+    guest had been paid back when they had not.
+    """
+    rid = sval(refund_obj, "id")
+    if not rid:
+        return "ignored"
+    status = (sval(refund_obj, "status") or "").lower()
+    ours = conn.execute("SELECT * FROM refunds WHERE stripe_refund_id = ?", (rid,)).fetchone()
+    if status in ("failed", "canceled"):
+        if not ours:
+            return "unknown"
+        if conn.execute("SELECT 1 FROM refunds WHERE reverses_refund_id = ?",
+                        (ours["id"],)).fetchone():
+            return "known"
+        reverse_refund(conn, ours, sval(refund_obj, "failure_reason") or status)
+        return "reversed"
+    if ours:
+        return "known"
+    if (smeta(refund_obj).get("made_by") or "") == "gudanes":
+        return "ours"
+    amount = round((sval(refund_obj, "amount") or 0) / 100.0, 2)
+    if amount <= 0:
+        return "ignored"
+    intent = _intent_of(refund_obj)
+    place = payment_for_intent(conn, intent)
+    booking = _booking_row(conn, place[0], place[1]) if place else None
+    if not booking:
+        _payment_task(conn, f"A refund in Stripe that matches no booking ({rid})",
+                      f"€{amount:.2f} was refunded in Stripe on payment {intent or 'unknown'}, "
+                      "and no booking here carries that payment. Find it in Stripe, then "
+                      "record it on the booking's refund page as 'Other' so the books match.")
+        conn.commit()
+        return "unplaced"
+    category, booking_id, key = place
+    created = sval(refund_obj, "created")
+    at = (datetime.fromtimestamp(created, timezone.utc).isoformat()
+          if isinstance(created, (int, float)) else datetime.now(timezone.utc).isoformat())
+    conn.execute(
+        """INSERT INTO refunds (category, booking_id, reference_code, guest_name, guest_email,
+           amount, reason, method, stripe_refund_id, refunded_by_user_id, created_at,
+           payment_key, reason_code, reduces_bill)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'stripe', ?, NULL, ?, ?, 'stripe_dashboard', 0)""",
+        (category, booking_id, _booking_field(booking, "reference_code"),
+         _booking_field(booking, "guest_name", "contact_name"),
+         _booking_field(booking, "guest_email", "contact_email"),
+         amount, SYSTEM_REFUND_REASONS["stripe_dashboard"], rid, at, key))
+    if category == "workshop":
+        add_workshop_transaction(conn, booking_id, "refund",
+                                 f"Refund — {SYSTEM_REFUND_REASONS['stripe_dashboard']}",
+                                 amount, method="stripe")
+    _mark_refunded_if_whole(conn, category, booking_id)
+    log_audit(conn, "refund_recorded_from_stripe",
+              target=f"{REFUND_AUDIT_WORDS[category]} {_booking_field(booking, 'reference_code')}",
+              details=f"€{amount:.2f} — made in Stripe's dashboard")
+    conn.commit()
+    return "recorded"
+
+
+def record_dispute(conn, dispute):
+    """A card payment disputed with the guest's bank, kept and followed.
+
+    A dispute has a deadline -- usually a week or two -- after which the house
+    loses by default, and it reached nobody here. Now it is a row, a task that
+    closes itself when the dispute does and, if it is lost, a refund in the
+    record, because the money has gone back to the guest by another road.
+    """
+    did = sval(dispute, "id")
+    if not did:
+        return "ignored"
+    status = (sval(dispute, "status") or "").lower()
+    amount = round((sval(dispute, "amount") or 0) / 100.0, 2)
+    reason = sval(dispute, "reason") or "general"
+    evidence = sval(dispute, "evidence_details")
+    due = sval(evidence, "due_by") if evidence else None
+    due_iso = (house_date_iso(datetime.fromtimestamp(due, timezone.utc).isoformat())
+               if isinstance(due, (int, float)) else None)
+    now = datetime.now(timezone.utc).isoformat()
+    row = conn.execute("SELECT * FROM payment_disputes WHERE stripe_dispute_id = ?",
+                       (did,)).fetchone()
+    if not row:
+        intent = _intent_of(dispute)
+        place = payment_for_intent(conn, intent)
+        booking = _booking_row(conn, place[0], place[1]) if place else None
+        conn.execute(
+            """INSERT INTO payment_disputes (stripe_dispute_id, payment_intent, amount, reason,
+               status, evidence_due_by, category, booking_id, payment_key, reference_code,
+               guest_name, guest_email, opened_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (did, intent, amount, reason, status, due_iso,
+             place[0] if booking else None, place[1] if booking else None,
+             place[2] if booking else None,
+             _booking_field(booking, "reference_code") if booking else None,
+             _booking_field(booking, "guest_name", "contact_name") if booking else None,
+             _booking_field(booking, "guest_email", "contact_email") if booking else None,
+             now, now))
+    else:
+        conn.execute(
+            """UPDATE payment_disputes SET status = ?, amount = ?, reason = ?,
+               evidence_due_by = COALESCE(?, evidence_due_by), updated_at = ? WHERE id = ?""",
+            (status, amount, reason, due_iso, now, row["id"]))
+    row = conn.execute("SELECT * FROM payment_disputes WHERE stripe_dispute_id = ?",
+                       (did,)).fetchone()
+    if status in DISPUTE_CLOSED_STATES and not row["closed_at"]:
+        conn.execute("UPDATE payment_disputes SET closed_at = ? WHERE id = ?", (now, row["id"]))
+    if status == "lost" and not row["refund_id"] and row["category"] and row["booking_id"]:
+        words = DISPUTE_REASON_WORDS.get(reason, reason)
+        cur = conn.execute(
+            """INSERT INTO refunds (category, booking_id, reference_code, guest_name, guest_email,
+               amount, reason, method, stripe_refund_id, refunded_by_user_id, created_at,
+               payment_key, reason_code, reduces_bill)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'stripe', NULL, NULL, ?, ?, 'chargeback', 0)""",
+            (row["category"], row["booking_id"], row["reference_code"], row["guest_name"],
+             row["guest_email"], amount, f"Lost a card dispute: {words}", now,
+             row["payment_key"]))
+        conn.execute("UPDATE payment_disputes SET refund_id = ? WHERE id = ?",
+                     (cur.lastrowid, row["id"]))
+        if row["category"] == "workshop":
+            add_workshop_transaction(conn, row["booking_id"], "refund",
+                                     "Refund — lost a card dispute", amount, method="stripe")
+        _mark_refunded_if_whole(conn, row["category"], row["booking_id"])
+    log_audit(conn, "card_dispute", target=row["reference_code"] or did,
+              details=f"{status} — €{amount:.2f}, {reason}")
+    conn.commit()
+    return status
+
+
+def open_disputes(conn):
+    return conn.execute(
+        f"""SELECT * FROM payment_disputes WHERE closed_at IS NULL
+             AND status IN ({','.join('?' * len(DISPUTE_OPEN_STATES))})
+             ORDER BY COALESCE(evidence_due_by, '9999'), opened_at""",
+        DISPUTE_OPEN_STATES).fetchall()
+
+
+def money_to_give_back(conn):
+    """Money still held on bookings the house said no to, or called off.
+
+    A refund here is the owner's call -- except where the house is the one
+    who said no: a request declined, a stay the house could not honour, a
+    table declined, an atelier sitting called off, an event declined. Money
+    held on any of those is the guest's, and nothing listed it. A decline by
+    somebody who may not move money, or a card refund that could not be made,
+    left it where it was and told nobody.
+    """
+    out = []
+
+    def consider(category, booking, what, why):
+        left = refundable_amount(conn, category, booking)
+        if left > 0.005:
+            out.append({
+                "category": category, "id": booking["id"],
+                "ref": _booking_field(booking, "reference_code") or f"#{booking['id']}",
+                "name": _booking_field(booking, "guest_name", "contact_name") or "a guest",
+                "amount": left, "what": what, "why": why})
+
+    for b in conn.execute(
+            """SELECT * FROM bookings
+                WHERE (status = 'declined'
+                       OR (status = 'cancelled' AND cancel_reason = 'house_could_not'))
+                  AND (COALESCE(amount_paid, 0) > 0
+                       OR payment_status IN ('paid', 'refunded'))""").fetchall():
+        consider("room", b, "a stay", "that the house said no to" if b["status"] == "declined"
+                 else "that the house could not honour")
+    for r in conn.execute(
+            """SELECT * FROM restaurant_bookings WHERE status = 'declined'
+                  AND payment_status IN ('paid', 'refunded')""").fetchall():
+        consider("restaurant", r, "a table", "that the house said no to")
+    for w in conn.execute(
+            """SELECT wb.* FROM workshop_bookings wb
+                 JOIN workshop_sessions ws ON ws.id = wb.session_id
+                WHERE wb.status = 'declined' OR ws.cancelled_at IS NOT NULL""").fetchall():
+        consider("workshop", w, "an atelier place",
+                 "that the house said no to" if w["status"] == "declined"
+                 else "on a sitting the house called off")
+    for e in conn.execute(
+            """SELECT * FROM event_inquiries WHERE status = 'declined'
+                  AND COALESCE(amount_paid, 0) > 0""").fetchall():
+        consider("event", e, "an event", "that the house said no to")
+    out.sort(key=lambda r: -r["amount"])
+    return out
+
+
+def failed_refunds_to_redo(conn):
+    """Refunds that failed after Stripe accepted them, not made again since."""
+    out = []
+    for r in conn.execute(
+            """SELECT * FROM refunds WHERE reason_code = 'refund_failed'
+                ORDER BY created_at DESC""").fetchall():
+        again = conn.execute(
+            """SELECT 1 FROM refunds WHERE category = ? AND booking_id = ? AND amount > 0
+                  AND created_at > ? LIMIT 1""",
+            (r["category"], r["booking_id"], r["created_at"])).fetchone()
+        if again:
+            continue
+        out.append({"category": r["category"], "id": r["booking_id"],
+                    "ref": r["reference_code"] or f"#{r['booking_id']}",
+                    "name": r["guest_name"] or "a guest", "amount": -round(r["amount"], 2),
+                    "why": r["reason"]})
+    return out
+
+
+def refunds_left_owing(conn):
+    """Refunds made in Stripe's dashboard on bookings still going ahead, that
+    have left the bill asking for the money again. Only the owner knows which
+    they meant -- a gesture, or money to be paid again -- so it is asked."""
+    out = []
+    for r in conn.execute(
+            """SELECT * FROM refunds WHERE reason_code = 'stripe_dashboard'
+                  AND COALESCE(reduces_bill, 0) < amount - 0.005""").fetchall():
+        booking = _booking_row(conn, r["category"], r["booking_id"])
+        if not booking or not booking_stands(r["category"], booking):
+            continue
+        owed = _owed_on(conn, r["category"], r["booking_id"])
+        if owed > 0.005:
+            out.append({"category": r["category"], "id": r["booking_id"],
+                        "ref": r["reference_code"] or f"#{r['booking_id']}",
+                        "name": r["guest_name"] or "a guest",
+                        "amount": round(r["amount"], 2), "owed": owed})
+    return out
+
+
+def refund_everything(conn, category, booking, reason, reason_code, user_id=None):
+    """Everything still held on a booking, back the way it came.
+
+    Card payments go back to their own cards, one refund each. What was paid
+    another way cannot be sent from here -- it is named, not recorded, because
+    recording it would say the money had gone when nobody has sent it.
+    Returns (refunded, by_hand, errors).
+    """
+    refunded, by_hand, errors = 0.0, [], []
+    for p in payments_received(conn, category, booking):
+        if p["refundable"] <= 0.005:
+            continue
+        if not p["card"]:
+            by_hand.append(f"€{p['refundable']:.2f} paid {p['method_label'].lower()}")
+            continue
+        ok, err, ids = make_refund(conn, category, booking, p["refundable"], reason,
+                                   method="stripe", user_id=user_id, payment_key=p["key"],
+                                   reason_code=reason_code)
+        if ids:
+            refunded += sum(r["amount"] for r in conn.execute(
+                f"SELECT amount FROM refunds WHERE id IN ({','.join('?' * len(ids))})",
+                ids).fetchall())
+        if not ok:
+            errors.append(err)
+    return round(refunded, 2), by_hand, errors
 
 
 def is_viewable(filename):
@@ -24680,6 +25880,7 @@ def house_windows():
         "guest_session_hours": GUEST_SESSION_HOURS,
         "workshop_balance_days": WORKSHOP_BALANCE_DAYS,
         "workshop_deposit_percent": WORKSHOP_DEPOSIT_PERCENT,
+        "refunds_recent_days": REFUNDS_RECENT_DAYS,
     }
 
 
@@ -24964,6 +26165,7 @@ def inject_user():
         "site": LazyPublicSettings(),
         "photo_consent_choices": PHOTO_CONSENT,
         "decline_reasons": DECLINE_REASONS,
+        "cancel_reasons": CANCEL_REASONS,
         # WHICH AREA THIS PAGE IS IN, from the one list that decides it.
         # The nav used to answer that question from its own hand-typed
         # copies of every area's contents, and the two had drifted: 73
@@ -27794,6 +28996,37 @@ def owner_home_warnings(conn, today):
         add("blocker" if check["severity"] == "blocker" else "warn",
             FRONT_PAGE_READINESS[check["label"]], check["detail"], 1,
             "admin_readiness")
+
+    # MONEY GOING BACK, and money being taken back. Each closes itself.
+    disputes = open_disputes(conn)
+    if disputes:
+        n = len(disputes)
+        soonest = min((d["evidence_due_by"] for d in disputes if d["evidence_due_by"]),
+                      default=None)
+        add("blocker",
+            f"{n} card payment{'s are' if n != 1 else ' is'} being disputed",
+            (f"Answer by {format_date_human(soonest)} in Stripe, " if soonest else
+             "Answer in Stripe ") + "or the house loses by default.", n, "admin_refunds")
+    failed = failed_refunds_to_redo(conn)
+    if failed:
+        n = len(failed)
+        add("blocker", f"{n} refund{'s' if n != 1 else ''} did not reach the guest",
+            "; ".join(f"{r['name']} €{r['amount']:,.2f}" for r in failed[:3])
+            + ". The money is still theirs.", n, "admin_refunds")
+    owed_back = money_to_give_back(conn)
+    if owed_back:
+        n = len(owed_back)
+        add("warn",
+            f"€{sum(r['amount'] for r in owed_back):,.2f} still to give back",
+            "; ".join(f"{r['name']} €{r['amount']:,.2f}" for r in owed_back[:3])
+            + " — held on bookings the house said no to or called off.", n,
+            "admin_refunds")
+    left = refunds_left_owing(conn)
+    if left:
+        n = len(left)
+        add("warn", f"{n} refund{'s' if n != 1 else ''} made in Stripe to decide",
+            "Made in Stripe's dashboard, and the bill asks for the money again. "
+            "Say whether it came off the price.", n, "admin_refunds")
 
     order = {"blocker": 0, "warn": 1}
     out.sort(key=lambda w: (order.get(w["severity"], 9), -w["count"]))
@@ -35510,7 +36743,7 @@ def record_texting_consent():
 
     conn = get_db()
     record_sms_consent(conn, number, source=source or "recorded by hand")
-    log_audit(conn, "sms_consent_recorded", target=number,
+    log_audit(conn, "sms_consent_recorded", target="a number",
               details=source or "recorded by hand")
     conn.commit()
     conn.close()
@@ -35550,7 +36783,8 @@ def allow_texting_number(optout_id):
         conn.close()
         abort(404)
     conn.execute("DELETE FROM sms_optouts WHERE id = ?", (optout_id,))
-    log_audit(conn, "sms_optout_lifted", target=row["phone"])
+    log_audit(conn, "sms_optout_lifted", target="a number")
+    record_consent(conn, "texts", 1, "the stop taken off, at their request", phone=row["phone"])
     conn.commit()
     conn.close()
     flash(f"{row['phone']} can be texted again.", "success")
@@ -36141,8 +37375,14 @@ def guest_account_message(token):
         return redirect(url_for("guest_account", token=token))
 
     owner_to = owner_email(conn)
-    log_audit(conn, "guest_wrote_in", target=session_row["email"],
-              details=message[:200])
+    # The audit line says they wrote, not what: what a guest writes is theirs,
+    # and the audit trail is kept forever. What they wrote is kept with the
+    # rest of their correspondence, on the same two-year rule.
+    who = guest_for_contact(conn, address=session_row["email"])
+    log_audit(conn, "guest_wrote_in", target=f"guest {who}" if who else "a guest",
+              details=f"{len(message)} characters, kept with their correspondence")
+    keep_guest_message(session_row["email"], "They wrote through their account page",
+                       message, channel="form", delivered=True, direction="in")
     # Committed before the send: send_email falls back to the outbox on its own
     # connection, which cannot write while this transaction is open. That is
     # the fault that lost six routes' worth of held mail.
@@ -36274,6 +37514,8 @@ def email_booking_statement(manage_token):
         lines.append(f"  {extra['quantity']} x {extra['name']}   €{amount:.2f}")
     if statement["city_tax"]:
         lines.append(f"  Taxe de sejour   €{statement['city_tax']:.2f}")
+    if statement["taken_off"]:
+        lines.append(f"  Reduction, refunded to you   -€{statement['taken_off']:.2f}")
     for band in statement["vat"]:
         lines.append(f"  of which VAT at {band['rate']}%   €{band['vat']:.2f}")
 
@@ -36568,6 +37810,31 @@ def guests():
     in_residence = [s for s in stays if s["stay_status"] == "current"]
     upcoming = [s for s in stays if s["stay_status"] == "upcoming"]
 
+    lv, stay_counts, tags = guests_list_view(conn, request.args)
+    known_tags = sorted({t for ts in tags.values() for t in ts})
+    conn.close()
+    # The who-is-here lists follow the same search, so one box narrows the
+    # whole page rather than only the half below it.
+    if lv["q"]:
+        lowered = lv["q"].lower()
+        in_residence = [x for x in in_residence
+                        if lowered in (x["name"] or "").lower()]
+        upcoming = [x for x in upcoming
+                    if lowered in (x["name"] or "").lower()]
+    return render_template(
+        "guests.html", in_residence=in_residence, upcoming=upcoming,
+        profiles=lv["rows"], lv=lv, stay_counts=stay_counts,
+        overview=overview, period=period, tags=tags, known_tags=known_tags,
+        export_args=request.args.to_dict(),
+    )
+
+
+def guests_list_view(conn, args):
+    """The guest profiles as the page and its file both see them.
+
+    Shared deliberately, as the audit log's is: a button that says "download
+    this view" and writes a file of everybody is worse than no button.
+    """
     # A profile merged into another is that other person now. Listing both
     # was the duplicate the merge existed to remove, back again one page on.
     profiles = conn.execute(
@@ -36582,11 +37849,11 @@ def guests():
                GROUP BY linked_guest_id"""
         ).fetchall()
     }
-    conn.close()
+    tags = tags_by_guest(conn)
     lv = list_view(
-        profiles, request.args,
+        profiles, args,
         search=["name", "email", "phone", "notes", "preferences",
-                "dietary_notes"],
+                "dietary_notes", lambda g: " ".join(tags.get(g["id"], []))],
         search_hint="Name, address, telephone or something in their notes",
         facets=[
             # The two questions actually asked of a guest list, and neither
@@ -36599,6 +37866,7 @@ def guests():
                   lambda g: (CAUTION_LEVELS.get(g["caution_level"])
                              if (g["caution_level"] or "").strip() else None)),
             facet("vip", "VIP", lambda g: "VIP" if g["vip"] else None),
+            facet("tag", "Tag", lambda g: tags.get(g["id"], []), limit=12),
         ],
         sorts=[
             sort_option("name", "By name",
@@ -36608,19 +37876,59 @@ def guests():
         ],
         default_sort="name",
     )
-    # The who-is-here lists follow the same search, so one box narrows the
-    # whole page rather than only the half below it.
-    if lv["q"]:
-        lowered = lv["q"].lower()
-        in_residence = [x for x in in_residence
-                        if lowered in (x["name"] or "").lower()]
-        upcoming = [x for x in upcoming
-                    if lowered in (x["name"] or "").lower()]
-    return render_template(
-        "guests.html", in_residence=in_residence, upcoming=upcoming,
-        profiles=lv["rows"], lv=lv, stay_counts=stay_counts,
-        overview=overview, period=period,
-    )
+    return lv, stay_counts, tags
+
+
+@app.route("/guests/<int:guest_id>/tags", methods=["POST"])
+@owner_required
+def tag_guest(guest_id):
+    """Put a tag on a profile, or take one off."""
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM guests WHERE id = ?", (guest_id,)).fetchone():
+        conn.close()
+        abort(404)
+    user = current_user()
+    if request.form.get("remove"):
+        remove_guest_tag(conn, guest_id, request.form.get("remove"), user["id"])
+    elif not add_guest_tag(conn, guest_id, request.form.get("tag", ""), user["id"]):
+        flash("Nothing added: that tag is empty, or already on them.", "error")
+    conn.commit()
+    conn.close()
+    return redirect(url_for("guest_detail", guest_id=guest_id))
+
+
+@app.route("/guests/bulk-tag", methods=["POST"])
+@owner_required
+def bulk_tag_guests():
+    """One tag on every ticked profile -- the same act as tagging one, many
+    times, and it names any it did not do and why."""
+    tag = normalise_tag(request.form.get("tag", ""))
+    back = request.form.get("back") or url_for("guests")
+    if not back.startswith("/guests"):
+        back = url_for("guests")
+    if not tag:
+        flash("Write the tag to put on them first.", "error")
+        return redirect(back)
+    ids = [int(i) for i in request.form.getlist("guest_ids") if i.isdigit()]
+    conn = get_db()
+    user = current_user()
+    done, skipped = 0, []
+    for gid in ids:
+        g = conn.execute("SELECT id, name, merged_into_id FROM guests WHERE id = ?",
+                         (gid,)).fetchone()
+        if not g:
+            skipped.append((f"profile #{gid}", "no such profile"))
+        elif g["merged_into_id"]:
+            skipped.append((g["name"], "merged into another profile, which carries it now"))
+        elif add_guest_tag(conn, gid, tag, user["id"]):
+            done += 1
+        else:
+            skipped.append((g["name"], f"already tagged “{tag}”"))
+    conn.commit()
+    conn.close()
+    message, category = bulk_message("Tagged", "guest", done, skipped)
+    flash(message, category)
+    return redirect(back)
 
 
 @app.route("/guests/new", methods=["GET", "POST"])
@@ -36682,6 +37990,187 @@ def new_guest():
         return redirect(url_for("guests"))
 
     return render_template("guest_form.html", guest=None)
+
+
+@app.route("/guests/<int:guest_id>/history")
+@login_required
+def guest_history(guest_id):
+    """Everything that has passed between the house and one person."""
+    conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        conn.close()
+        abort(404)
+    is_owner = (current_user() or {})["role"] == "owner"
+    items = [x for x in guest_timeline(conn, guest_id)
+             if is_owner or x["kind"] not in TIMELINE_OWNER_KINDS]
+    conn.close()
+    lv = guest_timeline_view(items, request.args)
+    return render_template("guest_history.html", guest=guest, items=lv["rows"], lv=lv)
+
+
+@app.route("/guests/<int:guest_id>/contact", methods=["POST"])
+@login_required
+def log_guest_contact(guest_id):
+    """Write down that somebody spoke to them, and what about.
+
+    The telephone is how most guests reach a house like this, and it left no
+    trace: the next person to ring them back started from nothing. A date to
+    follow up on becomes a task, so it is on the calendar and somebody's list.
+    """
+    conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        conn.close()
+        abort(404)
+    back = url_for("guest_detail", guest_id=guest_id)
+    summary = " ".join((request.form.get("summary") or "").split())[:1000]
+    channel = request.form.get("channel") or "phone"
+    if channel not in CONTACT_CHANNELS:
+        channel = "other"
+    direction = "out" if request.form.get("direction") == "out" else "in"
+    if not summary:
+        conn.close()
+        flash("Say what was said, in a line or two.", "error")
+        return redirect(back)
+    follow = parse_date(request.form.get("follow_up_on") or "")
+    user = current_user()
+    now = datetime.now(timezone.utc).isoformat()
+    task_id = None
+    if follow:
+        cur = conn.execute(
+            """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
+                 status, origin, created_at)
+               VALUES (?, ?, ?, 'normal', ?, 'open', 'guest_contact', ?)""",
+            (user["id"], f"Follow up with {guest['name']}", summary, follow.isoformat(), now))
+        task_id = cur.lastrowid
+    conn.execute(
+        """INSERT INTO guest_contacts (guest_id, channel, direction, summary, follow_up_on,
+           task_id, logged_by_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (guest_id, channel, direction, summary, follow.isoformat() if follow else None,
+         task_id, user["id"], now))
+    log_audit(conn, "guest_contact_logged", target=guest["name"],
+              details=CONTACT_CHANNELS[channel])
+    conn.commit()
+    conn.close()
+    flash("Written down." + (f" A task to follow up on {format_date_human(follow.isoformat())} "
+                             "is on the calendar." if follow else ""), "success")
+    return redirect(back)
+
+
+@app.route("/guests/<int:guest_id>/write", methods=["POST"])
+@owner_required
+def write_to_guest(guest_id):
+    """Write to them from their record, and keep the letter with the rest.
+
+    The record offered a mailto: link, so a letter written from it went out
+    from somebody's own mail program and was never seen here again -- the one
+    kind of letter to a guest this system could not show.
+    """
+    conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        conn.close()
+        abort(404)
+    back = url_for("guest_detail", guest_id=guest_id)
+    email = (guest["email"] or "").strip()
+    subject = " ".join((request.form.get("subject") or "").split())[:200]
+    body = (request.form.get("body") or "").strip()[:8000]
+    area = request.form.get("area") or "rooms"
+    if area not in REPLY_TO_AREAS:
+        area = "rooms"
+    if "@" not in email:
+        conn.close()
+        flash("This profile has no address to write to.", "error")
+        return redirect(back)
+    if not subject or not body:
+        conn.close()
+        flash("A letter needs a subject and something to say.", "error")
+        return redirect(back)
+    log_audit(conn, "guest_written_to", target=guest["name"], details=subject)
+    conn.commit()
+    conn.close()
+    went = send_email(email, subject, body, html=letter_html(subject, body), area=area,
+                      sent_by=current_user()["id"])
+    flash(f"Sent to {email}." if went else
+          f"Kept to send later: {email} could not be written to just now.",
+          "success" if went else "error")
+    return redirect(back)
+
+
+def link_reissued_page(what, link, to, asked, sent, why, back):
+    """The new link, shown once, and never cached: it is a key."""
+    response = app.make_response(render_template(
+        "admin_link_reissued.html", what=what, link=link, to=to, asked=asked,
+        sent=sent, why=why, back=back))
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.route("/admin/new-link/<category>/<int:booking_id>", methods=["POST"])
+@owner_required
+def reissue_booking_link_page(category, booking_id):
+    """A new private link for a booking, because the old one went astray."""
+    if category not in MANAGE_LINKS:
+        abort(404)
+    conn = get_db()
+    row, link = reissue_booking_link(conn, category, booking_id)
+    if not row:
+        conn.close()
+        abort(404)
+    conn.commit()
+    keys = row.keys()
+    to = (row["contact_email"] if "contact_email" in keys else row["guest_email"]) or ""
+    name = (row["contact_name"] if "contact_name" in keys else row["guest_name"]) or ""
+    asked = request.form.get("send") == "1"
+    sent, why = (send_new_link(conn, to, name, f"your booking {row['reference_code']}", link)
+                 if asked else (False, None))
+    guest_id = request.form.get("guest_id", "")
+    conn.close()
+    back = (url_for("guest_detail", guest_id=int(guest_id)) if guest_id.isdigit()
+            else url_for({"room": "admin_bookings", "workshop": "admin_workshop_registrations",
+                          "restaurant": "admin_restaurant", "event": "admin_events"}[category]))
+    return link_reissued_page(f"{REFUND_CATEGORY_LABELS[category]} {row['reference_code']}",
+                              link, to, asked, sent, why, back)
+
+
+@app.route("/guests/<int:guest_id>/new-link", methods=["POST"])
+@owner_required
+def reissue_portal_link_page(guest_id):
+    """A new link to somebody's own account, because the old one went astray."""
+    conn = get_db()
+    row, link = reissue_portal_link(conn, guest_id)
+    if not row:
+        conn.close()
+        abort(404)
+    conn.commit()
+    asked = request.form.get("send") == "1"
+    sent, why = (send_new_link(conn, row["email"], row["name"], "your account with us", link)
+                 if asked else (False, None))
+    conn.close()
+    return link_reissued_page(f"{row['name']}'s own link", link, row["email"] or "", asked,
+                              sent, why, url_for("guest_detail", guest_id=guest_id))
+
+
+@app.route("/guests/<int:guest_id>/restrict", methods=["POST"])
+@owner_required
+def restrict_guest(guest_id):
+    """Record that they asked us to stop using their details, or, at their
+    request, that they asked us to start again."""
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM guests WHERE id = ?", (guest_id,)).fetchone():
+        conn.close()
+        abort(404)
+    on = request.form.get("on") == "1"
+    how = " ".join((request.form.get("how") or "").split())[:200] or (
+        "they asked us" if on else "they asked us to start again")
+    changed = set_guest_restriction(conn, guest_id, on, how, current_user()["id"])
+    conn.commit()
+    conn.close()
+    flash(("Recorded: nothing is sent to them now but what their bookings need." if on else
+           "Recorded: they are written to again as anybody is.") if changed
+          else "That was already so.", "success" if changed else "error")
+    return redirect(url_for("guest_detail", guest_id=guest_id))
 
 
 @app.route("/guests/<int:guest_id>/note", methods=["POST"])
@@ -36920,6 +38409,11 @@ def guest_detail(guest_id):
         abort(404)
     is_owner = (current_user() or {})["role"] == "owner"
     messages = guest_messages(conn, record["guest"]) if is_owner else []
+    # The latest of everything, with the way to the whole of it. A colleague
+    # sees what was said on the telephone and what is booked -- that is theirs
+    # to act on -- and not the money or the letters, which are the owner's.
+    timeline = [x for x in guest_timeline(conn, guest_id)
+                if is_owner or x["kind"] not in TIMELINE_OWNER_KINDS][:12]
     notes = guest_notes(conn, guest_id)
     # Profiles that might be the same person, offered here rather than on a
     # separate page: the merge is a thing you do while looking at one of them.
@@ -36928,6 +38422,26 @@ def guest_detail(guest_id):
         record["guest"]["phone"], exclude_id=guest_id) if is_owner else []
     merged_from = conn.execute(
         "SELECT id, name FROM guests WHERE merged_into_id = ?", (guest_id,)).fetchall()
+    # A profile folded into another is that other person now, and its page
+    # said nothing of it: whoever opened it read half a history as the whole.
+    merged_into = (conn.execute("SELECT id, name FROM guests WHERE id = ?",
+                                (record["guest"]["merged_into_id"],)).fetchone()
+                   if record["guest"]["merged_into_id"] else None)
+    # What the house has tagged them with, and who put each one on.
+    guest_tags = conn.execute(
+        """SELECT guest_tags.*, users.name AS by_name FROM guest_tags
+             LEFT JOIN users ON users.id = guest_tags.added_by_user_id
+            WHERE guest_tags.guest_id = ? ORDER BY guest_tags.tag""", (guest_id,)).fetchall()
+    known_tags = [r["tag"] for r in conn.execute(
+        "SELECT DISTINCT tag FROM guest_tags ORDER BY tag").fetchall()] if is_owner else []
+    # Whether they asked us to stop using their details, how, and who wrote it down.
+    restriction = conn.execute(
+        """SELECT guests.restricted_at, guests.restricted_how, users.name AS by_name
+             FROM guests LEFT JOIN users ON users.id = guests.restricted_by_user_id
+            WHERE guests.id = ?""", (guest_id,)).fetchone()
+    # Their own standing link, for the owner to pass on or replace.
+    own_link = (url_for("guest_portal", token=record["guest"]["portal_token"], _external=True)
+                if is_owner and record["guest"]["portal_token"] else None)
     party_of = {}
     for b in record["stays"]:
         if b["party_id"]:
@@ -36962,9 +38476,13 @@ def guest_detail(guest_id):
                            notes=notes, duplicates=duplicates,
                            merged_from=merged_from, caution_levels=CAUTION_LEVELS,
                            messages=messages, is_owner=is_owner,
-                           party_of=party_of,
+                           party_of=party_of, timeline=timeline,
+                           contact_channels=CONTACT_CHANNELS,
+                           reply_areas=list(REPLY_TO_AREAS),
                            rebook_rooms=rebook_rooms, usual_nights=usual_nights,
-                           today=house_today_iso())
+                           today=house_today_iso(), merged_into=merged_into,
+                           own_link=own_link, guest_tags=guest_tags, restriction=restriction,
+                           known_tags=known_tags)
 
 
 @app.route("/guests/<int:guest_id>/statement")
@@ -36977,12 +38495,87 @@ def guest_full_statement(guest_id):
     charged this person, ever" \u2014 and that question had no answer anywhere.
     """
     conn = get_db()
-    record = guest_record(conn, guest_id)
+    date_from, date_to = statement_period(request.args)
+    statement = guest_account_statement(conn, guest_id, date_from, date_to)
+    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
     conn.close()
-    if not record:
+    if not statement:
         abort(404)
-    return render_template("guest_full_statement.html", record=record,
-                           today=house_today_iso())
+    return render_template("guest_full_statement.html", st=statement, company=company,
+                           today=house_today_iso(),
+                           query=request.query_string.decode("utf-8", "replace"))
+
+
+@app.route("/guests/<int:guest_id>/statement.csv")
+@owner_required
+def guest_statement_csv(guest_id):
+    """The same account, as a spreadsheet: for the accountant, or a dispute."""
+    conn = get_db()
+    date_from, date_to = statement_period(request.args)
+    statement = guest_account_statement(conn, guest_id, date_from, date_to)
+    conn.close()
+    if not statement:
+        abort(404)
+    rows = [{"date": x["day"], "for": x["kind"], "reference": x["ref"], "what": x["what"],
+             "charged": f"{x['charge']:.2f}" if x["charge"] else "",
+             "paid": f"{x['paid']:.2f}" if x["paid"] else "",
+             "refunded": f"{x['back']:.2f}" if x["back"] else "",
+             "balance": f"{x['balance']:.2f}"} for x in statement["lines"]]
+    return csv_response(["date", "for", "reference", "what", "charged", "paid", "refunded",
+                         "balance"], rows, f"statement-{guest_id}.csv")
+
+
+@app.route("/guests/<int:guest_id>/statement/email", methods=["POST"])
+@owner_required
+def email_guest_account_statement(guest_id):
+    """Send somebody their statement, for the period on screen.
+
+    The only statement a guest could be sent was one stay's, and only by
+    themselves from that stay's page. "Could you send me everything for my
+    accountant" had no answer but copying figures into an email by hand.
+    """
+    conn = get_db()
+    date_from, date_to = statement_period(request.form)
+    statement = guest_account_statement(conn, guest_id, date_from, date_to)
+    if not statement:
+        conn.close()
+        abort(404)
+    guest = statement["guest"]
+    email = (guest["email"] or "").strip()
+    back = url_for("guest_full_statement", guest_id=guest_id,
+                   **{k: v for k, v in (("from", statement["period_from"]),
+                                        ("to", statement["period_to"])) if v})
+    if "@" not in email:
+        conn.close()
+        flash("This profile has no address to send it to.", "error")
+        return redirect(back)
+    token = guest_portal_token(conn, email)
+    conn.commit()
+    period = ""
+    if statement["period_from"] or statement["period_to"]:
+        period = (f", {format_date_human(statement['period_from'])}" if statement["period_from"]
+                  else ", from the start")
+        period += (f" to {format_date_human(statement['period_to'])}"
+                   if statement["period_to"] else " to today")
+    subject, body, letter = render_email_template(conn, "guest_account_statement", {
+        "guest_name": guest["name"],
+        "period": period,
+        "statement_lines": statement_text_lines(statement),
+        "balance_line": statement_balance_line(statement["closing"]),
+        "statement_url": url_for("guest_portal_statement", token=token, _external=True),
+        "company_block": company_block_text(conn),
+    })
+    # Not the address: the audit trail is kept for ever and outlives an
+    # erasure, so it says what was sent and to whose record, and no more.
+    log_audit(conn, "guest_statement_sent", target=guest["name"],
+              details="statement" + (period or ", everything"))
+    conn.commit()
+    conn.close()
+    if subject:
+        send_email(email, subject, body, html=letter, area="accounts")
+    flash(f"Statement sent to {email}." if subject else "The statement letter could not be made.",
+          "success" if subject else "error")
+    return redirect(back)
 
 
 @app.route("/guests/<int:guest_id>/link-bookings", methods=["POST"])
@@ -37051,6 +38644,7 @@ def edit_guest(guest_id):
             conn.close()
             flash(f"Another guest profile already uses the email {email}.", "error")
             return redirect(url_for("edit_guest", guest_id=guest_id))
+        now = datetime.now(timezone.utc).isoformat()
         conn.execute(
             """UPDATE guests SET name=?, email=?, phone=?, dietary_notes=?,
                preferences=?, vip=?, notes=?, access_needs=?,
@@ -37066,25 +38660,65 @@ def edit_guest(guest_id):
                WHERE id=?""",
             (name, email, phone or None, dietary_notes or None,
              preferences or None, vip, notes or None, access_needs or None,
-             datetime.now(timezone.utc).isoformat() if access_needs else None,
+             now if access_needs else None,
              language or None, photo_consent,
-             photo_consent, datetime.now(timezone.utc).isoformat(),
+             photo_consent, now,
              guest_id),
         )
+        # WHAT CHANGED, and who changed it. An address typed wrong moves every
+        # letter to somebody else, and nothing kept what it had been.
+        changed = record_profile_changes(conn, guest, {
+            "name": name, "email": email, "phone": phone or None,
+            "dietary_notes": dietary_notes or None, "preferences": preferences or None,
+            "vip": vip, "notes": notes or None, "access_needs": access_needs or None,
+            "language": language or None, "photo_consent": photo_consent},
+            current_user()["id"], at=now)
+        if changed:
+            # What changed by name, never by value: this trail outlives an erasure.
+            log_audit(conn, "guest_profile_edited", target=f"guest {guest_id}",
+                      details=", ".join(changed))
+        if (guest["photo_consent"] or "unknown") != photo_consent:
+            record_consent(conn, "photos", PHOTO_CONSENT_GRANTED.get(photo_consent),
+                           "recorded on their profile", guest_id=guest_id, email=email, at=now)
         conn.commit()
         conn.close()
         flash("Guest profile updated.", "success")
         return redirect(url_for("guests"))
 
+    holdings = guest_holdings(conn, guest_id)
     conn.close()
-    return render_template("guest_form.html", guest=guest)
+    return render_template("guest_form.html", guest=guest, holdings=holdings)
 
 
 @app.route("/guests/<int:guest_id>/delete", methods=["POST"])
 @owner_required
 def delete_guest(guest_id):
+    """Remove a profile that holds nothing: a typing mistake, a duplicate made
+    in error before anything was put on it.
+
+    It deleted whatever it was pointed at, with nothing on the audit trail: a
+    profile with ten stays went in one click, and its notes, its letters, its
+    conversations and every yes and no it held went with it, while the stays
+    were left pointing at nobody. The page said "their bookings are kept".
+    What holds a history is merged into the right profile -- or, where the
+    person asked to be forgotten, erased from what we hold about them, which
+    keeps the sales the law requires.
+    """
     conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        conn.close()
+        abort(404)
+    held = guest_holdings(conn, guest_id)
+    if held:
+        conn.close()
+        flash(f"Not deleted: this profile holds {', '.join(held)}. Merge it into the right "
+              "profile, or, if they asked to be forgotten, erase them from what we hold about "
+              "them — that keeps the sales the law requires.", "error")
+        return redirect(url_for("edit_guest", guest_id=guest_id))
     conn.execute("DELETE FROM guests WHERE id = ?", (guest_id,))
+    log_audit(conn, "guest_deleted", target=f"guest {guest_id}",
+              details="a profile that held nothing")
     conn.commit()
     conn.close()
     flash("Guest removed.", "success")
@@ -38942,6 +40576,40 @@ def stripe_webhook():
         finally:
             conn.close()
 
+    elif event["type"] in ("charge.refunded", "refund.created", "refund.updated",
+                           "refund.failed", "charge.refund.updated"):
+        # A refund made in Stripe's dashboard, or one that failed after it was
+        # accepted. Either way the books here were wrong until now.
+        obj = event["data"]["object"]
+        conn = get_db()
+        try:
+            if event["type"] == "charge.refunded":
+                try:
+                    listed = stripe.Refund.list(payment_intent=_intent_of(obj), limit=100)
+                    refunds = list(sval(listed, "data") or [])
+                except Exception:
+                    refunds = list(sval(sval(obj, "refunds") or {}, "data") or [])
+                for r in refunds:
+                    record_refund_from_stripe(conn, r)
+            else:
+                record_refund_from_stripe(conn, obj)
+        except Exception as e:
+            print(f"[stripe webhook] {event['type']} failed: {e}")
+            raise
+        finally:
+            conn.close()
+
+    elif event["type"].startswith("charge.dispute."):
+        obj = event["data"]["object"]
+        conn = get_db()
+        try:
+            record_dispute(conn, obj)
+        except Exception as e:
+            print(f"[stripe webhook] {event['type']} failed: {e}")
+            raise
+        finally:
+            conn.close()
+
     elif event["type"] == "checkout.session.async_payment_failed":
         # A delayed payment that did not arrive. Nothing was created for it —
         # the branches above only act on "paid" — so there is no booking to
@@ -39485,6 +41153,8 @@ def manage_booking(manage_token):
             "UPDATE bookings SET status = 'cancelled', decided_at = ? WHERE id = ? AND status IN ('pending', 'confirmed')",
             (datetime.now(timezone.utc).isoformat(), booking["id"]),
         )
+        if cur.rowcount:
+            log_audit(conn, "booking_cancelled_by_guest", target=booking["reference_code"])
         conn.commit()
         if cur.rowcount:
             owner_to = owner_email(conn)
@@ -39591,6 +41261,13 @@ def manage_booking(manage_token):
         conn.execute(
             "UPDATE bookings SET guest_name = ?, guest_phone = ? WHERE id = ?",
             (new_name, new_phone or None, booking["id"]))
+        # That they changed, not to what: the trail outlives an erasure.
+        said = [label for label, old, new in (
+            ("name", booking["guest_name"], new_name),
+            ("phone", booking["guest_phone"] or None, new_phone or None)) if old != new]
+        if said:
+            log_audit(conn, "booking_contact_changed_by_guest", target=booking["reference_code"],
+                      details=" and ".join(said) + " changed")
         conn.commit()
         # Said plainly, because a number the app cannot use looks identical to
         # a good one once it is sitting in the box.
@@ -39649,6 +41326,15 @@ def manage_booking(manage_token):
                 stamp_room_total(conn, booking["id"], new_room_portion,
                                  new_arrival.isoformat(), new_departure.isoformat())
                 restamp_stay(conn, booking["id"])
+                log_audit(conn, "booking_dates_changed_by_guest",
+                          target=booking["reference_code"],
+                          details="; ".join(booking_edit_changes(booking, {
+                              "arrival_date": new_arrival.isoformat(),
+                              "departure_date": new_departure.isoformat(),
+                              "total_price": new_total or None,
+                              **{c: booking[c] for c, _l, _k in BOOKING_EDIT_FIELDS
+                                 if c not in ("arrival_date", "departure_date",
+                                              "total_price")}})))
                 conn.commit()
                 owner_to = owner_email(conn)
                 if owner_to:
@@ -39677,6 +41363,9 @@ def manage_booking(manage_token):
                     (f"Date change request — {booking['reference_code']}", note,
                      f"{booking['room_name']} — {booking['guest_name']}", new_arrival.isoformat(), now, booking["id"]),
                 )
+                log_audit(conn, "booking_change_asked_by_guest", target=booking["reference_code"],
+                          details=f"to {format_date_human(new_arrival.isoformat())} to "
+                                  f"{format_date_human(new_departure.isoformat())}")
                 conn.commit()
                 owner = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
                 if owner:
@@ -40177,7 +41866,8 @@ def send_event_email(conn, inquiry, template_key, context):
     subject, body, letter = render_email_template(conn, template_key, context)
     if not subject:
         return
-    send_email(inquiry["contact_email"], subject, body, html=letter)
+    send_email(inquiry["contact_email"], subject, body, html=letter,
+               about=("event", inquiry["id"]), template_key=template_key)
 
 
 @app.route("/events")
@@ -40590,7 +42280,7 @@ def record_event_checkout(conn, session):
         return False
     try:
         record_event_payment(conn, int(event_id), amount, method="card_link",
-                             reference=session_id)
+                             reference=session_id, payment_intent=_intent_id(session))
     except sqlite3.IntegrityError:
         conn.rollback()
         return False
@@ -40907,6 +42597,18 @@ def update_event_inquiry(inquiry_id):
     status_changed_to_decided = status in ("confirmed", "declined") and inquiry["status"] != status
     decided_at = datetime.now(timezone.utc).isoformat() if status_changed_to_decided else inquiry["decided_at"]
 
+    # A standing instruction is read before a date is promised, as it is for a
+    # stay, an atelier and a table.
+    if status == "confirmed" and inquiry["status"] != "confirmed":
+        caution = guest_caution_for(conn, email=inquiry["contact_email"],
+                                    name=inquiry["contact_name"])
+        if caution and caution["caution_level"] == "refuse":
+            conn.close()
+            flash(f"Not confirmed: there is a standing instruction not to accept a booking "
+                  f"from {caution['name']} ({caution['caution']}) — lift it on their profile "
+                  "if that has changed.", "error")
+            return redirect(url_for("admin_events"))
+
     # A promo code, honoured against the quote.
     #
     # An event is quoted rather than priced off a rate card, so the code cannot
@@ -40970,6 +42672,10 @@ def update_event_inquiry(inquiry_id):
     conn.commit()
 
     inquiry = conn.execute("SELECT * FROM event_inquiries WHERE id = ?", (inquiry_id,)).fetchone()
+    if status_changed_to_decided and status == "confirmed":
+        ensure_guest_profile(conn, inquiry["contact_name"], inquiry["contact_email"],
+                             inquiry["contact_phone"])
+        conn.commit()
     if status_changed_to_decided:
         if status == "confirmed":
             send_event_email(conn, inquiry, "event_inquiry_confirmed", event_email_context(inquiry))
@@ -42339,7 +44045,8 @@ def send_restaurant_email(conn, booking, template_key, context):
     # area=: a reply to a dinner confirmation belongs in the restaurant's
     # inbox, not in whichever one RESEND_FROM happens to name.
     send_email(booking["guest_email"], subject, body, html=letter,
-               area="restaurant")
+               area="restaurant", about=("restaurant", booking["id"]),
+               template_key=template_key)
 
 
 def refund_restaurant_booking(conn, booking, reason="Reservation cancelled by the château", user_id=None):
@@ -43024,6 +44731,8 @@ def can_text(conn, raw_number, purpose="transactional"):
         if not conn.execute("SELECT 1 FROM sms_consents WHERE phone = ?",
                             (number,)).fetchone():
             return None, "no consent on file for marketing"
+        if guest_restricted(conn, phone=number):
+            return None, "they asked us to stop using their details"
     return number, None
 
 
@@ -43037,10 +44746,15 @@ def record_sms_optout(conn, raw_number, reason=None):
     number = normalise_phone(raw_number)
     if not number:
         return None
-    conn.execute(
+    now = datetime.now(timezone.utc).isoformat()
+    stopped = conn.execute(
         "INSERT OR IGNORE INTO sms_optouts (phone, reason, created_at) VALUES (?, ?, ?)",
-        (number, reason, datetime.now(timezone.utc).isoformat()))
-    conn.execute("DELETE FROM sms_consents WHERE phone = ?", (number,))
+        (number, reason, now))
+    dropped = conn.execute("DELETE FROM sms_consents WHERE phone = ?", (number,))
+    if stopped.rowcount:
+        record_consent(conn, "texts", 0, reason or "recorded by hand", phone=number, at=now)
+    if dropped.rowcount:
+        record_consent(conn, "marketing_texts", 0, "withdrawn with the stop", phone=number, at=now)
     return number
 
 
@@ -43054,14 +44768,21 @@ def record_sms_consent(conn, raw_number, source=None):
     number = normalise_phone(raw_number)
     if not number:
         return None
-    conn.execute("DELETE FROM sms_optouts WHERE phone = ?", (number,))
-    conn.execute(
+    now = datetime.now(timezone.utc).isoformat()
+    lifted = conn.execute("DELETE FROM sms_optouts WHERE phone = ?", (number,))
+    granted = conn.execute(
         "INSERT OR IGNORE INTO sms_consents (phone, source, granted_at) VALUES (?, ?, ?)",
-        (number, source, datetime.now(timezone.utc).isoformat()))
+        (number, source, now))
+    if lifted.rowcount:
+        record_consent(conn, "texts", 1, "their stop lifted, by saying yes to marketing texts",
+                       phone=number, at=now)
+    if granted.rowcount:
+        record_consent(conn, "marketing_texts", 1, source or "recorded by hand",
+                       phone=number, at=now)
     return number
 
 
-def file_guest_text(conn, number, body, *, delivered):
+def file_guest_text(conn, number, body, *, delivered, channel="sms"):
     """Keep a copy of a text to a guest, against their stay.
 
     On the caller's connection, unlike the mail side. send_sms already joins
@@ -43072,14 +44793,19 @@ def file_guest_text(conn, number, body, *, delivered):
     say "we wrote, it did not reach you" as readily as "we never wrote".
     """
     booking_id = booking_for_contact(conn, phone=number)
-    if not booking_id:
+    guest_id = guest_for_contact(conn, phone=number)
+    if not booking_id and not guest_id:
         return
+    # By the channel it went on: a WhatsApp filed as a text is a record that
+    # says the guest was told on a channel they were not.
+    now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """INSERT INTO guest_messages (booking_id, channel, to_address,
-           subject, body, delivered, created_at)
-           VALUES (?, 'sms', ?, NULL, ?, ?, ?)""",
-        (booking_id, number, body, 1 if delivered else 0,
-         datetime.now(timezone.utc).isoformat()))
+           subject, body, delivered, created_at, guest_id, direction, delivered_at)
+           VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'out', ?)""",
+        (booking_id, channel if channel in ("sms", "whatsapp") else "sms", number,
+         without_private_links(body),
+         1 if delivered else 0, now, guest_id, now if delivered else None))
 
 
 def send_sms(conn, raw_number, body, purpose="transactional", hold=True,
@@ -43120,7 +44846,7 @@ def send_sms(conn, raw_number, body, purpose="transactional", hold=True,
                channel) VALUES (?, ?, ?, 'no provider configured', ?, ?)""",
             (number, body, purpose, datetime.now(timezone.utc).isoformat(),
              channel))
-        file_guest_text(conn, number, body, delivered=False)
+        file_guest_text(conn, number, body, delivered=False, channel=channel)
         return False, None          # held, not refused
     ok, result = sms_provider_send(number, body, channel, template_id, variables)
     # `note` carries the reason a channel was CHOSEN, which is the question
@@ -43136,7 +44862,7 @@ def send_sms(conn, raw_number, body, purpose="transactional", hold=True,
          datetime.now(timezone.utc).isoformat(),
          datetime.now(timezone.utc).isoformat() if ok else None,
          result if ok else None, None if ok else str(result)[:400], channel))
-    file_guest_text(conn, number, body, delivered=ok)
+    file_guest_text(conn, number, body, delivered=ok, channel=channel)
     return bool(ok), None
 
 
@@ -43665,8 +45391,10 @@ def run_review_invitation_job(conn, days_after=None):
                   (SELECT LOWER(email) FROM email_optouts)""",
         (cutoff,)).fetchall()
     asked = 0
+    held_back = restricted_addresses(conn)
     for answer in answers:
-        if not may_ask_for_a_review(answer):
+        if (not may_ask_for_a_review(answer)
+                or (answer["email"] or "").strip().lower() in held_back):
             # Stamped anyway, so the job does not reconsider the same
             # disappointed guest every morning for ever. The stamp means "we
             # have decided about this one", not "we wrote to them".
@@ -43749,6 +45477,8 @@ def ask_room_feedback(conn, booking):
         return False
     if conn.execute("SELECT 1 FROM email_optouts WHERE LOWER(email) = LOWER(?)",
                     (booking["guest_email"],)).fetchone():
+        return False
+    if guest_restricted(conn, email=booking["guest_email"]):
         return False
     subject, body, letter = render_email_template(conn, "room_feedback_request", {
         "guest_name": (booking["guest_name"] or "").strip().split(" ")[0] or "there",
@@ -44387,6 +46117,105 @@ def hold_legacy_balance_stamps(conn):
     return held
 
 
+def link_held_letters(conn):
+    """Join each letter filed before copies carried their place in the queue
+    to the held copy of it.
+
+    A letter the house could not send was filed as not gone, and queued, with
+    nothing joining the two. So once the queue was sent the record still said
+    it had not gone, and the guest's record listed it twice: once as filed and
+    once as queued. On a house that has never had a way to send mail, that is
+    every letter it has written.
+
+    By address, subject and words, one at a time, so the same letter held
+    twice pairs first with first and second with second rather than both
+    claiming one. Runs at startup and finds nothing once the old rows are
+    through it: send_email files every held letter with its place in the queue.
+    """
+    linked = 0
+    for r in conn.execute(
+            """SELECT id, to_address, subject, body FROM guest_messages
+                WHERE outbox_id IS NULL AND channel = 'email' AND delivered = 0
+                ORDER BY id""").fetchall():
+        held = conn.execute(
+            """SELECT id FROM email_outbox
+                WHERE LOWER(TRIM(to_address)) = LOWER(TRIM(?)) AND subject IS ? AND body = ?
+                  AND NOT EXISTS (SELECT 1 FROM guest_messages gm
+                                   WHERE gm.outbox_id = email_outbox.id)
+                ORDER BY id LIMIT 1""", (r["to_address"], r["subject"], r["body"])).fetchone()
+        if held:
+            conn.execute("UPDATE guest_messages SET outbox_id = ? WHERE id = ?",
+                         (held["id"], r["id"]))
+            linked += 1
+    # And those sent from the queue since, now that the two are joined.
+    sent = conn.execute(
+        """UPDATE guest_messages SET delivered = 1, failure = NULL,
+             delivered_at = (SELECT sent_at FROM email_outbox
+                              WHERE email_outbox.id = guest_messages.outbox_id)
+            WHERE delivered = 0 AND outbox_id IS NOT NULL
+              AND (SELECT sent_at FROM email_outbox
+                    WHERE email_outbox.id = guest_messages.outbox_id) IS NOT NULL""").rowcount
+    if linked or sent > 0:
+        conn.commit()
+    return linked
+
+
+# How it was said, when nothing wrote that down at the time.
+CONSENT_HOW_UNKNOWN = "how it was said was not written down"
+
+
+def backfill_consent_history(conn):
+    """Put every yes and no already on the lists into the history of them.
+
+    Once for each: a row whose moment is already in the history is skipped,
+    and everything that changes a list writes its line at the list's own
+    moment -- so this finds nothing new unless something wrote to a list
+    without saying so, and then it is recorded rather than lost.
+    """
+    before = conn.total_changes
+    for channel, granted, source, how, key, stamp in (
+            ("marketing_email", 0, "email_optouts", "reason", "email", "created_at"),
+            ("newsletter", 1, "newsletter_subscribers", None, "email", "confirmed_at"),
+            ("newsletter", 0, "newsletter_subscribers", None, "email", "unsubscribed_at"),
+            ("texts", 0, "sms_optouts", "reason", "phone", "created_at"),
+            ("marketing_texts", 1, "sms_consents", "source", "phone", "granted_at")):
+        said = f"COALESCE(NULLIF(TRIM({how}), ''), ?)" if how else "?"
+        match = ("LOWER(TRIM(c.email)) = LOWER(TRIM(s.email))" if key == "email"
+                 else "c.phone = s.phone")
+        conn.execute(
+            f"""INSERT INTO consent_events (channel, granted, how, {key}, created_at)
+                SELECT ?, ?, {said}, {'LOWER(TRIM(s.email))' if key == 'email' else 's.phone'},
+                       s.{stamp}
+                  FROM {source} s
+                 WHERE s.{stamp} IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM consent_events c
+                                    WHERE c.channel = ? AND c.created_at = s.{stamp}
+                                      AND {match})""",
+            (channel, granted, CONSENT_HOW_UNKNOWN, channel))
+    conn.execute(
+        """INSERT INTO consent_events (channel, granted, how, email, guest_id, created_at)
+           SELECT 'photos', CASE photo_consent WHEN 'yes' THEN 1 WHEN 'no' THEN 0 END, ?,
+                  LOWER(TRIM(email)), id, photo_consent_at
+             FROM guests g
+            WHERE photo_consent_at IS NOT NULL
+              AND COALESCE(photo_consent, 'unknown') != 'unknown'
+              AND NOT EXISTS (SELECT 1 FROM consent_events c
+                               WHERE c.channel = 'photos' AND c.guest_id = g.id
+                                 AND c.created_at = g.photo_consent_at)""",
+        (CONSENT_HOW_UNKNOWN,))
+    # Against the person too, where the house knows them: an erasure goes by
+    # the profile, and a number on its own is nobody's.
+    for r in conn.execute(
+            "SELECT id, email, phone FROM consent_events WHERE guest_id IS NULL").fetchall():
+        who = guest_for_contact(conn, address=r["email"], phone=r["phone"])
+        if who:
+            conn.execute("UPDATE consent_events SET guest_id = ? WHERE id = ?", (who, r["id"]))
+    added = conn.total_changes - before
+    if added:
+        conn.commit()
+    return added
+
+
 PLACEHOLDER_TEXT = re.compile(r"\bTEST\b|\bTODO\b|\bFIXME\b|\bXXX\b|lorem ipsum", re.I)
 
 
@@ -44403,6 +46232,11 @@ PLACEHOLDER_TEXT = re.compile(r"\bTEST\b|\bTODO\b|\bFIXME\b|\bXXX\b|lorem ipsum"
 # edit form refuses a tag that is not here, and a test compares this against
 # what the senders actually pass so the two cannot drift.
 EMAIL_TEMPLATE_TAGS = {
+    "guest_account_statement": ("balance_line", "company_block", "guest_name", "period",
+                                "statement_lines", "statement_url"),
+    "guest_link_updated": ("guest_name", "link_for", "new_link"),
+    "refund_issued": ("amount", "balance_line", "guest_name", "reference_code",
+                      "refund_how", "what_for"),
     "event_balance_reminder": ("balance_amount", "balance_due_date", "contact_name",
                                "event_date", "event_type", "manage_url", "reference_code"),
     "event_inquiry_confirmed": ("contact_name", "event_type", "manage_url",
@@ -44512,6 +46346,11 @@ REQUIRED_MERGE_TAGS = {
     "room_statement": {"statement_url": "it is the only way to open the statement and settle it"},
     "room_balance_before": {"manage_url": "it is where they pay"},
     "room_balance_after": {"manage_url": "it is where they pay"},
+    "refund_issued": {"amount": "it is the sum that went back"},
+    "guest_account_statement": {"statement_url": "it is where they read the statement and "
+                                                 "settle anything outstanding"},
+    "guest_link_updated": {"new_link": "it is the new way in; without it the letter says the "
+                                       "old one has stopped and gives them nothing"},
     "room_share_request": {"pay_url": "it is the only way to pay the share",
                            "amount": "it is the sum being asked for"},
     "room_feedback_request": {"feedback_url": "it is the form they are being asked to fill in"},
@@ -44762,6 +46601,8 @@ def confirmation_letter_html(subject, body_src, context, *, conn=None, card=None
 # thousands separator. These are the shapes the real values take.
 SAMPLE_MERGE_VALUES = {
     "guest_name": "Marie Dubois",
+    "link_for": "your booking GUD-4417",
+    "new_link": "https://chateaugudanes.com/book/manage/a-new-link",
     "contact_name": "Marie Dubois",
     "name": "Marie Dubois",
     "reference_code": "GUD-4417",
@@ -44790,6 +46631,10 @@ SAMPLE_MERGE_VALUES = {
     "balance_line": "Balance of \u20ac736.60 due by 30 September 2026.",
     "dietary_line": "No shellfish, and one guest is coeliac.",
     "refund_note": "Nothing has been charged.",
+    "what_for": "for your stay in Chambre \u00c9meraude, 14 to 17 October 2026",
+    "period": ", 1 September 2026 to 30 September 2026",
+    "refund_how": ("It is going back to the card you paid with. Banks usually take "
+                   "five to ten working days to show it."),
     "status_line": "Paid in full",
     "company_block": "Ch\u00e2teau de Gudanes\n09310 Ch\u00e2teau-Verdun\nSIRET 000 000 000 00000",
     "items": "2 \u00d7 Men\u00fc du march\u00e9\u2003\u20ac110.00\n"
@@ -44922,6 +46767,14 @@ def render_email_template(conn, template_key, context):
         # row did not skip the letter the way every caller expects -- it raised
         # at the unpacking, in the middle of whatever was sending it.
         return None, None, None
+    # Which letter, left where send_email can find it by the subject -- so the
+    # record of every letter says which template it was without two hundred
+    # call sites having to pass the key along.
+    if has_request_context():
+        keys = g.get("_rendered_keys")
+        if keys is None:
+            keys = g._rendered_keys = {}
+        keys[subject] = template_key
     return subject, body, letter_html(subject, body)
 
 
@@ -45025,7 +46878,8 @@ def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False
     """Who a campaign would go to: {email: name}, de-duplicated.
 
     Builds on the existing segment logic, then removes anyone who has opted
-    out. A guest with a stay AND a dinner is emailed once, not twice.
+    out or asked us to stop using their details. A guest with a stay AND a
+    dinner is emailed once, not twice.
     """
     recipients = dict(promo_blast_recipients(conn, segments, since_date_iso))
     if "profiles" in segments:
@@ -45037,6 +46891,10 @@ def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False
     recipients = {(e or "").strip().lower(): n for e, n in recipients.items() if e and e.strip()}
     if not include_optouts:
         opted_out = {r["email"] for r in conn.execute("SELECT email FROM email_optouts").fetchall()}
+        # The segments leave them out already; a profile is added here
+        # directly, and this is the count the owner is shown and types back to
+        # send. Counted in, they would be a number that never goes.
+        opted_out |= restricted_addresses(conn)
         recipients = {e: n for e, n in recipients.items() if e not in opted_out}
     return recipients
 
@@ -45088,8 +46946,14 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None,
     doesn't show up in the send history as if guests had been mailed.
     """
     now_iso = datetime.now(timezone.utc).isoformat()
-    sent = failed = skipped = 0
+    sent = failed = skipped = withheld = 0
+    # Not to anybody who asked us to stop using their details. Here, where every
+    # campaign goes, so no audience anybody builds can send round it.
+    held_back = restricted_addresses(conn)
     for email, name in recipients.items():
+        if not as_test and (email or "").strip().lower() in held_back:
+            withheld += 1
+            continue
         key = f"{dedupe_key}:{email}" if dedupe_key else None
         if key and conn.execute(
             "SELECT 1 FROM campaign_sends WHERE dedupe_key = ?", (key,)
@@ -45132,7 +46996,19 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None,
             sent += 1
         elif status == "failed":
             failed += 1
-    return {"sent": sent, "failed": failed, "skipped": skipped, "total": len(recipients)}
+    return {"sent": sent, "failed": failed, "skipped": skipped, "withheld": withheld,
+            "total": len(recipients)}
+
+
+def campaign_held_back_note(withheld):
+    """What a send did not do, for the line that says what it did.
+
+    Nobody who asked us to stop using their details is sent a campaign, however
+    the audience came to include them -- and a total smaller than the count the
+    owner typed, with no reason beside it, reads as mail gone missing.
+    """
+    return (f", {withheld} held back because they asked us to stop using their details"
+            if withheld else "")
 
 
 def run_campaign_triggers_job(conn):
@@ -45148,7 +47024,7 @@ def run_campaign_triggers_job(conn):
         return "no active triggers"
 
     opted_out = {r["email"] for r in conn.execute("SELECT email FROM email_optouts").fetchall()}
-    total = 0
+    total = held = 0
     for t in templates:
         offset = t["trigger_offset_days"] or 0
         # Negative offset = before the event, positive = after.
@@ -45179,7 +47055,8 @@ def run_campaign_triggers_job(conn):
         result = send_campaign(conn, t, audience, user_id=None,
                                dedupe_key=f"trigger:{t['id']}:{target}")
         total += result["sent"]
-    return f"{total} automated email(s) sent"
+        held += result["withheld"]
+    return f"{total} automated email(s) sent" + campaign_held_back_note(held)
 
 
 def log_workshop_message(conn, booking_id, subject, recipient, status):
@@ -45201,7 +47078,8 @@ def send_workshop_email(conn, booking, template_key, context):
         log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "skipped — opted out")
         return
     sent = send_email(booking["guest_email"], subject, body, html=letter,
-                      area="workshops")
+                      area="workshops", about=("workshop", booking["id"]),
+                      template_key=template_key)
     log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "sent" if sent else "failed")
 
 
@@ -48610,6 +50488,9 @@ def ask_for_a_review(feedback_id):
         problem = (f"{answer['guest_name']} gave the house "
                    f"{answer['rating']} out of 5. Asking them to say that in "
                    "public is not a favour to anybody.")
+    elif guest_restricted(conn, email=answer["email"]):
+        problem = (f"{answer['guest_name']} asked us to stop using their details, "
+                   "so they are not asked for anything.")
     if problem:
         conn.close()
         flash(problem, "error")
@@ -49596,6 +51477,119 @@ def guest_portal_token(conn, email):
     return token
 
 
+# Every private link a guest holds on a booking: the table it lives on and the
+# page it opens. Everything the link opens -- the booking, its bill, its
+# calendar entry, its check-in -- hangs off the one token.
+MANAGE_LINKS = {
+    "room": ("bookings", "manage_booking"),
+    "workshop": ("workshop_bookings", "workshop_manage"),
+    "restaurant": ("restaurant_bookings", "restaurant_manage"),
+    "event": ("event_inquiries", "event_manage"),
+}
+
+
+def reissue_booking_link(conn, category, booking_id):
+    """A new private link for one booking; the old one stops working at once.
+
+    The privacy notice tells guests to treat the link like a password and to
+    tell us if it went astray, "and we will issue a new one". Nothing could:
+    a confirmation forwarded to the wrong person, or left in a shared inbox,
+    stayed a way into the booking for as long as the booking lasted.
+
+    Returns (booking, new_link), or (None, None).
+    """
+    table, endpoint = MANAGE_LINKS[category]
+    row = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (booking_id,)).fetchone()
+    if not row:
+        return None, None
+    token = secrets.token_urlsafe(24)
+    conn.execute(f"UPDATE {table} SET manage_token = ? WHERE id = ?", (token, booking_id))
+    log_audit(conn, "booking_link_reissued",
+              target=f"{REFUND_AUDIT_WORDS[category]} {row['reference_code']}",
+              details="the old link stopped working")
+    return row, url_for(endpoint, manage_token=token, _external=True)
+
+
+def reissue_portal_link(conn, guest_id):
+    """A new link to somebody's own account; the old one stops working at once."""
+    row = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not row:
+        return None, None
+    token = secrets.token_urlsafe(24)
+    conn.execute("UPDATE guests SET portal_token = ? WHERE id = ?", (token, guest_id))
+    log_audit(conn, "guest_link_reissued", target=f"guest {guest_id}",
+              details="the old link stopped working")
+    return row, url_for("guest_portal", token=token, _external=True)
+
+
+def send_new_link(conn, to, name, link_for, link):
+    """Send somebody their new link. (sent, why not)."""
+    if "@" not in (to or ""):
+        return False, "there is no address to send it to"
+    subject, body, letter = render_email_template(conn, "guest_link_updated", {
+        "guest_name": (name or "").split(" ")[0] or name or "there",
+        "link_for": link_for, "new_link": link})
+    if not subject:
+        return False, "the letter would not draw"
+    why = {}
+    # keep=False: the letter IS the key. Queued, or copied onto their record,
+    # it would be a working way in, sitting in a table.
+    if send_email(to, subject, body, html=letter, keep=False, report=why):
+        return True, None
+    return False, why.get("why") or "it could not be sent"
+
+
+def ensure_guest_profile(conn, name, email, phone=None):
+    """The standing profile of whoever a booking is for, made if there is none.
+
+    A stay made one when it was confirmed; a table, an atelier and an event did
+    not, so somebody who only ever dined here had no record, no link of their
+    own and no history -- the house knew them as a string in three tables.
+    """
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        return None
+    found = guest_for_contact(conn, address=email)
+    if found:
+        return found
+    cur = conn.execute(
+        "INSERT INTO guests (name, email, phone, created_at) VALUES (?, ?, ?, ?)",
+        ((name or "").strip() or email, email, (phone or "").strip() or None,
+         datetime.now(timezone.utc).isoformat()))
+    return cur.lastrowid
+
+
+def guest_holdings(conn, guest_id):
+    """What hangs off a profile, in words, for anybody about to delete it."""
+    g = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not g:
+        return []
+    email = (g["email"] or "").strip().lower() or "\u0000"
+    out = []
+    for one, many, sql, args in (
+            ("stay", "stays", "SELECT COUNT(*) FROM bookings WHERE linked_guest_id = ? "
+                              "OR LOWER(TRIM(guest_email)) = ?", (guest_id, email)),
+            ("table", "tables", "SELECT COUNT(*) FROM restaurant_bookings "
+                                "WHERE LOWER(TRIM(guest_email)) = ?", (email,)),
+            ("atelier place", "atelier places", "SELECT COUNT(*) FROM workshop_bookings "
+                                                "WHERE LOWER(TRIM(guest_email)) = ?", (email,)),
+            ("event", "events", "SELECT COUNT(*) FROM event_inquiries "
+                                "WHERE LOWER(TRIM(contact_email)) = ?", (email,)),
+            ("letter", "letters", "SELECT COUNT(*) FROM guest_messages WHERE guest_id = ?",
+             (guest_id,)),
+            ("conversation", "conversations",
+             "SELECT COUNT(*) FROM guest_contacts WHERE guest_id = ?", (guest_id,)),
+            ("note", "notes", "SELECT COUNT(*) FROM guest_notes WHERE guest_id = ?", (guest_id,)),
+            ("yes or no on record", "yeses and noes on record",
+             "SELECT COUNT(*) FROM consent_events WHERE guest_id = ?", (guest_id,)),
+            ("profile merged into it", "profiles merged into it",
+             "SELECT COUNT(*) FROM guests WHERE merged_into_id = ?", (guest_id,))):
+        n = conn.execute(sql, args).fetchone()[0]
+        if n:
+            out.append(f"{n} {one if n == 1 else many}")
+    return out
+
+
 def guest_portal_contents(conn, email):
     """Everything of this guest's, in the order they would look for it.
 
@@ -49658,6 +51652,156 @@ def guest_portal(token):
         ateliers=ateliers, bills=bills,
         today=house_today_iso(),
     )
+
+
+def portal_profile(conn, token):
+    """The profile a portal link opens, followed through any merge."""
+    profile = conn.execute("SELECT * FROM guests WHERE portal_token = ?", (token,)).fetchone()
+    seen = set()
+    while profile and profile["merged_into_id"] and profile["id"] not in seen:
+        seen.add(profile["id"])
+        profile = conn.execute("SELECT * FROM guests WHERE id = ?",
+                               (profile["merged_into_id"],)).fetchone() or profile
+    return profile
+
+
+PORTAL_HOW = "from their own account page"
+
+
+@app.route("/my/<token>/data.json")
+def guest_portal_data(token):
+    """A copy of everything we hold about them, in the portable form the
+    notice promises -- theirs to take without asking anybody."""
+    conn = get_db()
+    profile = portal_profile(conn, token)
+    if not profile or not (profile["email"] or "").strip():
+        conn.close()
+        abort(404)
+    export = guest_data_export(conn, profile["email"])
+    # On their record, as theirs. Its own action rather than the owner's
+    # export's: that one is by an address that may have no profile, and a line
+    # whose owner account has since gone would read as the guest's. By the
+    # profile, never the address -- the trail outlives what it describes.
+    log_audit(conn, "guest_downloaded_their_data", target=f"guest {profile['id']}",
+              details=f"{export['row_count']} rows, {PORTAL_HOW}", actor=None)
+    conn.commit()
+    conn.close()
+    return app.response_class(
+        json.dumps(export, indent=2, default=str, ensure_ascii=False),
+        mimetype="application/json",
+        headers={"Content-Disposition": 'attachment; filename="what-we-hold.json"',
+                 "Cache-Control": "no-store"})
+
+
+@app.route("/my/<token>/stop-offers", methods=["POST"])
+def guest_portal_stop_offers(token):
+    """No newsletter, no offers, no marketing texts: one press, their own."""
+    conn = get_db()
+    profile = portal_profile(conn, token)
+    if not profile:
+        conn.close()
+        abort(404)
+    now = datetime.now(timezone.utc).isoformat()
+    for email in guest_addresses(conn, profile["id"]):
+        if conn.execute("INSERT OR IGNORE INTO email_optouts (email, reason, created_at) "
+                        "VALUES (?, ?, ?)", (email, PORTAL_HOW, now)).rowcount:
+            record_consent(conn, "marketing_email", 0, PORTAL_HOW, email=email, at=now)
+        if conn.execute("UPDATE newsletter_subscribers SET unsubscribed_at = ?, confirmed_at = NULL "
+                        "WHERE LOWER(TRIM(email)) = ? AND unsubscribed_at IS NULL",
+                        (now, email)).rowcount:
+            record_consent(conn, "newsletter", 0, PORTAL_HOW, email=email, at=now)
+    number = normalise_phone(profile["phone"] or "")
+    if number and conn.execute("DELETE FROM sms_consents WHERE phone = ?", (number,)).rowcount:
+        record_consent(conn, "marketing_texts", 0, PORTAL_HOW, phone=number, at=now)
+    conn.commit()
+    conn.close()
+    flash(t("Done. We will not send you the newsletter, offers or marketing texts."), "success")
+    return redirect(url_for("guest_portal", token=token))
+
+
+@app.route("/my/<token>/stop-using", methods=["POST"])
+def guest_portal_stop_using(token):
+    """Stop using my details -- recorded at once, and the owner told."""
+    conn = get_db()
+    profile = portal_profile(conn, token)
+    if not profile:
+        conn.close()
+        abort(404)
+    if set_guest_restriction(conn, profile["id"], True, PORTAL_HOW):
+        conn.execute(
+            """INSERT INTO tasks (title, notes, priority, due_date, status, origin, created_at)
+               VALUES (?, ?, 'normal', ?, 'open', 'guest_request', ?)""",
+            (f"A guest asked us to stop using their details (profile #{profile['id']})",
+             "Recorded on their profile already: nothing is sent to them now but what their "
+             "bookings need. Nothing to do unless something is sent by hand.",
+             house_today_iso(), datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash(t("Recorded. We will use your details for nothing but the bookings you have with us."),
+          "success")
+    return redirect(url_for("guest_portal", token=token))
+
+
+# The law gives a month to answer a request to be forgotten.
+FORGET_WITHIN_DAYS = 30
+
+
+@app.route("/my/<token>/forget", methods=["POST"])
+def guest_portal_forget(token):
+    """Ask to be forgotten. Not done by the page itself: an erasure cannot be
+    undone and keeps the sales the law requires, so it is the owner's act --
+    which is why the request becomes a task with the month on it."""
+    conn = get_db()
+    profile = portal_profile(conn, token)
+    if not profile:
+        conn.close()
+        abort(404)
+    due = (house_today() + timedelta(days=FORGET_WITHIN_DAYS)).isoformat()
+    title = f"A guest asked to be forgotten (profile #{profile['id']})"
+    if not conn.execute("SELECT 1 FROM tasks WHERE title = ? AND status = 'open'",
+                        (title,)).fetchone():
+        conn.execute(
+            """INSERT INTO tasks (title, notes, priority, due_date, status, origin, created_at)
+               VALUES (?, ?, 'high', ?, 'open', 'guest_request', ?)""",
+            (title, "Erase them from What we hold about them, on their record: it keeps the "
+                    "sales the law requires and deletes the rest. The law gives a month.",
+             due, datetime.now(timezone.utc).isoformat()))
+        log_audit(conn, "guest_asked_to_be_forgotten", target=f"guest {profile['id']}",
+                  details=f"to be done by {due}", actor=None)
+    conn.commit()
+    conn.close()
+    flash(t("We have your request. It will be done within a month."), "success")
+    return redirect(url_for("guest_portal", token=token))
+
+
+@app.route("/my/<token>/statement")
+def guest_portal_statement(token):
+    """Their statement, from the link they already keep.
+
+    The portal said what was booked and what a stay still owed, and nothing
+    about what had been paid or given back -- so a guest reconciling a card
+    statement had to ask. A profile merged into another opens the one it was
+    merged into, which is where its bookings are now.
+    """
+    conn = get_db()
+    profile = conn.execute("SELECT * FROM guests WHERE portal_token = ?", (token,)).fetchone()
+    if not profile:
+        conn.close()
+        abort(404)
+    seen = {profile["id"]}
+    while profile["merged_into_id"]:
+        survivor = conn.execute("SELECT * FROM guests WHERE id = ?",
+                                (profile["merged_into_id"],)).fetchone()
+        if not survivor or survivor["id"] in seen:
+            break
+        seen.add(survivor["id"])
+        profile = survivor
+    date_from, date_to = statement_period(request.args)
+    statement = guest_account_statement(conn, profile["id"], date_from, date_to)
+    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    conn.close()
+    return render_template("guest_portal_statement.html", st=statement, token=token,
+                           company=company, today=house_today_iso())
 
 
 @app.route("/guests/find")
@@ -49757,7 +51901,7 @@ def guest_booking_history(email):
     )
 
 
-def confirm_booking_by_id(conn, booking_id):
+def confirm_booking_by_id(conn, booking_id, *, online=None):
     """Core confirm logic shared by the single-booking and bulk-confirm
     routes. Only acts on a still-pending booking (so a stray double-submit
     or a stale bulk selection can't re-send the confirmation email), and
@@ -49827,6 +51971,13 @@ def confirm_booking_by_id(conn, booking_id):
         # the guest record insert above is harmless to leave in place
         # (guest_id just goes unused), but the email below must not fire.
         return False, "not found or not pending"
+    # On the stay's own history: who took it -- or, `online`, that it was
+    # booked or paid for on the site and so took itself.
+    log_audit(conn, "booking_confirmed_online" if online else "booking_confirmed",
+              target=booking["reference_code"],
+              details=f"{room['name']}, {format_date_human(booking['arrival_date'])} to "
+                      f"{format_date_human(booking['departure_date'])}",
+              via=online)
     # This is the moment the guest gets a standing profile, so it is also the
     # moment their own link becomes real — and this email is the one place a
     # first-time guest is certain to see it. It rides in {stay_details}, so no
@@ -50035,6 +52186,7 @@ def checkout_booking(booking_id):
         conn.close()
         flash("This booking was already checked out.", "error")
         return redirect(url_for("admin_bookings"))
+    log_audit(conn, "booking_checked_out", target=booking["reference_code"])
     room_note = f"{booking['guest_name']} checked out, party of {booking['party_size']}."
     for i, title in enumerate(CHECKOUT_CHECKLIST):
         # booking_id has been on this table the whole time and neither
@@ -50916,7 +53068,7 @@ def data_request_export():
         abort(400)
     conn = get_db()
     export = guest_data_export(conn, email)
-    log_audit(conn, "guest_data_exported", target=email,
+    log_audit(conn, "guest_data_exported", target="a guest",
               details=f"{export['row_count']} rows" if export else "nothing held")
     conn.commit()
     conn.close()
@@ -51061,12 +53213,18 @@ def prepare_arrival(booking_id):
     return redirect(url_for("admin_bookings"))
 
 
-def decline_booking_by_id(conn, booking_id):
+def decline_booking_by_id(conn, booking_id, *, refund=True, user_id=None, via=None):
     """Core decline logic shared by the single-booking and bulk-decline
     routes. Only acts on a still-pending booking, mirroring
     confirm_booking_by_id's guard against re-processing. Returns a
     (declined, refunded, refund_error) tuple; leaves commit/close to the
-    caller."""
+    caller.
+
+    `refund` is whether the person declining may give money back. Refunds are
+    the owner's call, and a decline by anybody else moved it all the same --
+    straight to the card, with nobody named behind it. Left unrefunded, it is
+    on the owner's list of money to give back until it goes.
+    """
     booking = conn.execute(
         """SELECT bookings.*, rooms.name AS room_name FROM bookings
            JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ? AND bookings.status = 'pending'""",
@@ -51082,14 +53240,25 @@ def decline_booking_by_id(conn, booking_id):
         # Lost a race with another confirm/decline — bail before attempting
         # a refund or sending an email a second time.
         return False, False, None
+    # Against the person who decided, named by the caller: this also runs from
+    # the expiry, on the dashboard, where the signed-in user decided nothing.
+    # The reason if one was given -- never the note, which is free text about
+    # a person, and this trail is kept for ever.
+    why = (DECLINE_REASONS.get(booking["decline_reason"] or "")
+           if "decline_reason" in booking.keys() else None)
+    log_audit(conn, "booking_declined", target=booking["reference_code"], details=why,
+              via=via, actor=user_id)
 
-    was_paid = booking["payment_status"] == "paid"
-    refunded, refund_error = refund_booking(conn, booking)
+    # Paid anything at all, not paid in full: a deposit taken on a request that
+    # is then declined is owed back as surely as the whole price.
+    was_paid = amount_paid_for(conn, "room", booking) > 0.005
+    refunded, refund_error = (refund_booking(conn, booking, user_id=user_id)
+                              if refund and was_paid else (False, None))
     refund_error = refund_error if was_paid else None
     refund_note = ""
     if refunded:
         refund_note = " Your payment has been refunded."
-    elif booking["payment_status"] == "paid":
+    elif was_paid:
         refund_note = " We'll be in touch about your refund."
 
     # Commit before sending, exactly as confirm_booking_by_id does — the guest
@@ -51111,7 +53280,7 @@ def decline_booking_by_id(conn, booking_id):
     return True, refunded, refund_error
 
 
-def decline_one_and_follow_up(conn, booking_id):
+def decline_one_and_follow_up(conn, booking_id, *, refund=True, user_id=None):
     """Decline a booking and do everything that follows from declining it.
 
     Not the same job as decline_booking_by_id, which is the state change and the
@@ -51134,7 +53303,8 @@ def decline_one_and_follow_up(conn, booking_id):
 
     Returns (declined, refunded, refund_error, notified).
     """
-    declined, refunded, refund_error = decline_booking_by_id(conn, booking_id)
+    declined, refunded, refund_error = decline_booking_by_id(
+        conn, booking_id, refund=refund, user_id=user_id)
     if not declined:
         return False, refunded, refund_error, []
     # Re-read: the helper has committed by now, and the dates are what the
@@ -51175,8 +53345,12 @@ def decline_booking(booking_id):
         # write that is still in a transaction when a message goes out is a
         # message that can exist with nothing behind it.
         conn.commit()
+    user = current_user()
+    may_refund = can_reach(user, "refund_desk")
+    before = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    held = amount_paid_for(conn, "room", before) if before else 0.0
     declined, refunded, refund_error, notified = decline_one_and_follow_up(
-        conn, booking_id)
+        conn, booking_id, refund=may_refund, user_id=user["id"])
     if not declined:
         conn.close()
         abort(404)
@@ -51188,7 +53362,9 @@ def decline_booking(booking_id):
         remaining = matching_waitlist_entries(conn, booking["arrival_date"], booking["departure_date"])
         waitlist_note = f" {len(remaining)} waitlist entr{'y wants' if len(remaining) == 1 else 'ies want'} overlapping dates — check the waitlist." if remaining else ""
     conn.close()
-    flash("Booking declined." + (" Payment refunded." if refunded else (f" Refund failed: {refund_error}" if refund_error else "")) + waitlist_note, "success")
+    waiting = (f" The €{held:.2f} they paid is on the owner's list to give back."
+               if held > 0.005 and not may_refund else "")
+    flash("Booking declined." + (" Payment refunded." if refunded else (f" Refund failed: {refund_error}" if refund_error else "")) + waiting + waitlist_note, "success")
     return redirect(url_for("admin_bookings"))
 
 
@@ -51197,7 +53373,10 @@ def decline_booking(booking_id):
 def bulk_decline_bookings():
     booking_ids = [int(i) for i in request.form.getlist("booking_ids") if i.isdigit()]
     conn = get_db()
+    user = current_user()
+    may_refund = can_reach(user, "refund_desk")
     declined, skipped, refund_failures, notified_total = 0, [], [], 0
+    left_for_owner = []
     for bid in booking_ids:
         # The state BEFORE the attempt, because the helper returns no reason and
         # afterwards the row looks the same whether this call declined it or
@@ -51206,7 +53385,12 @@ def bulk_decline_bookings():
             "SELECT reference_code, status FROM bookings WHERE id = ?",
             (bid,)).fetchone()
         label = was["reference_code"] if was else f"#{bid}"
-        ok, _refunded, refund_error, notified = decline_one_and_follow_up(conn, bid)
+        paid_row = conn.execute("SELECT * FROM bookings WHERE id = ?", (bid,)).fetchone()
+        paid_before = amount_paid_for(conn, "room", paid_row) if paid_row else 0.0
+        ok, _refunded, refund_error, notified = decline_one_and_follow_up(
+            conn, bid, refund=may_refund, user_id=user["id"])
+        if ok and paid_before > 0.005 and not may_refund:
+            left_for_owner.append(label)
         if not ok:
             skipped.append((label, "no longer there" if not was
                             else f"already {was['status']}"))
@@ -51228,6 +53412,9 @@ def bulk_decline_bookings():
         msg += (" Refunds did NOT go through for "
                 + ", ".join(refund_failures) + " — these need doing by hand.")
         category = "error"
+    if left_for_owner:
+        msg += (" What " + ", ".join(left_for_owner)
+                + " paid is on the owner's list to give back.")
     flash(msg, category)
     return redirect(url_for("admin_bookings"))
 
@@ -51244,18 +53431,52 @@ def cancel_booking_admin(booking_id):
     if not booking:
         conn.close()
         abort(404)
-    conn.execute(
-        "UPDATE bookings SET status='cancelled', decided_at=? WHERE id=?",
-        (datetime.now(timezone.utc).isoformat(), booking_id),
+    # WHY, at the time, when the owner knows it. It decides whose any money
+    # still held is -- the house's under the terms, or the guest's where the
+    # house could not do what it promised -- and it could only be put on
+    # afterwards, from the cancellations page, so it was almost always blank.
+    why = request.form.get("cancel_reason", "")
+    why = why if why in CANCEL_REASONS else None
+    # Once. A second press sent the guest a second cancellation and would
+    # write a second line against a stay that went once.
+    cur = conn.execute(
+        """UPDATE bookings SET status='cancelled', decided_at=?,
+                  cancel_reason=COALESCE(?, cancel_reason)
+            WHERE id=? AND status IN ('pending', 'confirmed')""",
+        (datetime.now(timezone.utc).isoformat(), why, booking_id),
     )
+    if not cur.rowcount:
+        conn.close()
+        flash("That booking was already cancelled or decided.", "error")
+        return redirect(url_for("admin_bookings"))
+    log_audit(conn, "booking_cancelled", target=booking["reference_code"],
+              details=CANCEL_REASONS.get(why) if why else None)
     conn.commit()
 
-    # Cancelling deliberately does NOT refund. House terms are non-refundable,
-    # and refunds here are a case-by-case decision — so the money only moves
-    # when the owner explicitly says so on the refund form. This used to fire
-    # a full Stripe refund automatically, which handed back every euro on a
-    # mis-click and contradicted the stated policy.
-    still_held = refundable_amount(conn, "room", booking) if booking["payment_status"] == "paid" else 0
+    # Cancelling does NOT refund on its own. House terms are non-refundable,
+    # and refunds here are a case-by-case decision -- so the money only moves
+    # when the owner says so. This used to fire a full Stripe refund
+    # automatically, which handed back every euro on a mis-click.
+    #
+    # BUT THE OWNER CAN SAY SO HERE, in the same step. The terms promise a full
+    # refund when the house is the one calling a stay off, and that meant a
+    # cancellation, then a second page, then a refund per payment.
+    refund_note = ""
+    if request.form.get("refund_paid") == "1" and can_reach(current_user(), "refund_desk"):
+        back, by_hand, errors = refund_everything(
+            conn, "room", booking, REFUND_REASON_LABELS["house_cancelled"], "house_cancelled",
+            current_user()["id"])
+        if back > 0.005:
+            log_audit(conn, "refund_issued", target=f"room booking {booking['reference_code']}",
+                      details=f"€{back:.2f} — the house called it off")
+            conn.commit()
+            send_refund_letter(conn, "room", booking_id, back, "stripe")
+            refund_note += f" €{back:.2f} refunded to the card."
+        if by_hand:
+            refund_note += " Paid another way, to give back by hand: " + ", ".join(by_hand) + "."
+        if errors:
+            refund_note += " Not refunded: " + "; ".join(errors) + "."
+    still_held = refundable_amount(conn, "room", booking)
 
     # Through write_about_stay, like the confirmation, so anybody the guest
     # asked us to copy hears the booking is gone. This went to the guest alone:
@@ -51278,8 +53499,50 @@ def cancel_booking_admin(booking_id):
     conn.close()
     money_note = (f" €{still_held:.2f} is still held — issue a refund from the booking if you want to give any of it back."
                   if still_held > 0 else "")
-    flash("Booking cancelled." + money_note + waitlist_note, "success")
+    flash("Booking cancelled." + refund_note + money_note + waitlist_note, "success")
     return redirect(url_for("admin_bookings"))
+
+
+def refunds_view(rows, args):
+    """Every refund through the standard toolbar, for the page and its CSV.
+
+    It had four hand-made category buttons and nothing else, so "what did we
+    give back for goodwill this year" meant reading every row. An old
+    ?category= link is the What-for chip.
+    """
+    args = args.to_dict() if hasattr(args, "to_dict") else dict(args)
+    if args.get("category") and "product" not in args:
+        args["product"] = REFUND_CATEGORY_LABELS.get(args["category"], "")
+    before = "Before reasons were chosen"
+    return list_view(
+        rows, args,
+        search=["guest_name", "guest_email", "reference_code", "reason", "stripe_refund_id"],
+        search_hint="Search guest, email, reference or reason",
+        facets=[
+            facet("product", "What for", lambda r: REFUND_CATEGORY_LABELS.get(r["category"]),
+                  order=["Stay", "Atelier", "Event", "Dinner"]),
+            facet("how", "How", lambda r: ("To a card" if r["method"] == "stripe"
+                                           else "Given back another way"),
+                  order=["To a card", "Given back another way"]),
+            facet("why", "Why", lambda r: ((REFUND_REASON_LABELS.get(r["reason_code"])
+                                            or SYSTEM_REFUND_REASONS.get(r["reason_code"]))
+                                           if r["reason_code"] else before),
+                  order=[label for _k, label in REFUND_REASONS]
+                  + list(SYSTEM_REFUND_REASONS.values()) + [before]),
+        ],
+        sorts=[
+            sort_option("recent", "Newest first", lambda r: r["created_at"] or "", reverse=True),
+            sort_option("largest", "Largest first", lambda r: -(r["amount"] or 0)),
+        ],
+        default_sort="recent",
+    )
+
+
+def _all_refunds(conn):
+    return conn.execute(
+        """SELECT refunds.*, users.name AS refunded_by_name FROM refunds
+           LEFT JOIN users ON users.id = refunds.refunded_by_user_id
+           ORDER BY refunds.created_at DESC, refunds.id DESC""").fetchall()
 
 
 @app.route("/admin/refunds")
@@ -51287,45 +53550,400 @@ def cancel_booking_admin(booking_id):
 def admin_refunds():
     """Every refund ever issued, in one place. The house terms are
     non-refundable and each refund is a discretionary call, so this doubles as
-    the record of why each exception was made."""
+    the record of why each exception was made -- and now which payment it went
+    back against, and whether it came off the bill."""
     conn = get_db()
-    category = request.args.get("category", "").strip()
-    query = """SELECT refunds.*, users.name AS refunded_by_name FROM refunds
-               LEFT JOIN users ON users.id = refunds.refunded_by_user_id"""
-    params = []
-    if category in ("room", "restaurant", "workshop", "event"):
-        query += " WHERE refunds.category = ?"
-        params.append(category)
-    query += " ORDER BY refunds.created_at DESC"
-    refunds = conn.execute(query, params).fetchall()
-
-    totals = conn.execute(
-        """SELECT COALESCE(SUM(amount), 0) AS all_time,
-                  COALESCE(SUM(CASE WHEN created_at >= ? THEN amount END), 0) AS last_30,
-                  COUNT(*) AS count FROM refunds""",
-        ((datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),),
-    ).fetchone()
-    by_category = conn.execute(
-        "SELECT category, COUNT(*) AS c, COALESCE(SUM(amount), 0) AS total FROM refunds GROUP BY category"
-    ).fetchall()
+    rows = _all_refunds(conn)
     conn.close()
-    return render_template("admin_refunds.html", refunds=refunds, totals=totals,
-                           by_category=by_category, category=category)
+    lv = refunds_view(rows, request.args)
+    shown = lv["rows"]
+    since = (datetime.now(timezone.utc) - timedelta(days=REFUNDS_RECENT_DAYS)).isoformat()
+    totals = {
+        "shown": round(sum(r["amount"] or 0 for r in shown), 2),
+        "last_30": round(sum(r["amount"] or 0 for r in shown
+                             if (r["created_at"] or "") >= since), 2),
+        "count": len(shown),
+        "taken_off": round(sum(r["reduces_bill"] or 0 for r in shown), 2),
+    }
+    conn = get_db()
+    owed_back = money_to_give_back(conn)
+    failed = failed_refunds_to_redo(conn)
+    left_owing = refunds_left_owing(conn)
+    disputes = conn.execute(
+        """SELECT * FROM payment_disputes
+            ORDER BY (closed_at IS NOT NULL), COALESCE(evidence_due_by, '9999'), opened_at DESC
+            LIMIT 30""").fetchall()
+    conn.close()
+    return render_template("admin_refunds.html", refunds=shown, lv=lv, totals=totals,
+                           labels=REFUND_CATEGORY_LABELS, owed_back=owed_back,
+                           failed=failed, left_owing=left_owing, disputes=disputes,
+                           dispute_words=DISPUTE_REASON_WORDS,
+                           export_q=request.query_string.decode("utf-8", "replace"))
 
 
 @app.route("/admin/refunds/export.csv")
 @owner_required
 def export_refunds_csv():
+    """The view on screen, not every refund whatever the page showed."""
     conn = get_db()
-    rows = conn.execute(
-        """SELECT refunds.*, users.name AS refunded_by_name FROM refunds
-           LEFT JOIN users ON users.id = refunds.refunded_by_user_id
-           ORDER BY refunds.created_at DESC"""
-    ).fetchall()
+    rows = _all_refunds(conn)
     conn.close()
+    lv = refunds_view(rows, request.args)
     fieldnames = ["created_at", "category", "reference_code", "guest_name", "guest_email",
-                  "amount", "reason", "method", "stripe_refund_id", "refunded_by_name"]
-    return csv_response(fieldnames, rows, "refunds.csv")
+                  "amount", "reason", "reason_code", "method", "payment_key",
+                  "reduces_bill", "stripe_refund_id", "guest_told_at", "refunded_by_name"]
+    return csv_response(fieldnames, lv["rows"],
+                        "refunds_filtered.csv" if lv["filtered"] else "refunds.csv")
+
+
+REFUND_HOW_LINES = {
+    "stripe": ("It is going back to the card you paid with. Banks usually take five to "
+               "ten working days to show it."),
+    "bank_transfer": "It is coming to you by bank transfer.",
+    "cash": "It was handed back to you in cash.",
+    "other": "",
+}
+
+
+def _refund_balance_line(category, booking, owed):
+    """What is left on the booking, said in the letter that says what went back."""
+    if not booking_stands(category, booking):
+        return ""
+    if owed > 0.005:
+        return f"There is €{owed:.2f} still to pay on it."
+    return "Nothing more is owed on it."
+
+
+def send_refund_letter(conn, category, booking_id, amount, method):
+    """Tell whoever paid that money has gone back, and how it is travelling.
+
+    A refund was the one movement of a guest's money nobody wrote to them
+    about. A decline said so in its own letter; a refund made on its own -- the
+    goodwill kind, given because something fell short -- reached their card in
+    silence, which reads as a mistake to anybody checking a statement.
+    Returns whether a letter went.
+    """
+    base = {"amount": f"€{amount:.2f}", "refund_how": REFUND_HOW_LINES.get(method, "")}
+    if category == "room":
+        b = conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+               JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
+            (booking_id,)).fetchone()
+        if not b:
+            return False
+        bill = booking_bill(conn, booking_id)
+        subject, body, letter = render_email_template(conn, "refund_issued", dict(
+            base, guest_name=b["guest_name"], reference_code=b["reference_code"],
+            what_for=(f"for your stay in {b['room_name']}, "
+                      f"{format_date_human(b['arrival_date'])} to "
+                      f"{format_date_human(b['departure_date'])}"),
+            balance_line=_refund_balance_line("room", b, bill["owed"] if bill else 0)))
+        # Committed first: with no provider the letter is held in the outbox on
+        # a connection of its own, which cannot write while this one is open.
+        conn.commit()
+        if subject:
+            write_about_stay(b, subject, body, html=letter)
+        return bool(subject)
+    if category == "workshop":
+        r = conn.execute(
+            """SELECT wb.*, ws.start_date, ws.end_date, w.title FROM workshop_bookings wb
+               JOIN workshop_sessions ws ON ws.id = wb.session_id
+               JOIN workshops w ON w.id = ws.workshop_id WHERE wb.id = ?""",
+            (booking_id,)).fetchone()
+        if not r:
+            return False
+        due, _charged, _paid = workshop_balance_due(conn, booking_id)
+        conn.commit()
+        send_workshop_email(conn, r, "refund_issued", dict(
+            base, guest_name=r["guest_name"], reference_code=r["reference_code"],
+            what_for=f"for {r['title']}, {format_date_range(r['start_date'], r['end_date'])}",
+            balance_line=_refund_balance_line("workshop", r, due)))
+        return True
+    if category == "event":
+        e = conn.execute("SELECT * FROM event_inquiries WHERE id = ?", (booking_id,)).fetchone()
+        if not e:
+            return False
+        bill = event_bill(conn, booking_id)
+        when = format_date_human(e["preferred_date"]) if e["preferred_date"] else ""
+        conn.commit()
+        send_event_email(conn, e, "refund_issued", dict(
+            base, guest_name=e["contact_name"], reference_code=e["reference_code"],
+            what_for=f"for your {(e['event_type'] or 'event')}" + (f" on {when}" if when else ""),
+            balance_line=_refund_balance_line("event", e, bill["owed"] if bill else 0)))
+        return True
+    if category == "restaurant":
+        r = conn.execute("SELECT * FROM restaurant_bookings WHERE id = ?",
+                         (booking_id,)).fetchone()
+        if not r:
+            return False
+        conn.commit()
+        send_restaurant_email(conn, r, "refund_issued", dict(
+            base, guest_name=r["guest_name"], reference_code=r["reference_code"],
+            what_for=f"for your table on {format_date_human(r['dinner_date'])}",
+            balance_line=""))
+        return True
+    return False
+
+
+def refund_desk_context(conn, category, booking):
+    """Everything the refund desk shows for one booking: who and what it is,
+    what it cost and what came in, each payment with what can still go back
+    against it, and every refund already made."""
+    bid = booking["id"]
+    ref = _booking_field(booking, "reference_code") or f"#{bid}"
+    given = conn.execute(
+        """SELECT COALESCE(SUM(reduces_bill), 0) AS off FROM refunds
+           WHERE category = ? AND booking_id = ?""", (category, bid)).fetchone()["off"] or 0.0
+    if category == "room":
+        row = conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+               JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
+            (bid,)).fetchone()
+        bill = booking_bill(conn, bid)
+        head = {"who": row["guest_name"], "what": row["room_name"],
+                "when": format_date_range(row["arrival_date"], row["departure_date"]),
+                "back": url_for("admin_bookings", q=ref, when=LIST_ALL)}
+        money = {"cost": bill["total"], "received": bill["paid"], "refunded": bill["refunded"],
+                 "owed": bill["owed"], "credit": bill["overpaid"]}
+    elif category == "workshop":
+        row = conn.execute(
+            """SELECT wb.*, ws.start_date, ws.end_date, w.title FROM workshop_bookings wb
+               JOIN workshop_sessions ws ON ws.id = wb.session_id
+               JOIN workshops w ON w.id = ws.workshop_id WHERE wb.id = ?""",
+            (bid,)).fetchone()
+        due, charged, paid = workshop_balance_due(conn, bid)
+        head = {"who": row["guest_name"], "what": row["title"],
+                "when": format_date_range(row["start_date"], row["end_date"]),
+                "back": url_for("admin_workshop_registrations", q=ref, when=LIST_ALL)}
+        money = {"cost": charged, "received": paid,
+                 "refunded": refunded_so_far(conn, "workshop", bid),
+                 "owed": round(max(due, 0.0), 2), "credit": round(max(-due, 0.0), 2)}
+    elif category == "event":
+        bill = event_bill(conn, bid)
+        head = {"who": booking["contact_name"],
+                "what": (booking["event_type"] or "event").capitalize(),
+                "when": (format_date_human(booking["preferred_date"])
+                         if booking["preferred_date"] else "No date yet"),
+                "back": url_for("admin_events", q=ref, when=LIST_ALL)}
+        money = {"cost": bill["quoted"], "received": bill["paid"], "refunded": bill["refunded"],
+                 "owed": bill["owed"], "credit": bill["overpaid"]}
+    else:
+        gross = amount_paid_for(conn, "restaurant", booking)
+        back = refunded_so_far(conn, "restaurant", bid)
+        head = {"who": booking["guest_name"], "what": f"Table for {booking['party_size']}",
+                "when": format_date_human(booking["dinner_date"]),
+                "back": url_for("admin_restaurant", q=ref, when=LIST_ALL)}
+        money = {"cost": round(float(booking["total_price"] or 0), 2),
+                 "received": round(gross - back, 2), "refunded": back,
+                 "owed": None, "credit": 0.0}
+    money["taken_off"] = round(given, 2)
+    payments = payments_received(conn, category, booking)
+    against = {p["key"]: p["method_label"] + (f", {house_date_iso(p['at'])}" if p["at"] else "")
+               for p in payments}
+    history = conn.execute(
+        """SELECT refunds.*, users.name AS by_name FROM refunds
+           LEFT JOIN users ON users.id = refunds.refunded_by_user_id
+           WHERE refunds.category = ? AND refunds.booking_id = ?
+           ORDER BY refunds.created_at DESC, refunds.id DESC""", (category, bid)).fetchall()
+    return {
+        "category": category,
+        "kind": REFUND_CATEGORY_LABELS[category], "booking": booking,
+        "ref": ref, "head": head, "money": money, "payments": payments, "against": against,
+        "history": history, "ceiling": refundable_amount(conn, category, booking),
+        "stands": booking_stands(category, booking),
+        "email": _booking_field(booking, "guest_email", "contact_email"),
+        "reasons": REFUND_REASONS, "bill_reduced": BILL_REDUCED, "bill_stands": BILL_STANDS,
+        "refundable_count": sum(1 for p in payments if p["refundable"] > 0.005),
+    }
+
+
+def refund_desk_submit(conn, category, booking, form, user_id):
+    """Make the refund the desk's form asks for. Returns (message, flash kind)."""
+    reason_code = (form.get("reason_code") or "").strip()
+    note = " ".join((form.get("note") or "").split())[:300]
+    if reason_code not in REFUND_REASON_LABELS:
+        return "Say why the money is going back.", "error"
+    if reason_code == "other" and not note:
+        return "Something else: say what, in the note.", "error"
+    reason = REFUND_REASON_LABELS[reason_code] + (f": {note}" if note else "")
+    bill_effect = BILL_STANDS if form.get("bill") == BILL_STANDS else BILL_REDUCED
+    choice = (form.get("payment") or "").strip()
+    payments = payments_received(conn, category, booking)
+    ids, errors = [], []
+
+    def natural_method(p):
+        if p and p["card"]:
+            return "stripe"
+        return p["method"] if p and p["method"] in REFUND_METHODS else "other"
+
+    if choice == "all":
+        # Each payment back the way it came, one refund apiece. A failure on
+        # one is named and does not stop the others.
+        for p in payments:
+            if p["refundable"] <= 0.005:
+                continue
+            ok, err, new = make_refund(
+                conn, category, booking, p["refundable"], reason, method=natural_method(p),
+                user_id=user_id, payment_key=p["key"], reason_code=reason_code,
+                bill_effect=bill_effect)
+            ids += new
+            if not ok:
+                errors.append(f"{p['method_label']} €{p['refundable']:.2f}: {err}")
+    else:
+        chosen = next((p for p in payments if p["key"] == choice), None) if choice else None
+        if choice and not chosen:
+            return "That payment is not on this booking.", "error"
+        raw = (form.get("amount") or "").strip()
+        amount = raw or (chosen["refundable"] if chosen
+                         else refundable_amount(conn, category, booking))
+        method = (form.get("method") or "").strip()
+        if method not in REFUND_METHODS:
+            method = natural_method(chosen)
+        ok, err, new = make_refund(
+            conn, category, booking, amount, reason, method=method, user_id=user_id,
+            payment_key=chosen["key"] if chosen else None, reason_code=reason_code,
+            bill_effect=bill_effect)
+        ids += new
+        if not ok:
+            errors.append(err)
+    if not ids:
+        return "Refund failed: " + ("; ".join(errors) or "nothing was refunded."), "error"
+
+    rows = conn.execute(f"SELECT * FROM refunds WHERE id IN ({','.join('?' * len(ids))})",
+                        ids).fetchall()
+    total = round(sum(r["amount"] or 0 for r in rows), 2)
+    off = round(sum(r["reduces_bill"] or 0 for r in rows), 2)
+    ref = _booking_field(booking, "reference_code") or f"#{booking['id']}"
+    log_audit(conn, "refund_issued", target=f"{REFUND_AUDIT_WORDS[category]} {ref}",
+              details=f"€{total:.2f} — {reason}"
+                      + (f"; €{off:.2f} taken off the bill" if off > 0.005 else ""))
+    conn.commit()
+    told = ""
+    if form.get("tell_guest") == "1" and _booking_field(booking, "guest_email", "contact_email"):
+        methods = {r["method"] for r in rows}
+        if send_refund_letter(conn, category, booking["id"], total,
+                              methods.pop() if len(methods) == 1 else "other"):
+            conn.execute(f"UPDATE refunds SET guest_told_at = ? "
+                         f"WHERE id IN ({','.join('?' * len(ids))})",
+                         [datetime.now(timezone.utc).isoformat()] + ids)
+            told = " They have been told."
+        conn.commit()
+    msg = (f"Refund of €{total:.2f} recorded."
+           + (f" €{off:.2f} came off the bill." if off > 0.005 else "") + told)
+    if errors:
+        return msg + " Not all of it went: " + "; ".join(errors), "error"
+    return msg, "success"
+
+
+@app.route("/admin/refunds/<category>/<int:booking_id>/off-the-bill/<int:refund_id>",
+           methods=["POST"])
+@owner_required
+def refund_off_the_bill(category, booking_id, refund_id):
+    """Take a refund off the price after it was made.
+
+    For a refund whose price stood -- above all one made in Stripe's dashboard,
+    where nobody was asked -- that turns out to have been a gesture: the bill
+    has been asking for the money again, and this is the owner saying it
+    should not.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM refunds WHERE id = ? AND category = ? AND booking_id = ?",
+                       (refund_id, category, booking_id)).fetchone()
+    booking = _booking_row(conn, category, booking_id)
+    if not row or not booking or (row["amount"] or 0) <= 0:
+        conn.close()
+        abort(404)
+    back = url_for("refund_desk", category=category, booking_id=booking_id)
+    if not booking_stands(category, booking):
+        conn.close()
+        flash("It is not going ahead, so there is no bill to change.", "error")
+        return redirect(back)
+    take = round(min(row["amount"] - (row["reduces_bill"] or 0),
+                     _owed_on(conn, category, booking_id)), 2)
+    if take <= 0.005:
+        conn.close()
+        flash("None of it is owed, so there is nothing to take off.", "error")
+        return redirect(back)
+    conn.execute("UPDATE refunds SET reduces_bill = COALESCE(reduces_bill, 0) + ? WHERE id = ?",
+                 (take, refund_id))
+    if category == "workshop":
+        add_workshop_transaction(conn, booking_id, "discount",
+                                 f"Taken off the bill — {row['reason']}", take,
+                                 user_id=current_user()["id"])
+    log_audit(conn, "refund_taken_off_bill",
+              target=f"{REFUND_AUDIT_WORDS[category]} {_booking_field(booking, 'reference_code')}",
+              details=f"€{take:.2f}")
+    conn.commit()
+    conn.close()
+    flash(f"€{take:.2f} taken off the bill.", "success")
+    return redirect(back)
+
+
+@app.route("/admin/refunds/<category>/<int:booking_id>", methods=["GET", "POST"])
+@owner_required
+def refund_desk(category, booking_id):
+    """One booking's money going back: every payment it came in by, what has
+    gone back against each, and the form that sends more.
+
+    The refund used to be a folded box on each booking list -- an amount, a
+    method, a reason -- that could not say which payment it meant, what it did
+    to the bill, or tell the guest. Stays, ateliers, dinners and events all
+    come here now; events, which had no way to refund at all, included.
+    """
+    table = REFUND_BOOKING_TABLES.get(category)
+    if not table:
+        abort(404)
+    conn = get_db()
+    booking = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    if request.method == "POST":
+        message, kind = refund_desk_submit(conn, category, booking, request.form,
+                                           current_user()["id"])
+        conn.close()
+        flash(message, kind)
+        return redirect(url_for("refund_desk", category=category, booking_id=booking_id))
+    context = refund_desk_context(conn, category, booking)
+    conn.close()
+    return render_template("admin_refund_desk.html", **context)
+
+
+# What an edit to a stay can change, and how each is written on its history:
+# by value for the stay's own facts, by name only for anything about a person.
+BOOKING_EDIT_FIELDS = (
+    ("arrival_date", "arrival", "date"), ("departure_date", "departure", "date"),
+    ("party_size", "party", "value"), ("guests_under_18", "under 18", "value"),
+    ("total_price", "total", "euro"), ("source", "came through", "value"),
+    ("heard_via", "heard of us", "value"),
+    ("guest_phone", "phone", "person"), ("special_requests", "special requests", "person"),
+    ("booked_by_name", "payer's name", "person"), ("booked_by_email", "payer's address", "person"),
+    ("second_contact_name", "second contact's name", "person"),
+    ("second_contact_email", "second contact's address", "person"),
+)
+
+
+def booking_edit_changes(before, after):
+    """The changes an edit made to a stay, in words, for its history."""
+    out = []
+    for column, label, kind in BOOKING_EDIT_FIELDS:
+        old, new = before[column], after.get(column)
+        if kind == "euro":
+            old, new = round(old or 0, 2), round(new or 0, 2)
+        elif kind == "value" and column == "guests_under_18":
+            old, new = old or 0, new or 0
+        else:
+            old = old if old not in ("", None) else None
+            new = new if new not in ("", None) else None
+        if old == new:
+            continue
+        if kind == "person":
+            out.append(f"{label} changed")
+            continue
+        show = {"date": lambda v: format_date_human(v) if v else "—",
+                "euro": lambda v: f"€{v:,.2f}"}.get(kind, lambda v: "—" if v is None else str(v))
+        out.append(f"{label} {show(old)} → {show(new)}")
+    return out
 
 
 @app.route("/admin/bookings/<int:booking_id>/edit", methods=["GET", "POST"])
@@ -51397,7 +54015,15 @@ def edit_booking(booking_id):
         # room was AGREED at, never out of a fresh quote.
         old_room_portion = quoted_room_total(conn, booking, room_for_pricing)
         extras_portion = (booking["total_price"] or 0) - old_room_portion
-        new_room_portion = compute_room_total(conn, room_for_pricing, arrival, departure)
+        if (arrival.isoformat(), departure.isoformat()) == (booking["arrival_date"],
+                                                            booking["departure_date"]):
+            # The same nights, at the price they were agreed at. Quoting them
+            # afresh re-priced the stay at whatever the rate card said today
+            # on any save at all -- so correcting a phone number could change
+            # what the guest owed, and nothing said so.
+            new_room_portion = old_room_portion
+        else:
+            new_room_portion = compute_room_total(conn, room_for_pricing, arrival, departure)
         new_total = new_room_portion + extras_portion
         new_total = new_total or None
 
@@ -51413,6 +54039,19 @@ def edit_booking(booking_id):
         under_18 = int(under_18_raw) if under_18_raw.isdigit() else (booking["guests_under_18"] or 0)
         under_18 = max(0, min(under_18, party_size))
 
+        # WHAT MOVED, written down. This page links to its own history and
+        # wrote nothing to it, so "who moved these dates" -- the question the
+        # history exists for -- had no answer for the change it is most asked
+        # about. The stay's own facts by value; anything about a person by
+        # name only, since this trail is kept for ever and outlives an erasure.
+        changes = booking_edit_changes(booking, {
+            "arrival_date": arrival.isoformat(), "departure_date": departure.isoformat(),
+            "party_size": party_size, "guests_under_18": under_18,
+            "total_price": new_total, "source": source, "heard_via": heard_via,
+            "guest_phone": guest_phone or None, "special_requests": special_requests or None,
+            "booked_by_name": booked_by_name or None, "booked_by_email": booked_by_email or None,
+            "second_contact_name": second_name or None,
+            "second_contact_email": second_email or None})
         conn.execute(
             """UPDATE bookings SET arrival_date=?, departure_date=?, party_size=?, guest_phone=?,
                special_requests=?, total_price=?, guests_under_18=?,
@@ -51430,6 +54069,9 @@ def edit_booking(booking_id):
         # The tax used to be recomputed inline right here and the schedule not
         # at all, which is how one of nine cells came to be covered.
         restamp_stay(conn, booking_id)
+        if changes:
+            log_audit(conn, "booking_edited", target=booking["reference_code"],
+                      details="; ".join(changes))
         conn.commit()
 
         # No guest-row date sync any more: the booking IS the record of when
@@ -51448,9 +54090,17 @@ def edit_booking(booking_id):
                                    _external=True),
         })
         conn.close()
-        if subject:
+        # The letter gives the dates and the party, so it goes when one of
+        # those moved. It went on every save: a corrected phone number sent the
+        # guest -- and anybody copied -- "your booking has been updated", with
+        # nothing different in it to find.
+        told = (booking["arrival_date"] != arrival.isoformat()
+                or booking["departure_date"] != departure.isoformat()
+                or booking["party_size"] != party_size)
+        if subject and told:
             write_about_stay(booking, subject, body, html=letter)
-        flash("Booking updated.", "success")
+        flash(("Booking updated." + (" The guest has been sent the new details." if told else ""))
+              if changes else "Nothing had changed.", "success")
         return redirect(url_for("admin_bookings"))
 
     group = booking_group(conn, booking["id"])
@@ -51791,6 +54441,16 @@ def confirm_restaurant_booking(reservation_id):
     if not booking:
         conn.close()
         abort(404)
+    # A STANDING INSTRUCTION MEANS THE HOUSE, and the house includes its table.
+    # A stay and an atelier have refused a cautioned guest for a while; a
+    # dinner never asked.
+    caution = guest_caution_for(conn, email=booking["guest_email"], name=booking["guest_name"])
+    if caution and caution["caution_level"] == "refuse":
+        conn.close()
+        flash(f"Not confirmed: there is a standing instruction not to accept a booking from "
+              f"{caution['name']} ({caution['caution']}) — lift it on their profile if that "
+              "has changed.", "error")
+        return redirect(url_for("admin_restaurant"))
     cur = conn.execute(
         "UPDATE restaurant_bookings SET status = 'confirmed', decided_at = ? WHERE id = ? AND status = 'pending'",
         (datetime.now(timezone.utc).isoformat(), reservation_id),
@@ -51799,6 +54459,8 @@ def confirm_restaurant_booking(reservation_id):
         conn.close()
         abort(404)
     log_audit(conn, "restaurant_booking_confirmed", target=booking["reference_code"])
+    ensure_guest_profile(conn, booking["guest_name"], booking["guest_email"],
+                         booking["guest_phone"])
     conn.commit()
 
     confirmed_total = conn.execute(
@@ -51908,9 +54570,19 @@ def decline_restaurant_booking(reservation_id):
     log_audit(conn, "restaurant_booking_declined", target=booking["reference_code"])
     conn.commit()
 
-    refunded, refund_error = refund_restaurant_booking(
-        conn, booking, reason="Reservation declined by the château",
-        user_id=current_user()["id"])
+    if can_reach(current_user(), "refund_desk"):
+        refunded, refund_error = refund_restaurant_booking(
+            conn, booking, reason="Reservation declined by the château",
+            user_id=current_user()["id"])
+    else:
+        # Refunds are the owner's call. The deposit stays, and the owner is
+        # asked, rather than it moving on somebody else's say-so or not at all.
+        refunded, refund_error = False, None
+        if refundable_amount(conn, "restaurant", booking) > 0.005:
+            _payment_task(conn, f"Refund to decide: {booking['guest_name']} ({booking['reference_code']})",
+                          "A table was declined by somebody who may not give money back. "
+                          "The deposit is still held; its refund page sends it back.")
+            conn.commit()
     refund_note = " Your payment has been refunded." if refunded else (" We'll be in touch about your refund." if booking["payment_status"] == "paid" else "")
     send_restaurant_email(conn, booking, "restaurant_declined", restaurant_email_context(booking, refund_note))
 
@@ -51944,9 +54616,19 @@ def cancel_restaurant_booking_admin(reservation_id):
     log_audit(conn, "restaurant_booking_cancelled", target=booking["reference_code"])
     conn.commit()
 
-    refunded, refund_error = refund_restaurant_booking(
-        conn, booking, reason="Reservation cancelled by the château",
-        user_id=current_user()["id"])
+    if can_reach(current_user(), "refund_desk"):
+        refunded, refund_error = refund_restaurant_booking(
+            conn, booking, reason="Reservation cancelled by the château",
+            user_id=current_user()["id"])
+    else:
+        # Refunds are the owner's call. The deposit stays, and the owner is
+        # asked, rather than it moving on somebody else's say-so or not at all.
+        refunded, refund_error = False, None
+        if refundable_amount(conn, "restaurant", booking) > 0.005:
+            _payment_task(conn, f"Refund to decide: {booking['guest_name']} ({booking['reference_code']})",
+                          "A table was cancelled by somebody who may not give money back. "
+                          "The deposit is still held; its refund page sends it back.")
+            conn.commit()
     refund_note = " Your payment has been refunded." if refunded else (" We'll be in touch about your refund." if booking["payment_status"] == "paid" else "")
     send_restaurant_email(conn, booking, "restaurant_cancelled", restaurant_email_context(booking, refund_note))
 
@@ -53448,6 +56130,12 @@ def promo_blast_recipients(conn, segments, since_date_iso=None):
     # opt-out box by hand is the one that would silently fail to match, and
     # that is exactly the case that matters.
     if recipients:
+        # And anybody who asked us to stop using their details, before the
+        # count the owner is shown, for the same reason.
+        held_back = restricted_addresses(conn)
+        recipients = {email: name for email, name in recipients.items()
+                      if (email or "").strip().lower() not in held_back}
+    if recipients:
         opted_out = {
             (r["email"] or "").strip().lower()
             for r in conn.execute("SELECT email FROM email_optouts").fetchall()
@@ -53543,12 +56231,13 @@ def send_promo_code_blast(code_id):
         user["id"] if user else None,
         extra_context={"promo_code": promo["code"]},
     )
+    held = campaign_held_back_note(result["withheld"])
     log_audit(conn, "promo_blast_sent", target=promo["code"],
-              details=f"{result['sent']} sent, {result['failed']} failed")
+              details=f"{result['sent']} sent, {result['failed']} failed{held}")
     conn.commit()
     conn.close()
     flash(f"Sent to {result['sent']} of {result['total']} guest(s)"
-          + (f", {result['failed']} failed" if result["failed"] else "") + ".",
+          + (f", {result['failed']} failed" if result["failed"] else "") + held + ".",
           "error" if result["failed"] else "success")
     return redirect(url_for("admin_promo_codes"))
 
@@ -54418,7 +57107,9 @@ def call_off_workshop_session(session_id):
     conn = get_db()
     result = call_off_session(conn, session_id,
                               reason=request.form.get("reason", ""),
-                              user_id=session.get("user_id"))
+                              user_id=session.get("user_id"),
+                              refund=(request.form.get("refund") == "1"
+                                      and can_reach(current_user(), "refund_desk")))
     if result is None:
         conn.close()
         abort(404)
@@ -54437,6 +57128,9 @@ def call_off_workshop_session(session_id):
     if result["waitlist"]:
         extra.append(f"{result['waitlist']} on the waiting list told it is not "
                      "running")
+    if result.get("refunded"):
+        extra.append(f"EUR {sum(b for _n, b in result['refunded']):.2f} refunded to the cards "
+                     "it came from: " + ", ".join(n for n, _b in result["refunded"]))
     if result["refunds"]:
         owed = sum(r["amount"] for r in result["refunds"])
         # NAMED AND NOT MOVED. Refunds in this house are a deliberate
@@ -55471,6 +58165,8 @@ def confirm_workshop_registration_by_id(conn, registration_id, via=None):
     )
     if cur.rowcount == 0:
         return False, "not found or not pending", ""
+    ensure_guest_profile(conn, booking["guest_name"], booking["guest_email"],
+                         booking["guest_phone"] if "guest_phone" in booking.keys() else None)
     log_audit(conn, "workshop_registration_confirmed",
               target=booking["reference_code"], via=via)
     conn.commit()
@@ -55618,7 +58314,7 @@ def cancel_one_registration_and_follow_up(conn, registration, *,
     return True, notified, refund_due, not registration["do_not_email"]
 
 
-def call_off_session(conn, session_id, reason=None, user_id=None):
+def call_off_session(conn, session_id, reason=None, user_id=None, refund=False):
     """Call a whole sitting off: everybody cancelled, everybody told, once.
 
     The job that spots a session which will not reach its number has existed
@@ -55651,6 +58347,7 @@ def call_off_session(conn, session_id, reason=None, user_id=None):
               AND workshop_bookings.status IN ('pending', 'confirmed')
             ORDER BY workshop_bookings.guest_name""", (session_id,)).fetchall()
     done, skipped, refunds, untold = [], [], [], []
+    refunded_back = []
     for person in people:
         cancelled, _notified, refund_due, told = cancel_one_registration_and_follow_up(
             conn, person, offer_waitlist=False, reason=reason)
@@ -55666,7 +58363,29 @@ def call_off_session(conn, session_id, reason=None, user_id=None):
         # the three never heard that their atelier is not running.
         if not told:
             untold.append(person["guest_name"])
-        if refund_due > 0.005:
+        if refund_due > 0.005 and refund:
+            # The house called it off, so what they paid is theirs. Back to
+            # each card it came from; anything paid another way is named.
+            reg = conn.execute("SELECT * FROM workshop_bookings WHERE id = ?",
+                               (person["id"],)).fetchone()
+            back, by_hand, errors = refund_everything(
+                conn, "workshop", reg, REFUND_REASON_LABELS["house_cancelled"],
+                "house_cancelled", user_id)
+            if back > 0.005:
+                log_audit(conn, "refund_issued",
+                          target=f"workshop booking {person['reference_code']}",
+                          details=f"€{back:.2f} — the house called it off")
+                conn.commit()
+                send_refund_letter(conn, "workshop", person["id"], back, "stripe")
+            refund_due = round(refund_due - back, 2)
+            if by_hand or errors:
+                refunds.append({"name": person["guest_name"],
+                                "reference": person["reference_code"],
+                                "email": person["guest_email"],
+                                "amount": max(refund_due, 0.0)})
+            if back > 0.005:
+                refunded_back.append((person["guest_name"], back))
+        elif refund_due > 0.005:
             refunds.append({"name": person["guest_name"],
                             "reference": person["reference_code"],
                             "email": person["guest_email"], "amount": refund_due})
@@ -55698,7 +58417,7 @@ def call_off_session(conn, session_id, reason=None, user_id=None):
     conn.commit()
     return {"already": False, "session": session, "done": done,
             "skipped": skipped, "refunds": refunds, "untold": untold,
-            "waitlist": len(waiting)}
+            "waitlist": len(waiting), "refunded": refunded_back}
 
 
 def instructor_sheet(conn, token):
@@ -55907,10 +58626,34 @@ def add_workshop_transaction_route(registration_id):
         flash("Amount must be greater than zero.", "error")
         return redirect(url_for("admin_workshop_registrations"))
     conn = get_db()
-    booking = conn.execute("SELECT id FROM workshop_bookings WHERE id = ?", (registration_id,)).fetchone()
+    booking = conn.execute("SELECT * FROM workshop_bookings WHERE id = ?", (registration_id,)).fetchone()
     if not booking:
         conn.close()
         abort(404)
+    if kind == "refund":
+        # MONEY LEAVING THE HOUSE goes through the one engine. A refund typed
+        # here went straight into the ledger: no ceiling, so more could be
+        # "refunded" than was ever paid, and nothing in the refunds record, the
+        # accountant's export, revenue or the VAT working ever saw it. And the
+        # ledger is open to anybody with the workshops area, while giving money
+        # back is the owner's call.
+        if not can_reach(current_user(), "refund_desk"):
+            conn.close()
+            flash("Giving money back is the owner's call. Ask them to make the refund.",
+                  "error")
+            return redirect(url_for("admin_workshop_registrations"))
+        ok, error = issue_refund(
+            conn, "workshop", booking, round(amount, 2), description,
+            method={"cash": "cash"}.get(method or "", "other"),
+            user_id=current_user()["id"], reason_code="other", bill_effect=BILL_STANDS)
+        if ok:
+            log_audit(conn, "refund_issued", target=f"workshop booking {booking['reference_code']}",
+                      details=f"€{amount:.2f} — {description}")
+            conn.commit()
+        conn.close()
+        flash(f"Refund of €{amount:.2f} recorded." if ok else f"Refund failed: {error}",
+              "success" if ok else "error")
+        return redirect(url_for("admin_workshop_registrations"))
     add_workshop_transaction(conn, registration_id, kind, description, round(amount, 2), method=method,
                               user_id=current_user()["id"])
     log_audit(conn, "workshop_transaction_added", target=f"{kind} €{amount:.2f}")
@@ -56099,11 +58842,37 @@ def export_expenses_csv():
 @app.route("/admin/guests/export.csv")
 @owner_required
 def export_guests_csv():
+    """The guest list as a file -- the view on screen, not every profile.
+
+    It wrote out everybody whatever the page was showing, so "the guests
+    tagged press" could not be taken away without the other three hundred.
+    Now the same search, chips and order as the page, with the tags, the
+    stays, and what each has spent and still owes from their statement: the
+    one figure for it, so the file and the record cannot disagree. On the audit
+    trail by how many and which view, never by who: it is a file of names and
+    addresses, and the trail outlives an erasure.
+    """
     conn = get_db()
-    rows = conn.execute(
-        "SELECT * FROM guests WHERE merged_into_id IS NULL ORDER BY vip DESC, name").fetchall()
+    lv, stay_counts, tags = guests_list_view(conn, request.args)
+    rows = []
+    for g in lv["rows"]:
+        st = guest_account_statement(conn, g["id"])
+        rows.append(dict(g, tags="; ".join(tags.get(g["id"], [])),
+                         stays=stay_counts.get(g["id"], 0),
+                         # As numbers: the formula guard leaves numbers alone,
+                         # and a credit written as text "-300.00" would come
+                         # out of it as '-300.00, which no spreadsheet adds up.
+                         spent_with_us=round(st["lifetime_charged"], 2) if st else "",
+                         balance=round(st["balance"], 2) if st else "",
+                         caution=CAUTION_LEVELS.get(g["caution_level"] or "", "")))
+    view = ", ".join(f"{k}={v}" for k, v in sorted(request.args.items()) if k != "q")
+    log_audit(conn, "guests_exported",
+              details=f"{len(rows)} profile(s)" + (f" — {view}" if view else "")
+              + (" — searched" if lv["q"] else ""))
+    conn.commit()
     conn.close()
-    fieldnames = ["name", "email", "phone", "dietary_notes", "preferences", "vip", "notes", "created_at"]
+    fieldnames = ["name", "email", "phone", "dietary_notes", "preferences", "vip", "notes",
+                  "created_at", "tags", "stays", "spent_with_us", "balance", "caution"]
     return csv_response(fieldnames, rows, "guests.csv")
 
 
@@ -59840,7 +62609,7 @@ def set_cancel_reason(booking_id):
     """
     conn = get_db()
     row = conn.execute(
-        "SELECT guest_name, status FROM bookings WHERE id = ?",
+        "SELECT guest_name, status, reference_code FROM bookings WHERE id = ?",
         (booking_id,)).fetchone()
     if not row:
         conn.close()
@@ -59858,6 +62627,9 @@ def set_cancel_reason(booking_id):
     conn.execute(
         "UPDATE bookings SET cancel_reason = ?, cancel_note = ? WHERE id = ?",
         (reason or None, note or None, booking_id))
+    # It changes whose money is still held, so it is on the stay's history.
+    log_audit(conn, "booking_cancel_reason_set", target=row["reference_code"],
+              details=CANCEL_REASONS.get(reason) if reason else "taken off")
     conn.commit()
     conn.close()
     flash(f"Noted against {row['guest_name']}.", "success")
@@ -64662,6 +67434,8 @@ WATCH_TASK_KINDS = {
     "agreement": "An agreement about to roll over while nobody decided",
     "clocks": "A night the clocks change, with people rostered through it",
     "balances": "Workshop balances due to be collected",
+    "refund": "Money the house owes back, or a refund that needs deciding",
+    "dispute": "A card payment disputed with the guest's bank",
     "booking_com": "A Booking.com guest waiting for an answer",
 }
 
@@ -64835,11 +67609,22 @@ NOT_GUEST_TABLES = {
 # requires the record of a sale. The person is removed from them; the money
 # stays. Anything not listed here is deleted outright.
 ANONYMISE_RATHER_THAN_DELETE = {
-    "bookings": ("guest_name", "guest_email", "guest_phone"),
-    "restaurant_bookings": ("guest_name", "guest_email", "guest_phone"),
+    # And what else on the sale is about a person: the words they wrote, the
+    # somebody-else they asked us to copy or to bill. Left as they were, an
+    # "anonymised" stay still said who had stayed.
+    "bookings": ("guest_name", "guest_email", "guest_phone", "special_requests",
+                 "second_contact_name", "second_contact_email", "booked_by_name",
+                 "booked_by_email"),
+    "restaurant_bookings": ("guest_name", "guest_email", "guest_phone", "dietary_notes"),
     "workshop_bookings": ("guest_name", "guest_email", "guest_phone"),
     "refunds": ("guest_name", "guest_email"),
     "promo_code_redemptions": ("guest_email",),
+    # Three sales an erasure DELETED: an event, with its payments and its
+    # quote; a share of a split bill, which the bill still adds up; and a card
+    # dispute, which the bank still holds. The law keeps a sale, not a person.
+    "event_inquiries": ("contact_name", "contact_email", "contact_phone", "message"),
+    "booking_shares": ("name", "email", "note"),
+    "payment_disputes": ("guest_name", "guest_email"),
 }
 
 ERASED_MARKER = "[erased at the guest's request]"
@@ -65036,7 +67821,7 @@ def upcoming_guest_dates(conn, within_days=30, today=None):
     rows = []
     for guest in conn.execute(
             """SELECT * FROM guests
-                WHERE merged_into_id IS NULL
+                WHERE merged_into_id IS NULL AND restricted_at IS NULL
                   AND (COALESCE(birthday, '') != '' OR COALESCE(anniversary, '') != '')
              """).fetchall():
         for kind, value in (("birthday", guest["birthday"]),
@@ -65209,10 +67994,31 @@ def merge_guest_profiles(conn, keep_id, merge_id, user_id=None):
     fills = {}
     for column in ("email", "phone", "dietary_notes", "preferences",
                    "name_pronunciation", "birthday", "anniversary",
-                   "caution", "caution_level"):
+                   "caution", "caution_level", "access_needs", "language",
+                   "usual_arrival_time"):
         if column not in keep.keys():
             continue
         if not (keep[column] or "").strip() and (merge[column] or "").strip():
+            fills[column] = merge[column]
+    # With what goes with them, so a filled field keeps its date and its author.
+    for column, partner in (("access_needs", "access_needs_updated_at"),
+                            ("caution", "caution_set_at"),
+                            ("caution", "caution_set_by_user_id")):
+        if column in fills and partner in merge.keys():
+            fills[partner] = merge[partner]
+    # An answer about photographs beats "not asked", and a VIP stays one. The
+    # merge took neither, so folding a VIP's second profile in could lose the
+    # flag, and a no to photographs could vanish into "not asked".
+    if ((keep["photo_consent"] or "unknown") == "unknown"
+            and (merge["photo_consent"] or "unknown") != "unknown"):
+        fills["photo_consent"] = merge["photo_consent"]
+        fills["photo_consent_at"] = merge["photo_consent_at"]
+    if merge["vip"] and not keep["vip"]:
+        fills["vip"] = 1
+    # And an instruction to stop using their details, which is theirs, not a
+    # profile's: folding the profile in must not undo it.
+    if merge["restricted_at"] and not keep["restricted_at"]:
+        for column in ("restricted_at", "restricted_by_user_id", "restricted_how"):
             fills[column] = merge[column]
     # The email is the one field a unique index can refuse. Only take it if the
     # survivor has none, and the merged profile's has to be released first or
@@ -65223,9 +68029,17 @@ def merge_guest_profiles(conn, keep_id, merge_id, user_id=None):
         sets = ", ".join(f"{c} = ?" for c in fills)
         conn.execute(f"UPDATE guests SET {sets} WHERE id = ?",
                      list(fills.values()) + [keep_id])
+        # On the survivor's history, as any other change to a profile is.
+        record_profile_changes(conn, keep, {
+            c: fills.get(c, keep[c]) for c, _label, _kind in GUEST_PROFILE_FIELDS
+            if c in keep.keys()}, user_id)
 
     conn.execute("UPDATE guest_notes SET guest_id = ? WHERE guest_id = ?",
                  (keep_id, merge_id))
+    # Its tags too, once each: the survivor may carry the same one already.
+    for r in conn.execute("SELECT tag FROM guest_tags WHERE guest_id = ?", (merge_id,)).fetchall():
+        add_guest_tag(conn, keep_id, r["tag"], user_id)
+    conn.execute("DELETE FROM guest_tags WHERE guest_id = ?", (merge_id,))
     moved = conn.execute("SELECT changes() AS c").fetchone()["c"]
     # The old profile's free-text note is kept as a dated entry rather than
     # thrown away or pasted over the survivor's.
@@ -65360,10 +68174,24 @@ def guest_record(conn, guest_id):
         if e["status"] == "confirmed":
             charged += e_bill["quoted"]
             received += e_bill["paid"]
-    at_table = round(sum(float(d["total_price"] or 0) for d in dinners
-                         if d["status"] == "confirmed" and not d["no_show_at"]), 2)
     spent, paid = round(charged, 2), round(received, 2)
     owed = round(spent - paid, 2)
+    # ONE FIGURE, THE STATEMENT'S. Added up here by a second rule, it left out
+    # what a cancellation kept and what the house owes back on a stay it called
+    # off: the record could say nothing was owed while the statement, and the
+    # list of money to give back, said the house owed them.
+    statement = guest_account_statement(conn, guest_id)
+    if statement:
+        spent = statement["lifetime_charged"]
+        paid = statement["lifetime_paid"]
+        owed = round(statement["balance"], 2)
+    # And the rest of each evening at the table, which the till settles: the
+    # statement carries what was paid towards a table, and adding the whole
+    # dinner here counted that part twice.
+    at_table = round(sum(
+        max(float(d["total_price"] or 0)
+            - sum(p["amount"] for p in payments_received(conn, "restaurant", d)), 0.0)
+        for d in dinners if d["status"] == "confirmed" and not d["no_show_at"]), 2)
 
     said = conn.execute(
         """SELECT guest_feedback.*, bookings.reference_code
@@ -65397,8 +68225,21 @@ def guest_record(conn, guest_id):
         else:
             marketing = ("Has not signed up to the newsletter", None)
 
+    # And about being texted: the do-not-text list, and the yeses to more.
+    texting = None
+    number = normalise_phone(guest["phone"] or "")
+    if number:
+        stop = conn.execute("SELECT created_at FROM sms_optouts WHERE phone = ?",
+                            (number,)).fetchone()
+        yes = conn.execute("SELECT granted_at FROM sms_consents WHERE phone = ?",
+                           (number,)).fetchone()
+        texting = (("Asked not to be texted", stop["created_at"]) if stop else
+                   ("Said yes to marketing texts", yes["granted_at"]) if yes else
+                   ("Texted about their stays only", None))
+
     return {
         "marketing": marketing,
+        "texting": texting,
         # The id and the address, which the "book them again" box on the
         # profile asked for and never got -- so the box never appeared.
         "id": guest["id"], "email": guest["email"],
@@ -65422,6 +68263,330 @@ def guest_record(conn, guest_id):
     }
 
 
+STATEMENT_KINDS = {"room": "Stay", "workshop": "Atelier", "event": "Event",
+                   "restaurant": "Dinner"}
+
+
+def guest_profile_ids(conn, guest_id):
+    """This profile and every profile merged into it, however many deep."""
+    seen, todo = [], [guest_id]
+    while todo:
+        gid = todo.pop()
+        if gid in seen:
+            continue
+        seen.append(gid)
+        todo += [r["id"] for r in conn.execute(
+            "SELECT id FROM guests WHERE merged_into_id = ?", (gid,)).fetchall()]
+    return seen
+
+
+def guest_addresses(conn, guest_id):
+    """Every address this person has booked under: their own, and those of the
+    profiles merged into theirs.
+
+    A merge kept the absorbed address only as a line in a note, so a stay booked
+    under the address somebody used before the merge fell off their record and
+    off any statement of it.
+    """
+    ids = guest_profile_ids(conn, guest_id)
+    rows = conn.execute(f"SELECT email FROM guests WHERE id IN ({','.join('?' * len(ids))})",
+                        ids).fetchall()
+    return sorted({(r["email"] or "").strip().lower() for r in rows
+                   if (r["email"] or "").strip()})
+
+
+def held_money_is_theirs(category, booking, session_called_off=False):
+    """Whether money still held on a booking that no longer stands is the
+    guest's, or the house's.
+
+    The house's terms are non-refundable: a guest who cancels has paid for the
+    cancellation, and what was taken is kept. Except where the house is the one
+    who said no -- a request declined, a stay the house could not honour, an
+    atelier sitting it called off. There the money is theirs, and owed back.
+    The same rule as money_to_give_back, which lists exactly these.
+    """
+    status = (booking["status"] or "").lower()
+    if status == "declined":
+        return True
+    if category == "room":
+        return (status == "cancelled" and "cancel_reason" in booking.keys()
+                and booking["cancel_reason"] == "house_could_not")
+    if category == "workshop":
+        return bool(session_called_off)
+    return False
+
+
+def guest_account_statement(conn, guest_id, date_from=None, date_to=None):
+    """One account for one person, across everything the house has sold them.
+
+    Every charge, payment and refund as a dated line with a running balance, the
+    way a statement of account reads. "What have we charged you, what have you
+    paid, what went back, and what is left" had four half-answers: one bill per
+    stay, a ledger per atelier, an event's bill, and a lifetime page that netted
+    refunds away in silence and dated nothing.
+
+    Built from each kind's own definition -- a stay's bill, an atelier's ledger,
+    an event's bill -- and adding up to it, booking by booking, which a test
+    holds it to. Only a booking that STANDS is charged its price. One that came
+    to nothing and moved no money is left off. One cancelled with money on it
+    shows the money -- and whose it is: kept under the non-refundable terms, as
+    a line of its own, or the guest's, as credit, where the house said no.
+
+    `date_from` / `date_to` are house days. Lines before the period are carried
+    in as the opening balance, so a statement for October still ends on what is
+    truly owed at the end of October.
+    """
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        return None
+    ids = guest_profile_ids(conn, guest_id)
+    addresses = guest_addresses(conn, guest_id)
+    idq = ",".join("?" * len(ids))
+    adq = ",".join("?" * len(addresses)) or "NULL"
+    entries, bookings = [], []
+
+    def add(at, category, row, what, charge=0.0, paid=0.0, back=0.0):
+        entries.append({
+            "at": at or "", "day": house_date_iso(at) if at else "",
+            "kind": STATEMENT_KINDS[category], "category": category,
+            "ref": row["reference_code"] or f"#{row['id']}", "booking_id": row["id"],
+            "what": what, "charge": round(charge or 0.0, 2), "paid": round(paid or 0.0, 2),
+            "back": round(back or 0.0, 2)})
+
+    def charged_when(row):
+        keys = row.keys()
+        return (row["decided_at"] if "decided_at" in keys and row["decided_at"]
+                else row["created_at"])
+
+    def refunds_of(category, bid):
+        return conn.execute(
+            """SELECT * FROM refunds WHERE category = ? AND booking_id = ?
+               ORDER BY created_at, id""", (category, bid)).fetchall()
+
+    def refund_words(r):
+        if (r["amount"] or 0) < 0:
+            return "A refund that did not reach you, put back"
+        how = ("to the card" if r["method"] == "stripe"
+               else (r["method"] or "other").replace("_", " "))
+        return f"Refunded, {how}"
+
+    def kept_line(category, row, payments, refunds, theirs):
+        """What a cancellation kept, as a charge, so a deposit kept under the
+        terms does not read as money the house owes back."""
+        if theirs:
+            return
+        held = round(sum(p["amount"] for p in payments)
+                     - sum((r["amount"] or 0) for r in refunds), 2)
+        if held > 0.005:
+            add(charged_when(row), category, row,
+                "Kept on cancellation, under the non-refundable terms", charge=held)
+
+    def money_lines(category, row, payments, refunds, stands):
+        for p in payments:
+            add(p["at"], category, row, f"Paid, {p['method_label'].lower()}"
+                + (f" ({p['payer']})" if p["payer"] else ""), paid=p["amount"])
+        for r in refunds:
+            add(r["created_at"], category, row, refund_words(r), back=r["amount"])
+            if stands and (r["reduces_bill"] or 0):
+                add(r["created_at"], category, row, "Reduction, refunded",
+                    charge=-(r["reduces_bill"] or 0))
+
+    def summary(category, row, what, status, stands, **more):
+        bookings.append(dict(category=category, kind=STATEMENT_KINDS[category],
+                             ref=row["reference_code"] or f"#{row['id']}", id=row["id"],
+                             what=what, status=status, stands=stands,
+                             manage_token=row["manage_token"] if "manage_token" in row.keys() else None,
+                             **more))
+
+    stays = conn.execute(
+        f"""SELECT bookings.*, rooms.name AS room_name FROM bookings
+              JOIN rooms ON rooms.id = bookings.room_id
+             WHERE bookings.linked_guest_id IN ({idq})
+                OR LOWER(TRIM(bookings.guest_email)) IN ({adq})
+             ORDER BY bookings.arrival_date""", ids + addresses).fetchall()
+    for b in stays:
+        bill = booking_bill(conn, b["id"])
+        if not bill:
+            continue
+        stands = b["status"] == "confirmed"
+        payments = payments_received(conn, "room", b)
+        refunds = refunds_of("room", b["id"])
+        if not stands and not payments and not refunds:
+            continue          # a request that came to nothing, and moved no money
+        when = charged_when(b)
+        dates = format_date_range(b["arrival_date"], b["departure_date"])
+        if stands:
+            extra_at = {e["id"]: e["created_at"]
+                        for e in extras_for_booking(conn, "room", b["id"])}
+            for line in bill["lines"]:
+                if line["kind"] == "refund_reduction":
+                    continue      # listed refund by refund, below
+                at = extra_at.get(line.get("line_id"), when) if line["kind"] == "extra" else when
+                label = (f"{line['label']}, {dates}" if line["kind"] == "room"
+                         else line["label"])
+                add(at, "room", b, label, charge=line["amount"])
+        else:
+            kept_line("room", b, payments, refunds, held_money_is_theirs("room", b))
+        money_lines("room", b, payments, refunds, stands)
+        summary("room", b, f"{b['room_name']}, {dates}", b["status"], stands,
+                bill=bill if stands else None)
+
+    ateliers = conn.execute(
+        f"""SELECT wb.*, ws.start_date, ws.end_date, ws.cancelled_at AS session_called_off,
+                   w.title FROM workshop_bookings wb
+              JOIN workshop_sessions ws ON ws.id = wb.session_id
+              JOIN workshops w ON w.id = ws.workshop_id
+             WHERE LOWER(TRIM(wb.guest_email)) IN ({adq})
+             ORDER BY ws.start_date""", addresses).fetchall()
+    for w in ateliers:
+        stands = w["status"] == "confirmed"
+        ledger = conn.execute(
+            """SELECT * FROM workshop_transactions WHERE workshop_booking_id = ?
+                ORDER BY created_at, id""", (w["id"],)).fetchall()
+        if not stands and not any(t["kind"] in ("payment", "refund") for t in ledger):
+            continue
+        label = f"{w['title']}, {format_date_range(w['start_date'], w['end_date'])}"
+        if stands and (w["total_price"] or 0):
+            add(charged_when(w), "workshop", w, label, charge=w["total_price"] or 0)
+        elif not stands and not held_money_is_theirs("workshop", w, w["session_called_off"]):
+            held = round(sum(t["amount"] for t in ledger if t["kind"] == "payment")
+                         - sum(t["amount"] for t in ledger if t["kind"] == "refund"), 2)
+            if held > 0.005:
+                add(charged_when(w), "workshop", w,
+                    "Kept on cancellation, under the non-refundable terms", charge=held)
+        # The ledger is the atelier's truth: its refund lines are the refunds,
+        # so the refunds table is not read again here.
+        for t in ledger:
+            if t["kind"] == "charge" and stands:
+                add(t["created_at"], "workshop", w, t["description"], charge=t["amount"])
+            elif t["kind"] == "discount" and stands:
+                add(t["created_at"], "workshop", w, t["description"], charge=-t["amount"])
+            elif t["kind"] == "payment":
+                add(t["created_at"], "workshop", w, f"Paid: {t['description']}",
+                    paid=t["amount"])
+            elif t["kind"] == "refund":
+                add(t["created_at"], "workshop", w, t["description"], back=t["amount"])
+        due, charged, paid = workshop_balance_due(conn, w["id"])
+        summary("workshop", w, label, w["status"], stands,
+                money={"charged": charged, "paid": paid, "owed": due})
+
+    events = conn.execute(
+        f"""SELECT * FROM event_inquiries WHERE LOWER(TRIM(contact_email)) IN ({adq})
+             ORDER BY COALESCE(preferred_date, '')""", addresses).fetchall()
+    for e in events:
+        bill = event_bill(conn, e["id"])
+        if not bill:
+            continue
+        stands = e["status"] == "confirmed"
+        payments = payments_received(conn, "event", e)
+        refunds = refunds_of("event", e["id"])
+        if not stands and not payments and not refunds:
+            continue
+        label = (e["event_type"] or "event").capitalize() + (
+            f", {format_date_human(e['preferred_date'])}" if e["preferred_date"] else "")
+        if stands:
+            add(charged_when(e), "event", e, f"{label}, as quoted", charge=bill["gross_quote"])
+            if bill["discount"]:
+                add(charged_when(e), "event", e, "Discount", charge=-bill["discount"])
+        else:
+            kept_line("event", e, payments, refunds, held_money_is_theirs("event", e))
+        money_lines("event", e, payments, refunds, stands)
+        summary("event", e, label, e["status"], stands, money=bill)
+
+    dinners = conn.execute(
+        f"""SELECT * FROM restaurant_bookings WHERE LOWER(TRIM(guest_email)) IN ({adq})
+             ORDER BY dinner_date""", addresses).fetchall()
+    for d in dinners:
+        payments = payments_received(conn, "restaurant", d)
+        refunds = refunds_of("restaurant", d["id"])
+        if not payments and not refunds:
+            continue          # settled at the table, on the till
+        stands = d["status"] == "confirmed"
+        label = f"Dinner, {format_date_human(d['dinner_date'])}"
+        if stands:
+            # The deposit is taken off the table's bill on the night, so what it
+            # buys is the deposit itself; the rest of the evening is the till's.
+            add(charged_when(d), "restaurant", d, f"{label}, deposit towards the table",
+                charge=sum(p["amount"] for p in payments))
+        else:
+            kept_line("restaurant", d, payments, refunds, held_money_is_theirs("restaurant", d))
+        money_lines("restaurant", d, payments, refunds, stands)
+        summary("restaurant", d, label, d["status"], stands)
+
+    entries.sort(key=lambda x: (x["at"], x["kind"]))
+    net = lambda x: x["charge"] - x["paid"] + x["back"]
+    for b in bookings:
+        mine = [x for x in entries if x["category"] == b["category"]
+                and x["booking_id"] == b["id"]]
+        b["charged"] = round(sum(x["charge"] for x in mine), 2)
+        b["paid"] = round(sum(x["paid"] for x in mine), 2)
+        b["back"] = round(sum(x["back"] for x in mine), 2)
+        b["net"] = round(sum(net(x) for x in mine), 2)
+
+    lo = date_from.isoformat() if date_from else None
+    hi = date_to.isoformat() if date_to else None
+    opening = round(sum(net(x) for x in entries if lo and x["day"] < lo), 2)
+    shown = [dict(x) for x in entries
+             if (not lo or x["day"] >= lo) and (not hi or x["day"] <= hi)]
+    running = opening
+    for x in shown:
+        running = round(running + net(x), 2)
+        x["balance"] = running
+    balance = round(sum(net(x) for x in entries), 2)
+    return {
+        "guest": guest, "addresses": addresses, "lines": shown,
+        "opening": opening, "closing": round(running, 2),
+        "period_from": lo, "period_to": hi,
+        "charged": round(sum(x["charge"] for x in shown), 2),
+        "paid": round(sum(x["paid"] for x in shown), 2),
+        "back": round(sum(x["back"] for x in shown), 2),
+        "balance": balance, "owed": round(max(balance, 0.0), 2),
+        "credit": round(max(-balance, 0.0), 2), "bookings": bookings,
+        "lifetime_charged": round(sum(x["charge"] for x in entries), 2),
+        "lifetime_paid": round(sum(x["paid"] - x["back"] for x in entries), 2),
+    }
+
+
+def statement_period(args):
+    """(from, to) house days from a query string; either may be None."""
+    return parse_date(args.get("from") or ""), parse_date(args.get("to") or "")
+
+
+def statement_text_lines(statement):
+    """The account as plain lines, for the letter and nothing else."""
+    out = []
+    if statement["period_from"]:
+        out.append(f"  Brought forward   €{statement['opening']:.2f}")
+    for x in statement["lines"]:
+        if x["charge"]:
+            money = f"€{x['charge']:.2f}"
+        elif x["paid"]:
+            money = f"-€{x['paid']:.2f} paid"
+        else:
+            money = f"+€{x['back']:.2f} back to you"
+        out.append(f"  {format_date_human(x['day'])}  {x['what']} ({x['ref']})   {money}")
+    return "\n".join(out) or "  Nothing in this period."
+
+
+def statement_balance_line(amount):
+    if amount > 0.005:
+        return f"There is €{amount:.2f} outstanding."
+    if amount < -0.005:
+        return f"You are €{-amount:.2f} in credit with us."
+    return "Nothing is owed."
+
+
+def company_block_text(conn):
+    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    who = []
+    if company:
+        for key in ("legal_name", "registered_address", "registration_number", "vat_number"):
+            value = " ".join((company[key] or "").split())
+            if value:
+                who.append(value)
+    return "\n".join(who)
+
+
 def guest_messages(conn, guest, limit=60):
     """Every word the house has sent this person, in one list.
 
@@ -65436,17 +68601,45 @@ def guest_messages(conn, guest, limit=60):
     phone = normalise_phone(guest["phone"] or "") or (guest["phone"] or "").strip()
     out = []
 
-    if email:
+    # THE CORRESPONDENCE, which this used to skip. It read the failure queue,
+    # which holds only what did NOT go -- so once a provider was working, every
+    # letter that reached somebody was missing from the list of what they had
+    # been sent, and the list looked complete.
+    for r in correspondence_for(conn, guest["id"], limit=limit):
+        out.append({"kind": MESSAGE_CHANNEL_WORDS.get(r["channel"], r["channel"]),
+                    "when": r["created_at"], "subject": r["subject"] or "",
+                    "body": r["body"], "sent": bool(r["delivered"]),
+                    "note": r["failure"] or (f"written by {r['sent_by_name']}"
+                                             if r["sent_by_name"] else ""),
+                    "incoming": r["direction"] == "in"})
+    # What only the delivery queues know about: a letter held before letters
+    # were filed against the person, and a text to a number no profile or stay
+    # carries. Listed once -- a letter filed since carries its queue row, and a
+    # text filed since carries its words and number, so neither shows twice.
+    addresses = guest_addresses(conn, guest["id"]) or ([email] if email else [])
+    if addresses:
         for r in conn.execute(
-                """SELECT subject, body, created_at, sent_at, reason
-                     FROM email_outbox WHERE LOWER(TRIM(to_address)) = ?
-                    ORDER BY id DESC LIMIT ?""", (email, limit)).fetchall():
-            out.append({"kind": "email", "when": r["created_at"],
-                        "subject": r["subject"], "body": r["body"],
-                        # Held is not sent. A page that showed both the same
-                        # way would say the house had written to somebody it
-                        # had not.
-                        "sent": bool(r["sent_at"]), "note": r["reason"]})
+                f"""SELECT subject, body, created_at, sent_at, reason FROM email_outbox
+                     WHERE LOWER(TRIM(to_address)) IN ({','.join('?' * len(addresses))})
+                       AND id NOT IN (SELECT outbox_id FROM guest_messages
+                                       WHERE outbox_id IS NOT NULL)
+                     ORDER BY id DESC LIMIT ?""", addresses + [limit]).fetchall():
+            out.append({"kind": "email", "when": r["created_at"], "subject": r["subject"],
+                        "body": r["body"], "sent": bool(r["sent_at"]),
+                        "note": r["reason"] or "", "incoming": False})
+    if phone:
+        filed = {r["body"] for r in conn.execute(
+            """SELECT body FROM guest_messages
+                WHERE channel IN ('sms', 'whatsapp') AND to_address = ?""", (phone,))}
+        for r in conn.execute(
+                """SELECT body, purpose, reason, created_at, sent_at FROM sms_outbox
+                    WHERE phone = ? ORDER BY id DESC LIMIT ?""", (phone, limit)).fetchall():
+            if r["body"] in filed or without_private_links(r["body"]) in filed:
+                continue
+            out.append({"kind": "text", "when": r["created_at"], "subject": r["purpose"],
+                        "body": r["body"], "sent": bool(r["sent_at"]),
+                        "note": r["reason"] or "", "incoming": False})
+    if email:
         for r in conn.execute(
                 """SELECT template_name, subject, status, detail, created_at
                      FROM campaign_sends
@@ -65458,18 +68651,369 @@ def guest_messages(conn, guest, limit=60):
                         # status carries whether it actually went; a campaign
                         # that failed is not a campaign the guest received.
                         "sent": (r["status"] or "") == "sent",
-                        "note": r["detail"] or r["template_name"]})
-    if phone:
-        for r in conn.execute(
-                """SELECT body, purpose, reason, created_at, sent_at
-                     FROM sms_outbox WHERE phone = ?
-                    ORDER BY id DESC LIMIT ?""", (phone, limit)).fetchall():
-            out.append({"kind": "text", "when": r["created_at"],
-                        "subject": r["purpose"], "body": r["body"],
-                        "sent": bool(r["sent_at"]), "note": r["reason"]})
-
+                        "note": r["detail"] or r["template_name"], "incoming": False})
     out.sort(key=lambda x: x["when"] or "", reverse=True)
     return out[:limit]
+
+
+# What a colleague does not see on a guest's history: the money and the
+# letters are the owner's, as they are on the record itself.
+TIMELINE_OWNER_KINDS = ("Money", "Letter", "Text", "They wrote", "Newsletter & offers",
+                        "Consent", "Profile")
+MESSAGE_CHANNEL_WORDS = {"email": "email", "sms": "text", "whatsapp": "WhatsApp",
+                         "form": "they wrote"}
+CONTACT_CHANNELS = {
+    "phone": "Telephone", "in_person": "In person",
+    "message": "A text or WhatsApp from a phone",
+    "email_elsewhere": "An email outside this system", "other": "Something else",
+}
+
+
+def correspondence_for(conn, guest_id, limit=500):
+    """Every message to and from one person, newest first: by their profile,
+    any profile merged into it, the addresses those used, and their stays."""
+    ids = guest_profile_ids(conn, guest_id)
+    addresses = guest_addresses(conn, guest_id)
+    stays = [r["id"] for r in conn.execute(
+        f"""SELECT id FROM bookings WHERE linked_guest_id IN ({','.join('?' * len(ids))})
+              OR LOWER(TRIM(guest_email)) IN ({','.join('?' * len(addresses)) or 'NULL'})""",
+        ids + addresses).fetchall()]
+    clauses = [f"guest_id IN ({','.join('?' * len(ids))})"]
+    params = list(ids)
+    if addresses:
+        clauses.append(f"LOWER(TRIM(to_address)) IN ({','.join('?' * len(addresses))})")
+        params += addresses
+    if stays:
+        clauses.append(f"booking_id IN ({','.join('?' * len(stays))})")
+        params += stays
+    # With who wrote it, for a letter somebody wrote by hand: kept and never
+    # shown, it was a name nobody could read back.
+    return conn.execute(
+        f"""SELECT guest_messages.*, users.name AS sent_by_name FROM guest_messages
+              LEFT JOIN users ON users.id = guest_messages.sent_by_user_id
+             WHERE {' OR '.join(clauses)}
+             ORDER BY guest_messages.created_at DESC, guest_messages.id DESC LIMIT ?""",
+        params + [limit]).fetchall()
+
+
+# What somebody may say yes or no to, in words.
+CONSENT_CHANNELS = {
+    "marketing_email": "Marketing email", "newsletter": "The newsletter",
+    "texts": "Texts", "marketing_texts": "Marketing texts", "photos": "Photographs",
+    "use": "Using their details",
+}
+
+
+def guest_restricted(conn, email=None, phone=None, guest_id=None):
+    """Whether somebody has asked the house to stop using what it holds."""
+    gid = guest_id or guest_for_contact(conn, address=email, phone=phone)
+    if not gid:
+        return False
+    row = conn.execute("SELECT restricted_at FROM guests WHERE id = ?", (gid,)).fetchone()
+    return bool(row and row["restricted_at"])
+
+
+def restricted_addresses(conn):
+    """Every address of everybody who has asked us to stop using their details,
+    the addresses of profiles merged into theirs included."""
+    out = set()
+    for r in conn.execute("SELECT id FROM guests WHERE restricted_at IS NOT NULL").fetchall():
+        out.update(guest_addresses(conn, r["id"]))
+    return out
+
+
+def set_guest_restriction(conn, guest_id, on, how, user_id=None):
+    """Record that somebody asked us to stop using their details -- or, at their
+    request, to start again. True if it changed anything.
+
+    What it stops is everything the house sends for its own reasons: the
+    newsletter, campaigns and offers, marketing texts, the invitation to review
+    us, the request for feedback, the greeting on a date that matters. What it
+    does not stop is what their bookings need -- the confirmation, the bill,
+    the note about their arrival -- because using the details for the stay
+    they booked is the stay.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    if on:
+        cur = conn.execute(
+            """UPDATE guests SET restricted_at = ?, restricted_by_user_id = ?, restricted_how = ?
+                WHERE id = ? AND restricted_at IS NULL""", (now, user_id, how, guest_id))
+    else:
+        cur = conn.execute(
+            """UPDATE guests SET restricted_at = NULL, restricted_by_user_id = NULL,
+                      restricted_how = NULL WHERE id = ? AND restricted_at IS NOT NULL""",
+            (guest_id,))
+    if cur.rowcount:
+        record_consent(conn, "use", 0 if on else 1, how, guest_id=guest_id, at=now)
+        log_audit(conn, "guest_restricted" if on else "guest_restriction_lifted",
+                  target=f"guest {guest_id}", details=how)
+    return bool(cur.rowcount)
+PHOTO_CONSENT_GRANTED = {"yes": 1, "no": 0}
+
+
+def record_consent(conn, channel, granted, how, *, email=None, phone=None, guest_id=None,
+                   at=None):
+    """Write down that somebody said yes, or no, and how.
+
+    `granted` is 1, 0, or None for "asked, and not answered yet". `at` is the
+    moment the list itself was changed, so the two agree to the second and the
+    startup backfill can tell a line already written from one never written.
+    Who recorded it is whoever is signed in: a person writing down what they
+    were told, or nobody -- the guest, by a link.
+    """
+    user = current_user() if has_request_context() else None
+    email = (email or "").strip().lower() or None
+    if guest_id is None:
+        guest_id = guest_for_contact(conn, address=email, phone=phone)
+    conn.execute(
+        """INSERT INTO consent_events (channel, granted, how, email, phone, guest_id,
+                                       recorded_by_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (channel, granted, (how or CONSENT_HOW_UNKNOWN)[:300], email, phone or None,
+         guest_id, user["id"] if user else None,
+         at or datetime.now(timezone.utc).isoformat()))
+
+
+def consent_history(conn, guest_id):
+    """Every yes and no one person has given, newest first: by their profile and
+    any merged into it, the addresses they have used, and their numbers."""
+    ids = guest_profile_ids(conn, guest_id)
+    idq = ",".join("?" * len(ids))
+    addresses = guest_addresses(conn, guest_id)
+    phones = sorted({normalise_phone(r["phone"]) or r["phone"].strip() for r in conn.execute(
+        f"SELECT phone FROM guests WHERE id IN ({idq}) AND COALESCE(phone, '') != ''",
+        ids).fetchall()})
+    clauses, params = [f"consent_events.guest_id IN ({idq})"], list(ids)
+    if addresses:
+        clauses.append(f"LOWER(TRIM(consent_events.email)) IN ({','.join('?' * len(addresses))})")
+        params += addresses
+    if phones:
+        clauses.append(f"consent_events.phone IN ({','.join('?' * len(phones))})")
+        params += phones
+    return conn.execute(
+        f"""SELECT consent_events.*, users.name AS recorded_by FROM consent_events
+              LEFT JOIN users ON users.id = consent_events.recorded_by_user_id
+             WHERE {' OR '.join(clauses)}
+             ORDER BY consent_events.created_at DESC, consent_events.id DESC""",
+        params).fetchall()
+
+
+def consent_words(row):
+    """One yes or no, as a line on somebody's history."""
+    said = {1: "yes", 0: "no"}.get(row["granted"], "asked, not yet answered")
+    if row["channel"] == "photos":
+        said = {1: "happy to appear", 0: "would rather not appear"}.get(row["granted"], "not asked")
+    return (f"{CONSENT_CHANNELS.get(row['channel'], row['channel'])}: {said} — {row['how']}"
+            + (f", recorded by {row['recorded_by']}" if row["recorded_by"] else ""))
+
+
+# What a profile holds, and how its history shows each change: by value, or
+# only that it changed. Anything about health, and anything typed freely about
+# a person, is the second: the dietary and access notes are deleted once the
+# stay or event is over, as the privacy notice promises, and a history that
+# kept what they said would keep exactly what that purge deletes.
+GUEST_PROFILE_FIELDS = (
+    ("name", "Name", "value"), ("email", "Email", "value"),
+    ("phone", "Telephone", "value"), ("vip", "VIP", "yesno"),
+    ("language", "Language", "value"), ("photo_consent", "Photographs", "value"),
+    ("dietary_notes", "Dietary notes", "private"), ("access_needs", "Access needs", "private"),
+    ("preferences", "Preferences", "private"), ("notes", "Notes", "private"),
+    # Never on the edit form, so an edit never reports one; written by the tag
+    # helpers, so a tag put on or taken off is on the history like the rest.
+    ("tags", "Tag", "value"),
+)
+
+
+def normalise_tag(text):
+    """One tag as it is kept: plain lower case, single spaces, a sensible length."""
+    return " ".join((text or "").strip().lower().split())[:40]
+
+
+def add_guest_tag(conn, guest_id, tag, user_id=None):
+    """Put a tag on a profile. True if it was not already there."""
+    tag = normalise_tag(tag)
+    if not tag:
+        return False
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        """INSERT OR IGNORE INTO guest_tags (guest_id, tag, added_by_user_id, created_at)
+           VALUES (?, ?, ?, ?)""", (guest_id, tag, user_id, now))
+    if cur.rowcount:
+        conn.execute(
+            """INSERT INTO guest_profile_changes (guest_id, field, old_value, new_value,
+                                                  changed_by_user_id, created_at)
+               VALUES (?, 'tags', NULL, ?, ?, ?)""", (guest_id, tag, user_id, now))
+    return bool(cur.rowcount)
+
+
+def remove_guest_tag(conn, guest_id, tag, user_id=None):
+    """Take a tag off a profile. True if it was there."""
+    tag = normalise_tag(tag)
+    cur = conn.execute("DELETE FROM guest_tags WHERE guest_id = ? AND tag = ?", (guest_id, tag))
+    if cur.rowcount:
+        conn.execute(
+            """INSERT INTO guest_profile_changes (guest_id, field, old_value, new_value,
+                                                  changed_by_user_id, created_at)
+               VALUES (?, 'tags', ?, NULL, ?, ?)""",
+            (guest_id, tag, user_id, datetime.now(timezone.utc).isoformat()))
+    return bool(cur.rowcount)
+
+
+def tags_by_guest(conn):
+    """{guest_id: [tag, ...]} for every profile that has one."""
+    out = {}
+    for r in conn.execute("SELECT guest_id, tag FROM guest_tags ORDER BY tag").fetchall():
+        out.setdefault(r["guest_id"], []).append(r["tag"])
+    return out
+
+
+def record_profile_changes(conn, before, after, user_id=None, at=None):
+    """Write down what an edit changed on a profile. Returns what changed, in words."""
+    at = at or datetime.now(timezone.utc).isoformat()
+    changed = []
+    for column, label, kind in GUEST_PROFILE_FIELDS:
+        if column not in after or column not in before.keys():
+            continue
+        if kind == "yesno":
+            old, new = ("yes" if before[column] else "no"), ("yes" if after[column] else "no")
+        else:
+            old = str(before[column]).strip() if before[column] not in (None, "") else None
+            new = str(after[column]).strip() if after[column] not in (None, "") else None
+        if column == "photo_consent":
+            # Nothing on file and "not asked" are the same answer.
+            old, new = old or "unknown", new or "unknown"
+        if old == new:
+            continue
+        kept = kind != "private"
+        conn.execute(
+            """INSERT INTO guest_profile_changes (guest_id, field, old_value, new_value,
+                                                  changed_by_user_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (before["id"], column, old if kept else None, new if kept else None, user_id, at))
+        changed.append(label)
+    return changed
+
+
+def profile_change_words(row):
+    """One change to a profile, as a line on its history."""
+    label = next((lab for col, lab, _k in GUEST_PROFILE_FIELDS if col == row["field"]),
+                 row["field"])
+    if row["old_value"] is None and row["new_value"] is None:
+        return f"{label} changed"
+    show = (lambda v: PHOTO_CONSENT.get(v or "unknown", v)) if row["field"] == "photo_consent" \
+        else (lambda v: v or "nothing")
+    return f"{label}: {show(row['old_value'])} → {show(row['new_value'])}"
+
+
+def guest_timeline(conn, guest_id):
+    """Everything that has passed between the house and one person, in one
+    list, newest first.
+
+    Letters and texts either way, calls and conversations, notes, each booking
+    asked for and decided, money in and out, what they said about their stay,
+    and what they said about being written to. They lived on eleven pages, and
+    "what happened with this guest" meant opening all of them.
+    """
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        return []
+    out = []
+
+    def add(at, kind, title, detail="", ref=None):
+        if at:
+            out.append({"at": at, "day": house_date_iso(at), "kind": kind,
+                        "title": title, "detail": detail or "", "ref": ref})
+
+    for r in correspondence_for(conn, guest_id):
+        word = MESSAGE_CHANNEL_WORDS.get(r["channel"], r["channel"])
+        if r["direction"] == "in":
+            kind, title = "They wrote", r["subject"] or "A message"
+        else:
+            kind = "Text" if r["channel"] in ("sms", "whatsapp") else "Letter"
+            title = ((r["subject"] or f"A {word}") + ("" if r["delivered"] else " (held, not sent)")
+                     + (f", written by {r['sent_by_name']}" if r["sent_by_name"] else ""))
+        add(r["created_at"], kind, title, (r["body"] or "")[:240])
+    addresses = guest_addresses(conn, guest_id)
+    if addresses:
+        marks = ",".join("?" * len(addresses))
+        for r in conn.execute(
+                f"""SELECT subject, template_name, status, created_at FROM campaign_sends
+                     WHERE LOWER(TRIM(recipient_email)) IN ({marks})""", addresses).fetchall():
+            add(r["created_at"], "Newsletter & offers",
+                r["subject"] or r["template_name"] or "A campaign",
+                "sent" if (r["status"] or "") == "sent" else (r["status"] or ""))
+    # Every yes and no as it was said -- the link, the form, the person who
+    # wrote it down -- and not only the state it left behind.
+    for r in consent_history(conn, guest_id):
+        add(r["created_at"], "Consent", consent_words(r))
+    ids = guest_profile_ids(conn, guest_id)
+    idq = ",".join("?" * len(ids))
+    for r in conn.execute(
+            f"""SELECT guest_profile_changes.*, users.name AS by_name FROM guest_profile_changes
+                  LEFT JOIN users ON users.id = guest_profile_changes.changed_by_user_id
+                 WHERE guest_profile_changes.guest_id IN ({idq})""", ids).fetchall():
+        add(r["created_at"], "Profile", profile_change_words(r)
+            + (f", by {r['by_name']}" if r["by_name"] else ""))
+    for r in conn.execute(
+            f"""SELECT guest_contacts.*, users.name AS by_name FROM guest_contacts
+                  LEFT JOIN users ON users.id = guest_contacts.logged_by_user_id
+                 WHERE guest_contacts.guest_id IN ({idq})""", ids).fetchall():
+        add(r["created_at"], "Conversation",
+            f"{CONTACT_CHANNELS.get(r['channel'], r['channel'])}, "
+            + ("they got in touch" if r["direction"] == "in" else "we got in touch")
+            + (f" — {r['by_name']}" if r["by_name"] else ""),
+            r["summary"] + (f" Follow up on {format_date_human(r['follow_up_on'])}."
+                            if r["follow_up_on"] else ""))
+    for r in conn.execute(
+            f"""SELECT guest_notes.*, users.name AS by_name FROM guest_notes
+                  LEFT JOIN users ON users.id = guest_notes.written_by_user_id
+                 WHERE guest_notes.guest_id IN ({idq})""", ids).fetchall():
+        add(r["created_at"], "Note", r["by_name"] or "A note", r["body"])
+    statement = guest_account_statement(conn, guest_id)
+    for b in statement["bookings"] if statement else []:
+        table = REFUND_BOOKING_TABLES.get(b["category"])
+        row = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (b["id"],)).fetchone()
+        if not row:
+            continue
+        add(row["created_at"], "Booking", f"{b['kind']} asked for: {b['what']}", ref=b["ref"])
+        if "decided_at" in row.keys() and row["decided_at"]:
+            add(row["decided_at"], "Booking",
+                f"{b['kind']} {(row['status'] or '').lower()}: {b['what']}", ref=b["ref"])
+    for x in (statement["lines"] if statement else []):
+        if x["paid"]:
+            add(x["at"], "Money", f"{x['what']}: €{x['paid']:,.2f}", ref=x["ref"])
+        elif x["back"]:
+            add(x["at"], "Money", f"{x['what']}: €{x['back']:,.2f} back to them", ref=x["ref"])
+    stays = [b["id"] for b in (statement["bookings"] if statement else [])
+             if b["category"] == "room"]
+    if stays:
+        for r in conn.execute(
+                f"""SELECT guest_feedback.*, bookings.reference_code FROM guest_feedback
+                      JOIN bookings ON bookings.id = guest_feedback.booking_id
+                     WHERE booking_id IN ({','.join('?' * len(stays))})""", stays).fetchall():
+            keys = r.keys()
+            said = (r["comment"] if "comment" in keys else "") or ""
+            rating = r["rating"] if "rating" in keys else None
+            add(r["submitted_at"] if "submitted_at" in keys else None, "Feedback",
+                f"Rated their stay {rating} of 5" if rating else "Wrote about their stay",
+                said, ref=r["reference_code"])
+    out.sort(key=lambda x: x["at"], reverse=True)
+    return out
+
+
+def guest_timeline_view(items, args):
+    """The timeline through the standard toolbar."""
+    return list_view(
+        items, args,
+        search=["title", "detail", "ref", "kind"],
+        search_hint="Search what was said, written or done",
+        facets=[facet("kind", "What", lambda x: x["kind"],
+                      order=["Letter", "Text", "They wrote", "Conversation", "Note",
+                             "Booking", "Money", "Feedback", "Newsletter & offers",
+                             "Consent", "Profile"])],
+        sorts=[sort_option("recent", "Newest first", lambda x: x["at"], reverse=True),
+               sort_option("oldest", "Oldest first", lambda x: x["at"])],
+        default_sort="recent")
 
 
 def party_for_booking(conn, booking_id):
@@ -65648,8 +69192,9 @@ def write_about_stay(booking, subject, body, side="stay",
     people = stay_recipients(booking, side=side)
     if not people:
         return False
+    about = ("room", booking["id"])
     delivered = send_email(people[0], subject, body, ics_content=ics_content,
-                           ics_filename=ics_filename, html=html)
+                           ics_filename=ics_filename, html=html, about=about)
     # WHY THEY ARE GETTING THIS. A bill landing in a stranger's inbox with no
     # explanation reads as a mistake, or worse as a scam -- so the copy says
     # who asked us to write to them, and the original does not carry the line.
@@ -65664,7 +69209,7 @@ def write_about_stay(booking, subject, body, side="stay",
         # the explanation is worth more to the person reading it than a
         # prettier one without. Revisit when the shell has a slot for it.
         send_email(address, subject, body + note,
-                   ics_content=ics_content, ics_filename=ics_filename)
+                   ics_content=ics_content, ics_filename=ics_filename, about=about)
     return delivered
 
 
@@ -65932,6 +69477,129 @@ def guest_data_tables(conn):
     return out
 
 
+# Filed against a guest's profile rather than an address.
+GUEST_FILED_TABLES = ("guest_notes", "guest_contacts", "guest_messages")
+# And the history of the profile itself: what changed on it, and every yes and no.
+GUEST_FILED_TABLES += ("guest_profile_changes", "consent_events")
+GUEST_FILED_TABLES += ("guest_tags",)
+
+
+def guest_filed_rows(conn, guests):
+    """(table, column, rows) for what is filed by these profiles, and any
+    merged into them."""
+    ids = sorted({i for g in guests for i in guest_profile_ids(conn, g["id"])})
+    if not ids:
+        return []
+    marks = ",".join("?" * len(ids))
+    out = []
+    for table in GUEST_FILED_TABLES:
+        try:
+            rows = conn.execute(f"SELECT * FROM {table} WHERE guest_id IN ({marks})",
+                                ids).fetchall()
+        except sqlite3.OperationalError:
+            continue                     # table not in this database yet
+        out.append((table, "guest_id", rows))
+    return out
+
+
+# Kept by the number a text went to, not by an address.
+GUEST_NUMBER_TABLES = ("sms_outbox", "sms_optouts", "sms_consents", "consent_events")
+
+
+def guest_numbers(conn, email, *, as_written=False):
+    """Every number somebody is known by, read from their profiles and their
+    bookings of every kind, as the house writes a number -- or, `as_written`,
+    as each was typed, which is how the old audit lines hold them."""
+    email = (email or "").strip().lower()
+    if not email:
+        return []
+    raw = []
+    ids = sorted({i for r in conn.execute(
+        "SELECT id FROM guests WHERE LOWER(TRIM(email)) = ?", (email,)).fetchall()
+        for i in guest_profile_ids(conn, r["id"])})
+    if ids:
+        raw += [r[0] for r in conn.execute(
+            f"SELECT phone FROM guests WHERE id IN ({','.join('?' * len(ids))})", ids)]
+    for table, number, address in (("bookings", "guest_phone", "guest_email"),
+                                   ("restaurant_bookings", "guest_phone", "guest_email"),
+                                   ("workshop_bookings", "guest_phone", "guest_email"),
+                                   ("event_inquiries", "contact_phone", "contact_email")):
+        try:
+            raw += [r[0] for r in conn.execute(
+                f"SELECT {number} FROM {table} WHERE LOWER(TRIM({address})) = ?", (email,))]
+        except sqlite3.OperationalError:
+            continue
+    if as_written:
+        return sorted({(p or "").strip() for p in raw if (p or "").strip()})
+    return sorted({n for n in (normalise_phone(p or "") for p in raw) if n})
+
+
+def guest_number_rows(conn, email):
+    """(table, rows) for everything kept by somebody's numbers: the texts held
+    or sent, a stop, a yes to marketing texts, and their history."""
+    numbers = guest_numbers(conn, email)
+    if not numbers:
+        return []
+    marks = ",".join("?" * len(numbers))
+    out = []
+    for table in GUEST_NUMBER_TABLES:
+        try:
+            out.append((table, conn.execute(
+                f"SELECT * FROM {table} WHERE phone IN ({marks})", numbers).fetchall()))
+        except sqlite3.OperationalError:
+            continue
+    # A text filed as correspondence, by the number it went to however it was
+    # written down.
+    wanted = set(numbers)
+    out.append(("guest_messages", [
+        r for r in conn.execute(
+            "SELECT * FROM guest_messages WHERE channel IN ('sms', 'whatsapp')").fetchall()
+        if normalise_phone(r["to_address"] or "") in wanted]))
+    return out
+
+
+def guest_names(conn, email):
+    """The names somebody is known by, for taking them out of the audit trail."""
+    email = (email or "").strip().lower()
+    names = set()
+    for sql in ("SELECT name FROM guests WHERE LOWER(TRIM(email)) = ?",
+                "SELECT guest_name FROM bookings WHERE LOWER(TRIM(guest_email)) = ?",
+                "SELECT guest_name FROM restaurant_bookings WHERE LOWER(TRIM(guest_email)) = ?",
+                "SELECT guest_name FROM workshop_bookings WHERE LOWER(TRIM(guest_email)) = ?",
+                "SELECT contact_name FROM event_inquiries WHERE LOWER(TRIM(contact_email)) = ?"):
+        try:
+            names.update((r[0] or "").strip() for r in conn.execute(sql, (email,)))
+        except sqlite3.OperationalError:
+            continue
+    # Long enough to be a name and not a word: "Ann" is inside half the log.
+    return sorted(n for n in names if len(n) >= 5 and n != ERASED_MARKER)
+
+
+AUDIT_ERASED = "[erased at the guest's request]"
+
+
+def scrub_audit_trail(conn, identifiers):
+    """Take a person out of the record of who did what: where a line was about
+    them by address, number or name, it now says that it was about somebody
+    erased. The line stays -- who acted, what they did, when -- because that is
+    what the trail is for; the person does not."""
+    changed = 0
+    for ident in sorted({i for i in identifiers if i}, key=len, reverse=True):
+        rows = conn.execute(
+            "SELECT id, target, details FROM audit_log WHERE target = ? OR target LIKE ? "
+            "OR details LIKE ?", (ident, f"% {ident}", f"%{ident}%")).fetchall()
+        for r in rows:
+            target = r["target"]
+            if target == ident or (target or "").endswith(f" {ident}"):
+                target = (target[:-len(ident)] + AUDIT_ERASED) if target != ident else AUDIT_ERASED
+            details = (r["details"] or "").replace(ident, AUDIT_ERASED) if r["details"] else r["details"]
+            if (target, details) != (r["target"], r["details"]):
+                conn.execute("UPDATE audit_log SET target = ?, details = ? WHERE id = ?",
+                             (target, details, r["id"]))
+                changed += 1
+    return changed
+
+
 def guest_data_export(conn, email):
     """Everything held about one person, by email and by what hangs off it.
 
@@ -65983,6 +69651,24 @@ def guest_data_export(conn, email):
             if rows:
                 found.setdefault(table, []).extend(dict(r) for r in rows)
 
+    # What hangs off the person themselves, and any profile merged into
+    # theirs: the notes on their record, the conversations written down, and
+    # the letters and texts filed by the profile -- a text is filed by the
+    # number, so the address sweep never finds it. An answer to "everything
+    # you hold" without what was said on the telephone is not everything.
+    for table, column, rows in guest_filed_rows(conn, found.get("guests", [])):
+        have = {r.get("id") for r in found.get(table, [])}
+        more = [dict(r) for r in rows if r["id"] not in have]
+        if more:
+            found.setdefault(table, []).extend(more)
+    # And by their numbers: a text is kept by the number it went to, so the
+    # search by address never found a text, a stop, or a yes to more.
+    for table, rows in guest_number_rows(conn, email):
+        have = {r.get("id") for r in found.get(table, [])}
+        more = [dict(r) for r in rows if r["id"] not in have]
+        if more:
+            found.setdefault(table, []).extend(more)
+
     return {
         "email": email,
         "taken_at": datetime.now(timezone.utc).isoformat(),
@@ -66011,6 +69697,27 @@ def guest_data_erase(conn, email):
     if not email:
         return None
     deleted, anonymised = {}, {}
+
+    # First what is filed by their profile, while the profile is still there
+    # to say which rows are theirs. A text is filed by the number and a
+    # letter may be filed by an address from before a merge; searching for
+    # this address alone left both behind.
+    # Who they are, while the rows that say so are still here: their numbers,
+    # for what is kept by the number, and their names, for the audit trail.
+    numbers = guest_numbers(conn, email) + guest_numbers(conn, email, as_written=True)
+    names = guest_names(conn, email)
+    by_number = guest_number_rows(conn, email)
+    profiles = conn.execute("SELECT id FROM guests WHERE LOWER(TRIM(email)) = ?",
+                            (email,)).fetchall()
+    for table, _column, rows in guest_filed_rows(conn, profiles):
+        if rows:
+            conn.executemany(f"DELETE FROM {table} WHERE id = ?", [(r["id"],) for r in rows])
+            deleted[table] = deleted.get(table, 0) + len(rows)
+    for table, rows in by_number:
+        if rows:
+            cur = conn.executemany(f"DELETE FROM {table} WHERE id = ?", [(r["id"],) for r in rows])
+            if cur.rowcount > 0:
+                deleted[table] = deleted.get(table, 0) + cur.rowcount
 
     for table, keys in guest_data_tables(conn).items():
         where = " OR ".join(f"LOWER(TRIM({k})) = ?" for k in keys)
@@ -66052,6 +69759,10 @@ def guest_data_erase(conn, email):
         if cur.rowcount:
             deleted[table] = deleted.get(table, 0) + cur.rowcount
 
+    # And out of the record of who did what, which outlives everything else.
+    scrubbed = scrub_audit_trail(conn, [email] + numbers + names)
+    if scrubbed:
+        anonymised["audit_log"] = scrubbed
     return {"deleted": deleted, "anonymised": anonymised,
             "kept_because": "French accounting law requires the record of a "
                             "sale to be kept. The money stays; the person has "
@@ -66551,6 +70262,40 @@ def watch_task_findings(conn, today=None):
             "with the deposits, and sends a link to pay to the rest.",
             min(r["due_date"] for r in waiting), "high"))
 
+    # MONEY GOING BACK. Each closes itself: the refund made, the bill decided.
+    owed_back = []
+    for r in money_to_give_back(conn):
+        owed_back.append((
+            "refund", f"Money to give back to {r['name']} ({r['ref']})",
+            f"€{r['amount']:,.2f} is still held on {r['what']} {r['why']}. "
+            "Financial → Refunds has its refund page, which sends it back.",
+            today.isoformat(), "high"))
+    for r in failed_refunds_to_redo(conn):
+        owed_back.append((
+            "refund", f"A refund to {r['name']} did not go through ({r['ref']})",
+            f"€{r['amount']:,.2f}. {r['why']}. It is still theirs: make it again from "
+            "its refund page.", today.isoformat(), "high"))
+    for r in refunds_left_owing(conn):
+        owed_back.append((
+            "refund", f"A refund made in Stripe left {r['name']} owing ({r['ref']})",
+            f"€{r['amount']:,.2f} was refunded in Stripe's dashboard, and the booking now "
+            f"asks for €{r['owed']:,.2f} again. If it was a gesture, take it off the bill on "
+            "its refund page; if they are paying it again, leave it.",
+            today.isoformat(), "normal"))
+    found.extend(take("refund", owed_back))
+
+    # A DISPUTE HAS A DEADLINE, and missing it loses by default.
+    disputes = []
+    for d in open_disputes(conn):
+        disputes.append((
+            "dispute",
+            f"A card payment is being disputed: {d['guest_name'] or 'unknown guest'} "
+            f"({d['reference_code'] or d['payment_intent'] or d['stripe_dispute_id']})",
+            f"€{d['amount']:,.2f} — {DISPUTE_REASON_WORDS.get(d['reason'], d['reason'])}. "
+            "Answer it in Stripe with what the house has: the booking, the "
+            "correspondence, the terms they agreed to.",
+            d["evidence_due_by"] or today.isoformat(), "high"))
+    found.extend(take("dispute", disputes))
     # Guests who wrote through Booking.com and have had no answer. One task
     # while any are waiting; it closes itself when each is answered or marked
     # answered, and when the fortnight Booking.com allows for a reply is up.
@@ -67907,11 +71652,13 @@ def delete_company_document(doc_id):
 TEMPLATE_AREAS = [
     ("workshop", "Workshops"), ("restaurant", "Restaurant"),
     ("event", "Events"), ("room", "Rooms"), ("review", "Rooms"),
-    ("pos", "Till"), ("newsletter", "Newsletter"),
+    ("pos", "Till"), ("newsletter", "Newsletter"), ("refund", "Refunds"),
+    ("guest", "Guests"),
 ]
 # Checked in this order, first match wins -- so "payment" comes before
 # "received", or a payment receipt files itself as an enquiry.
 TEMPLATE_STAGES = [
+    ("refund", "Payment"),
     ("payment", "Payment"), ("paid", "Payment"), ("receipt", "Payment"),
     ("statement", "Payment"), ("share", "Payment"),
     ("received", "Enquiry received"), ("confirmed", "Confirmed"),
@@ -67928,6 +71675,17 @@ TEMPLATE_STAGES = [
 # shipped list in both directions: a letter added without a line here, or a
 # line left for a letter that has gone, reds the run.
 EMAIL_TEMPLATE_INFO = {
+    "guest_account_statement": ("When you send somebody their statement from their "
+                                "record, for the period on screen",
+                                "The guest, at the address on their profile"),
+    "guest_link_updated": ("When you issue a new private link for one of their bookings, or "
+                           "for their own account, and choose to send it",
+                           "The guest, at the address on the booking or profile. Never "
+                           "kept or queued: the letter is itself a key"),
+    "refund_issued": ("When you make a refund from its booking's refund page and "
+                      "leave \u201cTell them\u201d ticked \u2014 a stay, an atelier, a "
+                      "dinner or an event", "Whoever paid, and on a stay anyone "
+                                            "they asked us to copy"),
     "room_confirmed": ("The moment a room booking is confirmed — at once for a "
                        "booking made online, or when you confirm one that waited",
                        "The guest, and anyone they asked us to copy"),
@@ -68686,6 +72444,14 @@ HISTORY_KINDS = {
     "guest": ("guest", "guests", ["name", "id"], "guest"),
     "expense": ("invoice or claim", "expenses", ["id"], "expense"),
     "workshop_session": ("sitting", "workshop_sessions", ["id"], "workshop"),
+    # A booking of each other kind, by its reference. The word is the whole
+    # action prefix, not "workshop": a place and a sitting share ids, and a
+    # sitting's lines are logged under the bare number.
+    "workshop_booking": ("atelier place", "workshop_bookings", ["reference_code", "id"],
+                         "workshop_registration"),
+    "restaurant_booking": ("table", "restaurant_bookings", ["reference_code", "id"],
+                           "restaurant_booking"),
+    "event": ("event", "event_inquiries", ["reference_code", "id"], "event_"),
 }
 
 
@@ -68820,7 +72586,7 @@ def audit_list_view(conn, args):
         facets=[
             facet("kind", "Kind", lambda e: audit_kind(e["action"]),
                   order=[label for label, _t in AUDIT_KINDS] + ["Other"]),
-            facet("who", "Who", lambda e: e["actor_name"] or "Unknown", limit=8),
+            facet("who", "Who", audit_who, limit=8),
             facet("when", "When", when,
                   order=["Today", "Last 7 days", "Last 30 days", "This year", "Older"]),
             facet("action", "Action", lambda e: (e["action"] or "").replace("_", " "),
@@ -70054,11 +73820,49 @@ def purge_guest_messages(conn, *, today=None):
                SELECT id FROM bookings
                 WHERE COALESCE(departure_date, arrival_date, '') != ''
                   AND COALESCE(departure_date, arrival_date) < ?)""", (cutoff,))
+    gone = cur.rowcount if cur.rowcount > 0 else 0
+    # A letter about no stay -- an atelier, a table, a question -- is kept two
+    # years from when it was written, the same two years the notice states.
+    # Without this they were kept for ever: nothing else ever deleted them.
+    moment = house_day_window(date.fromisoformat(cutoff))[0]
+    cur = conn.execute("DELETE FROM guest_messages WHERE booking_id IS NULL AND created_at < ?",
+                       (moment,))
+    gone += cur.rowcount if cur.rowcount > 0 else 0
+    # And a note of a conversation, on the same rule.
+    spoken = conn.execute("DELETE FROM guest_contacts WHERE created_at < ?", (moment,))
     conn.commit()
-    return {"old guest correspondence": cur.rowcount if cur.rowcount > 0 else 0}
+    return {"old guest correspondence": gone,
+            "old notes of conversations": spoken.rowcount if spoken.rowcount > 0 else 0}
 
 
 SUBMISSION_LOG_KEEP_DAYS = 7
+
+
+def purge_held_texts(conn, *, now=None):
+    """Texts past the two years the house keeps what it has written.
+
+    The mail queue has been cleared on that rule for a while; the text queue
+    never was, so every text the house could not send -- the number and the
+    words -- was kept for ever.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=int(GUEST_MESSAGE_KEEP_MONTHS * 30.44))).isoformat()
+    cur = conn.execute("DELETE FROM sms_outbox WHERE COALESCE(sent_at, created_at) < ?",
+                       (cutoff,))
+    return {"held texts": cur.rowcount or 0}
+
+
+GUEST_SESSION_KEEP_DAYS = 30
+
+
+def purge_guest_sessions(conn, *, now=None):
+    """Sign-in links to somebody's account, a month after they stopped working.
+    Each is an address and the internet address that asked for it; nothing
+    ever deleted one."""
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=GUEST_SESSION_KEEP_DAYS)).isoformat()
+    cur = conn.execute("DELETE FROM guest_sessions WHERE expires_at < ?", (cutoff,))
+    return {"old account sign-in links": cur.rowcount or 0}
 
 
 def purge_submission_log(conn, *, now=None):
@@ -70103,6 +73907,8 @@ def run_health_notes_purge_job(conn):
     # guests at all -- somebody who opened the availability calendar and left.
     cleared.update(purge_submission_log(conn))
     cleared.update(purge_sent_outbox(conn))
+    cleared.update(purge_held_texts(conn))
+    cleared.update(purge_guest_sessions(conn))
     # The keys that make an offline action safe to send twice. No handset is
     # still holding a tap from a month ago, and a row per tap for ever is a
     # table somebody eventually clears out in a hurry.
@@ -76974,10 +80780,18 @@ def event_bill(conn, event_id):
     gross = round(float(event["quoted_price"] or 0), 2)
     discount = round(float(event["discount_amount"] or 0), 2)
     discount = max(0.0, min(discount, gross))
-    quoted = round(gross - discount, 2)
-    paid = round(float(event["amount_paid"] or 0), 2)
+    # Money given back comes off what was received; a refund that took money
+    # off the price comes off the quote too, the same two rules as a stay.
+    given = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS t, COALESCE(SUM(reduces_bill), 0) AS off
+             FROM refunds WHERE category = 'event' AND booking_id = ?""",
+        (event_id,)).fetchone()
+    refunded = round(given["t"] or 0.0, 2)
+    taken_off = round(min(given["off"] or 0.0, gross - discount), 2)
+    quoted = round(gross - discount - taken_off, 2)
+    paid = round(max(0.0, float(event["amount_paid"] or 0) - refunded), 2)
     if event["status"] in ("cancelled", "declined"):
-        gross = discount = quoted = 0.0
+        gross = discount = quoted = taken_off = 0.0
     deposit = event["deposit_amount"]
     return {
         "event": event,
@@ -76985,6 +80799,8 @@ def event_bill(conn, event_id):
         "gross_quote": gross,
         "discount": discount,
         "paid": paid,
+        "refunded": refunded,
+        "taken_off": taken_off,
         "owed": round(max(quoted - paid, 0.0), 2),
         "overpaid": round(max(paid - quoted, 0.0), 2),
         "deposit": round(float(deposit), 2) if deposit is not None else None,
@@ -76995,7 +80811,7 @@ def event_bill(conn, event_id):
 
 
 def record_event_payment(conn, event_id, amount, *, method="bank_transfer",
-                         reference=None, user_id=None):
+                         reference=None, user_id=None, payment_intent=None):
     """Money in on an event: a line of its own, then the running total.
 
     A line as well as a total, for the same reason a stay has one — three
@@ -77005,8 +80821,9 @@ def record_event_payment(conn, event_id, amount, *, method="bank_transfer",
     amount = round(float(amount or 0), 2)
     conn.execute(
         """INSERT INTO event_payments (event_id, amount, method, reference,
-           taken_by_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)""",
-        (event_id, amount, method, reference, user_id,
+           taken_by_user_id, stripe_payment_intent_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (event_id, amount, method, reference, user_id, payment_intent,
          datetime.now(timezone.utc).isoformat()))
     conn.execute(
         "UPDATE event_inquiries SET amount_paid = COALESCE(amount_paid, 0) + ? WHERE id = ?",
@@ -77247,17 +81064,25 @@ def guest_statement(conn, booking):
     city_tax = stay_city_tax(booking)
     adults = max(0, int(booking["party_size"] or 0) - int(booking["guests_under_18"] or 0))
 
+    # A refund that took money off the price, as the bill has it. It comes off
+    # the accommodation, which is what a reduction on a stay reduces -- and so
+    # off the VAT counted on it, or the guest's VAT record would claim VAT on
+    # money that was handed back.
+    taken_off = conn.execute(
+        """SELECT COALESCE(SUM(reduces_bill), 0) AS t FROM refunds
+           WHERE category = 'room' AND booking_id = ?""", (booking["id"],)).fetchone()["t"] or 0.0
+    taken_off = round(min(taken_off, max(accommodation, 0.0)), 2)
     vat = vat_breakdown(
-        [(accommodation, tax_rate(conn, "vat_accommodation"))]
+        [(round(accommodation - taken_off, 2), tax_rate(conn, "vat_accommodation"))]
         # Each line at its own rate, and a board's wine at the wine's.
         + [piece for e in extras
            for piece in extra_vat_parts(conn, e, default=tax_rate(conn, "vat_extras"))])
     received = amount_paid_for(conn, "room", booking)
     given_back = refunded_so_far(conn, "room", booking["id"])
     paid = round(received - given_back, 2)
-    total = round(accommodation + extras_gross + city_tax, 2)
+    total = round(accommodation - taken_off + extras_gross + city_tax, 2)
     return {
-        "nights": nights, "adults": adults,
+        "nights": nights, "adults": adults, "taken_off": taken_off,
         "children": int(booking["guests_under_18"] or 0),
         "accommodation": accommodation, "extras": extras, "extras_total": extras_gross,
         "city_tax": city_tax,

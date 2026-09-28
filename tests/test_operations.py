@@ -162,7 +162,10 @@ def run():
                                      "email": f"{TAG.lower()}p@example.invalid", "vip": "1"},
                 follow_redirects=True)
     conn = db()
-    guest = conn.execute("SELECT * FROM guests WHERE name LIKE ?", (TAG + "%",)).fetchone()
+    # By the address it was made with: confirming the atelier place above makes
+    # a profile of its own for whoever booked it, under this suite's name too.
+    guest = conn.execute("SELECT * FROM guests WHERE email = ?",
+                         (f"{TAG.lower()}p@example.invalid",)).fetchone()
     conn.close()
     s.check("owner can create a guest profile", guest is not None, r)
     if guest:

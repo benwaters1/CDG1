@@ -38,7 +38,7 @@
     <div class="mini-row">
       <span class="mini-name">{{ e['action']|replace('_', ' ')|capitalize }}</span>
       <span class="mini-role">{% if e['target'] %}{{ e['target'] }}{% endif %}{% if e['details'] %} — {{ e['details'] }}{% endif %}</span>
-      <span class="upload-hint">{{ e['actor_name'] or 'Unknown' }} · {{ local_datetime_str(e['created_at']) }}</span>
+      <span class="upload-hint">{{ audit_who(e) }} · {{ local_datetime_str(e['created_at']) }}</span>
     </div>
     {% endfor %}
   </div>

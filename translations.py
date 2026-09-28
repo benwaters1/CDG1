@@ -235,6 +235,30 @@ FR = {
     "Your ateliers": "Vos ateliers",
     "Your dinners": "Vos dîners",
     "Your account": "Votre compte",
+    # The guest's statement of account.
+    "Your statement": "Votre relevé",
+    "Nothing charged or paid yet.": "Rien n'a encore été facturé ni payé.",
+    "Pay for this stay": "Régler ce séjour",
+    "Pay for this atelier": "Régler cet atelier",
+    "Pay towards this event": "Régler une partie de cet événement",
+    "Back to your account": "Retour à votre compte",
+    "Print": "Imprimer",
+    # What a guest may ask of us, from their own page.
+    "Your details": "Vos données",
+    "A copy of everything we hold about you": "Une copie de tout ce que nous conservons à votre sujet",
+    "No more newsletter, offers or marketing texts": "Plus de lettre d'information, d'offres ni de SMS promotionnels",
+    "Stop using my details for anything but my bookings": "N'utilisez mes données que pour mes réservations",
+    "You asked us to stop using your details. We use them for nothing but the bookings you have with us.":
+        "Vous nous avez demandé de cesser d'utiliser vos données. Nous ne les utilisons plus que pour les réservations que vous avez chez nous.",
+    "Ask us to delete what we hold about you": "Nous demander de supprimer vos données",
+    "Ask us to delete what we hold about you? It cannot be undone.":
+        "Nous demander de supprimer ce que nous conservons à votre sujet ? C'est irréversible.",
+    "Done. We will not send you the newsletter, offers or marketing texts.":
+        "C'est fait. Nous ne vous enverrons plus la lettre d'information, les offres ni les SMS promotionnels.",
+    "Recorded. We will use your details for nothing but the bookings you have with us.":
+        "C'est noté. Nous n'utiliserons vos données que pour les réservations que vous avez chez nous.",
+    "We have your request. It will be done within a month.":
+        "Nous avons bien reçu votre demande. Elle sera traitée sous un mois.",
     "Your booking": "Votre réservation",
     "Your atelier": "Votre atelier",
     "Your table": "Votre table",
@@ -847,6 +871,30 @@ ES = {
     "Your ateliers": "Sus talleres",
     "Your dinners": "Sus cenas",
     "Your account": "Su cuenta",
+    # The guest's statement of account.
+    "Your statement": "Su estado de cuenta",
+    "Nothing charged or paid yet.": "Todavía no se ha cobrado ni pagado nada.",
+    "Pay for this stay": "Pagar esta estancia",
+    "Pay for this atelier": "Pagar este taller",
+    "Pay towards this event": "Pagar una parte de este evento",
+    "Back to your account": "Volver a su cuenta",
+    "Print": "Imprimir",
+    # What a guest may ask of us, from their own page.
+    "Your details": "Sus datos",
+    "A copy of everything we hold about you": "Una copia de todo lo que conservamos sobre usted",
+    "No more newsletter, offers or marketing texts": "Ni boletín, ni ofertas, ni mensajes promocionales",
+    "Stop using my details for anything but my bookings": "Usen mis datos solo para mis reservas",
+    "You asked us to stop using your details. We use them for nothing but the bookings you have with us.":
+        "Nos pidió que dejáramos de usar sus datos. Solo los usamos para las reservas que tiene con nosotros.",
+    "Ask us to delete what we hold about you": "Pedirnos que borremos sus datos",
+    "Ask us to delete what we hold about you? It cannot be undone.":
+        "¿Pedirnos que borremos lo que conservamos sobre usted? No se puede deshacer.",
+    "Done. We will not send you the newsletter, offers or marketing texts.":
+        "Hecho. No le enviaremos el boletín, ofertas ni mensajes promocionales.",
+    "Recorded. We will use your details for nothing but the bookings you have with us.":
+        "Anotado. Solo usaremos sus datos para las reservas que tiene con nosotros.",
+    "We have your request. It will be done within a month.":
+        "Hemos recibido su solicitud. Se atenderá en el plazo de un mes.",
     "Your booking": "Su reserva",
     "Your atelier": "Su taller",
     "Your table": "Su mesa",
