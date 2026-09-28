@@ -41,8 +41,9 @@ Four things carry this file.
   SAID, NOT DROPPED, WHERE THAT IS THE POINT. The person teaching a sitting is
   the one who would otherwise turn up, and the call-off writes to the guests,
   not to them. Their list keeps it and says it is off; their roster is for the
-  next one that is running. The owner's admin pages already keep called-off
-  sittings with a badge and are not changed here.
+  next one that is running. The owner's workshops page keeps them too, with a
+  badge -- but no longer counts one as a sitting to come with every place
+  free, and no longer offers to take its materials out of stock.
 """
 import re
 from datetime import datetime, timedelta, timezone
@@ -243,6 +244,23 @@ def _itinerary_ateliers(arrive, leave):
             if e["kind"] in ("atelier", "atelier_yours")]
 
 
+def _consume_link(sid):
+    return f"/admin/workshops/sessions/{sid}/consume"
+
+
+def _spots_row(first, last):
+    """A row on the owner's workshops page saying how many places are left."""
+    return re.compile(re.escape(f"{first.isoformat()} → {last.isoformat()}")
+                      + r"\s*·\s*\d+/\d+ spots left")
+
+
+def _standing_line(html):
+    """The workshops page's standing line: (upcoming sittings, places free)."""
+    up = re.search(r"(\d+) upcoming session", html)
+    free = re.search(r"(\d+) spots still free", html)
+    return (int(up.group(1)) if up else None, int(free.group(1)) if free else None)
+
+
 def _teaching_rows(html):
     """The instructor's list as (atelier, what the line says) pairs."""
     if "Workshops You're Teaching" not in html:
@@ -403,6 +421,22 @@ def run():
         s.check("the instructor's list has it", code == 200 and any(
             n == OFF for n, _w in _teaching_rows(body)), detail=f"{_teaching_rows(body)}")
 
+        # The owner's workshops page, taken last so nothing else moves its
+        # figures between this and the call-off.
+        places_before = {sid: _ask(m.workshop_session_remaining_capacity, sid)
+                         for sid in (off_now, off_far, gone, live_now)}
+        s.check("the dates to be called off have places left",
+                all(places_before[sid] > 0 for sid in (off_now, off_far, gone)),
+                detail=f"{places_before}")
+        code, admin_before = _page(oc, "/admin/workshops")
+        s.check("the workshops page gives their places left",
+                code == 200 and bool(_spots_row(off_start, off_end).search(admin_before)),
+                detail=f"HTTP {code}")
+        s.check("and offers to take their materials out of stock",
+                _consume_link(off_now) in admin_before)
+        s.check("and counts them in its standing line",
+                None not in _standing_line(admin_before), detail=f"{_standing_line(admin_before)}")
+
         # ------------------------------------------------------------------
         s.section("Calling three dates off, through the owner's button")
         for sid in (off_now, off_far, gone):
@@ -415,6 +449,45 @@ def run():
         s.check("the running dates are untouched", all(
             _one("SELECT cancelled_at FROM workshop_sessions WHERE id = ?",
                  (sid,))["cancelled_at"] is None for sid in (live_now, live_far)))
+
+        # ------------------------------------------------------------------
+        s.section("The owner's workshops page: kept and badged, not counted")
+        # Kept because why it did not run is worth knowing. Counted, it read as
+        # three sittings still to come with every place free, "0/10 spots left
+        # -- full" beside each, and a button to take its materials out of
+        # stock for an atelier that never ran.
+        code, admin_after = _page(oc, "/admin/workshops")
+        up_before, free_before = _standing_line(admin_before)
+        up_after, free_after = _standing_line(admin_after)
+        lost = sum(places_before[sid] for sid in (off_now, off_far, gone))
+        s.check("it still lists them, marked called off",
+                code == 200 and OFF in admin_after and "called off" in admin_after,
+                detail=f"HTTP {code}")
+        s.check("but not as sittings still to come",
+                None not in (up_before, up_after) and up_after == up_before - 3,
+                detail=f"{up_before} upcoming, then {up_after}, after calling three off")
+        s.check("nor their places as free",
+                None not in (free_before, free_after) and free_after == free_before - lost,
+                detail=f"{free_before} free, then {free_after}; {lost} were on the three")
+        s.check("a called-off sitting has no places left", all(
+            _ask(m.workshop_session_remaining_capacity, sid) == 0
+            for sid in (off_now, off_far, gone)))
+        s.check("a running one keeps its places",
+                _ask(m.workshop_session_remaining_capacity, live_now) == places_before[live_now])
+        s.check("its row does not read as full",
+                not _spots_row(off_start, off_end).search(admin_after),
+                detail="no places because it is not running is not a sell-out")
+        s.check("the page no longer offers to take its materials out of stock",
+                _consume_link(off_now) not in admin_after)
+        s.check("but still does for the running one", _consume_link(live_now) in admin_after)
+        said = " ".join(flashes(oc.post(_consume_link(off_now), follow_redirects=True)))
+        used = _one("SELECT COUNT(*) AS c FROM stock_movements WHERE workshop_session_id = ?",
+                    (off_now,))["c"]
+        s.check("pressing it anyway records nothing as used", used == 0,
+                detail=f"{used} movement(s) -- the gold leaf is counted per sitting, so an "
+                       "atelier that never ran would still have 'sold' five books")
+        s.check("and says it was called off", "called off" in said,
+                detail=said or "no message")
 
         # ------------------------------------------------------------------
         s.section("The public pages: nothing to book")
@@ -610,6 +683,38 @@ def run():
         s.check("and the roster is for the next one that is running",
                 f"{LIVE} — Roster" in body and f"{OFF} — Roster" not in body,
                 detail="a called-off sitting's roster is everybody cancelled")
+
+        # ------------------------------------------------------------------
+        s.section("Nobody waiting is told a place has opened on it")
+        # The call-off closed its waiting list, so an open entry on it is data
+        # that should not exist -- which is when a guard earns its keep. Asked
+        # last, and taken away again, because the public checks above count
+        # the names on its list.
+        conn = db()
+        stray = conn.execute(
+            """INSERT INTO workshop_waitlist (session_id, name, email, party_size,
+               status, created_at) VALUES (?, ?, 'zzcop.stray@example.invalid', 1, 'open', ?)""",
+            (off_now, f"{TAG} Stray", _now())).lastrowid
+        was_auto = conn.execute(
+            "SELECT value FROM app_settings WHERE key = 'automation_waitlist_autonotify_enabled'"
+        ).fetchone()
+        conn.execute("INSERT OR REPLACE INTO app_settings (key, value) "
+                     "VALUES ('automation_waitlist_autonotify_enabled', '1')")
+        conn.commit()
+        try:
+            told = _ask(m.notify_workshop_waitlist_opening, off_now)
+        finally:
+            if was_auto:
+                conn.execute("UPDATE app_settings SET value = ? WHERE key = "
+                             "'automation_waitlist_autonotify_enabled'", (was_auto["value"],))
+            else:
+                conn.execute("DELETE FROM app_settings WHERE key = "
+                             "'automation_waitlist_autonotify_enabled'")
+            conn.execute("DELETE FROM workshop_waitlist WHERE id = ?", (stray,))
+            conn.commit()
+            conn.close()
+        s.check("nobody is written to", not told,
+                detail=f"{len(told or [])} told a place opened on a sitting that is not running")
     finally:
         m.send_email, m.send_workshop_email, m.send_event_email = was
         conn = db()

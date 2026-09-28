@@ -56467,6 +56467,11 @@ def consume_session_materials(conn, session_id, user_id=None):
         return None
     if plan["taken_out"]:
         return {"written": 0, "already": True, "plan": plan}
+    # A sitting called off used nothing. The per-session lines do not scale
+    # with heads, so without this it would record eight aprons sold to an
+    # atelier that never ran.
+    if plan["session"]["cancelled_at"]:
+        return {"written": 0, "already": False, "called_off": True, "plan": plan}
 
     label = f"{plan['session']['title']} — {plan['session']['start_date']}"
     written = 0
@@ -56711,7 +56716,10 @@ def claim_workshop_places(conn, session_id, exclude_id=None):
 
 def workshop_session_remaining_capacity(conn, session_id, exclude_id=None):
     session = conn.execute("SELECT * FROM workshop_sessions WHERE id = ?", (session_id,)).fetchone()
-    if not session:
+    # A sitting called off has no places. Counted the ordinary way it had all
+    # of them -- calling it off cancelled everybody -- which is what every
+    # page asking "how many are left" was told.
+    if not session or session["cancelled_at"]:
         return 0
     query = """SELECT COALESCE(SUM(party_size), 0) AS t FROM workshop_bookings
                WHERE session_id = ? AND status IN ('pending', 'confirmed')"""
@@ -56779,8 +56787,12 @@ def admin_workshops():
                 "register": register_by_session.get(s["id"], {"booked": 0, "owed": 0.0}),
                 # Only where there is a list to plan against, so a workshop
                 # with no materials costs nothing per session.
+                # Nor for a sitting that has been called off: it needs
+                # nothing from the shelf, and the button that takes it out
+                # must not be offered for an atelier that did not run.
                 "materials": (session_materials(conn, s["id"])
-                              if materials_by_workshop.get(w["id"]) else None),
+                              if materials_by_workshop.get(w["id"])
+                              and not s["cancelled_at"] else None),
             }
             if (s["end_date"] or s["start_date"]) >= today.isoformat():
                 rows.append(entry)
@@ -56800,7 +56812,10 @@ def admin_workshops():
     # Totalled here rather than in the template: the old version accumulated
     # inside a Jinja {% for %}, where a {% set %} doesn't escape the loop, so
     # both figures always came out as zero however many sessions were listed.
-    upcoming_rows = [r for rows in sessions_by_workshop.values() for r in rows]
+    # A sitting called off stays listed -- why it did not run is worth
+    # knowing -- but it is not an upcoming session with places free.
+    upcoming_rows = [r for rows in sessions_by_workshop.values() for r in rows
+                     if not r["session"]["cancelled_at"]]
     upcoming_count = len(upcoming_rows)
     spots_remaining = sum(r["remaining"] for r in upcoming_rows)
     conn.close()
@@ -57094,6 +57109,11 @@ def consume_workshop_materials(session_id):
     if result["already"]:
         conn.close()
         flash("Already taken out of stock for this session.", "error")
+        return redirect(url_for("admin_workshops"))
+    if result.get("called_off"):
+        conn.close()
+        flash("That sitting was called off, so nothing was used — nothing "
+              "taken out of stock.", "error")
         return redirect(url_for("admin_workshops"))
     if not result["written"]:
         conn.close()
@@ -77759,6 +77779,9 @@ def notify_workshop_waitlist_opening(conn, session_id):
            JOIN workshops ON workshops.id = workshop_sessions.workshop_id WHERE workshop_sessions.id = ?""",
         (session_id,),
     ).fetchone()
+    # Never "a place has opened" on a sitting that is not running.
+    if not session_row or session_row["cancelled_at"]:
+        return []
     date_line = format_date_human(session_row["start_date"])
     if session_row["end_date"] != session_row["start_date"]:
         date_line += f" to {format_date_human(session_row['end_date'])}"
