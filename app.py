@@ -306,6 +306,9 @@ AUTOMATION_SETTING_DEFAULTS = {
     # ON: it does nothing until a Booking.com mailbox and Microsoft Graph are
     # both set up, and then it is the thing the owner asked for.
     "automation_booking_com_mail_enabled": "1",
+    # ON: it does nothing until a lock is connected, and then a guest's way in
+    # depends on it.
+    "automation_door_lock_check_enabled": "1",
     "automation_weather_enabled": "1",
     "automation_exchange_rates_enabled": "1",
     "automation_photo_mirror_enabled": "1",
@@ -2700,6 +2703,22 @@ def init_db():
         -- A table of its own rather than a rebuild of that one: it is a legal
         -- register with real entries in it, and a migration that copies a
         -- table to change one constraint is how a register loses a page.
+        -- Every time the front door was asked to open through the site: when,
+        -- through which stay or by which member of staff, and whether it did.
+        -- No name of its own -- the stay carries that -- and gone after twelve
+        -- months, as the privacy notice says (purge_door_openings).
+        CREATE TABLE IF NOT EXISTS door_openings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            opened_at TEXT NOT NULL,
+            via TEXT NOT NULL,
+            booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
+            ota_reservation_id INTEGER REFERENCES ota_reservations(id) ON DELETE SET NULL,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            ok INTEGER NOT NULL,
+            detail TEXT
+        );
+        CREATE INDEX IF NOT EXISTS door_openings_when ON door_openings(opened_at);
+
         CREATE TABLE IF NOT EXISTS channel_police_register (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             ota_reservation_id INTEGER NOT NULL REFERENCES ota_reservations(id) ON DELETE CASCADE,
@@ -5740,6 +5759,18 @@ def init_db():
         # When that checklist was made, so it is made once.
         ("ota_reservations_turnover_prepped_at",
          "ALTER TABLE ota_reservations ADD COLUMN turnover_prepped_at TEXT"),
+        # The front door (see THE FRONT DOOR): a stay whose door access the
+        # owner has switched off, and a Booking.com stay's own door link --
+        # unique, because a link is a key and two stays must never share one.
+        ("bookings_door_access_off_at",
+         "ALTER TABLE bookings ADD COLUMN door_access_off_at TEXT"),
+        ("ota_reservations_door_access_off_at",
+         "ALTER TABLE ota_reservations ADD COLUMN door_access_off_at TEXT"),
+        ("ota_reservations_door_token",
+         "ALTER TABLE ota_reservations ADD COLUMN door_token TEXT"),
+        ("ota_reservations_door_token_once",
+         "CREATE UNIQUE INDEX IF NOT EXISTS ota_reservations_door_token_once "
+         "ON ota_reservations(door_token) WHERE door_token IS NOT NULL"),
     ):
         try:
             conn.execute(ddl)
@@ -7005,6 +7036,9 @@ NAV_AREAS = {
         # owner-only by omission rather than by choice.
         "add_police_fiche", "bulk_confirm_bookings", "bulk_decline_bookings", "cancel_booking_admin",
         "add_channel_police_fiche", "delete_channel_police_fiche",
+        # The front door: who may open it, and opening it from the office.
+        "door_lock_page", "save_door_settings", "open_door_now", "set_stay_door_access",
+        "make_channel_door_link",
         "cancel_booking_extra_line", "delete_guest", "delete_police_fiche", "delete_room",
         "delete_room_photo", "delete_room_rate_override", "disband_booking_party", "export_bookings_csv",
         "export_guests_csv", "guest_full_statement", "guest_statement_csv",
@@ -10161,11 +10195,14 @@ def leave_impact(conn, start_date, end_date, exclude_user_id=None):
            FROM restaurant_bookings
            WHERE status = 'confirmed' AND dinner_date BETWEEN ? AND ?""",
         (start_date, end_date)).fetchone()
+    # Only sittings still running. One called off needs nobody on for it, and
+    # listing it beside the button argues against leave for work that is gone.
     sessions = conn.execute(
-        """SELECT workshops.title, workshop_sessions.start_date
+        f"""SELECT workshops.title, workshop_sessions.start_date
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshop_sessions.start_date <= ? AND
                  COALESCE(workshop_sessions.end_date, workshop_sessions.start_date) >= ?
+             AND {SESSION_IS_LIVE}
            ORDER BY workshop_sessions.start_date""",
         (end_date, start_date)).fetchall()
     others = conn.execute(
@@ -10360,10 +10397,15 @@ def restaurant_overview(conn, period, today):
 
 
 def workshops_overview(conn, period, today):
-    """Sessions that run inside the window, and how full they are."""
+    """Sessions that run inside the window, and how full they are.
+
+    Called-off sittings are not running, so they are neither counted nor
+    offered as free seats: their places were all cancelled, so counting one
+    added a whole empty sitting to "Seats free" and pulled "Full" down.
+    """
     sessions = conn.execute(
-        """SELECT id, capacity FROM workshop_sessions
-           WHERE start_date < ? AND end_date >= ?""",
+        f"""SELECT id, capacity FROM workshop_sessions
+           WHERE start_date < ? AND end_date >= ? AND {SESSION_IS_LIVE}""",
         (period["end_iso"], period["start_iso"]),
     ).fetchall()
     session_ids = [s["id"] for s in sessions]
@@ -12395,6 +12437,46 @@ def claim_range(conn, room_id, arrival, departure, exclude_booking_id=None,
                               exclude_booking_id, include_pending)
 
 
+# A sitting that has been called off keeps its row -- why it did not run is
+# the thing worth knowing when deciding whether to put it on again -- but it
+# holds nothing: not the house, not a night on the picker, not a head in the
+# legal count. call_off_session only stamps cancelled_at, so anything that
+# asks what an atelier is holding has to leave those out, and does it with
+# this rather than each query remembering to.
+SESSION_IS_LIVE = "workshop_sessions.cancelled_at IS NULL"
+
+
+def sessions_holding_the_house(conn, first=None, last=None):
+    """The atelier sittings that take the whole château, soonest first.
+
+    ONE DEFINITION, because there were three copies and all three forgot the
+    same thing. The room gate, the room page's calendar and the public date
+    picker each read workshop_sessions for themselves with no word about
+    sittings that had been called off. So calling an atelier off cancelled
+    everybody's place and closed the house anyway: every room refused "Those
+    dates are held for a workshop" for an atelier that was not running, and
+    the picker struck its nights out, which reads to a guest as sold.
+
+    `first` and `last` (dates or ISO strings, both included) narrow it to the
+    sittings that touch that span. End-inclusive like every other reader of a
+    sitting: one finishing on the 5th still has its guests in the house that
+    morning.
+    """
+    sql = f"""SELECT workshop_sessions.id, workshop_sessions.start_date,
+                     workshop_sessions.end_date, workshops.title
+                FROM workshop_sessions
+                JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+               WHERE {SESSION_IS_LIVE}"""
+    args = []
+    if first is not None:
+        sql += " AND workshop_sessions.end_date >= ?"
+        args.append(first.isoformat() if hasattr(first, "isoformat") else first)
+    if last is not None:
+        sql += " AND workshop_sessions.start_date <= ?"
+        args.append(last.isoformat() if hasattr(last, "isoformat") else last)
+    return conn.execute(sql + " ORDER BY workshop_sessions.start_date", args).fetchall()
+
+
 def _availability_picture(conn, *, fresh=False):
     """Everything that closes a date, read once and held for the request.
 
@@ -12423,7 +12505,13 @@ def _availability_picture(conn, *, fresh=False):
         if cached is not None:
             return cached
 
-    picture = {"bookings": {}, "blocked": {}, "manual": {}, "house": []}
+    # "night_label" is the calendar's words for a house-wide hold, keyed by
+    # the sentence the booking check refuses with. The room page greys one
+    # night at a time and has room for "Held for a private wedding", not for
+    # the whole refusal. Keyed rather than kept as a second list, so the two
+    # cannot fall out of step.
+    picture = {"bookings": {}, "blocked": {}, "manual": {}, "house": [],
+               "night_label": {}}
 
     # Per room, but read for every room at once rather than one room at a
     # time. Status and id are kept so the callers that exclude a booking or
@@ -12450,14 +12538,12 @@ def _availability_picture(conn, *, fresh=False):
     #
     # END-INCLUSIVE, like the code this replaces: a workshop finishing on the
     # 5th still holds the 5th, where a booking departing on the 5th does not.
-    for row in conn.execute(
-            """SELECT workshop_sessions.start_date, workshop_sessions.end_date,
-                      workshops.title
-                 FROM workshop_sessions
-                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id"""):
+    # A sitting that has been called off holds nothing.
+    for row in sessions_holding_the_house(conn):
+        why = f"Those dates are held for a workshop ({row['title']})."
         picture["house"].append((
-            parse_date(row["start_date"]), parse_date(row["end_date"]),
-            f"Those dates are held for a workshop ({row['title']})."))
+            parse_date(row["start_date"]), parse_date(row["end_date"]), why))
+        picture["night_label"][why] = f"Held for {row['title']}"
     for row in conn.execute(
             """SELECT preferred_date, end_date, event_type FROM event_inquiries
                 WHERE status = 'confirmed' AND preferred_date IS NOT NULL"""):
@@ -12465,9 +12551,10 @@ def _availability_picture(conn, *, fresh=False):
         e_end = parse_date(row["end_date"]) or e_start
         if e_end and e_start and e_end < e_start:
             e_end = e_start
-        picture["house"].append((
-            e_start, e_end,
-            f"That date is held for a confirmed event ({row['event_type']})."))
+        why = f"That date is held for a confirmed event ({row['event_type']})."
+        picture["house"].append((e_start, e_end, why))
+        picture["night_label"][why] = (
+            f"Held for a private {row['event_type'] or 'event'}")
     for row in conn.execute(
             """SELECT event_holds.start_date, event_holds.end_date,
                       event_inquiries.event_type AS kind
@@ -12476,10 +12563,12 @@ def _availability_picture(conn, *, fresh=False):
                 WHERE event_holds.released_at IS NULL
                   AND event_holds.expires_at > ?""",
             (datetime.now(timezone.utc).isoformat(),)):
+        why = (f"Those dates are provisionally held for a {row['kind']} "
+               f"while somebody decides.")
         picture["house"].append((
-            parse_date(row["start_date"]), parse_date(row["end_date"]),
-            f"Those dates are provisionally held for a {row['kind']} "
-            f"while somebody decides."))
+            parse_date(row["start_date"]), parse_date(row["end_date"]), why))
+        picture["night_label"][why] = (
+            f"Provisionally held for a private {row['kind'] or 'event'}")
 
     if has_request_context():
         g._availability_picture = picture
@@ -12577,6 +12666,11 @@ def peak_guests_in_house(conn, start, end):
     true forever. Pending requests count, same as is_range_available: a
     pending request has already staked a claim on the capacity a new one
     would also want.
+
+    A place on a sitting that has been called off counts for nobody, however
+    it got there. Calling off cancels every place, but this is the ceiling
+    that turns the next guest away, and it must not do that for somebody who
+    is not coming.
     """
     nights = (end - start).days
     if nights <= 0:
@@ -12590,10 +12684,11 @@ def peak_guests_in_house(conn, start, end):
                  AND arrival_date <= ? AND departure_date > ?""", (day, day)).fetchone()["c"]
 
         ws_total = conn.execute(
-            """SELECT COALESCE(SUM(workshop_bookings.party_size), 0) AS c
+            f"""SELECT COALESCE(SUM(workshop_bookings.party_size), 0) AS c
                FROM workshop_bookings JOIN workshop_sessions
                  ON workshop_sessions.id = workshop_bookings.session_id
                WHERE workshop_bookings.status IN ('pending', 'confirmed')
+                 AND {SESSION_IS_LIVE}
                  AND workshop_sessions.start_date <= ? AND workshop_sessions.end_date > ?""",
             (day, day)).fetchone()["c"]
 
@@ -12625,21 +12720,37 @@ def house_capacity_error(conn, start, end, additional_guests):
 def unavailable_nights(conn, room_id, start, end):
     """{'YYYY-MM-DD': 'why'} for every night in [start, end) a guest cannot have.
 
-    The same sources is_range_available refuses on, resolved one night at a
-    time so a calendar can grey them out instead of letting someone fill in a
-    whole form and only then be told no. is_range_available stays the actual
-    gate — this is what the guest sees, not what decides.
+    What the room page's calendar greys out, one night at a time, so a guest
+    sees a night is taken instead of filling in the whole form and only then
+    being told no. is_range_available stays the actual gate — this is what
+    the guest sees, not what decides.
 
-    The two must agree on the boundaries, which are not the same for every
-    source, so they are spelled out rather than assumed:
+    READ FROM THE PICTURE THE BOOKING CHECK REFUSES FROM, not from questions
+    of its own. It used to ask its own, and two of the answers went stale
+    while the booking check moved on. It held a confirmed event on its first
+    day only, after events grew an end_date, so a two-day wedding greyed day
+    one and left day two clickable. And it had never heard of a provisional
+    hold, so it greyed nothing under one. Both were refused only when the
+    guest submitted the form. Reading _availability_picture gives it the
+    booking check's rows and boundaries, and anything new that closes a date
+    reaches both at once.
 
-      - a booking holds arrival..departure-1 (the checkout morning is free,
-        standard hotel convention)
-      - a workshop holds start..end INCLUSIVE — is_range_available refuses an
-        arrival on the session's end_date, because the guests are still in the
-        house that morning
-      - an event holds its single day
+    The boundaries are not the same for every source. They are the booking
+    check's:
+
+      - a booking, a channel stay (blocked_dates) or the owner's block on
+        this room (room_blocks) holds start..end-1: the checkout morning is
+        free, standard hotel convention
+      - a workshop, a confirmed event or a live hold takes the whole house
+        start..end INCLUSIVE, because its guests are still in the house that
+        morning. An event with no end, or an end before its start, holds its
+        single start day. The picture decides that, so this cannot decide it
+        differently.
+
+    On top of those, one thing the range check leaves to the booking forms:
+    a night on which the house is already at its legal ceiling.
     """
+    picture = _availability_picture(conn)
     out = {}
 
     def hold(first, last, reason):
@@ -12652,33 +12763,20 @@ def unavailable_nights(conn, room_id, start, end):
             out.setdefault(day.isoformat(), reason)
             day += timedelta(days=1)
 
-    for row in conn.execute(
-        """SELECT arrival_date, departure_date FROM bookings
-           WHERE room_id = ? AND status IN ('pending', 'confirmed')""", (room_id,)).fetchall():
-        b_start, b_end = parse_date(row["arrival_date"]), parse_date(row["departure_date"])
+    for _id, _status, b_start, b_end in picture["bookings"].get(room_id, ()):
         if b_start and b_end:
             hold(b_start, b_end - timedelta(days=1), "Already booked")
 
-    for table, reason in (("blocked_dates", "Booked on another channel"),
-                          ("room_blocks", "Not available")):
-        for row in conn.execute(
-            f"SELECT start_date, end_date FROM {table} WHERE room_id = ?", (room_id,)).fetchall():
-            b_start, b_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+    for kind, reason in (("blocked", "Booked on another channel"),
+                         ("manual", "Not available")):
+        for b_start, b_end in picture[kind].get(room_id, ()):
             if b_start and b_end:
                 hold(b_start, b_end - timedelta(days=1), reason)
 
-    for row in conn.execute(
-        """SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.title
-           FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id"""
-    ).fetchall():
-        w_start, w_end = parse_date(row["start_date"]), parse_date(row["end_date"])
-        hold(w_start, w_end, f"Held for {row['title']}")
-
-    for row in conn.execute(
-        """SELECT preferred_date, event_type FROM event_inquiries
-           WHERE status = 'confirmed' AND preferred_date IS NOT NULL""").fetchall():
-        e_date = parse_date(row["preferred_date"])
-        hold(e_date, e_date, f"Held for a private {row['event_type'] or 'event'}")
+    # Called-off sittings are already out: the picture asks
+    # sessions_holding_the_house, like the gate.
+    for h_start, h_end, why in picture["house"]:
+        hold(h_start, h_end, picture["night_label"].get(why, why))
 
     # And the legal ceiling: a night already holding the maximum has no room
     # for even one more guest, whatever this particular room's own state is.
@@ -12804,9 +12902,11 @@ def build_dashboard_calendar(conn, today):
         ).fetchall()
     }
     workshop_dates = set()
+    # A sitting that has been called off is not running, and a day marked
+    # with it reads to whoever is working as a day with an atelier on.
     for s in conn.execute(
-        """SELECT start_date, end_date FROM workshop_sessions
-           WHERE start_date < ? AND end_date >= ?""",
+        f"""SELECT start_date, end_date FROM workshop_sessions
+           WHERE start_date < ? AND end_date >= ? AND {SESSION_IS_LIVE}""",
         (month_end.isoformat(), month_start.isoformat()),
     ).fetchall():
         s_start, s_end = parse_date(s["start_date"]), parse_date(s["end_date"])
@@ -13526,11 +13626,14 @@ def week_activity(conn, monday, sunday):
         (lo, hi)).fetchone()["c"]
     if covers:
         bits.append(f"{covers} covers")
+    # What the house WAS doing: a sitting that was called off did not happen,
+    # and naming it beside a long week offers it as the reason.
     for r in conn.execute(
-        """SELECT workshops.title FROM workshop_sessions
+        f"""SELECT workshops.title FROM workshop_sessions
              JOIN workshops ON workshops.id = workshop_sessions.workshop_id
             WHERE workshop_sessions.start_date <= ?
-              AND COALESCE(workshop_sessions.end_date, workshop_sessions.start_date) >= ?""",
+              AND COALESCE(workshop_sessions.end_date, workshop_sessions.start_date) >= ?
+              AND {SESSION_IS_LIVE}""",
             (hi, lo)).fetchall():
         bits.append(r["title"])
     events = conn.execute(
@@ -14694,11 +14797,15 @@ def cover_gaps(conn, start, end):
         d["dinners"] += r["n"]
         d["covers"] += r["covers"]
 
+    # A called-off sitting is not work. Counted here, it made a day with
+    # nothing on read as a day short of people, and the gap is what gets
+    # somebody rostered.
     for r in conn.execute(
-        """SELECT workshops.title, workshop_sessions.start_date, workshop_sessions.end_date
+        f"""SELECT workshops.title, workshop_sessions.start_date, workshop_sessions.end_date
              FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
             WHERE workshop_sessions.start_date <= ?
-              AND COALESCE(workshop_sessions.end_date, workshop_sessions.start_date) >= ?""",
+              AND COALESCE(workshop_sessions.end_date, workshop_sessions.start_date) >= ?
+              AND {SESSION_IS_LIVE}""",
         (hi, lo)).fetchall():
         a = parse_date(r["start_date"])
         z = parse_date(r["end_date"] or r["start_date"])
@@ -20262,17 +20369,23 @@ def workshop_margins(conn, start=None, end=None):
     arrangement that varies per person and per session, and a page that
     guessed at it would be wrong in a way somebody could read as a statement
     about their fee. Materials are a number the house already records.
+
+    A sitting that was called off used nothing and took nothing. Left in, it
+    showed as a loss -- no revenue against the per-sitting materials it would
+    have needed -- and pulled the total margin down for an atelier that never
+    ran.
     """
     start = start or (house_today() - timedelta(days=365))
     end = end or (house_today() + timedelta(days=365))
     sessions = conn.execute(
-        """SELECT workshop_sessions.id, workshop_sessions.start_date,
+        f"""SELECT workshop_sessions.id, workshop_sessions.start_date,
                   workshop_sessions.end_date, workshop_sessions.capacity,
                   workshops.id AS workshop_id, workshops.title
              FROM workshop_sessions
              JOIN workshops ON workshops.id = workshop_sessions.workshop_id
             WHERE workshop_sessions.start_date >= ?
               AND workshop_sessions.start_date < ?
+              AND {SESSION_IS_LIVE}
             ORDER BY workshop_sessions.start_date""",
         (start.isoformat(), end.isoformat())).fetchall()
 
@@ -26229,10 +26342,10 @@ def nights_already_taken(conn, *, days=None):
     if total_rooms:
         taken.update(d for d, n in per_night.items() if n >= total_rooms)
 
-    for row in conn.execute(
-            """SELECT start_date, end_date FROM workshop_sessions
-                WHERE end_date >= ? AND start_date <= ?""",
-            (today.isoformat(), horizon.isoformat())).fetchall():
+    # Asked of the same definition the booking gate refuses on, so a sitting
+    # that has been called off stops striking nights here the moment it stops
+    # refusing them there.
+    for row in sessions_holding_the_house(conn, today, horizon):
         _span(row["start_date"], row["end_date"], inclusive_end=True)
     for row in conn.execute(
             """SELECT preferred_date, end_date FROM event_inquiries
@@ -29417,6 +29530,12 @@ def owner_home_warnings(conn, today):
             + (f" and {len(written) - 4} more" if len(written) > 4 else ""),
             len(written), "management_booking_com")
 
+    # The front door, from the last half-hourly check: a guest cannot open it
+    # from their phone, or its batteries are going. Quiet when it is well.
+    door = door_lock_problem(conn)
+    if door:
+        add("warn", "The front door lock needs looking at", door, 1, "door_lock_page")
+
     for check in readiness_checks(conn, include_slow=False):
         if check["ok"] or check["label"] not in FRONT_PAGE_READINESS:
             continue
@@ -29572,9 +29691,11 @@ def owner_home_occupancy(conn, today):
         leaving = conn.execute(
             """SELECT COUNT(*) AS c FROM bookings WHERE status = 'confirmed'
                AND departure_date = ?""", (d.isoformat(),)).fetchone()["c"]
+        # The same sittings the fill figure beside it counts: a called-off
+        # one marked the day while the fill said nobody was here.
         workshop = conn.execute(
-            """SELECT COUNT(*) AS c FROM workshop_sessions
-               WHERE start_date <= ? AND end_date >= ?""",
+            f"""SELECT COUNT(*) AS c FROM workshop_sessions
+               WHERE start_date <= ? AND end_date >= ? AND {SESSION_IS_LIVE}""",
             (d.isoformat(), d.isoformat())).fetchone()["c"]
         marker = ("arrival" if arriving else
                   "departure" if leaving else
@@ -29670,13 +29791,16 @@ def dashboard():
             """SELECT * FROM rooms WHERE active = 1
                ORDER BY sort_order, price_per_night""").fetchall()]
         # Only sittings still ahead. A front page advertising a workshop that
-        # finished in June is worse than one advertising none.
+        # finished in June is worse than one advertising none. And only ones
+        # still running: a sitting that has been called off is not "The Next
+        # Dates", and its places were all cancelled, so it read as wide open.
         upcoming = [dict(r) for r in conn.execute(
-            """SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
+            f"""SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
                       workshops.nights_label, workshops.id AS workshop_id
                  FROM workshop_sessions
                  JOIN workshops ON workshops.id = workshop_sessions.workshop_id
                 WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
+                  AND {SESSION_IS_LIVE}
                 ORDER BY workshop_sessions.start_date LIMIT 3""",
             (house_today_iso(),)).fetchall()]
         conn.close()
@@ -30009,8 +30133,13 @@ def staff_dashboard():
                ORDER BY workshop_sessions.start_date LIMIT 5""",
             (user["id"], today.isoformat()),
         ).fetchall()
-        if my_upcoming_sessions:
-            my_next_session = my_upcoming_sessions[0]
+        # A called-off sitting stays on this list, SAID to be off: this is the
+        # person who would otherwise turn up to teach it, and the call-off
+        # writes to the guests, not to them. But the roster is for the next
+        # one that is running -- a called-off one's is everybody cancelled.
+        my_next_session = next(
+            (s for s in my_upcoming_sessions if not s["cancelled_at"]), None)
+        if my_next_session:
             my_next_session_roster = conn.execute(
                 """SELECT workshop_bookings.*, rooms.name AS room_name
                    FROM workshop_bookings LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
@@ -34633,6 +34762,8 @@ PALETTE_PAGES = [
      "copy of my data delete me portable"),
     ("Guest register", "police_register_page",
      "police fiche individuelle nationality passport foreign guests declaration prefecture gendarmerie"),
+    ("Door lock", "door_lock_page",
+     "front door lock open remote tuya smart life guests access key nivian"),
     ("Transfers", "all_transfers", "airport pickup driving"),
     ("Asset register", "admin_assets", "furniture art antiques insurance valuation"),
     ("Keys & access", "admin_access", "codes alarm fobs"),
@@ -41397,15 +41528,18 @@ def stay_itinerary(conn, booking):
 
     # Ateliers running while they are here. Active workshops only, and the
     # session has to actually overlap the stay -- a course that starts the day
-    # after they leave is not something on during their stay.
+    # after they leave is not something on during their stay. Nor is one
+    # that has been called off: it would sit on their itinerary as "on at the
+    # château while you are here" when it is not on at all.
     sessions = conn.execute(
-        """SELECT workshop_sessions.*, workshops.title AS title,
+        f"""SELECT workshop_sessions.*, workshops.title AS title,
                   workshops.active AS active
              FROM workshop_sessions
              JOIN workshops ON workshops.id = workshop_sessions.workshop_id
             WHERE workshops.active = 1
               AND workshop_sessions.start_date <= ?
               AND workshop_sessions.end_date >= ?
+              AND {SESSION_IS_LIVE}
             ORDER BY workshop_sessions.start_date""", (last, first)).fetchall()
     theirs = {row["session_id"] for row in conn.execute(
         """SELECT session_id FROM workshop_bookings
@@ -42012,10 +42146,14 @@ def manage_booking(manage_token):
         if booking["status"] in ("pending", "confirmed")
         and parse_date(booking["arrival_date"])
         and parse_date(booking["departure_date"]) else [])
+    # The front door: whether this stay's guest can open it from their phone,
+    # for the card that leads them to it (templates/_door_card.html).
+    door = door_access(conn, booking=booking)
     conn.commit()
     conn.close()
     return render_template(
         "manage_booking.html", booking=booking, guest_requests=guest_requests, room=room,
+        door=door,
         addable_rooms=addable_rooms,
         group=group,
         portal_token=portal_token,
@@ -43115,10 +43253,8 @@ def update_event_inquiry(inquiry_id):
                AND arrival_date <= ? AND departure_date > ?""",
             (event_date, event_date),
         ).fetchone()["c"]
-        clashing_sessions = conn.execute(
-            "SELECT COUNT(*) AS c FROM workshop_sessions WHERE start_date <= ? AND end_date >= ?",
-            (event_date, event_date),
-        ).fetchone()["c"]
+        # Only sittings still running: one called off is no clash at all.
+        clashing_sessions = len(sessions_holding_the_house(conn, event_date, event_date))
         clashing_events = conn.execute(
             "SELECT COUNT(*) AS c FROM event_inquiries WHERE status = 'confirmed' AND preferred_date = ? AND id != ?",
             (event_date, inquiry_id),
@@ -46716,7 +46852,7 @@ EMAIL_TEMPLATE_TAGS = {
                                        "party_size", "price_block", "reference_code",
                                        "total_price", "workshop_title"),
     "workshop_waitlist_opening": ("dates", "name", "register_url", "workshop_title"),
-    "room_confirmed": ("arrival_date", "checkin_url", "departure_date", "first_name",
+    "room_confirmed": ("arrival_date", "checkin_url", "departure_date", "door_url", "first_name",
                        "guest_name", "manage_url", "party_size", "reference_code",
                        "room_name", "stay_details"),
     "room_request_received": ("checkin_url", "guest_name", "reference_code",
@@ -47086,6 +47222,7 @@ SAMPLE_MERGE_VALUES = {
     "departure_date": "17 October 2026",
     "workshop_date": "14 October 2026",
     "checkin_url": "https://chateaugudanes.com/stay/9f2c1a7b/check-in",
+    "door_url": "https://chateaugudanes.com/book/manage/9f2c1a7b/door",
     "statement_url": "https://chateaugudanes.com/booking/9f2c1a7b/statement",
     "pay_url": "https://chateaugudanes.com/share/4d81c2",
     "quote_url": "https://chateaugudanes.com/events/quote/7be210",
@@ -47855,6 +47992,22 @@ def workshop_pay_balance(manage_token):
     return redirect(checkout_url, code=303)
 
 
+def public_sittings(conn, workshop_id, today):
+    """The dates of an atelier a guest can still take a place on.
+
+    Ahead, and still running. A sitting that has been called off keeps its row
+    and loses every place, so read without the second half it showed on the
+    public pages as wide open -- and the register link under it took a
+    deposit for an atelier that was not going to happen. The list and the
+    atelier's own page both ask this, so they cannot disagree about it.
+    """
+    return conn.execute(
+        f"""SELECT * FROM workshop_sessions
+             WHERE workshop_id = ? AND start_date >= ? AND {SESSION_IS_LIVE}
+             ORDER BY start_date""",
+        (workshop_id, today.isoformat())).fetchall()
+
+
 @app.route("/workshops")
 def workshops_public():
     conn = get_db()
@@ -47869,16 +48022,14 @@ def workshops_public():
     #
     #   upcoming > 0            -> show, with its dates
     #   none upcoming, some past -> it is over, hide it
+    #   every date called off    -> not running, hide it
     #   never had any            -> coming soon, show without dates
     all_active = conn.execute(
         "SELECT * FROM workshops WHERE active = 1 ORDER BY sort_order, title").fetchall()
     workshops = []
     sessions_by_workshop = {}
     for w in all_active:
-        sessions = conn.execute(
-            "SELECT * FROM workshop_sessions WHERE workshop_id = ? AND start_date >= ? ORDER BY start_date",
-            (w["id"], today.isoformat()),
-        ).fetchall()
+        sessions = public_sittings(conn, w["id"], today)
         if not sessions:
             ever = conn.execute(
                 "SELECT 1 FROM workshop_sessions WHERE workshop_id = ? LIMIT 1",
@@ -47932,10 +48083,7 @@ def workshop_detail(workshop_id):
         conn.close()
         abort(404)
     today = house_today()
-    sessions = conn.execute(
-        "SELECT * FROM workshop_sessions WHERE workshop_id = ? AND start_date >= ? ORDER BY start_date",
-        (workshop_id, today.isoformat()),
-    ).fetchall()
+    sessions = public_sittings(conn, workshop_id, today)
     session_rows = [{"session": s, "remaining": workshop_session_remaining_capacity(conn, s["id"])} for s in sessions]
     # A finished workshop is off the public list, so its own page would be a
     # dead end reached from an old link or a search result. Send them to what
@@ -47945,8 +48093,16 @@ def workshop_detail(workshop_id):
             "SELECT 1 FROM workshop_sessions WHERE workshop_id = ? LIMIT 1",
             (workshop_id,)).fetchone()
         if ever:
+            # "Has finished" is not true of one whose every date was called
+            # off before it ran, and a guest reads it as a statement of fact.
+            ran = conn.execute(
+                f"""SELECT 1 FROM workshop_sessions
+                     WHERE workshop_id = ? AND {SESSION_IS_LIVE} LIMIT 1""",
+                (workshop_id,)).fetchone()
             conn.close()
-            flash(f"{workshop['title']} has finished — here is what is coming up.", "error")
+            flash(f"{workshop['title']} has finished — here is what is coming up." if ran
+                  else f"{workshop['title']} has no dates coming up — here is what is.",
+                  "error")
             return redirect(url_for("workshops_public"))
     conn.close()
     return render_template("workshop_detail.html", workshop=workshop, session_rows=session_rows)
@@ -47971,6 +48127,15 @@ def workshop_register(session_id):
     if not start_date or start_date < today:
         conn.close()
         abort(404)
+    # CALLED OFF. The owner's desk already refused a place on one; this form
+    # did not, so a guest with the link could register for an atelier that is
+    # not running and be sent straight to pay a deposit on it. Refused before
+    # anything is read from the form, for a GET and a POST alike, and sent to
+    # the atelier's own page, which lists the dates that ARE running.
+    if session_row["cancelled_at"]:
+        conn.close()
+        flash("That date has been called off, so it cannot be booked.", "error")
+        return redirect(url_for("workshop_detail", workshop_id=session_row["workshop_id"]))
     custom_fields = conn.execute(
         "SELECT * FROM workshop_custom_fields WHERE workshop_id = ? ORDER BY sort_order",
         (session_row["workshop_id"],),
@@ -48266,8 +48431,10 @@ def workshop_manage(manage_token):
 
         new_session_id = int(new_session_id_raw)
         current_session = conn.execute("SELECT workshop_id FROM workshop_sessions WHERE id = ?", (booking["session_id"],)).fetchone()
+        # Only a date that is running. A called-off one has no places taken,
+        # so it always had room, and a guest could move themselves onto it.
         new_session = conn.execute(
-            "SELECT * FROM workshop_sessions WHERE id = ? AND workshop_id = ?",
+            f"SELECT * FROM workshop_sessions WHERE id = ? AND workshop_id = ? AND {SESSION_IS_LIVE}",
             (new_session_id, current_session["workshop_id"]),
         ).fetchone()
         if not new_session:
@@ -48351,14 +48518,12 @@ def workshop_manage(manage_token):
         current_workshop_id = conn.execute(
             "SELECT workshop_id FROM workshop_sessions WHERE id = ?", (booking["session_id"],)
         ).fetchone()["workshop_id"]
-        candidates = conn.execute(
-            """SELECT * FROM workshop_sessions WHERE workshop_id = ? AND id != ? AND start_date >= ?
-               ORDER BY start_date""",
-            (current_workshop_id, booking["session_id"], today.isoformat()),
-        ).fetchall()
+        # The same dates the atelier's public page offers, so a called-off one
+        # is not held out here as somewhere to move to.
         other_sessions = [
-            s for s in candidates
-            if workshop_session_remaining_capacity(conn, s["id"]) >= booking["party_size"]
+            s for s in public_sittings(conn, current_workshop_id, today)
+            if s["id"] != booking["session_id"]
+            and workshop_session_remaining_capacity(conn, s["id"]) >= booking["party_size"]
         ]
 
     conn.close()
@@ -49889,12 +50054,15 @@ def build_owner_digest(conn):
     pending_workshop_regs = conn.execute(
         "SELECT COUNT(*) AS c FROM workshop_bookings WHERE status = 'pending'"
     ).fetchone()["c"]
+    # Only sittings still running: one called off would be reported as
+    # starting this week with nobody confirmed.
     sessions_this_week = conn.execute(
-        """SELECT workshops.title, workshop_sessions.start_date,
+        f"""SELECT workshops.title, workshop_sessions.start_date,
                   COALESCE((SELECT SUM(party_size) FROM workshop_bookings
                             WHERE session_id = workshop_sessions.id AND status = 'confirmed'), 0) AS covers
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshop_sessions.start_date >= ? AND workshop_sessions.start_date <= ?
+             AND {SESSION_IS_LIVE}
            ORDER BY workshop_sessions.start_date""",
         (today.isoformat(), (today + timedelta(days=7)).isoformat()),
     ).fetchall()
@@ -50120,12 +50288,15 @@ def team_calendar():
     }
     dinner_cells = [{"date": d, "covers": dinner_covers_by_date.get(d.isoformat(), 0)} for d in days]
 
+    # The team's calendar shows what they are working: a called-off sitting
+    # is not on, and its name on a day reads as though it were.
     workshop_sessions_in_range = conn.execute(
-        """SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.title,
+        f"""SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.title,
                   COALESCE((SELECT SUM(party_size) FROM workshop_bookings
                             WHERE session_id = workshop_sessions.id AND status IN ('pending', 'confirmed')), 0) AS covers
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-           WHERE workshop_sessions.start_date < ? AND workshop_sessions.end_date >= ?""",
+           WHERE workshop_sessions.start_date < ? AND workshop_sessions.end_date >= ?
+             AND {SESSION_IS_LIVE}""",
         (next_month.isoformat(), first_day.isoformat()),
     ).fetchall()
     workshop_covers_by_date = {}
@@ -57217,13 +57388,18 @@ def sessions_short_of_materials(conn, today=None, days=None):
 
     Only the ones close enough to matter and far enough away to fix: a
     shortfall found the evening before is not a warning, it is an apology.
+
+    Not a sitting that has been called off: it needs nothing, and the warning
+    and the task it raised sat there until its date asking for clay to be
+    bought for an atelier that was not running.
     """
     today = today or house_today()
     days = WORKSHOP_MATERIALS_WARN_DAYS if days is None else days
     rows = conn.execute(
-        """SELECT workshop_sessions.id FROM workshop_sessions
+        f"""SELECT workshop_sessions.id FROM workshop_sessions
             WHERE workshop_sessions.start_date >= ?
               AND workshop_sessions.start_date <= ?
+              AND {SESSION_IS_LIVE}
               AND EXISTS (SELECT 1 FROM workshop_materials
                            WHERE workshop_materials.workshop_id =
                                  workshop_sessions.workshop_id)
@@ -57257,10 +57433,16 @@ def sessions_at_risk(conn, today=None):
     The waitlist is read in the same breath, because it changes the answer.
     Three short with four waiting is a telephone call, not a cancellation,
     and the row says which.
+
+    CALLING IT OFF IS THE DECISION this exists to prompt, so a sitting that
+    has been called off is not at risk -- it has been dealt with. Left in, it
+    sat at nought confirmed (the call-off cancels every place) and stayed on
+    the owner's warnings and task list until its start date, the one finding
+    in that set that could never close itself.
     """
     today = today or house_today()
     rows = conn.execute(
-        """SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
+        f"""SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
                   workshops.instructor_name,
                   (SELECT COALESCE(SUM(party_size), 0) FROM workshop_bookings
                     WHERE session_id = workshop_sessions.id
@@ -57279,6 +57461,7 @@ def sessions_at_risk(conn, today=None):
              JOIN workshops ON workshops.id = workshop_sessions.workshop_id
             WHERE workshop_sessions.min_participants > 0
               AND workshop_sessions.start_date >= ?
+              AND {SESSION_IS_LIVE}
             ORDER BY workshop_sessions.start_date""",
         (today.isoformat(),)).fetchall()
 
@@ -58352,8 +58535,8 @@ def admin_workshop_registrations():
     # sessions that have not started and have not been called off.
     moves = {}
     for s_ in conn.execute(
-            """SELECT id, workshop_id, start_date, end_date FROM workshop_sessions
-                WHERE start_date >= ? AND cancelled_at IS NULL ORDER BY start_date""",
+            f"""SELECT id, workshop_id, start_date, end_date FROM workshop_sessions
+                WHERE start_date >= ? AND {SESSION_IS_LIVE} ORDER BY start_date""",
             (today.isoformat(),)).fetchall():
         moves.setdefault(s_["workshop_id"], []).append(s_)
     guests_by_booking = {}
@@ -58542,8 +58725,8 @@ def move_workshop_registration(registration_id):
         abort(404)
     raw = (request.form.get("new_session_id") or "").strip()
     target = conn.execute(
-        """SELECT * FROM workshop_sessions WHERE id = ? AND workshop_id = ?
-              AND cancelled_at IS NULL""",
+        f"""SELECT * FROM workshop_sessions WHERE id = ? AND workshop_id = ?
+              AND {SESSION_IS_LIVE}""",
         (int(raw) if raw.isdigit() else 0, reg["workshop_id"])).fetchone()
     back = url_for("admin_workshop_registrations", session_id=reg["session_id"])
     error = None
@@ -59386,9 +59569,18 @@ def join_workshop_waitlist():
         abort(404)
     session_id = int(session_id_raw)
     conn = get_db()
-    if not conn.execute("SELECT 1 FROM workshop_sessions WHERE id = ?", (session_id,)).fetchone():
+    target = conn.execute("SELECT workshop_id, cancelled_at FROM workshop_sessions WHERE id = ?",
+                          (session_id,)).fetchone()
+    if not target:
         conn.close()
         abort(404)
+    # Calling a sitting off closes its waiting list and tells everybody on it.
+    # Joining one afterwards would put somebody in a queue nobody serves, told
+    # "we'll reach out if a spot opens up" about a date that is not running.
+    if target["cancelled_at"]:
+        conn.close()
+        flash("That date has been called off, so there is no waiting list for it.", "error")
+        return redirect(url_for("workshop_detail", workshop_id=target["workshop_id"]))
 
     if rate_limited(conn, "join_workshop_waitlist", BOOKING_RATE_LIMIT_PER_HOUR):
         conn.commit()
@@ -68082,6 +68274,7 @@ WATCH_TASK_KINDS = {
     "refund": "Money the house owes back, or a refund that needs deciding",
     "dispute": "A card payment disputed with the guest's bank",
     "booking_com": "A Booking.com guest waiting for an answer",
+    "door": "The front door lock needs attention",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -69929,6 +70122,7 @@ def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
                          _external=True)
     checkin_url = url_for("guest_checkin", manage_token=booking["manage_token"],
                           _external=True)
+    door_url = url_for("guest_door", manage_token=booking["manage_token"], _external=True)
     bill = booking_bill(conn, booking["id"])
     owed = bill["owed"] if bill else 0
     balance_due = f"\u20ac{owed:,.2f}" if owed and owed > 0.005 else ""
@@ -69944,6 +70138,13 @@ def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
                 "any requests" + (" and your airport transfer details"
                                   if booking_has_transfer(booking) else "") + ":",
                 checkin_url]
+    # The front door, once the lock is connected. It rides in {stay_details},
+    # like the check-in link, so no wording anybody has edited is disturbed --
+    # and the confirmation is where a guest keeps what they need to arrive.
+    if door_ready(conn):
+        opens = _door_setting(conn, "door_opens_at", DOOR_DEFAULT_OPENS)
+        details += ["", f"The front door opens from your phone, from {opens} on the day you "
+                        "arrive until you leave. Keep this link:", door_url]
     if portal_url:
         details += ["", "Everything you have with us \u2014 this stay, any ateliers "
                         "or dinners \u2014 is always here:", portal_url]
@@ -69957,6 +70158,7 @@ def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
         "reference_code": booking["reference_code"],
         "manage_url": manage_url,
         "checkin_url": checkin_url,
+        "door_url": door_url,
         "stay_details": "\n".join(details),
     }
     return context, dict(balance_due=balance_due, manage_url=manage_url)
@@ -70074,39 +70276,42 @@ def empty_nights(conn, *, days=90, today=None):
     unsellable if a block covers it. Pending counts because somebody has asked
     for it and the calendar is already holding it — showing it as free is how
     the same night gets offered twice.
+
+    A block is either kind: a stay on another channel (blocked_dates, from
+    the iCal sync) or the owner's own block on the room (room_blocks) -- the
+    renovation, the family visit. The owner's used not to count, so a room
+    they had taken off sale was listed as an empty night and its rate added
+    to the unsold figure. Bookings and both kinds of block are read from the
+    picture the booking check refuses from, so a night that check turns a
+    guest away from for THIS room is never offered here as one to fill. A
+    block ends on the checkout morning, like a booking.
     """
     day = today or house_today()
     last = day + timedelta(days=max(1, min(730, days)))
 
     rooms = conn.execute(
         "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
-    taken = {r["id"]: set() for r in rooms}
+    picture = _availability_picture(conn)
 
-    for b in conn.execute(
-            """SELECT room_id, arrival_date, departure_date FROM bookings
-                WHERE status IN ('confirmed', 'pending')
-                  AND departure_date > ? AND arrival_date < ?""",
-            (day.isoformat(), last.isoformat())).fetchall():
-        start, end = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
-        if not start or not end:
-            continue
-        night = max(start, day)
-        while night < min(end, last):
-            taken.setdefault(b["room_id"], set()).add(night)
-            night += timedelta(days=1)
+    def nights_of(spans):
+        """{room_id: {night, ...}} for [start, end) spans, inside the window."""
+        out = {r["id"]: set() for r in rooms}
+        for room_id, start, end in spans:
+            if not start or not end:
+                continue
+            night = max(start, day)
+            while night < min(end, last):
+                out.setdefault(room_id, set()).add(night)
+                night += timedelta(days=1)
+        return out
 
-    blocked = {r["id"]: set() for r in rooms}
-    for bl in conn.execute(
-            """SELECT room_id, start_date, end_date FROM blocked_dates
-                WHERE end_date > ? AND start_date < ?""",
-            (day.isoformat(), last.isoformat())).fetchall():
-        start, end = parse_date(bl["start_date"]), parse_date(bl["end_date"])
-        if not start or not end:
-            continue
-        night = max(start, day)
-        while night < min(end, last):
-            blocked.setdefault(bl["room_id"], set()).add(night)
-            night += timedelta(days=1)
+    taken = nights_of((room_id, start, end)
+                      for room_id, rows in picture["bookings"].items()
+                      for _id, _status, start, end in rows)
+    blocked = nights_of((room_id, start, end)
+                        for kind in ("blocked", "manual")
+                        for room_id, rows in picture[kind].items()
+                        for start, end in rows)
 
     runs, free_by_night, total_value, free_count = [], {}, 0.0, 0
     for room in rooms:
@@ -71114,6 +71319,13 @@ def watch_task_findings(conn, today=None):
             # Due the day the longest-waiting guest wrote: a message is owed an
             # answer that day, and one still open next morning reads as late.
             house_date_iso(written[0]["received_at"]), "high"))
+
+    # The front door, when guests cannot open it from their phone or its
+    # batteries are going. One task while that is true; it closes itself once
+    # the half-hourly check finds the lock well again.
+    door = door_lock_problem(conn)
+    if door:
+        found.append(("door", "Look at the front door lock", door, today.isoformat(), "high"))
 
     return found, dropped
 
@@ -74853,6 +75065,7 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_guest_messages(conn))
     cleared.update(purge_mail_log(conn))
     cleared.update(purge_booking_com_mail(conn))
+    cleared.update(purge_door_openings(conn))
     # The only one of these holding an identifier for people who never became
     # guests at all -- somebody who opened the availability calendar and left.
     cleared.update(purge_submission_log(conn))
@@ -76876,12 +77089,14 @@ def today_sheet():
            WHERE dinner_date = ? ORDER BY users.name""",
         (today.isoformat(),),
     ).fetchall()
+    # "Workshops Running Today" -- so not one that has been called off.
     todays_workshop_sessions = conn.execute(
-        """SELECT workshop_sessions.*, workshops.title, workshops.instructor_name,
+        f"""SELECT workshop_sessions.*, workshops.title, workshops.instructor_name,
                   COALESCE((SELECT SUM(party_size) FROM workshop_bookings
                             WHERE session_id = workshop_sessions.id AND status = 'confirmed'), 0) AS covers
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshop_sessions.start_date <= ? AND workshop_sessions.end_date >= ?
+             AND {SESSION_IS_LIVE}
            ORDER BY workshop_sessions.start_date""",
         (today.isoformat(), today.isoformat()),
     ).fetchall()
@@ -80169,6 +80384,693 @@ def reply_booking_com_message(mail_id):
     return redirect(url_for("management_booking_com") + f"#m{mail_id}")
 
 
+# ==========================================================================
+# THE FRONT DOOR
+# ==========================================================================
+#
+# The front door has a Nivian NVS-SMARTBOLT: a bolt hidden inside the door and
+# driven by a motor, with nothing on the outside -- no keypad and no keyhole.
+# It opens from the Smart Life app, from its remote fobs, and from the touch
+# buttons on the inside. So there is no code to give a guest. What the site can
+# give them is a button: the page for their stay asks Tuya's cloud -- the
+# service the Smart Life app talks to -- to open the door, and only while the
+# stay is on.
+#
+# Three things follow, and the pages say each of them where it matters.
+#
+#   A GUEST'S LINK IS A KEY for the length of the stay: anyone holding it could
+#   open the door in that window. So the window is the stay and no more, every
+#   opening is recorded against the stay, the owner hears when a guest first
+#   lets themselves in and whenever the door does not open, and any stay's
+#   access can be switched off.
+#
+#   IT DEPENDS ON THE INTERNET, the lock's batteries and Tuya, whose free plan
+#   has to be renewed every six months. A guest must never be left outside
+#   because of any of those, so every guest is also given a remote (the lock
+#   takes ten), recorded like a key, and the lock is checked every half hour so
+#   the owner hears before it matters.
+#
+#   WHAT THE LOCK CAN DO IS ASKED, NOT ASSUMED. Tuya opens a Wi-Fi lock without
+#   a code only if the lock offers it and remote opening is on in the app; the
+#   Door page asks the lock and shows what it said.
+
+TUYA_ACCESS_ID = (os.environ.get("TUYA_ACCESS_ID") or "").strip() or None
+TUYA_ACCESS_SECRET = (os.environ.get("TUYA_ACCESS_SECRET") or "").strip() or None
+# The data centre the Smart Life account lives in. France is Central Europe.
+TUYA_DATA_CENTRES = {
+    "eu": "https://openapi.tuyaeu.com",
+    "weu": "https://openapi-weaz.tuyaeu.com",
+    "us": "https://openapi.tuyaus.com",
+    "eus": "https://openapi-ueaz.tuyaus.com",
+    "cn": "https://openapi.tuyacn.com",
+    "in": "https://openapi.tuyain.com",
+}
+TUYA_REGION = (os.environ.get("TUYA_REGION") or "eu").strip().lower()
+TUYA_API_BASE = TUYA_DATA_CENTRES.get(TUYA_REGION, TUYA_DATA_CENTRES["eu"])
+_tuya_token_cache = {"token": None, "expires_at": 0.0}
+
+# The stay's window: from this time on the day they arrive, to this time on the
+# day they leave. There is no check-in time anywhere else in the app -- bookings
+# carry dates only -- so the door keeps its own, and the owner sets them.
+DOOR_DEFAULT_OPENS = "12:00"
+DOOR_DEFAULT_CLOSES = "12:00"
+# Five openings in ten minutes from one stay's page is somebody pressing a
+# button that did not seem to work, or somebody who should not have the link.
+DOOR_RATE_LIMIT = 5
+DOOR_RATE_MINUTES = 10
+DOOR_LOG_KEEP_MONTHS = 12
+
+
+class TuyaError(Exception):
+    """Tuya said no, or could not be reached. `code` is Tuya's own, if it gave one."""
+
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code
+
+
+def tuya_configured():
+    return bool(TUYA_ACCESS_ID and TUYA_ACCESS_SECRET)
+
+
+def tuya_sign(client_id, secret, method, url_path, body=b"", *, t, nonce="",
+              access_token="", signed_headers=""):
+    """Tuya's request signature: HMAC-SHA256, upper-case hex.
+
+    The string signed is the method, the SHA-256 of the body, any headers named
+    in Signature-Headers (as "key:value" lines), and the path with its query
+    sorted -- each on its own line -- after the client id, the access token for
+    a business call, the time and the nonce. Checked against the two worked
+    examples in Tuya's own documentation.
+    """
+    content = hashlib.sha256(body or b"").hexdigest()
+    string_to_sign = f"{method.upper()}\n{content}\n{signed_headers}\n{url_path}"
+    message = client_id + access_token + t + nonce + string_to_sign
+    return hmac.new(secret.encode("utf-8"), message.encode("utf-8"),
+                    hashlib.sha256).hexdigest().upper()
+
+
+def tuya_request(method, path, *, params=None, body=None, access_token=""):
+    """The one door to Tuya's cloud: sign, send, read. Raises TuyaError.
+
+    Stood down in the test suite at import (see tests/_harness.py), because a
+    real call opens the house's front door.
+    """
+    if not tuya_configured():
+        raise TuyaError("Tuya is not connected")
+    query = "&".join(f"{k}={v}" for k, v in sorted((params or {}).items()))
+    url_path = path + (f"?{query}" if query else "")
+    raw = json.dumps(body, separators=(",", ":")).encode("utf-8") if body is not None else b""
+    t = str(int(time.time() * 1000))
+    nonce = secrets.token_hex(16)
+    headers = {
+        "client_id": TUYA_ACCESS_ID, "t": t, "nonce": nonce, "sign_method": "HMAC-SHA256",
+        "sign": tuya_sign(TUYA_ACCESS_ID, TUYA_ACCESS_SECRET, method, url_path, raw,
+                          t=t, nonce=nonce, access_token=access_token),
+        "Content-Type": "application/json",
+    }
+    if access_token:
+        headers["access_token"] = access_token
+    req = Request(TUYA_API_BASE + url_path, data=raw if method.upper() != "GET" else None,
+                  headers=headers, method=method.upper())
+    try:
+        with urlopen(req, timeout=15) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        raise TuyaError(f"Tuya could not be reached ({type(e).__name__})")
+    if not payload.get("success"):
+        raise TuyaError(payload.get("msg") or "Tuya refused the request", code=payload.get("code"))
+    return payload.get("result")
+
+
+def tuya_token():
+    """An access token for the business calls, kept until shortly before it expires."""
+    now = time.time()
+    if _tuya_token_cache["token"] and now < _tuya_token_cache["expires_at"]:
+        return _tuya_token_cache["token"]
+    result = tuya_request("GET", "/v1.0/token", params={"grant_type": 1}) or {}
+    token = result.get("access_token")
+    if not token:
+        raise TuyaError("Tuya gave no access token")
+    _tuya_token_cache["token"] = token
+    _tuya_token_cache["expires_at"] = now + max(60, int(result.get("expire_time") or 7200) - 120)
+    return token
+
+
+def tuya_call(method, path, **kw):
+    """A business call, with the token -- and once more with a fresh one if
+    Tuya says the one held has run out (1010: invalid, 1011: expired)."""
+    try:
+        return tuya_request(method, path, access_token=tuya_token(), **kw)
+    except TuyaError as e:
+        if str(e.code) not in ("1010", "1011"):
+            raise
+        _tuya_token_cache["token"] = None
+        return tuya_request(method, path, access_token=tuya_token(), **kw)
+
+
+def _door_setting(conn, key, default=""):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row and row["value"] is not None else default
+
+
+def _set_door_setting(conn, key, value):
+    conn.execute("""INSERT INTO app_settings (key, value) VALUES (?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value""", (key, value))
+
+
+def door_lock_device_id(conn):
+    return (_door_setting(conn, "door_lock_device_id") or
+            os.environ.get("TUYA_DEVICE_ID") or "").strip()
+
+
+def door_ready(conn):
+    """Whether the site can reach a lock at all: connected, and a lock chosen."""
+    return tuya_configured() and bool(door_lock_device_id(conn))
+
+
+def door_guest_access_on(conn):
+    return _door_setting(conn, "door_guest_access", "1") == "1"
+
+
+def door_lock_open(conn, device_id):
+    """Ask Tuya to open the lock, without a code. Raises TuyaError if it did not.
+
+    A ticket first -- Tuya's one-use, few-minute permission -- then the opening.
+    Tuya documents the ticket at two paths; the second is asked only if the
+    first is refused, and the Door page says which answered.
+    """
+    ticket = None
+    for path in (f"/v1.0/smart-lock/devices/{device_id}/password-ticket",
+                 f"/v1.0/devices/{device_id}/door-lock/password-ticket"):
+        try:
+            ticket = (tuya_call("POST", path) or {}).get("ticket_id")
+        except TuyaError:
+            ticket = None
+        if ticket:
+            break
+    if not ticket:
+        raise TuyaError("Tuya would not give a ticket to open the lock")
+    opened = tuya_call("POST", f"/v1.0/devices/{device_id}/door-lock/password-free/open-door",
+                       body={"ticket_id": ticket})
+    if opened is not True:
+        raise TuyaError("The lock did not confirm it opened")
+
+
+# What a lock reports about its battery and its door, under the names Tuya's
+# locks use for them. Different models use different ones, so all are read.
+_DOOR_BATTERY_PERCENT = ("residual_electricity", "battery_percentage", "va_battery")
+_DOOR_BATTERY_STATE = ("battery_state",)
+_DOOR_CONTACT = ("doorcontact_state", "closed_opened", "door_opened")
+
+
+def door_lock_reading(status):
+    """(battery %, battery word, battery low?, door open?) from a lock's status codes."""
+    percent = next((status[c] for c in _DOOR_BATTERY_PERCENT
+                    if isinstance(status.get(c), (int, float))), None)
+    word = next((str(status[c]) for c in _DOOR_BATTERY_STATE if status.get(c) not in (None, "")), None)
+    low = (percent is not None and percent <= 20) or (word or "").lower() in ("low", "poweroff")
+    door_open = None
+    for c in _DOOR_CONTACT:
+        if c in status:
+            value = status[c]
+            door_open = (str(value).lower() in ("open", "opened", "true", "1")) if not isinstance(value, bool) else value
+            break
+    return percent, word, low, door_open
+
+
+def door_lock_status(conn):
+    """What the lock says about itself, for the Door page and the half-hourly check.
+
+    Never raises: a lock that cannot be reached is itself the answer, and it
+    goes in `error` for the page to say plainly.
+    """
+    out = {"ready": door_ready(conn), "connected": tuya_configured(),
+           "device_id": door_lock_device_id(conn), "online": None, "name": None,
+           "battery": None, "battery_word": None, "battery_low": False, "door_open": None,
+           "codes": [], "remote": None, "error": None}
+    if not out["ready"]:
+        return out
+    try:
+        device = tuya_call("GET", f"/v1.0/devices/{out['device_id']}") or {}
+    except TuyaError as e:
+        out["error"] = str(e)
+        return out
+    status = {s.get("code"): s.get("value") for s in (device.get("status") or []) if isinstance(s, dict)}
+    out.update(online=bool(device.get("online")), name=device.get("name"), codes=sorted(status))
+    out["battery"], out["battery_word"], out["battery_low"], out["door_open"] = door_lock_reading(status)
+    try:
+        remote = tuya_call("GET", f"/v1.0/devices/{out['device_id']}/door-lock/remote-unlocks")
+        # One setting, or a list of them -- one per way of opening remotely.
+        # The one that matters here is opening without a code.
+        if isinstance(remote, list):
+            remote = next((r for r in remote if isinstance(r, dict) and "without"
+                           in str(r.get("remote_unlock_type", "")).lower()),
+                          remote[0] if remote and isinstance(remote[0], dict) else None)
+        out["remote"] = remote if isinstance(remote, dict) else None
+    except TuyaError as e:
+        out["remote"] = {"error": str(e)}
+    return out
+
+
+def _door_hhmm(value, default):
+    try:
+        hh, mm = (int(x) for x in (value or default).split(":")[:2])
+        return dtime(hh, mm)
+    except (ValueError, TypeError):
+        hh, mm = (int(x) for x in default.split(":"))
+        return dtime(hh, mm)
+
+
+def door_window(conn, arrival_iso, departure_iso):
+    """(opens, closes) for a stay, as moments in UTC: the house's clock on the
+    day they arrive and the day they leave."""
+    arrive, leave = parse_date(arrival_iso), parse_date(departure_iso)
+    if not (arrive and leave):
+        return None, None
+    opens = _door_hhmm(_door_setting(conn, "door_opens_at"), DOOR_DEFAULT_OPENS)
+    closes = _door_hhmm(_door_setting(conn, "door_closes_at"), DOOR_DEFAULT_CLOSES)
+    return (datetime.combine(arrive, opens, tzinfo=LOCAL_TZ).astimezone(timezone.utc),
+            datetime.combine(leave, closes, tzinfo=LOCAL_TZ).astimezone(timezone.utc))
+
+
+def _door_when(moment):
+    """A moment as a guest here reads one: "1 October 2026 at 12:00", on the
+    house's clock. Day first, like every other date a guest is shown."""
+    local = moment.astimezone(LOCAL_TZ)
+    return f"{format_date_short(local.date().isoformat())} at {local.strftime('%H:%M')}"
+
+
+def door_access(conn, *, booking=None, stay=None, now=None):
+    """Whether this guest may open the door now, and if not, why -- in words
+    the guest reads on the page, since they are the one standing outside.
+
+    `booking` is a bookings row; `stay` is an ota_reservations row. One of them.
+    """
+    now = now or datetime.now(timezone.utc)
+    row = booking if booking is not None else stay
+    out = {"can_open": False, "state": "", "message": "", "opens": None, "closes": None}
+    if row is None:
+        out.update(state="none", message="There is no stay here.")
+        return out
+    out["opens"], out["closes"] = door_window(conn, row["arrival_date"], row["departure_date"])
+    if not door_ready(conn):
+        out.update(state="not_set_up",
+                   message="The front door cannot be opened from this page yet. Please ring the house.")
+    elif not door_guest_access_on(conn):
+        out.update(state="off", message="Opening the door from this page is switched off at the "
+                                        "moment. Please ring the house, or use your remote.")
+    elif row["status"] != "confirmed":
+        out.update(state="not_confirmed", message="This stay is not confirmed, so the door "
+                                                  "cannot be opened from here.")
+    elif booking is not None and booking["checked_out_at"]:
+        out.update(state="checked_out", message="You have checked out, so the door can no longer "
+                                                "be opened from here.")
+    elif row["door_access_off_at"]:
+        out.update(state="stay_off", message="Opening the door from this page has been switched off "
+                                             "for this stay. Please ring the house.")
+    elif not out["opens"]:
+        out.update(state="undated", message="This stay has no dates, so the door cannot be opened "
+                                            "from here.")
+    elif now < out["opens"]:
+        out.update(state="before", message="The door can be opened from here from "
+                                           f"{_door_when(out['opens'])}.")
+    elif now >= out["closes"]:
+        out.update(state="after", message="Your stay is over, so the door can no longer be opened "
+                                          "from here.")
+    else:
+        out.update(can_open=True, state="open",
+                   message=f"Until {_door_when(out['closes'])}.")
+    return out
+
+
+def _door_stay_filter(booking=None, stay=None):
+    if booking is not None:
+        return "booking_id = ?", booking["id"]
+    return "ota_reservation_id = ?", stay["id"]
+
+
+def door_owner_ids(conn):
+    return [r["id"] for r in conn.execute(
+        "SELECT id FROM users WHERE role = 'owner' AND status = 'active' ORDER BY id")]
+
+
+def open_the_door(conn, *, via, booking=None, stay=None, user=None, guest_name=None):
+    """Open it, record it, and tell the owner when it matters. (opened?, message).
+
+    Every route that opens the door comes through here, so the record and the
+    notice cannot be skipped by one of them. The owner hears on a guest's FIRST
+    opening -- they have arrived -- and on every opening that failed, because
+    that is somebody outside a locked door; the rest are on the Door page.
+    """
+    device_id = door_lock_device_id(conn)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    column, value = _door_stay_filter(booking, stay) if (booking is not None or stay is not None) else (None, None)
+    if column:
+        since = (datetime.now(timezone.utc) - timedelta(minutes=DOOR_RATE_MINUTES)).isoformat()
+        recent = conn.execute(
+            f"SELECT COUNT(*) FROM door_openings WHERE {column} AND opened_at >= ?",
+            (value, since)).fetchone()[0]
+        if recent >= DOOR_RATE_LIMIT:
+            return False, (f"The door has been asked to open {recent} times in the last "
+                           f"{DOOR_RATE_MINUTES} minutes from this page, so it is resting. "
+                           "Please ring the house, or use your remote.")
+        earlier = conn.execute(
+            f"SELECT COUNT(*) FROM door_openings WHERE {column} AND ok = 1", (value,)).fetchone()[0]
+    else:
+        earlier = 1
+    try:
+        door_lock_open(conn, device_id)
+        ok, detail = True, None
+    except TuyaError as e:
+        ok, detail = False, str(e)
+    conn.execute(
+        """INSERT INTO door_openings (opened_at, via, booking_id, ota_reservation_id,
+               user_id, ok, detail) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (now_iso, via, booking["id"] if booking is not None else None,
+         stay["id"] if stay is not None else None, user["id"] if user else None,
+         1 if ok else 0, (detail or "")[:300] or None))
+    conn.commit()
+    who = guest_name or (user["name"] if user else "Somebody")
+    link = url_for("door_lock_page") if has_request_context() else "/admin/door"
+    if not ok:
+        for owner_id in door_owner_ids(conn):
+            send_notification(conn, owner_id, "door", f"The front door did not open for {who}",
+                              body=detail, link=link)
+        return False, ("The door did not open. Please ring the house, or use your remote. "
+                       "We have been told.")
+    if via in ("guest", "booking_com_guest") and not earlier:
+        for owner_id in door_owner_ids(conn):
+            send_notification(conn, owner_id, "door", f"{who} has let themselves in",
+                              body="The first time the front door was opened from their stay's page.",
+                              link=link)
+    return True, "The door is open. It locks itself again behind you."
+
+
+def door_stays_ahead(conn, *, days=14, today=None):
+    """Stays whose door window is on now or starts within `days`: the house's
+    own, confirmed, and Booking.com's. For the Door page's list of who can open it."""
+    day = today or house_today()
+    until = (day + timedelta(days=days)).isoformat()
+    iso = day.isoformat()
+    out = []
+    for b in conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                 LEFT JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.status = 'confirmed' AND bookings.departure_date >= ?
+                  AND bookings.arrival_date <= ?
+                ORDER BY bookings.arrival_date""", (iso, until)).fetchall():
+        out.append({"kind": "booking", "id": b["id"], "guest_name": b["guest_name"],
+                    "room_name": b["room_name"], "arrival_date": b["arrival_date"],
+                    "departure_date": b["departure_date"], "reference": b["reference_code"],
+                    "off": bool(b["door_access_off_at"]), "access": door_access(conn, booking=b),
+                    "link": url_for("guest_door", manage_token=b["manage_token"], _external=True)
+                    if has_request_context() else None, "channel": None})
+    for st in channel_stays(conn):
+        if not (st["departure_date"] >= iso and st["arrival_date"] <= until):
+            continue
+        r = conn.execute("SELECT * FROM ota_reservations WHERE id = ?",
+                         (st["ota_reservation_id"],)).fetchone()
+        out.append({"kind": "channel", "id": r["id"], "guest_name": st["guest_name"],
+                    "room_name": st["room_name"], "arrival_date": r["arrival_date"],
+                    "departure_date": r["departure_date"], "reference": r["reservation_number"],
+                    "off": bool(r["door_access_off_at"]), "access": door_access(conn, stay=r),
+                    "link": (url_for("channel_door", door_token=r["door_token"], _external=True)
+                             if r["door_token"] and has_request_context() else None),
+                    "channel": st["channel"]})
+    out.sort(key=lambda x: (x["arrival_date"] or "", x["guest_name"] or ""))
+    return out
+
+
+def run_door_lock_check_job(conn):
+    """Every half hour: can the lock be reached, and are its batteries all right?
+
+    Kept for the owner's home and the task list, which say so the moment it
+    matters and go quiet when it is fixed. A lock the site has not been
+    connected to is not a problem -- the job says so and does nothing.
+    """
+    if not door_ready(conn):
+        _set_door_setting(conn, "door_lock_health", "")
+        conn.commit()
+        return "no door lock connected"
+    status = door_lock_status(conn)
+    health = {"checked_at": datetime.now(timezone.utc).isoformat(),
+              "error": status["error"], "online": status["online"],
+              "battery": status["battery"], "battery_word": status["battery_word"],
+              "battery_low": status["battery_low"]}
+    _set_door_setting(conn, "door_lock_health", json.dumps(health))
+    conn.commit()
+    if status["error"]:
+        return f"the lock could not be reached: {status['error']}"
+    if not status["online"]:
+        return "the lock is offline"
+    return ("battery low" if status["battery_low"] else "the lock is fine")
+
+
+def door_lock_problem(conn):
+    """What is wrong with the lock, in one sentence, or None. From the last check."""
+    if not door_ready(conn):
+        return None
+    try:
+        health = json.loads(_door_setting(conn, "door_lock_health") or "{}")
+    except ValueError:
+        health = {}
+    if not health:
+        return None
+    if health.get("error"):
+        return (f"The site cannot reach the front door lock ({health['error']}), so guests "
+                "cannot open it from their phone. They still have their remotes.")
+    if health.get("online") is False:
+        return ("The front door lock is offline -- no Wi-Fi, or flat batteries -- so guests "
+                "cannot open it from their phone. They still have their remotes.")
+    if health.get("battery_low"):
+        level = (f"{health['battery']}%" if health.get("battery") is not None
+                 else health.get("battery_word") or "low")
+        return f"The front door lock's batteries are low ({level}). It takes AA batteries."
+    return None
+
+
+def purge_door_openings(conn, *, today=None):
+    """The privacy notice's promise: the door's record goes after twelve months."""
+    day = today or house_today()
+    cutoff = (datetime.combine(day - timedelta(days=int(DOOR_LOG_KEEP_MONTHS * 30.44)),
+                               dtime(0, 0), tzinfo=LOCAL_TZ).astimezone(timezone.utc).isoformat())
+    cur = conn.execute("DELETE FROM door_openings WHERE opened_at < ?", (cutoff,))
+    conn.commit()
+    return {"door openings": max(0, cur.rowcount)}
+
+
+def _render_door_page(conn, *, booking=None, stay=None, action_url):
+    access = door_access(conn, booking=booking, stay=stay)
+    row = booking if booking is not None else stay
+    room = None
+    if row["room_id"]:
+        found = conn.execute("SELECT name FROM rooms WHERE id = ?", (row["room_id"],)).fetchone()
+        room = found["name"] if found else None
+    guest = row["guest_name"]
+    column, value = _door_stay_filter(booking, stay)
+    last = conn.execute(
+        f"SELECT opened_at FROM door_openings WHERE {column} AND ok = 1 ORDER BY opened_at DESC LIMIT 1",
+        (value,)).fetchone()
+    conn.close()
+    return render_template("door.html", access=access, guest_name=guest, room=room,
+                           arrival_date=row["arrival_date"], departure_date=row["departure_date"],
+                           action_url=action_url, last_opened=last["opened_at"] if last else None)
+
+
+@app.route("/book/manage/<manage_token>/door", methods=["GET", "POST"])
+def guest_door(manage_token):
+    """The front door, for a guest of the house: their stay's own key.
+
+    The manage token is the credential, as it is on every page a guest reaches
+    without a login. Opening is a POST, so a link that is merely visited -- a
+    preview in a messaging app, a crawler -- cannot open the door.
+    """
+    conn = get_db()
+    booking = conn.execute("SELECT * FROM bookings WHERE manage_token = ?",
+                           (manage_token,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    if request.method == "POST":
+        access = door_access(conn, booking=booking)
+        if access["can_open"]:
+            ok, message = open_the_door(conn, via="guest", booking=booking,
+                                        guest_name=booking["guest_name"])
+            flash(message, "success" if ok else "error")
+        else:
+            flash(access["message"], "error")
+        conn.close()
+        return redirect(url_for("guest_door", manage_token=manage_token))
+    return _render_door_page(conn, booking=booking,
+                             action_url=url_for("guest_door", manage_token=manage_token))
+
+
+@app.route("/door/<door_token>", methods=["GET", "POST"])
+def channel_door(door_token):
+    """The front door, for a guest who booked through Booking.com.
+
+    They have no page of the house's own, so their stay gets a link of its
+    own, made on the Door page and sent through Booking.com's messages.
+    """
+    conn = get_db()
+    stay = conn.execute("SELECT * FROM ota_reservations WHERE door_token = ?",
+                        (door_token,)).fetchone()
+    if not stay:
+        conn.close()
+        abort(404)
+    if request.method == "POST":
+        access = door_access(conn, stay=stay)
+        if access["can_open"]:
+            ok, message = open_the_door(conn, via="booking_com_guest", stay=stay,
+                                        guest_name=stay["guest_name"] or "A Booking.com guest")
+            flash(message, "success" if ok else "error")
+        else:
+            flash(access["message"], "error")
+        conn.close()
+        return redirect(url_for("channel_door", door_token=door_token))
+    return _render_door_page(conn, stay=stay,
+                             action_url=url_for("channel_door", door_token=door_token))
+
+
+@app.route("/admin/door")
+@owner_required
+def door_lock_page():
+    """The front door: whether the site can reach it, who can open it, and who did."""
+    conn = get_db()
+    status = door_lock_status(conn)
+    stays = door_stays_ahead(conn)
+    rows = conn.execute(
+        """SELECT door_openings.*, bookings.guest_name AS booking_guest,
+                  ota_reservations.guest_name AS channel_guest, users.name AS user_name
+             FROM door_openings
+             LEFT JOIN bookings ON bookings.id = door_openings.booking_id
+             LEFT JOIN ota_reservations ON ota_reservations.id = door_openings.ota_reservation_id
+             LEFT JOIN users ON users.id = door_openings.user_id
+            ORDER BY door_openings.opened_at DESC, door_openings.id DESC""").fetchall()
+    settings = {"opens": _door_setting(conn, "door_opens_at", DOOR_DEFAULT_OPENS),
+                "closes": _door_setting(conn, "door_closes_at", DOOR_DEFAULT_CLOSES),
+                "guest_access": door_guest_access_on(conn)}
+    problem = door_lock_problem(conn)
+    conn.close()
+
+    def who(r):
+        if r["via"] in ("staff", "owner"):
+            return r["user_name"] or "Staff"
+        return r["booking_guest"] or r["channel_guest"] or "A guest"
+    labels = {"guest": "A guest of the house", "booking_com_guest": "A Booking.com guest",
+              "staff": "Staff, from the Door page"}
+    lv = list_view(
+        rows, request.args,
+        search=["booking_guest", "channel_guest", "user_name", "detail"],
+        search_hint="Search a guest's name",
+        facets=[facet("via", "Who", lambda r: labels.get(r["via"], r["via"]),
+                      order=list(labels.values())),
+                facet("result", "Result", lambda r: "Opened" if r["ok"] else "Did not open",
+                      order=["Opened", "Did not open"])],
+        sorts=[sort_option("newest", "Newest first", lambda r: r["opened_at"] or "", reverse=True)],
+        default_sort="newest",
+    )
+    return render_template("door_lock.html", status=status, stays=stays, rows=lv["rows"], lv=lv,
+                           who=who, labels=labels, settings=settings, problem=problem,
+                           region=TUYA_REGION, rate=(DOOR_RATE_LIMIT, DOOR_RATE_MINUTES),
+                           keep_months=DOOR_LOG_KEEP_MONTHS)
+
+
+@app.route("/admin/door/settings", methods=["POST"])
+@owner_required
+def save_door_settings():
+    device_id = (request.form.get("device_id") or "").strip()
+    if device_id and not re.fullmatch(r"[A-Za-z0-9]{6,40}", device_id):
+        flash("That does not look like a Tuya device ID -- letters and numbers only.", "error")
+        return redirect(url_for("door_lock_page"))
+    times = {}
+    for key in ("opens", "closes"):
+        raw = (request.form.get(key) or "").strip()
+        if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", raw):
+            flash("The times must be written as hours and minutes, like 12:00.", "error")
+            return redirect(url_for("door_lock_page"))
+        times[key] = raw
+    conn = get_db()
+    _set_door_setting(conn, "door_lock_device_id", device_id)
+    _set_door_setting(conn, "door_opens_at", times["opens"])
+    _set_door_setting(conn, "door_closes_at", times["closes"])
+    _set_door_setting(conn, "door_guest_access", "1" if request.form.get("guest_access") else "0")
+    log_audit(conn, "door_settings_saved",
+              details=f"{times['opens']}-{times['closes']}, guests "
+                      f"{'on' if request.form.get('guest_access') else 'off'}")
+    conn.commit()
+    conn.close()
+    flash("Saved.", "success")
+    return redirect(url_for("door_lock_page"))
+
+
+@app.route("/admin/door/open", methods=["POST"])
+@owner_required
+def open_door_now():
+    """Open the front door from the office -- for a delivery, or a guest at the door."""
+    conn = get_db()
+    if not door_ready(conn):
+        conn.close()
+        flash("The lock is not connected yet.", "error")
+        return redirect(url_for("door_lock_page"))
+    user = current_user()
+    ok, message = open_the_door(conn, via="staff", user=user)
+    log_audit(conn, "door_opened_by_staff", details="opened" if ok else "did not open")
+    conn.commit()
+    conn.close()
+    flash("The door is open." if ok else message, "success" if ok else "error")
+    return redirect(url_for("door_lock_page"))
+
+
+@app.route("/admin/door/stay-access", methods=["POST"])
+@owner_required
+def set_stay_door_access():
+    """Switch one stay's door access off, or back on."""
+    kind = request.form.get("kind")
+    try:
+        stay_id = int(request.form.get("id") or 0)
+    except ValueError:
+        stay_id = 0
+    turn_off = request.form.get("off") == "1"
+    table = {"booking": "bookings", "channel": "ota_reservations"}.get(kind)
+    conn = get_db()
+    if not table or not conn.execute(f"SELECT 1 FROM {table} WHERE id = ?", (stay_id,)).fetchone():
+        conn.close()
+        abort(404)
+    conn.execute(f"UPDATE {table} SET door_access_off_at = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat() if turn_off else None, stay_id))
+    log_audit(conn, "door_stay_access", target=f"{kind} {stay_id}", details="off" if turn_off else "on")
+    conn.commit()
+    conn.close()
+    flash("Door access switched off for that stay." if turn_off else
+          "Door access switched back on for that stay.", "success")
+    return redirect(url_for("door_lock_page"))
+
+
+@app.route("/admin/door/link/<int:reservation_id>", methods=["POST"])
+@owner_required
+def make_channel_door_link(reservation_id):
+    """A door link for a Booking.com stay, to send through Booking.com's messages.
+
+    Made once, when somebody asks for it, rather than for every stay: a link
+    that exists is a key that exists.
+    """
+    conn = get_db()
+    stay = conn.execute("SELECT * FROM ota_reservations WHERE id = ?", (reservation_id,)).fetchone()
+    if not stay:
+        conn.close()
+        abort(404)
+    if not stay["door_token"]:
+        conn.execute("UPDATE ota_reservations SET door_token = ? WHERE id = ? AND door_token IS NULL",
+                     (secrets.token_urlsafe(24), reservation_id))
+        log_audit(conn, "door_link_made", target=f"Booking.com {stay['reservation_number']}")
+        conn.commit()
+    conn.close()
+    flash("The door link is ready -- copy it into a Booking.com message to the guest.", "success")
+    return redirect(url_for("door_lock_page") + f"#stay-channel-{reservation_id}")
+
+
 AUTOMATION_JOBS = [
     ("housekeeping", "automation_housekeeping_enabled", None, 600, run_housekeeping_job),
     # Every ten minutes, and the interval is the feature: a handover that
@@ -80181,6 +81083,10 @@ AUTOMATION_JOBS = [
     # and the reply window is a fortnight. A no-op until the mailbox is set.
     ("booking_com_mail", "automation_booking_com_mail_enabled", None, 600,
      run_booking_com_mail_job),
+    # Every half hour: can the front door be reached, and are its batteries
+    # all right? A no-op until a lock is connected.
+    ("door_lock_check", "automation_door_lock_check_enabled", None, 1800,
+     run_door_lock_check_job),
     # Hourly. The page reads a cache and never the network, so a slow morning
     # at Open-Meteo is a page with no weather on it rather than a slow page.
     ("weather", "automation_weather_enabled", None, 3600, run_weather_job),
@@ -80452,6 +81358,7 @@ AUTOMATION_JOB_LABELS = {
     "housekeeping": "Housekeeping (expire stale bookings, prep arrivals)",
     "page_translation": "Translate new public-page text into French and Spanish",
     "booking_com_mail": "Read Booking.com's email into the site",
+    "door_lock_check": "Check the front door lock can be reached",
     "daily_digest": "Daily owner digest email",
     "workshop_autocharge": "Workshop: charge the balance on its due date",
     "balance_due_notice": "Workshop: tell the owner when balances fall due (once each)",
@@ -80857,10 +81764,13 @@ def current_offerings_snapshot(conn):
     rooms = conn.execute(
         "SELECT name, price_per_night, max_occupancy FROM rooms WHERE active = 1 ORDER BY name"
     ).fetchall()
+    # What is on offer, so not a sitting that has been called off: a reply
+    # drafted from this would offer a guest a place on it.
     workshop_sessions = conn.execute(
-        """SELECT workshops.title, workshops.price_per_person, workshop_sessions.start_date, workshop_sessions.end_date
+        f"""SELECT workshops.title, workshops.price_per_person, workshop_sessions.start_date, workshop_sessions.end_date
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
+             AND {SESSION_IS_LIVE}
            ORDER BY workshop_sessions.start_date LIMIT 10""",
         (today,),
     ).fetchall()
@@ -84848,10 +85758,13 @@ def sitemap():
         urls.append((url_for("book_room", room_id=r["id"], _external=True), "0.8"))
     # Only ateliers with a date still ahead. A sitemap advertising a workshop
     # that finished in June is the same mistake the front page used to make.
+    # A date still ahead that has been called off is not one: the page would
+    # only send the visitor on to the list.
     for w in conn.execute(
-            """SELECT DISTINCT workshops.id FROM workshops
+            f"""SELECT DISTINCT workshops.id FROM workshops
                  JOIN workshop_sessions ON workshop_sessions.workshop_id = workshops.id
-                WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?""",
+                WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
+                  AND {SESSION_IS_LIVE}""",
             (service_day_iso(),)).fetchall():
         urls.append((url_for("workshop_detail", workshop_id=w["id"], _external=True), "0.8"))
     conn.close()

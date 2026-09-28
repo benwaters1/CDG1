@@ -64,6 +64,8 @@
   {% if (booking['status']|lower) == 'confirmed' %}
   <p class="g-hint" style="margin-top:var(--s4);"><a href="{{ url_for('guest_feedback', token=booking['manage_token']) }}" style="color:var(--steel);">Share feedback about your stay</a></p>
   {% endif %}
+  {# The front door -- keep this line when a new version of this page arrives. #}
+  {% include "_door_card.html" %}
 
 {% if (booking['status']|lower) in ('pending', 'confirmed') %}
 
