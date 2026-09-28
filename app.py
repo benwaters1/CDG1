@@ -9894,11 +9894,14 @@ def leave_impact(conn, start_date, end_date, exclude_user_id=None):
            FROM restaurant_bookings
            WHERE status = 'confirmed' AND dinner_date BETWEEN ? AND ?""",
         (start_date, end_date)).fetchone()
+    # Only sittings still running. One called off needs nobody on for it, and
+    # listing it beside the button argues against leave for work that is gone.
     sessions = conn.execute(
-        """SELECT workshops.title, workshop_sessions.start_date
+        f"""SELECT workshops.title, workshop_sessions.start_date
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshop_sessions.start_date <= ? AND
                  COALESCE(workshop_sessions.end_date, workshop_sessions.start_date) >= ?
+             AND {SESSION_IS_LIVE}
            ORDER BY workshop_sessions.start_date""",
         (end_date, start_date)).fetchall()
     others = conn.execute(
@@ -10093,10 +10096,15 @@ def restaurant_overview(conn, period, today):
 
 
 def workshops_overview(conn, period, today):
-    """Sessions that run inside the window, and how full they are."""
+    """Sessions that run inside the window, and how full they are.
+
+    Called-off sittings are not running, so they are neither counted nor
+    offered as free seats: their places were all cancelled, so counting one
+    added a whole empty sitting to "Seats free" and pulled "Full" down.
+    """
     sessions = conn.execute(
-        """SELECT id, capacity FROM workshop_sessions
-           WHERE start_date < ? AND end_date >= ?""",
+        f"""SELECT id, capacity FROM workshop_sessions
+           WHERE start_date < ? AND end_date >= ? AND {SESSION_IS_LIVE}""",
         (period["end_iso"], period["start_iso"]),
     ).fetchall()
     session_ids = [s["id"] for s in sessions]
@@ -12578,9 +12586,11 @@ def build_dashboard_calendar(conn, today):
         ).fetchall()
     }
     workshop_dates = set()
+    # A sitting that has been called off is not running, and a day marked
+    # with it reads to whoever is working as a day with an atelier on.
     for s in conn.execute(
-        """SELECT start_date, end_date FROM workshop_sessions
-           WHERE start_date < ? AND end_date >= ?""",
+        f"""SELECT start_date, end_date FROM workshop_sessions
+           WHERE start_date < ? AND end_date >= ? AND {SESSION_IS_LIVE}""",
         (month_end.isoformat(), month_start.isoformat()),
     ).fetchall():
         s_start, s_end = parse_date(s["start_date"]), parse_date(s["end_date"])
@@ -13300,11 +13310,14 @@ def week_activity(conn, monday, sunday):
         (lo, hi)).fetchone()["c"]
     if covers:
         bits.append(f"{covers} covers")
+    # What the house WAS doing: a sitting that was called off did not happen,
+    # and naming it beside a long week offers it as the reason.
     for r in conn.execute(
-        """SELECT workshops.title FROM workshop_sessions
+        f"""SELECT workshops.title FROM workshop_sessions
              JOIN workshops ON workshops.id = workshop_sessions.workshop_id
             WHERE workshop_sessions.start_date <= ?
-              AND COALESCE(workshop_sessions.end_date, workshop_sessions.start_date) >= ?""",
+              AND COALESCE(workshop_sessions.end_date, workshop_sessions.start_date) >= ?
+              AND {SESSION_IS_LIVE}""",
             (hi, lo)).fetchall():
         bits.append(r["title"])
     events = conn.execute(
@@ -14468,11 +14481,15 @@ def cover_gaps(conn, start, end):
         d["dinners"] += r["n"]
         d["covers"] += r["covers"]
 
+    # A called-off sitting is not work. Counted here, it made a day with
+    # nothing on read as a day short of people, and the gap is what gets
+    # somebody rostered.
     for r in conn.execute(
-        """SELECT workshops.title, workshop_sessions.start_date, workshop_sessions.end_date
+        f"""SELECT workshops.title, workshop_sessions.start_date, workshop_sessions.end_date
              FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
             WHERE workshop_sessions.start_date <= ?
-              AND COALESCE(workshop_sessions.end_date, workshop_sessions.start_date) >= ?""",
+              AND COALESCE(workshop_sessions.end_date, workshop_sessions.start_date) >= ?
+              AND {SESSION_IS_LIVE}""",
         (hi, lo)).fetchall():
         a = parse_date(r["start_date"])
         z = parse_date(r["end_date"] or r["start_date"])
@@ -20017,17 +20034,23 @@ def workshop_margins(conn, start=None, end=None):
     arrangement that varies per person and per session, and a page that
     guessed at it would be wrong in a way somebody could read as a statement
     about their fee. Materials are a number the house already records.
+
+    A sitting that was called off used nothing and took nothing. Left in, it
+    showed as a loss -- no revenue against the per-sitting materials it would
+    have needed -- and pulled the total margin down for an atelier that never
+    ran.
     """
     start = start or (house_today() - timedelta(days=365))
     end = end or (house_today() + timedelta(days=365))
     sessions = conn.execute(
-        """SELECT workshop_sessions.id, workshop_sessions.start_date,
+        f"""SELECT workshop_sessions.id, workshop_sessions.start_date,
                   workshop_sessions.end_date, workshop_sessions.capacity,
                   workshops.id AS workshop_id, workshops.title
              FROM workshop_sessions
              JOIN workshops ON workshops.id = workshop_sessions.workshop_id
             WHERE workshop_sessions.start_date >= ?
               AND workshop_sessions.start_date < ?
+              AND {SESSION_IS_LIVE}
             ORDER BY workshop_sessions.start_date""",
         (start.isoformat(), end.isoformat())).fetchall()
 
@@ -27889,9 +27912,11 @@ def owner_home_occupancy(conn, today):
         leaving = conn.execute(
             """SELECT COUNT(*) AS c FROM bookings WHERE status = 'confirmed'
                AND departure_date = ?""", (d.isoformat(),)).fetchone()["c"]
+        # The same sittings the fill figure beside it counts: a called-off
+        # one marked the day while the fill said nobody was here.
         workshop = conn.execute(
-            """SELECT COUNT(*) AS c FROM workshop_sessions
-               WHERE start_date <= ? AND end_date >= ?""",
+            f"""SELECT COUNT(*) AS c FROM workshop_sessions
+               WHERE start_date <= ? AND end_date >= ? AND {SESSION_IS_LIVE}""",
             (d.isoformat(), d.isoformat())).fetchone()["c"]
         marker = ("arrival" if arriving else
                   "departure" if leaving else
@@ -27987,13 +28012,16 @@ def dashboard():
             """SELECT * FROM rooms WHERE active = 1
                ORDER BY sort_order, price_per_night""").fetchall()]
         # Only sittings still ahead. A front page advertising a workshop that
-        # finished in June is worse than one advertising none.
+        # finished in June is worse than one advertising none. And only ones
+        # still running: a sitting that has been called off is not "The Next
+        # Dates", and its places were all cancelled, so it read as wide open.
         upcoming = [dict(r) for r in conn.execute(
-            """SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
+            f"""SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
                       workshops.nights_label, workshops.id AS workshop_id
                  FROM workshop_sessions
                  JOIN workshops ON workshops.id = workshop_sessions.workshop_id
                 WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
+                  AND {SESSION_IS_LIVE}
                 ORDER BY workshop_sessions.start_date LIMIT 3""",
             (house_today_iso(),)).fetchall()]
         conn.close()
@@ -28326,8 +28354,13 @@ def staff_dashboard():
                ORDER BY workshop_sessions.start_date LIMIT 5""",
             (user["id"], today.isoformat()),
         ).fetchall()
-        if my_upcoming_sessions:
-            my_next_session = my_upcoming_sessions[0]
+        # A called-off sitting stays on this list, SAID to be off: this is the
+        # person who would otherwise turn up to teach it, and the call-off
+        # writes to the guests, not to them. But the roster is for the next
+        # one that is running -- a called-off one's is everybody cancelled.
+        my_next_session = next(
+            (s for s in my_upcoming_sessions if not s["cancelled_at"]), None)
+        if my_next_session:
             my_next_session_roster = conn.execute(
                 """SELECT workshop_bookings.*, rooms.name AS room_name
                    FROM workshop_bookings LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
@@ -39285,15 +39318,18 @@ def stay_itinerary(conn, booking):
 
     # Ateliers running while they are here. Active workshops only, and the
     # session has to actually overlap the stay -- a course that starts the day
-    # after they leave is not something on during their stay.
+    # after they leave is not something on during their stay. Nor is one
+    # that has been called off: it would sit on their itinerary as "on at the
+    # château while you are here" when it is not on at all.
     sessions = conn.execute(
-        """SELECT workshop_sessions.*, workshops.title AS title,
+        f"""SELECT workshop_sessions.*, workshops.title AS title,
                   workshops.active AS active
              FROM workshop_sessions
              JOIN workshops ON workshops.id = workshop_sessions.workshop_id
             WHERE workshops.active = 1
               AND workshop_sessions.start_date <= ?
               AND workshop_sessions.end_date >= ?
+              AND {SESSION_IS_LIVE}
             ORDER BY workshop_sessions.start_date""", (last, first)).fetchall()
     theirs = {row["session_id"] for row in conn.execute(
         """SELECT session_id FROM workshop_bookings
@@ -45473,6 +45509,22 @@ def workshop_pay_balance(manage_token):
     return redirect(checkout_url, code=303)
 
 
+def public_sittings(conn, workshop_id, today):
+    """The dates of an atelier a guest can still take a place on.
+
+    Ahead, and still running. A sitting that has been called off keeps its row
+    and loses every place, so read without the second half it showed on the
+    public pages as wide open -- and the register link under it took a
+    deposit for an atelier that was not going to happen. The list and the
+    atelier's own page both ask this, so they cannot disagree about it.
+    """
+    return conn.execute(
+        f"""SELECT * FROM workshop_sessions
+             WHERE workshop_id = ? AND start_date >= ? AND {SESSION_IS_LIVE}
+             ORDER BY start_date""",
+        (workshop_id, today.isoformat())).fetchall()
+
+
 @app.route("/workshops")
 def workshops_public():
     conn = get_db()
@@ -45487,16 +45539,14 @@ def workshops_public():
     #
     #   upcoming > 0            -> show, with its dates
     #   none upcoming, some past -> it is over, hide it
+    #   every date called off    -> not running, hide it
     #   never had any            -> coming soon, show without dates
     all_active = conn.execute(
         "SELECT * FROM workshops WHERE active = 1 ORDER BY sort_order, title").fetchall()
     workshops = []
     sessions_by_workshop = {}
     for w in all_active:
-        sessions = conn.execute(
-            "SELECT * FROM workshop_sessions WHERE workshop_id = ? AND start_date >= ? ORDER BY start_date",
-            (w["id"], today.isoformat()),
-        ).fetchall()
+        sessions = public_sittings(conn, w["id"], today)
         if not sessions:
             ever = conn.execute(
                 "SELECT 1 FROM workshop_sessions WHERE workshop_id = ? LIMIT 1",
@@ -45550,10 +45600,7 @@ def workshop_detail(workshop_id):
         conn.close()
         abort(404)
     today = house_today()
-    sessions = conn.execute(
-        "SELECT * FROM workshop_sessions WHERE workshop_id = ? AND start_date >= ? ORDER BY start_date",
-        (workshop_id, today.isoformat()),
-    ).fetchall()
+    sessions = public_sittings(conn, workshop_id, today)
     session_rows = [{"session": s, "remaining": workshop_session_remaining_capacity(conn, s["id"])} for s in sessions]
     # A finished workshop is off the public list, so its own page would be a
     # dead end reached from an old link or a search result. Send them to what
@@ -45563,8 +45610,16 @@ def workshop_detail(workshop_id):
             "SELECT 1 FROM workshop_sessions WHERE workshop_id = ? LIMIT 1",
             (workshop_id,)).fetchone()
         if ever:
+            # "Has finished" is not true of one whose every date was called
+            # off before it ran, and a guest reads it as a statement of fact.
+            ran = conn.execute(
+                f"""SELECT 1 FROM workshop_sessions
+                     WHERE workshop_id = ? AND {SESSION_IS_LIVE} LIMIT 1""",
+                (workshop_id,)).fetchone()
             conn.close()
-            flash(f"{workshop['title']} has finished — here is what is coming up.", "error")
+            flash(f"{workshop['title']} has finished — here is what is coming up." if ran
+                  else f"{workshop['title']} has no dates coming up — here is what is.",
+                  "error")
             return redirect(url_for("workshops_public"))
     conn.close()
     return render_template("workshop_detail.html", workshop=workshop, session_rows=session_rows)
@@ -45589,6 +45644,15 @@ def workshop_register(session_id):
     if not start_date or start_date < today:
         conn.close()
         abort(404)
+    # CALLED OFF. The owner's desk already refused a place on one; this form
+    # did not, so a guest with the link could register for an atelier that is
+    # not running and be sent straight to pay a deposit on it. Refused before
+    # anything is read from the form, for a GET and a POST alike, and sent to
+    # the atelier's own page, which lists the dates that ARE running.
+    if session_row["cancelled_at"]:
+        conn.close()
+        flash("That date has been called off, so it cannot be booked.", "error")
+        return redirect(url_for("workshop_detail", workshop_id=session_row["workshop_id"]))
     custom_fields = conn.execute(
         "SELECT * FROM workshop_custom_fields WHERE workshop_id = ? ORDER BY sort_order",
         (session_row["workshop_id"],),
@@ -45860,8 +45924,10 @@ def workshop_manage(manage_token):
 
         new_session_id = int(new_session_id_raw)
         current_session = conn.execute("SELECT workshop_id FROM workshop_sessions WHERE id = ?", (booking["session_id"],)).fetchone()
+        # Only a date that is running. A called-off one has no places taken,
+        # so it always had room, and a guest could move themselves onto it.
         new_session = conn.execute(
-            "SELECT * FROM workshop_sessions WHERE id = ? AND workshop_id = ?",
+            f"SELECT * FROM workshop_sessions WHERE id = ? AND workshop_id = ? AND {SESSION_IS_LIVE}",
             (new_session_id, current_session["workshop_id"]),
         ).fetchone()
         if not new_session:
@@ -45945,14 +46011,12 @@ def workshop_manage(manage_token):
         current_workshop_id = conn.execute(
             "SELECT workshop_id FROM workshop_sessions WHERE id = ?", (booking["session_id"],)
         ).fetchone()["workshop_id"]
-        candidates = conn.execute(
-            """SELECT * FROM workshop_sessions WHERE workshop_id = ? AND id != ? AND start_date >= ?
-               ORDER BY start_date""",
-            (current_workshop_id, booking["session_id"], today.isoformat()),
-        ).fetchall()
+        # The same dates the atelier's public page offers, so a called-off one
+        # is not held out here as somewhere to move to.
         other_sessions = [
-            s for s in candidates
-            if workshop_session_remaining_capacity(conn, s["id"]) >= booking["party_size"]
+            s for s in public_sittings(conn, current_workshop_id, today)
+            if s["id"] != booking["session_id"]
+            and workshop_session_remaining_capacity(conn, s["id"]) >= booking["party_size"]
         ]
 
     conn.close()
@@ -47483,12 +47547,15 @@ def build_owner_digest(conn):
     pending_workshop_regs = conn.execute(
         "SELECT COUNT(*) AS c FROM workshop_bookings WHERE status = 'pending'"
     ).fetchone()["c"]
+    # Only sittings still running: one called off would be reported as
+    # starting this week with nobody confirmed.
     sessions_this_week = conn.execute(
-        """SELECT workshops.title, workshop_sessions.start_date,
+        f"""SELECT workshops.title, workshop_sessions.start_date,
                   COALESCE((SELECT SUM(party_size) FROM workshop_bookings
                             WHERE session_id = workshop_sessions.id AND status = 'confirmed'), 0) AS covers
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshop_sessions.start_date >= ? AND workshop_sessions.start_date <= ?
+             AND {SESSION_IS_LIVE}
            ORDER BY workshop_sessions.start_date""",
         (today.isoformat(), (today + timedelta(days=7)).isoformat()),
     ).fetchall()
@@ -47714,12 +47781,15 @@ def team_calendar():
     }
     dinner_cells = [{"date": d, "covers": dinner_covers_by_date.get(d.isoformat(), 0)} for d in days]
 
+    # The team's calendar shows what they are working: a called-off sitting
+    # is not on, and its name on a day reads as though it were.
     workshop_sessions_in_range = conn.execute(
-        """SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.title,
+        f"""SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.title,
                   COALESCE((SELECT SUM(party_size) FROM workshop_bookings
                             WHERE session_id = workshop_sessions.id AND status IN ('pending', 'confirmed')), 0) AS covers
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-           WHERE workshop_sessions.start_date < ? AND workshop_sessions.end_date >= ?""",
+           WHERE workshop_sessions.start_date < ? AND workshop_sessions.end_date >= ?
+             AND {SESSION_IS_LIVE}""",
         (next_month.isoformat(), first_day.isoformat()),
     ).fetchall()
     workshop_covers_by_date = {}
@@ -53793,13 +53863,18 @@ def sessions_short_of_materials(conn, today=None, days=None):
 
     Only the ones close enough to matter and far enough away to fix: a
     shortfall found the evening before is not a warning, it is an apology.
+
+    Not a sitting that has been called off: it needs nothing, and the warning
+    and the task it raised sat there until its date asking for clay to be
+    bought for an atelier that was not running.
     """
     today = today or house_today()
     days = WORKSHOP_MATERIALS_WARN_DAYS if days is None else days
     rows = conn.execute(
-        """SELECT workshop_sessions.id FROM workshop_sessions
+        f"""SELECT workshop_sessions.id FROM workshop_sessions
             WHERE workshop_sessions.start_date >= ?
               AND workshop_sessions.start_date <= ?
+              AND {SESSION_IS_LIVE}
               AND EXISTS (SELECT 1 FROM workshop_materials
                            WHERE workshop_materials.workshop_id =
                                  workshop_sessions.workshop_id)
@@ -53833,10 +53908,16 @@ def sessions_at_risk(conn, today=None):
     The waitlist is read in the same breath, because it changes the answer.
     Three short with four waiting is a telephone call, not a cancellation,
     and the row says which.
+
+    CALLING IT OFF IS THE DECISION this exists to prompt, so a sitting that
+    has been called off is not at risk -- it has been dealt with. Left in, it
+    sat at nought confirmed (the call-off cancels every place) and stayed on
+    the owner's warnings and task list until its start date, the one finding
+    in that set that could never close itself.
     """
     today = today or house_today()
     rows = conn.execute(
-        """SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
+        f"""SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
                   workshops.instructor_name,
                   (SELECT COALESCE(SUM(party_size), 0) FROM workshop_bookings
                     WHERE session_id = workshop_sessions.id
@@ -53855,6 +53936,7 @@ def sessions_at_risk(conn, today=None):
              JOIN workshops ON workshops.id = workshop_sessions.workshop_id
             WHERE workshop_sessions.min_participants > 0
               AND workshop_sessions.start_date >= ?
+              AND {SESSION_IS_LIVE}
             ORDER BY workshop_sessions.start_date""",
         (today.isoformat(),)).fetchall()
 
@@ -54923,8 +55005,8 @@ def admin_workshop_registrations():
     # sessions that have not started and have not been called off.
     moves = {}
     for s_ in conn.execute(
-            """SELECT id, workshop_id, start_date, end_date FROM workshop_sessions
-                WHERE start_date >= ? AND cancelled_at IS NULL ORDER BY start_date""",
+            f"""SELECT id, workshop_id, start_date, end_date FROM workshop_sessions
+                WHERE start_date >= ? AND {SESSION_IS_LIVE} ORDER BY start_date""",
             (today.isoformat(),)).fetchall():
         moves.setdefault(s_["workshop_id"], []).append(s_)
     guests_by_booking = {}
@@ -55113,8 +55195,8 @@ def move_workshop_registration(registration_id):
         abort(404)
     raw = (request.form.get("new_session_id") or "").strip()
     target = conn.execute(
-        """SELECT * FROM workshop_sessions WHERE id = ? AND workshop_id = ?
-              AND cancelled_at IS NULL""",
+        f"""SELECT * FROM workshop_sessions WHERE id = ? AND workshop_id = ?
+              AND {SESSION_IS_LIVE}""",
         (int(raw) if raw.isdigit() else 0, reg["workshop_id"])).fetchone()
     back = url_for("admin_workshop_registrations", session_id=reg["session_id"])
     error = None
@@ -55907,9 +55989,18 @@ def join_workshop_waitlist():
         abort(404)
     session_id = int(session_id_raw)
     conn = get_db()
-    if not conn.execute("SELECT 1 FROM workshop_sessions WHERE id = ?", (session_id,)).fetchone():
+    target = conn.execute("SELECT workshop_id, cancelled_at FROM workshop_sessions WHERE id = ?",
+                          (session_id,)).fetchone()
+    if not target:
         conn.close()
         abort(404)
+    # Calling a sitting off closes its waiting list and tells everybody on it.
+    # Joining one afterwards would put somebody in a queue nobody serves, told
+    # "we'll reach out if a spot opens up" about a date that is not running.
+    if target["cancelled_at"]:
+        conn.close()
+        flash("That date has been called off, so there is no waiting list for it.", "error")
+        return redirect(url_for("workshop_detail", workshop_id=target["workshop_id"]))
 
     if rate_limited(conn, "join_workshop_waitlist", BOOKING_RATE_LIMIT_PER_HOUR):
         conn.commit()
@@ -72029,12 +72120,14 @@ def today_sheet():
            WHERE dinner_date = ? ORDER BY users.name""",
         (today.isoformat(),),
     ).fetchall()
+    # "Workshops Running Today" -- so not one that has been called off.
     todays_workshop_sessions = conn.execute(
-        """SELECT workshop_sessions.*, workshops.title, workshops.instructor_name,
+        f"""SELECT workshop_sessions.*, workshops.title, workshops.instructor_name,
                   COALESCE((SELECT SUM(party_size) FROM workshop_bookings
                             WHERE session_id = workshop_sessions.id AND status = 'confirmed'), 0) AS covers
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshop_sessions.start_date <= ? AND workshop_sessions.end_date >= ?
+             AND {SESSION_IS_LIVE}
            ORDER BY workshop_sessions.start_date""",
         (today.isoformat(), today.isoformat()),
     ).fetchall()
@@ -76004,10 +76097,13 @@ def current_offerings_snapshot(conn):
     rooms = conn.execute(
         "SELECT name, price_per_night, max_occupancy FROM rooms WHERE active = 1 ORDER BY name"
     ).fetchall()
+    # What is on offer, so not a sitting that has been called off: a reply
+    # drafted from this would offer a guest a place on it.
     workshop_sessions = conn.execute(
-        """SELECT workshops.title, workshops.price_per_person, workshop_sessions.start_date, workshop_sessions.end_date
+        f"""SELECT workshops.title, workshops.price_per_person, workshop_sessions.start_date, workshop_sessions.end_date
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
+             AND {SESSION_IS_LIVE}
            ORDER BY workshop_sessions.start_date LIMIT 10""",
         (today,),
     ).fetchall()
@@ -79976,10 +80072,13 @@ def sitemap():
         urls.append((url_for("book_room", room_id=r["id"], _external=True), "0.8"))
     # Only ateliers with a date still ahead. A sitemap advertising a workshop
     # that finished in June is the same mistake the front page used to make.
+    # A date still ahead that has been called off is not one: the page would
+    # only send the visitor on to the list.
     for w in conn.execute(
-            """SELECT DISTINCT workshops.id FROM workshops
+            f"""SELECT DISTINCT workshops.id FROM workshops
                  JOIN workshop_sessions ON workshop_sessions.workshop_id = workshops.id
-                WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?""",
+                WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
+                  AND {SESSION_IS_LIVE}""",
             (service_day_iso(),)).fetchall():
         urls.append((url_for("workshop_detail", workshop_id=w["id"], _external=True), "0.8"))
     conn.close()

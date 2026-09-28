@@ -383,6 +383,7 @@ SUITES = [
     "test_pay_statement",
     "test_calling_it_off",
     "test_called_off_frees_the_house",
+    "test_called_off_is_not_on",
     "test_guest_record_fields",
     "test_guest_management",
     "test_merge_tags",
