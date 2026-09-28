@@ -12,7 +12,7 @@
 
   <ul class="g-lost">
     <li><a href="{{ url_for('book_rooms') }}"><b>Stay the night</b><span>Five bedrooms{% if house_rooms and house_rooms.from_price %}, from &euro;{{ house_rooms.from_price }}{% endif %}</span></a></li>
-    <li><a href="{{ url_for('workshops_public') }}"><b>The ateliers</b><span>Plaster, gilding, fresco conservation</span></a></li>
+    <li><a href="{{ url_for('workshops_public') }}"><b>The workshops</b><span>Small retreats of three to seven nights</span></a></li>
     {% if _dm != 'hidden' %}<li><a href="{{ url_for('restaurant_info') }}"><b>Dining</b><span>One table, one sitting</span></a></li>{% endif %}
     <li><a href="{{ url_for('find_booking') }}"><b>Find my booking</b><span>With the email you booked with</span></a></li>
     <li><a href="{{ url_for('restoration_page') }}"><b>The restoration</b><span>Fifteen years, and not finished</span></a></li>

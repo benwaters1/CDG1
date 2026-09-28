@@ -35,8 +35,8 @@
       <div class="g-gl__i g-gl__i--lead">
         <dt>{{ 'From, per person' if price_from else 'Per person' }}</dt>
         <dd class="g-gl__big">€{{ '{:,.0f}'.format(w.price_per_person|float) }}</dd>
-        <p class="g-gl__n">Everything in — bed, board, materials, the
-          transfers from Toulouse, and the run of the house</p>
+        <p class="g-gl__n">Everything in — bed, board, wine, a tour of the château,
+          the transfers from Toulouse, and the run of the house</p>
       </div>
       {% endif %}
 
@@ -45,14 +45,14 @@
         {# On the listing (price_from) this is every atelier, and they run three to seven nights; one atelier's
            length and its Sunday-to-Friday pattern are only true of that atelier. #}
         <dd>{% if price_from or not (w and w.duration_label) %}Three to seven nights{% else %}{{ w.duration_label }}{% endif %}</dd>
-        <p class="g-gl__n">Each atelier's own dates are below</p>
+        <p class="g-gl__n">Three for the brocantes, five for the kitchen, seven for the restoration</p>
       </div>
 
       <div class="g-gl__i">
         <dt>How many</dt>
         <dd>Fifteen</dd>
-        <p class="g-gl__n">And the château takes no other guests while an
-          atelier is running</p>
+        <p class="g-gl__n">And the château takes no other guests while a
+          workshop is running</p>
       </div>
 
       <div class="g-gl__i">
@@ -78,10 +78,10 @@
       <p class="g-gl__k">A day, from waking</p>
       <ol class="g-gl__ol">
         <li><b>8.00</b> Breakfast, laid in the dining salon</li>
-        <li><b>9.30</b> Into the work: the scaffold, the kitchen or the fairs</li>
+        <li><b>9.30</b> The morning's session: the fairs, the kitchen or the walls</li>
         <li><b>1.00</b> Lunch, long, at the table outside if the weather holds</li>
-        <li><b>2.30</b> Back to it — the afternoon is where the work happens</li>
-        <li><b>6.00</b> Down tools. The house, the pool, the valley, or nothing</li>
+        <li><b>2.30</b> The afternoon is yours: the pool, the valley, or nothing at all</li>
+        <li><b>7.00</b> Aperitif, on the terrace or in the salon</li>
         <li><b>8.00</b> Dinner at one sitting, everyone at one table</li>
       </ol>
     </div>
