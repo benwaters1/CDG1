@@ -52,8 +52,27 @@ def _override(conn, room_id, start, end, price):
 
 
 def _clear_overrides(conn, room_id):
-    conn.execute("DELETE FROM room_rate_overrides WHERE room_id = ? AND created_at LIKE ?",
-                 (room_id, TAG + "%"))
+    """Every override on this room, not only the ones this suite wrote.
+
+    The narrow version -- created_at LIKE the tag -- left the HOUSE's real
+    rate card in place, which is the right instinct in general and was wrong
+    here. This suite is arithmetic: the room is 200 a night, so two nights
+    are 400 and a moved stay with a 90 euro extra is 290. Those numbers are
+    only true if nothing else is pricing the nights.
+
+    It booked today+90. On 7 December that was clear; on 27 December it lands
+    inside the house's real 999-a-night festive override, the stay cost 1998,
+    and the extras arithmetic produced a stored total of MINUS 1308. Nothing
+    in the app was wrong.
+
+    Safe because the suite runs against a throwaway copy -- _harness asserts
+    m.DB_PATH == SCRATCH_DB and refuses to start otherwise -- so this deletes
+    nothing the house owns. It would be unforgivable anywhere else.
+
+    Chosen over moving the fixture to a date with no override, which works
+    until somebody prices another week: the same fuse with a longer wick.
+    """
+    conn.execute("DELETE FROM room_rate_overrides WHERE room_id = ?", (room_id,))
     conn.commit()
 
 
@@ -106,6 +125,9 @@ def run():
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (room["id"],)).fetchone()
     was_rate = room["price_per_night"]
     conn.execute("UPDATE rooms SET price_per_night = 200 WHERE id = ?", (room["id"],))
+    # Before the first booking, not merely between sections. The opening stay
+    # is quoted at the moment it is created, so an override still standing
+    # then is baked into the stamp before any check runs.
     _clear_overrides(conn, room["id"])
     conn.commit()
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (room["id"],)).fetchone()

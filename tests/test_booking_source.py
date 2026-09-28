@@ -26,9 +26,39 @@ TAG = "ZZSRC"
 
 
 def _cleanup():
+    """Between sections: this suite's own rows only."""
     conn = db()
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM submission_log WHERE action IN ('book_room', 'walk_in')")
+    conn.commit()
+    conn.close()
+
+
+def _own_the_month(start, end):
+    """Empty the window of everything, including the house's real bookings.
+
+    Different job from _cleanup, which isolates the sections from each other.
+    This isolates the whole suite from the house's diary, and it is needed
+    because every number below is an arithmetic claim about one month: four
+    agent nights against fourteen direct, seven nights of a straddling stay,
+    seven hundred euros.
+
+    The month is reached as today+200. In September that was 16 April 2027,
+    and the house has two real bookings in it -- one declined and correctly
+    ignored, one confirmed for two nights and 800 euros, which is exactly
+    what the three failing checks were over. Nothing in the app was wrong.
+
+    Safe because the suite runs against a throwaway copy: _harness asserts
+    m.DB_PATH == SCRATCH_DB and refuses to start otherwise. It would be
+    unforgivable anywhere else.
+
+    Clearing beats picking an empty month, which works only until somebody
+    takes a booking in it -- the same fuse with a longer wick.
+    """
+    conn = db()
+    conn.execute(
+        "DELETE FROM bookings WHERE departure_date > ? AND arrival_date < ?",
+        (start.isoformat(), end.isoformat()))
     conn.commit()
     conn.close()
 
@@ -252,6 +282,7 @@ def run():
     _cleanup()
     start = house_today() + timedelta(days=200)
     end = start + timedelta(days=30)
+    _own_the_month(start, end)
     for i in range(4):
         _raw(f"A{i}", source="agent", email=f"zzsrc.a{i}@example.invalid",
              arrival=start + timedelta(days=i), nights=1, price=200)
