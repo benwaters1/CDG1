@@ -1328,12 +1328,77 @@ def handle_csrf_error(e):
 # Database
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# The changes log's connection: it puts a name to what it changed, as it
+# commits.
+# ---------------------------------------------------------------------------
+
+class HouseConnection(sqlite3.Connection):
+    """A connection that claims the changes it made, as it commits.
+
+    The change log's triggers write every change down but cannot know who is
+    asking: SQL has no idea of a signed-in person. So the rows are written
+    unclaimed, and the connection that made them claims them as it commits --
+    by then it is the only writer SQLite allows, so every unclaimed row newer
+    than the moment it opened is its own. A change made outside the app (a
+    sqlite shell, a script) is never claimed, and reads as exactly that.
+    """
+    actor_user_id = None
+    actor = None
+    endpoint = None
+    claim_floor = 0
+
+    def commit(self):
+        if self.in_transaction:
+            try:
+                if super().execute(
+                        "SELECT 1 FROM change_log WHERE claimed = 0 AND id > ? LIMIT 1",
+                        (self.claim_floor,)).fetchone():
+                    super().execute(
+                        """UPDATE change_log SET claimed = 1, actor_user_id = ?, actor = ?,
+                                  endpoint = ?
+                            WHERE claimed = 0 AND id > ?""",
+                        (self.actor_user_id, self.actor, self.endpoint, self.claim_floor))
+            except sqlite3.OperationalError:
+                pass            # before the change log exists: nothing to claim
+        return super().commit()
+
+
+def change_actor():
+    """(user id, who, where) a new connection's changes are put down to: a
+    person signed in, the guest on the public site, Stripe's webhook, or a job.
+
+    The jobs run inside a stand-in request so their letters can build links --
+    a request for "/", which Flask matches to the home page like any visitor's.
+    So the job runner says so first (g.change_job), and that is asked before
+    anything about who is signed in.
+    """
+    if not has_request_context():
+        return None, "job", None
+    job = g.get("change_job")
+    if job:
+        return None, "job", job
+    uid = session.get("user_id")
+    if uid:
+        return uid, "staff", request.endpoint
+    if request.endpoint == "stripe_webhook":
+        return None, "stripe", request.endpoint
+    return None, "guest", request.endpoint
+
+
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, factory=HouseConnection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA busy_timeout = 5000")
+    # Who this connection's changes are put down to, and where its own begin.
+    conn.actor_user_id, conn.actor, conn.endpoint = change_actor()
+    try:
+        conn.claim_floor = conn.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM change_log").fetchone()[0]
+    except sqlite3.OperationalError:
+        conn.claim_floor = 0          # before the change log exists
     return track_connection(conn)
 
 
@@ -1673,6 +1738,12 @@ DEFAULT_EMAIL_TEMPLATES = [
 def init_db():
     fresh = not os.path.exists(DB_PATH)
     conn = get_db()
+    # Off while the migrations run: a table one rebuilds would otherwise write
+    # every row it copies into the changes log as though it had just been added.
+    try:
+        drop_change_log_triggers(conn)
+    except sqlite3.OperationalError:
+        pass
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -5010,6 +5081,27 @@ def init_db():
              created_at TEXT NOT NULL,
              delivered_at TEXT
          )"""),
+        # Every change to the house's bookings, money and guests, field by
+        # field -- written by triggers, claimed by the connection that made it.
+        ("change_log_table", """CREATE TABLE IF NOT EXISTS change_log (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             table_name TEXT NOT NULL,
+             row_id INTEGER,
+             action TEXT NOT NULL CHECK(action IN ('added','changed','deleted')),
+             old_values TEXT,
+             new_values TEXT,
+             claimed INTEGER NOT NULL DEFAULT 0,
+             actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             actor TEXT,
+             endpoint TEXT,
+             created_at TEXT NOT NULL
+         )"""),
+        ("change_log_unclaimed_index",
+         "CREATE INDEX IF NOT EXISTS change_log_unclaimed ON change_log(id) WHERE claimed = 0"),
+        ("change_log_row_index",
+         "CREATE INDEX IF NOT EXISTS change_log_row ON change_log(table_name, row_id)"),
+        ("change_log_created_index",
+         "CREATE INDEX IF NOT EXISTS change_log_created ON change_log(created_at)"),
         ("mail_log_created_at_index",
          "CREATE INDEX IF NOT EXISTS mail_log_created_at ON mail_log(created_at)"),
         ("mail_log_outbox_index",
@@ -6814,6 +6906,9 @@ def init_db():
     # has edited is never touched again.
     seed_revenue_categories(conn)
 
+    # On, from each table as it now stands, once everything above has run.
+    install_change_log_triggers(conn)
+
     conn.close()
 
 
@@ -7371,6 +7466,7 @@ NAV_AREAS = {
         "arrival_to_site", "site_photographs", "put_back_site_photo",
         "admin_terms", "audit_log", "record_history_page",
         "mail_log", "mail_log_letter", "export_mail_log_csv",
+        "changes_log", "export_changes_log_csv",
         "delete_company_document",
         "delete_insurance_policy", "delete_vendor",
         "download_company_document", "edit_company_document", "edit_insurance_policy",
@@ -34807,6 +34903,8 @@ PALETTE_PAGES = [
      "images photos squarespace cdn hotlink mirror logo pictures gallery "
      "who hosts our pictures"),
     ("Audit log", "audit_log", "who did what history"),
+    ("Changes log", "changes_log",
+     "changes changed edited who changed field before after history log"),
     ("Mail log", "mail_log",
      "emails letters sent delivered held bounced did not go outbox email log who was written to"),
     ("Terms & conditions", "admin_terms", "legal policy"),
@@ -70668,6 +70766,13 @@ def guest_data_export(conn, email):
     cards = guest_card_rows(conn, email)
     if cards:
         found["payment_cards"] = [dict(r) for r in cards]
+    # And what the changes log wrote down about them, by what it says: the log
+    # keeps values, and its values are how it mentions a person.
+    mentions = _change_log_mentions(conn, [email] + guest_numbers(conn, email)
+                                    + guest_numbers(conn, email, as_written=True))
+    if mentions:
+        found["change_log"] = [dict(conn.execute("SELECT * FROM change_log WHERE id = ?",
+                                                 (r["id"],)).fetchone()) for r in mentions]
 
     return {
         "email": email,
@@ -70771,6 +70876,12 @@ def guest_data_erase(conn, email):
     scrubbed = scrub_audit_trail(conn, [email] + numbers + names)
     if scrubbed:
         anonymised["audit_log"] = scrubbed
+    # And the changes log: what changed on their bookings and their profile,
+    # when and by whom, stays; they come out of the values it wrote down --
+    # this erasure's own changes included, whose old values are the person.
+    logged = scrub_change_log(conn, [email] + numbers, names)
+    if logged:
+        anonymised["change_log"] = logged
     return {"deleted": deleted, "anonymised": anonymised,
             "kept_because": "French accounting law requires the record of a "
                             "sale to be kept. The money stays; the person has "
@@ -73768,6 +73879,327 @@ def export_mail_log_csv():
     return csv_response(fields, out, "mail_log_filtered.csv" if lv["filtered"] else "mail_log.csv")
 
 
+# ---------------------------------------------------------------------------
+# The changes log: every change to the house's bookings, money and guests,
+# field by field, written by the database itself.
+# ---------------------------------------------------------------------------
+
+# The tables whose every insert, change and deletion is written down, and what
+# one of their rows is called on the page.
+CHANGE_LOG_TABLES = {
+    "bookings": "Stay", "booking_payments": "Payment on a stay",
+    "booking_extras": "Extra", "booking_shares": "Share of a bill", "refunds": "Refund",
+    "workshop_bookings": "Atelier place", "workshop_transactions": "Atelier ledger line",
+    "event_inquiries": "Event", "event_payments": "Payment on an event",
+    "restaurant_bookings": "Table", "guests": "Guest profile",
+    "gift_vouchers": "Gift voucher", "voucher_redemptions": "Voucher spent",
+    "promo_codes": "Promo code",
+}
+
+# Never written into the log, whatever the table: a key; anything Stripe's or a
+# card's; a health or access note, which the privacy notice promises is deleted
+# once the event is over -- a log that kept the old value would make the notice
+# untrue; and the stamps the jobs leave when a letter goes, which the mail log
+# already says, and which would bury every real change under a job's.
+CHANGE_LOG_NEVER = re.compile(
+    r"token|password|hash|secret|stripe|payment_method|customer_id|card"
+    r"|dietary|medical|access_need|allerg|health"
+    r"|_sent_at$|_notified_at$|_requested_at$|_noticed_at$|_prepped_at$|_updated_at$")
+
+# What an erasure takes out of the values the log kept: the person, not the
+# change -- who, what and when stay.
+CHANGE_LOG_PERSONAL = (
+    "guest_name", "guest_email", "guest_phone", "contact_name", "contact_email",
+    "contact_phone", "name", "email", "phone", "special_requests", "notes", "owner_note",
+    "message", "second_contact_name", "second_contact_email", "booked_by_name",
+    "booked_by_email", "purchaser_name", "purchaser_email", "recipient_name", "preferences",
+    "birthday", "anniversary", "name_pronunciation", "requested_roommate",
+    "special_occasion", "transfer_flight_number", "transfer_notes", "caution", "reason",
+    "note", "description", "heard_via", "extras_summary", "decline_note", "cancel_note",
+    "restricted_how", "run_sheet_note", "reference",
+)
+
+CHANGE_LOG_KEEP_DAYS = 730
+
+
+def change_log_columns(conn, table):
+    """The columns of one table the log writes down: all of them but the id,
+    the ones CHANGE_LOG_NEVER names, and none that is not there."""
+    return [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            if r[1] != "id" and not CHANGE_LOG_NEVER.search(r[1])]
+
+
+def _change_log_pack(side, cols):
+    """A row's columns as one JSON object, in pieces a function can take: SQLite
+    caps a function's arguments, and a wide table outgrows the cap."""
+    parts = []
+    for n in range(0, len(cols), 50):
+        parts.append("json_object(" + ", ".join(
+            f"'{c}', {side}.\"{c}\"" for c in cols[n:n + 50]) + ")")
+    packed = parts[0]
+    for more in parts[1:]:
+        packed = f"json_patch({packed}, {more})"
+    return packed
+
+
+def drop_change_log_triggers(conn):
+    """Off, before the migrations: a table rebuilt by one would otherwise write
+    every row it copies into the log as though somebody had just added it."""
+    for table in CHANGE_LOG_TABLES:
+        for action in ("added", "changed", "deleted"):
+            conn.execute(f"DROP TRIGGER IF EXISTS change_log_{table}_{action}")
+
+
+def install_change_log_triggers(conn):
+    """On, at the end of startup, from each table as it now stands -- so a
+    column a migration has just added is written down from its first change,
+    without anybody keeping a list of columns in step."""
+    stamp = "strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')"
+    for table in CHANGE_LOG_TABLES:
+        cols = change_log_columns(conn, table)
+        if not cols:
+            continue
+        differs = " OR ".join(f'OLD."{c}" IS NOT NEW."{c}"' for c in cols)
+        conn.executescript(f"""
+            DROP TRIGGER IF EXISTS change_log_{table}_added;
+            CREATE TRIGGER change_log_{table}_added AFTER INSERT ON {table} BEGIN
+              INSERT INTO change_log (table_name, row_id, action, new_values, created_at)
+              VALUES ('{table}', NEW.id, 'added', {_change_log_pack('NEW', cols)}, {stamp});
+            END;
+            DROP TRIGGER IF EXISTS change_log_{table}_changed;
+            CREATE TRIGGER change_log_{table}_changed AFTER UPDATE ON {table}
+              WHEN {differs} BEGIN
+              INSERT INTO change_log (table_name, row_id, action, old_values, new_values,
+                                      created_at)
+              VALUES ('{table}', NEW.id, 'changed', {_change_log_pack('OLD', cols)},
+                      {_change_log_pack('NEW', cols)}, {stamp});
+            END;
+            DROP TRIGGER IF EXISTS change_log_{table}_deleted;
+            CREATE TRIGGER change_log_{table}_deleted AFTER DELETE ON {table} BEGIN
+              INSERT INTO change_log (table_name, row_id, action, old_values, created_at)
+              VALUES ('{table}', OLD.id, 'deleted', {_change_log_pack('OLD', cols)}, {stamp});
+            END;
+        """)
+
+
+def change_log_fields(row):
+    """[(field, before, after)] for one entry: what changed, what a new row
+    began as, or what a deleted one ended as."""
+    old = json.loads(row["old_values"]) if row["old_values"] else {}
+    new = json.loads(row["new_values"]) if row["new_values"] else {}
+    if row["action"] == "changed":
+        return [(k, old.get(k), new.get(k)) for k in new if old.get(k) != new.get(k)]
+    if row["action"] == "added":
+        return [(k, None, v) for k, v in new.items() if v not in (None, "")]
+    return [(k, v, None) for k, v in old.items() if v not in (None, "")]
+
+
+def change_log_who(row):
+    """Who made a change, in words."""
+    if row["actor_name"]:
+        return row["actor_name"]
+    return {"guest": "The guest", "stripe": "Stripe", "job": "A scheduled job",
+            "staff": "Somebody since removed"}.get(row["actor"] or "", "Outside the app")
+
+
+# Where each table's rows are known by name, and the owner's page for one.
+_CHANGE_LOG_NAMES = {
+    "bookings": ("bookings", "reference_code"), "workshop_bookings": ("workshop_bookings", "reference_code"),
+    "event_inquiries": ("event_inquiries", "reference_code"),
+    "restaurant_bookings": ("restaurant_bookings", "reference_code"),
+    "guests": ("guests", "name"), "gift_vouchers": ("gift_vouchers", "code"),
+    "promo_codes": ("promo_codes", "code"),
+}
+_CHANGE_LOG_PARENTS = {
+    "booking_payments": ("booking_id", "bookings", "Stay"),
+    "booking_shares": ("booking_id", "bookings", "Stay"),
+    "workshop_transactions": ("workshop_booking_id", "workshop_bookings", "Atelier place"),
+    "event_payments": ("event_id", "event_inquiries", "Event"),
+    "voucher_redemptions": ("voucher_id", "gift_vouchers", "Gift voucher"),
+}
+
+
+def change_log_rows(conn, where="1=1", params=()):
+    """The log's entries, named: what each one is (the stay by its reference, the
+    payment by the stay it is on), who made it, and what changed."""
+    rows = [dict(r) for r in conn.execute(
+        f"""SELECT change_log.*, users.name AS actor_name FROM change_log
+              LEFT JOIN users ON users.id = change_log.actor_user_id
+             WHERE {where} ORDER BY change_log.id DESC""", params).fetchall()]
+    names = {}
+    wanted = {}
+    for r in rows:
+        values = json.loads(r["new_values"] or r["old_values"] or "{}")
+        r["values"] = values
+        table = r["table_name"]
+        if table in _CHANGE_LOG_NAMES:
+            wanted.setdefault(table, set()).add(r["row_id"])
+        elif table in _CHANGE_LOG_PARENTS:
+            column, parent, _label = _CHANGE_LOG_PARENTS[table]
+            if values.get(column):
+                wanted.setdefault(parent, set()).add(values[column])
+        elif table in ("refunds", "booking_extras") and values.get("booking_id"):
+            parent = {"room": "bookings", "workshop": "workshop_bookings", "event": "event_inquiries",
+                      "restaurant": "restaurant_bookings"}.get(values.get("category") or "room")
+            if parent:
+                wanted.setdefault(parent, set()).add(values["booking_id"])
+    for table, ids in wanted.items():
+        source, column = _CHANGE_LOG_NAMES[table]
+        ids = sorted(i for i in ids if isinstance(i, int))
+        for n in range(0, len(ids), 400):
+            chunk = ids[n:n + 400]
+            for x in conn.execute(f"SELECT id, {column} AS name FROM {source} WHERE id IN "
+                                  f"({','.join('?' * len(chunk))})", chunk).fetchall():
+                names[(table, x["id"])] = x["name"]
+    today = house_today()
+    for r in rows:
+        table, values = r["table_name"], r["values"]
+        kind = CHANGE_LOG_TABLES.get(table, table)
+        own = names.get((table, r["row_id"])) or values.get(
+            _CHANGE_LOG_NAMES.get(table, (None, "reference_code"))[1])
+        if table in _CHANGE_LOG_PARENTS:
+            column, parent, label = _CHANGE_LOG_PARENTS[table]
+            of = names.get((parent, values.get(column))) or f"#{values.get(column)}"
+            r["object"] = f"{kind} #{r['row_id']}, on {label.lower()} {of}"
+        elif table in ("refunds", "booking_extras"):
+            parent = {"room": "bookings", "workshop": "workshop_bookings", "event": "event_inquiries",
+                      "restaurant": "restaurant_bookings"}.get(values.get("category") or "room")
+            of = names.get((parent, values.get("booking_id"))) or f"#{values.get('booking_id')}"
+            r["object"] = f"{kind} #{r['row_id']}, on {of}"
+        else:
+            r["object"] = f"{kind} {own}" if own else f"{kind} #{r['row_id']}"
+        r["kind"] = kind
+        r["who"] = change_log_who(r)
+        r["fields"] = [(k.replace("_", " ").capitalize(), b, a) for k, b, a in change_log_fields(r)]
+        r["field_names"] = " ".join(f for f, _b, _a in r["fields"])
+        r["field_values"] = " ".join(str(v) for _f, b, a in r["fields"] for v in (b, a)
+                                     if v not in (None, ""))
+        r["when"] = local_datetime_str(r["created_at"])
+        day = house_date_iso(r["created_at"]) or ""
+        r["period"] = ("Today" if day == today.isoformat() else
+                       "Last 7 days" if day >= (today - timedelta(days=7)).isoformat() else
+                       "Last 30 days" if day >= (today - timedelta(days=30)).isoformat() else
+                       "Older")
+        r["action_words"] = r["action"].capitalize()
+    return rows
+
+
+def change_log_list_view(conn, args):
+    """The changes log as the page and its export both see it."""
+    return list_view(
+        change_log_rows(conn), args,
+        search=["object", "who", "field_names", "field_values", "endpoint"],
+        search_hint="Search what it was, who, a field, or a value before or after",
+        facets=[
+            facet("action", "Action", lambda r: r["action_words"],
+                  order=["Added", "Changed", "Deleted"]),
+            facet("what", "What", lambda r: r["kind"],
+                  order=list(CHANGE_LOG_TABLES.values())),
+            facet("who", "Who", lambda r: r["who"], limit=8),
+            facet("when", "When", lambda r: r["period"],
+                  order=["Today", "Last 7 days", "Last 30 days", "Older"]),
+        ],
+        sorts=[
+            sort_option("recent", "Most recent first", lambda r: r["id"], reverse=True),
+            sort_option("oldest", "Oldest first", lambda r: r["id"]),
+        ],
+        default_sort="recent",
+    )
+
+
+@app.route("/admin/changes")
+@owner_required
+def changes_log():
+    """Every change to the house's bookings, money and guests, field by field."""
+    conn = get_db()
+    lv = change_log_list_view(conn, request.args)
+    conn.close()
+    cap = 300
+    return render_template("admin_changes_log.html", lv=lv, rows=lv["rows"][:cap], cap=cap,
+                           capped=len(lv["rows"]) > cap)
+
+
+@app.route("/admin/changes/export.csv")
+@owner_required
+def export_changes_log_csv():
+    """The same view as a spreadsheet: one row per field changed."""
+    conn = get_db()
+    lv = change_log_list_view(conn, request.args)
+    conn.close()
+    out = []
+    for r in lv["rows"]:
+        for field, before, after in r["fields"] or [("", None, None)]:
+            out.append({"when": r["when"], "action": r["action_words"], "what": r["object"],
+                        "who": r["who"], "where": r["endpoint"] or "", "field": field,
+                        "before": "" if before is None else before,
+                        "after": "" if after is None else after})
+    return csv_response(["when", "action", "what", "who", "where", "field", "before", "after"],
+                        out, "changes_filtered.csv" if lv["filtered"] else "changes.csv")
+
+
+def purge_change_log(conn, *, today=None):
+    """The changes log's entries, two years on: what changed on a booking stays
+    as long as a letter about it does, and no longer."""
+    today = today or house_today()
+    moment = house_day_window(today - timedelta(days=CHANGE_LOG_KEEP_DAYS))[0]
+    gone = conn.execute("DELETE FROM change_log WHERE created_at < ?", (moment,)).rowcount
+    conn.commit()
+    return {"old entries in the changes log": max(gone, 0)}
+
+
+# The fields a person's name is written in. A name is matched to these alone,
+# and exactly: "Ann" is a guest, and it is also in "Channel".
+CHANGE_LOG_NAME_FIELDS = ("guest_name", "contact_name", "name", "booked_by_name",
+                          "second_contact_name", "purchaser_name", "recipient_name")
+
+
+def _change_log_mentions(conn, identifiers, names=()):
+    """The log's entries that mention a person, as (id, old, new): an address
+    or a number anywhere in its values, a name in a field that holds one."""
+    found = {}
+    for name in {n.strip() for n in names if n and n.strip()}:
+        cond = " OR ".join(f"json_extract(old_values, '$.{f}') = ? OR "
+                           f"json_extract(new_values, '$.{f}') = ?"
+                           for f in CHANGE_LOG_NAME_FIELDS)
+        for r in conn.execute(f"SELECT id, old_values, new_values FROM change_log WHERE {cond}",
+                              [name] * (2 * len(CHANGE_LOG_NAME_FIELDS))).fetchall():
+            found[r["id"]] = r
+    for word in {w.strip() for w in identifiers if w and len(w.strip()) >= 3}:
+        like = "%" + word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        for r in conn.execute(
+                r"""SELECT id, old_values, new_values FROM change_log
+                     WHERE old_values LIKE ? ESCAPE '\' OR new_values LIKE ? ESCAPE '\'""",
+                (like, like)).fetchall():
+            found[r["id"]] = r
+    return list(found.values())
+
+
+def scrub_change_log(conn, identifiers, names=()):
+    """Take a person out of the values the log kept, and keep the log: what
+    changed, when and who changed it stay. Run at the very end of an erasure --
+    the erasure's own changes are in the log too, their old values being the
+    person."""
+    words = [w.strip().lower() for w in identifiers if w and len(w.strip()) >= 3]
+    exact = {n.strip().lower() for n in names if n and n.strip()}
+    scrubbed = 0
+    for r in _change_log_mentions(conn, identifiers, names):
+        packed = []
+        for raw in (r["old_values"], r["new_values"]):
+            values = json.loads(raw) if raw else None
+            if values is not None:
+                for key, value in list(values.items()):
+                    if value in (None, ""):
+                        continue
+                    if (key in CHANGE_LOG_PERSONAL or str(value).strip().lower() in exact
+                            or any(w in str(value).lower() for w in words)):
+                        values[key] = "[erased]"
+            packed.append(json.dumps(values) if values is not None else None)
+        conn.execute("UPDATE change_log SET old_values = ?, new_values = ? WHERE id = ?",
+                     (packed[0], packed[1], r["id"]))
+        scrubbed += 1
+    return scrubbed
+
+
 @app.route("/admin/audit-log")
 @owner_required
 def audit_log():
@@ -75066,6 +75498,7 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_spent_access_codes(conn))
     cleared.update(purge_guest_messages(conn))
     cleared.update(purge_mail_log(conn))
+    cleared.update(purge_change_log(conn))
     cleared.update(purge_booking_com_mail(conn))
     cleared.update(purge_door_openings(conn))
     # The only one of these holding an identifier for people who never became
@@ -81234,6 +81667,9 @@ def automation_tick():
     "manage your registration" URL) would raise RuntimeError the first time
     it actually has something to send, instead of failing in testing."""
     with app.test_request_context(base_url=PUBLIC_BASE_URL or None):
+        # Before the connection opens: this stand-in request is for "/", and
+        # without this every change a job made would read as a visitor's.
+        g.change_job = "automation"
         conn = get_db()
         settings = get_automation_settings(conn)
         for job_name, enabled_key, interval_key, fixed_cooldown, job_fn in AUTOMATION_JOBS:
@@ -81257,6 +81693,10 @@ def automation_tick():
                 cooldown = 3600
             if not claim_job_run(conn, job_name, cooldown):
                 continue
+            # What this job changes is put down to it, on its own connection and
+            # on any it opens.
+            g.change_job = job_name
+            conn.actor, conn.endpoint = "job", job_name
             try:
                 result = job_fn(conn)
                 record_job_run(conn, job_name, True, str(result))

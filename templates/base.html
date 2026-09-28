@@ -350,6 +350,7 @@
         <a href="{{ url_for('import_guests') }}" class="{{ 'active' if request.endpoint=='import_guests' }}">{{ icon('guests') }}Import Guests</a>
         <a href="{{ url_for('audit_log') }}" class="{{ 'active' if request.endpoint=='audit_log' }}">{{ icon('eye') }}Audit Log</a>
         <a href="{{ url_for('mail_log') }}" class="{{ 'active' if request.endpoint in ['mail_log','mail_log_letter'] }}">{{ icon('eye') }}Mail Log</a>
+        <a href="{{ url_for('changes_log') }}" class="{{ 'active' if request.endpoint=='changes_log' }}">{{ icon('eye') }}Changes Log</a>
       </div>
     </div>
     {% endif %}
