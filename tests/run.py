@@ -56,6 +56,7 @@ SUITES = [
     "test_statements_line_by_line",
     "test_receipts_carry_statements",
     "test_every_transaction",
+    "test_mail_log",
     "test_workshop_rooms",
     "test_workshop_lifecycle",
     "test_workshop_minimum",

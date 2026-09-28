@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Mail Log{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Mail log</h1>
+  <a href="{{ url_for('export_mail_log_csv', **request.args.to_dict()) }}" class="btn-mini">
+    Export {{ 'this view' if lv.filtered else 'CSV' }}
+  </a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every letter the house sends &mdash; to guests, to its own inboxes, to the team, to
+  suppliers &mdash; and whether it went. Kept two years, like the letters.
+</p>
+
+{% include "_list_toolbar.html" %}
+
+{% if not rows %}
+  <div class="empty-state">
+    {% if lv.filtered %}
+      Nothing matches that. <a href="{{ url_for('mail_log') }}">Show all {{ lv.total }}</a>
+    {% else %}
+      Nothing has been sent yet.
+    {% endif %}
+  </div>
+{% else %}
+  {% if capped %}
+  <p class="list-count">
+    Showing the most recent {{ cap }} of {{ lv.shown }} &mdash; narrow it down above, or
+    <a href="{{ url_for('export_mail_log_csv', **request.args.to_dict()) }}" class="small-link">export the lot</a>.
+  </p>
+  {% endif %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>When</th><th>To</th><th>Subject</th><th>Letter</th><th>About</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.when }}</td>
+          <td>{% if r.guest_id %}<a href="{{ url_for('guest_detail', guest_id=r.guest_id) }}">{{ r.to_address }}</a>{% else %}{{ r.to_address }}{% endif %}
+              <br><span class="g-hint">{{ r.audience }}</span></td>
+          <td>{{ r.subject or '' }}</td>
+          <td>{{ r.type }}{% if r.sent_by_name %}<br><span class="g-hint">by {{ r.sent_by_name }}</span>{% endif %}</td>
+          <td>{{ r.about_words }}</td>
+          <td><span class="mini-status status-{{ r.status }}">{{ r.status_words }}</span>
+              {% if r.failure %}<br><span class="g-hint">{{ r.failure }}</span>{% endif %}</td>
+          <td><a href="{{ url_for('mail_log_letter', line_id=r.id) }}" class="small-link">View</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+{% endblock %}

@@ -4969,6 +4969,32 @@ def init_db():
              wallet TEXT,
              fetched_at TEXT NOT NULL
          )"""),
+        # A line for every letter the house sends -- to a guest, its own inboxes,
+        # the owner, a colleague, a supplier -- and whether it went. The words
+        # are kept where they may be (see MAIL_KEPT_WORDS); `kept` says where.
+        ("mail_log_table", """CREATE TABLE IF NOT EXISTS mail_log (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             to_address TEXT NOT NULL,
+             subject TEXT,
+             status TEXT NOT NULL CHECK(status IN ('sent','held','failed','discarded')),
+             failure TEXT,
+             template_key TEXT,
+             about_category TEXT,
+             about_id INTEGER,
+             area TEXT,
+             sent_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             body TEXT,
+             kept TEXT NOT NULL DEFAULT 'here'
+                 CHECK(kept IN ('here','correspondence','not','colleague')),
+             guest_message_id INTEGER,
+             outbox_id INTEGER,
+             created_at TEXT NOT NULL,
+             delivered_at TEXT
+         )"""),
+        ("mail_log_created_at_index",
+         "CREATE INDEX IF NOT EXISTS mail_log_created_at ON mail_log(created_at)"),
+        ("mail_log_outbox_index",
+         "CREATE INDEX IF NOT EXISTS mail_log_outbox ON mail_log(outbox_id)"),
         # What has already been sent to the accountant.
         #
         # An invoice sent twice is worse than one not sent at all: the second is
@@ -7310,6 +7336,7 @@ NAV_AREAS = {
         "arrival_to_post",
         "arrival_to_site", "site_photographs", "put_back_site_photo",
         "admin_terms", "audit_log", "record_history_page",
+        "mail_log", "mail_log_letter", "export_mail_log_csv",
         "delete_company_document",
         "delete_insurance_policy", "delete_vendor",
         "download_company_document", "edit_company_document", "edit_insurance_policy",
@@ -23328,7 +23355,8 @@ def send_email_outbox():
         # would add a duplicate every time the owner pressed the button.
         why = {}
         ok = send_email(row["to_address"], row["subject"], row["body"],
-                        row["ics_content"], row["ics_filename"], keep=False, report=why)
+                        row["ics_content"], row["ics_filename"], keep=False, report=why,
+                        log=False)
         now = datetime.now(timezone.utc).isoformat()
         if ok:
             sent += 1
@@ -23341,6 +23369,10 @@ def send_email_outbox():
             conn.execute(
                 """UPDATE guest_messages SET delivered = 1, delivered_at = ?, failure = NULL
                     WHERE outbox_id = ?""", (now, row["id"]))
+            # And its line in the mail log: held that morning, sent now.
+            conn.execute(
+                """UPDATE mail_log SET status = 'sent', delivered_at = ?, failure = NULL
+                    WHERE outbox_id = ?""", (now, row["id"]))
         else:
             failed += 1
             skipped.append((f"{row['subject'] or 'no subject'} to "
@@ -23350,6 +23382,8 @@ def send_email_outbox():
             conn.execute(
                 "UPDATE email_outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?",
                 (why.get("why") or "retry failed", row["id"]))
+            conn.execute("UPDATE mail_log SET failure = ? WHERE outbox_id = ? AND status = 'held'",
+                         (why.get("why") or "retry failed", row["id"]))
         conn.commit()
     if sent:
         log_audit(conn, "email_outbox_sent", details=f"{sent} sent, {failed} failed")
@@ -23470,6 +23504,10 @@ def mark_letters_withdrawn(conn, outbox_ids):
     conn.executemany(
         "UPDATE guest_messages SET failure = ? WHERE outbox_id = ? AND delivered = 0",
         [(LETTER_WITHDRAWN, i) for i in outbox_ids])
+    # And the mail log: a held letter thrown away is not on its way either.
+    conn.executemany(
+        "UPDATE mail_log SET status = 'discarded' WHERE outbox_id = ? AND status = 'held'",
+        [(i,) for i in outbox_ids])
 
 
 @app.route("/admin/email-outbox/discard-stale", methods=["POST"])
@@ -24245,6 +24283,50 @@ def redact_stored_links(conn):
     return changed
 
 
+# What became of a letter's words, for the mail log. Where they are is where
+# they may be: a guest's letter is read from their correspondence rather than
+# kept twice, the house's own letters are kept here, and two kinds are never
+# kept at all.
+MAIL_KEPT_WORDS = {
+    "here": None,
+    "correspondence": None,
+    "not": ("Its words were never kept. A letter that carries a way in -- a sign-in "
+            "link, a password link, a link that claims a place -- is kept only as "
+            "the fact that it went, and so is a test."),
+    "colleague": ("What a colleague was told is theirs: this says it went, not what "
+                  "it said."),
+}
+MAIL_STATUS_WORDS = {"sent": "Sent", "held": "Held", "failed": "Did not go",
+                     "discarded": "Thrown away"}
+
+
+def is_colleague(conn, address):
+    """Somebody who works here, the owner apart: the owner's own notices are
+    the house's, and what the house was told is the house's to read."""
+    address = (address or "").strip().lower()
+    return bool(address) and conn.execute(
+        "SELECT 1 FROM users WHERE LOWER(TRIM(email)) = ? AND role != 'owner'",
+        (address,)).fetchone() is not None
+
+
+def mail_log_line(conn, row, about, kept, guest_message_id=None):
+    """One line in the record of every letter the house sends: to whom, when,
+    what it was, whether it went, and -- where it may be -- what it said."""
+    delivered = bool(row.get("delivered"))
+    status = "sent" if delivered else ("held" if row.get("outbox_id") else "failed")
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO mail_log (to_address, subject, status, failure, template_key,
+               about_category, about_id, area, sent_by_user_id, body, kept,
+               guest_message_id, outbox_id, created_at, delivered_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (row["to_address"], without_private_links(row.get("subject")), status,
+         None if delivered else row.get("failure"), row.get("template_key"),
+         about[0], about[1], row.get("area"), row.get("sent_by"),
+         without_private_links(row.get("body") or "") if kept == "here" else None,
+         kept, guest_message_id, row.get("outbox_id"), now, now if delivered else None))
+
+
 def write_guest_messages(rows):
     """File a batch of messages against the person they were to, and what they
     were about.
@@ -24279,13 +24361,26 @@ def write_guest_messages(rows):
                 booking_id = (about[1] if about[0] == "room" else
                               None if about[0] else
                               booking_for_contact(conn, address=address, phone=number))
+                # A letter the house sent, as opposed to a text or a message in.
+                logged = (by_mail and channel == "email"
+                          and (row.get("direction") or "out") == "out")
+                if row.get("not_kept"):
+                    # A letter whose words are never kept -- a key, a test. Its
+                    # line in the mail log is all there is of it.
+                    if logged:
+                        mail_log_line(conn, row, about, "not")
+                    continue
                 guest_id = guest_for_contact(conn, address=address, phone=number)
                 if not booking_id and not guest_id and not about[0]:
                     # Staff mail, a supplier, the accountant. Not correspondence
-                    # with a guest, and not kept here.
+                    # with a guest, and not kept with it -- but it went, and the
+                    # mail log says so.
+                    if logged:
+                        mail_log_line(conn, row, about,
+                                      "colleague" if is_colleague(conn, address) else "here")
                     continue
                 now = datetime.now(timezone.utc).isoformat()
-                conn.execute(
+                filed_at = conn.execute(
                     """INSERT INTO guest_messages (booking_id, channel, to_address,
                        subject, body, delivered, created_at, guest_id, about_category,
                        about_id, template_key, direction, outbox_id, failure,
@@ -24299,6 +24394,10 @@ def write_guest_messages(rows):
                      row.get("direction") or "out", row.get("outbox_id"),
                      None if row.get("delivered") else row.get("failure"),
                      row.get("sent_by"), now if row.get("delivered") else None))
+                if logged:
+                    # Its words are read from the correspondence, not kept twice.
+                    mail_log_line(conn, row, about, "correspondence",
+                                  guest_message_id=filed_at.lastrowid)
                 written += 1
             conn.commit()
         finally:
@@ -24336,12 +24435,16 @@ def keep_guest_message(to_address, subject, body, channel="email", delivered=Fal
 
 def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                keep=True, html=None, report=None, area=None, about=None,
-               template_key=None, sent_by=None):
+               template_key=None, sent_by=None, log=True):
     """Send one message, and if it cannot go out, keep it.
 
     `keep=False` for anything whose body is itself a credential — a password
     reset or a staff invitation. Those are short-lived by design, so a retry
     days later is useless, and storing one leaves a working key in a table.
+
+    Every letter leaves a line in the mail log, `keep=False` ones included --
+    that it went, never what it said. `log=False` only for the outbox sending
+    a letter it already holds, whose line is brought up to date instead.
 
     `report` is an optional dict this fills with why a send failed. The return
     stays a plain bool, because two hundred call sites read it as one and a
@@ -24374,7 +24477,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     # leaves the key by the subject, so nothing that sends has to pass it.
     if not template_key and has_request_context():
         template_key = (g.get("_rendered_keys") or {}).get(subject)
-    filed = {"about": about, "template_key": template_key, "sent_by": sent_by}
+    filed = {"about": about, "template_key": template_key, "sent_by": sent_by, "area": area}
     # Filed whether it goes or not, and marked with which. "We wrote to them
     # and it bounced" is a different fact from "we never wrote", and the whole
     # point of keeping this is being able to tell somebody which happened.
@@ -24387,6 +24490,9 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         if went:
             if keep:
                 keep_guest_message(to_address, subject, body, delivered=True, **filed)
+            elif log:
+                keep_guest_message(to_address, subject, None, delivered=True, not_kept=True,
+                                   **filed)
             return True
         if report is not None:
             report["why"] = why
@@ -24394,6 +24500,9 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                                      "provider rejected it", why or "Resend API call failed")
             keep_guest_message(to_address, subject, body, outbox_id=held,
+                               failure=why or "the provider refused it", **filed)
+        elif log:
+            keep_guest_message(to_address, subject, None, not_kept=True,
                                failure=why or "the provider refused it", **filed)
         return False
     if not email_enabled():
@@ -24404,6 +24513,9 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                                      "no email provider configured")
             keep_guest_message(to_address, subject, body, outbox_id=held,
+                               failure="no email provider configured", **filed)
+        elif log:
+            keep_guest_message(to_address, subject, None, not_kept=True,
                                failure="no email provider configured", **filed)
         return False
     try:
@@ -24443,6 +24555,9 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             server.send_message(msg)
         if keep:
             keep_guest_message(to_address, subject, body, delivered=True, **filed)
+        elif log:
+            keep_guest_message(to_address, subject, None, delivered=True, not_kept=True,
+                               **filed)
         return True
     except Exception as e:
         print(f"[email failed] To: {to_address} | Subject: {subject} | Error: {e}")
@@ -24452,6 +24567,9 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                                      "send failed", str(e))
             keep_guest_message(to_address, subject, body, outbox_id=held,
+                               failure=f"the mail server refused it: {e}", **filed)
+        elif log:
+            keep_guest_message(to_address, subject, None, not_kept=True,
                                failure=f"the mail server refused it: {e}", **filed)
         return False
 
@@ -34561,6 +34679,8 @@ PALETTE_PAGES = [
      "images photos squarespace cdn hotlink mirror logo pictures gallery "
      "who hosts our pictures"),
     ("Audit log", "audit_log", "who did what history"),
+    ("Mail log", "mail_log",
+     "emails letters sent delivered held bounced did not go outbox email log who was written to"),
     ("Terms & conditions", "admin_terms", "legal policy"),
     ("Restaurant", "admin_restaurant", "dinner covers reservations"),
     ("Restaurant settings", "admin_restaurant_settings", "capacity price"),
@@ -73309,6 +73429,131 @@ def record_history_page(kind, record_id):
     return render_template("record_history.html", data=data)
 
 
+# ---------------------------------------------------------------------------
+# The mail log: every letter the house sends.
+# ---------------------------------------------------------------------------
+
+def mail_log_list_view(conn, args):
+    """The mail log as the page and its export both see it."""
+    rows = [dict(r) for r in conn.execute(
+        """SELECT mail_log.*, users.name AS sent_by_name, email_outbox.sent_at AS resent_at
+             FROM mail_log
+             LEFT JOIN users ON users.id = mail_log.sent_by_user_id
+             LEFT JOIN email_outbox ON email_outbox.id = mail_log.outbox_id
+            ORDER BY mail_log.created_at DESC, mail_log.id DESC""").fetchall()]
+    labels = {key: label for key, label, _s, _b in DEFAULT_EMAIL_TEMPLATES}
+    house = {a.strip().lower() for a in list(PUBLIC_CONTACT.values()) + list(MS_GRAPH_MAILBOXES)
+             + [owner_email(conn) or ""] if a and a.strip()}
+    staff = {(r["email"] or "").strip().lower() for r in conn.execute(
+        "SELECT email FROM users WHERE role != 'owner' AND email IS NOT NULL").fetchall()}
+    profiles = _profile_ids_by_address(conn)
+    refs = {}
+    for category, table in (("room", "bookings"), ("workshop", "workshop_bookings"),
+                            ("event", "event_inquiries"), ("restaurant", "restaurant_bookings")):
+        ids = sorted({r["about_id"] for r in rows if r["about_category"] == category and r["about_id"]})
+        for n in range(0, len(ids), 400):
+            chunk = ids[n:n + 400]
+            for b in conn.execute(f"SELECT id, reference_code FROM {table} WHERE id IN "
+                                  f"({','.join('?' * len(chunk))})", chunk).fetchall():
+                refs[(category, b["id"])] = b["reference_code"]
+    today = house_today()
+    for r in rows:
+        address = (r["to_address"] or "").strip().lower()
+        r["type"] = (labels.get(r["template_key"]) or
+                     ("Written by hand" if r["sent_by_user_id"] else "A letter of the house's own"))
+        r["audience"] = ("The house" if address in house else
+                         "A colleague" if address in staff else
+                         "A guest" if (r["kept"] == "correspondence" or r["about_category"]
+                                       or address in profiles) else "Somebody else")
+        r["guest_id"] = profiles.get(address)
+        # A letter held and sent later is sent, and says when.
+        if r["status"] == "held" and r["resent_at"]:
+            r["status"], r["delivered_at"] = "sent", r["resent_at"]
+        r["status_words"] = MAIL_STATUS_WORDS[r["status"]]
+        r["when"] = local_datetime_str(r["created_at"])
+        r["about_words"] = (f"{STATEMENT_KINDS.get(r['about_category'], r['about_category'])} "
+                            f"{refs.get((r['about_category'], r['about_id'])) or '#' + str(r['about_id'])}"
+                            if r["about_category"] else "")
+        day = house_date_iso(r["created_at"]) or ""
+        r["period"] = ("Today" if day == today.isoformat() else
+                       "Last 7 days" if day >= (today - timedelta(days=7)).isoformat() else
+                       "Last 30 days" if day >= (today - timedelta(days=30)).isoformat() else
+                       "Older")
+    return list_view(
+        rows, args,
+        search=["to_address", "subject", "type", "failure", "about_words", "sent_by_name"],
+        search_hint="Search who it went to, the subject, what it was about",
+        facets=[
+            facet("status", "Status", lambda r: r["status_words"],
+                  order=["Sent", "Held", "Did not go", "Thrown away"]),
+            facet("to", "To", lambda r: r["audience"],
+                  order=["A guest", "The house", "A colleague", "Somebody else"]),
+            facet("type", "Letter", lambda r: r["type"], limit=12),
+            facet("when", "When", lambda r: r["period"],
+                  order=["Today", "Last 7 days", "Last 30 days", "Older"]),
+        ],
+        sorts=[
+            sort_option("recent", "Most recent first",
+                        lambda r: (r["created_at"] or "", r["id"]), reverse=True),
+            sort_option("oldest", "Oldest first", lambda r: (r["created_at"] or "", r["id"])),
+        ],
+        default_sort="recent",
+    )
+
+
+@app.route("/admin/mail-log")
+@owner_required
+def mail_log():
+    """Every letter the house sends, and whether it went."""
+    conn = get_db()
+    lv = mail_log_list_view(conn, request.args)
+    conn.close()
+    cap = 400
+    return render_template("admin_mail_log.html", lv=lv, rows=lv["rows"][:cap], cap=cap,
+                           capped=len(lv["rows"]) > cap)
+
+
+@app.route("/admin/mail-log/<int:line_id>")
+@owner_required
+def mail_log_letter(line_id):
+    """One letter: what it was, where it went, whether it arrived, and -- where
+    the house may keep them -- its words."""
+    conn = get_db()
+    lv = mail_log_list_view(conn, {})
+    line = next((r for r in lv["rows"] if r["id"] == line_id), None)
+    if not line:
+        conn.close()
+        abort(404)
+    words = line["body"] if line["kept"] == "here" else None
+    gone = False
+    if line["kept"] == "correspondence":
+        kept = conn.execute("SELECT body FROM guest_messages WHERE id = ?",
+                            (line["guest_message_id"],)).fetchone()
+        words = kept["body"] if kept else None
+        gone = kept is None
+    conn.close()
+    return render_template("admin_mail_log_letter.html", line=line, words=words, gone=gone,
+                           not_kept=MAIL_KEPT_WORDS.get(line["kept"]))
+
+
+@app.route("/admin/mail-log/export.csv")
+@owner_required
+def export_mail_log_csv():
+    """The same view as a spreadsheet -- what went where and whether it arrived.
+    Not the letters themselves: those are read one at a time, on the page."""
+    conn = get_db()
+    lv = mail_log_list_view(conn, request.args)
+    conn.close()
+    fields = ["when", "to", "audience", "subject", "letter", "about", "status", "why",
+              "delivered", "sent_by", "inbox"]
+    out = [{"when": r["when"], "to": r["to_address"], "audience": r["audience"],
+            "subject": r["subject"] or "", "letter": r["type"], "about": r["about_words"],
+            "status": r["status_words"], "why": r["failure"] or "",
+            "delivered": local_datetime_str(r["delivered_at"]) if r["delivered_at"] else "",
+            "sent_by": r["sent_by_name"] or "", "inbox": r["area"] or ""} for r in lv["rows"]]
+    return csv_response(fields, out, "mail_log_filtered.csv" if lv["filtered"] else "mail_log.csv")
+
+
 @app.route("/admin/audit-log")
 @owner_required
 def audit_log():
@@ -74494,6 +74739,21 @@ def purge_spent_access_codes(conn, today=None):
     return {"door codes blanked": cur.rowcount}
 
 
+def purge_mail_log(conn, *, today=None):
+    """The mail log's lines, on the letters' two years -- and a line whose
+    letter has gone with its stay, which would otherwise point at nothing.
+    Run after purge_guest_messages, so what that clears is cleared here too."""
+    today = today or house_today()
+    cutoff = (today - timedelta(days=int(GUEST_MESSAGE_KEEP_MONTHS * 30.44)))
+    moment = house_day_window(cutoff)[0]
+    gone = conn.execute("DELETE FROM mail_log WHERE created_at < ?", (moment,)).rowcount
+    gone += conn.execute(
+        """DELETE FROM mail_log WHERE kept = 'correspondence'
+             AND guest_message_id NOT IN (SELECT id FROM guest_messages)""").rowcount
+    conn.commit()
+    return {"old lines in the mail log": max(gone, 0)}
+
+
 def purge_guest_messages(conn, *, today=None):
     """Drop correspondence about stays that ended long enough ago.
 
@@ -74591,6 +74851,7 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_stale_access_needs(conn))
     cleared.update(purge_spent_access_codes(conn))
     cleared.update(purge_guest_messages(conn))
+    cleared.update(purge_mail_log(conn))
     cleared.update(purge_booking_com_mail(conn))
     # The only one of these holding an identifier for people who never became
     # guests at all -- somebody who opened the availability calendar and left.
