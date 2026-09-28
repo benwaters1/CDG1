@@ -243,7 +243,39 @@ def run():
     # Four one-night stays from an agent against one guest taking a fortnight is
     # not four to one in any sense the owner would act on.
     _cleanup()
-    start = house_today() + timedelta(days=200)
+    # A THIRTY-DAY SPAN WITH NOTHING ELSE IN IT, FOUND RATHER THAN ASSUMED.
+    #
+    # Every check below adds one stay and then asserts the WHOLE window's
+    # totals, so it only means anything if the window is otherwise empty.
+    # It took today + 200 on faith, and on 2026-09-28 that landed on a stay
+    # called "Date Change Test" left in the database in August -- seven nights
+    # became nine and the straddle check went red on nothing anybody had
+    # changed.
+    #
+    # This is the same fault as the one in test_cover_gaps, which was fixed
+    # three times on three branches before one landed: a fixed offset into a
+    # real calendar is quiet until the day it is not. Walk until it is true.
+    start = None
+    probe_conn = db()
+    try:
+        day = house_today() + timedelta(days=200)
+        for _ in range(48):                      # four years, a month at a time
+            busy = probe_conn.execute(
+                """SELECT COUNT(*) c FROM bookings
+                    WHERE status = 'confirmed'
+                      AND arrival_date < ? AND departure_date > ?""",
+                ((day + timedelta(days=30)).isoformat(),
+                 (day - timedelta(days=10)).isoformat())).fetchone()["c"]
+            if not busy:
+                start = day
+                break
+            day += timedelta(days=30)
+    finally:
+        probe_conn.close()
+    s.check("there is a quiet month to measure in", start is not None,
+            detail="every check below adds one stay and reads the whole "
+                   "window's totals, so anything else in it is counted too")
+    start = start or (house_today() + timedelta(days=200))
     end = start + timedelta(days=30)
     for i in range(4):
         _raw(f"A{i}", source="agent", email=f"zzsrc.a{i}@example.invalid",
