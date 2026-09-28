@@ -19,7 +19,7 @@ subtracted from a plan that was never real. The wording is checked here for
 the same reason the money figures elsewhere state gross or net: a figure whose
 meaning is ambiguous gets used as though it meant the worse thing.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from _harness import Suite, clients, db, flashes
 import _harness
@@ -44,8 +44,22 @@ def _cleanup():
     conn.execute("DELETE FROM blocked_dates WHERE ical_source_id IS NULL "
                  "AND start_date = ?",
                  ((datetime.now(m.LOCAL_TZ).date() + timedelta(days=50)).isoformat(),))
+    conn.execute("DELETE FROM room_blocks WHERE reason LIKE ?", (TAG + "%",))
     conn.commit()
     conn.close()
+
+
+def _listed(data, room_id):
+    """The nights of one room that the page lists as empty."""
+    out = set()
+    for r in data["runs"]:
+        if r["room"]["id"] != room_id:
+            continue
+        night, to = date.fromisoformat(r["from"]), date.fromisoformat(r["to"])
+        while night <= to:
+            out.add(night)
+            night += timedelta(days=1)
+    return out
 
 
 def _stay(ref, room_id, start_offset, nights, status="confirmed"):
@@ -175,6 +189,71 @@ def run():
             blocked["free_nights"] < data["free_nights"],
             detail=f"{data['free_nights']} -> {blocked['free_nights']} — a room "
                    "being replastered is not a room to market")
+
+    s.section("And nor is a night the owner has blocked")
+    # room_blocks: the owner's own, per room -- the renovation, the family
+    # visit. blocked_dates above is the channel's. This page used to read only
+    # the channel's, so a room the owner had taken off sale was listed as an
+    # empty night and its rate counted in the unsold figure. It ends on the
+    # checkout morning, like a booking.
+    held = [today + timedelta(days=n) for n in (55, 56, 57)]
+    free_after = today + timedelta(days=58)
+    listed = _listed(blocked, room["id"])
+    if s.check("the three nights are listed as empty before the block",
+               all(n in listed for n in held + [free_after]),
+               detail=str([n.isoformat() for n in held + [free_after] if n not in listed])):
+        conn = db()
+        conn.execute(
+            """INSERT INTO room_blocks (room_id, start_date, end_date, reason, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (room["id"], held[0].isoformat(), free_after.isoformat(), TAG + " family",
+             datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        owners = _empty(days=60)
+        listed = _listed(owners, room["id"])
+        s.check("its nights come out of the free count",
+                owners["free_nights"] == blocked["free_nights"] - 3,
+                detail=f"{blocked['free_nights']} -> {owners['free_nights']} — "
+                       "a room the owner took off sale is not a night to fill")
+        s.check("and their value out of the unsold figure",
+                abs(blocked["value_at_rate"] - owners["value_at_rate"] - 3 * rate) < 0.01,
+                detail=f"{blocked['value_at_rate']} -> {owners['value_at_rate']}, "
+                       f"wanted {3 * rate} less")
+        s.check("no run of the room covers a night it is blocked",
+                not any(n in listed for n in held),
+                detail=str([n.isoformat() for n in held if n in listed]))
+        s.check("while the morning the block ends is empty again",
+                free_after in listed,
+                detail="a block ends on the checkout morning, like a booking")
+
+    s.section("Nothing listed empty is a night the booking check refuses the room")
+    # Asked of the real gate, room by room and night by night, rather than
+    # reasoned about. A night it refuses for THIS room -- a booking, a channel
+    # stay, the owner's block -- must not be offered here as a gap to fill,
+    # and a night it would sell must be. A night refused for the whole house
+    # (an atelier, an event, a hold) is not a claim this page makes either
+    # way, so it is left out rather than pinned.
+    conn = db()
+    try:
+        house = {why for _a, _b, why in m._availability_picture(conn)["house"]}
+        rooms = conn.execute("SELECT id, name FROM rooms WHERE active = 1").fetchall()
+        final = _empty(days=60)
+        wrong = []
+        for r in rooms:
+            listed = _listed(final, r["id"])
+            for n in range(60):
+                night = today + timedelta(days=n)
+                ok, why = m.is_range_available(conn, r["id"], night,
+                                               night + timedelta(days=1))
+                if ok and night not in listed:
+                    wrong.append(f"{r['name']} {night.isoformat()}: sellable, not listed")
+                elif not ok and why not in house and night in listed:
+                    wrong.append(f"{r['name']} {night.isoformat()}: listed, refused: {why}")
+    finally:
+        conn.close()
+    s.check(f"over 60 nights and {len(rooms)} rooms, the page and the gate agree",
+            not wrong, detail=" | ".join(wrong[:3]))
 
     s.section("The figure says what it is, and what it is not")
     r = oc.get("/management/empty-nights?days=60")
