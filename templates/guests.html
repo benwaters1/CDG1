@@ -7,7 +7,8 @@
   <h1>Guests</h1>
   {% if user['role'] == 'owner' %}
   <div style="display:flex; gap:10px;">
-    <a href="{{ url_for('export_guests_csv') }}" class="btn-ghost">Export CSV</a>
+    {# The view on screen, chips and search and all, not every profile. #}
+    <a href="{{ url_for('export_guests_csv', **export_args) }}" class="btn-ghost">Export this view</a>
     {# Beside the export, because somebody looking for one is usually looking
        for the other. can() rather than an unconditional link: this is a
        management page and the Guests page is not, so drawing it for everybody
@@ -122,15 +123,28 @@
 {% if not profiles %}
   <div class="empty-state">{% if lv.q %}No profiles match that search.{% else %}No guest profiles yet — one is created automatically whenever you confirm a booking.{% endif %}</div>
 {% else %}
+{# Ticked and tagged together: the same act as tagging one, done for each, and
+   it names any it could not. #}
+{% if can('bulk_tag_guests') %}
+<form method="post" action="{{ url_for('bulk_tag_guests') }}" id="bulk-tag">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="back" value="{{ request.full_path }}">
+  <input type="text" name="tag" maxlength="40" list="known-tags" aria-label="Tag the ticked" placeholder="Tag the ticked" style="width:auto;">
+  <datalist id="known-tags">{% for t in known_tags %}<option value="{{ t }}">{% endfor %}</datalist>
+  <button type="submit" class="btn-mini">Tag them</button>
+</form>
+{% endif %}
 <div class="manual-layout">
   {% for g in profiles %}
   <div class="manual-section">
     <div class="manual-section-head">
       <h3>
+        {% if can('bulk_tag_guests') %}<input type="checkbox" name="guest_ids" value="{{ g['id'] }}" form="bulk-tag" aria-label="Tick {{ g['name'] }}">{% endif %}
         {{ g['name'] }}
         {% if g['vip'] %}<span class="mini-status status-pending" style="margin-left:8px;">VIP</span>{% endif %}
         {% set visits = stay_counts.get(g['id'], 0) %}
         {% if visits > 1 %}<span class="mini-status status-confirmed" style="margin-left:8px;">{{ visits }} stays</span>{% endif %}
+        {% for t in tags.get(g['id'], []) %}<span class="mini-status status-upcoming" style="margin-left:6px;">{{ t }}</span>{% endfor %}
       </h3>
       <div class="manual-actions">
         {% if g['email'] %}<a href="{{ url_for('guest_booking_history', email=g['email']) }}" class="small-link">History</a>{% endif %}

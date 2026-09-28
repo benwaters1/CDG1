@@ -1,0 +1,15 @@
+{# One row on a guest's record: what changed on that booking, and a new
+   private link for it when the old one has gone astray. Owner-side only. #}
+{% if can('record_history_page') %}
+<a href="{{ url_for('record_history_page', kind=kind, record_id=item['id']) }}" class="small-link">What changed</a>
+{% endif %}
+{% if can('reissue_booking_link_page') %}
+<form method="post" action="{{ url_for('reissue_booking_link_page', category=category, booking_id=item['id']) }}"
+      style="display:inline;"
+      onsubmit="return confirm('The link they have for this booking will stop working. Issue a new one and send it to them?');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="guest_id" value="{{ g['id'] }}">
+  <input type="hidden" name="send" value="1">
+  <button type="submit" class="btn-mini">New link</button>
+</form>
+{% endif %}

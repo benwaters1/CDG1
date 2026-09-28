@@ -95,8 +95,15 @@
     <button type="submit" class="btn-primary">{% if guest %}Save changes{% else %}Create profile{% endif %}</button>
   </form>
 
-  {% if guest %}
-  <form method="post" action="{{ url_for('delete_guest', guest_id=guest['id']) }}" onsubmit="return confirm('Delete {{ guest['name'] }}\'s profile? Their bookings are kept.');" class="danger-zone">
+  {% if guest and holdings %}
+  {# Not a button that refuses afterwards: said here, with the two things
+     that are actually wanted. #}
+  <p class="upload-hint">This profile holds {{ holdings|join(', ') }}, so it cannot be deleted.
+    Merge it into the right profile from their record, or, if they asked to be
+    forgotten, erase them from <a href="{{ url_for('data_requests', email=guest['email'] or '') }}">what we hold about them</a>
+    &mdash; that keeps the sales the law requires.</p>
+  {% elif guest %}
+  <form method="post" action="{{ url_for('delete_guest', guest_id=guest['id']) }}" onsubmit="return confirm('Delete {{ guest['name'] }}\'s profile? It holds nothing, so nothing else goes with it.');" class="danger-zone">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn-text-danger">Delete this profile</button>
   </form>

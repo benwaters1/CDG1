@@ -163,7 +163,8 @@ def run():
     was_refund = m.refund_booking
     m.send_email = lambda to, subj, body, **k: True
     m.notify_room_waitlist_opening = lambda conn, arr, dep: []
-    m.refund_booking = lambda conn, booking: (False, "card expired")
+    # Takes whatever the real one takes: it gained who is refunding.
+    m.refund_booking = lambda conn, booking, **_who: (False, "card expired")
     try:
         r = oc.post("/admin/bookings/bulk-decline",
                     data={"booking_ids": [str(paid["id"])]}, follow_redirects=True)
