@@ -7124,6 +7124,7 @@ NAV_AREAS = {
     ],
     "financial": [
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
+        "admin_transactions", "export_transactions_csv",
         "demand_report",
         "management_outstanding", "chase_outstanding_balance",
         "management_vouchers", "new_gift_voucher", "gift_voucher_detail",
@@ -34495,6 +34496,8 @@ PALETTE_PAGES = [
     ("Held, not earned", "held_not_earned_page",
      "deposits deferred liability unearned advance"),
     ("Refunds", "admin_refunds", "money back"),
+    ("Transactions", "admin_transactions",
+     "payments charges refunds money in paid card transfer cash ledger what for"),
     ("Reports", "admin_reports", "financial occupancy labour guest"),
     ("Emails", "admin_emails", "campaigns templates marketing"),
     ("Bank details", "management_bank_details", "iban account"),
@@ -54212,6 +54215,213 @@ def refund_off_the_bill(category, booking_id, refund_id):
     conn.close()
     flash(f"€{take:.2f} taken off the bill.", "success")
     return redirect(back)
+
+
+# ---------------------------------------------------------------------------
+# Transactions: every charge, payment and refund, house-wide.
+# ---------------------------------------------------------------------------
+
+# What each kind of line on a statement is, in the list's words, and which of
+# the four questions it answers: what was charged, what was taken off, what
+# came in, what went back.
+TRANSACTION_TYPES = {
+    "room": ("Accommodation", "Charge"), "extra": ("Extra", "Charge"),
+    "city_tax": ("Taxe de séjour", "Charge"), "programme": ("Programme", "Charge"),
+    "supplement": ("Supplement", "Charge"), "charge": ("Charge", "Charge"),
+    "quote": ("As quoted", "Charge"), "deposit": ("Deposit", "Charge"),
+    "kept": ("Kept on cancellation", "Charge"),
+    "discount": ("Discount", "Discount"), "refund_reduction": ("Reduction", "Discount"),
+    "payment": ("Payment", "Payment"), "refund": ("Refund", "Refund"),
+    "reversal": ("Refund put back", "Refund"),
+}
+
+# How a payment or refund was made, as a chip. The words are the statement's.
+TRANSACTION_METHODS = {
+    "Card, online": "Card", "Card, by payment link": "Card", "Card, in person": "Card",
+    "Card, at the terminal": "Card", "Online": "Card", "Bank transfer": "Bank transfer",
+    "Cash": "Cash", "Gift voucher": "Gift voucher",
+}
+
+# When each kind of booking ends, for the list's "Ends" column.
+BOOKING_ENDS = {"room": "departure_date", "workshop": "end_date",
+                "event": "preferred_date", "restaurant": "dinner_date"}
+
+
+def _transaction_candidates(conn, lo, hi):
+    """Which bookings of each kind have anything dated between two moments.
+
+    Only these are worked out: a statement's lines are cheap one booking at a
+    time and dear for every booking the house has ever taken. The window is
+    wider than the period by a day at each end, because a line is dated on the
+    house's day and the moments it is found by are kept in UTC.
+    """
+    found = {"room": set(), "workshop": set(), "event": set(), "restaurant": set()}
+    queries = (
+        ("room", "SELECT booking_id AS id FROM booking_payments WHERE created_at >= ? AND created_at < ?"),
+        ("room", "SELECT booking_id AS id FROM booking_extras WHERE category = 'room' AND created_at >= ? AND created_at < ?"),
+        ("room", "SELECT id FROM bookings WHERE COALESCE(decided_at, created_at) >= ? AND COALESCE(decided_at, created_at) < ?"),
+        ("room", "SELECT id FROM bookings WHERE created_at >= ? AND created_at < ?"),
+        ("workshop", "SELECT workshop_booking_id AS id FROM workshop_transactions WHERE created_at >= ? AND created_at < ?"),
+        ("workshop", "SELECT id FROM workshop_bookings WHERE COALESCE(decided_at, created_at) >= ? AND COALESCE(decided_at, created_at) < ?"),
+        ("event", "SELECT event_id AS id FROM event_payments WHERE created_at >= ? AND created_at < ?"),
+        ("event", "SELECT id FROM event_inquiries WHERE COALESCE(decided_at, created_at) >= ? AND COALESCE(decided_at, created_at) < ?"),
+        ("event", "SELECT id FROM event_inquiries WHERE created_at >= ? AND created_at < ?"),
+        ("restaurant", "SELECT id FROM restaurant_bookings WHERE created_at >= ? AND created_at < ?"),
+    )
+    for category, sql in queries:
+        try:
+            found[category].update(r["id"] for r in conn.execute(sql, (lo, hi)).fetchall())
+        except sqlite3.OperationalError:
+            continue            # a kind without that column yet
+    for r in conn.execute("SELECT category, booking_id FROM refunds WHERE created_at >= ? AND created_at < ?",
+                          (lo, hi)).fetchall():
+        if r["category"] in found:
+            found[r["category"]].add(r["booking_id"])
+    return found
+
+
+def _profile_ids_by_address(conn):
+    """{address: the profile that address belongs to now}, merges followed."""
+    rows = conn.execute("SELECT id, email, merged_into_id FROM guests").fetchall()
+    into = {r["id"]: r["merged_into_id"] for r in rows}
+
+    def settled(gid):
+        seen = set()
+        while into.get(gid) and gid not in seen:
+            seen.add(gid)
+            gid = into[gid]
+        return gid
+
+    out = {}
+    for r in rows:
+        address = (r["email"] or "").strip().lower()
+        if address and (address not in out or not r["merged_into_id"]):
+            out[address] = settled(r["id"])
+    return out
+
+
+def house_transactions(conn, start_iso, end_iso):
+    """Every charge, payment and refund dated on the house's days between two
+    dates, one row each, with who it was, what it was for, and how.
+
+    The lines are each booking's statement lines (booking_money_lines) and
+    nothing else, so a person's rows here are their statement's, and the
+    booking's own statement adds up to the same.
+    """
+    lo = (parse_date(start_iso) - timedelta(days=1)).isoformat()
+    hi = (parse_date(end_iso) + timedelta(days=2)).isoformat()
+    candidates = _transaction_candidates(conn, lo, hi)
+    profiles = _profile_ids_by_address(conn)
+    rows = []
+    for category, ids in candidates.items():
+        ids = sorted(i for i in ids if i)
+        for n in range(0, len(ids), 400):
+            chunk = ids[n:n + 400]
+            alias = {"room": "bookings.id", "workshop": "wb.id"}.get(category, "id")
+            for row in _statement_rows(conn, category,
+                                       f"{alias} IN ({','.join('?' * len(chunk))})", chunk):
+                lines, about = booking_money_lines(conn, category, row)
+                if not lines:
+                    continue
+                keys = row.keys()
+                name = row["contact_name"] if "contact_name" in keys else row["guest_name"]
+                email = ((row["contact_email"] if "contact_email" in keys else row["guest_email"])
+                         or "").strip().lower()
+                gid = (row["linked_guest_id"] if "linked_guest_id" in keys and row["linked_guest_id"]
+                       else None) or profiles.get(email)
+                token = row["manage_token"] if "manage_token" in keys else None
+                for x in lines:
+                    if not (start_iso <= x["day"] <= end_iso):
+                        continue
+                    words, group = TRANSACTION_TYPES.get(x["line"], (x["line"], "Charge"))
+                    rows.append(dict(
+                        x, type=words, group=group, person=name or "Somebody",
+                        email=email, guest_id=gid, booking_what=about["what"],
+                        status=row["status"], ends=row[BOOKING_ENDS[category]]
+                        if BOOKING_ENDS[category] in keys else None,
+                        manage_token=token,
+                        how=TRANSACTION_METHODS.get(x["method"] or "", "Other")
+                        if (x["paid"] or x["back"]) else None,
+                        amount=x["paid"] or -x["back"] or x["charge"]))
+    cards = card_labels(conn, [x["card"] for x in rows if x["card"]])
+    for x in rows:
+        x["card_words"] = cards.get(x["card"]) if x["card"] else None
+        x["recorded"] = local_datetime_str(x["at"]) if x["at"] else ""
+    return rows
+
+
+def transactions_list_view(conn, args):
+    """The transactions for a period, as the page and its export both see them.
+
+    Shared so "export this view" means exactly what is on screen, totals and
+    all. The totals are the shown rows added up, and nothing else.
+    """
+    period = resolve_period(args.get("period") or "month", args.get("date"))
+    rows = house_transactions(conn, period["start_iso"], period["end_iso"])
+    lv = list_view(
+        rows, args,
+        search=["person", "email", "ref", "what", "booking_what", "note", "card_words",
+                "method", "kind"],
+        search_hint="Search who, reference, what it was for, a note, or a card's last four",
+        facets=[
+            facet("kind", "For", lambda x: x["kind"],
+                  order=[STATEMENT_KINDS[k] for k in ("room", "workshop", "event", "restaurant")]),
+            facet("type", "Type", lambda x: x["group"],
+                  order=["Payment", "Refund", "Charge", "Discount"]),
+            facet("how", "How", lambda x: x["how"],
+                  order=["Card", "Bank transfer", "Cash", "Gift voucher", "Other"]),
+        ],
+        sorts=[
+            sort_option("recent", "Most recent first", lambda x: x["at"] or "", reverse=True),
+            sort_option("oldest", "Oldest first", lambda x: x["at"] or ""),
+            sort_option("largest", "Largest first", lambda x: abs(x["amount"] or 0), reverse=True),
+            sort_option("person", "By person", lambda x: ((x["person"] or "").lower(), x["at"] or "")),
+        ],
+        default_sort="recent",
+    )
+    shown = lv["rows"]
+    lv["totals"] = {
+        "charged": round(sum(x["charge"] for x in shown), 2),
+        "paid": round(sum(x["paid"] for x in shown), 2),
+        "refunded": round(sum(x["back"] for x in shown), 2),
+    }
+    lv["totals"]["net"] = round(lv["totals"]["paid"] - lv["totals"]["refunded"], 2)
+    lv["period"] = period
+    return lv
+
+
+@app.route("/admin/transactions")
+@owner_required
+def admin_transactions():
+    """Every charge, payment and refund in a period, with what each was for."""
+    conn = get_db()
+    lv = transactions_list_view(conn, request.args)
+    conn.close()
+    cap = 500
+    keep = {k: v for k, v in request.args.to_dict().items() if k not in ("period", "date")}
+    return render_template("admin_transactions.html", lv=lv, rows=lv["rows"][:cap], cap=cap,
+                           capped=len(lv["rows"]) > cap, period=lv["period"], keep=keep)
+
+
+@app.route("/admin/transactions/export.csv")
+@owner_required
+def export_transactions_csv():
+    """The same view as a spreadsheet: the period, the filters, the search."""
+    conn = get_db()
+    lv = transactions_list_view(conn, request.args)
+    conn.close()
+    fields = ["date", "recorded", "person", "email", "for", "reference", "booking", "ends",
+              "type", "description", "how", "card", "note", "charged", "paid", "refunded"]
+    money = lambda v: f"{v:.2f}" if v else ""
+    out = [{"date": x["day"], "recorded": x["recorded"], "person": x["person"],
+            "email": x["email"], "for": x["kind"], "reference": x["ref"],
+            "booking": x["booking_what"], "ends": x["ends"] or "", "type": x["type"],
+            "description": x["what"], "how": x["method"] or "", "card": x["card_words"] or "",
+            "note": x["note"] or "", "charged": money(x["charge"]), "paid": money(x["paid"]),
+            "refunded": money(x["back"])} for x in lv["rows"]]
+    name = ("transactions_filtered.csv" if lv["filtered"]
+            else f"transactions_{lv['period']['start_iso']}_{lv['period']['end_iso']}.csv")
+    return csv_response(fields, out, name)
 
 
 @app.route("/admin/refunds/<category>/<int:booking_id>", methods=["GET", "POST"])
