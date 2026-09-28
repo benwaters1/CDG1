@@ -42,8 +42,10 @@
 
       <div class="g-gl__i">
         <dt>How long</dt>
-        <dd>{{ w.duration_label if w and w.duration_label else 'Five days, four nights' }}</dd>
-        <p class="g-gl__n">Arrive Sunday, work Monday to Thursday, leave Friday</p>
+        {# On the listing (price_from) this is every atelier, and they run three to seven nights; one atelier's
+           length and its Sunday-to-Friday pattern are only true of that atelier. #}
+        <dd>{% if price_from or not (w and w.duration_label) %}Three to seven nights{% else %}{{ w.duration_label }}{% endif %}</dd>
+        <p class="g-gl__n">Each atelier's own dates are below</p>
       </div>
 
       <div class="g-gl__i">
@@ -62,17 +64,12 @@
 
       <div class="g-gl__i">
         <dt>Taught by</dt>
-        <dd>The conservators</dd>
-        <p class="g-gl__n">The same artisans restoring the château, on the
-          walls they are actually restoring</p>
+        <dd>The people doing the work</dd>
+        <p class="g-gl__n">The conservators, the chef and the dealers, in the
+          rooms the work is for</p>
       </div>
 
-      <div class="g-gl__i">
-        <dt>What you take home</dt>
-        <dd>A panel you made</dd>
-        <p class="g-gl__n">Plaster, gilding or fresco depending on the
-          atelier — yours, finished, and packed to travel</p>
-      </div>
+      {# "What you take home: a panel you made ... finished, and packed to travel" - not true (owner, 24 Sept). #}
 
     </dl>
 
@@ -81,7 +78,7 @@
       <p class="g-gl__k">A day, from waking</p>
       <ol class="g-gl__ol">
         <li><b>8.00</b> Breakfast, laid in the dining salon</li>
-        <li><b>9.30</b> On the scaffold or at the bench with the conservators</li>
+        <li><b>9.30</b> Into the work: the scaffold, the kitchen or the fairs</li>
         <li><b>1.00</b> Lunch, long, at the table outside if the weather holds</li>
         <li><b>2.30</b> Back to it — the afternoon is where the work happens</li>
         <li><b>6.00</b> Down tools. The house, the pool, the valley, or nothing</li>

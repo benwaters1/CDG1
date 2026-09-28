@@ -10054,3 +10054,41 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
   .g .g-datefilter::-webkit-scrollbar{ display: none; }
   .g .g-datefilter > .g-chip{ flex: none; white-space: nowrap; }
 }
+
+/* The stay takeaway (print_stay(), manage page): on screen its directions ran 736px wide. Reading measure. */
+.g .g-takeaway__v{ max-width: var(--m-read); }
+
+/* PRINTING THE STAY (manage page, body.g-print-stay). Printed blank: the general print rule hides every
+   .g-panel with !important, and the takeaway card is one; and everything else was only made invisible,
+   so it kept its height and printed as five more empty sheets. Now the card shows, in normal flow, and
+   everything that neither is it, holds it, nor sits inside it is removed rather than hidden. */
+@media print{
+  body.g-print-stay .g-takeaway{ display: block !important; position: static !important; }
+  body.g-print-stay > *:not(:has(.g-takeaway)),
+  body.g-print-stay main *:not(:has(.g-takeaway)):not(.g-takeaway):not(.g-takeaway *){ display: none !important; }
+}
+
+/* Solid buttons in a hero without body.has-hero (the short heroes: Photoshoots, Private hire) took
+   .g-hero .g-btn--solid - a gilt fill - with navy text: 1.9:1 on the call to act. White on the gilt. The
+   full heroes keep their own, more specific .g.has-hero .g-hero__cta .g-btn--solid. */
+.g .g-hero .g-btn--solid{ color: #fff; }
+
+/* The bathrooms, as facts (Stay, beside the photograph): one column in the half-width text, and room
+   between the facts and the paragraph under them. The room page's own note keeps the note style. */
+.g .g-half__text .g-facts-list{ grid-template-columns: 1fr; margin: var(--s5) 0; }
+.g .g-half__text .g-facts-list > div{ grid-template-columns: 9rem 1fr; }
+.g .g-room__bath{ margin-top: var(--s3); }
+
+/* Phone: two button rows on the event pages ended in a short, left-aligned line. The six light hours
+   (Photoshoots) as two rows of three; the seven wedding months centred, as the site's partial rows are. */
+@media (max-width: 44rem){
+  .g .g-light__pick{ display: grid; grid-template-columns: repeat(3, 1fr); }
+  .g .g-bloom__months{ justify-content: center; }
+}
+
+/* The atelier summary (_glance) has five facts now the untrue take-home one is gone: with the price, its lead,
+   spanning two columns, every row is full - 2+3 on desktop, 1+2+2 on tablet. */
+@media (min-width: 40rem){ .g .g-gl__i--lead{ grid-column: span 2; } }
+
+/* ...and its note keeps a reading measure across the two columns. */
+.g .g-gl__i--lead .g-gl__n{ max-width: 30rem; }
