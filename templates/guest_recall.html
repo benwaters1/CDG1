@@ -60,12 +60,12 @@
 <h2 class="section-heading">Every stay</h2>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Arrived</th><th style="text-align:left;">Left</th>
-    <th style="text-align:left;">Room</th><th class="num">Paid</th></tr></thead>
+    <thead><tr><th>Arrived</th><th>Left</th>
+    <th>Room</th><th class="num">Paid</th></tr></thead>
     <tbody>
       {% for st in data.stays %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ st.arrival_date }}</th>
+        <th scope="row">{{ st.arrival_date }}</th>
         <td>{{ st.departure_date }}</td>
         <td>{{ st.room_name or '&mdash;'|safe }}</td>
         <td class="num">{{ euro(st.total_price) }}</td>
@@ -80,10 +80,10 @@
 <h2 class="section-heading">Notes staff have left</h2>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Note</th><th style="text-align:left;">Who</th></tr></thead>
+    <thead><tr><th>Note</th><th>Who</th></tr></thead>
     <tbody>
       {% for n in data.notes %}
-      <tr><th scope="row" style="text-align:left; font-weight:400;">{{ n.body }}</th>
+      <tr><th scope="row" style="font-weight:400;">{{ n.body }}</th>
       <td>{{ n.who or '&mdash;'|safe }}</td></tr>
       {% endfor %}
     </tbody>
@@ -95,7 +95,7 @@
 <h2 class="section-heading">What they said afterwards</h2>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th class="num">Rating</th><th style="text-align:left;">Said</th></tr></thead>
+    <thead><tr><th class="num">Rating</th><th>Said</th></tr></thead>
     <tbody>
       {% for f in data.feedback %}
       <tr><th scope="row" class="num">{{ f.rating or '&mdash;'|safe }}</th>

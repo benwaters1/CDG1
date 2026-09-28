@@ -58,7 +58,7 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="text-align:left;">Night</th>
+        <th>Night</th>
         <th class="num">Booked</th>
         <th class="num">Atelier</th>
         <th class="num">Certain</th>
@@ -82,7 +82,7 @@
     </tbody>
     <tfoot>
       <tr>
-        <th style="text-align:left;">Total</th>
+        <th>Total</th>
         <th class="num">{{ data.rows|sum(attribute='booked') }}</th>
         <th class="num">{{ data.rows|sum(attribute='atelier') }}</th>
         <th class="num">{{ data.certain_total }}</th>

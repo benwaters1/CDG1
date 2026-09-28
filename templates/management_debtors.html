@@ -48,7 +48,7 @@
   <table class="data-table" style="margin-top:var(--s3, 12px);">
     <thead>
       <tr>
-        <th style="text-align:left;">Age</th>
+        <th>Age</th>
         <th class="num">Bills</th>
         <th class="num">Owed</th>
         <th class="num">Share</th>
@@ -68,7 +68,7 @@
     </tbody>
     <tfoot>
       <tr>
-        <th style="text-align:left;">Total</th>
+        <th>Total</th>
         <th class="num">{{ ageing['items']|length }}</th>
         <th class="num">€{{ '%.2f'|format(ageing.total) }}</th>
         <th class="num">100%</th>
@@ -82,9 +82,9 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="text-align:left;">Who</th>
-        <th style="text-align:left;">For</th>
-        <th style="text-align:left;">Reference</th>
+        <th>Who</th>
+        <th>For</th>
+        <th>Reference</th>
         <th class="num">Days late</th>
         <th class="num">Owed</th>
       </tr>

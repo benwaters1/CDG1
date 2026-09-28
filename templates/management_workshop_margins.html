@@ -54,13 +54,13 @@
 <div class="table-wrap">
   <table class="data-table">
     <thead>
-      <tr><th style="text-align:left;">Session</th><th class="num">Places</th><th class="num">Filled</th>
+      <tr><th>Session</th><th class="num">Places</th><th class="num">Filled</th>
       <th class="num">Taken</th><th class="num">Materials</th><th class="num">Left</th><th class="num">Per head</th></tr>
     </thead>
     <tbody>
       {% for r in data.rows %}
       <tr{% if r.margin < 0 %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">{{ r.title }}<span class="field-hint" style="display:block; font-weight:400;">{{ r.start }}{% if r.uncosted %} &middot; {{ r.uncosted }} uncosted material{{ '' if r.uncosted == 1 else 's' }}{% endif %}</span></th>
+        <th scope="row">{{ r.title }}<span class="field-hint" style="display:block; font-weight:400;">{{ r.start }}{% if r.uncosted %} &middot; {{ r.uncosted }} uncosted material{{ '' if r.uncosted == 1 else 's' }}{% endif %}</span></th>
         <td class="num">{{ r.heads }}{% if r.capacity %} / {{ r.capacity }}{% endif %}</td>
         <td class="num">{% if r.fill is not none %}{{ r.fill }}%{% else %}&mdash;{% endif %}</td>
         <td class="num">{{ euro(r.revenue) }}</td>

@@ -66,7 +66,7 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="text-align:left;">Measure</th>
+        <th>Measure</th>
         <th class="num">{{ period.label }}</th>
         <th class="num">Last year</th>
         <th class="num">Change</th>
@@ -75,7 +75,7 @@
     <tbody>
       {% for mtr in data.metrics %}
       <tr>
-        <th scope="row" style="text-align:left;">
+        <th scope="row">
           {{ mtr.label }}
           {% if mtr.hint %}<span class="field-hint" style="display:block; font-weight:400;">{{ mtr.hint }}</span>{% endif %}
         </th>
@@ -106,7 +106,7 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="text-align:left;">Room</th>
+        <th>Room</th>
         <th class="num">Nights this period</th>
         <th class="num">Nights last year</th>
       </tr>
@@ -116,7 +116,7 @@
       {% for r in data.then.by_room %}{% set _ = then_by_room.update({r.room: r.nights}) %}{% endfor %}
       {% for r in data.now.by_room %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ r.room }}</th>
+        <th scope="row">{{ r.room }}</th>
         <td class="num">{{ r.nights }}</td>
         <td class="num">{{ then_by_room.get(r.room, 0) }}</td>
       </tr>

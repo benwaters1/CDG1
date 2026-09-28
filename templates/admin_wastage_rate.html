@@ -47,12 +47,12 @@
 {% if data.rows %}
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Item</th><th class="num">Wasted</th>
+    <thead><tr><th>Item</th><th class="num">Wasted</th>
     <th class="num">Left stock in total</th><th class="num">Share wasted</th><th class="num">At cost</th></tr></thead>
     <tbody>
       {% for r in data.rows %}
       <tr{% if r.share and r.share >= 20 %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">{{ r.name }}{% if r.unit %} <span class="field-hint">{{ r.unit }}</span>{% endif %}</th>
+        <th scope="row">{{ r.name }}{% if r.unit %} <span class="field-hint">{{ r.unit }}</span>{% endif %}</th>
         <td class="num">{{ r.wasted }}</td>
         <td class="num">{{ r.used }}</td>
         <td class="num">{% if r.share is not none %}{{ r.share }}%{% else %}&mdash;{% endif %}</td>

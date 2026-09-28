@@ -78,19 +78,19 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="text-align:left;">Dish</th>
+        <th>Dish</th>
         <th class="num">Sold</th>
         <th class="num">Price</th>
         <th class="num">Ingredients</th>
         <th class="num">Leaves</th>
         <th class="num">Total left</th>
-        <th style="text-align:left;">Verdict</th>
+        <th>Verdict</th>
       </tr>
     </thead>
     <tbody>
       {% for r in data.rows %}
       <tr{% if r.quadrant == 'dog' or not r.quadrant %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">
+        <th scope="row">
           {{ r.name }}
           {% if r.course %}<span class="field-hint" style="display:block; font-weight:400;">{{ r.course }}</span>{% endif %}
         </th>
@@ -112,7 +112,7 @@
     {% if not data.no_sales %}
     <tfoot>
       <tr>
-        <th colspan="5" style="text-align:left;">What the card left over the window</th>
+        <th colspan="5">What the card left over the window</th>
         <th class="num">{{ euro(data.contribution) }}</th>
         <th></th>
       </tr>
@@ -128,11 +128,11 @@
 </p>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Name</th><th style="text-align:left;">What to do</th></tr></thead>
+    <thead><tr><th>Name</th><th>What to do</th></tr></thead>
     <tbody>
       {% for key, pair in data.quadrants.items() %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ pair[0] }}</th>
+        <th scope="row">{{ pair[0] }}</th>
         <td>{{ pair[1] }}</td>
       </tr>
       {% endfor %}
