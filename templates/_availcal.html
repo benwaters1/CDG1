@@ -38,7 +38,13 @@
   var MONTHS=Number(host.dataset.months||2);
   var MN=['January','February','March','April','May','June','July',
           'August','September','October','November','December'];
-  var iso=function(d){ return d.toISOString().slice(0,10); };
+  /* The LOCAL date, built the way the picker in public_base builds it.
+     toISOString is UTC, and a night drawn at local midnight anywhere
+     east of Greenwich is still the day before in UTC -- so every taken
+     night was struck through on the day after it, all year, for anybody
+     looking from France. */
+  var iso=function(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')
+    +'-'+String(d.getDate()).padStart(2,'0'); };
   var today=new Date(); today.setHours(0,0,0,0);
 
   var out='';

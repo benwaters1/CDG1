@@ -152,9 +152,8 @@ def run():
     r = fr.get("/whats-on")
     s.check("the page opens in French", r.status_code == 200, detail=str(r.status_code))
     body = r.data.decode("utf-8", "replace")
-    # Jinja escapes the apostrophe, so compare against what actually ships.
-    s.check("the heading is translated",
-            "l&#39;affiche" in body or "l'affiche" in body)
+    # "What's On" became "In the Valley" on 24 September; the address stays.
+    s.check("the heading is translated", "Dans la vallée" in body)
     s.check("and the day names with it, not just the Today flag",
             any(d in body for d in ("Lundi", "Mardi", "Mercredi", "Jeudi",
                                     "Vendredi", "Samedi", "Dimanche",
