@@ -12156,7 +12156,13 @@ def _availability_picture(conn, *, fresh=False):
         if cached is not None:
             return cached
 
-    picture = {"bookings": {}, "blocked": {}, "manual": {}, "house": []}
+    # "night_label" is the calendar's words for a house-wide hold, keyed by
+    # the sentence the booking check refuses with. The room page greys one
+    # night at a time and has room for "Held for a private wedding", not for
+    # the whole refusal. Keyed rather than kept as a second list, so the two
+    # cannot fall out of step.
+    picture = {"bookings": {}, "blocked": {}, "manual": {}, "house": [],
+               "night_label": {}}
 
     # Per room, but read for every room at once rather than one room at a
     # time. Status and id are kept so the callers that exclude a booking or
@@ -12188,9 +12194,10 @@ def _availability_picture(conn, *, fresh=False):
                       workshops.title
                  FROM workshop_sessions
                  JOIN workshops ON workshops.id = workshop_sessions.workshop_id"""):
+        why = f"Those dates are held for a workshop ({row['title']})."
         picture["house"].append((
-            parse_date(row["start_date"]), parse_date(row["end_date"]),
-            f"Those dates are held for a workshop ({row['title']})."))
+            parse_date(row["start_date"]), parse_date(row["end_date"]), why))
+        picture["night_label"][why] = f"Held for {row['title']}"
     for row in conn.execute(
             """SELECT preferred_date, end_date, event_type FROM event_inquiries
                 WHERE status = 'confirmed' AND preferred_date IS NOT NULL"""):
@@ -12198,9 +12205,10 @@ def _availability_picture(conn, *, fresh=False):
         e_end = parse_date(row["end_date"]) or e_start
         if e_end and e_start and e_end < e_start:
             e_end = e_start
-        picture["house"].append((
-            e_start, e_end,
-            f"That date is held for a confirmed event ({row['event_type']})."))
+        why = f"That date is held for a confirmed event ({row['event_type']})."
+        picture["house"].append((e_start, e_end, why))
+        picture["night_label"][why] = (
+            f"Held for a private {row['event_type'] or 'event'}")
     for row in conn.execute(
             """SELECT event_holds.start_date, event_holds.end_date,
                       event_inquiries.event_type AS kind
@@ -12209,10 +12217,12 @@ def _availability_picture(conn, *, fresh=False):
                 WHERE event_holds.released_at IS NULL
                   AND event_holds.expires_at > ?""",
             (datetime.now(timezone.utc).isoformat(),)):
+        why = (f"Those dates are provisionally held for a {row['kind']} "
+               f"while somebody decides.")
         picture["house"].append((
-            parse_date(row["start_date"]), parse_date(row["end_date"]),
-            f"Those dates are provisionally held for a {row['kind']} "
-            f"while somebody decides."))
+            parse_date(row["start_date"]), parse_date(row["end_date"]), why))
+        picture["night_label"][why] = (
+            f"Provisionally held for a private {row['kind'] or 'event'}")
 
     if has_request_context():
         g._availability_picture = picture
@@ -12358,21 +12368,37 @@ def house_capacity_error(conn, start, end, additional_guests):
 def unavailable_nights(conn, room_id, start, end):
     """{'YYYY-MM-DD': 'why'} for every night in [start, end) a guest cannot have.
 
-    The same sources is_range_available refuses on, resolved one night at a
-    time so a calendar can grey them out instead of letting someone fill in a
-    whole form and only then be told no. is_range_available stays the actual
-    gate — this is what the guest sees, not what decides.
+    What the room page's calendar greys out, one night at a time, so a guest
+    sees a night is taken instead of filling in the whole form and only then
+    being told no. is_range_available stays the actual gate — this is what
+    the guest sees, not what decides.
 
-    The two must agree on the boundaries, which are not the same for every
-    source, so they are spelled out rather than assumed:
+    READ FROM THE PICTURE THE BOOKING CHECK REFUSES FROM, not from questions
+    of its own. It used to ask its own, and two of the answers went stale
+    while the booking check moved on. It held a confirmed event on its first
+    day only, after events grew an end_date, so a two-day wedding greyed day
+    one and left day two clickable. And it had never heard of a provisional
+    hold, so it greyed nothing under one. Both were refused only when the
+    guest submitted the form. Reading _availability_picture gives it the
+    booking check's rows and boundaries, and anything new that closes a date
+    reaches both at once.
 
-      - a booking holds arrival..departure-1 (the checkout morning is free,
-        standard hotel convention)
-      - a workshop holds start..end INCLUSIVE — is_range_available refuses an
-        arrival on the session's end_date, because the guests are still in the
-        house that morning
-      - an event holds its single day
+    The boundaries are not the same for every source. They are the booking
+    check's:
+
+      - a booking, a channel stay (blocked_dates) or the owner's block on
+        this room (room_blocks) holds start..end-1: the checkout morning is
+        free, standard hotel convention
+      - a workshop, a confirmed event or a live hold takes the whole house
+        start..end INCLUSIVE, because its guests are still in the house that
+        morning. An event with no end, or an end before its start, holds its
+        single start day. The picture decides that, so this cannot decide it
+        differently.
+
+    On top of those, one thing the range check leaves to the booking forms:
+    a night on which the house is already at its legal ceiling.
     """
+    picture = _availability_picture(conn)
     out = {}
 
     def hold(first, last, reason):
@@ -12385,33 +12411,18 @@ def unavailable_nights(conn, room_id, start, end):
             out.setdefault(day.isoformat(), reason)
             day += timedelta(days=1)
 
-    for row in conn.execute(
-        """SELECT arrival_date, departure_date FROM bookings
-           WHERE room_id = ? AND status IN ('pending', 'confirmed')""", (room_id,)).fetchall():
-        b_start, b_end = parse_date(row["arrival_date"]), parse_date(row["departure_date"])
+    for _id, _status, b_start, b_end in picture["bookings"].get(room_id, ()):
         if b_start and b_end:
             hold(b_start, b_end - timedelta(days=1), "Already booked")
 
-    for table, reason in (("blocked_dates", "Booked on another channel"),
-                          ("room_blocks", "Not available")):
-        for row in conn.execute(
-            f"SELECT start_date, end_date FROM {table} WHERE room_id = ?", (room_id,)).fetchall():
-            b_start, b_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+    for kind, reason in (("blocked", "Booked on another channel"),
+                         ("manual", "Not available")):
+        for b_start, b_end in picture[kind].get(room_id, ()):
             if b_start and b_end:
                 hold(b_start, b_end - timedelta(days=1), reason)
 
-    for row in conn.execute(
-        """SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.title
-           FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id"""
-    ).fetchall():
-        w_start, w_end = parse_date(row["start_date"]), parse_date(row["end_date"])
-        hold(w_start, w_end, f"Held for {row['title']}")
-
-    for row in conn.execute(
-        """SELECT preferred_date, event_type FROM event_inquiries
-           WHERE status = 'confirmed' AND preferred_date IS NOT NULL""").fetchall():
-        e_date = parse_date(row["preferred_date"])
-        hold(e_date, e_date, f"Held for a private {row['event_type'] or 'event'}")
+    for h_start, h_end, why in picture["house"]:
+        hold(h_start, h_end, picture["night_label"].get(why, why))
 
     # And the legal ceiling: a night already holding the maximum has no room
     # for even one more guest, whatever this particular room's own state is.
@@ -65612,39 +65623,42 @@ def empty_nights(conn, *, days=90, today=None):
     unsellable if a block covers it. Pending counts because somebody has asked
     for it and the calendar is already holding it — showing it as free is how
     the same night gets offered twice.
+
+    A block is either kind: a stay on another channel (blocked_dates, from
+    the iCal sync) or the owner's own block on the room (room_blocks) -- the
+    renovation, the family visit. The owner's used not to count, so a room
+    they had taken off sale was listed as an empty night and its rate added
+    to the unsold figure. Bookings and both kinds of block are read from the
+    picture the booking check refuses from, so a night that check turns a
+    guest away from for THIS room is never offered here as one to fill. A
+    block ends on the checkout morning, like a booking.
     """
     day = today or house_today()
     last = day + timedelta(days=max(1, min(730, days)))
 
     rooms = conn.execute(
         "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
-    taken = {r["id"]: set() for r in rooms}
+    picture = _availability_picture(conn)
 
-    for b in conn.execute(
-            """SELECT room_id, arrival_date, departure_date FROM bookings
-                WHERE status IN ('confirmed', 'pending')
-                  AND departure_date > ? AND arrival_date < ?""",
-            (day.isoformat(), last.isoformat())).fetchall():
-        start, end = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
-        if not start or not end:
-            continue
-        night = max(start, day)
-        while night < min(end, last):
-            taken.setdefault(b["room_id"], set()).add(night)
-            night += timedelta(days=1)
+    def nights_of(spans):
+        """{room_id: {night, ...}} for [start, end) spans, inside the window."""
+        out = {r["id"]: set() for r in rooms}
+        for room_id, start, end in spans:
+            if not start or not end:
+                continue
+            night = max(start, day)
+            while night < min(end, last):
+                out.setdefault(room_id, set()).add(night)
+                night += timedelta(days=1)
+        return out
 
-    blocked = {r["id"]: set() for r in rooms}
-    for bl in conn.execute(
-            """SELECT room_id, start_date, end_date FROM blocked_dates
-                WHERE end_date > ? AND start_date < ?""",
-            (day.isoformat(), last.isoformat())).fetchall():
-        start, end = parse_date(bl["start_date"]), parse_date(bl["end_date"])
-        if not start or not end:
-            continue
-        night = max(start, day)
-        while night < min(end, last):
-            blocked.setdefault(bl["room_id"], set()).add(night)
-            night += timedelta(days=1)
+    taken = nights_of((room_id, start, end)
+                      for room_id, rows in picture["bookings"].items()
+                      for _id, _status, start, end in rows)
+    blocked = nights_of((room_id, start, end)
+                        for kind in ("blocked", "manual")
+                        for room_id, rows in picture[kind].items()
+                        for start, end in rows)
 
     runs, free_by_night, total_value, free_count = [], {}, 0.0, 0
     for room in rooms:
