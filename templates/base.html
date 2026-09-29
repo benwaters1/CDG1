@@ -64,26 +64,33 @@
     </form>
     {% endif %}
     <div class="topbar-right">
-      <a href="{{ url_for('notifications_page') }}" class="bell-link {{ 'active' if request.endpoint=='notifications_page' }}" title="Notifications">
-        {{ icon('bell', 18) }}
-        {% if unread_notifications_count %}<span class="bell-badge" id="bell-badge">{{ unread_notifications_count }}</span>{% endif %}
-      </a>
-      <span class="who">{{ user['name'] }} <span class="role-badge role-{{ user['role'] }}">{{ user['role'] }}</span></span>
-      {% if user['role'] == 'owner' %}
-      <a href="{{ url_for('download_backup') }}" class="small-link">Backup</a>
-      {% endif %}
-      {# One link per language rather than a <select>: it works with no
-         JavaScript, each is a normal GET, and for a signed-in person the
-         choice is written to their account so it survives the next login. #}
-      <span class="staff-lang">
-        {% for code, label in languages.items() %}
-        <a href="{{ url_for('set_language', code=code) }}" hreflang="{{ code }}"
-           class="small-link staff-lang__opt{{ ' is-on' if code == lang }}"
-           {% if code == lang %}aria-current="true"{% endif %}>{{ code|upper }}</a>
-        {% endfor %}
-      </span>
-      <a href="{{ url_for('change_password') }}" class="small-link">{{ t('Password') }}</a>
-      <a href="{{ url_for('logout') }}" class="small-link" id="logout-link" onclick="return unsubscribeThenLogout(event)">{{ t('Log out') }}</a>
+      {# Two groups -- who is signed in, and what they can do -- so a row that
+         runs short breaks between them rather than off the edge of the screen.
+         On a phone they join the header's own rows: "ON A PHONE" in style.css. #}
+      <div class="topbar-me">
+        <a href="{{ url_for('notifications_page') }}" class="bell-link {{ 'active' if request.endpoint=='notifications_page' }}" title="Notifications">
+          {{ icon('bell', 18) }}
+          {% if unread_notifications_count %}<span class="bell-badge" id="bell-badge">{{ unread_notifications_count }}</span>{% endif %}
+        </a>
+        <span class="who"><span class="who-name">{{ user['name'] }}</span> <span class="role-badge role-{{ user['role'] }}">{{ user['role'] }}</span></span>
+      </div>
+      <div class="topbar-account">
+        {% if user['role'] == 'owner' %}
+        <a href="{{ url_for('download_backup') }}" class="small-link">Backup</a>
+        {% endif %}
+        {# One link per language rather than a <select>: it works with no
+           JavaScript, each is a normal GET, and for a signed-in person the
+           choice is written to their account so it survives the next login. #}
+        <span class="staff-lang">
+          {% for code, label in languages.items() %}
+          <a href="{{ url_for('set_language', code=code) }}" hreflang="{{ code }}"
+             class="small-link staff-lang__opt{{ ' is-on' if code == lang }}"
+             {% if code == lang %}aria-current="true"{% endif %}>{{ code|upper }}</a>
+          {% endfor %}
+        </span>
+        <a href="{{ url_for('change_password') }}" class="small-link">{{ t('Password') }}</a>
+        <a href="{{ url_for('logout') }}" class="small-link" id="logout-link" onclick="return unsubscribeThenLogout(event)">{{ t('Log out') }}</a>
+      </div>
     </div>
   </div>
 </header>

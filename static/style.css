@@ -123,7 +123,10 @@ body.staff-shell .topbar{
   max-width:1200px; margin:0 auto;
   padding:14px 24px;
   display:flex; align-items:center; justify-content:space-between;
-  flex-wrap:wrap; gap:10px;
+  /* 12px between rows, the gap the touch rules leave between Log out and
+     Password: on a narrow tablet the strip wraps to sit under the search box,
+     and Log out was 10px beneath it. */
+  flex-wrap:wrap; gap:12px 10px;
 }
 .brand{ display:flex; flex-direction:column; }
 .brand .crest{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; letter-spacing:0.18em; text-transform:uppercase; color:var(--gold-soft); }
@@ -196,7 +199,16 @@ body.staff-shell .nav-dropdown-menu a{ color:var(--ink-soft); }
 body.staff-shell .nav-dropdown-menu a:hover{ background:var(--status-neutral-bg); color:var(--ink); }
 body.staff-shell .nav-dropdown-menu a.active{ color:var(--gold-soft); }
 
-.topbar-right{ display:flex; align-items:center; gap:12px; font-size:12.5px; }
+/* The strip at the top right: the bell and who is signed in, then what they
+   can do -- Backup for the owner, EN/FR/ES, Password, Log out. Two groups, so
+   a row that runs short breaks between them instead of running off the screen,
+   and the name gives way before anything else does. */
+.topbar-right{ display:flex; align-items:center; gap:12px; font-size:12.5px;
+  flex-wrap:wrap; min-width:0; }
+.topbar-me, .topbar-account{ display:flex; align-items:center; gap:12px; min-width:0; }
+.topbar-account{ flex-wrap:wrap; }
+.who{ min-width:0; }
+.who-name{ overflow-wrap:anywhere; }
 .topbar-search{ margin:0; }
 .topbar-search input{
   width:150px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.14);
@@ -229,6 +241,34 @@ body.staff-shell .bell-link:hover, body.staff-shell .bell-link.active{ color:var
   font-family:'IBM Plex Mono', monospace; font-size:10px; line-height:1;
   min-width:15px; height:15px; border-radius:8px; display:flex; align-items:center; justify-content:center;
   padding:0 3px;
+}
+
+/* ON A PHONE the strip could not wrap, and the touch rules further down give
+   the bell and every link a 44px minimum, so it ran off the edge and took the whole page
+   sideways with it, on every staff page: 401px on a 390px screen for the
+   owner, 434px in French, 389px on a 375px screen for an employee reading
+   French. Where it did fit, it fitted by crushing -- "Log out" folded onto two
+   lines inside a target 30px wide.
+
+   The header's first row -- the menu button and the brand -- was half empty.
+   So below 600px the bell and the name move up into it, and the account links
+   get the row below to themselves, with Log out at the far end, at least 12px
+   clear of everything. The same rows as before in English: three for the
+   owner, whose search has one of its own, two for everybody else. Nothing is
+   hidden. `display:contents` lets the two groups join the header's own rows
+   without the markup moving, so a screen reader meets them in the same order.
+   Measured, not guessed: tests/test_staff_header_on_a_phone.py. */
+@media (max-width: 600px){
+  .brand{ margin-right:auto; }
+  .topbar-right{ display:contents; }
+  .topbar-me{ order:1; flex:1 1 0; min-width:auto; justify-content:flex-end; gap:10px; }
+  .topbar-search{ order:2; }
+  .topbar-account{ order:3; flex-basis:100%; gap:12px; }
+  .topbar-account #logout-link{ margin-left:auto; }
+  /* The name above the role rather than beside it, and two lines at most. */
+  .who{ display:flex; flex-direction:column; align-items:flex-start; gap:2px; line-height:1.2; }
+  .who .role-badge{ margin-left:0; }
+  .who-name{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 }
 
 /* ---------- Public booking site (distinct from the staff topbar) ---------- */
