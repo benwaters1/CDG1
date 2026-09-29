@@ -21769,18 +21769,28 @@ def guest_recall(conn, guest_email=None, guest_id=None):
                                   WHERE LOWER(TRIM(guest_email)) = ?)
             ORDER BY submitted_at DESC LIMIT 5""", (email,)).fetchall()
 
+    # WHAT THEY HAVE DONE, NOT WHAT THEY HAVE BOOKED (guest_visits). This page
+    # is read before somebody arrives, so the stay they are arriving for is
+    # nearly always on file -- and it was their "last here", one of their
+    # stays, and a room they "have stayed in" before they had set foot in it.
+    today = house_today()
+    split = guest_visits(stays, today)
+    visits = split["visits"]
+    booked = {id(st) for st in split["ahead"]}
     rooms_before = []
-    for st in stays:
+    for st in reversed(visits):
         if st["room_name"] and st["room_name"] not in rooms_before:
             rooms_before.append(st["room_name"])
 
     return {
         "guest": dict(guest) if guest else None,
         "email": email,
-        "stays": [dict(r) for r in stays],
-        "visits": len(stays),
-        "first": stays[-1]["arrival_date"] if stays else None,
-        "last": stays[0]["arrival_date"] if stays else None,
+        "stays": [dict(r, ahead=id(r) in booked) for r in stays],
+        "visits": len(visits),
+        "first": visits[0]["arrival_date"] if visits else None,
+        "last": split["last"]["arrival_date"] if split["last"] else None,
+        "next": split["next"]["arrival_date"] if split["next"] else None,
+        "here_now": split["here_now"],
         "spend": round(sum(float(r["total_price"] or 0) for r in stays), 2),
         "rooms_before": rooms_before,
         "notes": notes,
@@ -21790,7 +21800,7 @@ def guest_recall(conn, guest_email=None, guest_id=None):
         # A first-time guest is not a gap in the records, and saying so stops
         # anybody greeting a stranger as an old friend.
         "known": bool(guest or stays),
-        "returning": len(stays) > 1,
+        "returning": len(visits) > 1,
     }
 
 
@@ -68457,6 +68467,13 @@ def guest_record(conn, guest_id):
                    ("Said yes to marketing texts", yes["granted_at"]) if yes else
                    ("Texted about their stays only", None))
 
+    # Last HERE: the latest confirmed stay that has begun (guest_visits). It
+    # was the latest departure on any booking at all -- cancelled, declined or
+    # not yet begun -- so the house's most valuable guests could read as last
+    # here on a day that had not come.
+    last_visit = guest_visits(
+        [b for b in stays if b["status"] == "confirmed"])["last"]
+
     return {
         "marketing": marketing,
         "texting": texting,
@@ -68478,8 +68495,7 @@ def guest_record(conn, guest_id):
             for b in stays if b["status"] == "confirmed"),
         "first_seen": min((b["arrival_date"] for b in stays if b["arrival_date"]),
                           default=None),
-        "last_seen": max((b["departure_date"] for b in stays if b["departure_date"]),
-                         default=None),
+        "last_seen": last_visit["arrival_date"] if last_visit else None,
     }
 
 
@@ -83619,7 +83635,8 @@ ASSISTANT_TOOLS = [
         "description": (
             "Look a person up by name or email: how many times they have "
             "stayed, when they were last here, what they cannot eat, how they "
-            "like to arrive, and any standing note about them. Use this before "
+            "like to arrive, and any standing note about them. A stay still to "
+            "come is reported as booked, never as a stay made. Use this before "
             "saying anything about a particular guest."),
         "input_schema": {
             "type": "object",
@@ -83993,19 +84010,30 @@ def assistant_read_tool(conn, user, name, args):
             return f"Nobody on file matches {q!r}."
         out = []
         for g in rows:
-            stays = conn.execute(
-                """SELECT COUNT(*) AS n, MAX(arrival_date) AS last
-                     FROM bookings
+            # What they have done and what they have booked, told apart
+            # (guest_visits). It was every confirmed stay counted and the
+            # latest arrival called "last" -- so somebody arriving next week
+            # for the first time came back as "1 stay(s), last" next week.
+            split = guest_visits(conn.execute(
+                """SELECT arrival_date, departure_date FROM bookings
                     WHERE guest_email = ? COLLATE NOCASE
                       AND status IN ('confirmed','completed')""",
-                (g["email"] or "",)).fetchone()
+                (g["email"] or "",)).fetchall(), today)
             bits = [g["name"]]
             if g["email"]:
                 bits.append(g["email"])
-            if stays and stays["n"]:
-                bits.append(f"{stays['n']} stay(s), last {stays['last']}")
+            if split["visits"]:
+                bits.append(f"{len(split['visits'])} stay(s) made, last began "
+                            f"{split['last']['arrival_date']}"
+                            + (", in the house now" if split["here_now"] else ""))
+            elif split["next"]:
+                bits.append("no stay made yet")
             else:
                 bits.append("no stays on record")
+            if split["next"]:
+                bits.append(f"booked to arrive {split['next']['arrival_date']}"
+                            + (f", {len(split['ahead'])} stays booked in all"
+                               if len(split["ahead"]) > 1 else ""))
             if (g["dietary_notes"] or "").strip():
                 bits.append(f"CANNOT EAT: {g['dietary_notes'].strip()}")
             if (g["usual_arrival_time"] or "").strip():
