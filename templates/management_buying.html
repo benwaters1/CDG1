@@ -21,7 +21,7 @@
     invoiced quantity beside it only when the two differ.</p>
   {% else %}
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead><tr><th>When</th><th>What</th><th>Supplier</th><th class="num">Arrived</th>
                  <th class="num">Charged</th><th class="num">Worth</th></tr></thead>
       <tbody>
@@ -55,7 +55,7 @@
     twice from the same supplier yet.</p>
   {% else %}
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead><tr><th>What</th><th>Supplier</th><th class="num">Was</th><th class="num">Now</th>
                  <th class="num">Move</th><th>Since</th></tr></thead>
       <tbody>
@@ -100,7 +100,7 @@
 
   {% if statement %}
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead><tr><th>Invoice date</th><th>Number</th><th>What</th><th class="num">Amount</th><th>State</th></tr></thead>
       <tbody>
         {% for r in statement.rows %}

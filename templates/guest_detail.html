@@ -461,7 +461,7 @@
 
 {% if notes %}
 <div class="table-wrap" style="margin-top:12px;">
-  <table>
+  <table class="data-table">
     <thead><tr><th>When</th><th>Who</th><th>Note</th></tr></thead>
     <tbody>
       {% for n in notes %}
@@ -568,7 +568,7 @@
 {% if duplicates %}
 <h2 style="margin-top:28px;">Might be the same person</h2>
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead><tr><th>Profile</th><th>Why</th><th></th></tr></thead>
     <tbody>
       {% for d in duplicates %}

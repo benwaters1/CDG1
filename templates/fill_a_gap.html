@@ -29,11 +29,11 @@
 <h2 class="section-heading">The runs</h2>
 {% if gaps.runs %}
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead>
       <tr>
         <th scope="col">Room</th><th scope="col">From</th><th scope="col">To</th>
-        <th scope="col">Nights</th><th scope="col">Worth</th><th scope="col"></th>
+        <th scope="col" class="num">Nights</th><th scope="col" class="num">Worth</th><th scope="col"></th>
       </tr>
     </thead>
     <tbody>
@@ -42,8 +42,8 @@
         <th scope="row">{{ r.room['name'] if r.room else '&mdash;' }}</th>
         <td>{{ r['from'] }}</td>
         <td>{{ r['to'] }}</td>
-        <td>{{ r.nights }}</td>
-        <td>&euro;{{ '%.0f'|format(r.value or 0) }}</td>
+        <td class="num">{{ r.nights }}</td>
+        <td class="num">&euro;{{ '%.0f'|format(r.value or 0) }}</td>
         <td>
           <a class="btn-mini"
              href="{{ url_for('fill_a_gap_page', days=days, **{'from': r['from'], 'to': r['to']}) }}">Who for?</a>
@@ -69,11 +69,11 @@
   guest rather than an average of everybody.
 </p>
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead>
       <tr>
         <th scope="col">Guest</th><th scope="col">Why them</th>
-        <th scope="col">Stays</th><th scope="col">Spent</th>
+        <th scope="col" class="num">Stays</th><th scope="col" class="num">Spent</th>
         <th scope="col">Last here</th><th scope="col"></th>
       </tr>
     </thead>
@@ -86,8 +86,8 @@
           <span class="mini-status status-onshift" style="margin-right:4px;">{{ why }}</span>
           {% endfor %}
         </td>
-        <td>{{ c.stays }}</td>
-        <td>&euro;{{ '%.0f'|format(c.spend or 0) }}</td>
+        <td class="num">{{ c.stays }}</td>
+        <td class="num">&euro;{{ '%.0f'|format(c.spend or 0) }}</td>
         <td>{% if c.days_since is not none %}{{ c.days_since }} days ago{% else %}&mdash;{% endif %}</td>
         <td><a class="small-link" href="{{ url_for('guest_booking_history', email=c.email) }}">Everything about them</a></td>
       </tr>
