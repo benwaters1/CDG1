@@ -63,7 +63,7 @@
           <td>
             {% if r['status'] == 'held' %}
             <form method="post" action="{{ url_for('resolve_lost_property', item_id=r['id']) }}"
-                  style="display:flex; gap:6px; align-items:center;">
+                  style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="text" name="resolved_note" placeholder="Note"
                  aria-label="Note on {{ r['what'] }}" style="width:110px;">
