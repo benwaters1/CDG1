@@ -190,6 +190,17 @@ def run():
     s.check("and not sitting in the rows at zero",
             _row_for(b, ghost["id"]) is None,
             detail="an unpriced person appeared as a costed row")
+    # Out of the money, not out of the hours. Every page that read hours from
+    # the costed rows lost them too: My Hours read 0.0 under this person's own
+    # shifts, and the pay statement said they had clocked nothing.
+    kept = next((r for r in b["unpriced_rows"] if r["user_id"] == ghost["id"]), None)
+    s.check("but their hours are kept beside the costing",
+            kept is not None and kept["hours"] == 9.0 and kept["shifts"] == 1,
+            detail=f"{kept}")
+    s.check("and add into the unpriced total",
+            b["unpriced_hours"] == round(sum(r["hours"] for r in b["unpriced_rows"]), 1)
+            and b["unpriced_hours"] >= 9.0,
+            detail=f"{b['unpriced_hours']} against {b['unpriced_rows']}")
 
     s.section("A typed wage beats the free-text guess")
     both = _person("Both", pay_rate="9.00/hour", pay_type="hourly")
@@ -228,6 +239,16 @@ def run():
     s.check("and names somebody with no wage on file", "No figure on file" in html)
     s.check("and says which figures are gross", "gross" in html.lower(),
             detail="a money page that does not say gross or net says nothing")
+    # The month the unpriced person worked. The warning said "their hours are
+    # counted above", and they were in no figure on the page at all.
+    march = oc.get("/admin/payroll/wages?period=month&date=2035-03-01")
+    warned = " ".join(f for f in flashes(march) if "no wage the app can use" in f)
+    s.check("the unpriced person's hours are named, with the figure",
+            f"{TAG} NoWage (9.0h)" in warned, detail=warned[:220] or "no warning at all")
+    s.check("and it does not claim they are counted anywhere",
+            "counted above" not in march.get_data(as_text=True)
+            and "in no figure on this page" in warned,
+            detail=warned[:220])
 
     s.section("Recording one through the form")
     fresh = _person("Formed")
