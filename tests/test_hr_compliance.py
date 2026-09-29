@@ -127,7 +127,7 @@ def run():
     # The band counts from 1 January. Half past midnight on New Year's Day is
     # 23:30 UTC on the 31st: counted from midnight UTC it falls in last year.
     # Half an hour before midnight on the 31st is last year's, either way.
-    before = _this_year(page)
+    before = _this_year(oc.get("/admin/incidents?status=open").get_data(as_text=True))
     oc.post("/admin/incidents/new", data={
         "occurred_at": f"{today.year}-01-01T00:30", "kind": "guest",
         "severity": "near_miss", "summary": f"{TAG} new year's night"})
