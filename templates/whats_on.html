@@ -72,7 +72,7 @@
   {% if not this_week and not upcoming %}
   <p class="g-eyebrow">This Week</p>
   <h2 class="g-h2">The week ahead</h2>
-  <p class="g-p">The calendar is being set for the season. The fixed points do not change: Les Cabannes market on a Sunday, Tarascon on Wednesday and Saturday, the brocante at Mirepoix through the summer, and the mountain open from December to April.</p>
+  <p class="g-p">The calendar is being set for the season. The fixed points do not change: Les Cabannes market on a Sunday, Tarascon on Wednesday and Saturday, the brocante at Mirepoix through the summer, and the slopes open from December to March.</p>
   <p class="g-p">Write to us with your dates and we will tell you what falls in them.</p>
   {% endif %}
 
@@ -158,7 +158,7 @@
 <section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
   <p class="g-p" style="text-align:center;margin:0 auto">
     This house was abandoned in 1850 and stood empty for over a century and a
-    half. Class I protection means the walls stay as that left them. Everything
+    half. Class I protection means the walls stay as those years left them. Everything
     within them — beds, linen, floors, bathrooms — is new, and finished to a
     standard the building around it has not reached yet. The imperfection is
     deliberate, and the valley outside is no more polished than the house.
@@ -230,7 +230,7 @@
     <div class="g-find">
       <p class="g-find__k">Prehistory, outdoors</p>
       <h3 class="g-find__t">Parc de la Préhistoire</h3>
-      <p class="g-find__d">At Tarascon, fifteen minutes away. Life-size animals through a wooded park, workshops in spear-throwing and fire-making, and the best explanation of what is on the cave walls at Niaux. The one that works with children.</p>
+      <p class="g-find__d">At Tarascon, twenty minutes away. Life-size animals through a wooded park, workshops in spear-throwing and fire-making, and the best explanation of what is on the cave walls at Niaux. The one that works with children.</p>
     </div>
     <div class="g-find">
       <p class="g-find__k">Another country</p>
@@ -348,7 +348,7 @@
   <div class="g-journal__in">
     <p class="g-eyebrow">The Journal</p>
     <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
+    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the workshop dates are released. Sent when there is something worth sending.</p>
     <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {# One id, set once. Calling random twice produced a different number for
@@ -360,7 +360,7 @@
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>
           <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
-          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Workshop dates</label>
           <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
         </fieldset>
       <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>

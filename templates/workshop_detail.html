@@ -1,9 +1,9 @@
 {% extends "public_base.html" %}
 {% set sticky_bar = 'atelier' %}
 {% set crumbs = [('Workshops', url_for('workshops_public')), (workshop['title'], None)] %}
-{% block title %}{{ workshop['title'] }}{% endblock %}
+{% block title %}{{ workshop['title'] }} · Workshop Retreat{% endblock %}
 {# Every atelier shared one generic description; this one is the atelier's own, trimmed for search. #}{% block description %}{%- set _wd = ((workshop['description'] if workshop else '') or '')|striptags|trim -%}{%- if _wd -%}{{ _wd|truncate(155, True, '…') }}{%- else -%}An atelier at Château de Gudanes — days spent working alongside the conservators, the chef and the dealers of the Ariège.{%- endif -%}{% endblock %}
-{% block og_desc %}An atelier at Château de Gudanes — days spent working alongside the conservators, the chef and the dealers of the Ariège.{% endblock %}
+{% block og_desc %}A small-group workshop retreat at Château de Gudanes — days spent alongside the conservators, the chef and the dealers of the Ariège, and dinner every evening at one table.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
@@ -26,7 +26,7 @@
   <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ WS_IMAGES[workshop['id'] % 3] }}" alt="{{ workshop['title'] }}">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
-    <p class="g-hero__eyebrow">An Atelier at the Château</p>
+    <p class="g-hero__eyebrow">A Workshop Retreat at the Château</p>
     <h1 class="g-hero__title">{{ workshop['title'] }}</h1>
     {% if workshop['price_per_person'] %}
     <p class="g-hero__lede" data-eur="{{ workshop['price_per_person']|int }}">
@@ -45,7 +45,7 @@
 <section class="g-sec"><div class="g-wrap">
   <p class="g-fr">L'atelier<span class="g-fr__en">The atelier</span></p>
     <p class="g-eyebrow">The Invitation</p>
-  <h2 class="g-h2 g-h2--lead">An atelier at the château</h2>
+  <h2 class="g-h2 g-h2--lead">A Retreat With a Purpose</h2>
   <p class="g-p" style="white-space:pre-line">{{ workshop['description'] }}</p>
 </div></section>
 {% endif %}
@@ -63,6 +63,7 @@
     {%- set _inc = (workshop['inclusions'] or '')|trim -%}{%- set _basis = _inc if _inc.lower().startswith('per person') else '' -%}
     {% if workshop['price_per_person'] %}<div><dt>Price</dt><dd>€{{ '{:,.0f}'.format(workshop['price_per_person']) }} {% if _basis %}{{ (_basis|trim('.'))[:1]|lower }}{{ (_basis|trim('.'))[1:] }}{% else %}per person{% endif %}; all meals, wine and the transfers included</dd></div>{% endif %}
     <div><dt>Group size</dt><dd>Never more than fifteen, and the château takes no others while it runs</dd></div>
+      <div><dt>Experience needed</dt><dd>None. Most people who come have never done it before</dd></div>
     <div><dt>Where you sleep</dt><dd>In the château itself — bedrooms, not a nearby hotel</dd></div>
     <div><dt>Meals</dt><dd>Every one, cooked in the château kitchen, with the château's wines and spirits throughout</dd></div>
     <div><dt>Transfers</dt><dd>Together from central Toulouse at 11am on the first day, and back by about one on the last</dd></div>
@@ -148,14 +149,16 @@
 </svg>
   <p class="g-eyebrow">Included</p>
   <h2 class="g-h2">What is included</h2>
+<p class="g-p">The full experience, at one price: a night's stay is a room and breakfast, a workshop is everything below.</p>
   {# Four small pills under the heading a guest reads to see what they are paying for; now the ticked list the
      institutions section uses, each item given a capital. #}
   <ul class="g-ticks">
     {% if _inc and not _basis %}{% for item in _inc.split(',') if item.strip() %}{% set _x = item.strip() %}<li>{{ _x[:1]|upper }}{{ _x[1:] }}</li>{% endfor %}
     {% else %}
     <li>Every meal, cooked in the château kitchen, with the château's wines and spirits throughout</li>
-    <li>Your room in the château, and its own bathroom on the first floor</li>
+    <li>Your room in the château, and a bathroom of its own, downstairs on the first floor</li>
     <li>Everything on the itinerary — the teaching, the materials and the excursions</li>
+<li>A tour of the château and its restoration</li>
     <li>The transfers from central Toulouse, there and back</li>
     {% endif %}
   </ul>
@@ -168,7 +171,7 @@
   <h2 class="g-h2">An Itinerary, Not an Obligation</h2>
   <div class="g-split">
     <div>
-      <p class="g-p">Fifteen at most, so the days stay unhurried. There is an itinerary, and most people want every hour of it — but nothing on it is compulsory.</p>
+      <p class="g-p">It is a retreat as much as a workshop. Fifteen at most, so the days stay unhurried. There is an itinerary, and most people want every hour of it — but nothing on it is compulsory.</p>
       <p class="g-p">Take an afternoon by the pool, a walk up the valley or a book in the music room, and pick the work up again in the morning. Dinner is the one hour nearly everybody keeps.</p>
     </div>
     <div>
@@ -184,7 +187,7 @@
     <p class="g-eyebrow">Guest Quarters</p>
     <h2 class="g-h2">Les Chambres</h2>
     <p class="g-p">Each bedroom is prepared with antique French beds, vintage monogrammed linens, heirloom furnishings and objects collected through the restoration. Beyond the windows, the mountains and the valley.</p>
-    <p class="g-p">Every bed is an antique French one. Rooms are arranged for two, with a third bed if you need one — say so when you book. Coming alone, you share with another guest travelling solo, or take a room to yourself with a single supplement.</p>
+    <p class="g-p">Rooms are arranged for two, with a third bed if you need one — say so when you book. Coming alone, you share with another guest travelling solo, or take a room to yourself with a single supplement.</p>
     <p class="g-p">Electricity is limited by design. Rooms are lit by candle in the evening, with power outlets and a bedside lamp.</p>
   </div>
   <div class="g-two__media">
@@ -200,8 +203,9 @@
   <div>
     <p class="g-eyebrow">Bathing</p>
     <h2 class="g-h2">Les Salles de Bains</h2>
-    <p class="g-p">Brass fittings, floral papers, thick towels and a window onto the valley — somewhere to wash the day off before dinner.</p>
-    <p class="g-p">Ensuite bathrooms are not permitted in a building protected like this one, so they sit together on the first floor rather than off each bedroom. On an atelier, as on any stay, each bedroom is given its own.</p>
+    {# As on the Stay page (owner, 24 Sept): one bathroom kept for each bedroom, all together downstairs; the powder room upstairs. #}
+    <p class="g-p g-lede-first">Every bedroom has its own bathroom, kept for it alone for the length of the workshop. None is in the bedroom: they are together downstairs, on the first floor, with a powder room in the upstairs vestibule for the night.</p>
+    <p class="g-p">Brass fittings, floral papers, thick towels and a window onto the valley — somewhere to wash the day off before dinner. Class I rules do not allow bathrooms to be cut into the bedrooms, so they were made where the building allows, and made new.</p>
   </div>
 </div></section>
 
@@ -307,7 +311,7 @@
   {# The close had no way to book: it offered Compare and Ask, and the dates were back at the top. #}
   <div class="g-close__acts">
       {% if session_rows %}<a href="#dates" class="g-btn g-btn--solid">Choose your dates</a>{% endif %}
-      <a href="{{ url_for('workshops_public') }}" class="g-btn{{ '' if session_rows else ' g-btn--solid' }}">Compare the ateliers</a>
+      <a href="{{ url_for('workshops_public') }}" class="g-btn{{ '' if session_rows else ' g-btn--solid' }}">Compare the workshops</a>
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us first</a>
   </div>
 </div></section>

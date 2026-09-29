@@ -37,17 +37,17 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="text-align:left;">Who</th>
-        <th style="text-align:left;">Here as</th>
-        <th style="text-align:left;">Where</th>
+        <th>Who</th>
+        <th>Here as</th>
+        <th>Where</th>
         <th class="num">Covers</th>
-        <th style="text-align:left;">What they have told us</th>
+        <th>What they have told us</th>
       </tr>
     </thead>
     <tbody>
       {% for p in data.people %}
       <tr{% if p.notes %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">{{ p.who }}</th>
+        <th scope="row">{{ p.who }}</th>
         <td>{{ p.kind }}</td>
         <td>{{ p.where }}</td>
         <td class="num">{{ p.covers }}</td>

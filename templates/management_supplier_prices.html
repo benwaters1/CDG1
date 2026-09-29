@@ -51,18 +51,18 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="text-align:left;">Item</th>
-        <th style="text-align:left;">Category</th>
+        <th>Item</th>
+        <th>Category</th>
         <th class="num">Was</th>
         <th class="num">Now</th>
         <th class="num">Change</th>
-        <th style="text-align:left;">Between</th>
+        <th>Between</th>
       </tr>
     </thead>
     <tbody>
       {% for r in data.rows %}
       <tr{% if r.pct >= 20 %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">{{ r.name }}{% if r.unit %} <span class="field-hint">per {{ r.unit }}</span>{% endif %}</th>
+        <th scope="row">{{ r.name }}{% if r.unit %} <span class="field-hint">per {{ r.unit }}</span>{% endif %}</th>
         <td>{{ r.category or '&mdash;'|safe }}</td>
         <td class="num">{{ euro(r.old) }}</td>
         <td class="num">{{ euro(r.new) }}</td>

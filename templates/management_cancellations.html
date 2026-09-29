@@ -144,9 +144,9 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="text-align:left;">Guest</th>
-        <th style="text-align:left;">Reference</th>
-        <th style="text-align:left;">Was arriving</th>
+        <th>Guest</th>
+        <th>Reference</th>
+        <th>Was arriving</th>
         <th class="num">Days' notice</th>
         <th class="num">Value</th>
       </tr>
@@ -154,7 +154,7 @@
     <tbody>
       {% for r in analysis.late %}
       <tr{% if r.days <= 2 %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">{{ r.guest or '&mdash;'|safe }}</th>
+        <th scope="row">{{ r.guest or '&mdash;'|safe }}</th>
         <td>{{ r.reference }}</td>
         <td>{{ r.arrival }}</td>
         <td class="num">{{ r.days }}</td>
@@ -164,7 +164,7 @@
     </tbody>
     <tfoot>
       <tr>
-        <th colspan="4" style="text-align:left;">Total</th>
+        <th colspan="4">Total</th>
         <th class="num">{{ euro(analysis.late_value) }}</th>
       </tr>
     </tfoot>

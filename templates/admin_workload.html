@@ -44,12 +44,12 @@
 
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Who</th><th class="num">Shifts</th><th class="num">Days</th>
+    <thead><tr><th>Who</th><th class="num">Shifts</th><th class="num">Days</th>
     <th class="num">Weekends</th><th class="num">Share</th><th class="num">Against average</th></tr></thead>
     <tbody>
       {% for p in data.people %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ p.name }}</th>
+        <th scope="row">{{ p.name }}</th>
         <td class="num">{{ p.shifts }}</td>
         <td class="num">{{ p.days }}</td>
         <td class="num">{{ p.weekends }}</td>

@@ -85,6 +85,32 @@
 </div>
 {% endif %}
 
+{% if data.house %}
+<h2 class="section-heading">Held for the whole house</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  Not counted anywhere above, in any room. An atelier, a confirmed event or a
+  provisional hold takes every room, so these nights are not empty and there is
+  nobody to offer them to. They are listed so a week missing from the gaps has
+  its reason beside it. Each holds its last day too: the guests are still in the
+  house that morning.
+</p>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Reason</th><th>From</th><th>To</th><th class="num">Nights</th></tr></thead>
+  <tbody>
+    {% for h in data.house %}
+    <tr>
+      <th scope="row">{{ h['label'] }}</th>
+      <td>{{ h['from']|date_short }}</td>
+      <td>{{ h['to']|date_short }}</td>
+      <td class="num">{{ h['nights'] }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
 <h2 class="section-heading">What to do with them</h2>
 <div class="pass-short">
   <span class="pass-short-row">

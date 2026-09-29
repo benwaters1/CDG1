@@ -68,19 +68,19 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="text-align:left;">Night</th>
-        <th style="text-align:left;">Room</th>
+        <th>Night</th>
+        <th>Room</th>
         <th class="num">Standing</th>
         <th class="num">Suggested</th>
         <th class="num">Change</th>
-        <th style="text-align:left;">Because</th>
+        <th>Because</th>
         <th></th>
       </tr>
     </thead>
     <tbody>
       {% for r in data.suggestions %}
       <tr>
-        <th scope="row" style="text-align:left;">
+        <th scope="row">
           <span style="font-variant-numeric:tabular-nums;">{{ r.weekday }} {{ r.date }}</span>
           <span class="field-hint" style="display:block; font-weight:400;">{{ r.sold }} of {{ r.sold + r.free }} sold &middot; {{ r.lead }} days out</span>
         </th>

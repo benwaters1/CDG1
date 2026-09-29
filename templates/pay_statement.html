@@ -130,6 +130,25 @@
 </p>
 {% endif %}
 
+{% elif data.unpriced %}
+{# Worked, and nothing to price it at. The branch below used to be the only
+   other one, so this person was said to have "no clocked hours". #}
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-label">Hours worked</span>
+    <span class="stat-tile-value">{{ data.unpriced.hours }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-label">Gross</span>
+    <span class="stat-tile-value">&mdash;</span>
+  </div>
+</div>
+<p class="pay-disclaimer">
+  {{ data.person['name'] }} clocked {{ data.unpriced.hours }} hours over {{ data.unpriced.shifts }}
+  {{ 'shift' if data.unpriced.shifts == 1 else 'shifts' }} in {{ data.start.strftime('%B %Y') }}, and
+  there is no wage on file the app can use, so none of it can be priced or itemised. Record one on the
+  <a href="{{ url_for('admin_wages') }}">wages page</a> and this statement fills in.
+</p>
 {% else %}
 <p class="empty-state">
   {{ data.person['name'] }} has no clocked hours in {{ data.start.strftime('%B %Y') }},

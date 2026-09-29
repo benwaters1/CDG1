@@ -65,7 +65,7 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="text-align:left;">Came from</th>
+        <th>Came from</th>
         <th class="num">Stays</th>
         <th class="num">Revenue</th>
         <th class="num">Rate</th>
@@ -76,7 +76,7 @@
     <tbody>
       {% for r in data.rows %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ r.source }}</th>
+        <th scope="row">{{ r.source }}</th>
         <td class="num">{{ r.bookings }}</td>
         <td class="num">{{ euro(r.revenue) }}</td>
         <td class="num">{% if r.rate is not none %}{{ r.rate }}%{% else %}&mdash;{% endif %}</td>
@@ -89,7 +89,7 @@
     </tbody>
     <tfoot>
       <tr>
-        <th style="text-align:left;">Total</th>
+        <th>Total</th>
         <th class="num">{{ data.rows|sum(attribute='bookings') }}</th>
         <th class="num">{{ euro(data.revenue) }}</th>
         <th class="num"></th>
