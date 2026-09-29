@@ -26,7 +26,7 @@
 {%- set _t_fr %}{% block title_fr %}{% endblock %}{% endset %}
 {%- set _d_fr %}{% block description_fr %}{% endblock %}{% endset %}
 <title>{% if lang == 'fr' and _t_fr|trim %}{{ _t_fr|trim }}{% else %}{% block title %}Stay{% endblock %}{% endif %} — Château de Gudanes</title>
-<meta name="description" content="{% if lang == 'fr' and _d_fr|trim %}{{ _d_fr|trim }}{% else %}{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013. Five bedrooms, a table, and ateliers led by artisans.{% endblock %}{% endif %}">
+<meta name="description" content="{% if lang == 'fr' and _d_fr|trim %}{{ _d_fr|trim }}{% else %}{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013: five bedrooms, and workshop retreats with the artisans.{% endblock %}{% endif %}">
 
 {# Shared to Instagram, WhatsApp or a message, a link showed a bare URL with
    no image. These give it the château and the page's own title. #}
@@ -292,7 +292,7 @@
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>
           <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
-          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Workshop dates</label>
           <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
         </fieldset>
           <button type="submit" aria-label="{{ t('Subscribe') }}">
@@ -571,7 +571,7 @@
   <span class="g-stickybar__t">
     <b>{% if _sb == 'dining' %}{{ t('Dine at La Table') }}
        {%- elif _sb == 'events' %}{{ t('Weddings & Celebrations') }}
-       {%- elif _sb == 'atelier' %}{{ t('Château Ateliers') }}
+       {%- elif _sb == 'atelier' %}{{ t('Workshops & Retreats') }}
        {%- else %}{{ t('Stay the Night') }}{% endif %}</b>
     <span>Château de Gudanes</span>
   </span>

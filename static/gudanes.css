@@ -10092,3 +10092,14 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
 
 /* ...and its note keeps a reading measure across the two columns. */
 .g .g-gl__i--lead .g-gl__n{ max-width: 30rem; }
+
+/* Two sand sections in a row merged into one long band: the earlier seam, .g-sec--sand + .g-sec--sand, is
+   cancelled by main > :not(.g-sec--dark) + .g-sec { border-top: 0 }. Restored for that case only, as it was drawn. */
+.g main > .g-sec--sand + .g-sec--sand,
+.g main > .g-sec--sand + .g-wrap + .g-sec--sand,
+.g main > .g-sec--sand + .g-wrap + .g-wrap + .g-sec--sand{ border-top: 1px solid rgba(115,86,45,.14); }
+/* (a hidden divider wrapper between the two - display: none, no height - still breaks a plain + ) */
+
+/* No stranded last word in body text either: the ledes were pretty-wrapped, the paragraphs, closes, quote bands and
+   card text were not ("...before we book it.", "...a copy of it." alone on a line). Ignored where unsupported. */
+.g main p, .g main li, .g main dd, .g main figcaption, .g main blockquote{ text-wrap: pretty; }

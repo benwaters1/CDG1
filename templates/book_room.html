@@ -7,7 +7,7 @@
    is the one line a search engine shows under the link, so five rooms
    competed against each other with identical copy. Falls back to the
    general sentence for a room with no rate on it yet. #}
-{% block description %}{{ room_name(room['name']) }} at Château de Gudanes, a Class I monument under restoration in the Pyrénées.{% if room['max_occupancy'] %} Sleeps {{ room['max_occupancy'] }}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}.{% elif room['price_per_night'] %} From &euro;{{ room['price_per_night']|int }} a night.{% endif %} Dates, rates and what the room is.{% endblock %}
+{% block description %}{{ room_name(room['name']) }} at Château de Gudanes, a Class I monument under restoration in the Pyrénées.{% if room['max_occupancy'] %} Sleeps {{ room['max_occupancy'] }}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}.{% elif room['price_per_night'] %} From &euro;{{ room['price_per_night']|int }} a night.{% endif %} Breakfast included.{% endblock %}
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
 {% set sticky_bar = 'none' %}
@@ -60,7 +60,7 @@
     {# The button came before the price and facts; it now follows them. #}
   <p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Check these dates</a></p>
 
-    <p class="g-room__note">Continental breakfast included. Walls left as the centuries made them — under Class I protection, they stay that way. Everything within them is new.</p>
+    <p class="g-room__note">Room and continental breakfast; <a href="{{ url_for('workshops_public') }}">the workshops</a> are the full experience, with every meal, the wine and a tour of the château. Walls left as the centuries made them — under Class I protection, they stay that way. Everything within them is new.</p>
     {# Its own note, so the bathroom is clear on the page a guest books from (owner, 24 Sept). #}
     <p class="g-room__note g-room__bath"><b>Your bathroom.</b> {% if (room['bathroom'] or '')|lower == 'private' %}Yours alone for the stay, downstairs on the first floor{% else %}Downstairs, on the first floor{% endif %}; the bedrooms are on the top floor, with a powder room in the upstairs vestibule for the night.{% if room_name(room['name']) == 'The King Room' %} This room also has a bath and a basin of its own.{% endif %} There is no lift, and a great many stairs.</p>
   </div>
