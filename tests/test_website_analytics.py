@@ -32,9 +32,6 @@ from datetime import date, timedelta
 from _harness import Suite, db, visible_text, clients
 import _harness
 
-import os
-import re
-
 m = _harness.m
 TAG = "ZZWA"
 DAY = "2099-06-15"
@@ -256,13 +253,6 @@ def _run(s):
             "overview-delta-down" in cells.get("Left after one page", "")
             and "overview-delta-up" in cells.get("Visits", ""),
             detail=str({k: ("down" if "overview-delta-down" in v else "up") for k, v in cells.items()}))
-    css = open(os.path.join(os.path.dirname(os.path.abspath(m.__file__)), "static", "style.css"),
-               encoding="utf-8").read()
-    # The rule that does the work, not merely the selector: the phone-width
-    # rule beneath it names the same selector for its padding alone.
-    s.check("its tables' rows are headed where a cell would be, not centred by the browser",
-            'class="data-table named-rows"' in raw
-            and re.search(r"\.data-table\.named-rows tbody th\{\s*text-align:left;", css) is not None)
     s.check("an employee sees none of it", ec.get("/admin/analytics").status_code in (302, 403))
 
     s.section("Thirteen months")

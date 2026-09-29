@@ -33,7 +33,7 @@
   </figcaption>
   {% if busiest %}
   <details><summary class="small-link">The days anybody came, as figures</summary>
-    <div class="table-wrap"><table class="data-table named-rows"><thead><tr><th>Day</th><th class="num">Visits</th></tr></thead>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>Day</th><th class="num">Visits</th></tr></thead>
     <tbody>{% for day, n in days if n %}<tr><th scope="row">{{ day|date_short }}</th><td class="num">{{ n }}</td></tr>{% endfor %}</tbody></table></div>
   </details>
   {% endif %}
@@ -47,7 +47,7 @@
 <h2 class="section-heading">{{ title }}</h2>
 {% if rows %}
 <div class="table-wrap">
-  <table class="data-table named-rows">
+  <table class="data-table">
     <thead><tr><th>{{ first }}</th><th class="num">Visits</th><th class="num">Bookings</th></tr></thead>
     <tbody>
       {% for name, t in rows %}
@@ -65,7 +65,7 @@
 <h2 class="section-heading">What was booked, and from where</h2>
 {% if s.goals %}
 <div class="table-wrap">
-  <table class="data-table named-rows">
+  <table class="data-table">
     <thead><tr><th>Booked</th><th>From</th><th class="num">How many</th></tr></thead>
     <tbody>
       {% for goal, by in s.goals|dictsort %}{% for source, n in by %}
@@ -79,7 +79,7 @@
 <h2 class="section-heading">The pages they read</h2>
 {% if s.pages %}
 <div class="table-wrap">
-  <table class="data-table named-rows">
+  <table class="data-table">
     <thead><tr><th>Page</th><th class="num">Read</th><th class="num">Visits</th></tr></thead>
     <tbody>
       {% for path, p in s.pages[:40] %}
@@ -93,7 +93,7 @@
 <h2 class="section-heading">Where a visit began</h2>
 {% if s.entries %}
 <div class="table-wrap">
-  <table class="data-table named-rows">
+  <table class="data-table">
     <thead><tr><th>First page</th><th class="num">Visits</th><th class="num">Left after it</th></tr></thead>
     <tbody>
       {% for path, e in s.entries[:25] %}
@@ -107,7 +107,7 @@
 <h2 class="section-heading">Pages that were not there</h2>
 {% if s.broken %}
 <div class="table-wrap">
-  <table class="data-table named-rows">
+  <table class="data-table">
     <thead><tr><th>Address asked for</th><th class="num">Times</th><th>Sent from</th></tr></thead>
     <tbody>
       {% for path, b in s.broken %}

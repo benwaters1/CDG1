@@ -1325,15 +1325,6 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
 .data-table tfoot td, .data-table tfoot th,
 .data-table tr.total td, .data-table tr.total th{ font-weight:700; border-top:2px solid var(--parchment-line); }
 .data-table .row-alert{ color:var(--danger); }
-/* A row named by a heading -- <th scope="row">, so a screen reader says what
-   each figure is for. Left to itself the browser centres it and gives it none
-   of a cell's padding or rule; a table that opts in reads like the rest. */
-.data-table.named-rows tbody th{
-  text-align:left; font-weight:500; padding:11px 14px; vertical-align:top;
-  border-bottom:1px solid var(--parchment-line);
-}
-.data-table.named-rows tbody tr:last-child th{ border-bottom:none; }
-@media (max-width: 760px){ .data-table.named-rows tbody th{ padding:9px 10px; } }
 
 @media (max-width: 760px){
   .data-table{ font-size:12px; }
