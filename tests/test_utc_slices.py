@@ -552,20 +552,6 @@ def _browser_source_section(s):
             not strays, detail="; ".join(strays))
 
 
-def _chrome():
-    import os
-    import shutil
-    for path in (os.environ.get("GUDANES_CHROME"),
-                 r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-                 r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-                 r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-                 shutil.which("google-chrome"), shutil.which("chromium"),
-                 shutil.which("chrome")):
-        if path and os.path.exists(path):
-            return path
-    return None
-
-
 # Put at the top of <head>: every Date the page makes with no argument is
 # 22:30 UTC on 29 September, which is half past midnight on the 30th here.
 _FROZEN_CLOCK = """<script>(function () {
@@ -618,6 +604,7 @@ def _probe_page(chrome, html, a, d, workdir, label):
     import os
     import re
     import subprocess
+    import sys
     page = html.replace("<head>", "<head>" + _FROZEN_CLOCK, 1)
     page = page.replace("</body>", _PROBE % {
         "a": json.dumps(a), "d": json.dumps(d),
@@ -625,13 +612,19 @@ def _probe_page(chrome, html, a, d, workdir, label):
     path = os.path.join(workdir, label + ".html")
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(page)
-    proc = subprocess.run(
-        [chrome, "--headless=new", "--disable-gpu", "--no-first-run",
-         "--user-data-dir=" + os.path.join(workdir, "profile-" + label),
-         "--virtual-time-budget=5000", "--dump-dom",
-         "file:///" + path.replace(os.sep, "/")],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-        timeout=90)
+    # The flags test_staff_header_on_a_phone launches with, and for the same
+    # reason: the pages carry web fonts and photographs from other hosts, and
+    # a test run never touches the network, so every hostname goes nowhere.
+    cmd = [chrome, "--headless=new", "--disable-gpu", "--no-first-run",
+           "--no-default-browser-check", "--disable-extensions",
+           "--user-data-dir=" + os.path.join(workdir, "profile-" + label),
+           "--host-resolver-rules=MAP * ~NOTFOUND",
+           "--virtual-time-budget=5000", "--dump-dom",
+           "file:///" + path.replace(os.sep, "/").lstrip("/")]
+    if sys.platform.startswith("linux"):
+        cmd.insert(1, "--no-sandbox")
+    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", timeout=90)
     mo = re.search(r'<pre id="gudanes-probe">(.*?)</pre>', proc.stdout, re.S)
     return json.loads(htmllib.unescape(mo.group(1))) if mo else None
 
@@ -641,11 +634,13 @@ def _browser_section(s):
     import tempfile
     s.section("And in a browser, at half past midnight here, the pickers "
               "offer the house's day")
-    chrome = _chrome()
+    # One way of finding a browser, the phone suite's, rather than two.
+    from test_staff_header_on_a_phone import find_browser
+    chrome = find_browser()
     s.check("Chrome is on this machine to run the pages' own scripts",
             chrome is not None,
-            detail="set GUDANES_CHROME to a Chrome or Edge executable -- a "
-                   "check that could not run is not a pass")
+            detail="install Chrome or Chromium, or set GUDANES_CHROME to one "
+                   "-- a check that could not run is not a pass")
     if not chrome:
         return
     room = _harness.ensure_room()

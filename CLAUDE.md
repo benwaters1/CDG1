@@ -147,8 +147,10 @@ page rendered perfectly while doing the wrong thing.
   600px its two groups now join the header's own rows. That fault is a sum
   that depends on the words and the name, so `test_staff_header_on_a_phone`
   measures real pages in headless Chrome with a touch screen emulated, at
-  320-601px. It is the one suite that needs a browser, and it fails rather
-  than skips without one (set `GUDANES_CHROME`).
+  320-601px. It needs a browser, and it fails rather than skips without one
+  (set `GUDANES_CHROME`). So does `test_utc_slices`, which runs the public
+  date pickers at a frozen 00:30 to read what they allow; it finds Chrome
+  with this suite's `find_browser()`.
 
 - **A heading down the side of a table takes its look from `style.css`.**
   Row headings (`<th scope="row">`) and the labels on totals rows share the
