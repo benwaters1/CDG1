@@ -394,7 +394,36 @@ body.staff-shell .login-card{
 body.staff-shell .login-card h1{ color:var(--ivory); }
 
 /* ---------- Forms ---------- */
-form{ display:flex; flex-direction:column; gap:4px; }
+/* A form is a stack of fields: one column, each field across it, 4px apart.
+   It is a grid rather than a flex column so that it has no direction to hand
+   on. As display:flex with flex-direction:column it did. A form that lays
+   itself out as a row writes display:flex, nothing of its own says which way,
+   so it kept this rule's column: thirty-seven forms written inline on thirty
+   staff pages, and ten rules that give it by class, the search and sort above
+   every list among them. Every one stacked, centred or pushed right wherever
+   it asked to align its items -- Charge and Let it go one above the other in
+   the middle of the cell. A grid stacks without being told which way, so
+   display:flex on a form now gets flex's own default, a row. The 100% column
+   and max-content rows are what keep the stack itself where it was, box for
+   box in Chrome: 100% is read as auto while a form is sized by its content,
+   and a max-content row does not stretch when the form stands beside
+   something taller. */
+form{ display:grid; grid-template-columns:100%; grid-auto-rows:max-content; gap:4px; }
+/* A form on its own in a table cell is a single button, and a stack stretches
+   it across the column: a .data-table is 100% wide, the spare width goes to
+   the columns, and "Off the list" ran about 190px wide. As a block the button
+   keeps its own width and sits where the cell's text-align puts it (the
+   automation page right-aligns its Run now column on purpose). :where keeps
+   this at the weight of `form`, so a form with a class or a style of its own
+   still lays itself out. */
+:where(.data-table td) > form{ display:block; }
+/* A form inside .g is the design side's, drawn by gudanes.css on the two
+   staff pages that link it (photo intake and the pass). That sheet gives
+   every one of them its direction -- a wrapping row, or a column when it is
+   a .g-stack -- and leaves making it a flexbox to this sheet, as it did when
+   the rule above was a flex column. Without this the photo intake form
+   stacks what it was drawn to lay side by side. */
+:where(.g) form{ display:flex; }
 .field-label{ font-size:11.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em; margin-top:12px; margin-bottom:5px; }
 input[type=text], input[type=email], input[type=password], input[type=tel], input[type=date], input[type=file],
 select, textarea{
@@ -510,6 +539,11 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
   align-items:center; }
 .owed-take__form input[type=number]{ width:7em; }
 .owed-take__form input[type=text]{ width:11em; }
+/* In a table the row it makes is wider than the column can spare, and a table
+   gives a column what its contents ask for: once the form ran as a row, opening
+   it took the width from the guest's name, which went to four lines. Kept to
+   its widest field, it wraps inside the column it already had. */
+.data-table .owed-take__form{ max-width:14em; }
 /* Choosing a room at the desk. Big enough to hit without aiming, and a
    taken room stays visible rather than vanishing — reception needs to be
    able to say WHICH room is gone, not just that there are fewer. */
@@ -817,7 +851,7 @@ body.staff-shell .manual-section h3{ color:var(--ivory); font-family:'Inter',san
 .manual-body{ font-size:13.5px; line-height:1.75; white-space:pre-wrap; margin:0; }
 .manual-body.empty{ color:var(--ink-soft); font-style:italic; }
 .manual-edit-form textarea{ min-height:140px; margin-bottom:10px; }
-.new-section-form{ flex-direction:row; gap:8px; align-items:center; }
+.new-section-form{ display:flex; gap:8px; align-items:center; }
 .new-section-form input{ flex:1; }
 
 /* ---------- Booking ---------- */
