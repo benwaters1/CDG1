@@ -5745,6 +5745,7 @@ def init_db():
     link_held_letters(conn)
     backfill_consent_history(conn)
     redact_stored_links(conn)
+    incident_times_to_utc(conn)
 
     # `guests` used to be a per-STAY register carrying arrival/departure/party_size,
     # duplicating what `bookings` already owns. The two could never be kept in
@@ -13242,6 +13243,55 @@ def incidents_awaiting_insurer(conn, *, now=None):
         "unreported": [x for x in out if x["has_policy"]],
         "no_policy": [x for x in out if not x["has_policy"]],
     }
+
+
+def incident_times_to_utc(conn):
+    """Store every incident's time as a moment in UTC, like every other time.
+
+    The register used to keep the time exactly as the form sent it --
+    "2026-09-04T23:30", the house's clock with no zone -- while everything
+    that showed or aged it read a stamp without a zone as UTC. So every
+    incident appeared one or two hours after it happened, an accident late in
+    the evening was filed under the next day, and the insurer's clock started
+    that much late: two hours out of a 48-hour statutory window.
+
+    Each time without a zone is read on the house's clock and written back as
+    the same moment in UTC; a date with no time becomes the start of that day
+    here. An hour the clocks go back through happens twice, and is read as the
+    first -- as local_datetime_input_to_utc_iso reads a new one -- which is the
+    earlier, so the clock never runs short. Every row changed gets an audit
+    line saying what it held, because this is a register the law expects.
+
+    Runs at startup and finds nothing once the old rows are through it:
+    new_incident stores UTC, and a time that already has a zone is left alone.
+    """
+    changed, unreadable = 0, []
+    for row in conn.execute("SELECT id, occurred_at FROM incidents").fetchall():
+        typed = (row["occurred_at"] or "").strip()
+        try:
+            when = datetime.fromisoformat(typed)
+        except ValueError:
+            unreadable.append(f"#{row['id']}")
+            continue
+        if when.tzinfo is not None:
+            continue
+        moment = when.replace(tzinfo=LOCAL_TZ).astimezone(timezone.utc).isoformat()
+        conn.execute("UPDATE incidents SET occurred_at = ? WHERE id = ?",
+                     (moment, row["id"]))
+        log_audit(conn, "incident_time_to_utc", f"incident #{row['id']}",
+                  f"{typed} on the house's clock is {moment} in UTC: the same moment, "
+                  "stored the way every other time is", actor=None)
+        changed += 1
+    if changed:
+        conn.commit()
+        print(f"[init] incidents: {changed} time(s) typed on the house's clock "
+              "now stored in UTC")
+    if unreadable:
+        # Named rather than guessed at: a time nobody can read is shown as "?"
+        # and drops off the insurer's clock, and that wants a person.
+        print(f"[init] incidents: the time on {', '.join(unreadable)} cannot be "
+              "read, so it was left as it was")
+    return changed
 
 
 ASSET_CATEGORIES = {
@@ -31632,7 +31682,9 @@ def admin_incidents():
     query += " ORDER BY incidents.occurred_at DESC"
     incidents = conn.execute(query, params).fetchall()
 
-    year_start = date(today.year, 1, 1).isoformat()
+    # The first moment of 1 January here, not midnight UTC: an accident at
+    # half past midnight on New Year's Day belongs to the year it happened in.
+    year_start = house_moment(date(today.year, 1, 1))
     stats = conn.execute(
         """SELECT COUNT(*) AS total,
                   COALESCE(SUM(kind = 'workplace'), 0) AS workplace,
@@ -31681,8 +31733,15 @@ def admin_incidents():
 def new_incident():
     occurred = request.form.get("occurred_at", "").strip()
     summary = request.form.get("summary", "").strip()
-    if not summary or not parse_date(occurred[:10]):
-        flash("An incident needs a date and a short summary.", "error")
+    # Typed on the house's clock, stored in UTC like every other moment. It
+    # used to be stored as typed and read everywhere as UTC, so an accident at
+    # 23:30 went into the register at 01:30 the next morning.
+    try:
+        occurred_utc = local_datetime_input_to_utc_iso(occurred)
+    except ValueError:
+        occurred_utc = None
+    if not summary or not occurred_utc:
+        flash("An incident needs a date and time, and a short summary.", "error")
         return redirect(url_for("admin_incidents"))
     kind = request.form.get("kind", "workplace")
     severity = request.form.get("severity", "minor")
@@ -31698,7 +31757,7 @@ def new_incident():
            first_aid_given, medical_attention, work_days_lost, insurance_policy_id,
            action_taken, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (kind, occurred, request.form.get("location", "").strip() or None, summary,
+        (kind, occurred_utc, request.form.get("location", "").strip() or None, summary,
          request.form.get("detail", "").strip() or None, severity,
          int(affected_raw) if affected_raw.isdigit() else None,
          request.form.get("affected_person", "").strip() or None,
@@ -31711,7 +31770,8 @@ def new_incident():
          request.form.get("action_taken", "").strip() or None,
          datetime.now(timezone.utc).isoformat()),
     )
-    log_audit(conn, "incident_recorded", summary[:80], f"{kind}, {severity}, {occurred}")
+    log_audit(conn, "incident_recorded", summary[:80],
+              f"{kind}, {severity}, {local_datetime_str(occurred_utc)}")
     conn.commit()
     conn.close()
     flash("Incident recorded.", "success")
