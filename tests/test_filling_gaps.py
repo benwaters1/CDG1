@@ -25,6 +25,7 @@ Four things carry this file.
   seventh stay" hears a loyalty scheme — but three is when somebody stops
   being a visitor, and it was getting the same greeting as a stranger.
 """
+import re
 from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, clients, db, flashes
@@ -32,6 +33,16 @@ import _harness
 
 m = _harness.m
 TAG = "ZZGAP"
+
+
+def _a_year_before(d):
+    """The same day a year earlier. A 29 February has none, and replace()
+    raised on it -- the run would have died on 15 January 2028, the one day
+    whose target, forty-five days on, is a leap day."""
+    try:
+        return d.replace(year=d.year - 1)
+    except ValueError:
+        return d.replace(year=d.year - 1, day=28)
 
 
 def _cleanup():
@@ -70,7 +81,7 @@ def run():
     target = today + timedelta(days=45)
     for n, back in enumerate((730, 400)):
         _stay(f"R{n}", room_id=room["id"],
-              arrival=target.replace(year=target.year - 1) - timedelta(days=back - 365),
+              arrival=_a_year_before(target) - timedelta(days=back - 365),
               nights=3, email=reg, name=f"{TAG} Regular")
     conn = db()
     cand = m.gap_candidates(conn, target.isoformat(),
@@ -122,6 +133,137 @@ def run():
             m.gap_candidates(conn, target.isoformat(),
                              (target - timedelta(days=3)).isoformat())["candidates"] == [],
             detail="a departure before the arrival is a typo, not a gap")
+    conn.close()
+
+    s.section("Nobody already coming back is offered the nights")
+    # The defect: a guest with a stay booked read "Last here: -90 days ago"
+    # and was offered nights they had no need of. Everybody below has
+    # something that fits this run, so leaving them off is a decision the
+    # code made, not an accident of the fixture.
+    month = target.strftime("%B")
+    in_month = target - timedelta(days=7)
+    if in_month.month != target.month:
+        in_month = target + timedelta(days=7)
+    booked = "zzgap.booked@example.invalid"
+    here = "zzgap.here@example.invalid"
+    only_booked = "zzgap.onlybooked@example.invalid"
+    into_month = "zzgap.intomonth@example.invalid"
+    ours = (booked, here, only_booked, into_month)
+    # Here in this month last year, and booked again ninety days out: the
+    # exact shape that read -90.
+    _stay("BK0", room_id=room["id"], arrival=_a_year_before(target), nights=3,
+          email=booked, name=f"{TAG} Booked")
+    _stay("BK1", room_id=room["id"], arrival=today + timedelta(days=90), nights=3,
+          email=booked, name=f"{TAG} Booked")
+    # Here in this month last year, and in the house tonight.
+    _stay("HR0", room_id=room["id"], arrival=_a_year_before(target), nights=3,
+          email=here, name=f"{TAG} Here")
+    _stay("HR1", room_id=room["id"], arrival=today - timedelta(days=1), nights=3,
+          email=here, name=f"{TAG} Here")
+    # Never been, and booked three nights in this very month. Their booking
+    # alone made them "has stayed in <month> before".
+    _stay("OB0", room_id=room["id"], arrival=in_month, nights=3,
+          email=only_booked, name=f"{TAG} OnlyBooked")
+    # One night, two hundred days ago -- a different month, and too short for
+    # this run -- then three nights booked in this month. Every reason they
+    # would get comes from the booking: the month, and a "usual" length of 3
+    # read off a one-night stay and the booking together.
+    _stay("IM0", room_id=room["id"], arrival=today - timedelta(days=200), nights=1,
+          email=into_month, name=f"{TAG} IntoMonth")
+    _stay("IM1", room_id=room["id"], arrival=in_month, nights=3,
+          email=into_month, name=f"{TAG} IntoMonth")
+    conn = db()
+    cand3 = m.gap_candidates(conn, target.isoformat(),
+                             (target + timedelta(days=3)).isoformat())
+    conn.close()
+    listed = {c["email"]: c for c in cand3["candidates"]}
+    coming = {c["email"]: c for c in cand3.get("coming", [])}
+    s.check("a guest with a stay booked is not offered these nights",
+            booked not in listed,
+            detail=f"{listed.get(booked)} — they are coming back already")
+    s.check("nor is a guest in the house tonight", here not in listed,
+            detail=str(listed.get(here)))
+    s.check("both are named as left off, not silently dropped",
+            booked in coming and here in coming,
+            detail=f"{sorted(coming)} — a regular missing without a word reads "
+                   "as the page not knowing them")
+    if booked in coming:
+        s.check("with the booking that keeps them off",
+                coming[booked]["next"] == (today + timedelta(days=90)).isoformat()
+                and not coming[booked]["here_now"],
+                detail=str(coming[booked]))
+        s.check("and what they would have fitted on, read from the stay they made",
+                f"has stayed in {month} before" in coming[booked]["reasons"],
+                detail=str(coming[booked]["reasons"]))
+    if here in coming:
+        s.check("the guest in the house is here now, until they leave",
+                coming[here]["here_now"]
+                and coming[here]["until"] == (today + timedelta(days=2)).isoformat(),
+                detail=str(coming[here]))
+    s.check("somebody who has never stayed is on neither list",
+            only_booked not in listed and only_booked not in coming,
+            detail=f"{listed.get(only_booked) or coming.get(only_booked)} — their "
+                   f"only {month} was the one they had booked")
+    s.check("a month they have only booked is not a month they have stayed in",
+            into_month not in listed and into_month not in coming,
+            detail=f"{listed.get(into_month) or coming.get(into_month)} — every "
+                   "reason here would be read off the booking")
+    early = [(c["email"], c["last"], c["days_since"]) for c in cand3["candidates"]
+             if c["days_since"] is None or c["days_since"] < 0
+             or not c["last"] or c["last"] > today.isoformat()]
+    s.check("every candidate was last here on a day that has come",
+            not early, detail=str(early[:3]))
+    s.check("and the regular with nothing booked is still offered them",
+            reg in listed, detail=f"{sorted(listed)[:5]}")
+
+    picked = oc.get("/management/fill-a-gap?from=%s&to=%s"
+                    % (target.isoformat(), (target + timedelta(days=3)).isoformat())
+                    ).get_data(as_text=True)
+    offered, _, left_off = picked.partition("Already coming back")
+    s.check("no row on the page reads a negative number of days",
+            not re.search(r"-\d+ days? ago", picked),
+            detail=str(re.findall(r"-\d+ days? ago", picked)[:3]))
+    s.check("the page names who was left off",
+            f"{TAG} Booked" in left_off and f"{TAG} Here" in left_off,
+            detail="the heading or the names are missing")
+    s.check("and neither of them is among the guests offered the nights",
+            f"{TAG} Booked" not in offered and f"{TAG} Here" not in offered)
+    s.check("with the date of the stay booked, and until when they are here",
+            m.format_date_short((today + timedelta(days=90)).isoformat()) in left_off
+            and m.format_date_short((today + timedelta(days=2)).isoformat()) in left_off)
+    s.check("and it says why a booking keeps somebody off",
+            "A stay still to come is a booking, not a visit" in offered,
+            detail="the rule has to be on the page, not only in the code")
+
+    # The branch where everybody who fits is coming back. The fixtures cannot
+    # force it -- a copy of the real database may hold a guest who fits any
+    # run -- so the builder's answer is set for one request.
+    real = m.gap_candidates
+    m.gap_candidates = lambda *a, **k: {
+        "nights": 3, "month": month, "from": target, "to": target,
+        "candidates": [],
+        "coming": [{"email": booked, "name": f"{TAG} Booked",
+                    "reasons": [f"has stayed in {month} before"],
+                    "here_now": False, "until": None,
+                    "next": (today + timedelta(days=90)).isoformat()}]}
+    try:
+        alone = oc.get("/management/fill-a-gap?from=%s&to=%s"
+                       % (target.isoformat(), (target + timedelta(days=3)).isoformat())
+                       ).get_data(as_text=True)
+    finally:
+        m.gap_candidates = real
+    s.check("with nobody else to offer, it says who fits and why they are not offered",
+            "Nobody stands out who is not already coming back" in alone
+            and f"{TAG} Booked" in alone.partition("Already coming back")[2],
+            detail="the empty answer must not hide the guests it left off")
+    s.check("and does not claim that nobody has come at this time of year",
+            "has come at this time of year" not in alone,
+            detail="the guest named below has, which would make it false")
+
+    conn = db()
+    for email in ours:
+        conn.execute("DELETE FROM bookings WHERE guest_email = ?", (email,))
+    conn.commit()
     conn.close()
 
     s.section("The page shows the runs and the reasons")
