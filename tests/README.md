@@ -67,6 +67,21 @@ their wrapper.
 None of this replaces looking at the page. It catches the class of fault that
 looking at the page has repeatedly missed.
 
+## The one suite that needs a browser
+
+`test_staff_header_on_a_phone` measures rather than reads. The staff header
+ran off a phone's screen because seven things side by side, each with a 44px
+floor from the touch rules, added up to more than 390px, and how much more
+depends on the language and the person's name. No reading of the stylesheet
+can do that sum. So the suite renders real pages through the test client and
+measures them in headless Chrome at 320 to 601px, with a touch screen
+emulated so the `pointer: coarse` rules apply as they do on a phone.
+
+It finds Chrome, Chromium or Edge on its own. Set `GUDANES_CHROME` to point it
+at one. If there is none, the suite **fails** rather than skipping, because a
+check that quietly does not run reads as cover. It never touches the network:
+the web fonts are stripped and every hostname is pointed nowhere.
+
 ## Adding a suite
 
 Write `tests/test_<name>.py` with a `run()` returning a `Suite`, and add the
