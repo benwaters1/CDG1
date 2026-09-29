@@ -438,6 +438,54 @@ def staff_class_audit(srcs, stylesheets, named=()):
     return findings, pages, uses
 
 
+def _tokens_defined(css):
+    return set(re.findall(r"(--[\w-]+)\s*:", css))
+
+
+def _tokens_read_bare(css):
+    """Custom properties read with no fallback: var(--x), not var(--x, 12px).
+    With no value behind one, the declaration is dropped when it is worked
+    out, and the colour or the gap it was for is simply not there."""
+    return set(re.findall(r"var\(\s*(--[\w-]+)\s*\)", css))
+
+
+def staff_token_audit(srcs, stylesheets):
+    """[(page, template, token)] for every token a staff page's own styles read
+    that no stylesheet it loads, and none of its own styles, defines."""
+    srcs = {n: re.sub(r"\{#.*?#\}", "", s, flags=re.S) for n, s in srcs.items()}
+    defined = {n: _tokens_defined(_strip_comments(css)) for n, css in stylesheets.items()}
+
+    def own(src):
+        return _style_blocks(src) + "\n" + "\n".join(re.findall(r'\bstyle="([^"]*)"', src))
+
+    out = []
+    for page in sorted(srcs):
+        if page in ("base.html", "public_base.html", "pos_base.html"):
+            continue
+        if not (_template_parent(srcs[page]) or re.search(r"<html\b", srcs[page], re.I)):
+            continue
+        chain, t = [], page
+        while t and t in srcs and t not in chain:
+            chain.append(t)
+            t = _template_parent(srcs[t])
+        if chain[-1] == "public_base.html":
+            continue
+        mem, todo = set(), list(chain)
+        while todo:
+            t = todo.pop()
+            if t not in mem and t in srcs:
+                mem.add(t)
+                todo += list(_template_uses(srcs[t]))
+        have = set()
+        for t in mem:
+            have |= _tokens_defined(own(srcs[t]))
+            for f in _linked_stylesheets(srcs[t]):
+                have |= defined.get(f, set())
+        for t in sorted(mem):
+            out += [(page, t, tok) for tok in sorted(_tokens_read_bare(own(srcs[t])) - have)]
+    return out
+
+
 def run():
     s = Suite("Design")
     css = _strip_comments(open(CSS_PATH, encoding="utf-8").read())
@@ -634,6 +682,30 @@ def run():
     ]
     for label, got, expected in cases:
         s.check(label, got == expected, detail="expected %s, got %s" % (expected, got))
+
+    s.section("A staff page reads only colours and spacings that are defined for it")
+    # The same fault in a second form. --rust was read by style.css and six
+    # staff templates and defined by nothing, so "never cleaned" and "short of
+    # stock" printed in plain ink; --s3 is the public stylesheet's, so the
+    # shopping row's gap and the arrival card's spacing were not there.
+    staff_css = _strip_comments(sheets["style.css"])
+    loose = sorted(_tokens_read_bare(staff_css) - _tokens_defined(staff_css))
+    s.check("every token style.css reads without a fallback, style.css defines",
+            not loose, detail="read and never defined: %s" % loose)
+    loose_pages = sorted({(t, tok) for _p, t, tok in staff_token_audit(srcs, sheets)})
+    s.check("and so does every staff page's own style, or a stylesheet it loads",
+            not loose_pages, detail="%d, e.g. %s" % (len(loose_pages), loose_pages[:5]))
+    probe = staff_token_audit(
+        {"base.html": shell % "style.css", "public_base.html": shell % "gudanes.css",
+         "a.html": '{% extends "base.html" %}{% block content %}<p style="margin:var(--s9)">'
+                   '<b style="gap:var(--s1)"><i style="color:var(--nope, red)">x</i></b></p>'
+                   '{% endblock %}',
+         "b.html": '{% extends "public_base.html" %}{% block content %}'
+                   '<p style="margin:var(--s9)">x</p>{% endblock %}'},
+        {"style.css": ":root{ --s1:4px; }", "gudanes.css": ":root{ --s9:96px; }"})
+    s.check("and the sweep can tell: an undefined token is caught, a defined one or "
+            "one with a fallback is not, and a public page is left alone",
+            [tok for _p, _t, tok in probe] == ["--s9"], detail="got %s" % probe)
 
     s.section("A media query the browser can actually evaluate")
 
