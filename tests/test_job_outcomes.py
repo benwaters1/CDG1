@@ -109,6 +109,12 @@ def run():
     s.check("the note says what it reports", "403 from the Airbnb feed" in note,
             detail=note[:120])
     s.check("and how long it has been broken", "2 runs in a row" in note, detail=note[:120])
+    # In the words Job status uses. last_ok_at came after the jobs did, so a
+    # blank one is "not recorded", which is true, and not "never", which
+    # need not be.
+    s.check("and says plainly that no success is on record",
+            "Last worked: not recorded" in note and "never" not in note,
+            detail=note[:160])
 
     # It routes like any other blocking finding, so it can land on the person
     # who administers the thing rather than only on the owner's list.
