@@ -563,20 +563,6 @@ COVERAGE_KNOWN_GAPS = {
 # What is left, and why. Checked both ways like COVERAGE_KNOWN_GAPS: a new one
 # reds the run, and so does one that has been mended and is still here.
 BARE_DATE_KNOWN = {
-    # NOT DIAGNOSED, and not from this side. workshops_overview is
-    # byte-identical to main and this check is main's own, so the merge did
-    # not cause it; it is listed rather than fixed because fixing somebody
-    # else's finding on a guess is worse than naming it.
-    #
-    # What is known: the query compares refunds.created_at against
-    # period["start_at"], and the period builder at the one site read here
-    # fills that with house_moment(), which is exactly what this check asks
-    # for. So either another caller passes a bare date, or the finding is
-    # data-dependent and main simply has not hit the path. Wants the eye of
-    # whoever wrote the check.
-    ("workshops_overview", "created_at"):
-        "period['start_at'] is house_moment() at the builder read here — "
-        "either another caller passes a bare date, or main has not hit it",
     ("owner_home_figures", "clock_in_at"):
         "widened a day each way, then each shift filed by house_date_iso: right",
     ("admin_incidents", "occurred_at"):

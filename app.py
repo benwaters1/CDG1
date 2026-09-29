@@ -266,11 +266,13 @@ MEDIA_MAX_BYTES = 512 * 1024 * 1024
 # of a named job. Matched by title, so it must not be edited casually.
 MEDIA_DIARY_TITLE = "Work in progress"
 
-# The card reader's shared secret. Unset means the machine door does not
-# exist at all -- a 404, not a 401, because an unconfigured door should not
-# advertise itself. Generated into a file and pasted by the owner; never
-# printed into a chat window.
-MEDIA_INGEST_KEY = (os.environ.get("GUDANES_INGEST_KEY") or "").strip()
+# The card reader's shared secret is NOT read here. It is read after
+# _load_dotenv() further down, with the other environment-backed values --
+# see MEDIA_INGEST_KEY there. Read at this point in the file it was always
+# empty: this block runs at line ~270 and .env is not loaded until ~610, so
+# the door could never be opened by configuration, only by a variable
+# already in the real environment. The same shape as the default-argument
+# trap that put house_windows() after LOCAL_TZ.
 VIEWABLE_EXTENSIONS = IMAGE_EXTENSIONS | {"pdf"}  # types a browser can render inline, no download needed
 
 CHECKOUT_CHECKLIST = [
@@ -607,6 +609,12 @@ def _load_dotenv():
 
 
 _load_dotenv()
+
+# The card reader's shared secret, read AFTER .env has been loaded. Unset
+# means the machine door does not exist at all -- a 404, not a 401, because
+# an unconfigured door should not advertise itself. Generated into a file and
+# pasted by the owner; never printed into a chat window.
+MEDIA_INGEST_KEY = (os.environ.get("GUDANES_INGEST_KEY") or "").strip()
 
 # Everything is stored in UTC. This is the château's own clock, and it settles
 # two different questions: what a stored moment reads as in local time, and

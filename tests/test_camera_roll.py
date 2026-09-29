@@ -35,8 +35,10 @@ through on their own, because those are the ones automation gets wrong:
   frame to look at, so the clip is held saying exactly that rather than
   described from its filename.
 """
+import io
 import io as _io
 import os
+import re
 
 from _harness import Suite, clients, db
 import _harness
@@ -339,12 +341,64 @@ def run():
                    "while the roll shows yours, which is two answers to one "
                    "question" % (photo["caption"] if photo else "none"))
 
+    # ---- read from configuration at all -----------------------------------
+    #
+    # Written after the key was pasted into .env and the door stayed shut.
+    # MEDIA_INGEST_KEY was read at line ~270 and _load_dotenv() does not run
+    # until ~610, so the constant was always empty: the door could only ever
+    # be opened by a variable already in the real environment, never by
+    # configuring the app. The same shape as the default-argument trap that
+    # put house_windows() after LOCAL_TZ.
+    #
+    # The suite missed it because every check below stands the constant in by
+    # hand, which tests the door and not the lock it is fitted to. So this
+    # reads the SOURCE, and reads it for every environment-backed value
+    # rather than only for mine -- the next one will be somebody else's.
+    s.section("Anything read from the environment is read after .env")
+    src = io.open(m.__file__, encoding="utf-8", errors="replace").read()
+    lines = src.splitlines()
+    loaded_at = next((i for i, l in enumerate(lines)
+                      if l.startswith("_load_dotenv()")), None)
+    s.check("the app loads .env at all", loaded_at is not None)
+    # Three are allowed above the line, and only these three. They decide
+    # WHERE the app's data lives, and _harness sets GUDANES_DB_PATH in the
+    # real environment before importing app so the suite runs against a
+    # throwaway copy. That works BECAUSE they are read from os.environ rather
+    # than from .env. Moving them down would let a file inside the deployment
+    # redirect the database, and would put the harness's isolation assertion
+    # downstream of a file anybody can edit.
+    #
+    # Checked both ways, like the other lists here: a fourth name reds the
+    # run, and so does one of these three moving and being left on.
+    BEFORE_DOTENV_IS_FINE = {"DB_PATH", "UPLOAD_DIR", "ROOM_PHOTO_DIR"}
+    early = {l.split("=")[0].strip() for l in lines[:loaded_at or 0]
+             if re.match(r"^[A-Z][A-Z0-9_]* *= *\(?os\.environ\.get", l)}
+    s.check("and nothing reads the environment before it does",
+            not (early - BEFORE_DOTENV_IS_FINE),
+            detail="%s — read above _load_dotenv() these are empty whatever "
+                   "is in .env, so the app behaves as though the house never "
+                   "configured it" % sorted(early - BEFORE_DOTENV_IS_FINE))
+    s.check("and the three that may be are still there",
+            not (BEFORE_DOTENV_IS_FINE - early),
+            detail="%s — moved below _load_dotenv(), which would let a file "
+                   "in the deployment redirect the database"
+                   % sorted(BEFORE_DOTENV_IS_FINE - early))
+
     # ---- the machine door -------------------------------------------------
     s.section("The card reader's door")
-    s.check("it does not exist while no key is set",
-            oc.post("/ingest/known", json={"sha256": []}).status_code == 404,
-            detail="a 404 rather than a 401 — an unconfigured door should "
-                   "not advertise itself")
+    # Stood down, not assumed absent. This read the machine it ran on: true
+    # while nobody had set a key, and false the morning one was pasted into
+    # .env. Same fault as every date bomb this week — a test asserting
+    # something about the world rather than arranging it.
+    _had_key = m.MEDIA_INGEST_KEY
+    m.MEDIA_INGEST_KEY = ""
+    try:
+        s.check("it does not exist while no key is set",
+                oc.post("/ingest/known", json={"sha256": []}).status_code == 404,
+                detail="a 404 rather than a 401 — an unconfigured door should "
+                       "not advertise itself")
+    finally:
+        m.MEDIA_INGEST_KEY = _had_key
     m.MEDIA_INGEST_KEY = "zz-test-key"
     try:
         anon = m.app.test_client()
