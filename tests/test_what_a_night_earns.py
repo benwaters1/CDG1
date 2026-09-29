@@ -28,6 +28,7 @@ not a direct-marketing success.
 """
 from _harness import Suite, clients, db
 
+import re
 from datetime import timedelta
 
 import _harness
@@ -37,7 +38,8 @@ TAG = "ZZEARN"
 
 
 def _cleanup(conn):
-    conn.execute("DELETE FROM guests WHERE email = ?", ("zzearn@example.invalid",))
+    conn.execute("DELETE FROM guests WHERE email IN (?, ?)",
+                 ("zzearn@example.invalid", "zzearn.lately@example.invalid"))
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM room_blocks WHERE reason LIKE ?", (TAG + "%",))
     conn.commit()
@@ -209,11 +211,52 @@ def run():
                 detail="one long expensive stay and nine years of coming back "
                        "are the same number and are not the same guest")
 
+    s.section("Last here is a stay they have made")
+    # Both of the spender's stays are four hundred days out: they have not
+    # been here yet, and "Last here" read a day more than a year away.
+    if mine:
+        s.check("a guest whose every stay is still to come has no last here",
+                mine[0]["last_seen"] is None,
+                detail=f"{mine[0]['last_seen']} — both stays begin after {start}")
+    # One stay made, one called off since, and one still to come. It was the
+    # latest departure on any booking at all.
+    today = m.house_today()
+    conn.execute("INSERT INTO guests (name, email, created_at) VALUES (?, ?, ?)",
+                 (TAG + " Lately", "zzearn.lately@example.invalid", now))
+    lately = conn.execute("SELECT id FROM guests WHERE email = ?",
+                          ("zzearn.lately@example.invalid",)).fetchone()["id"]
+    for ref, days, status in (("L1", -100, "confirmed"), ("L2", -10, "cancelled"),
+                              ("L3", 30, "confirmed")):
+        arrive = today + timedelta(days=days)
+        conn.execute(
+            """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+               guest_email, arrival_date, departure_date, party_size, status,
+               total_price, linked_guest_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 2, ?, 300, ?, ?)""",
+            (room_id, TAG + "-" + ref, "tok" + TAG.lower() + ref.lower(),
+             TAG + " Lately", "zzearn.lately@example.invalid", arrive.isoformat(),
+             (arrive + timedelta(days=2)).isoformat(), status, lately, now))
+    conn.commit()
+    seen = m.guest_record(conn, lately)["last_seen"]
+    s.check("last here is the latest stay made, not one called off or one booked",
+            seen == (today - timedelta(days=100)).isoformat(),
+            detail=f"{seen} — made {today - timedelta(days=100)}, called off "
+                   f"{today - timedelta(days=10)}, booked {today + timedelta(days=30)}")
+
     s.section("The page")
 
     r = oc.get("/reports/what-a-night-earns")
     s.check("the owner can open it", r.status_code == 200, r)
     body = r.get_data(as_text=True)
+    # Read from the spender's own row: every other guest's dates are on the
+    # page too. The last cell is Last here.
+    row = next((x for x in re.findall(r"<tr[^>]*>(.*?)</tr>", body, re.S)
+                if TAG + " Spender" in x), None)
+    cells = ([" ".join(re.sub(r"<[^>]+>", " ", c).split())
+              for c in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)] if row else [])
+    s.check("its Last here for a guest who has not come yet is a dash, not a date",
+            cells and cells[-1] in ("—", "&mdash;"),
+            detail=f"{cells[-1] if cells else 'no row for the spender'}")
     s.check("it says it does not agree with the occupancy report, and why",
             "not meant to agree" in body,
             detail="two occupancy figures on one site with no explanation is "

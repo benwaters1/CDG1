@@ -580,10 +580,18 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     });
   }
   f.querySelectorAll('[name="extras"]').forEach(function(cb){ cb.addEventListener('change',fillWhen); });
+  /* The bar at the foot of the page says what the box says. Only the tax script below ever
+     wrote it, and that steps aside once the quote carries the tax itself - so from then on a
+     phone showed "Choose dates" beside Pay & book with the dates chosen and priced. The bar
+     is further down the page than this script, so it is looked up each time. */
+  function barTotal(x){
+    var b=document.querySelector('[data-bar-total]');
+    if(b) b.textContent = x==null ? 'Choose dates' : '€'+Math.round(x).toLocaleString('en-GB');
+  }
   function refreshQuote(){
     fillWhen();
     if(!box) return;
-    if(!arrive.value||!depart.value){ box.hidden=true; return; }
+    if(!arrive.value||!depart.value){ box.hidden=true; barTotal(null); return; }
     var q=new URLSearchParams();
     q.set('room_id','{{ room["id"] }}');
     q.set('arrival',arrive.value);
@@ -619,7 +627,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
           lines.innerHTML='';
           if(!d.available){
             reason.textContent=d.reason||'Not available.'; reason.hidden=false;
-            totalRow.hidden=true; note.textContent=''; return;
+            totalRow.hidden=true; note.textContent=''; barTotal(null); return;
           }
           reason.hidden=true;
           d.lines.forEach(function(line){
@@ -630,6 +638,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
             row.appendChild(dt); row.appendChild(dd); lines.appendChild(row);
           });
           document.getElementById('quote_total').textContent=money(d.total);
+          barTotal(d.total);
           totalRow.hidden=false;
           note.textContent=d.per_night?money(d.per_night)+' a night average.':'';
         })
@@ -676,7 +685,10 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     if (tot.textContent !== tot.getAttribute('data-shown')) tot.setAttribute('data-base', num(tot.textContent));
     var base = Number(tot.getAttribute('data-base') || 0);
     var n = nights(), ad = Number(val('adults') || 0), tax = TAXR * ad * n;
-    if (theirs || !base || box.hidden || !n || !ad) { return; }
+    /* A quote that could not be had has no total to add to. The box says why; this put a tax
+       line under the reason, and a price for a stay nobody can book in the bar beside Pay & book. */
+    var refused = (document.getElementById('quote_total_row') || {}).hidden;
+    if (theirs || refused || !base || box.hidden || !n || !ad) { return; }
     var row = document.createElement('div'); row.setAttribute('data-tax-line', '');
     var dt = document.createElement('dt'); dt.textContent = 'Taxe de séjour ';
     var how = document.createElement('span'); how.className = 'g-opt';
