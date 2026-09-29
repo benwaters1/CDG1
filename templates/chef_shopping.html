@@ -39,15 +39,15 @@
 {% if shopping.short %}
 <h2 class="section-heading">The store says these are low</h2>
 <div class="table-wrap">
-  <table>
-    <thead><tr><th scope="col">What</th><th scope="col">On hand</th>
-      <th scope="col">Reorder at</th></tr></thead>
+  <table class="data-table">
+    <thead><tr><th scope="col">What</th><th scope="col" class="num">On hand</th>
+      <th scope="col" class="num">Reorder at</th></tr></thead>
     <tbody>
       {% for r in shopping.short %}
       <tr>
         <th scope="row">{{ r.name }}</th>
-        <td>{{ r.on_hand }}{% if r.unit %} {{ r.unit }}{% endif %}</td>
-        <td>{{ r.reorder_level }}{% if r.unit %} {{ r.unit }}{% endif %}</td>
+        <td class="num">{{ r.on_hand }}{% if r.unit %} {{ r.unit }}{% endif %}</td>
+        <td class="num">{{ r.reorder_level }}{% if r.unit %} {{ r.unit }}{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

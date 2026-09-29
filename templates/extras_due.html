@@ -23,7 +23,7 @@
 {% if due.overdue %}
 <h2 class="section-heading" style="margin-top:0;">Overdue — {{ due.overdue|length }}</h2>
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead><tr><th>What</th><th>Who</th><th>Was for</th><th></th></tr></thead>
     <tbody>
       {% for r in due.overdue %}
@@ -53,7 +53,7 @@
 <h2 class="section-heading" style="margin-top:{{ '24px' if due.overdue else '0' }};">
   Still to hand over — {{ pending|length }}</h2>
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead><tr><th>What</th><th>Who</th><th>When</th><th></th></tr></thead>
     <tbody>
       {# Overdue rows are in their own table above; repeating them here would
