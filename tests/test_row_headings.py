@@ -28,6 +28,16 @@ AND ONE PLACE THAT DECIDES. Once the stylesheet puts every heading on the
 left, an inline text-align:left on a th is a copy of the old workaround, and
 copies are how forty of them spread. None is left on a staff table.
 
+AND NO TABLE LEFT OUT OF IT. Every rule above is written for .data-table, and
+seventy tables on forty-four staff pages were a bare <table>: no padding, no
+rules, headers centred and bold, a figure column that was not one. The
+alignment sweep below never saw them either -- it reads data tables -- so a
+bare table was a hole in both halves of this file. Every table on a staff
+page now carries a class the stylesheet draws a table's cells through, read
+from the stylesheet rather than listed here, the way test_table_overflow
+reads its wrappers; a layout table (role="presentation", which is what the
+emails are built from) is the one thing that is not a table of anything.
+
 The public pages are not in this. They are drawn with gudanes.css alone and
 arrive from the design side as whole files.
 """
@@ -547,8 +557,14 @@ def _public_names():
               if 'extends "public_base.html"' in s or n == "public_base.html"}
     users = {}
     for n, s in srcs.items():
-        for inc in re.findall(r'\{%-?\s*(?:include|import|from)\s+"([^"]+)"', s):
-            users.setdefault(inc, set()).add(n)
+        # Either quote, and not in a comment. A hundred of the imports here
+        # are single-quoted ({% from '_marks.html' import ... %}), and the
+        # room comparison, a public partial, shows its own usage in a {# #}
+        # note -- read as written, it was its own caller and counted as staff.
+        code = re.sub(r"\{#.*?#\}", "", s, flags=re.S)
+        for inc in re.findall(r'\{%-?\s*(?:include|import|from)\s+["\']([^"\']+)["\']', code):
+            if inc != n:
+                users.setdefault(inc, set()).add(n)
     grew = True
     while grew:
         grew = False
@@ -581,6 +597,63 @@ def headings(src):
 def inline_left(tag):
     style = re.search(r'\bstyle="([^"]*)"', tag)
     return bool(style and re.search(r"text-align\s*:\s*(left|start)\b", style.group(1)))
+
+
+_ROW_PARTS = {"thead", "tbody", "tfoot", "tr"}
+_OPEN_TABLE = re.compile(r"<table\b[^>]*>")
+
+
+def table_classes(css):
+    """Every class a rule in the stylesheet draws a table's cells through.
+
+    Read from the rules, so a class counts while a rule still reaches a td or
+    th by way of it and stops counting the day that rule goes. The class is
+    the one on the table itself: walking back from the cell over the table's
+    own rows, `.data-table tfoot tr.total th` gives data-table (not total),
+    and in `.till-shell .data-table th` the till's shell is a page, not a
+    table, so it is not taken.
+    """
+    found = set()
+    for _media, group, body, _order in parse(css):
+        if not _declarations(body):
+            continue
+        for sel in _split(group):
+            try:
+                parts = [_parts(comp) for _comb, comp in _steps(sel)]
+            except _Unread:
+                continue
+            tags = [p[0].lower() if p and p[0][0].isalpha() else None for p in parts]
+            if tags[-1] not in ("td", "th"):
+                continue
+            i = len(parts) - 2
+            while i >= 0 and tags[i] in _ROW_PARTS:
+                i -= 1
+            if i >= 0:
+                found.update(p[1:] for p in parts[i] if p.startswith("."))
+    return found
+
+
+def _tame(src):
+    """The template with every < and > inside {{ }} and {% %} blanked out, at
+    the same length, so `class="data-table {{ 'x' if n > 7 }}"` does not end
+    the tag at the comparison. Positions and line numbers are unchanged."""
+    return re.sub(r"\{\{.*?\}\}|\{%.*?%\}",
+                  lambda m: m.group(0).replace("<", " ").replace(">", " "), src, flags=re.S)
+
+
+def undrawn_tables(src, drawn):
+    """(line, tag) for every table in one template the stylesheet does not draw."""
+    out = []
+    src = _tame(src)
+    for m in _OPEN_TABLE.finditer(src):
+        tag = m.group(0)
+        if re.search(r'\brole="presentation"', tag):
+            continue                    # laid out with, not a table of anything
+        cls = re.search(r'\bclass="([^"]*)"', tag)
+        if cls and set(cls.group(1).split()) & drawn:
+            continue
+        out.append((src.count("\n", 0, m.start()) + 1, tag))
+    return out
 
 
 def run():
@@ -654,8 +727,49 @@ def run():
         s.check(label, ok, detail="expected exactly %s to fail; failed: %s" % (
             questions, [q for q, v in got.items() if not v]))
 
-    s.section("No heading in a staff table sets its own alignment")
+    s.section("Every table on a staff page is one the stylesheet draws")
     srcs, public = _public_names()
+    try:
+        drawn = table_classes(css)
+    except ValueError:
+        drawn = set()                   # reported by the first section already
+    s.check("the stylesheet draws a table's cells through %s"
+            % (", ".join(sorted(drawn)) or "nothing"), "data-table" in drawn,
+            detail="read from its rules: without data-table, the rules above reach no table")
+    swept, pages, undrawn = 0, 0, []
+    for name in sorted(srcs):
+        if name in public:
+            continue
+        found = _OPEN_TABLE.findall(srcs[name])
+        swept += len(found)
+        pages += bool(found)
+        undrawn += ["%s:%d" % (name, line) for line, _tag in undrawn_tables(srcs[name], drawn)]
+    # Counted, like the headings below, so a sweep that stopped finding
+    # tables would say so rather than pass on nothing.
+    s.check("the sweep reads %d tables on %d staff templates" % (swept, pages),
+            swept > 150 and pages > 80,
+            detail="it found too few to be reading the templates at all")
+    s.check("every one carries a class the stylesheet draws, so none is left to the browser",
+            not undrawn,
+            detail='%d, e.g. %s -- a bare <table> gets no padding, no rules and centred bold '
+                   'headings; class="data-table" is the one every staff table uses'
+                   % (len(undrawn), undrawn[:4]))
+    probe = ('<table>\n<table class="data-table">\n<table class="nobody-draws-this">\n'
+             '<table role="presentation" width="100%">\n'
+             '<table class="data-table {{ \'is-wide\' if rows|length > 7 }}">\n'
+             '<table style="width:100%; border-collapse:collapse;">')
+    s.check("and the sweep can tell the difference",
+            [line for line, _t in undrawn_tables(probe, drawn)] == [1, 3, 6]
+            and table_classes(".data-table{ width:100%; } .data-table tbody tr:hover{ color:red; }"
+                              " .till-shell .other-table th{ padding:0; }"
+                              " .ledger tfoot tr.total td{ font-weight:700; }")
+            == {"other-table", "ledger"},
+            detail="a bare table, a class nobody draws and a table styled by hand must be "
+                   "caught, a data table and a layout table must not; a rule that never "
+                   "reaches a cell must not count, and the class taken must be the "
+                   "table's own, not the page's or the row's")
+
+    s.section("No heading in a staff table sets its own alignment")
     seen, templates, offenders = 0, 0, []
     for name in sorted(srcs):
         if name in public:

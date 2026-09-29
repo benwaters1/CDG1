@@ -58,10 +58,10 @@
 <h2>The quote</h2>
 {% if quotes %}
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead>
       <tr>
-        <th scope="col">Version</th><th scope="col">Total</th>
+        <th scope="col">Version</th><th scope="col" class="num">Total</th>
         <th scope="col">Where it stands</th><th scope="col">Their link</th>
         <th scope="col"></th>
       </tr>
@@ -70,7 +70,7 @@
       {% for q in quotes %}
       <tr>
         <th scope="row">{{ q['version'] }}<br><span class="upload-hint">{{ q['created_at']|house_day }}</span></th>
-        <td>&euro;{{ '%.2f'|format((q['quoted_price'] or 0) - (q['discount_amount'] or 0)) }}
+        <td class="num">&euro;{{ '%.2f'|format((q['quoted_price'] or 0) - (q['discount_amount'] or 0)) }}
           {%- if q['deposit_amount'] %}<br><span class="upload-hint">&euro;{{ '%.2f'|format(q['deposit_amount']) }} deposit</span>{% endif %}
         </td>
         <td>
@@ -159,7 +159,7 @@
 <h2>The date, while they decide</h2>
 {% if holds %}
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead>
       <tr><th scope="col">Dates</th><th scope="col">Held until</th>
         <th scope="col">Where it stands</th><th scope="col"></th></tr>
@@ -218,16 +218,16 @@
 <h2>How it will be paid for</h2>
 {% if schedule and schedule.instalments %}
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead>
-      <tr><th scope="col">Stage</th><th scope="col">Amount</th>
+      <tr><th scope="col">Stage</th><th scope="col" class="num">Amount</th>
         <th scope="col">Due</th><th scope="col">Where it stands</th><th scope="col"></th></tr>
     </thead>
     <tbody>
       {% for i in schedule.instalments %}
       <tr>
         <th scope="row">{{ i.row['label'] or 'Instalment' }}</th>
-        <td>&euro;{{ '%.2f'|format(i.amount) }}</td>
+        <td class="num">&euro;{{ '%.2f'|format(i.amount) }}</td>
         <td>{{ i.row['due_date'] }}</td>
         <td>
           {# Worked out from what has actually been received, oldest first.

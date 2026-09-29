@@ -110,35 +110,33 @@
   <span><span class="bar-chart-swatch bar-chart-swatch-expenses"></span>Expenses</span>
 </div>
 
-<div style="overflow-x:auto;">
-  <div class="table-wrap">
-<table style="width:100%; border-collapse:collapse; font-size:13px;">
+<div class="table-wrap">
+  <table class="data-table">
     <thead>
-      <tr style="border-bottom:1px solid var(--parchment-line);">
-        <th style="text-align:left; padding:8px 6px;">Month</th>
-        <th style="text-align:right; padding:8px 6px;">Occupancy</th>
-        <th style="text-align:right; padding:8px 6px;">Revenue</th>
-        <th style="text-align:right; padding:8px 6px;">Staff exp.</th>
-        <th style="text-align:right; padding:8px 6px;">Supplier exp.</th>
-        <th style="text-align:right; padding:8px 6px;">Labour est.</th>
-        <th style="text-align:right; padding:8px 6px;">Net</th>
+      <tr>
+        <th>Month</th>
+        <th class="num">Occupancy</th>
+        <th class="num">Revenue</th>
+        <th class="num">Staff exp.</th>
+        <th class="num">Supplier exp.</th>
+        <th class="num">Labour est.</th>
+        <th class="num">Net</th>
       </tr>
     </thead>
     <tbody>
       {% for m in months|reverse %}
-      <tr style="border-bottom:1px solid var(--parchment-line);">
-        <td style="padding:8px 6px;">{{ m.month.strftime('%B %Y') }}</td>
-        <td style="text-align:right; padding:8px 6px;">{{ m.occupancy_rate }}%</td>
-        <td style="text-align:right; padding:8px 6px;">€{{ '%.0f'|format(m.revenue) }}</td>
-        <td style="text-align:right; padding:8px 6px;">€{{ '%.0f'|format(m.staff_expenses) }}</td>
-        <td style="text-align:right; padding:8px 6px;">€{{ '%.0f'|format(m.supplier_expenses) }}</td>
-        <td style="text-align:right; padding:8px 6px;">{% if m.labour_cost is not none %}€{{ '%.0f'|format(m.labour_cost) }}{% else %}—{% endif %}</td>
-        <td style="text-align:right; padding:8px 6px; color:{{ 'var(--danger)' if m.net < 0 else 'inherit' }};">€{{ '%.0f'|format(m.net) }}</td>
+      <tr>
+        <td>{{ m.month.strftime('%B %Y') }}</td>
+        <td class="num">{{ m.occupancy_rate }}%</td>
+        <td class="num">€{{ '%.0f'|format(m.revenue) }}</td>
+        <td class="num">€{{ '%.0f'|format(m.staff_expenses) }}</td>
+        <td class="num">€{{ '%.0f'|format(m.supplier_expenses) }}</td>
+        <td class="num">{% if m.labour_cost is not none %}€{{ '%.0f'|format(m.labour_cost) }}{% else %}—{% endif %}</td>
+        <td class="num" style="color:{{ 'var(--danger)' if m.net < 0 else 'inherit' }};">€{{ '%.0f'|format(m.net) }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-</div>
 </div>
 
 <h2 class="section-heading">{{ current.month.strftime('%B') }} revenue by room</h2>
