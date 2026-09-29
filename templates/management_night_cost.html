@@ -34,7 +34,7 @@
 <div class="detail-card">
   <h2 class="section-heading">Where it goes</h2>
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead>
         <tr><th>What</th><th class="num">Over the window</th><th class="num">Per night sold</th><th>Behaves how</th></tr>
       </thead>
@@ -59,7 +59,7 @@
           <td class="num">{% if cost['consumed_per_night'] is not none %}&euro;{{ '%.2f'|format(cost['consumed_per_night']) }}{% else %}&mdash;{% endif %}</td>
           <td>Stock that went out of the door. The only genuinely per-night part.</td>
         </tr>
-        <tr>
+        <tr class="total">
           <th scope="row"><strong>All of it</strong></th>
           <td class="num"><strong>&euro;{{ '{:,.2f}'.format(cost['total']) }}</strong></td>
           <td class="num"><strong>{% if cost['per_night'] is not none %}&euro;{{ '%.2f'|format(cost['per_night']) }}{% else %}&mdash;{% endif %}</strong></td>

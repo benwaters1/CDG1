@@ -38,7 +38,7 @@
 <div class="detail-card">
   <h2 class="section-heading">{{ 'Every claim' if is_owner else 'Your claims' }}</h2>
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead>
         <tr>{% if is_owner %}<th>Who</th>{% endif %}<th>When</th><th>Journey</th>
             <th class="num">km</th><th class="num">Worth</th><th>State</th></tr>
@@ -46,7 +46,7 @@
       <tbody>
         {% for c in claims %}
         <tr>
-          {% if is_owner %}<td>{{ c['who'] or '&mdash;' }}</td>{% endif %}
+          {% if is_owner %}<td>{{ c['who'] or '—' }}</td>{% endif %}
           <td>{{ c['travelled_on'] }}</td>
           <th scope="row">
             {{ c['from_place'] or '?' }} &rarr; {{ c['to_place'] or '?' }}

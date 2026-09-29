@@ -46,18 +46,18 @@
 </div>
 
 <div class="table-wrap">
-  <table>
-    <thead><tr><th scope="col">What</th><th scope="col">Amount</th></tr></thead>
+  <table class="data-table">
+    <thead><tr><th scope="col">What</th><th scope="col" class="num">Amount</th></tr></thead>
     <tbody>
       {% for line in data.lines %}
       <tr>
         <th scope="row">{{ line.label }}</th>
-        <td>{% if line.amount < 0 %}&minus;{% endif %}&euro;{{ '%.2f'|format(line.amount|abs) }}</td>
+        <td class="num">{% if line.amount < 0 %}&minus;{% endif %}&euro;{{ '%.2f'|format(line.amount|abs) }}</td>
       </tr>
       {% endfor %}
-      <tr>
+      <tr class="total">
         <th scope="row"><strong>What it kept</strong></th>
-        <td><strong>&euro;{{ '%.2f'|format(data.margin) }}</strong></td>
+        <td class="num"><strong>&euro;{{ '%.2f'|format(data.margin) }}</strong></td>
       </tr>
     </tbody>
   </table>
@@ -80,15 +80,15 @@
 {% if data.labour and data.labour.people %}
 <h2>The people on it</h2>
 <div class="table-wrap">
-  <table>
-    <thead><tr><th scope="col">Who</th><th scope="col">Hours</th>
-      <th scope="col">Cost</th><th scope="col">From</th></tr></thead>
+  <table class="data-table">
+    <thead><tr><th scope="col">Who</th><th scope="col" class="num">Hours</th>
+      <th scope="col" class="num">Cost</th><th scope="col">From</th></tr></thead>
     <tbody>
       {% for row in data.labour.people %}
       <tr>
         <th scope="row">{{ row.name }}</th>
-        <td>{{ row.hours }}</td>
-        <td>{% if row.gross is not none %}&euro;{{ '%.2f'|format(row.gross) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ row.hours }}</td>
+        <td class="num">{% if row.gross is not none %}&euro;{{ '%.2f'|format(row.gross) }}{% else %}&mdash;{% endif %}</td>
         <td>{{ row.source }}</td>
       </tr>
       {% endfor %}

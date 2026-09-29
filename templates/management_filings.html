@@ -57,7 +57,7 @@
     your home page before it is due.</p>
   {% else %}
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead><tr><th>What</th><th>To whom</th><th>How often</th><th>Next due</th><th>Warns</th><th></th></tr></thead>
       <tbody>
         {% for r in rows %}
@@ -114,7 +114,7 @@
   <p class="pay-disclaimer" style="margin-top:-6px;">What was filed and when, rather than a tick.
     A recurring obligation marked done is ambiguous the moment the next one falls due.</p>
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead><tr><th>What</th><th>Covering</th><th>Filed</th><th class="num">Amount</th><th>Reference</th></tr></thead>
       <tbody>
         {% for f in recent %}
