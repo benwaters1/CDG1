@@ -39409,7 +39409,9 @@ def guest_detail(guest_id):
              if record["owed"] < -0.005 else
              overview_cell("Still owed", euro(record["owed"]),
                            alert=record["owed"] > 0.005)),
-            overview_cell("Known since", house_date_iso(record["first_seen"]) or "\u2014"),
+            # Already the house's day: reading it again as a UTC moment only
+            # came out right because the house is east of Greenwich.
+            overview_cell("Known since", record["first_seen"] or "\u2014"),
         ]
     # For the rebook box: the rooms it could be, and how long they usually
     # stay so the dates come pre-shaped rather than blank.
@@ -69458,6 +69460,39 @@ def guest_record(conn, guest_id):
                 ",".join("?" * len(stays)) or "NULL"),
         tuple(b["id"] for b in stays)).fetchall() if stays else []
 
+    # KNOWN SINCE: the day the house first heard of them. It was the earliest
+    # ARRIVAL on any booking at all, so a first-timer booked six weeks ahead
+    # was "known since" a day that had not come, and a declined request's
+    # dates -- days they never spent here -- counted as if they had.
+    #
+    # When somebody first got in touch is on the record: the day each of
+    # their requests was MADE -- a stay of any outcome (a declined request is
+    # still them writing to us), a table, a workshop, an event -- and the day
+    # their profile, or any profile merged into it, was opened. The profile
+    # alone would not do: one is only opened when a stay is confirmed, so it
+    # comes after the request that led to it. Not the first stay made, either:
+    # "Stays" beside it already says whether they have come, and somebody who
+    # has only dined, or only booked, is still somebody the house knows.
+    #
+    # One more piece of evidence, for a stay written down after it happened:
+    # a confirmed stay whose arrival day has come means they were known by
+    # then at the latest. Only that one -- a day still ahead, or a stay that
+    # never happened, proves nothing.
+    #
+    # Each moment read as the house's day (house_date), never a slice of the
+    # UTC stamp, which files a request made after midnight under yesterday.
+    ids = guest_profile_ids(conn, guest_id)
+    heard = [house_date(r["created_at"]) for r in conn.execute(
+        f"SELECT created_at FROM guests WHERE id IN ({','.join('?' * len(ids))})",
+        ids).fetchall()]
+    heard += [house_date(x["created_at"])
+              for x in list(stays) + list(dinners) + list(workshops) + list(events)]
+    today = house_today()
+    heard += [parse_date(b["arrival_date"]) for b in stays
+              if b["status"] == "confirmed" and parse_date(b["arrival_date"])
+              and parse_date(b["arrival_date"]) <= today]
+    known_since = min((d for d in heard if d), default=None)
+
     # What they have said about being written to. Kept in two places -- the
     # newsletter's own list, and the opt-outs every campaign honours -- and
     # shown on neither the profile nor anywhere else a person looks before
@@ -69512,8 +69547,8 @@ def guest_record(conn, guest_id):
                     and parse_date(b["arrival_date"]) and parse_date(b["departure_date"])
                     else 0))
             for b in stays if b["status"] == "confirmed"),
-        "first_seen": min((b["arrival_date"] for b in stays if b["arrival_date"]),
-                          default=None),
+        # The house's day, as an ISO date (see known_since above).
+        "first_seen": known_since.isoformat() if known_since else None,
         "last_seen": max((b["departure_date"] for b in stays if b["departure_date"]),
                          default=None),
     }
