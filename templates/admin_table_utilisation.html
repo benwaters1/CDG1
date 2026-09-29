@@ -40,7 +40,7 @@
 
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">{{ data.seats or '&mdash;' }}</span>
+    <span class="stat-tile-value">{{ data.seats or '—' }}</span>
     <span class="stat-tile-label">Seats in the room</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{% if data.average_fill is not none %}{{ data.average_fill }}%{% else %}&mdash;{% endif %}</span>

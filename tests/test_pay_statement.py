@@ -310,6 +310,28 @@ def run():
     s.check("it is honest about it", "nothing to itemise" in empty,
             detail="a confident zero on a pay document is worse than a blank")
 
+    s.section("Hours with no wage behind them are still hours")
+    # The page had two branches: a costed row, or "has no clocked hours". A
+    # person who clocked hours and had no wage on file got the second -- the
+    # owner was told somebody waiting to be paid had not worked at all.
+    conn = db()
+    conn.execute(
+        """INSERT INTO users (name, email, password_hash, role, status, created_at)
+           VALUES (?, 'zzps.nowage@example.invalid', 'x', 'employee', 'active', ?)""",
+        (f"{TAG} NoWage", datetime.now(timezone.utc).isoformat()))
+    bare = conn.execute("SELECT * FROM users WHERE name = ?", (f"{TAG} NoWage",)).fetchone()
+    _worked(conn, bare["id"], date(2031, 2, 3), 9, 8)
+    _worked(conn, bare["id"], date(2031, 2, 4), 9, 4)
+    conn.close()
+    page = oc.get(f"/admin/payroll/statement/{bare['id']}/2031/2").get_data(as_text=True)
+    said = " ".join(page.split())
+    s.check("it does not say they clocked nothing", "has no clocked hours" not in said,
+            detail="twelve clocked hours were reported to the owner as none")
+    s.check("it says what they worked", "clocked 12.0 hours over 2 shifts" in said,
+            detail=said[said.find("NoWage"):][:240])
+    s.check("and why none of it is priced", "no wage on file" in said,
+            detail=said[said.find("NoWage"):][:240])
+
     s.section("Guards")
     s.check("an unknown person is a 404",
             oc.get(f"/admin/payroll/statement/999999/{year}/{month}").status_code == 404)

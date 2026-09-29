@@ -1,0 +1,39 @@
+{# What has been paid on one booking, payment by payment, with the card each
+   came from; every refund on a line of its own; and what is left. #}
+<p class="g-mb-label" style="margin-top:var(--s4);">Payments</p>
+<div class="table-wrap">
+  <table class="data-table statement-lines">
+  <thead><tr><th>Date</th><th>Description</th><th>Method</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+    {% for x in v.payments %}
+    <tr>
+      <td>{{ x.day|date_short }}</td>
+      <td>{{ x.note or 'Payment' }}</td>
+      <td>{{ x.method or '' }}{% if x.card_words %}<br><span class="g-hint">{{ x.card_words }}</span>{% endif %}</td>
+      <td class="num">€{{ '{:,.2f}'.format(x.paid) }}</td>
+    </tr>
+    {% endfor %}
+    {% for x in v.refunds %}
+    <tr>
+      <td>{{ x.day|date_short }}</td>
+      <td>{{ x.what }}</td>
+      <td>{{ x.method or '' }}{% if x.card_words %}<br><span class="g-hint">{{ x.card_words }}</span>{% endif %}</td>
+      <td class="num">{% if x.back < 0 %}+€{{ '{:,.2f}'.format(-x.back) }}{% else %}−€{{ '{:,.2f}'.format(x.back) }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+    {% if not v.payments and not v.refunds %}
+    <tr><td colspan="4">Nothing received yet.</td></tr>
+    {% endif %}
+  </tbody>
+  <tfoot>
+    <tr><th scope="row" colspan="3">Total paid</th><td class="num">€{{ '{:,.2f}'.format(v.total_paid) }}</td></tr>
+    {# Unconditional: a statement with nothing paid on it still has a bottom line. #}
+    <tr><th scope="row" colspan="3"><strong>{{ 'Balance due' if v.owed else 'Settled' }}</strong></th>
+        <td class="num"><strong>€{{ '{:,.2f}'.format(v.owed) }}</strong></td></tr>
+    {% if v.credit %}
+    <tr><th scope="row" colspan="3">In credit, and yours: given back on request</th>
+        <td class="num">€{{ '{:,.2f}'.format(v.credit) }}</td></tr>
+    {% endif %}
+  </tfoot>
+  </table>
+</div>

@@ -78,7 +78,8 @@ def _senders_from_source():
     # Senders that hand over a context built elsewhere.
     for name in ("event_email_context", "pos_receipt_email_context",
                  "booking_email_context", "workshop_email_context",
-                 "restaurant_email_context"):
+                 "restaurant_email_context", "workshop_payment_context",
+                 "event_payment_context"):
         fn = re.search(r"def " + name + r"\(", src)
         if not fn:
             continue

@@ -21,7 +21,7 @@
     invoiced quantity beside it only when the two differ.</p>
   {% else %}
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead><tr><th>When</th><th>What</th><th>Supplier</th><th class="num">Arrived</th>
                  <th class="num">Charged</th><th class="num">Worth</th></tr></thead>
       <tbody>
@@ -29,7 +29,7 @@
         <tr class="{{ 'row-alert' if d.short }}">
           <td>{{ d.row['created_at']|house_day }}</td>
           <th scope="row">{{ d.row['name'] }}</th>
-          <td>{{ d.row['vendor_name'] or '&mdash;' }}
+          <td>{{ d.row['vendor_name'] or '—' }}
             {% if d.row['invoice_number'] %}<span class="upload-hint">{{ d.row['invoice_number'] }}</span>{% endif %}</td>
           <td class="num">{{ '%g'|format(d.row['delta']) }} {{ d.row['unit'] }}</td>
           <td class="num">{{ '%g'|format(d.row['invoiced_quantity']) }} {{ d.row['unit'] }}</td>
@@ -55,14 +55,14 @@
     twice from the same supplier yet.</p>
   {% else %}
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead><tr><th>What</th><th>Supplier</th><th class="num">Was</th><th class="num">Now</th>
                  <th class="num">Move</th><th>Since</th></tr></thead>
       <tbody>
         {% for r in rises %}
         <tr class="{{ 'row-alert' if r.up }}">
           <th scope="row">{{ r.name }}</th>
-          <td>{{ r.vendor or '&mdash;' }}</td>
+          <td>{{ r.vendor or '—' }}</td>
           <td class="num">&euro;{{ '%g'|format(r.was) }}</td>
           <td class="num">&euro;{{ '%g'|format(r.now) }}</td>
           <td class="num">
@@ -100,14 +100,14 @@
 
   {% if statement %}
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead><tr><th>Invoice date</th><th>Number</th><th>What</th><th class="num">Amount</th><th>State</th></tr></thead>
       <tbody>
         {% for r in statement.rows %}
         <tr>
           <td>{{ r['invoice_date'][:10] if r['invoice_date'] else (r['submitted_at']|house_day) }}</td>
-          <td>{{ r['invoice_number'] or '&mdash;' }}</td>
-          <td>{{ r['description'] or '&mdash;' }}</td>
+          <td>{{ r['invoice_number'] or '—' }}</td>
+          <td>{{ r['description'] or '—' }}</td>
           <td class="num">&euro;{{ '%.2f'|format(r['amount'] or 0) }}</td>
           <td>{{ r['status'] }}</td>
         </tr>

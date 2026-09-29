@@ -42,6 +42,8 @@ def _cleanup(conn):
     conn.execute("DELETE FROM vehicle_transfers WHERE guest_name LIKE ?",
                  (TAG + "%",))
     conn.execute("DELETE FROM vehicles WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM room_issues WHERE title LIKE ?", (TAG + "%",))
     conn.commit()
 
 
@@ -256,6 +258,77 @@ def run():
             m.house_date_iso("") == "" and m.house_date_iso(None) == "",
             detail="a blank stamp must not become today")
     s.check("nor is rubbish", m.house_date_iso("not a stamp") == "")
+
+    s.section("And a date formatter handed a moment prints the house's day")
+    # date_short, date_human and date_range read a DATE and handed anything
+    # else back untouched, so a stored moment reached the page as the raw
+    # stamp. A full run found three templates doing it -- Started on My Hours,
+    # a code's last use on what discounts cost, a supplier's last invoice --
+    # and reading found a fourth, the day a room fault was reported. Mended in
+    # the formatter, so the next template written this way is right as well.
+    f = m.app.jinja_env.filters
+    date_range = m.app.jinja_env.globals["date_range"]
+    after_midnight = "2026-09-04T22:30:00+00:00"   # 00:30 on the 5th, here
+    s.check("date_short gives the house's day, not the stamp",
+            f["date_short"](after_midnight) == m.format_date_short("2026-09-05"),
+            detail=f"{f['date_short'](after_midnight)!r}")
+    s.check("date_human too",
+            f["date_human"](after_midnight) == m.format_date_human("2026-09-05"),
+            detail=f"{f['date_human'](after_midnight)!r}")
+    s.check("and date_range, at both ends",
+            date_range(after_midnight, "2026-09-07T22:30:00+00:00")
+            == date_range("2026-09-05", "2026-09-08"),
+            detail=f"{date_range(after_midnight, '2026-09-07T22:30:00+00:00')!r}")
+    s.check("a stamp stored without a zone is read as UTC, as house_date reads it",
+            f["date_short"]("2026-09-04 22:30:00") == m.format_date_short("2026-09-05"),
+            detail=f"{f['date_short']('2026-09-04 22:30:00')!r} -- SQLite's own "
+                   "datetime('now') writes it this way")
+    s.check("a date is still that date",
+            f["date_short"]("2026-09-04") == "4 September 2026",
+            detail=f"{f['date_short']('2026-09-04')!r}")
+    s.check("nothing is still nothing",
+            f["date_short"]("") == "" and f["date_short"](None) is None)
+    s.check("and rubbish is handed back rather than turned into a day",
+            f["date_short"]("soon") == "soon", detail=f"{f['date_short']('soon')!r}")
+
+    s.section("And a page that hands one over shows the day")
+    # Rooms sold with a fault: "reported" is room_issues.created_at, a moment,
+    # and the page printed it raw. A fault logged at half past midnight is the
+    # house's today, not UTC's yesterday.
+    room = _harness.ensure_room()
+    logged = m.datetime.combine(today, m.datetime.min.time().replace(minute=30)
+                                ).replace(tzinfo=m.LOCAL_TZ).astimezone(m.timezone.utc)
+    conn.execute(
+        """INSERT INTO room_issues (room_id, title, description, status, created_at)
+           VALUES (?, ?, 'found on the turnaround', 'open', ?)""",
+        (room["id"], TAG + " shutter jammed", logged.isoformat()))
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+           guest_email, arrival_date, departure_date, party_size, status,
+           total_price, created_at)
+           VALUES (?, ?, ?, ?, 'g@example.invalid', ?, ?, 2, 'confirmed', 600, ?)""",
+        (room["id"], TAG + "FAULT", TAG + "faulttok", TAG + " Arriving",
+         (today + timedelta(days=5)).isoformat(), (today + timedelta(days=7)).isoformat(),
+         now))
+    conn.commit()
+    try:
+        page = oc.get("/admin/room-faults")
+        text = _harness.visible_text(page.get_data(as_text=True))
+        # The row in the table, which is where "reported" is written. The
+        # title is named once already, in the warning above it.
+        at = text.find(TAG + " shutter jammed found on the turnaround")
+        near = text[at:at + 220] if at >= 0 else ""
+        s.check("the fault is on the page", at >= 0, page)
+        s.check("reported on the house's day, as a day",
+                ("reported " + m.format_date_short(today.isoformat())) in near,
+                detail=near[:160])
+        s.check("not as the stamp it was stored as",
+                logged.isoformat()[:10] + "T" not in near and "+00:00" not in near,
+                detail=near[:160])
+    finally:
+        conn.execute("DELETE FROM bookings WHERE reference_code = ?", (TAG + "FAULT",))
+        conn.execute("DELETE FROM room_issues WHERE title LIKE ?", (TAG + "%",))
+        conn.commit()
 
     _cleanup(conn)
     conn.close()
