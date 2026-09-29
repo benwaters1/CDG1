@@ -40,18 +40,23 @@ CANDIDATES = [
     shutil.which("chrome") or "",
 ]
 
-# First reload succeeds with the page as it was served; every one after fails,
-# as Starlink does. Then, once the stamp has had its chance to go stale, the
-# browser reports what it drew into the page for the dump to carry out.
+# The wall's own reload is a fetch of the page's own address. The first one
+# succeeds with the page exactly as the server sent it; every one after fails,
+# as Starlink does. Anything else the shell fetches -- the notification count
+# is polled every thirty seconds -- is refused, and is not counted: it took the
+# one good answer the first time this was written, the wall never reloaded,
+# and a stamp held from the first load passed as if it had survived one.
+# Then, once the stamp has had its chance to go stale, the browser reports
+# what it drew into the page for the dump to carry out.
 PROBE = """<script>
 (function(){
-  var served = null, calls = 0;
-  window.fetch = function(){
+  var served = %s, calls = 0;
+  window.fetch = function(url){
+    if (String(url) !== location.href) return Promise.reject(new Error('not this test'));
     calls++;
     if (calls === 1) return Promise.resolve({ok:true, text:function(){ return Promise.resolve(served); }});
     return Promise.reject(new Error('the connection dropped'));
   };
-  document.addEventListener('DOMContentLoaded', function(){ served = document.documentElement.outerHTML; });
   function look(){
     var cs = function(sel, prop){ var el = document.querySelector(sel);
       return el ? getComputedStyle(el)[prop] : null; };
@@ -92,7 +97,12 @@ def _standalone(html):
     css = open(os.path.join(ROOT, "static", "style.css"), encoding="utf-8").read()
     html = re.sub(r'<link[^>]*href="/static/style\.css[^"]*"[^>]*>', lambda m: "<style>%s</style>" % css, html)
     html = re.sub(r'<script[^>]*src="[^"]*"[^>]*></script>', "", html)
-    return html.replace("<head>", "<head>" + PROBE, 1)
+    # The reply is the page as served, before any script has touched it: a
+    # stamp copied out of the live page already has a time written in, and
+    # would hide exactly the blank this is here to see. </ is escaped so the
+    # string cannot close the script it sits in.
+    served = json.dumps(html).replace("</", "<\\/")
+    return html.replace("<head>", "<head>" + (PROBE % served), 1)
 
 
 def _run_in_chrome(chrome, html, width):
