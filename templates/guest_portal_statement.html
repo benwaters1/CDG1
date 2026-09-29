@@ -42,7 +42,7 @@
   <p class="g-p">
     {{ b.what }}: €{{ '{:,.2f}'.format(b.net) }} to pay.
     {% if b.category == 'room' %}<a href="{{ url_for('manage_booking', manage_token=b.manage_token) }}" class="g-btn g-btn--sm">{{ t('Pay for this stay') }}</a>
-    {% elif b.category == 'workshop' %}<a href="{{ url_for('workshop_manage', manage_token=b.manage_token) }}" class="g-btn g-btn--sm">{{ t('Pay for this atelier') }}</a>
+    {% elif b.category == 'workshop' %}<a href="{{ url_for('workshop_manage', manage_token=b.manage_token) }}" class="g-btn g-btn--sm">{{ t('Pay for this workshop') }}</a>
     {% elif b.category == 'event' %}<a href="{{ url_for('event_manage', manage_token=b.manage_token) }}" class="g-btn g-btn--sm">{{ t('Pay towards this event') }}</a>{% endif %}
   </p>
   {% endfor %}

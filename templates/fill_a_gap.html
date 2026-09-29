@@ -66,7 +66,11 @@
 <p class="page-intro">
   Ranked, and each row says WHY. A name with no reason beside it is one somebody
   either trusts blindly or ignores &mdash; and the reasons are facts about that
-  guest rather than an average of everybody.
+  guest rather than an average of everybody. Every one is read from stays they
+  have already made, and &ldquo;last here&rdquo; counts from the day the latest
+  of those began. A stay still to come is a booking, not a visit, so nobody
+  already coming back is on this list{% if chosen.coming %}: the guests who
+  would otherwise have been are named below{% endif %}.
 </p>
 <div class="table-wrap">
   <table class="data-table">
@@ -107,11 +111,50 @@
 </p>
 {% else %}
 <p class="empty-state">
+  {% if chosen.coming %}
+  Nobody stands out who is not already coming back. The guests who would have
+  are named below: each has a stay booked or is in the house now, and an offer of
+  other nights is one they have no need of.
+  {% else %}
   Nobody stands out for these nights. That is a real answer &mdash; it means
   nobody on the list is overdue, has come at this time of year, or usually takes
   a stay this long, and a note sent anyway is a note read less carefully next
   time.
+  {% endif %}
 </p>
+{% endif %}
+
+{# Left off the list, and said so. A regular the owner expected to see, missing
+   without a word, reads as the page not knowing them; this says it does, and
+   why they are not being offered these nights. Only guests who would otherwise
+   have been listed, so the few who matter are not buried under every booking. #}
+{% if chosen.coming %}
+<h2 class="section-heading">Already coming back, so not offered these nights</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th scope="col">Guest</th><th scope="col">Would have fitted</th>
+        <th scope="col">Why not offered</th><th scope="col"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in chosen.coming %}
+      <tr>
+        <th scope="row">{{ c.name or c.email }}</th>
+        <td><span class="upload-hint">{{ c.reasons|join('; ') }}</span></td>
+        <td>
+          {% if c.here_now %}<span class="mini-status status-current">here now</span>
+          {%- if c.until %} until {{ c.until|date_short }}{% endif %}{% endif %}
+          {% if c.next %}<span class="mini-status status-upcoming">booked</span>
+          from {{ c.next|date_short }}{% endif %}
+        </td>
+        <td><a class="small-link" href="{{ url_for('guest_booking_history', email=c.email) }}">Everything about them</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endif %}
 {% endif %}
 
