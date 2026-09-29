@@ -46,7 +46,7 @@
       <tbody>
         {% for c in claims %}
         <tr>
-          {% if is_owner %}<td>{{ c['who'] or '&mdash;' }}</td>{% endif %}
+          {% if is_owner %}<td>{{ c['who'] or '—' }}</td>{% endif %}
           <td>{{ c['travelled_on'] }}</td>
           <th scope="row">
             {{ c['from_place'] or '?' }} &rarr; {{ c['to_place'] or '?' }}

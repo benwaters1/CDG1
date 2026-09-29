@@ -39,7 +39,7 @@
     <tbody>
       {% for r in gaps.runs %}
       <tr>
-        <th scope="row">{{ r.room['name'] if r.room else '&mdash;' }}</th>
+        <th scope="row">{{ r.room['name'] if r.room else '—' }}</th>
         <td>{{ r['from'] }}</td>
         <td>{{ r['to'] }}</td>
         <td class="num">{{ r.nights }}</td>
