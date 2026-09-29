@@ -6,6 +6,7 @@ supplier, a guest with no record is not a guest with no needs, no linen
 recorded is not no linen held, and somebody asking for a night with rooms
 still free was not turned away.
 """
+import re
 from datetime import timedelta
 
 from _harness import Suite, clients, db, house_today
@@ -87,6 +88,28 @@ def run():
             detail=str(by_name.get(TAG + " Silent", {})))
     s.check("and it appears in the unbilled list",
             any(r["name"] == TAG + " Silent" for r in sc["unbilled"]))
+
+    # The Items column, read off the page. Each row is a dict, and Jinja tries
+    # the attribute before the key -- so `r.items` was the dict's own .items
+    # method, and every supplier's count printed as "<built-in method items of
+    # dict object at 0x...>". The function was right; only the page was wrong.
+    page = oc.get("/management/suppliers-scorecard").get_data(as_text=True)
+
+    def items_cell(name):
+        row = re.search(r'<th scope="row">\s*' + re.escape(name) + r'\b(.*?)</tr>',
+                        page, re.S)
+        cells = re.findall(r'<td class="num">(.*?)</td>', row.group(1), re.S) if row else []
+        # Spend, Invoices, Items.
+        return cells[2].strip() if len(cells) >= 3 else None
+
+    s.check("the page counts the stock a supplier provides",
+            items_cell(TAG + " Silent") == "1", detail=repr(items_cell(TAG + " Silent")))
+    s.check("and a supplier who provides none shows nought, not a blank",
+            items_cell(TAG + " Paid") == "0", detail=repr(items_cell(TAG + " Paid")))
+    s.check("no row prints a dict method in place of a figure",
+            "built-in method" not in page,
+            detail=page[page.find("built-in method") - 60:][:140]
+            if "built-in method" in page else "")
 
     # ------------------------------------------------------------ tenure
     s.section("How long people have been here")
