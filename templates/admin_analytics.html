@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Website Visitors{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Website visitors</h1>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Counted by the house itself: no cookie, no internet address kept, and no way to follow
+  anybody from one day to the next &mdash; so a visit is one browser on one day. The house's
+  own people, robots, and anybody who asks not to be tracked are not counted. Kept thirteen months.
+</p>
+
+{% with endpoint = 'website_analytics' %}{% include "_period_selector.html" %}{% endwith %}
+
+{# The same band every section opens on; each figure beside its change on the period before. #}
+{% include "_overview_band.html" %}
+
+{% if days|length > 1 %}
+{# Visits a day across the whole period, a day nobody came drawn as nobody; the
+   same figures in a table beneath for anybody the drawing does not reach. #}
+<figure style="margin:var(--s4,16px) 0;">
+  <svg viewBox="0 0 {{ days|length * 14 }} 60" preserveAspectRatio="none" role="img"
+       aria-label="Visits a day, {{ period.label }}" style="width:100%; height:120px; display:block; color:var(--gold);">
+    <line x1="0" y1="55.5" x2="{{ days|length * 14 }}" y2="55.5" stroke="currentColor" stroke-opacity=".4" vector-effect="non-scaling-stroke"/>
+    {% for day, n in days %}
+    {% set h = (50 * n / peak) if peak else 0 %}
+    <rect x="{{ loop.index0 * 14 + 2 }}" y="{{ 55 - h }}" width="10" height="{{ h }}" fill="currentColor"><title>{{ day|date_short }}: {{ n }}</title></rect>
+    {% endfor %}
+  </svg>
+  <figcaption class="pay-disclaimer">
+    {% if busiest %}Busiest: {{ busiest[0]|date_short }}, {{ busiest[1] }} visit{{ 's' if busiest[1] != 1 }}.{% else %}Nobody visited in {{ period.label }}.{% endif %}
+  </figcaption>
+  {% if busiest %}
+  <details><summary class="small-link">The days anybody came, as figures</summary>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>Day</th><th class="num">Visits</th></tr></thead>
+    <tbody>{% for day, n in days if n %}<tr><th scope="row">{{ day|date_short }}</th><td class="num">{{ n }}</td></tr>{% endfor %}</tbody></table></div>
+  </details>
+  {% endif %}
+</figure>
+{% endif %}
+
+{# A guest's private link is kept as its kind, the key taken out; say so where it shows. #}
+{% macro page_name(path) %}{{ path }}{% if '…' in path %} <span class="mini-status">a guest's own link</span>{% endif %}{% endmacro %}
+
+{% macro visits_table(title, rows, first) %}
+<h2 class="section-heading">{{ title }}</h2>
+{% if rows %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>{{ first }}</th><th class="num">Visits</th><th class="num">Bookings</th></tr></thead>
+    <tbody>
+      {% for name, t in rows %}
+      <tr><th scope="row">{{ name }}</th><td class="num">{{ t.visits }}</td><td class="num">{{ t.bookings }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}<p class="empty-state">None in {{ period.label }}.</p>{% endif %}
+{% endmacro %}
+
+{{ visits_table("Where they came from", s.sources, "Source") }}
+{{ visits_table("Campaigns", s.campaigns, "Source / medium / campaign") }}
+
+<h2 class="section-heading">What was booked, and from where</h2>
+{% if s.goals %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Booked</th><th>From</th><th class="num">How many</th></tr></thead>
+    <tbody>
+      {% for goal, by in s.goals|dictsort %}{% for source, n in by %}
+      <tr><th scope="row">{{ goal }}</th><td>{{ source }}</td><td class="num">{{ n }}</td></tr>
+      {% endfor %}{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}<p class="empty-state">Nothing was booked through the site in {{ period.label }}.</p>{% endif %}
+
+<h2 class="section-heading">The pages they read</h2>
+{% if s.pages %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Page</th><th class="num">Read</th><th class="num">Visits</th></tr></thead>
+    <tbody>
+      {% for path, p in s.pages[:40] %}
+      <tr><th scope="row">{{ page_name(path) }}{% if p.status == 404 %} <span class="mini-status status-cancelled">not found</span>{% endif %}</th><td class="num">{{ p.views }}</td><td class="num">{{ p.visits }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}<p class="empty-state">Nobody visited in {{ period.label }}.</p>{% endif %}
+
+<h2 class="section-heading">Where a visit began</h2>
+{% if s.entries %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>First page</th><th class="num">Visits</th><th class="num">Left after it</th></tr></thead>
+    <tbody>
+      {% for path, e in s.entries[:25] %}
+      <tr><th scope="row">{{ page_name(path) }}</th><td class="num">{{ e.visits }}</td><td class="num">{{ e.bounces }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<h2 class="section-heading">Pages that were not there</h2>
+{% if s.broken %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Address asked for</th><th class="num">Times</th><th>Sent from</th></tr></thead>
+    <tbody>
+      {% for path, b in s.broken %}
+      <tr><th scope="row">{{ page_name(path) }}</th><td class="num">{{ b.hits }}</td><td>{{ b['from']|join(', ') if b['from'] else 'Typed, or a bookmark' }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}<p class="empty-state">Every page asked for was there.</p>{% endif %}
+
+{{ visits_table("On what", s.devices, "Device") }}
+{{ visits_table("In what language", s.languages, "Browser language") }}
+
+{% endblock %}

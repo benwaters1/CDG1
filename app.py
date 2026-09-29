@@ -312,6 +312,7 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_weather_enabled": "1",
     "automation_exchange_rates_enabled": "1",
     "automation_photo_mirror_enabled": "1",
+    "automation_card_details_enabled": "1",
     "automation_daily_digest_enabled": "1",
     "automation_ical_sync_enabled": "1",
     "automation_ical_sync_interval_hours": "6",
@@ -1273,6 +1274,238 @@ csrf = CSRFProtect(app)
 FRAMEABLE_PATH_PREFIX = "/outlook-addin/"
 
 
+# ---------------------------------------------------------------------------
+# Website analytics: counted by the house, without a cookie, without keeping
+# an internet address, and without a way to follow anybody from one day to the
+# next.
+# ---------------------------------------------------------------------------
+
+ANALYTICS_BOTS = re.compile(
+    r"bot|crawl|spider|slurp|scrap|preview|monitor|uptime|pingdom|lighthouse|headless"
+    r"|curl|wget|python-requests|httpx|go-http|java/|okhttp|facebookexternalhit|embedly"
+    r"|whatsapp|telegram|discord|skype|slack", re.I)
+# Not pages a person reads: files, feeds, the hooks other services call.
+ANALYTICS_SKIP_PREFIXES = ("/static", "/uploads", "/webhooks", "/api/", "/media", "/mirror")
+# A robot trying doors for somebody else's software, dressed as a browser. Not
+# a page anybody meant to find here, and a list of pages that were not there
+# is for the ones somebody did.
+ANALYTICS_PROBES = re.compile(
+    r"\.(?:php\d?|aspx?|jsp|cgi|env|ini|sql|bak|old|swp|ya?ml)$|/wp-|/\.|xmlrpc|phpmyadmin"
+    r"|/cgi-bin|/vendor/|/actuator|/boaform|/owa/", re.I)
+# A key as this app makes them (secrets.token_urlsafe, token_hex): twenty
+# characters and more, and somewhere in them a capital, a digit or an
+# underscore. A page's own name is words and hyphens, and is left alone.
+ANALYTICS_KEYLIKE = re.compile(r"[A-Za-z0-9_-]{20,}")
+# The sites that send most people, by the name the house knows them by: a
+# search engine is one search engine in every country it answers from.
+ANALYTICS_SOURCES = [(re.compile(pattern), name) for pattern, name in (
+    (r"(^|\.)mail\.google\.com$|^com\.google\.android\.gm$", "Gmail"),
+    (r"(^|\.)google(\.[a-z]{2,3}){1,2}$|^com\.google\.android\.googlequicksearchbox$", "Google"),
+    (r"(^|\.)bing\.com$", "Bing"),
+    (r"(^|\.)duckduckgo\.com$", "DuckDuckGo"),
+    (r"(^|\.)qwant\.com$", "Qwant"),
+    (r"(^|\.)ecosia\.org$", "Ecosia"),
+    (r"(^|\.)yahoo(\.[a-z]{2,3}){1,2}$", "Yahoo"),
+    (r"(^|\.)facebook\.com$|^fb\.me$", "Facebook"),
+    (r"(^|\.)instagram\.com$", "Instagram"),
+    (r"(^|\.)pinterest(\.[a-z]{2,3}){1,2}$|^pin\.it$", "Pinterest"),
+    (r"^t\.co$|(^|\.)twitter\.com$|(^|\.)x\.com$", "X"),
+    (r"(^|\.)linkedin\.com$|^lnkd\.in$", "LinkedIn"),
+    (r"(^|\.)youtube\.com$|^youtu\.be$", "YouTube"),
+    (r"(^|\.)tiktok\.com$", "TikTok"),
+    (r"(^|\.)tripadvisor(\.[a-z]{2,3}){1,2}$", "Tripadvisor"),
+    (r"(^|\.)booking\.com$", "Booking.com"),
+    (r"(^|\.)airbnb(\.[a-z]{2,3}){1,2}$", "Airbnb"),
+    (r"(^|\.)outlook\.(live|office|office365)\.com$", "Outlook"),
+    (r"(^|\.)chatgpt\.com$|(^|\.)openai\.com$", "ChatGPT"),
+    (r"(^|\.)perplexity\.ai$", "Perplexity"),
+    (r"(^|\.)claude\.ai$", "Claude"),
+)]
+# A browser's first language, by its name. The house is in the Ariège: its
+# neighbours' languages are here as well as its guests'.
+ANALYTICS_LANGUAGES = {
+    "fr": "French", "en": "English", "es": "Spanish", "ca": "Catalan", "eu": "Basque",
+    "oc": "Occitan", "de": "German", "nl": "Dutch", "it": "Italian", "pt": "Portuguese",
+    "da": "Danish", "sv": "Swedish", "no": "Norwegian", "nb": "Norwegian", "fi": "Finnish",
+    "pl": "Polish", "cs": "Czech", "ru": "Russian", "uk": "Ukrainian", "el": "Greek",
+    "tr": "Turkish", "ar": "Arabic", "he": "Hebrew", "ja": "Japanese", "zh": "Chinese",
+    "ko": "Korean",
+}
+# The pages a booking ends on. A view of one is a booking, counted against
+# where the visit came from -- no hook in the booking itself.
+ANALYTICS_GOALS = {"booking_confirmation": "Stay", "workshop_confirmation": "Atelier",
+                   "event_confirmation": "Event enquiry", "restaurant_confirmation": "Table",
+                   "newsletter_confirm": "Newsletter"}
+# Thirteen months: what audience measurement may keep without asking.
+ANALYTICS_KEEP_DAYS = 395
+
+
+def analytics_salt(conn, day):
+    """The day's salt, made the first time it is needed; making it throws the
+    last one away. Without the old salt, yesterday's codes cannot be joined to
+    today's, nor worked back to the browser they came from."""
+    key = f"analytics_salt:{day}"
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    if row:
+        return row["value"]
+    conn.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)",
+                 (key, secrets.token_hex(16)))
+    conn.execute("DELETE FROM app_settings WHERE key LIKE 'analytics_salt:%' AND key != ?", (key,))
+    return conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()["value"]
+
+
+def analytics_visitor(salt, address, agent):
+    """One browser on one day, as a code nothing can turn back into it."""
+    return hashlib.sha256(f"{salt}|{address}|{agent}".encode("utf-8", "replace")).hexdigest()[:16]
+
+
+def analytics_device(agent):
+    """The kind of device, from the browser's own description of itself."""
+    a = (agent or "").lower()
+    if "ipad" in a or "tablet" in a or ("android" in a and "mobile" not in a):
+        return "Tablet"
+    if "mobi" in a or "iphone" in a or "android" in a:
+        return "Phone"
+    return "Computer"
+
+
+def analytics_unkeyed(path):
+    """An address with anything in it that looks like a key taken out -- a
+    guest's private link mistyped into a page that is not there, say."""
+    return ANALYTICS_KEYLIKE.sub(
+        lambda found: "…" if re.search(r"[A-Z0-9_]", found.group()) else found.group(), path)
+
+
+def analytics_source_name(host):
+    """The site that sent somebody, by its name: Google, not google.co.uk."""
+    host = host[4:] if host.startswith("www.") else host
+    for pattern, name in ANALYTICS_SOURCES:
+        if pattern.search(host):
+            return name
+    return host
+
+
+def analytics_view(response):
+    """The page view this request makes, or None when it is not one to count.
+
+    Counted: a public page a person read, found or not. Not counted: the
+    house's own people, robots, prefetches, files, anything but a page, and a
+    browser that asks not to be tracked -- Global Privacy Control or Do Not
+    Track -- which is not counted at all rather than counted less.
+    """
+    if request.method != "GET" or response.status_code not in (200, 404):
+        return None
+    if response.mimetype != "text/html" or session.get("user_id"):
+        return None
+    path = request.path
+    if path.startswith(ANALYTICS_SKIP_PREFIXES):
+        return None
+    if response.status_code == 404 and ANALYTICS_PROBES.search(path):
+        return None
+    headers = request.headers
+    agent = headers.get("User-Agent") or ""
+    if not agent or ANALYTICS_BOTS.search(agent):
+        return None
+    if headers.get("Sec-GPC") == "1" or headers.get("DNT") == "1":
+        return None
+    purpose = (headers.get("Sec-Purpose") or headers.get("Purpose")
+               or headers.get("X-Moz") or "").lower()
+    if "prefetch" in purpose:
+        return None
+    # A private link is written as its kind -- /booking/…/statement -- never its
+    # key, by the same rule the stored letters follow; and a key in an address
+    # that matched nothing is taken out of it all the same.
+    rule = request.url_rule
+    if rule is not None and any("token" in arg for arg in rule.arguments):
+        path = re.sub(r"<[^>]+>", "…", rule.rule)
+    else:
+        path = analytics_unkeyed(path)
+    referrer = None
+    if request.referrer:
+        host = (urlparse(request.referrer).hostname or "").lower()
+        own = (request.host or "").split(":")[0].lower()
+        if host and host != own:
+            # The site's name alone: the rest of an address can be somebody's.
+            referrer = analytics_source_name(host)
+    try:
+        language = ((request.accept_languages.best or "").split("-")[0].lower()[:8]) or None
+    except Exception:
+        language = None
+    args = request.args
+    return {
+        "path": path[:200], "endpoint": request.endpoint, "status": response.status_code,
+        "referrer": referrer,
+        "utm_source": (args.get("utm_source") or "").strip()[:60] or None,
+        "medium": (args.get("utm_medium") or "").strip()[:60] or None,
+        "campaign": (args.get("utm_campaign") or "").strip()[:80] or None,
+        "device": analytics_device(agent), "language": language,
+        "goal": ANALYTICS_GOALS.get(request.endpoint) if response.status_code == 200 else None,
+        # Used for the day's code and gone with this dict: never written down.
+        "address": ((headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+                    or request.remote_addr or ""),
+        "agent": agent,
+    }
+
+
+def write_page_view(view):
+    """Count one page view, once the request's own connections are closed.
+
+    The visit's first page carries where it came from -- a campaign's source,
+    or the site that sent them, or nothing -- and every later page of that
+    visit carries the same, so a booking is counted against where the visit
+    began. A confirmation the visit has already seen -- a reload, the back
+    button -- is not a second booking; two of one kind in a visit count once,
+    since telling them apart would mean keeping which booking it was.
+    Swallowed on failure: counting a page must never cost the page.
+    """
+    if not view:
+        return
+    try:
+        conn = get_db()
+        try:
+            day = house_today_iso()
+            visitor = analytics_visitor(analytics_salt(conn, day), view.pop("address"),
+                                        view.pop("agent"))
+            first = conn.execute(
+                """SELECT source, medium, campaign FROM page_views
+                    WHERE day = ? AND visitor = ? AND entry = 1 LIMIT 1""",
+                (day, visitor)).fetchone()
+            if first:
+                source, medium, campaign = first["source"], first["medium"], first["campaign"]
+            else:
+                source = view["utm_source"] or view["referrer"] or "Direct"
+                medium, campaign = view["medium"], view["campaign"]
+            goal = view["goal"]
+            if goal and first and conn.execute(
+                    "SELECT 1 FROM page_views WHERE day = ? AND visitor = ? AND goal = ? LIMIT 1",
+                    (day, visitor, goal)).fetchone():
+                goal = None
+            conn.execute(
+                """INSERT INTO page_views (day, at, visitor, path, endpoint, status, referrer,
+                       source, medium, campaign, device, language, entry, goal)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (day, datetime.now(timezone.utc).isoformat(), visitor, view["path"],
+                 view["endpoint"], view["status"], view["referrer"], source, medium, campaign,
+                 view["device"], view["language"], 0 if first else 1, goal))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:                      # pragma: no cover - last resort
+        print(f"[page view not counted] {e}")
+
+
+@app.after_request
+def count_page_view(response):
+    """Note the page view this request makes, to be written after it closes."""
+    try:
+        view = analytics_view(response)
+    except Exception:
+        view = None
+    if view:
+        g._page_view = view
+    return response
+
+
 @app.after_request
 def set_security_headers(response):
     """Response hardening, set in the app so it travels with the code.
@@ -1327,12 +1560,77 @@ def handle_csrf_error(e):
 # Database
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# The changes log's connection: it puts a name to what it changed, as it
+# commits.
+# ---------------------------------------------------------------------------
+
+class HouseConnection(sqlite3.Connection):
+    """A connection that claims the changes it made, as it commits.
+
+    The change log's triggers write every change down but cannot know who is
+    asking: SQL has no idea of a signed-in person. So the rows are written
+    unclaimed, and the connection that made them claims them as it commits --
+    by then it is the only writer SQLite allows, so every unclaimed row newer
+    than the moment it opened is its own. A change made outside the app (a
+    sqlite shell, a script) is never claimed, and reads as exactly that.
+    """
+    actor_user_id = None
+    actor = None
+    endpoint = None
+    claim_floor = 0
+
+    def commit(self):
+        if self.in_transaction:
+            try:
+                if super().execute(
+                        "SELECT 1 FROM change_log WHERE claimed = 0 AND id > ? LIMIT 1",
+                        (self.claim_floor,)).fetchone():
+                    super().execute(
+                        """UPDATE change_log SET claimed = 1, actor_user_id = ?, actor = ?,
+                                  endpoint = ?
+                            WHERE claimed = 0 AND id > ?""",
+                        (self.actor_user_id, self.actor, self.endpoint, self.claim_floor))
+            except sqlite3.OperationalError:
+                pass            # before the change log exists: nothing to claim
+        return super().commit()
+
+
+def change_actor():
+    """(user id, who, where) a new connection's changes are put down to: a
+    person signed in, the guest on the public site, Stripe's webhook, or a job.
+
+    The jobs run inside a stand-in request so their letters can build links --
+    a request for "/", which Flask matches to the home page like any visitor's.
+    So the job runner says so first (g.change_job), and that is asked before
+    anything about who is signed in.
+    """
+    if not has_request_context():
+        return None, "job", None
+    job = g.get("change_job")
+    if job:
+        return None, "job", job
+    uid = session.get("user_id")
+    if uid:
+        return uid, "staff", request.endpoint
+    if request.endpoint == "stripe_webhook":
+        return None, "stripe", request.endpoint
+    return None, "guest", request.endpoint
+
+
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, factory=HouseConnection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA busy_timeout = 5000")
+    # Who this connection's changes are put down to, and where its own begin.
+    conn.actor_user_id, conn.actor, conn.endpoint = change_actor()
+    try:
+        conn.claim_floor = conn.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM change_log").fetchone()[0]
+    except sqlite3.OperationalError:
+        conn.claim_floor = 0          # before the change log exists
     return track_connection(conn)
 
 
@@ -1386,6 +1684,8 @@ def close_open_connections(exc):
     # lock; doing it inline would make every guest email wait on the caller's
     # own transaction.
     write_guest_messages(g.pop("_guest_messages", None) or [])
+    # And the page view, for the same reason.
+    write_page_view(g.pop("_page_view", None))
 
 
 # The tables a form can hand us an id for. A tuple rather than an f-string
@@ -1449,6 +1749,21 @@ DEFAULT_EMAIL_TEMPLATES = [
      "Registration cancelled — {workshop_title}",
      "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}) has been cancelled. Get in touch "
      "if you'd like to rebook.\n\n— Château de Gudanes"),
+    ("workshop_payment_received", "Workshop: Payment received",
+     "Payment received — {workshop_title}",
+     "Hi {guest_name},\n\nThank you: we have received {amount} towards {workshop_title} "
+     "({dates}).\n\n{balance_line}\n\nYour statement is below, and always here:\n"
+     "{statement_url}\n\nReference code: {reference_code}\n\n— Château de Gudanes"),
+    ("event_payment_received", "Events: Payment received",
+     "Payment received — {reference_code}",
+     "Hi {contact_name},\n\nThank you: we have received {amount} towards your "
+     "{event_type}.\n\n{balance_line}\n\nEverything about it is here:\n{manage_url}\n\n"
+     "Reference code: {reference_code}\n\n— Château de Gudanes"),
+    ("house_payment_received", "House: Payment received",
+     "Payment received from {guest_name}",
+     "A guest has made a payment.\n\nFor: {what_for}\nReference: {reference_code}\n"
+     "Name: {guest_name}\nEmail: {guest_email}\nAmount: {amount}\nWhen: {paid_at}\n"
+     "How: {paid_how}\n\n{balance_line}\n\nThe booking's payments:\n{booking_url}"),
     ("workshop_deposit_receipt", "Workshop: Deposit receipt",
      "Deposit received — {workshop_title}",
      "Hi {guest_name},\n\nWe've received your deposit of €{deposit_amount} for {workshop_title} ({dates}).\n"
@@ -1657,6 +1972,12 @@ DEFAULT_EMAIL_TEMPLATES = [
 def init_db():
     fresh = not os.path.exists(DB_PATH)
     conn = get_db()
+    # Off while the migrations run: a table one rebuilds would otherwise write
+    # every row it copies into the changes log as though it had just been added.
+    try:
+        drop_change_log_triggers(conn)
+    except sqlite3.OperationalError:
+        pass
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -4961,6 +5282,85 @@ def init_db():
              updated_at TEXT,
              closed_at TEXT
          )"""),
+        # The card behind a card payment: its brand and last four, which is all
+        # a statement needs to say which card it was, and all that is kept.
+        # Keyed by the Stripe reference the payment already carries, so every
+        # kind of booking reads it the same way and none needs a column.
+        ("payment_cards_table", """CREATE TABLE IF NOT EXISTS payment_cards (
+             ref TEXT PRIMARY KEY,
+             brand TEXT,
+             last4 TEXT,
+             wallet TEXT,
+             fetched_at TEXT NOT NULL
+         )"""),
+        # A line for every letter the house sends -- to a guest, its own inboxes,
+        # the owner, a colleague, a supplier -- and whether it went. The words
+        # are kept where they may be (see MAIL_KEPT_WORDS); `kept` says where.
+        ("mail_log_table", """CREATE TABLE IF NOT EXISTS mail_log (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             to_address TEXT NOT NULL,
+             subject TEXT,
+             status TEXT NOT NULL CHECK(status IN ('sent','held','failed','discarded')),
+             failure TEXT,
+             template_key TEXT,
+             about_category TEXT,
+             about_id INTEGER,
+             area TEXT,
+             sent_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             body TEXT,
+             kept TEXT NOT NULL DEFAULT 'here'
+                 CHECK(kept IN ('here','correspondence','not','colleague')),
+             guest_message_id INTEGER,
+             outbox_id INTEGER,
+             created_at TEXT NOT NULL,
+             delivered_at TEXT
+         )"""),
+        # Every change to the house's bookings, money and guests, field by
+        # field -- written by triggers, claimed by the connection that made it.
+        ("change_log_table", """CREATE TABLE IF NOT EXISTS change_log (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             table_name TEXT NOT NULL,
+             row_id INTEGER,
+             action TEXT NOT NULL CHECK(action IN ('added','changed','deleted')),
+             old_values TEXT,
+             new_values TEXT,
+             claimed INTEGER NOT NULL DEFAULT 0,
+             actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             actor TEXT,
+             endpoint TEXT,
+             created_at TEXT NOT NULL
+         )"""),
+        ("change_log_unclaimed_index",
+         "CREATE INDEX IF NOT EXISTS change_log_unclaimed ON change_log(id) WHERE claimed = 0"),
+        ("change_log_row_index",
+         "CREATE INDEX IF NOT EXISTS change_log_row ON change_log(table_name, row_id)"),
+        ("change_log_created_index",
+         "CREATE INDEX IF NOT EXISTS change_log_created ON change_log(created_at)"),
+        # A page a visitor opened: counted by the house, no cookie, no address.
+        ("page_views_table", """CREATE TABLE IF NOT EXISTS page_views (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             day TEXT NOT NULL,
+             at TEXT NOT NULL,
+             visitor TEXT NOT NULL,
+             path TEXT NOT NULL,
+             endpoint TEXT,
+             status INTEGER NOT NULL,
+             referrer TEXT,
+             source TEXT,
+             medium TEXT,
+             campaign TEXT,
+             device TEXT,
+             language TEXT,
+             entry INTEGER NOT NULL DEFAULT 0,
+             goal TEXT
+         )"""),
+        ("page_views_day_index", "CREATE INDEX IF NOT EXISTS page_views_day ON page_views(day)"),
+        ("page_views_visit_index",
+         "CREATE INDEX IF NOT EXISTS page_views_visit ON page_views(day, visitor)"),
+        ("mail_log_created_at_index",
+         "CREATE INDEX IF NOT EXISTS mail_log_created_at ON mail_log(created_at)"),
+        ("mail_log_outbox_index",
+         "CREATE INDEX IF NOT EXISTS mail_log_outbox ON mail_log(outbox_id)"),
         # What has already been sent to the accountant.
         #
         # An invoice sent twice is worse than one not sent at all: the second is
@@ -6761,6 +7161,9 @@ def init_db():
     # has edited is never touched again.
     seed_revenue_categories(conn)
 
+    # On, from each table as it now stands, once everything above has run.
+    install_change_log_triggers(conn)
+
     conn.close()
 
 
@@ -7100,6 +7503,7 @@ NAV_AREAS = {
         "road_notices_page", "road_notice_remove",
     ],
     "comms": [
+        "website_analytics",
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
         "admin_images", "admin_image_upload",
         "admin_inbox_flags_status", "announcements", "delete_announcement",
@@ -7131,6 +7535,7 @@ NAV_AREAS = {
     ],
     "financial": [
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
+        "admin_transactions", "export_transactions_csv",
         "demand_report",
         "management_outstanding", "chase_outstanding_balance",
         "management_vouchers", "new_gift_voucher", "gift_voucher_detail",
@@ -7316,6 +7721,8 @@ NAV_AREAS = {
         "arrival_to_post",
         "arrival_to_site", "site_photographs", "put_back_site_photo",
         "admin_terms", "audit_log", "record_history_page",
+        "mail_log", "mail_log_letter", "export_mail_log_csv",
+        "changes_log", "export_changes_log_csv",
         "delete_company_document",
         "delete_insurance_policy", "delete_vendor",
         "download_company_document", "edit_company_document", "edit_insurance_policy",
@@ -9715,17 +10122,23 @@ def period_from_request():
 # "this week" means the same thing in Guests as it does in Financial.
 # ---------------------------------------------------------------------------
 
-def overview_cell(label, value, sub=None, alert=False, hint=None, delta=None, endpoint=None):
+def overview_cell(label, value, sub=None, alert=False, hint=None, delta=None, endpoint=None,
+                  invert=False):
     """One figure in an overview band.
 
     `alert` turns the cell red — reserve it for things that need a decision,
     not merely for large numbers. `delta` is the change against the previous
-    equivalent window, already signed. `endpoint` is a route NAME, resolved by
-    the template, so these builders stay plain functions that can be called
-    (and tested) without a request context.
+    equivalent window, already signed. `invert` is for a figure where more is
+    worse -- visitors who left after one page -- so a rise is coloured as bad
+    news and a fall as good. `endpoint` is a route NAME, resolved by the
+    template, so these builders stay plain functions that can be called (and
+    tested) without a request context.
     """
-    return {"label": label, "value": value, "sub": sub, "alert": bool(alert),
+    cell = {"label": label, "value": value, "sub": sub, "alert": bool(alert),
             "hint": hint, "delta": delta, "endpoint": endpoint}
+    if invert:
+        cell["invert"] = True
+    return cell
 
 
 # ---------------------------------------------------------------------------
@@ -16303,8 +16716,15 @@ def mark_booking_payment_paid(conn, session):
                               if portal_token else ""),
         })
         if subject:
+            # Which card, asked now so the receipt can say; and the statement
+            # beneath the words, so a receipt is a statement too.
+            remember_card(conn, _intent_id(session) or session_id)
+            conn.commit()
+            body, letter = letter_with_statement(conn, subject, body, "room", booking_id)
             # the stay side: always whoever is staying, plus any copy
             write_about_stay(booking, subject, body, html=letter)
+        tell_house_of_payment(conn, "room", booking_id, amount,
+                              _intent_id(session) or session_id)
 
 
 # How a tab can be settled. An iPad in a browser cannot read a card by itself,
@@ -23451,7 +23871,8 @@ def send_email_outbox():
         # would add a duplicate every time the owner pressed the button.
         why = {}
         ok = send_email(row["to_address"], row["subject"], row["body"],
-                        row["ics_content"], row["ics_filename"], keep=False, report=why)
+                        row["ics_content"], row["ics_filename"], keep=False, report=why,
+                        log=False)
         now = datetime.now(timezone.utc).isoformat()
         if ok:
             sent += 1
@@ -23464,6 +23885,10 @@ def send_email_outbox():
             conn.execute(
                 """UPDATE guest_messages SET delivered = 1, delivered_at = ?, failure = NULL
                     WHERE outbox_id = ?""", (now, row["id"]))
+            # And its line in the mail log: held that morning, sent now.
+            conn.execute(
+                """UPDATE mail_log SET status = 'sent', delivered_at = ?, failure = NULL
+                    WHERE outbox_id = ?""", (now, row["id"]))
         else:
             failed += 1
             skipped.append((f"{row['subject'] or 'no subject'} to "
@@ -23473,6 +23898,8 @@ def send_email_outbox():
             conn.execute(
                 "UPDATE email_outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?",
                 (why.get("why") or "retry failed", row["id"]))
+            conn.execute("UPDATE mail_log SET failure = ? WHERE outbox_id = ? AND status = 'held'",
+                         (why.get("why") or "retry failed", row["id"]))
         conn.commit()
     if sent:
         log_audit(conn, "email_outbox_sent", details=f"{sent} sent, {failed} failed")
@@ -23593,6 +24020,10 @@ def mark_letters_withdrawn(conn, outbox_ids):
     conn.executemany(
         "UPDATE guest_messages SET failure = ? WHERE outbox_id = ? AND delivered = 0",
         [(LETTER_WITHDRAWN, i) for i in outbox_ids])
+    # And the mail log: a held letter thrown away is not on its way either.
+    conn.executemany(
+        "UPDATE mail_log SET status = 'discarded' WHERE outbox_id = ? AND status = 'held'",
+        [(i,) for i in outbox_ids])
 
 
 @app.route("/admin/email-outbox/discard-stale", methods=["POST"])
@@ -23869,6 +24300,145 @@ def read_setting(obj, key, default=None):
     except (KeyError, IndexError, TypeError):
         return default
     return default if value is None else value
+
+
+def external_url(endpoint, **values):
+    """A full link to one of the site's pages, inside a request or out of one.
+
+    Outside a request -- the nightly jobs, the atelier auto-charge -- url_for
+    cannot say what the site is called, so the configured public address stands
+    in, the way the unsubscribe footer has always done it.
+    """
+    try:
+        return url_for(endpoint, _external=True, **values)
+    except RuntimeError:
+        with app.test_request_context():
+            path = url_for(endpoint, **values)
+        return f"{PUBLIC_BASE_URL or ''}{path}"
+
+
+def statement_text(view):
+    """One booking's statement written out for the plain half of a letter: the
+    lines and totals the drawn half shows, because it is the same view."""
+    if not view:
+        return ""
+    money = lambda x: f"-€{-x:,.2f}" if x < 0 else f"€{x:,.2f}"
+    out = ["Statement" + (f": {view['booking']['what']}" if view["booking"] else "")]
+    for x in view["charges"]:
+        out.append(f"  {format_date_short(x['day'])}  {x['what']}  {money(x['charge'])}")
+    if view["reductions"]:
+        out.append(f"  Subtotal  €{view['subtotal']:,.2f}")
+        out.append(f"  Discounts and reductions  -€{view['reductions']:,.2f}")
+    out.append(f"  Total  €{view['total']:,.2f}")
+    out += ["", "Payments"]
+    for x in view["payments"]:
+        how = ", ".join(w for w in (x["method"], x["card_words"]) if w)
+        out.append(f"  {format_date_short(x['day'])}  {x['note'] or 'Payment'}"
+                   + (f" ({how})" if how else "") + f"  €{x['paid']:,.2f}")
+    for x in view["refunds"]:
+        back = f"+€{-x['back']:,.2f}" if x["back"] < 0 else f"-€{x['back']:,.2f}"
+        out.append(f"  {format_date_short(x['day'])}  {x['what']}"
+                   + (f" ({x['card_words']})" if x["card_words"] else "") + f"  {back}")
+    if not view["payments"] and not view["refunds"]:
+        out.append("  Nothing received yet.")
+    out.append(f"  Total paid  €{view['total_paid']:,.2f}")
+    out.append(f"  {'Balance due' if view['owed'] else 'Settled'}  €{view['owed']:,.2f}")
+    if view["credit"]:
+        out.append(f"  In credit, and yours: given back on request  €{view['credit']:,.2f}")
+    return "\n".join(out)
+
+
+def letter_with_statement(conn, subject, body, category, booking_id):
+    """A letter's two halves with the booking's statement beneath the words:
+    drawn as tables in the one, written out in the other, from one view -- so a
+    receipt is a statement too, and the two halves cannot disagree about it."""
+    view = booking_statement_view(conn, category, booking_id)
+    if not view:
+        return body, letter_html(subject, body)
+    return (body.rstrip() + "\n\n" + statement_text(view) + "\n",
+            letter_html(subject, body, statement=view))
+
+
+# Which inbox looks after each kind of booking, in REPLY_TO_AREAS' words.
+HOUSE_AREAS = {"room": "rooms", "workshop": "workshops", "event": "events",
+               "restaurant": "restaurant"}
+
+
+def house_address_for(conn, area):
+    """Where the house reads about its own business in one area: the area's own
+    mailbox when one is connected, the address the site gives guests for it
+    when not, and the owner when there is neither."""
+    return reply_to_for(area) or PUBLIC_CONTACT.get(area) or owner_email(conn)
+
+
+def tell_house_of_payment(conn, category, booking_id, amount, ref=None):
+    """"Payment received from ..." to the inbox that looks after this kind of
+    booking: who, for what, how much, when, by which card, the statement, and
+    the way to the booking's payments.
+
+    Never filed as the guest's correspondence: it is not to them. The card is
+    named from what is kept, asked of Stripe just before by whoever recorded
+    the payment.
+    """
+    view = booking_statement_view(conn, category, booking_id)
+    if not view or not view["booking"]:
+        return False
+    row = view["row"]
+    keys = row.keys()
+    name = row["contact_name"] if "contact_name" in keys else row["guest_name"]
+    email = row["contact_email"] if "contact_email" in keys else row["guest_email"]
+    card = card_labels(conn, [ref]).get(_card_ref(ref)) if ref else None
+    subject, body, _letter = render_email_template(conn, "house_payment_received", {
+        "guest_name": name or "A guest",
+        "guest_email": email or "",
+        "what_for": f"{view['kind']}: {view['booking']['what']}",
+        "reference_code": view["booking"]["ref"],
+        "amount": f"€{amount:,.2f}",
+        "paid_at": local_datetime_str(datetime.now(timezone.utc).isoformat()),
+        "paid_how": "Card, online" + (f", {card}" if card else ""),
+        "balance_line": (f"Still to pay: €{view['owed']:,.2f}." if view["owed"]
+                         else "Now paid in full."),
+        "booking_url": external_url("refund_desk", category=category, booking_id=booking_id),
+    })
+    if not subject:
+        return False
+    body, letter = letter_with_statement(conn, subject, body, category, booking_id)
+    area = HOUSE_AREAS.get(category, "accounts")
+    return send_email(house_address_for(conn, area), subject, body, html=letter, area=area,
+                      template_key="house_payment_received")
+
+
+def workshop_payment_context(conn, booking, amount):
+    """What a receipt for money towards an atelier says, from the ledger as it
+    stands once the payment is on it."""
+    due, _charged, _paid = workshop_balance_due(conn, booking["id"])
+    return {
+        "guest_name": booking["guest_name"],
+        "workshop_title": booking["title"],
+        "dates": format_date_range(booking["start_date"], booking["end_date"]),
+        "amount": f"€{amount:,.2f}",
+        "balance_line": (f"Still to pay: €{due:,.2f}." if due > 0.005
+                         else "Your place is now paid in full."),
+        "reference_code": booking["reference_code"],
+        "statement_url": external_url("workshop_statement", manage_token=booking["manage_token"]),
+    }
+
+
+def event_payment_context(conn, inquiry, amount):
+    """What a receipt for money towards an event says, from its bill as it
+    stands once the payment is on it."""
+    bill = event_bill(conn, inquiry["id"])
+    owed = bill["owed"] if bill else 0.0
+    return {
+        "contact_name": inquiry["contact_name"],
+        "event_type": inquiry["event_type"] or "event",
+        "amount": f"€{amount:,.2f}",
+        "balance_line": (f"Still to pay: €{owed:,.2f}." if owed > 0.005
+                         else "It is now paid in full."),
+        "reference_code": inquiry["reference_code"] or f"#{inquiry['id']}",
+        "manage_url": (external_url("event_manage", manage_token=inquiry["manage_token"])
+                       if inquiry["manage_token"] else ""),
+    }
 
 
 def reply_to_for(area):
@@ -24229,6 +24799,50 @@ def redact_stored_links(conn):
     return changed
 
 
+# What became of a letter's words, for the mail log. Where they are is where
+# they may be: a guest's letter is read from their correspondence rather than
+# kept twice, the house's own letters are kept here, and two kinds are never
+# kept at all.
+MAIL_KEPT_WORDS = {
+    "here": None,
+    "correspondence": None,
+    "not": ("Its words were never kept. A letter that carries a way in -- a sign-in "
+            "link, a password link, a link that claims a place -- is kept only as "
+            "the fact that it went, and so is a test."),
+    "colleague": ("What a colleague was told is theirs: this says it went, not what "
+                  "it said."),
+}
+MAIL_STATUS_WORDS = {"sent": "Sent", "held": "Held", "failed": "Did not go",
+                     "discarded": "Thrown away"}
+
+
+def is_colleague(conn, address):
+    """Somebody who works here, the owner apart: the owner's own notices are
+    the house's, and what the house was told is the house's to read."""
+    address = (address or "").strip().lower()
+    return bool(address) and conn.execute(
+        "SELECT 1 FROM users WHERE LOWER(TRIM(email)) = ? AND role != 'owner'",
+        (address,)).fetchone() is not None
+
+
+def mail_log_line(conn, row, about, kept, guest_message_id=None):
+    """One line in the record of every letter the house sends: to whom, when,
+    what it was, whether it went, and -- where it may be -- what it said."""
+    delivered = bool(row.get("delivered"))
+    status = "sent" if delivered else ("held" if row.get("outbox_id") else "failed")
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO mail_log (to_address, subject, status, failure, template_key,
+               about_category, about_id, area, sent_by_user_id, body, kept,
+               guest_message_id, outbox_id, created_at, delivered_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (row["to_address"], without_private_links(row.get("subject")), status,
+         None if delivered else row.get("failure"), row.get("template_key"),
+         about[0], about[1], row.get("area"), row.get("sent_by"),
+         without_private_links(row.get("body") or "") if kept == "here" else None,
+         kept, guest_message_id, row.get("outbox_id"), now, now if delivered else None))
+
+
 def write_guest_messages(rows):
     """File a batch of messages against the person they were to, and what they
     were about.
@@ -24263,13 +24877,26 @@ def write_guest_messages(rows):
                 booking_id = (about[1] if about[0] == "room" else
                               None if about[0] else
                               booking_for_contact(conn, address=address, phone=number))
+                # A letter the house sent, as opposed to a text or a message in.
+                logged = (by_mail and channel == "email"
+                          and (row.get("direction") or "out") == "out")
+                if row.get("not_kept"):
+                    # A letter whose words are never kept -- a key, a test. Its
+                    # line in the mail log is all there is of it.
+                    if logged:
+                        mail_log_line(conn, row, about, "not")
+                    continue
                 guest_id = guest_for_contact(conn, address=address, phone=number)
                 if not booking_id and not guest_id and not about[0]:
                     # Staff mail, a supplier, the accountant. Not correspondence
-                    # with a guest, and not kept here.
+                    # with a guest, and not kept with it -- but it went, and the
+                    # mail log says so.
+                    if logged:
+                        mail_log_line(conn, row, about,
+                                      "colleague" if is_colleague(conn, address) else "here")
                     continue
                 now = datetime.now(timezone.utc).isoformat()
-                conn.execute(
+                filed_at = conn.execute(
                     """INSERT INTO guest_messages (booking_id, channel, to_address,
                        subject, body, delivered, created_at, guest_id, about_category,
                        about_id, template_key, direction, outbox_id, failure,
@@ -24283,6 +24910,10 @@ def write_guest_messages(rows):
                      row.get("direction") or "out", row.get("outbox_id"),
                      None if row.get("delivered") else row.get("failure"),
                      row.get("sent_by"), now if row.get("delivered") else None))
+                if logged:
+                    # Its words are read from the correspondence, not kept twice.
+                    mail_log_line(conn, row, about, "correspondence",
+                                  guest_message_id=filed_at.lastrowid)
                 written += 1
             conn.commit()
         finally:
@@ -24320,12 +24951,16 @@ def keep_guest_message(to_address, subject, body, channel="email", delivered=Fal
 
 def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                keep=True, html=None, report=None, area=None, about=None,
-               template_key=None, sent_by=None):
+               template_key=None, sent_by=None, log=True):
     """Send one message, and if it cannot go out, keep it.
 
     `keep=False` for anything whose body is itself a credential — a password
     reset or a staff invitation. Those are short-lived by design, so a retry
     days later is useless, and storing one leaves a working key in a table.
+
+    Every letter leaves a line in the mail log, `keep=False` ones included --
+    that it went, never what it said. `log=False` only for the outbox sending
+    a letter it already holds, whose line is brought up to date instead.
 
     `report` is an optional dict this fills with why a send failed. The return
     stays a plain bool, because two hundred call sites read it as one and a
@@ -24358,7 +24993,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     # leaves the key by the subject, so nothing that sends has to pass it.
     if not template_key and has_request_context():
         template_key = (g.get("_rendered_keys") or {}).get(subject)
-    filed = {"about": about, "template_key": template_key, "sent_by": sent_by}
+    filed = {"about": about, "template_key": template_key, "sent_by": sent_by, "area": area}
     # Filed whether it goes or not, and marked with which. "We wrote to them
     # and it bounced" is a different fact from "we never wrote", and the whole
     # point of keeping this is being able to tell somebody which happened.
@@ -24371,6 +25006,9 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         if went:
             if keep:
                 keep_guest_message(to_address, subject, body, delivered=True, **filed)
+            elif log:
+                keep_guest_message(to_address, subject, None, delivered=True, not_kept=True,
+                                   **filed)
             return True
         if report is not None:
             report["why"] = why
@@ -24378,6 +25016,9 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                                      "provider rejected it", why or "Resend API call failed")
             keep_guest_message(to_address, subject, body, outbox_id=held,
+                               failure=why or "the provider refused it", **filed)
+        elif log:
+            keep_guest_message(to_address, subject, None, not_kept=True,
                                failure=why or "the provider refused it", **filed)
         return False
     if not email_enabled():
@@ -24388,6 +25029,9 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                                      "no email provider configured")
             keep_guest_message(to_address, subject, body, outbox_id=held,
+                               failure="no email provider configured", **filed)
+        elif log:
+            keep_guest_message(to_address, subject, None, not_kept=True,
                                failure="no email provider configured", **filed)
         return False
     try:
@@ -24427,6 +25071,9 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             server.send_message(msg)
         if keep:
             keep_guest_message(to_address, subject, body, delivered=True, **filed)
+        elif log:
+            keep_guest_message(to_address, subject, None, delivered=True, not_kept=True,
+                               **filed)
         return True
     except Exception as e:
         print(f"[email failed] To: {to_address} | Subject: {subject} | Error: {e}")
@@ -24436,6 +25083,9 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
             held = queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                                      "send failed", str(e))
             keep_guest_message(to_address, subject, body, outbox_id=held,
+                               failure=f"the mail server refused it: {e}", **filed)
+        elif log:
+            keep_guest_message(to_address, subject, None, not_kept=True,
                                failure=f"the mail server refused it: {e}", **filed)
         return False
 
@@ -25005,6 +25655,205 @@ def _card_ref(value):
     """A Stripe id a refund could be pointed at, or None."""
     value = (value or "").strip() if isinstance(value, str) else ""
     return value if value.startswith(("pi_", "cs_")) else None
+
+
+CARD_BRAND_WORDS = {
+    "visa": "Visa", "mastercard": "Mastercard", "amex": "American Express",
+    "cartes_bancaires": "Carte Bancaire", "discover": "Discover", "diners": "Diners Club",
+    "jcb": "JCB", "unionpay": "UnionPay",
+}
+CARD_WALLET_WORDS = {"apple_pay": "Apple Pay", "google_pay": "Google Pay",
+                     "samsung_pay": "Samsung Pay", "link": "Link"}
+# A card Stripe could not name is asked about again after this long, not on
+# every run: a payment on an account since closed will never answer.
+CARD_RETRY_DAYS = 7
+
+
+def card_from_stripe(ref):
+    """The brand and last four of the card behind one Stripe payment, or None.
+
+    Read off the payment's charge. Nothing else about the card is asked for or
+    kept -- no expiry, no name, no fingerprint -- because nothing here needs
+    it, and what is not kept cannot leak. Never raises: a card that cannot be
+    named is a card the statement calls a card, and a payment is never lost
+    over it.
+    """
+    ref = _card_ref(ref)
+    if not ref or not stripe_enabled():
+        return None
+    try:
+        if ref.startswith("cs_"):
+            session = stripe.checkout.Session.retrieve(
+                ref, expand=["payment_intent.latest_charge"])
+            intent = sval(session, "payment_intent")
+            if isinstance(intent, str):
+                intent = stripe.PaymentIntent.retrieve(intent, expand=["latest_charge"])
+        else:
+            intent = stripe.PaymentIntent.retrieve(ref, expand=["latest_charge"])
+        if not intent:
+            return None
+        charge = sval(intent, "latest_charge")
+        if isinstance(charge, str):
+            charge = stripe.Charge.retrieve(charge)
+        if not charge:
+            # Older API versions list the intent's charges instead.
+            data = sval(sval(intent, "charges") or {}, "data") or []
+            charge = data[0] if data else None
+        card = sval(sval(charge, "payment_method_details") or {}, "card") if charge else None
+        if not card:
+            return None
+        last4 = str(sval(card, "last4") or "")[-4:]
+        return {"brand": sval(card, "brand"), "last4": last4 if last4.isdigit() else None,
+                "wallet": sval(sval(card, "wallet") or {}, "type")}
+    except Exception as e:
+        print(f"[card details] could not read {ref}: {e}")
+        return None
+
+
+def remember_card(conn, ref):
+    """Name the card behind one payment, asking Stripe once, and keep only its
+    brand and last four. The kept row, or None when it cannot be named."""
+    ref = _card_ref(ref)
+    if not ref:
+        return None
+    row = conn.execute("SELECT * FROM payment_cards WHERE ref = ?", (ref,)).fetchone()
+    if row and row["last4"]:
+        return row
+    if not stripe_enabled():
+        return None                 # nothing asked, so nothing to remember asking
+    retry_after = (datetime.now(timezone.utc) - timedelta(days=CARD_RETRY_DAYS)).isoformat()
+    if row and (row["fetched_at"] or "") > retry_after:
+        return None                 # asked lately, and Stripe could not say
+    found = card_from_stripe(ref) or {}
+    conn.execute(
+        """INSERT INTO payment_cards (ref, brand, last4, wallet, fetched_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(ref) DO UPDATE SET brand = excluded.brand, last4 = excluded.last4,
+                  wallet = excluded.wallet, fetched_at = excluded.fetched_at""",
+        (ref, found.get("brand"), found.get("last4"), found.get("wallet"),
+         datetime.now(timezone.utc).isoformat()))
+    row = conn.execute("SELECT * FROM payment_cards WHERE ref = ?", (ref,)).fetchone()
+    return row if row and row["last4"] else None
+
+
+def card_words(row):
+    """"Visa ····4268", "Mastercard ····0005 (Apple Pay)", or None."""
+    if not row or not row["last4"]:
+        return None
+    raw = (row["brand"] or "").lower()
+    brand = CARD_BRAND_WORDS.get(raw, raw.replace("_", " ").title() or "Card")
+    words = f"{brand} ····{row['last4']}"
+    wallet = CARD_WALLET_WORDS.get((row["wallet"] or "").lower())
+    return f"{words} ({wallet})" if wallet else words
+
+
+def card_labels(conn, refs):
+    """{ref: "Visa ····4268"} for every ref whose card is known. Reads what is
+    kept and nothing else: a page never waits on Stripe to say which card."""
+    refs = sorted({r for r in (_card_ref(x) for x in refs) if r})
+    out = {}
+    for n in range(0, len(refs), 500):
+        chunk = refs[n:n + 500]
+        for row in conn.execute(
+                f"SELECT * FROM payment_cards WHERE ref IN ({','.join('?' * len(chunk))})",
+                chunk).fetchall():
+            words = card_words(row)
+            if words:
+                out[row["ref"]] = words
+    return out
+
+
+# Where a card payment's Stripe reference is written, kind by kind, as the two
+# columns payments_received reads it from -- the intent first, then the session.
+PAYMENT_CARD_SOURCES = (
+    """SELECT stripe_payment_intent_id AS a, stripe_session_id AS b, created_at AS at
+         FROM booking_payments WHERE method = 'stripe'""",
+    """SELECT stripe_payment_intent_id AS a, NULL AS b, created_at AS at
+         FROM bookings WHERE stripe_payment_intent_id IS NOT NULL""",
+    """SELECT stripe_ref AS a, NULL AS b, created_at AS at FROM workshop_transactions
+        WHERE kind = 'payment' AND stripe_ref IS NOT NULL""",
+    """SELECT stripe_payment_intent_id AS a, reference AS b, created_at AS at
+         FROM event_payments WHERE method IN ('card_link', 'stripe')""",
+    """SELECT stripe_payment_intent_id AS a, NULL AS b, created_at AS at
+         FROM restaurant_bookings WHERE stripe_payment_intent_id IS NOT NULL""",
+)
+
+
+def payment_card_refs(conn):
+    """Every Stripe reference a card payment is recorded against, newest first."""
+    seen = {}
+    for sql in PAYMENT_CARD_SOURCES:
+        try:
+            rows = conn.execute(sql).fetchall()
+        except sqlite3.OperationalError:
+            continue             # a kind whose column is not there yet
+        for r in rows:
+            ref = _card_ref(r["a"]) or _card_ref(r["b"])
+            if ref and (r["at"] or "") >= seen.get(ref, ""):
+                seen[ref] = r["at"] or ""
+    return [ref for ref, _at in sorted(seen.items(), key=lambda kv: kv[1], reverse=True)]
+
+
+def guest_card_rows(conn, email):
+    """The kept card details behind one person's payments, found by their
+    bookings -- the card is kept by the payment's reference, not by them."""
+    email = (email or "").strip().lower()
+    if not email:
+        return []
+    refs = set()
+    for sql in (
+            """SELECT bp.stripe_payment_intent_id AS a, bp.stripe_session_id AS b
+                 FROM booking_payments bp JOIN bookings ON bookings.id = bp.booking_id
+                WHERE LOWER(TRIM(bookings.guest_email)) = ?""",
+            """SELECT stripe_payment_intent_id AS a, NULL AS b FROM bookings
+                WHERE LOWER(TRIM(guest_email)) = ?""",
+            """SELECT t.stripe_ref AS a, NULL AS b FROM workshop_transactions t
+                 JOIN workshop_bookings wb ON wb.id = t.workshop_booking_id
+                WHERE LOWER(TRIM(wb.guest_email)) = ?""",
+            """SELECT ep.stripe_payment_intent_id AS a, ep.reference AS b
+                 FROM event_payments ep JOIN event_inquiries e ON e.id = ep.event_id
+                WHERE LOWER(TRIM(e.contact_email)) = ?""",
+            """SELECT stripe_payment_intent_id AS a, NULL AS b FROM restaurant_bookings
+                WHERE LOWER(TRIM(guest_email)) = ?"""):
+        try:
+            for r in conn.execute(sql, (email,)).fetchall():
+                for value in (r["a"], r["b"]):
+                    if _card_ref(value):
+                        refs.add(_card_ref(value))
+        except sqlite3.OperationalError:
+            continue
+    if not refs:
+        return []
+    refs = sorted(refs)
+    return conn.execute(
+        f"SELECT * FROM payment_cards WHERE ref IN ({','.join('?' * len(refs))})",
+        refs).fetchall()
+
+
+def run_card_details_job(conn, limit=25):
+    """Name the card behind card payments that do not say yet, a few a day.
+
+    The receipt asks Stripe the moment a payment comes through. This catches
+    what went before it could: a payment recorded while Stripe was slow to
+    answer, and every one taken before cards were named at all. A card Stripe
+    cannot name is left alone for CARD_RETRY_DAYS.
+    """
+    if not stripe_enabled():
+        return "Stripe is not connected"
+    retry_after = (datetime.now(timezone.utc) - timedelta(days=CARD_RETRY_DAYS)).isoformat()
+    asked = named = 0
+    for ref in payment_card_refs(conn):
+        if asked >= limit:
+            break
+        row = conn.execute("SELECT last4, fetched_at FROM payment_cards WHERE ref = ?",
+                           (ref,)).fetchone()
+        if row and (row["last4"] or (row["fetched_at"] or "") > retry_after):
+            continue
+        asked += 1
+        if remember_card(conn, ref):
+            named += 1
+        conn.commit()
+    return f"{named} of {asked} card(s) named"
 
 
 def _booking_field(booking, *names):
@@ -34294,8 +35143,12 @@ PALETTE_PAGES = [
     ("Held, not earned", "held_not_earned_page",
      "deposits deferred liability unearned advance"),
     ("Refunds", "admin_refunds", "money back"),
+    ("Transactions", "admin_transactions",
+     "payments charges refunds money in paid card transfer cash ledger what for"),
     ("Reports", "admin_reports", "financial occupancy labour guest"),
     ("Emails", "admin_emails", "campaigns templates marketing"),
+    ("Website visitors", "website_analytics",
+     "analytics visitors visits traffic pages referrers sources google seo bookings conversion"),
     ("Bank details", "management_bank_details", "iban account"),
     ("Recurring costs", "management_recurring_costs", "subscriptions bills"),
     ("Management", "management", "settings admin"),
@@ -34359,6 +35212,10 @@ PALETTE_PAGES = [
      "images photos squarespace cdn hotlink mirror logo pictures gallery "
      "who hosts our pictures"),
     ("Audit log", "audit_log", "who did what history"),
+    ("Changes log", "changes_log",
+     "changes changed edited who changed field before after history log"),
+    ("Mail log", "mail_log",
+     "emails letters sent delivered held bounced did not go outbox email log who was written to"),
     ("Terms & conditions", "admin_terms", "legal policy"),
     ("Restaurant", "admin_restaurant", "dinner covers reservations"),
     ("Restaurant settings", "admin_restaurant_settings", "capacity price"),
@@ -37601,22 +38458,16 @@ def email_booking_statement(manage_token):
         return redirect(url_for("manage_booking", manage_token=manage_token))
 
     statement = guest_statement(conn, booking)
+    # The page's own statement, line for line -- every charge, every payment
+    # with its card, every refund -- and then the VAT bands the invoice owes.
+    view = booking_statement_view(conn, "room", booking["id"])
     company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
     conn.close()
 
-    # Built from the statement's own fields: accommodation, each extra by name,
-    # taxe de sejour on its own because it carries no VAT, then the VAT bands.
-    lines = [f"  {statement['nights']} night(s), {booking['room_name']}"
-             f"   €{statement['accommodation']:.2f}"]
-    for extra in statement["extras"]:
-        amount = (extra["unit_price"] or 0) * (extra["quantity"] or 0)
-        lines.append(f"  {extra['quantity']} x {extra['name']}   €{amount:.2f}")
-    if statement["city_tax"]:
-        lines.append(f"  Taxe de sejour   €{statement['city_tax']:.2f}")
-    if statement["taken_off"]:
-        lines.append(f"  Reduction, refunded to you   -€{statement['taken_off']:.2f}")
-    for band in statement["vat"]:
-        lines.append(f"  of which VAT at {band['rate']}%   €{band['vat']:.2f}")
+    lines = [statement_text(view)] if view else []
+    if view and view["stands"]:
+        for band in statement["vat"]:
+            lines.append(f"  of which VAT at {band['rate']}%   €{band['vat']:.2f}")
 
     who = []
     if company:
@@ -37626,13 +38477,6 @@ def email_booking_statement(manage_token):
             if value:
                 who.append(value)
 
-    lines += ["",
-              f"  Total   €{statement['total']:.2f}",
-              f"  Received   €{statement['received']:.2f}"]
-    if statement["refunded"]:
-        lines.append(f"  Refunded   €{statement['refunded']:.2f}")
-    lines.append(f"  Still to pay   "
-                 f"€{statement['balance'] if statement['balance'] > 0 else 0:.2f}")
     conn = get_db()
     try:
         subject, body, letter = render_email_template(conn, "room_statement", {
@@ -37678,9 +38522,12 @@ def booking_statement(manage_token):
         conn.close()
         abort(404)
     statement = guest_statement(conn, booking)
+    # The lines: every charge, every payment with its card, every refund.
+    # The VAT and the taxe de sejour are still the invoice's to break down.
+    view = booking_statement_view(conn, "room", booking["id"])
     company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
     conn.close()
-    return render_template("guest_statement.html", booking=booking, s=statement,
+    return render_template("guest_statement.html", booking=booking, s=statement, v=view,
                            company=company, employer=EMPLOYER_LEGAL_NAME)
 
 
@@ -41965,10 +42812,12 @@ def event_email_context(inquiry):
     }
 
 
-def send_event_email(conn, inquiry, template_key, context):
+def send_event_email(conn, inquiry, template_key, context, statement=False):
     subject, body, letter = render_email_template(conn, template_key, context)
     if not subject:
         return
+    if statement:
+        body, letter = letter_with_statement(conn, subject, body, "event", inquiry["id"])
     send_email(inquiry["contact_email"], subject, body, html=letter,
                about=("event", inquiry["id"]), template_key=template_key)
 
@@ -42388,6 +43237,16 @@ def record_event_checkout(conn, session):
         conn.rollback()
         return False
     conn.commit()
+    # A card payment on an event was taken in silence, both ways. It has a
+    # receipt now, with the statement, and the house is told.
+    ref = _intent_id(session) or session_id
+    remember_card(conn, ref)
+    conn.commit()
+    inquiry = conn.execute("SELECT * FROM event_inquiries WHERE id = ?", (int(event_id),)).fetchone()
+    if inquiry and inquiry["contact_email"]:
+        send_event_email(conn, inquiry, "event_payment_received",
+                         event_payment_context(conn, inquiry, amount), statement=True)
+    tell_house_of_payment(conn, "event", int(event_id), amount, ref)
     return True
 
 
@@ -46385,6 +47244,13 @@ EMAIL_TEMPLATE_TAGS = {
                                  "party_size", "price_block", "reference_code",
                                  "total_price", "workshop_title"),
     "workshop_feedback_request": ("feedback_url", "guest_name", "workshop_title"),
+    "workshop_payment_received": ("amount", "balance_line", "dates", "guest_name",
+                                  "reference_code", "statement_url", "workshop_title"),
+    "event_payment_received": ("amount", "balance_line", "contact_name", "event_type",
+                               "manage_url", "reference_code"),
+    "house_payment_received": ("amount", "balance_line", "booking_url", "guest_email",
+                               "guest_name", "paid_at", "paid_how", "reference_code",
+                               "what_for"),
     "workshop_registration_received": ("balance_amount", "balance_due_date", "balance_line",
                                        "dates", "deposit_amount", "guest_name", "manage_url",
                                        "party_size", "price_block", "reference_code",
@@ -46450,6 +47316,10 @@ REQUIRED_MERGE_TAGS = {
     "room_balance_before": {"manage_url": "it is where they pay"},
     "room_balance_after": {"manage_url": "it is where they pay"},
     "refund_issued": {"amount": "it is the sum that went back"},
+    "workshop_payment_received": {"amount": "it is the sum they paid"},
+    "event_payment_received": {"amount": "it is the sum they paid"},
+    "house_payment_received": {"amount": "it is the sum that came in",
+                               "booking_url": "it is the way to the booking's payments"},
     "guest_account_statement": {"statement_url": "it is where they read the statement and "
                                                  "settle anything outstanding"},
     "guest_link_updated": {"new_link": "it is the new way in; without it the letter says the "
@@ -46614,19 +47484,22 @@ def _letter_label(blocks):
     return "Open the page"
 
 
-def letter_html(subject, text, settings=None):
+def letter_html(subject, text, settings=None, statement=None):
     """One of the twenty-one letters, drawn, or "" if it cannot be.
 
     Empty rather than raising, the same rule the booking confirmation follows:
     a shell that will not render is a reason to send a plainer letter, never a
     reason for the guest to hear nothing.
+
+    `statement` is a booking_statement_view, drawn beneath the words.
     """
     try:
         blocks = letter_blocks(text)
         if not blocks:
             return ""
         return render_template("email_letter.html", subject=subject,
-                               blocks=blocks, settings=settings or {})
+                               blocks=blocks, settings=settings or {},
+                               statement=statement)
     except Exception as e:      # pragma: no cover - the text still goes
         print(f"[email html failed] {subject}: {e}")
         return ""
@@ -47170,17 +48043,22 @@ def log_workshop_message(conn, booking_id, subject, recipient, status):
     )
 
 
-def send_workshop_email(conn, booking, template_key, context):
+def send_workshop_email(conn, booking, template_key, context, statement=False):
     """Sends a lifecycle email built from the admin-editable template,
     honouring the guest's do-not-email opt-out and always leaving an
     auditable row in workshop_messages — sent, skipped, or failed — so the
-    registration's message history is complete regardless of outcome."""
+    registration's message history is complete regardless of outcome.
+
+    `statement` puts the registration's statement beneath the words: a receipt
+    is a statement too."""
     subject, body, letter = render_email_template(conn, template_key, context)
     if not subject:
         return
     if booking["do_not_email"]:
         log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "skipped — opted out")
         return
+    if statement:
+        body, letter = letter_with_statement(conn, subject, body, "workshop", booking["id"])
     sent = send_email(booking["guest_email"], subject, body, html=letter,
                       area="workshops", about=("workshop", booking["id"]),
                       template_key=template_key)
@@ -47346,6 +48224,23 @@ def remember_workshop_card(conn, booking_id, session):
         "WHERE id = ?", (customer_id, method_id, booking_id))
 
 
+def send_workshop_payment_receipt(conn, booking_id, amount, ref=None):
+    """A receipt for money towards an atelier -- any payment but the first
+    deposit, which has a letter of its own -- with the statement beneath it."""
+    booking = conn.execute(
+        """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date,
+                  workshops.title FROM workshop_bookings
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_bookings.id = ?""", (booking_id,)).fetchone()
+    if not booking:
+        return
+    remember_card(conn, ref)
+    conn.commit()
+    send_workshop_email(conn, booking, "workshop_payment_received",
+                        workshop_payment_context(conn, booking, amount), statement=True)
+
+
 def mark_workshop_payment_paid(conn, session):
     """Credit one paid Stripe checkout to a registration, once.
 
@@ -47391,6 +48286,10 @@ def mark_workshop_payment_paid(conn, session):
             "UPDATE workshop_bookings SET balance_stripe_session_id = "
             "COALESCE(balance_stripe_session_id, ?) WHERE id = ?", (session_id, booking_id))
         conn.commit()
+        # A balance used to be taken in silence: the money moved, the ledger
+        # moved, and the guest was told nothing. Every payment has a receipt.
+        send_workshop_payment_receipt(conn, booking_id, amount, session_id)
+        tell_house_of_payment(conn, "workshop", booking_id, amount, session_id)
         return
     first_deposit = conn.execute(
         "UPDATE workshop_bookings SET deposit_paid_at = ?, deposit_stripe_session_id = ? "
@@ -47417,8 +48316,14 @@ def mark_workshop_payment_paid(conn, session):
         # while this transaction is open — so the guest's deposit receipt was
         # being lost to "database is locked" instead of held for later.
         conn.commit()
+        remember_card(conn, session_id)
+        conn.commit()
         send_workshop_email(conn, booking, "workshop_deposit_receipt",
-                            workshop_email_context(booking))
+                            workshop_email_context(booking), statement=True)
+    else:
+        # A second payment towards the deposit, or one after it: its own receipt.
+        send_workshop_payment_receipt(conn, booking_id, amount, session_id)
+    tell_house_of_payment(conn, "workshop", booking_id, amount, session_id)
     conn.commit()
 
 
@@ -47829,6 +48734,30 @@ def workshop_find():
             return redirect(url_for("workshop_manage", manage_token=booking["manage_token"]))
         flash("No registration found with that reference and email.", "error")
     return render_template("workshop_find.html")
+
+
+@app.route("/workshops/manage/<manage_token>/statement")
+def workshop_statement(manage_token):
+    """The atelier's own statement: the price as sold, every payment with the
+    card it came from, every refund, and what is left.
+
+    There was none. The manage page gave three totals, and a guest reclaiming
+    the cost of a course, or checking what their deposit had covered, had
+    nothing to show anybody. Opened with the registration's manage token, the
+    way its manage page is, so they reach it from their confirmation without
+    an account.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT id FROM workshop_bookings WHERE manage_token = ?",
+                       (manage_token,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    view = booking_statement_view(conn, "workshop", row["id"])
+    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    conn.close()
+    return render_template("workshop_statement.html", v=view, booking=view["row"],
+                           company=company)
 
 
 @app.route("/workshops/manage/<manage_token>", methods=["GET", "POST"])
@@ -53992,6 +54921,218 @@ def refund_off_the_bill(category, booking_id, refund_id):
     return redirect(back)
 
 
+# ---------------------------------------------------------------------------
+# Transactions: every charge, payment and refund, house-wide.
+# ---------------------------------------------------------------------------
+
+# What each kind of line on a statement is, in the list's words, and which of
+# the four questions it answers: what was charged, what was taken off, what
+# came in, what went back.
+TRANSACTION_TYPES = {
+    "room": ("Accommodation", "Charge"), "extra": ("Extra", "Charge"),
+    "city_tax": ("Taxe de séjour", "Charge"), "programme": ("Programme", "Charge"),
+    "supplement": ("Supplement", "Charge"), "charge": ("Charge", "Charge"),
+    "quote": ("As quoted", "Charge"), "deposit": ("Deposit", "Charge"),
+    "kept": ("Kept on cancellation", "Charge"),
+    "discount": ("Discount", "Discount"), "refund_reduction": ("Reduction", "Discount"),
+    "payment": ("Payment", "Payment"), "refund": ("Refund", "Refund"),
+    "reversal": ("Refund put back", "Refund"),
+}
+
+# How a payment or refund was made, as a chip. The words are the statement's.
+TRANSACTION_METHODS = {
+    "Card, online": "Card", "Card, by payment link": "Card", "Card, in person": "Card",
+    "Card, at the terminal": "Card", "Online": "Card", "Bank transfer": "Bank transfer",
+    "Cash": "Cash", "Gift voucher": "Gift voucher",
+}
+
+# When each kind of booking ends, for the list's "Ends" column.
+BOOKING_ENDS = {"room": "departure_date", "workshop": "end_date",
+                "event": "preferred_date", "restaurant": "dinner_date"}
+
+
+def _transaction_candidates(conn, lo, hi):
+    """Which bookings of each kind have anything dated between two moments.
+
+    Only these are worked out: a statement's lines are cheap one booking at a
+    time and dear for every booking the house has ever taken. Every line is
+    dated on the house's day of a moment kept in UTC -- a payment's, a
+    refund's, the booking's own, or the one it was decided at -- so the two
+    moments are where the house's first day starts and the day after its last
+    begins (house_moment), and each moment a line can be dated by is looked
+    for here.
+    """
+    found = {"room": set(), "workshop": set(), "event": set(), "restaurant": set()}
+    queries = (
+        ("room", "SELECT booking_id AS id FROM booking_payments WHERE created_at >= ? AND created_at < ?"),
+        ("room", "SELECT booking_id AS id FROM booking_extras WHERE category = 'room' AND created_at >= ? AND created_at < ?"),
+        ("room", "SELECT id FROM bookings WHERE COALESCE(decided_at, created_at) >= ? AND COALESCE(decided_at, created_at) < ?"),
+        ("room", "SELECT id FROM bookings WHERE created_at >= ? AND created_at < ?"),
+        ("workshop", "SELECT workshop_booking_id AS id FROM workshop_transactions WHERE created_at >= ? AND created_at < ?"),
+        ("workshop", "SELECT id FROM workshop_bookings WHERE COALESCE(decided_at, created_at) >= ? AND COALESCE(decided_at, created_at) < ?"),
+        ("event", "SELECT event_id AS id FROM event_payments WHERE created_at >= ? AND created_at < ?"),
+        ("event", "SELECT id FROM event_inquiries WHERE COALESCE(decided_at, created_at) >= ? AND COALESCE(decided_at, created_at) < ?"),
+        ("event", "SELECT id FROM event_inquiries WHERE created_at >= ? AND created_at < ?"),
+        ("restaurant", "SELECT id FROM restaurant_bookings WHERE created_at >= ? AND created_at < ?"),
+        # A table's deposit is charged on the day it was confirmed.
+        ("restaurant", "SELECT id FROM restaurant_bookings WHERE COALESCE(decided_at, created_at) >= ? AND COALESCE(decided_at, created_at) < ?"),
+    )
+    for category, sql in queries:
+        try:
+            found[category].update(r["id"] for r in conn.execute(sql, (lo, hi)).fetchall())
+        except sqlite3.OperationalError:
+            continue            # a kind without that column yet
+    for r in conn.execute("SELECT category, booking_id FROM refunds WHERE created_at >= ? AND created_at < ?",
+                          (lo, hi)).fetchall():
+        if r["category"] in found:
+            found[r["category"]].add(r["booking_id"])
+    return found
+
+
+def _profile_ids_by_address(conn):
+    """{address: the profile that address belongs to now}, merges followed."""
+    rows = conn.execute("SELECT id, email, merged_into_id FROM guests").fetchall()
+    into = {r["id"]: r["merged_into_id"] for r in rows}
+
+    def settled(gid):
+        seen = set()
+        while into.get(gid) and gid not in seen:
+            seen.add(gid)
+            gid = into[gid]
+        return gid
+
+    out = {}
+    for r in rows:
+        address = (r["email"] or "").strip().lower()
+        if address and (address not in out or not r["merged_into_id"]):
+            out[address] = settled(r["id"])
+    return out
+
+
+def house_transactions(conn, start_iso, end_iso):
+    """Every charge, payment and refund dated on the house's days from
+    `start_iso` up to `end_iso` and not including it -- resolve_period's
+    window, whose end is the day after the last -- one row each, with who it
+    was, what it was for, and how.
+
+    The lines are each booking's statement lines (booking_money_lines) and
+    nothing else, so a person's rows here are their statement's, and the
+    booking's own statement adds up to the same.
+    """
+    candidates = _transaction_candidates(conn, house_moment(start_iso), house_moment(end_iso))
+    profiles = _profile_ids_by_address(conn)
+    rows = []
+    for category, ids in candidates.items():
+        ids = sorted(i for i in ids if i)
+        for n in range(0, len(ids), 400):
+            chunk = ids[n:n + 400]
+            alias = {"room": "bookings.id", "workshop": "wb.id"}.get(category, "id")
+            for row in _statement_rows(conn, category,
+                                       f"{alias} IN ({','.join('?' * len(chunk))})", chunk):
+                lines, about = booking_money_lines(conn, category, row)
+                if not lines:
+                    continue
+                keys = row.keys()
+                name = row["contact_name"] if "contact_name" in keys else row["guest_name"]
+                email = ((row["contact_email"] if "contact_email" in keys else row["guest_email"])
+                         or "").strip().lower()
+                gid = (row["linked_guest_id"] if "linked_guest_id" in keys and row["linked_guest_id"]
+                       else None) or profiles.get(email)
+                token = row["manage_token"] if "manage_token" in keys else None
+                for x in lines:
+                    if not (start_iso <= x["day"] < end_iso):
+                        continue
+                    words, group = TRANSACTION_TYPES.get(x["line"], (x["line"], "Charge"))
+                    rows.append(dict(
+                        x, type=words, group=group, person=name or "Somebody",
+                        email=email, guest_id=gid, booking_what=about["what"],
+                        status=row["status"], ends=row[BOOKING_ENDS[category]]
+                        if BOOKING_ENDS[category] in keys else None,
+                        manage_token=token,
+                        how=TRANSACTION_METHODS.get(x["method"] or "", "Other")
+                        if (x["paid"] or x["back"]) else None,
+                        amount=x["paid"] or -x["back"] or x["charge"]))
+    cards = card_labels(conn, [x["card"] for x in rows if x["card"]])
+    for x in rows:
+        x["card_words"] = cards.get(x["card"]) if x["card"] else None
+        x["recorded"] = local_datetime_str(x["at"]) if x["at"] else ""
+    return rows
+
+
+def transactions_list_view(conn, args):
+    """The transactions for a period, as the page and its export both see them.
+
+    Shared so "export this view" means exactly what is on screen, totals and
+    all. The totals are the shown rows added up, and nothing else.
+    """
+    period = resolve_period(args.get("period") or "month", args.get("date"))
+    rows = house_transactions(conn, period["start_iso"], period["end_iso"])
+    lv = list_view(
+        rows, args,
+        search=["person", "email", "ref", "what", "booking_what", "note", "card_words",
+                "method", "kind"],
+        search_hint="Search who, reference, what it was for, a note, or a card's last four",
+        facets=[
+            facet("kind", "For", lambda x: x["kind"],
+                  order=[STATEMENT_KINDS[k] for k in ("room", "workshop", "event", "restaurant")]),
+            facet("type", "Type", lambda x: x["group"],
+                  order=["Payment", "Refund", "Charge", "Discount"]),
+            facet("how", "How", lambda x: x["how"],
+                  order=["Card", "Bank transfer", "Cash", "Gift voucher", "Other"]),
+        ],
+        sorts=[
+            sort_option("recent", "Most recent first", lambda x: x["at"] or "", reverse=True),
+            sort_option("oldest", "Oldest first", lambda x: x["at"] or ""),
+            sort_option("largest", "Largest first", lambda x: abs(x["amount"] or 0), reverse=True),
+            sort_option("person", "By person", lambda x: ((x["person"] or "").lower(), x["at"] or "")),
+        ],
+        default_sort="recent",
+    )
+    shown = lv["rows"]
+    lv["totals"] = {
+        "charged": round(sum(x["charge"] for x in shown), 2),
+        "paid": round(sum(x["paid"] for x in shown), 2),
+        "refunded": round(sum(x["back"] for x in shown), 2),
+    }
+    lv["totals"]["net"] = round(lv["totals"]["paid"] - lv["totals"]["refunded"], 2)
+    lv["period"] = period
+    return lv
+
+
+@app.route("/admin/transactions")
+@owner_required
+def admin_transactions():
+    """Every charge, payment and refund in a period, with what each was for."""
+    conn = get_db()
+    lv = transactions_list_view(conn, request.args)
+    conn.close()
+    cap = 500
+    keep = {k: v for k, v in request.args.to_dict().items() if k not in ("period", "date")}
+    return render_template("admin_transactions.html", lv=lv, rows=lv["rows"][:cap], cap=cap,
+                           capped=len(lv["rows"]) > cap, period=lv["period"], keep=keep)
+
+
+@app.route("/admin/transactions/export.csv")
+@owner_required
+def export_transactions_csv():
+    """The same view as a spreadsheet: the period, the filters, the search."""
+    conn = get_db()
+    lv = transactions_list_view(conn, request.args)
+    conn.close()
+    fields = ["date", "recorded", "person", "email", "for", "reference", "booking", "ends",
+              "type", "description", "how", "card", "note", "charged", "paid", "refunded"]
+    money = lambda v: f"{v:.2f}" if v else ""
+    out = [{"date": x["day"], "recorded": x["recorded"], "person": x["person"],
+            "email": x["email"], "for": x["kind"], "reference": x["ref"],
+            "booking": x["booking_what"], "ends": x["ends"] or "", "type": x["type"],
+            "description": x["what"], "how": x["method"] or "", "card": x["card_words"] or "",
+            "note": x["note"] or "", "charged": money(x["charge"]), "paid": money(x["paid"]),
+            "refunded": money(x["back"])} for x in lv["rows"]]
+    name = ("transactions_filtered.csv" if lv["filtered"]
+            else f"transactions_{lv['period']['start_iso']}_{lv['period']['end_iso']}.csv")
+    return csv_response(fields, out, name)
+
+
 @app.route("/admin/refunds/<category>/<int:booking_id>", methods=["GET", "POST"])
 @owner_required
 def refund_desk(category, booking_id):
@@ -58700,7 +59841,8 @@ def mark_workshop_deposit_paid(registration_id):
         # this route's Stripe twin and sends the identical template; this is the
         # bank-transfer and cash path, where a receipt is the guest's only proof.
         conn.commit()
-        send_workshop_email(conn, booking, "workshop_deposit_receipt", workshop_email_context(booking))
+        send_workshop_email(conn, booking, "workshop_deposit_receipt", workshop_email_context(booking),
+                            statement=True)
     conn.commit()
     conn.close()
     flash("Deposit marked as paid.", "success")
@@ -68450,6 +69592,300 @@ def held_money_is_theirs(category, booking, session_called_off=False):
     return False
 
 
+def statement_promo_words(conn, row):
+    """The code a discount came from and what it promised: "MERCI15 (15%)".
+
+    Read from the code the booking was made with, never worked back out of the
+    figures: a percentage divided out of a rounded discount can come to 14.99%,
+    and a guest reads that as a different promise from the one they were made.
+    """
+    keys = row.keys()
+    code_id = row["promo_code_id"] if "promo_code_id" in keys else None
+    if not code_id:
+        return None
+    promo = conn.execute(
+        "SELECT code, discount_type, discount_value FROM promo_codes WHERE id = ?",
+        (code_id,)).fetchone()
+    if not promo:
+        return None
+    if promo["discount_type"] == "percent" and promo["discount_value"]:
+        return f"{promo['code']} ({promo['discount_value']:g}%)"
+    return promo["code"]
+
+
+def _statement_rows(conn, category, where, params=()):
+    """The rows statements are made from, one kind at a time, in the shape
+    booking_money_lines reads."""
+    if category == "room":
+        sql = f"""SELECT bookings.*, rooms.name AS room_name FROM bookings
+                    JOIN rooms ON rooms.id = bookings.room_id
+                   WHERE {where} ORDER BY bookings.arrival_date"""
+    elif category == "workshop":
+        sql = f"""SELECT wb.*, ws.start_date, ws.end_date,
+                         ws.cancelled_at AS session_called_off, w.title
+                    FROM workshop_bookings wb
+                    JOIN workshop_sessions ws ON ws.id = wb.session_id
+                    JOIN workshops w ON w.id = ws.workshop_id
+                   WHERE {where} ORDER BY ws.start_date"""
+    elif category == "event":
+        sql = f"""SELECT * FROM event_inquiries WHERE {where}
+                   ORDER BY COALESCE(preferred_date, '')"""
+    else:
+        sql = f"SELECT * FROM restaurant_bookings WHERE {where} ORDER BY dinner_date"
+    return conn.execute(sql, params).fetchall()
+
+
+# One booking by its id, per kind, in the words _statement_rows is written in.
+STATEMENT_ROW_BY_ID = {"room": "bookings.id = ?", "workshop": "wb.id = ?",
+                       "event": "id = ?", "restaurant": "id = ?"}
+
+
+def booking_money_lines(conn, category, row, asking=False):
+    """What one booking puts on a statement: every charge, payment and refund,
+    dated, and what they come to.
+
+    THE ONE PLACE THIS IS WORKED OUT. The person's statement of account is
+    these lines gathered across everything they have booked; the booking's own
+    statement is these lines; the house's list of transactions is these lines
+    across everybody. Three documents that each worked it out for themselves
+    would be three answers to what one guest paid.
+
+    Built from each kind's own definition -- a stay's bill, an atelier's
+    ledger, an event's bill -- and adding up to it. Only a booking that STANDS
+    is charged its price. One that came to nothing and moved no money is on no
+    statement: (None, None). One cancelled with money on it shows the money,
+    and whose it is: kept under the non-refundable terms, as a line of its own,
+    or the guest's, as credit, where the house said no.
+
+    `asking` charges a booking still awaiting an answer as though it stood: its
+    own statement says what it will cost. An account of what somebody owes the
+    house leaves it off until it is agreed, so the person's statement does not
+    ask.
+    """
+    lines = []
+    ref = row["reference_code"] or f"#{row['id']}"
+    status = (row["status"] or "").lower()
+    stands = status == "confirmed" or (asking and status == "pending")
+
+    def add(at, what, charge=0.0, paid=0.0, back=0.0, line="charge", method=None,
+            card=None, payer=None, note=None):
+        lines.append({
+            "at": at or "", "day": house_date_iso(at) if at else "",
+            "kind": STATEMENT_KINDS[category], "category": category,
+            "ref": ref, "booking_id": row["id"],
+            "what": what, "charge": round(charge or 0.0, 2), "paid": round(paid or 0.0, 2),
+            "back": round(back or 0.0, 2), "line": line, "method": method, "card": card,
+            "payer": payer, "note": note})
+
+    def charged_when(r):
+        keys = r.keys()
+        return (r["decided_at"] if "decided_at" in keys and r["decided_at"]
+                else r["created_at"])
+
+    def refunds_of(bid):
+        return conn.execute(
+            """SELECT * FROM refunds WHERE category = ? AND booking_id = ?
+               ORDER BY created_at, id""", (category, bid)).fetchall()
+
+    def method_words(method):
+        return PAYMENT_METHOD_WORDS.get(method, (method or "other").replace("_", " ").capitalize())
+
+    def refund_words(r):
+        if (r["amount"] or 0) < 0:
+            return "A refund that did not reach you, put back"
+        how = ("to the card" if r["method"] == "stripe"
+               else (r["method"] or "other").replace("_", " "))
+        return f"Refunded, {how}"
+
+    def kept_line(r, payments, refunds, theirs):
+        """What a cancellation kept, as a charge, so a deposit kept under the
+        terms does not read as money the house owes back."""
+        if theirs:
+            return
+        held = round(sum(p["amount"] for p in payments)
+                     - sum((x["amount"] or 0) for x in refunds), 2)
+        if held > 0.005:
+            add(charged_when(r), "Kept on cancellation, under the non-refundable terms",
+                charge=held, line="kept")
+
+    def money_lines(payments, refunds):
+        # A refund goes back against a payment, so it goes back to that card.
+        cards = {p["key"]: p["card"] for p in payments}
+        for p in payments:
+            add(p["at"], f"Paid, {p['method_label'].lower()}"
+                + (f" ({p['payer']})" if p["payer"] else ""), paid=p["amount"],
+                line="payment", method=p["method_label"], card=p["card"], payer=p["payer"],
+                note=p["label"] or (f"A share of the bill, paid by {p['payer']}"
+                                    if p["payer"] else "Payment"))
+        for r in refunds:
+            keys = r.keys()
+            add(r["created_at"], refund_words(r), back=r["amount"],
+                line="reversal" if (r["amount"] or 0) < 0 else "refund",
+                method=method_words(r["method"]),
+                card=cards.get(r["payment_key"]) if "payment_key" in keys else None,
+                note=r["reason"])
+            if stands and "reduces_bill" in keys and (r["reduces_bill"] or 0):
+                add(r["created_at"], "Reduction, refunded to you",
+                    charge=-(r["reduces_bill"] or 0), line="refund_reduction")
+
+    def summary(what, **more):
+        return dict(category=category, kind=STATEMENT_KINDS[category], ref=ref, id=row["id"],
+                    what=what, status=row["status"], stands=stands,
+                    manage_token=row["manage_token"] if "manage_token" in row.keys() else None,
+                    **more)
+
+    if category == "room":
+        bill = booking_bill(conn, row["id"])
+        if not bill:
+            return None, None
+        payments = payments_received(conn, "room", row)
+        refunds = refunds_of(row["id"])
+        if not stands and not payments and not refunds:
+            return None, None          # a request that came to nothing, and moved no money
+        when = charged_when(row)
+        dates = format_date_range(row["arrival_date"], row["departure_date"])
+        if stands:
+            extra_at = {e["id"]: e["created_at"]
+                        for e in extras_for_booking(conn, "room", row["id"])}
+            promo = statement_promo_words(conn, row)
+            for line in bill["lines"]:
+                if line["kind"] == "refund_reduction":
+                    continue      # listed refund by refund, below
+                at = extra_at.get(line.get("line_id"), when) if line["kind"] == "extra" else when
+                label = (f"{line['label']}, {dates}" if line["kind"] == "room"
+                         else f"Discount: {promo}" if line["kind"] == "discount" and promo
+                         else line["label"])
+                add(at, label, charge=line["amount"], line=line["kind"])
+        else:
+            kept_line(row, payments, refunds, held_money_is_theirs("room", row))
+        money_lines(payments, refunds)
+        return lines, summary(f"{row['room_name']}, {dates}", bill=bill if stands else None)
+
+    if category == "workshop":
+        ledger = conn.execute(
+            """SELECT * FROM workshop_transactions WHERE workshop_booking_id = ?
+                ORDER BY created_at, id""", (row["id"],)).fetchall()
+        if not stands and not any(t["kind"] in ("payment", "refund") for t in ledger):
+            return None, None
+        label = f"{row['title']}, {format_date_range(row['start_date'], row['end_date'])}"
+        price = row["total_price"] or 0
+        if stands and price:
+            # The price as it was sold, in the pieces it was sold in: the
+            # places, the single supplement, and the code taken off them. From
+            # what the registration STORED, so the pieces come to the price
+            # whatever the atelier happens to charge today.
+            keys = row.keys()
+            off = round(float(row["discount_amount"] or 0), 2) if "discount_amount" in keys else 0.0
+            extra = (round(float(row["single_supplement"] or 0), 2)
+                     if "single_supplement" in keys else 0.0)
+            places = int(row["party_size"] or 1) if "party_size" in keys else 1
+            when = charged_when(row)
+            add(when, label + (f", {places} places" if places > 1 else ""),
+                charge=round(price + off - extra, 2), line="programme")
+            if extra:
+                add(when, "Single supplement", charge=extra, line="supplement")
+            if off:
+                promo = statement_promo_words(conn, row)
+                add(when, f"Discount: {promo}" if promo else "Discount", charge=-off,
+                    line="discount")
+        elif not stands and not held_money_is_theirs("workshop", row, row["session_called_off"]):
+            held = round(sum(t["amount"] for t in ledger if t["kind"] == "payment")
+                         - sum(t["amount"] for t in ledger if t["kind"] == "refund"), 2)
+            if held > 0.005:
+                add(charged_when(row), "Kept on cancellation, under the non-refundable terms",
+                    charge=held, line="kept")
+        # The ledger is the atelier's truth: its refund lines are the refunds,
+        # so the refunds table is not read again here.
+        for t in ledger:
+            if t["kind"] == "charge" and stands:
+                add(t["created_at"], t["description"], charge=t["amount"], line="charge")
+            elif t["kind"] == "discount" and stands:
+                add(t["created_at"], t["description"], charge=-t["amount"], line="discount")
+            elif t["kind"] == "payment":
+                add(t["created_at"], f"Paid: {t['description']}", paid=t["amount"],
+                    line="payment", method=method_words(t["method"]),
+                    card=_card_ref(t["stripe_ref"]) if "stripe_ref" in t.keys() else None,
+                    note=t["description"])
+            elif t["kind"] == "refund":
+                add(t["created_at"], t["description"], back=t["amount"], line="refund",
+                    method=method_words(t["method"]) if t["method"] else None)
+        due, charged, paid = workshop_balance_due(conn, row["id"])
+        return lines, summary(label, money={"charged": charged, "paid": paid, "owed": due})
+
+    if category == "event":
+        bill = event_bill(conn, row["id"])
+        if not bill:
+            return None, None
+        payments = payments_received(conn, "event", row)
+        refunds = refunds_of(row["id"])
+        if not stands and not payments and not refunds:
+            return None, None
+        label = (row["event_type"] or "event").capitalize() + (
+            f", {format_date_human(row['preferred_date'])}" if row["preferred_date"] else "")
+        if stands:
+            add(charged_when(row), f"{label}, as quoted", charge=bill["gross_quote"], line="quote")
+            if bill["discount"]:
+                promo = statement_promo_words(conn, row)
+                add(charged_when(row), f"Discount: {promo}" if promo else "Discount",
+                    charge=-bill["discount"], line="discount")
+        else:
+            kept_line(row, payments, refunds, held_money_is_theirs("event", row))
+        money_lines(payments, refunds)
+        return lines, summary(label, money=bill)
+
+    payments = payments_received(conn, "restaurant", row)
+    refunds = refunds_of(row["id"])
+    if not payments and not refunds:
+        return None, None          # settled at the table, on the till
+    label = f"Dinner, {format_date_human(row['dinner_date'])}"
+    if status == "confirmed":
+        # The deposit is taken off the table's bill on the night, so what it
+        # buys is the deposit itself; the rest of the evening is the till's.
+        add(charged_when(row), f"{label}, deposit towards the table",
+            charge=sum(p["amount"] for p in payments), line="deposit")
+    else:
+        kept_line(row, payments, refunds, held_money_is_theirs("restaurant", row))
+    money_lines(payments, refunds)
+    return lines, summary(label)
+
+
+def booking_statement_view(conn, category, booking_id, asking=True):
+    """One booking's own statement, laid out the way a statement reads.
+
+    What was charged, line by line, the discount named by its code; then every
+    payment and every refund on a line of its own, dated, with the card it
+    came from; then what was paid and what is left. The lines are the booking's
+    lines on the person's statement of account, so the two documents cannot
+    disagree about the same money.
+    """
+    rows = _statement_rows(conn, category, STATEMENT_ROW_BY_ID[category], (booking_id,))
+    if not rows:
+        return None
+    row = rows[0]
+    lines, about = booking_money_lines(conn, category, row, asking=asking)
+    lines = sorted(lines or [], key=lambda x: x["at"])
+    cards = card_labels(conn, [x["card"] for x in lines if x["card"]])
+    for x in lines:
+        x["card_words"] = cards.get(x["card"]) if x["card"] else None
+    charges = [x for x in lines if x["charge"]]
+    payments = [x for x in lines if x["paid"]]
+    refunds = [x for x in lines if x["back"]]
+    total = round(sum(x["charge"] for x in charges), 2)
+    paid = round(sum(x["paid"] for x in payments), 2)
+    back = round(sum(x["back"] for x in refunds), 2)
+    balance = round(total - paid + back, 2)
+    return {
+        "category": category, "kind": STATEMENT_KINDS[category], "row": row,
+        "booking": about, "stands": bool(about and about["stands"]),
+        "lines": lines, "charges": charges, "payments": payments, "refunds": refunds,
+        "subtotal": round(sum(x["charge"] for x in charges if x["charge"] > 0), 2),
+        "reductions": round(-sum(x["charge"] for x in charges if x["charge"] < 0), 2),
+        "total": total, "paid": paid, "back": back, "total_paid": round(paid - back, 2),
+        "balance": balance, "owed": round(max(balance, 0.0), 2),
+        "credit": round(max(-balance, 0.0), 2),
+    }
+
+
 def guest_account_statement(conn, guest_id, date_from=None, date_to=None):
     """One account for one person, across everything the house has sold them.
 
@@ -68478,176 +69914,24 @@ def guest_account_statement(conn, guest_id, date_from=None, date_to=None):
     idq = ",".join("?" * len(ids))
     adq = ",".join("?" * len(addresses)) or "NULL"
     entries, bookings = [], []
-
-    def add(at, category, row, what, charge=0.0, paid=0.0, back=0.0):
-        entries.append({
-            "at": at or "", "day": house_date_iso(at) if at else "",
-            "kind": STATEMENT_KINDS[category], "category": category,
-            "ref": row["reference_code"] or f"#{row['id']}", "booking_id": row["id"],
-            "what": what, "charge": round(charge or 0.0, 2), "paid": round(paid or 0.0, 2),
-            "back": round(back or 0.0, 2)})
-
-    def charged_when(row):
-        keys = row.keys()
-        return (row["decided_at"] if "decided_at" in keys and row["decided_at"]
-                else row["created_at"])
-
-    def refunds_of(category, bid):
-        return conn.execute(
-            """SELECT * FROM refunds WHERE category = ? AND booking_id = ?
-               ORDER BY created_at, id""", (category, bid)).fetchall()
-
-    def refund_words(r):
-        if (r["amount"] or 0) < 0:
-            return "A refund that did not reach you, put back"
-        how = ("to the card" if r["method"] == "stripe"
-               else (r["method"] or "other").replace("_", " "))
-        return f"Refunded, {how}"
-
-    def kept_line(category, row, payments, refunds, theirs):
-        """What a cancellation kept, as a charge, so a deposit kept under the
-        terms does not read as money the house owes back."""
-        if theirs:
-            return
-        held = round(sum(p["amount"] for p in payments)
-                     - sum((r["amount"] or 0) for r in refunds), 2)
-        if held > 0.005:
-            add(charged_when(row), category, row,
-                "Kept on cancellation, under the non-refundable terms", charge=held)
-
-    def money_lines(category, row, payments, refunds, stands):
-        for p in payments:
-            add(p["at"], category, row, f"Paid, {p['method_label'].lower()}"
-                + (f" ({p['payer']})" if p["payer"] else ""), paid=p["amount"])
-        for r in refunds:
-            add(r["created_at"], category, row, refund_words(r), back=r["amount"])
-            if stands and (r["reduces_bill"] or 0):
-                add(r["created_at"], category, row, "Reduction, refunded",
-                    charge=-(r["reduces_bill"] or 0))
-
-    def summary(category, row, what, status, stands, **more):
-        bookings.append(dict(category=category, kind=STATEMENT_KINDS[category],
-                             ref=row["reference_code"] or f"#{row['id']}", id=row["id"],
-                             what=what, status=status, stands=stands,
-                             manage_token=row["manage_token"] if "manage_token" in row.keys() else None,
-                             **more))
-
-    stays = conn.execute(
-        f"""SELECT bookings.*, rooms.name AS room_name FROM bookings
-              JOIN rooms ON rooms.id = bookings.room_id
-             WHERE bookings.linked_guest_id IN ({idq})
-                OR LOWER(TRIM(bookings.guest_email)) IN ({adq})
-             ORDER BY bookings.arrival_date""", ids + addresses).fetchall()
-    for b in stays:
-        bill = booking_bill(conn, b["id"])
-        if not bill:
-            continue
-        stands = b["status"] == "confirmed"
-        payments = payments_received(conn, "room", b)
-        refunds = refunds_of("room", b["id"])
-        if not stands and not payments and not refunds:
-            continue          # a request that came to nothing, and moved no money
-        when = charged_when(b)
-        dates = format_date_range(b["arrival_date"], b["departure_date"])
-        if stands:
-            extra_at = {e["id"]: e["created_at"]
-                        for e in extras_for_booking(conn, "room", b["id"])}
-            for line in bill["lines"]:
-                if line["kind"] == "refund_reduction":
-                    continue      # listed refund by refund, below
-                at = extra_at.get(line.get("line_id"), when) if line["kind"] == "extra" else when
-                label = (f"{line['label']}, {dates}" if line["kind"] == "room"
-                         else line["label"])
-                add(at, "room", b, label, charge=line["amount"])
-        else:
-            kept_line("room", b, payments, refunds, held_money_is_theirs("room", b))
-        money_lines("room", b, payments, refunds, stands)
-        summary("room", b, f"{b['room_name']}, {dates}", b["status"], stands,
-                bill=bill if stands else None)
-
-    ateliers = conn.execute(
-        f"""SELECT wb.*, ws.start_date, ws.end_date, ws.cancelled_at AS session_called_off,
-                   w.title FROM workshop_bookings wb
-              JOIN workshop_sessions ws ON ws.id = wb.session_id
-              JOIN workshops w ON w.id = ws.workshop_id
-             WHERE LOWER(TRIM(wb.guest_email)) IN ({adq})
-             ORDER BY ws.start_date""", addresses).fetchall()
-    for w in ateliers:
-        stands = w["status"] == "confirmed"
-        ledger = conn.execute(
-            """SELECT * FROM workshop_transactions WHERE workshop_booking_id = ?
-                ORDER BY created_at, id""", (w["id"],)).fetchall()
-        if not stands and not any(t["kind"] in ("payment", "refund") for t in ledger):
-            continue
-        label = f"{w['title']}, {format_date_range(w['start_date'], w['end_date'])}"
-        if stands and (w["total_price"] or 0):
-            add(charged_when(w), "workshop", w, label, charge=w["total_price"] or 0)
-        elif not stands and not held_money_is_theirs("workshop", w, w["session_called_off"]):
-            held = round(sum(t["amount"] for t in ledger if t["kind"] == "payment")
-                         - sum(t["amount"] for t in ledger if t["kind"] == "refund"), 2)
-            if held > 0.005:
-                add(charged_when(w), "workshop", w,
-                    "Kept on cancellation, under the non-refundable terms", charge=held)
-        # The ledger is the atelier's truth: its refund lines are the refunds,
-        # so the refunds table is not read again here.
-        for t in ledger:
-            if t["kind"] == "charge" and stands:
-                add(t["created_at"], "workshop", w, t["description"], charge=t["amount"])
-            elif t["kind"] == "discount" and stands:
-                add(t["created_at"], "workshop", w, t["description"], charge=-t["amount"])
-            elif t["kind"] == "payment":
-                add(t["created_at"], "workshop", w, f"Paid: {t['description']}",
-                    paid=t["amount"])
-            elif t["kind"] == "refund":
-                add(t["created_at"], "workshop", w, t["description"], back=t["amount"])
-        due, charged, paid = workshop_balance_due(conn, w["id"])
-        summary("workshop", w, label, w["status"], stands,
-                money={"charged": charged, "paid": paid, "owed": due})
-
-    events = conn.execute(
-        f"""SELECT * FROM event_inquiries WHERE LOWER(TRIM(contact_email)) IN ({adq})
-             ORDER BY COALESCE(preferred_date, '')""", addresses).fetchall()
-    for e in events:
-        bill = event_bill(conn, e["id"])
-        if not bill:
-            continue
-        stands = e["status"] == "confirmed"
-        payments = payments_received(conn, "event", e)
-        refunds = refunds_of("event", e["id"])
-        if not stands and not payments and not refunds:
-            continue
-        label = (e["event_type"] or "event").capitalize() + (
-            f", {format_date_human(e['preferred_date'])}" if e["preferred_date"] else "")
-        if stands:
-            add(charged_when(e), "event", e, f"{label}, as quoted", charge=bill["gross_quote"])
-            if bill["discount"]:
-                add(charged_when(e), "event", e, "Discount", charge=-bill["discount"])
-        else:
-            kept_line("event", e, payments, refunds, held_money_is_theirs("event", e))
-        money_lines("event", e, payments, refunds, stands)
-        summary("event", e, label, e["status"], stands, money=bill)
-
-    dinners = conn.execute(
-        f"""SELECT * FROM restaurant_bookings WHERE LOWER(TRIM(guest_email)) IN ({adq})
-             ORDER BY dinner_date""", addresses).fetchall()
-    for d in dinners:
-        payments = payments_received(conn, "restaurant", d)
-        refunds = refunds_of("restaurant", d["id"])
-        if not payments and not refunds:
-            continue          # settled at the table, on the till
-        stands = d["status"] == "confirmed"
-        label = f"Dinner, {format_date_human(d['dinner_date'])}"
-        if stands:
-            # The deposit is taken off the table's bill on the night, so what it
-            # buys is the deposit itself; the rest of the evening is the till's.
-            add(charged_when(d), "restaurant", d, f"{label}, deposit towards the table",
-                charge=sum(p["amount"] for p in payments))
-        else:
-            kept_line("restaurant", d, payments, refunds, held_money_is_theirs("restaurant", d))
-        money_lines("restaurant", d, payments, refunds, stands)
-        summary("restaurant", d, label, d["status"], stands)
+    for category, where, params in (
+            ("room", f"""bookings.linked_guest_id IN ({idq})
+                          OR LOWER(TRIM(bookings.guest_email)) IN ({adq})""", ids + addresses),
+            ("workshop", f"LOWER(TRIM(wb.guest_email)) IN ({adq})", addresses),
+            ("event", f"LOWER(TRIM(contact_email)) IN ({adq})", addresses),
+            ("restaurant", f"LOWER(TRIM(guest_email)) IN ({adq})", addresses)):
+        for row in _statement_rows(conn, category, where, params):
+            mine, about = booking_money_lines(conn, category, row)
+            if mine is None:
+                continue
+            entries.extend(mine)
+            bookings.append(about)
 
     entries.sort(key=lambda x: (x["at"], x["kind"]))
+    # Which card, where it is known -- read from what is kept, never asked for.
+    cards = card_labels(conn, [x["card"] for x in entries if x["card"]])
+    for x in entries:
+        x["card_words"] = cards.get(x["card"]) if x["card"] else None
     net = lambda x: x["charge"] - x["paid"] + x["back"]
     for b in bookings:
         mine = [x for x in entries if x["category"] == b["category"]
@@ -69867,6 +71151,19 @@ def guest_data_export(conn, email):
         more = [dict(r) for r in rows if r["id"] not in have]
         if more:
             found.setdefault(table, []).extend(more)
+    # And the card each of their payments came from -- its brand and last
+    # four, kept by the payment's reference rather than by anything of theirs,
+    # so the search by address could never have found it.
+    cards = guest_card_rows(conn, email)
+    if cards:
+        found["payment_cards"] = [dict(r) for r in cards]
+    # And what the changes log wrote down about them, by what it says: the log
+    # keeps values, and its values are how it mentions a person.
+    mentions = _change_log_mentions(conn, [email] + guest_numbers(conn, email)
+                                    + guest_numbers(conn, email, as_written=True))
+    if mentions:
+        found["change_log"] = [dict(conn.execute("SELECT * FROM change_log WHERE id = ?",
+                                                 (r["id"],)).fetchone()) for r in mentions]
 
     return {
         "email": email,
@@ -69896,6 +71193,14 @@ def guest_data_erase(conn, email):
     if not email:
         return None
     deleted, anonymised = {}, {}
+
+    # The card each of their payments came from goes; the payment stays. First,
+    # while their bookings still carry the address the cards are found by.
+    cards = [r["ref"] for r in guest_card_rows(conn, email)]
+    if cards:
+        conn.execute(f"DELETE FROM payment_cards WHERE ref IN ({','.join('?' * len(cards))})",
+                     cards)
+        deleted["payment_cards"] = len(cards)
 
     # First what is filed by their profile, while the profile is still there
     # to say which rows are theirs. A text is filed by the number and a
@@ -69962,6 +71267,12 @@ def guest_data_erase(conn, email):
     scrubbed = scrub_audit_trail(conn, [email] + numbers + names)
     if scrubbed:
         anonymised["audit_log"] = scrubbed
+    # And the changes log: what changed on their bookings and their profile,
+    # when and by whom, stays; they come out of the values it wrote down --
+    # this erasure's own changes included, whose old values are the person.
+    logged = scrub_change_log(conn, [email] + numbers, names)
+    if logged:
+        anonymised["change_log"] = logged
     return {"deleted": deleted, "anonymised": anonymised,
             "kept_because": "French accounting law requires the record of a "
                             "sale to be kept. The money stays; the person has "
@@ -71937,6 +73248,14 @@ EMAIL_TEMPLATE_INFO = {
     "workshop_cancelled": ("When a registration is cancelled", "The guest"),
     "workshop_deposit_receipt": ("When a deposit or payment for an atelier comes "
                                  "through", "The guest"),
+    "workshop_payment_received": ("When any payment towards an atelier comes through "
+                                  "after the first deposit, with the statement beneath",
+                                  "The guest"),
+    "event_payment_received": ("When a card payment towards an event comes through, "
+                               "with the statement beneath", "The contact"),
+    "house_payment_received": ("When a guest pays by card, for a stay, an atelier or an "
+                               "event, with the statement beneath",
+                               "The inbox that looks after that kind of booking"),
     "workshop_balance_reminder": ("The automatic reminder before an atelier's "
                                   "balance falls due", "The guest"),
     "workshop_moved": ("When you move a registration to another date of the same "
@@ -72824,6 +74143,591 @@ def record_history_page(kind, record_id):
     if not data:
         abort(404)
     return render_template("record_history.html", data=data)
+
+
+# ---------------------------------------------------------------------------
+# The mail log: every letter the house sends.
+# ---------------------------------------------------------------------------
+
+def mail_log_list_view(conn, args):
+    """The mail log as the page and its export both see it."""
+    rows = [dict(r) for r in conn.execute(
+        """SELECT mail_log.*, users.name AS sent_by_name, email_outbox.sent_at AS resent_at
+             FROM mail_log
+             LEFT JOIN users ON users.id = mail_log.sent_by_user_id
+             LEFT JOIN email_outbox ON email_outbox.id = mail_log.outbox_id
+            ORDER BY mail_log.created_at DESC, mail_log.id DESC""").fetchall()]
+    labels = {key: label for key, label, _s, _b in DEFAULT_EMAIL_TEMPLATES}
+    house = {a.strip().lower() for a in list(PUBLIC_CONTACT.values()) + list(MS_GRAPH_MAILBOXES)
+             + [owner_email(conn) or ""] if a and a.strip()}
+    staff = {(r["email"] or "").strip().lower() for r in conn.execute(
+        "SELECT email FROM users WHERE role != 'owner' AND email IS NOT NULL").fetchall()}
+    profiles = _profile_ids_by_address(conn)
+    refs = {}
+    for category, table in (("room", "bookings"), ("workshop", "workshop_bookings"),
+                            ("event", "event_inquiries"), ("restaurant", "restaurant_bookings")):
+        ids = sorted({r["about_id"] for r in rows if r["about_category"] == category and r["about_id"]})
+        for n in range(0, len(ids), 400):
+            chunk = ids[n:n + 400]
+            for b in conn.execute(f"SELECT id, reference_code FROM {table} WHERE id IN "
+                                  f"({','.join('?' * len(chunk))})", chunk).fetchall():
+                refs[(category, b["id"])] = b["reference_code"]
+    today = house_today()
+    for r in rows:
+        address = (r["to_address"] or "").strip().lower()
+        r["type"] = (labels.get(r["template_key"]) or
+                     ("Written by hand" if r["sent_by_user_id"] else "A letter of the house's own"))
+        r["audience"] = ("The house" if address in house else
+                         "A colleague" if address in staff else
+                         "A guest" if (r["kept"] == "correspondence" or r["about_category"]
+                                       or address in profiles) else "Somebody else")
+        r["guest_id"] = profiles.get(address)
+        # A letter held and sent later is sent, and says when.
+        if r["status"] == "held" and r["resent_at"]:
+            r["status"], r["delivered_at"] = "sent", r["resent_at"]
+        r["status_words"] = MAIL_STATUS_WORDS[r["status"]]
+        r["when"] = local_datetime_str(r["created_at"])
+        r["about_words"] = (f"{STATEMENT_KINDS.get(r['about_category'], r['about_category'])} "
+                            f"{refs.get((r['about_category'], r['about_id'])) or '#' + str(r['about_id'])}"
+                            if r["about_category"] else "")
+        day = house_date_iso(r["created_at"]) or ""
+        r["period"] = ("Today" if day == today.isoformat() else
+                       "Last 7 days" if day >= (today - timedelta(days=7)).isoformat() else
+                       "Last 30 days" if day >= (today - timedelta(days=30)).isoformat() else
+                       "Older")
+    return list_view(
+        rows, args,
+        search=["to_address", "subject", "type", "failure", "about_words", "sent_by_name"],
+        search_hint="Search who it went to, the subject, what it was about",
+        facets=[
+            facet("status", "Status", lambda r: r["status_words"],
+                  order=["Sent", "Held", "Did not go", "Thrown away"]),
+            facet("to", "To", lambda r: r["audience"],
+                  order=["A guest", "The house", "A colleague", "Somebody else"]),
+            facet("type", "Letter", lambda r: r["type"], limit=12),
+            facet("when", "When", lambda r: r["period"],
+                  order=["Today", "Last 7 days", "Last 30 days", "Older"]),
+        ],
+        sorts=[
+            sort_option("recent", "Most recent first",
+                        lambda r: (r["created_at"] or "", r["id"]), reverse=True),
+            sort_option("oldest", "Oldest first", lambda r: (r["created_at"] or "", r["id"])),
+        ],
+        default_sort="recent",
+    )
+
+
+@app.route("/admin/mail-log")
+@owner_required
+def mail_log():
+    """Every letter the house sends, and whether it went."""
+    conn = get_db()
+    lv = mail_log_list_view(conn, request.args)
+    conn.close()
+    cap = 400
+    return render_template("admin_mail_log.html", lv=lv, rows=lv["rows"][:cap], cap=cap,
+                           capped=len(lv["rows"]) > cap)
+
+
+@app.route("/admin/mail-log/<int:line_id>")
+@owner_required
+def mail_log_letter(line_id):
+    """One letter: what it was, where it went, whether it arrived, and -- where
+    the house may keep them -- its words."""
+    conn = get_db()
+    lv = mail_log_list_view(conn, {})
+    line = next((r for r in lv["rows"] if r["id"] == line_id), None)
+    if not line:
+        conn.close()
+        abort(404)
+    words = line["body"] if line["kept"] == "here" else None
+    gone = False
+    if line["kept"] == "correspondence":
+        kept = conn.execute("SELECT body FROM guest_messages WHERE id = ?",
+                            (line["guest_message_id"],)).fetchone()
+        words = kept["body"] if kept else None
+        gone = kept is None
+    conn.close()
+    return render_template("admin_mail_log_letter.html", line=line, words=words, gone=gone,
+                           not_kept=MAIL_KEPT_WORDS.get(line["kept"]))
+
+
+@app.route("/admin/mail-log/export.csv")
+@owner_required
+def export_mail_log_csv():
+    """The same view as a spreadsheet -- what went where and whether it arrived.
+    Not the letters themselves: those are read one at a time, on the page."""
+    conn = get_db()
+    lv = mail_log_list_view(conn, request.args)
+    conn.close()
+    fields = ["when", "to", "audience", "subject", "letter", "about", "status", "why",
+              "delivered", "sent_by", "inbox"]
+    out = [{"when": r["when"], "to": r["to_address"], "audience": r["audience"],
+            "subject": r["subject"] or "", "letter": r["type"], "about": r["about_words"],
+            "status": r["status_words"], "why": r["failure"] or "",
+            "delivered": local_datetime_str(r["delivered_at"]) if r["delivered_at"] else "",
+            "sent_by": r["sent_by_name"] or "", "inbox": r["area"] or ""} for r in lv["rows"]]
+    return csv_response(fields, out, "mail_log_filtered.csv" if lv["filtered"] else "mail_log.csv")
+
+
+# ---------------------------------------------------------------------------
+# The changes log: every change to the house's bookings, money and guests,
+# field by field, written by the database itself.
+# ---------------------------------------------------------------------------
+
+# The tables whose every insert, change and deletion is written down, and what
+# one of their rows is called on the page.
+CHANGE_LOG_TABLES = {
+    "bookings": "Stay", "booking_payments": "Payment on a stay",
+    "booking_extras": "Extra", "booking_shares": "Share of a bill", "refunds": "Refund",
+    "workshop_bookings": "Atelier place", "workshop_transactions": "Atelier ledger line",
+    "event_inquiries": "Event", "event_payments": "Payment on an event",
+    "restaurant_bookings": "Table", "guests": "Guest profile",
+    "gift_vouchers": "Gift voucher", "voucher_redemptions": "Voucher spent",
+    "promo_codes": "Promo code",
+}
+
+# Never written into the log, whatever the table: a key; anything Stripe's or a
+# card's; a health or access note, which the privacy notice promises is deleted
+# once the event is over -- a log that kept the old value would make the notice
+# untrue; and the stamps the jobs leave when a letter goes, which the mail log
+# already says, and which would bury every real change under a job's.
+CHANGE_LOG_NEVER = re.compile(
+    r"token|password|hash|secret|stripe|payment_method|customer_id|card"
+    r"|dietary|medical|access_need|allerg|health"
+    r"|_sent_at$|_notified_at$|_requested_at$|_noticed_at$|_prepped_at$|_updated_at$")
+
+# What an erasure takes out of the values the log kept: the person, not the
+# change -- who, what and when stay.
+CHANGE_LOG_PERSONAL = (
+    "guest_name", "guest_email", "guest_phone", "contact_name", "contact_email",
+    "contact_phone", "name", "email", "phone", "special_requests", "notes", "owner_note",
+    "message", "second_contact_name", "second_contact_email", "booked_by_name",
+    "booked_by_email", "purchaser_name", "purchaser_email", "recipient_name", "preferences",
+    "birthday", "anniversary", "name_pronunciation", "requested_roommate",
+    "special_occasion", "transfer_flight_number", "transfer_notes", "caution", "reason",
+    "note", "description", "heard_via", "extras_summary", "decline_note", "cancel_note",
+    "restricted_how", "run_sheet_note", "reference",
+)
+
+CHANGE_LOG_KEEP_DAYS = 730
+
+
+def change_log_columns(conn, table):
+    """The columns of one table the log writes down: all of them but the id,
+    the ones CHANGE_LOG_NEVER names, and none that is not there."""
+    return [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            if r[1] != "id" and not CHANGE_LOG_NEVER.search(r[1])]
+
+
+def _change_log_pack(side, cols):
+    """A row's columns as one JSON object, in pieces a function can take: SQLite
+    caps a function's arguments, and a wide table outgrows the cap."""
+    parts = []
+    for n in range(0, len(cols), 50):
+        parts.append("json_object(" + ", ".join(
+            f"'{c}', {side}.\"{c}\"" for c in cols[n:n + 50]) + ")")
+    packed = parts[0]
+    for more in parts[1:]:
+        packed = f"json_patch({packed}, {more})"
+    return packed
+
+
+def drop_change_log_triggers(conn):
+    """Off, before the migrations: a table rebuilt by one would otherwise write
+    every row it copies into the log as though somebody had just added it."""
+    for table in CHANGE_LOG_TABLES:
+        for action in ("added", "changed", "deleted"):
+            conn.execute(f"DROP TRIGGER IF EXISTS change_log_{table}_{action}")
+
+
+def install_change_log_triggers(conn):
+    """On, at the end of startup, from each table as it now stands -- so a
+    column a migration has just added is written down from its first change,
+    without anybody keeping a list of columns in step."""
+    stamp = "strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now')"
+    for table in CHANGE_LOG_TABLES:
+        cols = change_log_columns(conn, table)
+        if not cols:
+            continue
+        differs = " OR ".join(f'OLD."{c}" IS NOT NEW."{c}"' for c in cols)
+        conn.executescript(f"""
+            DROP TRIGGER IF EXISTS change_log_{table}_added;
+            CREATE TRIGGER change_log_{table}_added AFTER INSERT ON {table} BEGIN
+              INSERT INTO change_log (table_name, row_id, action, new_values, created_at)
+              VALUES ('{table}', NEW.id, 'added', {_change_log_pack('NEW', cols)}, {stamp});
+            END;
+            DROP TRIGGER IF EXISTS change_log_{table}_changed;
+            CREATE TRIGGER change_log_{table}_changed AFTER UPDATE ON {table}
+              WHEN {differs} BEGIN
+              INSERT INTO change_log (table_name, row_id, action, old_values, new_values,
+                                      created_at)
+              VALUES ('{table}', NEW.id, 'changed', {_change_log_pack('OLD', cols)},
+                      {_change_log_pack('NEW', cols)}, {stamp});
+            END;
+            DROP TRIGGER IF EXISTS change_log_{table}_deleted;
+            CREATE TRIGGER change_log_{table}_deleted AFTER DELETE ON {table} BEGIN
+              INSERT INTO change_log (table_name, row_id, action, old_values, created_at)
+              VALUES ('{table}', OLD.id, 'deleted', {_change_log_pack('OLD', cols)}, {stamp});
+            END;
+        """)
+
+
+def change_log_fields(row):
+    """[(field, before, after)] for one entry: what changed, what a new row
+    began as, or what a deleted one ended as."""
+    old = json.loads(row["old_values"]) if row["old_values"] else {}
+    new = json.loads(row["new_values"]) if row["new_values"] else {}
+    if row["action"] == "changed":
+        return [(k, old.get(k), new.get(k)) for k in new if old.get(k) != new.get(k)]
+    if row["action"] == "added":
+        return [(k, None, v) for k, v in new.items() if v not in (None, "")]
+    return [(k, v, None) for k, v in old.items() if v not in (None, "")]
+
+
+def change_log_who(row):
+    """Who made a change, in words."""
+    if row["actor_name"]:
+        return row["actor_name"]
+    return {"guest": "The guest", "stripe": "Stripe", "job": "A scheduled job",
+            "staff": "Somebody since removed"}.get(row["actor"] or "", "Outside the app")
+
+
+# Where each table's rows are known by name, and the owner's page for one.
+_CHANGE_LOG_NAMES = {
+    "bookings": ("bookings", "reference_code"), "workshop_bookings": ("workshop_bookings", "reference_code"),
+    "event_inquiries": ("event_inquiries", "reference_code"),
+    "restaurant_bookings": ("restaurant_bookings", "reference_code"),
+    "guests": ("guests", "name"), "gift_vouchers": ("gift_vouchers", "code"),
+    "promo_codes": ("promo_codes", "code"),
+}
+_CHANGE_LOG_PARENTS = {
+    "booking_payments": ("booking_id", "bookings", "Stay"),
+    "booking_shares": ("booking_id", "bookings", "Stay"),
+    "workshop_transactions": ("workshop_booking_id", "workshop_bookings", "Atelier place"),
+    "event_payments": ("event_id", "event_inquiries", "Event"),
+    "voucher_redemptions": ("voucher_id", "gift_vouchers", "Gift voucher"),
+}
+
+
+def change_log_rows(conn, where="1=1", params=()):
+    """The log's entries, named: what each one is (the stay by its reference, the
+    payment by the stay it is on), who made it, and what changed."""
+    rows = [dict(r) for r in conn.execute(
+        f"""SELECT change_log.*, users.name AS actor_name FROM change_log
+              LEFT JOIN users ON users.id = change_log.actor_user_id
+             WHERE {where} ORDER BY change_log.id DESC""", params).fetchall()]
+    names = {}
+    wanted = {}
+    for r in rows:
+        values = json.loads(r["new_values"] or r["old_values"] or "{}")
+        r["values"] = values
+        table = r["table_name"]
+        if table in _CHANGE_LOG_NAMES:
+            wanted.setdefault(table, set()).add(r["row_id"])
+        elif table in _CHANGE_LOG_PARENTS:
+            column, parent, _label = _CHANGE_LOG_PARENTS[table]
+            if values.get(column):
+                wanted.setdefault(parent, set()).add(values[column])
+        elif table in ("refunds", "booking_extras") and values.get("booking_id"):
+            parent = {"room": "bookings", "workshop": "workshop_bookings", "event": "event_inquiries",
+                      "restaurant": "restaurant_bookings"}.get(values.get("category") or "room")
+            if parent:
+                wanted.setdefault(parent, set()).add(values["booking_id"])
+    for table, ids in wanted.items():
+        source, column = _CHANGE_LOG_NAMES[table]
+        ids = sorted(i for i in ids if isinstance(i, int))
+        for n in range(0, len(ids), 400):
+            chunk = ids[n:n + 400]
+            for x in conn.execute(f"SELECT id, {column} AS name FROM {source} WHERE id IN "
+                                  f"({','.join('?' * len(chunk))})", chunk).fetchall():
+                names[(table, x["id"])] = x["name"]
+    today = house_today()
+    for r in rows:
+        table, values = r["table_name"], r["values"]
+        kind = CHANGE_LOG_TABLES.get(table, table)
+        own = names.get((table, r["row_id"])) or values.get(
+            _CHANGE_LOG_NAMES.get(table, (None, "reference_code"))[1])
+        if table in _CHANGE_LOG_PARENTS:
+            column, parent, label = _CHANGE_LOG_PARENTS[table]
+            of = names.get((parent, values.get(column))) or f"#{values.get(column)}"
+            r["object"] = f"{kind} #{r['row_id']}, on {label.lower()} {of}"
+        elif table in ("refunds", "booking_extras"):
+            parent = {"room": "bookings", "workshop": "workshop_bookings", "event": "event_inquiries",
+                      "restaurant": "restaurant_bookings"}.get(values.get("category") or "room")
+            of = names.get((parent, values.get("booking_id"))) or f"#{values.get('booking_id')}"
+            r["object"] = f"{kind} #{r['row_id']}, on {of}"
+        else:
+            r["object"] = f"{kind} {own}" if own else f"{kind} #{r['row_id']}"
+        r["kind"] = kind
+        r["who"] = change_log_who(r)
+        r["fields"] = [(k.replace("_", " ").capitalize(), b, a) for k, b, a in change_log_fields(r)]
+        r["field_names"] = " ".join(f for f, _b, _a in r["fields"])
+        r["field_values"] = " ".join(str(v) for _f, b, a in r["fields"] for v in (b, a)
+                                     if v not in (None, ""))
+        r["when"] = local_datetime_str(r["created_at"])
+        day = house_date_iso(r["created_at"]) or ""
+        r["period"] = ("Today" if day == today.isoformat() else
+                       "Last 7 days" if day >= (today - timedelta(days=7)).isoformat() else
+                       "Last 30 days" if day >= (today - timedelta(days=30)).isoformat() else
+                       "Older")
+        r["action_words"] = r["action"].capitalize()
+    return rows
+
+
+def change_log_list_view(conn, args):
+    """The changes log as the page and its export both see it."""
+    return list_view(
+        change_log_rows(conn), args,
+        search=["object", "who", "field_names", "field_values", "endpoint"],
+        search_hint="Search what it was, who, a field, or a value before or after",
+        facets=[
+            facet("action", "Action", lambda r: r["action_words"],
+                  order=["Added", "Changed", "Deleted"]),
+            facet("what", "What", lambda r: r["kind"],
+                  order=list(CHANGE_LOG_TABLES.values())),
+            facet("who", "Who", lambda r: r["who"], limit=8),
+            facet("when", "When", lambda r: r["period"],
+                  order=["Today", "Last 7 days", "Last 30 days", "Older"]),
+        ],
+        sorts=[
+            sort_option("recent", "Most recent first", lambda r: r["id"], reverse=True),
+            sort_option("oldest", "Oldest first", lambda r: r["id"]),
+        ],
+        default_sort="recent",
+    )
+
+
+@app.route("/admin/changes")
+@owner_required
+def changes_log():
+    """Every change to the house's bookings, money and guests, field by field."""
+    conn = get_db()
+    lv = change_log_list_view(conn, request.args)
+    conn.close()
+    cap = 300
+    return render_template("admin_changes_log.html", lv=lv, rows=lv["rows"][:cap], cap=cap,
+                           capped=len(lv["rows"]) > cap)
+
+
+@app.route("/admin/changes/export.csv")
+@owner_required
+def export_changes_log_csv():
+    """The same view as a spreadsheet: one row per field changed."""
+    conn = get_db()
+    lv = change_log_list_view(conn, request.args)
+    conn.close()
+    out = []
+    for r in lv["rows"]:
+        for field, before, after in r["fields"] or [("", None, None)]:
+            out.append({"when": r["when"], "action": r["action_words"], "what": r["object"],
+                        "who": r["who"], "where": r["endpoint"] or "", "field": field,
+                        "before": "" if before is None else before,
+                        "after": "" if after is None else after})
+    return csv_response(["when", "action", "what", "who", "where", "field", "before", "after"],
+                        out, "changes_filtered.csv" if lv["filtered"] else "changes.csv")
+
+
+def purge_change_log(conn, *, today=None):
+    """The changes log's entries, two years on: what changed on a booking stays
+    as long as a letter about it does, and no longer."""
+    today = today or house_today()
+    moment = house_day_window(today - timedelta(days=CHANGE_LOG_KEEP_DAYS))[0]
+    gone = conn.execute("DELETE FROM change_log WHERE created_at < ?", (moment,)).rowcount
+    conn.commit()
+    return {"old entries in the changes log": max(gone, 0)}
+
+
+# The fields a person's name is written in. A name is matched to these alone,
+# and exactly: "Ann" is a guest, and it is also in "Channel".
+CHANGE_LOG_NAME_FIELDS = ("guest_name", "contact_name", "name", "booked_by_name",
+                          "second_contact_name", "purchaser_name", "recipient_name")
+
+
+def _change_log_mentions(conn, identifiers, names=()):
+    """The log's entries that mention a person, as (id, old, new): an address
+    or a number anywhere in its values, a name in a field that holds one."""
+    found = {}
+    for name in {n.strip() for n in names if n and n.strip()}:
+        cond = " OR ".join(f"json_extract(old_values, '$.{f}') = ? OR "
+                           f"json_extract(new_values, '$.{f}') = ?"
+                           for f in CHANGE_LOG_NAME_FIELDS)
+        for r in conn.execute(f"SELECT id, old_values, new_values FROM change_log WHERE {cond}",
+                              [name] * (2 * len(CHANGE_LOG_NAME_FIELDS))).fetchall():
+            found[r["id"]] = r
+    for word in {w.strip() for w in identifiers if w and len(w.strip()) >= 3}:
+        like = "%" + word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        for r in conn.execute(
+                r"""SELECT id, old_values, new_values FROM change_log
+                     WHERE old_values LIKE ? ESCAPE '\' OR new_values LIKE ? ESCAPE '\'""",
+                (like, like)).fetchall():
+            found[r["id"]] = r
+    return list(found.values())
+
+
+def scrub_change_log(conn, identifiers, names=()):
+    """Take a person out of the values the log kept, and keep the log: what
+    changed, when and who changed it stay. Run at the very end of an erasure --
+    the erasure's own changes are in the log too, their old values being the
+    person."""
+    words = [w.strip().lower() for w in identifiers if w and len(w.strip()) >= 3]
+    exact = {n.strip().lower() for n in names if n and n.strip()}
+    scrubbed = 0
+    for r in _change_log_mentions(conn, identifiers, names):
+        packed = []
+        for raw in (r["old_values"], r["new_values"]):
+            values = json.loads(raw) if raw else None
+            if values is not None:
+                for key, value in list(values.items()):
+                    if value in (None, ""):
+                        continue
+                    if (key in CHANGE_LOG_PERSONAL or str(value).strip().lower() in exact
+                            or any(w in str(value).lower() for w in words)):
+                        values[key] = "[erased]"
+            packed.append(json.dumps(values) if values is not None else None)
+        conn.execute("UPDATE change_log SET old_values = ?, new_values = ? WHERE id = ?",
+                     (packed[0], packed[1], r["id"]))
+        scrubbed += 1
+    return scrubbed
+
+
+# ---------------------------------------------------------------------------
+# Website analytics: the page.
+# ---------------------------------------------------------------------------
+
+def analytics_summary(conn, start_iso, end_iso):
+    """What the site's visitors did from the house day `start_iso` up to
+    `end_iso` and not including it -- resolve_period's window, whose end is the
+    day after the last, so a month's figures stop where the next month's begin.
+
+    A visit is one browser on one day: the codes change every day, so that is
+    the most the figures can say, and they say it rather than counting the
+    same person twice as two "visitors" on two days and calling it a total.
+    """
+    rows = conn.execute("SELECT * FROM page_views WHERE day >= ? AND day < ? ORDER BY id",
+                        (start_iso, end_iso)).fetchall()
+    visits = {}
+    for r in rows:
+        v = visits.setdefault((r["day"], r["visitor"]), {
+            "pages": 0, "source": r["source"], "medium": r["medium"],
+            "campaign": r["campaign"], "entry": r["path"], "device": r["device"],
+            "language": r["language"], "goals": []})
+        v["pages"] += 1
+        if r["entry"]:
+            v.update(source=r["source"], medium=r["medium"], campaign=r["campaign"],
+                     entry=r["path"])
+        if r["goal"]:
+            v["goals"].append(r["goal"])
+
+    def tally(key):
+        out = {}
+        for v in visits.values():
+            name = key(v) or "Not said"
+            t = out.setdefault(name, {"visits": 0, "bookings": 0})
+            t["visits"] += 1
+            t["bookings"] += len(v["goals"])
+        return sorted(out.items(), key=lambda kv: (-kv[1]["visits"], kv[0]))
+
+    pages = {}
+    for r in rows:
+        p = pages.setdefault(r["path"], {"views": 0, "visits": set(), "status": r["status"]})
+        p["views"] += 1
+        p["visits"].add((r["day"], r["visitor"]))
+    entries = {}
+    for v in visits.values():
+        e = entries.setdefault(v["entry"], {"visits": 0, "bounces": 0})
+        e["visits"] += 1
+        e["bounces"] += 1 if v["pages"] == 1 else 0
+    broken = {}
+    for r in rows:
+        if r["status"] == 404:
+            b = broken.setdefault(r["path"], {"hits": 0, "from": set()})
+            b["hits"] += 1
+            if r["referrer"]:
+                b["from"].add(r["referrer"])
+    goals = {}
+    for v in visits.values():
+        for goal in v["goals"]:
+            goals.setdefault(goal, {}).setdefault(v["source"] or "Direct", 0)
+            goals[goal][v["source"] or "Direct"] += 1
+    by_day = {}
+    for (day, _visitor) in visits:
+        by_day[day] = by_day.get(day, 0) + 1
+    count = len(visits)
+    booked = sum(1 for v in visits.values() if v["goals"])
+    return {
+        "visits": count, "views": len(rows),
+        "pages_per_visit": round(len(rows) / count, 1) if count else 0.0,
+        "bounce": round(100.0 * sum(1 for v in visits.values() if v["pages"] == 1) / count, 1)
+        if count else 0.0,
+        "bookings": sum(len(v["goals"]) for v in visits.values()),
+        "converted": round(100.0 * booked / count, 1) if count else 0.0,
+        "sources": tally(lambda v: v["source"]),
+        "campaigns": [x for x in tally(lambda v: " / ".join(
+            p for p in (v["source"], v["medium"], v["campaign"]) if p) if v["campaign"] else None)
+            if x[0] != "Not said"],
+        "devices": tally(lambda v: v["device"]),
+        "languages": tally(lambda v: ANALYTICS_LANGUAGES.get(v["language"] or "", v["language"])),
+        "pages": sorted(((path, {"views": p["views"], "visits": len(p["visits"]),
+                                 "status": p["status"]}) for path, p in pages.items()),
+                        key=lambda kv: (-kv[1]["views"], kv[0])),
+        "entries": sorted(entries.items(), key=lambda kv: (-kv[1]["visits"], kv[0])),
+        "broken": sorted(((path, {"hits": b["hits"], "from": sorted(b["from"])})
+                          for path, b in broken.items()), key=lambda kv: (-kv[1]["hits"], kv[0])),
+        "goals": {goal: sorted(by.items(), key=lambda kv: (-kv[1], kv[0]))
+                  for goal, by in goals.items()},
+        "by_day": sorted(by_day.items()),
+    }
+
+
+def purge_page_views(conn, *, today=None):
+    """Page views past the thirteen months audience measurement may keep."""
+    today = today or house_today()
+    cutoff = (today - timedelta(days=ANALYTICS_KEEP_DAYS)).isoformat()
+    gone = conn.execute("DELETE FROM page_views WHERE day < ?", (cutoff,)).rowcount
+    # And any salt but today's: the one thing that could join a day's codes.
+    conn.execute("DELETE FROM app_settings WHERE key LIKE 'analytics_salt:%' AND key != ?",
+                 (f"analytics_salt:{today.isoformat()}",))
+    conn.commit()
+    return {"old page views": max(gone, 0)}
+
+
+@app.route("/admin/analytics")
+@owner_required
+def website_analytics():
+    """Who comes to the site, from where, what they read, and what they book."""
+    period = period_from_request()
+    conn = get_db()
+    now = analytics_summary(conn, period["start_iso"], period["end_iso"])
+    before = analytics_summary(conn, period["prev_start_iso"], period["prev_end_iso"])
+    conn.close()
+    change = lambda a, b: (round(a - b, 1) if isinstance(a, float) else a - b)
+    cells = [
+        overview_cell("Visits", now["visits"], hint="one browser on one day",
+                      delta=change(now["visits"], before["visits"])),
+        overview_cell("Pages read", now["views"], delta=change(now["views"], before["views"])),
+        overview_cell("Pages a visit", now["pages_per_visit"],
+                      delta=change(now["pages_per_visit"], before["pages_per_visit"])),
+        # More of these is worse, so a rise is coloured as the bad news it is.
+        overview_cell("Left after one page", now["bounce"], sub="%", invert=True,
+                      delta=change(now["bounce"], before["bounce"])),
+        overview_cell("Bookings", now["bookings"],
+                      hint="stays, ateliers, tables, event enquiries, newsletter sign-ups",
+                      delta=change(now["bookings"], before["bookings"])),
+        overview_cell("Visits that booked", now["converted"], sub="%",
+                      delta=change(now["converted"], before["converted"])),
+    ]
+    # Every day of the period, a day nobody came drawn as nobody: a chart that
+    # skipped them would put the busiest week next to the quietest.
+    counts = dict(now["by_day"])
+    days, day = [], period["start"]
+    while day < period["end"]:
+        days.append((day.isoformat(), counts.get(day.isoformat(), 0)))
+        day += timedelta(days=1)
+    peak = max((n for _d, n in days), default=0)
+    busiest = max(days, key=lambda d: (d[1], d[0])) if peak else None
+    return render_template("admin_analytics.html", period=period, s=now, cells=cells,
+                           days=days, peak=peak, busiest=busiest)
 
 
 @app.route("/admin/audit-log")
@@ -74011,6 +75915,21 @@ def purge_spent_access_codes(conn, today=None):
     return {"door codes blanked": cur.rowcount}
 
 
+def purge_mail_log(conn, *, today=None):
+    """The mail log's lines, on the letters' two years -- and a line whose
+    letter has gone with its stay, which would otherwise point at nothing.
+    Run after purge_guest_messages, so what that clears is cleared here too."""
+    today = today or house_today()
+    cutoff = (today - timedelta(days=int(GUEST_MESSAGE_KEEP_MONTHS * 30.44)))
+    moment = house_day_window(cutoff)[0]
+    gone = conn.execute("DELETE FROM mail_log WHERE created_at < ?", (moment,)).rowcount
+    gone += conn.execute(
+        """DELETE FROM mail_log WHERE kept = 'correspondence'
+             AND guest_message_id NOT IN (SELECT id FROM guest_messages)""").rowcount
+    conn.commit()
+    return {"old lines in the mail log": max(gone, 0)}
+
+
 def purge_guest_messages(conn, *, today=None):
     """Drop correspondence about stays that ended long enough ago.
 
@@ -74108,6 +76027,9 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_stale_access_needs(conn))
     cleared.update(purge_spent_access_codes(conn))
     cleared.update(purge_guest_messages(conn))
+    cleared.update(purge_mail_log(conn))
+    cleared.update(purge_page_views(conn))
+    cleared.update(purge_change_log(conn))
     cleared.update(purge_booking_com_mail(conn))
     cleared.update(purge_door_openings(conn))
     # The only one of these holding an identifier for people who never became
@@ -80231,6 +82153,11 @@ AUTOMATION_JOBS = [
     # stopped being true, so the list mirrors the house rather than its history.
     ("watch_tasks", "automation_watch_tasks_enabled", None, 24 * 3600,
      run_watch_tasks_job),
+    # Daily. Names the card behind each card payment whose receipt went out
+    # before Stripe could be asked, a few at a time: each is a call to Stripe,
+    # and every page reads what is kept rather than asking.
+    ("card_details", "automation_card_details_enabled", None, 24 * 3600,
+     run_card_details_job),
     # LAST ON PURPOSE. These run one after another in a single background
     # thread, so everything below a job waits for it -- and this one is the
     # only one that spends up to a minute on somebody else's network. It was
@@ -80300,6 +82227,9 @@ def automation_tick():
     "manage your registration" URL) would raise RuntimeError the first time
     it actually has something to send, instead of failing in testing."""
     with app.test_request_context(base_url=PUBLIC_BASE_URL or None):
+        # Before the connection opens: this stand-in request is for "/", and
+        # without this every change a job made would read as a visitor's.
+        g.change_job = "automation"
         conn = get_db()
         settings = get_automation_settings(conn)
         for job_name, enabled_key, interval_key, fixed_cooldown, job_fn in AUTOMATION_JOBS:
@@ -80323,6 +82253,10 @@ def automation_tick():
                 cooldown = 3600
             if not claim_job_run(conn, job_name, cooldown):
                 continue
+            # What this job changes is put down to it, on its own connection and
+            # on any it opens.
+            g.change_job = job_name
+            conn.actor, conn.endpoint = "job", job_name
             try:
                 result = job_fn(conn)
                 record_job_run(conn, job_name, True, str(result))
@@ -80449,6 +82383,7 @@ AUTOMATION_JOB_LABELS = {
     "photo_mirror": "Keep our own copy of the site's photographs "
                     "(so the château stops depending on an account it no longer publishes from)",
     "watch_tasks": "Blocking findings (raise a task, and close it when it stops being true)",
+    "card_details": "Name the card behind each card payment (its brand and last four, for statements)",
     # Runnable but unlabelled until now, so it never appeared here at all —
     # the one job whose whole purpose is a promise made in the privacy notice.
     "health_notes_purge": "Delete dietary and medical notes once the event is over",
