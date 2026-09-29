@@ -14282,12 +14282,65 @@ def pass_service(conn, day=None):
     }
 
 
+def guest_visits(stays, today=None):
+    """A guest's stays, split into the visits they have made and those to come.
+
+    A stay is a VISIT once it has begun: its arrival date has come, by the
+    house's day. Until then it is BOOKED, and somebody with a stay booked is
+    coming back, not back. Every page that asked "when were they last here"
+    used to take the latest arrival on file, so a guest with a stay ahead read
+    "Last here: -90 days ago", could never be overdue however long they had
+    been away, and was offered empty nights when they had already booked.
+
+    The same three-way split stays_with_status makes for who is in the house.
+    A visit that has not ended is them HERE NOW, and a stay not yet begun is
+    AHEAD. Nothing is ever "last here" on a day that has not come yet.
+
+    `stays` is any rows carrying arrival_date and departure_date. Which
+    statuses count is the caller's decision, as it is everywhere else. A stay
+    whose arrival cannot be read cannot be placed in time and is in neither
+    list. One whose departure cannot be read is still going, as
+    stays_with_status reads it.
+    """
+    today = today or house_today()
+    visits, ahead = [], []
+    for st in stays:
+        arrival = parse_date(st["arrival_date"])
+        if arrival:
+            (visits if arrival <= today else ahead).append((arrival, st))
+    visits.sort(key=lambda pair: pair[0])
+    ahead.sort(key=lambda pair: pair[0])
+    # ANY visit still going, not only the latest to begin: a guest can hold
+    # two rooms over different nights, and the one that started later may be
+    # the one that has already finished.
+    going = [st for _, st in visits
+             if not parse_date(st["departure_date"])
+             or parse_date(st["departure_date"]) > today]
+    until = [parse_date(st["departure_date"]) for st in going
+             if parse_date(st["departure_date"])]
+    return {
+        "visits": [st for _, st in visits],
+        "ahead": [st for _, st in ahead],
+        "last": visits[-1][1] if visits else None,
+        "next": ahead[0][1] if ahead else None,
+        "here_now": bool(going),
+        "until": max(until).isoformat() if until else None,
+    }
+
+
 def repeat_guests(conn, *, today=None, min_stays=2):
     """Everyone who has stayed more than once, and whether they are overdue.
 
     Spend covers rooms, the table and ateliers, because a guest who comes for
     one night and eats here four times is a regular by any reading that
     matters.
+
+    A STAY COUNTS ONCE IT HAS BEGUN (guest_visits). What is booked is carried
+    separately as `next`, because it is the opposite of a guest who has
+    stopped coming, not one more visit. So `stays`, `last`, `days_since` and
+    the rhythm read only what has happened, and somebody booked to come back,
+    or in the house now, is never overdue. Spend still counts what is booked:
+    it is what was charged, which is how the page describes it.
     """
     today = today or house_today()
 
@@ -14315,8 +14368,8 @@ def repeat_guests(conn, *, today=None, min_stays=2):
             WHERE status = 'confirmed' AND guest_email IS NOT NULL
             ORDER BY arrival_date""").fetchall():
         e = entry(r["guest_email"], r["guest_name"])
-        e["stays"].append({"arrival": r["arrival_date"],
-                           "departure": r["departure_date"],
+        e["stays"].append({"arrival_date": r["arrival_date"],
+                           "departure_date": r["departure_date"],
                            "price": r["price"]})
         e["spend"] += r["price"]
 
@@ -14347,12 +14400,13 @@ def repeat_guests(conn, *, today=None, min_stays=2):
 
     out = []
     for e in people.values():
-        if len(e["stays"]) < min_stays:
+        split = guest_visits(e["stays"], today)
+        # Only what has begun is a stay they have made. Somebody who has been
+        # once and booked a second has not yet come back: they appear on the
+        # day they arrive, which is the day stay_number counts it too.
+        if not split["visits"] or len(split["visits"]) < min_stays:
             continue
-        arrivals = sorted(parse_date(s["arrival"]) for s in e["stays"]
-                          if parse_date(s["arrival"]))
-        if not arrivals:
-            continue
+        arrivals = [parse_date(s["arrival_date"]) for s in split["visits"]]
         last = arrivals[-1]
         gaps = [(b - a).days for a, b in zip(arrivals, arrivals[1:])]
         # A true median, not the upper middle. sorted(gaps)[len//2] is the
@@ -14366,20 +14420,29 @@ def repeat_guests(conn, *, today=None, min_stays=2):
                        else (ordered[mid - 1] + ordered[mid]) / 2)
         else:
             typical = None
+        # Never negative: `last` is a day that has come.
         since = (today - last).days
+        booked = split["next"]
 
         # Overdue against their own habit, with a margin so somebody a
         # fortnight late is not chased. Only ever said about a guest with a
-        # rhythm to be late against.
-        overdue = bool(typical and since > typical * 1.5 and since > 180)
+        # rhythm to be late against -- and never about one who has booked to
+        # come back or is in the house now, because a guest whose next stay is
+        # in the diary is the opposite of one who has stopped coming.
+        overdue = bool(typical and since > typical * 1.5 and since > 180
+                       and not booked and not split["here_now"])
 
         out.append({
             "key": e["key"], "email": e["email"], "name": e["name"],
-            "stays": len(e["stays"]), "spend": round(e["spend"], 2),
+            "stays": len(split["visits"]), "spend": round(e["spend"], 2),
             "dinners": e["dinners"], "workshops": e["workshops"],
             "first": arrivals[0].isoformat(), "last": last.isoformat(),
             "days_since": since, "typical_gap": typical,
             "overdue": overdue,
+            "here_now": split["here_now"], "until": split["until"],
+            "next": (parse_date(booked["arrival_date"]).isoformat()
+                     if booked else None),
+            "booked": len(split["ahead"]),
             "rating": (round(sum(e["ratings"]) / len(e["ratings"]), 1)
                        if e["ratings"] else None),
             "spellings": sorted(e["spellings"]),
@@ -53014,17 +53077,31 @@ def gap_candidates(conn, start, end, *, today=None, limit=40):
 
     Nothing is sent from here. This answers who, and the sending is the
     existing campaign machinery with its own opt-out handling.
+
+    EVERY REASON IS READ FROM STAYS THAT HAVE BEGUN (guest_visits). "Has
+    stayed in November before" was being said of a guest whose only November
+    was the one they had booked, and "last here" counted a booking ahead as a
+    visit and came out negative.
+
+    NOBODY ALREADY COMING BACK IS A CANDIDATE. A guest with a stay booked, or
+    in the house now, is not somebody to win back. An offer of other nights
+    is one they have no need of, and at worst it moves the stay they have
+    already booked. They are left off the list, and they are NAMED in
+    `coming` with the stay that keeps them off, so that a regular the owner
+    expected to see is not missing without a word. Only those who would
+    otherwise have been listed are named. Naming everybody who has a booking
+    would bury the few who matter.
     """
     today = today or house_today()
     start_d = parse_date(start) if isinstance(start, str) else start
     end_d = parse_date(end) if isinstance(end, str) else end
     if not (start_d and end_d) or end_d <= start_d:
-        return {"nights": 0, "month": None, "candidates": []}
+        return {"nights": 0, "month": None, "candidates": [], "coming": []}
     nights = (end_d - start_d).days
     month = start_d.month
 
     people = repeat_guests(conn, today=today, min_stays=1)["guests"]
-    out = []
+    out, coming = [], []
     for g in people:
         email = (g.get("email") or "").strip().lower()
         if not email:
@@ -53035,38 +53112,60 @@ def gap_candidates(conn, start, end, *, today=None, limit=40):
             reasons.append("overdue a visit")
             score += 3
         # Which months they have come in before. Read from their own stays
-        # rather than from an average of everybody's.
-        months = {int((s or "")[5:7]) for s in _guest_arrival_months(conn, email) if s}
+        # rather than from an average of everybody's, and only from stays
+        # they have made.
+        months = {parse_date(s).month
+                  for s in _guest_arrival_months(conn, email, as_of=today)
+                  if parse_date(s)}
         if month in months:
             reasons.append(f"has stayed in {start_d.strftime('%B')} before")
             score += 4
-        typical = _typical_nights(conn, email)
+        typical = _typical_nights(conn, email, as_of=today)
         if typical and abs(int(typical) - nights) <= 1:
             reasons.append(f"usually takes about {int(typical)} nights")
             score += 2
         if not reasons:
             continue
+        if g.get("here_now") or g.get("next"):
+            coming.append({
+                "email": email, "name": g.get("name"), "reasons": reasons,
+                "here_now": bool(g.get("here_now")), "until": g.get("until"),
+                "next": g.get("next"),
+            })
+            continue
         out.append({
             "email": email, "name": g.get("name"), "stays": g.get("stays"),
-            "spend": g.get("spend"), "days_since": g.get("days_since"),
+            "spend": g.get("spend"), "last": g.get("last"),
+            "days_since": g.get("days_since"),
             "reasons": reasons, "score": score,
         })
     out.sort(key=lambda d: (-d["score"], -(d["spend"] or 0)))
+    # Those in the house first, then by when they are next due.
+    coming.sort(key=lambda d: (not d["here_now"], d["next"] or "",
+                               (d["name"] or "").lower()))
     return {"nights": nights, "month": start_d.strftime("%B"),
-            "from": start_d, "to": end_d, "candidates": out[:limit]}
+            "from": start_d, "to": end_d, "candidates": out[:limit],
+            "coming": coming}
 
 
-def _typical_nights(conn, email):
+def _typical_nights(conn, email, *, as_of=None):
     """How long they usually stay, or None.
 
     The median rather than the mean: one three-week visit should not make
     somebody who otherwise takes two nights look like a fortnight guest.
+
+    With `as_of`, only stays that have begun by that day are counted
+    (guest_visits). A stay still to come is a booking, not a habit, and a
+    reason given for offering somebody nights must be something they did.
     """
-    lens = []
-    for r in conn.execute(
+    rows = conn.execute(
         """SELECT arrival_date, departure_date FROM bookings
             WHERE LOWER(TRIM(guest_email)) = ? AND status = 'confirmed'""",
-        ((email or "").strip().lower(),)).fetchall():
+        ((email or "").strip().lower(),)).fetchall()
+    if as_of:
+        rows = guest_visits(rows, as_of)["visits"]
+    lens = []
+    for r in rows:
         a, b = parse_date(r["arrival_date"]), parse_date(r["departure_date"])
         if a and b and b > a:
             lens.append((b - a).days)
@@ -53076,12 +53175,19 @@ def _typical_nights(conn, email):
     return lens[len(lens) // 2]
 
 
-def _guest_arrival_months(conn, email):
-    """Their arrival dates, for reading seasonality off."""
-    return [r["arrival_date"] for r in conn.execute(
-        """SELECT arrival_date FROM bookings
+def _guest_arrival_months(conn, email, *, as_of=None):
+    """Their arrival dates, for reading seasonality off.
+
+    With `as_of`, only stays that have begun by that day (guest_visits), for
+    the same reason as _typical_nights.
+    """
+    rows = conn.execute(
+        """SELECT arrival_date, departure_date FROM bookings
             WHERE LOWER(TRIM(guest_email)) = ? AND status = 'confirmed'""",
-        ((email or "").strip().lower(),)).fetchall()]
+        ((email or "").strip().lower(),)).fetchall()
+    if as_of:
+        rows = guest_visits(rows, as_of)["visits"]
+    return [r["arrival_date"] for r in rows]
 
 
 @app.route("/management/fill-a-gap")
