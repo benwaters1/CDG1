@@ -8421,7 +8421,8 @@ def labour_cost_breakdown(conn, start_iso, end_iso):
       1. a typed wage_records row in force  -> a figure, marked "wage on file"
       2. otherwise estimated_hourly_cost()  -> a figure, marked "estimated"
          from the free-text pay fields, which is what the whole app used to do
-      3. otherwise nothing                  -> counted as unpriced, never zero
+      3. otherwise nothing                  -> counted as unpriced, never zero,
+         and their hours kept apart in unpriced_rows rather than dropped
 
     Every figure here is GROSS unless employer contributions are configured, in
     which case gross, employer and total are reported separately and never
@@ -8436,7 +8437,7 @@ def labour_cost_breakdown(conn, start_iso, end_iso):
     employer_pct = wage_setting(conn, "payroll_employer_contribution_percent")
     months = _months_overlapped(start, end) if (start and end and start < end) else []
 
-    rows, unpriced = [], []
+    rows, unpriced, unpriced_rows = [], [], []
     typed_count = estimated_count = 0
     for r in labour_hours_by_person(conn, start_iso, end_iso):
         wage = wage_on(conn, r["id"], end - timedelta(days=1)) if end else None
@@ -8454,6 +8455,16 @@ def labour_cost_breakdown(conn, start_iso, end_iso):
                 estimated_count += 1
         if gross is None:
             unpriced.append(r["name"])
+            # Out of the costed rows, never out of the hours. Leaving them out
+            # of `rows` is right for the money -- nobody is costed at zero --
+            # but every page that read hours from `rows` then lost them as
+            # well. The employee's own My Hours page showed two shifts of 4.50
+            # and 8.00 over a total of 0.0, and the pay statement told the
+            # owner the same person "has no clocked hours". Kept here, by id,
+            # so a page can say what somebody worked whether or not the house
+            # has a rate for them.
+            unpriced_rows.append({"user_id": r["id"], "name": r["name"],
+                                  "hours": round(r["hours"], 1), "shifts": r["shifts"]})
             continue
         # THE UNSOCIAL HOURS AND THE MEALS, each its own named figure.
         #
@@ -8502,6 +8513,11 @@ def labour_cost_breakdown(conn, start_iso, end_iso):
         "typed_count": typed_count,
         "estimated_count": estimated_count,
         "unpriced": unpriced,
+        # The same people with what they worked. `hours` above is the hours
+        # the money covers, which is what a wage bill wants; this is the rest,
+        # so hours worked is always `hours` + `unpriced_hours`.
+        "unpriced_rows": unpriced_rows,
+        "unpriced_hours": round(sum(x["hours"] for x in unpriced_rows), 1),
         "employer_rate": employer_pct,
         "priced_any": bool(rows),
     }
@@ -8541,6 +8557,11 @@ def monthly_pay_statement(conn, user_id, year, month):
     end = add_months(start, 1)
     breakdown = labour_cost_breakdown(conn, start.isoformat(), end.isoformat())
     row = next((r for r in breakdown["rows"] if r["user_id"] == user_id), None)
+    # Worked, but nothing to price it at. Without this the page's only other
+    # branch said the person "has no clocked hours" -- to the owner, about
+    # somebody who had clocked them and was waiting to be paid for them.
+    unpriced = next((r for r in breakdown["unpriced_rows"]
+                     if r["user_id"] == user_id), None)
     wage = wage_on(conn, user_id, end - timedelta(days=1))
 
     lines = []
@@ -8588,7 +8609,7 @@ def monthly_pay_statement(conn, user_id, year, month):
     return {
         "person": person, "year": year, "month": month,
         "start": start, "end": end - timedelta(days=1),
-        "row": row, "wage": wage, "lines": lines,
+        "row": row, "unpriced": unpriced, "wage": wage, "lines": lines,
         "gross": gross, "employer": employer,
         "employer_rate": row["employer_rate"] if row else 0,
         "total": round(gross + employer, 2),
@@ -8917,10 +8938,27 @@ def add_months(d, months):
     return date(year, month, day)
 
 
+def _day_to_show(value):
+    """The day a date formatter should print, from a date or a stored moment.
+
+    They were written for a DATE, '2027-07-10', and handed anything else back
+    untouched -- so a stored moment reached the page as the raw UTC stamp:
+    '2026-09-04T22:30:00+00:00' under Started on My Hours, and the same on the
+    supplier, discount and room-fault pages. A full run of the suite found
+    three templates doing it and reading found a fourth. Mending each template
+    would hold until the next one was written, or until a handover replaced
+    the file, so it is mended here, where every one of them passes.
+
+    The day of a moment is the house's day, never the UTC one a slice reads:
+    that stamp is half past midnight on the 5th in the Ariege.
+    """
+    return parse_date(value) or house_date(value)
+
+
 def format_date_human(iso_str):
     """'2026-12-01' -> 'December 1, 2026'. Avoids the %-d strftime flag,
     which is Linux-only and crashes on Windows."""
-    d = parse_date(iso_str)
+    d = _day_to_show(iso_str)
     if not d:
         return iso_str
     return f"{d.strftime('%B')} {d.day}, {d.year}"
@@ -8929,8 +8967,9 @@ def format_date_human(iso_str):
 def format_date_short(iso_str):
     """'2027-07-10' -> '10 July 2027'. Day-first, which is how a French
     château's guests read a date. Avoids the %-d strftime flag, which is
-    Linux-only and crashes on Windows."""
-    d = parse_date(iso_str)
+    Linux-only and crashes on Windows. A stored moment is read as the house's
+    day of it (see _day_to_show)."""
+    d = _day_to_show(iso_str)
     if not d:
         return iso_str
     return f"{d.day} {d.strftime('%B')} {d.year}"
@@ -8939,7 +8978,7 @@ def format_date_short(iso_str):
 def format_date_range(start_iso, end_iso):
     """'10 – 17 July 2027' when the month and year match, otherwise both in
     full. A range written twice over is harder to read than one written once."""
-    a, b = parse_date(start_iso), parse_date(end_iso)
+    a, b = _day_to_show(start_iso), _day_to_show(end_iso)
     if not a or not b:
         return start_iso or ""
     if a == b:
@@ -22451,18 +22490,24 @@ def swap_mirrored(html, index, overrides=None):
 
 def report_labour(conn, period):
     # Same helper the financial summary costs labour with, so the two pages
-    # cannot disagree about the same shifts.
-    rows = labour_hours_by_person(conn, period["start_iso"], period["end_iso"])
-    people = [
-        {"name": r["name"], "hours": round(r["hours"], 1), "shifts": r["shifts"],
-         "cost": (lambda c: round(c, 2) if c is not None else None)(
-             estimated_hourly_cost(r["hours"], r["pay_rate"], r["pay_type"]))}
-        for r in rows
-    ]
-    (total_cost, total_hours, unpriced,
-     estimated, typed) = estimated_labour_cost(
-        conn, period["start_iso"], period["end_iso"])
-    total_cost = total_cost or 0.0
+    # cannot disagree about the same shifts -- and now for every row as well
+    # as the total. The rows used to be costed apart, from the free-text pay
+    # note alone, so somebody with a wage on file showed "—" beside a total
+    # that had costed them; and the headline hours were the costed hours only,
+    # so anybody with no rate was in the table and missing from "Hours
+    # worked", on a page saying their hours were counted. Rows now add up to
+    # both figures above them.
+    cost = labour_cost_breakdown(conn, period["start_iso"], period["end_iso"])
+    people = sorted(
+        [{"name": r["name"], "hours": r["hours"], "shifts": r["shifts"],
+          "cost": r["total"]} for r in cost["rows"]]
+        + [{"name": r["name"], "hours": r["hours"], "shifts": r["shifts"],
+            "cost": None} for r in cost["unpriced_rows"]],
+        key=lambda p: (-p["hours"], p["name"] or ""))
+    total_hours = round(cost["hours"] + cost["unpriced_hours"], 1)
+    total_cost = cost["total"] if cost["priced_any"] else 0.0
+    unpriced = len(cost["unpriced"])
+    estimated, typed = cost["estimated_count"], cost["typed_count"]
 
     fin = financial_month_summary(conn, period["start"], period["end"])
     revenue = fin["revenue"]
@@ -77135,7 +77180,15 @@ def my_hours():
     period = period_from_request()
     breakdown = labour_cost_breakdown(conn, period["start_iso"], period["end_iso"])
     mine = next((r for r in breakdown["rows"] if r["user_id"] == user["id"]), None)
-    unpriced = user["name"] in breakdown["unpriced"]
+    # HOURS DO NOT WAIT FOR A RATE. The costing keeps anybody it cannot price
+    # out of its rows, and this page read its hours from those rows alone -- so
+    # an employee with no rate on file saw shifts of 4.50 and 8.00 over a total
+    # of 0.0, under a band saying they had worked no hours and no shifts. Their
+    # hours come from the same helper, kept apart from the money. By id: this
+    # was a match on the NAME, which two people can share.
+    unpriced_row = next((r for r in breakdown["unpriced_rows"]
+                         if r["user_id"] == user["id"]), None)
+    unpriced = unpriced_row is not None
     wage = wage_on(conn, user["id"], period["end"] - timedelta(days=1))
     rows = conn.execute(
         """SELECT time_entries.*,
@@ -77165,15 +77218,33 @@ def my_hours():
                           - (e["break_minutes"] or 0) / 60, 2)
         entries.append({
             "started": e["clock_in_at"], "finished": e["clock_out_at"],
+            # The day a shift is filed under is the house's. clock_in_at is a
+            # UTC moment, and the column printed it raw -- and read as a day,
+            # a shift clocked in at half past midnight here is the previous
+            # evening in UTC, so it would sit under yesterday.
+            "started_day": house_date_iso(e["clock_in_at"]),
+            "finished_day": house_date_iso(e["clock_out_at"]),
             "break_minutes": int(round(e["break_minutes"] or 0)),
             "hours": hours, "open": finished is None, "impossible": impossible,
         })
     odd = [e for e in entries if e["open"] or e["impossible"]]
 
+    # The foot row and the band. From the costing for anybody it counts, priced
+    # or not, so the figure is the one payroll reads. Anybody it does not count
+    # gets the sum of the rows above: the owner's own clocked time is drawings
+    # rather than a wage and is in no costing, and 0.0 under their own shifts
+    # would be this same fault again.
+    worked = mine or unpriced_row
+    if worked:
+        total_hours, total_shifts = worked["hours"], worked["shifts"]
+    else:
+        counted = [e["hours"] for e in entries if e["hours"] is not None]
+        total_hours, total_shifts = round(sum(counted), 1), len(counted)
+
     overview = [
-        overview_cell("Hours", f"{(mine['hours'] if mine else 0):.1f}", sub="h",
+        overview_cell("Hours", f"{total_hours:.1f}", sub="h",
                       hint="net of breaks taken"),
-        overview_cell("Shifts", mine["shifts"] if mine else 0),
+        overview_cell("Shifts", total_shifts),
         overview_cell("At your rate", euro(mine["gross"]) if mine else "—",
                       sub="gross", alert=unpriced,
                       hint="no rate on file yet" if unpriced else None),
@@ -77182,7 +77253,7 @@ def my_hours():
     ]
     return render_template("my_hours.html", period=period, mine=mine, wage=wage,
                            entries=entries, odd=odd, overview=overview,
-                           unpriced=unpriced)
+                           unpriced=unpriced, total_hours=total_hours)
 
 
 @app.route("/shifts/mine", methods=["GET", "POST"])

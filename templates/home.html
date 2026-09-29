@@ -1,7 +1,7 @@
 {% extends "public_base.html" %}
 {% block title %}A Restoration in the Ariège Pyrénées{% endblock %}
-{% block description %}An eighteenth-century Class I Historic Monument in the Ariège, under restoration and open to guests. Rooms{% if (setting(site, 'dining_mode') or 'open')|lower|trim == 'open' %}, a table,{% endif %} and ateliers with the artisans at work.{% endblock %}
-{% block og_desc %}An eighteenth-century Class I Historic Monument in the Ariège, still under restoration and open to guests. Rooms, a table, and ateliers led by the artisans doing the work.{% endblock %}
+{% block description %}An eighteenth-century Class I Historic Monument in the Ariège, under restoration and open to guests. Rooms{% if (setting(site, 'dining_mode') or 'open')|lower|trim == 'open' %}, a table,{% endif %} and workshop retreats with the artisans at work.{% endblock %}
+{% block og_desc %}An eighteenth-century Class I Historic Monument in the Ariège, still under restoration and open to guests. Rooms, a table, and workshop retreats led by the people doing the work.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--full{% endblock %}
 {% block content %}
@@ -141,7 +141,7 @@
      rooms. The eyebrow alone. #}
   <p class="g-eyebrow">Stay the Night</p>
   <h2 class="g-place">Five Rooms, Opened One at a Time</h2>
-  <p class="g-p">Each is different, because the château is.</p>
+  <p class="g-p">Room and breakfast. Each is different, because the château is.</p>
 
   <div class="g-homerooms">
     {% for r in shown_rooms %}
@@ -237,7 +237,7 @@
 <div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1500w" alt="The château seen from the valley road" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1500w" alt="The east façade above the parkland" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="The gates in spring" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="The château de Gudanes" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1500w" alt="The château at night" loading="lazy"></div>
 
 <section class="g-sec--flush"><div class="g-half">
-  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1500w" alt="A Place To Stay" loading="lazy">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1500w" alt="A bedroom at Château de Gudanes" loading="lazy">
   <div class="g-half__text">
     {# This block follows the room cards directly; its heading repeated their
        eyebrow and its first line was word for word their lede. It keeps the
@@ -248,19 +248,20 @@
   </div>
 </div></section>
 <section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
-  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d05b0d21-75e0-464e-bcad-9faac533884c/IMG_4368.jpeg?format=1500w" alt="A Place To Create" loading="lazy">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d05b0d21-75e0-464e-bcad-9faac533884c/IMG_4368.jpeg?format=1500w" alt="A workshop at Château de Gudanes" loading="lazy">
   <div class="g-half__text">
-    <h2 class="g-place">Château Workshops</h2>
+    <h2 class="g-place">Workshops &amp; Retreats</h2>
     {# Spelled out, and singular when it is one - it read "1 ateliers a year". #}
     {% set _wn = workshops|length if workshops else 0 %}
-    <p class="g-scarcity-line">{% if _wn and _wn <= 12 %}{{ ['One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve'][_wn-1] }} atelier{{ 's' if _wn != 1 }}{% elif _wn %}{{ _wn }} ateliers{% else %}A handful of ateliers{% endif %} a year, fifteen places each. That is every seat there is.</p>
-    <p class="g-p"><em>Three to seven nights, a small group, and the château given over to it entirely.</em></p>
-    <p class="g-p">Cook in the château kitchens, hunt the brocantes of the Ariège, or work on the eighteenth-century frescoes alongside the restoration team. Full board, château beverages and every excursion included. The work goes on around you.</p>
+    {# No count of workshops (owner, 28 Sept: the programme is not fixed). #}
+    <p class="g-scarcity-line">One workshop at a time, and fifteen places on each. That is every seat there is.</p>
+    <p class="g-p"><em>Small retreats of three to seven nights, with the château given over to them entirely.</em></p>
+    <p class="g-p">The full experience, as a small-group retreat. Three nights for the brocantes, five for the kitchen, seven for the restoration, with a tour of the château, full board, the château's wines and every excursion included.</p>
     <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--line">See the workshops</a></p>
   </div>
 </div></section>
 {% if _dm != 'hidden' %}<section class="g-sec--flush"><div class="g-half">
-  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w" alt="A Place To Dine" loading="lazy">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w" alt="The dining room at Château de Gudanes" loading="lazy">
   <div class="g-half__text">
     <h2 class="g-place">Dine at La Table</h2>
     <p class="g-p"><em>A table laid by candlelight, in a dining room brought back from ruin — and cooking that answers to the valley rather than a menu.</em></p>
@@ -270,7 +271,7 @@
   </div>
 </div></section>{% endif %}
 <section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
-  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg?format=1500w" alt="A Place To Celebrate" loading="lazy">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg?format=1500w" alt="Cooking in the château kitchen" loading="lazy">
   <div class="g-half__text">
     <h2 class="g-place">One Wedding at a Time</h2>
     <p class="g-p"><em>The whole house, for a day that belongs only to you.</em></p>
@@ -279,7 +280,7 @@
   </div>
 </div></section>
 <section class="g-sec--flush"><div class="g-half">
-  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w" alt="A Place To Dream" loading="lazy">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w" alt="The kitchen table in winter" loading="lazy">
   <div class="g-half__text">
     <h2 class="g-place">Shot Here</h2>
     <p class="g-p"><em>Ninety-four rooms in every state between ruin and restoration.</em></p>
@@ -395,7 +396,7 @@
   <div class="g-journal__in">
     <p class="g-eyebrow">The Journal</p>
     <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
+    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the workshop dates are released. Sent when there is something worth sending.</p>
     <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {# One id, set once. Calling random twice produced a different number for
@@ -407,7 +408,7 @@
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>
           <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
-          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Workshop dates</label>
           <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
         </fieldset>
       <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
@@ -435,10 +436,10 @@
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Come and see it</h2>
-  <p class="g-close__p">The rooms are few and the ateliers smaller still. If a date suits, take it — the work goes on, and people come.</p>
+  <p class="g-close__p">The rooms are few and the workshops smaller still. If a date suits, take it — the work goes on, and people come.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">See the ateliers</a>
+      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">See the workshops</a>
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us something</a>
   </div>
 </div></section>

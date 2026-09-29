@@ -39,7 +39,7 @@ FR = {
     "See the rooms": "Voir les chambres",
     "Stay a night first": "Séjournez une nuit",
     "Your email": "Votre adresse e-mail",
-    "Château Ateliers": "Ateliers du Château",
+    "Workshops & Retreats": "Ateliers & retraites",
     "Dine at La Table": "Dîner à La Table",
     "Enquire": "Se renseigner",
     "Reserve": "Réserver",
@@ -232,7 +232,7 @@ FR = {
     # -- The guest's own account -----------------------------------------
     "Your château account": "Votre compte château",
     "Your stays": "Vos séjours",
-    "Your ateliers": "Vos ateliers",
+    "Your workshops": "Vos ateliers",
     "Your dinners": "Vos dîners",
     "Your account": "Votre compte",
     # The guest's statement of account.
@@ -260,7 +260,7 @@ FR = {
     "We have your request. It will be done within a month.":
         "Nous avons bien reçu votre demande. Elle sera traitée sous un mois.",
     "Your booking": "Votre réservation",
-    "Your atelier": "Votre atelier",
+    "Your workshop": "Votre atelier",
     "Your table": "Votre table",
     "Your enquiry": "Votre demande",
     "Nothing booked at the moment.": "Aucune réservation pour le moment.",
@@ -684,7 +684,7 @@ ES = {
     "See the rooms": "Ver las habitaciones",
     "Stay a night first": "Quédese una noche",
     "Your email": "Su correo electrónico",
-    "Château Ateliers": "Talleres del Château",
+    "Workshops & Retreats": "Talleres y retiros",
     "Dine at La Table": "Comer en La Table",
     "Enquire": "Consultar",
     "Reserve": "Reservar",
@@ -875,7 +875,7 @@ ES = {
     # -- The guest's own account -----------------------------------------
     "Your château account": "Su cuenta del château",
     "Your stays": "Sus estancias",
-    "Your ateliers": "Sus talleres",
+    "Your workshops": "Sus talleres",
     "Your dinners": "Sus cenas",
     "Your account": "Su cuenta",
     # The guest's statement of account.
@@ -903,7 +903,7 @@ ES = {
     "We have your request. It will be done within a month.":
         "Hemos recibido su solicitud. Se atenderá en el plazo de un mes.",
     "Your booking": "Su reserva",
-    "Your atelier": "Su taller",
+    "Your workshop": "Su taller",
     "Your table": "Su mesa",
     "Your enquiry": "Su solicitud",
     "Nothing booked at the moment.": "No hay reservas por el momento.",

@@ -36,7 +36,7 @@ FR = {
     # -- The shell every public page carries ----------------------------
     "What would you like to hear about?": "Que souhaitez-vous recevoir ?",
     "Rooms and availability": "Chambres et disponibilités",
-    "Atelier dates": "Dates des ateliers",
+    "Workshop dates": "Dates des ateliers",
     "The restoration itself": "La restauration elle-même",
     "See what it looks like first": "Voir à quoi cela ressemble",
     "Subscribe": "S'abonner",
@@ -79,7 +79,7 @@ ES = {
     # -- The shell every public page carries ----------------------------
     "What would you like to hear about?": "¿Sobre qué le gustaría saber?",
     "Rooms and availability": "Habitaciones y disponibilidad",
-    "Atelier dates": "Fechas de los talleres",
+    "Workshop dates": "Fechas de los talleres",
     "The restoration itself": "La restauración en sí",
     "See what it looks like first": "Ver primero cómo es",
     "Subscribe": "Suscribirse",
