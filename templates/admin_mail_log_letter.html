@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Mail Log — {{ line.subject or 'a letter' }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ line.subject or 'A letter' }}</h1>
+  <a href="{{ url_for('mail_log') }}" class="btn-mini">Back to the mail log</a>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table">
+    <tbody>
+      <tr><th scope="row">To</th><td>{{ line.to_address }} <span class="g-hint">({{ line.audience }})</span></td></tr>
+      <tr><th scope="row">When</th><td>{{ line.when }}</td></tr>
+      <tr><th scope="row">Letter</th><td>{{ line.type }}{% if line.sent_by_name %}, by {{ line.sent_by_name }}{% endif %}</td></tr>
+      {% if line.about_words %}<tr><th scope="row">About</th><td>{{ line.about_words }}</td></tr>{% endif %}
+      {% if line.area %}<tr><th scope="row">From the inbox for</th><td>{{ line.area }}</td></tr>{% endif %}
+      <tr><th scope="row">Status</th><td>{{ line.status_words }}{% if line.delivered_at %}, {{ local_datetime_str(line.delivered_at) }}{% endif %}
+          {% if line.failure %}<br><span class="g-hint">{{ line.failure }}</span>{% endif %}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+{% if words %}
+<p class="g-mb-label" style="margin-top:var(--s4);">What it said</p>
+<pre class="mail-log-words">{{ words }}</pre>
+{% elif gone %}
+<p class="empty-state">Its words are no longer kept: the house keeps a letter two years, and this one's time is up.</p>
+{% elif not_kept %}
+<p class="empty-state">{{ not_kept }}</p>
+{% endif %}
+
+<style>
+.mail-log-words{ white-space:pre-wrap; font-family:inherit; background:var(--surface-2, #f7f4ee);
+  padding:var(--s3, 16px); border-radius:8px; max-width:760px; overflow-wrap:anywhere; }
+</style>
+
+{% endblock %}

@@ -57,6 +57,16 @@ def public_templates():
         src = open(os.path.join(TEMPLATES, name), encoding="utf-8").read()
         if 'extends "public_base.html"' in src or name == "public_base.html":
             out[name] = src
+    # And every part a public page is made of. A table a page INCLUDES is on
+    # the page all the same, and a sweep of the files that extend the base
+    # alone never reads it -- the statement's rows live in two such parts.
+    todo = list(out.values())
+    while todo:
+        for part in re.findall(r'\{%-?\s*include\s+"([^"]+)"', todo.pop()):
+            path = os.path.join(TEMPLATES, part)
+            if part not in out and os.path.exists(path):
+                out[part] = open(path, encoding="utf-8").read()
+                todo.append(out[part])
     return out
 
 
@@ -232,19 +242,19 @@ def run():
     s.check("every table has header cells of some kind", not headerless,
             detail=f"{len(headerless)}: {headerless[:2]}" if headerless else "")
 
-    statement = pages.get("guest_statement.html", "")
+    # The page and the two parts every booking's statement is made of.
+    statement = "\n".join(pages.get(name, "") for name in (
+        "guest_statement.html", "_statement_charges.html", "_statement_payments.html"))
     # Named one at a time rather than counted. "At least three" passes with any
     # one of the four turned back into a plain cell, including the balance --
     # which is the figure the whole page exists for. A threshold that tolerates
     # exactly the regression it was written for is not a check.
     rows = [
-        ("the total", r'<th scope="row"><strong>Total</strong></th>'),
-        ("what has been received", r'<th scope="row">Received</th>'),
-        # Added when the bill stopped netting refunds away in silence. Held
-        # by name like the rest: a refund read as a loose cell leaves a guest
-        # hearing a figure with nothing to say which of the two it is.
-        ("anything refunded", r'<th scope="row">Refunded</th>'),
-        ("the balance still owed", r"""<th scope="row"><strong>\{\{ 'Balance due'"""),
+        ("the total", r'<th scope="row"[^>]*><strong>Total</strong></th>'),
+        # What has been paid, after anything refunded -- the two totals the
+        # bill once had, now summed from a line for every payment and refund.
+        ("what has been paid", r'<th scope="row"[^>]*>Total paid</th>'),
+        ("the balance still owed", r"""<th scope="row"[^>]*><strong>\{\{ 'Balance due'"""),
         ("and the tourist tax", r'<th scope="row">\s+<strong>Taxe'),
     ]
     for what, pattern in rows:
@@ -252,6 +262,14 @@ def run():
                 re.search(pattern, statement) is not None,
                 detail="read as a plain cell, a guest hears the label and the "
                        "figure as two unrelated things")
+    # Added when the bill stopped netting refunds away in silence, and held
+    # still now that each is a line: a refund is a row under the column
+    # headers that say which figure is the amount, in the table of payments.
+    payments = pages.get("_statement_payments.html", "")
+    s.check("and each refund is a row of its own, under the column headers",
+            re.search(r"<thead>.*?<th[^>]*>Amount</th>.*?</thead>\s*<tbody>.*?"
+                      r"\{% for x in v\.refunds %\}\s*<tr>", payments, re.S) is not None,
+            detail="a refund outside the table's rows is a figure nothing labels")
 
     s.section("The things that were already right, and must stay right")
     base = pages.get("public_base.html", "")

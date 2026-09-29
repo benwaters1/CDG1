@@ -42,6 +42,8 @@ EXEMPT = {
     # class would live in a stylesheet Gmail strips. They are held at 600px
     # instead, which is the answer that actually works in an inbox.
     "_email.html", "email_booking_confirmed.html",
+    # The statement drawn beneath a receipt's words, for the same reasons.
+    "_email_statement.html",
 }
 
 
