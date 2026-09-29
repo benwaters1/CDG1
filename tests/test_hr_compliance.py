@@ -1,4 +1,5 @@
 """Incidents, role compliance, the access register and the payroll pack."""
+import re
 from datetime import datetime, timezone
 
 from _harness import Suite, clients, db, flashes
@@ -80,6 +81,31 @@ def run():
         conn.close()
         s.check("item can be issued to staff", h is not None, r2)
         if h:
+            # The Since cell sliced local_datetime_str's English with [:10]
+            # and printed "September " for every key on the register. The
+            # stamp is half past midnight on the 4th at the house and still
+            # the 3rd in UTC, so a cell that reads the UTC day fails as well
+            # as one that prints half a word -- at any hour of the run.
+            conn = db()
+            conn.execute("UPDATE access_holdings SET issued_at = ? WHERE id = ?",
+                         ("2026-09-03T22:30:00+00:00", h["id"]))
+            conn.commit()
+            conn.close()
+            page = oc.get("/admin/access")
+            html = page.get_data(as_text=True)
+            row = next((tr for tr in re.findall(r"<tr>(.*?)</tr>", html, re.S)
+                        if f"{TAG} front door key" in tr), "")
+            cells = [_harness.visible_text(c).strip()
+                     for c in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)]
+            since = cells[3] if len(cells) > 3 else None
+            s.check("the key is on the register with a Since cell",
+                    since is not None, page)
+            s.check("Since is the house's day, written in full",
+                    since == "4 September 2026",
+                    detail=f"Since reads {since!r}")
+            s.check("not the UTC day, and not a word cut in half",
+                    since not in ("3 September 2026", "September ", "September"),
+                    detail=f"Since reads {since!r}")
             oc.post(f"/admin/access/{h['id']}/return", follow_redirects=True)
             conn = db()
             ret = conn.execute("SELECT returned_at FROM access_holdings WHERE id=?",
