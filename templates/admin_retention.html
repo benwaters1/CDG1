@@ -40,12 +40,12 @@
 
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">The notice says</th><th style="text-align:left;">Measured on</th>
-    <th class="num">Still waiting</th><th style="text-align:left;">True today</th></tr></thead>
+    <thead><tr><th>The notice says</th><th>Measured on</th>
+    <th class="num">Still waiting</th><th>True today</th></tr></thead>
     <tbody>
       {% for c in data.claims %}
       <tr{% if not c.kept %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">{{ c.claim }}</th>
+        <th scope="row">{{ c.claim }}</th>
         <td>{{ c.where }}</td>
         <td class="num">{{ c.waiting }}</td>
         <td>{{ 'Yes' if c.kept else 'Not yet' }}</td>

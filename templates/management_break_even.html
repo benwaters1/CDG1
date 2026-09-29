@@ -59,7 +59,7 @@
 <h2 class="section-heading">What the fixed cost is made of</h2>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Cost</th><th class="num">Per month</th></tr></thead>
+    <thead><tr><th>Cost</th><th class="num">Per month</th></tr></thead>
     <tbody>
       <tr><td>Salaried wages (gross)</td><td class="num">&euro;{{ '%.2f'|format(data.salaried) }}</td></tr>
       {% for c in data.costs %}
@@ -69,7 +69,7 @@
       </tr>
       {% endfor %}
     </tbody>
-    <tfoot><tr><th style="text-align:left;">Total</th>
+    <tfoot><tr><th>Total</th>
       <th class="num">&euro;{{ '%.2f'|format(data.fixed) }}</th></tr></tfoot>
   </table>
 </div>

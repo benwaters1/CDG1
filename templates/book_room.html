@@ -52,7 +52,7 @@
     {# The room's own facts, as on the Stay cards: the page a guest pays from showed none of them. #}
     {%- set _rn = room_name(room['name']) %}
     {%- set _bl = room['bed_setup'] or ('Twin beds' if ('Twin' in _rn or 'Tilleul' in _rn) else ('Queen bed' if ('Queen' in _rn or 'Cerise' in _rn) else ('King bed' if ('King' in _rn or 'Levant' in _rn) else ('Emperor bed' if ('Gold' in _rn or 'Émeraude' in _rn) else ('Two bedrooms' if ('Family' in _rn or 'Deux' in _rn) else ''))))) %}
-    <ul class="g-tags g-roomtop__facts">{% if _bl %}<li>{{ _bl }}</li>{% endif %}{% if room['bathroom'] %}<li>{{ room['bathroom']|capitalize }} bathroom, first floor</li>{% endif %}<li>Breakfast included</li></ul>
+    <ul class="g-tags g-roomtop__facts">{% if _bl %}<li>{{ _bl }}</li>{% endif %}{% if room['bathroom'] %}<li>{{ room['bathroom']|capitalize }} bathroom, downstairs</li>{% endif %}<li>Breakfast included</li></ul>
     {% if room['price_per_night'] %}
       {% from '_nights_calc.html' import stay_cost %}
       {{ stay_cost(room, deposit_shown) }}
@@ -60,7 +60,9 @@
     {# The button came before the price and facts; it now follows them. #}
   <p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Check these dates</a></p>
 
-    <p class="g-room__note">Continental breakfast included. Walls left as the centuries made them — under Class I protection, they stay that way. Everything within them is new. The bedrooms are on the top floor and the bathrooms are on the first floor, with a powder room up with the bedrooms; there is no lift, and a great many stairs.</p>
+    <p class="g-room__note">Continental breakfast included. Walls left as the centuries made them — under Class I protection, they stay that way. Everything within them is new.</p>
+    {# Its own note, so the bathroom is clear on the page a guest books from (owner, 24 Sept). #}
+    <p class="g-room__note g-room__bath"><b>Your bathroom.</b> {% if (room['bathroom'] or '')|lower == 'private' %}Yours alone for the stay, downstairs on the first floor{% else %}Downstairs, on the first floor{% endif %}; the bedrooms are on the top floor, with a powder room in the upstairs vestibule for the night.{% if room_name(room['name']) == 'The King Room' %} This room also has a bath and a basin of its own.{% endif %} There is no lift, and a great many stairs.</p>
   </div>
 
   <div class="g-strip">
@@ -149,13 +151,14 @@
             </p>
           </div>
           {# Beneath both fields, not inside one — it describes the party. #}
-          <p class="g-hint g-hint--row">Guests under eighteen. Children are welcome from eight. The staircases are eighteenth-century and there are no handrails in places — the bedrooms are on the top floor and the bathrooms are on the first floor. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s are exempt from the taxe de sejour, so the count is what keeps a family from being overcharged and the commune's return right.</p>
+          <p class="g-hint g-hint--row">Guests under eighteen. Children are welcome from eight: the staircases are eighteenth-century, with no handrails in places. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s pay no taxe de séjour.</p>
           {# party_size is what the route already reads, so it is kept and
              filled from the two fields above rather than replaced. #}
           <input type="hidden" name="party_size" id="party_size" value="{{ prefill_party_size or 2 }}">
         
           <p class="g-second">
   <span class="g-second__k">More than one room?</span>
+  {# Fifteen is the chambres d'hôtes limit (owner, 24 Sept): the five rooms take fifteen with an extra bed. #}
   Tell us and we will hold them together — the château sleeps fifteen across five rooms.
   <a href="{{ url_for('book_rooms') }}#rooms">See the other four</a>
 </p>
@@ -720,7 +723,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         <div><dt>Classified</dt><dd>Class I Historic Monument, 14 June 1994</dd></div>
         <div><dt>Written about</dt><dd>Vogue, AD Italia, House &amp; Garden, and the French press</dd></div>
         <div><dt>Honoured</dt><dd>Medal of the Fondation Prince Louis de Polignac, 2016</dd></div>
-        <div><dt>Still unfinished</dt><dd>Fifteen years in, and deliberately so</dd></div>
+        <div><dt>Still unfinished</dt><dd>Deliberately, and for years yet</dd></div>
         <div><dt>Why it continues</dt><dd>Room by room, as each one is reached</dd></div>
       </dl>
     </div>
@@ -835,7 +838,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 <div class="g-wrap">
   <p class="g-backtoform">
     <span class="g-backtoform__k">Still here?</span>
-    <span class="g-backtoform__t">Everything above is worth reading before you book, and none of it changes the price.</span>
+    <span class="g-backtoform__t">Everything above is worth reading before you book.</span>
   <a href="#book" class="g-btn g-btn--solid">Back to the dates</a>
   </p>
 </div>

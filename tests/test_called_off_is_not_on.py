@@ -216,11 +216,16 @@ def _markers(when, days):
     return {d: by_day[d.day] for d in days if d.month == when.month}
 
 
-def _sessions_running(first, last):
-    period = {"start_iso": first.isoformat(),
-              "end_iso": (last + timedelta(days=1)).isoformat(),
-              "start_at": first.isoformat(),
-              "end_at": (last + timedelta(days=1)).isoformat()}
+def _sessions_running(first):
+    """The Workshops band's "Sessions running" for the week holding `first`.
+
+    The window is resolve_period's, built from ?period=week&date= as the page
+    builds it, not written out here. A hand-built one handed the band's refunds
+    query bare dates where the page hands it moments, and it would miss any
+    key the band starts reading later. A week is wide enough to hold a sitting
+    and narrow enough to leave out the other window's, twelve days on.
+    """
+    period = m.resolve_period("week", first.isoformat())
     cells = _ask(m.workshops_overview, period, m.house_today())
     return next(c["value"] for c in cells if c["label"] == "Sessions running")
 
@@ -307,8 +312,8 @@ def run():
         base_cal_off = _calendar_marks(off_start, off_days)
         base_mark_off = _markers(off_start, off_days)
         base_mark_live = _markers(live_start, live_days)
-        base_running_off = _sessions_running(off_start, off_end)
-        base_running_live = _sessions_running(live_start, live_end)
+        base_running_off = _sessions_running(off_start)
+        base_running_live = _sessions_running(live_start)
 
         w_called = _atelier(OFF, emp["id"])
         w_running = _atelier(LIVE, emp["id"])
@@ -373,8 +378,8 @@ def run():
         s.check("and the owner's month marks it", all(marks[d] == "workshop" for d in quiet),
                 detail=f"{marks}")
         s.check("the overview band counts it running",
-                _sessions_running(off_start, off_end) == base_running_off + 2,
-                detail=f"{_sessions_running(off_start, off_end)} against "
+                _sessions_running(off_start) == base_running_off + 2,
+                detail=f"{_sessions_running(off_start)} against "
                        f"{base_running_off} without it")
         s.check("the week's activity names it",
                 OFF in _ask(m.week_activity, off_start, off_end))
@@ -540,10 +545,10 @@ def run():
             live_marks[d] == "workshop" for d, mk in base_mark_live.items() if mk == "none")
             and any(mk == "none" for mk in base_mark_live.values()), detail=f"{live_marks}")
         s.check("the overview band no longer counts it running",
-                _sessions_running(off_start, off_end) == base_running_off,
-                detail=f"{_sessions_running(off_start, off_end)} against {base_running_off}")
+                _sessions_running(off_start) == base_running_off,
+                detail=f"{_sessions_running(off_start)} against {base_running_off}")
         s.check("and still counts the running one",
-                _sessions_running(live_start, live_end) == base_running_live + 1)
+                _sessions_running(live_start) == base_running_live + 1)
         margins = {r["session_id"] for r in _ask(
             m.workshop_margins, today - timedelta(days=1), live_end + timedelta(days=30))["rows"]}
         s.check("the margins page shows no loss for an atelier that never ran",

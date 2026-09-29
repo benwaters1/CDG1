@@ -51,17 +51,17 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="text-align:left;">Day</th>
-        <th style="text-align:left;">Room</th>
-        <th style="text-align:left;">Out</th>
-        <th style="text-align:left;">In</th>
+        <th>Day</th>
+        <th>Room</th>
+        <th>Out</th>
+        <th>In</th>
       </tr>
     </thead>
     <tbody>
       {% for d in data.days %}
         {% for c in d.changeovers %}
         <tr{% if d.count >= 3 %} class="row-alert"{% endif %}>
-          <th scope="row" style="text-align:left;">{% if loop.first %}{{ d.day.strftime('%a %d %b') }}{% if d.count > 1 %} <span class="field-hint">({{ d.count }} rooms)</span>{% endif %}{% endif %}</th>
+          <th scope="row">{% if loop.first %}{{ d.day.strftime('%a %d %b') }}{% if d.count > 1 %} <span class="field-hint">({{ d.count }} rooms)</span>{% endif %}{% endif %}</th>
           <td>{{ c.room }}</td>
           <td>{{ c.out_guest }}</td>
           <td>{{ c.in_guest }}

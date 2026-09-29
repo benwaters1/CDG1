@@ -343,10 +343,17 @@
   <div class="g-half__text">
     <p class="g-eyebrow">Bathing</p>
     <h2 class="g-h2">Les Salles de Bains</h2>
-    <p class="g-p g-lede-first">Floral papers, a cast-iron freestanding bath, and a dressing room to yourself.</p>
-    <p class="g-p">Every room has its own bathroom, each with its own character.</p>
-    <p class="g-p">None is in the bedroom itself: each is on the first floor and yours alone. The King Room also has a bath and a basin in the bedroom.</p>
-    <p class="g-p">Brass fittings, hexagonal terracotta underfoot, and cast-iron baths deep enough to disappear into. Ensuite bathrooms are not permitted under Class I rules — which is why they sit on the first floor rather than behind your bed, and why they are among the newest rooms in a building that is mostly not. There is a powder room on the bedroom floor for the night.</p>
+    {# Rewritten so it is clear (owner, 24 Sept): one bathroom allocated to each room; all together downstairs,
+       on the first floor, where they have always been; only the powder room on the bedroom floor. #}
+    <p class="g-p g-lede-first">Every room has its own bathroom, given to it for the length of your stay. None is in the bedroom: they are together downstairs, on the first floor.</p>
+    <dl class="g-facts-list g-bath">
+      <div><dt>Yours alone</dt><dd>Kept for your room alone, from arrival to departure.</dd></div>
+      <div><dt>Where</dt><dd>Downstairs, on the first floor, all in the same part of the house. The bedrooms are on the top floor.</dd></div>
+      <div><dt>On your floor</dt><dd>A powder room in the upstairs vestibule, for the night.</dd></div>
+      <div><dt>The King Room</dt><dd>Also has a bath and a basin in the bedroom itself.</dd></div>
+      <div><dt>Why not in the room</dt><dd>Class I rules do not allow bathrooms to be cut into the bedrooms, so they were made where the building allows — and made new.</dd></div>
+    </dl>
+    <p class="g-p">Brass fittings, floral papers, hexagonal terracotta underfoot, and cast-iron baths deep enough to disappear into. They are among the newest rooms in a building that is mostly not.</p>
     <p style="margin-top:var(--s6)">
       <a href="#book" class="g-btn g-btn--solid">Check dates</a>
     </p>
@@ -741,8 +748,10 @@
 
 {% from '_faq.html' import faq %}
 {{ faq([
+  ('Is there anywhere nearby for a drink, or supplies?',
+   'Les Cabannes, three minutes below the gates, is the larger village: restaurants, a bar, a supermarket and a tabac, and the railway station. Château-Verdun itself is a village of about fifty people.'),
   ('Is there a lift?',
-   'No. Gudanes is a Class I Historic Monument and a lift cannot be installed. The staircases are the originals, with no handrail in places, and there are a great many of them: the bedrooms are on the top floor, the bathrooms on the first floor, and the grounds are terraced, so it is stairs outside as well as in. There is a powder room on the bedroom floor. If stairs are difficult, write to us before booking and we will tell you honestly whether it will work.'),
+   'No. Gudanes is a Class I Historic Monument and a lift cannot be installed. The staircases are the originals, with no handrail in places, and there are a great many of them: the bedrooms are on the top floor, the bathrooms on the first floor, and the grounds are terraced, so it is stairs outside as well as in. There is a powder room in the upstairs vestibule. If stairs are difficult, write to us before booking and we will tell you honestly whether it will work.'),
   ('Why are the walls unfinished?',
    'Because the law requires it. Class I classification means the walls stay as the centuries left them — bare plaster, weathered stone — and every intervention is approved before a tool is lifted. Everything within them is new: the beds, the linen, the floors, the bathrooms.'),
   ('When do I pay?',
@@ -881,7 +890,8 @@
   </div>
 </div></section>
 
-{{ exclusive(settings) }}
+{# exclusive() is the atelier's "You Have the Whole House" (party size fifteen, the teaching, full board): on the
+   Stay page a guest booking one room could read it as exclusive use. It stays on the ateliers page. #}
 
 {# Room-level structured data. The organisation markup already exists in the
    base; this is what actually puts rooms and prices into rich results. Built

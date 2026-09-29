@@ -62,7 +62,7 @@
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr>
-      <th style="text-align:left;">Method</th><th class="num">Payments</th>
+      <th>Method</th><th class="num">Payments</th>
       <th class="num">Taken</th><th class="num">Costs</th>
     </tr></thead>
     <tbody>
@@ -80,7 +80,7 @@
       {% endfor %}
     </tbody>
     <tfoot><tr>
-      <th style="text-align:left;">Total</th>
+      <th>Total</th>
       <th class="num">{{ data.rows|sum(attribute='count') }}</th>
       <th class="num">&euro;{{ '%.2f'|format(data.taken) }}</th>
       <th class="num">{% if data.fee is not none %}&euro;{{ '%.2f'|format(data.fee) }}{% else %}&mdash;{% endif %}</th>

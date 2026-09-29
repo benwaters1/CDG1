@@ -33,14 +33,14 @@
 <div class="table-wrap">
   <table class="data-table">
     <thead>
-      <tr><th style="text-align:left;">Guest</th><th style="text-align:left;">Room</th>
-      <th style="text-align:left;">Left</th><th class="num">Days ago</th>
+      <tr><th>Guest</th><th>Room</th>
+      <th>Left</th><th class="num">Days ago</th>
       <th class="num">Held</th><th></th></tr>
     </thead>
     <tbody>
       {% for r in data.held %}
       <tr{% if r.days_since and r.days_since > 14 %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">{{ r.guest }}<span class="field-hint" style="display:block; font-weight:400;">{{ r.reference }}</span></th>
+        <th scope="row">{{ r.guest }}<span class="field-hint" style="display:block; font-weight:400;">{{ r.reference }}</span></th>
         <td>{{ r.room }}</td>
         <td>{{ r.departed }}</td>
         <td class="num">{% if r.days_since is not none %}{{ r.days_since }}{% else %}&mdash;{% endif %}</td>
@@ -59,12 +59,12 @@
 <h2 class="section-heading">Recently returned</h2>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Guest</th><th style="text-align:left;">Reference</th>
-    <th class="num">Was held</th><th class="num">Went back</th><th style="text-align:left;">Note</th></tr></thead>
+    <thead><tr><th>Guest</th><th>Reference</th>
+    <th class="num">Was held</th><th class="num">Went back</th><th>Note</th></tr></thead>
     <tbody>
       {% for r in data.returned %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ r.guest_name }}</th>
+        <th scope="row">{{ r.guest_name }}</th>
         <td>{{ r.reference_code }}</td>
         <td class="num">{{ euro(r.deposit_amount) }}</td>
         <td class="num">{{ euro(r.deposit_returned_amount) }}</td>

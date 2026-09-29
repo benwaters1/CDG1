@@ -1301,18 +1301,35 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
   font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;
   color:var(--ink-soft); padding:11px 14px; border-bottom:1px solid var(--parchment-line);
 }
-.data-table td{ padding:11px 14px; border-bottom:1px solid var(--parchment-line); vertical-align:top; }
-.data-table tbody tr:last-child td{ border-bottom:none; }
+/* A heading down the side is a cell that names its row: <th scope="row">,
+   so a screen reader hears "Balance due" and the figure as one fact, and
+   the label on a totals row. It gets a cell's box in the same rule as the
+   cell, so the two cannot drift apart. Left to the browser it was centred
+   and bold, with none of a cell's padding or rule: the first column sat
+   14px off the heading above it, the line under each row stopped short of
+   it, and the figures in a totals row sat off the column they add up. */
+.data-table td, .data-table tbody th, .data-table tfoot th{
+  padding:11px 14px; border-bottom:1px solid var(--parchment-line); vertical-align:top;
+}
+.data-table tbody th, .data-table tfoot th{ text-align:left; font-weight:500; }
+/* The box's own border runs under the last row; a rule there doubles it. */
+.data-table tbody tr:last-child td, .data-table tbody tr:last-child th,
+.data-table tfoot tr:last-child td, .data-table tfoot tr:last-child th{ border-bottom:none; }
 .data-table tbody tr:hover{ background:var(--status-neutral-bg); }
 /* Figures right-align and use the mono face so columns of money line up on
    the decimal — the whole point of a financial table. */
 .data-table .num{ text-align:right; font-family:'IBM Plex Mono', monospace; white-space:nowrap; }
-.data-table tfoot td, .data-table tr.total td{ font-weight:700; border-top:2px solid var(--parchment-line); }
+/* A total's label stays on the left, where the headings above it start.
+   Most totals rows carry a figure in several columns, and a label pushed
+   right would sit against the first of them and read as its heading. */
+.data-table tfoot td, .data-table tfoot th,
+.data-table tr.total td, .data-table tr.total th{ font-weight:700; border-top:2px solid var(--parchment-line); }
 .data-table .row-alert{ color:var(--danger); }
 
 @media (max-width: 760px){
   .data-table{ font-size:12px; }
-  .data-table thead th, .data-table td{ padding:9px 10px; }
+  .data-table thead th, .data-table td,
+  .data-table tbody th, .data-table tfoot th{ padding:9px 10px; }
 }
 
 /* ---------- Restaurant POS ----------

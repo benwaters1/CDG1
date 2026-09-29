@@ -191,7 +191,7 @@
                     aria-label="{{ 'Done' if a['status'] == 'done' else 'Not done' }}: {{ a['title'] }}">{{ '✓' if a['status'] == 'done' }}</button>
           </form>
         </td>
-        <th scope="row" style="font-weight:500;">
+        <th scope="row">
           {{ a['title'] }}
           {% if a['detail'] %}<span class="upload-hint">{{ a['detail'] }}</span>{% endif %}
           {% if a['recorded_by_name'] %}<span class="upload-hint">written down by {{ a['recorded_by_name'] }}</span>{% endif %}
