@@ -9,6 +9,7 @@ be forgotten.
 Late notification is how cover is lost. A complete register and an insurer
 who knows nothing are entirely compatible states.
 """
+import re
 from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, clients, db
@@ -119,6 +120,37 @@ def run():
     page = oc.get("/admin/incidents?status=open").get_data(as_text=True)
     s.check("closing an incident does not hide it from the banner",
             TAG + "late" in page)
+
+    s.section("The clock starts when it happened, on the house's clock")
+    # Recorded through the form at 23:30 on 4 September, here. The workplace
+    # window is 48 hours, so it closes at 23:30 on the 6th. Read as UTC, as it
+    # used to be, the accident is two hours younger and still inside it.
+    r = oc.post("/admin/incidents/new", data={
+        "occurred_at": "2026-09-04T23:30", "kind": "workplace", "severity": "minor",
+        "summary": TAG + "terrace"}, follow_redirects=True)
+    after = datetime(2026, 9, 6, 22, 30, tzinfo=timezone.utc)    # 00:30 on the 7th, here
+    t = _find(m.incidents_awaiting_insurer(conn, now=after)["all"], "terrace")
+    s.check("at 00:30 on the 7th it is 49 hours old", t and abs(t["age_days"] * 24 - 49) < 0.01,
+            r, detail=f"{t['age_days'] * 24:.2f}h" if t else "not listed")
+    s.check("and past the 48-hour window", t and t["overdue"] is True)
+    before = datetime(2026, 9, 6, 20, 30, tzinfo=timezone.utc)   # 22:30 on the 6th, here
+    t = _find(m.incidents_awaiting_insurer(conn, now=before)["all"], "terrace")
+    s.check("at 22:30 on the 6th it has an hour left, and is not overdue",
+            t and t["overdue"] is False and abs(t["days_left"] * 24 - 1) < 0.01,
+            detail=f"{t['days_left'] * 24:.2f}h left" if t else "not listed")
+
+    s.section("The day it was reported")
+    # 22:30 UTC on the 5th is half past midnight on the 6th here. The card
+    # used to slice the first ten characters off an already-worded date, and
+    # printed "reported September " with no day at all.
+    _incident(conn, "told", 40, policy_id=pol, reported="2026-09-05T22:30:00+00:00")
+    page = oc.get("/admin/incidents?status=open").get_data(as_text=True)
+    card = next((c for c in page.split('class="expense-card"')
+                 if f"<strong>{TAG}told</strong>" in c), "")
+    said = re.search(r"Policy:[^·]*·\s*reported\s+(.*?)\s*</p>", card, re.S)
+    said = " ".join(said.group(1).split()) if said else None
+    s.check("the card says it was reported on 6 September 2026",
+            said == "6 September 2026", detail=f"says {said!r}")
 
     _cleanup(conn)
     return s

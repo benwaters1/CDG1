@@ -523,9 +523,6 @@ COVERAGE_KNOWN_GAPS = set()
 BARE_DATE_KNOWN = {
     ("owner_home_figures", "clock_in_at"):
         "widened a day each way, then each shift filed by house_date_iso: right",
-    ("admin_incidents", "occurred_at"):
-        "the time as somebody typed it, local and without a zone: a date "
-        "compares with it correctly",
     ("delivery_shortfalls", "stock_movements.created_at"): "stock -- the other agent's",
     ("night_cost", "stock_movements.created_at"): "stock -- the other agent's",
     ("price_changes", "stock_movements.created_at"): "stock -- the other agent's",
