@@ -188,6 +188,7 @@ SUITES = [
     "test_table_overflow",
     "test_row_headings",
     "test_entities_as_text",
+    "test_form_layout",
     "test_links",
     "test_error_pages",
     "test_seo_files",
@@ -329,6 +330,7 @@ SUITES = [
     "test_weather",
     "test_own_record",
     "test_utc_slices",
+    "test_stamp_times",
     "test_read_write_parity",
     "test_no_overbooking",
     "test_add_room",
@@ -522,9 +524,6 @@ COVERAGE_KNOWN_GAPS = set()
 BARE_DATE_KNOWN = {
     ("owner_home_figures", "clock_in_at"):
         "widened a day each way, then each shift filed by house_date_iso: right",
-    ("admin_incidents", "occurred_at"):
-        "the time as somebody typed it, local and without a zone: a date "
-        "compares with it correctly",
     ("delivery_shortfalls", "stock_movements.created_at"): "stock -- the other agent's",
     ("night_cost", "stock_movements.created_at"): "stock -- the other agent's",
     ("price_changes", "stock_movements.created_at"): "stock -- the other agent's",

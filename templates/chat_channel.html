@@ -23,7 +23,7 @@
   <div class="chat-msg {{ 'chat-msg-mine' if msg['user_id'] == user['id'] }}">
     <div class="chat-msg-head">
       <span class="chat-msg-author">{{ msg['author'] or 'Someone who has left' }}</span>
-      <span class="chat-msg-time">{{ msg['created_at'][11:16] }}</span>
+      <span class="chat-msg-time">{{ local_time_str(msg['created_at']) }}</span>
     </div>
     <div class="chat-msg-body">{{ msg['body'] }}</div>
   </div>

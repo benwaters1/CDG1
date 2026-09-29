@@ -33,7 +33,7 @@
    and says it in the local time somebody can compare against a clock. #}
 <p class="page-intro">
   {{ shopping.left }} {{ 'thing' if shopping.left == 1 else 'things' }} left ·
-  as of <span data-asof="{{ shopping.as_of }}">{{ shopping.as_of[11:16] }} UTC</span>
+  as of <span data-asof="{{ shopping.as_of }}">{{ local_datetime_str(shopping.as_of) }}</span>
 </p>
 
 {% if shopping.short %}
@@ -99,8 +99,10 @@ document.querySelectorAll('.shop-row').forEach(function (row) {
   });
 });
 
-// The stamp in local time, once, on the device that is reading it. Rendered
-// as UTC on the server because the server does not know where the tablet is.
+// The stamp in local time, once, on the device that is reading it. The server
+// writes the house's time and the day, which is right for a tablet in the
+// kitchen and is what the page says if this never runs. It used to write the
+// UTC time with no day, which told a kept copy's reader neither.
 (function () {
   var el = document.querySelector('[data-asof]');
   if (!el) return;

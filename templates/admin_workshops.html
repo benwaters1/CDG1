@@ -51,8 +51,10 @@
         <div class="doc-row">
           <span style="flex:1;">
             {{ s['start_date'] }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date'] }}{% endif %}
+            {% if not s['cancelled_at'] %}
             · {{ row.remaining }}/{{ s['capacity'] }} spots left
             {% if row.remaining <= 0 %}<span class="mini-status status-inactive" style="margin-left:6px;">full</span>{% endif %}
+            {% endif %}
             {% if s['notes'] %} <span class="upload-hint">— {{ s['notes'] }}</span>{% endif %}
             {% if row.at_risk %}{% set r = row.at_risk %}
             <div class="upload-hint" style="margin-top:4px;color:{{ 'var(--rust)' if r.urgent and not r.waitlist_could_fill else 'var(--steel)' }};">
