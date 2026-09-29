@@ -188,6 +188,7 @@ SUITES = [
     "test_table_overflow",
     "test_row_headings",
     "test_entities_as_text",
+    "test_form_layout",
     "test_links",
     "test_error_pages",
     "test_seo_files",
@@ -329,6 +330,7 @@ SUITES = [
     "test_weather",
     "test_own_record",
     "test_utc_slices",
+    "test_stamp_times",
     "test_read_write_parity",
     "test_no_overbooking",
     "test_add_room",
@@ -419,6 +421,7 @@ SUITES = [
     "test_job_hour_windows",
     "test_whatsapp_channel",
     "test_till_touch_targets",
+    "test_staff_header_on_a_phone",
 ]
 
 

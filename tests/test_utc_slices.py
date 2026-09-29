@@ -216,8 +216,10 @@ def run():
             body = _re.sub(r"\{#.*?#\}", "",
                            _io.open(path, encoding="utf-8").read(), flags=_re.S)
             for i, line in enumerate(body.splitlines(), 1):
-                # A slice that follows ")" has already been through
-                # local_datetime_str, which converts before it truncates.
+                # A slice that follows ")" is of what a function handed back,
+                # which is not this check's to judge. It was once said to be
+                # safe after local_datetime_str; that returns words, and
+                # [:10] of them printed "September ". test_stamp_times has it.
                 for mo in _re.finditer(
                         r"([A-Za-z0-9_]*_at)['\"]?\s*\]?\s*\[\s*0?:10\s*\]",
                         line):
