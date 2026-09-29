@@ -23,7 +23,13 @@ AND WHAT A COLLEAGUE SEES IS NOT WHAT THE OWNER SEES. Somebody carrying bags
 needs to know a guest is vegetarian and how to say their name. What they have
 spent is not a colleague's business, and neither is every email the house has
 sent them.
+
+AND "KNOWN SINCE" IS WHEN THE HOUSE FIRST HEARD OF THEM. It was the earliest
+arrival on any booking, so a first-timer booked six weeks ahead was known since
+a day that had not come, and a declined request's dates counted as if they had
+been spent here.
 """
+import re
 from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, clients, db, flashes
@@ -48,6 +54,7 @@ def _cleanup():
                     (SELECT id FROM bookings WHERE reference_code LIKE ?)""", (TAG + "%",))
     conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM restaurant_bookings WHERE guest_email = ?", (WHO,))
+    conn.execute("DELETE FROM restaurant_bookings WHERE reference_code LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM guests WHERE name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM email_outbox WHERE to_address = ?", (WHO,))
     conn.execute("DELETE FROM sms_outbox WHERE phone = '+33677777777'")
@@ -88,6 +95,50 @@ def _stay(ref, room_id, offset, nights=2, linked=None, email=WHO, status="confir
                        (TAG + ref,)).fetchone()
     conn.close()
     return row
+
+
+def _ago(days, hour=10, minute=0):
+    """A stored UTC moment, `days` before today, at hour:minute UTC."""
+    day = datetime.now(timezone.utc).date() - timedelta(days=days)
+    return datetime(day.year, day.month, day.day, hour, minute,
+                    tzinfo=timezone.utc).isoformat()
+
+
+def _newcomer(suffix, created_at, merged_into=None):
+    """A profile of its own, so each case below is only what it sets up."""
+    email = f"{TAG.lower()}{suffix.lower()}@example.invalid"
+    conn = db()
+    cur = conn.execute(
+        "INSERT INTO guests (name, email, created_at, merged_into_id) VALUES (?, ?, ?, ?)",
+        (f"{TAG} {suffix}", None if merged_into else email, created_at, merged_into))
+    conn.commit()
+    conn.close()
+    return cur.lastrowid, email
+
+
+def _request(ref, room_id, email, arrive_in, made_at, status="confirmed", guest_id=None):
+    """A stay booked on `made_at`, to arrive `arrive_in` days from today."""
+    conn = db()
+    start = m.house_today() + timedelta(days=arrive_in)
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+           guest_email, arrival_date, departure_date, party_size, status,
+           total_price, linked_guest_id, created_at)
+           VALUES (?, ?, ?, 'Newcomer', ?, ?, ?, 2, ?, 400, ?, ?)""",
+        (room_id, TAG + ref, TAG.lower() + "tok" + ref, email, start.isoformat(),
+         (start + timedelta(days=2)).isoformat(), status, guest_id, made_at))
+    conn.commit()
+    conn.close()
+    return start.isoformat()
+
+
+def _known_since_on_page(body):
+    """What the page prints: the owner's band and the facts list."""
+    band = re.search(r'<div class="overview-value">\s*([^<]*?)\s*</div>\s*'
+                     r'<div class="overview-label">Known since</div>', body)
+    facts = re.search(r"<dt>Known since</dt><dd>(.*?)</dd>", body)
+    return (band.group(1).strip() if band else None,
+            facts.group(1).strip() if facts else None)
 
 
 def _record(guest_id):
@@ -251,6 +302,87 @@ def run():
     r = ec.get(f"/guests/{g['id']}/statement", follow_redirects=False)
     s.check("an employee cannot see the statement",
             r.status_code in (302, 303, 403), detail=f"HTTP {r.status_code}")
+
+    s.section("Known since: when the house first heard of them")
+    today = m.house_today()
+    # Stamps at 10:00 UTC are midday in the Ariège, so their date part IS the
+    # house's day; the one case that is not is set up on purpose further down.
+
+    # A first-timer whose only booking is six weeks ahead.
+    soon_id, soon_mail = _newcomer("Soon", _ago(0))
+    ahead = _request("SOON", rooms[0]["id"], soon_mail, 42, _ago(0), guest_id=soon_id)
+    soon = _record(soon_id)
+    s.check("a first-timer booked ahead is known since today, not their arrival",
+            soon["first_seen"] == _ago(0)[:10],
+            detail=f"known since {soon['first_seen']}, arriving {ahead}")
+    s.check("and never since a day that has not come",
+            soon["first_seen"] and soon["first_seen"] <= today.isoformat(),
+            detail=f"{soon['first_seen']} against today {today}")
+    r = oc.get(f"/guests/{soon_id}")
+    band, facts = _known_since_on_page(r.get_data(as_text=True))
+    s.check("the owner's band says so", band == _ago(0)[:10],
+            detail=f"band reads {band!r}")
+    s.check("and so does the list everybody sees",
+            facts == m.format_date_short(_ago(0)[:10]),
+            detail=f"facts read {facts!r}")
+
+    # A request declined long before their first stay. The house heard from
+    # them the day they wrote -- not on the dates they asked for, which they
+    # never spent here, and not on the day the profile was opened.
+    old_id, old_mail = _newcomer("Early", _ago(55))
+    wrote = _ago(400)
+    asked_for = _request("NO", rooms[0]["id"], old_mail, -380, wrote, status="declined")
+    first_stay = _request("CAME", rooms[1]["id"], old_mail, -60, _ago(100),
+                          guest_id=old_id)
+    early = _record(old_id)
+    s.check("a declined request is when they first got in touch",
+            early["first_seen"] == wrote[:10],
+            detail=f"known since {early['first_seen']}: wrote {wrote[:10]}, "
+                   f"asked for {asked_for}, first stayed {first_stay}")
+    s.check("its dates are not",
+            early["first_seen"] != asked_for,
+            detail="a declined request's arrival is a day they never spent here")
+    r = oc.get(f"/guests/{old_id}")
+    band, _facts = _known_since_on_page(r.get_data(as_text=True))
+    s.check("and the page reads the day they wrote", band == wrote[:10],
+            detail=f"band reads {band!r}")
+
+    # Written after midnight in the Ariège, before midnight in Greenwich.
+    late = _ago(20, 23, 30)
+    late_day = (datetime.fromisoformat(late).astimezone(m.LOCAL_TZ)).date().isoformat()
+    late_id, late_mail = _newcomer("Late", late)
+    _request("LATE", rooms[0]["id"], late_mail, 30, _ago(0), guest_id=late_id)
+    s.check("a profile opened after midnight is known since the house's day",
+            _record(late_id)["first_seen"] == late_day,
+            detail=f"read {_record(late_id)['first_seen']}: the house's day is "
+                   f"{late_day}, the UTC stamp says {late[:10]}")
+
+    # A stay written down after it happened, and a dinner before any stay.
+    after_id, after_mail = _newcomer("After", _ago(0))
+    stayed = _request("AFTER", rooms[0]["id"], after_mail, -30, _ago(0),
+                      guest_id=after_id)
+    s.check("a stay recorded after the event: known by the day they arrived",
+            _record(after_id)["first_seen"] == stayed,
+            detail=f"{_record(after_id)['first_seen']} against arrival {stayed}")
+    dined = _ago(200)
+    conn = db()
+    conn.execute(
+        """INSERT INTO restaurant_bookings (reference_code, manage_token, guest_name,
+           guest_email, party_size, dinner_date, status, created_at)
+           VALUES (?, ?, 'Newcomer', ?, 2, ?, 'confirmed', ?)""",
+        (TAG + "DINE", TAG.lower() + "tokdine", after_mail, dined[:10], dined))
+    conn.commit()
+    conn.close()
+    s.check("a table booked before any stay counts",
+            _record(after_id)["first_seen"] == dined[:10],
+            detail=f"{_record(after_id)['first_seen']} against the table booked {dined[:10]}")
+
+    # And a profile folded into theirs was them all along.
+    folded = _ago(300)
+    _newcomer("Folded", folded, merged_into=after_id)
+    s.check("a profile merged into theirs brings its day with it",
+            _record(after_id)["first_seen"] == folded[:10],
+            detail=f"{_record(after_id)['first_seen']} against {folded[:10]}")
 
     s.section("A guest who does not exist")
     r = oc.get("/guests/99999999", follow_redirects=False)
