@@ -53,33 +53,15 @@
     · {{ s.adults }} adult{{ '' if s.adults == 1 else 's' }}{% if s.children %}, {{ s.children }} under 18{% endif %}
   </p>
 
-  <div class="table-wrap">
-    <table class="data-table" style="margin-top:var(--s3);">
-    <thead><tr><th>Description</th><th class="num">Amount</th></tr></thead>
-    <tbody>
-      <tr>
-        <td>Accommodation — {{ s.nights }} night{{ '' if s.nights == 1 else 's' }}</td>
-        <td class="num">€{{ '{:,.2f}'.format(s.accommodation) }}</td>
-      </tr>
-      {% for e in s.extras %}
-      <tr>
-        <td>{{ e['name'] }}{% if e['quantity'] > 1 %} × {{ e['quantity'] }}{% endif %}</td>
-        <td class="num">€{{ '{:,.2f}'.format((e['unit_price'] or 0) * (e['quantity'] or 0)) }}</td>
-      </tr>
-      {% endfor %}
-      {% if s.taken_off %}
-      {# Money the house gave back and took off the price. On its own line so
-         the total is explained, not merely smaller. #}
-      <tr>
-        <td>Reduction, refunded to you</td>
-        <td class="num">−€{{ '{:,.2f}'.format(s.taken_off) }}</td>
-      </tr>
-      {% endif %}
-    </tbody>
-    </table>
-  </div>
+  {# Every charge, dated, the discount named by its code, and a reduction the
+     house refunded on a line of its own so the total is explained rather
+     than merely smaller. The same lines as on the guest's statement of
+     account, because they are the same lines. #}
+  {% include "_statement_charges.html" %}
 
-  {% if s.vat %}
+  {# The invoice's breakdown, for a stay that stands. On a stay that did not,
+     VAT on nights nobody stayed would contradict the lines above. #}
+  {% if s.vat and v.stands %}
   <p class="g-mb-label" style="margin-top:var(--s4);">VAT included in the above</p>
   <div class="table-wrap">
     <table class="data-table">
@@ -98,7 +80,7 @@
   </div>
   {% endif %}
 
-  {% if s.city_tax %}
+  {% if s.city_tax and v.stands %}
   {# Shown on its own, outside the VAT table, because it is collected for the
      commune rather than earned — and French rules require it stated separately. #}
   <div class="table-wrap">
@@ -111,7 +93,7 @@
             €{{ '{:,.2f}'.format(s.city_tax_rate) }} per adult per night ·
             {{ s.adults }} adult{{ '' if s.adults == 1 else 's' }} × {{ s.nights }} night{{ '' if s.nights == 1 else 's' }}
             {%- if s.children %} · under-18s exempt{% endif %}
-            <br>Collected on behalf of the commune. Not subject to VAT.
+            <br>Collected on behalf of the commune. Not subject to VAT. Included in the total above.
           </div>
         </th>
         <td class="num">€{{ '{:,.2f}'.format(s.city_tax) }}</td>
@@ -121,33 +103,10 @@
   </div>
   {% endif %}
 
-  <div class="table-wrap">
-    <table class="data-table" style="margin-top:var(--s4);">
-    <tbody>
-      <tr>
-        <th scope="row"><strong>Total</strong></th>
-        <td class="num"><strong>€{{ '{:,.2f}'.format(s.total) }}</strong></td>
-      </tr>
-      {% if s.received %}
-      <tr><th scope="row">Received</th><td class="num">−€{{ '{:,.2f}'.format(s.received) }}</td></tr>
-      {% endif %}
-      {% if s.refunded %}
-      {# Shown rather than netted away in silence. A guest reading a smaller
-         "paid" figure with no explanation has no way to tell a refund from a
-         payment we failed to record. #}
-      <tr><th scope="row">Refunded</th><td class="num">+€{{ '{:,.2f}'.format(s.refunded) }}</td></tr>
-      {% endif %}
-      {# Unconditional. This row used to sit inside "if paid", so a stay with
-         nothing paid on it -- every stay awaiting confirmation, every stay on
-         a deposit schedule, every walk-in written down at the door -- got a
-         bill with no bottom line at all. #}
-      <tr>
-        <th scope="row"><strong>{{ 'Balance due' if s.balance > 0 else 'Settled' }}</strong></th>
-        <td class="num"><strong>€{{ '{:,.2f}'.format(s.balance if s.balance > 0 else 0) }}</strong></td>
-      </tr>
-    </tbody>
-    </table>
-  </div>
+  {# Every payment on a line of its own, dated, with the card it came from,
+     and every refund likewise -- a refund shown rather than netted away, so a
+     smaller "paid" figure is never a mystery. #}
+  {% include "_statement_payments.html" %}
 
   <p class="g-hint" style="margin-top:var(--s4);">
     Please keep this for your records. Any question about it, contact the château with your
