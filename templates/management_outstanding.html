@@ -32,7 +32,7 @@
 </div>
 
 {% if not can_email %}
-<p class="g-hint">No email provider is connected yet, so a chase is written and
+<p class="upload-hint">No email provider is connected yet, so a chase is written and
 held rather than sent. It goes out on its own once one is.</p>
 {% endif %}
 
@@ -66,30 +66,30 @@ held rather than sent. It goes out on its own once one is.</p>
              room. Reading b['room_name'] here printed blanks for events and
              pointed their link at a room page. #}
           <a href="{{ url_for(r['link_endpoint'], **r['link_args']) }}">{{ r['who'] }}</a>
-          <span class="g-hint">{{ r['reference'] }}</span>
+          <span class="cell-note">{{ r['reference'] }}</span>
         </td>
         <td>
           {{ r['what'] }}
           {% if r['kind'] != 'stay' %}<span class="mini-status status-inactive">{{ r['kind'] }}</span>{% endif %}
-          <span class="g-hint">{{ r['when'] }}</span>
+          <span class="cell-note">{{ r['when'] }}</span>
         </td>
         <td>
           {% if r['state'] == 'gone' %}
           <span class="mini-status status-overdue">Left owing</span>
-          <span class="g-hint">{{ r['days_late'] }} day{{ '' if r['days_late'] == 1 else 's' }} ago</span>
+          <span class="cell-note">{{ r['days_late'] }} day{{ '' if r['days_late'] == 1 else 's' }} ago</span>
           {% elif r['state'] == 'overdue' %}
           <span class="mini-status status-pending">Overdue</span>
-          <span class="g-hint">by {{ r['days_late'] }} day{{ '' if r['days_late'] == 1 else 's' }}</span>
+          <span class="cell-note">by {{ r['days_late'] }} day{{ '' if r['days_late'] == 1 else 's' }}</span>
           {% else %}
           <span class="mini-status status-inactive">Still to pay</span>
-          {% if r['due_date'] %}<span class="g-hint">due {{ r['due_date']|date_short }}</span>{% endif %}
+          {% if r['due_date'] %}<span class="cell-note">due {{ r['due_date']|date_short }}</span>{% endif %}
           {% endif %}
           {# The card was refused. Said here rather than left to the state,
              because it changes what to do: this guest has already been asked
              and already been told, and the app will not try again. #}
           {% if r['card_refused'] %}
           <span class="mini-status status-overdue">Card refused</span>
-          {% if r['refused_at'] %}<span class="g-hint">{{ r['refused_at']|house_day|date_short }}</span>{% endif %}
+          {% if r['refused_at'] %}<span class="cell-note">{{ r['refused_at']|house_day|date_short }}</span>{% endif %}
           {% endif %}
         </td>
         <td class="num">€{{ '%.2f'|format(r['total']) }}</td>
@@ -138,7 +138,7 @@ held rather than sent. It goes out on its own once one is.</p>
              ledger, which is where this is settled. #}
           <a href="{{ url_for('admin_workshop_registrations') }}" class="btn-mini">On the registration</a>
           {% else %}
-          <span class="g-hint">No email on file</span>
+          <span class="muted">No email on file</span>
           {% endif %}
         </td>
       </tr>

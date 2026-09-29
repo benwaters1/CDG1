@@ -26,7 +26,7 @@
 </p>
 
 <div class="detail-card">
-  <dl class="g-facts-list">
+  <dl class="detail-grid">
     <div><dt>Guest</dt><dd>{{ g['name'] }}</dd></div>
     {% if st.addresses %}<div><dt>{{ 'Addresses' if st.addresses|length > 1 else 'Email' }}</dt><dd>{{ st.addresses|join(', ') }}</dd></div>{% endif %}
     <div><dt>Statement date</dt><dd>{{ today|date_short }}</dd></div>

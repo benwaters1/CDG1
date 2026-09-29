@@ -77,7 +77,7 @@
       {%- if r['status'] == 'cancelled' %}—
       {%- elif r['room_id'] and r['arrival_date'] and r['departure_date'] %}
         {%- if (r['room_id'], r['arrival_date'], r['departure_date']) in blocked %}Yes
-        {%- else %}<span class="tpl-over" title="The calendar sync has not blocked these dates in this room — the next sync should, and if it does not, the room could be sold twice">Not yet</span>{% endif %}
+        {%- else %}<span class="row-alert" title="The calendar sync has not blocked these dates in this room — the next sync should, and if it does not, the room could be sold twice">Not yet</span>{% endif %}
       {%- else %}<span class="upload-hint">Room or dates not stated</span>{% endif -%}
     </td>
   </tr>

@@ -182,7 +182,7 @@
           <form method="post" action="{{ url_for('release_event_hold', hold_id=h['id']) }}"
                 onsubmit="return confirm('Put these dates back on the market?');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn-mini btn-danger">Let it go</button>
+            <button type="submit" class="btn-mini btn-mini-danger">Let it go</button>
           </form>
           {% endif %}
         </td>
@@ -246,7 +246,7 @@
         <td>
           <form method="post" action="{{ url_for('delete_event_instalment', instalment_id=i.row['id']) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn-mini btn-danger">Off the plan</button>
+            <button type="submit" class="btn-mini btn-mini-danger">Off the plan</button>
           </form>
         </td>
       </tr>

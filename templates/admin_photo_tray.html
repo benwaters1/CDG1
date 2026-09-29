@@ -8,7 +8,7 @@
   <a href="{{ url_for('management_social') }}" class="btn-mini">The social list</a>
 </div>
 
-<p class="g-muted">
+<p class="page-intro">
   What the camera has sent. Nothing here is a post or a picture on the website
   until you say so — pick what each one is for, and set aside the rest.
 </p>
@@ -39,7 +39,7 @@
       <div class="tray-item__do">
         <form method="post" action="{{ url_for('arrival_to_post', arrival_id=r['id']) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="g-btn g-btn--solid btn-mini">Make it a post</button>
+          <button type="submit" class="btn-mini">Make it a post</button>
         </form>
         <a class="btn-mini" href="{{ url_for('arrival_to_site', arrival_id=r['id']) }}">Put it on the site</a>
         {% if r['dismissed'] %}
@@ -60,9 +60,9 @@
   {% endfor %}
 </div>
 {% elif lv.total %}
-<p class="g-muted">Nothing matches that.</p>
+<p class="empty-state">Nothing matches that.</p>
 {% else %}
-<p class="g-muted">
+<p class="empty-state">
   Nothing has arrived yet. The camera sends to a folder on the house machine
   and the watcher forwards what lands — see DEPLOY.md if it has not been set
   up yet.

@@ -75,7 +75,7 @@
         </td>
         <td class="num">
           {% if r.was is not none %}{{ euro(r.was) }}
-          {% else %}<span class="g-hint">not recorded</span>{% endif %}
+          {% else %}<span class="muted">not recorded</span>{% endif %}
         </td>
         <td class="num">
           {% if r.still_open %}<span class="mini-status status-pending">Still open</span>
@@ -84,13 +84,13 @@
         </td>
         <td class="num">
           {% if r.moved is none %}
-            <span class="g-hint">{{ 'settled before this was recorded' if r.unanswerable else '—' }}</span>
+            <span class="muted">{{ 'settled before this was recorded' if r.unanswerable else '—' }}</span>
           {% elif r.moved < -0.005 %}
             <span class="mini-status status-overdue">{{ euro(r.moved) }}</span>
           {% elif r.moved > 0.005 %}
             +{{ euro(r.moved) }}
           {% else %}
-            <span class="g-hint">no change</span>
+            <span class="muted">no change</span>
           {% endif %}
         </td>
       </tr>

@@ -125,7 +125,7 @@
             {% if can('refund_desk') %}
             <label class="checkbox-row"><input type="checkbox" name="refund" value="1"> <span>and refund what each paid, to their cards</span></label>
             {% endif %}
-            <button type="submit" class="btn-mini btn-danger">Call it off</button>
+            <button type="submit" class="btn-mini btn-mini-danger">Call it off</button>
           </form>
           {% endif %}
           {#- A read-only page for whoever is teaching: who is coming, what
@@ -214,7 +214,7 @@
       </div>
     {% endif %}
     {% if stock_choices %}
-    <form method="post" action="{{ url_for('add_workshop_material', workshop_id=w['id']) }}" class="inline-form">
+    <form method="post" action="{{ url_for('add_workshop_material', workshop_id=w['id']) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field-row-2">
         <select name="stock_item_id" required>

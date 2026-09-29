@@ -60,7 +60,7 @@
    colleague needs before they walk round the corner — the money below is the
    owner's business and this is everybody's. #}
 <div class="detail-card">
-  <dl class="g-facts-list">
+  <dl class="detail-grid">
     {% if g['name_pronunciation'] %}
     <div><dt>Say it</dt><dd>{{ g['name_pronunciation'] }}</dd></div>
     {% endif %}
@@ -139,21 +139,21 @@
   <form method="post" action="{{ url_for('rebook_guest', guest_id=record.id) }}"
         style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <p class="g-field" style="margin:0;">
+    <p style="margin:0;">
       <label class="field-label" for="rb_room">Room</label>
       <select id="rb_room" name="room_id" required>
         {% for r in rebook_rooms %}<option value="{{ r['id'] }}">{{ r['name'] }}</option>{% endfor %}
       </select>
     </p>
-    <p class="g-field" style="margin:0;">
+    <p style="margin:0;">
       <label class="field-label" for="rb_from">Arrival</label>
       <input type="date" id="rb_from" name="arrival_date" required>
     </p>
-    <p class="g-field" style="margin:0;">
+    <p style="margin:0;">
       <label class="field-label" for="rb_to">Departure</label>
       <input type="date" id="rb_to" name="departure_date" required>
     </p>
-    <p class="g-field" style="margin:0;">
+    <p style="margin:0;">
       <label class="field-label" for="rb_party">Guests</label>
       <input type="number" id="rb_party" name="party_size" min="1" max="20" value="2">
     </p>
@@ -314,7 +314,7 @@
   </div>
   {% if f['comment'] %}<p class="manual-body">{{ f['comment'] }}</p>{% endif %}
   {% if f['reply'] %}
-  <div class="g-mb-note"><span class="g-mb-dt">What we said back</span><p>{{ f['reply'] }}</p></div>
+  <div class="notes-block"><span class="detail-label">What we said back</span><p>{{ f['reply'] }}</p></div>
   {% endif %}
 </div>
 {% endfor %}
