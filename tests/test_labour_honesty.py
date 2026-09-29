@@ -27,6 +27,7 @@ reads — the shape test_dead_context cannot see, because a dict of twelve
 keys reaches a template as one kwarg and the eleven nobody opens are
 invisible to it.
 """
+import re as _re
 from datetime import date, timedelta
 
 from _harness import Suite, clients, db
@@ -153,6 +154,67 @@ def run():
             detail="'n people have no rate' is a different admission from "
                    "'n of the ones costed were guessed at', and only the "
                    "first was ever made")
+
+    s.section("The labour report adds up, row by row")
+    # Two faults, one page. The headline hours were the COSTED hours only, so
+    # the unpriced person was a row in the table and missing from "Hours
+    # worked" -- under a sentence saying their hours were counted. And every
+    # row was costed apart, from the pay note alone, so the typed wage showed
+    # "—" beside a total that had costed it.
+    with m.app.test_request_context(
+            f"/admin/reports/labour?period=month&date={start.isoformat()}"):
+        period = m.period_from_request()
+    data = m.report_labour(conn, period)
+    mine = {p["name"]: p for p in data["people"] if p["name"].startswith(TAG)}
+    costed = {r["name"]: r["total"] for r in b["rows"]}
+    tagged_hours = round(sum(p["hours"] for p in mine.values()), 1)
+    s.check("the unpriced person's hours are in the headline",
+            TAG + " Unpriced" in mine and tagged_hours == 24.0
+            and data["total_hours"] >= tagged_hours,
+            detail=f"headline {data['total_hours']}h over rows "
+                   f"{[(n, p['hours']) for n, p in mine.items()]}")
+    s.check("and the headline is the sum of the rows",
+            data["total_hours"] == round(sum(p["hours"] for p in data["people"]), 1),
+            detail=f"{data['total_hours']} against "
+                   f"{round(sum(p['hours'] for p in data['people']), 1)}")
+    typed_row = mine.get(TAG + " Typed", {}).get("cost")
+    s.check("a typed wage is costed on its row, at the wage",
+            typed_row is not None and typed_row == costed.get(TAG + " Typed"),
+            detail=f"row says {typed_row}, the costing {costed.get(TAG + ' Typed')} "
+                   "-- the row read the pay note, which this person does not have")
+    guessed_row = mine.get(TAG + " Guessed", {}).get("cost")
+    s.check("a pay note is costed as the costing costs it",
+            guessed_row is not None and guessed_row == costed.get(TAG + " Guessed"),
+            detail=f"row says {guessed_row}, the costing {costed.get(TAG + ' Guessed')}")
+    s.check("the unpriced person is a row with no cost, not a zero",
+            TAG + " Unpriced" in mine and mine[TAG + " Unpriced"]["cost"] is None,
+            detail=str(mine.get(TAG + " Unpriced")))
+    s.check("and the costs on the rows add up to the estimated cost",
+            round(sum(p["cost"] for p in data["people"] if p["cost"] is not None), 2)
+            == data["total_cost"],
+            detail=f"rows {sum(p['cost'] for p in data['people'] if p['cost'] is not None)} "
+                   f"against {data['total_cost']}")
+    body = oc.get(f"/admin/reports/labour?period=month&date={start.isoformat()}"
+                  ).get_data(as_text=True)
+    head = _re.search(r'<div class="overview-value">\s*([^<]*?)\s*<span class="overview-sub">h'
+                      r'</span></div>\s*<div class="overview-label">Hours worked</div>', body)
+    # Against the rows the PAGE shows, not against report_labour: a check that
+    # compares the page with the function that drew it agrees with any break
+    # in that function, and the first version of this one did exactly that.
+    table = _re.search(r"<tbody>(.*?)</tbody>", body, _re.S)
+    shown = []
+    for tr in _re.findall(r"<tr>(.*?)</tr>", table.group(1) if table else "", _re.S):
+        cells = _re.findall(r"<td[^>]*>(.*?)</td>", tr, _re.S)
+        if len(cells) == 4:
+            shown.append(float(cells[2].strip()))
+    headline = float(head.group(1)) if head else None
+    s.check("the page's headline is the sum of the page's own rows",
+            headline is not None and shown and headline == round(sum(shown), 1)
+            and headline >= 24.0,
+            detail=f"headline reads {headline}, the rows below it {shown}")
+    s.check("and the typed wage's row shows its cost",
+            "€{:,.2f}".format(costed.get(TAG + " Typed") or 0) in body,
+            detail="the row for somebody with a wage on file read '—'")
 
     _cleanup(conn)
     conn.close()

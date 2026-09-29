@@ -30,12 +30,17 @@
 {% with endpoint = 'admin_wages' %}{% include "_period_selector.html" %}{% endwith %}
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 
-{% if cost.unpriced %}
+{# Their hours by name. This said "their hours are counted above", and they
+   were counted nowhere on the page: the band and the table below both hold
+   only the hours there is pay against. #}
+{% if cost.unpriced_rows %}
 <div class="flash flash-error" style="margin-bottom:16px;">
-  <strong>{{ cost.unpriced|length }}
-    {{ 'person has' if cost.unpriced|length == 1 else 'people have' }} no wage the app can use.</strong>
-  {{ cost.unpriced|join(', ') }} — their hours are counted above but their pay is not, so this period
-  cost more than the total says. Record a figure for them below.
+  <strong>{{ cost.unpriced_rows|length }}
+    {{ 'person has' if cost.unpriced_rows|length == 1 else 'people have' }} no wage the app can use.</strong>
+  {% for r in cost.unpriced_rows %}{{ r.name }} ({{ '%.1f'|format(r.hours) }}h){{ ', ' if not loop.last }}{% endfor %}
+  —{% if cost.unpriced_rows|length > 1 %} {{ '%.1f'|format(cost.unpriced_hours) }} hours between them,{% endif %}
+  worked and in no figure on this page, because there is no pay to count them at. So this period cost
+  more than the total says. Record a figure for them below.
 </div>
 {% endif %}
 
