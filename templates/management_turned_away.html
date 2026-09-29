@@ -35,13 +35,13 @@
 {% if data.nights %}
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Night</th><th class="num">Asked</th>
+    <thead><tr><th>Night</th><th class="num">Asked</th>
     <th class="num">People</th><th class="num">Rooms sold</th>
-    <th style="text-align:left;">House was full</th></tr></thead>
+    <th>House was full</th></tr></thead>
     <tbody>
       {% for n in data.nights %}
       <tr{% if n.was_full %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">{{ n.night.strftime('%a %d %b %Y') }}</th>
+        <th scope="row">{{ n.night.strftime('%a %d %b %Y') }}</th>
         <td class="num">{{ n.asks }}</td>
         <td class="num">{{ n.heads }}</td>
         <td class="num">{{ n.sold }} / {{ data.rooms_total }}</td>

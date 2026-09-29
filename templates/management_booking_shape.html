@@ -57,11 +57,11 @@
 </p>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Booked</th><th class="num">Stays</th><th class="num">Share</th></tr></thead>
+    <thead><tr><th>Booked</th><th class="num">Stays</th><th class="num">Share</th></tr></thead>
     <tbody>
       {% for r in data.lead_rows %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ r.band }}</th>
+        <th scope="row">{{ r.band }}</th>
         <td class="num">{{ r.count }}</td>
         <td class="num">{{ r.share }}%</td>
       </tr>
@@ -77,11 +77,11 @@
 </p>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Length</th><th class="num">Stays</th><th class="num">Share</th></tr></thead>
+    <thead><tr><th>Length</th><th class="num">Stays</th><th class="num">Share</th></tr></thead>
     <tbody>
       {% for r in data.stay_rows %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ r.band }}</th>
+        <th scope="row">{{ r.band }}</th>
         <td class="num">{{ r.count }}</td>
         <td class="num">{{ r.share }}%</td>
       </tr>
@@ -94,11 +94,11 @@
 <h2 class="section-heading">Month by month</h2>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Arriving</th><th class="num">Stays</th><th class="num">Days ahead</th><th class="num">Nights</th></tr></thead>
+    <thead><tr><th>Arriving</th><th class="num">Stays</th><th class="num">Days ahead</th><th class="num">Nights</th></tr></thead>
     <tbody>
       {% for r in data.months %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ r.month }}</th>
+        <th scope="row">{{ r.month }}</th>
         <td class="num">{{ r.bookings }}</td>
         <td class="num">{% if r.median_lead is not none %}{{ r.median_lead }}{% else %}&mdash;{% endif %}</td>
         <td class="num">{% if r.median_stay is not none %}{{ r.median_stay }}{% else %}&mdash;{% endif %}</td>

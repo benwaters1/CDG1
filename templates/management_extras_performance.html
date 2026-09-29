@@ -52,7 +52,7 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="text-align:left;">Extra</th>
+        <th>Extra</th>
         <th class="num">Stays that took it</th>
         <th class="num">Attach rate</th>
         <th class="num">Units</th>
@@ -63,7 +63,7 @@
     <tbody>
       {% for r in data.rows %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ r.name }}</th>
+        <th scope="row">{{ r.name }}</th>
         <td class="num">{{ r.stays }}</td>
         <td class="num">{{ r.attach }}%</td>
         <td class="num">{{ r.units }}</td>

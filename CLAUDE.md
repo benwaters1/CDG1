@@ -140,6 +140,16 @@ page rendered perfectly while doing the wrong thing.
   is what a convention nothing enforces gets you. `test_table_overflow` now
   enforces it on the source.
 
+- **A heading down the side of a table takes its look from `style.css`.**
+  Row headings (`<th scope="row">`) and the labels on totals rows share the
+  `.data-table td` rule, so they get a cell's padding and rule and sit on
+  the left. Before that rule the browser centred and bolded them with no
+  padding and no rule, on about sixty staff pages, and put every totals
+  figure off its column. Forty-odd had been patched one heading at a time
+  with an inline `text-align:left`. Don't add another: `test_row_headings`
+  resolves the stylesheet the way a browser does to check the rule, and
+  fails on the inline copy. Public pages have their own stylesheet.
+
 - **A check nobody opens is worth nothing.** Findings surface on the owner
   home (`owner_home_warnings`, a fortnight's window) and become tasks
   (`generate_watch_tasks`) so they reach the calendar. Those tasks CLOSE

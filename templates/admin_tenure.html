@@ -32,12 +32,12 @@
 <h2 class="section-heading">Here now, longest first</h2>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Who</th><th style="text-align:left;">Doing</th>
-    <th style="text-align:left;">Since</th><th class="num">Months</th></tr></thead>
+    <thead><tr><th>Who</th><th>Doing</th>
+    <th>Since</th><th class="num">Months</th></tr></thead>
     <tbody>
       {% for p in data.here %}
       <tr{% if p.months < 12 %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">{{ p.name }}</th>
+        <th scope="row">{{ p.name }}</th>
         <td>{{ p.role or '&mdash;'|safe }}</td>
         <td>{{ p.started }}</td>
         <td class="num">{{ p.months }}</td>
@@ -53,12 +53,12 @@
 <h2 class="section-heading">Have left</h2>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Who</th><th style="text-align:left;">Doing</th>
-    <th style="text-align:left;">Started</th><th class="num">Months here</th></tr></thead>
+    <thead><tr><th>Who</th><th>Doing</th>
+    <th>Started</th><th class="num">Months here</th></tr></thead>
     <tbody>
       {% for p in data.gone %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ p.name }}</th>
+        <th scope="row">{{ p.name }}</th>
         <td>{{ p.role or '&mdash;'|safe }}</td>
         <td>{{ p.started }}</td>
         <td class="num">{{ p.months }}</td>

@@ -39,12 +39,12 @@
   <div class="table-wrap">
     <table class="data-table">
       <thead>
-        <tr><th style="text-align:left;">Between</th><th class="num">Days</th><th class="num">Used</th><th class="num">Nights sold</th><th class="num">Per night</th></tr>
+        <tr><th>Between</th><th class="num">Days</th><th class="num">Used</th><th class="num">Nights sold</th><th class="num">Per night</th></tr>
       </thead>
       <tbody>
         {% for p in mt.periods %}
         <tr{% if p.used is none %} class="row-alert"{% endif %}>
-          <th scope="row" style="text-align:left;">{{ p.from.strftime('%d %b %Y') }} &rarr; {{ p.to.strftime('%d %b %Y') }}</th>
+          <th scope="row">{{ p.from.strftime('%d %b %Y') }} &rarr; {{ p.to.strftime('%d %b %Y') }}</th>
           <td class="num">{{ p.days or '&mdash;'|safe }}</td>
           <td class="num">{% if p.used is not none %}{{ p.used }}{% else %}&mdash;{% endif %}</td>
           <td class="num">{% if p.nights is not none %}{{ p.nights }}{% else %}&mdash;{% endif %}</td>

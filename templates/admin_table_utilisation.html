@@ -53,12 +53,12 @@
 {% if data.rows %}
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Night</th><th class="num">Bookings</th>
+    <thead><tr><th>Night</th><th class="num">Bookings</th>
     <th class="num">Covers</th><th class="num">Of the room</th></tr></thead>
     <tbody>
       {% for r in data.rows %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ r.weekday }} {{ r.date }}</th>
+        <th scope="row">{{ r.weekday }} {{ r.date }}</th>
         <td class="num">{{ r.bookings }}</td>
         <td class="num">{{ r.covers }}</td>
         <td class="num">{% if r.fill is not none %}{{ r.fill }}%{% else %}&mdash;{% endif %}</td>

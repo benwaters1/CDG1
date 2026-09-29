@@ -53,13 +53,13 @@
 {% if data.rows %}
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">What</th><th style="text-align:left;">Room</th>
-    <th style="text-align:left;">Guest</th><th style="text-align:left;">Found</th>
-    <th class="num">Cost</th><th class="num">Charged</th><th style="text-align:left;">Decision</th></tr></thead>
+    <thead><tr><th>What</th><th>Room</th>
+    <th>Guest</th><th>Found</th>
+    <th class="num">Cost</th><th class="num">Charged</th><th>Decision</th></tr></thead>
     <tbody>
       {% for r in data.rows %}
       <tr{% if r.decision == 'not decided' %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">{{ r.what }}</th>
+        <th scope="row">{{ r.what }}</th>
         <td>{{ r.room }}</td>
         <td>{{ r.guest }}</td>
         <td>{{ r.found_on }}</td>

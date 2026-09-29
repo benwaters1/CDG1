@@ -42,12 +42,12 @@
 {% if data.waiting %}
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Guest</th><th class="num">Rating</th>
-    <th style="text-align:left;">Said</th><th class="num">Days waiting</th></tr></thead>
+    <thead><tr><th>Guest</th><th class="num">Rating</th>
+    <th>Said</th><th class="num">Days waiting</th></tr></thead>
     <tbody>
       {% for w in data.waiting %}
       <tr{% if w.poor %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">{{ w.who }}</th>
+        <th scope="row">{{ w.who }}</th>
         <td class="num">{{ w.rating or '&mdash;'|safe }}</td>
         <td>{{ w.said }}</td>
         <td class="num">{{ w.days }}</td>
@@ -70,13 +70,13 @@
 {% if data.answered %}
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Guest</th><th class="num">Rating</th>
-    <th style="text-align:left;">Said</th><th class="num">Days to answer</th>
-    <th style="text-align:left;">Answered by</th></tr></thead>
+    <thead><tr><th>Guest</th><th class="num">Rating</th>
+    <th>Said</th><th class="num">Days to answer</th>
+    <th>Answered by</th></tr></thead>
     <tbody>
       {% for a in data.answered %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ a.who }}</th>
+        <th scope="row">{{ a.who }}</th>
         <td class="num">{{ a.rating or '&mdash;'|safe }}</td>
         <td>{{ a.said }}</td>
         <td class="num">{{ a.days }}</td>

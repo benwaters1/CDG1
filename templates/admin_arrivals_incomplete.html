@@ -38,18 +38,18 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="text-align:left;">Guest</th>
-        <th style="text-align:left;">Room</th>
-        <th style="text-align:left;">Arriving</th>
+        <th>Guest</th>
+        <th>Room</th>
+        <th>Arriving</th>
         <th class="num">Days away</th>
-        <th style="text-align:left;">Missing</th>
+        <th>Missing</th>
         <th></th>
       </tr>
     </thead>
     <tbody>
       {% for r in data.rows %}
       <tr{% if r.days_away is not none and r.days_away <= 3 %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">{{ r.guest }}</th>
+        <th scope="row">{{ r.guest }}</th>
         <td>{{ r.room }}</td>
         <td>{{ r.arrival }}</td>
         <td class="num">{% if r.days_away is not none %}{{ r.days_away }}{% else %}&mdash;{% endif %}</td>
