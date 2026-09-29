@@ -54562,7 +54562,7 @@ def refunds_view(rows, args):
         search_hint="Search guest, email, reference or reason",
         facets=[
             facet("product", "What for", lambda r: REFUND_CATEGORY_LABELS.get(r["category"]),
-                  order=["Stay", "Atelier", "Event", "Dinner"]),
+                  order=["Stay", "Workshop", "Event", "Dinner"]),
             facet("how", "How", lambda r: ("To a card" if r["method"] == "stripe"
                                            else "Given back another way"),
                   order=["To a card", "Given back another way"]),
@@ -69539,7 +69539,7 @@ def guest_record(conn, guest_id):
     }
 
 
-STATEMENT_KINDS = {"room": "Stay", "workshop": "Atelier", "event": "Event",
+STATEMENT_KINDS = {"room": "Stay", "workshop": "Workshop", "event": "Event",
                    "restaurant": "Dinner"}
 
 
@@ -70584,7 +70584,7 @@ def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
         details += ["", f"The front door opens from your phone, from {opens} on the day you "
                         "arrive until you leave. Keep this link:", door_url]
     if portal_url:
-        details += ["", "Everything you have with us \u2014 this stay, any ateliers "
+        details += ["", "Everything you have with us \u2014 this stay, any workshops "
                         "or dinners \u2014 is always here:", portal_url]
     context = {
         "guest_name": booking["guest_name"] or "",
