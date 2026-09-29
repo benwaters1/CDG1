@@ -91,13 +91,13 @@
 <div class="table-wrap">
   <table class="data-table">
     <thead>
-      <tr><th style="text-align:left;">Time</th><th style="text-align:left;">What</th>
-      <th style="text-align:left;">Who has it</th><th style="text-align:left;">Note</th><th></th></tr>
+      <tr><th>Time</th><th>What</th>
+      <th>Who has it</th><th>Note</th><th></th></tr>
     </thead>
     <tbody>
       {% for t in data.timeline %}
       <tr>
-        <th scope="row" style="text-align:left;"><span style="font-variant-numeric:tabular-nums;">{{ t.at_time }}</span></th>
+        <th scope="row"><span style="font-variant-numeric:tabular-nums;">{{ t.at_time }}</span></th>
         <td>{{ t.what }}</td>
         <td>{{ t.who or '&mdash;'|safe }}</td>
         <td>{{ t.note or '' }}</td>
@@ -142,15 +142,15 @@
 <div class="table-wrap">
   <table class="data-table">
     <thead>
-      <tr><th style="text-align:left;">Arriving</th><th style="text-align:left;">Who</th>
-      <th style="text-align:left;">For</th><th style="text-align:left;">Contact</th>
-      <th style="text-align:left;">Cost</th><th style="text-align:left;">Papers</th>
-      <th style="text-align:left;">Confirmed</th><th></th></tr>
+      <tr><th>Arriving</th><th>Who</th>
+      <th>For</th><th>Contact</th>
+      <th>Cost</th><th>Papers</th>
+      <th>Confirmed</th><th></th></tr>
     </thead>
     <tbody>
       {% for sup in data.suppliers %}
       <tr{% if not sup.confirmed_at %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;"><span style="font-variant-numeric:tabular-nums;">{{ sup.arriving_at or '&mdash;'|safe }}</span></th>
+        <th scope="row"><span style="font-variant-numeric:tabular-nums;">{{ sup.arriving_at or '&mdash;'|safe }}</span></th>
         <td>{{ sup.name }}{% if sup.note %}<span class="field-hint" style="display:block;">{{ sup.note }}</span>{% endif %}</td>
         <td>{{ sup.kind or '&mdash;'|safe }}</td>
         <td>{{ sup.contact or '' }}{% if sup.phone %} &middot; {{ sup.phone }}{% endif %}</td>
@@ -270,12 +270,12 @@
   {% if data.staffing.assigned %}
   <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th style="text-align:left;">Day</th><th style="text-align:left;">Who</th>
-      <th style="text-align:left;">From</th><th style="text-align:left;">Until</th><th></th></tr></thead>
+      <thead><tr><th>Day</th><th>Who</th>
+      <th>From</th><th>Until</th><th></th></tr></thead>
       <tbody>
         {% for sh in data.staffing.assigned %}
         <tr>
-          <th scope="row" style="text-align:left;">{{ sh.shift_date }}</th>
+          <th scope="row">{{ sh.shift_date }}</th>
           <td>{{ sh.who }}</td>
           <td>{{ sh.start_time or '&mdash;'|safe }}</td>
           <td>{{ sh.end_time or '&mdash;'|safe }}</td>
@@ -327,12 +327,12 @@
 {% if data.on_shift %}
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Who</th><th style="text-align:left;">From</th>
-    <th style="text-align:left;">Until</th><th style="text-align:left;">Doing</th></tr></thead>
+    <thead><tr><th>Who</th><th>From</th>
+    <th>Until</th><th>Doing</th></tr></thead>
     <tbody>
       {% for p in data.on_shift %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ p.name }}</th>
+        <th scope="row">{{ p.name }}</th>
         <td>{{ p.start_time or '&mdash;'|safe }}</td>
         <td>{{ p.end_time or '&mdash;'|safe }}</td>
         <td>{{ p.role_note or '' }}</td>

@@ -36,12 +36,12 @@
 <h2 class="section-heading">Week of {{ w.week.strftime('%d %B') }} &mdash; {{ euro(w.total) }}</h2>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th style="text-align:left;">Due</th><th style="text-align:left;">Who</th>
-    <th style="text-align:left;">For</th><th class="num">Amount</th></tr></thead>
+    <thead><tr><th>Due</th><th>Who</th>
+    <th>For</th><th class="num">Amount</th></tr></thead>
     <tbody>
       {% for i in w['items'] %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ i.date }}</th>
+        <th scope="row">{{ i.date }}</th>
         <td>{{ i.who }}</td>
         <td>{{ i.what }}</td>
         <td class="num">{{ euro(i.amount) }}</td>

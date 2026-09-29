@@ -53,12 +53,12 @@
 <div class="table-wrap">
   <table class="data-table">
     <thead>
-      <tr><th style="text-align:left;">Night</th><th class="num">Booked</th><th class="num">No-shows</th><th class="num">Rate</th><th class="num">Covers lost</th></tr>
+      <tr><th>Night</th><th class="num">Booked</th><th class="num">No-shows</th><th class="num">Rate</th><th class="num">Covers lost</th></tr>
     </thead>
     <tbody>
       {% for d in data.by_day %}
       <tr{% if d.rate and d.rate >= 15 %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">{{ d.day }}</th>
+        <th scope="row">{{ d.day }}</th>
         <td class="num">{{ d.booked }}</td>
         <td class="num">{{ d.no_shows }}</td>
         <td class="num">{% if d.rate is not none %}{{ d.rate }}%{% else %}&mdash;{% endif %}</td>
@@ -77,12 +77,12 @@
 <div class="table-wrap">
   <table class="data-table">
     <thead>
-      <tr><th style="text-align:left;">Guest</th><th style="text-align:left;">Reference</th><th style="text-align:left;">Was booked for</th><th class="num">Party</th><th class="num">Value</th></tr>
+      <tr><th>Guest</th><th>Reference</th><th>Was booked for</th><th class="num">Party</th><th class="num">Value</th></tr>
     </thead>
     <tbody>
       {% for r in data.recent %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ r.guest or '&mdash;'|safe }}</th>
+        <th scope="row">{{ r.guest or '&mdash;'|safe }}</th>
         <td>{{ r.reference }}</td>
         <td>{{ r.date }}</td>
         <td class="num">{{ r.party }}</td>

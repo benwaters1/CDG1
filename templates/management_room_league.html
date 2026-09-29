@@ -32,14 +32,14 @@
 <div class="table-wrap">
   <table class="data-table">
     <thead>
-      <tr><th style="text-align:left;">Room</th><th class="num">Nights</th><th class="num">Occupancy</th>
+      <tr><th>Room</th><th class="num">Nights</th><th class="num">Occupancy</th>
       <th class="num">Average night</th><th class="num">Per night available</th>
       <th class="num">Of rack rate</th><th class="num">Share of revenue</th></tr>
     </thead>
     <tbody>
       {% for r in data.rows %}
       <tr>
-        <th scope="row" style="text-align:left;">{{ r.name }}{% if not r.active %} <span class="field-hint">(not let)</span>{% endif %}</th>
+        <th scope="row">{{ r.name }}{% if not r.active %} <span class="field-hint">(not let)</span>{% endif %}</th>
         <td class="num">{{ r.nights }}</td>
         <td class="num">{{ r.occupancy }}%</td>
         <td class="num">{% if r.adr is not none %}{{ euro(r.adr) }}{% else %}&mdash;{% endif %}</td>
@@ -50,7 +50,7 @@
       {% endfor %}
     </tbody>
     <tfoot>
-      <tr><th style="text-align:left;">Total, over {{ data.nights_span }} nights</th><th class="num">{{ data.rows|sum(attribute='nights') }}</th>
+      <tr><th>Total, over {{ data.nights_span }} nights</th><th class="num">{{ data.rows|sum(attribute='nights') }}</th>
       <th class="num"></th><th class="num"></th><th class="num"></th><th class="num"></th>
       <th class="num">{{ euro(data.revenue) }}</th></tr>
     </tfoot>

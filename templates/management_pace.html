@@ -46,7 +46,7 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="text-align:left;">Month</th>
+        <th>Month</th>
         <th class="num">Days out</th>
         <th class="num">Nights sold</th>
         <th class="num">Last year, same point</th>
@@ -58,7 +58,7 @@
     <tbody>
       {% for r in data.months %}
       <tr{% if r.nights_change < 0 %} class="row-alert"{% endif %}>
-        <th scope="row" style="text-align:left;">
+        <th scope="row">
           {{ r.month.strftime('%B %Y') }}
           <span class="field-hint" style="display:block; font-weight:400;">compared as at {{ r.as_at_last.strftime('%d %b %Y') }}</span>
         </th>

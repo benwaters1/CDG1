@@ -40,7 +40,7 @@
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr>
-      <th style="text-align:left;">Month</th>
+      <th>Month</th>
       <th class="num">Rooms</th><th class="num">Nights</th>
       <th class="num">Ateliers</th><th class="num">Confirmed</th><th class="num">Held</th>
     </tr></thead>
@@ -57,7 +57,7 @@
       {% endfor %}
     </tbody>
     <tfoot><tr>
-      <th style="text-align:left;">Total</th>
+      <th>Total</th>
       <th class="num">&euro;{{ '%.2f'|format(data.rooms) }}</th>
       <th class="num">{{ data.nights }}</th>
       <th class="num">&euro;{{ '%.2f'|format(data.workshops) }}</th>
