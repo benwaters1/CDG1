@@ -747,14 +747,16 @@ dl.detail-grid, .detail-grid dd{ margin:0; }
 .notes-block{ margin-top:14px; padding-top:14px; border-top:1px solid var(--parchment-line); }
 .notes-block p{ font-size:13.5px; line-height:1.6; margin:4px 0 0 0; }
 .pay-disclaimer{ font-size:11.5px; color:var(--ink-soft); font-style:italic; margin:-6px 0 12px 0; }
-/* The line under a page's heading that says what the page is for. Nearly
-   every page writes it as a pay-disclaimer pulled up ten pixels, after the
-   payroll note it was first made for; fourteen asked for it by this name,
-   which had no rule, so their opening line came out in body type at full
-   ink and read as the first line of the content. The same look as the rest,
-   and pulled up only where it sits right under the heading. */
-.page-intro{ font-size:11.5px; color:var(--ink-soft); font-style:italic; margin:0 0 12px 0; }
-.page-head + .page-intro{ margin-top:-10px; }
+/* The line under a page's heading: who and what the page is about, or what
+   it stands at -- "6 covers tonight · service at 19:30" on the kitchen's
+   page, the guest, room and dates on a booking's correspondence. Fourteen
+   pages asked for it by this name, which had no rule, so it came out at full
+   ink and read as the first line of the content. Quieter than the content
+   and at a size that can still be read: the kitchen reads its covers line
+   from two metres, which the small italic pay-disclaimer is not made for.
+   Pulled up only where it sits right under the heading. */
+.page-intro{ font-size:13.5px; line-height:1.5; color:var(--ink-soft); margin:0 0 14px 0; }
+.page-head + .page-intro{ margin-top:-12px; }
 /* Quieter text at the size around it: an aside inside a sentence, the count
    beside a heading, the line that says there is nothing to show. Nine pages
    used the name with nothing behind it. upload-hint is this a size smaller. */

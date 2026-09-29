@@ -160,7 +160,7 @@
 
 {% if data.leave and data.leave.entitlement is not none %}
 <h2>Leave, as at the end of the month</h2>
-<p class="upload-hint">
+<p class="muted">
   {{ data.leave.used }} of {{ data.leave.entitlement }} days taken in the leave
   year to {{ data.leave.year_end.isoformat() }}, so
   {{ data.leave.remaining }} left.
