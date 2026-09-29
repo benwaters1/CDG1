@@ -269,7 +269,8 @@
       <td class="num">{% if wm and w['status'] == 'confirmed' %}€{{ '%.2f'|format(wm.charged) }}{% else %}—{% endif %}</td>
       <td class="num">{% if wm and w['status'] == 'confirmed' and wm.owed > 0.005 %}<strong>€{{ '%.2f'|format(wm.owed) }}</strong>{% else %}—{% endif %}</td>
       {% endif %}
-      <td>{% with kind='workshop_booking', category='workshop', item=w %}{% include "_record_row_links.html" %}{% endwith %}</td>
+      <td>{% if w['manage_token'] %}<a href="{{ url_for('workshop_statement', manage_token=w['manage_token']) }}" class="small-link">Statement</a>{% endif %}
+        {% with kind='workshop_booking', category='workshop', item=w %}{% include "_record_row_links.html" %}{% endwith %}</td>
     </tr>
     {% endfor %}
   </tbody>

@@ -10,7 +10,10 @@
       {{ c.value }}{% if c.sub %}<span class="overview-sub">{{ c.sub }}</span>{% endif %}
       {% if c.delta is not none %}
         {% set down = (c.delta is string and c.delta.startswith('-')) or (c.delta is not string and c.delta < 0) %}
-        <span class="overview-delta {{ 'overview-delta-down' if down else 'overview-delta-up' }}">
+        {% set up = (c.delta is string and c.delta.startswith('+')) or (c.delta is not string and c.delta > 0) %}
+        {# On a figure where more is worse (invert), the rise is the red one. #}
+        {% set worse = up if c.invert else down %}
+        <span class="overview-delta {{ 'overview-delta-down' if worse else 'overview-delta-up' }}">
           {{ c.delta if c.delta is string else ('+' ~ c.delta if c.delta >= 0 else c.delta) }}
         </span>
       {% endif %}

@@ -1,0 +1,26 @@
+{# What one booking was charged, line by line, any discount named by its
+   code. Shared by every booking's own statement, so they say the same thing
+   about the same money. `v` is booking_statement_view. #}
+<div class="table-wrap">
+  <table class="data-table statement-lines" style="margin-top:var(--s3);">
+  <thead><tr><th>Date</th><th>Description</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+    {% for x in v.charges %}
+    <tr>
+      <td>{{ x.day|date_short }}</td>
+      <td>{{ x.what }}</td>
+      <td class="num">{% if x.charge < 0 %}−€{{ '{:,.2f}'.format(-x.charge) }}{% else %}€{{ '{:,.2f}'.format(x.charge) }}{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3">Nothing is charged on this booking.</td></tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    {% if v.reductions %}
+    <tr><th scope="row" colspan="2">Subtotal</th><td class="num">€{{ '{:,.2f}'.format(v.subtotal) }}</td></tr>
+    <tr><th scope="row" colspan="2">Discounts and reductions</th><td class="num">−€{{ '{:,.2f}'.format(v.reductions) }}</td></tr>
+    {% endif %}
+    <tr><th scope="row" colspan="2"><strong>Total</strong></th><td class="num"><strong>€{{ '{:,.2f}'.format(v.total) }}</strong></td></tr>
+  </tfoot>
+  </table>
+</div>

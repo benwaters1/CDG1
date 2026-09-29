@@ -1,0 +1,57 @@
+{% extends "public_base.html" %}
+{% set sticky_bar = 'none' %}
+{% block title %}Your statement — {{ booking['reference_code'] }}{% endblock %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+
+<div class="statement">
+  <div class="statement-head">
+    <div>
+      <h1 style="margin:0;">Statement</h1>
+      <p class="g-hint" style="margin:var(--s1) 0 0;">
+        {{ booking['reference_code'] }} · {{ booking['guest_name'] }}
+      </p>
+    </div>
+    <div style="text-align:right;">
+      <div class="g-hint">
+        Château de Gudanes
+        {% if company and company['registered_address'] %}<br>{{ company['registered_address'] }}{% endif %}
+        {% if company and company['registration_number'] %}<br>SIRET {{ company['registration_number'] }}{% endif %}
+        {% if company and company['vat_number'] %}<br>TVA {{ company['vat_number'] }}{% endif %}
+      </div>
+      <div class="statement-actions no-print">
+        <button type="button" class="g-btn g-btn--sm" onclick="window.print()">Print</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="g-hint">
+    {{ booking['title'] }} · {{ booking['start_date']|date_short }} to {{ booking['end_date']|date_short }}
+    · {{ booking['party_size'] or 1 }} place{{ '' if (booking['party_size'] or 1) == 1 else 's' }}
+    {%- if (booking['status'] or '')|lower == 'pending' %} · awaiting confirmation{% endif %}
+  </p>
+
+  {% include "_statement_charges.html" %}
+  {% include "_statement_payments.html" %}
+
+  <p class="g-hint" style="margin-top:var(--s4);">
+    Please keep this for your records. Any question about it, contact the château with your
+    reference {{ booking['reference_code'] }}.
+  </p>
+  <p class="g-hint no-print">
+    <a href="{{ url_for('workshop_manage', manage_token=booking['manage_token']) }}">Back to your registration</a>
+  </p>
+</div>
+
+<style>
+.statement{ max-width:760px; margin:0 auto; }
+.statement-head{ display:flex; justify-content:space-between; gap:24px; flex-wrap:wrap; align-items:flex-start; }
+.statement-actions{ display:flex; gap:8px; align-items:center; margin:var(--s2) 0; }
+@media print{
+  .public-footer, .public-nav{ display:none; }
+  .statement{ max-width:none; }
+  .no-print{ display:none !important; }
+}
+</style>
+
+{% endblock %}
