@@ -24,7 +24,7 @@
             the next is told. #}
         {%- if e['status'] == 'contacted' and e['offer_expires_at'] %}
         <span class="mini-status status-pending" style="margin-left:4px;"
-              title="After this it goes back on the list and the next person is told">theirs until {{ e['offer_expires_at'][:16]|replace('T', ' ') }}</span>
+              title="After this it goes back on the list and the next person is told">theirs until {{ local_datetime_str(e['offer_expires_at']) }}</span>
         {%- endif %}
       </div>
     </div>

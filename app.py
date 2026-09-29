@@ -10003,19 +10003,30 @@ def expiry_status(expiry_date_iso, soon_days=30):
     return None
 
 
-def local_time_str(iso_str):
+def local_time_str(iso_str, unknown="?"):
     """Timestamps are stored in UTC; this renders one in the château's local
-    time (see LOCAL_TZ) as 'HH:MM', for display only."""
+    time (see LOCAL_TZ) as 'HH:MM', for display only. `unknown` is what a
+    missing or unreadable stamp shows as, as in local_datetime_str."""
     dt = parse_datetime_iso(iso_str)
     if not dt:
-        return "?"
+        return unknown
     return dt.astimezone(LOCAL_TZ).strftime("%H:%M")
 
 
-def local_datetime_str(iso_str):
+def local_datetime_str(iso_str, unknown="?"):
+    """A stored UTC moment as the house reads it: 'September 29, 2026 14:20'.
+
+    Words, not a stamp, so a slice of what this returns cuts mid-word: [:10]
+    printed "September " for the day a key was handed over. Show it whole, or
+    ask date_short for the day.
+
+    `unknown` is what a missing or unreadable stamp shows as. "?" beside other
+    words is fine; where the time is the whole answer, as in the automation
+    page's Last ran, a page passes the words it means instead.
+    """
     dt = parse_datetime_iso(iso_str)
     if not dt:
-        return "?"
+        return unknown
     local = dt.astimezone(LOCAL_TZ)
     return f"{format_date_human(local.date().isoformat())} {local.strftime('%H:%M')}"
 
@@ -71916,10 +71927,13 @@ def watch_task_findings(conn, today=None):
         (JOB_FAILURE_STREAK,)).fetchall() if r["job_name"] != "backup_email"]
     for j in take("job", failing):
         label = AUTOMATION_JOB_LABELS.get(j["job_name"], j["job_name"])
+        # "not recorded", as Job status says, rather than "never": last_ok_at
+        # was added after the jobs were, so a blank one can be a job that
+        # worked before anything wrote down when.
         found.append((
             "job", f"Automation stopped working — {j['job_name']}",
             f"{label}.\n\nFailed {j['fails']} runs in a row. Last worked: "
-            + (house_date_iso(j["last_ok_at"]) if j["last_ok_at"] else "never")
+            + (house_date_iso(j["last_ok_at"]) or "not recorded")
             + f".\nIt reports: {j['last_message'] or 'no message'}"
             + "\n\nAdmin → Automation has the switch and a Run now button to "
               "try it while you watch.",
