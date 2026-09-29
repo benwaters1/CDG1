@@ -22,7 +22,7 @@
   <p class="empty-note">Nothing cancelled in the last year.</p>
   {% else %}
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead><tr><th>Reason</th><th class="num">How many</th><th class="num">Share</th></tr></thead>
       <tbody>
         {% for r in reasons.rows %}
@@ -54,14 +54,14 @@
     month's enquiries have not had time to become anything yet.
   </p>
   <div class="table-wrap">
-    <table>
-      <thead><tr><th>Became a booking</th><th>Did not</th><th>Still open</th><th>Rate</th></tr></thead>
+    <table class="data-table">
+      <thead><tr><th class="num">Became a booking</th><th class="num">Did not</th><th class="num">Still open</th><th class="num">Rate</th></tr></thead>
       <tbody>
         <tr>
-          <td>{{ enquiries.won }}</td>
-          <td>{{ enquiries.lost }}</td>
-          <td>{{ enquiries.open }}</td>
-          <td>{% if enquiries.rate is not none %}{{ enquiries.rate }}%{% else %}&mdash;{% endif %}</td>
+          <td class="num">{{ enquiries.won }}</td>
+          <td class="num">{{ enquiries.lost }}</td>
+          <td class="num">{{ enquiries.open }}</td>
+          <td class="num">{% if enquiries.rate is not none %}{{ enquiries.rate }}%{% else %}&mdash;{% endif %}</td>
         </tr>
       </tbody>
     </table>
@@ -83,11 +83,11 @@
     {% endif %}</p>
   {% if declines.by_reason %}
   <div class="table-wrap">
-    <table>
-      <thead><tr><th scope="col">Why</th><th scope="col">How many</th></tr></thead>
+    <table class="data-table">
+      <thead><tr><th scope="col">Why</th><th scope="col" class="num">How many</th></tr></thead>
       <tbody>
         {% for r in declines.by_reason %}
-        <tr><th scope="row">{{ r.label }}</th><td>{{ r.count }}</td></tr>
+        <tr><th scope="row">{{ r.label }}</th><td class="num">{{ r.count }}</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -102,7 +102,7 @@
 <div class="detail-card">
   <h2 class="section-heading">Recent cancellations</h2>
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead><tr><th>Guest</th><th>Was arriving</th><th>Reason</th></tr></thead>
       <tbody>
         {% for b in recent %}

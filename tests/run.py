@@ -187,6 +187,7 @@ SUITES = [
     "test_design",
     "test_table_overflow",
     "test_row_headings",
+    "test_entities_as_text",
     "test_links",
     "test_error_pages",
     "test_seo_files",

@@ -292,6 +292,22 @@ def _run(s, oc, ec, sent):
     s.check("and is not for search engines", 'name="robots" content="noindex' in body)
     s.check("it says where to pay what is still owed",
             f"/book/manage/{owing['manage_token']}" in body or owing["manage_token"] in body)
+    # The site says workshop in English now, and so does what a guest keeps.
+    # (The atelier in this suite is called "... Atelier" by its own title.)
+    words = visible_text(body)
+    s.check("and calls an atelier a workshop, as the site now does",
+            "Pay for this workshop" in words and f"Workshop · {TAG}W" in words
+            and "Pay for this atelier" not in words and "Atelier · " not in words,
+            detail=words[:400])
+    with m.app.test_request_context("/"):
+        conn = db()
+        letter, _card = m.room_confirmation_context(conn, paid_stay, "The Twin Room",
+                                                    portal_url=f"/my/{token}")
+        conn.close()
+    s.check("and a stay's confirmation letter calls them workshops when it points there",
+            "any workshops or dinners" in letter["stay_details"]
+            and "atelier" not in letter["stay_details"].lower(),
+            detail=letter["stay_details"][-240:])
     old_token = _call(lambda c: m.guest_portal_token(c, old_email))
     merged_page = m.app.test_client().get(f"/my/{old_token}/statement").get_data(as_text=True)
     s.check("a merged-away profile's link opens the one it joined", f"{TAG}B" in merged_page)

@@ -31,7 +31,7 @@
     <span class="stat-tile-value">{{ data.busiest.name }}</span>
     <span class="stat-tile-label">Fullest month, {{ data.busiest.occupancy }}%</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">{{ data.quietest.name if data.quietest else '&mdash;' }}</span>
+    <span class="stat-tile-value">{{ data.quietest.name if data.quietest else '—' }}</span>
     <span class="stat-tile-label">Quietest, {{ data.quietest.occupancy if data.quietest else 0 }}%</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.nights_counted }}</span>

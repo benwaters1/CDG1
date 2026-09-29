@@ -102,7 +102,7 @@
   <p class="upload-hint">Nothing spent yet.</p>
 {% else %}
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead><tr><th>When</th><th>On</th><th>Reference</th><th class="num">Amount</th></tr></thead>
     <tbody>
       {% for r in ledger.redemptions %}
@@ -113,7 +113,7 @@
         <td class="num">€{{ '%.2f'|format(r['amount']) }}</td>
       </tr>
       {% endfor %}
-      <tr>
+      <tr class="total">
         <td colspan="3"><strong>Spent</strong></td>
         <td class="num"><strong>€{{ '%.2f'|format(ledger.spent) }}</strong></td>
       </tr>
