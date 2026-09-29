@@ -9017,6 +9017,13 @@ def house_when(stamp):
 
 
 app.jinja_env.filters["house_when"] = house_when
+# What a page's own script needs to name the house's day in the browser. It
+# took `new Date().toISOString().slice(0, 10)`, which is the day in UTC: from
+# midnight to 02:00 here every date picker on the public site still offered
+# yesterday. The zone lets the browser work the day out itself (a page left
+# open overnight moves on with it); the day is its answer if it cannot.
+app.jinja_env.globals["house_tz"] = LOCAL_TZ.key
+app.jinja_env.globals["house_today_iso"] = house_today_iso
 app.jinja_env.globals["date_range"] = format_date_range
 # So a find page cannot print a prefix the app does not generate.
 app.jinja_env.globals["ref_prefix"] = REFERENCE_PREFIXES
