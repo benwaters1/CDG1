@@ -161,7 +161,7 @@
        one. #}
     <p class="upload-hint">
       {% if i['insurer'] %}Policy: {{ i['insurer'] }} ·
-        {% if i['reported_to_insurer_at'] %}reported {{ i['reported_to_insurer_at']|date_short }}
+        {% if i['reported_to_insurer_at'] %}reported {{ i['reported_to_insurer_at']|house_day|date_short }}
         {%- else %}<strong>not yet reported</strong>{% endif %}
       {% elif i['severity'] != 'near_miss' and i['kind'] != 'near_miss' %}
         <strong>No policy chosen</strong> — nothing to report this against.

@@ -6,6 +6,7 @@ supplier, a guest with no record is not a guest with no needs, no linen
 recorded is not no linen held, and somebody asking for a night with rooms
 still free was not turned away.
 """
+import re
 from datetime import timedelta
 
 from _harness import Suite, clients, db, house_today
@@ -87,6 +88,28 @@ def run():
             detail=str(by_name.get(TAG + " Silent", {})))
     s.check("and it appears in the unbilled list",
             any(r["name"] == TAG + " Silent" for r in sc["unbilled"]))
+
+    # The Items column, read off the page. Each row is a dict, and Jinja tries
+    # the attribute before the key -- so `r.items` was the dict's own .items
+    # method, and every supplier's count printed as "<built-in method items of
+    # dict object at 0x...>". The function was right; only the page was wrong.
+    page = oc.get("/management/suppliers-scorecard").get_data(as_text=True)
+
+    def items_cell(name):
+        row = re.search(r'<th scope="row">\s*' + re.escape(name) + r'\b(.*?)</tr>',
+                        page, re.S)
+        cells = re.findall(r'<td class="num">(.*?)</td>', row.group(1), re.S) if row else []
+        # Spend, Invoices, Items.
+        return cells[2].strip() if len(cells) >= 3 else None
+
+    s.check("the page counts the stock a supplier provides",
+            items_cell(TAG + " Silent") == "1", detail=repr(items_cell(TAG + " Silent")))
+    s.check("and a supplier who provides none shows nought, not a blank",
+            items_cell(TAG + " Paid") == "0", detail=repr(items_cell(TAG + " Paid")))
+    s.check("no row prints a dict method in place of a figure",
+            "built-in method" not in page,
+            detail=page[page.find("built-in method") - 60:][:140]
+            if "built-in method" in page else "")
 
     # ------------------------------------------------------------ tenure
     s.section("How long people have been here")
@@ -237,6 +260,69 @@ def run():
     s.check("somebody who has never stayed is reported as unknown",
             not stranger["known"] and stranger["visits"] == 0,
             detail="it stops anybody greeting a stranger as an old friend")
+
+    # WHAT THEY HAVE DONE, NOT WHAT THEY HAVE BOOKED. This page is read before
+    # somebody arrives, so the stay they are arriving for is nearly always on
+    # file -- and it was their "last here", one of their stays, and a room they
+    # "have stayed in" before setting foot in it.
+    def iso(days):
+        return (today + timedelta(days=days)).isoformat()
+
+    two = conn.execute("SELECT id, name FROM rooms WHERE active = 1 "
+                       "ORDER BY id LIMIT 2").fetchall()
+    s.check("there are two rooms to tell a stay from a booking by",
+            len(two) == 2 and two[0]["name"] != two[1]["name"],
+            detail=str([r["name"] for r in two]))
+    if len(two) == 2:
+        was_in, going_to = two[0], two[1]
+        for ref, rm, who, email, arrive in (
+                ("RCP", was_in["id"], " Returning", "back", -300),
+                ("RCN", going_to["id"], " Returning", "back", 6),
+                ("RCF", going_to["id"], " Newcomer", "new", 8)):
+            conn.execute(
+                """INSERT INTO bookings (room_id, reference_code, manage_token,
+                     guest_name, guest_email, arrival_date, departure_date,
+                     party_size, status, total_price, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 2, 'confirmed', 500, ?)""",
+                (rm, TAG + ref, TAG.lower() + ref.lower(), TAG + who,
+                 TAG + email + "@example.invalid", iso(arrive), iso(arrive + 3),
+                 _now()))
+        conn.commit()
+        with m.app.test_request_context():
+            back = m.guest_recall(conn, TAG + "back@example.invalid")
+            new = m.guest_recall(conn, TAG + "new@example.invalid")
+        s.check("last here is the stay they made, not the one they are arriving for",
+                back["last"] == iso(-300),
+                detail=f"{back['last']} (arriving {iso(6)})")
+        s.check("the one they are arriving for is carried as booked",
+                back["next"] == iso(6), detail=str(back["next"]))
+        s.check("and they have made one stay, not two",
+                back["visits"] == 1 and not back["returning"],
+                detail=f"visits={back['visits']}")
+        s.check("the room they are arriving in is not a room they have stayed in",
+                back["rooms_before"] == [was_in["name"]],
+                detail=f"{back['rooms_before']} — arriving in {going_to['name']}")
+        s.check("somebody arriving next week for the first time has never been here",
+                new["known"] and new["visits"] == 0 and new["last"] is None
+                and new["rooms_before"] == [] and new["next"] == iso(8),
+                detail=f"visits={new['visits']}, last={new['last']}, "
+                       f"rooms={new['rooms_before']}")
+        page = oc.get("/guests/recall?email=" + TAG + "back@example.invalid"
+                      ).get_data(as_text=True)
+        tile = re.search(r'stat-tile-value">([^<]*)</span>\s*'
+                         r'<span class="stat-tile-label">Last here', page)
+        s.check("the page's Last here is the stay they made",
+                tile and tile.group(1).strip() == iso(-300),
+                detail=tile.group(1) if tile else "no Last here tile")
+        s.check("and the stay they are arriving for has its own tile",
+                re.search(re.escape(iso(6)) + r'</span>\s*<span class="stat-tile-label">'
+                          r'Booked to arrive', page) is not None)
+        s.check("and is marked booked in the list of stays",
+                re.search(r'<th scope="row">' + re.escape(iso(6))
+                          + r'\s*<span class="mini-status status-upcoming">booked',
+                          page) is not None
+                and re.search(r'<th scope="row">' + re.escape(iso(-300))
+                              + r'\s*<span class="mini-status', page) is None)
 
     # ------------------------------------------------------------ linen
     s.section("Enough sheets")

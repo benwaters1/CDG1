@@ -197,10 +197,10 @@ def run():
             body = _re.sub(r"\{#.*?#\}", "",
                            _io.open(path, encoding="utf-8").read(), flags=_re.S)
             for i, line in enumerate(body.splitlines(), 1):
-                # There used to be an exemption here for a slice after ")",
-                # on the belief that local_datetime_str had converted first.
-                # It had, and then the slice cut its English back to
-                # "September " -- see the next section.
+                # A slice that follows ")" is of what a function handed back,
+                # which is not this check's to judge. It was once said to be
+                # safe after local_datetime_str; that returns words, and
+                # [:10] of them printed "September ". test_stamp_times has it.
                 for mo in _re.finditer(
                         r"([A-Za-z0-9_]*_at)['\"]?\s*\]?\s*\[\s*0?:10\s*\]",
                         line):
@@ -215,14 +215,15 @@ def run():
                 for f in fs),
             detail="a sweep that found no files to sweep passes for free")
 
-    s.section("And nothing slices local_datetime_str, which is words, not a stamp")
+    s.section("And no view slices local_datetime_str, which is words, not a stamp")
     # local_datetime_str returns "September 29, 2026 11:43". Three templates
     # sliced it as though it were ISO: [:10] printed "September " under Since
     # on the access register and after "reported" on an incident, and [:16]
-    # printed "September 29, 20" as the time Pennylane was last pulled. It
-    # looked like a conversion followed by a truncation, which is why the
-    # sweep above used to wave it through. Scanned by balanced brackets, not a
-    # regex, so a nested call inside the argument is still one call.
+    # printed "September 29, 20" as the time Pennylane was last pulled.
+    # test_stamp_times sweeps the templates for that; it does not open
+    # app.py, where a view building an email or a flash could make the same
+    # cut. This reads app.py only, so the templates keep one check, not two.
+    # Scanned by balanced brackets, so a nested call is still one call.
     def _sliced_calls(text):
         hits = []
         for mo in _re.finditer(r"\blocal_datetime_str\s*\(", text):
@@ -235,29 +236,19 @@ def run():
                 hits.append(text.count("\n", 0, mo.start()) + 1)
         return hits
 
-    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-    sliced, scanned = [], 0
-    sources = [("app.py", src)]
-    for base, _dirs, files in _os.walk(tpl_dir):
-        for fn in sorted(files):
-            if fn.endswith(".html"):
-                path = _os.path.join(base, fn)
-                sources.append((_os.path.relpath(path, root).replace("\\", "/"),
-                                _io.open(path, encoding="utf-8").read()))
-    for name, text in sources:
-        scanned += text.count("local_datetime_str(")
-        sliced += ["%s:%d" % (name, n) for n in _sliced_calls(text)]
-    s.check("no template or view slices local_datetime_str's answer",
+    scanned = src.count("local_datetime_str(")
+    sliced = ["app.py:%d" % n for n in _sliced_calls(src)]
+    s.check("no view slices local_datetime_str's answer",
             not sliced,
-            detail="; ".join(sliced[:6]) + " -- a day is |date_short or "
-                   "|house_day, a moment is |house_when; its words cut short "
-                   "are neither")
+            detail="; ".join(sliced[:6]) + " -- a day is house_date_iso() or "
+                   "format_date_short(), a moment is house_when(); its words "
+                   "cut short are neither")
     s.check("and the scan found calls to look at",
-            scanned >= 20, detail=f"{scanned} calls -- a scan that finds none "
-                                  "passes for free")
+            scanned >= 8, detail=f"{scanned} calls -- a scan that finds none "
+                                 "passes for free")
     s.check("the scanner itself catches a slice, nested call and all",
-            _sliced_calls("{{ local_datetime_str(x.get('a_at'))[:10] }}") == [1]
-            and _sliced_calls("{{ local_datetime_str(x['a_at']) }}[0]") == [],
+            _sliced_calls('ok = 1\nnote = local_datetime_str(r.get("a_at"))[:10]') == [2]
+            and _sliced_calls('note = f"{local_datetime_str(r[\'a_at\'])} [draft]"') == [],
             detail="checked against a written example, so the check above "
                    "cannot pass by being unable to see")
 

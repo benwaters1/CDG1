@@ -45,7 +45,7 @@
     {% if msg['role'] == 'user' %}
       <div class="chat-msg chat-msg-mine">
         <div class="chat-msg-head"><span class="chat-msg-author">You</span>
-          <span class="chat-msg-time">{{ msg['created_at'][11:16] }}</span></div>
+          <span class="chat-msg-time">{{ local_time_str(msg['created_at']) }}</span></div>
         <div class="chat-msg-body">{{ msg['content'] }}</div>
       </div>
 
@@ -56,7 +56,7 @@
       <div class="chat-msg">
         <div class="chat-msg-head">
           <span class="chat-msg-author">Assistant</span>
-          <span class="chat-msg-time">{{ msg['created_at'][11:16] }}</span>
+          <span class="chat-msg-time">{{ local_time_str(msg['created_at']) }}</span>
         </div>
         <div class="chat-msg-body">
           <strong>{{ msg['content'] }}</strong>
@@ -78,7 +78,7 @@
             </form>
           {% elif msg['action_status'] == 'confirmed' %}
             <p class="upload-hint" style="margin:6px 0 0;">
-              Done {{ (msg['executed_at'] or '')[11:16] }}.
+              Done{% if msg['executed_at'] %} {{ local_time_str(msg['executed_at']) }}{% endif %}.
             </p>
           {% else %}
             <p class="upload-hint" style="margin:6px 0 0;">You said no.</p>
@@ -89,7 +89,7 @@
     {% elif msg['role'] == 'assistant' %}
       <div class="chat-msg">
         <div class="chat-msg-head"><span class="chat-msg-author">Assistant</span>
-          <span class="chat-msg-time">{{ msg['created_at'][11:16] }}</span></div>
+          <span class="chat-msg-time">{{ local_time_str(msg['created_at']) }}</span></div>
         <div class="chat-msg-body" style="white-space:pre-line">{{ msg['content'] }}</div>
       </div>
 
@@ -100,7 +100,7 @@
       <details class="chat-msg" style="opacity:.75">
         <summary class="chat-msg-head" style="cursor:pointer">
           <span class="chat-msg-author">{{ msg['tool_name'] or 'looked something up' }}</span>
-          <span class="chat-msg-time">{{ msg['created_at'][11:16] }}</span>
+          <span class="chat-msg-time">{{ local_time_str(msg['created_at']) }}</span>
         </summary>
         <div class="chat-msg-body" style="white-space:pre-line">{{ msg['content'] }}</div>
       </details>
