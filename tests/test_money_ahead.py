@@ -49,6 +49,58 @@ def _monthly_from(anchor, count):
     return out
 
 
+class _Quiet:
+    """A Suite that keeps its failures to itself, for checks asked hundreds of
+    times over: one line for the whole sweep, not seven hundred."""
+
+    def __init__(self):
+        self.failed = []
+
+    def check(self, name, ok, detail=""):
+        if not ok:
+            self.failed.append((name, detail))
+        return bool(ok)
+
+
+def _calendar_checks(s, conn, day, monthly_cost, wage):
+    """The checks that depend on where the window falls, asked as if `day`
+    were today.
+
+    The standing cost is moved to eight days out from `day` first, so its
+    day of the month walks through every value the sweep passes -- the 29th,
+    30th and 31st included -- rather than staying wherever the suite's own
+    today put it. The caller puts it back.
+    """
+    conn.execute("UPDATE recurring_costs SET next_due_date = ? WHERE id = ?",
+                 ((day + timedelta(days=8)).isoformat(), monthly_cost))
+    ahead = m.money_ahead(conn, days=90, today=day)
+    s.check("the window runs ninety days from the day it is asked",
+            ahead["from"] == day.isoformat()
+            and ahead["to"] == (day + timedelta(days=90)).isoformat(),
+            detail=f"{ahead['from']} to {ahead['to']}")
+    paydays = _month_ends(day, 90)
+    wages = [o for o in ahead["outgoing"] if o["kind"] == "Wages"]
+    s.check("once a month, not once per anything else",
+            [w["date"] for w in wages] == paydays,
+            detail=f"{[w['date'] for w in wages]}; the month-ends are {paydays}")
+    # Measured against the rest of the list rather than a figure taken before,
+    # so it needs no second call -- and the real bookings in the database copy
+    # cannot pass or fail it.
+    others = sum(o["amount"] for o in ahead["outgoing"] if o["kind"] != "Wages")
+    s.check("the total carries one month of it for each payday",
+            round(ahead["total_out"] - others, 2) == round(len(paydays) * wage, 2),
+            detail=f"{round(ahead['total_out'] - others, 2)} for {len(paydays)} paydays")
+    cost = [o["date"] for o in ahead["outgoing"]
+            if o["kind"] == "Standing cost" and o["label"] == TAG + "Electricity"]
+    expect = _monthly_from(day + timedelta(days=8), 3)
+    s.check("a monthly cost keeps its day of the month",
+            cost == expect, detail=f"{cost}, expected {expect}")
+    short = [o["date"] for o in m.money_ahead(conn, days=20, today=day)["outgoing"]
+             if o["kind"] == "Wages"]
+    s.check("twenty days carries the one payday in it, or none",
+            short == _month_ends(day, 20),
+            detail=f"{short}; the month-ends are {_month_ends(day, 20)}")
+
 
 def _stamp(conn, ref):
     """Stamp the room's agreed price, as create_booking does for every real booking.
@@ -345,6 +397,26 @@ def run():
                    f"in it are {_month_ends(today, 20)}")
     s.check("and any it does carry falls inside the window",
             all(short["from"] <= w["date"] <= short["to"] for w in short_wages))
+
+    # Asked once, of today, these checks only ever see the day the suite runs
+    # -- which is how a three-payday count stayed green until the 1st of
+    # October, and a cost due on the 31st sat on the 28th from March without
+    # anyone noticing. So the calendar-bound ones are asked of every day for a
+    # year either side: every month end, a February, a new year.
+    elec_id = conn.execute("SELECT id, next_due_date FROM recurring_costs WHERE label = ?",
+                           (TAG + "Electricity",)).fetchone()
+    red = []
+    for n in range(731):
+        day = today + timedelta(days=n - 365)
+        quiet = _Quiet()
+        _calendar_checks(quiet, conn, day, elec_id["id"], 6500)
+        if quiet.failed:
+            red.append(f"{day}: {quiet.failed[0][0]} ({quiet.failed[0][1]})")
+    conn.execute("UPDATE recurring_costs SET next_due_date = ? WHERE id = ?",
+                 (elec_id["next_due_date"], elec_id["id"]))
+    conn.commit()
+    s.check("and all of that holds on every day for a year either side",
+            not red, detail=f"{len(red)} days red, first {red[:3]}")
 
     oc.post("/management/money-ahead/staff-cost", data={"monthly_staff": ""},
             follow_redirects=True)
