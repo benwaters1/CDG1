@@ -538,7 +538,9 @@ REVIEW_INVITE_MIN_RATING = 4
 # second email an hour later reads as a machine, and if something was wrong
 # there has to be time for a person to see it first.
 REVIEW_INVITE_DAYS_AFTER = 2
-EMPLOYER_LEGAL_NAME = "SCI Torrents"
+# Reached only when no company is on file at all. Not the SCI: it owns the
+# building and employs nobody; the hospitality is the SASU's.
+EMPLOYER_LEGAL_NAME = "Château de Gudanes"
 
 
 _PLACEHOLDER_MARKERS = (
@@ -865,125 +867,135 @@ def rollover_hour_is_safe(hour=None, day=None):
             return False
     return True
 
-DEFAULT_TERMS = """DRAFT — NOT YET REVIEWED BY A LAWYER. This is a starting point written
-to match how the château actually operates, not legal advice. Have it reviewed
-by a French lawyer and your insurer before you rely on it, and delete this
-notice once you have.
-
-BOOKING TERMS & CONDITIONS — CHÂTEAU DE GUDANES
+DEFAULT_TERMS = """BOOKING TERMS & CONDITIONS — CHÂTEAU DE GUDANES
 
 1. Who you are contracting with
-Your booking is with SCI Torrents, which operates Château de Gudanes at
-2 Route de Beille, Château-Verdun 09310, France. References to "we" and
-"the château" mean that company.
+Your booking is with Château de Gudanes, a société par actions simplifiée
+unipersonnelle (SASU) with a share capital of €500, registered with the
+RCS of Foix under number 106 121 783, VAT number FR12106121783, whose
+registered office is at Château de Gudanes, Gudanes, 09310 Château-Verdun,
+France. References to "we" and "the château" mean that company.
 
-2. Booking requests
-Submitting a request does not guarantee a reservation. Every request is
-reviewed by the château before it becomes a confirmed booking. You will be
-told by email once a decision has been made, and your reference code is
-the way to find your booking at any time.
+2. Making a booking
+A room or a workshop place booked on this website is confirmed as it is
+booked: a room as soon as your payment goes through, a workshop place as
+you register. You will receive a confirmation by email with your reference
+code, which is also how you find and manage your booking at any time.
 
-3. Prices, deposits and balances
+A table at La Table is a request: the château reviews it and confirms by
+email. If it is declined, anything you have paid for it is refunded
+automatically.
+
+Bookings made through another website, such as Booking.com, are confirmed
+by that website, on its own terms.
+
+We reserve the right to cancel a confirmed booking where we must — for
+example, if the château cannot safely receive guests on your dates. If we
+cancel, we will tell you as soon as we can and refund in full what you have
+paid us.
+
+3. Prices, payment and the tourist tax
 - Prices are in euros and include French VAT where it applies.
-- NIGHTLY STAYS are payable as set out at the time you book, and what is
-  due and when is repeated in your confirmation.
-- WORKSHOPS AND RETREATS take a deposit at the time of booking, and the
-  balance is due 30 days before the workshop begins. If you book inside
-  that 30-day window, the full amount is due at the time of booking. The
-  deposit percentage is stated on the workshop page and in your
+- Some bookings are paid in full when you book. Others take a deposit, with
+  the balance due either before arrival or on the day — whichever applies
+  to your booking is stated clearly when you book and repeated in your
   confirmation.
-- Where a balance is due before arrival and is not paid by the date
-  given, we may release the booking and treat it as cancelled by you.
+- Workshops take a deposit when you register, and the balance is due 30
+  days before the workshop begins. If you register within those 30 days,
+  the full amount is due at once. The deposit is stated on the workshop
+  page and in your confirmation.
+- Where a balance is due before arrival and is not paid by the date given,
+  we may release the booking and treat it as cancelled by you.
+- The taxe de séjour, the local tourist tax, is charged per adult per night
+  at the rate set by the commune. It is added to your bill and paid with
+  the full amount, or with the balance where you paid a deposit.
 - A discount code applies only to the booking it was used on, cannot be
   applied afterwards, and cannot be exchanged for money.
 
-4. What a nightly stay includes, and what it does not
-- A nightly stay includes your room and breakfast.
-- It does NOT include lunch or dinner. Meals beyond breakfast are
-  arranged separately and charged separately, and are subject to
-  availability — the kitchen is not open every day and is not a hotel
-  restaurant.
-- Anything else that is included is listed on the page you booked from.
-
-5. Cancellations and refunds
-- NIGHTLY STAYS ARE NON-REFUNDABLE. Once confirmed and paid for, we do
-  not refund if you cancel or do not arrive.
-- THE WORKSHOP DEPOSIT IS NON-REFUNDABLE, whenever you cancel and for
-  whatever reason.
-- We do, however, look at every cancellation individually. If your
-  circumstances change, please contact us and tell us what has happened.
-  We would rather hear from you than not, and we will do what we
-  reasonably can — including, at our discretion, a full or partial
-  refund. Please treat any such refund as a gesture of goodwill rather
-  than an entitlement, and not as a precedent for any other booking.
-- If the château declines your request, or cancels a confirmed booking,
+4. Cancellations, changes and refunds
+- Bookings are non-refundable. Once confirmed and paid for, we do not offer
+  a refund as a matter of course if you cancel or do not arrive.
+- Please write to us all the same. We look at every cancellation
+  individually, and we can sometimes move your dates instead. Any refund we
+  do make is at our discretion: a gesture of goodwill rather than an
+  entitlement, and not a precedent for any other booking.
+- If we cancel a confirmed booking, or decline a table you have requested,
   anything already paid is refunded in full.
-- Where you booked through Booking.com or another travel site, that
-  site's own cancellation terms apply instead of these, and any refund is
-  arranged through them rather than with us.
+- Where you booked through Booking.com or another travel website, that
+  website's cancellation terms apply instead of these, and any refund is
+  arranged through it rather than with us.
 
-6. Dining and workshops
-- A restaurant reservation is held for the time booked. If you have not
-  arrived and have not contacted us, we may release the table.
-- Repeated no-shows may mean we decline future reservations.
-- Workshops run subject to a minimum number of participants. If we cancel
-  a workshop for any reason, including not reaching that minimum, you are
-  refunded in full or offered a place on another date, as you prefer.
+5. Dining and workshops
+- A table is held for the time booked. If you have not arrived and have not
+  contacted us, we may release it. Repeated no-shows may mean we decline
+  future reservations.
+- If we cancel a workshop for any reason, you are refunded in full or
+  offered a place on another date, as you prefer.
+- What each workshop includes is set out on its page and in your
+  confirmation. Transfers and excursions are included only where a
+  workshop says so.
 - Tell us about allergies and dietary requirements when you book. We will
   do our best, but a château kitchen is not an allergen-free environment
   and we cannot guarantee the absence of any ingredient.
 
-7. Arrival, departure and conduct
-- Arrival and departure times are given in your confirmation. Tell us if
-  you expect to arrive late so somebody can be there to meet you.
+6. Arrival, departure and the house
+- Arrival is from 4pm and departure by 11am, unless your confirmation says
+  otherwise. Tell us if you expect to arrive late so that someone can be
+  there to meet you.
+- Guests must be eight or older: the staircases are eighteenth-century,
+  with no handrails in places.
 - Please treat the house as the historic building it is. Smoking is not
-  permitted indoors.
-- NO PETS. Animals cannot be accommodated anywhere in the château or its
-  grounds. Registered assistance dogs are of course welcome, and we ask
-  only that you tell us before you arrive so the room can be prepared.
-- Additional guests only by prior agreement.
+  permitted indoors. Additional guests only by prior agreement.
+- We cannot accommodate pets, as the restoration areas make it unsafe for
+  them. Assistance and guide dogs are welcome; please tell us before you
+  arrive so that we can prepare your room.
 - We may ask anyone whose behaviour puts the building, its contents or
   other guests at risk to leave, without a refund.
 
-8. Damage, and your belongings
+7. Damage and loss
 - The château contains antique furniture, artworks and fittings that
-  cannot simply be replaced. You are responsible for loss or damage
-  caused by you or your party beyond fair wear and tear, and we may
-  charge the reasonable cost of repair or replacement.
-- YOUR LUGGAGE AND BELONGINGS REMAIN YOUR RESPONSIBILITY. Items left in
-  rooms, in vehicles or anywhere else on the estate are left at your own
-  risk, and we do not accept responsibility for their loss or damage.
-  Bedroom doors lock and we ask you to use them. If you have something
-  genuinely valuable with you, hand it to us to hold and we will take
-  proper care of it.
-- Please tell us straight away if something of yours is missing, while
-  there is still a chance of finding it.
+  cannot simply be replaced. You are responsible for loss or damage caused
+  by you or your party beyond fair wear and tear, and we may charge the
+  reasonable cost of repair or replacement.
+- We will always tell you what has happened and what it costs before
+  charging anything.
+- Please look after your own belongings. We cannot accept responsibility
+  for personal property left in the château or its grounds.
 
-9. Events outside our control
+8. The building and grounds
+This is a historic château with uneven floors, steep and irregular stairs
+and no lift, open water and unlit areas outside. Please supervise children
+at all times and take care after dark. Nothing in these terms limits our
+liability for death or personal injury caused by our negligence, or for
+anything else that cannot lawfully be limited.
+
+9. Photography
+We sometimes photograph the château, its events and its workshops. If you
+would prefer not to appear in anything we publish, tell us and we will
+respect that.
+
+10. Events outside our control
 If we cannot honour a booking because of something genuinely outside our
 control — fire, flood, severe weather, utility failure, illness affecting
 the household, or an order of the authorities — we will offer you
 alternative dates or a full refund. We are not otherwise liable for costs
 you incur, such as travel booked separately.
 
-10. Your information
-We collect your name, email, phone number and anything you tell us in
-order to handle your booking and your stay. It is stored securely, kept
-only as long as we need it, and never sold. It is shared only with our
-payment processor (Stripe) where you pay online. You may ask us what we
-hold about you, and ask us to correct or delete it.
+11. Your information
+How we collect, use and keep your information, and who we share it with,
+is set out in our privacy notice at chateaugudanes.com/privacy. You may ask
+us what we hold about you, and ask us to correct or delete it.
 
-11. Complaints, and the law that applies
+12. Complaints, and the law that applies
 Please tell us at the time if something is wrong — almost everything is
 fixable while you are still here. These terms are governed by French law,
 and the French courts have jurisdiction.
 
-12. Contact
-SCI Torrents, Château de Gudanes, 2 Route de Beille, Château-Verdun 09310,
-France. For any question about a booking, contact the château directly.
+13. Contact
+Château de Gudanes SASU, 2 Route de Beille, 09310 Château-Verdun, France.
++33 6 28 06 97 76 · ariege@chateaugudanes.com
 
-Last updated: 29 September 2026
-"""
+Last updated: 1 October 2026"""
 
 # Email — unset until you add either Resend or SMTP credentials as
 # environment variables. Until then, every send_email() call is a no-op

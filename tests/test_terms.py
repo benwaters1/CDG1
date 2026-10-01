@@ -30,6 +30,7 @@ WHAT IS CHECKED, and why each one:
   through, just not when the guest was told. Nothing else in the app
   connects those two numbers.
 """
+import html
 import re
 
 from _harness import Suite, clients, db
@@ -63,8 +64,10 @@ def run():
         ).fetchone()["value"]
     finally:
         conn.close()
+    # Compared as text, not markup: the live first line is "BOOKING TERMS &
+    # CONDITIONS", and the page writes that ampersand as &amp;.
     s.check("the stored document is what the page shows",
-            doc.split("\n")[0][:40] in flat,
+            doc.split("\n")[0][:40] in html.unescape(flat),
             detail="the page is rendering something other than the setting")
     # Square brackets around a word, which is how every unfinished note in
     # this document has been written. Not a bare "[", which appears in
@@ -103,19 +106,29 @@ def run():
     # and the SEED left behind, and then the day the house actually goes
     # live it starts from the old wording.
     #
-    # That is exactly what happened. Seven clauses the owner asked for went
-    # into the live page on 29 September and into the seed not at all, and
-    # nothing said so for three days.
-    missing = [c for c in ("NIGHTLY STAYS ARE NON-REFUNDABLE",
-                           "WORKSHOP DEPOSIT IS NON-REFUNDABLE",
-                           "30 days before the workshop",
-                           "does NOT include lunch or dinner",
-                           "NO PETS.", "2 Route de Beille")
+    # That is exactly what happened, twice. Seven clauses went into the page
+    # on 29 September and into the seed not at all; then on 1 October the
+    # page was replaced outright -- Chateau de Gudanes SASU as the company,
+    # not SCI Torrents -- and the seed was "corrected" to the 29 September
+    # wording, because the copy of the database on the owner's machine was
+    # read as the live one. It is not: the live database is on Railway, and
+    # nothing in this repository can see it. These clauses are read off the
+    # live page itself.
+    missing = [c for c in ("Your booking is with Château de Gudanes, a société",
+                           "RCS of Foix under number 106 121 783",
+                           "balance is due 30",
+                           "Assistance and guide dogs are welcome",
+                           "Transfers and excursions are included only where",
+                           "2 Route de Beille",
+                           "Last updated: 1 October 2026")
                if c not in m.DEFAULT_TERMS]
     s.check("the seeded default carries the same clauses as the live page",
             not missing,
             detail="%s — in the live terms and not in DEFAULT_TERMS, so a "
                    "fresh deployment would serve the old wording" % missing)
+    s.check("and names the SASU, not SCI Torrents, as who a guest contracts with",
+            "SCI Torrents" not in m.DEFAULT_TERMS,
+            detail="the SCI owns the building; bookings are with the SASU")
     s.check("and mentions insurance no more than the live page does",
             ("insurance" in m.DEFAULT_TERMS.lower())
             == ("insurance" in doc.lower()),
