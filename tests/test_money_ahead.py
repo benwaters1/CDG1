@@ -302,8 +302,12 @@ def run():
             [w["date"] for w in wages] == paydays,
             detail=f"{[w['date'] for w in wages]} over 90 days; the month-ends "
                    f"in it are {paydays}")
+    # The month's own last day. ">= 28" let a payday on the 29th of a
+    # 31-day month through.
     s.check("at the end of each month, when salaries are paid",
-            all(m.parse_date(w["date"]).day >= 28 for w in wages),
+            all(m.parse_date(w["date"]).day == monthrange(
+                    m.parse_date(w["date"]).year, m.parse_date(w["date"]).month)[1]
+                for w in wages),
             detail=str([w["date"] for w in wages]))
     s.check("and it says whose figure it is",
             all("you set" in w["label"] for w in wages),
@@ -316,8 +320,13 @@ def run():
             detail=f"{ahead['total_out']} - {out_before_wages}, for {len(paydays)} paydays")
 
     # Both ends of that range on fixed days, so neither waits for the
-    # calendar to come round to it.
+    # calendar to come round to it. The window counts both of its ends, and
+    # each end gets a day of its own: 2027-01-31 is a payday on the first day,
+    # and from 2026-10-02 the ninetieth day is 31 December. Without that one,
+    # dropping a payday on the window's last day passed on all but 36 days of
+    # 2026-2028.
     for start, expect in (("2026-10-01", ["2026-10-31", "2026-11-30"]),
+                          ("2026-10-02", ["2026-10-31", "2026-11-30", "2026-12-31"]),
                           ("2027-01-31", ["2027-01-31", "2027-02-28",
                                           "2027-03-31", "2027-04-30"])):
         got = [o["date"] for o in m.money_ahead(conn, days=90, today=start)["outgoing"]
