@@ -95,6 +95,34 @@ def run():
                    % (stated.group(1) if stated else "nothing",
                       m.WORKSHOP_BALANCE_DAYS))
 
+    s.section("A fresh install would start with the same terms")
+    # DEFAULT_TERMS is what init_db seeds when app_settings has no row — a
+    # new deployment, or the Railway volume starting empty. It is in git;
+    # the live text is in the database and is not. So the two drift silently
+    # and in the one direction that matters: the live page can be corrected
+    # and the SEED left behind, and then the day the house actually goes
+    # live it starts from the old wording.
+    #
+    # That is exactly what happened. Seven clauses the owner asked for went
+    # into the live page on 29 September and into the seed not at all, and
+    # nothing said so for three days.
+    missing = [c for c in ("NIGHTLY STAYS ARE NON-REFUNDABLE",
+                           "WORKSHOP DEPOSIT IS NON-REFUNDABLE",
+                           "30 days before the workshop",
+                           "does NOT include lunch or dinner",
+                           "NO PETS.", "2 Route de Beille")
+               if c not in m.DEFAULT_TERMS]
+    s.check("the seeded default carries the same clauses as the live page",
+            not missing,
+            detail="%s — in the live terms and not in DEFAULT_TERMS, so a "
+                   "fresh deployment would serve the old wording" % missing)
+    s.check("and mentions insurance no more than the live page does",
+            ("insurance" in m.DEFAULT_TERMS.lower())
+            == ("insurance" in doc.lower()),
+            detail="seed:%s live:%s"
+                   % ("insurance" in m.DEFAULT_TERMS.lower(),
+                      "insurance" in doc.lower()))
+
     s.section("It is laid out as a document, not dumped as one block")
     # The stored terms are plain text, hard-wrapped at about seventy-two
     # characters because that is what a textarea gives you. Put straight into
