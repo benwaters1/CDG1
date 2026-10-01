@@ -2320,6 +2320,33 @@ def init_db():
             updated_at TEXT
         );
 
+        -- The group, one row per company. company_info above was one row by
+        -- CHECK, which held while the house was one company; it is now an SCI
+        -- that owns the building, an SASU that runs the hospitality, and
+        -- companies in Australia and Andorra, with more to come. company_info
+        -- keeps what is the HOUSE's rather than any one company's -- the
+        -- accountant, the broker -- and its legal columns are no longer read.
+        CREATE TABLE IF NOT EXISTS companies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            legal_name TEXT NOT NULL,
+            legal_form TEXT,
+            country TEXT,
+            role TEXT,
+            registration_number TEXT,
+            registration_office TEXT,
+            vat_number TEXT,
+            share_capital TEXT,
+            registered_address TEXT,
+            incorporation_date TEXT,
+            directors TEXT,
+            notes TEXT,
+            issues_guest_documents INTEGER NOT NULL DEFAULT 0,
+            is_employer INTEGER NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT,
+            updated_at TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS bank_details (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             label TEXT NOT NULL,
@@ -6833,6 +6860,8 @@ def init_db():
         )
         conn.commit()
 
+    seed_companies_from_company_info(conn)
+
     for template_key, label, subject, body in DEFAULT_EMAIL_TEMPLATES:
         if not conn.execute("SELECT 1 FROM email_templates WHERE template_key = ?", (template_key,)).fetchone():
             conn.execute(
@@ -7949,7 +7978,9 @@ NAV_AREAS = {
         "delete_insurance_policy", "delete_vendor",
         "download_company_document", "edit_company_document", "edit_insurance_policy",
         "edit_vendor", "export_audit_log_csv", "export_insurance_csv",
-        "export_vendors_csv", "management", "management_company_info", "management_documents",
+        "export_vendors_csv", "management", "management_company_info",
+        "management_company", "new_company", "delete_company",
+        "management_documents",
         "management_insurance", "management_vault", "new_insurance_policy",         "new_vendor", "promo_code_blast", "renew_insurance_policy", "run_automation_job_now",
         "update_automation_settings", "upload_company_document", "vendors",
         "view_company_document",
@@ -12646,6 +12677,192 @@ def create_draft_agreement(conn, employee):
     )
 
 
+# ---------------------------------------------------------------------------
+# The companies. One house, several legal entities: the SCI owns the
+# building, the SASU runs the hospitality, and there are companies in
+# Australia and Andorra. Which one a document names is not a matter of taste
+# -- a guest's invoice must name the company that sold the stay, and a
+# certificat de travail the one that employed the person -- so each of those
+# is a flag on exactly one company, held by a unique index rather than by
+# hoping, and every document asks for it by role, never by "the first row".
+# ---------------------------------------------------------------------------
+
+# What each country calls its numbers. A form that asks an Andorran company
+# for its SIRET gets either nothing or a guess typed into the wrong box.
+COMPANY_COUNTRIES = {
+    "FR": {"name": "France", "registration": "SIRET (or SIREN)",
+           "office": "RCS and city, e.g. RCS Foix", "tax": "TVA number"},
+    "AD": {"name": "Andorra", "registration": "NRT",
+           "office": "e.g. Registre de Societats", "tax": "IGI number"},
+    "AU": {"name": "Australia", "registration": "ABN",
+           "office": "e.g. ASIC, with the ACN", "tax": "GST registration"},
+    "": {"name": "Elsewhere", "registration": "Registration number",
+         "office": "Registered with", "tax": "Tax / VAT number"},
+}
+
+COMPANY_FIELDS = (
+    "legal_name", "legal_form", "country", "role", "registration_number",
+    "registration_office", "vat_number", "share_capital", "registered_address",
+    "incorporation_date", "directors", "notes",
+)
+
+
+def _luhn_ok(digits):
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        n = int(ch)
+        if i % 2:
+            n *= 2
+            if n > 9:
+                n -= 9
+        total += n
+    return total % 10 == 0
+
+
+def company_number_problems(country, registration_number, vat_number):
+    """What is wrong with a company's numbers, in words. Empty when nothing is.
+
+    Only France is checked, because only France's numbers carry their own
+    proof: a SIREN is Luhn-checked, a SIRET is the SIREN plus a Luhn-checked
+    establishment number, and the TVA number's two-digit key is computed from
+    the SIREN. So a single mistyped digit -- which would otherwise go out on
+    every invoice and be found by the guest's accountant -- is caught as it
+    is typed. Australia and Andorra are stored as given.
+    """
+    problems = []
+    if country != "FR":
+        return problems
+    reg = re.sub(r"\s", "", registration_number or "")
+    siren = None
+    if reg:
+        if not reg.isdigit() or len(reg) not in (9, 14):
+            problems.append("A SIREN is 9 digits and a SIRET 14; this is "
+                            f"{len(reg)} characters.")
+        # La Poste's establishments are the one published exception to the
+        # SIRET checksum, and the house is not one of them.
+        elif not _luhn_ok(reg) and not reg.startswith("356000000"):
+            problems.append("That SIRET/SIREN fails its check digit, so a "
+                            "digit is probably mistyped.")
+        else:
+            siren = reg[:9]
+    vat = re.sub(r"\s", "", vat_number or "").upper()
+    if vat:
+        m = re.fullmatch(r"FR([0-9A-Z]{2})(\d{9})", vat)
+        if not m:
+            problems.append("A French TVA number is FR, two characters, then "
+                            "the 9-digit SIREN.")
+        else:
+            if m.group(1).isdigit():
+                key = (12 + 3 * (int(m.group(2)) % 97)) % 97
+                if int(m.group(1)) != key:
+                    problems.append("The TVA number's key does not match its "
+                                    "SIREN, so a digit is probably mistyped.")
+            if siren and m.group(2) != siren:
+                problems.append("The TVA number is for a different SIREN than "
+                                "the registration number.")
+    return problems
+
+
+def seed_companies_from_company_info(conn):
+    """Carry the single company record into the group, once.
+
+    Runs at every start and does nothing after the first: it only acts while
+    `companies` is empty. Whatever company_info named becomes the company that
+    issues guest documents and employs the staff, which is what it already
+    was -- so nothing printed changes on the day this arrives.
+    """
+    conn.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_one_issuer
+                    ON companies(issues_guest_documents)
+                    WHERE issues_guest_documents = 1""")
+    conn.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_one_employer
+                    ON companies(is_employer) WHERE is_employer = 1""")
+    if conn.execute("SELECT 1 FROM companies LIMIT 1").fetchone():
+        conn.commit()
+        return
+    old = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    if old and (old["legal_name"] or "").strip():
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """INSERT INTO companies (legal_name, country, registration_number,
+                   vat_number, registered_address, incorporation_date,
+                   issues_guest_documents, is_employer, active, created_at, updated_at)
+               VALUES (?, 'FR', ?, ?, ?, ?, 1, 1, 1, ?, ?)""",
+            (old["legal_name"].strip(), old["registration_number"],
+             old["vat_number"], old["registered_address"],
+             old["incorporation_date"], now, now))
+    conn.commit()
+
+
+def operating_company(conn):
+    """The company a guest's invoice, receipt and statement are issued by.
+
+    A dict with the companies columns, or None when no company is marked --
+    which every reader already handles, by saying on the document that the
+    details are missing rather than printing a note that quietly is not one.
+    """
+    row = conn.execute(
+        """SELECT * FROM companies
+            WHERE issues_guest_documents = 1 AND active = 1""").fetchone()
+    return dict(row) if row else None
+
+
+def employer_company(conn):
+    """The company named on staff paperwork. The operator, unless another
+    company is marked as the employer."""
+    row = conn.execute(
+        "SELECT * FROM companies WHERE is_employer = 1 AND active = 1").fetchone()
+    return dict(row) if row else operating_company(conn)
+
+
+def company_legal_mentions(company):
+    """The line a French commercial document owes under the name:
+    form and capital, then RCS and city with the SIREN.
+
+    Code de commerce R123-237 asks for exactly these on invoices and letters,
+    and the invoice was printing the name, the address, the SIRET and the TVA
+    number and none of them. Built only from what is filled in, so a company
+    with no capital on file prints its form alone rather than "au capital de".
+    """
+    if not company:
+        return ""
+    parts = []
+    form = (company.get("legal_form") or "").strip()
+    capital = (company.get("share_capital") or "").strip()
+    if form and capital:
+        parts.append(f"{form} au capital de {capital}")
+    elif form:
+        parts.append(form)
+    office = (company.get("registration_office") or "").strip()
+    reg = re.sub(r"\s", "", company.get("registration_number") or "")
+    if office:
+        if company.get("country") == "FR" and reg.isdigit() and len(reg) >= 9:
+            parts.append(f"{office} {reg[:3]} {reg[3:6]} {reg[6:9]}")
+        else:
+            parts.append(office)
+    return " · ".join(parts)
+
+
+app.jinja_env.filters["legal_mentions"] = company_legal_mentions
+
+
+def company_gaps(company):
+    """What a company's record is missing, named, for the companies list.
+
+    The operator is held to what an invoice must carry; the others only to
+    what identifies them, because nothing is printed in their name."""
+    if not company:
+        return []
+    checks = [("legal name", "legal_name"), ("registered address", "registered_address"),
+              ("registration number", "registration_number")]
+    if company.get("issues_guest_documents"):
+        checks += [("tax number", "vat_number")]
+        if company.get("country") == "FR":
+            checks += [("legal form", "legal_form"), ("share capital", "share_capital"),
+                       ("RCS", "registration_office")]
+    return [label for label, col in checks
+            if not (company.get(col) or "").strip()]
+
+
 def _employer_identity(conn):
     """Who the employer is, off the company record rather than a constant.
 
@@ -12653,7 +12870,7 @@ def _employer_identity(conn):
     hardcoded name is a fallback for a database that has not been filled in
     rather than the answer.
     """
-    row = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    row = employer_company(conn)
     name = (row["legal_name"] if row and row["legal_name"] else EMPLOYER_LEGAL_NAME)
     return {
         "name": name,
@@ -31339,13 +31556,25 @@ def _search_sources():
             "key": "company_info",
             "label": "Company details",
             "sql": "SELECT * FROM company_info",
-            "fields": ["legal_name", "registration_number", "vat_number",
-                       "registered_address", "accountant_name",
-                       "insurance_broker_name"],
+            "fields": ["accountant_name", "insurance_broker_name"],
             "order": "id",
-            "name": lambda r: r["legal_name"] or "Company info",
-            "line": lambda r: "Registration, VAT, accountant, insurance broker",
+            "name": lambda r: "Accountant and insurance broker",
+            "line": lambda r: " · ".join(
+                x for x in (r["accountant_name"], r["insurance_broker_name"]) if x),
             "href": lambda r: url_for("management_company_info"),
+        },
+        {
+            "key": "companies",
+            "label": "Companies",
+            "sql": "SELECT * FROM companies",
+            "fields": ["legal_name", "legal_form", "role", "registration_number",
+                       "vat_number", "registered_address", "directors"],
+            "order": "legal_name",
+            "name": lambda r: r["legal_name"],
+            "line": lambda r: " · ".join(x for x in (
+                r["legal_form"], COMPANY_COUNTRIES.get(r["country"] or "", {}).get("name"),
+                r["role"]) if x),
+            "href": lambda r: url_for("management_company", company_id=r["id"]),
         },
     ]
 
@@ -34345,9 +34574,7 @@ def pos_receipt(order_id):
     formule_line_ids = {l["id"] for f in formules for l in f["lines"]}
     a_la_carte = pos_lines_by_course(
         [l for l in bill["live"] if l["id"] not in formule_line_ids])
-    company = conn.execute(
-        """SELECT legal_name, registration_number, vat_number, registered_address
-           FROM company_info WHERE id = 1""").fetchone()
+    company = operating_company(conn)
     conn.close()
     return render_template("pos_receipt.html", bill=bill, order=bill["order"],
                            by_course=a_la_carte, formules=formules, context=context,
@@ -34412,9 +34639,7 @@ def pos_receipt_email_context(conn, bill):
         how = ", ".join(POS_PAYMENT_METHODS.get(m["method"], m["method"]) for m in methods)
         status = "Paid in full" + (f" \u2014 {how.lower()}." if how else ".")
 
-    company = conn.execute(
-        """SELECT legal_name, registration_number, vat_number, registered_address
-           FROM company_info WHERE id = 1""").fetchone()
+    company = operating_company(conn)
     bits = []
     if company:
         for key, label in (("legal_name", ""), ("registered_address", ""),
@@ -38949,7 +39174,7 @@ def email_booking_statement(manage_token):
     # The page's own statement, line for line -- every charge, every payment
     # with its card, every refund -- and then the VAT bands the invoice owes.
     view = booking_statement_view(conn, "room", booking["id"])
-    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    company = operating_company(conn)
     conn.close()
 
     lines = [statement_text(view)] if view else []
@@ -39013,7 +39238,7 @@ def booking_statement(manage_token):
     # The lines: every charge, every payment with its card, every refund.
     # The VAT and the taxe de sejour are still the invoice's to break down.
     view = booking_statement_view(conn, "room", booking["id"])
-    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    company = operating_company(conn)
     conn.close()
     return render_template("guest_statement.html", booking=booking, s=statement, v=view,
                            company=company, employer=EMPLOYER_LEGAL_NAME)
@@ -39932,7 +40157,7 @@ def guest_full_statement(guest_id):
     conn = get_db()
     date_from, date_to = statement_period(request.args)
     statement = guest_account_statement(conn, guest_id, date_from, date_to)
-    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    company = operating_company(conn)
     conn.close()
     if not statement:
         abort(404)
@@ -42168,8 +42393,7 @@ def arrival_card(booking_id):
         conn.close()
         abort(404)
     bill = booking_bill(conn, booking_id)
-    company = conn.execute(
-        "SELECT legal_name, registered_address FROM company_info WHERE id = 1").fetchone()
+    company = operating_company(conn)
     # What the person handing this over ought to know. The card is printed at
     # the desk while the guest is standing there, which is the one moment a
     # preference recorded two visits ago is worth anything.
@@ -48383,9 +48607,7 @@ def campaign_unsubscribe_footer(conn, token):
     except RuntimeError:
         # No request context — the trigger job runs from the scheduler.
         link = f"{PUBLIC_BASE_URL or ''}/unsubscribe/{token}"
-    row = conn.execute(
-        "SELECT legal_name, registered_address FROM company_info WHERE id = 1"
-    ).fetchone()
+    row = operating_company(conn)
     who = "Château de Gudanes"
     if row and (row["registered_address"] or "").strip():
         who += " · " + " ".join((row["registered_address"] or "").split())
@@ -49274,7 +49496,7 @@ def workshop_statement(manage_token):
         conn.close()
         abort(404)
     view = booking_statement_view(conn, "workshop", row["id"])
-    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    company = operating_company(conn)
     conn.close()
     return render_template("workshop_statement.html", v=view, booking=view["row"],
                            company=company)
@@ -53365,7 +53587,7 @@ def guest_portal_statement(token):
         profile = survivor
     date_from, date_to = statement_period(request.args)
     statement = guest_account_statement(conn, profile["id"], date_from, date_to)
-    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    company = operating_company(conn)
     conn.close()
     return render_template("guest_portal_statement.html", st=statement, token=token,
                            company=company, today=house_today_iso())
@@ -60753,7 +60975,7 @@ def management():
     vault_count = conn.execute("SELECT COUNT(*) AS c FROM vault_entries").fetchone()["c"]
     insurance_count = conn.execute("SELECT COUNT(*) AS c FROM insurance_policies").fetchone()["c"]
     vendor_count = conn.execute("SELECT COUNT(*) AS c FROM vendors").fetchone()["c"]
-    company_info_set = conn.execute("SELECT 1 FROM company_info WHERE id = 1").fetchone() is not None
+    company_info_set = conn.execute("SELECT 1 FROM companies WHERE active = 1").fetchone() is not None
     today = house_today()
     period = period_from_request()
     overview = management_overview(conn, period, today)
@@ -70210,7 +70432,7 @@ def purge_police_register(conn, today=None):
 # of them is answered by a GUEST asking what is held about them — a staff
 # member's record is answered under a different process with different rules.
 NOT_GUEST_TABLES = {
-    "users", "candidates", "vendors", "contacts", "company_info",
+    "users", "candidates", "vendors", "contacts", "company_info", "companies",
     "user_languages", "documents", "absences", "time_entries",
 }
 
@@ -71382,13 +71604,16 @@ def statement_balance_line(amount):
 
 
 def company_block_text(conn):
-    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    company = operating_company(conn)
     who = []
     if company:
         for key in ("legal_name", "registered_address", "registration_number", "vat_number"):
             value = " ".join((company[key] or "").split())
             if value:
                 who.append(value)
+        mentions = company_legal_mentions(company)
+        if mentions:
+            who.append(mentions)
     return "\n".join(who)
 
 
@@ -75027,12 +75252,14 @@ def edit_email_template(template_key):
 @app.route("/management/company-info", methods=["GET", "POST"])
 @owner_required
 def management_company_info():
-    """The legal facts about the business, and the papers that prove them."""
+    """The companies, the house's advisers, and what it is insured for."""
     conn = get_db()
     if request.method == "POST":
+        # The house's own facts only. The legal ones belong to a company now
+        # and are edited on that company's page; leaving them out of this list
+        # means saving the accountant can no longer blank them.
         fields = [
-            "legal_name", "registration_number", "vat_number", "registered_address",
-            "incorporation_date", "accountant_name", "accountant_phone", "accountant_email",
+            "accountant_name", "accountant_phone", "accountant_email",
             "insurance_broker_name", "insurance_broker_phone", "insurance_broker_email",
         ]
         values = [request.form.get(f, "").strip() or None for f in fields]
@@ -75063,9 +75290,167 @@ def management_company_info():
     # is two places to look for one answer.
     policies = conn.execute(
         "SELECT * FROM insurance_policies ORDER BY expiry_date IS NULL, expiry_date").fetchall()
+    companies = []
+    for r in conn.execute("SELECT * FROM companies"):
+        c = dict(r)
+        names = COMPANY_COUNTRIES.get(c["country"] or "", COMPANY_COUNTRIES[""])
+        c["country_name"] = names["name"]
+        # The short name, not the hint: "SIRET", never "SIRET (or SIREN)".
+        c["reg_label"] = names["registration"].split(" (")[0]
+        c["tax_label"] = names["tax"]
+        c["gaps"] = company_gaps(c)
+        c["problems"] = company_number_problems(
+            c["country"], c["registration_number"], c["vat_number"])
+        companies.append(c)
     conn.close()
+    lv = list_view(
+        companies, request.args,
+        search=["legal_name", "legal_form", "role", "registration_number",
+                "vat_number", "registered_address", "directors", "notes"],
+        search_hint="Search name, number, role or director",
+        facets=[
+            facet("country", "Country", lambda c: c["country_name"]),
+            facet("does", "Named on", lambda c: [
+                x for x, on in (("Guest invoices", c["issues_guest_documents"]),
+                                ("Staff paperwork", c["is_employer"])) if on] or ["Neither"]),
+            facet("state", "Status", lambda c: "Active" if c["active"] else "Closed",
+                  order=["Active", "Closed"], default="Active"),
+        ],
+        sorts=[
+            sort_option("role", "Invoicing company first",
+                        lambda c: (not c["issues_guest_documents"], not c["is_employer"],
+                                   c["legal_name"].lower())),
+            sort_option("name", "Name", lambda c: c["legal_name"].lower()),
+            sort_option("country", "Country", lambda c: (c["country_name"], c["legal_name"].lower())),
+        ],
+        default_sort="role",
+    )
     return render_template("management_company_info.html", info=info,
-                           house_guest_capacity=capacity, policies=policies)
+                           house_guest_capacity=capacity, policies=policies,
+                           lv=lv, company_count=len(companies),
+                           issuer=next((c for c in companies
+                                        if c["issues_guest_documents"] and c["active"]), None))
+
+
+def _company_form_values(form):
+    values = {f: (form.get(f, "") or "").strip() or None for f in COMPANY_FIELDS}
+    if values["country"] not in COMPANY_COUNTRIES:
+        values["country"] = None
+    for flag in ("issues_guest_documents", "is_employer", "active"):
+        # A tick-box sends nothing when it is clear, so absence is the "no".
+        values[flag] = 1 if form.get(flag) else 0
+    return values
+
+
+@app.route("/management/companies/new", methods=["GET", "POST"])
+@owner_required
+def new_company():
+    """Add a company to the group. The same form as editing one."""
+    return _company_page(None)
+
+
+@app.route("/management/companies/<int:company_id>", methods=["GET", "POST"])
+@owner_required
+def management_company(company_id):
+    """One company in the group."""
+    return _company_page(company_id)
+
+
+def _company_page(company_id):
+    """One company in the group: who it is, what it does, what it is named on.
+
+    Marking a company as the one that issues guest documents, or as the
+    employer, takes the mark off whichever company held it, in the same
+    transaction -- the unique index would refuse two, and a refusal here
+    would read as the form not saving.
+    """
+    conn = get_db()
+    company = None
+    if company_id is not None:
+        row = conn.execute("SELECT * FROM companies WHERE id = ?", (company_id,)).fetchone()
+        if not row:
+            conn.close()
+            abort(404)
+        company = dict(row)
+    if request.method == "POST":
+        values = _company_form_values(request.form)
+        problems = company_number_problems(
+            values["country"] or "", values["registration_number"], values["vat_number"])
+        if not values["legal_name"]:
+            problems.insert(0, "A company needs its legal name.")
+        if values["issues_guest_documents"] and not values["active"]:
+            problems.append("A closed company cannot issue guest invoices. "
+                            "Mark another company as the invoicing one first.")
+        if values["is_employer"] and not values["active"]:
+            problems.append("A closed company cannot be the employer on staff "
+                            "paperwork. Mark another company as the employer first.")
+        if problems:
+            for p in problems:
+                flash(p, "error")
+            conn.close()
+            # The form comes back as it was typed: a refused save that blanks
+            # what somebody spent five minutes entering gets typed in once.
+            return render_template("management_company.html", company=company,
+                                   form=values, countries=COMPANY_COUNTRIES), 400
+        now = datetime.now(timezone.utc).isoformat()
+        if values["issues_guest_documents"]:
+            conn.execute("UPDATE companies SET issues_guest_documents = 0 "
+                         "WHERE issues_guest_documents = 1 AND id IS NOT ?", (company_id,))
+        if values["is_employer"]:
+            conn.execute("UPDATE companies SET is_employer = 0 "
+                         "WHERE is_employer = 1 AND id IS NOT ?", (company_id,))
+        cols = list(COMPANY_FIELDS) + ["issues_guest_documents", "is_employer", "active"]
+        if company is None:
+            cur = conn.execute(
+                f"""INSERT INTO companies ({', '.join(cols)}, created_at, updated_at)
+                    VALUES ({', '.join('?' * len(cols))}, ?, ?)""",
+                (*[values[c] for c in cols], now, now))
+            company_id = cur.lastrowid
+            log_audit(conn, "company_added", target=values["legal_name"])
+            flash(f"{values['legal_name']} added.", "success")
+        else:
+            conn.execute(
+                f"""UPDATE companies SET {', '.join(f'{c} = ?' for c in cols)},
+                        updated_at = ? WHERE id = ?""",
+                (*[values[c] for c in cols], now, company_id))
+            log_audit(conn, "company_updated", target=values["legal_name"])
+            flash(f"{values['legal_name']} saved.", "success")
+        conn.commit()
+        conn.close()
+        return redirect(url_for("management_company_info"))
+    conn.close()
+    return render_template("management_company.html", company=company,
+                           form=company or {"active": 1, "country": "FR"},
+                           countries=COMPANY_COUNTRIES)
+
+
+@app.route("/management/companies/<int:company_id>/delete", methods=["POST"])
+@owner_required
+def delete_company(company_id):
+    """Remove a company entered by mistake.
+
+    Refused for the company guest documents or staff paperwork are issued
+    by: deleting it would leave every invoice with nobody to be issued by.
+    A company that has stopped trading is marked closed instead, which keeps
+    the record of who it was.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM companies WHERE id = ?", (company_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    if row["issues_guest_documents"] or row["is_employer"]:
+        conn.close()
+        flash(f"{row['legal_name']} is named on "
+              + ("guest invoices" if row["issues_guest_documents"] else "staff paperwork")
+              + ". Mark another company for that first, then delete this one.", "error")
+        return redirect(url_for("management_company", company_id=company_id))
+    conn.execute("DELETE FROM companies WHERE id = ?", (company_id,))
+    log_audit(conn, "company_deleted", target=row["legal_name"])
+    conn.commit()
+    conn.close()
+    flash(f"{row['legal_name']} deleted.", "success")
+    return redirect(url_for("management_company_info"))
 
 
 @app.route("/management/bank-details")
@@ -77515,9 +77900,14 @@ def readiness_checks(conn, *, include_slow=True):
         "Replaced." if not terms_draft else
         "Still the placeholder draft. Guests are agreeing to it at booking.")
 
-    company = conn.execute(
-        """SELECT registered_address, registration_number, vat_number, legal_name
-             FROM company_info WHERE id = 1""").fetchone()
+    company = operating_company(conn)
+    # Asked first, because with no company marked every line below is "not
+    # set" and none of them says why.
+    add("warn", "Legal", "Which company issues guest documents", company is not None,
+        f"{company['legal_name']}." if company else
+        "No company is marked. Invoices, receipts and statements have nobody "
+        "to be issued by. Management, Company info: open the company and tick "
+        "\"issues guest invoices\".")
     has_address = bool(company and (company["registered_address"] or "").strip())
     add("warn", "Legal", "Registered address", has_address,
         "On file." if has_address else
@@ -77529,10 +77919,13 @@ def readiness_checks(conn, *, include_slow=True):
     missing_identity = [
         label for label, column in (("legal name", "legal_name"),
                                     ("SIRET", "registration_number"),
-                                    ("TVA number", "vat_number"))
+                                    ("TVA number", "vat_number"),
+                                    ("legal form", "legal_form"),
+                                    ("share capital", "share_capital"),
+                                    ("RCS", "registration_office"))
         if not (company and (company[column] or "").strip())]
     add("warn", "Legal", "What a receipt has to carry", not missing_identity,
-        "Legal name, SIRET and TVA number are all on file."
+        "Legal name, SIRET, TVA number, form, capital and RCS are all on file."
         if not missing_identity else
         f"{', '.join(missing_identity).capitalize()} not set. Till receipts and "
         "guest statements both print a VAT breakdown, and both say on the "

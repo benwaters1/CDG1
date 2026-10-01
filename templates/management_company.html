@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}{{ company['legal_name'] if company else 'Add a company' }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ company['legal_name'] if company else 'Add a company' }}</h1>
+  <a href="{{ url_for('management_company_info') }}#companies" class="small-link" style="color:var(--steel);">← Company info</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Fill in what you have; a company can be saved with only its name and the
+  rest added when the papers arrive. French numbers are checked as they are
+  typed in, because a mistyped digit would otherwise go out on every invoice.
+</p>
+
+{# The labels follow the country, so an Andorran company is asked for its NRT
+   rather than a SIRET. Rendered server-side for every country and switched by
+   the select, so the form still reads correctly with no script at all. #}
+{% set chosen = form['country'] if form['country'] in countries else '' %}
+
+<div class="detail-card" style="max-width:640px;">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <label class="field-label" for="company-legal-name">Legal name</label>
+    <input id="company-legal-name" type="text" name="legal_name" required value="{{ form['legal_name'] or '' }}" placeholder="As registered, e.g. Château de Gudanes">
+
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="company-country">Country</label>
+        <select id="company-country" name="country" data-company-country>
+          {% for code, c in countries.items() %}
+          <option value="{{ code }}" {{ 'selected' if code == chosen }}>{{ c['name'] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label" for="company-legal-form">Legal form</label>
+        <input id="company-legal-form" type="text" name="legal_form" value="{{ form['legal_form'] or '' }}" placeholder="e.g. SASU, SCI, Pty Ltd, SL">
+      </div>
+    </div>
+
+    <label class="field-label" for="company-role">What it does in the group</label>
+    <input id="company-role" type="text" name="role" value="{{ form['role'] or '' }}" placeholder="e.g. Owns the building · Runs the hospitality">
+
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="company-registration-number" data-company-label="registration">{{ countries[chosen]['registration'] }}</label>
+        <input id="company-registration-number" type="text" name="registration_number" value="{{ form['registration_number'] or '' }}">
+      </div>
+      <div>
+        <label class="field-label" for="company-vat-number" data-company-label="tax">{{ countries[chosen]['tax'] }}</label>
+        <input id="company-vat-number" type="text" name="vat_number" value="{{ form['vat_number'] or '' }}">
+      </div>
+    </div>
+
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="company-registration-office">Registered with</label>
+        <input id="company-registration-office" type="text" name="registration_office" value="{{ form['registration_office'] or '' }}" placeholder="{{ countries[chosen]['office'] }}" data-company-placeholder="office">
+      </div>
+      <div>
+        <label class="field-label" for="company-share-capital">Share capital</label>
+        <input id="company-share-capital" type="text" name="share_capital" value="{{ form['share_capital'] or '' }}" placeholder="e.g. 500 €">
+      </div>
+    </div>
+
+    <label class="field-label" for="company-registered-address">Registered address</label>
+    <textarea id="company-registered-address" name="registered_address" style="min-height:60px;">{{ form['registered_address'] or '' }}</textarea>
+
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="company-incorporation-date">Incorporation date</label>
+        <input id="company-incorporation-date" type="date" name="incorporation_date" value="{{ form['incorporation_date'] or '' }}">
+      </div>
+      <div>
+        <label class="field-label" for="company-directors">Director(s)</label>
+        <input id="company-directors" type="text" name="directors" value="{{ form['directors'] or '' }}" placeholder="e.g. Karina Waters, président">
+      </div>
+    </div>
+
+    <label class="field-label" for="company-notes">Notes</label>
+    <textarea id="company-notes" name="notes" style="min-height:60px;" placeholder="Anything worth knowing: who holds the shares, which bank, what is still to come">{{ form['notes'] or '' }}</textarea>
+
+    <h3 style="margin-top:20px;">What it is named on</h3>
+    <label class="amenity" style="display:block;">
+      <input type="checkbox" name="issues_guest_documents" value="1" {{ 'checked' if form['issues_guest_documents'] }}>
+      Issues guest invoices
+    </label>
+    <p class="upload-hint">The company named on every guest invoice, till receipt and statement, and the sender on campaign email. Only one company can be; ticking it here takes it off the one that has it now.</p>
+    <label class="amenity" style="display:block;">
+      <input type="checkbox" name="is_employer" value="1" {{ 'checked' if form['is_employer'] }}>
+      Employs the staff
+    </label>
+    <p class="upload-hint">Named as the employer on the certificat de travail and the other leaver's papers. If no company is ticked, the invoicing company is used.</p>
+    <label class="amenity" style="display:block;">
+      <input type="checkbox" name="active" value="1" {{ 'checked' if form['active'] }}>
+      Trading
+    </label>
+    <p class="upload-hint">Untick for a company that has closed. It stays on file, under Closed.</p>
+
+    <button type="submit" class="btn-primary" style="margin-top:16px;">{{ 'Save' if company else 'Add company' }}</button>
+  </form>
+  {% if company and company['updated_at'] %}<p class="upload-hint" style="margin-top:10px;">Last updated {{ company['updated_at']|house_day }}</p>{% endif %}
+</div>
+
+{% if company and not company['issues_guest_documents'] and not company['is_employer'] %}
+<form method="post" action="{{ url_for('delete_company', company_id=company['id']) }}" style="margin-top:16px;"
+      onsubmit="return confirm('Delete {{ company['legal_name']|e }}? If it has closed, untick Trading instead — that keeps the record.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="btn-ghost">Delete this company</button>
+</form>
+{% endif %}
+
+<script>
+(function () {
+  var names = {{ countries|tojson }};
+  var sel = document.querySelector('[data-company-country]');
+  if (!sel) return;
+  sel.addEventListener('change', function () {
+    var c = names[sel.value] || names[''];
+    document.querySelectorAll('[data-company-label]').forEach(function (el) {
+      el.textContent = c[el.getAttribute('data-company-label')];
+    });
+    document.querySelectorAll('[data-company-placeholder]').forEach(function (el) {
+      el.placeholder = c[el.getAttribute('data-company-placeholder')];
+    });
+  });
+})();
+</script>
+
+{% endblock %}

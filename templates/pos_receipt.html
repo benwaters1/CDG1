@@ -20,6 +20,7 @@
     {% if company and company['registered_address'] %}
     <p>{{ company['registered_address'] }}</p>
     {% endif %}
+    {% if company|legal_mentions %}<p>{{ company|legal_mentions }}</p>{% endif %}
     <p>La Table du Château</p>
     {% if company and (company['registration_number'] or company['vat_number']) %}
     <p>

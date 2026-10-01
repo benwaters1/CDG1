@@ -6,37 +6,59 @@
   <h1>Company &amp; Insurance</h1>
   <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Who the company is, and what it is insured for — the things you'd otherwise dig through files or your inbox to find. For the scans and certificates themselves, use <a href="{{ url_for('management_documents') }}" style="color:inherit;">Documents</a>.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">Who the companies are, and what the house is insured for — the things you'd otherwise dig through files or your inbox to find. For the scans and certificates themselves, use <a href="{{ url_for('management_documents') }}" style="color:inherit;">Documents</a>.</p>
 
-<div class="detail-card" style="max-width:640px;">
-  <h3>Legal &amp; Registration</h3>
+<h2 class="section-heading" id="companies">Legal &amp; Registration</h2>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every company in the group. One of them is the company guest invoices,
+  receipts and statements are issued by, and one is the employer named on
+  staff paperwork. Each is marked on that company's page.
+  <a href="{{ url_for('new_company') }}" class="btn-mini" style="margin-left:8px;">Add a company</a>
+</p>
+
+{% if not issuer %}
+<div class="flash flash-error" style="max-width:680px;">
+  <strong>No company issues guest invoices.</strong>
+  Receipts and statements say their legal details are missing until one is
+  marked. Open the company that sells the stays and tick
+  &ldquo;Issues guest invoices&rdquo;.
+</div>
+{% endif %}
+
+{% if company_count %}{% include "_list_toolbar.html" %}{% endif %}
+
+{% if not lv.rows %}
+  <div class="empty-state">{% if lv.q %}No company matches that search.{% elif company_count %}No company matches those filters.{% else %}No companies yet. Add the one that issues guest invoices first.{% endif %}</div>
+{% else %}
+  <div class="doc-list" style="max-width:680px;">
+    {% for c in lv.rows %}
+    <div class="doc-row" id="company-{{ c['id'] }}" style="align-items:flex-start; flex-direction:column; gap:2px; padding:10px 12px;">
+      <div style="display:flex; align-items:center; width:100%; gap:8px; flex-wrap:wrap;">
+        <strong style="flex:1;">{{ c['legal_name'] }}{% if c['legal_form'] %} <span class="upload-hint">— {{ c['legal_form'] }}</span>{% endif %}</strong>
+        {% if c['issues_guest_documents'] %}<span class="mini-status status-confirmed">Guest invoices</span>{% endif %}
+        {% if c['is_employer'] %}<span class="mini-status status-confirmed">Staff paperwork</span>{% endif %}
+        {% if not c['active'] %}<span class="mini-status status-cancelled">Closed</span>{% endif %}
+        <a href="{{ url_for('management_company', company_id=c['id']) }}" class="small-link" style="color:var(--steel);">Edit</a>
+      </div>
+      <span class="upload-hint">{{ c['country_name'] }}{% if c['role'] %} · {{ c['role'] }}{% endif %}</span>
+      {% if c['registration_number'] or c['vat_number'] %}
+      <span class="upload-hint">{% if c['registration_number'] %}{{ c['reg_label'] }} {{ c['registration_number'] }}{% endif %}{% if c['registration_number'] and c['vat_number'] %} · {% endif %}{% if c['vat_number'] %}{{ c['tax_label'] }} {{ c['vat_number'] }}{% endif %}</span>
+      {% endif %}
+      {% if c['registered_address'] %}<span class="upload-hint">{{ c['registered_address'] }}</span>{% endif %}
+      {% for p in c['problems'] %}<span class="upload-hint" style="color:var(--danger, #a33);">{{ p }}</span>{% endfor %}
+      {% if c['gaps'] %}<span class="upload-hint">Still to fill in: {{ c['gaps']|join(', ') }}.</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="detail-card" style="max-width:640px; margin-top:24px;">
+  <h3>The house</h3>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field-label" for="management_company_info-legal-name">Legal entity name</label>
-    <input id="management_company_info-legal-name" type="text" name="legal_name" value="{{ info['legal_name'] if info else '' }}">
-
-    <div class="field-row-2">
-      <div>
-        <label class="field-label" for="management_company_info-registration-number">Registration number</label>
-        <input id="management_company_info-registration-number" type="text" name="registration_number" value="{{ info['registration_number'] if info else '' }}">
-      </div>
-      <div>
-        <label class="field-label" for="management_company_info-vat-number">VAT number</label>
-        <input id="management_company_info-vat-number" type="text" name="vat_number" value="{{ info['vat_number'] if info else '' }}">
-      </div>
-    </div>
-
-    <label class="field-label" for="management_company_info-registered-address">Registered address</label>
-    <textarea id="management_company_info-registered-address" name="registered_address" style="min-height:60px;">{{ info['registered_address'] if info else '' }}</textarea>
-    <span class="upload-hint">Printed at the foot of every campaign email — marketing mail has to identify the sender by postal address. Left blank, the footer simply omits it.</span>
-
-    <label class="field-label" for="management_company_info-incorporation-date">Incorporation date</label>
-    <input id="management_company_info-incorporation-date" type="date" name="incorporation_date" value="{{ info['incorporation_date'] if info else '' }}">
-
-    <label class="field-label" style="margin-top:16px;" for="management_company_info-house-guest-capacity">Maximum guests in the house at once</label>
+    <label class="field-label" for="management_company_info-house-guest-capacity">Maximum guests in the house at once</label>
     <input id="management_company_info-house-guest-capacity" type="number" name="house_guest_capacity" min="1" style="max-width:120px;" value="{{ house_guest_capacity }}">
     <span class="upload-hint">The legal limit, not a comfort one — it caps room bookings and atelier registrations together, in any mix, on the online booking pages. Staff can still confirm or enter a booking that goes over it by hand.</span>
-
     <label class="field-label" style="margin-top:16px;" for="management_company_info-accountant-name">Accountant</label>
     <div class="field-row-2">
       <div><input id="management_company_info-accountant-name" type="text" name="accountant_name" placeholder="Name / firm" value="{{ info['accountant_name'] if info else '' }}"></div>

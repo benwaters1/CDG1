@@ -268,6 +268,7 @@ ID_TABLES = {
     "visit_id": ("maintenance_visits", "id"),
     "template_id": ("email_templates", "id"),
     "code_id": ("promo_codes", "id"),
+    "company_id": ("companies", "id"),
     "manage_token": ("bookings", "manage_token"),
     "share_token": ("bookings", "share_token"),
     # A plain string is a literal rather than a (table, column) to read one

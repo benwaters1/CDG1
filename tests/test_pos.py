@@ -249,15 +249,13 @@ def run():
     s.check("the bill prints", "Total TTC" in receipt)
     # A French note has to identify who issued it. The docstring used to claim
     # this while the template hardcoded an address and printed no SIRET.
-    conn.execute("""INSERT INTO company_info (id, legal_name, registration_number,
-                    vat_number, registered_address)
-                    VALUES (1, 'SCI Gudanes', '80012345600017', 'FR40800123456',
-                            '2 Route de Beille, 09310 Chateau-Verdun')
-                    ON CONFLICT(id) DO UPDATE SET
-                      legal_name = excluded.legal_name,
-                      registration_number = excluded.registration_number,
-                      vat_number = excluded.vat_number,
-                      registered_address = excluded.registered_address""")
+    # The company the bill is issued BY: whichever one is marked as issuing
+    # guest documents, now that there are several in the group.
+    conn.execute("UPDATE companies SET issues_guest_documents = 0")
+    conn.execute("""INSERT INTO companies (legal_name, country, registration_number,
+                    vat_number, registered_address, issues_guest_documents, active)
+                    VALUES ('SCI Gudanes', 'FR', '80012345600017', 'FR40800123456',
+                            '2 Route de Beille, 09310 Chateau-Verdun', 1, 1)""")
     conn.commit()
     identified = oc.get(f"/pos/{order['id']}/receipt").get_data(as_text=True)
     s.check("carrying the SIRET", "80012345600017" in identified)
@@ -267,8 +265,8 @@ def run():
     s.check("and its receipt number", "Note n" in identified)
     # And when they are absent it says so on the bill, rather than printing a
     # note that quietly is not compliant.
-    conn.execute("UPDATE company_info SET registration_number = NULL, vat_number = NULL "
-                 "WHERE id = 1")
+    conn.execute("UPDATE companies SET registration_number = NULL, vat_number = NULL "
+                 "WHERE issues_guest_documents = 1")
     conn.commit()
     bare = oc.get(f"/pos/{order['id']}/receipt").get_data(as_text=True)
     s.check("a missing SIRET is called out on the bill itself",

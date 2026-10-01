@@ -42,7 +42,8 @@ TEMPLATES = os.path.join(_harness.ROOT, "templates")
 # a row from that one table; anything ambiguous is left off rather than
 # guessed at.
 ROW_SOURCES = {
-    "company": "company_info",
+    # Every template's `company` is operating_company(): a row of companies.
+    "company": "companies",
 }
 
 
@@ -107,7 +108,7 @@ def run():
         s.section("And the detector is shown to work")
         # Counting what it examined is not the same as being able to detect
         # anything. This is the exact line that was wrong.
-        real = _columns(conn, "company_info")
+        real = _columns(conn, "companies")
         s.check("it catches the one that was wrong",
                 _misspelt("{% if company['siret'] %}x{% endif %}",
                           "company", real) == ["siret"],
