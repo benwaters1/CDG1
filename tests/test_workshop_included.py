@@ -150,5 +150,43 @@ def run():
                    "a check that only ever sees the off state would pass "
                    "against a page that never mentions transfers at all")
 
+    s.section("And the confirmation email says the same thing")
+    # The page and the letter have to agree. A guest who reads "spent at the
+    # château" on the page and then gets a confirmation promising a van from
+    # Toulouse has been told two things, and will believe the one that
+    # arrived in their inbox.
+    conn = db()
+    conn.execute("UPDATE workshops SET transfers_included = 0, "
+                 "excursions_included = 0 WHERE id = ?", (wid,))
+    conn.commit()
+    row = dict(guest_name="X", title=TAG + " Plain", start_date="2027-05-01",
+               end_date="2027-05-04", party_size=2, reference_code="R",
+               total_price=100.0, deposit_amount=10.0, balance_amount=90.0,
+               balance_due_date=None, manage_token="tok",
+               transfers_included=0, excursions_included=0)
+
+    class _Row(dict):
+        def keys(self):
+            return list(dict.keys(self))
+
+    with m.app.test_request_context("/"):
+        off = m.workshop_email_context(_Row(row))["included_note"]
+        row["transfers_included"] = 1
+        row["excursions_included"] = 1
+        on = m.workshop_email_context(_Row(row))["included_note"]
+    conn.close()
+
+    s.check("a workshop spent at the house promises no transfers",
+            "Toulouse" not in off,
+            detail=off[:110])
+    s.check("nor excursions it does not run",
+            "excursions" not in off.lower(), detail=off[:110])
+    s.check("but one that has them says so",
+            "Toulouse" in on and "excursions" in on.lower(),
+            detail=on[:110])
+    s.check("and both tell everyone to pack lightly",
+            "no lift" in off and "no lift" in on,
+            detail="the staircase is the same either way")
+
     _cleanup()
     return s

@@ -47707,24 +47707,24 @@ EMAIL_TEMPLATE_TAGS = {
     "review_invitation": ("guest_name", "review_url"),
     "room_feedback_request": ("feedback_url", "guest_name", "room_name"),
     "room_waitlist_opening": ("book_url", "desired_arrival", "desired_departure", "name"),
-    "workshop_moved": ("balance_amount", "balance_due_date", "balance_line",
+    "workshop_moved": ("included_note", "balance_amount", "balance_due_date", "balance_line",
                        "dates", "deposit_amount", "guest_name", "manage_url",
                        "party_size", "price_block", "reference_code",
                        "total_price", "workshop_title"),
-    "workshop_balance_reminder": ("balance_amount", "balance_due_date", "balance_line",
+    "workshop_balance_reminder": ("included_note", "balance_amount", "balance_due_date", "balance_line",
                                   "dates", "deposit_amount", "guest_name", "manage_url",
                                   "party_size", "price_block", "reference_code",
                                   "total_price", "workshop_title"),
-    "workshop_cancelled": ("balance_amount", "balance_due_date", "balance_line", "dates",
+    "workshop_cancelled": ("included_note", "balance_amount", "balance_due_date", "balance_line", "dates",
                            "deposit_amount", "guest_name", "manage_url", "party_size",
                            "price_block", "reference_code", "total_price", "workshop_title"),
-    "workshop_confirmed": ("balance_amount", "balance_due_date", "balance_line", "dates",
+    "workshop_confirmed": ("included_note", "balance_amount", "balance_due_date", "balance_line", "dates",
                            "deposit_amount", "guest_name", "manage_url", "party_size",
                            "price_block", "reference_code", "total_price", "workshop_title"),
-    "workshop_declined": ("balance_amount", "balance_due_date", "balance_line", "dates",
+    "workshop_declined": ("included_note", "balance_amount", "balance_due_date", "balance_line", "dates",
                           "deposit_amount", "guest_name", "manage_url", "party_size",
                           "price_block", "reference_code", "total_price", "workshop_title"),
-    "workshop_deposit_receipt": ("balance_amount", "balance_due_date", "balance_line",
+    "workshop_deposit_receipt": ("included_note", "balance_amount", "balance_due_date", "balance_line",
                                  "dates", "deposit_amount", "guest_name", "manage_url",
                                  "party_size", "price_block", "reference_code",
                                  "total_price", "workshop_title"),
@@ -47736,7 +47736,7 @@ EMAIL_TEMPLATE_TAGS = {
     "house_payment_received": ("amount", "balance_line", "booking_url", "guest_email",
                                "guest_name", "paid_at", "paid_how", "reference_code",
                                "what_for"),
-    "workshop_registration_received": ("balance_amount", "balance_due_date", "balance_line",
+    "workshop_registration_received": ("included_note", "balance_amount", "balance_due_date", "balance_line",
                                        "dates", "deposit_amount", "guest_name", "manage_url",
                                        "party_size", "price_block", "reference_code",
                                        "total_price", "workshop_title"),
@@ -48565,9 +48565,33 @@ def workshop_email_context(booking):
         price_lines.append(f"Deposit due now: €{booking['deposit_amount']:.2f}")
         if booking["balance_amount"]:
             price_lines.append(f"Balance of €{booking['balance_amount']:.2f} due {booking['balance_due_date'] or 'at check-in'}")
+    # What this workshop actually carries. Built here rather than written
+    # into the template, because it differs per workshop and a template is
+    # flat text the owner edits -- there is no "if" to write it with. The
+    # owner keeps the sentence around it; they cannot make it promise
+    # transfers a workshop has none of.
+    #
+    # keys() rather than a bare read: the same context builder is called with
+    # rows from several routes, and one that predates these columns would
+    # raise rather than quietly tell the guest the wrong thing.
+    has = booking.keys()
+    included = ["Everything is included, the full experience: every meal, "
+                "the ch\u00e2teau's wines and spirits and a tour of the "
+                "ch\u00e2teau"]
+    if "excursions_included" in has and booking["excursions_included"]:
+        included[0] += ", and the excursions"
+    included[0] += "."
+    if "transfers_included" in has and booking["transfers_included"]:
+        included.append(
+            "We meet you at 11am in central Toulouse on the first day, and "
+            "have you back by about one on the last.")
+    included.append("Please pack lightly: the bedrooms are reached by the "
+                    "original staircase, and there is no lift.")
+
     return {
         "guest_name": booking["guest_name"],
         "workshop_title": booking["title"],
+        "included_note": " ".join(included),
         "dates": date_line,
         "party_size": booking["party_size"],
         "reference_code": booking["reference_code"],
