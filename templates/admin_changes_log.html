@@ -40,7 +40,7 @@
           <td>{{ r.when }}</td>
           <td>{{ r.action_words }}</td>
           <td>{{ r.object }}</td>
-          <td>{{ r.who }}{% if r.endpoint %}<br><span class="g-hint">{{ r.endpoint|replace('_', ' ') }}</span>{% endif %}</td>
+          <td>{{ r.who }}{% if r.endpoint %}<br><span class="cell-note">{{ r.endpoint|replace('_', ' ') }}</span>{% endif %}</td>
           <td>
             {% if r.fields %}
             <details>

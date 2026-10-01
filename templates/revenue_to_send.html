@@ -32,7 +32,7 @@
 </div>
 
 {% if not configured %}
-<p class="g-hint">Pennylane is not connected yet, so nothing can go. Add
+<p class="upload-hint">Pennylane is not connected yet, so nothing can go. Add
 <code>PENNYLANE_API_TOKEN</code> and these will be here waiting.</p>
 {% endif %}
 
@@ -51,19 +51,19 @@
       <tr>
         <td>
           <a href="{{ url_for('booking_statement', manage_token=b['manage_token']) }}">{{ b['guest_name'] }}</a>
-          <span class="g-hint">{{ b['reference_code'] }}</span>
+          <span class="cell-note">{{ b['reference_code'] }}</span>
         </td>
         <td>
           {{ b['room_name'] }}
-          <span class="g-hint">{{ b['arrival_date']|date_short }} → {{ b['departure_date']|date_short }}</span>
+          <span class="cell-note">{{ b['arrival_date']|date_short }} → {{ b['departure_date']|date_short }}</span>
         </td>
         <td class="num">€{{ '%.2f'|format(r['total']) }}</td>
         <td>
           {% if r['sent'] %}
           <span class="mini-status status-active">Sent</span>
-          <span class="g-hint">{{ r['sent']['sent_at']|house_day }}{% if r['sent']['pennylane_id'] %} · {{ r['sent']['pennylane_id'] }}{% endif %}</span>
+          <span class="cell-note">{{ r['sent']['sent_at']|house_day }}{% if r['sent']['pennylane_id'] %} · {{ r['sent']['pennylane_id'] }}{% endif %}</span>
           {% elif r['total'] <= 0 %}
-          <span class="g-hint">Nothing to invoice</span>
+          <span class="muted">Nothing to invoice</span>
           {% else %}
           <span class="mini-status status-pending">Waiting</span>
           {% endif %}
@@ -98,13 +98,13 @@
     <tbody>
       {% for e in events %}{% set v = e['event'] %}
       <tr>
-        <td>{{ v['contact_name'] }}<span class="g-hint">{{ v['reference_code'] or '' }}</span></td>
-        <td>{{ v['event_type'] }}<span class="g-hint">{{ v['preferred_date']|date_short }}</span></td>
+        <td>{{ v['contact_name'] }}<span class="cell-note">{{ v['reference_code'] or '' }}</span></td>
+        <td>{{ v['event_type'] }}<span class="cell-note">{{ v['preferred_date']|date_short }}</span></td>
         <td class="num">€{{ '%.2f'|format(e['total']) }}</td>
         <td>
           {% if e['sent'] %}<span class="mini-status status-active">Sent</span>
-          <span class="g-hint">{{ e['sent']['sent_at']|house_day }}</span>
-          {% elif e['total'] <= 0 %}<span class="g-hint">No price on it</span>
+          <span class="cell-note">{{ e['sent']['sent_at']|house_day }}</span>
+          {% elif e['total'] <= 0 %}<span class="muted">No price on it</span>
           {% else %}<span class="mini-status status-pending">Waiting</span>{% endif %}
         </td>
         <td>
@@ -144,16 +144,16 @@
       {% for w in ateliers %}
       {% set b = w['booking'] %}
       <tr>
-        <td>{{ b['guest_name'] }}<span class="g-hint">{{ b['reference_code'] }}</span></td>
+        <td>{{ b['guest_name'] }}<span class="cell-note">{{ b['reference_code'] }}</span></td>
         <td>{{ b['workshop_title'] }}
-          <span class="g-hint">{{ b['start_date']|date_short }}</span></td>
+          <span class="cell-note">{{ b['start_date']|date_short }}</span></td>
         <td class="num">€{{ '%.2f'|format(w['total']) }}</td>
         <td>
           {% if w['sent'] %}
           <span class="mini-status status-active">Sent</span>
-          <span class="g-hint">{{ w['sent']['sent_at']|house_day }}</span>
+          <span class="cell-note">{{ w['sent']['sent_at']|house_day }}</span>
           {% elif w['total'] <= 0 %}
-          <span class="g-hint">Nothing to invoice</span>
+          <span class="muted">Nothing to invoice</span>
           {% else %}
           <span class="mini-status status-pending">Waiting</span>
           {% endif %}
@@ -211,7 +211,7 @@
           {% if c.sent %}
             Sent{% if c.sent_at %} {{ c.sent_at|house_day|date_short }}{% endif %}
             {% if c.lag_days is not none %}
-              <span class="g-hint">{{ c.lag_days }} day{{ '' if c.lag_days == 1 else 's' }} after it was spent</span>
+              <span class="cell-note">{{ c.lag_days }} day{{ '' if c.lag_days == 1 else 's' }} after it was spent</span>
             {% endif %}
           {% else %}
             <span class="mini-status status-pending">Not sent</span>
@@ -252,9 +252,9 @@
         <td>
           {% if d['sent'] %}
           <span class="mini-status status-active">Sent</span>
-          <span class="g-hint">{{ d['sent']['sent_at']|house_day }}{% if d['sent']['pennylane_id'] %} · {{ d['sent']['pennylane_id'] }}{% endif %}</span>
+          <span class="cell-note">{{ d['sent']['sent_at']|house_day }}{% if d['sent']['pennylane_id'] %} · {{ d['sent']['pennylane_id'] }}{% endif %}</span>
           {% elif d['total'] <= 0 %}
-          <span class="g-hint">Nothing taken</span>
+          <span class="muted">Nothing taken</span>
           {% else %}
           <span class="mini-status status-pending">Waiting</span>
           {% endif %}

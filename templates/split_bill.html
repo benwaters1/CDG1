@@ -111,7 +111,7 @@
             <form method="post" action="{{ url_for('cancel_bill_share', share_id=share['id']) }}"
                   onsubmit="return confirm('Take this share back? Their link stops working.');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn-mini btn-danger">Take it back</button>
+              <button type="submit" class="btn-mini btn-mini-danger">Take it back</button>
             </form>
           </div>
           {% endif %}

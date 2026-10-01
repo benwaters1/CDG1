@@ -26,7 +26,7 @@
     <span class="stat-tile-value">{{ data.expected or '&mdash;'|safe }}</span>
     <span class="stat-tile-label">
       {% if data.numbers_confirmed %}Final numbers
-        {% if data.numbers_fixed_on %}<span class="g-hint">fixed {{ data.numbers_fixed_on.strftime('%d %b') }}</span>{% endif %}
+        {% if data.numbers_fixed_on %}<span class="stat-tile-sub">fixed {{ data.numbers_fixed_on.strftime('%d %b') }}</span>{% endif %}
       {% else %}Quoted for &mdash; not yet final{% endif %}
     </span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">

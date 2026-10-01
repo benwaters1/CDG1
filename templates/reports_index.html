@@ -19,7 +19,7 @@
 
 {% if lv.rows %}
   {% for area, pages in groups %}
-  <h2 class="section-h">{{ area }} <span class="g-hint">{{ pages|length }}</span></h2>
+  <h2 class="section-heading">{{ area }} <span class="muted">{{ pages|length }}</span></h2>
   <div class="table-wrap">
     <table class="data-table">
       <tbody>
@@ -30,7 +30,7 @@
           </td>
           <td>
             {% if p.described %}{{ p.what }}
-            {% else %}<span class="g-hint">No description on the page itself.</span>{% endif %}
+            {% else %}<span class="muted">No description on the page itself.</span>{% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -44,7 +44,7 @@
 {% endif %}
 
 {% if undescribed %}
-<h2 class="section-h">Pages that cannot say what they do</h2>
+<h2 class="section-heading">Pages that cannot say what they do</h2>
 <p class="upload-hint" style="margin-top:-6px;">
   Listed rather than left blank. A blank line reads as a report that does
   nothing; a named one is a job somebody can do in a minute, by writing the

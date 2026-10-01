@@ -315,6 +315,7 @@ SUITES = [
     "test_restaurant_four",
     "test_buying",
     "test_kitchen",
+    "test_kitchen_wall",
     "test_access",
     "test_rota_templates",
     "test_agreements",

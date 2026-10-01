@@ -90,8 +90,8 @@
     {% endif %}
 
     {% if f['reply'] %}
-    <div class="g-mb-note" style="margin-top:8px;">
-      <span class="g-mb-dt">What we said back{% if f['replied_at'] %}, {{ f['replied_at']|house_day }}{% endif %}</span>
+    <div class="notes-block">
+      <span class="detail-label">What we said back{% if f['replied_at'] %}, {{ f['replied_at']|house_day }}{% endif %}</span>
       <p>{{ f['reply'] }}</p>
     </div>
     {% endif %}
