@@ -34,7 +34,7 @@ def _cleanup(conn):
 
 
 def _stay(conn, email, name, days_ago, price=900, status="confirmed", n=0,
-          nights=2):
+          nights=2, no_show=False):
     """A stay that began `days_ago` days ago; a negative number is one still
     to come."""
     today = m.house_today()
@@ -49,6 +49,10 @@ def _stay(conn, email, name, days_ago, price=900, status="confirmed", n=0,
         (room, ref, ref + "tok", name, email, d.isoformat(),
          (d + timedelta(days=nights)).isoformat(), status, price,
          datetime.now(timezone.utc).isoformat()))
+    if no_show:
+        # A stamp, not a status: the booking stays confirmed.
+        conn.execute("UPDATE bookings SET no_show_at = ? WHERE reference_code = ?",
+                     (datetime.now(timezone.utc).isoformat(), ref))
     conn.commit()
 
 
@@ -90,6 +94,25 @@ def run():
     s.check("only confirmed stays count",
             _find(m.repeat_guests(conn), TAG + "Declined") is None,
             detail="one confirmed stay and one declined is not a regular")
+
+    s.section("A stay nobody came for is not a visit")
+    # Confirmed, with no_show_at stamped: the status alone read it as a stay
+    # made, so one visit and one no-show was a regular, last here the day they
+    # did not come. What it was charged is still spend.
+    _stay(conn, TAG + "noshow@ex.invalid", TAG + "NoShow", 300)
+    _stay(conn, TAG + "noshow@ex.invalid", TAG + "NoShow", 90, n=1, no_show=True)
+    s.check("one visit and one no-show is not a regular",
+            _find(m.repeat_guests(conn), TAG + "NoShow") is None,
+            detail="the no-show is still 'confirmed'; only no_show_at says it")
+    _stay(conn, TAG + "noshow@ex.invalid", TAG + "NoShow", 200, n=2)
+    came = _find(m.repeat_guests(conn), TAG + "NoShow")
+    s.check("two visits and a no-show is two stays, the last the one they made",
+            came and came["stays"] == 2
+            and came["last"] == (m.house_today() - timedelta(days=200)).isoformat(),
+            detail=f"{came['stays']} stays, last {came['last']}" if came else "not found")
+    s.check("and the no-show's charge still counts towards what they spent",
+            came and came["spend"] == 900 * 3,
+            detail=str(came["spend"]) if came else "")
 
     s.section("One address typed two ways is one guest")
     # This is the defect underneath everything else on the page: a regular

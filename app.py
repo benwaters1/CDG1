@@ -9018,6 +9018,13 @@ def house_when(stamp):
 
 
 app.jinja_env.filters["house_when"] = house_when
+# What a page's own script needs to name the house's day in the browser. It
+# took `new Date().toISOString().slice(0, 10)`, which is the day in UTC: from
+# midnight to 02:00 here every date picker on the public site still offered
+# yesterday. The zone lets the browser work the day out itself (a page left
+# open overnight moves on with it); the day is its answer if it cannot.
+app.jinja_env.globals["house_tz"] = LOCAL_TZ.key
+app.jinja_env.globals["house_today_iso"] = house_today_iso
 app.jinja_env.globals["date_range"] = format_date_range
 # So a find page cannot print a prefix the app does not generate.
 app.jinja_env.globals["ref_prefix"] = REFERENCE_PREFIXES
@@ -14837,14 +14844,18 @@ def repeat_guests(conn, *, today=None, min_stays=2):
 
     for r in conn.execute(
         """SELECT guest_email, guest_name, arrival_date, departure_date,
-                  COALESCE(total_price, 0) AS price
+                  COALESCE(total_price, 0) AS price, no_show_at
              FROM bookings
             WHERE status = 'confirmed' AND guest_email IS NOT NULL
             ORDER BY arrival_date""").fetchall():
         e = entry(r["guest_email"], r["guest_name"])
-        e["stays"].append({"arrival_date": r["arrival_date"],
-                           "departure_date": r["departure_date"],
-                           "price": r["price"]})
+        # A stay nobody came for is charged -- so it is spend -- and is not a
+        # visit. It stays 'confirmed' with no_show_at stamped, so the status
+        # alone made them a regular, and "last here" the day they did not come.
+        if not r["no_show_at"]:
+            e["stays"].append({"arrival_date": r["arrival_date"],
+                               "departure_date": r["departure_date"],
+                               "price": r["price"]})
         e["spend"] += r["price"]
 
     for r in conn.execute(
@@ -22920,16 +22931,18 @@ def guest_values(conn, limit=25, headroom=3):
         record = guest_record(conn, guest_id)
         if not record or not record["spent"]:
             continue
-        stays = record["stays"]
         out.append({
             "id": guest_id,
             "name": record["guest"]["name"],
             "email": record["guest"]["email"],
             "spent": record["spent"], "owed": record["owed"],
             "nights": record["nights"],
-            "stays": sum(1 for b in stays if b["status"] == "confirmed"),
-            "called_off": sum(1 for b in stays
-                              if b["status"] in ("cancelled", "declined", "no_show")),
+            # guest_record's counts. 'no_show' was listed here as a status,
+            # which no booking can have: a stay nobody came for stays
+            # confirmed with no_show_at stamped, so it was counted as a stay
+            # and never as called off.
+            "stays": record["stay_count"],
+            "called_off": record["called_off"],
             "workshops": len(record["workshops"]),
             "meals": len(record["dinners"]),
             "first_seen": record["first_seen"], "last_seen": record["last_seen"],
@@ -39541,8 +39554,7 @@ def guest_detail(guest_id):
     overview = None
     if is_owner:
         overview = [
-            overview_cell("Stays", len([b for b in record["stays"]
-                                        if b["status"] == "confirmed"]),
+            overview_cell("Stays", record["stay_count"],
                           hint=f"{record['nights']} night(s)"),
             overview_cell("Spent with us", euro(record["spent"]),
                           hint="gross: stays, ateliers and events"
@@ -69735,12 +69747,20 @@ def guest_record(conn, guest_id):
                    ("Said yes to marketing texts", yes["granted_at"]) if yes else
                    ("Texted about their stays only", None))
 
+    # A STAY THAT STANDS: confirmed and not marked as never arrived. A no-show
+    # is a stamp, not a status (see bookings_no_show_at), so it stays
+    # 'confirmed' for ever -- and every count here that asked the status alone
+    # took a stay nobody came for as one they made: a stay, its nights, and
+    # "last here" on the day they failed to turn up. The money is not read from
+    # this. A no-show's bill still stands under the terms, which the statement
+    # already knows.
+    stood = [b for b in stays if b["status"] == "confirmed" and not b["no_show_at"]]
+
     # Last HERE: the latest confirmed stay that has begun (guest_visits). It
     # was the latest departure on any booking at all -- cancelled, declined or
     # not yet begun -- so the house's most valuable guests could read as last
     # here on a day that had not come.
-    last_visit = guest_visits(
-        [b for b in stays if b["status"] == "confirmed"])["last"]
+    last_visit = guest_visits(stood)["last"]
 
     return {
         "marketing": marketing,
@@ -69754,13 +69774,20 @@ def guest_record(conn, guest_id):
         "feedback": said,
         "linked_count": len(linked), "by_email_count": len(by_email),
         "spent": spent, "owed": owed, "paid": paid, "at_table": at_table,
-        # Nights spent here: confirmed stays, not every request ever made.
+        # The stays that stand, and those that came to nothing: cancelled,
+        # declined, or confirmed and never arrived. Counted here once, so the
+        # guest page and the ranking cannot each decide what a stay is.
+        "stay_count": len(stood),
+        "called_off": sum(1 for b in stays
+                          if b["status"] in ("cancelled", "declined")
+                          or (b["status"] == "confirmed" and b["no_show_at"])),
+        # Nights spent here: stays that stand, not every request ever made.
         "nights": sum(
             max(0, ((parse_date(b["departure_date"]) - parse_date(b["arrival_date"])).days
                     if b["arrival_date"] and b["departure_date"]
                     and parse_date(b["arrival_date"]) and parse_date(b["departure_date"])
                     else 0))
-            for b in stays if b["status"] == "confirmed"),
+            for b in stood),
         # The house's day, as an ISO date (see known_since above).
         "first_seen": known_since.isoformat() if known_since else None,
         "last_seen": last_visit["arrival_date"] if last_visit else None,

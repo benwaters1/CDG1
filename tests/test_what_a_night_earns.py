@@ -38,8 +38,9 @@ TAG = "ZZEARN"
 
 
 def _cleanup(conn):
-    conn.execute("DELETE FROM guests WHERE email IN (?, ?)",
-                 ("zzearn@example.invalid", "zzearn.lately@example.invalid"))
+    conn.execute("DELETE FROM guests WHERE email IN (?, ?, ?)",
+                 ("zzearn@example.invalid", "zzearn.lately@example.invalid",
+                  "zzearn.absent@example.invalid"))
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM room_blocks WHERE reason LIKE ?", (TAG + "%",))
     conn.commit()
@@ -243,6 +244,81 @@ def run():
             detail=f"{seen} — made {today - timedelta(days=100)}, called off "
                    f"{today - timedelta(days=10)}, booked {today + timedelta(days=30)}")
 
+    s.section("A stay nobody came for is called off, not a stay")
+    # A no-show is a STAMP, not a status: the booking stays 'confirmed' with
+    # no_show_at set, because the status CHECK has no 'no_show' in it. The
+    # ranking listed 'no_show' among the statuses that are called off -- a
+    # status no booking can have -- so the stay they never came for was counted
+    # as a stay, its nights as nights here, and never as called off.
+    #
+    # One stay made (three nights), then a later one they never arrived for.
+    # Priced far above anything seeded so the guest is certain to be ranked:
+    # a check that sits behind "if they made the list" is one that can pass by
+    # not running.
+    conn.execute("INSERT INTO guests (name, email, created_at) VALUES (?, ?, ?)",
+                 (TAG + " Absent", "zzearn.absent@example.invalid", now))
+    absent = conn.execute("SELECT id FROM guests WHERE email = ?",
+                          ("zzearn.absent@example.invalid",)).fetchone()["id"]
+    made_on = today - timedelta(days=200)
+    missed_on = today - timedelta(days=40)
+    for ref, arrive, nights, price in (("A1", made_on, 3, 90000),
+                                       ("A2", missed_on, 2, 60000)):
+        conn.execute(
+            """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+               guest_email, arrival_date, departure_date, party_size, status,
+               total_price, linked_guest_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 2, 'confirmed', ?, ?, ?)""",
+            (room_id, TAG + "-" + ref, "tok" + TAG.lower() + ref.lower(),
+             TAG + " Absent", "zzearn.absent@example.invalid", arrive.isoformat(),
+             (arrive + timedelta(days=nights)).isoformat(), price, absent, now))
+    conn.execute("UPDATE bookings SET no_show_at = ? WHERE reference_code = ?",
+                 (now, TAG + "-A2"))
+    conn.commit()
+
+    ranked = [v for v in m.guest_values(conn, limit=10) if v["id"] == absent]
+    s.check("the guest with a no-show is on the ranking", bool(ranked),
+            detail="seeded at 150,000 so nothing seeded outranks them")
+    row = ranked[0] if ranked else {}
+    s.check("one stay made is one stay, not two",
+            row.get("stays") == 1,
+            detail=f"{row.get('stays')} — the stay nobody came for is still "
+                   f"'confirmed', with no_show_at stamped")
+    s.check("and the one they never came for is called off",
+            row.get("called_off") == 1,
+            detail=f"{row.get('called_off')} — 'no_show' is not a status a "
+                   f"booking can have, so asking the status for it finds nothing")
+    s.check("their nights here are the three they spent, not five",
+            row.get("nights") == 3, detail=str(row.get("nights")))
+    s.check("last here is the stay they made, not the day they did not come",
+            row.get("last_seen") == made_on.isoformat(),
+            detail=f"{row.get('last_seen')} — came {made_on}, missed {missed_on}")
+    # THE MONEY IS NOT THIS DISTINCTION. A no-show's bill stands under the
+    # terms, so what they spent still carries it -- and still agrees with the
+    # guest's own record, which is the one definition.
+    absent_record = m.guest_record(conn, absent)
+    made_id = conn.execute("SELECT id FROM bookings WHERE reference_code = ?",
+                           (TAG + "-A1",)).fetchone()["id"]
+    made_bill = m.booking_bill(conn, made_id)["total"]
+    s.check("what a no-show was charged still counts as spent",
+            row.get("spent") is not None
+            and abs(row["spent"] - absent_record["spent"]) < 0.01
+            and row["spent"] > made_bill + 0.01,
+            detail=f"{row.get('spent')} vs record {absent_record['spent']}, "
+                   f"the stay they made alone {made_bill}")
+
+    # The guest's own page reads the same count, not one of its own.
+    page = oc.get(f"/guests/{absent}").get_data(as_text=True)
+    band = {" ".join(re.sub(r"<[^>]+>", " ", label).split()):
+            (" ".join(re.sub(r"<[^>]+>", " ", value).split()),
+             " ".join(re.sub(r"<[^>]+>", " ", hint).split()))
+            for value, label, hint in re.findall(
+                r'<div class="overview-value">(.*?)</div>\s*'
+                r'<div class="overview-label">(.*?)</div>\s*'
+                r'(?:<div class="overview-hint">(.*?)</div>)?', page, re.S)}
+    s.check("and their own page says one stay of three nights",
+            band.get("Stays") == ("1", "3 night(s)"),
+            detail=str(band.get("Stays")))
+
     s.section("The page")
 
     r = oc.get("/reports/what-a-night-earns")
@@ -257,6 +333,15 @@ def run():
     s.check("its Last here for a guest who has not come yet is a dash, not a date",
             cells and cells[-1] in ("—", "&mdash;"),
             detail=f"{cells[-1] if cells else 'no row for the spender'}")
+    # Stays, Nights, ... Called off: the columns as the owner reads them.
+    row = next((x for x in re.findall(r"<tr[^>]*>(.*?)</tr>", body, re.S)
+                if TAG + " Absent" in x), None)
+    cells = ([" ".join(re.sub(r"<[^>]+>", " ", c).split())
+              for c in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)] if row else [])
+    s.check("the page shows the no-show under Called off and not under Stays",
+            len(cells) == 9 and cells[3] == "1" and cells[4] == "3"
+            and cells[7] == "1" and cells[8] == made_on.isoformat(),
+            detail=str(cells) if cells else "no row for the absent guest")
     s.check("it says it does not agree with the occupancy report, and why",
             "not meant to agree" in body,
             detail="two occupancy figures on one site with no explanation is "
