@@ -361,7 +361,7 @@
 {# ---- everything that has passed between us ---------------------------
    Letters and texts either way, conversations, notes, bookings, money and
    consent, in one list. They lived on eleven pages. #}
-<h2 style="margin-top:28px;">History</h2>
+<h2 class="section-heading" style="margin-top:28px;">History</h2>
 {% if not timeline %}
   <div class="empty-state">Nothing has passed between the house and them yet.</div>
 {% else %}
@@ -448,7 +448,7 @@
    APPEND-ONLY, and that is the point. The profile has one free-text notes box,
    so whoever types last silently replaces what the last person wrote — and what
    gets lost is always the older observation nobody thought to repeat. #}
-<h2 style="margin-top:28px;">What we know</h2>
+<h2 class="section-heading" style="margin-top:28px;">What we know</h2>
 <form method="post" action="{{ url_for('add_guest_note_route', guest_id=record.guest['id']) }}"
       style="max-width:640px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -480,7 +480,7 @@
 {% endif %}
 
 {# ---- dates that matter ------------------------------------------------ #}
-<h2 style="margin-top:28px;">Dates that matter</h2>
+<h2 class="section-heading" style="margin-top:28px;">Dates that matter</h2>
 <form method="post" action="{{ url_for('set_guest_dates', guest_id=record.guest['id']) }}"
       style="max-width:640px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -508,7 +508,7 @@
 {# ---- the caution ------------------------------------------------------
    Owner only. "Do not accept a booking from this person" is a decision about
    who the house lets in. An employee who thinks it warranted writes a note. #}
-<h2 style="margin-top:28px;">Caution</h2>
+<h2 class="section-heading" style="margin-top:28px;">Caution</h2>
 {% if record.guest['caution_level'] %}
 <p>
   <span class="mini-status status-declined">{{ caution_levels[record.guest['caution_level']] }}</span>
@@ -546,7 +546,7 @@
 {# ---- using their details ------------------------------------------------
    The right the notice lists. Set when they ask; lifted only when they ask
    again, as a stop on texts is. #}
-<h2 style="margin-top:28px;">Using their details</h2>
+<h2 class="section-heading" style="margin-top:28px;">Using their details</h2>
 <form method="post" action="{{ url_for('restrict_guest', guest_id=g['id']) }}" style="max-width:640px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% if restriction and restriction['restricted_at'] %}
@@ -567,7 +567,7 @@
 
 {# ---- duplicates and merging ------------------------------------------- #}
 {% if duplicates %}
-<h2 style="margin-top:28px;">Might be the same person</h2>
+<h2 class="section-heading" style="margin-top:28px;">Might be the same person</h2>
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr><th>Profile</th><th>Why</th><th></th></tr></thead>

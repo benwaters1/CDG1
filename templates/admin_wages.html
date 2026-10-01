@@ -62,7 +62,7 @@
 </div>
 {% endif %}
 
-<h2>What {{ period.label }} cost</h2>
+<h2 class="section-heading">What {{ period.label }} cost</h2>
 
 {% if not cost.rows %}
   <div class="empty-state">Nobody was on the clock in this period, so there is nothing to cost.</div>
@@ -117,7 +117,7 @@
 </p>
 {% endif %}
 
-<h2>Who is on what</h2>
+<h2 class="section-heading">Who is on what</h2>
 {% if lv.rows %}{% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}{% endif %}
 
 {% if not lv.rows %}
@@ -223,7 +223,7 @@
 </details>
 
 {% if history %}
-<h2>What has been recorded</h2>
+<h2 class="section-heading">What has been recorded</h2>
 <div class="table-wrap">
   <table class="data-table">
     <thead>

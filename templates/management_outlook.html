@@ -108,7 +108,7 @@
 </p>
 
 {% if outlook.worst and outlook.worst.net < 0 %}
-<h2>The tightest month</h2>
+<h2 class="section-heading">The tightest month</h2>
 <p>
   On committed figures alone, <strong>{{ outlook.worst.label }}</strong> is
   €{{ '%.0f'|format(-outlook.worst.net) }} short — €{{ '%.0f'|format(outlook.worst.money_out) }}
@@ -119,7 +119,7 @@
 {% endif %}
 
 {% if costs %}
-<h2>What is on a contract</h2>
+<h2 class="section-heading">What is on a contract</h2>
 <div class="table-wrap">
   <table class="data-table">
     <thead>

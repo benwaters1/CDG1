@@ -38,7 +38,7 @@
 {# What is still to do comes before what is done. Each line closes itself:
    the money given back, the refund made again, the bill decided. #}
 {% if owed_back or failed or left_owing %}
-<h2>Still to do</h2>
+<h2 class="section-heading">Still to do</h2>
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr><th>Who</th><th>What</th><th class="num">Amount</th><th></th></tr></thead>
@@ -73,7 +73,7 @@
 {% endif %}
 
 {% if disputes %}
-<h2>Card disputes</h2>
+<h2 class="section-heading">Card disputes</h2>
 <p class="upload-hint">A guest's bank taking a payment back. Each has a date by which the house must answer in Stripe, or lose by default; a lost one is in the refunds below, because the money has gone back to them.</p>
 <div class="table-wrap">
   <table class="data-table">
@@ -97,7 +97,7 @@
 </div>
 {% endif %}
 
-<h2>Refunds made</h2>
+<h2 class="section-heading">Refunds made</h2>
 {% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
 
 {% if not refunds %}

@@ -438,6 +438,68 @@ def staff_class_audit(srcs, stylesheets, named=()):
     return findings, pages, uses
 
 
+def _element_rule_needs(css, tag):
+    """What each rule that draws a bare <tag> needs: the classes its
+    ancestors must carry. A selector ending in h2 counts, .card-course h2 or
+    a plain h2; one ending in h2.x or .x does not, since it asks for a class
+    the bare tag has not got."""
+    out = []
+    for sel in _css_selectors(css):
+        subject = re.split(r"\s*[\s>+~]\s*", sel.strip())[-1]
+        if re.fullmatch(r"%s(?:::?[\w-]+(?:\([^)]*\))?)*" % tag, subject):
+            out.append(_selector_needs(sel))
+    return out
+
+
+def staff_bare_h2_audit(srcs, stylesheets):
+    """[(page, template, line)] for every <h2> with no class on a staff page
+    that no rule it loads draws as an element.
+
+    The house's section heading is a class, .section-heading, so a bare h2 is
+    drawn by the browser alone: 24px bold Inter, larger than and unlike every
+    other heading on the staff side. A page that styles its own h2 -- the
+    printed menu's course titles, the office display, the Outlook pane, the
+    till's order head -- is drawn and left alone. Per page, as the class
+    audit is: a page with one such rule clears every bare h2 on it."""
+    # Blanked rather than cut, so a line number still points into the file.
+    def blank(m):
+        return "\n" * m.group(0).count("\n")
+    srcs = {n: re.sub(r"\{#.*?#\}", blank, s, flags=re.S) for n, s in srcs.items()}
+    sheet_rules = {n: _element_rule_needs(_strip_comments(css), "h2")
+                   for n, css in stylesheets.items()}
+    out = []
+    for page in sorted(srcs):
+        if page in ("base.html", "public_base.html", "pos_base.html"):
+            continue
+        if not (_template_parent(srcs[page]) or re.search(r"<html\b", srcs[page], re.I)):
+            continue
+        chain, t = [], page
+        while t and t in srcs and t not in chain:
+            chain.append(t)
+            t = _template_parent(srcs[t])
+        if chain[-1] == "public_base.html":
+            continue
+        mem, todo = set(), list(chain)
+        while todo:
+            t = todo.pop()
+            if t not in mem and t in srcs:
+                mem.add(t)
+                todo += list(_template_uses(srcs[t])) + [p for p in [_template_parent(srcs[t])] if p]
+        rules = [need for t in mem for f in _linked_stylesheets(srcs[t])
+                 for need in sheet_rules.get(f, ())]
+        rules += [need for t in mem if "<style" in srcs[t]
+                  for need in _element_rule_needs(_strip_comments(_style_blocks(srcs[t])), "h2")]
+        present = {w for t in mem for w, exact in _class_words(srcs[t]) if exact}
+        if any(need <= present for need in rules):
+            continue
+        for t in sorted(mem):
+            markup = re.sub(r"<script\b[^>]*>.*?</script>", blank, srcs[t], flags=re.S | re.I)
+            for m in re.finditer(r"<h2\b([^>]*)>", markup, re.I):
+                if not re.search(r"\bclass\s*=", m.group(1)):
+                    out.append((page, t, markup.count("\n", 0, m.start()) + 1))
+    return out
+
+
 def _tokens_defined(css):
     return set(re.findall(r"(--[\w-]+)\s*:", css))
 
@@ -681,6 +743,56 @@ def run():
          ["nothing-draws-this"]),
     ]
     for label, got, expected in cases:
+        s.check(label, got == expected, detail="expected %s, got %s" % (expected, got))
+
+    s.section("A section heading on a staff page wears the house's class")
+    # Sixty-odd <h2> on twenty-five staff pages had no class at all, so the
+    # browser drew them: 24px bold Inter, a size larger than the Playfair
+    # .section-heading every other staff section opens with. Nothing reported
+    # it -- the class audit reads classes, and a tag with none has none to read.
+    bare = staff_bare_h2_audit(srcs, sheets)
+    s.check("no staff page has an <h2> without a class that nothing on it draws",
+            not bare,
+            detail="%d, e.g. %s -- write <h2 class=\"section-heading\">, keeping any "
+                   "inline margin" % (len(bare), ["%s:%d" % (t, n) for _p, t, n in bare[:6]]))
+    h2_shells = {"base.html": shell % "style.css", "public_base.html": shell % "gudanes.css"}
+
+    def bare_h2(body, base="base.html", extra=None, css=None):
+        t = dict(h2_shells)
+        t["page.html"] = ('{%% extends "%s" %%}{%% block content %%}%s{%% endblock %%}'
+                          % (base, body))
+        t.update(extra or {})
+        return [(tpl, n) for _p, tpl, n in
+                staff_bare_h2_audit(t, css or {"style.css": ".section-heading{}",
+                                               "gudanes.css": "h2{}"})]
+
+    h2_cases = [
+        ("a bare h2 on a staff page is caught, at its line",
+         bare_h2('<p>x</p>\n<h2>Who</h2>'), [("page.html", 2)]),
+        ("and one with the house's class is not",
+         bare_h2('<h2 class="section-heading" style="margin-top:0;">Who</h2>'), []),
+        ("an inline style is not a class",
+         bare_h2('<h2 style="margin-top:28px;">Who</h2>'), [("page.html", 1)]),
+        ("a public page is left alone: gudanes.css draws its h2",
+         bare_h2('<h2>Who</h2>', base="public_base.html"), []),
+        ("a page whose own style draws its h2 is left alone",
+         bare_h2('<div class="course"><h2>Starters</h2></div>'
+                 '<style>.course h2{ font-size:12px; }</style>'), []),
+        ("but not when the rule needs an ancestor the page lacks",
+         bare_h2('<h2>Starters</h2><style>.course h2{ font-size:12px; }</style>'),
+         [("page.html", 1)]),
+        ("nor when the rule asks for a class the tag has not got",
+         bare_h2('<h2>Starters</h2><style>h2.course{ font-size:12px; }</style>'),
+         [("page.html", 1)]),
+        ("a stylesheet that draws a bare h2 clears it",
+         bare_h2('<h2>Who</h2>', css={"style.css": "h1, h2{ margin:0 }", "gudanes.css": ""}), []),
+        ("a bare h2 in a partial is caught where it is written",
+         bare_h2('{% include "_bit.html" %}', extra={"_bit.html": "\n\n<h2>Who</h2>"}),
+         [("_bit.html", 3)]),
+        ("one in a Jinja comment or a script is not markup",
+         bare_h2('{# <h2>old</h2> #}<script>el.innerHTML = "<h2>x</h2>";</script>'), []),
+    ]
+    for label, got, expected in h2_cases:
         s.check(label, got == expected, detail="expected %s, got %s" % (expected, got))
 
     s.section("A staff page reads only colours and spacings that are defined for it")

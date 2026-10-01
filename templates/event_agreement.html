@@ -55,7 +55,7 @@
 </div>
 {% endif %}
 
-<h2>The quote</h2>
+<h2 class="section-heading">The quote</h2>
 {% if quotes %}
 <div class="table-wrap">
   <table class="data-table">
@@ -110,7 +110,7 @@
 
 {% if event['status'] not in ('cancelled', 'declined') %}
 <div class="detail-card">
-  <h2 style="margin-top:0;">{{ 'Re-quote' if quotes else 'Raise a quote' }}</h2>
+  <h2 class="section-heading" style="margin-top:0;">{{ 'Re-quote' if quotes else 'Raise a quote' }}</h2>
   {% if live %}
   <p class="upload-hint">
     Quote {{ live['version'] }} is still open. Raising another replaces it
@@ -156,7 +156,7 @@
 </div>
 {% endif %}
 
-<h2>The date, while they decide</h2>
+<h2 class="section-heading">The date, while they decide</h2>
 {% if holds %}
 <div class="table-wrap">
   <table class="data-table">
@@ -215,7 +215,7 @@
   </form>
 </div>
 
-<h2>How it will be paid for</h2>
+<h2 class="section-heading">How it will be paid for</h2>
 {% if schedule and schedule.instalments %}
 <div class="table-wrap">
   <table class="data-table">

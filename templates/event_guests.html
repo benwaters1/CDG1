@@ -95,7 +95,7 @@
 {% endif %}
 
 <div class="detail-card">
-  <h2 style="margin-top:0;">Paste the list</h2>
+  <h2 class="section-heading" style="margin-top:0;">Paste the list</h2>
   <p class="upload-hint">
     One person per line: a name on its own, or a name, then where they are
     sitting, then what they cannot eat. It says how many it read, and names
@@ -109,7 +109,7 @@
 </div>
 
 <div class="detail-card">
-  <h2 style="margin-top:0;">Or one at a time</h2>
+  <h2 class="section-heading" style="margin-top:0;">Or one at a time</h2>
   <form method="post" action="{{ url_for('add_event_guest', event_id=data.event['id']) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field-row-2">
