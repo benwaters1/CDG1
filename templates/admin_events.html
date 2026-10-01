@@ -257,7 +257,7 @@ function toggleAddEvent() {
    this the moment it is raised, so editing it never changes what anybody has
    already accepted. #}
 <div class="detail-card">
-  <h2 style="margin-top:0;">The terms every quote carries</h2>
+  <h2 class="section-heading" style="margin-top:0;">The terms every quote carries</h2>
   <form method="post" action="{{ url_for('save_event_terms') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <textarea name="terms" rows="8">{{ event_terms_text }}</textarea>

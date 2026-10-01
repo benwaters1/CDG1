@@ -310,6 +310,8 @@ ENDPOINT_ARGS = {
     ("workshop_calendar_ics", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_confirmation", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_manage", "manage_token"): ("workshop_bookings", "manage_token"),
+    ("workshop_statement", "manage_token"): ("workshop_bookings", "manage_token"),
+    ("mail_log_letter", "line_id"): ("mail_log", "id"),
     ("workshop_pay_balance", "manage_token"): ("workshop_bookings", "manage_token"),
     ("workshop_pay_deposit", "manage_token"): ("workshop_bookings", "manage_token"),
     ("guest_booking_history", "email"): ("bookings", "guest_email"),

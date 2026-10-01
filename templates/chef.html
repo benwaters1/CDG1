@@ -39,7 +39,7 @@
 {% if data.waiting %}
 <h2 class="section-heading">Standing now</h2>
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead><tr><th scope="col">Table</th><th scope="col">Waiting</th>
       <th scope="col">Who</th><th scope="col">Cannot eat</th></tr></thead>
     <tbody>
@@ -69,15 +69,15 @@
 {% endif %}
 {% if data.guests %}
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead><tr><th scope="col">Who</th><th scope="col">Cannot eat</th>
       <th scope="col">Prefers</th><th scope="col">Been before</th></tr></thead>
     <tbody>
       {% for g in data.guests %}
       <tr>
         <th scope="row">{{ g.name }}{% if g.vip %} ★{% endif %}
-          {%- if g.room_name %}<br><span class="g-hint">{{ g.room_name }}{% if g.last_night %} · last night{% endif %}</span>
-          {%- else %}<br><span class="g-hint">{{ g.party }} at table</span>{% endif %}</th>
+          {%- if g.room_name %}<span class="cell-note">{{ g.room_name }}{% if g.last_night %} · last night{% endif %}</span>
+          {%- else %}<span class="cell-note">{{ g.party }} at table</span>{% endif %}</th>
         <td>{% if g.dietary_notes %}<strong>{{ g.dietary_notes }}</strong>{% endif %}</td>
         <td>{{ g.preferences or '' }}</td>
         <td>{% if g.stay_count %}{{ g.stay_count }}×{% if g.last_stay %} · {{ g.last_stay }}{% endif %}{% endif %}</td>
@@ -96,17 +96,17 @@
 {% if data.money %}
 <h2 class="section-heading">What is owed</h2>
 <div class="table-wrap">
-  <table>
-    <thead><tr><th scope="col">Table</th><th scope="col">Bill</th>
-      <th scope="col">Taken</th><th scope="col">Still owed</th>
+  <table class="data-table">
+    <thead><tr><th scope="col">Table</th><th scope="col" class="num">Bill</th>
+      <th scope="col" class="num">Taken</th><th scope="col" class="num">Still owed</th>
       <th scope="col">Sitting</th></tr></thead>
     <tbody>
       {% for m in data.money %}
       <tr>
-        <th scope="row">{{ m.table }}{% if m.guest %}<br><span class="g-hint">{{ m.guest }}</span>{% endif %}</th>
-        <td style="font-variant-numeric: tabular-nums;">€{{ '%.2f'|format(m.bill) }}</td>
-        <td style="font-variant-numeric: tabular-nums;">{% if m.taken %}€{{ '%.2f'|format(m.taken) }}{% endif %}</td>
-        <td style="font-variant-numeric: tabular-nums;">
+        <th scope="row">{{ m.table }}{% if m.guest %}<span class="cell-note">{{ m.guest }}</span>{% endif %}</th>
+        <td class="num">€{{ '%.2f'|format(m.bill) }}</td>
+        <td class="num">{% if m.taken %}€{{ '%.2f'|format(m.taken) }}{% endif %}</td>
+        <td class="num">
           {%- if m.owed > 0.005 %}<strong>€{{ '%.2f'|format(m.owed) }}</strong>
           {%- else %}<span class="mini-status status-onshift">settled</span>{% endif %}</td>
         <td>{% if m.sitting_minutes %}{{ m.sitting_minutes }} min{% endif %}</td>

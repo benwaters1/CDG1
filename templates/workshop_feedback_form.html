@@ -5,7 +5,7 @@
 
 <section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
 <div class="page-head">
-  <h1>How was {{ booking['title'] }}?</h1>
+  <h1>How was {{ booking['title'] or 'your workshop' }}?</h1>
 </div>
 
 {% if too_early %}

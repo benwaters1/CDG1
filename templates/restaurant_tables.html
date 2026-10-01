@@ -22,10 +22,10 @@
 <div class="detail-card">
   <h2 class="section-heading">Who is booked</h2>
   {% if not bookings %}
-  <p class="empty-note">Nobody booked for this night.</p>
+  <p class="empty-inline">Nobody booked for this night.</p>
   {% else %}
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead><tr><th>Party</th><th class="num">Covers</th><th>Anything to know</th><th>Table</th></tr></thead>
       <tbody>
         {% for b in bookings %}
@@ -58,7 +58,7 @@
 <div class="detail-card">
   <h2 class="section-heading">The tables</h2>
   {% if not tables %}
-  <p class="empty-note">No tables laid out yet.</p>
+  <p class="empty-inline">No tables laid out yet.</p>
   {% else %}
   <div class="doc-list">
     {% for t in tables %}

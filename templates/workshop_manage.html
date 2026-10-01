@@ -11,7 +11,7 @@
     <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
     <circle cx="60" cy="13" r="1.4"/>
   </svg>
-  <p class="g-eyebrow">{{ t('Your atelier') }}</p>
+  <p class="g-eyebrow">{{ t('Your workshop') }}</p>
   <h1>{{ booking['title'] }}</h1>
   <p class="g-p">Status: <span class="mini-status status-{{ (booking['status']|string)|lower }}">{{ booking['status'] }}</span></p>
 
@@ -65,6 +65,7 @@
       <div><dt>Paid</dt><dd>€{{ '{:,.2f}'.format(total_paid) }}</dd></div>
       <div><dt>Balance due</dt><dd>€{{ '{:,.2f}'.format(balance_due) }}</dd></div>
     </dl>
+    <p class="g-p" style="margin-top:var(--s2);"><a href="{{ url_for('workshop_statement', manage_token=booking['manage_token']) }}" class="g-btn g-btn--sm">Your statement</a></p>
     {% if stripe_enabled and booking['deposit_amount'] and not booking['deposit_paid_at'] %}
     <a href="{{ url_for('workshop_pay_deposit', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s3);">Pay deposit — €{{ '{:,.2f}'.format(booking['deposit_amount']) }}</a>
     {% elif stripe_enabled and booking['deposit_paid_at'] and balance_due > 0 %}
@@ -148,7 +149,7 @@
      first and it takes a deliberate second action to open. #}
   <details class="g-cancel-fold" style="margin-top:var(--s4);">
     <summary>I need to cancel</summary>
-    <p class="g-hint" style="margin-top:var(--s3)">Registrations are non-refundable, deposit included. Write to us before you cancel — we can usually move you to another atelier instead.</p>
+    <p class="g-hint" style="margin-top:var(--s3)">Registrations are non-refundable, deposit included. Write to us before you cancel — we can usually move you to another workshop instead.</p>
     <p class="g-hint"><a href="mailto:{{ contact_address('workshops') }}">Write to us first</a></p>
     <form method="post" onsubmit="return confirm('Cancel this registration? It is non-refundable and cannot be undone.');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

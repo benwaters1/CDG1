@@ -173,6 +173,31 @@ def run():
             detail=found[:200])
     s.check("and says what they cannot eat",
             "shellfish" in found, detail=found[:200])
+    # Their one stay is a fortnight away. It came back as "1 stay(s), last"
+    # that fortnight, which the model then repeats as a fact about a guest
+    # who has never set foot in the house.
+    s.check("a guest who has only booked is not said to have stayed",
+            "no stay made yet" in found and "stay(s) made" not in found,
+            detail=found[:200])
+    s.check("and the stay they have booked is given as booked",
+            "booked to arrive " + arrive.isoformat() in found, detail=found[:200])
+    before = arrive - m.timedelta(days=400)
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+             guest_email, arrival_date, departure_date, party_size, status,
+             created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 2, 'confirmed', ?)""",
+        (room["id"], TAG + "-PAST", TAG.lower() + "pasttok",
+         TAG + " Almeida", TAG.lower() + ".almeida@example.invalid",
+         before.isoformat(), (before + m.timedelta(days=2)).isoformat(), now))
+    conn.commit()
+    again = m.assistant_read_tool(conn, owner, "find_guest",
+                                  {"query": TAG + " Almeida"})
+    s.check("with a stay made as well, it counts that one and says when it began",
+            "1 stay(s) made, last began " + before.isoformat() in again,
+            detail=again[:200])
+    s.check("and still gives the one ahead as booked, not as the last",
+            "booked to arrive " + arrive.isoformat() in again, detail=again[:200])
 
     here = m.assistant_read_tool(conn, owner, "who_is_here", {})
     s.check("and it can say who is in the house", isinstance(here, str) and here,

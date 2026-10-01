@@ -43,7 +43,7 @@
   {% endif %}
 </div>
 
-<h2>What came in</h2>
+<h2 class="section-heading">What came in</h2>
 {% if not payments %}
   <div class="empty-state">No payment is recorded against this {{ kind|lower }}, so there is nothing to give back.</div>
 {% else %}
@@ -74,7 +74,7 @@
 {% endif %}
 
 {% if ceiling > 0 %}
-<h2>Give money back</h2>
+<h2 class="section-heading">Give money back</h2>
 <form method="post" onsubmit="return confirm('Make this refund? A refund to a card moves real money.');">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <fieldset class="refund-fields">
@@ -153,7 +153,7 @@
   <p class="upload-hint">Nothing is left to give back on this {{ kind|lower }}.</p>
 {% endif %}
 
-<h2>Refunds made</h2>
+<h2 class="section-heading">Refunds made</h2>
 {% if not history %}
   <div class="empty-state">None yet.</div>
 {% else %}

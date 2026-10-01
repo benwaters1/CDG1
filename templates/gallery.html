@@ -1,6 +1,6 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('Gallery', None)] %}
-{% block title %}Gallery{% endblock %}
+{% block title %}Gallery: The Château in Photographs{% endblock %}
 {# No bodyclass: this page has no hero. I had added has-hero hero--full from the stylesheet's
    (stale) list of full-hero pages; the header only looked right because its script falls back. #}
 {% block description %}Château de Gudanes photographed over a decade of restoration — by Vogue, AD Italia, Zimmermann, and the people living in the middle of the work.{% endblock %}
@@ -311,7 +311,7 @@
   <div class="g-journal__in">
     <p class="g-eyebrow">The Journal</p>
     <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
+    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the workshop dates are released. Sent when there is something worth sending.</p>
     <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {# One id, set once. Calling random twice produced a different number for
@@ -323,7 +323,7 @@
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>
           <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
-          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Workshop dates</label>
           <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
         </fieldset>
       <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>

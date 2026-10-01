@@ -140,6 +140,24 @@ page rendered perfectly while doing the wrong thing.
   is what a convention nothing enforces gets you. `test_table_overflow` now
   enforces it on the source.
 
+- **The staff header must fit a phone, and only a browser can tell.** Its
+  strip (bell, name, Backup, EN/FR/ES, Password, Log out) could not wrap, and
+  the touch rules give each item 44px, so it ran to 401px on a 390px phone for
+  the owner and dragged every staff page sideways (434px in French). Below
+  600px its two groups now join the header's own rows. That fault is a sum
+  that depends on the words and the name, so `test_staff_header_on_a_phone`
+  measures real pages in headless Chrome with a touch screen emulated, at
+  320-601px. It needs a browser, and it fails rather than skips without one
+  (set `GUDANES_CHROME`). So does `test_utc_slices`, which runs the public
+  date pickers at a frozen 00:30 to read what they allow; it finds Chrome
+  with this suite's `find_browser()`. So does `test_nothing_overprints`,
+  which measures the ink on the fridge log and the event pages: a
+  disclaimer printed over the hint above it, and tile figures run out of
+  their tiles, both of which rendered every word and broke nothing else.
+  So does `test_kitchen_wall`, which runs a kitchen page at `?wall=1` with
+  its reload stood in, because the stamp going blank after the first reload
+  only shows when the script runs.
+
 - **A heading down the side of a table takes its look from `style.css`.**
   Row headings (`<th scope="row">`) and the labels on totals rows share the
   `.data-table td` rule, so they get a cell's padding and rule and sit on

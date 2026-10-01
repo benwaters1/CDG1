@@ -1,0 +1,50 @@
+{# One booking's statement drawn for a mail client, beneath a letter's words:
+   tables and inline styles, one 600px column, like everything else in a
+   letter. The same view the statement page draws (booking_statement_view), so
+   the receipt and the page cannot say two things about the same money. #}
+{% set cell = "padding:6px 8px 6px 0; border-bottom:1px solid #EFE7DA; vertical-align:top;" %}
+{% set head = "padding:6px 8px 6px 0; border-bottom:1px solid #D9CFC1; font-weight:600; text-align:left;" %}
+{% set money = "padding:6px 0; border-bottom:1px solid #EFE7DA; text-align:right; white-space:nowrap; vertical-align:top;" %}
+<p style="margin:28px 0 8px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
+          letter-spacing:.14em; text-transform:uppercase; color:#73562D;">Statement{% if statement.booking %} · {{ statement.booking.ref }}{% endif %}</p>
+{% if statement.booking %}
+<p style="margin:0 0 10px; font-family:Helvetica,Arial,sans-serif; font-size:15px; color:#14305F;">{{ statement.booking.what }}</p>
+{% endif %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+       style="border-collapse:collapse; font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.5; color:#2C3E50;">
+  <tr><th style="{{ head }}">Date</th><th style="{{ head }}">Description</th><th style="{{ head }} text-align:right;">Amount</th></tr>
+  {% for x in statement.charges %}
+  <tr><td style="{{ cell }} white-space:nowrap;">{{ x.day|date_short }}</td><td style="{{ cell }}">{{ x.what }}</td>
+      <td style="{{ money }}">{% if x.charge < 0 %}−€{{ '{:,.2f}'.format(-x.charge) }}{% else %}€{{ '{:,.2f}'.format(x.charge) }}{% endif %}</td></tr>
+  {% endfor %}
+  {% if statement.reductions %}
+  <tr><td></td><td style="{{ cell }}">Subtotal</td><td style="{{ money }}">€{{ '{:,.2f}'.format(statement.subtotal) }}</td></tr>
+  <tr><td></td><td style="{{ cell }}">Discounts and reductions</td><td style="{{ money }}">−€{{ '{:,.2f}'.format(statement.reductions) }}</td></tr>
+  {% endif %}
+  <tr><td></td><td style="{{ cell }} font-weight:600;">Total</td><td style="{{ money }} font-weight:600;">€{{ '{:,.2f}'.format(statement.total) }}</td></tr>
+</table>
+<p style="margin:20px 0 8px; font-family:Helvetica,Arial,sans-serif; font-size:11px;
+          letter-spacing:.14em; text-transform:uppercase; color:#73562D;">Payments</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+       style="border-collapse:collapse; font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.5; color:#2C3E50;">
+  <tr><th style="{{ head }}">Date</th><th style="{{ head }}">Description</th><th style="{{ head }}">Method</th><th style="{{ head }} text-align:right;">Amount</th></tr>
+  {% for x in statement.payments %}
+  <tr><td style="{{ cell }} white-space:nowrap;">{{ x.day|date_short }}</td><td style="{{ cell }}">{{ x.note or 'Payment' }}</td>
+      <td style="{{ cell }}">{{ x.method or '' }}{% if x.card_words %}<br>{{ x.card_words }}{% endif %}</td>
+      <td style="{{ money }}">€{{ '{:,.2f}'.format(x.paid) }}</td></tr>
+  {% endfor %}
+  {% for x in statement.refunds %}
+  <tr><td style="{{ cell }} white-space:nowrap;">{{ x.day|date_short }}</td><td style="{{ cell }}">{{ x.what }}</td>
+      <td style="{{ cell }}">{{ x.method or '' }}{% if x.card_words %}<br>{{ x.card_words }}{% endif %}</td>
+      <td style="{{ money }}">{% if x.back < 0 %}+€{{ '{:,.2f}'.format(-x.back) }}{% else %}−€{{ '{:,.2f}'.format(x.back) }}{% endif %}</td></tr>
+  {% endfor %}
+  {% if not statement.payments and not statement.refunds %}
+  <tr><td colspan="4" style="{{ cell }}">Nothing received yet.</td></tr>
+  {% endif %}
+  <tr><td></td><td></td><td style="{{ cell }}">Total paid</td><td style="{{ money }}">€{{ '{:,.2f}'.format(statement.total_paid) }}</td></tr>
+  <tr><td></td><td></td><td style="{{ cell }} font-weight:600;">{{ 'Balance due' if statement.owed else 'Settled' }}</td>
+      <td style="{{ money }} font-weight:600;">€{{ '{:,.2f}'.format(statement.owed) }}</td></tr>
+  {% if statement.credit %}
+  <tr><td></td><td></td><td style="{{ cell }}">In credit, and yours: given back on request</td><td style="{{ money }}">€{{ '{:,.2f}'.format(statement.credit) }}</td></tr>
+  {% endif %}
+</table>

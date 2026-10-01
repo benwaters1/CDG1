@@ -32,7 +32,7 @@
 </div>
 {% else %}
 <p class="upload-hint" style="margin-top:-6px;">
-  {{ synced_count }} accounts, last pulled {{ local_datetime_str(synced_at)[:16] if synced_at }}.
+  {{ synced_count }} accounts, last pulled {{ local_datetime_str(synced_at, unknown='at a time not recorded') }}.
   Re-sync after your accountant adds a code.
 </p>
 {% endif %}

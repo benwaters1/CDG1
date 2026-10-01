@@ -43,7 +43,7 @@
     <p class="connect-bad">{{ ts.missing }}</p>
     {% endif %}
     {% if ts.data_access_until and state.ig_user_id and ts.kind != 'invalid' %}
-    <p class="g-muted">
+    <p class="muted">
       Meta's access for Instagram runs until
       <strong>{{ ts.data_access_until }}</strong>. Instagram's permissions are
       not among the ones Meta keeps past that date — the Page's are — so a new
@@ -53,8 +53,8 @@
     {% if state.can_ask_meta %}
     <form method="post" action="{{ url_for('check_social_token') }}" class="connect-ask">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="g-btn">Ask Meta about this token</button>
-      <span class="g-muted">Reads its real expiry and, if it is the kind that
+      <button type="submit" class="btn-mini">Ask Meta about this token</button>
+      <span class="upload-hint">Reads its real expiry and, if it is the kind that
         lapses, swaps it for the Page's own token, which does not. The app also
         does this every day by itself.</span>
     </form>
@@ -83,7 +83,7 @@
     <input id="connect-page" type="text" name="page_id"
            value="{{ state.page_id }}" autocomplete="off"
            placeholder="e.g. 1234567890">
-    <p class="g-muted">Leave blank to post to Instagram only.</p>
+    <p class="field-hint">Leave blank to post to Instagram only.</p>
   </div>
 
   <div>
@@ -91,7 +91,7 @@
     <input id="connect-ig" type="text" name="ig_user_id"
            value="{{ state.ig_user_id }}" autocomplete="off"
            placeholder="e.g. 17841400000000000">
-    <p class="g-muted">
+    <p class="field-hint">
       The Business account's ID, not the @name. Creator accounts cannot
       publish through the API; it has to be a Business one.
     </p>
@@ -104,7 +104,7 @@
     <input id="connect-token" type="password" name="access_token"
            autocomplete="off" spellcheck="false"
            placeholder="{% if state.token_tail %}Held, ending {{ state.token_tail }} — leave blank to keep it{% else %}Paste the User token from the Graph API Explorer{% endif %}">
-    <p class="g-muted">
+    <p class="field-hint">
       {% if state.token_tail %}
       A token is held, ending <code>{{ state.token_tail }}</code>. Leaving this
       blank keeps it — only type here to replace it.
@@ -122,7 +122,7 @@
     <input id="connect-appid" type="text" name="app_id"
            value="{{ state.app_id }}" autocomplete="off" inputmode="numeric"
            placeholder="e.g. 1234567890123456">
-    <p class="g-muted">
+    <p class="field-hint">
       From the app's <em>App settings → Basic</em> at developers.facebook.com.
       Not a secret: with the app secret, it is what lets the app ask Meta about
       the token and make it one that lasts.
@@ -135,7 +135,7 @@
     <input id="connect-secret" type="password" name="app_secret"
            autocomplete="off" spellcheck="false"
            placeholder="{% if state.secret_tail %}Held, ending {{ state.secret_tail }} — leave blank to keep it{% else %}From App settings → Basic{% endif %}">
-    <p class="g-muted">
+    <p class="field-hint">
       {% if state.secret_tail %}
       A secret is held, ending <code>{{ state.secret_tail }}</code>. Leaving
       this blank keeps it.
@@ -147,7 +147,7 @@
   </div>
 
   {% if state.token_state.checked_at %}
-  <p class="g-muted">
+  <p class="field-hint">
     When the token runs out is Meta's own answer now, asked every day, so there
     is no date to type.
   </p>
@@ -156,7 +156,7 @@
     <label class="field-label" for="connect-expires">When the token runs out</label>
     <input id="connect-expires" type="date" name="expires_on"
            value="{{ state.expires_on }}">
-    <p class="g-muted">
+    <p class="field-hint">
       {% if state.can_ask_meta %}
       Meta has not answered about this token yet. Until it does, a date typed
       here is the one the warnings go by.
@@ -170,11 +170,11 @@
   </div>
   {% endif %}
 
-  <button type="submit" class="g-btn g-btn--solid">Save</button>
+  <button type="submit" class="btn-primary">Save</button>
 </form>
 
-<h2>Getting the details</h2>
-<ol class="g-muted">
+<h2 class="section-heading">Getting the details</h2>
+<ol class="muted">
   <li>An Instagram <strong>Business</strong> account, linked to a Facebook Page.</li>
   <li>A Meta app at developers.facebook.com, of type <strong>Business</strong>.
       Creating it is a form — nobody approves it. Its App ID and App secret
@@ -192,7 +192,7 @@
       person who made the token authorises the app again. The owner home says
       so two weeks ahead, by Meta's own date, and the answer is step 3 again.</li>
 </ol>
-<p class="g-muted">
+<p class="muted">
   <strong>App Review is not needed.</strong> It grants Advanced access, which
   is for letting other people connect their own accounts. The house posts to
   its own, and Standard access covers that automatically. If you are ever

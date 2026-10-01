@@ -60,7 +60,7 @@
    colleague needs before they walk round the corner — the money below is the
    owner's business and this is everybody's. #}
 <div class="detail-card">
-  <dl class="g-facts-list">
+  <dl class="detail-grid">
     {% if g['name_pronunciation'] %}
     <div><dt>Say it</dt><dd>{{ g['name_pronunciation'] }}</dd></div>
     {% endif %}
@@ -139,21 +139,21 @@
   <form method="post" action="{{ url_for('rebook_guest', guest_id=record.id) }}"
         style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <p class="g-field" style="margin:0;">
+    <p style="margin:0;">
       <label class="field-label" for="rb_room">Room</label>
       <select id="rb_room" name="room_id" required>
         {% for r in rebook_rooms %}<option value="{{ r['id'] }}">{{ r['name'] }}</option>{% endfor %}
       </select>
     </p>
-    <p class="g-field" style="margin:0;">
+    <p style="margin:0;">
       <label class="field-label" for="rb_from">Arrival</label>
       <input type="date" id="rb_from" name="arrival_date" required>
     </p>
-    <p class="g-field" style="margin:0;">
+    <p style="margin:0;">
       <label class="field-label" for="rb_to">Departure</label>
       <input type="date" id="rb_to" name="departure_date" required>
     </p>
-    <p class="g-field" style="margin:0;">
+    <p style="margin:0;">
       <label class="field-label" for="rb_party">Guests</label>
       <input type="number" id="rb_party" name="party_size" min="1" max="20" value="2">
     </p>
@@ -269,7 +269,8 @@
       <td class="num">{% if wm and w['status'] == 'confirmed' %}€{{ '%.2f'|format(wm.charged) }}{% else %}—{% endif %}</td>
       <td class="num">{% if wm and w['status'] == 'confirmed' and wm.owed > 0.005 %}<strong>€{{ '%.2f'|format(wm.owed) }}</strong>{% else %}—{% endif %}</td>
       {% endif %}
-      <td>{% with kind='workshop_booking', category='workshop', item=w %}{% include "_record_row_links.html" %}{% endwith %}</td>
+      <td>{% if w['manage_token'] %}<a href="{{ url_for('workshop_statement', manage_token=w['manage_token']) }}" class="small-link">Statement</a>{% endif %}
+        {% with kind='workshop_booking', category='workshop', item=w %}{% include "_record_row_links.html" %}{% endwith %}</td>
     </tr>
     {% endfor %}
   </tbody>
@@ -314,7 +315,7 @@
   </div>
   {% if f['comment'] %}<p class="manual-body">{{ f['comment'] }}</p>{% endif %}
   {% if f['reply'] %}
-  <div class="g-mb-note"><span class="g-mb-dt">What we said back</span><p>{{ f['reply'] }}</p></div>
+  <div class="notes-block"><span class="detail-label">What we said back</span><p>{{ f['reply'] }}</p></div>
   {% endif %}
 </div>
 {% endfor %}
@@ -338,7 +339,7 @@
   <tbody>
     {% for msg in messages %}
     <tr>
-      <th scope="row">{{ (msg.when or '')[:16]|replace('T', ' ') }}</th>
+      <th scope="row">{{ local_datetime_str(msg.when, unknown='not recorded') }}</th>
       <td>{{ msg.kind }}{% if msg.incoming %}<span class="cell-note">to us</span>{% endif %}</td>
       <td>
         {{ msg.subject }}
@@ -360,7 +361,7 @@
 {# ---- everything that has passed between us ---------------------------
    Letters and texts either way, conversations, notes, bookings, money and
    consent, in one list. They lived on eleven pages. #}
-<h2 style="margin-top:28px;">History</h2>
+<h2 class="section-heading" style="margin-top:28px;">History</h2>
 {% if not timeline %}
   <div class="empty-state">Nothing has passed between the house and them yet.</div>
 {% else %}
@@ -447,7 +448,7 @@
    APPEND-ONLY, and that is the point. The profile has one free-text notes box,
    so whoever types last silently replaces what the last person wrote — and what
    gets lost is always the older observation nobody thought to repeat. #}
-<h2 style="margin-top:28px;">What we know</h2>
+<h2 class="section-heading" style="margin-top:28px;">What we know</h2>
 <form method="post" action="{{ url_for('add_guest_note_route', guest_id=record.guest['id']) }}"
       style="max-width:640px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -461,7 +462,7 @@
 
 {% if notes %}
 <div class="table-wrap" style="margin-top:12px;">
-  <table>
+  <table class="data-table">
     <thead><tr><th>When</th><th>Who</th><th>Note</th></tr></thead>
     <tbody>
       {% for n in notes %}
@@ -479,7 +480,7 @@
 {% endif %}
 
 {# ---- dates that matter ------------------------------------------------ #}
-<h2 style="margin-top:28px;">Dates that matter</h2>
+<h2 class="section-heading" style="margin-top:28px;">Dates that matter</h2>
 <form method="post" action="{{ url_for('set_guest_dates', guest_id=record.guest['id']) }}"
       style="max-width:640px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -507,7 +508,7 @@
 {# ---- the caution ------------------------------------------------------
    Owner only. "Do not accept a booking from this person" is a decision about
    who the house lets in. An employee who thinks it warranted writes a note. #}
-<h2 style="margin-top:28px;">Caution</h2>
+<h2 class="section-heading" style="margin-top:28px;">Caution</h2>
 {% if record.guest['caution_level'] %}
 <p>
   <span class="mini-status status-declined">{{ caution_levels[record.guest['caution_level']] }}</span>
@@ -545,7 +546,7 @@
 {# ---- using their details ------------------------------------------------
    The right the notice lists. Set when they ask; lifted only when they ask
    again, as a stop on texts is. #}
-<h2 style="margin-top:28px;">Using their details</h2>
+<h2 class="section-heading" style="margin-top:28px;">Using their details</h2>
 <form method="post" action="{{ url_for('restrict_guest', guest_id=g['id']) }}" style="max-width:640px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% if restriction and restriction['restricted_at'] %}
@@ -566,9 +567,9 @@
 
 {# ---- duplicates and merging ------------------------------------------- #}
 {% if duplicates %}
-<h2 style="margin-top:28px;">Might be the same person</h2>
+<h2 class="section-heading" style="margin-top:28px;">Might be the same person</h2>
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead><tr><th>Profile</th><th>Why</th><th></th></tr></thead>
     <tbody>
       {% for d in duplicates %}

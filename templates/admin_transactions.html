@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Transactions{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Transactions</h1>
+  {# The export is the view: the period, the chips, the search. #}
+  <a href="{{ url_for('export_transactions_csv', **request.args.to_dict()) }}" class="btn-mini">
+    Export {{ 'this view' if lv.filtered else 'CSV' }}
+  </a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every charge, payment and refund, dated on the house's day, with who it was and what it
+  was for. The same lines as each booking's statement, so the two cannot disagree.
+</p>
+
+{% with endpoint = 'admin_transactions', extra = keep %}{% include "_period_selector.html" %}{% endwith %}
+{% include "_list_toolbar.html" %}
+
+{# The shown rows added up, and nothing else: filter to refunds and the totals are the refunds. #}
+<div class="table-wrap">
+  <table class="data-table">
+    <tbody>
+      <tr><th scope="row">Charged</th><td class="num">€{{ '{:,.2f}'.format(lv.totals.charged) }}</td>
+          <th scope="row">Paid in</th><td class="num">€{{ '{:,.2f}'.format(lv.totals.paid) }}</td>
+          <th scope="row">Refunded</th><td class="num">€{{ '{:,.2f}'.format(lv.totals.refunded) }}</td>
+          <th scope="row"><strong>Received, less refunds</strong></th><td class="num"><strong>€{{ '{:,.2f}'.format(lv.totals.net) }}</strong></td></tr>
+    </tbody>
+  </table>
+</div>
+
+{% if not rows %}
+  <div class="empty-state">
+    {% if lv.filtered %}
+      Nothing matches that in {{ period.label }}.
+      <a href="{{ url_for('admin_transactions', period=period.period, date=period.anchor_iso) }}">Show all {{ lv.total }}</a>
+    {% else %}
+      Nothing was charged, paid or refunded in {{ period.label }}.
+    {% endif %}
+  </div>
+{% else %}
+  {% if capped %}
+  <p class="list-count">
+    Showing the most recent {{ cap }} of {{ lv.shown }} — narrow it down above, or
+    <a href="{{ url_for('export_transactions_csv', **request.args.to_dict()) }}" class="small-link">export the lot</a>.
+    The totals above are all {{ lv.shown }}.
+  </p>
+  {% endif %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>Date</th><th>Who</th><th>What it was for</th><th>Ends</th><th>Type</th>
+            <th>How</th><th>Note</th><th class="num">Charged</th><th class="num">Paid (refunded)</th></tr>
+      </thead>
+      <tbody>
+        {% for x in rows %}
+        <tr>
+          <td>{{ x.day|date_short }}<br><span class="cell-note">{{ x.recorded }}</span></td>
+          <td>{% if x.guest_id %}<a href="{{ url_for('guest_detail', guest_id=x.guest_id) }}">{{ x.person }}</a>{% else %}{{ x.person }}{% endif %}
+              {% if x.email %}<br><span class="cell-note">{{ x.email }}</span>{% endif %}</td>
+          <td>{{ x.kind }} · <a href="{{ url_for('refund_desk', category=x.category, booking_id=x.booking_id) }}">{{ x.ref }}</a>
+              <br>{{ x.booking_what }}
+              {% if x.what != x.booking_what %}<br><span class="cell-note">{{ x.what }}</span>{% endif %}
+              {% if x.manage_token and x.category == 'room' %}<br><a href="{{ url_for('booking_statement', manage_token=x.manage_token) }}" class="small-link">Statement</a>
+              {% elif x.manage_token and x.category == 'workshop' %}<br><a href="{{ url_for('workshop_statement', manage_token=x.manage_token) }}" class="small-link">Statement</a>{% endif %}</td>
+          <td>{{ x.ends|date_short if x.ends else '' }}</td>
+          <td>{{ x.type }}</td>
+          <td>{{ x.method or '' }}{% if x.card_words %}<br><span class="cell-note">{{ x.card_words }}</span>{% endif %}
+              {% if x.payer %}<br><span class="cell-note">{{ x.payer }}</span>{% endif %}</td>
+          <td>{{ x.note if x.note and x.note != 'Payment' else '' }}</td>
+          <td class="num">{% if x.charge %}{% if x.charge < 0 %}−€{{ '{:,.2f}'.format(-x.charge) }}{% else %}€{{ '{:,.2f}'.format(x.charge) }}{% endif %}{% endif %}</td>
+          <td class="num">{% if x.paid %}€{{ '{:,.2f}'.format(x.paid) }}{% elif x.back %}{% if x.back < 0 %}€{{ '{:,.2f}'.format(-x.back) }}{% else %}(€{{ '{:,.2f}'.format(x.back) }}){% endif %}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+{% endblock %}

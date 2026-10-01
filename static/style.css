@@ -18,6 +18,11 @@
   --ink:#2A1A12;
   --ink-soft:#6B5B4B;
   --danger:#a33;
+  /* Something to act on that is not yet wrong: a room never cleaned, a
+     workshop short of stock, a margin only partly costed. Seven places read
+     this and none defined it, so every one of them printed in plain ink.
+     6.1:1 on white. */
+  --rust:#A2461F;
   --success:#3d6b3d;
   --shadow: 0 2px 10px rgba(42,26,18,0.10);
   --surface:#fff;
@@ -35,6 +40,11 @@
   --cal-shift-bg:#B8CEDC; --cal-leave-bg:#F0E6C8;
   --body-bg: radial-gradient(circle at 15% 8%, rgba(201,161,91,0.10), transparent 40%),
              linear-gradient(180deg, #F1EADA 0%, #EDE4CF 100%);
+  /* The spacing scale, the same steps as gudanes.css. Staff pages written
+     from public ones reach for var(--s3); with no value behind it a gap or
+     a margin simply is not there -- the shopping row's tick sat against the
+     item's name, and the arrival card lost all its spacing. */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px;
 }
 
 /*
@@ -123,7 +133,10 @@ body.staff-shell .topbar{
   max-width:1200px; margin:0 auto;
   padding:14px 24px;
   display:flex; align-items:center; justify-content:space-between;
-  flex-wrap:wrap; gap:10px;
+  /* 12px between rows, the gap the touch rules leave between Log out and
+     Password: on a narrow tablet the strip wraps to sit under the search box,
+     and Log out was 10px beneath it. */
+  flex-wrap:wrap; gap:12px 10px;
 }
 .brand{ display:flex; flex-direction:column; }
 .brand .crest{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; letter-spacing:0.18em; text-transform:uppercase; color:var(--gold-soft); }
@@ -196,7 +209,16 @@ body.staff-shell .nav-dropdown-menu a{ color:var(--ink-soft); }
 body.staff-shell .nav-dropdown-menu a:hover{ background:var(--status-neutral-bg); color:var(--ink); }
 body.staff-shell .nav-dropdown-menu a.active{ color:var(--gold-soft); }
 
-.topbar-right{ display:flex; align-items:center; gap:12px; font-size:12.5px; }
+/* The strip at the top right: the bell and who is signed in, then what they
+   can do -- Backup for the owner, EN/FR/ES, Password, Log out. Two groups, so
+   a row that runs short breaks between them instead of running off the screen,
+   and the name gives way before anything else does. */
+.topbar-right{ display:flex; align-items:center; gap:12px; font-size:12.5px;
+  flex-wrap:wrap; min-width:0; }
+.topbar-me, .topbar-account{ display:flex; align-items:center; gap:12px; min-width:0; }
+.topbar-account{ flex-wrap:wrap; }
+.who{ min-width:0; }
+.who-name{ overflow-wrap:anywhere; }
 .topbar-search{ margin:0; }
 .topbar-search input{
   width:150px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.14);
@@ -229,6 +251,34 @@ body.staff-shell .bell-link:hover, body.staff-shell .bell-link.active{ color:var
   font-family:'IBM Plex Mono', monospace; font-size:10px; line-height:1;
   min-width:15px; height:15px; border-radius:8px; display:flex; align-items:center; justify-content:center;
   padding:0 3px;
+}
+
+/* ON A PHONE the strip could not wrap, and the touch rules further down give
+   the bell and every link a 44px minimum, so it ran off the edge and took the whole page
+   sideways with it, on every staff page: 401px on a 390px screen for the
+   owner, 434px in French, 389px on a 375px screen for an employee reading
+   French. Where it did fit, it fitted by crushing -- "Log out" folded onto two
+   lines inside a target 30px wide.
+
+   The header's first row -- the menu button and the brand -- was half empty.
+   So below 600px the bell and the name move up into it, and the account links
+   get the row below to themselves, with Log out at the far end, at least 12px
+   clear of everything. The same rows as before in English: three for the
+   owner, whose search has one of its own, two for everybody else. Nothing is
+   hidden. `display:contents` lets the two groups join the header's own rows
+   without the markup moving, so a screen reader meets them in the same order.
+   Measured, not guessed: tests/test_staff_header_on_a_phone.py. */
+@media (max-width: 600px){
+  .brand{ margin-right:auto; }
+  .topbar-right{ display:contents; }
+  .topbar-me{ order:1; flex:1 1 0; min-width:auto; justify-content:flex-end; gap:10px; }
+  .topbar-search{ order:2; }
+  .topbar-account{ order:3; flex-basis:100%; gap:12px; }
+  .topbar-account #logout-link{ margin-left:auto; }
+  /* The name above the role rather than beside it, and two lines at most. */
+  .who{ display:flex; flex-direction:column; align-items:flex-start; gap:2px; line-height:1.2; }
+  .who .role-badge{ margin-left:0; }
+  .who-name{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 }
 
 /* ---------- Public booking site (distinct from the staff topbar) ---------- */
@@ -354,15 +404,55 @@ body.staff-shell .login-card{
 body.staff-shell .login-card h1{ color:var(--ivory); }
 
 /* ---------- Forms ---------- */
-form{ display:flex; flex-direction:column; gap:4px; }
+/* A form is a stack of fields: one column, each field across it, 4px apart.
+   It is a grid rather than a flex column so that it has no direction to hand
+   on. As display:flex with flex-direction:column it did. A form that lays
+   itself out as a row writes display:flex, nothing of its own says which way,
+   so it kept this rule's column: thirty-seven forms written inline on thirty
+   staff pages, and ten rules that give it by class, the search and sort above
+   every list among them. Every one stacked, centred or pushed right wherever
+   it asked to align its items -- Charge and Let it go one above the other in
+   the middle of the cell. A grid stacks without being told which way, so
+   display:flex on a form now gets flex's own default, a row. The 100% column
+   and max-content rows are what keep the stack itself where it was, box for
+   box in Chrome: 100% is read as auto while a form is sized by its content,
+   and a max-content row does not stretch when the form stands beside
+   something taller. */
+form{ display:grid; grid-template-columns:100%; grid-auto-rows:max-content; gap:4px; }
+/* A form on its own in a table cell is a single button, and a stack stretches
+   it across the column: a .data-table is 100% wide, the spare width goes to
+   the columns, and "Off the list" ran about 190px wide. As a block the button
+   keeps its own width and sits where the cell's text-align puts it (the
+   automation page right-aligns its Run now column on purpose). :where keeps
+   this at the weight of `form`, so a form with a class or a style of its own
+   still lays itself out. */
+:where(.data-table td) > form{ display:block; }
+/* A form inside .g is the design side's, drawn by gudanes.css on the two
+   staff pages that link it (photo intake and the pass). That sheet gives
+   every one of them its direction -- a wrapping row, or a column when it is
+   a .g-stack -- and leaves making it a flexbox to this sheet, as it did when
+   the rule above was a flex column. Without this the photo intake form
+   stacks what it was drawn to lay side by side. */
+:where(.g) form{ display:flex; }
 .field-label{ font-size:11.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em; margin-top:12px; margin-bottom:5px; }
+/* Every box somebody types into, by name. A type left off this list is not
+   unstyled on purpose, it is left to the browser: a 1px grey box with no
+   padding beside the house buttons. search (the box above every list),
+   number, time, url, month and datetime-local all were until 2026-09-29.
+   test_input_fields reads this list back out of the cascade for every type
+   a staff template uses, so a new one cannot be missed quietly. */
 input[type=text], input[type=email], input[type=password], input[type=tel], input[type=date], input[type=file],
+input[type=number], input[type=search], input[type=url], input[type=time], input[type=month],
+input[type=week], input[type=datetime-local],
 select, textarea{
   width:100%; font-family:'Inter', sans-serif; font-size:14px;
   padding:10px 12px; border:1px solid var(--parchment-line); border-radius:7px;
   background:var(--surface); color:var(--ink);
   transition: border-color .15s ease, box-shadow .15s ease;
 }
+/* Safari draws a search box with its own rounded look and ignores the
+   padding and radius above until it is told not to. */
+input[type=search]{ -webkit-appearance:none; appearance:none; }
 /* Checkboxes and radios must not be stretched by any width rule, but they
    also must not be pinned by an inline style — templates used to carry
    `style="width:auto"`, which then beat the touch-target sizing further down
@@ -470,6 +560,11 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
   align-items:center; }
 .owed-take__form input[type=number]{ width:7em; }
 .owed-take__form input[type=text]{ width:11em; }
+/* In a table the row it makes is wider than the column can spare, and a table
+   gives a column what its contents ask for: once the form ran as a row, opening
+   it took the width from the guest's name, which went to four lines. Kept to
+   its widest field, it wraps inside the column it already had. */
+.data-table .owed-take__form{ max-width:14em; }
 /* Choosing a room at the desk. Big enough to hit without aiming, and a
    taken room stays visible rather than vanishing — reception needs to be
    able to say WHICH room is gone, not just that there are fewer. */
@@ -511,6 +606,15 @@ body.staff-shell .stat-tile-value{ color:var(--ivory); font-family:'Inter',sans-
    "CONFIRMED ROOM…", which tells the reader nothing. Two lines is fine; a
    clipped label is not. */
 .stat-tile-label{ font-size:11.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em; font-weight:600; line-height:1.3; }
+/* A tile with no icon and no body -- label and figure straight inside it, as
+   the event, statement and split-bill pages write them -- was laid out as a
+   row, so the figure sat BESIDE its label in a 150px tile and ran out of it:
+   "€25000.00" ended 41px past the padding at a desk width. Stack it the way
+   every other tile reads, figure above label. The markup keeps label first,
+   so a screen reader still hears what the figure is before the figure.
+   flex-end is the TOP of a reversed column: the figures in a row stay on one
+   line when one label runs to two. */
+.stat-tile:has(> .stat-tile-label){ flex-direction:column-reverse; align-items:flex-start; justify-content:flex-end; gap:4px; }
 
 /* ---------- Cards ---------- */
 .card-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:16px; }
@@ -567,6 +671,19 @@ body.staff-shell a.mini-row:hover{
 .status-unavailable{ background:var(--status-danger-bg); color:var(--danger); }
 .status-new{ background:var(--status-info-bg); color:var(--steel-deep); }
 .status-contacted, .status-quoted{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
+/* Something that is late or refused: a card that bounced, a balance left
+   owing, a certificate past its date. Ten pages wrote this badge and none
+   of them had a rule for it, so "Card refused" sat in the list as plain
+   grey capitals, quieter than the paid rows around it. The weight is what
+   tells it from status-inactive, which the same pages use for "over". */
+.status-overdue{ background:var(--status-danger-bg); color:var(--danger); font-weight:600; }
+/* A change that is good or bad news, not up or down: a supplier's price
+   going up is bad, a month earning more than last year is good. Which is
+   which is the template's call. Three reports wrote these with no rule, so
+   every percentage read the same whichever way it went. */
+.pill-good, .pill-bad{ display:inline-block; padding:1px 8px; border-radius:10px; font-weight:600; }
+.pill-good{ background:var(--status-success-bg); color:var(--success); }
+.pill-bad{ background:var(--status-danger-bg); color:var(--danger); }
 
 /* ---------- Tasks ---------- */
 .task-list{ display:flex; flex-direction:column; gap:6px; }
@@ -713,14 +830,35 @@ body.staff-shell .profile-card-name{ color:var(--ivory); font-family:'Inter',san
 .narrow-card h1{ font-family:'Playfair Display', serif; font-size:24px; color:var(--chestnut-deep); margin:0 0 8px 0; }
 body.staff-shell .narrow-card h1{ color:var(--ivory); }
 .narrow-card .detail-card, .narrow-card .notes-block{ margin-left:0; margin-right:0; }
-.detail-card h3{ font-family:'Playfair Display', serif; font-size:16px; color:var(--chestnut-deep); margin:0 0 14px 0; }
-body.staff-shell .detail-card h3{ color:var(--ivory); font-family:'Inter',sans-serif; font-weight:700; }
+/* A card's heading is the house's sub-heading: the heading under a
+   .section-heading. .sub-heading is the same type for one that stands
+   outside a card, where it follows running text and needs room above. */
+.detail-card h3, .sub-heading{ font-family:'Playfair Display', serif; font-size:16px; color:var(--chestnut-deep); margin:0 0 14px 0; }
+body.staff-shell .detail-card h3, body.staff-shell .sub-heading{ color:var(--ivory); font-family:'Inter',sans-serif; font-weight:700; }
+.sub-heading{ margin-top:24px; }
 .detail-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:13.5px; }
 .detail-grid > div{ display:flex; flex-direction:column; gap:3px; }
-.detail-label{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); font-weight:600; }
+/* The same grid written as a definition list, which is what a list of facts
+   about somebody is: each term reads as its label. */
+.detail-label, .detail-grid dt{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); font-weight:600; }
+dl.detail-grid, .detail-grid dd{ margin:0; }
 .notes-block{ margin-top:14px; padding-top:14px; border-top:1px solid var(--parchment-line); }
 .notes-block p{ font-size:13.5px; line-height:1.6; margin:4px 0 0 0; }
 .pay-disclaimer{ font-size:11.5px; color:var(--ink-soft); font-style:italic; margin:-6px 0 12px 0; }
+/* The line under a page's heading: who and what the page is about, or what
+   it stands at -- "6 covers tonight · service at 19:30" on the kitchen's
+   page, the guest, room and dates on a booking's correspondence. Fourteen
+   pages asked for it by this name, which had no rule, so it came out at full
+   ink and read as the first line of the content. Quieter than the content
+   and at a size that can still be read: the kitchen reads its covers line
+   from two metres, which the small italic pay-disclaimer is not made for.
+   Pulled up only where it sits right under the heading. */
+.page-intro{ font-size:13.5px; line-height:1.5; color:var(--ink-soft); margin:0 0 14px 0; }
+.page-head + .page-intro{ margin-top:-12px; }
+/* Quieter text at the size around it: an aside inside a sentence, the count
+   beside a heading, the line that says there is nothing to show. Nine pages
+   used the name with nothing behind it. upload-hint is this a size smaller. */
+.muted{ color:var(--ink-soft); }
 
 .announcement-list{ display:flex; flex-direction:column; gap:8px; }
 .announcement-banner{
@@ -735,9 +873,16 @@ body.staff-shell .announcement-banner{ background:var(--status-warn-bg); color:v
 .doc-row{ display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--parchment-line); border-radius:7px; padding:8px 10px; }
 .doc-row a{ flex:1; color:var(--steel); font-size:12.5px; font-weight:600; text-decoration:none; }
 .doc-row a:hover{ text-decoration:underline; }
+/* Switched off but still listed, so it can be switched back on. */
+.doc-row.is-off{ background:var(--paper); color:var(--ink-soft); }
 .doc-delete{ background:none; border:none; color:var(--danger); cursor:pointer; font-size:14px; }
 .upload-form{ display:flex; flex-direction:column; gap:8px; padding-top:12px; border-top:1px dashed var(--parchment-line); }
 .upload-hint{ font-size:11px; color:var(--ink-soft); margin:0; }
+/* The disclaimer's -6px pulls it up under a form or table, which has margin to
+   spare. A hint has none, so after one the -6px printed the disclaimer's first
+   line over the hint's last -- "Should sit between 0°C and 5°C" over "2
+   readings outside the range" on every fridge with an unanswered reading. */
+.upload-hint + .pay-disclaimer{ margin-top:6px; }
 
 .view-link{ flex:0 0 auto !important; background:none; border:none; color:var(--steel); font-size:12.5px; font-weight:600; cursor:pointer; padding:0; font-family:inherit; }
 .view-link:hover{ text-decoration:underline; }
@@ -777,7 +922,7 @@ body.staff-shell .manual-section h3{ color:var(--ivory); font-family:'Inter',san
 .manual-body{ font-size:13.5px; line-height:1.75; white-space:pre-wrap; margin:0; }
 .manual-body.empty{ color:var(--ink-soft); font-style:italic; }
 .manual-edit-form textarea{ min-height:140px; margin-bottom:10px; }
-.new-section-form{ flex-direction:row; gap:8px; align-items:center; }
+.new-section-form{ display:flex; gap:8px; align-items:center; }
 .new-section-form input{ flex:1; }
 
 /* ---------- Booking ---------- */
@@ -880,6 +1025,12 @@ body.staff-shell .cal-month-label{ font-family:'Inter',sans-serif; font-weight:7
 .cal-cell-free{ background:transparent; }
 .cal-cell-pending .cal-bar{ background:var(--cal-pending-bg); }
 .cal-cell-confirmed .cal-bar{ background:var(--cal-confirmed-bg); }
+/* The month grids that count things -- tasks per person on the task page,
+   covers per night on the team calendar -- have no bar to carry the colour.
+   Since it moved onto the bars, their busy days have been drawn exactly like
+   empty ones, and the team calendar's legend has named a green that nothing
+   on its grid was. A cell with no bar in it takes the fill itself. */
+.cal-cell-confirmed:not(:has(.cal-bar)){ background:var(--cal-confirmed-bg); }
 .cal-cell-external .cal-bar{ background:var(--cal-external-bg); }
 .cal-cell-manual-block .cal-bar{
   background:var(--cal-block-bg);
@@ -1423,7 +1574,8 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
   input, select, textarea,
   input[type=text], input[type=email], input[type=password], input[type=tel],
   input[type=date], input[type=file], input[type=number], input[type=search],
-  input[type=datetime-local], input[type=time],
+  input[type=url], input[type=time], input[type=month], input[type=week],
+  input[type=datetime-local],
   .overview-filters select, .overview-filters input[type="text"]{ font-size:16px; }
 
   /* The header row: "Log out" sat directly beside "Password" at 15px tall.
@@ -1513,8 +1665,75 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
     background:#fff !important; border-color:#999 !important; box-shadow:none !important;
   }
   .stat-tile-value{ color:#000 !important; }
-  .section-heading{ color:#000 !important; }
+  .section-heading, .sub-heading{ color:#000 !important; }
 }
+
+/* ---------- Wall mode: a kitchen page on the kitchen wall ----------
+   ?wall=1 on a kitchen page (_kitchenwall.html) makes it the screen on the
+   wall: it reloads itself and stamps how fresh it is. Its look was written
+   into gudanes.css against the public site's chrome -- .g-top, .g-foot, nav,
+   .g-btn -- and the five kitchen pages load this stylesheet only, so on them
+   wall mode reloaded on its timer and did nothing else. The admin bar and
+   the menu stayed, the type stayed desk-sized, and the stamp printed as two
+   loose words above the heading. These are the same decisions, made against
+   this shell. The pass loads gudanes.css too and is drawn by it, so it keeps
+   its own colours and sizes and only loses the chrome gudanes cannot see. */
+body.staff-shell:has(.kw-stamp){ background:#0E1C30; }
+body.staff-shell:has(.kw-stamp) .topbar,
+body.staff-shell:has(.kw-stamp) .sidebar,
+body.staff-shell:has(.kw-stamp) .sidebar-backdrop,
+body.staff-shell:has(.kw-stamp) #push-prompt,
+body.staff-shell:has(.kw-stamp) .list-toolbar,
+body.staff-shell:has(.kw-stamp) .btn-mini,
+body.staff-shell:has(.kw-stamp) .btn-ghost,
+body.staff-shell:has(.kw-stamp) .btn-primary,
+/* The cards that take an entry -- a prep line, a fridge reading, a new unit.
+   Keyed on the class the wall script puts on <html>: test_form_layout reads
+   every rule that can reach a form, and cannot evaluate :has(). */
+html.kw-wall .page form.detail-card{
+  display:none !important;
+}
+body.staff-shell:has(.kw-stamp) .page{ max-width:none; padding:18px 26px 84px; }
+/* The pass's colours on the wall, in this shell's own names, so every card,
+   table and badge follows them without a rule of its own. */
+body.staff-shell:has(.kw-stamp) .page:not(:has(.g)){
+  --surface:#16283F; --parchment:#16283F; --paper:#1B2F4A; --parchment-line:#34465E;
+  --ink:#F2EDE3; --ink-soft:#CFC7B8; --ivory:#FFFFFF; --chestnut-deep:#0E1C30;
+  --gold:#E3C27A; --gold-soft:#E3C27A; --gold-on-warn:#F3D98A;
+  --steel:#9FC3DC; --steel-deep:#C4DCEC; --danger:#FF9B92; --success:#8FD19E;
+  --status-success-bg:#1C3526; --status-danger-bg:#4A1F1A; --status-info-bg:#1C3350;
+  --status-warn-bg:#3F3417; --status-neutral-bg:#22354F;
+  --flash-error-bg:#4A1F1A; --flash-error-border:#7A3A30;
+  --flash-success-bg:#1C3526; --flash-success-border:#2F5A40;
+  --shadow:none; --focus-ring:rgba(227,194,122,0.45);
+  color:var(--ink);
+}
+/* Bigger, all of it, the way the browser's own zoom does it. A cell, a hint
+   and a badge each set their own size, so a rule that enlarged some of them
+   would leave the rest to be read at desk distance. Not on a phone, where
+   somebody is only checking the wall from somewhere else. */
+@media (min-width: 900px){
+  body.staff-shell:has(.kw-stamp) .page:not(:has(.g)){ zoom:1.45; }
+}
+@media (min-width: 1600px){
+  body.staff-shell:has(.kw-stamp) .page:not(:has(.g)){ zoom:1.9; }
+}
+/* What somebody cannot eat, and a fridge out of its range: the rows that
+   must be seen from across the room. */
+body.staff-shell:has(.kw-stamp) .data-table tr.row-alert{ background:#6E2414; color:#fff; }
+.kw-stamp{
+  position:fixed; right:0; bottom:0; left:0; z-index:90;
+  display:flex; align-items:baseline; gap:12px;
+  padding:8px 26px calc(8px + env(safe-area-inset-bottom, 0px));
+  background:#0A1626; border-top:2px solid #E3C27A;
+  font-family:'Inter', sans-serif;
+}
+.kw-stamp__t{ font-size:17px; color:#fff; font-variant-numeric:tabular-nums; }
+.kw-stamp__s{ font-size:12px; color:#E3C27A; }
+/* Stale: the last reload failed, and the page says so rather than showing
+   yesterday's list as if it were tonight's. */
+body.kw-stale .kw-stamp{ background:#6E2414; border-top-color:#E8A33D; }
+body.kw-stale .kw-stamp__s{ color:#fff; }
 
 /* ---------- Forms with structure ----------
    A long stack of unlabelled boxes is what made these pages feel like a

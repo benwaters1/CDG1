@@ -279,7 +279,6 @@ UTC_DAY_SQL_KNOWN = {
     ("pos_archive_bundle", "date", "occurred_at"): (1, "till -- the other agent's"),
     ("pos_archive", "strftime", "occurred_at"): (1, "till -- the other agent's"),
     ("menu_engineering", "date", "pos_order_lines.created_at"): (1, "till -- the other agent's"),
-    ("service_times", "date", "sent_at"): (2, "till -- the other agent's"),
     ("committed_stock", "date", "booking_extras.created_at"): (1, "stock -- the other agent's"),
     ("supplier_price_changes", "date", "stock_movements.created_at"): (1, "stock -- the other agent's"),
     ("wastage_rate", "date", "stock_movements.created_at"): (1, "stock -- the other agent's"),

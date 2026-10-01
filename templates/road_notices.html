@@ -25,7 +25,7 @@
   the usual approach note.</p>
 {% endif %}
 
-<h2>Put one up</h2>
+<h2 class="section-heading">Put one up</h2>
 <div style="margin-bottom:20px;">
   <form method="post" action="{{ url_for('road_notices_page') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -53,7 +53,7 @@
     {# The compulsory end date is the whole design. Every notice like this
        fails the same way: switched on in February for a real reason, still
        there in July because taking it down is nobody's job. #}
-    <p class="g-hint">
+    <p class="field-hint">
       <strong>An end date is required, and it cannot be more than
       {{ max_days }} days.</strong> A snow warning still up in July is worse
       than no warning &mdash; it is the reason nobody believes the next real
@@ -66,7 +66,7 @@
   </form>
 </div>
 
-<h2>Everything that has been up</h2>
+<h2 class="section-heading">Everything that has been up</h2>
 {% if rows %}
 <div class="table-wrap">
   <table class="data-table">

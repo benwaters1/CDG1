@@ -36,7 +36,7 @@
 {%- set _t_fr %}{% block title_fr %}{% endblock %}{% endset %}
 {%- set _d_fr %}{% block description_fr %}{% endblock %}{% endset %}
 <title>{% if lang == 'fr' and _t_fr|trim %}{{ _t_fr|trim }}{% else %}{% block title %}Stay{% endblock %}{% endif %} — Château de Gudanes</title>
-<meta name="description" content="{% if lang == 'fr' and _d_fr|trim %}{{ _d_fr|trim }}{% else %}{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013. Five bedrooms, a table, and ateliers led by artisans.{% endblock %}{% endif %}">
+<meta name="description" content="{% if lang == 'fr' and _d_fr|trim %}{{ _d_fr|trim }}{% else %}{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013: five bedrooms, and workshop retreats with the artisans.{% endblock %}{% endif %}">
 
 {# Shared to Instagram, WhatsApp or a message, a link showed a bare URL with
    no image. These give it the château and the page's own title. #}
@@ -98,6 +98,47 @@
     }
     return originalFetch(input, init);
   };
+})();
+</script>
+<script>
+/* The house's day, for every script on the page that needs "today" or "the
+   day after". Bookings are made against the house's calendar, and neither
+   clock a browser offers keeps it: toISOString() is UTC's, which from midnight
+   to 02:00 here is still on yesterday, and the browser's own is the guest's,
+   which in New York is on yesterday all evening. In the <head> so a page's
+   own script can use it, wherever that script sits. */
+window.houseDay = (function () {
+  var zone = {{ house_tz|tojson }}, drawn = {{ house_today_iso()|tojson }};
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function today() {
+    try {
+      var p = {};
+      new Intl.DateTimeFormat('en-GB', {timeZone: zone, year: 'numeric',
+        month: '2-digit', day: '2-digit'}).formatToParts(new Date())
+        .forEach(function (x) { p[x.type] = x.value; });
+      if (p.year && p.month && p.day) return p.year + '-' + p.month + '-' + p.day;
+    } catch (e) {}
+    return drawn;               /* the day the server drew the page on */
+  }
+  /* A date so many days after an ISO date, counted on the calendar alone.
+     new Date('2026-09-29T00:00:00') is LOCAL midnight, and toISOString() of
+     the next one hands back the 29th anywhere east of Greenwich -- which is
+     how the earliest departure on every form became the arrival day itself,
+     all day long, for anyone booking from France. */
+  function after(iso, days) {
+    var p = String(iso || '').split('-');
+    if (p.length !== 3) return '';
+    var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] + (days == null ? 1 : days)));
+    if (isNaN(d.getTime())) return '';
+    return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+  }
+  /* The house's today as a Date at local midnight, for the calendars, which
+     lay months out with local Dates. */
+  function date() {
+    var p = today().split('-');
+    return new Date(+p[0], +p[1] - 1, +p[2]);
+  }
+  return {today: today, after: after, date: date, zone: zone};
 })();
 </script>
 
@@ -302,7 +343,7 @@
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>
           <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
-          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Workshop dates</label>
           <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
         </fieldset>
           <button type="submit" aria-label="{{ t('Subscribe') }}">
@@ -581,7 +622,7 @@
   <span class="g-stickybar__t">
     <b>{% if _sb == 'dining' %}{{ t('Dine at La Table') }}
        {%- elif _sb == 'events' %}{{ t('Weddings & Celebrations') }}
-       {%- elif _sb == 'atelier' %}{{ t('Château Ateliers') }}
+       {%- elif _sb == 'atelier' %}{{ t('Workshops & Retreats') }}
        {%- else %}{{ t('Stay the Night') }}{% endif %}</b>
     <span>Château de Gudanes</span>
   </span>
@@ -870,7 +911,9 @@
    departure field should follow its arrival. Applied to every pair on the
    page, whatever it is called — the server still validates everything. */
 (function(){
-  var today = new Date().toISOString().slice(0, 10);
+  /* The house's today and the day after, from window.houseDay in the head.
+     Both were the first ten characters of toISOString(): UTC's day. */
+  var today = houseDay.today();
   document.querySelectorAll('input[type="date"]').forEach(function(el){
     if (!el.min && !el.hasAttribute('data-allow-past')) el.min = today;
   });
@@ -878,9 +921,8 @@
     if (!a || !d) return;
     function sync(){
       if (!a.value) return;
-      var next = new Date(a.value + 'T00:00:00');
-      next.setDate(next.getDate() + 1);
-      var min = next.toISOString().slice(0, 10);
+      var min = houseDay.after(a.value);
+      if (!min) return;
       d.min = min;
       if (d.value && d.value < min) d.value = min;
     }
@@ -1053,7 +1095,7 @@
     String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
   var parse = function(s){ if(!s) return null; var p=s.split('-'); 
     return new Date(+p[0], +p[1]-1, +p[2]); };
-  var today = new Date(); today.setHours(0,0,0,0);
+  var today = houseDay.date();    /* the house's, not the browser's */
 
   var start = parse(aIn.value), end = parse(dIn.value), hover = null;
   var cursor = new Date((start||today).getFullYear(), (start||today).getMonth(), 1);

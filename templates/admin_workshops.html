@@ -51,8 +51,10 @@
         <div class="doc-row">
           <span style="flex:1;">
             {{ s['start_date'] }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date'] }}{% endif %}
+            {% if not s['cancelled_at'] %}
             · {{ row.remaining }}/{{ s['capacity'] }} spots left
             {% if row.remaining <= 0 %}<span class="mini-status status-inactive" style="margin-left:6px;">full</span>{% endif %}
+            {% endif %}
             {% if s['notes'] %} <span class="upload-hint">— {{ s['notes'] }}</span>{% endif %}
             {% if row.at_risk %}{% set r = row.at_risk %}
             <div class="upload-hint" style="margin-top:4px;color:{{ 'var(--rust)' if r.urgent and not r.waitlist_could_fill else 'var(--steel)' }};">
@@ -125,7 +127,7 @@
             {% if can('refund_desk') %}
             <label class="checkbox-row"><input type="checkbox" name="refund" value="1"> <span>and refund what each paid, to their cards</span></label>
             {% endif %}
-            <button type="submit" class="btn-mini btn-danger">Call it off</button>
+            <button type="submit" class="btn-mini btn-mini-danger">Call it off</button>
           </form>
           {% endif %}
           {#- A read-only page for whoever is teaching: who is coming, what
@@ -214,7 +216,7 @@
       </div>
     {% endif %}
     {% if stock_choices %}
-    <form method="post" action="{{ url_for('add_workshop_material', workshop_id=w['id']) }}" class="inline-form">
+    <form method="post" action="{{ url_for('add_workshop_material', workshop_id=w['id']) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field-row-2">
         <select name="stock_item_id" required>

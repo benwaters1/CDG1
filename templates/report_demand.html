@@ -24,50 +24,50 @@
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 
-<h2>Against the same length of time behind us</h2>
+<h2 class="section-heading">Against the same length of time behind us</h2>
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead>
-      <tr><th></th><th>Nights we could sell</th><th>Sold</th><th>Taken</th>
-          <th>Per night we could sell</th><th>Per night we did</th></tr>
+      <tr><th></th><th class="num">Nights we could sell</th><th class="num">Sold</th><th class="num">Taken</th>
+          <th class="num">Per night we could sell</th><th class="num">Per night we did</th></tr>
     </thead>
     <tbody>
       <tr>
         <td><strong>The {{ days }} days ahead</strong></td>
-        <td>{{ ahead.sellable }}</td>
-        <td>{{ ahead.sold }}{% if ahead.percent is not none %} · {{ ahead.percent }}%{% endif %}</td>
-        <td>&euro;{{ '{:,.0f}'.format(ahead.money) }}</td>
-        <td>{% if ahead.per_available is not none %}&euro;{{ '{:,.0f}'.format(ahead.per_available) }}{% else %}&mdash;{% endif %}</td>
-        <td>{% if ahead.per_sold is not none %}&euro;{{ '{:,.0f}'.format(ahead.per_sold) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ ahead.sellable }}</td>
+        <td class="num">{{ ahead.sold }}{% if ahead.percent is not none %} · {{ ahead.percent }}%{% endif %}</td>
+        <td class="num">&euro;{{ '{:,.0f}'.format(ahead.money) }}</td>
+        <td class="num">{% if ahead.per_available is not none %}&euro;{{ '{:,.0f}'.format(ahead.per_available) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if ahead.per_sold is not none %}&euro;{{ '{:,.0f}'.format(ahead.per_sold) }}{% else %}&mdash;{% endif %}</td>
       </tr>
       <tr>
         <td>The {{ days }} days behind</td>
-        <td>{{ behind.sellable }}</td>
-        <td>{{ behind.sold }}{% if behind.percent is not none %} · {{ behind.percent }}%{% endif %}</td>
-        <td>&euro;{{ '{:,.0f}'.format(behind.money) }}</td>
-        <td>{% if behind.per_available is not none %}&euro;{{ '{:,.0f}'.format(behind.per_available) }}{% else %}&mdash;{% endif %}</td>
-        <td>{% if behind.per_sold is not none %}&euro;{{ '{:,.0f}'.format(behind.per_sold) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ behind.sellable }}</td>
+        <td class="num">{{ behind.sold }}{% if behind.percent is not none %} · {{ behind.percent }}%{% endif %}</td>
+        <td class="num">&euro;{{ '{:,.0f}'.format(behind.money) }}</td>
+        <td class="num">{% if behind.per_available is not none %}&euro;{{ '{:,.0f}'.format(behind.per_available) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if behind.per_sold is not none %}&euro;{{ '{:,.0f}'.format(behind.per_sold) }}{% else %}&mdash;{% endif %}</td>
       </tr>
     </tbody>
   </table>
 </div>
-<p class="g-hint">
+<p class="muted">
   The pair is the story. Per night we <em>did</em> sell going up while per night
   we <em>could</em> sell goes down is a house charging more and selling less.
 </p>
 
-<h2>By room</h2>
+<h2 class="section-heading">By room</h2>
 {% if by_room %}
 <div class="table-wrap">
-  <table>
-    <thead><tr><th>Room</th><th>Nights it could take</th><th>Sold</th><th>Filled</th></tr></thead>
+  <table class="data-table">
+    <thead><tr><th>Room</th><th class="num">Nights it could take</th><th class="num">Sold</th><th class="num">Filled</th></tr></thead>
     <tbody>
       {% for r in by_room %}
       <tr>
         <td>{{ r.name }}</td>
-        <td>{{ r.sellable }}</td>
-        <td>{{ r.sold }}</td>
-        <td>{% if r.percent is not none %}{{ r.percent }}%{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ r.sellable }}</td>
+        <td class="num">{{ r.sold }}</td>
+        <td class="num">{% if r.percent is not none %}{{ r.percent }}%{% else %}&mdash;{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -77,8 +77,8 @@
 <p class="muted">No active rooms.</p>
 {% endif %}
 
-<h2>What made people look</h2>
-<p class="g-hint">
+<h2 class="section-heading">What made people look</h2>
+<p class="muted">
   Not the same question as where a booking came from. That records how it
   <em>arrived</em>; this records what made somebody look at all. A guest who saw
   the house on television and then booked direct is a direct booking and is not
@@ -87,20 +87,20 @@
 </p>
 {% if heard %}
 <div class="table-wrap">
-  <table>
-    <thead><tr><th>How they heard</th><th>Stays</th><th>Worth</th></tr></thead>
+  <table class="data-table">
+    <thead><tr><th>How they heard</th><th class="num">Stays</th><th class="num">Worth</th></tr></thead>
     <tbody>
       {% for r in heard %}
       <tr{{ ' class="muted"'|safe if r.key is none }}>
         <td>{{ r.label }}</td>
-        <td>{{ r.stays }}</td>
-        <td>&euro;{{ '{:,.0f}'.format(r.money) }}</td>
+        <td class="num">{{ r.stays }}</td>
+        <td class="num">&euro;{{ '{:,.0f}'.format(r.money) }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
-<p class="g-hint">
+<p class="muted">
   Ask it at arrival rather than on the booking form, and record it on the
   booking. Most stays predate the question, and those sit in
   &ldquo;not recorded&rdquo; rather than being folded into anything.
@@ -109,8 +109,8 @@
 <p class="muted">No confirmed stays in this window.</p>
 {% endif %}
 
-<h2>Who is worth most</h2>
-<p class="g-hint">
+<h2 class="section-heading">Who is worth most</h2>
+<p class="muted">
   Everything one person has spent here, across stays, dinners and ateliers
   &mdash; summed from each booking&rsquo;s own bill, which is the same
   definition the guest&rsquo;s own record uses. Lifetime, not this quarter: the
@@ -118,10 +118,10 @@
 </p>
 {% if values %}
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead>
-      <tr><th>Guest</th><th>Spent</th><th>Owed</th><th>Stays</th><th>Nights</th>
-          <th>Ateliers</th><th>Dinners</th><th>Called off</th><th>Last here</th></tr>
+      <tr><th>Guest</th><th class="num">Spent</th><th class="num">Owed</th><th class="num">Stays</th><th class="num">Nights</th>
+          <th class="num">Ateliers</th><th class="num">Dinners</th><th class="num" title="Cancelled, declined, or confirmed and never arrived">Called off</th><th>Last here</th></tr>
     </thead>
     <tbody>
       {% for g in values %}
@@ -130,15 +130,15 @@
           <a href="{{ url_for('guest_detail', guest_id=g.id) }}">{{ g.name }}</a>
           {% if g.vip %}<span class="chip">Looked after</span>{% endif %}
         </td>
-        <td>&euro;{{ '{:,.0f}'.format(g.spent) }}</td>
-        <td>{% if g.owed %}<strong>&euro;{{ '{:,.0f}'.format(g.owed) }}</strong>{% else %}&mdash;{% endif %}</td>
-        <td>{{ g.stays }}</td>
-        <td>{{ g.nights }}</td>
-        <td>{{ g.workshops or '—' }}</td>
-        <td>{{ g.meals or '—' }}</td>
+        <td class="num">&euro;{{ '{:,.0f}'.format(g.spent) }}</td>
+        <td class="num">{% if g.owed %}<strong>&euro;{{ '{:,.0f}'.format(g.owed) }}</strong>{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ g.stays }}</td>
+        <td class="num">{{ g.nights }}</td>
+        <td class="num">{{ g.workshops or '—' }}</td>
+        <td class="num">{{ g.meals or '—' }}</td>
         {# Named rather than hidden: nine years of coming back and one long
            expensive stay are the same number and are not the same guest. #}
-        <td>{% if g.called_off %}{{ g.called_off }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if g.called_off %}{{ g.called_off }}{% else %}&mdash;{% endif %}</td>
         <td>{{ g.last_seen or '—' }}</td>
       </tr>
       {% endfor %}

@@ -189,7 +189,7 @@
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen" loading="lazy">
       <div class="g-incl-card__b">
         <h3 class="g-incl-card__t">The Table</h3>
-        <p>Our own chefs, cooking from the Ariège markets and the château gardens — from a long lunch under the trees to a candlelit dinner in the recovered dining room.</p>
+        <p>Our own chefs, cooking from the Ariège markets and the château gardens — from a long lunch under the trees to a candlelit dinner in the recovered dining room. Or bring your own caterer; both are done here.</p>
       </div>
     </article>
     <article class="g-incl-card">
@@ -233,11 +233,11 @@
     <div class="g-plate__row">
       <dl class="g-plate__l">
         <div><dt>Exclusive use</dt><dd>The château and its ten acres given over to you, with no other guests</dd></div>
-        <div><dt>How many nights</dt><dd>Most take the building for three or four days rather than one</dd></div>
+        <div><dt>How many nights</dt><dd>Most take the building for three or four days rather than one. A day is possible; a week is better</dd></div>
         <div><dt>Children</dt><dd>Eight and over — the building is not suitable for younger guests</dd></div>
         <div><dt>How many sleeping</dt><dd>Up to 15 in the château, and more in the village below</dd></div>
         <div><dt>How many at dinner</dt><dd>Up to 40 seated inside; larger numbers work outdoors</dd></div>
-        <div><dt>The season</dt><dd>Summer is the busiest. Spring and autumn are quieter and cost less</dd></div>
+        <div><dt>The season</dt><dd>Summer is the busiest. Spring and autumn are quieter and cost less. The gardens are at their best from May to October; the salons and fires work all year</dd></div>
         <div><dt>What you bring</dt><dd>Your own florist and photographer, or ours — either is welcome</dd></div>
       </dl>
     </div>
@@ -262,6 +262,7 @@
       <dl class="g-plate__l">
         <div><dt>Main dining salon</dt><dd>Up to 40 seated — the largest room, and where dinner usually goes</dd></div>
         <div><dt>The other salons</dt><dd>20 to 30 each: the drawing room, the music room, the second dining room</dd></div>
+        <div><dt>The ceremony</dt><dd>The gardens, the terrace, a salon, or the drive</dd></div>
         <div><dt>The chapel</dt><dd>Small, and in the building. A blessing here, the legalities at the mairie</dd></div>
         <div><dt>The bar</dt><dd>For the part of the evening that runs late</dd></div>
         <div><dt>The gardens</dt><dd>Terraces, parkland and ten acres — the outdoor areas take larger numbers</dd></div>
@@ -297,38 +298,7 @@
    it costs and when. None of them were on the page. Figures are from the
    château's own capacities; the cost basis is deliberately a basis, not a
    number, because every event is quoted. #}
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M0 13h38"/><path d="M82 13h38"/>
-  <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
-  <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
-  <circle cx="60" cy="13" r="1.4"/>
-</svg>
-  <p class="g-eyebrow">Before You Enquire</p>
-  <h2 class="g-place">What to Expect</h2>
-
-  <div class="g-figures">
-    <div class="g-figure"><b>40</b><span>Seated in the main dining salon</span></div>
-    <div class="g-figure"><b>94</b><span>Rooms, five floors, ten acres</span></div>
-    <div class="g-figure"><b>1</b><span>Event at a time — the château is yours</span></div>
-    <div class="g-figure"><b>1741</b><span>The building your photographs are taken in</span></div>
-  </div>
-
-  <hr class="g-rule--double">
-
-  <dl class="g-facts-list">
-    <div><dt>Exclusivity</dt><dd>The château takes no other guests while your event runs</dd></div>
-    <div><dt>Staying over</dt><dd>Bedrooms in the château itself, and more in the valley below</dd></div>
-    <div><dt>Catering</dt><dd>Our own kitchen and chefs, or bring your own — both are done here</dd></div>
-    <div><dt>Ceremony</dt><dd>The gardens, the terrace, the salons, or the drive. Legal formalities at the mairie</dd></div>
-    <div><dt>Cost</dt><dd>Quoted per event, not per head — it depends on the season, the nights and the numbers</dd></div>
-    <div><dt>Season</dt><dd>May to October for the gardens; the salons and fires work all year</dd></div>
-    <div><dt>How long</dt><dd>Most take the château for three nights. A day is possible; a week is better</dd></div>
-    <div><dt>Getting there</dt><dd>Toulouse is an hour and three quarters. We arrange the cars</dd></div>
-  </dl>
-</div></section>
-
-
+{# "What to Expect" stood here: its figures and four of its points repeated What It Costs and Which Room, For What. Its catering, ceremony, season and length are now in those sections. #}
 <!-- ============ THE JOURNAL ============ -->
 {# The newsletter form was only in the menu panel. This is the same route,
    placed where a reader who has just finished the page will see it. #}
@@ -336,7 +306,7 @@
   <div class="g-journal__in">
     <p class="g-eyebrow">The Journal</p>
     <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
+    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the workshop dates are released. Sent when there is something worth sending.</p>
     <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {# One id, set once. Calling random twice produced a different number for
@@ -348,7 +318,7 @@
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>
           <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
-          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Workshop dates</label>
           <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
         </fieldset>
       <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
@@ -435,22 +405,7 @@
   </p>
 </div></section>
 
-<!-- ============ ONE AT A TIME ============ -->
-<section class="g-sec g-scarce"><div class="g-wrap">
-  <div class="g-scarce__in">
-    <p class="g-eyebrow">Worth Knowing</p>
-    <h2 class="g-scarce__h">One Wedding at a Time</h2>
-    <p class="g-scarce__p">The château takes a single event and gives the building over to it. There is no second party in the next salon.</p>
-    <div class="g-scarce__grid">
-      <div class="g-scarce__i"><b class="g-fig">1</b><span>Event at a time, exclusively</span></div>
-      <div class="g-scarce__i"><b class="g-fig">40</b><span>Seated inside; more in the gardens</span></div>
-      <div class="g-scarce__i"><b class="g-fig">15</b><span>Sleeping in the château</span></div>
-      <div class="g-scarce__i"><b class="g-fig">10</b><span>Acres, and no neighbours</span></div>
-    </div>
-    <p class="g-scarce__note">Because the work continues around it, only a handful of weddings are taken each year. Summer dates are usually spoken for a long way ahead.</p>
-  </div>
-</div></section>
-
+{# "One Wedding at a Time" stood here: the exclusivity, the forty, the fifteen and the ten acres, a fourth time. #}
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}

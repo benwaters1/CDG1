@@ -28,8 +28,8 @@
 </div>
 {% endif %}
 
-<h2>The share</h2>
-<p class="g-hint">
+<h2 class="section-heading">The share</h2>
+<p class="muted">
   By hours on the floor. Not by role &mdash; the house has never recorded a
   weighting, and this software is not the place to decide that a chef is worth
   four fifths of a server. If you want it split another way, that is a decision
@@ -38,22 +38,22 @@
 
 {% if data.shares %}
 <div class="table-wrap">
-  <table>
-    <thead><tr><th>Who</th><th>Hours</th><th>Share of the night</th><th>Owed</th></tr></thead>
+  <table class="data-table">
+    <thead><tr><th>Who</th><th class="num">Hours</th><th class="num">Share of the night</th><th class="num">Owed</th></tr></thead>
     <tbody>
       {% for r in data.shares %}
       <tr>
         <td>{{ r.name }}</td>
-        <td>{{ r.hours }}</td>
-        <td>{% if data.hours %}{{ (100 * r.hours / data.hours)|round(1) }}%{% else %}&mdash;{% endif %}</td>
-        <td><strong>&euro;{{ '{:,.2f}'.format(r.share) }}</strong></td>
+        <td class="num">{{ r.hours }}</td>
+        <td class="num">{% if data.hours %}{{ (100 * r.hours / data.hours)|round(1) }}%{% else %}&mdash;{% endif %}</td>
+        <td class="num"><strong>&euro;{{ '{:,.2f}'.format(r.share) }}</strong></td>
       </tr>
       {% endfor %}
     </tbody>
     <tfoot>
       <tr>
         <td colspan="3">Shared out</td>
-        <td>&euro;{{ '{:,.2f}'.format(data.allocated) }}</td>
+        <td class="num">&euro;{{ '{:,.2f}'.format(data.allocated) }}</td>
       </tr>
       {% if data.remainder %}
       {# Named rather than pushed onto the last row. A few cents a service is
@@ -61,7 +61,7 @@
          is noticed, and remembered. #}
       <tr>
         <td colspan="3">Left over after rounding down</td>
-        <td>&euro;{{ '{:,.2f}'.format(data.remainder) }}</td>
+        <td class="num">&euro;{{ '{:,.2f}'.format(data.remainder) }}</td>
       </tr>
       {% endif %}
     </tfoot>
@@ -71,17 +71,17 @@
 <p class="muted">Nothing was charged in service that night, or nobody was clocked in.</p>
 {% endif %}
 
-<h2>The week behind</h2>
+<h2 class="section-heading">The week behind</h2>
 <div class="table-wrap">
-  <table>
-    <thead><tr><th>Night</th><th>Bills</th><th>Service taken</th><th>On the floor</th></tr></thead>
+  <table class="data-table">
+    <thead><tr><th>Night</th><th class="num">Bills</th><th class="num">Service taken</th><th class="num">On the floor</th></tr></thead>
     <tbody>
       {% for n in week %}
       <tr{{ ' class="row-alert"'|safe if n.nobody_clocked_in }}>
         <td><a href="{{ url_for('tronc_page', day=n.day) }}">{{ n.day }}</a></td>
-        <td>{{ n.orders }}</td>
-        <td>&euro;{{ '{:,.2f}'.format(n.pot) }}</td>
-        <td>{{ n.shares|length }}</td>
+        <td class="num">{{ n.orders }}</td>
+        <td class="num">&euro;{{ '{:,.2f}'.format(n.pot) }}</td>
+        <td class="num">{{ n.shares|length }}</td>
       </tr>
       {% endfor %}
     </tbody>

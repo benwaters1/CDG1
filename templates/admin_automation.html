@@ -153,24 +153,28 @@
 
 <div class="detail-card" style="max-width:680px; margin-top:20px;">
   <h3 style="margin-top:0;">Job status</h3>
-  <div style="overflow-x:auto;">
-    <div class="table-wrap">
-<table style="width:100%; border-collapse:collapse; font-size:13px;">
+  <div class="table-wrap">
+    <table class="data-table">
       <thead>
-        <tr style="border-bottom:1px solid var(--parchment-line);">
-          <th style="text-align:left; padding:8px 6px;">Job</th>
-          <th style="text-align:left; padding:8px 6px;">Last ran</th>
-          <th style="text-align:left; padding:8px 6px;">How it went</th>
-          <th style="padding:8px 6px;"></th>
+        <tr>
+          <th>Job</th>
+          <th>Last ran</th>
+          <th>How it went</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
         {% for job_name, label in job_labels.items() %}
-        <tr style="border-bottom:1px solid var(--parchment-line);">
+        <tr>
           {% set run = last_runs.get(job_name) %}
-          <td style="padding:8px 6px;">{{ label }}</td>
-          <td style="padding:8px 6px;">{{ run['last_ran_at'][:19].replace('T', ' ') if run else 'never' }}</td>
-          <td style="padding:8px 6px;">
+          <td>{{ label }}</td>
+          {# The house's clock, as What changed shows its stamps. The stamp is
+             UTC, and slicing it showed every run an hour or two early -- after
+             midnight, on the day before. No row is a job that has never run
+             here. A row whose time cannot be read says so, where
+             local_datetime_str alone would print "?". #}
+          <td>{{ local_datetime_str(run['last_ran_at'], unknown='not recorded') if run else 'never' }}</td>
+          <td>
             {% if not run or not run['last_status'] %}
               <span class="muted">not recorded yet</span>
             {% elif run['last_status'] == 'ok' %}
@@ -183,11 +187,15 @@
                   {{ run['consecutive_failures'] }} times in a row
                 {%- endif %}</strong>
               {% if run['last_message'] %}<br>{{ run['last_message'] }}{% endif %}
+              {# Not "never". last_ok_at was added after the jobs were, so a
+                 blank one can be a job that worked for months before anything
+                 wrote down when. What is known is that nothing on record says
+                 it has. #}
               <br><span class="muted">Last worked:
-                {{ run['last_ok_at'][:19].replace('T', ' ') if run['last_ok_at'] else 'never' }}</span>
+                {{ local_datetime_str(run['last_ok_at'], unknown='not recorded') }}</span>
             {% endif %}
           </td>
-          <td style="padding:8px 6px; text-align:right;">
+          <td style="text-align:right;">
             <form method="post" action="{{ url_for('run_automation_job_now', job_name=job_name) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn-mini">Run now</button>
@@ -197,7 +205,6 @@
         {% endfor %}
       </tbody>
     </table>
-</div>
   </div>
 </div>
 

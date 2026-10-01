@@ -57,13 +57,13 @@
 {% endif %}
 
 {% if state.shares %}
-<h2>The shares</h2>
+<h2 class="section-heading">The shares</h2>
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead>
       <tr>
         <th scope="col">Whose</th>
-        <th scope="col">Amount</th>
+        <th scope="col" class="num">Amount</th>
         <th scope="col">Where it stands</th>
         <th scope="col">Their link</th>
         <th scope="col"></th>
@@ -77,7 +77,7 @@
           {% if share['email'] %}<br><span class="upload-hint">{{ share['email'] }}</span>{% endif %}
           {% if share['note'] %}<br><span class="upload-hint">{{ share['note'] }}</span>{% endif %}
         </th>
-        <td>&euro;{{ '%.2f'|format(share['amount']) }}</td>
+        <td class="num">&euro;{{ '%.2f'|format(share['amount']) }}</td>
         <td>
           {% if share['status'] == 'paid' %}
           <span class="mini-status status-onshift">paid {{ share['paid_at']|house_day }}</span>
@@ -111,7 +111,7 @@
             <form method="post" action="{{ url_for('cancel_bill_share', share_id=share['id']) }}"
                   onsubmit="return confirm('Take this share back? Their link stops working.');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn-mini btn-danger">Take it back</button>
+              <button type="submit" class="btn-mini btn-mini-danger">Take it back</button>
             </form>
           </div>
           {% endif %}
@@ -145,7 +145,7 @@
 
 {% if state.bill.owed > 0.005 %}
 <div class="detail-card">
-  <h2 style="margin-top:0;">Add a share</h2>
+  <h2 class="section-heading" style="margin-top:0;">Add a share</h2>
   <p class="upload-hint">
     &euro;{{ '%.2f'|format(state.unassigned) }} of this bill is still nobody's.
     A share is refused if it would take the total over what is owed &mdash; a
@@ -177,7 +177,7 @@
 
 {% if not state.shares %}
 <div class="detail-card">
-  <h2 style="margin-top:0;">Or split it evenly</h2>
+  <h2 class="section-heading" style="margin-top:0;">Or split it evenly</h2>
   <p class="upload-hint">
     The whole outstanding balance, divided in one go. The odd cents go on the
     first share &mdash; &euro;1000 three ways is 333.34 and two of 333.33, not

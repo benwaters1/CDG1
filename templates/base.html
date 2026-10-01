@@ -65,26 +65,33 @@
     </form>
     {% endif %}
     <div class="topbar-right">
-      <a href="{{ url_for('notifications_page') }}" class="bell-link {{ 'active' if request.endpoint=='notifications_page' }}" title="Notifications">
-        {{ icon('bell', 18) }}
-        {% if unread_notifications_count %}<span class="bell-badge" id="bell-badge">{{ unread_notifications_count }}</span>{% endif %}
-      </a>
-      <span class="who">{{ user['name'] }} <span class="role-badge role-{{ user['role'] }}">{{ user['role'] }}</span></span>
-      {% if user['role'] == 'owner' %}
-      <a href="{{ url_for('download_backup') }}" class="small-link">Backup</a>
-      {% endif %}
-      {# One link per language rather than a <select>: it works with no
-         JavaScript, each is a normal GET, and for a signed-in person the
-         choice is written to their account so it survives the next login. #}
-      <span class="staff-lang">
-        {% for code, label in languages.items() %}
-        <a href="{{ url_for('set_language', code=code) }}" hreflang="{{ code }}"
-           class="small-link staff-lang__opt{{ ' is-on' if code == lang }}"
-           {% if code == lang %}aria-current="true"{% endif %}>{{ code|upper }}</a>
-        {% endfor %}
-      </span>
-      <a href="{{ url_for('change_password') }}" class="small-link">{{ t('Password') }}</a>
-      <a href="{{ url_for('logout') }}" class="small-link" id="logout-link" onclick="return unsubscribeThenLogout(event)">{{ t('Log out') }}</a>
+      {# Two groups -- who is signed in, and what they can do -- so a row that
+         runs short breaks between them rather than off the edge of the screen.
+         On a phone they join the header's own rows: "ON A PHONE" in style.css. #}
+      <div class="topbar-me">
+        <a href="{{ url_for('notifications_page') }}" class="bell-link {{ 'active' if request.endpoint=='notifications_page' }}" title="Notifications">
+          {{ icon('bell', 18) }}
+          {% if unread_notifications_count %}<span class="bell-badge" id="bell-badge">{{ unread_notifications_count }}</span>{% endif %}
+        </a>
+        <span class="who"><span class="who-name">{{ user['name'] }}</span> <span class="role-badge role-{{ user['role'] }}">{{ user['role'] }}</span></span>
+      </div>
+      <div class="topbar-account">
+        {% if user['role'] == 'owner' %}
+        <a href="{{ url_for('download_backup') }}" class="small-link">Backup</a>
+        {% endif %}
+        {# One link per language rather than a <select>: it works with no
+           JavaScript, each is a normal GET, and for a signed-in person the
+           choice is written to their account so it survives the next login. #}
+        <span class="staff-lang">
+          {% for code, label in languages.items() %}
+          <a href="{{ url_for('set_language', code=code) }}" hreflang="{{ code }}"
+             class="small-link staff-lang__opt{{ ' is-on' if code == lang }}"
+             {% if code == lang %}aria-current="true"{% endif %}>{{ code|upper }}</a>
+          {% endfor %}
+        </span>
+        <a href="{{ url_for('change_password') }}" class="small-link">{{ t('Password') }}</a>
+        <a href="{{ url_for('logout') }}" class="small-link" id="logout-link" onclick="return unsubscribeThenLogout(event)">{{ t('Log out') }}</a>
+      </div>
     </div>
   </div>
 </header>
@@ -246,6 +253,7 @@
         <a href="{{ url_for('management_email_templates') }}" class="{{ 'active' if request.endpoint=='management_email_templates' }}">{{ icon('megaphone') }}Email Wording</a>
         <a href="{{ url_for('admin_inbox_flags') }}" class="{{ 'active' if request.endpoint=='admin_inbox_flags' }}">{{ icon('bell') }}Inbox Flags{% if open_email_flags_count %} ({{ open_email_flags_count }}){% endif %}</a>
         <a href="{{ url_for('management_booking_com') }}" class="{{ 'active' if request.endpoint=='management_booking_com' }}">{{ icon('bell') }}Booking.com</a>
+        <a href="{{ url_for('website_analytics') }}" class="{{ 'active' if request.endpoint=='website_analytics' }}">{{ icon('eye') }}Website Visitors</a>
       </div>
     </div>
     {% endif %}
@@ -265,6 +273,7 @@
         <a href="{{ url_for('management_on_the_books') }}" class="{{ 'active' if request.endpoint=='management_on_the_books' }}">{{ icon('financial') }}On The Books</a>
         <a href="{{ url_for('management_break_even') }}" class="{{ 'active' if request.endpoint=='management_break_even' }}">{{ icon('financial') }}Break-even</a>
         <a href="{{ url_for('management_payment_cost') }}" class="{{ 'active' if request.endpoint=='management_payment_cost' }}">{{ icon('financial') }}Cost Of Taking Money</a>
+        <a href="{{ url_for('admin_transactions') }}" class="{{ 'active' if request.endpoint=='admin_transactions' }}">{{ icon('receipt') }}Transactions</a>
         <a href="{{ url_for('admin_refunds') }}" class="{{ 'active' if request.endpoint=='admin_refunds' }}">{{ icon('receipt') }}Refunds</a>
         <a href="{{ url_for('admin_reports') }}" class="{{ 'active' if request.endpoint in ['admin_reports','admin_report'] }}">{{ icon('financial') }}Reports</a>
         <a href="{{ url_for('management_bank_details') }}" class="{{ 'active' if request.endpoint=='management_bank_details' }}">{{ icon('financial') }}Bank Details</a>
@@ -351,6 +360,8 @@
         <a href="{{ url_for('import_catalogue') }}" class="{{ 'active' if request.endpoint=='import_catalogue' }}">{{ icon('folder') }}Import Catalogue</a>
         <a href="{{ url_for('import_guests') }}" class="{{ 'active' if request.endpoint=='import_guests' }}">{{ icon('guests') }}Import Guests</a>
         <a href="{{ url_for('audit_log') }}" class="{{ 'active' if request.endpoint=='audit_log' }}">{{ icon('eye') }}Audit Log</a>
+        <a href="{{ url_for('mail_log') }}" class="{{ 'active' if request.endpoint in ['mail_log','mail_log_letter'] }}">{{ icon('eye') }}Mail Log</a>
+        <a href="{{ url_for('changes_log') }}" class="{{ 'active' if request.endpoint=='changes_log' }}">{{ icon('eye') }}Changes Log</a>
       </div>
     </div>
     {% endif %}

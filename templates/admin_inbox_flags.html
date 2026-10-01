@@ -163,7 +163,7 @@
           {% if g['stays'] %}<span class="mini-status status-confirmed" style="margin-left:4px;">{{ g['stays'] }} stay{{ '' if g['stays'] == 1 else 's' }}{% if g['lifetime'] %} · €{{ '%.0f'|format(g['lifetime']) }}{% endif %}</span>{% endif %}
         {% endif %}
       </div>
-      <span class="upload-hint">{{ f['received_at'][:16].replace('T', ' ') }}</span>
+      <span class="upload-hint">{{ local_datetime_str(f['received_at']) }}</span>
     </div>
     <p class="manual-body"><strong>{{ f['subject'] or '(no subject)' }}</strong></p>
     {% set g = guest_context.get((f['from_address'] or '')|lower) %}

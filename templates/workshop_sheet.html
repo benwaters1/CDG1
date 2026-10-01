@@ -47,7 +47,7 @@
 <div class="detail-card">
   <h2 class="section-heading">For the kitchen</h2>
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead><tr><th>Who</th><th>What</th></tr></thead>
       <tbody>
         {% for d in sheet.kitchen %}
@@ -64,7 +64,7 @@
   <h2 class="section-heading">Medical</h2>
   <p class="pay-disclaimer" style="margin-top:-6px;">Told to the house so somebody knows. These are deleted once the workshop is over.</p>
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead><tr><th>Who</th><th>What</th></tr></thead>
       <tbody>
         {% for d in sheet.medical %}
@@ -80,7 +80,7 @@
 <div class="detail-card">
   <h2 class="section-heading">Worth knowing</h2>
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead><tr><th>Who</th><th>Occasion</th></tr></thead>
       <tbody>
         {% for d in sheet.occasions %}
@@ -95,7 +95,7 @@
 <div class="detail-card">
   <h2 class="section-heading">Who is coming</h2>
   {% if not sheet.rows %}
-  <p class="empty-note">Nobody has confirmed a place yet.</p>
+  <p class="empty-inline">Nobody has confirmed a place yet.</p>
   {% else %}
   <div class="doc-list">
     {% for r in sheet.rows %}

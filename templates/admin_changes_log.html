@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Changes Log{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Changes log</h1>
+  <a href="{{ url_for('export_changes_log_csv', **request.args.to_dict()) }}" class="btn-mini">
+    Export {{ 'this view' if lv.filtered else 'CSV' }}
+  </a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every change to a stay, an atelier, an event, a table, their payments, extras and refunds,
+  a guest, a voucher or a code &mdash; field by field, and who made it. Written down by the
+  database itself, so nothing can change them without appearing here. Kept two years.
+</p>
+
+{% include "_list_toolbar.html" %}
+
+{% if not rows %}
+  <div class="empty-state">
+    {% if lv.filtered %}
+      Nothing matches that. <a href="{{ url_for('changes_log') }}">Show all {{ lv.total }}</a>
+    {% else %}
+      Nothing has changed yet.
+    {% endif %}
+  </div>
+{% else %}
+  {% if capped %}
+  <p class="list-count">
+    Showing the most recent {{ cap }} of {{ lv.shown }} &mdash; narrow it down above, or
+    <a href="{{ url_for('export_changes_log_csv', **request.args.to_dict()) }}" class="small-link">export the lot</a>.
+  </p>
+  {% endif %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>When</th><th>Action</th><th>What</th><th>Who</th><th>Changes</th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.when }}</td>
+          <td>{{ r.action_words }}</td>
+          <td>{{ r.object }}</td>
+          <td>{{ r.who }}{% if r.endpoint %}<br><span class="cell-note">{{ r.endpoint|replace('_', ' ') }}</span>{% endif %}</td>
+          <td>
+            {% if r.fields %}
+            <details>
+              <summary>View {{ r.fields|length }} change{{ '' if r.fields|length == 1 else 's' }}</summary>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead><tr><th>Field</th><th>Before</th><th>After</th></tr></thead>
+                  <tbody>
+                    {% for field, before, after in r.fields %}
+                    <tr><th scope="row">{{ field }}</th><td>{{ '' if before is none else before }}</td><td>{{ '' if after is none else after }}</td></tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+{% endblock %}

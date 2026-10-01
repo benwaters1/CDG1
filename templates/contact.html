@@ -15,7 +15,7 @@
 </script>
 {% endblock %}
 {% set crumbs = [('Contact', None)] %}
-{% block title %}Contact{% endblock %}
+{% block title %}Contact &amp; Getting Here{% endblock %}
 {% block description %}Château de Gudanes, 2 Route de Beille, Château-Verdun, Ariège. An hour and three quarters from Toulouse. Every message is read at the château.{% endblock %}
 {% block og_desc %}Château de Gudanes, 2 Route de Beille, Château-Verdun, Ariège. An hour and three quarters from Toulouse. Every message is read at the château.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1200w{% endblock %}
@@ -196,7 +196,7 @@
     <div class="g-plate__row">
       <dl class="g-plate__l">
         <div><dt>By air</dt><dd>Toulouse-Blagnac, then an hour and three quarters by road; or Barcelona–El Prat, about three hours</dd></div>
-        <div><dt>By train</dt><dd>To Foix, twenty minutes away. We will meet it</dd></div>
+        <div><dt>By train</dt><dd>Les Cabannes, three minutes from the gates, on the Toulouse–Latour-de-Carol line; or Foix, further down the valley. We will meet either</dd></div>
         <div><dt>By car</dt><dd>An hour and three quarters from Toulouse, three hours from Barcelona. Parking at the château</dd></div>
         <div><dt>From Barcelona</dt><dd>About three hours by road: the C-16 north through the Cadí tunnel to Puigcerdà, across the border, then the N20 through the Puymorens tunnel to Ax-les-Thermes and down the valley. Both tunnels are tolled, and the Puymorens keeps the road open all winter. By train, the Rodalies from Barcelona to Latour-de-Carol on the border, then the French line north to Les Cabannes — tell us the train and we will meet it</dd></div>
         <div><dt>The address</dt><dd>2 Route de Beille, Château-Verdun, Ariège 09310</dd></div>
@@ -222,10 +222,10 @@
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Or simply take a date</h2>
-  <p class="g-close__p">The booking pages are the fastest route for a stay{% if _dm == 'open' %}, an atelier or a table{% else %} or an atelier{% endif %}.</p>
+  <p class="g-close__p">Book online, and the directions come with your confirmation.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">See the ateliers</a>
+      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">See the workshops</a>
       {% if _dm == 'open' %}<a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Reserve a table</a>{% endif %}
   </div>
 </div></section>

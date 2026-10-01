@@ -45,7 +45,9 @@
      looking from France. */
   var iso=function(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')
     +'-'+String(d.getDate()).padStart(2,'0'); };
-  var today=new Date(); today.setHours(0,0,0,0);
+  /* And today is the house's (window.houseDay), not the browser's, which
+     for a guest in New York is the house's yesterday all evening. */
+  var today=houseDay.date();
 
   var out='';
   for(var m=0;m<MONTHS;m++){

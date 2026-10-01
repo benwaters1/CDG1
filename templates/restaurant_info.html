@@ -44,7 +44,8 @@
 <div class="g-hero__wash"></div>
 <div class="g-hero__in"><p class="g-hero__eyebrow">Dining · Château de Gudanes</p>
     <h1 class="g-hero__title">La Table</h1>
-    {% if _dm == 'open' %}<p class="g-hero__cta"><a href="{{ url_for('restaurant_book') }}" class="g-btn g-btn--solid">Reserve a table</a></p>{% else %}<p class="g-hero__lede">Closed for the season{% if _dr %}, reopening {{ _dr }}{% endif %}.</p>{% endif %}
+    {% if _dm == 'open' %}<p class="g-hero__lede">Dinner by candlelight in a room brought back from ruin, cooked from the Sunday market and the château gardens.</p>
+    <p class="g-hero__cta"><a href="{{ url_for('restaurant_book') }}" class="g-btn g-btn--solid">Reserve a table</a></p>{% else %}<p class="g-hero__lede">Closed for the season{% if _dr %}, reopening {{ _dr }}{% endif %}.</p>{% endif %}
   </div>
 </section>
 
@@ -147,13 +148,10 @@
   </div>
   {% endif %}
 
-  <p class="g-p" style="margin-top:var(--s6)"><em>Tell us about any allergies or dietary requirements when you book and the chef will cook around them on the night. Tell us when you reserve and they become part of the planning — not an adjustment made in the kitchen at eight o'clock.</em></p>
+  <p class="g-p" style="margin-top:var(--s6)"><em>Tell us about any allergies or dietary needs when you reserve, and they become part of the planning — not an adjustment made in the kitchen at eight o'clock.</em></p>
 </div></section>
 
-<section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
-  <h2 class="g-place">Through The Day</h2>
-  <ul class="g-time"><li><b>Petit-déjeuner</b><span>Eight until ten, included with every stay. Viennoiseries from the village, local yoghurts and preserves, and teas made from herbs grown in the gardens.</span></li><li><b>Salon de Thé</b><span>Open from morning until evening. French and local teas, coffee, and hot water refreshed through the day.</span></li><li><b>Déjeuner</b><span>By arrangement, and often taken outside when the weather allows — beneath the façade, or in the gardens above the valley.</span></li><li><b>Dîner</b><span>Served from half past seven in the dining room.</span></li></ul>
-</div></section>
+{# "Through The Day" stood here: the day's meals a second time, beside Where You Will Eat (which now carries the breakfast hours). #}
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <h2 class="g-place">Occasions</h2>
@@ -194,7 +192,9 @@
         <div><dt>At table</dt><dd>Half past seven, by candlelight in the dining room</dd></div>
         <div><dt>The menu</dt><dd>Set, and built from what the market had that morning</dd></div>
         <div><dt>Wine</dt><dd>Local, poured with dinner</dd></div>
-        <div><dt>One table</dt><dd>One sitting, on the nights the kitchen is open</dd></div>
+        <div><dt>One table</dt><dd>One sitting, on the nights the kitchen is open. Residents first, and others when there is room; in summer, ask early</dd></div>
+        {# The table's size, from the restaurant's own setting - as the booking form reads it (forty is the events figure). #}
+        {% if settings and settings['capacity'] %}<div><dt>Seats</dt><dd>Up to {{ settings['capacity'] }}</dd></div>{% endif %}
         <div><dt>Afterwards</dt><dd>The salons, the fire, and no need to go anywhere</dd></div>
       </dl>
     </div>
@@ -214,7 +214,7 @@
     <div class="g-find">
       <p class="g-find__k">Morning</p>
       <h3 class="g-find__t">Breakfast</h3>
-      <p class="g-find__d">Bread from the village, cheeses, charcuterie, fruit from the garden in season, and coffee that keeps arriving. Inside, or on the terrace if the weather allows.</p>
+      <p class="g-find__d">Eight until ten, included with every stay. Bread from the village, cheeses, charcuterie, fruit from the garden in season, and coffee that keeps arriving. Inside, or on the terrace if the weather allows.</p>
     </div>
     <div class="g-find">
       <p class="g-find__k">Midday</p>
@@ -412,7 +412,7 @@
   <div class="g-journal__in">
     <p class="g-eyebrow">The Journal</p>
     <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
+    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the workshop dates are released. Sent when there is something worth sending.</p>
     <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {# One id, set once. Calling random twice produced a different number for
@@ -424,7 +424,7 @@
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>
           <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
-          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Workshop dates</label>
           <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
         </fieldset>
       <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
@@ -464,21 +464,8 @@
   </p>
 </div></section>
 
-<!-- ============ ONE TABLE ============ -->
-<section class="g-sec g-scarce"><div class="g-wrap">
-  <div class="g-scarce__in">
-    <p class="g-eyebrow">Worth Knowing</p>
-    <h2 class="g-scarce__h">One Table, One Sitting</h2>
-    <p class="g-scarce__p">The kitchen cooks for one table. When it is taken, it is taken, and there is no second service.</p>
-    <div class="g-scarce__grid">
-      <div class="g-scarce__i"><b class="g-fig">1</b><span>Sitting, when it runs</span></div>
-      <div class="g-scarce__i"><b class="g-fig">40</b><span>Seated at most, in the main salon</span></div>
-      <div class="g-scarce__i"><b class="g-fig">7:30</b><span>At table</span></div>
-      <div class="g-scarce__i"><b class="g-fig">317</b><span>People in the village that feeds it</span></div>
-    </div>
-    <p class="g-scarce__note">Residents are seated first. Non-residents are welcome when there is room, which in summer means asking early.</p>
-  </div>
-</div></section>
+{# "One Table, One Sitting" stood here: the sitting, the time and the village's size a third and fourth time. Its non-resident line and
+   its forty seats are now in How Dinner Runs. #}
 
 
 <!-- ============ KEY INFORMATION ============ -->

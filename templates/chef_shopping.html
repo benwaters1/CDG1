@@ -33,21 +33,21 @@
    and says it in the local time somebody can compare against a clock. #}
 <p class="page-intro">
   {{ shopping.left }} {{ 'thing' if shopping.left == 1 else 'things' }} left ·
-  as of <span data-asof="{{ shopping.as_of }}">{{ shopping.as_of[11:16] }} UTC</span>
+  as of <span data-asof="{{ shopping.as_of }}">{{ local_datetime_str(shopping.as_of) }}</span>
 </p>
 
 {% if shopping.short %}
 <h2 class="section-heading">The store says these are low</h2>
 <div class="table-wrap">
-  <table>
-    <thead><tr><th scope="col">What</th><th scope="col">On hand</th>
-      <th scope="col">Reorder at</th></tr></thead>
+  <table class="data-table">
+    <thead><tr><th scope="col">What</th><th scope="col" class="num">On hand</th>
+      <th scope="col" class="num">Reorder at</th></tr></thead>
     <tbody>
       {% for r in shopping.short %}
       <tr>
         <th scope="row">{{ r.name }}</th>
-        <td>{{ r.on_hand }}{% if r.unit %} {{ r.unit }}{% endif %}</td>
-        <td>{{ r.reorder_level }}{% if r.unit %} {{ r.unit }}{% endif %}</td>
+        <td class="num">{{ r.on_hand }}{% if r.unit %} {{ r.unit }}{% endif %}</td>
+        <td class="num">{{ r.reorder_level }}{% if r.unit %} {{ r.unit }}{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -99,8 +99,10 @@ document.querySelectorAll('.shop-row').forEach(function (row) {
   });
 });
 
-// The stamp in local time, once, on the device that is reading it. Rendered
-// as UTC on the server because the server does not know where the tablet is.
+// The stamp in local time, once, on the device that is reading it. The server
+// writes the house's time and the day, which is right for a tablet in the
+// kitchen and is what the page says if this never runs. It used to write the
+// UTC time with no day, which told a kept copy's reader neither.
 (function () {
   var el = document.querySelector('[data-asof]');
   if (!el) return;

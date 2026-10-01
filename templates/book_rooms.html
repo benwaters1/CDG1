@@ -6,7 +6,7 @@
 {% set crumbs = [('Stay', None)] %}
 {% block title_fr %}Séjourner au château{% endblock %}
 {% block description_fr %}Cinq chambres dans un Monument Historique classé des Pyrénées ariégeoises, en restauration depuis 2013. {% if house_rooms and house_rooms.from_price %}À partir de {{ house_rooms.from_price }} € la nuit, {% endif %}petit-déjeuner compris.{% endblock %}
-{% block title %}Stay{% endblock %}
+{% block title %}Stay the Night in a French Château{% endblock %}
 {% block description %}Five bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
 {% block og_desc %}Five bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
@@ -123,8 +123,8 @@
   <p class="g-eyebrow">Not a Compromise</p>
   <h2 class="g-place">Why the Walls Stay As They Are</h2>
   <p class="g-p g-lede-first">The bare plaster in these rooms is not unfinished work. It is protected, and putting a modern surface over it would be illegal.</p>
-  <p class="g-p">Every intervention here is applied for and approved by the Monuments Historiques before a tool is lifted. Drawings, materials, methods and the people doing it are all reviewed. The process is long and it is strict, and it should be — this is one of fewer than fifteen hundred buildings in France holding the highest grade of protection, and it will outlast everyone currently arguing about it.</p>
-  <p class="g-p">What that buys you is a room nobody could build. The plaster you sleep beside was laid in the eighteenth century and has been read, recorded and consolidated rather than replaced. A hotel could give you a smooth wall tomorrow. Nobody can give you this one.</p>
+  <p class="g-p">Every intervention here is applied for and approved by the Monuments Historiques before a tool is lifted. Drawings, materials, methods and the people doing it are all reviewed. The process is long and it is strict, and it should be — this is one of fewer than fifteen thousand buildings in France holding the highest grade of protection, and it will outlast everyone currently arguing about it.</p>
+  <p class="g-p">What that gives you is a room nobody could build. The plaster you sleep beside was laid in the eighteenth century and has been read, recorded and consolidated rather than replaced. A hotel could give you a smooth wall tomorrow. Nobody can give you this one.</p>
   <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
     <div><dt>Reversible</dt><dd>New work is done so it could one day be removed without harming what was there</dd></div>
     <div><dt>Recorded first</dt><dd>Every surface is photographed and documented before anyone touches it</dd></div>
@@ -248,14 +248,14 @@
         </ul>
         {% if searched %}
           {% if availability.get(room['id']) %}
-            <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, name=prefill_name, email=prefill_email, phone=prefill_phone, party_size=prefill_party_size) }}">Book in</a>
+            <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, name=prefill_name, email=prefill_email, phone=prefill_phone, party_size=prefill_party_size) }}">Book this room</a>
           {% else %}
             <span class="g-btn g-btn--off g-card__cta">
               {{ unavailable_reason.get(room['id'], 'Not available these dates') }}
             </span>
           {% endif %}
         {% else %}
-          <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id']) }}">Book in</a>
+          <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id']) }}">Book this room</a>
         {% endif %}
       </div>
     </article>
@@ -276,7 +276,7 @@
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>
           <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
-          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Workshop dates</label>
           <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
         </fieldset></p>
       <p class="g-field"><label for="w_phone">Telephone <span class="g-opt">optional</span></label><input type="tel" inputmode="tel" id="w_phone" name="phone" inputmode="tel" autocomplete="tel"></p>
@@ -496,7 +496,7 @@
       </p>
       <ul>
         {% if _dm == 'open' %}<li>Dinner at La Table — booked in advance, priced per person</li>{% elif _dm == 'closed' %}<li>Dinner at La Table — closed for the season{% if _dr %}, reopening {{ _dr }}{% endif %}</li>{% endif %}
-        <li>Transfers from Toulouse or the train at Foix — we will arrange the car</li>
+        <li>Transfers from Toulouse, or from the train — we will arrange the car</li>
         <li>Carriage rides, market mornings, brocante tours</li>
         <li>Tourist tax — added to the total when you pay, as French law requires</li>
       </ul>
@@ -504,6 +504,8 @@
     {# "Nothing above appears on your bill unless you ask for it" - the tourist tax is
    listed above, and the law requires it whether you ask or not. #}
 <p class="g-ledger__note">Rates are per room per night. Nothing arranged separately is charged unless you ask for it, apart from the tourist tax, which the law requires.</p>
+      {# The distinction the owner asked for (28 Sept). #}
+      <p class="g-limit"><span class="g-limit__k">Stay or workshop</span>A night's stay is your room and breakfast, with the house and the grounds. A workshop is the full experience — a small-group retreat with every meal, the château's wines, a tour of the house, the excursions and the transfers from Toulouse. <a href="{{ url_for('workshops_public') }}">See the workshops</a>.</p>
       <p style="margin-top:var(--s6)">
       <a href="#book" class="g-btn g-btn--solid">Check your dates</a>
     </p>
@@ -591,7 +593,7 @@
     <div class="g-extra__b">
       <p class="g-extra__k">Arrival</p>
       <h3 class="g-extra__t">Airport Transfer</h3>
-      <p class="g-extra__d">A private car from Toulouse-Blagnac, an hour and three quarters each way, met at arrivals. Up to three people with luggage. We also meet the train at Foix, which is twenty minutes away and often the easier journey.</p>
+      <p class="g-extra__d">A private car from Toulouse-Blagnac, an hour and three quarters each way, met at arrivals. Up to three people with luggage. We also meet the train, at Les Cabannes or at Foix; it is often the easier journey.</p>
       <p class="g-extra__p"><span class="g-fig">€350</span> each way, Toulouse · Foix quoted separately</p>
     </div>
   </article>
@@ -748,6 +750,8 @@
 
 {% from '_faq.html' import faq %}
 {{ faq([
+  ('What is the difference between a stay and a workshop?',
+   'A stay is your room and breakfast, with the house and the grounds to enjoy. A workshop is the full experience: a small-group retreat of three to seven nights, with every meal, the château wines, a tour of the house, the excursions and the transfers from Toulouse.'),
   ('Is there anywhere nearby for a drink, or supplies?',
    'Les Cabannes, three minutes below the gates, is the larger village: restaurants, a bar, a supermarket and a tabac, and the railway station. Château-Verdun itself is a village of about fifty people.'),
   ('Is there a lift?',
@@ -779,7 +783,7 @@
   <div class="g-journal__in">
     <p class="g-eyebrow">The Journal</p>
     <h2 class="g-journal__h">Follow the Restoration</h2>
-    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
+    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the workshop dates are released. Sent when there is something worth sending.</p>
     <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {# One id, set once. Calling random twice produced a different number for
@@ -885,7 +889,7 @@
   <p class="g-close__p">Breakfast is included, and your dates are confirmed the moment you book.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check your dates</a>
-      {% if _dm == 'open' %}<a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Keep the evening</a>{% endif %}
+      {% if _dm == 'open' %}<a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Stay for dinner</a>{% endif %}
       <a href="{{ url_for('facilities_page') }}" class="g-btn g-btn">Walk the grounds</a>
   </div>
 </div></section>

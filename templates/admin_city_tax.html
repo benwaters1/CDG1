@@ -75,14 +75,14 @@ so it is declared either way.
       <tr>
         <td>
           {{ r.guest }}
-          <span class="g-hint">{{ r.reference }}{% if not r.settled %} · unpaid{% endif %}</span>
+          <span class="cell-note">{{ r.reference }}{% if not r.settled %} · unpaid{% endif %}</span>
         </td>
         <td>
           {{ r.room }}
-          <span class="g-hint">{{ r.arrival|date_short }} → {{ r.departure|date_short }}</span>
+          <span class="cell-note">{{ r.arrival|date_short }} → {{ r.departure|date_short }}</span>
         </td>
         <td class="num">
-          {{ r.nights }}{% if r.nights != r.total_nights %}<span class="g-hint">of {{ r.total_nights }}</span>{% endif %}
+          {{ r.nights }}{% if r.nights != r.total_nights %}<span class="cell-note">of {{ r.total_nights }}</span>{% endif %}
         </td>
         <td class="num">{{ r.adults }}</td>
         <td class="num">{{ r.exempt_guests or '' }}</td>
@@ -128,14 +128,14 @@ so it is declared either way.
   offered; only the first has a one-press button.
 #}
 {% if arrears and arrears.count %}
-<h2 style="margin-top:32px;">Stays carrying no taxe de séjour</h2>
+<h2 class="section-heading" style="margin-top:32px;">Stays carrying no taxe de séjour</h2>
 <p class="upload-hint">At the current rate of €{{ '%.2f'|format(arrears.rate) }}
 per adult per night. Charging a stay recalculates it from today's rate — for a
 stay still to come that is right; for one long finished, the rate then may have
 been different.</p>
 
 {% if arrears.upcoming %}
-<h3>Still to come — {{ arrears.upcoming|length }},
+<h3 class="sub-heading">Still to come — {{ arrears.upcoming|length }},
   €{{ '%.2f'|format(arrears.upcoming_total) }}</h3>
 <form method="post" action="{{ url_for('charge_city_tax_upcoming') }}"
       style="margin-bottom:12px;">
@@ -146,7 +146,7 @@ been different.</p>
   they have yet to settle.</span>
 </form>
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead><tr><th>Guest</th><th>Arrives</th><th class="num">Nights</th>
       <th class="num">Adults</th><th class="num">Would be</th><th></th></tr></thead>
     <tbody>
@@ -172,13 +172,13 @@ been different.</p>
 {% endif %}
 
 {% if arrears.departed %}
-<h3 style="margin-top:24px;">Already departed — {{ arrears.departed|length }},
+<h3 class="sub-heading" style="margin-top:24px;">Already departed — {{ arrears.departed|length }},
   €{{ '%.2f'|format(arrears.departed_total) }}</h3>
 <p class="upload-hint">No button for all of these on purpose. Charging a stay
 that has settled creates a balance the reminder will chase, so each is a
 decision on its own.</p>
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead><tr><th>Guest</th><th>Departed</th><th class="num">Nights</th>
       <th>Bill</th><th class="num">Would be</th><th></th></tr></thead>
     <tbody>

@@ -23,7 +23,7 @@
   </div>
 </div>
 
-<h2 style="margin-top:0;">{{ sheet.day|date_short }}</h2>
+<h2 class="section-heading" style="margin-top:0;">{{ sheet.day|date_short }}</h2>
 
 <div class="stat-tiles">
   <div class="stat-tile">
@@ -46,7 +46,7 @@
 {% endif %}
 
 {% for section in sheet.sections %}
-<h3 style="margin-top:26px;">
+<h3 class="sub-heading" style="margin-top:26px;">
   {{ section.title }} — {{ section.covers }}
   {{ 'cover' if section.covers == 1 else 'covers' }}
   {%- if section.unknown_party %}, and {{ section.unknown_party }} more
@@ -57,7 +57,7 @@
   {{ 'person' if section.covers == 1 else 'people' }}, nothing noted.</p>
 {% else %}
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead>
       <tr><th>Who</th><th>Where</th><th class="num">Party</th><th>What they need</th></tr>
     </thead>

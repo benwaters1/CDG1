@@ -55,13 +55,13 @@
 </div>
 {% endif %}
 
-<h2>The quote</h2>
+<h2 class="section-heading">The quote</h2>
 {% if quotes %}
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead>
       <tr>
-        <th scope="col">Version</th><th scope="col">Total</th>
+        <th scope="col">Version</th><th scope="col" class="num">Total</th>
         <th scope="col">Where it stands</th><th scope="col">Their link</th>
         <th scope="col"></th>
       </tr>
@@ -70,7 +70,7 @@
       {% for q in quotes %}
       <tr>
         <th scope="row">{{ q['version'] }}<br><span class="upload-hint">{{ q['created_at']|house_day }}</span></th>
-        <td>&euro;{{ '%.2f'|format((q['quoted_price'] or 0) - (q['discount_amount'] or 0)) }}
+        <td class="num">&euro;{{ '%.2f'|format((q['quoted_price'] or 0) - (q['discount_amount'] or 0)) }}
           {%- if q['deposit_amount'] %}<br><span class="upload-hint">&euro;{{ '%.2f'|format(q['deposit_amount']) }} deposit</span>{% endif %}
         </td>
         <td>
@@ -110,7 +110,7 @@
 
 {% if event['status'] not in ('cancelled', 'declined') %}
 <div class="detail-card">
-  <h2 style="margin-top:0;">{{ 'Re-quote' if quotes else 'Raise a quote' }}</h2>
+  <h2 class="section-heading" style="margin-top:0;">{{ 'Re-quote' if quotes else 'Raise a quote' }}</h2>
   {% if live %}
   <p class="upload-hint">
     Quote {{ live['version'] }} is still open. Raising another replaces it
@@ -156,10 +156,10 @@
 </div>
 {% endif %}
 
-<h2>The date, while they decide</h2>
+<h2 class="section-heading">The date, while they decide</h2>
 {% if holds %}
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead>
       <tr><th scope="col">Dates</th><th scope="col">Held until</th>
         <th scope="col">Where it stands</th><th scope="col"></th></tr>
@@ -182,7 +182,7 @@
           <form method="post" action="{{ url_for('release_event_hold', hold_id=h['id']) }}"
                 onsubmit="return confirm('Put these dates back on the market?');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn-mini btn-danger">Let it go</button>
+            <button type="submit" class="btn-mini btn-mini-danger">Let it go</button>
           </form>
           {% endif %}
         </td>
@@ -215,19 +215,19 @@
   </form>
 </div>
 
-<h2>How it will be paid for</h2>
+<h2 class="section-heading">How it will be paid for</h2>
 {% if schedule and schedule.instalments %}
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead>
-      <tr><th scope="col">Stage</th><th scope="col">Amount</th>
+      <tr><th scope="col">Stage</th><th scope="col" class="num">Amount</th>
         <th scope="col">Due</th><th scope="col">Where it stands</th><th scope="col"></th></tr>
     </thead>
     <tbody>
       {% for i in schedule.instalments %}
       <tr>
         <th scope="row">{{ i.row['label'] or 'Instalment' }}</th>
-        <td>&euro;{{ '%.2f'|format(i.amount) }}</td>
+        <td class="num">&euro;{{ '%.2f'|format(i.amount) }}</td>
         <td>{{ i.row['due_date'] }}</td>
         <td>
           {# Worked out from what has actually been received, oldest first.
@@ -246,7 +246,7 @@
         <td>
           <form method="post" action="{{ url_for('delete_event_instalment', instalment_id=i.row['id']) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn-mini btn-danger">Off the plan</button>
+            <button type="submit" class="btn-mini btn-mini-danger">Off the plan</button>
           </form>
         </td>
       </tr>

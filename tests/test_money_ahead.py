@@ -11,6 +11,7 @@ only money somebody has committed to, never an average or a guess; and it must
 not present a change as a balance, because the app has never known what is in
 the bank.
 """
+from calendar import monthrange
 from datetime import datetime, timezone, timedelta
 
 from _harness import Suite, clients, db
@@ -19,6 +20,86 @@ import _harness
 m = _harness.m
 TAG = "money-"
 
+
+# What the window should hold, worked out here rather than asked of the app.
+# These checks used to carry fixed counts -- three paydays, one day of the
+# month -- which are true on most days of the year and not on the rest, so the
+# suite went red on 1 October 2026 with the code unchanged. Counted a day at a
+# time, deliberately not the way money_ahead finds them, so the check does not
+# just repeat the code it is checking.
+
+def _month_ends(first, days):
+    """Every last day of a month from `first` to `first + days`, inclusive."""
+    last = first + timedelta(days=days)
+    out, cur = [], first
+    while cur <= last:
+        if (cur + timedelta(days=1)).day == 1:
+            out.append(cur.isoformat())
+        cur += timedelta(days=1)
+    return out
+
+
+def _monthly_from(anchor, count):
+    """`count` monthly dates on the anchor's day, or the month's last day if shorter."""
+    out = []
+    for k in range(count):
+        year, month = anchor.year + (anchor.month - 1 + k) // 12, (anchor.month - 1 + k) % 12 + 1
+        out.append(anchor.replace(year=year, month=month,
+                                  day=min(anchor.day, monthrange(year, month)[1])).isoformat())
+    return out
+
+
+class _Quiet:
+    """A Suite that keeps its failures to itself, for checks asked hundreds of
+    times over: one line for the whole sweep, not seven hundred."""
+
+    def __init__(self):
+        self.failed = []
+
+    def check(self, name, ok, detail=""):
+        if not ok:
+            self.failed.append((name, detail))
+        return bool(ok)
+
+
+def _calendar_checks(s, conn, day, monthly_cost, wage):
+    """The checks that depend on where the window falls, asked as if `day`
+    were today.
+
+    The standing cost is moved to eight days out from `day` first, so its
+    day of the month walks through every value the sweep passes -- the 29th,
+    30th and 31st included -- rather than staying wherever the suite's own
+    today put it. The caller puts it back.
+    """
+    conn.execute("UPDATE recurring_costs SET next_due_date = ? WHERE id = ?",
+                 ((day + timedelta(days=8)).isoformat(), monthly_cost))
+    ahead = m.money_ahead(conn, days=90, today=day)
+    s.check("the window runs ninety days from the day it is asked",
+            ahead["from"] == day.isoformat()
+            and ahead["to"] == (day + timedelta(days=90)).isoformat(),
+            detail=f"{ahead['from']} to {ahead['to']}")
+    paydays = _month_ends(day, 90)
+    wages = [o for o in ahead["outgoing"] if o["kind"] == "Wages"]
+    s.check("once a month, not once per anything else",
+            [w["date"] for w in wages] == paydays,
+            detail=f"{[w['date'] for w in wages]}; the month-ends are {paydays}")
+    # Measured against the rest of the list rather than a figure taken before,
+    # so it needs no second call -- and the real bookings in the database copy
+    # cannot pass or fail it.
+    others = sum(o["amount"] for o in ahead["outgoing"] if o["kind"] != "Wages")
+    s.check("the total carries one month of it for each payday",
+            round(ahead["total_out"] - others, 2) == round(len(paydays) * wage, 2),
+            detail=f"{round(ahead['total_out'] - others, 2)} for {len(paydays)} paydays")
+    cost = [o["date"] for o in ahead["outgoing"]
+            if o["kind"] == "Standing cost" and o["label"] == TAG + "Electricity"]
+    expect = _monthly_from(day + timedelta(days=8), 3)
+    s.check("a monthly cost keeps its day of the month",
+            cost == expect, detail=f"{cost}, expected {expect}")
+    short = [o["date"] for o in m.money_ahead(conn, days=20, today=day)["outgoing"]
+             if o["kind"] == "Wages"]
+    s.check("twenty days carries the one payday in it, or none",
+            short == _month_ends(day, 20),
+            detail=f"{short}; the month-ends are {_month_ends(day, 20)}")
 
 
 def _stamp(conn, ref):
@@ -156,14 +237,36 @@ def run():
     elec = [o for o in ahead["outgoing"] if TAG + "Electricity" in o["label"]]
     s.check("a monthly cost repeats across the window", len(elec) == 3,
             detail=f"{len(elec)} occurrences: {[e['date'] for e in elec]}")
+    # The same day each month, or the month's last day when it is shorter --
+    # and back to its own day the month after. "One day of the month across
+    # all three" was red whenever the 8th day out fell on the 29th-31st.
     s.check("keeping the same day of the month",
-            len({m.parse_date(e["date"]).day for e in elec}) == 1,
-            detail=str([e["date"] for e in elec]))
+            [e["date"] for e in elec] == _monthly_from(m.parse_date(d(8)), 3),
+            detail=f"{[e['date'] for e in elec]}, expected "
+                   f"{_monthly_from(m.parse_date(d(8)), 3)}")
     annual = [o for o in ahead["outgoing"] if TAG + "Taxe" in o["label"]]
     s.check("an annual one appears once in ninety days", len(annual) == 1,
             detail=f"{len(annual)}")
     s.check("and a cost switched off does not appear at all",
             not any(TAG + "Cancelled" in l for l in _labels(ahead["outgoing"])))
+
+    # On fixed days, so it does not wait for the calendar to come round: a
+    # cost due on the 31st is due on the 28th in February and on the 31st
+    # again in March. Each date used to be stepped from the one before, so
+    # February's 28th stuck and the cost sat three days early from then on.
+    conn.execute(
+        """INSERT INTO recurring_costs (label, amount, frequency, category,
+             next_due_date, active, created_at)
+           VALUES (?, 1200, 'monthly', 'other', '2027-01-31', 1, ?)""",
+        (TAG + "Rent", now))
+    conn.commit()
+    rent = [o["date"] for o in m.money_ahead(conn, days=150, today="2027-01-31")["outgoing"]
+            if TAG + "Rent" in o["label"]]
+    s.check("a cost on the 31st goes back to the 31st after February",
+            rent == ["2027-01-31", "2027-02-28", "2027-03-31",
+                     "2027-04-30", "2027-05-31", "2027-06-30"], detail=str(rent))
+    conn.execute("DELETE FROM recurring_costs WHERE label = ?", (TAG + "Rent",))
+    conn.commit()
 
     s.section("An invoice waiting on a decision is owed now")
     conn.execute(
@@ -235,32 +338,85 @@ def run():
             ahead["monthly_staff"] is None
             and not any(o["kind"] == "Wages" for o in ahead["outgoing"]),
             detail="a wage figure appeared that nobody entered")
+    out_before_wages = ahead["total_out"]
 
     oc.post("/management/money-ahead/staff-cost", data={"monthly_staff": "6500"},
             follow_redirects=True)
     ahead = m.money_ahead(conn, days=90, today=today)
     wages = [o for o in ahead["outgoing"] if o["kind"] == "Wages"]
+    paydays = _month_ends(today, 90)
     s.check("once set it is used", ahead["monthly_staff"] == 6500.0,
             detail=str(ahead["monthly_staff"]))
-    s.check("once a month, not once per anything else", len(wages) == 3,
-            detail=f"{len(wages)} over 90 days: {[w['date'] for w in wages]}")
+    # Ninety days holds two, three or four month-ends depending on where it
+    # starts. This said three, which is true on most days of the year: from
+    # 1 October the window stops on 30 December, so it holds two.
+    s.check("once a month, not once per anything else",
+            [w["date"] for w in wages] == paydays,
+            detail=f"{[w['date'] for w in wages]} over 90 days; the month-ends "
+                   f"in it are {paydays}")
+    # The month's own last day. ">= 28" let a payday on the 29th of a
+    # 31-day month through.
     s.check("at the end of each month, when salaries are paid",
-            all(m.parse_date(w["date"]).day >= 28 for w in wages),
+            all(m.parse_date(w["date"]).day == monthrange(
+                    m.parse_date(w["date"]).year, m.parse_date(w["date"]).month)[1]
+                for w in wages),
             detail=str([w["date"] for w in wages]))
     s.check("and it says whose figure it is",
             all("you set" in w["label"] for w in wages),
             detail=str(wages[0]["label"]) if wages else "")
-    s.check("the total went up by three months of it",
-            ahead["total_out"] >= 3 * 6500, detail=str(ahead["total_out"]))
+    # Exactly one month of it per payday, and nothing else moved. ">= three
+    # months" was both calendar-bound and loose: any other outgoing could
+    # make up the difference.
+    s.check("the total went up by one month of it for each payday",
+            round(ahead["total_out"] - out_before_wages, 2) == round(len(paydays) * 6500, 2),
+            detail=f"{ahead['total_out']} - {out_before_wages}, for {len(paydays)} paydays")
+
+    # Both ends of that range on fixed days, so neither waits for the
+    # calendar to come round to it. The window counts both of its ends, and
+    # each end gets a day of its own: 2027-01-31 is a payday on the first day,
+    # and from 2026-10-02 the ninetieth day is 31 December. Without that one,
+    # dropping a payday on the window's last day passed on all but 36 days of
+    # 2026-2028.
+    for start, expect in (("2026-10-01", ["2026-10-31", "2026-11-30"]),
+                          ("2026-10-02", ["2026-10-31", "2026-11-30", "2026-12-31"]),
+                          ("2027-01-31", ["2027-01-31", "2027-02-28",
+                                          "2027-03-31", "2027-04-30"])):
+        got = [o["date"] for o in m.money_ahead(conn, days=90, today=start)["outgoing"]
+               if o["kind"] == "Wages"]
+        s.check(f"ninety days from {start} holds {len(expect)} paydays",
+                got == expect, detail=str(got))
 
     # A part month at either end must not carry a full month of wages — that
     # is a figure nobody could reconcile against a bank statement.
     short = m.money_ahead(conn, days=20, today=today)
     short_wages = [o for o in short["outgoing"] if o["kind"] == "Wages"]
     s.check("a window shorter than a month carries at most one payday",
-            len(short_wages) <= 1, detail=f"{len(short_wages)} in 20 days")
+            len(short_wages) <= 1
+            and [w["date"] for w in short_wages] == _month_ends(today, 20),
+            detail=f"{[w['date'] for w in short_wages]} in 20 days; the month-ends "
+                   f"in it are {_month_ends(today, 20)}")
     s.check("and any it does carry falls inside the window",
             all(short["from"] <= w["date"] <= short["to"] for w in short_wages))
+
+    # Asked once, of today, these checks only ever see the day the suite runs
+    # -- which is how a three-payday count stayed green until the 1st of
+    # October, and a cost due on the 31st sat on the 28th from March without
+    # anyone noticing. So the calendar-bound ones are asked of every day for a
+    # year either side: every month end, a February, a new year.
+    elec_id = conn.execute("SELECT id, next_due_date FROM recurring_costs WHERE label = ?",
+                           (TAG + "Electricity",)).fetchone()
+    red = []
+    for n in range(731):
+        day = today + timedelta(days=n - 365)
+        quiet = _Quiet()
+        _calendar_checks(quiet, conn, day, elec_id["id"], 6500)
+        if quiet.failed:
+            red.append(f"{day}: {quiet.failed[0][0]} ({quiet.failed[0][1]})")
+    conn.execute("UPDATE recurring_costs SET next_due_date = ? WHERE id = ?",
+                 (elec_id["next_due_date"], elec_id["id"]))
+    conn.commit()
+    s.check("and all of that holds on every day for a year either side",
+            not red, detail=f"{len(red)} days red, first {red[:3]}")
 
     oc.post("/management/money-ahead/staff-cost", data={"monthly_staff": ""},
             follow_redirects=True)

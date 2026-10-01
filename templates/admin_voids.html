@@ -58,7 +58,7 @@
 
 {% if data.rows %}
 
-<h2 class="section-h">Who</h2>
+<h2 class="section-heading">Who</h2>
 <p class="upload-hint" style="margin-top:-6px;">Against what each of them rang up over the same
   window. A plain count names whoever worked the most shifts.</p>
 <div class="table-wrap">
@@ -76,8 +76,8 @@
         <td class="num">{{ euro(p.value) }}</td>
         <td class="num">
           {% if p.share is not none %}{{ p.share }}%
-          <span class="g-hint">of {{ euro(p.sold) }}</span>
-          {% else %}&mdash; <span class="g-hint">rang up nothing</span>{% endif %}
+          <span class="cell-note">of {{ euro(p.sold) }}</span>
+          {% else %}&mdash; <span class="muted">rang up nothing</span>{% endif %}
         </td>
         <td class="num">{% if p.after_sent %}<span class="mini-status status-pending">{{ p.after_sent }}</span>{% else %}0{% endif %}</td>
         <td class="num">{% if p.after_close %}<span class="mini-status status-overdue">{{ p.after_close }}</span>{% else %}0{% endif %}</td>
@@ -87,7 +87,7 @@
   </table>
 </div>
 
-<h2 class="section-h">Why</h2>
+<h2 class="section-heading">Why</h2>
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr><th>Reason</th><th class="num">Voids</th><th class="num">Value</th></tr></thead>
@@ -103,7 +103,7 @@
   </table>
 </div>
 
-<h2 class="section-h">Every one of them</h2>
+<h2 class="section-heading">Every one of them</h2>
 <div class="table-wrap">
   <table class="data-table">
     <thead>
@@ -114,16 +114,16 @@
       {% for r in data.rows %}
       <tr>
         <td>{{ r.service_date|date_short }}{% if r.table %}
-          <span class="g-hint">{{ r.table }}</span>{% endif %}</td>
+          <span class="cell-note">{{ r.table }}</span>{% endif %}</td>
         <td>{{ r.what }}</td>
         <td class="num">{{ euro(r.value) }}</td>
         <td>{{ r.reason }}</td>
         <td>
           {{ r.who }}
           {% if r.same_person and r.added_by %}
-          <span class="g-hint">keyed it in as well</span>
+          <span class="cell-note">keyed it in as well</span>
           {% elif r.added_by %}
-          <span class="g-hint">{{ r.added_by }} keyed it in</span>
+          <span class="cell-note">{{ r.added_by }} keyed it in</span>
           {% endif %}
         </td>
         <td>

@@ -362,6 +362,36 @@ def run():
     s.check("the page tells the quote how many of the party are children",
             bool(re.search(r"""q\.(?:set|append)\(\s*['"]guests_under_18['"]""", asks)),
             detail="without it every guest is quoted the tax as an adult")
+    # THE BAR AT THE FOOT OF THE PAGE, fixed beside Pay & book on a phone. Its
+    # total was only ever written by the page's own tax script, and that steps
+    # aside once the quote carries the tax itself -- so from the day the server
+    # added the tax line, a guest who had chosen and priced their dates read
+    # "Choose dates" beside the button. Found on the live site on 29 September:
+    # €763.20 in the box, "Choose dates" in the bar, nothing wrong in any log.
+    # The end is looked for AFTER the start: the date picker's own script, higher
+    # up the page, wires the same three fields and would end the slice before
+    # it began.
+    at = src.find("function refreshQuote")
+    end = src.find("[arrive,depart,party].forEach", at) if at >= 0 else -1
+    quote_js = src[at:end] if end > at else ""
+    helper = src[src.find("function barTotal"):at] if at >= 0 else ""
+    s.check("the bar beside Pay & book is given the quote's total",
+            bool(re.search(r"barTotal\(\s*d\.total\s*\)", quote_js))
+            and "[data-bar-total]" in helper,
+            detail="the box shows the price while the bar says Choose dates")
+    s.check("and is cleared when the dates are, or cannot be had",
+            quote_js.count("barTotal(null)") >= 2,
+            detail="a total for dates the guest has since changed stays beside the button")
+    # The page's own tax line, for a quote that arrives without one, painted
+    # itself under a REFUSAL too: three adults in a room for two read "This
+    # room sleeps up to 2." with a Taxe de séjour line beneath it, and the bar
+    # priced the stay at €768. Found beside the bar fault, live the same day.
+    # A page with no tax line of its own cannot do this, so that passes.
+    own = next((b for b in re.findall(r"<script>(.*?)</script>", src, re.S)
+                if "data-tax-line" in b), "")
+    s.check("and the page adds no tax line of its own to a stay that cannot be had",
+            not own or "quote_total_row" in own,
+            detail="the reason, a tax line under it, and a price in the bar")
 
     s.section("A form handed back keeps the family as it was typed")
     # The Adults box refilled from party_size, which is adults AND children,

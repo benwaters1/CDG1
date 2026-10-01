@@ -76,7 +76,7 @@
               <button type="submit" class="btn-mini btn-ghost">Undecide</button>
             </form>
             {% else %}
-            <form method="post" style="display:flex; gap:4px; align-items:center;">
+            <form method="post" style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="what" value="decide">
               <input type="hidden" name="agreement_id" value="{{ a.row['id'] }}">

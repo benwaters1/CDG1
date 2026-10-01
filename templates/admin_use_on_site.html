@@ -14,7 +14,7 @@
        width="320" height="240">
   <div>
     <p><strong>{{ arrival['original_name'] or 'From the camera' }}</strong></p>
-    <p class="g-muted">
+    <p class="muted">
       {% if arrival['taken_on'] %}Taken {{ arrival['taken_on'] }}.{% endif %}
       Choose the picture on the site it should replace. Nothing is edited in
       any template — the swap is made as the page is sent, so it survives the
@@ -23,8 +23,8 @@
   </div>
 </div>
 
-<h2>The site's photographs</h2>
-<p class="g-muted">
+<h2 class="section-heading">The site's photographs</h2>
+<p class="muted">
   {{ choices|length }} in all, read out of the templates rather than a list, so
   one added last week is here too.
 </p>
@@ -43,7 +43,7 @@
             onsubmit="return confirm('Replace this picture on the public site?');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="source_url" value="{{ url }}">
-        <button type="submit" class="g-btn g-btn--solid btn-mini">
+        <button type="submit" class="btn-mini">
           {{ 'Replace this one' if url not in swapped else 'Replace it again' }}
         </button>
       </form>

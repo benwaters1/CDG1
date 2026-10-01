@@ -22,7 +22,7 @@
 <div class="g-wrap" style="padding-top:clamp(1.5rem,4vw,2.5rem)">
 
   <div style="padding:clamp(1.25rem,4vw,2rem) 0 0">
-    <p class="g-eyebrow">Château Workshop</p>
+    <p class="g-eyebrow">Workshop Retreat</p>
     <h1 class="g-display" >{{ session['title'] }}</h1>
     <p class="g-room__meta">
       {{ date_range(session['start_date'], session['end_date']) }}{% if session['instructor_name'] %} · with {{ session['instructor_name'] }}{% endif %}{% if session['price_per_person'] %} · <span class="g-fig" data-eur="{{ session['price_per_person']|int }}">€{{ '{:,.0f}'.format(session['price_per_person']) }}</span> per person{%- endif %}</p>
@@ -53,8 +53,8 @@
           </div>
 
           <p class="g-hint g-hint--block">
-            Arranged for two, and a third bed goes in if you need it —
-            tell us below and we will arrange it. Coming alone, you share with another guest travelling solo, or take a room to yourself with a single supplement.
+            Rooms are arranged for two; if you need a third bed, tell us below.
+            Coming alone, you share with another guest travelling solo, or take a room to yourself with a single supplement.
           </p>
 
 
@@ -311,9 +311,9 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Still deciding?</h2>
-  <p class="g-close__p">Each atelier leads with something different. The comparison is the quickest way to choose.</p>
+  <p class="g-close__p">Each workshop leads with something different. The comparison is the quickest way to choose.</p>
   <div class="g-close__acts">
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Compare the ateliers</a>
+      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Compare the workshops</a>
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us</a>
   </div>
 </div></section>

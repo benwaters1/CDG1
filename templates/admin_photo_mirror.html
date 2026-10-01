@@ -61,7 +61,7 @@
 {% endif %}
 
 {% if data.errors %}
-<h2 style="margin-top:28px;">Would not come down</h2>
+<h2 class="section-heading" style="margin-top:28px;">Would not come down</h2>
 <p class="pay-disclaimer">
   These were asked for and refused. A photograph already deleted from that account is one the
   ch&acirc;teau has lost either way &mdash; better to know now than on the day the site goes blank.
@@ -82,7 +82,7 @@
 {% endif %}
 
 {% if data.orphans %}
-<h2 style="margin-top:28px;">No longer on the site</h2>
+<h2 class="section-heading" style="margin-top:28px;">No longer on the site</h2>
 <p class="pay-disclaimer">
   {{ data.orphans|length }} photograph{{ '' if data.orphans|length == 1 else 's' }} the
   ch&acirc;teau holds a copy of that no page asks for any more &mdash; dropped in a redesign, or
@@ -103,7 +103,7 @@
 {% endif %}
 
 {% if data.missing %}
-<h2 style="margin-top:28px;">Not held yet</h2>
+<h2 class="section-heading" style="margin-top:28px;">Not held yet</h2>
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr><th>Photograph</th></tr></thead>

@@ -9,6 +9,7 @@ that had been MADE by the equivalent date -- and that is what makes it a real
 report rather than a subtraction.
 """
 from datetime import timedelta
+from itertools import combinations
 
 from _harness import Suite, clients, db, house_today
 import _harness
@@ -28,6 +29,111 @@ def _cleanup(conn):
 
 def _now():
     return m.datetime.now(m.timezone.utc).isoformat()
+
+
+def _stay(conn, room, ref, arrive, nights, created_on, price=400.0):
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+             guest_email, arrival_date, departure_date, party_size, status,
+             total_price, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 2, 'confirmed', ?, ?)""",
+        (room, TAG + ref, TAG + "tk" + ref, TAG + "Guest " + ref,
+         TAG + ref + "@example.invalid", arrive.isoformat(),
+         (arrive + timedelta(days=nights)).isoformat(), price,
+         created_on.isoformat() + "T12:00:00+00:00"))
+
+
+class _Quiet:
+    """A Suite that keeps its failures to itself, for checks asked hundreds of
+    times over: one line for the whole sweep, not seven hundred."""
+
+    def __init__(self):
+        self.failed = []
+
+    def check(self, name, ok, detail=""):
+        if not ok:
+            self.failed.append((name, detail))
+        return bool(ok)
+
+
+# Last year's three stays, by how many nights each holds. No two subsets of
+# 3, 4 and 2 add to the same total, so the nights counted say exactly WHICH
+# stays were counted -- a wrong answer names the stay rather than a number.
+PACE_LAST_YEAR = {"PACEEARLY": 3, "PACEEDGE": 4, "PACELATE": 2}
+PACE_REFS = ("PACE1",) + tuple(PACE_LAST_YEAR)
+
+
+def _pace_checks(s, conn, room, today, keep=False):
+    """The pace report for next month, asked as if `today` were today.
+
+    Measured against what the report said before these stays went in, so a
+    real booking in last year's month (the suite runs on a copy of the real
+    database) cannot pass or fail a check that is about these four. With
+    `keep` the stays are left for the suite's final cleanup.
+    """
+    next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    last_year_month = next_month.replace(year=next_month.year - 1)
+    days_out = (next_month - today).days
+    # The same distance out last year. occupancy_pace counts a stay as sold
+    # by then if it was booked any time ON this day -- this year's figure
+    # counts everything booked up to and including today, so last year's
+    # has to count the whole of the equivalent day too.
+    as_at = last_year_month - timedelta(days=days_out)
+
+    def report():
+        with m.app.test_request_context():
+            pace = m.occupancy_pace(conn, months=2, today=today)
+        return next((r for r in pace["months"] if r["month"] == next_month), None)
+
+    before = report()
+    # This year: two nights sold for next month, booked already.
+    _stay(conn, room, "PACE1", next_month + timedelta(days=5), 2,
+          today - timedelta(days=1))
+    # Last year, all three inside the month whatever its length. Booked well
+    # before the equivalent point: counted.
+    _stay(conn, room, "PACEEARLY", last_year_month + timedelta(days=8), 3,
+          as_at - timedelta(days=10))
+    # Booked ON the equivalent day: counted, it had been made by then.
+    _stay(conn, room, "PACEEDGE", last_year_month + timedelta(days=12), 4, as_at)
+    # Booked the day AFTER the equivalent point: at the same distance out it
+    # was not yet sold. Counted from as_at, not from the month -- the day
+    # before the month begins IS as_at on the last day of a month. Never later
+    # than the month's first day, so always booked before it arrives (day 5).
+    _stay(conn, room, "PACELATE", last_year_month + timedelta(days=5), 2,
+          as_at + timedelta(days=1))
+    row = report()
+    if not keep:
+        conn.execute(
+            "DELETE FROM bookings WHERE reference_code IN (%s)"
+            % ",".join("?" * len(PACE_REFS)), [TAG + r for r in PACE_REFS])
+    conn.commit()
+
+    s.check("next month is on the report", row is not None and before is not None,
+            detail=str(row))
+    if row is None or before is None:
+        return
+    sold = row["nights"] - before["nights"]
+    s.check("what is sold for it is counted", sold == 2, detail=f"{sold} of 2")
+    added = row["last_nights"] - before["last_nights"]
+    counted = next(
+        (set(c) for k in range(len(PACE_LAST_YEAR) + 1)
+         for c in combinations(PACE_LAST_YEAR, k)
+         if sum(PACE_LAST_YEAR[x] for x in c) == added), None)
+    said = (f"counted {sorted(counted)}" if counted is not None
+            else f"{added} nights, which is no combination of the three")
+    # The whole point of the report.
+    s.check("last year's comparison counts only what had been booked by then",
+            counted is not None and "PACEEARLY" in counted,
+            detail=f"{said} — as at {as_at}")
+    s.check("including a stay booked on the equivalent day itself",
+            counted is not None and "PACEEDGE" in counted,
+            detail=f"{said} — booked {as_at}, the day it compares against")
+    s.check("and excludes what was booked after that point",
+            counted is not None and "PACELATE" not in counted,
+            detail=f"{said} — a stay booked later than the equivalent date "
+                   "is not pace, it is hindsight")
+    s.check("the date it compared against is stated",
+            row["as_at_last"] == as_at, detail=f"{row['as_at_last']}, not {as_at}")
 
 
 def run():
@@ -107,49 +213,27 @@ def run():
 
     # ---------------------------------------------------------------- pace
     s.section("Where next month stands against the same point last year")
-    next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
-    last_year_month = next_month.replace(year=next_month.year - 1)
-    days_out = (next_month - today).days
-
-    def stay(ref, arrive, nights, created_on, price=400.0):
-        conn.execute(
-            """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
-                 guest_email, arrival_date, departure_date, party_size, status,
-                 total_price, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 2, 'confirmed', ?, ?)""",
-            (room, TAG + ref, TAG + "tk" + ref, TAG + "Guest " + ref,
-             TAG + ref + "@example.invalid", arrive.isoformat(),
-             (arrive + timedelta(days=nights)).isoformat(), price,
-             created_on.isoformat() + "T12:00:00+00:00"))
-
-    # This year: two nights sold for next month, booked already.
-    stay("PACE1", next_month + timedelta(days=5), 2, today - timedelta(days=1))
-    # Last year: a stay in the same month, but booked LATER than the
-    # equivalent point — so at the same distance out it was not yet sold.
-    stay("PACELATE", last_year_month + timedelta(days=5), 2,
-         last_year_month - timedelta(days=1))
-    # Last year: a stay booked EARLIER than the equivalent point — counted.
-    stay("PACEEARLY", last_year_month + timedelta(days=8), 3,
-         last_year_month - timedelta(days=days_out + 10))
-    conn.commit()
-
-    with m.app.test_request_context():
-        pace = m.occupancy_pace(conn, months=2, today=today)
-    row = next((r for r in pace["months"] if r["month"] == next_month), None)
-    s.check("next month is on the report", row is not None,
-            detail=str([r["month"].isoformat() for r in pace["months"]]))
-    s.check("what is sold for it is counted", row and row["nights"] >= 2,
-            detail=str(row["nights"] if row else None))
-    # The whole point of the report.
-    s.check("last year's comparison counts only what had been booked by then",
-            row and row["last_nights"] >= 3, detail=str(row["last_nights"] if row else None))
-    s.check("and excludes what was booked after that point",
-            row and row["last_nights"] < 5,
-            detail=f"{row['last_nights'] if row else None} — a stay booked later "
-                   "than the equivalent date is not pace, it is hindsight")
-    s.check("the date it compared against is stated",
-            row and row["as_at_last"] == last_year_month - timedelta(days=days_out),
-            detail=str(row["as_at_last"] if row else None))
+    # Asked once, of today, this section sees the last day of a month twelve
+    # days a year -- and the last day is where it went wrong. The booking
+    # meant to be "made after the equivalent point" was made the day before
+    # last year's month began, which is only after that point while there is
+    # more than a day to go. On the 30th of September the two were the same
+    # day, it was counted, and the run went red for a reason that had nothing
+    # to do with the code. So the same checks are asked of every day for a
+    # year either side: every month end, both clock changes, a new year.
+    # The sweep goes first and today's pass last, so today's stays are still
+    # in place when the pace page is rendered further down.
+    sweep_from = today - timedelta(days=365)
+    red = []
+    for n in range(731):
+        day = sweep_from + timedelta(days=n)
+        quiet = _Quiet()
+        _pace_checks(quiet, conn, room, day)
+        if quiet.failed:
+            red.append(f"{day}: {quiet.failed[0][0]} ({quiet.failed[0][1]})")
+    _pace_checks(s, conn, room, today, keep=True)
+    s.check("and all of that holds on every day for a year either side",
+            not red, detail=f"{len(red)} days red, first {red[:3]}")
 
     # ------------------------------------------------------ supplier prices
     s.section("What suppliers have put up")
@@ -204,7 +288,7 @@ def run():
     s.section("What the house burns per night sold")
     a_day = today - timedelta(days=40)
     b_day = today - timedelta(days=10)
-    stay("ENERGY", a_day + timedelta(days=2), 4, a_day)
+    _stay(conn, room, "ENERGY", a_day + timedelta(days=2), 4, a_day)
     conn.commit()
     for reading, on in ((1000.0, a_day), (1300.0, b_day)):
         conn.execute(

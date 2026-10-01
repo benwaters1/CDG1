@@ -8,7 +8,7 @@
   <a href="{{ url_for('admin_photo_mirror') }}" class="btn-mini">The photo mirror</a>
 </div>
 
-<p class="g-muted">
+<p class="page-intro">
   {{ rows|length }} of the site's {{ total }} photographs have been replaced
   with the house's own. The swap happens as the page is sent, so no template
   has been edited and nothing here can be undone by a handover from the design
@@ -18,7 +18,7 @@
 
 {% if rows %}
 <div class="table-wrap">
-  <table>
+  <table class="data-table">
     <thead>
       <tr>
         <th>Now showing</th>

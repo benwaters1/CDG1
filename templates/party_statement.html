@@ -53,26 +53,26 @@
     {%- endif %}
   </div>
   <div class="table-wrap">
-    <table>
+    <table class="data-table">
       <thead>
-        <tr><th scope="col">What</th><th scope="col">Amount</th></tr>
+        <tr><th scope="col">What</th><th scope="col" class="num">Amount</th></tr>
       </thead>
       <tbody>
         {% for line in bill.lines %}
         <tr>
           <th scope="row">{{ line.label }}</th>
-          <td>&euro;{{ '%.2f'|format(line.amount) }}</td>
+          <td class="num">&euro;{{ '%.2f'|format(line.amount) }}</td>
         </tr>
         {% endfor %}
-        <tr>
+        <tr class="total">
           <th scope="row">This room</th>
-          <td><strong>&euro;{{ '%.2f'|format(bill.total) }}</strong></td>
+          <td class="num"><strong>&euro;{{ '%.2f'|format(bill.total) }}</strong></td>
         </tr>
         {% if bill.paid %}
-        <tr><th scope="row">Received</th><td>&euro;{{ '%.2f'|format(bill.paid) }}</td></tr>
+        <tr><th scope="row">Received</th><td class="num">&euro;{{ '%.2f'|format(bill.paid) }}</td></tr>
         {% endif %}
         {% if bill.owed %}
-        <tr><th scope="row">Still owed</th><td>&euro;{{ '%.2f'|format(bill.owed) }}</td></tr>
+        <tr><th scope="row">Still owed</th><td class="num">&euro;{{ '%.2f'|format(bill.owed) }}</td></tr>
         {% endif %}
       </tbody>
     </table>

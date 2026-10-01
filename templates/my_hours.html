@@ -51,7 +51,7 @@
 </p>
 {% endif %}
 
-<h2>{{ period.label }}</h2>
+<h2 class="section-heading">{{ period.label }}</h2>
 
 {% if not entries %}
   <div class="empty-state">Nothing clocked in this period.</div>
@@ -64,7 +64,7 @@
     <tbody>
       {% for e in entries %}
       <tr>
-        <td>{{ e.started|date_short }} <span class="upload-hint">{{ local_time_str(e.started) }}</span></td>
+        <td>{{ e.started_day|date_short }} <span class="upload-hint">{{ local_time_str(e.started) }}</span></td>
         <td>
           {% if e.open %}
             <span class="mini-status status-onshift">still open</span>
@@ -72,6 +72,7 @@
             <span class="mini-status status-declined">finished before it started</span>
           {% else %}
             {{ local_time_str(e.finished) }}
+            {%- if e.finished_day != e.started_day %} <span class="upload-hint">{{ e.finished_day|date_short }}</span>{% endif %}
           {% endif %}
         </td>
         <td class="num">{{ e.break_minutes }}m</td>
@@ -82,7 +83,7 @@
     <tfoot>
       <tr>
         <th colspan="3">Total, net of breaks</th>
-        <th class="num">{{ '%.1f'|format(mine['hours'] if mine else 0) }}</th>
+        <th class="num">{{ '%.1f'|format(total_hours) }}</th>
       </tr>
     </tfoot>
   </table>

@@ -60,28 +60,28 @@
 </div>
 
 <div class="table-wrap">
-  <table>
-    <thead><tr><th scope="col">What</th><th scope="col">Amount</th></tr></thead>
+  <table class="data-table">
+    <thead><tr><th scope="col">What</th><th scope="col" class="num">Amount</th></tr></thead>
     <tbody>
       {% for line in data.lines %}
       <tr>
         <th scope="row">{{ line.label }}</th>
-        <td>&euro;{{ '%.2f'|format(line.amount) }}</td>
+        <td class="num">&euro;{{ '%.2f'|format(line.amount) }}</td>
       </tr>
       {% endfor %}
-      <tr>
+      <tr class="total">
         <th scope="row"><strong>Gross</strong></th>
-        <td><strong>&euro;{{ '%.2f'|format(data.gross) }}</strong></td>
+        <td class="num"><strong>&euro;{{ '%.2f'|format(data.gross) }}</strong></td>
       </tr>
       {% if data.employer_rate %}
       {# GROSS AND EMPLOYER NEVER ADDED INTO ONE UNLABELLED NUMBER. #}
       <tr>
         <th scope="row">Employer contributions at {{ data.employer_rate }}%</th>
-        <td>&euro;{{ '%.2f'|format(data.employer) }}</td>
+        <td class="num">&euro;{{ '%.2f'|format(data.employer) }}</td>
       </tr>
-      <tr>
+      <tr class="total">
         <th scope="row"><strong>Cost to the house</strong></th>
-        <td><strong>&euro;{{ '%.2f'|format(data.total) }}</strong></td>
+        <td class="num"><strong>&euro;{{ '%.2f'|format(data.total) }}</strong></td>
       </tr>
       {% endif %}
     </tbody>
@@ -96,19 +96,19 @@
 {% endif %}
 
 {% if data.row.unsocial and (data.row.unsocial.sunday or data.row.unsocial.night or data.row.unsocial.holiday) %}
-<h2>The unsocial hours</h2>
+<h2 class="section-heading">The unsocial hours</h2>
 <div class="table-wrap">
-  <table>
-    <thead><tr><th scope="col">When</th><th scope="col">Hours</th>
-      <th scope="col">Rate</th><th scope="col">Worth</th></tr></thead>
+  <table class="data-table">
+    <thead><tr><th scope="col">When</th><th scope="col" class="num">Hours</th>
+      <th scope="col" class="num">Rate</th><th scope="col" class="num">Worth</th></tr></thead>
     <tbody>
       {% for key, label in [('sunday', 'Sunday'), ('night', 'Night'), ('holiday', 'Public holiday')] %}
       {% if data.row.unsocial[key] %}
       <tr>
         <th scope="row">{{ label }}</th>
-        <td>{{ data.row.unsocial[key] }}</td>
-        <td>{% if data.row.premiums.get(key) %}+{{ data.row.premiums[key].percent }}%{% else %}<span class="mini-status status-pending">no rate set</span>{% endif %}</td>
-        <td>{% if data.row.premiums.get(key) %}&euro;{{ '%.2f'|format(data.row.premiums[key].amount) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ data.row.unsocial[key] }}</td>
+        <td class="num">{% if data.row.premiums.get(key) %}+{{ data.row.premiums[key].percent }}%{% else %}<span class="mini-status status-pending">no rate set</span>{% endif %}</td>
+        <td class="num">{% if data.row.premiums.get(key) %}&euro;{{ '%.2f'|format(data.row.premiums[key].amount) }}{% else %}&mdash;{% endif %}</td>
       </tr>
       {% endif %}
       {% endfor %}
@@ -130,6 +130,25 @@
 </p>
 {% endif %}
 
+{% elif data.unpriced %}
+{# Worked, and nothing to price it at. The branch below used to be the only
+   other one, so this person was said to have "no clocked hours". #}
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-label">Hours worked</span>
+    <span class="stat-tile-value">{{ data.unpriced.hours }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-label">Gross</span>
+    <span class="stat-tile-value">&mdash;</span>
+  </div>
+</div>
+<p class="pay-disclaimer">
+  {{ data.person['name'] }} clocked {{ data.unpriced.hours }} hours over {{ data.unpriced.shifts }}
+  {{ 'shift' if data.unpriced.shifts == 1 else 'shifts' }} in {{ data.start.strftime('%B %Y') }}, and
+  there is no wage on file the app can use, so none of it can be priced or itemised. Record one on the
+  <a href="{{ url_for('admin_wages') }}">wages page</a> and this statement fills in.
+</p>
 {% else %}
 <p class="empty-state">
   {{ data.person['name'] }} has no clocked hours in {{ data.start.strftime('%B %Y') }},
@@ -140,8 +159,8 @@
 {% endif %}
 
 {% if data.leave and data.leave.entitlement is not none %}
-<h2>Leave, as at the end of the month</h2>
-<p class="g-hint">
+<h2 class="section-heading">Leave, as at the end of the month</h2>
+<p class="muted">
   {{ data.leave.used }} of {{ data.leave.entitlement }} days taken in the leave
   year to {{ data.leave.year_end.isoformat() }}, so
   {{ data.leave.remaining }} left.
