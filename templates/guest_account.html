@@ -238,8 +238,10 @@
   </div>
 
   <p class="g-hint" style="margin-top:var(--s4);">
-    {# Printed the raw date, and "expires ." when there was none. #}
-    This link is yours{% if expires %} and expires on {{ expires[:10]|date_short }}{% endif %}. If it stops working,
+    {# Printed the raw date, and "expires ." when there was none. expires is
+       a stored moment: date_short gives the house's day of it, where [:10]
+       first cut it to UTC's, a day early for a link issued after midnight. #}
+    This link is yours{% if expires %} and expires on {{ expires|date_short }}{% endif %}. If it stops working,
     <a href="{{ url_for('guest_account_request') }}">ask for a new one</a>.
     Please do not forward it — it opens your bookings.
   </p>
