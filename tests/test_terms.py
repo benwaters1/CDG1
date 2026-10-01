@@ -1,0 +1,130 @@
+# -*- coding: utf-8 -*-
+"""The booking terms, which are the other document a guest legally agrees to.
+
+The privacy notice already has a suite, and for a reason written down in
+CLAUDE.md: it is a set of testable claims about this code rather than
+marketing copy. The terms are the same kind of document and had nothing
+guarding them at all — which showed, when a version carrying
+"Last updated: [add a date once this is finalized]" sat on the live page for
+two days before anybody opened it.
+
+They are also DATA, not code. They live in app_settings and are edited from
+/admin/terms, so nothing about changing them appears in a diff, a commit or
+a review. That is the same shape as the email templates that twice went out
+reading "TEST SUBJECT {guest_name}".
+
+WHAT IS CHECKED, and why each one:
+
+  NO UNFINISHED PLACEHOLDER. A square bracket on a page somebody is agreeing
+  to is the cheapest possible tell that nobody has read it, and it is the
+  one thing a lawyer's eye would catch in a second and an app never would.
+
+  A DATE. A reader cannot tell whether what they agreed to in March is what
+  is on the page in October without one.
+
+  AND THE PAYMENT WINDOW MUST MATCH THE CODE. This is the real one. The
+  terms promise a workshop balance is due a stated number of days before the
+  stay; compute_workshop_payment_terms charges on WORKSHOP_BALANCE_DAYS.
+  Change the constant and the terms become a promise the software breaks —
+  silently, because the page still renders and the charge still goes
+  through, just not when the guest was told. Nothing else in the app
+  connects those two numbers.
+"""
+import re
+
+from _harness import Suite, clients, db
+import _harness
+
+m = _harness.m
+
+
+def run():
+    s = Suite("The booking terms, which are a set of claims")
+    oc, ec, _owner, _emp = clients()
+
+    # Read as a stranger. The terms are a public page and the version that
+    # matters is the one somebody with no session sees.
+    anon = m.app.test_client()
+    r = anon.get("/terms")
+    s.check("the page is served", r.status_code == 200,
+            detail=str(r.status_code))
+    body = r.get_data(as_text=True)
+    flat = " ".join(body.split())
+
+    s.section("Nobody left it half-written")
+    # The DOCUMENT, read from where it is stored, not the HTML around it.
+    # Searching the rendered page matched the stylesheet's own attribute
+    # selectors -- [name="csrf-token"], [data-year] -- which live in a
+    # <script> block and are nobody's unfinished sentence.
+    conn = db()
+    try:
+        doc = conn.execute(
+            "SELECT value FROM app_settings WHERE key='terms_and_conditions'"
+        ).fetchone()["value"]
+    finally:
+        conn.close()
+    s.check("the stored document is what the page shows",
+            doc.split("\n")[0][:40] in flat,
+            detail="the page is rendering something other than the setting")
+    # Square brackets around a word, which is how every unfinished note in
+    # this document has been written. Not a bare "[", which appears in
+    # ordinary prose.
+    holes = re.findall(r"\[[a-z][^\]]{3,60}\]", doc, re.I)
+    s.check("no unfinished placeholder on a page people agree to",
+            not holes,
+            detail="%s — a square bracket here is the cheapest possible tell "
+                   "that nobody has read it" % holes[:3])
+
+    s.check("it carries a date, so a reader can tell whether it is current",
+            re.search(r"Last updated:\s*\S", flat) is not None,
+            detail="without one, somebody who agreed in March cannot tell "
+                   "whether these are the same terms")
+
+    s.section("The payment window is the one the app actually charges on")
+    # The claim and the code, compared. Nothing else in the app connects
+    # these two numbers, so a change to the constant turns the terms into a
+    # promise the software breaks -- silently, because the page still renders
+    # and the charge still goes through, just not when the guest was told.
+    stated = re.search(r"balance is due\s+(\d+)\s+days before", flat, re.I)
+    s.check("the terms state a workshop payment window",
+            stated is not None,
+            detail="the page no longer says when a balance falls due")
+    s.check("and it is the window the code charges on",
+            stated and int(stated.group(1)) == m.WORKSHOP_BALANCE_DAYS,
+            detail="terms say %s, WORKSHOP_BALANCE_DAYS is %d"
+                   % (stated.group(1) if stated else "nothing",
+                      m.WORKSHOP_BALANCE_DAYS))
+
+    s.section("It is laid out as a document, not dumped as one block")
+    # The stored terms are plain text, hard-wrapped at about seventy-two
+    # characters because that is what a textarea gives you. Put straight into
+    # a <p> the newlines collapsed and the whole thing rendered as one
+    # unbroken wall — every word present, so every check above still passed,
+    # and nobody would ever have read it. Only looking at the page found it.
+    s.check("the numbered sections are headings on the page",
+            body.count("<h2") >= 8,
+            detail="%d headings — the document has %d numbered sections"
+                   % (body.count("<h2"),
+                      len([b for b in m.terms_blocks(doc) if b[0] == "heading"])))
+    s.check("and the bulleted clauses are a list",
+            body.count("<li") >= 10,
+            detail="%d list items" % body.count("<li"))
+    s.check("no clause is left carrying the textarea's own line wrapping",
+            "white-space:pre-line" not in body.replace(" ", ""),
+            detail="pre-line keeps the 72-character wraps and breaks every "
+                   "line mid-sentence in a narrow column")
+
+    s.section("It is reachable from where somebody agrees to it")
+    # A document nobody can open is not a document anybody agreed to.
+    found = []
+    for path in ("/book", "/workshops", "/"):
+        page = anon.get(path)
+        if page.status_code == 200 and "/terms" in page.get_data(as_text=True):
+            found.append(path)
+    s.check("at least one public page links to it", found,
+            detail="checked /book, /workshops and the home page")
+
+    s.check("and anybody may read it without logging in",
+            anon.get("/terms").status_code == 200)
+
+    return s

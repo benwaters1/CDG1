@@ -8,7 +8,27 @@
 <section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
 <div class="g-mb-card">
   <h1>Terms &amp; Conditions</h1>
-  <p class="g-p">{{ text }}</p>
+  {# Laid out, not dumped. The terms are stored as plain text, hard-wrapped
+     at about seventy-two characters because that is what a textarea gives
+     you. Put straight into a <p> the newlines collapsed and the whole
+     document read as one unbroken wall — every word present, so nothing a
+     content check looks at was wrong, and nobody would ever read it. With
+     white-space:pre-line the wraps survived instead and broke every line
+     mid-sentence. terms_blocks() reflows it: a blank line ends a block, a
+     numbered line is a heading, "- " lines are bullets.
+
+     `text` is still passed for anything that wants the raw document. #}
+  {% for kind, value in blocks %}
+    {% if kind == 'heading' %}
+      <h2 class="g-h3" style="margin:var(--s5) 0 var(--s2);">{{ value }}</h2>
+    {% elif kind == 'list' %}
+      <ul class="g-p" style="margin:0 0 var(--s3); padding-left:1.2em;">
+        {% for item in value %}<li style="margin-bottom:.4em;">{{ item }}</li>{% endfor %}
+      </ul>
+    {% else %}
+      <p class="g-p">{{ value }}</p>
+    {% endif %}
+  {% endfor %}
 </div>
 </div></section>
 

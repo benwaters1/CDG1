@@ -37969,12 +37969,73 @@ def gallery_page():
     return render_template("gallery.html", galleries=galleries)
 
 
+def terms_blocks(text):
+    """Plain text with hard wraps -> blocks a page can lay out.
+
+    Returns a list of (kind, value): ("heading", str), ("para", str) or
+    ("list", [str, ...]). A blank line ends a block; inside a paragraph the
+    stored line breaks are WRAPPING, not meaning, so they are joined back
+    up. Lines beginning "- " are bullets and keep their own lines.
+
+    Three ways to put a stored document on a page and only one works. As a
+    bare {{ text }} in a <p>, every newline collapses and the whole thing is
+    one unbroken wall -- every word present, so nothing a content check
+    looks at is wrong, and nobody reads it. With white-space: pre-line the
+    newlines survive, and so do the seventy-two character wraps of the
+    textarea it was typed in, which breaks every line mid-sentence in a
+    narrow column and is worse on a phone than the wall was.
+
+    Deliberately dumb about markdown. These are documents somebody types
+    into a textarea, and a renderer that starts interpreting asterisks will
+    one day eat a figure.
+    """
+    blocks = []
+    for chunk in re.split(r"\n\s*\n", (text or "").strip()):
+        lines = [l.rstrip() for l in chunk.splitlines() if l.strip()]
+        if not lines:
+            continue
+        # A numbered section title, which in this document sits on the line
+        # ABOVE its body with no blank line between them -- so it has to be
+        # lifted off the front of the block rather than found as a block of
+        # its own. Short, and no sentence in it.
+        if (re.match(r"^\d+\.\s+\S", lines[0]) and len(lines[0]) < 90
+                and not lines[0].rstrip().endswith(".")):
+            blocks.append(("heading", lines[0].strip()))
+            lines = lines[1:]
+            if not lines:
+                continue
+        if any(l.lstrip().startswith("- ") for l in lines):
+            items, cur = [], None
+            for line in lines:
+                stripped = line.lstrip()
+                if stripped.startswith("- "):
+                    if cur:
+                        items.append(cur)
+                    cur = stripped[2:].strip()
+                elif cur is not None:
+                    cur += " " + stripped          # a wrapped bullet
+                else:
+                    items.append(stripped)
+            if cur:
+                items.append(cur)
+            blocks.append(("list", items))
+            continue
+        joined = " ".join(l.strip() for l in lines)
+        # A numbered section title: one short line with no sentence in it.
+        if (len(lines) == 1 and re.match(r"^\d+\.\s+\S", joined)
+                and len(joined) < 90):
+            blocks.append(("heading", joined))
+        else:
+            blocks.append(("para", joined))
+    return blocks
+
+
 @app.route("/terms")
 def terms_page():
     conn = get_db()
     text = conn.execute("SELECT value FROM app_settings WHERE key = 'terms_and_conditions'").fetchone()["value"]
     conn.close()
-    return render_template("terms.html", text=text)
+    return render_template("terms.html", text=text, blocks=terms_blocks(text))
 
 
 # Bumped by hand when the wording changes. A privacy notice with no date on it

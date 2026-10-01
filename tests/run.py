@@ -258,6 +258,7 @@ SUITES = [
     "test_discount_outcomes",
     "test_noindex_meta",
     "test_privacy",
+    "test_terms",
     "test_refunds",
     "test_money_out",
     "test_finance_functions",

@@ -86,7 +86,10 @@
 {% if not photos %}
   <div class="empty-state">None yet. A before is only worth keeping if there is an after beside it.</div>
 {% else %}
-<div class="g-slots" style="display:flex; flex-wrap:wrap; gap:12px;">
+{# No class: this is a staff page and loads style.css alone, so a g- class
+   is the public stylesheet's and draws nothing here. The inline flex was
+   already doing all of the work. #}
+<div style="display:flex; flex-wrap:wrap; gap:12px;">
   {% for p in photos %}
   <figure style="margin:0; max-width:240px;">
     <img src="{{ url_for('room_photo', filename=p['filename']) }}"

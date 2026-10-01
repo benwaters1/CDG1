@@ -17,11 +17,21 @@ Deployed to Railway from `main`. **Pushing to `main` deploys to production.**
 
 ## Rules that cause real damage if ignored
 
-**Another agent edits this same tree.** A second Claude works on POS, stock
-and invoices via zips the owner downloads and applies here.
+**The tree has had several agents in it, and as of 1 October 2026 only one
+remains** — the others finished and were archived. The rules below were
+written while they overlapped and they all still earn their place, because
+the damage they prevent is not really about other agents: a stale working
+copy does the same thing, and there were four of those on the owner's
+machine at the last count.
 - **Never `git add -A`, never `git commit -a`, never `git checkout -- .`**
   Stage explicit file paths only. A whole-tree checkout destroyed hours of
-  the other agent's work once already.
+  another agent's work once already.
+- **`git fetch` before you start, not before you push.** `main` moved 145
+  commits during one idle session and 115 during the next. An afternoon was
+  spent fixing three test failures that had been fixed upstream two minutes
+  earlier, because the fetch came at the end instead of the beginning.
+- **A merge goes stale in hours.** Resolve, test, and push in one sitting,
+  or expect to do it again.
 - Handover zips are **literal overwrites, never merges**. "Replace
   byte-for-byte" means exactly that — do not reconcile with what's here.
 - Show `git log -1 --stat` after every push so the owner can see what landed.
