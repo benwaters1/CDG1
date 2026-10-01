@@ -830,8 +830,12 @@ body.staff-shell .profile-card-name{ color:var(--ivory); font-family:'Inter',san
 .narrow-card h1{ font-family:'Playfair Display', serif; font-size:24px; color:var(--chestnut-deep); margin:0 0 8px 0; }
 body.staff-shell .narrow-card h1{ color:var(--ivory); }
 .narrow-card .detail-card, .narrow-card .notes-block{ margin-left:0; margin-right:0; }
-.detail-card h3{ font-family:'Playfair Display', serif; font-size:16px; color:var(--chestnut-deep); margin:0 0 14px 0; }
-body.staff-shell .detail-card h3{ color:var(--ivory); font-family:'Inter',sans-serif; font-weight:700; }
+/* A card's heading is the house's sub-heading: the heading under a
+   .section-heading. .sub-heading is the same type for one that stands
+   outside a card, where it follows running text and needs room above. */
+.detail-card h3, .sub-heading{ font-family:'Playfair Display', serif; font-size:16px; color:var(--chestnut-deep); margin:0 0 14px 0; }
+body.staff-shell .detail-card h3, body.staff-shell .sub-heading{ color:var(--ivory); font-family:'Inter',sans-serif; font-weight:700; }
+.sub-heading{ margin-top:24px; }
 .detail-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:13.5px; }
 .detail-grid > div{ display:flex; flex-direction:column; gap:3px; }
 /* The same grid written as a definition list, which is what a list of facts
@@ -1661,7 +1665,7 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
     background:#fff !important; border-color:#999 !important; box-shadow:none !important;
   }
   .stat-tile-value{ color:#000 !important; }
-  .section-heading{ color:#000 !important; }
+  .section-heading, .sub-heading{ color:#000 !important; }
 }
 
 /* ---------- Wall mode: a kitchen page on the kitchen wall ----------

@@ -46,7 +46,7 @@
 {% endif %}
 
 {% for section in sheet.sections %}
-<h3 style="margin-top:26px;">
+<h3 class="sub-heading" style="margin-top:26px;">
   {{ section.title }} — {{ section.covers }}
   {{ 'cover' if section.covers == 1 else 'covers' }}
   {%- if section.unknown_party %}, and {{ section.unknown_party }} more

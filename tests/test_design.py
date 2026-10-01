@@ -449,32 +449,148 @@ def staff_class_audit(srcs, stylesheets, named=()):
 
 def _element_rule_needs(css, tag):
     """What each rule that draws a bare <tag> needs: the classes its
-    ancestors must carry. A selector ending in h2 counts, .card-course h2 or
-    a plain h2; one ending in h2.x or .x does not, since it asks for a class
-    the bare tag has not got."""
+    ancestors must carry. A selector ending in the tag counts, .detail-card h3
+    or a plain h3; one ending in h3.x or .x does not, since it asks for a class
+    the bare tag has not got.
+
+    A rule that only says where a printed page may break draws nothing on
+    the screen: the kitchen sheet's h3{ page-break-after:avoid } in its
+    print block once passed for the look its sub-heading never had."""
     out = []
-    for sel in _css_selectors(css):
-        subject = re.split(r"\s*[\s>+~]\s*", sel.strip())[-1]
-        if re.fullmatch(r"%s(?:::?[\w-]+(?:\([^)]*\))?)*" % tag, subject):
-            out.append(_selector_needs(sel))
+    for group, body in _rules(css):
+        props = _declarations(body)
+        if props and all(re.fullmatch(r"(?:page-)?break-[\w-]+|orphans|widows", p)
+                         for p in props):
+            continue
+        for sel in _css_selectors(group + "{}"):
+            subject = re.split(r"\s*[\s>+~]\s*", sel.strip())[-1]
+            if re.fullmatch(r"%s(?:::?[\w-]+(?:\([^)]*\))?)*" % tag, subject):
+                out.append(_selector_needs(sel))
     return out
 
 
-def staff_bare_h2_audit(srcs, stylesheets):
-    """[(page, template, line)] for every <h2> with no class on a staff page
-    that no rule it loads draws as an element.
+_VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
+         "param", "source", "track", "wbr"}
+_OPENS = {"if", "for", "macro", "call", "filter", "with", "autoescape"}
+_TOKEN = re.compile(
+    r"\{%-?\s*(\w+)(.*?)-?%\}"
+    r"|<(/?)([a-zA-Z][\w-]*)((?>\{%.*?%\}|\{\{.*?\}\}|\"[^\"]*\"|'[^']*'|[^>\"'{]+|\{)*)>",
+    re.S)
 
-    The house's section heading is a class, .section-heading, so a bare h2 is
-    drawn by the browser alone: 24px bold Inter, larger than and unlike every
-    other heading on the staff side. A page that styles its own h2 -- the
-    printed menu's course titles, the office display, the Outlook pane, the
-    till's order head -- is drawn and left alone. Per page, as the class
-    audit is: a page with one such rule clears every bare h2 on it."""
+
+def _blank(m):
     # Blanked rather than cut, so a line number still points into the file.
-    def blank(m):
-        return "\n" * m.group(0).count("\n")
-    srcs = {n: re.sub(r"\{#.*?#\}", blank, s, flags=re.S) for n, s in srcs.items()}
-    sheet_rules = {n: _element_rule_needs(_strip_comments(css), "h2")
+    return "\n" * m.group(0).count("\n")
+
+
+def _markup(src):
+    """A template as the browser will parse it: no Jinja comments, no HTML
+    comments, and nothing inside a <script> or a <style>."""
+    src = re.sub(r"\{#.*?#\}", _blank, src, flags=re.S)
+    src = re.sub(r"<!--.*?-->", _blank, src, flags=re.S)
+    return re.sub(r"<(script|style)\b[^>]*>.*?</\1\s*>", _blank, src, flags=re.S | re.I)
+
+
+def _blocks(text):
+    """name -> (body start, body end, end of the endblock) for each block."""
+    out, open_ = {}, []
+    for m in _TOKEN.finditer(text):
+        if m.group(1) == "block":
+            open_.append((m.group(2).split()[0], m.end()))
+        elif m.group(1) == "endblock" and open_:
+            name, start = open_.pop()
+            out[name] = (start, m.start(), m.end())
+    return out
+
+
+def _bare_headings(srcs, chain, tag):
+    """(template, line, classes above it) for every <tag> with no class on
+    the page that extends chain[-1] by way of chain, as the page is put
+    together: each block filled by the template nearest the page that
+    defines it, each include laid where it is written.
+
+    An {% if %} keeps the elements its first branch opens and leaves the
+    rest, so <div class="a">{% else %}<div class="b"> followed by one
+    </div> closes cleanly. A partial that is imported for its macros,
+    rather than included, is read with nothing above it."""
+    marks, blocks, found, walked = {}, {}, [], set()
+
+    def text(t):
+        if t not in marks:
+            marks[t] = _markup(srcs[t])
+            blocks[t] = _blocks(marks[t])
+        return marks[t]
+
+    def walk(t, start, end, stack, in_chain, depth):
+        body, frames = text(t), []
+        walked.add(t)
+        pos = start
+        while depth < 20:
+            m = _TOKEN.search(body, pos, end)
+            if not m:
+                return
+            pos = m.end()
+            word = m.group(1)
+            if word == "block" and in_chain:
+                name = m.group(2).split()[0]
+                owner = next((c for c in chain
+                              if c in srcs and text(c) is not None and name in blocks[c]), t)
+                s, e, _after = blocks[owner][name]
+                walk(owner, s, e, stack, True, depth + 1)
+                pos = blocks[t][name][2]
+            elif word == "include":
+                inc = re.match(r'\s*["\']([^"\']+)["\']', m.group(2))
+                if inc and inc.group(1) in srcs:
+                    walk(inc.group(1), 0, len(text(inc.group(1))), stack, False, depth + 1)
+            elif word in _OPENS or (word == "set" and "=" not in m.group(2)):
+                frames.append([list(stack), None])
+            elif word in ("elif", "else") and frames:
+                if frames[-1][1] is None:
+                    frames[-1][1] = list(stack)
+                stack[:] = frames[-1][0]
+            elif word and word.startswith("end") and word[3:] in _OPENS | {"set"} and frames:
+                first = frames.pop()[1]
+                if first is not None:
+                    stack[:] = first
+            elif m.group(4):
+                name = m.group(4).lower()
+                if m.group(3):
+                    at = [i for i, (n, _c) in enumerate(stack) if n == name]
+                    if at:
+                        del stack[at[-1]:]
+                    continue
+                if name == tag and not re.search(r"\bclass\s*=", m.group(5)):
+                    found.append((t, body.count("\n", 0, m.start()) + 1,
+                                  {w for _n, c in stack for w in c}))
+                if name not in _VOID and not m.group(5).rstrip().endswith("/"):
+                    stack.append((name, {w for w, exact in _class_words(m.group(0)) if exact}))
+
+    root = chain[-1]
+    walk(root, 0, len(text(root)), [], True, 0)
+    todo = list(chain)
+    while todo:
+        t = todo.pop()
+        for u in _template_uses(srcs[t]):
+            if u in srcs and u not in walked:
+                walk(u, 0, len(text(u)), [], False, 0)
+                todo.append(u)
+    return found
+
+
+def staff_bare_heading_audit(srcs, stylesheets, tag):
+    """[(page, template, line)] for every <tag> with no class on a staff page
+    that no rule the page loads draws where the heading stands.
+
+    The house's headings are classes -- .section-heading for an h2,
+    .sub-heading for an h3 -- so a bare one is drawn by the browser alone:
+    an h2 at 24px bold Inter, an h3 at 18.7px bold Inter, each heavier than
+    the house's heading a level above it. A heading inside an element a rule
+    names is drawn and left alone: an h3 in a .detail-card, the printed
+    menu's course titles, the till's order head. Asked of the heading's own
+    ancestors, not of the page: a .detail-card lower down the page does not
+    draw an h3 that is not inside it."""
+    srcs = {n: re.sub(r"\{#.*?#\}", _blank, s, flags=re.S) for n, s in srcs.items()}
+    sheet_rules = {n: _element_rule_needs(_strip_comments(css), tag)
                    for n, css in stylesheets.items()}
     out = []
     for page in sorted(srcs):
@@ -497,16 +613,11 @@ def staff_bare_h2_audit(srcs, stylesheets):
         rules = [need for t in mem for f in _linked_stylesheets(srcs[t])
                  for need in sheet_rules.get(f, ())]
         rules += [need for t in mem if "<style" in srcs[t]
-                  for need in _element_rule_needs(_strip_comments(_style_blocks(srcs[t])), "h2")]
-        present = {w for t in mem for w, exact in _class_words(srcs[t]) if exact}
-        if any(need <= present for need in rules):
-            continue
-        for t in sorted(mem):
-            markup = re.sub(r"<script\b[^>]*>.*?</script>", blank, srcs[t], flags=re.S | re.I)
-            for m in re.finditer(r"<h2\b([^>]*)>", markup, re.I):
-                if not re.search(r"\bclass\s*=", m.group(1)):
-                    out.append((page, t, markup.count("\n", 0, m.start()) + 1))
-    return out
+                  for need in _element_rule_needs(_strip_comments(_style_blocks(srcs[t])), tag)]
+        for t, line, above in _bare_headings(srcs, chain, tag):
+            if not any(need <= above for need in rules):
+                out.append((page, t, line))
+    return list(dict.fromkeys(out))
 
 
 def _tokens_defined(css):
@@ -759,21 +870,35 @@ def run():
     # browser drew them: 24px bold Inter, a size larger than the Playfair
     # .section-heading every other staff section opens with. Nothing reported
     # it -- the class audit reads classes, and a tag with none has none to read.
-    bare = staff_bare_h2_audit(srcs, sheets)
-    s.check("no staff page has an <h2> without a class that nothing on it draws",
-            not bare,
-            detail="%d, e.g. %s -- write <h2 class=\"section-heading\">, keeping any "
-                   "inline margin" % (len(bare), ["%s:%d" % (t, n) for _p, t, n in bare[:6]]))
+    # One level down, four <h3> on three pages stood outside any card, so the
+    # city tax page's "Still to come" printed at 18.7px bold Inter under an
+    # 18px section heading: the sub-heading heavier than the heading. The
+    # hundred-odd other bare h3 are inside a .detail-card or a manual section,
+    # whose rules draw them -- which is why this asks of each heading's own
+    # ancestors: the same page held a .detail-card further down.
+    for tag, house in (("h2", "section-heading"), ("h3", "sub-heading")):
+        bare = staff_bare_heading_audit(srcs, sheets, tag)
+        s.check("no staff page has an <%s> without a class that nothing above it draws" % tag,
+                not bare,
+                detail="%d, e.g. %s -- write <%s class=\"%s\">, keeping any inline margin"
+                       % (len(bare), ["%s:%d" % (t, n) for _p, t, n in bare[:6]], tag, house))
     h2_shells = {"base.html": shell % "style.css", "public_base.html": shell % "gudanes.css"}
 
-    def bare_h2(body, base="base.html", extra=None, css=None):
+    def bare_heading(tag, body, base="base.html", extra=None, css=None):
         t = dict(h2_shells)
         t["page.html"] = ('{%% extends "%s" %%}{%% block content %%}%s{%% endblock %%}'
                           % (base, body))
         t.update(extra or {})
         return [(tpl, n) for _p, tpl, n in
-                staff_bare_h2_audit(t, css or {"style.css": ".section-heading{}",
-                                               "gudanes.css": "h2{}"})]
+                staff_bare_heading_audit(t, css or {
+                    "style.css": ".section-heading{} .sub-heading{} .detail-card h3{ font-size:16px }",
+                    "gudanes.css": "h2{} h3{}"}, tag)]
+
+    def bare_h2(body, **kw):
+        return bare_heading("h2", body, **kw)
+
+    def bare_h3(body, **kw):
+        return bare_heading("h3", body, **kw)
 
     h2_cases = [
         ("a bare h2 on a staff page is caught, at its line",
@@ -800,8 +925,54 @@ def run():
          [("_bit.html", 3)]),
         ("one in a Jinja comment or a script is not markup",
          bare_h2('{# <h2>old</h2> #}<script>el.innerHTML = "<h2>x</h2>";</script>'), []),
+        ("nor is one in an HTML comment",
+         bare_h2('<!-- <h2>old</h2> -->'), []),
+        ("a rule's ancestor elsewhere on the page does not draw the heading",
+         bare_h2('<div class="course"></div>\n<h2>Starters</h2>'
+                 '<style>.course h2{ font-size:12px; }</style>'), [("page.html", 2)]),
     ]
-    for label, got, expected in h2_cases:
+    h3_cases = [
+        ("a bare h3 outside any card is caught, at its line",
+         bare_h3('<p>x</p>\n<h3>Still to come</h3>'), [("page.html", 2)]),
+        ("and one with the house's sub-heading is not",
+         bare_h3('<h3 class="sub-heading" style="margin-top:24px;">Still to come</h3>'), []),
+        ("one inside a .detail-card is drawn by the card's rule",
+         bare_h3('<div class="detail-card"><form><h3>Add a table</h3></form></div>'), []),
+        ("a .detail-card elsewhere on the page does not draw one outside it",
+         bare_h3('<div class="detail-card"><h3>In</h3></div>\n<h3>Out</h3>'), [("page.html", 2)]),
+        ("a card closed round a nested div does not reach the heading after it",
+         bare_h3('<div class="detail-card"><div class="x"><br/></div></div>\n<h3>After</h3>'),
+         [("page.html", 2)]),
+        ("an {% if %} opening the card two ways and closing it once still closes it",
+         bare_h3('{% if wide %}<div class="detail-card wide">{% else %}'
+                 '<div class="detail-card">{% endif %}<h3>In</h3></div>\n<h3>Out</h3>'),
+         [("page.html", 2)]),
+        ("a heading in the {% else %} branch has the else branch's elements above it",
+         bare_h3('{% if a %}<div class="detail-card">{% else %}<div class="x">'
+                 '<h3>Out</h3>{% endif %}</div>'), [("page.html", 1)]),
+        ("a partial included inside a card has the card above it",
+         bare_h3('<div class="detail-card">{% include "_bit.html" %}</div>',
+                 extra={"_bit.html": "<h3>In</h3>"}), []),
+        ("and the same partial included outside one is caught where it is written",
+         bare_h3('{% include "_bit.html" %}', extra={"_bit.html": "\n<h3>Out</h3>"}),
+         [("_bit.html", 2)]),
+        ("the page's block is laid inside the shell's elements",
+         bare_h3('<h3>In</h3>', extra={"base.html": (shell % "style.css").replace(
+             "{% block content %}{% endblock %}",
+             '<main class="detail-card">{% block content %}{% endblock %}</main>')}), []),
+        ("a print rule that only places page breaks draws nothing",
+         bare_h3('<h3>Who</h3><style>@media print{ h3{ page-break-after:avoid; } }</style>'),
+         [("page.html", 1)]),
+        ("while a page rule that gives it a look does",
+         bare_h3('<h3>Who</h3><style>@media print{ h3{ font-size:13px; } }</style>'), []),
+        ("a rule for the card's h2 does not draw its h3",
+         bare_h3('<div class="detail-card"><h3>Who</h3></div>',
+                 css={"style.css": ".detail-card h2{ margin:0 }", "gudanes.css": ""}),
+         [("page.html", 1)]),
+        ("a public page is left alone",
+         bare_h3('<h3>Who</h3>', base="public_base.html"), []),
+    ]
+    for label, got, expected in h2_cases + h3_cases:
         s.check(label, got == expected, detail="expected %s, got %s" % (expected, got))
 
     s.section("A staff page reads only colours and spacings that are defined for it")
