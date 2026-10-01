@@ -348,6 +348,7 @@
         <a href="{{ url_for('meetings_page') }}" class="{{ 'active' if request.endpoint in ('meetings_page', 'meeting_page') }}">{{ icon('calendar') }}Meetings</a>
         <a href="{{ url_for('restoration_record') }}" class="{{ 'active' if request.endpoint in ('restoration_record', 'restoration_work_page') }}">{{ icon('wrench') }}Restoration record</a>
         <a href="{{ url_for('camera_roll') }}" class="{{ 'active' if request.endpoint == 'camera_roll' }}">{{ icon('camera') }}Camera roll</a>
+        <a href="{{ url_for('channel_stays_page') }}" class="{{ 'active' if request.endpoint == 'channel_stays_page' }}">{{ icon('guests') }}Booking.com stays</a>
 
         <a href="{{ url_for('vendors') }}" class="{{ 'active' if request.endpoint=='vendors' }}">{{ icon('contacts') }}Vendors</a>
         <a href="{{ url_for('admin_promo_codes') }}" class="{{ 'active' if request.endpoint=='admin_promo_codes' }}">{{ icon('receipt') }}Promo Codes</a>

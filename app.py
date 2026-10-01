@@ -8025,6 +8025,10 @@ OWNER_ONLY_AREAS = {
     "meetings_page": "management",
     # The restoration record. Management rather than estate: it carries what
     # the work cost, and spend is the owner's to see.
+    # Stays the house did not take itself. Management rather than guests:
+    # the money is Booking.com's and the thing the owner acts on here is the
+    # legal register, not a guest conversation.
+    "channel_stays_page": "management",
     "restoration_record": "management",
     # The camera roll. Management rather than estate: it decides what appears
     # on the house's public pages, which is the owner's call and not a
@@ -66845,6 +66849,104 @@ def vendors():
     return render_template("vendors.html", vendors=lv["rows"], lv=lv,
                            spend_by_vendor=spend_by_vendor, owed=owed,
                            today=today_iso)
+
+
+@app.route("/admin/channel-stays")
+@owner_required
+def channel_stays_page():
+    """Stays booked through Booking.com, in one place.
+
+    They are not in `bookings` on purpose -- see channel_stays() -- so they
+    have never had a page of their own, only lines on other people's. The
+    fiche is the part that matters: a stay here needs a police register
+    entry by law, and these cannot use the register every other booking
+    uses because that one requires a booking row.
+    """
+    conn = get_db()
+    today = house_today()
+    rooms = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
+    # Every one, not only the confirmed and dated ones channel_stays returns:
+    # a cancelled stay still needs to be visible, and one that arrived with no
+    # dates is exactly the row somebody has to go and look at.
+    rows = []
+    fiches = {r["ota_reservation_id"]: r["n"] for r in conn.execute(
+        """SELECT ota_reservation_id, COUNT(*) AS n
+             FROM channel_police_register GROUP BY ota_reservation_id""")}
+    own = {(r["room_id"], r["arrival_date"], r["departure_date"])
+           for r in conn.execute(
+               """SELECT room_id, arrival_date, departure_date FROM bookings
+                   WHERE status IN ('pending', 'confirmed')""")}
+    for r in conn.execute(
+            "SELECT * FROM ota_reservations ORDER BY arrival_date DESC, id DESC"):
+        row = dict(r)
+        row["channel_label"] = OTA_CHANNEL_LABELS.get(r["channel"], r["channel"])
+        row["room_name"] = rooms.get(r["room_id"]) or r["room_label"] or None
+        row["matched"] = bool(r["room_id"])
+        row["fiche_count"] = fiches.get(r["id"], 0)
+        row["also_ours"] = bool(
+            r["room_id"] and (r["room_id"], r["arrival_date"],
+                              r["departure_date"]) in own)
+        row["nights"] = 0
+        a, d = parse_date(r["arrival_date"]), parse_date(r["departure_date"])
+        if a and d and d > a:
+            row["nights"] = (d - a).days
+        row["upcoming"] = bool(a and a >= today)
+        rows.append(row)
+    conn.close()
+
+    live = [r for r in rows if r["status"] == "confirmed"]
+    no_fiche = [r for r in live if not r["fiche_count"] and r["arrival_date"]]
+    summary = {
+        "cells": [
+            overview_cell("Booked through a channel", len(live)),
+            overview_cell("Still to come",
+                          len([r for r in live if r["upcoming"]])),
+            overview_cell("No police fiche", len(no_fiche),
+                          alert=bool(no_fiche),
+                          hint="a stay here needs one by law, and these "
+                               "cannot use the register the house's own "
+                               "bookings use"),
+            overview_cell("No room matched",
+                          len([r for r in live if not r["matched"]]),
+                          alert=any(not r["matched"] for r in live),
+                          hint="the channel sends a room name, not the "
+                               "house's room — unmatched, nobody can be told "
+                               "which bed to make"),
+            overview_cell("Also entered by hand",
+                          len([r for r in live if r["also_ours"]]),
+                          hint="left off the other lists so nothing counts "
+                               "twice; worth seeing that the pair exists"),
+        ],
+    }
+
+    lv = list_view(
+        rows, request.args,
+        search=["guest_name", "reservation_number", "room_name", "room_label"],
+        search_hint="A name, a reservation number or a room",
+        facets=[
+            facet("state", "Where it stands", lambda r: (
+                "Cancelled" if r["status"] != "confirmed" else
+                ("Still to come" if r["upcoming"] else "Been and gone")),
+                  order=["Still to come", "Been and gone", "Cancelled"]),
+            facet("fiche", "Police fiche",
+                  lambda r: ("Not done" if r["status"] == "confirmed"
+                             and not r["fiche_count"] else None)),
+            facet("room", "Room",
+                  lambda r: r["room_name"] or "Not matched", limit=10),
+            facet("channel", "Channel", lambda r: r["channel_label"]),
+        ],
+        sorts=[
+            sort_option("arrival", "Soonest arrival first",
+                        lambda r: r["arrival_date"] or "", reverse=True),
+            sort_option("name", "By guest",
+                        lambda r: (r["guest_name"] or "").lower()),
+            sort_option("amount", "Largest first",
+                        lambda r: r["amount"] or 0, reverse=True),
+        ],
+        default_sort="arrival",
+    )
+    return render_template("channel_stays.html", rows=lv["rows"], lv=lv,
+                           summary=summary, today=today.isoformat())
 
 
 @app.route("/admin/restoration")

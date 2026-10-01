@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Channel stays{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Booking.com stays</h1>
+  <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Stays the house did not take itself. They are read from the channel's own
+  emails and kept out of the house's bookings on purpose — a booking here is
+  sent the house's letters, asked for a balance at the house's rates and
+  counted as revenue, and none of that is true of a room paid for on
+  Booking.com. They still appear on the calendar, who is here, the office
+  display and the turnover list, alongside everything else.
+</p>
+
+{% with cells = summary.cells %}{% include "_overview_band.html" %}{% endwith %}
+
+{% include "_list_toolbar.html" %}
+
+{% if not rows %}
+  <div class="empty-state">
+    Nothing from a channel yet. These arrive by reading Booking.com's own
+    emails, which needs the mailbox connected — until then this page stays
+    empty and nothing is missing.
+  </div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th scope="col">Guest</th>
+        <th scope="col">Room</th>
+        <th scope="col">Nights</th>
+        <th scope="col">Police fiche</th>
+        <th class="num" scope="col">Paid to the channel</th>
+        <th scope="col">Reference</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <th scope="row" style="font-weight:500;">
+          {{ r['guest_name'] or 'Not named by the channel' }}
+          {% if r['status'] != 'confirmed' %}
+            <span class="mini-status status-inactive">{{ r['status'] }}</span>
+          {% elif r['upcoming'] %}
+            <span class="mini-status status-pending">Still to come</span>
+          {% endif %}
+          {% if r['also_ours'] %}
+            <span class="mini-status">Also entered by hand</span>
+          {% endif %}
+          <br>
+          <span class="upload-hint">
+            {{ r['channel_label'] }}
+            {%- if r['arrival_date'] %} · {{ r['arrival_date']|date_short }}
+              → {{ r['departure_date']|date_short }}{% else %} · no dates on it{% endif %}
+            {%- if r['guests'] %} · {{ r['guests'] }} guest{{ '' if r['guests'] == 1 else 's' }}{% endif %}
+          </span>
+        </th>
+        <td>
+          {% if r['matched'] %}{{ r['room_name'] }}
+          {% else %}
+            <span class="mini-status status-pending">Not matched</span>
+            {% if r['room_label'] %}<br><span class="upload-hint">{{ r['room_label'] }}</span>{% endif %}
+          {% endif %}
+        </td>
+        <td>{{ r['nights'] or '—' }}</td>
+        <td>
+          {% if r['fiche_count'] %}
+            {{ r['fiche_count'] }} on file
+          {% elif r['status'] == 'confirmed' and r['arrival_date'] %}
+            <a href="{{ url_for('police_register_page') }}" class="mini-status status-declined"
+               style="text-decoration:none;">Not done</a>
+          {% else %}—{% endif %}
+        </td>
+        <td class="num">
+          {%- if r['amount'] %}{{ r['currency'] or '€' }}{{ '%.2f'|format(r['amount']) }}
+          {%- else %}—{% endif %}
+        </td>
+        <td><span class="upload-hint">{{ r['reservation_number'] }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}
