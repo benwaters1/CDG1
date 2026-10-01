@@ -988,8 +988,11 @@ us what we hold about you, and ask us to correct or delete it.
 
 12. Complaints, and the law that applies
 Please tell us at the time if something is wrong — almost everything is
-fixable while you are still here. These terms are governed by French law,
-and the French courts have jurisdiction.
+fixable while you are still here. If it is not, write to us at
+ariege@chateaugudanes.com. These terms are governed by French law, and the
+French courts have jurisdiction. A dispute we have not resolved in writing
+may be referred to the consumer mediator CM2C, 49 rue de Ponthieu, 75008
+Paris (www.cm2c.net), within one year of the written complaint.
 
 13. Contact
 Château de Gudanes SASU, 2 Route de Beille, 09310 Château-Verdun, France.

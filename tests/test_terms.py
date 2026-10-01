@@ -120,6 +120,9 @@ def run():
                            "Assistance and guide dogs are welcome",
                            "Transfers and excursions are included only where",
                            "2 Route de Beille",
+                           # Required by L616-1: the mediator, by name and
+                           # address, wherever the terms are.
+                           "consumer mediator CM2C, 49 rue de Ponthieu",
                            "Last updated: 1 October 2026")
                if c not in m.DEFAULT_TERMS]
     s.check("the seeded default carries the same clauses as the live page",
