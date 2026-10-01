@@ -67,6 +67,24 @@ def _pin(lat, lng):
     conn.close()
 
 
+def _arrival_card():
+    """The arrival card, imported exactly as the guest's confirmation imports it.
+
+    Read off booking_confirmation.html rather than written out here, so the
+    day that line loses `with context` again the link vanishes in this check
+    as it does on the page.
+    """
+    src = open(os.path.join(TEMPLATES, "booking_confirmation.html"),
+               encoding="utf-8").read()
+    line = re.search(r"\{%\s*from '_arrival_card\.html' import arrival_card[^%]*%\}",
+                     src)
+    if not line:
+        return ""
+    from flask import render_template_string
+    with m.app.test_request_context("/"):
+        return render_template_string(line.group(0) + "{{ arrival_card({}) }}")
+
+
 def run():
     s = Suite("Where the gates are")
     anon = m.app.test_client()
@@ -120,11 +138,19 @@ def run():
         s.section("With one set, every page shows the same one")
         _pin("42.8083", "1.6528")
         page = anon.get("/contact").get_data(as_text=True)
-        s.check("the map buttons appear",
-                "maps.apple.com" in page and "42.8083,1.6528" in page,
+        # SINCE 1 OCTOBER THE PUBLIC MAP IS GONE: the design side took the
+        # map section and its drive diagram off Contact ("the drive-time map
+        # section is off Contact"). The pin's one link is now the arrival
+        # card on a guest's confirmation, rendered here exactly as that page
+        # imports it -- which is how it was found that the card had never
+        # once drawn the link: imported without context, it could not see
+        # house_maps at all.
+        card = _arrival_card()
+        s.check("the arrival card's map link appears",
+                "42.8083,1.6528" in card,
                 detail="the coordinates go in the link, not an address search")
-        s.check("the caption comes back with them",
-                "The pin is the gates" in page)
+        s.check("and the contact page draws no map of its own",
+                "maps.apple.com" not in page and "output=embed" not in page)
         s.check("and Google is given the same figure",
                 '"latitude": 42.8083' in page and '"longitude": 1.6528' in page,
                 detail="the structured data and the button a guest taps have "
@@ -132,9 +158,10 @@ def run():
         # THE POINT OF ONE DEFINITION. Move it, and everything moves.
         _pin("42.9", "1.7")
         page = anon.get("/contact").get_data(as_text=True)
+        card = _arrival_card()
         s.check("moving it moves all of them at once",
-                "42.9,1.7" in page and '"latitude": 42.9' in page
-                and "42.8083" not in page,
+                "42.9,1.7" in card and '"latitude": 42.9' in page
+                and "42.8083" not in page and "42.8083" not in card,
                 detail="four figures in four files is how they came to "
                        "disagree by four and a half kilometres")
 
@@ -214,23 +241,19 @@ def run():
         # box guarded still has to hold: nobody is shown a map-shaped nothing,
         # and the page says where to look instead of a map.
         s.check("and draws no empty map box, pointing at the directions instead",
-                'class="g-map"' not in page and "described below" in page,
+                'class="g-map"' not in page and "Getting Here" in page
+                and "2 Route de Beille" in page,
                 detail="an empty box explains nothing, and a guest who cannot "
                        "see where the gates are is a guest who drives past")
         _pin("42.8083", "1.6528")
         page = anon.get("/contact").get_data(as_text=True)
-        s.check("with a pin the embedded map uses it",
-                "maps?q=42.8083,1.6528" in page and "output=embed" in page,
-                detail="the picture and the button have to be one place")
-        for path, name in (("/book/rooms", "the room page"),
-                           ("/contact", "the contact page")):
-            r = anon.get(path)
-            if r.status_code != 200:
-                continue
-            body = r.get_data(as_text=True)
-            s.check("%s links to the pin" % name,
-                    "query=42.8083,1.6528" in body,
-                    detail=path)
+        s.check("with a pin there is still no embedded map to disagree with it",
+                "output=embed" not in page,
+                detail="the map came off Contact on 1 October; one that came "
+                       "back would have to be drawn from house_map_links")
+        s.check("and the arrival card links to the pin",
+                "query=42.8083,1.6528" in _arrival_card(),
+                detail="the card is where a guest driving up the valley looks")
 
         s.section("The weather is allowed its own, and says why")
         source = open(os.path.join(_harness.ROOT, "app.py"),

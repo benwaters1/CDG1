@@ -72,10 +72,9 @@ CLAIM = re.compile(
 #
 # Checked in both directions, like COVERAGE_KNOWN_GAPS: a new exception reds
 # the run, and so does one that stops matching and is left on the list.
-HISTORICAL = {
-    ("restoration", "2022"): "the timeline entry for the year the fifth "
-                             "room opened, which is history and stays true",
-}
+# The restoration timeline's 2022 entry went in the 1 October handover's cuts,
+# so nothing is excused now. The machinery stays for the next piece of history.
+HISTORICAL = {}
 
 
 def _blank(match):

@@ -1,7 +1,7 @@
 {% extends "public_base.html" %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% set sticky_bar = 'none' %}
-{% block title %}Reservation request received{% endblock %}
+{% block title %}{% if (booking['status']|lower) == 'confirmed' %}Your table is booked{% else %}Reservation request received{% endif %}{% endblock %}
 {% block content %}
 {% from '_paydates.html' import pay_dates, no_reply %}
 
@@ -19,7 +19,7 @@
     Thank you, {{ booking['guest_name'].split(' ')[0] }}
   </h1>
   <p class="g-p g-lede-first">
-    Your table has been requested. We will confirm by email.
+    {% if (booking['status']|lower) == 'confirmed' %}Your table is booked, and the confirmation is on its way by email.{% else %}Your table has been requested. We will confirm by email.{% endif %}
   </p>
 
   <div class="g-conf g-plate-edge">

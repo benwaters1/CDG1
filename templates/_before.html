@@ -15,11 +15,11 @@
   <h2 class="g-place">This Is Not For Everyone</h2>
   <p class="g-p g-lede-first">We would rather you knew now than found out on the first evening.</p>
   <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
-    <div><dt>Not if you want a hotel</dt><dd>There is no reception desk, no lift, no turndown and no room service. Someone will meet you and then leave you alone</dd></div>
-    <div><dt>Not if the walls will bother you</dt><dd>Most of the house is bare plaster and weathered stone, and it is illegal for us to change it. If that reads as unfinished rather than as the point, this is the wrong house</dd></div>
-    <div><dt>Not for a party</dt><dd>Sound carries through a stone building and the valley is quiet at night. Weddings and events are taken separately, one at a time</dd></div>
-    <div><dt>Not for very young children</dt><dd>Eight and over. Original staircases, unrestored rooms and a working restoration next door</dd></div>
-    <div><dt>Not if you need to be online</dt><dd>Starlink reaches some rooms and not others. Electricity is deliberately limited and the evenings are lit by candle</dd></div>
+    <div><dt>Not if you want a hotel</dt><dd>This is a house, not a hotel: there is no reception desk and no lift</dd></div>
+    <div><dt>Not if the walls will bother you</dt><dd>It is a restoration, not a renovation: the walls stay as they are, by law</dd></div>
+    <div><dt>Not if you feel the cold</dt><dd>Heating is limited and the château is cold in winter; there are electric blankets and space heaters in the rooms</dd></div>
+    <div><dt>Not for young children</dt><dd>Children of eight and over are welcome</dd></div>
+    <div><dt>Not if you need to be online</dt><dd>The Wi-Fi is in a common area of the château</dd></div>
   </dl></div></div>
   <p class="g-p">If none of that puts you off, you are exactly who this is for.</p>
 </div></section>
@@ -75,7 +75,7 @@
 </div>
 {% endmacro %}
 
-{# 11 — what to bring. A château with limited electricity in November has
+{# 11 — what to bring. A château in November has
    real implications and nobody was told them. #}
 {% macro packing() %}
 <section class="g-sec"><div class="g-wrap">
@@ -84,12 +84,9 @@
   <p class="g-p g-lede-first">Everything you need is here. These are the things guests wish they had brought.</p>
   <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
     <div><dt>A small suitcase</dt><dd>Pack lightly: the bedrooms are reached by the original staircase, and there is no lift</dd></div>
-    <div><dt>A layer more than you think</dt><dd>Stone walls a metre thick hold the cold as well as the heat. Warm in August, genuinely cold in the unrestored rooms in winter</dd></div>
-    <div><dt>Shoes for the valley</dt><dd>The parkland, the drive and anything at Montségur or Beille. Not for the house — the floors are new</dd></div>
-    <div><dt>A torch, if you wake in the night</dt><dd>Electricity is limited by design. There is light where you need it and not much beyond that</dd></div>
-    <div><dt>Whatever you take for an allergy</dt><dd>Four cats, a French bulldog and an old house with open doors</dd></div>
-    <div><dt>Cash for the markets</dt><dd>Most stalls at Les Cabannes and Mirepoix do not take cards</dd></div>
-    <div><dt>Not a hairdryer or an adaptor</dt><dd>Both are in the rooms. European sockets, and towels and linen are ours</dd></div>
+    <div><dt>Something warm</dt><dd>Heating is limited, and the château is cold in winter</dd></div>
+    <div><dt>A torch, if you wake in the night</dt><dd>Your bathroom is a floor below your room</dd></div>
+    <div><dt>Whatever you take for an allergy</dt><dd>Bruce, a French bulldog, and four cats live here</dd></div>
   </dl></div></div>
 </div></section>
 {% endmacro %}
@@ -103,19 +100,20 @@
   <h2 class="g-place">What Happens When You Pull Up</h2>
   <ol class="g-arrive">
     <li><span class="g-arrive__n">1</span><div>
-      <h3 class="g-arrive__t">You come through the gates and up the drive</h3>
-      <p class="g-arrive__p">A quarter of a mile of it, and the house appears at the top. Park anywhere on the gravel — there is no allocated space and no charge.</p></div></li>
+      <h3 class="g-arrive__t">Through the gates</h3>
+      <p class="g-arrive__p">Parking is at the house.</p></div></li>
     <li><span class="g-arrive__n">2</span><div>
-      <h3 class="g-arrive__t">Someone is expecting you</h3>
-      <p class="g-arrive__p">Not at a desk. We will have your arrival time from the booking, and whoever is on that day will come out to the steps. If nobody appears within a minute or two, the number on your confirmation rings a phone in the kitchen.</p></div></li>
+      <h3 class="g-arrive__t">Someone meets you</h3>
+      <p class="g-arrive__p">We will have your arrival time from the booking.</p></div></li>
     <li><span class="g-arrive__n">3</span><div>
       <h3 class="g-arrive__t">The original staircase</h3>
-      <p class="g-arrive__p">There is no lift. Every bedroom is upstairs and the bathrooms are downstairs, so the original staircase is part of every stay, day and night. Pack lightly. If stairs are difficult for anyone in your party, tell us before you book and we will talk it through honestly.</p></div></li>
+      <p class="g-arrive__p">There is no lift. The bedrooms are upstairs, and the bathrooms are on the first floor.</p></div></li>
     <li><span class="g-arrive__n">4</span><div>
-      <h3 class="g-arrive__t">Then you are left alone</h3>
-      <p class="g-arrive__p">Tea, coffee and the salons are yours from the moment you arrive. Dinner, if it is running that night, is at {{ settings['dinner_time'] if settings and settings['dinner_time'] else 'eight' }}. Nobody will knock.</p></div></li>
+      <h3 class="g-arrive__t">Then the house is yours</h3>
+      <p class="g-arrive__p">The house and the grounds are yours to enjoy.</p></div></li>
   </ol>
   <p class="g-limit g-limit--warn"><span class="g-limit__k">Arriving late</span>
-    Tell us and it is fine — the drive is unlit and the gates are the only thing you need to find. If you have not arrived and we have not heard, someone will ring you.</p>
+    If you will arrive late, tell us.
+  </p>
 </div></section>
 {% endmacro %}

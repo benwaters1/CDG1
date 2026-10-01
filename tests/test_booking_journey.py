@@ -499,10 +499,11 @@ def run():
     # has been counted three ways as the pages were redrawn -- a sentence, a
     # card's Bathroom row, now a table -- and each time what must hold is the
     # same: the word each room shows is the word its own column says.
-    table = page[page.find('<th scope="col">Bathroom</th>'):]
-    table = table[:table.find("</table>")]
-    said_shared = len(re.findall(r"<td>\s*Shared\s*</td>", table))
-    said_private = len(re.findall(r"<td>\s*Private\s*</td>", table))
+    # The table went in the 1 October handover; each room card still carries
+    # its bathroom as a line read from the column, so that is what is counted
+    # now -- one line a room, the fourth way this has been drawn.
+    said_shared = len(re.findall(r"<li>\s*Shared bathroom\s*</li>", page))
+    said_private = len(re.findall(r"<li>\s*Private bathroom\s*</li>", page))
     s.check("the page says shared for the room that shares, and only for it",
             said_shared == 1,
             detail="page says shared %d time(s) with one room sharing" % said_shared)

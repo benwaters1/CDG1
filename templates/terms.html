@@ -5,7 +5,7 @@
 
 
 
-<section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
+<section class="g-sec g-short"><div class="g-wrap g-wrap--narrow g-wrap--doc">
 <div class="g-mb-card">
   <h1>Terms &amp; Conditions</h1>
   {# Laid out, not dumped. The terms are stored as plain text, hard-wrapped
@@ -18,8 +18,10 @@
      numbered line is a heading, "- " lines are bullets.
 
      `text` is still passed for anything that wants the raw document. #}
+  {# The pasted text often opens with its own title line ("BOOKING TERMS & CONDITIONS — ..."), which only repeats the h1. #}
   {% for kind, value in blocks %}
-    {% if kind == 'heading' %}
+    {% if loop.first and kind != 'heading' and kind != 'list' and 'TERMS' in (value|string|upper) and 'CONDITIONS' in (value|string|upper) and (value|string)|length < 90 %}
+    {% elif kind == 'heading' %}
       <h2 class="g-h3" style="margin:var(--s5) 0 var(--s2);">{{ value }}</h2>
     {% elif kind == 'list' %}
       <ul class="g-p" style="margin:0 0 var(--s3); padding-left:1.2em;">

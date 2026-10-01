@@ -1,6 +1,6 @@
 {% extends "public_base.html" %}
 {% block title %}Press{% endblock %}
-{% block description %}Château de Gudanes in the press — Vogue, AD Italia, House &amp; Garden, the Australian Financial Review, and the Medal of Honour of the Fondation Prince Louis de Polignac.{% endblock %}
+{% block description %}Château de Gudanes in the press — Vogue, AD Italia, House &amp; Garden and the Australian Financial Review.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% set crumbs = [('Press', None)] %}
 {% block content %}
@@ -13,6 +13,13 @@
     <p class="g-eyebrow">The Record · Since 2013</p>
   <h1 class="g-pagehead">Written about, filmed in</h1>
   <p class="g-lede">A restoration followed from the year it began, by people who could have gone anywhere.</p>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">L’histoire<span class="g-fr__en">The story</span></p>
+  <p class="g-eyebrow">The Story</p>
+  <h2 class="g-place">The Story the World Has Followed</h2>
+  <p class="g-p g-lede-first">Since 2013 the restoration of Gudanes has been followed the world over: in print, on screen, and by people who have never been and would love to come. It is a story about a house being given back its life, and it is still being written.</p>
 </div></section>
 
 <section class="g-sec"><div class="g-wrap">
@@ -30,17 +37,7 @@
 
 <div class="g-wrap g-mark__wrap">{{ mark('facade') }}</div>
 
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">Recognised</p>
-  <h2 class="g-place">The Polignac Medal</h2>
-  <p class="g-p g-lede-first">In 2016 the restoration was awarded the Medal of Honour of the Fondation Prince Louis de Polignac, given for work on French heritage.</p>
-  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
-    <div><dt>Classified</dt><dd>Class I Historic Monument, 14 June 1994</dd></div>
-    <div><dt>Architect</dt><dd>Ange-Jacques Gabriel, principal architect to Louis&nbsp;XV</dd></div>
-    <div><dt>Begun</dt><dd>2013, with ninety of the ninety-four rooms unreachable</dd></div>
-    <div><dt>Honoured</dt><dd>Medal of the Fondation Prince Louis de Polignac, 2016</dd></div>
-  </dl></div></div>
-</div></section>
+{# 1 Oct: ">The Polignac Medal<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">For Editors</p>
@@ -54,30 +51,35 @@
 
 
 <!-- ============ PRESS KIT ============ -->
-<section class="g-sec g-sec--sand g-presskit"><div class="g-wrap">
-  <p class="g-fr">Dossier de presse<span class="g-fr__en">Press kit</span></p>
-  <p class="g-eyebrow">For Journalists</p>
-  <h2 class="g-place">Everything In One Place</h2>
-  <p class="g-p g-lede-first">If you are writing about the château, this is what you need without having to ask for it.</p>
-
-  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
-    <div><dt>Built</dt><dd>1741, by Ange-Jacques Gabriel, First Architect to Louis XV</dd></div>
-    <div><dt>Classified</dt><dd>Monument Historique, 14 June 1994 — the same protected class as Versailles</dd></div>
-    <div><dt>Bought</dt><dd>2013, by Karina Waters, from Perth, Western Australia</dd></div>
-    <div><dt>Size</dt><dd>Ninety-four rooms across roughly forty-three thousand square feet</dd></div>
-    <div><dt>Open to guests</dt><dd>Five bedrooms, since 2016</dd></div>
-    <div><dt>Recognition</dt><dd>Medal of Honour, Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco</dd></div>
-    <div><dt>Where</dt><dd>Château-Verdun, Ariège, in the French Pyrénées — an hour and a half from Toulouse</dd></div>
-  </dl></div></div>
-
-  <h3 class="g-h3">Photographs</h3>
-  <p class="g-p">High-resolution images are available for editorial use, with credit. Tell us what the piece is and we will send what fits it — we would rather do that than publish a folder of the same six pictures everyone else has used.</p>
-
-  <h3 class="g-h3">Who to write to</h3>
-  <p class="g-p">
-    <a href="mailto:{{ settings['press_email'] if settings and settings['press_email'] else 'info@chateaugudanes.com' }}" class="g-btn g-btn--solid">Press enquiries</a>
-  </p>
-  <p class="g-hint">Someone at the château answers it, usually the same day.</p>
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">The Facts</p>
+  <h2 class="g-place">Everything in One Place</h2>
+  <div class="g-key">
+    <div class="g-key__i">
+      <p class="g-key__k">Built</p>
+      <p class="g-key__v">1741</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Classified</p>
+      <p class="g-key__v">A Class I Historic Monument</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Under restoration</p>
+      <p class="g-key__v">Since 2013</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Rooms</p>
+      <p class="g-key__v">About fifty-five; five bedrooms open to guests</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">The Châtelaine</p>
+      <p class="g-key__v">Karina Waters</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Where</p>
+      <p class="g-key__v">Château-Verdun, in the Ariège, French Pyrénées</p>
+    </div>
+  </div>
 </div></section>
 
 <div class="g-wrap">{{ proof(settings) }}</div>

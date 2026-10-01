@@ -171,6 +171,24 @@ SERVED_IN_CODE = {
 PARTLY_LANDED = {}
 
 
+# Taken off their page BY THE DESIGN SIDE, on purpose and in writing, while the
+# file itself still ships in every handover (the 1 October handovers edited the
+# copy inside all three). Deleting them here would only have the next zip put
+# them back, unexplained; leaving them unlisted reads as live code.
+#
+# The proof is the design's own note on the page that used to render each one.
+# If that note goes, the decision is no longer written down anywhere a reader
+# would find it, and this list would be excusing a file on its own say-so.
+RETIRED_BY_DESIGN = {
+    "_arms.html": ("home.html", "the crest band",
+                   "the Marquis de Sales crest band, off the homepage on 1 October"),
+    "_took.html": ("home.html", "What It Took",
+                   "the tonnes-years-counts facts, off the homepage on 1 October"),
+    "_explorer.html": ("restoration.html", "year-by-year explorer",
+                       "built on ninety-four rooms; the house now says about fifty-five"),
+}
+
+
 def _templates():
     out = set()
     for root, _dirs, files in os.walk(TPL):
@@ -295,9 +313,22 @@ def run():
                 f'render_template("{name}"' not in app_src,
                 detail="somebody has wired it in, so take it off this list")
 
+    s.section("The ones the design side took off their page on purpose")
+    for name, (page, note, what) in sorted(RETIRED_BY_DESIGN.items()):
+        s.check(f"{name} is still on disk ({what})", name in names,
+                detail="the handovers ship it; if it has really gone, take "
+                       "it off this list in the same commit")
+        page_src = (io.open(os.path.join(TPL, page), encoding="utf-8").read()
+                    if page in names else "")
+        s.check(f"and {page} still says why: \"{note}\"", note in page_src,
+                detail="the design's note is the only written reason this "
+                       "file is not rendered; without it the exception is "
+                       "on nobody's authority")
+
     s.section("Every other template is reached from somewhere")
     orphans = sorted(names - hit - set(DYNAMIC) - set(AWAITING_WIRING)
-                     - set(PARTLY_LANDED) - set(SERVED_IN_CODE))
+                     - set(PARTLY_LANDED) - set(SERVED_IN_CODE)
+                     - set(RETIRED_BY_DESIGN))
     s.check("nothing else sits in templates/ unreferenced", not orphans,
             detail="a template nothing renders reads as live code: somebody "
                    "corrects it, changes nothing anybody can see, and goes "
@@ -306,7 +337,7 @@ def run():
     s.section("And the list is exactly the orphans, with nothing stale on it")
     # An exception list that outlives the file it excuses is how the next
     # orphan gets in: it looks like the list is being maintained.
-    stale = sorted(set(AWAITING_WIRING) & hit)
+    stale = sorted((set(AWAITING_WIRING) | set(RETIRED_BY_DESIGN)) & hit)
     s.check("nothing on the list is actually referenced now", not stale,
             detail="wired in and not taken off: " + ", ".join(stale))
 

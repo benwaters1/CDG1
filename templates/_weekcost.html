@@ -10,7 +10,7 @@
        {{ week_cost(rooms, settings) }}
    ========================================================================== #}
 {% from '_room_copy.html' import room_name %}
-{% macro week_cost(rooms, settings) %}
+{% macro week_cost(rooms, settings, dm='open') %}
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <p class="g-eyebrow">Before You Ask</p>
   <h2 class="g-place">What a Week Here Costs</h2>
@@ -44,14 +44,15 @@
           <button type="button" class="wk-step__b" data-step="wk_adults" data-by="1" aria-label="More">+</button>
         </span>
       </p>
-      <p class="g-field wk-step">
+      {# Dinners only while La Table takes bookings (the dining switch); otherwise a zero the arithmetic still reads. #}
+      {% if dm == 'open' %}<p class="g-field wk-step">
         <label for="wk_dinners">Dinners at La Table <output class="g-vh" data-wk-do></output></label>
         <span class="wk-step__row">
           <button type="button" class="wk-step__b" data-step="wk_dinners" data-by="-1" aria-label="Fewer">&minus;</button>
           <input type="number" id="wk_dinners" min="0" max="7" value="2" inputmode="numeric" class="wk-step__n" data-wk-dinners>
           <button type="button" class="wk-step__b" data-step="wk_dinners" data-by="1" aria-label="More">+</button>
         </span>
-      </p>
+      </p>{% else %}<input type="hidden" id="wk_dinners" value="0" data-wk-dinners><output hidden data-wk-do></output>{% endif %}
       <p class="g-field g-field--check">
         <label><input type="checkbox" data-wk-transfer> Transfer from Toulouse, both ways — €700</label>
       </p>
@@ -64,7 +65,6 @@
         <div data-wk-trow hidden><dt>Transfers</dt><dd data-wk-tv>—</dd></div>
         <div><dt>Taxe de séjour</dt><dd data-wk-xv>—</dd></div>
         <div class="g-wk__tot"><dt>Total</dt><dd data-wk-total>—</dd></div>
-        <div><dt>Per person, per night</dt><dd data-wk-pp>—</dd></div>
       </dl>
       <p class="g-wk__n">Breakfast, the grounds, the pool, the tennis court, tea and coffee through the day, wi-fi and parking are in the room rate. The taxe de séjour is set by the commune, not by us.</p>
       <p class="g-wk__a"><a href="#book" class="g-btn g-btn--solid">Check these dates</a></p>
@@ -98,7 +98,6 @@
     $('tv').textContent=eur(transfer);
     $('xv').textContent=eur(tax);
     $('total').textContent=eur(total);
-    $('pp').textContent=eur(total/(ad*n));
   }
   box.addEventListener('input', paint);
   box.addEventListener('change', paint);

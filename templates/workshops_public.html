@@ -1,11 +1,12 @@
 {% extends "public_base.html" %}
+{% from '_ws_copy.html' import ws_lead, ws_copy with context %}
 {% set sticky_bar = 'atelier' %}
 {% set crumbs = [('Workshops', None)] %}
 {% block title_fr %}Les Ateliers{% endblock %}
-{% block description_fr %}Ateliers et retraites dans un château en restauration : la cuisine, les brocantes et la restauration. Tous les repas, les vins et une visite de la maison compris.{% endblock %}
-{% block title %}Workshops & Retreats in a French Château{% endblock %}
-{% block description %}The full experience: small-group retreats in a French château under restoration, with every meal, the wines and a tour of the house. Three to seven nights.{% endblock %}
-{% block og_desc %}Workshop retreats at Château de Gudanes: every meal, the château's wines and a tour of the house, never more than fifteen guests, and no others in the château.{% endblock %}
+{% block description_fr %}Ateliers et retraites dans un château en restauration : la cuisine, les brocantes et la restauration. Tous les repas, les boissons et une visite de la maison compris.{% endblock %}
+{% block title %}The Full Experience: Workshop Retreats in a French Château{% endblock %}
+{% block description %}The full Gudanes experience: small-group retreats in a French château under restoration, with every meal, drinks and a tour of the house. Three to seven nights.{% endblock %}
+{% block og_desc %}Workshop retreats at Château de Gudanes: every meal and drinks, and a tour of the house, a small group, and the house to yourselves.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
@@ -35,7 +36,7 @@
     <h1 class="g-hero__title">Workshops &amp; Retreats</h1>
     {# Owner, 28 Sept: every workshop is the same mix; the length sets the emphasis (3 brocantes, 5 kitchen, 7 restoration),
        and in practice guests mostly take the pool, the wine and the table. Retreat-led; no overclaiming the hours of work. #}
-    <p class="g-hero__lede">The full Gudanes experience, as a small-group retreat: the brocantes, the kitchen and the restoration, with the pool, the wine and one long table around them.</p>
+    <p class="g-hero__lede">The full Gudanes experience, as a small-group retreat: the brocantes, the kitchen and the restoration, with the pool and the house around them.</p>
   
     <p class="g-hero__cta"><a href="#dates" class="g-btn g-btn--solid">See every date</a> <a href="#compare" class="g-btn">Compare with a stay</a></p>
   </div>
@@ -44,44 +45,16 @@
 <!-- ============ THE CONSTRAINT, STATED EARLY ============ -->
 {# The full scarcity block sits near the foot of the page, which is too late
    to frame a decision. This is the same fact, one line, near the top. #}
-<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Group size</span>Fifteen guests at most, and while a workshop runs, no one else in the house.</p></div>
 
 
 
 <section class="g-sec"><div class="g-wrap">
-  {#- 3/5/7 sets the emphasis; any other length (the four-night ones, owner 28 Sept) is named from the data with its
-    length only - never as new, a trial or an exception; they may become regular. -#}
-  {%- set _W = ['No','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve'] %}{%- set _w = ['no','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve'] %}{%- set _odd = [] %}{%- set _oddn = [] %}{%- for w in (workshops or []) %}{%- set _n = ((w['nights_label'] or '')|string).split(' ')[0] %}{%- if _n|int(0) and _n not in ['3','5','7'] %}{%- set _ = _odd.append(w['title']) %}{%- set _ = _oddn.append(_n|int) %}{%- endif %}{%- endfor %}
-  <p class="g-p g-drop-cap g-lede-first">Every workshop is the same house and the same mix: the brocantes, the kitchen and the restoration. The length sets the emphasis — three nights lean towards the antique fairs, five towards the kitchen, seven towards the restoration itself{%- if _odd %} — and {%- if _oddn|unique|list|length == 1 and _oddn[0] <= 12 %} {% if _odd|length == 1 %}{{ _odd[0] }} runs{% else %}{{ _odd[:-1]|join(', ') }} and {{ _odd[-1] }} run{% endif %} for {{ _w[_oddn[0]] }} nights{{ ' each' if _odd|length > 1 }}{%- else %}{% for t in _odd %}{% set _k = _oddn[loop.index0] %}{% set _kw = _w[_k] if _k <= 12 else _k %}{% if loop.first %} {{ t }} runs for {{ _kw }} nights{% else %}{{ ', and ' if loop.last else ', ' }}{{ t }} for {{ _kw }}{% endif %}{% endfor %}{% endif %}{%- endif %}. The rest of the time is a retreat: the pool, the wine and the long table.</p>
-
-  <div class="g-split" style="margin-top:var(--s6)">
-    <div>
-      <p class="g-p">Gudanes is not a hotel that happens to be old. There is no reception; someone comes out to meet you. The house has stood since 1741, and when the family bought it, four of its ninety-four rooms could be lived in. Every room brought back since has come back by approved intervention, one at a time, because France does not allow a Class I monument to be renovated in the ordinary sense.</p>
-      <p class="g-p">The experience is unusual: you are not visiting a finished thing. Bare plaster and weathered stone are protected and will stay; the beds, the linen, the floors and the bathrooms are new and are very good indeed. Both facts are true at once, and neither is an apology.</p>
-      {# This paragraph repeated the dining section almost word for word. #}
-<p class="g-p">The teaching is the real thing. Each workshop is led by the people who do the work here — the conservators on the walls, the chef in the kitchen, the dealers who have furnished the house — and it happens in the rooms it is for, not in a studio set aside for visitors.</p>
-    </div>
-    <div>
-        <figure class="g-fig-block" style="margin:0 0 var(--s5)">
-    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1200w" alt="The kitchen table mid-morning" loading="lazy">
-    <figcaption>The kitchen at eleven. Whatever came back from the market that morning, on the table it will be cooked on.</figcaption>
-  </figure>
-
-      <p class="g-p">And most of the time is your own: a pool below the formal gardens, a tennis court in the trees, ten acres of parkland to walk at any hour, and the salons — the drawing room, the music room, the two dining rooms — to sit in and do nothing at all.</p>
-    </div>
-  </div>
-
-  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-    <path d="M0 13h38"/><path d="M82 13h38"/>
-    <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
-    <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
-    <circle cx="60" cy="13" r="1.4"/>
-  </svg>
-
-  <p class="g-p" style="margin-left:auto;margin-right:auto;text-align:center">
-    Full board, the château's wines and spirits and every activity come with every workshop{% if _tx == 'all' %}, and so do the transfers from Toulouse{% elif _tx == 'some' %}; each workshop says whether the transfers from Toulouse do{% endif %}.
-  </p>
+  <p class="g-p g-lede-first">The full Gudanes experience: a few days inside a château under restoration, with every meal, drinks and the house around you. Most of all it is a retreat: the pool, good food and wine, and the house to yourselves. Every workshop mixes the same three things: the brocantes, the kitchen and the restoration. The length sets the emphasis: three nights for the brocantes, five for the kitchen, seven for the restoration. The four-night workshops are spent at the house.</p>
+  <p class="g-p">A workshop is the full experience: every meal, alcoholic and non-alcoholic drinks, a tour of the château and the activities, with excursions and transfers from Toulouse except on the workshops spent at the house.</p>
 </div></section>
+
+
+
 
 
 
@@ -126,8 +99,7 @@
         <p class="g-wscard__inc">{% if _ctx and _cex %}Transfers and excursions included{% elif not _ctx and not _cex %}Spent at the house{% elif _ctx %}Transfers included{% else %}Excursions included{% endif %}</p>
       </div>
       {# Cut at a sentence, not at 180 characters ("in a house being...", "with someone who knows..."). #}
-      {%- if w['description'] %}{% set _bl = namespace(t='') %}{% for sent in (w['description']|striptags|trim).replace('\n', ' ').split('. ') %}{% if _bl.t|length < 120 %}{% set _bl.t = (_bl.t ~ ' ' ~ sent|trim)|trim %}{% if not _bl.t.endswith(('.', '!', '?')) %}{% set _bl.t = _bl.t ~ '.' %}{% endif %}{% endif %}{% endfor %}
-      <p class="g-p g-wscard__blurb">{{ _bl.t }}</p>{% endif %}
+      <p class="g-p g-wscard__blurb">{{ ws_lead(w) }}</p>
       <div class="g-wscard__foot">
         {% if w['price_per_person'] %}
         <p class="g-wscard__price">
@@ -135,7 +107,7 @@
           <span>per person, everything included</span>
         </p>
         {% endif %}
-        <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" class="g-btn">View itinerary</a>
+        <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" class="g-btn">See the workshop</a>
       </div>
     </article>
     {% endfor %}
@@ -146,13 +118,83 @@
   {% endif %}
 </div></section>
 
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">Les ateliers<span class="g-fr__en">The workshops</span></p>
+  <p class="g-eyebrow">Why a Workshop</p>
+  <h2 class="g-place">The Best Way to Experience Gudanes</h2>
+  <p class="g-p g-lede-first">A night here gives you the house for an evening. A workshop gives you the whole experience: the table every day, the house to yourselves, and the pace of château life for long enough to feel it.</p>
+  <p class="g-p">It is a small group, and it is unhurried. The sessions give the days their shape; the rest is the pool, the grounds, good food and wine, and conversation that runs on long after dinner.</p>
+  <p class="g-p">Nobody arrives knowing how, and nobody needs to. The experience is made for curiosity, not expertise.</p>
+</div></section>
+
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">Les trois fils<span class="g-fr__en">The three threads</span></p>
+  <p class="g-eyebrow">What You Do</p>
+  <h2 class="g-place">Three Threads, Every Workshop</h2>
+  <p class="g-p g-lede-first">Every workshop weaves the same three together. The length decides which leads.</p>
+  <ul class="g-threads">
+    <li class="g-threads__i"><p class="g-threads__fr">La Brocante</p><p class="g-threads__en">The hunt</p><p class="g-threads__p">The Ariège is a country of brocantes and antique fairs, and a good one is a morning well spent: the stalls, the bargaining, the piece you did not know you were looking for. The brocante workshop puts them at the centre; every workshop has a taste of them.</p></li>
+    <li class="g-threads__i"><p class="g-threads__fr">La Cuisine</p><p class="g-threads__en">The kitchen</p><p class="g-threads__p">French cooking at the château, without hurry, and the table at the end of it. The cooking workshop puts the kitchen at the centre; every workshop eats well, with every meal and drinks included.</p></li>
+    <li class="g-threads__i"><p class="g-threads__fr">La Restauration</p><p class="g-threads__en">The house</p><p class="g-threads__p">A Class I Historic Monument coming back to life, seen up close: how the work is done, why the walls are left as they are, and what the house gives up as it returns. The restoration workshop puts it at the centre.</p></li>
+  </ul>
+</div></section>
+
+
 <div class="g-quote-band">
-  <p class="g-quote-band__t">On the restoration workshops, the fresco you clean is the one on the wall around you — not a copy of it.</p>
+  <p class="g-quote-band__t"></p>
 </div>
 
 <!-- ============ EVERY DATE, IN ONE PLACE ============ -->
 {# The point of this page is choosing a date and booking it. Every sitting
    across every workshop, in date order, filterable — not five essays. #}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">La durée<span class="g-fr__en">The length</span></p>
+  <p class="g-eyebrow">Three to Seven Nights</p>
+  <h2 class="g-place">Choose Your Experience</h2>
+  <div class="g-key">
+    <div class="g-key__i">
+      <p class="g-key__k">Three nights</p>
+      <p class="g-key__v">The brocantes at the centre: the antique fairs of the valley, with the kitchen and the restoration around them</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Five nights</p>
+      <p class="g-key__v">The kitchen at the centre: French cooking at the château, and long dinners together</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Seven nights</p>
+      <p class="g-key__v">The restoration at the centre: the house up close as it comes back to life</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Four nights</p>
+      <p class="g-key__v">Spent at the house, with all three in the mix, and nothing to plan around</p>
+    </div>
+  </div>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">Entre amis<span class="g-fr__en">Among friends</span></p>
+  <p class="g-eyebrow">The Company</p>
+  <h2 class="g-place">Who Comes</h2>
+  <p class="g-p g-lede-first">People who love France, old houses and a good table. Couples, friends travelling together, and those who come alone and leave having met everyone.</p>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">Une journée<span class="g-fr__en">A day</span></p>
+  <p class="g-eyebrow">The Rhythm</p>
+  <h2 class="g-place">A Day at the Château</h2>
+  <p class="g-p g-lede-first">Mornings begin slowly, with breakfast and the day ahead. The session takes the morning: the brocantes, the kitchen or the restoration, depending on the day. Lunch is together, and the afternoon is yours: the pool, the grounds, a book, or nothing at all.</p>
+  <p class="g-p">Before dinner there is an apéritif in the salon. Dinner is the hour nearly everybody keeps, and the conversation tends to run on long after it.</p>
+</div></section>
+
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">Chez vous<span class="g-fr__en">At home</span></p>
+  <p class="g-eyebrow">Yours Alone</p>
+  <h2 class="g-place">The House to Yourselves</h2>
+  <p class="g-p g-lede-first">While a workshop runs, the château is given over to it: no other guests, and no strangers at the next table. For a few days it is your house, and the people around you are the group you came with.</p>
+  <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>
+</div></section>
+
+
 <section class="g-sec" id="dates"><div class="g-wrap">
   <h2 class="g-place">When You Can Come</h2>
 
@@ -226,71 +268,46 @@
 </div></section>
 
 <!-- ============ WHAT EVERY WORKSHOP INCLUDES ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M0 13h38"/><path d="M82 13h38"/>
-  <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
-  <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
-  <circle cx="60" cy="13" r="1.4"/>
-</svg>
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">The Full Experience</p>
   <h2 class="g-place">Included in Every Workshop</h2>
-  <p class="g-p">The full experience, at one price, and nothing added once you are here.</p>
-
-  <div class="g-incl-cards">
-    <article class="g-incl-card">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/9f95ee0f-4b6d-4ef5-b95c-3926d7f1f802/day_3_225.jpg?format=1000w" alt="At the table" loading="lazy">
-      <div class="g-incl-card__b">
-        <h3 class="g-incl-card__t">Full Board</h3>
-        <p>Every meal prepared by the château chefs — long breakfasts, garden lunches, candlelit dinners. Unlimited château beverages throughout: wine, spirits, local beer and soft drinks.</p>
-      </div>
-    </article>
-
-    <article class="g-incl-card">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1000w" alt="A château bedroom" loading="lazy">
-      <div class="g-incl-card__b">
-        <h3 class="g-incl-card__t">Your Room</h3>
-        <p>An antique French bed dressed in vintage monogrammed linen, and a private bathroom of your own, downstairs on the first floor. Laundry whenever you need it.</p>
-      </div>
-    </article>
-
-    <article class="g-incl-card">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1000w" alt="The grounds" loading="lazy">
-      <div class="g-incl-card__b">
-        <h3 class="g-incl-card__t">A Tour, and Every Activity</h3>
-        <p>A tour of the château and its restoration, shown to you by the people doing it — then the whole itinerary: tennis, pickleball, the pool, ten acres of parkland, and Wi-Fi where you need it.</p>
-      </div>
-    </article>
-
-    <article class="g-incl-card">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1000w" alt="The gates" loading="lazy">
-      <div class="g-incl-card__b">
-        <h3 class="g-incl-card__t">Getting Here</h3>
-        {% if _tx == 'all' %}<p>We meet you at 11am in central Toulouse and travel to the château together. At the end we leave at 11am and have you back in Toulouse by about one.</p>{% elif _tx == 'some' %}<p>On the workshops that include it, we meet you at 11am in central Toulouse and travel to the château together, and have you back by about one on the last day. Each workshop's page says whether yours does.</p>{% else %}<p>The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station. Tell us how you are travelling and the directions come with your confirmation.</p>{% endif %}
-      </div>
-    </article>
+  <div class="g-key">
+    <div class="g-key__i">
+      <p class="g-key__k">Meals</p>
+      <p class="g-key__v">Every meal, cooked at the château, and dinner together</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Drinks</p>
+      <p class="g-key__v">Alcoholic and non-alcoholic, mostly local</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">The château</p>
+      <p class="g-key__v">A tour of the house and its restoration</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">The days</p>
+      <p class="g-key__v">Mornings for the sessions (the brocantes, the kitchen, the restoration); the afternoons your own. Nothing is compulsory</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Excursions and transfers</p>
+      <p class="g-key__v">Included, except on the workshops spent at the house</p>
+    </div>
+    {# Put back after the 1 October handovers (g, k), which cut the facts list these lived in.
+       Both are the code's, not copy: the rooms line is what the registration page says
+       (two to a room; no extra beds, per the owner's facts of 1 October), and the deposit
+       and balance are read from the workshops and from WORKSHOP_BALANCE_DAYS by the route.
+       Inside the balance window the WHOLE amount is due at booking, and a page that says
+       "10% to reserve" three weeks out has told a guest one figure and charged another.
+       Reverted by handovers three times. #}
+    <div class="g-key__i">
+      <p class="g-key__k">Rooms</p>
+      <p class="g-key__v">Arranged for two. Coming alone, you share with another guest travelling solo, or take a room to yourself with a single supplement</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">To reserve</p>
+      <p class="g-key__v">{% if deposit_pct %}{{ deposit_pct }}% to reserve; the balance {{ balance_days }} days before.{% else %}It depends on the workshop &mdash; the figure is on the session you choose.{% endif %}{% if balance_days %} Booking inside {{ balance_days }} days? The whole amount is due then, not a deposit.{% endif %}</p>
+    </div>
   </div>
-
-  <hr class="g-rule--double">
-
-  <dl class="g-facts-list">
-    <div><dt>Group size</dt><dd>Fifteen at most</dd></div>
-    <div><dt>Rooms</dt><dd>Arranged for two, with a third bed if you need one. Coming alone, you share with another guest travelling solo, or take a room to yourself with a single supplement</dd></div>
-    {# Read from the workshops rather than stated. deposit_percent is a column
-       with a default of 30, not a house rule, and this line printed it as one.
-       And it left out the part that costs a guest money: inside the balance
-       window the WHOLE amount is due at booking, so somebody reading "30% to
-       reserve" three weeks out was told one figure and charged another.
-       Reverted by a handover twice; the route supplies both numbers. #}
-    <div><dt>Deposit</dt><dd>
-      {% if deposit_pct %}{{ deposit_pct }}% to reserve; the balance
-      {{ balance_days }} days before.
-      {% else %}It depends on the workshop &mdash; the figure is on the
-      session you choose.
-      {% endif %}
-      {% if balance_days %}Booking inside {{ balance_days }} days? The whole amount is due then,
-      not a deposit.{% endif %}
-    </dd></div>
-  </dl>
 </div></section>
 {# A night, or the full experience - the shared comparison (owner, 28 Sept). #}
 {% from '_stay_or_workshop.html' import stay_vs_workshop %}
@@ -298,7 +315,7 @@
 
 <div class="g-wrap">{{ animals_note() }}</div>
 
-{{ exclusive(settings) }}
+{# 1 Oct: You Have the Whole House cut - fewer statements #}
 
 <div class="g-wrap">{{ proof(settings) }}</div>
 
@@ -329,51 +346,12 @@
 
 
 <!-- ============ WHAT A DAY LOOKS LIKE ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-fr">Une journée d'atelier<span class="g-fr__en">A day in the atelier</span></p>
-  <p class="g-eyebrow">Hour by Hour</p>
-  <h2 class="g-place">The Shape of a Day</h2>
-  {# The timeline held the left third of the page beside an empty two-thirds; the work is shown beside it. #}
-  <div class="g-split g-day">
-  <div class="g-timeline">
-    <ol class="g-timeline__l">
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">8.00</span>
-        <span class="g-timeline__v">Breakfast in the dining salon. Long, and nobody rushes it.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">9.30</span>
-        <span class="g-timeline__v">The morning's session — at the fairs, in the kitchen, or on the walls. Overalls where it is messy.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">13.00</span>
-        <span class="g-timeline__v">Lunch, usually outside, and wine with it.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">14.30</span>
-        <span class="g-timeline__v">The afternoon is yours: the pool, a walk up the valley, a book in the music room. Most people take it.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">20.00</span>
-        <span class="g-timeline__v">Dinner together at one table. This is the part people write about afterwards.</span></li>
-    </ol>
-  </div>
-  <figure class="g-fig-block g-day__fig">
-    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1000w" alt="Work in progress on one of the restored walls" loading="lazy">
-    <figcaption>Work in progress. What is done on a workshop stays on the wall.</figcaption>
-  </figure>
-  </div>
-  <p class="g-limit"><span class="g-limit__k">Physical</span>The restoration sessions are on your feet, sometimes on a platform with your arms above your head. Say if that is a problem and we will place you where it is not.</p>
-</div></section>
+{# 1 Oct: ">The Shape of a Day<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <!-- ============ LA CUISINE ============ -->
 {# Food is most of what a guest remembers, and the workshops page barely
    mentioned it. Same voice as the nightly page. #}
-<section class="g-sec"><div class="g-two">
-  <div>
-    <p class="g-fr">Ce que la vallée donne<span class="g-fr__en">What the valley gives</span></p>
-    <p class="g-eyebrow">Dining</p>
-    <h2 class="g-h2">À Table</h2>
-    <p class="g-p g-lede-first">Candlelight, the fire lit in winter, and whatever the valley gave up that morning.</p>
-    <p class="g-p">Every meal is cooked in the château's own Renaissance kitchen, still hung with the copper that came with the château. There is no fixed menu on any workshop — what appears depends on the Sunday market in the village square, on the farms up and down the valley, and in summer on the gardens below the terrace.</p>
-    <p class="g-p">Breakfast runs long. Lunch is often outside under the lime trees, or packed and carried up the valley. Dinner is in the dining room, the whole group together.</p>
-    <p class="g-p">Mountain cheeses from the farms above the village, charcuterie, foie gras, magret de canard, wild mushrooms when the season gives them, and desserts drawn from a recipe book written at Gudanes in the 1700s. A private selection of local wines, spirits and soft drinks is poured with every meal and included in the price.</p>
-  </div>
-  <div class="g-two__media">
-    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1500w" alt="A table laid outside with the mountains beyond" loading="lazy">
-  </div>
-</div></section>
+{# 1 Oct: "<h2 class="g-h2">À Table</h2>" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <div class="g-band">
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1000w" alt="The kitchen" loading="lazy">
@@ -383,138 +361,47 @@
 </div>
 
 <!-- ============ LES SALLES DE BAINS ============ -->
-<section class="g-sec"><div class="g-two">
-  <div class="g-two__media">
-    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w" alt="One of the château bathrooms" loading="lazy">
-  </div>
-  <div>
-    <p class="g-eyebrow">Bathing</p>
-    <h2 class="g-h2">Les Salles de Bains</h2>
-    {# As on the Stay page (owner, 24 Sept): one bathroom kept for each bedroom; all together downstairs; the powder room upstairs. #}
-    <p class="g-p g-lede-first">Every bedroom has its own bathroom, kept for it alone for the length of the workshop. None is in the bedroom: they are together downstairs, on the first floor, with a powder room in the upstairs vestibule for the night.</p>
-    <p class="g-p">Brass fittings, floral papers, hexagonal terracotta underfoot, and cast-iron baths deep enough to disappear into. Class I rules do not allow bathrooms to be cut into the bedrooms, so they were made where the building allows — and made new.</p>
-  </div>
-</div></section>
+{# 1 Oct: ">Les Salles de Bains<" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
 <div class="g-wrap g-mark__wrap">{{ mark('market') }}</div>
 
 <!-- ============ CHÂTEAU ESTATE ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-    <path d="M0 13h38"/><path d="M82 13h38"/>
-    <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
-    <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
-    <circle cx="60" cy="13" r="1.4"/>
-  </svg>
-  <svg class="g-medallion" viewBox="0 0 46 46" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <circle cx="23" cy="23" r="21"/><circle cx="23" cy="23" r="16"/>
-  <path d="M23 9c-3.4 3.6-5 6.6-5 9.5s1.6 5.9 5 9.5c3.4-3.6 5-6.6 5-9.5S26.4 12.6 23 9z"/>
-  <path d="M12 23c4-2.6 7.4-3.8 11-3.8S30 20.4 34 23M12 23c4 2.6 7.4 3.8 11 3.8S30 25.6 34 23"/>
-  <circle cx="23" cy="23" r="2"/><path d="M23 37v5M18 40h10"/>
-</svg>
-  <h2 class="g-place">Le Domaine</h2>
-  <p class="g-p">Yours for most of the day — nothing below is charged as an extra.</p>
-
-  <div class="g-incl-cards">
-    <article class="g-incl-card">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1000w" alt="The pool and formal gardens from above" loading="lazy">
-      <div class="g-incl-card__b">
-        <h3 class="g-incl-card__t">Outdoors</h3>
-        <p>The pool sits below the formal gardens among the cherry trees, out of sight of the château and open through the warm months. The tennis court is at the far edge of the grounds, screened by trees, and lined for pickleball as well as tennis — rackets, balls and paddles are in the hall. Table tennis and a small gym indoors.</p>
-      </div>
-    </article>
-    <article class="g-incl-card">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1000w" alt="The gardens and parkland" loading="lazy">
-      <div class="g-incl-card__b">
-        <h3 class="g-incl-card__t">Gardens &amp; Parkland</h3>
-        <p>Historic formal gardens nearest the château, then parkland running up toward the mountain. Walk it at any hour. A BBQ area for long evenings outside.</p>
-      </div>
-    </article>
-    <article class="g-incl-card">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1000w" alt="A château bedroom" loading="lazy">
-      <div class="g-incl-card__b">
-        <h3 class="g-incl-card__t">Inside the Château</h3>
-        <p>Four salons to settle into — the drawing room, the music room and the two dining rooms. Tea and coffee laid out through the day, and laundry whenever you need it.</p>
-      </div>
-    </article>
-  </div>
-
-  <hr class="g-rule--double">
-
-  <dl class="g-facts-list">
-    {# Games dropped (the Outdoors card says it); the room's lamp and outlets now sit in Evenings below. #}
-    <div><dt>Salon de thé</dt><dd>Tea and coffee laid out all day</dd></div>
-    <div><dt>The pool</dt><dd>Below the formal gardens, open through the warm months</dd></div>
-    <div><dt>Laundry</dt><dd>Available throughout your stay</dd></div>
-    <div><dt>Wi-Fi</dt><dd>Starlink. No cable reaches this valley, so it comes by satellite — and works</dd></div>
-    {# Restored, in the Contact page's words: a house fact, stated plainly for a stay of several nights. #}
-    <div><dt>Evenings</dt><dd>Electricity is limited by design. Rooms are lit by candle in the evening, with power outlets and a bedside lamp</dd></div>
-  </dl>
-</div></section>
+{# 1 Oct: ">Le Domaine<" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
 
 <!-- ============ THE MARKET MORNING ============ -->
 {# The markets, the farm shop and the eighteenth-century recipe book are all
    documented in the château's own material. #}
-<section class="g-sec g-paper" data-fold><div class="g-wrap">
-  <p class="g-eyebrow">Cooking in the Cuisine</p>
-  <h2 class="g-place">The Market Comes First</h2>
-
-  <div class="g-two" style="margin-top:var(--s7)">
-    <figure class="g-fig-block">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w" alt="Market produce on the kitchen table" loading="lazy">
-      <figcaption>Nothing is decided before the market. What is on the stalls that morning is what the day is built around.</figcaption>
-    </figure>
-    <div>
-      <p class="g-p g-lede-first">The kitchen does not write a menu and then go shopping. It goes to the market and then decides.</p>
-      <p class="g-p">Les Cabannes on a Sunday, three minutes below the gates — a village of three hundred and seventeen people. Tarascon-sur-Ariège on Wednesday and Saturday, twenty minutes down the valley and much larger. La Ferme du Quié in the village for wine, cheese, ham and whatever else it has that week.</p>
-      <p class="g-p">You go with the chef, who has bought from the same producers for twenty years and will tell you which stall is worth queueing at. Then it comes back and you cook it — including, on some days, from the château's own eighteenth-century recipe book.</p>
-    </div>
-  </div>
-
-  <div class="g-plate">
-    <div class="g-plate__row">
-      <dl class="g-plate__l">
-        <div><dt>Sunday</dt><dd>Les Cabannes market, three minutes from the gate</dd></div>
-        <div><dt>Wednesday</dt><dd>Tarascon-sur-Ariège, twenty minutes down the valley</dd></div>
-        <div><dt>Saturday</dt><dd>Tarascon again, and the larger of the two days</dd></div>
-        <div><dt>Any day</dt><dd>La Ferme du Quié in the village for cheese, ham and local wine</dd></div>
-        <div><dt>In summer</dt><dd>The château gardens, and the cherry and plum trees below the terraces</dd></div>
-        <div><dt>The book</dt><dd>An eighteenth-century Gudanes recipe book, still cooked from</dd></div>
-      </dl>
-    </div>
-  </div>
-</div></section>
+{# 1 Oct: "The Market Comes First" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
 <!-- ============ KEY INFORMATION ============ -->
-<section class="g-sec g-sec--sand" data-fold><div class="g-wrap">
+<section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">Practical</p>
   <h2 class="g-place">Key Information</h2>
   <div class="g-key">
     <div class="g-key__i">
-      <p class="g-key__k">Address</p>
-      <p class="g-key__v">2 Route de Beille<br>Château-Verdun, Ariège 09310<br>France</p>
+      <p class="g-key__k">Rooms</p>
+      <p class="g-key__v">Each with a private bathroom on the first floor. Prices are per person, sharing a room</p>
     </div>
     <div class="g-key__i">
-      <p class="g-key__k">Arrival</p>
-      <p class="g-key__v">Together from Toulouse: we meet at 11am in the city centre and drive up.<br>Coming on your own, the gates open from 4pm.</p>
+      <p class="g-key__k">The stairs</p>
+      <p class="g-key__v">No lift: the bedrooms are reached by the original staircase. Pack lightly</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Children</p>
+      <p class="g-key__v">Eight and over</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Heating</p>
+      <p class="g-key__v">Limited, and the château is cold in winter. Electric blankets and space heaters in the rooms</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Wi-Fi</p>
+      <p class="g-key__v">In a common area of the château</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Getting here</p>
-      <p class="g-key__v">Toulouse-Blagnac, 1h45 by road<br>Les Cabannes station, three minutes</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Contact</p>
-      <p class="g-key__v"><a href="tel:+33628069776">+33 6 28 06 97 76</a><br>
-      <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Youngest guest</p>
-      <p class="g-key__v">Eight. The staircases are eighteenth-century and there are no handrails in places.</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Payment</p>
-      <p class="g-key__v">Charged in euro, handled by Stripe.<br>A deposit holds your place; the balance is taken nearer the date.</p>
+      <p class="g-key__v">Toulouse-Blagnac is an hour and three quarters away</p>
     </div>
   </div>
 </div></section>
@@ -524,32 +411,7 @@
 <div class="g-wrap g-mark__wrap">{{ mark('fresco') }}</div>
 
 <!-- ============ WHAT YOU NEED ============ -->
-<section class="g-sec g-sec--sand" data-fold><div class="g-wrap">
-  <p class="g-eyebrow">Before You Come</p>
-  <h2 class="g-place">What to Bring, and What Not To</h2>
-  <div class="g-grid g-grid--2">
-    <div class="g-panel">
-      <h3 class="g-h3">Bring</h3>
-      <ul class="g-ticks">
-        <li>A small suitcase — the bedrooms are reached by the original staircase, and there is no lift</li>
-        <li>Clothes you would not mind marking — lime does not wash out</li>
-        <li>Shoes with a closed toe and a flat sole</li>
-        <li>Reading glasses if you use them. The work is close</li>
-        <li>A notebook. Most people want one by day two</li>
-      </ul>
-    </div>
-    <div class="g-panel">
-      <h3 class="g-h3">Do not</h3>
-      <ul class="g-ticks g-ticks--no">
-        <li>Bring tools. Everything is here, and ours are sharpened</li>
-        <li>Expect to finish something. You are joining work in progress</li>
-        <li>Book if you cannot manage stairs — the workshops are not on one floor</li>
-        <li>Plan every hour. Most of the time is your own</li>
-      </ul>
-    </div>
-  </div>
-  <p class="g-limit"><span class="g-limit__k">No experience</span>None is needed. Most people who come have never held a trowel, and the artisans are used to it.</p>
-</div></section>
+{# 1 Oct: "What to Bring, and What Not To" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
 <!-- ============ THE WORD ============ -->
 {# The programme is built on a word most English guests half-know. Set as a
@@ -562,7 +424,7 @@
     <span class="g-gloss__pos">noun, French</span>
     <hr class="g-gloss__rule">
     <span class="g-gloss__en">A <b>workshop</b> — but properly, the room where a craft is
-      practised and taught. Gudanes has been one for ten years.</span>
+      practised and taught. </span>
   </div>
 </div></section>
 
@@ -570,24 +432,16 @@
 
 {% from '_faq.html' import faq %}
 {{ faq([
-  ('How many people are on a workshop?',
-   'Never more than fifteen, and the château takes no other guests while one runs. You have the building.'),
   ('Are meals and drinks included?',
-   'Yes, all of them: breakfast, lunch and dinner every day, and the château wines and spirits throughout, from the first evening to the last morning. A nightly stay is different: it includes breakfast only.'),
-  ('Do I need any experience?',
-   'None. The conservators, the chef and the dealers teach as they work — that is the arrangement. People arrive having never held a scalpel or a pastry knife.'),
-  ('Where do I sleep?',
-   'In the château itself. Bedrooms here, not a hotel down the valley.'),
+   'Yes: every meal, and alcoholic and non-alcoholic drinks throughout, mostly local.'),
   ('Is everything included?',
-   'Every meal, the château wines and spirits, a tour of the château' ~ (', the transfers from Toulouse' if _tx == 'all' else '') ~ (', the excursions' if _ex == 'all' else '') ~ ' and the teaching.' ~ (' Each workshop says whether the transfers from Toulouse and the excursions are included.' if (_tx == 'some' or _ex == 'some') else '') ~ ' Flights, insurance and whatever you buy at the brocantes are not.'),
+   'Every meal, drinks, a tour of the château and the activities. Excursions and transfers from Toulouse are included too, except on the workshops spent at the house.'),
   ('Can I come on my own?',
-   'Most people do. Rooms are arranged for two, and a single supplement applies if you would rather not share.'),
+   'Yes. Write to us about a room.'),
   ('What if I need to change my dates?',
-   'Move to another session from your booking link, without emailing anyone. If nothing suits, write and we will sort it.'),
+   'Write to us; we can sometimes move you to another date.'),
   ('How fit do I need to be?',
-   'Reasonably. There are original staircases, valley walks and long days on your feet at the fairs. Nothing technical.'),
-  ('When should I book?',
-   'The sessions are small and they go. If a date suits you, take it — they do not come round often.')
+   'Fit enough for the original staircase: there is no lift.')
 ], 'Before You Register', 'The Questions That Come Up') }}
 
 
@@ -595,40 +449,7 @@
 <!-- ============ WHO COMES ============ -->
 {# From the château's own introductions of past participants and their
    published accounts. These are real people who have worked here. #}
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">The Company</p>
-  <h2 class="g-place">Who Else Is Here</h2>
-  <p class="g-p">The people who come tend to be serious about something, and the table is better for it.</p>
-
-  <div class="g-finds">
-    <div class="g-find">
-      <p class="g-find__k">Edinburgh</p>
-      <h3 class="g-find__t">A conservation student</h3>
-      <p class="g-find__d">An MSc candidate in Architectural Conservation who had followed the restoration since 2014, and made Gudanes the case study for her dissertation on interiors carrying layers from several eras. She had already worked on the Ames Mansion in Boston.</p>
-    </div>
-    <div class="g-find">
-      <p class="g-find__k">Le Cordon Bleu</p>
-      <h3 class="g-find__t">A pastry chef</h3>
-      <p class="g-find__d">Trained in Paris after leaving marketing, and here to work on the old château recipes for a cookbook — as well as running classes on macarons and tarts.</p>
-    </div>
-    <div class="g-find">
-      <p class="g-find__k">Two months</p>
-      <h3 class="g-find__t">People who do not leave</h3>
-      <p class="g-find__d">Some come for a week and stay for a season. One pastry chef spent two months in the kitchen and was given free rein over every dessert that left it.</p>
-    </div>
-    <div class="g-find">
-      <p class="g-find__k">Messors</p>
-      <h3 class="g-find__t">Working conservators</h3>
-      <p class="g-find__d">The restoration workshops have been led by professional conservators, working the way they work — not a demonstration arranged for visitors.</p>
-    </div>
-    {# A "Never more than fifteen" card stood here: the sixth time the page said it. #}
-    <div class="g-find">
-      <p class="g-find__k">The village</p>
-      <h3 class="g-find__t">About fifty people</h3>
-      <p class="g-find__d">Château-Verdun. Some of them have cooked in this kitchen, and their mothers cooked in it before them.</p>
-    </div>
-  </div>
-</div></section>
+{# 1 Oct: "Who Else Is Here" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
 <div class="g-wrap g-mark__wrap">{{ mark('brushgild') }}</div>
 
@@ -684,47 +505,8 @@
 
 
 <!-- ============ WHOLE SESSIONS ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-fr">Une session entière<span class="g-fr__en">A whole session</span></p>
-  <p class="g-eyebrow">For Institutions</p>
-  <h2 class="g-place">Taking a Session Outright</h2>
-
-  <p class="g-p g-lede-first">A session holds fifteen. A school, a conservation course or a heritage body can take every place at once: one conversation rather than many.</p>
-  <p class="g-p">The work is real: eighteenth-century frescoes under supervision, lime plaster, gilding, joinery. Students are not shown a demonstration — they lift overpaint from a Class I Historic Monument, and what they do stays on the wall.</p>
-
-  <div class="g-grid g-grid--2">
-    <div class="g-panel">
-      <h3 class="g-h3">What a cohort gets</h3>
-      <ul class="g-ticks">
-        <li>Every place on one session, dates agreed with you</li>
-        <li>The château to yourselves for the duration — no other guests</li>
-        <li>Taught by the artisans restoring this building, not by visiting tutors</li>
-        <li>Beds for fifteen; the village takes any overflow</li>
-        <li>All meals, cooked here, including the market morning</li>
-      </ul>
-    </div>
-    <div class="g-panel">
-      <h3 class="g-h3">Who it suits</h3>
-      <ul class="g-ticks">
-        <li>Conservation and restoration courses</li>
-        <li>Architecture and fine-art schools</li>
-        <li>Heritage bodies and building-trust members</li>
-        <li>Craft guilds and professional development groups</li>
-        <li>Museum and gallery teams</li>
-      </ul>
-      <p class="g-hint">Documentation for course credit can be arranged; ask early, not late.</p>
-    </div>
-  </div>
-
-  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
-    <div><dt>Places in a session</dt><dd>Fifteen</dd></div>
-    <div><dt>Lead time</dt><dd>A year is normal for a full session; six months is tight</dd></div>
-    <div><dt>Pricing</dt><dd>Per cohort rather than per person, quoted against dates and length</dd></div>
-    <div><dt>Deposit</dt><dd>Holds the whole session, so no one else can take places from it</dd></div>
-  </dl></div></div>
-
-  <p class="g-p"><a href="{{ url_for('contact_page') }}" class="g-btn g-btn--solid">Enquire about a whole session</a></p>
-  <p class="g-limit"><span class="g-limit__k">Why we mention it</span>One workshop runs at a time. A cohort takes every place at once, which is why those dates go first.</p>
+<section class="g-sec g-sec--tight"><div class="g-wrap">
+  <p class="g-p">Groups and institutions can take a whole session for themselves. <a href="{{ url_for('contact_page') }}">Ask us</a>.</p>
 </div></section>
 
 
@@ -771,7 +553,7 @@
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Take a few days of it</h2>
-  <p class="g-close__p">Each workshop is small, dated, and lived in the house itself. Fifteen places on each.</p>
+  <p class="g-close__p">Each workshop is small, dated, and lived in the house itself. </p>
   <div class="g-close__acts">
       <a href="#dates" class="g-btn g-btn--solid">See every date</a>
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn">Stay the night instead</a>
@@ -794,7 +576,7 @@
   "location": {"@type": "Place", "@id": "https://chateaugudanes.com/#chateau", "name": "Château de Gudanes",
                "address": {"@type": "PostalAddress", "streetAddress": "2 Route de Beille", "addressLocality": "Château-Verdun", "postalCode": "09310", "addressRegion": "Ariège", "addressCountry": "FR"}},
   "organizer": {"@type": "Organization", "name": "Château de Gudanes", "url": "https://chateaugudanes.com/"},
-  "description": ((w['description'] or '')|striptags|trim|truncate(300, True, '…')) or "A small-group workshop retreat inside a Class I French château under restoration.",
+  "description": (ws_copy(w)|trim) or "A small-group workshop retreat inside a Class I French château under restoration.",
   "image": [WS_PIC['Cooking']],
   "url": "https://chateaugudanes.com" ~ url_for('workshop_detail', workshop_id=w['id'])
 } -%}

@@ -1,6 +1,6 @@
 {% extends "public_base.html" %}
 {% block title %}Photoshoots &amp; Film{% endblock %}
-{% block description %}Location hire for photography and film at an eighteenth-century Class I Historic Monument. Ninety-four rooms between ruin and restoration.{% endblock %}
+{% block description %}Location hire for photography and film at an eighteenth-century Class I Historic Monument. Some fifty-five rooms between ruin and restoration.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
 {% set crumbs = [('Events', url_for('events_info')), ('Photoshoots', None)] %}
 {# Without this the page falls through to the default and offers a guest
@@ -16,7 +16,7 @@
   <div class="g-hero__wash"></div>
   <div class="g-wrap">
     <p class="g-hero__eyebrow">Ariège · Location Hire</p>
-    <h1 class="g-hero__title">Ninety-four rooms, every state</h1>
+    <h1 class="g-hero__title">Every room, every state</h1>
     <p class="g-hero__lede">Bare plaster, gilded panelling, medieval stone, and an eighteenth-century façade.</p>
     {# Its paragraph had no class, so the button missed the hero's light fill: navy text on a transparent
        ground, over the photograph (1.9:1). Written as the other heroes' calls are. #}
@@ -28,86 +28,33 @@
 
 
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-fr">Décor naturel<span class="g-fr__en">A setting that is already there</span></p>
-    <p class="g-eyebrow">What Is Here</p>
+  <p class="g-eyebrow">The Rooms</p>
   <h2 class="g-place">Rooms Between Ruin and Restoration</h2>
-  <p class="g-p g-lede-first">Ninety-four rooms across 43,000 square feet. Five are open to guests. The others range from stripped stone to salons with their gilding intact, which is a range of sets that cannot be built and cannot be dressed to look real.</p>
-  <p class="g-p">The façade was designed by Ange-Jacques Gabriel, principal architect to Louis XV. The house has been photographed for Vogue, AD Italia and House &amp; Garden, and classified a Class I Historic Monument since 14 June 1994.</p>
-
-  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
-    <div><dt>Interiors</dt><dd>Bare plaster, gilded panelling, medieval stone, an eighteenth-century staircase</dd></div>
-    <div><dt>Exteriors</dt><dd>The façade, ten acres of parkland, terraced gardens, the Pyrénées behind</dd></div>
-    <div><dt>Light</dt><dd>South-facing principal rooms; the valley holds light late into the evening</dd></div>
-    <div><dt>Access</dt><dd>Vehicles to the gravel</dd></div>
-    <div><dt>Exclusivity</dt><dd>One booking at a time — no other guests in shot or in earshot</dd></div>
-  </dl></div></div>
+  <p class="g-p g-lede-first">About fifty-five rooms, in every state between ruin and restored. The walls stay as they are.</p>
+  <p class="g-p">The château is a Class I Historic Monument, so every shoot is agreed with us in advance, and priced on request.</p>
 </div></section>
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">The Constraints</p>
-  <h2 class="g-place">What Class I Listing Means For a Crew</h2>
-  <p class="g-p g-lede-first">Nothing may be fixed to the historic fabric. No drilling, no adhesive on plaster or panelling, no rigging from the mouldings. Freestanding rig only.</p>
-  <p class="g-p">We would rather set that out now than have it discovered on the morning of a shoot. Within it, the house is unusually accommodating: whole floors can be given over, and there is no other party to work around.</p>
-  <p class="g-p"><a href="{{ url_for('gallery_page') }}#archive" class="g-btn">See rooms in every condition</a></p>
-  <p class="g-limit"><span class="g-limit__k">Copyright</span>Photographs of the château belong to whoever takes them. Usage is agreed in writing before the shoot, not after.</p>
+  <p class="g-fr">La lumière<span class="g-fr__en">The light</span></p>
+  <p class="g-eyebrow">On Location</p>
+  <h2 class="g-place">The Light and the Walls</h2>
+  <p class="g-p g-lede-first">Light through tall windows, plaster as the centuries left it, and rooms in every state between ruin and restored. Very few locations look like this, because very few are allowed to stay this way.</p>
 </div></section>
+
+
+{# 1 Oct: ">What Class I Listing Means for a Crew<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 
 <!-- ============ WHAT A CREW NEEDS TO KNOW ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Practical</p>
-  <h2 class="g-place">Before You Send a Scout</h2>
-  <div class="g-facts-list">
-    <div><dt>Power</dt><dd>Domestic supply only. A generator is normal for anything above a two-head setup, and there is room for one off the gravel.</dd></div>
-    <div><dt>Rigging</dt><dd>Freestanding only.</dd></div>
-    <div><dt>Blackout</dt><dd>None fitted. The windows are original and cannot be drilled. Bring your own frames.</dd></div>
-    <div><dt>Vehicles</dt><dd>To the gravel. The drive was built for an approach at walking pace and will not take a low loader.</dd></div>
-    <div><dt>Unloading</dt><dd>Ground floor is level from the gravel. Everything above is an eighteenth-century staircase.</dd></div>
-    <div><dt>Crew facilities</dt><dd>Two ground-floor rooms can be given over for hair, make-up and holding.</dd></div>
-    <div><dt>Nearest hospital</dt><dd>Foix, thirty minutes. Worth knowing before a stunt or a height.</dd></div>
-    <div><dt>Signal</dt><dd>Patchy. Wi-fi in the bedrooms; do not plan on a live uplink from the east range.</dd></div>
-  </div>
-</div></section>
+{# 1 Oct: ">Before You Send a Scout<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <div class="g-wrap g-mark__wrap">{{ mark('scaffold') }}</div>
 
 <!-- ============ LIGHT THROUGH THE DAY ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-fr">La lumière, heure par heure<span class="g-fr__en">The light, hour by hour</span></p>
-  <p class="g-eyebrow">Planning a Day</p>
-  <h2 class="g-place">Where the Light Is, and When</h2>
-  <p class="g-p">The house runs east to west along a north-facing valley. That decides more about a shoot day here than anything else, so it is worth stating rather than discovering.</p>
-
-  <div class="g-light" data-light>
-    <div class="g-light__pick" role="group" aria-label="Choose a time of day">
-      <button type="button" class="g-light__h" data-hour="7">7am</button>
-      <button type="button" class="g-light__h" data-hour="9">9am</button>
-      <button type="button" class="g-light__h is-on" data-hour="12">Noon</button>
-      <button type="button" class="g-light__h" data-hour="15">3pm</button>
-      <button type="button" class="g-light__h" data-hour="18">6pm</button>
-      <button type="button" class="g-light__h" data-hour="21">9pm</button>
-    </div>
-    <div class="g-light__out" aria-live="polite">
-      <p class="g-light__t" data-light-t></p>
-      <ul class="g-light__l" data-light-l></ul>
-    </div>
-  </div>
-</div></section>
+{# 1 Oct: ">Where the Light Is, and When<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <!-- ============ WHAT IT COSTS ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Money</p>
-  <h2 class="g-place">How It Is Priced</h2>
-  <p class="g-p g-lede-first">By the day, against crew size and how much of the house you need. A stills shoot in two rooms is not a film unit across the whole east range, and it is not priced as one.</p>
-  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
-    <div><dt>Half day</dt><dd>Up to four hours, small crew, agreed rooms</dd></div>
-    <div><dt>Full day</dt><dd>Ten hours on site including set-up and strike</dd></div>
-    <div><dt>Multi-day</dt><dd>Priced per day, falling after the second</dd></div>
-    <div><dt>Overnight</dt><dd>Crew can stay — five bedrooms, fifteen beds, and the village below</dd></div>
-    <div><dt>Not included</dt><dd>Generator, catering beyond coffee, and any making good</dd></div>
-  </dl></div></div>
-  <p class="g-limit"><span class="g-limit__k">Recce</span>Come and look first. We would rather you saw the scaffolding than found it on the day.</p>
-</div></section>
+{# 1 Oct: ">How It Is Priced<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <div class="g-wrap g-mark__wrap">{{ mark('facade') }}</div>
 
@@ -122,36 +69,7 @@
 
 
 <!-- ============ QUESTIONS ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Asked Often</p>
-  <h2 class="g-place">Questions</h2>
-  <div class="g-faq2">
-    <details class="g-faq2__i">
-      <summary>Can we rig from the walls?</summary>
-      <p>No. Nothing may be fixed to plaster, panelling or stone — a condition of the Class I listing, not a preference. Freestanding rig only.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>Is there blackout?</summary>
-      <p>No. Bring frames — and allow set-up time for them, because nothing can be fixed to the window surrounds.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>What power is there?</summary>
-      <p>Domestic supply. A generator is normal above a two-head setup and there is room for one off the gravel.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>Can vehicles get close?</summary>
-      <p>As far as the gravel. Anything heavier than a van should be unloaded at the gates and carried.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>Who owns the photographs?</summary>
-      <p>Whoever takes them. Usage is agreed in writing before the shoot, not after.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>Can the crew stay?</summary>
-      <p>Yes — five bedrooms, fifteen beds, and the village below.</p>
-    </details>
-  </div>
-</div></section>
+{# 1 Oct: "Shoots questions" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 
 <!-- ============ THE CLOSER ============ -->

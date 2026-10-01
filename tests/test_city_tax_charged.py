@@ -334,15 +334,23 @@ def run():
             not re.search(r"(?i)departure|locally|on arrival|at the end", said),
             detail=said)
     rooms_page = anon.get("/book").get_data(as_text=True)
-    week = re.search(r'data-tax="([^"]*)"', rooms_page)
-    s.check("the room list's week of costs works it out at the same rate",
-            week is not None and abs(float(week.group(1)) - rate) < 0.001,
-            detail="charged %.2f, the week reckons %s" % (rate, week and week.group(1)))
     listed = visible_text(rooms_page)
-    s.check("and the room list names that rate",
-            "€%.2f per adult per night" % rate in listed,
-            detail="charged %.2f; no '€%.2f per adult per night' on the room list"
-                   % (rate, rate))
+    # The 1 October handover took the week-of-costs calculator off the room
+    # list and cut its tax line to the owner's approved wording, "added to
+    # the bill", with no figure; the room page above still quotes the rate
+    # before anybody pays. So these hold WHEREVER a figure appears, rather
+    # than demanding one: the danger was never silence, it was 1.65.
+    week = re.search(r'data-tax="([^"]*)"', rooms_page)
+    s.check("the room list's week of costs, if it is there, works it out at the same rate",
+            week is None or abs(float(week.group(1)) - rate) < 0.001,
+            detail="charged %.2f, the week reckons %s" % (rate, week and week.group(1)))
+    quoted = re.findall(r"€\s?(\d+[.,]\d{2}) per adult per night", listed)
+    s.check("and any rate the room list names is the one charged",
+            all(abs(float(q.replace(",", ".")) - rate) < 0.001 for q in quoted),
+            detail="charged %.2f; the room list says %s" % (rate, quoted))
+    s.check("and it does mention the tax",
+            re.search(r"(?i)taxe de s[ée]jour|tourist tax", listed) is not None,
+            detail="a guest comparing rooms should know a tax is added")
     # EVERY MENTION, not one sentence. The line above was right and the FAQ
     # three screens below said "charged locally on departure" -- it came back
     # with the 24 September handover, a day after the room page was mended,

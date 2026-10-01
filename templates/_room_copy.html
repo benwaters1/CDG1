@@ -11,16 +11,11 @@
    take back when the dining switch closes the restaurant. #}
 {% macro room_copy(name, fallback='') -%}
 {%- set RM_DESC = {
-  'The Twin Room':
-    'Two beds that can be made up as a twin or pushed together as a double, whichever suits, and a private bathroom on the first floor. The most straightforward room in the house.',
-  'The Queen Room':
-    'A quiet room with a queen bed, floral papers and a marble chimneypiece, and a private bathroom on the first floor. Brass fittings and hexagonal terracotta underfoot, among the most recently restored work in the building.',
-  'The King Room':
-    'A king bed set against hand-painted panelling, with the mountains filling the window from first light. A bath and a basin stand in the room itself, and the bathroom on the first floor is yours alone.',
-  'The Gold Suite':
-    'The largest room in the house, on the top floor with the others, with two windows onto the valley and the peaks behind it. An emperor bed, a dressing room of your own, and a cast-iron bath on the first floor that is yours alone. The walls are as the eighteenth century left them; everything you sleep in and wash in is new.',
-  'The Family Suite':
-    'Two bedrooms opening into one another, sleeping five, with the valley on both sides. Children of eight and over are welcome. A private bathroom on the first floor.'
+  'The Twin Room':    'A twin room, with a private bathroom on the first floor.',
+  'The Queen Room':   'A queen bed, with a private bathroom on the first floor.',
+  'The King Room':    'A king bed, with a bath and a basin in the room itself, and a private bathroom on the first floor.',
+  'The Gold Suite':   'An emperor bed, with a private bathroom on the first floor.',
+  'The Family Suite': 'For a family, with a private bathroom on the first floor. Children of eight and over are welcome.'
 } -%}
 {{- RM_DESC.get(name) or fallback -}}
 {%- endmacro %}
@@ -39,11 +34,11 @@
    guest needs to know what they are choosing. #}
 {% macro room_note(db_name) -%}
 {%- set MAP = {
-  'The Twin Room':    'two beds, twin or double, with a private bathroom',
-  'The Queen Room':   'a queen bed, floral papers and a marble chimneypiece',
-  'The King Room':    'a king bed against hand-painted panelling, with a bath in the room',
-  'The Gold Suite':   'the largest room, an emperor bed and a dressing room of its own',
-  'The Family Suite': 'two bedrooms opening into one another, sleeping five'
+  'The Twin Room':    'a twin room, with a private bathroom',
+  'The Queen Room':   'a queen bed, with a private bathroom',
+  'The King Room':    'a king bed, with a bath in the room',
+  'The Gold Suite':   'an emperor bed, with a private bathroom',
+  'The Family Suite': 'for a family, with a private bathroom'
 } -%}
 {{- MAP.get(db_name, '') -}}
 {%- endmacro %}

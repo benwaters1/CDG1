@@ -16,9 +16,13 @@
    people read than any other. Passed in rather than read from the
    context, because an imported macro does not get the caller's. #}
 {% macro stay_panel(compact=false) %}
+{#- 1 Oct: the dining switch read here (La Table only while it takes bookings, and the heading counts what is offered);
+    no typed prices - each figure comes from the data the page already has, or the line does not show. -#}
+{%- set _pdm = ((setting(site, 'dining_mode') if setting is defined and site is defined else '') or 'open')|lower|trim -%}
+{%- set _wsf = ((workshops|selectattr('price_per_person')|map(attribute='price_per_person')|min) if (workshops is defined and workshops) else none) -%}
 <section class="g-three{% if compact %} g-three--compact{% endif %}">
   <div class="g-wrap">
-    <p class="g-eyebrow">Three Ways In</p>
+    <p class="g-eyebrow">{{ 'Three Ways In' if _pdm == 'open' else 'Two Ways In' }}</p>
     <h2 class="g-place">What You Can Do Here</h2>
 
     <ol class="g-three__l">
@@ -26,7 +30,7 @@
         <span class="g-three__n">01</span>
         <div class="g-three__b">
           <h3 class="g-three__t">Stay the night</h3>
-          <p class="g-three__d">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} bedrooms of ninety-four rooms. Breakfast included.</p>
+          <p class="g-three__d">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} bedrooms of about fifty-five rooms. Room and breakfast.</p>
           {% if house_rooms and house_rooms.from_price %}<p class="g-three__p">From <b>&euro;{{ house_rooms.from_price }}</b> a night</p>{% endif %}
           <p class="g-three__a">
             <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check dates</a>
@@ -38,9 +42,9 @@
       <li class="g-three__i">
         <span class="g-three__n">02</span>
         <div class="g-three__b">
-          <h3 class="g-three__t">Learn a French craft</h3>
-          <p class="g-three__d">Plaster, gilding and fresco conservation, taught by the artisans restoring the château. Fifteen places, and the house to yourselves.</p>
-          <p class="g-three__p">From <b>€480</b> a day, everything included</p>
+          <h3 class="g-three__t">The full experience</h3>
+          <p class="g-three__d">Retreats of three to seven nights: the brocantes, the kitchen and the restoration, with every meal and drinks, and a tour of the house. A small group, and the house to yourselves.</p>
+          {% if _wsf %}<p class="g-three__p">From <b>&euro;{{ '{:,.0f}'.format(_wsf) }}</b> per person, everything included</p>{% endif %}
           <p class="g-three__a">
             <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the dates</a>
             <a href="{{ url_for('contact_page') }}">Ask about a group</a>
@@ -48,18 +52,18 @@
         </div>
       </li>
 
-      <li class="g-three__i">
+      {% if _pdm == 'open' %}<li class="g-three__i">
         <span class="g-three__n">03</span>
         <div class="g-three__b">
           <h3 class="g-three__t">Eat at La Table</h3>
-          <p class="g-three__d">One table, one sitting, in the dining salon. Not every night.</p>
-          <p class="g-three__p">From <b>€95</b> a head</p>
+          <p class="g-three__d">Dinner at the château, on the nights the kitchen is open.</p>
+          {% if settings and settings['price_per_person'] %}<p class="g-three__p">From <b>&euro;{{ settings['price_per_person']|int }}</b> a head</p>{% endif %}
           <p class="g-three__a">
             <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--solid">Reserve a table</a>
             <a href="{{ url_for('contact_page') }}">Ask about a private dinner</a>
           </p>
         </div>
-      </li>
+      </li>{% endif %}
     </ol>
   </div>
 </section>

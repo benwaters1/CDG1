@@ -70,8 +70,11 @@ def run():
     _clear(conn)
     s.check("there is no reading", m.weather_now(conn) is None)
     body = anon.get("/book").get_data(as_text=True)
+    # The fallback was cut to the owner's approved facts on 1 October ("In the
+    # Ariège -- cold winters and warm summers"); what matters is that a
+    # sentence stands where the reading would be.
     s.check("the page still says something true",
-            "Nine hundred metres up" in body,
+            "cold winters and warm summers" in body,
             detail="an empty box is worse than a sentence")
     s.check("and offers no temperature", "&deg;C" not in body
             and "°C" not in body.split("What Guests Say")[0])
@@ -99,7 +102,7 @@ def run():
     s.check("nothing comes back", m.weather_now(conn) is None)
     body = anon.get("/book").get_data(as_text=True)
     s.check("the page falls back to the sentence",
-            "Nine hundred metres up" in body)
+            "cold winters and warm summers" in body)
     s.check("and does not show the old figure", "30&deg;C" not in body)
 
     s.section("An hours-old reading says how old it is")
@@ -153,8 +156,11 @@ def run():
     s.check("with the snow words", wx and wx["words"] == "snow",
             detail=str(wx["words"]) if wx else "")
     body = anon.get("/book").get_data(as_text=True)
-    s.check("and below freezing the page says the fires are lit",
-            "Fires lit in the salons" in body)
+    # "Fires lit in the salons" went on 1 October: the owner's facts say the
+    # heating is limited and the house is cold in winter, so the line now
+    # warns rather than reassures.
+    s.check("and below freezing the page says so",
+            "Frost on the valley" in body)
 
     s.section("What it means, not only the number")
     # At -3 the freezing line wins, so the snow line needs its own reading --
@@ -162,12 +168,18 @@ def run():
     # the least useful part of this block; what it means for the drive and
     # for dinner is the rest.
     for c, code, expect in ((2, 73, "Snow. The drive may want care."),
-                            (21, 0, "Dinner will be outdoors."),
                             (31, 0, "cooler inside")):
         _set(conn, m.json.dumps({"c": c, "code": code, "at": now.isoformat()}))
         page = anon.get("/book").get_data(as_text=True)
         s.check(f"at {c}°C with code {code} it says what that means",
                 expect in page, detail=expect)
+    # A mild clear evening used to promise "Dinner will be outdoors." That is a
+    # promise about La Table, which can now be closed for the season, so the
+    # line went with the dining switch (1 October). Nothing may put it back.
+    _set(conn, m.json.dumps({"c": 21, "code": 0, "at": now.isoformat()}))
+    page = anon.get("/book").get_data(as_text=True)
+    s.check("at 21°C with code 0 it promises no dinner outdoors",
+            "Dinner will be outdoors" not in page)
 
     s.section("It is a registered job, so it can be turned off")
     names = {j[0] for j in m.AUTOMATION_JOBS}

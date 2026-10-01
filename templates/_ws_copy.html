@@ -1,0 +1,105 @@
+{# =============================================================================
+   1 Oct - the site writes each workshop's words itself, from its length, so no
+   admin description or itinerary can say more than the house can stand behind.
+   The owner's facts: every workshop mixes the brocantes, the kitchen and the
+   restoration; the length sets the emphasis - three nights the brocantes, five
+   the kitchen, seven the restoration; the four-night workshops are spent at the
+   house, with no transfers or excursions. Retreat-led: nothing is compulsory.
+   ws_nights(w)      the number of nights, read from the label ("3 nights / 4 days")
+   ws_lead(w)        one sentence, for a card
+   ws_copy(w, at_house=None)   the paragraph for the workshop's own page
+   ws_days(w, at_house=None)   the shape of the days, in place of an itinerary
+   ============================================================================= #}
+{% macro ws_nights(w) -%}
+{%- set _l = ((w['nights_label'] if w['nights_label'] is defined else '') or (w['duration_label'] if w['duration_label'] is defined else '') or '')|string|trim|lower -%}
+{%- set _t = (_l.split(' ')[0] if _l else '')|replace(',', '') -%}
+{%- set _w = {'one':1,'two':2,'three':3,'four':4,'five':5,'six':6,'seven':7,'eight':8,'nine':9,'ten':10} -%}
+{{- _t if _t.isdigit() else (_w.get(_t, '')) -}}
+{%- endmacro %}
+
+{% macro _house(w, at_house) -%}
+{%- set _n = ws_nights(w)|trim -%}
+{%- if at_house is not none -%}{{ 'yes' if at_house else '' }}
+{%- elif w['transfers_included'] is defined and w['transfers_included'] is not none and not w['transfers_included'] -%}yes
+{%- elif _n == '4' -%}yes{%- endif -%}
+{%- endmacro %}
+
+{% macro ws_lead(w) -%}
+{%- set _n = ws_nights(w)|trim -%}
+{%- if _n == '3' -%}Three nights for the brocantes: the hunt through the antique fairs of the valley, and whatever you carry home, with the kitchen and the restoration around it.
+{%- elif _n == '5' -%}Five nights for the kitchen: French cooking at the château, and long dinners together, with the brocantes and the restoration around it.
+{%- elif _n == '7' -%}Seven nights for the restoration: the house up close as it comes back to life, with the brocantes and the kitchen around it.
+{%- elif _n == '4' -%}Four nights spent at the house, with the brocantes, the kitchen and the restoration all in the mix, and nothing to plan around.
+{%- else -%}A retreat of the brocantes, the kitchen and the restoration.{%- endif -%}
+{%- endmacro %}
+
+{% macro ws_copy(w, at_house=None) -%}
+{%- set _h = _house(w, at_house)|trim -%}
+{{ ws_lead(w) }} Most of all it is the full Gudanes experience: a retreat, with the pool, good food and wine, and the house to yourselves. Nothing on the itinerary is compulsory, and most afternoons are your own. Every meal, alcoholic and non-alcoholic drinks and a tour of the château are included{{ '.' if _h else ', with the excursions and the transfers from Toulouse.' }}
+{%- endmacro %}
+
+{% macro ws_days(w, at_house=None) -%}
+{%- set _h = _house(w, at_house)|trim -%}
+<dl class="g-facts-list g-itin">
+  <div><dt>Mornings</dt><dd>The sessions: the brocantes, the kitchen or the restoration</dd></div>
+  <div><dt>Afternoons</dt><dd>Your own: the pool, the valley, or nothing at all</dd></div>
+  <div><dt>Evenings</dt><dd>Dinner together</dd></div>
+  <div><dt>Outings</dt><dd>{{ 'None: the days are spent at the house' if _h else 'Excursions, with transfers from Toulouse on the first day and back on the last' }}</dd></div>
+</dl>
+{%- endmacro %}
+
+{# =============================================================================
+   ws_journey(w) - LE DÉROULÉ. A workshop's days as a journey, written from its
+   length and whether it is spent at the house. A typical shape, said to be one:
+   the owner sets the programme for each workshop. Nothing here goes beyond the
+   facts - the tour, the brocantes, the kitchen, the restoration, the pool, the
+   table; excursions and transfers only where they are included.
+   ============================================================================= #}
+{% macro ws_journey(w, at_house=None) -%}
+{%- set _n = ws_nights(w)|trim -%}
+{%- set _h = _house(w, at_house)|trim -%}
+{%- set ORD = ['Premier jour','Deuxième jour','Troisième jour','Quatrième jour','Cinquième jour','Sixième jour','Septième jour','Huitième jour','Neuvième jour'] -%}
+{%- set ROM = ['I','II','III','IV','V','VI','VII','VIII','IX'] -%}
+{%- set WORD = {'3':'Three','4':'Four','5':'Five','7':'Seven'} -%}
+{%- set ARRIVE = ("L’arrivée", "Arrival", "We meet in Toulouse and travel up into the Pyrénées together. Then the gates, the drive, and the house at the end of it: your room, a first walk through the grounds, and the first evening at the table.", [("Après-midi","The journey up from Toulouse"),("Soir","The first dinner together")]) -%}
+{%- set ARRIVE_H = ("L’arrivée", "Arrival", "Make your way to the château in the afternoon. Then the gates, the drive, and the house is yours: your room, a first walk through the grounds, and the first evening at the table.", [("Après-midi","Arriving at the house"),("Soir","The first dinner together")]) -%}
+{%- set TOUR = ("La maison", "The house", "A tour of the château and its restoration: the rooms brought back, the rooms still waiting, and the story of how the house is returning. The afternoon is yours.", [("Matin","The tour of the château"),("Après-midi","The pool, the grounds, or a book"),("Soir","Dinner together")]) -%}
+{%- set BROC = ("À la brocante", "Into the antique fairs", "Out into the brocantes and antique fairs of the valley: the stalls, the bargaining, and the piece you did not know you were looking for. Back to the house with your finds, and the pool before dinner.", [("Matin","The brocantes"),("Après-midi","Back at the house"),("Soir","Dinner, and the day’s finds")]) -%}
+{%- set KITCHEN = ("La cuisine", "The kitchen", "A morning in the château kitchen: French cooking, unhurried, and the table at the end of it. The afternoon is yours.", [("Matin","The kitchen"),("Après-midi","The pool or the grounds"),("Soir","Dinner together")]) -%}
+{%- set KITCHEN2 = ("La cuisine, encore", "The kitchen, again", "A second morning in the kitchen, the afternoon by the pool, and the last long evening together.", [("Matin","The kitchen"),("Après-midi","The pool"),("Soir","The last dinner")]) -%}
+{%- set HOUSEKITCHEN = ("La maison et la cuisine", "The house and the kitchen", "A tour of the château and its restoration in the morning, the kitchen after it, and a last long evening together.", [("Matin","The tour of the château"),("Après-midi","The kitchen"),("Soir","The last dinner")]) -%}
+{%- set RESTO = ("La restauration", "The restoration", "A morning with the restoration itself: how the work is done, why the walls are left as they are, and what the house gives up as it returns. The afternoon is yours.", [("Matin","The restoration"),("Après-midi","The pool or the grounds"),("Soir","Dinner together")]) -%}
+{%- set RESTO2 = ("La restauration, de plus près", "The restoration, closer", "A second morning with the work, closer this time, then the pool and a long evening.", [("Matin","The restoration"),("Après-midi","The pool"),("Soir","Dinner together")]) -%}
+{%- set SESSIONS = ("Les ateliers", "The sessions", "A day of the workshop’s own sessions at the house, with the kitchen and the restoration in the mix, and time between for the pool and the grounds.", [("Matin","The sessions"),("Après-midi","The sessions, or the pool"),("Soir","Dinner together")]) -%}
+{%- set LAST = ("Le dernier jour", "The last day", "A last morning with the workshop, the afternoon your own, and the last long dinner together.", [("Matin","The last session"),("Après-midi","Yours"),("Soir","The last dinner")]) -%}
+{%- set DEPART = ("Le départ", "Departure", "Breakfast, a last look at the house, and back to Toulouse together.", [("Matin","Breakfast, and the journey back")]) -%}
+{%- set DEPART_H = ("Le départ", "Departure", "Breakfast, a last look at the house, and the journey home.", [("Matin","Breakfast, and the journey home")]) -%}
+{%- if _h -%}{%- set PLAN = [ARRIVE_H, TOUR, SESSIONS, LAST, DEPART_H] if _n == '4' else none -%}
+{%- elif _n == '3' -%}{%- set PLAN = [ARRIVE, BROC, HOUSEKITCHEN, DEPART] -%}
+{%- elif _n == '5' -%}{%- set PLAN = [ARRIVE, KITCHEN, TOUR, BROC, KITCHEN2, DEPART] -%}
+{%- elif _n == '7' -%}{%- set PLAN = [ARRIVE, TOUR, RESTO, BROC, RESTO2, KITCHEN, LAST, DEPART] -%}
+{%- else -%}{%- set PLAN = none -%}{%- endif -%}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">Le déroulé des journées<span class="g-fr__en">The shape of the days</span></p>
+  <p class="g-eyebrow">The Experience, Day by Day</p>
+  <h2 class="g-place">{{ (WORD.get(_n) ~ ' Nights at Gudanes') if (PLAN and WORD.get(_n)) else 'The Days Themselves' }}</h2>
+  <p class="g-p g-lede-first">Nothing on it is compulsory. Join what you like, and keep the afternoons for the pool, the grounds and a glass of something.</p>
+  {% if PLAN %}
+  <ol class="g-journey">
+    {% for fr, en, p, moments in PLAN %}
+    <li class="g-journey__d">
+      <div class="g-journey__n"><span class="g-journey__r" aria-hidden="true">{{ ROM[loop.index0] }}</span><span class="g-journey__l">{{ ORD[loop.index0] }}</span></div>
+      <div class="g-journey__b">
+        <h3 class="g-journey__t"><span class="g-vh">Day {{ loop.index }}: </span>{{ fr }}<em lang="en">{{ en }}</em></h3>
+        <p class="g-journey__p">{{ p }}</p>
+        <ul class="g-journey__m">{% for k, v in moments %}<li><b lang="fr">{{ k }}</b>{{ v }}</li>{% endfor %}</ul>
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+  <p class="g-journey__note">A typical shape. The order of the days is set for each workshop, and sent to you before you arrive.</p>
+  {% else %}
+  {{ ws_days(w, at_house) }}
+  {% endif %}
+</div></section>
+{%- endmacro %}

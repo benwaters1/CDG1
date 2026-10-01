@@ -390,8 +390,11 @@ def run():
     # test_solo_occupancy: a handover reworded this and failed the literal match
     # while saying exactly the same thing.
     _low = pub_page.lower()
+    # "Third bed" came out on 1 October with the owner's "no extra beds";
+    # what must not vanish is that rooms are for two and a guest coming alone
+    # is told they share.
     s.check("but it does say how rooms are arranged",
-            "third bed" in _low and "two" in _low,
+            "arranged for two" in _low and "share" in _low,
             detail="nothing on the page explains the sleeping arrangements")
 
     conn = db()

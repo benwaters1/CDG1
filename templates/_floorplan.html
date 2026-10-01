@@ -29,7 +29,7 @@
 
       {# ---- west range ---- #}
       <g class="g-plan2__r is-done" data-room="kitchen" tabindex="0" role="button"
-         aria-label="The Renaissance kitchen, finished">
+         aria-label="The kitchen">
         <rect x="20" y="20" width="170" height="130"/>
         <text x="105" y="80">Kitchen</text>
         <text x="105" y="98" class="g-plan2__sub">Renaissance</text>
@@ -100,7 +100,7 @@
   </div>
 
   <p class="g-hint">A drawing, not a survey. The principal floor only — the
-    bedrooms are above it, and eighty-nine rooms are not on this plan at all.</p>
+    bedrooms are above it, and the other rooms are not on this plan at all.</p>
 </div>
 <script>
 /* The plan. Every room's copy lives here rather than in the markup, so the
@@ -109,14 +109,14 @@
   var root=document.querySelector('[data-plan2]');
   if(!root) return;
   var ROOMS={
-    kitchen:{s:'Finished',n:'The Renaissance kitchen',
+    kitchen:{s:'Finished',n:'The kitchen',
       d:'Where dinner is cooked. The vaulting and the range are original; everything that touches food is not. On some days it is cooked from the château\'s own eighteenth-century recipe book.',
       cta:['Dine at La Table','/la-table']},
     dining:{s:'Finished',n:'The dining salon',
-      d:'Forty seated, one sitting. Above forty, dinner moves outdoors to the terraces.',
+      d:'Forty seated.',
       cta:['See La Table','/la-table']},
     music:{s:'Work under way',n:'The music room',
-      d:'Plaster off, panelling exposed, and a conservator working across it at about a centimetre a morning. Not a room you can stay in yet.',
+      d:'Plaster off and panelling exposed. Not a room you can stay in yet.',
       cta:['Follow the restoration','/restoration']},
     hall:{s:'Finished',n:'The hall and staircase',
       d:'Original stone, and a 1970s concrete stair that is staying — it is part of what happened to the building. There are no handrails in places, which is why the youngest guest is eight.',
@@ -125,7 +125,7 @@
       d:'Gilded panelling that survived a century and a half of emptiness. Aperitifs happen here, and it is the room most guests remember.',
       cta:null},
     bedrooms:{s:'Finished',n:'Five bedrooms',
-      d:'Of ninety-four rooms, five are open to guests. Antique French beds, vintage monogrammed linen, floors relaid by hand — inside walls that are protected and unchanged.',
+      d:'Of about fifty-five rooms, five are open to guests. Antique French beds and floors relaid by hand — inside walls that are protected and unchanged.',
       cta:['See the rooms','/stay']},
     bathrooms:{s:'Finished',n:'The bathrooms',
       d:'Downstairs from the bedrooms rather than through a bedroom door. Ensuites are not permitted in a monument of this class, so the bathrooms are private but not attached.',

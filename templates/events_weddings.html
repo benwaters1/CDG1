@@ -2,7 +2,7 @@
 {% block title_fr %}Mariages{% endblock %}
 {% block description_fr %}Se marier dans un Monument Historique classé des Pyrénées. Un mariage à la fois, le château entier, quarante convives à l'intérieur.{% endblock %}
 {% block title %}Weddings{% endblock %}
-{% block description %}Weddings at a Class I Historic Monument in the French Pyrénées. One wedding at a time, the whole château yours, forty seated indoors.{% endblock %}
+{% block description %}Weddings at a Class I Historic Monument in the French Pyrénées. One wedding at a time, and the whole château is yours.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% set crumbs = [('Events', url_for('events_info')), ('Weddings', None)] %}
 {# Without this the page falls through to the default and offers a guest
@@ -27,167 +27,53 @@
 <div class="g-wrap">{{ event_tabs('weddings') }}</div>
 
 <div class="g-wrap">{{ fact_strip([
-  {'mark':'table',     'n':'40',  'l':'Seated indoors'},
-  {'mark':'key',       'n':'15',  'l':'Sleep in the château'},
-  {'mark':'ring',      'n':'One', 'l':'Wedding at a time'},
-  {'mark':'water',     'n':'6',   'l':'Acres of grounds'}
+  {'mark':'ring',  'n':'One',  'l':'Wedding at a time'},
+  {'mark':'key',   'n':'Five', 'l':'Bedrooms open to guests'},
+  {'mark':'table', 'n':'1741', 'l':'The château is built'}
 ]) }}</div>
 
 
 
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-fr">Un mariage à la fois<span class="g-fr__en">One wedding at a time</span></p>
-    <p class="g-eyebrow">What You Take</p>
+  <p class="g-eyebrow">Weddings</p>
   <h2 class="g-place">The Whole House, Not a Room In It</h2>
-  <p class="g-p g-lede-first">One wedding runs at a time. For the days you have it, there are no other guests, no handover halfway through, and nobody else's party in the next room.</p>
-  <p class="g-p">Ceremonies happen in the grounds or in the historic interiors. Dinner is in the main dining salon. Above forty, dinner moves outdoors — the terraces and the parkland take larger numbers comfortably.</p>
-
-  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
-    <div><dt>Seated indoors</dt><dd>Forty, in the main dining salon</dd></div>
-    <div><dt>Outdoors</dt><dd>Considerably more, across the terraces and ten acres of parkland</dd></div>
-    <div><dt>Sleeping</dt><dd>Fifteen in the château. The village is three minutes down the hill</dd></div>
-    <div><dt>Exclusive use</dt><dd>Standard, not an upgrade</dd></div>
-    <div><dt>Youngest guest</dt><dd>Eight. The staircases are eighteenth-century and there are no handrails in places</dd></div>
-  </dl></div></div>
+  <p class="g-p g-lede-first">The whole château for your wedding: the house and the grounds are yours for the days you take it.</p>
+  <p class="g-p">It is a restoration, not a renovation: the walls stay as they are, by law, and that is the setting.</p>
+  <p class="g-p">Every wedding is priced on request. Write to us with your dates and the size of your party.</p>
 </div></section>
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">Be Warned</p>
-  <h2 class="g-place">It Is Not Finished, And That Is The Point</h2>
-  <p class="g-p g-lede-first">This is a restoration, not a renovation, running since 2013. Under Class I listing the walls stay as the centuries left them — bare plaster, weathered stone, protected by law.</p>
-  <p class="g-p">What you and your guests touch is new: the beds, the linen, the floors, the bathrooms. What photographs is old. Couples who want a finished house should look elsewhere, and we would rather say so now than on the day.</p>
-  <p class="g-limit"><span class="g-limit__k">Scaffolding</span>Some of it may still be up. We will tell you where, before you commit.</p>
+  <p class="g-fr">Le grand jour<span class="g-fr__en">The day itself</span></p>
+  <p class="g-eyebrow">The Day</p>
+  <h2 class="g-place">A Wedding in a Château</h2>
+  <p class="g-p g-lede-first">Say your vows in a château the world has watched come back to life, with the Pyrénées all around and the whole house yours for the days you take it.</p>
+  <p class="g-p">The setting needs no decoration: old stone, new comfort, and the valley at the window. For your guests, it is an experience they will talk about for years.</p>
 </div></section>
 
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Getting Everyone There</p>
-  <h2 class="g-place">Under Two Hours From Toulouse</h2>
-  <div class="g-facts-list">
-    <div><dt>By air</dt><dd>Toulouse-Blagnac, about an hour and three quarters by road</dd></div>
-    <div><dt>By train</dt><dd>Les Cabannes, three minutes from the gates, on the Toulouse–Latour-de-Carol line. Tell us your train and someone will meet it — there is no taxi rank</dd></div>
-    <div><dt>Beds nearby</dt><dd>Fifteen in the château; the village and valley take the rest</dd></div>
-    <div><dt>Season</dt><dd>Summer dates go a long way ahead. Spring and autumn are quieter and cost less</dd></div>
-  </div>
-</div></section>
+
+{# 1 Oct: ">It Is Not Finished, and That Is the Point<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
+
+{# 1 Oct: ">Under Two Hours From Toulouse<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 
 
 <!-- ============ THE SHAPE OF THE WEEKEND ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">How It Usually Runs</p>
-  <h2 class="g-place">Three Days, Not One Afternoon</h2>
-  <p class="g-p g-lede-first">Almost nobody takes the château for a day. The shape below is what most weekends settle into — not a package, and every part of it moves.</p>
-  <div class="g-timeline">
-    <ol class="g-timeline__l">
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">Friday</span>
-        <span class="g-timeline__v">Arrivals through the afternoon. Dinner for whoever is here — usually thirty or so, in the dining salon.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">Saturday morning</span>
-        <span class="g-timeline__v">Breakfast long and late. Hair and make-up in the bedrooms; the rest of the party walks or swims.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">Saturday afternoon</span>
-        <span class="g-timeline__v">Ceremony in the grounds or the historic interiors. Photographs while the light comes round onto the façade.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">Saturday evening</span>
-        <span class="g-timeline__v">Dinner — forty inside, more on the terraces. Then the salons, and nobody has to drive.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">Sunday</span>
-        <span class="g-timeline__v">The market at Les Cabannes, then a long lunch. Departures whenever people manage it.</span></li>
-    </ol>
-  </div>
-  <p class="g-limit"><span class="g-limit__k">Music</span>Outdoors until midnight, indoors after. The nearest neighbour is not close, but the valley carries sound further than you would think.</p>
-</div></section>
+{# 1 Oct: ">Three Days, Not One Afternoon<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <!-- ============ WHO DOES WHAT ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-fr">Ce que nous faisons<span class="g-fr__en">What we do</span></p>
-  <p class="g-eyebrow">Honestly</p>
-  <h2 class="g-place">What We Do and What We Do Not</h2>
-  <div class="g-grid g-grid--2">
-    <div class="g-panel">
-      <h3 class="g-h3">We do</h3>
-      <ul class="g-ticks">
-        <li>The house, exclusively, for the days you have it</li>
-        <li>All the cooking, from our own kitchen</li>
-        <li>Beds for fifteen and breakfast for everyone staying</li>
-        <li>Tables, chairs, linen, glass and the gardens</li>
-        <li>Flowers from the gardens, in season — see below</li>
-      </ul>
-    </div>
-    <div class="g-panel">
-      <h3 class="g-h3">We do not</h3>
-      <ul class="g-ticks g-ticks--no">
-        <li>Plan the wedding. Bring a planner if you want one planned</li>
-        <li>Provide a marquee, a dance floor or a sound system</li>
-        <li>Hold a licence — the legal ceremony happens at the mairie</li>
-        <li>Do hair, make-up, or photography</li>
-        <li>Pretend the building is finished</li>
-      </ul>
-    </div>
-  </div>
-  <p class="g-limit"><span class="g-limit__k">The mairie</span>French weddings are legally civil. Couples marry at the mairie — Château-Verdun or Les Cabannes — and the ceremony here is the one that matters to everyone watching.</p>
-</div></section>
+{# 1 Oct: ">What We Do and What We Do Not<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <!-- ============ WHAT IS IN FLOWER ============ -->
 {# What is in flower decides more wedding dates than anything except price.
    This is what the garden and the valley actually give, month by month — so
    a couple can see whether the month they want gives them the flowers they
    want, before anyone quotes for imports. #}
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-fr">Ce que le jardin donne<span class="g-fr__en">What the garden gives</span></p>
-  <div class="g-mark__wrap">{{ mark('peony') }}</div>
-  <p class="g-eyebrow">Month By Month</p>
-  <h2 class="g-place">What Will Be In Flower</h2>
-  <p class="g-p">The gardens are terraced below the château and the valley supplies the rest. Anything grown here costs nothing to cut; anything not in season is bought in and shows on the bill. Pick a month.</p>
-
-  <div class="g-bloom" data-bloom>
-    <div class="g-bloom__months" role="group" aria-label="Choose a month">
-      <button type="button" class="g-bloom__m" data-month="4">April</button>
-      <button type="button" class="g-bloom__m" data-month="5">May</button>
-      <button type="button" class="g-bloom__m is-on" data-month="6">June</button>
-      <button type="button" class="g-bloom__m" data-month="7">July</button>
-      <button type="button" class="g-bloom__m" data-month="8">August</button>
-      <button type="button" class="g-bloom__m" data-month="9">September</button>
-      <button type="button" class="g-bloom__m" data-month="10">October</button>
-    </div>
-
-    <div class="g-bloom__out" aria-live="polite">
-      <p class="g-bloom__lede" data-bloom-lede></p>
-      <ul class="g-bloom__list" data-bloom-list></ul>
-      <p class="g-bloom__note" data-bloom-note></p>
-    </div>
-  </div>
-</div></section>
+{# 1 Oct: ">What Will Be In Flower<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <div class="g-wrap g-mark__wrap">{{ mark('rose') }}</div>
 
 <!-- ============ QUESTIONS ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Asked Often</p>
-  <h2 class="g-place">Questions</h2>
-  <div class="g-faq2">
-    <details class="g-faq2__i">
-      <summary>Do you hold a wedding licence?</summary>
-      <p>No. French weddings are legally civil, so couples marry at the mairie — Château-Verdun or Les Cabannes — and the ceremony here is the one everyone watches.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>How many can we seat?</summary>
-      <p>Forty inside, in the dining salon. More outdoors across the terraces and ten acres of parkland.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>Where does everyone sleep?</summary>
-      <p>Fifteen in the château, in five bedrooms. The village is three minutes down the hill and the valley takes the rest.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>Will there be scaffolding?</summary>
-      <p>Possibly. We will tell you where before you commit, not on the day.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>Can we bring our own suppliers?</summary>
-      <p>Yes, for flowers, music, photography and planning. The cooking is ours.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>How far ahead should we book?</summary>
-      <p>Summer goes a year or more ahead. Spring and autumn are quieter and cost less.</p>
-    </details>
-  </div>
-</div></section>
+{# 1 Oct: "<h2 class="g-place">Questions</h2>" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 
 <!-- ============ ENQUIRE ============ -->

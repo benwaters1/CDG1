@@ -10,7 +10,7 @@
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">Not Yet?</p>
   <h2 class="g-place">Tell Us When You Are Thinking Of</h2>
-  <p class="g-p g-lede-first">Five rooms and a house that is still being finished means the calendar moves. Give us a month and we will write to you when it opens — once, not a newsletter.</p>
+  <p class="g-p g-lede-first">Five rooms means the calendar moves. Give us a month and we will write to you when it opens — once, not a newsletter.</p>
   <form method="post" action="{{ url_for('contact_page') }}" class="g-notify">
     {# Every other public form here carries this. Without it, with CSRF on in
        production, the form is not weakly protected -- it is unusable: the
@@ -37,7 +37,7 @@
       <input type="email" id="nf_email" name="notify_email" required autocomplete="email">
     </p>
     <p class="g-field g-field--check">
-      <label><input type="checkbox" name="notify_kind" value="atelier"> An atelier week rather than a stay</label>
+      <label><input type="checkbox" name="notify_kind" value="atelier"> A workshop rather than a stay</label>
     </p>
     <p><button type="submit" class="g-btn g-btn--solid">Let me know</button></p>
     <p class="g-notify__n">One email, when that month opens. Nothing else, and you can say stop in a line.</p>

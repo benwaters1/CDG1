@@ -1,0 +1,51 @@
+{% extends "public_base.html" %}
+{#- LEGAL NOTICE - MENTIONS LÉGALES (1 Oct, before launch). French law (LCEN, art. 6-III) requires a business website to
+    say who publishes it and who hosts it. The company's details come from admin (company_info) - the same row the bill
+    reads - so they are kept in one place. A row only shows when its value is filled in: never a blank or a placeholder.
+    For Code: the route (/legal, legal_page), passing `company`; four new company_info fields (legal_form, share_capital,
+    publication_director, consumer_mediator); Railway's full postal address below; the footer link. -#}
+{% set sticky_bar = 'none' %}
+{% block title %}Legal Notice · Mentions légales{% endblock %}
+{% block description %}The legal notice for Château de Gudanes: who publishes this website, who hosts it, and how to reach the château.{% endblock %}
+{% block content %}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">Mentions légales<span class="g-fr__en">Legal notice</span></p>
+  <h1 class="g-place">Legal Notice</h1>
+  <p class="g-p g-lede-first">The details French law asks every business website to give: who publishes it, who hosts it, and how to reach us.</p>
+
+  <dl class="g-facts-list">
+    {% if company and company['legal_name'] %}
+    <div><dt>Publisher</dt><dd>{{ company['legal_name'] }}{% if company['legal_form'] %}, {{ company['legal_form'] }}{% if company['share_capital'] %} with a share capital of {{ company['share_capital'] }}{% endif %}{% endif %}, which operates Château de Gudanes</dd></div>
+    {% endif %}
+    {% if company and company['registered_address'] %}
+    <div><dt>Registered office</dt><dd>{{ company['registered_address'] }}</dd></div>
+    {% endif %}
+    {% if company and company['registration_number'] %}
+    <div><dt>SIRET</dt><dd>{{ company['registration_number'] }}</dd></div>
+    {% endif %}
+    {# LCEN 6-III also asks for the trade-register entry: "RCS Foix" and the SIREN, which is the SIRET's first nine digits. #}
+    {% if company and company['registration_office'] %}
+    {% set _siren = (company['registration_number'] or '')|replace(' ', '') %}
+    <div><dt>Trade register</dt><dd>{{ company['registration_office'] }}{% if _siren|length >= 9 %} {{ _siren[:3] }} {{ _siren[3:6] }} {{ _siren[6:9] }}{% endif %}</dd></div>
+    {% endif %}
+    {% if company and company['vat_number'] %}
+    <div><dt>VAT number</dt><dd>{{ company['vat_number'] }}</dd></div>
+    {% endif %}
+    {% if company and company['publication_director'] %}
+    <div><dt>Director of publication</dt><dd>{{ company['publication_director'] }}</dd></div>
+    {% endif %}
+    <div><dt>Contact</dt><dd><a href="tel:+33628069776">+33 6 28 06 97 76</a> · <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a> · 2 Route de Beille, 09310 Château-Verdun, France</dd></div>
+    {# Railway's own wording, from railway.com/legal/privacy (1 Oct 2026). LCEN asks for the host's name, address and telephone. #}
+    <div><dt>Host</dt><dd>Railway Corporation, 548 Market St PMB 68956, San Francisco, California 94104, United States · +1 415 707 7675 · <a href="https://railway.com" rel="noopener">railway.com</a></dd></div>
+    {% if company and company['consumer_mediator'] %}
+    <div><dt>Consumer mediation</dt><dd>{{ company['consumer_mediator'] }}</dd></div>
+    {% endif %}
+  </dl>
+
+  <h2 class="g-h3" style="margin-top:var(--s7)">Text and photographs</h2>
+  <p class="g-p">The text of this website belongs to the château. The photographs belong to the people who took them and are used with their permission; none of them may be reproduced without written agreement. For press use, see <a href="{{ url_for('press') }}">Press</a>.</p>
+
+  <h2 class="g-h3" style="margin-top:var(--s6)">Your information</h2>
+  <p class="g-p">How your information is collected, used and kept, and who it is shared with, is set out in the <a href="{{ url_for('privacy_page') }}">privacy notice</a>. Bookings are made under the <a href="{{ url_for('terms_page') }}">terms and conditions</a>.</p>
+</div></section>
+{% endblock %}

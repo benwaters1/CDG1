@@ -36,7 +36,7 @@
 {%- set _t_fr %}{% block title_fr %}{% endblock %}{% endset %}
 {%- set _d_fr %}{% block description_fr %}{% endblock %}{% endset %}
 <title>{% if lang == 'fr' and _t_fr|trim %}{{ _t_fr|trim }}{% else %}{% block title %}Stay{% endblock %}{% endif %} — Château de Gudanes</title>
-<meta name="description" content="{% if lang == 'fr' and _d_fr|trim %}{{ _d_fr|trim }}{% else %}{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013: five bedrooms, and workshop retreats with the artisans.{% endblock %}{% endif %}">
+<meta name="description" content="{% if lang == 'fr' and _d_fr|trim %}{{ _d_fr|trim }}{% else %}{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013: five bedrooms, and workshop retreats.{% endblock %}{% endif %}">
 
 {# Shared to Instagram, WhatsApp or a message, a link showed a bare URL with
    no image. These give it the château and the page's own title. #}
@@ -414,6 +414,7 @@ window.houseDay = (function () {
         <div class="g-navwrap__legal">
           <a href="{{ url_for('terms_page') }}">{{ t('Terms & Conditions') }}</a>
           <a href="{{ url_for('privacy_page') }}">{{ t('Privacy Policy') }}</a>
+          <a href="{{ url_for('legal_page') }}">{{ t('Legal Notice') }}</a>
         </div>
       </div>
     </div>
@@ -524,7 +525,7 @@ window.houseDay = (function () {
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M4 6h16v14H4z"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>
       <b>Clear at the point of booking</b>
-      <span>A room is paid in full when you book it. An atelier holds with a deposit, and the balance is taken closer to the date.</span>
+      <span>A room is paid in full when you book it. A workshop holds with a deposit, and the balance is taken closer to the date.</span>
     </li>
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg>
@@ -595,6 +596,7 @@ window.houseDay = (function () {
           <li><a href="{{ url_for('event_find') }}">{{ t('Find an enquiry') }}</a></li>
           <li><a href="{{ url_for('terms_page') }}">{{ t('Terms & Conditions') }}</a></li>
           <li><a href="{{ url_for('privacy_page') }}">{{ t('Privacy Policy') }}</a></li>
+          <li><a href="{{ url_for('legal_page') }}">{{ t('Legal Notice') }}</a></li>
         </ul>
       </div>
     </div>
@@ -1256,6 +1258,9 @@ window.houseDay = (function () {
     if (!start || end || picked <= start){ start = picked; end = null; }
     else { end = picked; }
     hover = null; paintFields(); draw();
+    /* 1 Oct: the departure date completes the range, so the panel closes itself (a beat later, so the range is seen).
+       One click fewer to book; Done stays for closing early. */
+    if (start && end) setTimeout(function(){ if (!panel.hidden) close(); }, 250);
   });
 
   /* Show the span as the guest moves across the calendar. This paints classes

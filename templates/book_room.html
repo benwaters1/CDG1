@@ -76,7 +76,7 @@
       <img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1000w" alt="The bathrooms" loading="lazy">
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg?format=1000w" alt="La Table" loading="lazy">
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen" loading="lazy">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1000w" alt="The château" loading="lazy">
+      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1000w" alt="The gardens in September" loading="lazy">
     {% endif %}
   </div>
 
@@ -105,7 +105,7 @@
   <p class="g-overlap">
     <span class="g-overlap__k">While you are here</span>
     {% for w in overlapping_workshops %}
-      An atelier runs {{ date_range(w['start_date'], w['end_date']) }}{% if w['title'] %} — {{ w['title'] }}{% endif %}.
+      A workshop runs {{ date_range(w['start_date'], w['end_date']) }}{% if w['title'] %} — {{ w['title'] }}{% endif %}.
     {% endfor %}
     The house is busier then, and the dining room is given over to it. Some people come for exactly that; if you would rather have it quiet, tell us and we will find you other dates.
   </p>
@@ -160,7 +160,7 @@
           <p class="g-second">
   <span class="g-second__k">More than one room?</span>
   {# Fifteen is the chambres d'hôtes limit (owner, 24 Sept): the five rooms take fifteen with an extra bed. #}
-  Tell us and we will hold them together — the château sleeps fifteen across five rooms.
+  Tell us, and we will hold them together.
   <a href="{{ url_for('book_rooms') }}#rooms">See the other four</a>
 </p>
         </section>
@@ -312,11 +312,9 @@
             </p>
             <p class="g-hint" id="quote_note">{%- if initial_quote and initial_quote.available and initial_quote.per_night %}€{{ '{:,.2f}'.format(initial_quote.per_night) }} a night average.{%- endif %}</p>
           </div>
-
-          <label class="g-terms" for="agree_terms">
-            <input type="checkbox" id="agree_terms" name="agree_terms" required{% if prefill_terms %} checked{% endif %}>
-            <span>I agree to the <a href="{{ url_for('terms_page') }}" target="_blank" rel="noopener">Terms &amp; Conditions</a></span>
-          </label>
+          {# 1 Oct (owner): no tick box - the line says it, as hotel sites do. The agreement is still sent, so the server check holds. #}
+          <input type="hidden" name="agree_terms" value="on">
+          <p class="g-hint g-terms-line" style="margin:0 0 var(--s3)">By booking, you agree to the <a href="{{ url_for('terms_page') }}" target="_blank" rel="noopener">terms and conditions</a>.</p>
 
           {% if stripe_enabled and room['price_per_night'] %}
           <button type="submit" class="g-btn g-submit">Pay &amp; book</button>
@@ -727,27 +725,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 {# The most commercial page on the site carried the least of the story. All
    of this is stated and sourced elsewhere: the 1994 Class I listing, the
    press record, and the fifteen years. #}
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Worth Knowing</p>
-  <h2 class="g-place">What You Are Booking Into</h2>
-
-  <p class="g-p g-lede-first">This is a restoration, not a renovation, and it has been running since 2013. The bed, the linen, the bathroom and the food are new, and genuinely luxury. The walls around them are not, and will not be.</p>
-
-  <p class="g-p">Under Class I listing — the same protection as Versailles — the plaster stays as the centuries left it. That is not neglect and it is not a style. It is the law, and it is the reason the room looks the way it does.</p>
-
-  <div class="g-plate">
-    <div class="g-plate__row">
-      <dl class="g-plate__l">
-        <div><dt>Begun</dt><dd>2013, with ninety of the ninety-four rooms unreachable</dd></div>
-        <div><dt>Classified</dt><dd>Class I Historic Monument, 14 June 1994</dd></div>
-        <div><dt>Written about</dt><dd>Vogue, AD Italia, House &amp; Garden, and the French press</dd></div>
-        <div><dt>Honoured</dt><dd>Medal of the Fondation Prince Louis de Polignac, 2016</dd></div>
-        <div><dt>Still unfinished</dt><dd>Deliberately, and for years yet</dd></div>
-        <div><dt>Why it continues</dt><dd>Room by room, as each one is reached</dd></div>
-      </dl>
-    </div>
-  </div>
-</div></section>
+{# 1 Oct: "What You Are Booking Into" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
 <!-- ============ REASSURANCE ============ -->
 {# Every line here matches what book_room() actually does: Stripe takes the
@@ -779,22 +757,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 {# The room page ran 242 words to every image. The copy claims bare walls and
    new fittings in the same breath; a guest deciding at €450 a night should
    be able to see both rather than take it on trust. #}
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">What That Means</p>
-  <h2 class="g-place">Bare Walls, New Everything Else</h2>
-  <p class="g-p">The two are not in tension. The walls are protected and stay as they are; the bed, the linen, the floor and the bathroom are as new as any hotel you have stayed in.</p>
-
-  <div class="g-two" style="margin-top:var(--s7)">
-    <figure class="g-fig-block">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1000w" alt="Original plaster, left as found" loading="lazy">
-      <figcaption>What stays. Eighteenth-century plaster and lime render, under Class I protection — repaired where it fails, never replaced.</figcaption>
-    </figure>
-    <figure class="g-fig-block">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1000w" alt="An antique French bed with new linen" loading="lazy">
-      <figcaption>What is new. Antique French beds, new mattresses, vintage linen laundered here, and a bathroom finished this decade.</figcaption>
-    </figure>
-  </div>
-</div></section>
+{# 1 Oct: "Bare Walls, New Everything Else" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
 <!-- ============ WHAT IT WAS ============ -->
 {# The room page said nothing about the ruin — the one guest page that did
@@ -808,14 +771,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">Before This</p>
   <h2 class="g-place">This Room Was a Ruin</h2>
-  <p class="g-p">The château was abandoned in 1850 and stood empty for over a
-    century and a half — roof open in places, floors gone, trees growing
-    inside her. Five hundred tonnes of fallen stone were carried out before
-    any of the restoration could begin.</p>
-  <p class="g-p">Every room now open to guests was unusable within the last
-    fifteen years. This one included. You are not staying in a hotel that has
-    always been a hotel; you are staying in a room that was very nearly lost,
-    in a house still being brought back around you.</p>
+  <p class="g-p g-lede-first">Every room now open to guests was a ruin when the restoration began in 2013. This one included.</p>
 </div></section>
 
 <!-- ============ THE CLOSE ============ -->

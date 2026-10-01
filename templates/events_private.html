@@ -1,6 +1,6 @@
 {% extends "public_base.html" %}
 {% block title %}Private Hire &amp; Celebrations{% endblock %}
-{% block description %}Private dinners, birthdays, anniversaries and family gatherings at Château de Gudanes. One party at a time, forty seated, the kitchen yours.{% endblock %}
+{% block description %}Private dinners, birthdays, anniversaries and family gatherings at Château de Gudanes. One party at a time, and the house is yours.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% set crumbs = [('Events', url_for('events_info')), ('Private', None)] %}
 {# Without this the page falls through to the default and offers a guest
@@ -26,28 +26,21 @@
 
 
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-fr">La maison, rien qu'à vous<span class="g-fr__en">The house, entirely yours</span></p>
-    <p class="g-eyebrow">The Shape Of It</p>
+  <p class="g-eyebrow">Private Events</p>
   <h2 class="g-place">Smaller Than a Wedding, Longer Than a Dinner</h2>
-  <p class="g-p g-lede-first">Most private hires run two or three days rather than one evening. The house is yours throughout — the salons, the kitchen, the gardens, the pool below the cherry trees.</p>
-  <p class="g-p">Dinner is cooked in the Renaissance kitchen by Tom, our chef de cuisine, and served in the dining salon. Menus are built with you rather than chosen from a card.</p>
-
-  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
-    <div><dt>Seated</dt><dd>Up to forty indoors; more on the terraces</dd></div>
-    <div><dt>Sleeping</dt><dd>Fifteen in five bedrooms</dd></div>
-    <div><dt>The kitchen</dt><dd>Yours. Menus made around what the gardens and the Sunday market give</dd></div>
-    <div><dt>Grounds</dt><dd>Ten acres, a pool among the cherry trees, a tennis court lined for practice</dd></div>
-    <div><dt>Youngest guest</dt><dd>Eight</dd></div>
-  </dl></div></div>
+  <p class="g-p g-lede-first">The whole house for a few days, for a birthday, an anniversary or a gathering of your own.</p>
+  <p class="g-p">It is a restoration, not a renovation: the walls stay as they are, by law.</p>
 </div></section>
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">Worth Knowing</p>
-  <h2 class="g-place">A Working Restoration</h2>
-  <p class="g-p g-lede-first">The château has been under restoration since 2013 and is not finished. Ninety-four rooms; five are open to guests. The rest are in every state between ruin and repair.</p>
-  <p class="g-p">Guests walk past that work rather than around it. It is the reason the house is worth taking.</p>
-  <p class="g-limit"><span class="g-limit__k">Quiet</span>No other guests while you are here. One party at a time.</p>
+  <p class="g-fr">Entre soi<span class="g-fr__en">Among your own</span></p>
+  <p class="g-eyebrow">Private Hire</p>
+  <h2 class="g-place">A Few Days of Your Own</h2>
+  <p class="g-p g-lede-first">For the birthdays and anniversaries that deserve more than a restaurant: the whole house for a few days, the people you choose, and the evenings as long as you like.</p>
 </div></section>
+
+
+{# 1 Oct: ">A House Under Restoration<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <div class="g-wrap g-mark__wrap">{{ mark('candle') }}</div>
 
@@ -57,7 +50,7 @@
   <h2 class="g-place">What are you marking?</h2>
   <p class="g-p">Tell us the occasion, roughly when, and how many. We will come back with what the house can do and what it costs.</p>
   <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
-  <p class="g-p">If your party would rather spend its days learning something, ask us about <a href="{{ url_for('workshops_public') }}">the workshops</a>: every meal, the château's wines and spirits, a tour of the house and the sessions.</p>
+  <p class="g-p">If your party would rather spend its days learning something, ask us about <a href="{{ url_for('workshops_public') }}">the workshops</a>: every meal and drinks, a tour of the house and the sessions.</p>
   <p class="g-limit"><span class="g-limit__k">One at a time</span>Only one event runs at the château at once, and only a handful are taken each year.</p>
 </div></section>
 <div class="g-wrap">{{ proof(settings) }}</div>

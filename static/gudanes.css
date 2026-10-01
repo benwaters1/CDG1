@@ -10171,3 +10171,80 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
 
 /* What a workshop includes beyond the house, on its card (transfers and excursions, or spent at the house). */
 .g .g-wscard__inc{ margin: var(--s2) 0 0; font-size: 13px; letter-spacing: .04em; color: #73562d; }
+
+/* In-text links: inline, not inline-block (1 Oct). The 11px padding above still widens the tap area - on an inline
+   element it does not move the line - but as inline-block every paragraph with a link had one line pushed apart, and a
+   link could not wrap ("terms and conditions" jumped to a line of its own on phones). Buttons keep their own rules. */
+.g .g-p a:not(.g-btn){ display: inline; }
+
+/* A button inside a paragraph is still a button: .g .g-p a (above) set its padding to 11px 0 and its display to
+   inline-block, so "Before and after", "The restoration, year by year" and the like had their text against the border. */
+.g .g-p a.g-btn{ display: inline-flex; padding: var(--s3) var(--s6); }
+
+/* Tablet widths (40-64rem): blocks that sit in narrow columns on desktop ran the full 720px column here, about 100
+   characters a line - the Getting here details, the animals, the cost calculator note, Restoration's room note.
+   Capped at a reading measure. */
+@media (min-width: 40rem) and (max-width: 64rem){
+  .g main dd, .g main .g-anim__i, .g .g-wk__n, .g .g-rex__note, .g main .g-wrap > p:not([class]){ max-width: 68ch; }
+}
+
+/* Long documents (the terms): a slightly wider column than the reading measure, about seventy characters a line. */
+.g .g-wrap--doc{ max-width: 48rem; }
+
+/* 1 Oct: "By booking, you agree to the terms" - one quiet line, as wide as the button it sits over. */
+.g .g-terms-line{ max-width: none; font-size: .85rem; line-height: 1.5; margin: 0 0 var(--s3); }
+.g .g-terms-line a{ display: inline; padding: 0; }
+
+/* =====================================================================
+   1 Oct - LE DÉROULÉ: a workshop's days, as a journey down a gilt rule.
+   Roman numerals in a leaf-gilt ring, the French day and title with the
+   English beside it, and matin / après-midi / soir beneath.
+   ===================================================================== */
+.g .g-journey{ list-style: none; margin: var(--s7) 0 0; padding: 0; position: relative; max-width: 54rem; }
+.g .g-journey::before{ content: ""; position: absolute; left: 3.25rem; top: 1.6rem; bottom: 2.5rem; width: 1px; background: var(--gilt-leaf); opacity: .7; }
+.g .g-journey__d{ display: grid; grid-template-columns: 6.5rem 1fr; gap: var(--s5); padding: 0 0 var(--s7); position: relative; }
+.g .g-journey__d:last-child{ padding-bottom: 0; }
+.g .g-journey__n{ text-align: center; position: relative; z-index: 1; }
+.g .g-journey__r{ display: inline-flex; align-items: center; justify-content: center; width: 3.25rem; height: 3.25rem; border: 1px solid var(--gilt-leaf); border-radius: 50%; background: var(--sand); font-family: var(--display); font-size: 22px; letter-spacing: .02em; color: var(--blue-deep); box-shadow: 0 0 0 6px var(--sand); }
+.g .g-sec--sand .g-journey__r{ background: var(--sand-2); box-shadow: 0 0 0 6px var(--sand-2); }
+.g .g-journey__l{ display: block; margin-top: var(--s3); font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); line-height: 1.4; }
+.g .g-journey__t{ font-family: var(--display); font-size: var(--t-h3); font-weight: 400; line-height: 1.2; margin: .55rem 0 var(--s3); color: var(--blue-deep); }
+.g .g-journey__t em{ font-style: italic; color: var(--stone); font-size: .72em; margin-left: .45em; white-space: nowrap; }
+.g .g-journey__p{ font-family: var(--serif); font-size: var(--t-base); line-height: 1.7; max-width: var(--m-read); margin: 0; color: var(--ink); }
+.g .g-journey__m{ list-style: none; padding: var(--s4) 0 0; margin: var(--s4) 0 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--s3) var(--s5); max-width: var(--m-wide); }
+.g .g-journey__m li{ font-family: var(--serif); font-size: var(--t-small); line-height: 1.5; color: var(--ink-2); }
+.g .g-journey__m b{ display: block; font-family: var(--ui); font-weight: 600; font-size: var(--t-xs); letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); margin-bottom: .2rem; }
+.g .g-journey__note{ margin: var(--s7) 0 0; padding-left: calc(6.5rem + var(--s5)); font-family: var(--serif); font-style: italic; font-size: var(--t-small); color: var(--stone); max-width: 54rem; }
+@media (max-width: 40rem){
+  .g .g-journey::before{ left: 1.6rem; }
+  .g .g-journey__d{ grid-template-columns: 3.2rem 1fr; gap: var(--s4); padding-bottom: var(--s6); }
+  .g .g-journey__r{ width: 2.6rem; height: 2.6rem; font-size: 18px; }
+  .g .g-journey__l{ display: none; }
+  .g .g-journey__t em{ display: block; margin: .2rem 0 0; white-space: normal; }
+  .g .g-journey__note{ padding-left: 0; }
+}
+
+/* LES TROIS FILS - the three threads of every workshop, as three gilt-ruled columns. */
+.g .g-threads{ display: grid; gap: var(--s6); margin: var(--s7) 0 0; padding: 0; list-style: none; }
+@media (min-width: 52rem){ .g .g-threads{ grid-template-columns: repeat(3, 1fr); gap: var(--s7); } }
+.g .g-threads__i{ border-top: 1px solid var(--gilt-leaf); padding-top: var(--s5); }
+.g .g-threads__fr{ font-family: var(--display); font-style: italic; font-size: var(--t-h3); color: var(--blue-deep); margin: 0; line-height: 1.15; }
+.g .g-threads__en{ font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); margin: var(--s2) 0 var(--s4); }
+.g .g-threads__p{ font-family: var(--serif); font-size: var(--t-base); line-height: 1.7; margin: 0; color: var(--ink); }
+/* the day's column may shrink below its content (a long word or the moments row pushed it off a phone) */
+.g .g-journey__b{ min-width: 0; }
+.g .g-journey__m{ grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr)); }
+/* the day label sits on the gilt rule: give it the ground, so the line breaks around it */
+.g .g-journey__l{ position: relative; background: var(--sand); padding: .2rem 0; }
+.g .g-sec--sand .g-journey__l{ background: var(--sand-2); }
+@media (max-width: 40rem){ .g .g-journey__m{ grid-template-columns: 1fr 1fr; gap: var(--s3) var(--s4); } }
+/* 1 Oct - the homepage's second way in: "Or come for [The Full Experience]", an invitation, not a footnote. */
+.g .g-hero__alt{ display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--s2) var(--s4); margin: var(--s5) 0 0;
+  font-family: var(--serif); font-style: italic; font-size: clamp(17px, 1vw + 13px, 20px); color: #fff; text-shadow: 0 1px 12px rgba(0,0,0,.35); }
+.g .g-hero__alt a{ display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--s5); border: 1px solid var(--gilt-on-dark, #C6A66E);
+  background: rgba(20,48,95,.38); color: #fff; font-family: var(--ui); font-style: normal; font-size: 13px; font-weight: 600; letter-spacing: .14em;
+  text-transform: uppercase; text-decoration: none; text-shadow: none; transition: background .2s, color .2s; }
+.g .g-hero__alt a:hover, .g .g-hero__alt a:focus-visible{ background: var(--gilt-on-dark, #C6A66E); color: var(--blue-deep); }
+.g .g-hero__alt a.g-hero__altbtn, .g .g-hero__alt a.g-hero__altbtn:hover, .g .g-hero__alt a.g-hero__altbtn:focus-visible{ text-decoration: none !important; border-bottom: 1px solid var(--gilt-on-dark, #C6A66E); background-image: none; }
+/* On a phone the eyebrow breaks into two clean lines - the experience, then the place - with no dot left at a line's end. */
+@media (max-width: 40rem){ .g .g-hero__eyeplace{ display: block; margin-top: .35em; } .g .g-hero__eyeplace > span{ display: none; } }

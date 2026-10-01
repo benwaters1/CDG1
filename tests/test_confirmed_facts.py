@@ -141,8 +141,10 @@ def run():
     q = "/book?arrival=%s&departure=%s" % (start.isoformat(),
                                            (start + timedelta(days=1)).isoformat())
     page = anon.get(q).get_data(as_text=True)
+    # "an atelier" became "a workshop" site-wide on 1 October; the check is
+    # on the substance -- that the house is held, and by what -- not the noun.
     s.check("the refusal names the atelier and its dates",
-            "an atelier holds the whole house" in page,
+            "holds the whole house" in page,
             detail="a blind \"no rooms free\" sends somebody away from a house "
                    "that is free the day after")
     s.check("and says when the house is free again",

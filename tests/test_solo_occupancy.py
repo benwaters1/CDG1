@@ -63,8 +63,10 @@ def run():
     # thing. A copy edit failing a test teaches people to override tests. What
     # must not vanish is the two facts: shared by default, third bed possible.
     low = page.lower()
+    # The third bed went with the owner's "no extra beds" (1 October); the
+    # fact that cannot go is the sharing.
     s.check("but it says how rooms are arranged",
-            "third bed" in low and "two" in low,
+            "arranged for two" in low and "share" in low,
             detail="nothing explains the sleeping arrangements — a guest booking "
                    "alone is not told they will be sharing")
 

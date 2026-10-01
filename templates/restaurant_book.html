@@ -8,8 +8,8 @@
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">La Table</p>
   <h1 class="g-place">{% if _dm == 'closed' %}Closed for the Season{% else %}Not Serving at the Moment{% endif %}</h1>
-  <p class="g-p">{% if _dm == 'closed' %}La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}.{% else %}The château's table is not taking reservations at the moment.{% endif %} Breakfast is served every morning for guests staying in the house, and the ateliers are full board as always.</p>
-  <p class="g-p" style="margin-top:var(--s5)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">See the ateliers</a></p>
+  <p class="g-p">{% if _dm == 'closed' %}La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}.{% else %}The château's table is not taking reservations at the moment.{% endif %} Breakfast is served every morning for guests staying in the house, and the workshops are full board as always.</p>
+  <p class="g-p" style="margin-top:var(--s5)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">See the workshops</a></p>
 </div></section>
 {% else %}
 {% from '_formkeep.html' import form_keep %}
@@ -109,17 +109,21 @@
             {% if settings['price_per_person'] %}<div><dt>Per person</dt><dd>€{{ '{:,.0f}'.format(settings['price_per_person']) }}</dd></div>{% endif %}
           </dl>
 
+          {# Instant confirmation (owner, 1 Oct: "yes instantly confirmed"). The wording follows the switch Code sets once tables
+             confirm themselves (app_settings restaurant_instant = 1); until then it describes the request, as it is. #}
+          {%- set _ri = ((setting(site, 'restaurant_instant') or '')|string|trim|lower) in ('1', 'true', 'yes', 'on') -%}
           {% if stripe_enabled and settings['price_per_person'] %}
+            <p class="g-hint g-terms-line" style="margin:0 0 var(--s3)">By booking, you agree to the <a href="{{ url_for('terms_page') }}" target="_blank" rel="noopener">terms and conditions</a>.</p>
             {% if settings['deposit_percent'] %}
-            <button type="submit" class="g-btn g-submit">Pay deposit &amp; request a table</button>
-            <p class="g-foot-note">You will be taken to a secure payment page to pay a {{ settings['deposit_percent']|int }}% deposit now — the rest is due at the restaurant. This still is not an instant confirmation — the château reviews every request. If it is declined, your deposit is refunded automatically. You will get a reference code and a link to manage your reservation.</p>
+            <button type="submit" class="g-btn g-submit">{% if _ri %}Pay deposit &amp; book a table{% else %}Pay deposit &amp; request a table{% endif %}</button>
+            <p class="g-foot-note">You will be taken to a secure payment page to pay a {{ settings['deposit_percent']|int }}% deposit now — the rest is due at the restaurant. {% if _ri %}Your table is confirmed as soon as the payment goes through.{% else %}This still is not an instant confirmation — the château reviews every request. If it is declined, your deposit is refunded automatically.{% endif %} You will get a reference code and a link to manage your reservation.</p>
             {% else %}
-            <button type="submit" class="g-btn g-submit">Pay &amp; request a table</button>
-            <p class="g-foot-note">You will be taken to a secure payment page to pay the total now. This still is not an instant confirmation — the château reviews every request. If it is declined, you are refunded automatically. You will get a reference code and a link to manage your reservation.</p>
+            <button type="submit" class="g-btn g-submit">{% if _ri %}Pay &amp; book a table{% else %}Pay &amp; request a table{% endif %}</button>
+            <p class="g-foot-note">You will be taken to a secure payment page to pay the total now. {% if _ri %}Your table is confirmed as soon as the payment goes through.{% else %}This still is not an instant confirmation — the château reviews every request. If it is declined, you are refunded automatically.{% endif %} You will get a reference code and a link to manage your reservation.</p>
             {% endif %}
           {% else %}
-            <button type="submit" class="g-btn g-submit">Request a table</button>
-            <p class="g-foot-note">This is a reservation request, not an instant confirmation — the château will review and confirm it. Payment is taken at the restaurant. You will get a reference code and a link to manage your reservation.</p>
+            <button type="submit" class="g-btn g-submit">{% if _ri %}Book a table{% else %}Request a table{% endif %}</button>
+            <p class="g-foot-note">{% if _ri %}Your table is confirmed as you book.{% else %}This is a reservation request, not an instant confirmation — the château will review and confirm it.{% endif %} Payment is taken at the restaurant. You will get a reference code and a link to manage your reservation.</p>
           {% endif %}
         </div>
       </aside>

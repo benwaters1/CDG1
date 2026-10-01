@@ -4728,6 +4728,13 @@ def init_db():
         ("restaurant_settings_auto_receipt",
          "ALTER TABLE restaurant_settings ADD COLUMN auto_email_receipt INTEGER NOT NULL DEFAULT 0"),
         ("restaurant_bookings_deposit_amount", "ALTER TABLE restaurant_bookings ADD COLUMN deposit_amount REAL"),
+        # The legal notice (LCEN art. 6-III) names a director of publication,
+        # and the Code de la consommation (L616-1) the consumer mediator. Both
+        # belong to the company that publishes the site and sells to guests,
+        # so they sit on its row beside the form and capital the page also
+        # prints, rather than in a second place to keep in step.
+        ("companies_publication_director", "ALTER TABLE companies ADD COLUMN publication_director TEXT"),
+        ("companies_consumer_mediator", "ALTER TABLE companies ADD COLUMN consumer_mediator TEXT"),
         ("hr_notes_response", "ALTER TABLE hr_notes ADD COLUMN response TEXT"),
         ("hr_notes_responded_at", "ALTER TABLE hr_notes ADD COLUMN responded_at TEXT"),
         ("email_flags_assigned_to_user_id", "ALTER TABLE email_flags ADD COLUMN assigned_to_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL"),
@@ -12730,6 +12737,7 @@ COMPANY_FIELDS = (
     "legal_name", "legal_form", "country", "role", "registration_number",
     "registration_office", "vat_number", "share_capital", "registered_address",
     "incorporation_date", "directors", "notes",
+    "publication_director", "consumer_mediator",
 )
 
 
@@ -38304,6 +38312,22 @@ def terms_page():
     return render_template("terms.html", text=text, blocks=terms_blocks(text))
 
 
+@app.route("/legal")
+def legal_page():
+    """The legal notice: who publishes the site, who hosts it.
+
+    French law (LCEN art. 6-III) asks it of every business website. The
+    publisher's details are the invoicing company's own row -- the one guest
+    invoices print -- so a change of name or capital is made once, under
+    Management, Company info, and reaches both. A row with nothing on file is
+    left out by the template rather than printed blank.
+    """
+    conn = get_db()
+    company = operating_company(conn)
+    conn.close()
+    return render_template("legal.html", company=company)
+
+
 # Bumped by hand when the wording changes. A privacy notice with no date on it
 # tells a reader nothing about whether it still describes the software.
 PRIVACY_LAST_REVIEWED = "24 August 2026"
@@ -45153,9 +45177,6 @@ def house_map_links():
         "google": f"https://www.google.com/maps/search/?api=1&query={at}",
         "apple": (f"https://maps.apple.com/?ll={at}"
                   "&q=Ch%C3%A2teau%20de%20Gudanes"),
-        # The embedded map on the contact page. Same pin, so the picture and
-        # the button cannot point at two different places.
-        "embed": f"https://www.google.com/maps?q={at}&output=embed",
         "at": at,
     }
 
@@ -45881,17 +45902,12 @@ def create_restaurant_booking_from_stripe_session(conn, session):
 def restaurant_info():
     conn = get_db()
     settings = get_restaurant_settings(conn)
-    items = conn.execute("SELECT * FROM menu_items WHERE active = 1 ORDER BY category, sort_order, name").fetchall()
     conn.close()
-    items_by_category = {}
-    for item in items:
-        items_by_category.setdefault(item["category"], []).append(item)
-    opening_date = parse_date(settings["opening_date"]) if settings and settings["opening_date"] else None
-    not_yet_open = bool(opening_date and opening_date > house_today())
-    return render_template(
-        "restaurant_info.html", settings=settings,
-        items_by_category=items_by_category, menu_categories=MENU_CATEGORIES,
-    )
+    # The public page stopped listing dishes in the 1 October handover: the
+    # menu changes with what the valley gives, and a list that has to be kept
+    # in step by hand is a list that is wrong by the weekend. The menu itself
+    # still lives in admin, for the till and the kitchen.
+    return render_template("restaurant_info.html", settings=settings)
 
 
 @app.route("/restaurant/book", methods=["GET", "POST"])

@@ -78,6 +78,18 @@
       </div>
     </div>
 
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="company-publication-director">Director of publication</label>
+        <input id="company-publication-director" type="text" name="publication_director" value="{{ form['publication_director'] or '' }}" placeholder="Usually the legal representative">
+      </div>
+      <div>
+        <label class="field-label" for="company-consumer-mediator">Consumer mediator</label>
+        <input id="company-consumer-mediator" type="text" name="consumer_mediator" value="{{ form['consumer_mediator'] or '' }}" placeholder="Name, address and website, once joined">
+      </div>
+    </div>
+    <span class="upload-hint">Both are printed on the public Legal Notice page for the company that issues guest invoices, and left off it while empty. Name a mediator only once the house has joined one.</span>
+
     <label class="field-label" for="company-notes">Notes</label>
     <textarea id="company-notes" name="notes" style="min-height:60px;" placeholder="Anything worth knowing: who holds the shares, which bank, what is still to come">{{ form['notes'] or '' }}</textarea>
 

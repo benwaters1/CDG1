@@ -1,8 +1,8 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('The Estate', None)] %}
-{% block title %}The Estate: Pool, Tennis &amp; Ten Acres{% endblock %}
-{% block description %}Ten acres, a pool among the cherry trees, a tennis court lined for pickleball, and the Ariège valley beyond. All of it included with the room.{% endblock %}
-{% block og_desc %}Ten acres, a pool among the cherry trees, a tennis court lined for pickleball, and the Ariège valley beyond. All of it included with the room.{% endblock %}
+{% block title %}The Estate: Pool, Tennis and Grounds{% endblock %}
+{% block description %}The pool, the tennis court and the grounds. All of it included with the room.{% endblock %}
+{% block og_desc %}The pool, the tennis court and the grounds. All of it included with the room.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
@@ -16,152 +16,43 @@
   <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="The château grounds">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
-    <p class="g-hero__eyebrow">Le Domaine · Ten Acres</p>
+    <p class="g-hero__eyebrow">Le Domaine</p>
     {# The nav says "The Estate"; the page answered to "Facilities & Activities". The <title> keeps the search wording. #}
     <h1 class="g-hero__title">{{ t('The Estate') }}</h1>
-    <p class="g-hero__lede">Ten acres of parkland, a pool among the fruit trees, and a valley that rewards every season differently.</p>
+    <p class="g-hero__lede">The pool, the tennis court and the grounds, with the mountains all around.</p>
     <p class="g-hero__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
   </div>
 </section>
 
 <!-- ====================== AT THE CHÂTEAU ====================== -->
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-fr">Le domaine, quatre hectares<span class="g-fr__en">The estate, ten acres</span></p>
-    <p class="g-eyebrow">At the Château</p>
-  <h2 class="g-h2">Yours, simply by staying</h2>
-  <p class="g-p">Nothing below is charged as an extra. It is part of the château, as it would be if you were staying with friends who happened to own a château.</p>
-
-  <div class="g-cards" style="margin-top:var(--s7)">
-    <article class="g-card">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1000w" alt="The pool" loading="lazy" style="width:100%;height:14rem;object-fit:cover">
-      <div class="g-card__b">
-        <h3 class="g-h3 g-h2--vert">La Piscine</h3>
-        <p class="g-p">Set below the formal gardens among cherry and plum trees, out of sight of the château. Open through the warmer months.</p>
-      </div>
-    </article>
-    <article class="g-card">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1000w" alt="The gardens" loading="lazy" style="width:100%;height:14rem;object-fit:cover">
-      <div class="g-card__b">
-        <h3 class="g-h3 g-h2--vert">Les Jardins</h3>
-        <p class="g-p">Formal beds nearest the château, then ten acres of parkland running up toward the mountain. Walk it at any hour.</p>
-      </div>
-    </article>
-    <article class="g-card">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1000w" alt="The grounds, with the court at the far edge" loading="lazy" style="width:100%;height:14rem;object-fit:cover">
-      <div class="g-card__b">
-        <h3 class="g-h3">Le Court</h3>
-        <p class="g-p">At the far edge of the grounds, screened by trees. Lined for both tennis and pickleball; rackets, balls and paddles are kept in the hall. Nobody books it — if it is free, it is yours.</p>
-      </div>
-    </article>
-  </div>
-
-  <hr class="g-rule--double">
-
-  <dl class="g-facts-list">
-    <div><dt>Salon de thé</dt><dd>Tea and coffee all day, in a room that took four years to make usable</dd></div>
-    <div><dt>Breakfast</dt><dd>Bread from the village, three minutes down the hill. Included</dd></div>
-    <div><dt>Children</dt><dd>Eight and over. Original staircases, a great many of them, and unrestored rooms make it unsuitable below that</dd></div>
-    <div><dt>Lounges</dt><dd>Four salons. You will not meet anyone in three of them</dd></div>
-    <div><dt>Games</dt><dd>A tennis court with a mountain behind it, and a gym in a room that was a ruin</dd></div>
-    <div><dt>Outdoors</dt><dd>Ten acres, and nobody to meet in them at two in the morning</dd></div>
-    <div><dt>Laundry</dt><dd>Available throughout your stay</dd></div>
-    <div><dt>Wi-Fi</dt><dd>Starlink. No cable reaches this valley, so it comes by satellite — and works</dd></div>
-    <div><dt>In your room</dt><dd>Sockets and a lamp to read by — neither of which existed here in 2013</dd></div>
-    <div><dt>Parking</dt><dd>On the gravel, where the carriages went</dd></div>
-    <div><dt>The pool</dt><dd>Below the formal gardens, among the cherry trees. Unheated, and open through the warm months</dd></div>
-    <div><dt>The court</dt><dd>Rackets in the hall. Nobody waiting for it</dd></div>
-    <div><dt>The gym</dt><dd>Small, and enough. The alternative is a mountain</dd></div>
-    <div><dt>Evenings</dt><dd>Electricity is limited by design — rooms are lit by candle</dd></div>
-  </dl>
-
-  
+  <p class="g-eyebrow">The Grounds</p>
+  <h2 class="g-place">Yours, Simply by Staying</h2>
+  <p class="g-p g-lede-first">Days by the pool with the mountains above you, a game of tennis, and the grounds to wander. All of it is yours while you stay.</p>
+  <p class="g-p">About fifty-five rooms, and five of them are yours to sleep in. The rest are the restoration still ahead.</p>
+  <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
 </div></section>
+
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">Le domaine<span class="g-fr__en">The estate</span></p>
+  <p class="g-eyebrow">The Grounds</p>
+  <h2 class="g-place">Le Domaine</h2>
+  <p class="g-p g-lede-first">The château stands above the valley with the Pyrénées all around it. The grounds are for wandering, the pool for long afternoons, and the tennis court for whoever is keen; in winter the mountain is close, with skiing about half an hour away.</p>
+  <p class="g-p">On a workshop, part of the full experience, the grounds are yours every afternoon, between the sessions and dinner.</p>
+  <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>
+</div></section>
+
 
 <div class="g-wrap g-mark__wrap">{{ mark('peaks') }}</div>
 
 <!-- ====================== WINTER / SKIING ====================== -->
-<section class="g-sec" style="background:var(--blue-deep);color:var(--sand)"><div class="g-wrap">
-  <p class="g-eyebrow" style="color:rgba(255,255,255,.7)">Winter · December to March</p>
-  <h2 class="g-h2" style="color:var(--sand)">Skiing at Ax 3 Domaines</h2>
-  <img loading="lazy" decoding="async" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/03ca0108-8c1e-423f-a790-84ed2b154fac/Chateau+de+Gudanes+In+Winter+2.png?format=1500w" alt="The château under snow"
-       style="width:100%;height:clamp(14rem,32vh,22rem);object-fit:cover;display:block;margin:var(--s5) 0 var(--s6)">
-  <div class="g-split">
-    <div>
-      <p class="g-p" style="color:rgba(255,255,255,.88)">Twenty-five minutes from the gates. Eighty kilometres of piste between 1,400 and 2,400 metres, twenty lifts, and three linked domains — Bonascre, Saquet and Les Campels. Green through black, a snowpark, a boardercross, and two dedicated beginner areas.</p>
-      <p class="g-p" style="color:rgba(255,255,255,.88)">A gondola runs from the centre of Ax-les-Thermes to the slopes in under ten minutes, so there is no mountain road to drive in the morning. The climb has finished a Tour de France stage five times.</p>
-    </div>
-    <div>
-      <p class="g-p" style="color:rgba(255,255,255,.88)"><b style="color:var(--sand)">We arrange the whole of it.</b> Lift passes bought and in your hand before you leave. Transport there and back each day. Hire fitted at the resort — skis, boards, boots, poles, helmets — and an ESF or ESI instructor for any age and any standard.</p>
-      <p class="g-p" style="color:rgba(255,255,255,.88)">Tell us when you book and it is simply organised. You come down to breakfast and the day is already arranged.</p>
-    </div>
-  </div>
+{# 1 Oct: "Skiing at Ax 3 Domaines" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
-  <h3 class="g-h3" style="color:var(--sand);margin-top:var(--s7)">Beyond the pistes</h3>
-  <ul class="g-tags g-tags--lg g-tags--onblue">
-    <li>Plateau de Beille — 70 km of Nordic trails, the leading cross-country area in the Pyrénées</li>
-    <li>Snowshoeing at Col de Chioula</li>
-    <li>Dog sledding</li>
-    <li>Sledging &amp; snowtubing</li>
-    <li>Ski touring &amp; freerando</li>
-    <li>Bains du Couloubret — thermal spa, 33–38°C</li>
-    <li>Ice rink at Ax-les-Thermes</li>
-  </ul>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">{{ t('Stay in Winter') }}</a></p>
-</div></section>
-
-{{ animals() }}
+{# 1 Oct: the animals (they are on Stay) cut - fewer statements #}
 
 
 <!-- ====================== ARRANGED FOR YOU ====================== -->
-<section class="g-sec"><div class="g-wrap">
-  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M0 13h38"/><path d="M82 13h38"/>
-  <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
-  <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
-  <circle cx="60" cy="13" r="1.4"/>
-</svg>
-  <p class="g-eyebrow">Arranged For You</p>
-  <h2 class="g-h2">Ask, and it is organised</h2>
-  <p class="g-p">Say the word before you come, or on the morning. Some carry a cost and some do not; we will tell you which without being asked twice.</p>
-
-  <div class="g-cards" style="margin-top:var(--s7)">
-    <article class="g-card">
-      <img class="g-card__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1000w" alt="The drive at dusk" loading="lazy">
-      <div class="g-card__b">
-        <h3 class="g-h3">L'Arrivée</h3>
-        <p class="g-p">The drive runs a quarter of a mile under the limes before the façade shows itself — built that way, for an approach at walking pace. The château's own carriage can be arranged, with horses brought up for it. On foot works too, and is free. Best an hour before dinner, when the stone goes gold.</p>
-      </div>
-    </article>
-    <article class="g-card">
-      <img class="g-card__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w" alt="Copper at the market" loading="lazy">
-      <div class="g-card__b">
-        <h3 class="g-h3">Le Marché</h3>
-        <p class="g-p">Les Cabannes on a Sunday, three minutes below the gates. Tarascon-sur-Ariège on Wednesday and Saturday. Cheese from the mountain farms, charcuterie, and whatever the season has decided.</p>
-      </div>
-    </article>
-    <article class="g-card">
-      <img class="g-card__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w" alt="The gates in autumn" loading="lazy">
-      <div class="g-card__b">
-        <h3 class="g-h3">Les Brocantes</h3>
-        <p class="g-p">The brocantes and vide-greniers of the Ariège, with someone who knows which ones are worth the drive.</p>
-      </div>
-    </article>
-  </div>
-
-  <ul class="g-tags g-tags--lg" style="margin-top:var(--s7)">
-    <li>Guided walks in the Pyrénées</li>
-    <li>Skiing — passes, transport &amp; hire arranged</li>
-    <li>Yoga at the château</li>
-    <li>Electric bikes</li>
-    <li>Mountain bikes</li>
-    <li>Kayaking on the Ariège</li>
-    <li>Private meals</li>
-    <li>Karaoke</li>
-    <li>Airport transfer — Toulouse</li>
-  </ul>
-
-  
-</div></section>
+{# 1 Oct: "Ask, and it is organised" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
 <div class="g-band">
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1000w" alt="The pool below the formal gardens" loading="lazy">
@@ -171,12 +62,8 @@
 </div>
 
 
-<section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
-  <p class="g-p" style="text-align:center;margin:0 auto">
-    The walls are protected and stay as they are. The comfort is not: antique
-    French beds, vintage monogrammed linen, floors relaid by hand, and bathrooms
-    finished well past what the rest of the building has reached. The imperfection is deliberate. Everything here was unusable within the last fifteen years.
-  </p>
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-p g-lede-first">It is a restoration, not a renovation. The walls stay as they are, by law; the floors, the bathrooms and the beds are new.</p>
 </div></section>
 
 
@@ -191,28 +78,7 @@
 {# The Ariège is a ski valley and the site sold it in one buried line. Every
    figure here is checked: Ax 3 Domaines and Beille are the two nearest
    stations, and both are a short drive from Château-Verdun. #}
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">L'Hiver</p>
-  <h2 class="g-place">Winter in the Valley</h2>
-  <p class="g-p g-lede-first">Snow to the gates, fires lit in the salons, and a lift twenty-five minutes up the road.</p>
-  <p class="g-p">The château does not close for winter. It is arguably the better season — the valley empties, the mountain fills, and the house is at its warmest when it is cold outside.</p>
-
-  <div class="g-figures" style="margin-top:var(--s6)">
-    <div class="g-figure"><b>25</b><span>Minutes to Ax 3 Domaines</span></div>
-    <div class="g-figure"><b>80</b><span>Kilometres of piste</span></div>
-    <div class="g-figure"><b>2,400</b><span>Metres at the summit</span></div>
-    <div class="g-figure"><b>Dec–Mar</b><span>The usual season</span></div>
-  </div>
-
-  <hr class="g-rule--double">
-
-  <dl class="g-facts-list">
-    <div><dt>Ax 3 Domaines</dt><dd>The nearest station and the largest — all levels, and a thermal spa in the town below</dd></div>
-    <div><dt>Plateau de Beille</dt><dd>Cross-country and snowshoeing, twenty minutes the other way. Quieter, and better with children</dd></div>
-    <div><dt>Getting there</dt><dd>We will arrange the car, or the equipment, or both</dd></div>
-    <div><dt>Coming back</dt><dd>The fire is lit{% if _dm == 'open' %}, the kitchen is warm, and dinner is at the usual hour{% else %} and the house is warm{% endif %}</dd></div>
-  </dl>
-</div></section>
+{# 1 Oct: "Winter in the Valley" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
 <div class="g-band">
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/ad2839d0-7d37-4b37-914d-46ccbe96cc09/Chateau+de+Gudanes+-+Winter.jpeg?format=1000w" alt="The château in snow" loading="lazy">
@@ -225,22 +91,7 @@
 {# Every figure here is from the public record: Wikipedia's monument entry
    (floor count, floor area, room count, architect) and the Monuments
    Historiques listing PA00132943. Nothing estimated. #}
-<section class="g-sec g-paper"><div class="g-wrap">
-  <p class="g-eyebrow">The Building</p>
-  <h2 class="g-place">A Sense of the Scale</h2>
-  <p class="g-p">It is difficult to photograph how large the château is. These are the figures.</p>
-
-  <div class="g-figures">
-    <div class="g-figure"><b>94</b><span>Rooms</span></div>
-    <div class="g-figure"><b>5</b><span>Floors</span></div>
-    <div class="g-figure"><b>43,000</b><span>Square feet · about 4,000 m²</span></div>
-    <div class="g-figure"><b>10</b><span>Acres of grounds · 4 hectares</span></div>
-    <div class="g-figure"><b>1741</b><span>Begun, to a design by Ange-Jacques Gabriel</span></div>
-    <div class="g-figure"><b>5</b><span>Bedrooms open to guests so far</span></div>
-  </div>
-
-  <p class="g-hint" style="margin-top:var(--s6)">Classified a Class I Historic Monument on 14 June 1994 — reference PA00132943 — the same designation as Versailles and the Eiffel Tower.</p>
-</div></section>
+{# 1 Oct: ">A Sense of the Scale<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 
 
@@ -250,112 +101,17 @@
 {# From the château's own record: terraced gardens down to le parc, the lost
    ironwork known only from old photographs, and the pool and court below the
    terrace steps. #}
-<section class="g-sec g-sec--sand g-sec--terre"><div class="g-wrap">
-  <p class="g-eyebrow">Outside</p>
-  <h2 class="g-place">The Gardens Are Terraced</h2>
-
-  <div class="g-two" style="margin-top:var(--s7)">
-    <div>
-      <p class="g-p g-lede-first">The ground falls away from the house in stages. Formal terraces first, then steps, then <em>le parc</em> — the wooded parkland that runs to the boundary.</p>
-      <p class="g-p">Old photographs show those terraces fenced with intricate ironwork. A few iron posts are still standing, and that is all that survives of it. The rest is known only from the pictures.</p>
-      <p class="g-p">The limestone walls around the estate are original. They were here before the house was.</p>
-      <p class="g-p">Worth knowing before you come: the terracing means steps between almost every level of the garden, and there are a great many of them. Getting from the house down to the parkland is a walk on stairs, not a stroll on the flat.</p>
-    </div>
-    <figure class="g-fig-block">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1000w" alt="The terraced gardens in September" loading="lazy">
-      <figcaption>September on the terraces. The parkland begins where the mown ground stops.</figcaption>
-    </figure>
-  </div>
-
-  <div class="g-finds" style="margin-top:var(--s7)">
-    <div class="g-find">
-      <p class="g-find__k">The terraces</p>
-      <h3 class="g-find__t">Three levels down to the park</h3>
-      <p class="g-find__d">Formal ground closest to the house, then steps, then woodland. Walk it before breakfast and you will not meet anybody.</p>
-    </div>
-    <div class="g-find">
-      <p class="g-find__k">Below the steps</p>
-      <h3 class="g-find__t">The pool</h3>
-      <p class="g-find__d">Down from the terraces, among the cherry trees. Unheated, and open through the warm months.</p>
-    </div>
-    <div class="g-find">
-      <p class="g-find__k">Beside it</p>
-      <h3 class="g-find__t">The tennis court</h3>
-      <p class="g-find__d">Lined for pickleball as well. Rackets and paddles are in the hall, and nobody is waiting for it.</p>
-    </div>
-    <div class="g-find">
-      <p class="g-find__k">Lost</p>
-      <h3 class="g-find__t">Two hundred metres of ironwork</h3>
-      <p class="g-find__d">The terraces were once railed in wrought iron. Four or five posts remain. Replacing it means over two hundred metres of fencing, and it is on the list.</p>
-    </div>
-    <div class="g-find">
-      <p class="g-find__k">In summer</p>
-      <h3 class="g-find__t">What the kitchen takes</h3>
-      <p class="g-find__d">Herbs, soft fruit, and the cherry and plum trees below the terraces. They crop when they crop, and the kitchen works around them.</p>
-    </div>
-    <div class="g-find">
-      <p class="g-find__k">The residents</p>
-      <h3 class="g-find__t">Animals on the ground</h3>
-      <p class="g-find__d">The estate has always had animals wandering it. They were here before the guests were, and they have right of way.</p>
-    </div>
-  </div>
-</div></section>
+{# 1 Oct: ">The Gardens Are Terraced<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <div class="g-wrap"></div>
 
 
 
 <!-- ============ ARRIVING WITHOUT A CAR ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-fr">Sans voiture<span class="g-fr__en">Without a car</span></p>
-  <p class="g-eyebrow">Three Minutes From the Gates</p>
-  <h2 class="g-place">You Can Come By Train</h2>
-  <p class="g-p g-lede-first">Les Cabannes is on the Toulouse–Latour-de-Carol line, three minutes below the château. Most people assume a valley in the Pyrénées means hiring a car. It does not.</p>
-
-  <div class="g-timeline">
-    <ol class="g-timeline__l">
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">From Paris</span>
-        <span class="g-timeline__v">Gare de Lyon or Montparnasse to Toulouse by TGV, then the regional line south. A long day, and all of it seated.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">From Toulouse</span>
-        <span class="g-timeline__v">Matabiau to Les Cabannes, direct. The last hour runs up the Ariège with the mountains closing in on both sides.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">From Barcelona</span>
-        <span class="g-timeline__v">The Rodalies from Barcelona to Latour-de-Carol on the border, a little over three and a half hours, then the French line north to Les Cabannes, about an hour more. Slower than driving and considerably better.</span></li>
-      <li class="g-timeline__i is-done"><span class="g-timeline__k">Last three minutes</span>
-        <span class="g-timeline__v">Tell us your train and someone will be at the station. There is no taxi rank.</span></li>
-    </ol>
-  </div>
-
-  <p class="g-p">Once you are here, the village, the market and the restaurants are walkable. For Beille, Ax-les-Thermes or the caves you will want wheels — we can arrange a car for a day rather than a week.</p>
-  <p class="g-limit"><span class="g-limit__k">Worth knowing</span>The line is scenic rather than fast, and the last connection of the day is early. Send us your booking and we will tell you if it works.</p>
-</div></section>
+{# 1 Oct: "You Can Come By Train" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
 <!-- ============ THE VALLEY ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Beyond the Gates</p>
-  <h2 class="g-place">What the Valley Gives You</h2>
-  <p class="g-p g-lede-first">The question most people ask is what there is to do for four days. The answer is that the château is the quiet part.</p>
-
-  <div class="g-grid g-grid--2">
-    <div class="g-panel">
-      <h3 class="g-h3">Sunday, Les Cabannes</h3>
-      <p class="g-p">The market is three minutes down the hill. The chef has bought from the same producers for twenty years and will tell you which stall is worth queueing at. What comes back is what you eat.</p>
-    </div>
-    <div class="g-panel">
-      <h3 class="g-h3">The mountain above</h3>
-      <p class="g-p">Beille is a twenty-minute drive: cross-country skiing and sledging in winter, walking and mountain biking once the snow goes. The Pyrenean peaks start at the end of the drive.</p>
-    </div>
-    <div class="g-panel">
-      <h3 class="g-h3">Thermal water</h3>
-      <p class="g-p">Ax-les-Thermes has been a spa town since the thirteenth century. The hot springs still run through the middle of it, and the basins in the square are free.</p>
-    </div>
-    <div class="g-panel">
-      <h3 class="g-h3">Older than the house</h3>
-      <p class="g-p">The painted caves of the Ariège are among the oldest in Europe. Niaux is half an hour away and its bison were drawn roughly thirteen thousand years before Gabriel drew the façade.</p>
-    </div>
-  </div>
-
-  <p class="g-limit"><span class="g-limit__k">Getting about</span>A car is worth having. The train reaches Les Cabannes, but the valley rewards wandering.</p>
-</div></section>
+{# 1 Oct: "What the Valley Gives You" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
 
 

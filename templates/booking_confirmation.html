@@ -7,7 +7,9 @@
 
 {% from '_before.html' import packing, arriving %}
 {% from '_animals.html' import animals %}
-{% from '_arrival_card.html' import arrival_card %}
+{# with context: the card reads house_maps from the context processor, and imported without it the
+   'Open in maps' link never rendered on any confirmation (found after the 1 October (g) handover). #}
+{% from '_arrival_card.html' import arrival_card with context %}
 {% from '_paydates.html' import pay_dates, no_reply %}
 {% from '_room_copy.html' import room_name %}
 
@@ -92,13 +94,13 @@
     <div class="g-find">
       <p class="g-find__k">The House</p>
       <h3 class="g-find__t">A tour of the château</h3>
-      <p class="g-find__d">The house and its restoration, shown to you by the people doing it. &euro;50 per booking.</p>
+      <p class="g-find__d">A guided tour of the house and its restoration. &euro;50 per booking.</p>
     </div>
     {% if _dm == 'open' %}
     <div class="g-find">
       <p class="g-find__k">Dinner</p>
       <h3 class="g-find__t">A table at La Table</h3>
-      <p class="g-find__d">Aperitifs in the Renaissance kitchen, then dinner by candlelight. The kitchen cooks for a single table, and not every night, so it is worth claiming early.</p>
+      <p class="g-find__d">Dinner at the château, on the nights the kitchen is open. It is worth claiming early.</p>
     </div>
     {% endif %}
     <div class="g-find">
@@ -109,7 +111,7 @@
     <div class="g-find">
       <p class="g-find__k">The valley</p>
       <h3 class="g-find__t">Something to do with the days</h3>
-      <p class="g-find__d">Market mornings{% if _dm == 'open' %} with the chef{% endif %}, guided walks, the brocantes, electric bikes, or the mountain between December and April.</p>
+      <p class="g-find__d">The full experience: the brocantes, the kitchen and the restoration, with every meal, drinks and a tour of the château.</p>
     </div>
       <p style="margin-top:var(--s6)">
       <a href="{{ url_for('manage_booking', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid">{{ t('Add to your stay') }}</a>

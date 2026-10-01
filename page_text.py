@@ -42,37 +42,6 @@ FR = {
     "Subscribe": "S'abonner",
     "Contact us": "Nous contacter",
     "Groups": "Groupes",
-
-    # -- Stay: the promise made above the fold --------------------------
-    "The rooms open one at a time, as the restoration reaches them.":
-        "Les chambres ouvrent une à une, à mesure que la restauration les "
-        "atteint.",
-
-    # -- Stay: what the walls are, which is the thing guests ask about --
-    "Not a Compromise": "Non pas un compromis",
-    "Why the Walls Stay As They Are":
-        "Pourquoi les murs restent tels quels",
-    "The bare plaster in these rooms is not unfinished work. It is protected, "
-    "and putting a modern surface over it would be illegal.":
-        "Le plâtre nu de ces chambres n'est pas un travail inachevé. Il est "
-        "protégé, et le recouvrir d'un enduit moderne serait illégal.",
-    "New work is done so it could one day be removed without harming what was "
-    "there":
-        "Toute intervention nouvelle est faite pour pouvoir être retirée un "
-        "jour sans abîmer ce qui était là",
-    "Every surface is photographed and documented before anyone touches it":
-        "Chaque surface est photographiée et documentée avant que quiconque y "
-        "touche",
-    "Lime, not cement": "De la chaux, pas du ciment",
-    "The building has to breathe. Cement traps water and destroys what it "
-    "covers":
-        "Le bâtiment doit respirer. Le ciment retient l'eau et détruit ce "
-        "qu'il recouvre",
-    "Approved, then done": "Autorisé, puis réalisé",
-    "Not the other way round. Unauthorised work on a Class I monument is a "
-    "criminal offence":
-        "Et non l'inverse. Des travaux non autorisés sur un monument classé "
-        "sont un délit",
 }
 
 ES = {
@@ -85,34 +54,4 @@ ES = {
     "Subscribe": "Suscribirse",
     "Contact us": "Contactar con nosotros",
     "Groups": "Grupos",
-
-    # -- Stay: the promise made above the fold --------------------------
-    "The rooms open one at a time, as the restoration reaches them.":
-        "Las habitaciones se abren una a una, a medida que la restauración "
-        "llega a ellas.",
-
-    # -- Stay: what the walls are, which is the thing guests ask about --
-    "Not a Compromise": "No es una renuncia",
-    "Why the Walls Stay As They Are":
-        "Por qué las paredes siguen como están",
-    "The bare plaster in these rooms is not unfinished work. It is protected, "
-    "and putting a modern surface over it would be illegal.":
-        "El yeso desnudo de estas habitaciones no es una obra sin terminar. "
-        "Está protegido, y cubrirlo con un acabado moderno sería ilegal.",
-    "New work is done so it could one day be removed without harming what was "
-    "there":
-        "Toda intervención nueva se hace de modo que algún día pueda "
-        "retirarse sin dañar lo que había",
-    "Every surface is photographed and documented before anyone touches it":
-        "Cada superficie se fotografía y documenta antes de que nadie la toque",
-    "Lime, not cement": "Cal, no cemento",
-    "The building has to breathe. Cement traps water and destroys what it "
-    "covers":
-        "El edificio tiene que respirar. El cemento retiene el agua y destruye "
-        "lo que cubre",
-    "Approved, then done": "Autorizado, y después ejecutado",
-    "Not the other way round. Unauthorised work on a Class I monument is a "
-    "criminal offence":
-        "No al revés. Las obras no autorizadas en un monumento de Clase I son "
-        "un delito",
 }

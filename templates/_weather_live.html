@@ -30,18 +30,16 @@
     <span class="g-wx__age">as of {{ (wx.minutes_old // 60) }} hour{{ '' if wx.minutes_old // 60 == 1 else 's' }} ago</span>
     {%- endif %}
     <span class="g-wx__n">
-      {%- if wx.c <= 0 %}Fires lit in the salons.
+      {%- if wx.c <= 0 %}Frost on the valley. Bring a layer more than you think.
       {%- elif wx.c >= 28 %}The thick walls do the work &mdash; it is cooler inside.
       {%- elif 'snow' in wx.words %}Snow. The drive may want care.
       {%- elif 'rain' in wx.words or 'shower' in wx.words %}Rain off the mountain. The valley is loud with it.
-      {%- elif wx.c >= 18 %}Dinner will be outdoors.
       {%- endif %}
     </span>
   </p>
   {% else %}
   <p class="g-wx__fallback">
-    Nine hundred metres up in the Ariège &mdash; cold winters, hot dry summers, and
-    the mountain visible from every south window.
+    In the Ariège &mdash; cold winters and warm summers.
   </p>
   {% endif %}
 </div>
