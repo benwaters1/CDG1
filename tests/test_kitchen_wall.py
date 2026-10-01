@@ -18,8 +18,9 @@ only visible by running the script, so this runs it: the page is loaded in
 headless Chrome with fetch stood in, so the first reload succeeds and every
 later one fails, and virtual time is run past twelve minutes.
 
-Needs Chrome. Without it the suite says so out loud and checks nothing -- a
-skip that printed PASS would read as cover.
+Needs a browser, found the way the other browser suites find one
+(test_staff_header_on_a_phone's find_browser(), or GUDANES_CHROME). Without
+one it FAILS rather than skips: a skip reads as cover.
 """
 import json
 import os
@@ -30,15 +31,9 @@ import tempfile
 
 import _harness
 from _harness import Suite
+from test_staff_header_on_a_phone import find_browser
 
 ROOT = _harness.ROOT
-CANDIDATES = [
-    os.environ.get("CHROME_PATH") or "",
-    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-    shutil.which("google-chrome") or "", shutil.which("chromium") or "",
-    shutil.which("chrome") or "",
-]
 
 # The wall's own reload is a fetch of the page's own address. The first one
 # succeeds with the page exactly as the server sent it; every one after fails,
@@ -89,13 +84,6 @@ PROBE = """<script>
 </script>"""
 
 
-def _chrome():
-    for c in CANDIDATES:
-        if c and os.path.exists(c):
-            return c
-    return None
-
-
 def _standalone(html):
     css = open(os.path.join(ROOT, "static", "style.css"), encoding="utf-8").read()
     html = re.sub(r'<link[^>]*href="/static/style\.css[^"]*"[^>]*>', lambda m: "<style>%s</style>" % css, html)
@@ -139,10 +127,9 @@ def run():
     s.check("and without ?wall=1 it is the ordinary page", "kw-stamp" not in
             oc.get("/kitchen/prep").get_data(as_text=True))
 
-    chrome = _chrome()
-    if not chrome:
-        print("    SKIP  no Chrome on this machine, so nothing below was checked -- "
-              "set CHROME_PATH to run it")
+    chrome = find_browser()
+    if not s.check("there is a browser to run the wall in", chrome,
+                   detail="none found -- set GUDANES_CHROME; nothing below was checked"):
         return s
 
     s.section("What the browser draws, at a kitchen tablet's width")

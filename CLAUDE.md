@@ -154,6 +154,9 @@ page rendered perfectly while doing the wrong thing.
   which measures the ink on the fridge log and the event pages: a
   disclaimer printed over the hint above it, and tile figures run out of
   their tiles, both of which rendered every word and broke nothing else.
+  So does `test_kitchen_wall`, which runs a kitchen page at `?wall=1` with
+  its reload stood in, because the stamp going blank after the first reload
+  only shows when the script runs.
 
 - **A heading down the side of a table takes its look from `style.css`.**
   Row headings (`<th scope="row">`) and the labels on totals rows share the
