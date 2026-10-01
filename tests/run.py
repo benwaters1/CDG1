@@ -425,6 +425,7 @@ SUITES = [
     "test_whatsapp_channel",
     "test_till_touch_targets",
     "test_staff_header_on_a_phone",
+    "test_nothing_overprints",
 ]
 
 

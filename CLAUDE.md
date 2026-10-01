@@ -150,7 +150,10 @@ page rendered perfectly while doing the wrong thing.
   320-601px. It needs a browser, and it fails rather than skips without one
   (set `GUDANES_CHROME`). So does `test_utc_slices`, which runs the public
   date pickers at a frozen 00:30 to read what they allow; it finds Chrome
-  with this suite's `find_browser()`.
+  with this suite's `find_browser()`. So does `test_nothing_overprints`,
+  which measures the ink on the fridge log and the event pages: a
+  disclaimer printed over the hint above it, and tile figures run out of
+  their tiles, both of which rendered every word and broke nothing else.
 
 - **A heading down the side of a table takes its look from `style.css`.**
   Row headings (`<th scope="row">`) and the labels on totals rows share the
