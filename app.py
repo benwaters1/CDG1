@@ -60540,16 +60540,23 @@ def _recurring_dates(next_due, frequency, first, last):
     Walked forward from its own next-due date rather than from today, so a
     cost due on the 8th stays on the 8th. A cost whose next-due date is in the
     past is treated as due now — it has not stopped being owed.
+
+    Each date is counted from the cost's own date, never from the one before
+    it. Stepping from the last occurrence carried February's clamp forward for
+    good: a cost due on the 31st became the 28th in February and then stayed
+    on the 28th every month after, so the forecast moved it three days early.
     """
     if not next_due:
         return []
     step_months = 12 if frequency == "annual" else 1
-    out, cur = [], next_due
+    out, k, cur = [], 0, next_due
     while cur < first:
-        cur = _add_months(cur, step_months)
+        k += 1
+        cur = _add_months(next_due, k * step_months)
     while cur <= last:
         out.append(cur)
-        cur = _add_months(cur, step_months)
+        k += 1
+        cur = _add_months(next_due, k * step_months)
     return out
 
 
