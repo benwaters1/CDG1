@@ -180,6 +180,15 @@ def _template_parent(src):
     return m.group(1) if m else None
 
 
+def _is_page(src):
+    """A template rendered as a page: it extends a shell, or it is a whole
+    document. The <html tag is looked for in the markup only -- a script
+    comment that mentioned the root element once made the kitchen wall's
+    partial a page of its own, read without the stylesheet its pages load."""
+    markup = re.sub(r"<script\b[^>]*>.*?</script>", "", src, flags=re.S | re.I)
+    return bool(_template_parent(src) or re.search(r"<html\b", markup, re.I))
+
+
 def _template_uses(src):
     """Every template this one includes, imports or takes a macro from."""
     return set(re.findall(r'\{%-?\s*(?:include|import|from)\s+["\']([^"\']+)["\']', src))
@@ -407,7 +416,7 @@ def staff_class_audit(srcs, stylesheets, named=()):
     for page in sorted(srcs):
         if page in ("base.html", "public_base.html", "pos_base.html"):
             continue
-        if not (_template_parent(srcs[page]) or re.search(r"<html\b", srcs[page], re.I)):
+        if not _is_page(srcs[page]):
             continue                        # a partial: read with the pages that use it
         if chain(page)[-1] == "public_base.html":
             continue                        # drawn with gudanes.css, and the design side's
@@ -524,7 +533,7 @@ def staff_token_audit(srcs, stylesheets):
     for page in sorted(srcs):
         if page in ("base.html", "public_base.html", "pos_base.html"):
             continue
-        if not (_template_parent(srcs[page]) or re.search(r"<html\b", srcs[page], re.I)):
+        if not _is_page(srcs[page]):
             continue
         chain, t = [], page
         while t and t in srcs and t not in chain:

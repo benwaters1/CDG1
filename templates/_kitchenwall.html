@@ -26,6 +26,11 @@
 (function(){
   var EVERY = {{ every }} * 1000;
   var loaded = new Date();
+  /* A plain class for the one wall rule that reaches a form: what a form
+     takes is checked by reading the stylesheet the way a browser would, and
+     body:has(.kw-stamp) is a question that model cannot ask. The root
+     element is the one a reload never replaces. */
+  document.documentElement.classList.add('kw-wall');
 
   function paint(){
     /* Found afresh each time. A reload swaps in everything inside <main>,

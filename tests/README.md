@@ -67,7 +67,7 @@ their wrapper.
 None of this replaces looking at the page. It catches the class of fault that
 looking at the page has repeatedly missed.
 
-## The one suite that needs a browser
+## The suites that need a browser
 
 `test_staff_header_on_a_phone` measures rather than reads. The staff header
 ran off a phone's screen because seven things side by side, each with a 44px
@@ -81,6 +81,15 @@ It finds Chrome, Chromium or Edge on its own. Set `GUDANES_CHROME` to point it
 at one. If there is none, the suite **fails** rather than skipping, because a
 check that quietly does not run reads as cover. It never touches the network:
 the web fonts are stripped and every hostname is pointed nowhere.
+
+`test_utc_slices` uses a browser too, for the public date pickers. Their
+scripts work out "today" and "the day after" from the browser's clock, which
+no reading of the source can check. So it renders the room page and the
+event enquiry, freezes the page's clock at 00:30 on a night in the Ariège
+(still the day before in UTC), and reads what each picker allows. It finds
+the browser with the phone suite's `find_browser()` and launches it with the
+same flags, so it is offline in the same way. Windows Chrome ignores `TZ`, so
+it runs in the machine's own zone.
 
 ## Adding a suite
 
