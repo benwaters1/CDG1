@@ -10,19 +10,19 @@
 <div class="table-wrap">
   <table class="data-table">
     <tbody>
-      <tr><th scope="row">To</th><td>{{ line.to_address }} <span class="g-hint">({{ line.audience }})</span></td></tr>
+      <tr><th scope="row">To</th><td>{{ line.to_address }} <span class="muted">({{ line.audience }})</span></td></tr>
       <tr><th scope="row">When</th><td>{{ line.when }}</td></tr>
       <tr><th scope="row">Letter</th><td>{{ line.type }}{% if line.sent_by_name %}, by {{ line.sent_by_name }}{% endif %}</td></tr>
       {% if line.about_words %}<tr><th scope="row">About</th><td>{{ line.about_words }}</td></tr>{% endif %}
       {% if line.area %}<tr><th scope="row">From the inbox for</th><td>{{ line.area }}</td></tr>{% endif %}
       <tr><th scope="row">Status</th><td>{{ line.status_words }}{% if line.delivered_at %}, {{ local_datetime_str(line.delivered_at) }}{% endif %}
-          {% if line.failure %}<br><span class="g-hint">{{ line.failure }}</span>{% endif %}</td></tr>
+          {% if line.failure %}<br><span class="cell-note">{{ line.failure }}</span>{% endif %}</td></tr>
     </tbody>
   </table>
 </div>
 
 {% if words %}
-<p class="g-mb-label" style="margin-top:var(--s4);">What it said</p>
+<p class="detail-label" style="margin-top:16px;">What it said</p>
 <pre class="mail-log-words">{{ words }}</pre>
 {% elif gone %}
 <p class="empty-state">Its words are no longer kept: the house keeps a letter two years, and this one's time is up.</p>

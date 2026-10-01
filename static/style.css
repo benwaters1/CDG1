@@ -18,6 +18,11 @@
   --ink:#2A1A12;
   --ink-soft:#6B5B4B;
   --danger:#a33;
+  /* Something to act on that is not yet wrong: a room never cleaned, a
+     workshop short of stock, a margin only partly costed. Seven places read
+     this and none defined it, so every one of them printed in plain ink.
+     6.1:1 on white. */
+  --rust:#A2461F;
   --success:#3d6b3d;
   --shadow: 0 2px 10px rgba(42,26,18,0.10);
   --surface:#fff;
@@ -35,6 +40,11 @@
   --cal-shift-bg:#B8CEDC; --cal-leave-bg:#F0E6C8;
   --body-bg: radial-gradient(circle at 15% 8%, rgba(201,161,91,0.10), transparent 40%),
              linear-gradient(180deg, #F1EADA 0%, #EDE4CF 100%);
+  /* The spacing scale, the same steps as gudanes.css. Staff pages written
+     from public ones reach for var(--s3); with no value behind it a gap or
+     a margin simply is not there -- the shopping row's tick sat against the
+     item's name, and the arrival card lost all its spacing. */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px;
 }
 
 /*
@@ -661,6 +671,19 @@ body.staff-shell a.mini-row:hover{
 .status-unavailable{ background:var(--status-danger-bg); color:var(--danger); }
 .status-new{ background:var(--status-info-bg); color:var(--steel-deep); }
 .status-contacted, .status-quoted{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
+/* Something that is late or refused: a card that bounced, a balance left
+   owing, a certificate past its date. Ten pages wrote this badge and none
+   of them had a rule for it, so "Card refused" sat in the list as plain
+   grey capitals, quieter than the paid rows around it. The weight is what
+   tells it from status-inactive, which the same pages use for "over". */
+.status-overdue{ background:var(--status-danger-bg); color:var(--danger); font-weight:600; }
+/* A change that is good or bad news, not up or down: a supplier's price
+   going up is bad, a month earning more than last year is good. Which is
+   which is the template's call. Three reports wrote these with no rule, so
+   every percentage read the same whichever way it went. */
+.pill-good, .pill-bad{ display:inline-block; padding:1px 8px; border-radius:10px; font-weight:600; }
+.pill-good{ background:var(--status-success-bg); color:var(--success); }
+.pill-bad{ background:var(--status-danger-bg); color:var(--danger); }
 
 /* ---------- Tasks ---------- */
 .task-list{ display:flex; flex-direction:column; gap:6px; }
@@ -811,10 +834,27 @@ body.staff-shell .narrow-card h1{ color:var(--ivory); }
 body.staff-shell .detail-card h3{ color:var(--ivory); font-family:'Inter',sans-serif; font-weight:700; }
 .detail-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:13.5px; }
 .detail-grid > div{ display:flex; flex-direction:column; gap:3px; }
-.detail-label{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); font-weight:600; }
+/* The same grid written as a definition list, which is what a list of facts
+   about somebody is: each term reads as its label. */
+.detail-label, .detail-grid dt{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); font-weight:600; }
+dl.detail-grid, .detail-grid dd{ margin:0; }
 .notes-block{ margin-top:14px; padding-top:14px; border-top:1px solid var(--parchment-line); }
 .notes-block p{ font-size:13.5px; line-height:1.6; margin:4px 0 0 0; }
 .pay-disclaimer{ font-size:11.5px; color:var(--ink-soft); font-style:italic; margin:-6px 0 12px 0; }
+/* The line under a page's heading: who and what the page is about, or what
+   it stands at -- "6 covers tonight · service at 19:30" on the kitchen's
+   page, the guest, room and dates on a booking's correspondence. Fourteen
+   pages asked for it by this name, which had no rule, so it came out at full
+   ink and read as the first line of the content. Quieter than the content
+   and at a size that can still be read: the kitchen reads its covers line
+   from two metres, which the small italic pay-disclaimer is not made for.
+   Pulled up only where it sits right under the heading. */
+.page-intro{ font-size:13.5px; line-height:1.5; color:var(--ink-soft); margin:0 0 14px 0; }
+.page-head + .page-intro{ margin-top:-12px; }
+/* Quieter text at the size around it: an aside inside a sentence, the count
+   beside a heading, the line that says there is nothing to show. Nine pages
+   used the name with nothing behind it. upload-hint is this a size smaller. */
+.muted{ color:var(--ink-soft); }
 
 .announcement-list{ display:flex; flex-direction:column; gap:8px; }
 .announcement-banner{
@@ -829,6 +869,8 @@ body.staff-shell .announcement-banner{ background:var(--status-warn-bg); color:v
 .doc-row{ display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--parchment-line); border-radius:7px; padding:8px 10px; }
 .doc-row a{ flex:1; color:var(--steel); font-size:12.5px; font-weight:600; text-decoration:none; }
 .doc-row a:hover{ text-decoration:underline; }
+/* Switched off but still listed, so it can be switched back on. */
+.doc-row.is-off{ background:var(--paper); color:var(--ink-soft); }
 .doc-delete{ background:none; border:none; color:var(--danger); cursor:pointer; font-size:14px; }
 .upload-form{ display:flex; flex-direction:column; gap:8px; padding-top:12px; border-top:1px dashed var(--parchment-line); }
 .upload-hint{ font-size:11px; color:var(--ink-soft); margin:0; }
@@ -979,6 +1021,12 @@ body.staff-shell .cal-month-label{ font-family:'Inter',sans-serif; font-weight:7
 .cal-cell-free{ background:transparent; }
 .cal-cell-pending .cal-bar{ background:var(--cal-pending-bg); }
 .cal-cell-confirmed .cal-bar{ background:var(--cal-confirmed-bg); }
+/* The month grids that count things -- tasks per person on the task page,
+   covers per night on the team calendar -- have no bar to carry the colour.
+   Since it moved onto the bars, their busy days have been drawn exactly like
+   empty ones, and the team calendar's legend has named a green that nothing
+   on its grid was. A cell with no bar in it takes the fill itself. */
+.cal-cell-confirmed:not(:has(.cal-bar)){ background:var(--cal-confirmed-bg); }
 .cal-cell-external .cal-bar{ background:var(--cal-external-bg); }
 .cal-cell-manual-block .cal-bar{
   background:var(--cal-block-bg);
@@ -1615,6 +1663,73 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
   .stat-tile-value{ color:#000 !important; }
   .section-heading{ color:#000 !important; }
 }
+
+/* ---------- Wall mode: a kitchen page on the kitchen wall ----------
+   ?wall=1 on a kitchen page (_kitchenwall.html) makes it the screen on the
+   wall: it reloads itself and stamps how fresh it is. Its look was written
+   into gudanes.css against the public site's chrome -- .g-top, .g-foot, nav,
+   .g-btn -- and the five kitchen pages load this stylesheet only, so on them
+   wall mode reloaded on its timer and did nothing else. The admin bar and
+   the menu stayed, the type stayed desk-sized, and the stamp printed as two
+   loose words above the heading. These are the same decisions, made against
+   this shell. The pass loads gudanes.css too and is drawn by it, so it keeps
+   its own colours and sizes and only loses the chrome gudanes cannot see. */
+body.staff-shell:has(.kw-stamp){ background:#0E1C30; }
+body.staff-shell:has(.kw-stamp) .topbar,
+body.staff-shell:has(.kw-stamp) .sidebar,
+body.staff-shell:has(.kw-stamp) .sidebar-backdrop,
+body.staff-shell:has(.kw-stamp) #push-prompt,
+body.staff-shell:has(.kw-stamp) .list-toolbar,
+body.staff-shell:has(.kw-stamp) .btn-mini,
+body.staff-shell:has(.kw-stamp) .btn-ghost,
+body.staff-shell:has(.kw-stamp) .btn-primary,
+/* The cards that take an entry -- a prep line, a fridge reading, a new unit.
+   Keyed on the class the wall script puts on <html>: test_form_layout reads
+   every rule that can reach a form, and cannot evaluate :has(). */
+html.kw-wall .page form.detail-card{
+  display:none !important;
+}
+body.staff-shell:has(.kw-stamp) .page{ max-width:none; padding:18px 26px 84px; }
+/* The pass's colours on the wall, in this shell's own names, so every card,
+   table and badge follows them without a rule of its own. */
+body.staff-shell:has(.kw-stamp) .page:not(:has(.g)){
+  --surface:#16283F; --parchment:#16283F; --paper:#1B2F4A; --parchment-line:#34465E;
+  --ink:#F2EDE3; --ink-soft:#CFC7B8; --ivory:#FFFFFF; --chestnut-deep:#0E1C30;
+  --gold:#E3C27A; --gold-soft:#E3C27A; --gold-on-warn:#F3D98A;
+  --steel:#9FC3DC; --steel-deep:#C4DCEC; --danger:#FF9B92; --success:#8FD19E;
+  --status-success-bg:#1C3526; --status-danger-bg:#4A1F1A; --status-info-bg:#1C3350;
+  --status-warn-bg:#3F3417; --status-neutral-bg:#22354F;
+  --flash-error-bg:#4A1F1A; --flash-error-border:#7A3A30;
+  --flash-success-bg:#1C3526; --flash-success-border:#2F5A40;
+  --shadow:none; --focus-ring:rgba(227,194,122,0.45);
+  color:var(--ink);
+}
+/* Bigger, all of it, the way the browser's own zoom does it. A cell, a hint
+   and a badge each set their own size, so a rule that enlarged some of them
+   would leave the rest to be read at desk distance. Not on a phone, where
+   somebody is only checking the wall from somewhere else. */
+@media (min-width: 900px){
+  body.staff-shell:has(.kw-stamp) .page:not(:has(.g)){ zoom:1.45; }
+}
+@media (min-width: 1600px){
+  body.staff-shell:has(.kw-stamp) .page:not(:has(.g)){ zoom:1.9; }
+}
+/* What somebody cannot eat, and a fridge out of its range: the rows that
+   must be seen from across the room. */
+body.staff-shell:has(.kw-stamp) .data-table tr.row-alert{ background:#6E2414; color:#fff; }
+.kw-stamp{
+  position:fixed; right:0; bottom:0; left:0; z-index:90;
+  display:flex; align-items:baseline; gap:12px;
+  padding:8px 26px calc(8px + env(safe-area-inset-bottom, 0px));
+  background:#0A1626; border-top:2px solid #E3C27A;
+  font-family:'Inter', sans-serif;
+}
+.kw-stamp__t{ font-size:17px; color:#fff; font-variant-numeric:tabular-nums; }
+.kw-stamp__s{ font-size:12px; color:#E3C27A; }
+/* Stale: the last reload failed, and the page says so rather than showing
+   yesterday's list as if it were tonight's. */
+body.kw-stale .kw-stamp{ background:#6E2414; border-top-color:#E8A33D; }
+body.kw-stale .kw-stamp__s{ color:#fff; }
 
 /* ---------- Forms with structure ----------
    A long stack of unlabelled boxes is what made these pages feel like a

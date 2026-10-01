@@ -134,6 +134,367 @@ def _aria_hidden_classes():
     return hidden
 
 
+# ---------------------------------------------------------------------------
+# A class on a staff page, against the stylesheets that page actually loads.
+#
+# base.html links style.css and nothing else, and the public pages link
+# gudanes.css and nothing else. A class written into a staff template that
+# only gudanes.css draws, or that nothing draws, comes out as plain text and
+# nothing says so: .g-hint on fifteen staff pages, .muted on nine, .empty-note
+# on seven, and the kitchen's wall mode, whose stamp printed as two loose words
+# above the heading because every rule it had was in the other stylesheet.
+#
+# ASKED OF THE RULE, NOT OF THE SPELLING. A class counts as drawn on a page
+# only if a rule in a stylesheet that page loads names it AND every other
+# class that rule needs is on the page as well. .g-btn is spelled in
+# style.css, under .g-nextf__i, which no staff page has -- so the Save button
+# on the Instagram settings page, written <button class="g-btn">, was a bare
+# browser button, and a check that looked for the name would have passed it.
+#
+# What a script selects on is a handle, not a look, and needs no rule. What a
+# script ADDS needs one, asked more loosely: which element it lands on cannot
+# be read from here, so any rule on the page that names it will do.
+
+# Names an element carries for the reader, or as the hook its children's
+# rules hang from, that no rule is meant to draw. Each says why. Checked both
+# ways, like the known lists in run.py: a name some stylesheet starts drawing,
+# or that no staff page uses any more, has to come off.
+NAMED_NOT_DRAWN = {
+    "profile-main": "the wide column of .profile-layout, placed by its grid",
+    "profile-side": "the narrow column of .profile-layout",
+    "manual-view": "the reading half of a manual section; its script finds it by id",
+    "tpl-toggle": "already .btn-mini.btn-ghost; its script finds it by data-tpl-toggle",
+    "tray-item__when": "the first line of a photograph's caption, in the caption's type",
+    "od-today": "which panel of the office display this is; .od-panel draws it",
+    "od-calendar": "which panel of the office display this is; .od-panel draws it",
+    "pass__now": "one slot in the pass's bar; its label and its figure are drawn",
+    "pi-drop__meta": "the wrapper round the chosen photograph's name and facts",
+    "pi-edit__side": "the second column of .pi-edit, placed by its grid",
+}
+
+_IDENT = re.compile(r"-?[a-zA-Z_][\w-]*$")
+
+
+def _template_parent(src):
+    m = re.search(r'\{%-?\s*extends\s+["\']([^"\']+)["\']', src)
+    return m.group(1) if m else None
+
+
+def _is_page(src):
+    """A template rendered as a page: it extends a shell, or it is a whole
+    document. The <html tag is looked for in the markup only -- a script
+    comment that mentioned the root element once made the kitchen wall's
+    partial a page of its own, read without the stylesheet its pages load."""
+    markup = re.sub(r"<script\b[^>]*>.*?</script>", "", src, flags=re.S | re.I)
+    return bool(_template_parent(src) or re.search(r"<html\b", markup, re.I))
+
+
+def _template_uses(src):
+    """Every template this one includes, imports or takes a macro from."""
+    return set(re.findall(r'\{%-?\s*(?:include|import|from)\s+["\']([^"\']+)["\']', src))
+
+
+def _linked_stylesheets(src):
+    return {m.group(1) for tag in re.findall(r"<link\b[^>]*>", src)
+            if re.search(r"rel=[\"']stylesheet", tag)
+            for m in [re.search(r"filename=['\"]([^'\"]+\.css)['\"]", tag)] if m}
+
+
+def _style_blocks(src):
+    return "\n".join(re.findall(r"<style\b[^>]*>(.*?)</style>", src, re.S))
+
+
+def _inline_scripts(src):
+    blocks = re.findall(r"<script\b(?![^>]*\bsrc=)(?![^>]*application/(?:ld\+)?json)"
+                        r"[^>]*>(.*?)</script>", src, re.S)
+    return "\n".join(blocks + re.findall(r'\son[a-z]+="([^"]*)"', src))
+
+
+def _top_level_else(text):
+    """Where the ' else ' of a conditional is, outside strings and brackets."""
+    depth, quote = 0, None
+    for i, ch in enumerate(text):
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        elif ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth -= 1
+        elif depth == 0 and re.match(r"\selse\s", text[i:]):
+            return i
+    return None
+
+
+def _jinja_branches(expr):
+    """What a Jinja expression can print: a string for each literal it can
+    come out as, None for a value that cannot be read from the template.
+
+        'is-on' if x == 'y' else 'off'        ['is-on', 'off']
+        'active' if request.endpoint == 'x'   ['active', '']
+        row.state                             [None]
+
+    The operands of the condition are never among them. 'admin_hr' in
+    request.endpoint == 'admin_hr' is a page's name, not a class."""
+    body = expr.strip()
+    while body.startswith("(") and body.endswith(")"):
+        body = body[1:-1].strip()
+    m = re.fullmatch(r"(['\"])([^'\"]*)\1", body)
+    if m:
+        return [m.group(2)]
+    m = re.match(r"(['\"])([^'\"]*)\1\s+if\s+(.*)$", body, re.S)
+    if not m:
+        return [None]
+    cut = _top_level_else(m.group(3))
+    if cut is None:
+        return [m.group(2), ""]
+    return [m.group(2)] + _jinja_branches(m.group(3)[cut + 5:])
+
+
+def _feed(words, text):
+    """Append text to every word being built; whitespace ends a word."""
+    done = []
+    for part in re.split(r"(\s+)", text):
+        if part.isspace():
+            done += words
+            words = [("", True)]
+        elif part:
+            words = [(w + part, exact) for w, exact in words]
+    return words, done
+
+
+def _class_words(src):
+    """(word, exact) for every class a template writes, Jinja and all.
+
+    A word glued to a value that cannot be read from here is a PREFIX, with
+    exact False: status-{{ row.state }} is some class starting with status-.
+    Markup inside a <script> is the script's business, not the page's."""
+    out = []
+    markup = re.sub(r"<script\b[^>]*>.*?</script>", "", src, flags=re.S | re.I)
+    for attr in re.findall(r'\bclass="([^"]*)"', markup):
+        words, done = [("", True)], []
+        for piece in re.split(r"(\{\{.*?\}\}|\{%.*?%\})", attr, flags=re.S):
+            if piece.startswith("{%"):
+                done += words
+                words = [("", True)]
+            elif piece.startswith("{{"):
+                grown = []
+                for branch in _jinja_branches(piece[2:-2].strip("-")):
+                    if branch is None:
+                        grown += [(w, False) for w, _e in words]
+                    else:
+                        more, finished = _feed(words, branch)
+                        grown += more
+                        done += finished
+                words = list(dict.fromkeys(grown))
+            else:
+                words, finished = _feed(words, piece)
+                done += finished
+        out += [(w, exact) for w, exact in dict.fromkeys(done + words)
+                if w and _IDENT.match(w)]
+    return out
+
+
+def _script_classes(js):
+    """(selected, added): the classes a script finds elements by, and the
+    ones it puts on them."""
+    selected, added = set(), set()
+    for _q, lit in re.findall(r"(['\"`])((?:(?!\1).)*?)\1", js):
+        # A selector handed to querySelector, closest or matches -- not a
+        # file name or an address, whose dots are not classes.
+        if "." in lit and not re.search(r"://|^/|@|\.(png|jpe?g|svg|css|js|html|pdf|ics)\b", lit):
+            selected |= set(re.findall(r"\.(-?[a-zA-Z_][\w-]*)", lit))
+    for m in re.finditer(r"classList\.(add|remove|toggle|contains|replace)\(([^)]*)\)", js):
+        args = [a.strip() for a in m.group(2).split(",")]
+        names = [a[1:-1] for a in args if re.fullmatch(r"(['\"])[\w -]*\1", a)]
+        if m.group(1) == "toggle":
+            # toggle(name, condition): a string in the condition, like 'done'
+            # in t.status === 'done', is not a class.
+            names = names[:1] if args and re.fullmatch(r"(['\"])[\w -]*\1", args[0]) else []
+        into = selected if m.group(1) in ("remove", "contains") else added
+        into |= {c for n in names for c in n.split()}
+    for m in re.finditer(r"className\s*\+?=\s*([^;\n]*)", js):
+        rhs = m.group(1)
+        for lit in re.finditer(r"(['\"])([^'\"]*)\1", rhs):
+            if re.search(r"[=!]==?\s*$", rhs[:lit.start()]) or re.match(r"\s*[=!]==?", rhs[lit.end():]):
+                continue
+            added |= {c for c in lit.group(2).split() if _IDENT.match(c)}
+    for m in re.finditer(r"getElementsByClassName\((['\"])([^'\"]*)\1", js):
+        selected |= set(m.group(2).split())
+    return selected, added
+
+
+def _css_selectors(css):
+    """Every selector in a stylesheet, inside @media and all, one per comma."""
+    css = re.sub(r"url\([^)]*\)", "url()", _strip_comments(css))
+    out = []
+    for prelude in re.findall(r"([^{};]+)\{", css):
+        prelude = prelude.strip()
+        if not prelude or prelude.startswith("@"):
+            continue
+        depth, cur = 0, ""
+        for ch in prelude:
+            depth += ch in "(["
+            depth -= ch in ")]"
+            if ch == "," and depth == 0:
+                out.append(cur.strip())
+                cur = ""
+            else:
+                cur += ch
+        out.append(cur.strip())
+    return [sel for sel in out if sel]
+
+
+def _selector_classes(sel):
+    sel = re.sub(r"(['\"]).*?\1", "", re.sub(r"\[[^\]]*\]", "", sel))
+    return set(re.findall(r"\.(-?[a-zA-Z_][\w-]*)", sel))
+
+
+def _selector_needs(sel):
+    """The classes an element and its ancestors must carry for the selector
+    to match at all. Inside :not() must be ABSENT and :is() and :where()
+    offer alternatives, so neither is a requirement."""
+    prev, s = None, re.sub(r"\[[^\]]*\]", "", sel)
+    while prev != s:
+        prev = s
+        s = re.sub(r":(?:not|is|where|matches|-webkit-any)\((?:[^()]|\([^()]*\))*\)", "", s)
+    return _selector_classes(s)
+
+
+class _Drawn:
+    """One stylesheet, as the classes its rules name and what each rule needs."""
+
+    def __init__(self, css):
+        self.needs = {}
+        for sel in _css_selectors(css):
+            need = _selector_needs(sel)
+            for c in _selector_classes(sel):
+                self.needs.setdefault(c, []).append(need)
+
+    def draws(self, word, exact, present, prefixes):
+        def reachable(need):
+            return all(n in present or any(n.startswith(p) for p in prefixes)
+                       for n in need)
+        if exact:
+            return any(reachable(n) for n in self.needs.get(word, ()))
+        return any(c.startswith(word) and any(reachable(n) for n in alts)
+                   for c, alts in self.needs.items())
+
+
+def staff_class_audit(srcs, stylesheets, named=()):
+    """(findings, pages read, class uses read) for one set of templates.
+
+    srcs is {template name: source}, stylesheets is {file name in static/:
+    css}. A finding is (page, the template that writes it, the class), with a
+    * on a prefix. Kept apart from run() so the same sweep can be put to a
+    set of templates that is known to be wrong, and seen to come out wrong.
+    """
+    srcs = {n: re.sub(r"\{#.*?#\}", "", s, flags=re.S) for n, s in srcs.items()}
+    sheets = {n: _Drawn(css) for n, css in stylesheets.items()}
+    blocks, words, scripts = {}, {}, {}
+
+    def chain(n):
+        out = []
+        while n and n in srcs and n not in out:
+            out.append(n)
+            n = _template_parent(srcs[n])
+        return out
+
+    def members(page):
+        todo, seen = chain(page), set()
+        while todo:
+            t = todo.pop()
+            if t in seen or t not in srcs:
+                continue
+            seen.add(t)
+            todo += list(_template_uses(srcs[t])) + chain(t)
+        return seen
+
+    findings, pages, uses = [], 0, 0
+    for page in sorted(srcs):
+        if page in ("base.html", "public_base.html", "pos_base.html"):
+            continue
+        if not _is_page(srcs[page]):
+            continue                        # a partial: read with the pages that use it
+        if chain(page)[-1] == "public_base.html":
+            continue                        # drawn with gudanes.css, and the design side's
+        pages += 1
+        mem = members(page)
+        drawn_by = [sheets[f] for t in mem for f in _linked_stylesheets(srcs[t]) if f in sheets]
+        for t in mem:
+            if t not in blocks:
+                blocks[t] = _Drawn(_style_blocks(srcs[t])) if "<style" in srcs[t] else None
+                words[t] = _class_words(srcs[t])
+                scripts[t] = _script_classes(_inline_scripts(srcs[t]))
+            if blocks[t] is not None:
+                drawn_by.append(blocks[t])
+        selected = {c for t in mem for c in scripts[t][0]}
+        added = {c for t in mem for c in scripts[t][1]}
+        present = {w for t in mem for w, exact in words[t] if exact} | added
+        prefixes = {w for t in mem for w, exact in words[t] if not exact}
+        for t in sorted(mem):
+            for w, exact in sorted(set(words[t])):
+                uses += 1
+                if (exact and w in selected) or w in named:
+                    continue
+                if not any(d.draws(w, exact, present, prefixes) for d in drawn_by):
+                    findings.append((page, t, w if exact else w + "*"))
+        for w in sorted(added - set(named)):
+            if not any(w in d.needs for d in drawn_by):
+                findings.append((page, "a script", w))
+    return findings, pages, uses
+
+
+def _tokens_defined(css):
+    return set(re.findall(r"(--[\w-]+)\s*:", css))
+
+
+def _tokens_read_bare(css):
+    """Custom properties read with no fallback: var(--x), not var(--x, 12px).
+    With no value behind one, the declaration is dropped when it is worked
+    out, and the colour or the gap it was for is simply not there."""
+    return set(re.findall(r"var\(\s*(--[\w-]+)\s*\)", css))
+
+
+def staff_token_audit(srcs, stylesheets):
+    """[(page, template, token)] for every token a staff page's own styles read
+    that no stylesheet it loads, and none of its own styles, defines."""
+    srcs = {n: re.sub(r"\{#.*?#\}", "", s, flags=re.S) for n, s in srcs.items()}
+    defined = {n: _tokens_defined(_strip_comments(css)) for n, css in stylesheets.items()}
+
+    def own(src):
+        return _style_blocks(src) + "\n" + "\n".join(re.findall(r'\bstyle="([^"]*)"', src))
+
+    out = []
+    for page in sorted(srcs):
+        if page in ("base.html", "public_base.html", "pos_base.html"):
+            continue
+        if not _is_page(srcs[page]):
+            continue
+        chain, t = [], page
+        while t and t in srcs and t not in chain:
+            chain.append(t)
+            t = _template_parent(srcs[t])
+        if chain[-1] == "public_base.html":
+            continue
+        mem, todo = set(), list(chain)
+        while todo:
+            t = todo.pop()
+            if t not in mem and t in srcs:
+                mem.add(t)
+                todo += list(_template_uses(srcs[t]))
+        have = set()
+        for t in mem:
+            have |= _tokens_defined(own(srcs[t]))
+            for f in _linked_stylesheets(srcs[t]):
+                have |= defined.get(f, set())
+        for t in sorted(mem):
+            out += [(page, t, tok) for tok in sorted(_tokens_read_bare(own(srcs[t])) - have)]
+    return out
+
+
 def run():
     s = Suite("Design")
     css = _strip_comments(open(CSS_PATH, encoding="utf-8").read())
@@ -254,6 +615,107 @@ def run():
     if used and not layoutish:
         print(f"    ....  {len(used)} non-layout classes have no rule "
               "(mostly Jinja-built names — not checked)")
+
+    s.section("A staff page uses only classes the stylesheets it loads can draw")
+    srcs = {os.path.basename(p): open(p, encoding="utf-8").read()
+            for p in glob.glob(os.path.join(ROOT, "templates", "*.html"))}
+    sheets = {os.path.basename(p): open(p, encoding="utf-8", errors="replace").read()
+              for p in ALL_CSS}
+    found, pages, uses = staff_class_audit(srcs, sheets)
+    # Counted, so a sweep that stopped finding pages would say so rather than
+    # pass on nothing.
+    s.check("the sweep reads %d staff pages and %d classes on them" % (pages, uses),
+            pages > 250 and uses > 8000,
+            detail="too few to be reading the templates at all")
+    undrawn = sorted({(t, c) for _page, t, c in found if c not in NAMED_NOT_DRAWN})
+    s.check("every class on a staff page is drawn by a stylesheet that page loads",
+            not undrawn,
+            detail="%d, e.g. %s -- a staff page loads style.css alone, so a g- class "
+                   "is the public stylesheet's. The staff ones: .cell-note under a figure, "
+                   ".field-hint under a field, .upload-hint, .muted, .page-intro, "
+                   ".empty-inline. Or give it a rule, or say why none in NAMED_NOT_DRAWN"
+                   % (len(undrawn), ["%s .%s" % tc for tc in undrawn[:5]]))
+    stale = sorted(set(NAMED_NOT_DRAWN) - {c for _p, _t, c in found})
+    s.check("and every name on the list no rule draws is still used and still undrawn",
+            not stale,
+            detail="take these off NAMED_NOT_DRAWN: %s -- a list that outlives its "
+                   "reason is how the next one gets in unnoticed" % stale)
+
+    s.section("And the sweep can come out wrong")
+    # Put to templates that are known to be right or wrong in one way each.
+    # A sweep that cannot fail on these is not asking anything.
+    shell = ("<!DOCTYPE html><html><head><link rel=\"stylesheet\" href=\"{{ url_for('static', "
+             "filename='%s') }}\"></head><body class=\"staff-shell\">{%% block content %%}"
+             "{%% endblock %%}</body></html>")
+    fixture_css = {
+        "style.css": ".staff-shell{} .muted{} .card .inner{} .status-late{} .role-owner{} .shown{}",
+        "gudanes.css": ".g-hint{}",
+    }
+
+    def verdict(body, base="base.html", extra=None):
+        t = {"base.html": shell % "style.css", "public_base.html": shell % "gudanes.css",
+             "page.html": '{%% extends "%s" %%}{%% block content %%}%s{%% endblock %%}'
+                          % (base, body)}
+        t.update(extra or {})
+        return [c for _p, _t, c in staff_class_audit(t, fixture_css)[0]]
+
+    link_public = ("<link rel=\"stylesheet\" href=\"{{ url_for('static', "
+                   "filename='gudanes.css') }}\">")
+    cases = [
+        ("a class only the public stylesheet draws is caught on a staff page",
+         verdict('<p class="g-hint">x</p>'), ["g-hint"]),
+        ("and passes on a staff page that links the public stylesheet itself",
+         verdict(link_public + '<p class="g-hint">x</p>'), []),
+        ("a public page is left alone: it is the design side's, drawn with its own",
+         verdict('<p class="g-hint">x</p>', base="public_base.html"), []),
+        ("a class nothing draws at all is caught",
+         verdict('<p class="muted">x</p><p class="empty-note">y</p>'), ["empty-note"]),
+        ("a class whose only rule needs an ancestor the page lacks is caught",
+         verdict('<span class="inner">x</span>'), ["inner"]),
+        ("and is drawn once that ancestor is on the page",
+         verdict('<div class="card"><span class="inner">x</span></div>'), []),
+        ("a class a script finds elements by is a handle and needs no rule",
+         verdict('<i class="hook"></i><script>document.querySelector(".hook")</script>'), []),
+        ("a class a script adds needs one",
+         verdict('<script>document.body.classList.add("is-stale");'
+                 'document.body.classList.add("shown")</script>'), ["is-stale"]),
+        ("a Jinja branch is read as the class it prints, not the string it compares",
+         verdict('<b class="status-{{ \'late\' if a == \'admin_hr\' else \'early\' }}">x</b>'),
+         ["status-early"]),
+        ("a class built from a value is a prefix, drawn if a rule starts with it",
+         verdict('<b class="role-{{ user.role }} kind-{{ x }}">x</b>'), ["kind-*"]),
+        ("a partial is read on the staff page that includes it",
+         verdict('{% include "_bit.html" %}',
+                 extra={"_bit.html": '<p class="nothing-draws-this">x</p>'}),
+         ["nothing-draws-this"]),
+    ]
+    for label, got, expected in cases:
+        s.check(label, got == expected, detail="expected %s, got %s" % (expected, got))
+
+    s.section("A staff page reads only colours and spacings that are defined for it")
+    # The same fault in a second form. --rust was read by style.css and six
+    # staff templates and defined by nothing, so "never cleaned" and "short of
+    # stock" printed in plain ink; --s3 is the public stylesheet's, so the
+    # shopping row's gap and the arrival card's spacing were not there.
+    staff_css = _strip_comments(sheets["style.css"])
+    loose = sorted(_tokens_read_bare(staff_css) - _tokens_defined(staff_css))
+    s.check("every token style.css reads without a fallback, style.css defines",
+            not loose, detail="read and never defined: %s" % loose)
+    loose_pages = sorted({(t, tok) for _p, t, tok in staff_token_audit(srcs, sheets)})
+    s.check("and so does every staff page's own style, or a stylesheet it loads",
+            not loose_pages, detail="%d, e.g. %s" % (len(loose_pages), loose_pages[:5]))
+    probe = staff_token_audit(
+        {"base.html": shell % "style.css", "public_base.html": shell % "gudanes.css",
+         "a.html": '{% extends "base.html" %}{% block content %}<p style="margin:var(--s9)">'
+                   '<b style="gap:var(--s1)"><i style="color:var(--nope, red)">x</i></b></p>'
+                   '{% endblock %}',
+         "b.html": '{% extends "public_base.html" %}{% block content %}'
+                   '<p style="margin:var(--s9)">x</p>{% endblock %}'},
+        {"style.css": ":root{ --s1:4px; }", "gudanes.css": ":root{ --s9:96px; }"})
+    s.check("and the sweep can tell: an undefined token is caught, a defined one or "
+            "one with a fallback is not, and a public page is left alone",
+            [tok for _p, _t, tok in probe] == ["--s9"], detail="got %s" % probe)
+
     s.section("A media query the browser can actually evaluate")
 
     # The PUBLIC stylesheet. CSS_PATH above is style.css, which is the staff

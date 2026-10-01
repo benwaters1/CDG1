@@ -55,18 +55,18 @@
       <tbody>
         {% for x in rows %}
         <tr>
-          <td>{{ x.day|date_short }}<br><span class="g-hint">{{ x.recorded }}</span></td>
+          <td>{{ x.day|date_short }}<br><span class="cell-note">{{ x.recorded }}</span></td>
           <td>{% if x.guest_id %}<a href="{{ url_for('guest_detail', guest_id=x.guest_id) }}">{{ x.person }}</a>{% else %}{{ x.person }}{% endif %}
-              {% if x.email %}<br><span class="g-hint">{{ x.email }}</span>{% endif %}</td>
+              {% if x.email %}<br><span class="cell-note">{{ x.email }}</span>{% endif %}</td>
           <td>{{ x.kind }} · <a href="{{ url_for('refund_desk', category=x.category, booking_id=x.booking_id) }}">{{ x.ref }}</a>
               <br>{{ x.booking_what }}
-              {% if x.what != x.booking_what %}<br><span class="g-hint">{{ x.what }}</span>{% endif %}
+              {% if x.what != x.booking_what %}<br><span class="cell-note">{{ x.what }}</span>{% endif %}
               {% if x.manage_token and x.category == 'room' %}<br><a href="{{ url_for('booking_statement', manage_token=x.manage_token) }}" class="small-link">Statement</a>
               {% elif x.manage_token and x.category == 'workshop' %}<br><a href="{{ url_for('workshop_statement', manage_token=x.manage_token) }}" class="small-link">Statement</a>{% endif %}</td>
           <td>{{ x.ends|date_short if x.ends else '' }}</td>
           <td>{{ x.type }}</td>
-          <td>{{ x.method or '' }}{% if x.card_words %}<br><span class="g-hint">{{ x.card_words }}</span>{% endif %}
-              {% if x.payer %}<br><span class="g-hint">{{ x.payer }}</span>{% endif %}</td>
+          <td>{{ x.method or '' }}{% if x.card_words %}<br><span class="cell-note">{{ x.card_words }}</span>{% endif %}
+              {% if x.payer %}<br><span class="cell-note">{{ x.payer }}</span>{% endif %}</td>
           <td>{{ x.note if x.note and x.note != 'Payment' else '' }}</td>
           <td class="num">{% if x.charge %}{% if x.charge < 0 %}−€{{ '{:,.2f}'.format(-x.charge) }}{% else %}€{{ '{:,.2f}'.format(x.charge) }}{% endif %}{% endif %}</td>
           <td class="num">{% if x.paid %}€{{ '{:,.2f}'.format(x.paid) }}{% elif x.back %}{% if x.back < 0 %}€{{ '{:,.2f}'.format(-x.back) }}{% else %}(€{{ '{:,.2f}'.format(x.back) }}){% endif %}{% endif %}</td>

@@ -75,14 +75,14 @@ so it is declared either way.
       <tr>
         <td>
           {{ r.guest }}
-          <span class="g-hint">{{ r.reference }}{% if not r.settled %} · unpaid{% endif %}</span>
+          <span class="cell-note">{{ r.reference }}{% if not r.settled %} · unpaid{% endif %}</span>
         </td>
         <td>
           {{ r.room }}
-          <span class="g-hint">{{ r.arrival|date_short }} → {{ r.departure|date_short }}</span>
+          <span class="cell-note">{{ r.arrival|date_short }} → {{ r.departure|date_short }}</span>
         </td>
         <td class="num">
-          {{ r.nights }}{% if r.nights != r.total_nights %}<span class="g-hint">of {{ r.total_nights }}</span>{% endif %}
+          {{ r.nights }}{% if r.nights != r.total_nights %}<span class="cell-note">of {{ r.total_nights }}</span>{% endif %}
         </td>
         <td class="num">{{ r.adults }}</td>
         <td class="num">{{ r.exempt_guests or '' }}</td>

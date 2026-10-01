@@ -38,12 +38,12 @@
         <tr>
           <td>{{ r.when }}</td>
           <td>{% if r.guest_id %}<a href="{{ url_for('guest_detail', guest_id=r.guest_id) }}">{{ r.to_address }}</a>{% else %}{{ r.to_address }}{% endif %}
-              <br><span class="g-hint">{{ r.audience }}</span></td>
+              <br><span class="cell-note">{{ r.audience }}</span></td>
           <td>{{ r.subject or '' }}</td>
-          <td>{{ r.type }}{% if r.sent_by_name %}<br><span class="g-hint">by {{ r.sent_by_name }}</span>{% endif %}</td>
+          <td>{{ r.type }}{% if r.sent_by_name %}<br><span class="cell-note">by {{ r.sent_by_name }}</span>{% endif %}</td>
           <td>{{ r.about_words }}</td>
           <td><span class="mini-status status-{{ r.status }}">{{ r.status_words }}</span>
-              {% if r.failure %}<br><span class="g-hint">{{ r.failure }}</span>{% endif %}</td>
+              {% if r.failure %}<br><span class="cell-note">{{ r.failure }}</span>{% endif %}</td>
           <td><a href="{{ url_for('mail_log_letter', line_id=r.id) }}" class="small-link">View</a></td>
         </tr>
         {% endfor %}

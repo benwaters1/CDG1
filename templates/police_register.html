@@ -42,7 +42,7 @@
   <form method="post" action="{{ url_for('add_channel_police_fiche', reservation_id=st.booking['ota_reservation_id']) if st.channel else url_for('add_police_fiche', booking_id=st.booking['id']) }}"
         class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="g-row" style="display:flex; gap:8px; flex-wrap:wrap;">
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
       <div style="flex:1 1 160px;">
         <label class="field-label" for="sn_{{ key }}">Surname</label>
         <input type="text" id="sn_{{ key }}" name="surname" required maxlength="100" autocomplete="family-name" spellcheck="false" autocapitalize="words">

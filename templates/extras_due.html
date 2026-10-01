@@ -21,7 +21,7 @@
 {% endif %}
 
 {% if due.overdue %}
-<h2 style="margin-top:0;">Overdue — {{ due.overdue|length }}</h2>
+<h2 class="section-heading" style="margin-top:0;">Overdue — {{ due.overdue|length }}</h2>
 <div class="table-wrap">
   <table class="data-table">
     <thead><tr><th>What</th><th>Who</th><th>Was for</th><th></th></tr></thead>
@@ -50,7 +50,7 @@
 
 {% set pending = due.rows | rejectattr('overdue') | list %}
 {% if pending %}
-<h2 style="margin-top:{{ '24px' if due.overdue else '0' }};">
+<h2 class="section-heading" style="margin-top:{{ '24px' if due.overdue else '0' }};">
   Still to hand over — {{ pending|length }}</h2>
 <div class="table-wrap">
   <table class="data-table">
@@ -91,7 +91,7 @@ reason to charge for it, not to stop.</p>
 
 
 {% if done %}
-<h2 class="section-h">Done tonight</h2>
+<h2 class="section-heading">Done tonight</h2>
 <p class="upload-hint" style="margin-top:-6px;">
   The name and the time have been recorded on every delivery since this was
   built and shown nowhere &mdash; so when a guest said something never came,

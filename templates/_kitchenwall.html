@@ -26,10 +26,20 @@
 (function(){
   var EVERY = {{ every }} * 1000;
   var loaded = new Date();
-  var timeEl = document.querySelector('[data-kw-time]');
-  var stateEl = document.querySelector('[data-kw-state]');
+  /* A plain class for the one wall rule that reaches a form: what a form
+     takes is checked by reading the stylesheet the way a browser would, and
+     body:has(.kw-stamp) is a question that model cannot ask. The root
+     element is the one a reload never replaces. */
+  document.documentElement.classList.add('kw-wall');
 
   function paint(){
+    /* Found afresh each time. A reload swaps in everything inside <main>,
+       this stamp included, so an element kept from the first load is one
+       that is no longer on the screen: the time went blank at the first
+       reload, and a failed one turned the bar red under the word "live". */
+    var timeEl = document.querySelector('[data-kw-time]');
+    var stateEl = document.querySelector('[data-kw-state]');
+    if (!timeEl || !stateEl) return;
     var mins = Math.round((Date.now() - loaded) / 60000);
     timeEl.textContent = loaded.toLocaleTimeString(undefined,
       {hour:'2-digit', minute:'2-digit'});
