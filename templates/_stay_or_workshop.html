@@ -1,0 +1,108 @@
+{#- A NIGHT, OR THE FULL EXPERIENCE (owner, 28 Sept): the one distinction to make everywhere a guest chooses -
+    a night's stay is a room and breakfast; a workshop is the full experience. Shared by Stay, Workshops and the
+    homepage so it reads the same on all three. Prices only when the page has them (never typed in).
+    stay_or_workshop(rooms_from=None, ws_from=None, dm='open', here=None)  here: 'stay' | 'workshop' | None -#}
+{#- WHAT A WORKSHOP INCLUDES BEYOND THE HOUSE (owner, 1 Oct): this year's two, autumn's and Noël, are spent at the house -
+    no transfers, no vans, no excursions. Each workshop's own: workshops.transfers_included / excursions_included (1/0) once
+    Code adds them; until then a four-night workshop, or a session starting in 2026, counts as without. 'yes' or 'no'.
+    Pages never promise what they cannot confirm. Never call these workshops a trial or an exception. -#}
+{% macro inc_flag(w, field) -%}
+{%- set v = w[field] if w else none -%}
+{%- if v is defined and v in (0, 1, true, false, '0', '1', 'yes', 'no', 'true', 'false') -%}{{ 'yes' if v in (1, true, '1', 'yes', 'true') else 'no' }}
+{%- else -%}{%- set nl = (((w['nights_label'] if w else '') or '')|string)|trim|lower -%}{%- set sd = (((w['start_date'] if w else '') or '')|string)[:4] -%}{{ 'no' if (nl.startswith('4') or nl.startswith('four') or sd == '2026') else 'yes' }}{%- endif -%}
+{%- endmacro %}
+{% macro tx_flag(w) -%}{{ inc_flag(w, 'transfers_included')|trim }}{%- endmacro %}
+{% macro ex_flag(w) -%}{{ inc_flag(w, 'excursions_included')|trim }}{%- endmacro %}
+
+{% macro stay_or_workshop(rooms_from=None, ws_from=None, dm='open', here=None) %}
+<section class="g-sec g-sow" aria-labelledby="g-sow-h"><div class="g-wrap">
+  <p class="g-eyebrow">Two ways to stay</p>
+  <h2 class="g-place" id="g-sow-h">A Night, or the Full Experience</h2>
+  <div class="g-sow__grid">
+    <article class="g-sow__col{% if here == 'stay' %} is-here{% endif %}">
+      <p class="g-sow__k">Stay the Night</p>
+      <h3 class="g-sow__t">Room and breakfast</h3>
+      <ul class="g-sow__list">
+        <li>Your room, and continental breakfast each morning</li>
+        <li>The house and the grounds: the pool, tennis, ten acres and the salons</li>
+        <li>{% if dm == 'open' %}Dinner, a tour of the château, transfers and excursions, booked separately{% else %}A tour of the château, transfers and excursions, booked separately{% endif %}</li>
+      </ul>
+      <p class="g-sow__foot">From one night{% if rooms_from %}, from &euro;{{ '{:,.0f}'.format(rooms_from) }} a night{% endif %}</p>
+      {% if here != 'stay' %}<p class="g-sow__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn">See the rooms</a></p>{% endif %}
+    </article>
+    <article class="g-sow__col g-sow__col--full{% if here == 'workshop' %} is-here{% endif %}">
+      <p class="g-sow__k">A Workshop</p>
+      <h3 class="g-sow__t">The full experience</h3>
+      <ul class="g-sow__list">
+        <li>Every meal, with the château's wines and spirits</li>
+        <li>A tour of the château and its restoration</li>
+        <li>The sessions: the brocantes, the kitchen, the restoration</li>
+      </ul>
+      <p class="g-sow__foot">Three to seven nights, fifteen guests at most{% if ws_from %}, from &euro;{{ '{:,.0f}'.format(ws_from) }} per person{% endif %}</p>
+      {% if here != 'workshop' %}<p class="g-sow__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>{% endif %}
+    </article>
+  </div>
+  {% if here != 'workshop' %}<p class="g-sow__more"><a href="{{ url_for('workshops_public') }}#compare">Compare everything, side by side</a></p>{% endif %}
+</div></section>
+{% endmacro %}
+
+{#- The full comparison, row by row, for the Workshops page (id="compare"). Only what is true of every stay and every
+    workshop; the tour is the workshops' own (owner, 28 Sept). Dinner appears only while the dining switch is on. -#}
+{% macro stay_vs_workshop(rooms_from=None, ws_from=None, dm='open', tx='all', ex='all') %}
+{%- set Y = '<span class="g-vs__y" aria-hidden="true"></span><span class="g-vh">Included</span>' -%}
+{%- set N = '<span class="g-vs__n" aria-hidden="true">&mdash;</span><span class="g-vh">Not included</span>' -%}
+<section class="g-sec g-sow g-vs-sec" id="compare" aria-labelledby="g-vs-h"><div class="g-wrap">
+  <p class="g-eyebrow">Side by side</p>
+  <h2 class="g-place" id="g-vs-h">A Night, or the Full Experience</h2>
+  <p class="g-p">A night's stay gives you a room in the house. A workshop gives you the house: the table, the cellar, the fairs, the restoration and the valley, and the people who know them to take you round.</p>
+  <div class="g-vs__wrap">
+  <table class="g-vs">
+    <caption class="g-vh">What a night's stay and a workshop each include</caption>
+    <thead><tr>
+      <td></td>
+      <th scope="col"><span class="g-vs__k">Stay the Night</span><span class="g-vs__t">Room and breakfast</span></th>
+      <th scope="col" class="g-vs__full"><span class="g-vs__k">A Workshop</span><span class="g-vs__t">The full experience</span></th>
+    </tr></thead>
+    <tbody>
+      <tr><th scope="row">Your room in the château</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
+      <tr><th scope="row">Breakfast</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
+      <tr><th scope="row">Lunch and dinner</th><td>{% if dm == 'open' %}Dinner, booked separately{% else %}{{ N|safe }}{% endif %}</td><td class="g-vs__full">{{ Y|safe }} Every meal</td></tr>
+      <tr><th scope="row">The château's wines and spirits</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
+      <tr><th scope="row">A tour of the château and its restoration</th><td>An extra, &euro;50 per booking</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
+      <tr><th scope="row">The sessions: the brocantes, the kitchen, the restoration</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
+      <tr><th scope="row">Excursions</th><td>Booked separately</td><td class="g-vs__full">{% if ex == 'all' %}{{ Y|safe }}{% elif ex == 'some' %}On some; each workshop says{% else %}{{ N|safe }}{% endif %}</td></tr>
+      <tr><th scope="row">Transfers from Toulouse</th><td>Booked separately</td><td class="g-vs__full">{% if tx == 'all' %}{{ Y|safe }}{% elif tx == 'some' %}On some; each workshop says{% else %}{{ N|safe }}{% endif %}</td></tr>
+      <tr><th scope="row">The pool, tennis, ten acres and the salons</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
+      <tr><th scope="row">The house to yourselves</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }} No other guests while it runs</td></tr>
+      <tr class="g-vs__sum"><th scope="row">Length</th><td>From one night</td><td class="g-vs__full">Three to seven nights</td></tr>
+      <tr class="g-vs__sum"><th scope="row">Price</th><td>{% if rooms_from %}From &euro;{{ '{:,.0f}'.format(rooms_from) }} a night, the room{% else %}Per room, per night{% endif %}</td><td class="g-vs__full">{% if ws_from %}From &euro;{{ '{:,.0f}'.format(ws_from) }} per person, everything{% else %}Per person, everything{% endif %}</td></tr>
+    </tbody>
+    <tfoot><tr><td></td>
+      <td><a href="{{ url_for('book_rooms') }}" class="g-btn">See the rooms</a></td>
+      <td class="g-vs__full"><a href="#dates" class="g-btn g-btn--solid">See the dates</a></td>
+    </tr></tfoot>
+  </table>
+  </div>
+</div></section>
+{% endmacro %}
+
+{#- Before a night is booked (owner, 28 Sept): "so people do not book nightly expecting more" - and towards the workshops.
+    On Stay before the rooms, and on each room page above the booking form. The tour's €50 is the nightly extra's price. -#}
+{% macro night_notice(dm='open') %}
+<aside class="g-night" aria-label="What a night includes">
+  <p class="g-night__k">Before you book a night</p>
+  <p class="g-night__t">A night here is a room and breakfast.</p>
+  <p class="g-night__p">Lunch, dinner and drinks are not included. Every meal and the château's wines and spirits come with the workshops, with a tour of the house and the sessions: the full experience. On a stay, a tour of the château can be added for &euro;50 per booking{% if dm == 'open' %}, and dinner booked on the nights the table is open{% endif %}.</p>
+  <p class="g-night__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>
+</aside>
+{% endmacro %}
+
+{#- After a night is booked (manage page, confirmation): an invitation for next time, not a push on this booking. -#}
+{% macro next_time() %}
+<aside class="g-night g-night--next" aria-label="The workshops">
+  <p class="g-night__k">Next time</p>
+  <p class="g-night__t">The full experience</p>
+  <p class="g-night__p">The workshops are small retreats of three to seven nights, with every meal and the château's wines and spirits, a tour of the house and the sessions.</p>
+  <p class="g-night__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn">See the workshops</a></p>
+</aside>
+{% endmacro %}

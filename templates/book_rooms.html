@@ -134,6 +134,7 @@
 </div></section>
 
 <section class="g-sec"><div class="g-wrap">
+  {% from '_stay_or_workshop.html' import night_notice %}{{ night_notice(dm=_dm) }}
   <h2 id="rooms" class="g-place">Les Chambres</h2>
   {% if searched %}
   <div class="g-searched" role="status">
@@ -504,13 +505,14 @@
     {# "Nothing above appears on your bill unless you ask for it" - the tourist tax is
    listed above, and the law requires it whether you ask or not. #}
 <p class="g-ledger__note">Rates are per room per night. Nothing arranged separately is charged unless you ask for it, apart from the tourist tax, which the law requires.</p>
-      {# The distinction the owner asked for (28 Sept). #}
-      <p class="g-limit"><span class="g-limit__k">Stay or workshop</span>A night's stay is your room and breakfast, with the house and the grounds. A workshop is the full experience — a small-group retreat with every meal, the château's wines, a tour of the house, the excursions and the transfers from Toulouse. <a href="{{ url_for('workshops_public') }}">See the workshops</a>.</p>
       <p style="margin-top:var(--s6)">
       <a href="#book" class="g-btn g-btn--solid">Check your dates</a>
     </p>
   </div>
 </div></section>
+{# A night, or the full experience - the shared comparison (owner, 28 Sept). #}
+{% from '_stay_or_workshop.html' import stay_or_workshop %}
+{{ stay_or_workshop(rooms_from=(rooms|selectattr('price_per_night')|map(attribute='price_per_night')|min) if rooms else None, dm=_dm, here='stay') }}
 
 <section class="g-sec"><div class="g-wrap">
   <details class="g-extras-fold">
@@ -519,6 +521,17 @@
   <h2 class="g-place">Things to Do With the Days</h2>
   <p class="g-p">Optional experiences to add to your stay — chosen when you book, subject to season and an additional charge.</p>
   <div class="g-extras" style="margin-top:var(--s7)">
+  {# The château tour as a nightly extra (owner, 28 Sept: "add tour of chateau to nightly bookings for 50 euros").
+     Included in every workshop. The price basis (per person or per booking) is the owner's to confirm. #}
+  <article class="g-extra">
+    <div class="g-extra__b">
+      <p class="g-extra__k">The House</p>
+      <h3 class="g-extra__t">A Tour of the Château</h3>
+      <p class="g-extra__d">The house and its restoration, shown to you by the people doing it: the rooms brought back, the rooms still waiting, and what the work has uncovered along the way. Included in every workshop; added to a stay on request.</p>
+      <p class="g-extra__p">&euro;50 per booking · arranged when you book</p>
+    </div>
+  </article>
+
 
     {% if _dm == 'open' %}
     <article class="g-extra">
@@ -750,8 +763,10 @@
 
 {% from '_faq.html' import faq %}
 {{ faq([
+  ('Are meals and drinks included?',
+   'Breakfast is, every morning. Lunch, dinner and drinks are not part of a nightly stay' ~ ('; dinner can be booked on the nights the table is open.' if _dm == 'open' else '.') ~ ' On a workshop everything is included: every meal, and the château wines and spirits throughout.'),
   ('What is the difference between a stay and a workshop?',
-   'A stay is your room and breakfast, with the house and the grounds to enjoy. A workshop is the full experience: a small-group retreat of three to seven nights, with every meal, the château wines, a tour of the house, the excursions and the transfers from Toulouse.'),
+   'A stay is your room and breakfast, with the house and the grounds to enjoy. A workshop is the full experience: a small-group retreat of three to seven nights, with every meal, the château wines, a tour of the house and the sessions.'),
   ('Is there anywhere nearby for a drink, or supplies?',
    'Les Cabannes, three minutes below the gates, is the larger village: restaurants, a bar, a supermarket and a tabac, and the railway station. Château-Verdun itself is a village of about fifty people.'),
   ('Is there a lift?',
@@ -848,7 +863,7 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Arrival</p>
-      <p class="g-key__v">From 4pm. Departure by 11am.<br>Someone will meet you at the gates.</p>
+      <p class="g-key__v">From 4pm. Departure by 11am.<br>Someone will meet you at the gates.<br>Pack lightly: the bedrooms are reached by the original staircase, and there is no lift.</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Getting here</p>

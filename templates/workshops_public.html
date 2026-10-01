@@ -2,13 +2,19 @@
 {% set sticky_bar = 'atelier' %}
 {% set crumbs = [('Workshops', None)] %}
 {% block title_fr %}Les Ateliers{% endblock %}
-{% block description_fr %}Ateliers de restauration au château : enduits à la chaux, dorure, conservation de fresques du XVIIIe siècle. Quinze places, un atelier à la fois.{% endblock %}
+{% block description_fr %}Ateliers et retraites dans un château en restauration : la cuisine, les brocantes et la restauration. Tous les repas, les vins et une visite de la maison compris.{% endblock %}
 {% block title %}Workshops & Retreats in a French Château{% endblock %}
-{% block description %}Small-group workshop retreats in a French château under restoration: cooking, antiques, crafts and restoration. Three to seven nights, all included.{% endblock %}
-{% block og_desc %}Workshop retreats at Château de Gudanes — restoration, cooking, and the brocantes of the Ariège. Never more than fifteen guests, and the château takes no others.{% endblock %}
+{% block description %}The full experience: small-group retreats in a French château under restoration, with every meal, the wines and a tour of the house. Three to seven nights.{% endblock %}
+{% block og_desc %}Workshop retreats at Château de Gudanes: every meal, the château's wines and a tour of the house, never more than fifteen guests, and no others in the château.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
+{%- from '_stay_or_workshop.html' import tx_flag -%}
+{%- set _txn = namespace(yes=0, no=0) -%}{%- for _w in (workshops or []) -%}{%- if tx_flag(_w)|trim == 'yes' -%}{%- set _txn.yes = _txn.yes + 1 -%}{%- else -%}{%- set _txn.no = _txn.no + 1 -%}{%- endif -%}{%- endfor -%}
+{%- set _tx = 'all' if _txn.no == 0 else ('none' if _txn.yes == 0 else 'some') -%}
+{%- from '_stay_or_workshop.html' import ex_flag -%}{%- set _exn = namespace(yes=0, no=0) -%}{%- for _w in (workshops or []) -%}{%- if ex_flag(_w)|trim == 'yes' -%}{%- set _exn.yes = _exn.yes + 1 -%}{%- else -%}{%- set _exn.no = _exn.no + 1 -%}{%- endif -%}{%- endfor -%}
+{%- set _ex = 'all' if _exn.no == 0 else ('none' if _exn.yes == 0 else 'some') -%}
+
 {% from '_proof.html' import credential, proof %}
 {% from '_exclusive.html' import exclusive %}
 {% from '_animals.html' import animals, animals_note %}
@@ -31,7 +37,7 @@
        and in practice guests mostly take the pool, the wine and the table. Retreat-led; no overclaiming the hours of work. #}
     <p class="g-hero__lede">The full Gudanes experience, as a small-group retreat: the brocantes, the kitchen and the restoration, with the pool, the wine and one long table around them.</p>
   
-    <p class="g-hero__cta"><a href="#dates" class="g-btn g-btn--solid">See every date</a></p>
+    <p class="g-hero__cta"><a href="#dates" class="g-btn g-btn--solid">See every date</a> <a href="#compare" class="g-btn">Compare with a stay</a></p>
   </div>
 </section>
 
@@ -73,7 +79,7 @@
   </svg>
 
   <p class="g-p" style="margin-left:auto;margin-right:auto;text-align:center">
-    Full board, the château's wines and spirits, every activity and the transfers from Toulouse come with every workshop.
+    Full board, the château's wines and spirits and every activity come with every workshop{% if _tx == 'all' %}, and so do the transfers from Toulouse{% elif _tx == 'some' %}; each workshop says whether the transfers from Toulouse do{% endif %}.
   </p>
 </div></section>
 
@@ -84,7 +90,7 @@
 <!-- ============ CHOOSE — the three, side by side ============ -->
 
 {% from '_glance.html' import atelier_glance %}
-{{ atelier_glance(glance_workshop, settings, glance_from) }}
+{{ atelier_glance(glance_workshop, settings, glance_from, tx=_tx) }}
 
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
   <h2 class="g-place">Choose Your Workshop</h2>
@@ -115,6 +121,9 @@
         {% if rows %}
         <p class="g-wscard__dates">{% for r in rows[:3] %}{{ r.session['start_date']|date_short }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
         {% endif %}
+        {# What this one includes beyond the house (owner, 1 Oct) - the page says "each workshop says", so each card does. #}
+        {%- set _ctx = tx_flag(w)|trim == 'yes' -%}{%- set _cex = ex_flag(w)|trim == 'yes' -%}
+        <p class="g-wscard__inc">{% if _ctx and _cex %}Transfers and excursions included{% elif not _ctx and not _cex %}Spent at the house{% elif _ctx %}Transfers included{% else %}Excursions included{% endif %}</p>
       </div>
       {# Cut at a sentence, not at 180 characters ("in a house being...", "with someone who knows..."). #}
       {%- if w['description'] %}{% set _bl = namespace(t='') %}{% for sent in (w['description']|striptags|trim).replace('\n', ' ').split('. ') %}{% if _bl.t|length < 120 %}{% set _bl.t = (_bl.t ~ ' ' ~ sent|trim)|trim %}{% if not _bl.t.endswith(('.', '!', '?')) %}{% set _bl.t = _bl.t ~ '.' %}{% endif %}{% endif %}{% endfor %}
@@ -123,7 +132,7 @@
         {% if w['price_per_person'] %}
         <p class="g-wscard__price">
           <span class="g-fig" data-eur="{{ w['price_per_person'] }}">€{{ '{:,.0f}'.format(w['price_per_person']) }}</span>
-          <span>per person</span>
+          <span>per person, everything included</span>
         </p>
         {% endif %}
         <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" class="g-btn">View itinerary</a>
@@ -199,7 +208,7 @@
         {% if w['price_per_person'] %}
         <p class="g-sit__rate">
           <span class="g-fig">€{{ '{:,.0f}'.format(w['price_per_person']) }}</span>
-          <span>per person</span>
+          <span>per person, everything included</span>
         </p>
         {% endif %}
         {% if r.remaining > 0 %}
@@ -256,17 +265,15 @@
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1000w" alt="The gates" loading="lazy">
       <div class="g-incl-card__b">
         <h3 class="g-incl-card__t">Getting Here</h3>
-        <p>We meet you at 11am in central Toulouse and travel to the château together. At the end we leave at 11am and have you back in Toulouse by about one.</p>
+        {% if _tx == 'all' %}<p>We meet you at 11am in central Toulouse and travel to the château together. At the end we leave at 11am and have you back in Toulouse by about one.</p>{% elif _tx == 'some' %}<p>On the workshops that include it, we meet you at 11am in central Toulouse and travel to the château together, and have you back by about one on the last day. Each workshop's page says whether yours does.</p>{% else %}<p>The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station. Tell us how you are travelling and the directions come with your confirmation.</p>{% endif %}
       </div>
     </article>
   </div>
-  {# The distinction the owner asked for (28 Sept): a stay is room and breakfast; a workshop is the full experience. #}
-  <p class="g-limit"><span class="g-limit__k">Stay or workshop</span>A night's stay is a room and breakfast. A workshop is the full experience — everything above, for three to seven nights.</p>
 
   <hr class="g-rule--double">
 
   <dl class="g-facts-list">
-    <div><dt>Group size</dt><dd>Never more than fifteen, and the château takes no other guests while a workshop runs</dd></div>
+    <div><dt>Group size</dt><dd>Fifteen at most</dd></div>
     <div><dt>Rooms</dt><dd>Arranged for two, with a third bed if you need one. Coming alone, you share with another guest travelling solo, or take a room to yourself with a single supplement</dd></div>
     {# Read from the workshops rather than stated. deposit_percent is a column
        with a default of 30, not a house rule, and this line printed it as one.
@@ -283,9 +290,11 @@
       {% if balance_days %}Booking inside {{ balance_days }} days? The whole amount is due then,
       not a deposit.{% endif %}
     </dd></div>
-    <div><dt>Insurance</dt><dd>Travel insurance is required, covering the journey and the days of work</dd></div>
   </dl>
 </div></section>
+{# A night, or the full experience - the shared comparison (owner, 28 Sept). #}
+{% from '_stay_or_workshop.html' import stay_vs_workshop %}
+{{ stay_vs_workshop(ws_from=(workshops|selectattr('price_per_person')|map(attribute='price_per_person')|min) if workshops else None, dm=_dm, tx=_tx, ex=_ex) }}
 
 <div class="g-wrap">{{ animals_note() }}</div>
 
@@ -522,6 +531,7 @@
     <div class="g-panel">
       <h3 class="g-h3">Bring</h3>
       <ul class="g-ticks">
+        <li>A small suitcase — the bedrooms are reached by the original staircase, and there is no lift</li>
         <li>Clothes you would not mind marking — lime does not wash out</li>
         <li>Shoes with a closed toe and a flat sole</li>
         <li>Reading glasses if you use them. The work is close</li>
@@ -562,12 +572,14 @@
 {{ faq([
   ('How many people are on a workshop?',
    'Never more than fifteen, and the château takes no other guests while one runs. You have the building.'),
+  ('Are meals and drinks included?',
+   'Yes, all of them: breakfast, lunch and dinner every day, and the château wines and spirits throughout, from the first evening to the last morning. A nightly stay is different: it includes breakfast only.'),
   ('Do I need any experience?',
    'None. The conservators, the chef and the dealers teach as they work — that is the arrangement. People arrive having never held a scalpel or a pastry knife.'),
   ('Where do I sleep?',
    'In the château itself. Bedrooms here, not a hotel down the valley.'),
   ('Is everything included?',
-   'Every meal, the château wines and spirits, the transfers from Toulouse, the excursions and the teaching. Flights, insurance and whatever you buy at the brocantes are not.'),
+   'Every meal, the château wines and spirits, a tour of the château' ~ (', the transfers from Toulouse' if _tx == 'all' else '') ~ (', the excursions' if _ex == 'all' else '') ~ ' and the teaching.' ~ (' Each workshop says whether the transfers from Toulouse and the excursions are included.' if (_tx == 'some' or _ex == 'some') else '') ~ ' Flights, insurance and whatever you buy at the brocantes are not.'),
   ('Can I come on my own?',
    'Most people do. Rooms are arranged for two, and a single supplement applies if you would rather not share.'),
   ('What if I need to change my dates?',
@@ -677,14 +689,14 @@
   <p class="g-eyebrow">For Institutions</p>
   <h2 class="g-place">Taking a Session Outright</h2>
 
-  <p class="g-p g-lede-first">A session holds fifteen. A school, a conservation course or a heritage body can take all fifteen at once, which is one conversation rather than fifteen.</p>
+  <p class="g-p g-lede-first">A session holds fifteen. A school, a conservation course or a heritage body can take every place at once: one conversation rather than many.</p>
   <p class="g-p">The work is real: eighteenth-century frescoes under supervision, lime plaster, gilding, joinery. Students are not shown a demonstration — they lift overpaint from a Class I Historic Monument, and what they do stays on the wall.</p>
 
   <div class="g-grid g-grid--2">
     <div class="g-panel">
       <h3 class="g-h3">What a cohort gets</h3>
       <ul class="g-ticks">
-        <li>All fifteen places on one session, dates agreed with you</li>
+        <li>Every place on one session, dates agreed with you</li>
         <li>The château to yourselves for the duration — no other guests</li>
         <li>Taught by the artisans restoring this building, not by visiting tutors</li>
         <li>Beds for fifteen; the village takes any overflow</li>
@@ -712,7 +724,7 @@
   </dl></div></div>
 
   <p class="g-p"><a href="{{ url_for('contact_page') }}" class="g-btn g-btn--solid">Enquire about a whole session</a></p>
-  <p class="g-limit"><span class="g-limit__k">Why we mention it</span>One workshop runs at a time, with fifteen places. A cohort takes all fifteen at once, which is why those dates go first.</p>
+  <p class="g-limit"><span class="g-limit__k">Why we mention it</span>One workshop runs at a time. A cohort takes every place at once, which is why those dates go first.</p>
 </div></section>
 
 

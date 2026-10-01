@@ -1,0 +1,866 @@
+CHANGES SINCE THE ZIP SENT ON WEDNESDAY 23 SEPTEMBER (base still fdd551d)
+
+LIVE BUG — also shipped separately as HOTFIX_phone_carousels.css
+- Phone carousels (Stay room cards, The Estate cards) could not scroll to
+  their first cards: justify-content:center on an overflowing grid pushes
+  cards off the left edge. Émeraude and du Levant unreachable on Stay; the
+  pool on The Estate. The carousel also overshot the screen by 8px a side.
+
+LAYOUT
+- Heroes grow to fit their content. At 1440x900 the homepage title sat under
+  the header; at 1366x768 it began above the top of the page. Hero height
+  classes (documented in the CSS, never applied) now set per page.
+- Room cards: photo 3:2 (was a fixed 13rem strip, 2.7:1); first full
+  sentence instead of truncate(140); odd last card spans the row sideways.
+- Pills: stray 24px margin removed (were 32px apart, now 8).
+- Heading stacks: French line + gloss + eyebrow collided on 19 headings (the
+  eyebrow bar cut through the gloss). Gloss now sentence case; eyebrow gets
+  space and drops its bar after a French line. Duplicate eyebrow on Contact.
+- Homepage "took": image capped (was a full viewport); 4 facts 2x2 (was 3+1
+  orphan); figure default margins reset (took + 6 quote figures); phone
+  overflow when the image fails.
+- Facts band aligned to the content column; full-bleed rule kept.
+- Guest-quote grid: side bars removed, one column rule.
+- Breadcrumb root -> preview_home (was 'dashboard'); Dining crumbs.
+- Flash messages: error variant styled; role=alert / status.
+- Scroll padding at the bottom on pages with a fixed bar (Terms checkbox was
+  scrolled under the Pay & book bar on a failed submit).
+- Homepage room cards: each named room maps to its own fallback photo.
+
+COPY / FACTS
+- "Stay the Night" block after the room cards repeated their eyebrow and lede
+  word for word -> "Old Walls, New Beds", keeps the walls paragraph.
+- Atelier counts spelled out with a singular ("1 ateliers" -> "One atelier");
+  hardcoded "Five ateliers" x2 (one of them mine) and "165 places" computed.
+  Share description (og_desc) computed.
+- "Why People Come Back": two brochure paragraphs cut.
+- Quote "Spacious rooms with private... bathrooms" (Home + Stay) replaced -
+  shown as a general claim beside two rooms that share.
+- Dining page breakfast quote re-attributed to Cynthia, Booking.com (I had
+  labelled it Google).
+- Homepage rating tiles: six hardcoded 10s -> settings, like the Stay page.
+  Value score dropped on both pages (the site does not argue price).
+
+SECOND BATCH
+- Hero title: its gold rule is drawn inside its box and it had no bottom
+  margin, so on Stay, Workshops and Restoration the button/lede sat on it.
+  24px under the rule on all ten heroes now.
+- Stay: "Availability" callout removed - it stated the room count over a lede
+  that states it again, and said nothing about availability.
+- Stay room photos 3:2 (five competing height rules fixed them at 272px - a
+  2:1 strip, smaller than on the homepage). Price "a night" (was "/ night").
+- Stay dining block: closing sentence repeated the opening one.
+- Stay ledger ("What You Are Paying For"): rows were flex with a zero-width
+  pseudo-element, so every row was indented and each label sat a gap plus a
+  space from its dash; note was 174px below the list. The note said nothing
+  above is charged unless asked for - untrue of the tourist tax. Fixed.
+- My regression from the first batch: the took section's lede and close lost
+  their 40rem measure (ran to 992px). Restored; phone fix kept.
+
+THIRD BATCH (Stay page to the end)
+- Reviews: a rating with no comment was quoted as "A very good stay." under
+  the guest's name - invented words. Stay and atelier reviews now quote only
+  reviews that have text (static fallback if none do).
+- "Sleeps 2" default removed in five places, incl. room JSON-LD: it would
+  have shown under Les Deux Chambres' own "sleeping five". Nothing shown when
+  max_occupancy is unset. JSON-LD no longer claims one bed for Deux Chambres.
+- Comparison cards: price and table rows aligned across cards.
+- Key Information payment note was the request model and self-contradictory.
+- CENTRED ELEMENTS PINNED LEFT, SITEWIDE: `.g .g-wrap > p` zeroed the auto
+  margins of things meant to be centred - the closing lede on 11 pages, both
+  mottos, the gallery empty state, the Events enquiry button. Released.
+- Assurance strip (every page): headings 8px out of line (grid rows stretched).
+- Stay close lede no longer repeats the opening line.
+
+FOURTH BATCH (Workshops)
+- Year's Programme read r.start_date, but session rows carry dates in
+  r.session, so every session said "Dates to be confirmed" beside its
+  places-left count. Pre-existing (in fdd551d). Reads either shape now and
+  formats with date_range().
+- Atelier cards: five in a 3-column grid left a hole; last row now centres
+  (3+2 desktop, 2+2+1 tablet). Name no longer sits on the photo's edge.
+- Date sittings on phones: photo becomes a thumbnail beside the details;
+  eleven sittings ~5,000px of scroll -> ~3,300px.
+- Hero: lede ran into the button on Workshops; 24px above every hero button.
+  Eyebrow count spelled out.
+- Day timeline dots centred on their times (Workshops, Facilities); timeline
+  labels no longer wrap at desktop.
+- Journal box: eyebrow bar sat on the box's rule (7 pages).
+- Dining block repeated "candlelight"; "Euros" -> "euros".
+- MY REGRESSION, caught and fixed before any zip: the took-image cap also
+  listed main img:not([class]), which resized every unclassed image. Scoped
+  back; every image size compared against upstream with real images loaded -
+  all remaining differences deliberate.
+- MY EARLIER ERROR, reverted: I had replaced the atelier-reviews "Not yet"
+  fallback with a Google review about the table and entertainment - the kind
+  of review the section's own note says it will not use. Original restored.
+
+FIFTH BATCH (Dining page)
+- Callout moved into the reading column it introduces (was 336px left of it).
+- "Candlelight" 7 visible uses -> 3 (opening, the dinner dossier, a caption).
+- Closing-band logo: six pages described it as a photograph ("Linen turned
+  down", "The pool below the gardens"...). All eleven now "Château de Gudanes".
+- Key Information on the dining page gave the stay's check-in/check-out as
+  "Arrival"; now the dinner times.
+- Chef section moved from after Key Information to follow the kitchen story.
+- Four duplicated sections flagged for decision (PARTIALS_FIX), not cut.
+
+SIXTH BATCH (Events, plus one sitewide)
+- SITEWIDE: .g-two padded 24px inside .g-wrap, which already pads 24px, so all
+  18 two-column sections (27 instances) started their text 24px right of the
+  column. Fixed; checked at three widths.
+- "Three Ways to Take the Château" opened with the restoration-not-renovation
+  positioning line; now introduces the three ways.
+- "Shaped around you, not a package" -> Title Case (the only section heading
+  on the site that broke the convention).
+- Weekend planner: "3 days..." -> "Three days..." (and "four days" in the
+  text sent with the enquiry).
+- Events duplicates flagged for decision (PARTIALS_FIX), not cut.
+
+OWNER REQUEST — no rough-living anecdotes on the selling pages
+- Dining: "A Camping Stove, Once" removed (resolves the kitchen duplicate).
+- Homepage "first winter ... in a tent" is in _took.html (not in the surface):
+  in PARTIALS_FIX with a suggested replacement fact.
+
+DINING SWITCH (owner request)
+- settings.dining_mode: open (default) | closed | hidden, plus dining_reopens.
+  Read once in public_base; gates 10 templates (nav, drawer, footer, Book
+  menu, sticky bar, date-picker dinner marks, home, Stay incl. FAQ and
+  ledger, Contact, error page, account, manage-booking, both dining pages).
+  Tested by rendering the whole site in all three modes: unset == open; when
+  closed no reservation link anywhere; when hidden no link to dining anywhere;
+  full audit clean in each mode. Route/admin work listed in PARTIALS_FIX.
+
+DINING SWITCH, second pass (found reviewing The Estate)
+- Also switched: the two dinner extras on Stay (A Private Dinner; Dinner by
+  Candlelight in the Salons) and "private dinners" in the extras summary; the
+  Stay FAQ's "the kitchen will cook for them"; The Estate's "dinner is at the
+  usual hour"; the homepage's "and so is dinner" and "dinner is served in one
+  that is" (-> breakfast when dining is off). Picnic basket and the market
+  trip with the chef are not dinner and stay. _room_copy.html line in
+  PARTIALS_FIX. All three modes re-rendered; audit clean in each.
+
+THE ESTATE
+- Close: "Nothing above appears on your bill" was untrue of the arranged
+  extras and ski passes on the same page. Rewritten.
+- Empty "THE JOURNAL" marker removed.
+- Winter covered twice: flagged for decision with a suggested merge.
+- The Estate h1 "Facilities & Activities" -> "The Estate", matching the nav
+  (the <title> keeps the search wording).
+- SITEWIDE: .g-h3 used the h2 size, so all 22 card/panel headings matched the
+  section headings above them. Now --t-h3 ("card and panel headings" in the
+  scale). Pre-existing in fdd551d.
+
+RESTORATION (+ one homepage fix)
+- "Discoveries" eyebrow sat 110px from its heading with the medallion between;
+  medallion moved above it.
+- Two empty section markers removed (THE FIGURES, THE RECORD).
+- FIGURES FLATTENED BY A GENERIC RULE: ".g dl dt" (UI face, 15px) outranked the
+  display-serif figures of the homepage "took" facts (21-27px) and the
+  Restoration room counters (30-46px). Both restored. Pre-existing in fdd551d.
+- Flagged for decision: "How It Began" refers to Craig by profession; three
+  repeated topics (older block vs newer). Suggested wording in PARTIALS_FIX.
+
+NEW ROOM LINE-UP (owner): Twin (shared, €280), Double (shared, €280), King
+(private, bath and sink in the room, €380), Gold Suite (private, €480),
+Family Suite (private, €580). Mapped from the old rooms by their own copy
+(Tilleul, Cerise, du Levant, Émeraude?, Les Deux Chambres).
+- Templates: photo fallbacks keyed by old and new names; shared-bathroom
+  partner read from the data (was hardcoded Cerise/Tilleul); Stay bathrooms
+  paragraph and FAQ rewritten; naming sentence ("Émeraude for the green
+  silk...") removed; JSON-LD gives the Twin two beds; bed label no longer
+  "Double bed" on every card.
+- Database rows, new room descriptions and notes for _room_copy.html: in
+  PARTIALS_FIX for Code.
+- Restoration: "a neurological surgeon" -> "a urologist" (owner).
+- Owner correction: every room has a PRIVATE bathroom on the first floor, not
+  in the room. All 18 "downstairs" / "shared bathroom" lines across 7
+  templates rewritten; room data and descriptions in PARTIALS_FIX updated to
+  match (the shared-bathroom version is replaced, not left alongside).
+- Owner: the Double Room is a QUEEN — "The Queen Room", queen bed. Bed label
+  no longer defaults to "Double bed" for a room it does not recognise (the
+  Gold Suite shows no bed line until bed_setup is set).
+- Owner: the Gold Suite has an EMPEROR bed. Card label, description and note
+  updated; bed_setup "Emperor bed" in the database table for Code.
+
+GALLERY
+- MY ERROR, reverted: I had given the gallery "has-hero hero--full" from the
+  stylesheet's stale list of full-hero pages; the page has no hero (the header
+  only looked right because its script falls back to solid). Removed; every
+  other has-hero page checked and does have a hero.
+- Photo captions naming old rooms: Chambre Emeraude -> The Gold Suite;
+  des Fleurs, du Parc, Bleue -> "A bedroom" (which bookable room each shows
+  is not known). Resolves the old Chambre Bleue query.
+- Larger-type lede after the body copy restated it; removed.
+
+CONTACT
+- The map block told the public "the coordinates of the gates have not been
+  set". Now a guest-facing line; coordinates on Code's list.
+- Contact: "for a stay, a workshop or a table" (x2) now follows the dining switch.
+
+WHAT'S ON / ROOM PAGE / SITEWIDE TYPE
+- What's On: "the chef will usually come too" follows the dining switch.
+- Room page: price, the room's facts (bed, private first-floor bathroom,
+  breakfast) and then the button — the button came first and the facts were
+  missing. The written room description was gated on the database field it is
+  meant to replace; it now shows regardless. One "fifteen years in" repeat cut.
+- SITEWIDE: the reading-floor rule's span line was more specific than the
+  component rules it claimed to yield to, so larger text in spans was held at
+  15px: the motto (27px), Karina's signature (22px), the booking-bar title
+  (23px), the room and comparison-table prices. Measured by rendering every
+  page with and without it; six classes exempt; what the floor lifts is
+  unchanged. Pre-existing in fdd551d.
+
+BOOKING FLOW
+- Stay confirmation: the recap rendered ABOVE the thank-you (upstream), so a
+  guest's first sight after paying was the cancellation clause. Moved below.
+- Status checks were case-sensitive (== 'confirmed') in 17 places across 7
+  templates; with "Confirmed" in the data, the confirmation said "Booking
+  request received" and manage-booking offered to "confirm availability" on a
+  paid stay. All now compare case-insensitively.
+- Dining switch reaches the confirmation page's dinner card and "with the chef",
+  and manage-booking's "and the dinner time".
+- Atelier registration: "Up to N on this workshop" hidden if N is missing
+  (read "Up to on this workshop").
+
+REGION + BARCELONA (owner request)
+- Barcelona directions: Contact (new "From Barcelona" row; El Prat under By air),
+  Stay getting-here box and no-car FAQ, The Estate rail timeline (with times).
+  _approach.html (map diagram) needs the southern approach: in PARTIALS_FIX.
+- What's On: Montaillou and Forges de Pyrène added to "What Is Within an Hour";
+  new "Further, By Road or Rail" (Yellow Train, Mas-d'Azil); new "Summer in the
+  Valley" (rafting/canyoning, via ferrata/paragliding, downhill MTB at Ax 3
+  Domaines, Orlu tree-top course, the high walks, Ussat-les-Bains). Sources and
+  figures to check are in FACT_LEDGER.
+
+PHONE PASS
+- Room carousel (Stay) and The Estate's cards on phones: the first card filled
+  the screen exactly (it sat in the grid's explicit column template at 100%),
+  so the next room never showed and the carousel read as a single room. Column
+  template cleared on phones; each card 84% wide; next card shows 46-81px at the
+  edge across 320-540px; every card still reachable.
+- Homepage on a phone reviewed screen by screen: holds up; no changes.
+- DRAWER (phone menu): 13 items at 1.2-1.7:1 contrast - the date search and the
+  whole foot (links, phone, email, terms, privacy) were coloured for a dark
+  drawer on a cream one. Restyled. Pre-existing in fdd551d. The audit now
+  checks the drawer too (it only read <main>, so never saw it).
+- Drawer label "Facilities & Activities" -> "The Estate", matching the header.
+- Header menu bars faded while the drawer is open (they showed around the X);
+  Esc still closes it and returns focus to the button.
+- Checked, fine on a phone: room page and booking form, Workshops, Events.
+- Noted for Code (money): the room page says "Non-refundable" as fixed text;
+  the confirmation recap offers free cancellation whenever cancel_free_days
+  holds a value. That setting must be empty (already in PARTIALS_FIX).
+
+AFTER THE MILESTONE ZIP (for the next one)
+- Guest account: the link expiry printed a raw ISO date, and "expires ." when
+  there was none. Formatted, and omitted when absent.
+- Manage booking: "· Payment:" with an empty pill when payment status was
+  missing. Now shown only when there is a status.
+- Wording sweep of every rendered page against the house rules: one contraction
+  ("It wasn't habitable" -> "It was not habitable"); no funder framing, no
+  Craig, no value talk, no clichés, no US spellings; "renovation" only in "a
+  restoration, not a renovation"; "finished/ready" never used of a guest room.
+- Karina's two quotes on Restoration: straight -> curly, matching the rest.
+- Queen Room copy split into two sentences (the homepage card cut the single
+  long sentence mid-phrase: "underfoot,..."). Corrected in PARTIALS_FIX; owner
+  to forward the line to Code.
+- Cross-page fact check: Events said "6 Acres, and no neighbours"; everywhere
+  else, and the owner, say ten. Now 10.
+
+FUNCTIONALITY
+- Links: every internal link and section anchor checked across all pages; all
+  resolve (the gallery anchors match the gallery slugs the page's own
+  fallback expects).
+- Tested and working: currency converter (with rates), Book menu (opens, Esc
+  closes), back-to-top, footer year, double-submit guard, room calendar paging,
+  nights hint and order summary, adults + under-18s -> party size, atelier date
+  filter, What's On month picker, Events planner -> enquiry text, Restoration
+  room slider and seven steps, hero video pause, promo code (fails gracefully
+  offline), confirmation print. Date picker suite 12/12.
+- FIXED (accessibility, pre-existing): on phones the fold-away reference
+  sections made the whole <section> role=button labelled with its heading, so a
+  screen reader could not reach an open section's text or links; and any tap
+  in the open text closed it mid-read. The heading is now a real button; a
+  closed section still opens from a tap anywhere; an open one closes only from
+  its heading or "Tap to close". Keyboard works.
+- Fold heading button given a 44px minimum height (single-line headings were
+  31px - the audit's tap-target check caught it).
+- Events enquiry: the event-type dropdown is required and its options come only
+  from the route; with none passed, the form could not be sent at all. Falls
+  back to the four types the template already has labels for.
+
+LIVE CHECK (Railway, after the milestone zip was sent)
+- The milestone zip is NOT deployed: live CSS and templates are Wednesday's.
+- All 22 live routes answer (incl. /press /privacy /terms /social /story and the
+  three events sub-pages); 404 page works.
+- Live data confirms Émeraude = Gold Suite (Emperor bed, 70 m²). Fix sheet
+  corrected: Tilleul sleeps 3; Deux Chambres "Queen and doubles"; Cerise -> Queen.
+- _took.html says "bedrooms finished" - replacement in PARTIALS_FIX.
+- Drawer "Private Photo & Videoshoots" now goes to /events/photoshoots (was the
+  general /events page; the dedicated page exists).
+
+BOX AND ALIGNMENT PASS (with stand-in photos at real proportions; 1440/1100/768/390)
+- Room comparison (Stay): five rooms left two under three (desktop) or one alone
+  (tablet) against the left edge. Partial last row now centred.
+- Included-feature cards (Stay, Workshops, Events, Restoration, What's On): odd
+  last card sat alone on the left with half the row empty. Centred.
+- Workshop dates: auto-fit let a lone date (a thin season, or one atelier chosen
+  in the filter) stretch across the row - 1168px wide, 778px photo. Now a centred
+  row at the grid's own column counts (4/3/2/1); one card width whatever the count.
+- Facts band (home, Restoration) at tablet widths: five figures left an empty
+  tinted cell. The last row now shares the full width.
+- All three use the grids' own minimums, measured from the real container width,
+  so column counts are unchanged at every width (checked at 7 widths).
+- Checked and consistent: every button style one height sitewide (Subscribe is
+  52px to match its email field); no row has photos of unequal height; no row of
+  cards starts its text at different heights; no empty boxes.
+
+SEO AND SHARING
+- Checked on every page: title and description present, lengths sound,
+  unique among public pages; share title/description/image and large-image
+  card; lang; one h1, no skipped heading levels; private pages noindex; every
+  structured-data block parses.
+- One château, not several: the sitewide LodgingBusiness, Stay's Hotel, Events'
+  EventVenue and Restoration's landmark now share @id .../#chateau (Google was
+  seeing separate unlinked businesses); the Restaurant is containedInPlace it.
+  Sitewide entry gains image and sameAs (Instagram, Facebook).
+- Workshops: each dated session published as an EducationEvent (dates, place,
+  price, availability, page) for Google's event listings.
+- Descriptions: Workshops no longer names only plaster/gilding/fresco; each
+  atelier page uses the atelier's own description; the homepage's "a table"
+  follows the dining switch.
+- For Code (PARTIALS_FIX): redirect the Railway host to the real domain;
+  language-per-URL note.
+
+SPEED PASS
+- Measured: real HTML 87-106 KB (25-28 KB gzipped); live gzips HTML and CSS;
+  homepage loads in ~1.5 s; heroes load eagerly with high priority.
+- style.css (the admin stylesheet, 153 KB, 1,187 rules) was linked on every
+  public page, ahead of gudanes.css. Link removed from public_base; the 38 rules
+  public markup needed (status pills, empty notes, checkbox rows, table wrapper,
+  two guest-page buttons, print) carried into gudanes.css with their 9 variables.
+  Admin pages keep their own link. Public pages now match what has been reviewed
+  (the harness never loaded style.css).
+- [Withdrawn: the manage page's g-print-stay print mode was not dead - print_stay(), from
+  _print_stay.html, renders the .g-takeaway card near the foot. Code restored it; carried.]
+- Status pills: status-{{ x }} -> status-{{ x|lower }} in 14 places (a stored
+  "Confirmed" missed its colour).
+- Fonts: Cormorant's real italics now loaded (38 elements, incl. the French lines,
+  were synthesised); bold capped at 600 (700 is not loaded - was synthesised);
+  preconnect to fonts.gstatic.com.
+- Every image now reserves its space before it loads (the homepage's fifth room
+  card moved the page 69px; now 3:2 from the start).
+- Hero video (2 MB): no longer fetched under reduced motion, save-data, or 2G/3G;
+  those visitors get the poster through the existing still-frame path. Tested:
+  normal and 4G play; reduced motion, 3G and data saver never request the file.
+- For Code (PARTIALS_FIX): EU region, cache headers + versioned static URLs,
+  minify CSS at build, responsive WebP for the new photos.
+
+MERGED WITH MAIN (a601f1a, 23 Sept 20:15) - 24 Sept
+- Main was Wednesday's zip plus Code's own work; the milestone zip had never
+  been applied. Three-way merge (ancestor = Wednesday's zip, theirs = main,
+  mine = working set): 11 files merged cleanly with everything Code pushed -
+  extras lead-time and "when", ref_prefix placeholders, contact_address mailtos,
+  unique extra ids, .ics links, site.get(), favicon 404s, back-to-top hidden
+  behind book bars. One stylesheet overlap was the carousel hotfix both sides
+  held; the extended version kept once.
+- NOT YET ON GITHUB, so not merged: Code's four fixes (_before "Non-refundable",
+  book_room tourist-tax wording, _summary without cancel_free_days, _cancel
+  non-refundable). The three partials are not in this handover, so it cannot undo
+  them; book_room's tax wording lines are untouched so their version merges clean.
+- Room page: the taxe de séjour is now its own line in the price box above
+  Pay & book (rate x adults x nights; under-18s exempt), and in that total and
+  the booking bar's. Additive script beside the quote script; steps aside if the
+  server's quote ever carries a tax line. Tested: first quote, refresh, adults
+  changed without a refresh (no double counting), server tax line present, no
+  rate set.
+
+REVIEW OF CODE'S MERGED EXTRAS UI (harness now has extras for the room and manage pages)
+- Room page "Add to your stay" had never rendered in any review (the fixture had no
+  extras). The notice label was written for a grid on a flex row, so it became a third
+  column and squeezed descriptions to a few words a line; "Too soon for these dates"
+  sat outside its card and uneven rows followed. Card moved to the list item (notes and
+  the "when" fields inside it, rows one height), label is the grid its notice rule
+  expected, too-soon extras look unavailable. Stay's own .g-extras is untouched.
+- "Anything you tick here is added to the total below, and nothing else is" -> "Anything
+  you tick here is added to your total." (the total is beside the form on desktop, and
+  the tourist tax is now added too).
+- Manage booking "Add to your stay": each extra's form was one squeezed flex row. Now
+  name and description on their own line, controls beneath; on a phone day and note
+  full width, quantity and Add together. Placeholder "A time, or a note" (aria-label
+  keeps the full wording).
+- 13 more case-sensitive status checks, of the form status in ('pending', 'confirmed'),
+  across event/manage/restaurant/workshop manage pages: a stored "Confirmed" hid those
+  sections (the extras section among them). Now lower-cased.
+
+NEVER-RENDERED SECTIONS (a parse of every template's if/for against the fixture found
+sections no review had shown; fixtures added and reviewed)
+- Card payments on (live takes cards): the room page's Pay & book panel. Its total was
+  --gilt bronze on the navy panel, 1.9:1, on the most important number on the page.
+  Now white and set as large as the nights line.
+- Manage booking's bill: "This was due on 2026-09-01" printed raw -> date_short; Total
+  and Still to pay now stand out from the lines above them.
+- Atelier page dates: each session's notes printed twice (two consecutive ifs). Once.
+- Dining menu, What's On's week and upcoming listings: reviewed; fine.
+- CONTRAST CHECK WIDENED: it only looked at p, li, dd, h1, h2, a and .g-btn, never
+  spans, dt, h3, labels or table cells. Now every element that holds text. It found
+  the price total above and "Add dates" in the homepage hero search - --ink-soft on the
+  dark glass, 2.7:1, via its own :not(.is-set) rule. Both fixed; every text element at
+  three widths now passes.
+
+RE-MERGED WITH MAIN ea9665f (24 Sept 07:42) - Code's four fixes
+- _before/_summary/_cancel: not in this handover, untouched. book_room: three-way merge,
+  clean - Code's tourist-tax wording, the quote now sent guests_under_18, and adults /
+  under-18 changes re-pricing; my price-box tax line (which steps aside if the quote
+  carries tax) and the extras layout, both kept.
+- "Before you send this" (the non-card fallback panel): second taxe de séjour block and
+  its row removed - it defaulted to €1.65 and wrote into the first row's cell; the
+  remaining line says "added to the total when you pay", as Code's wording does.
+
+ACCOUNT AND MANAGE PAGES (payment sections rendered for the first time)
+- Guest account: "Book another stay" flush against the heading (0px) - spaced; the
+  stay card's action row stretched Manage and the links to 56px beside a 44px Pay button.
+- Atelier manage page: two automatic-charge opt-outs. Code resolved it on main (32530e3) the
+  other way round and better - keeping "The balance" card, worded from card_on_file - and
+  that is what this handover carries (merged; its status check lower-cased).
+- Euro amounts: some templates printed "€38,000.00" and others "€11400.00" - in one card
+  on the event page. 57 printed amounts now carry thousands separators; amounts inside
+  attributes (form min/max/value, structured data) are unchanged.
+- Checkboxes: a general "inputs fill their width" rule stretched the feedback forms'
+  publish-consent box to 238px and the atelier opt-out to 416px. Checkboxes and radios
+  keep 18px sitewide (measured: none oversized now).
+
+REMAINING NEVER-RENDERED SECTIONS (24 Sept, continued)
+- STAY PAGE NIGHT COUNT after a date search was (years x 365) + (months x 30) + days, so
+  30 Oct-2 Nov gave 2 nights, 31 Oct-1 Nov 0 (hiding the count and totals), 30 Dec-2 Jan
+  7, 27 Feb-2 Mar 5 - and every room's total followed it. Exact day numbers now (a small
+  days-from-civil macro), tested against Python's date arithmetic on six pairs incl. a
+  leap year. Room cards say "€840 for 3 nights" rather than "total" (the tax is added at
+  payment).
+- Currency picker: its script anchored on '.g-eyebrow, h2', and the eyebrow comes first,
+  so it landed between the eyebrow and heading on every page with prices (Stay,
+  Workshops, the room page, registration, the atelier page). Now after the heading.
+- Guest statement ("Your bill", which business guests forward): the note "SIRET and TVA
+  number missing - set them under Management, Company info" showed to guests. Staff only.
+- Atelier registration: "the balance is due  days before the stay" when the route's
+  windows were absent; now reads sensibly without the number (and without a deposit %).
+- Unsubscribe / newsletter confirmed: "going to ." and "is confirmed" with no address;
+  fall back to "this address" / "Your address".
+- "Welcome back" box capped to the reading measure (it ran 832px).
+- Reviewed and fine: returning-guest welcome, event confirmation, error page (500).
+
+THE GUEST STATEMENT (rendered for the first time - the bill business guests forward)
+- main thead th is sticky for the Stay comparison table; inside the statement's scrolling
+  table wrappers that painted the column heads 86px down, over the rows: headings appeared
+  below the first line, and the second VAT rate was hidden under them. Static here.
+- Row labels and the taxe de séjour explanation (inside a th) were in tracked capitals, then
+  tiny; now sentence case at the rows' size, on the rows' baseline. Figure-column headings
+  right-aligned over their figures.
+- Phone: tables shrank to their content under the site-wide scrolling-table rule; full width.
+- Header: "Billed to" labels the company; the château's details use the column's full width
+  (the hint was capped at the reading measure, pulling the block to the middle); the
+  ornament sits over the left-aligned title.
+- Manage booking, Book dinner (rendered for the first time): "Request a table" sat beside
+  the dietary-notes box on desktop (an inline, not-full-width textarea); manage-card
+  textareas are full-width blocks now (the Requests box too). Placeholder "..." -> "…".
+
+ATELIERS PRESENTATION PASS (24 Sept) - workshops_public.html, workshop_detail.html
+Ateliers page (20 sections -> 17):
+- Facts: the village "forty-nine" -> forty-one; bathrooms "one to each room" then "shared between
+  the group" -> one to each bedroom, allocated privately on an atelier as on any stay; "Electricity
+  [corrected below] "15 places
+  in a year" was live data after all; arrival in Key Information now the 11am Toulouse transfer, not
+  the nightly 4pm; "Half of every atelier has never held a trowel" -> "Most people who come".
+- Repetition: the meals paragraph (repeated almost word for word in A Table) replaced by one on who
+  teaches and where; "fifteen at most" cut from six first-reader places to the ones that matter; the
+  static formats list, which named the ateliers differently from their own cards, removed.
+- Wording: hero "the real luxury of French food" -> taught by the people doing the work, with the
+  table, the cellar and the brocantes around them; "Three nights is given" -> are; "the fresco you
+  gild" -> clean; "What the Price Already Covers" -> "Included in Every Atelier"; dining's French line
+  (was "On apprend en faisant", about work) -> "Ce que la vallée donne"; "Not a marketing figure"
+  dropped; "1 Ateliers running" -> Session(s) this year; insurance and rooms facts plain; FAQ
+  "included" now names the Toulouse transfers; close "Take a week of it" -> "Take a few days of it".
+- The reviews section is not shown until there are atelier reviews (it read "Not yet...").
+- Layout: date cards show the same photograph as the atelier cards (Cooking, Artisans and Seven had
+  bedrooms); intro columns balanced; the day timeline sits beside a photograph of the work (stacked
+  under 60rem); company cards centre their last row; the institutions button spaced; card blurbs end
+  at a sentence, not at 180 characters; the phone date filter is one sideways-scrolling row.
+Atelier page:
+- "Wander through centuries of history... lose yourself... embrace each day" rewritten plainly, and
+  no longer says the itinerary need not be followed; "couples enjoy a private room with a king bed"
+  (one room has one) and "hot water that arrives quickly" gone; transfers "Toulouse or the train at
+  Foix" -> the 11am Toulouse transfer; the candlelight card and a repeated "fifteen" card and item
+  removed; "A % deposit" guarded and the balance window read from the route when passed.
+- At a Glance moved up beside the description; the generic day outline only when there is no
+  itinerary; the close now leads with "Choose your dates".
+- Itineraries written "LABEL - what it is" (as the live ones are) show as a labelled list.
+- Inclusions: the live field holds the price basis, so every atelier page read "What is included:
+  Per person / sharing a room". The page now lists what every atelier includes (or a real list where
+  one is stored) and shows the basis as a note and beside the price.
+
+RE-MERGED WITH MAIN 32530e3 (Code: payments recorded once; "The balance" card from card_on_file)
+- Only workshop_manage.html touched the handover; three-way merge, the one conflict (we had each
+  removed a different copy of the duplicate opt-out) resolved in Code's favour.
+
+ATELIER REGISTRATION (wording and presentation)
+- "Includes: {{ session.inclusions }}" read "Includes: Per person, sharing a room." on live; the
+  basis now reads as a note ("Prices are per person, sharing a room."), a real list as Includes.
+- Sharing wording as on the other atelier pages (single supplement); "Relevant medical issues" ->
+  "Anything medical we should know"; What You Are Booking: included now names the wines and the
+  transfers, and transfers are the 11am Toulouse transfer (was "Toulouse or the train at Foix").
+- Party size starts at 1 (a prefilled value still wins). No sticky bar here: the atelier bar's
+  "See dates" jumped to a section this page does not have.
+- Atelier confirmation: "Thank you, " and "Your place on  is confirmed" guarded for a missing name or
+  title; Getting here is the 11am Toulouse transfer (was "Toulouse-Blagnac, or the train to Foix");
+  "Everything else" names the wines and the transfers.
+- Atelier manage: "Anything from € upwards" guarded ("Any amount") when no minimum is passed.
+- Every atelier template now tells one transfer story: 11am central Toulouse, back by about one,
+  included.
+
+- CORRECTION to the ateliers pass: the candlelit evenings are a house fact, said the same way on Stay,
+  Contact ("Limited by design. Rooms are lit by candle in the evening, and there are power outlets and
+  bedside lamps") and the confirmation. Removing it from the atelier pages was wrong; restored in those
+  words - the ateliers page's estate facts (Evenings) and the atelier page's Les Chambres. What stays
+  removed: the "Candlelight, by necessity ... not a styling decision" card and the intro's version of it.
+
+STAY PAGE, CLOSE READING (24 Sept) - 18 sections -> 16
+- The search bar said "Rooms are reserved here and confirmed by the château" (the request model):
+  now "Booked here, and confirmed the moment you pay."
+- What Is Included (was "What You Are Paying For"): the tourist tax "charged locally, as French law
+  requires" -> "added to the total when you pay", as Code's checkout wording.
+- « Cinq chambres prêtes » ("ready") -> « Cinq chambres ouvertes », matching its own gloss.
+- The rooms were presented three times; "All Five, In Numbers" (the third, repeating the cards fact
+  for fact) removed. What the Rooms Are Made Of loses its bathroom and powder-room sentences (said in
+  full by Les Salles de Bains).
+- The hero had a title and a button and nothing between: "The walls as the centuries left them. The
+  beds, the linen and the bathrooms new."
+- Dining menu headings: "s" only added to a single-word category not already plural.
+
+LIVE CHECK (24 Sept, Chrome reconnected)
+- Live serves main 32530e3 exactly; nothing of the milestone or since is deployed.
+- The room rows still hold the old prices and two shared bathrooms - see PARTIALS_FIX, LIVE CHECK.
+- tourist_tax is set (€0.80), so the price box's own tax line will show; What's On has real listings;
+  the Dining menu block has no categories on live yet.
+
+24 SEPT, AFTER DEPLOYMENT - Code's repairs inside the handover files, carried:
+- public_base / home / restaurant_book read the dining switch as setting(site, 'dining_mode'): on the
+  dining pages `settings` is the restaurant's row (no .get), and both pages returned 500.
+- book_rooms FAQ: the tourist tax is added to the total when you pay, with the rate (the FAQ still said
+  "charged locally on departure" after the inclusions list was corrected).
+- manage_booking: {% block bodyclass %} g-print-stay restored (see the withdrawn note above).
+- Not applied by Code, rightly: the workshop_declined wording (that email goes when the owner declines a
+  pending registration, with no refund - "the last place went as you were paying" is not true of it).
+
+AFTER DEPLOYMENT (next handover)
+- Working copies synced to deployed main e875aee (all 29 identical, Code's repairs included).
+- The stay takeaway's directions (print_stay) ran 736px wide on screen: capped to the reading measure.
+- PRINTING THE STAY (live bug since g-print-stay was restored): the general print rule hides every
+  .g-panel with !important, and the takeaway card is one, so the manage page printed six blank sheets
+  (everything else was only made invisible, keeping its height). In print mode the card now shows in
+  normal flow and everything that neither is it, holds it, nor sits inside it is removed. Tested to PDF:
+  one page, the card's text; the booking confirmation (no print mode) still prints its two pages.
+
+LIVE WORDING SWEEP (24 Sept, 28 live pages incl. Code's partials)
+- Four more templates, fetched from deployed main e875aee and now in the handover:
+  events_private  "Ninety-four rooms; five are ready" -> "five are open to guests"; "It is the reason the house
+                  is worth taking, and the reason it costs what it does - the finished rooms pay for the rest"
+                  -> "It is the reason the house is worth taking." (price justification and funding framing)
+  events_weddings "Hair and make-up in the finished rooms" -> "in the bedrooms"
+  events_photoshoots "Wi-fi in the finished rooms" -> "in the bedrooms"; the hero's call to act now written
+                  as the other heroes' (g-hero__cta)
+  privacy         "the ones we don't set" -> "do not set"
+- Short heroes (Photoshoots, Private hire) lack body.has-hero, so their solid buttons took a gilt fill with
+  navy text: 1.9:1. White on the gilt; the full heroes keep their cream button.
+- Confirmed staff-only: the homepage's "Get notified ... when you're sent a task" prompt (absent signed out).
+
+BATHROOMS MADE CLEAR (owner, 24 Sept: private, one allocated per room; all downstairs on the first floor;
+only the powder room upstairs)
+- Stay, Les Salles de Bains: rewritten as a lede plus five facts - Yours alone, Where, On your floor (the
+  powder room), The King Room (bath and basin in the room), Why not in the room (Class I) - then what is in
+  them. "A dressing room to yourself" dropped (unconfirmed).
+- Room page: its own "Your bathroom" note (the King Room's adds its bath and basin); the pill reads "Private
+  bathroom, downstairs" ("first floor" is the ground floor to an American guest); "taxe de sejour" accented.
+- Bathroom wording (owner): "Kept for your room alone, from arrival to departure."; the powder room is "in
+  the upstairs vestibule" (Stay facts, the room page note, the lift answer in the FAQ).
+
+TEXT PASS (24 Sept, before the zip)
+- Room page: "the château sleeps fifteen across five rooms" (the rooms sleep fourteen) -> "all five can be taken
+  at once"; "Begun 2013" beside "Still unfinished: Fifteen years in" -> "Deliberately, and for years yet"; the
+  guest-count hint trimmed (no house-side reasoning, no repeat of the floors now in the bathroom note); "none of
+  it changes the price" dropped.
+- Homepage: the rooms lede no longer repeats its heading; "Ninety-four rooms in every state between ruin and
+  restoration" said once (was three times in two blocks); "Scaffolding stands in rooms that are not ready and
+  dinner is served in one that is" -> "in one room and dinner is served in the next".
+- Photoshoots: "Five are finished" -> "open to guests"; "Between Ruin and Restored" -> "and Restoration".
+- Photoshoots: the rigging rule was given three times and the drive twice; the Constraints prose and the FAQ
+  keep the rule, the practical list says "Freestanding only."; What Is Here keeps "Vehicles to the gravel".
+- Phone: the six light hours (Photoshoots) as two rows of three; the seven wedding months centred.
+
+OWNER'S ANSWERS APPLIED (24 Sept)
+- Capacity: fifteen is right (the chambres d'hôtes limit) - the room page's "the château sleeps fifteen across five
+  rooms" restored.
+- Château-Verdun "about fifty people" (was forty-one / forty-nine): homepage In Short, both atelier pages' village
+  card, the Dining story. Les Cabannes (317, INSEE 2023): Contact's nearest village now lists restaurants, a bar, a
+  supermarket, a tabac and the station; a new Stay question, "Is there anywhere nearby for a drink, or supplies?".
+- The atelier summary (_glance, now in the handover): How long "Three to seven nights / Each atelier's own dates are
+  below" on the listing (was "Five days, four nights / Arrive Sunday ... leave Friday"); Taught by "The people doing
+  the work"; "What you take home: a panel you made" removed (not true); the 9.30 line fits every atelier; the price
+  spans two columns so the rows stay full.
+- _exclusive (now in the handover): the private-hire price comparison cut; "What you get: Ninety-four rooms" -> "The
+  building, ten acres...". Removed from the Stay page, where "You Have the Whole House" read as a room booking's.
+- "What's On" renamed "In the Valley" (owner, 24 Sept): the menu label, the page's title, heading and breadcrumb.
+  Its eyebrow is "Ariège · Within an Hour" (was "The Valley · ..."), and the lede no longer says "valley". The
+  address stays /whats-on.
+
+WORKSHOPS PAGE, MARKETING REWRITE (24 Sept, owner: "workshop, experience, retreat are the key words")
+Tone taken from the live site (its "retreat" and "Experience" vocabulary) and the press (Suitcase: "three, five or
+seven-day retreats"; The Good Life France; the captain's log's evening at one table) - warm and story-led.
+- Title "Workshops & Retreats in a French Château"; h1 "Workshops & Retreats"; description and share text lead with
+  workshops and retreats. Keywords now: workshop 19, atelier 15 (was 33), retreat 3 (was 0), experience 4.
+- Hero lede: "Small-group retreats inside a château coming back to life. Restore with the artisans, cook from the
+  valley's markets, or hunt the brocantes - and end every day at one long table." Intro rewritten to match.
+- Untrue of every workshop: "Every atelier is taught in the rooms it is restoring" -> "On the restoration
+  workshops..."; the close's "taught in the rooms it restores" -> "lived in the house itself".
+- "What a Day Actually Looks Like" -> "The Shape of a Day" (its 9.30 fits every workshop); "beautifully appointed"
+  dropped; the bathrooms section brought into line with the Stay page (and "a dressing room to yourself" gone).
+- The Year's Programme removed: the same dates a second time, every row numbered "01". Its overbooking promise
+  (kept word for word) and its leader line now sit with When You Can Come; its invitation with their empty state.
+- The sticky bar reads "Workshops & Retreats" (was "Château Ateliers").
+
+KEYWORDS CARRIED THROUGH (24 Sept, workshop / retreat / experience)
+- Workshop page: browser title "{title} · Workshop Retreat"; eyebrow "A Workshop Retreat at the Château"; the invitation
+  "A Retreat With a Purpose"; "It is a retreat as much as a workshop" opens the rhythm section; a new glance row,
+  "Experience needed: None. Most people who come have never done it before"; the bathrooms as on Stay; "antique French"
+  said once in Les Chambres; "Compare the workshops"; share text "A small-group workshop retreat...".
+- Homepage: "Workshops & Retreats" heading; "Five workshops a year, fifteen places each"; "Small retreats of three to
+  seven nights..."; the descriptions say "workshop retreats"; the close "the workshops smaller still" / "See the workshops".
+- The newsletter block on every page (8): "Workshop dates" and "when the workshop dates are released". The form value
+  stays "ateliers", so existing subscriptions and filters are unaffected.
+- Stay: browser title "Stay the Night in a French Château" (was "Stay"); "one of fewer than fifteen hundred buildings in
+  France holding the highest grade of protection" -> "fifteen thousand" (Ministry of Culture: 14,317 classés of 45,080
+  protected buildings, 31 Dec 2023); "What that buys you" -> "gives you".
+- Workshop registration: eyebrow "Workshop Retreat"; "Rooms are arranged for two; if you need a third bed, tell us below"
+  (was "arranged ... we will arrange it"); "Each workshop leads with..." / "Compare the workshops". Confirmation: "Manage
+  your registration" (was "Manage this atelier").
+
+TITLES AND DESCRIPTIONS (24 Sept) - what search results and shared links show first
+- Titles: "The Estate: Pool, Tennis & Ten Acres" (was "Facilities & Activities"), "Contact & Getting Here", "Gallery: The
+  Château in Photographs", "Private Hire & Celebrations" (was "Private Events").
+- Descriptions within ~155 characters: Workshops (was 212); the site default (used by pages without their own) now says
+  "workshop retreats with the artisans" and no longer promises "a table" whatever the dining switch says.
+- Room page description ends "Breakfast included." (was "Dates, rates and what the room is."); the workshop feedback
+  page reads "How was your workshop?" when it has no title (was "How was ?").
+- The Estate: skiing season "Dec–Mar" (was "Dec–Apr", against the section's own "December to March"; the resort runs 5
+  Dec 2026 - 28 Mar 2027); "twenty lifts" (the resort's own figure; was twenty-one); the winter section no longer repeats
+  the skiing section's instructor sentence word for word; "Join a workshop". In the Valley: "the slopes open from December to March" (was "the mountain ... to April").
+- Dining: the hero has a line when the table is open ("Dinner by candlelight in a room brought back from ruin, cooked
+  from the Sunday market and the château gardens"); "Through The Day" removed (the day's meals twice, with different
+  breakfasts - Where You Will Eat now carries "Eight until ten, included with every stay"); "One Table, One Sitting"
+  removed (the sitting, the time and the village's size a third and fourth time) - its non-resident line now in How Dinner Runs,
+  with the seats read from the restaurant's own capacity setting, as the booking form reads it (forty is the events
+  figure; the band's "forty" was wrong for the nightly table); the allergy line no longer contradicts itself ("cook around them on the night" / "not an
+  adjustment made at eight o'clock"). 23 sections -> 21. All three dining modes checked.
+- Restoration: the three repeated pairs resolved (PARTIALS_FIX "DECISION NEEDED"), keeping the richer, newer block each
+  time and moving in what only the older one said - no fact lost:
+  * What Class I Actually Means keeps "not neglect, and not an aesthetic choice, but the law", the months of recording,
+    and the Monuments Historiques architects with restorers from France, Italy and England ("Nothing here is done
+    quickly" removed).
+  * What Was Behind the Plaster gains the dining-room frescoes under cream emulsion ("guests on the restoration
+    workshops work on them") and the crests erased in the Revolution; still six cards ("What the Château Has Given Up"
+    removed).
+  * How She Was Found opens on the French friend's three forbidden things, told of Karina alone, ends with the gates
+    opening in 2016, and quotes "We were told it could not be done. That is not usually a reason to stop." ("How It
+    Began" removed - it opened on "a taxation accountant and a urologist from Perth": house rule, no Craig).
+  * The close no longer repeats the section before it: "Stay in the rooms that are open, and watch the next ones come
+    back." 18 sections -> 15; 2,648 words -> 2,368. The tent is still in the opening timeline (owner's decision pending).
+- Events: "What to Expect" removed (its figures and four of its points repeated What It Costs and Which Room, For What)
+  and "One Wedding at a Time" removed (the exclusivity, forty, fifteen and ten acres a fourth time). What only What to
+  Expect said is kept where it belongs: catering ("or bring your own caterer") in Shaped Around You; "a day is possible;
+  a week is better" and "the gardens are at their best from May to October; the salons and fires work all year" in What
+  It Costs; the ceremony's settings as a row in Which Room, For What. 13 sections -> 11; 1,573 words -> 1,388.
+- The station: Contact, the booking confirmation and a Stay extra said the château meets the train "at Foix, twenty
+  minutes away" - Contact's own route map puts Foix about forty minutes from the gates, and the Estate, Dining and
+  Events pages all name Les Cabannes, three minutes. All now name Les Cabannes, with Foix as the alternative and no
+  minutes given for it.
+- Contact: the close no longer repeats the opening ("Book online, and the directions come with your confirmation."),
+  "See the workshops". In the Valley: "the walls stay as that left them" -> "as those years left them".
+- Cross-page facts checked side by side (rooms, floors, square feet, acres, seats, beds, places, village sizes, travel
+  times): all agree except two, now aligned - Tarascon "twenty minutes" (In the Valley said fifteen; the route map says
+  twenty) and Weddings' "Under Two Hours From Toulouse" (was "Two Hours", against "an hour and three quarters" everywhere).
+- After booking, "workshop" as on the public pages: workshop_manage ("Your workshop"; "move you to another workshop"),
+  the guest portal ("Your workshops"; the row label "Workshop"), the error page ("The workshops - Small retreats of three
+  to seven nights"; was "Plaster, gilding, fresco conservation", only the restoration workshops).
+- Photo descriptions (alt text): all 322 images on the public pages have one. The homepage's five Squarespace leftovers
+  ("A Place To Stay / Create / Dine / Celebrate / Dream") now say what the photographs are, from the photographers' own
+  file names (two described the wrong thing: "Celebrate" was a photo of cooking in the kitchen, "Dream" the kitchen
+  table in winter).
+- Design: two sand sections in a row merged into one long band on nine pages (Dining, Workshops x2, Events, Private
+  hire, In the Valley x2, the room page, the booking confirmation) - two of them left by this round's removals. The site
+  has a seam for exactly this, .g-sec--sand + .g-sec--sand (a faint hairline), but main > :not(.g-sec--dark) + .g-sec
+  { border-top: 0 } cancelled it everywhere. Restored for sand-after-sand only, including past a hidden divider wrapper
+  (display: none still breaks a plain +). No other section's border changes.
+- Typography: text-wrap: pretty for all body text in main (paragraphs, list items, definitions, captions, quotes) - it was
+  on the ledes only. Single-word last lines across the site: 95 -> 7 at 1440px, 70 -> 7 at 768px, 116 -> 3 at 390px (the
+  rest are deliberate line breaks in addresses). Headings keep text-wrap: balance. Ignored by browsers without support.
+- Button labels (every public page inventoried): the Stay room cards' "Book in" -> "Book this room"; Stay's close "Keep the
+  evening" (to Dining) -> "Stay for dinner"; Restoration's "Stay the Night" -> "Stay the night" (as on seven other pages)
+  and its bare "Workshops" -> "See the workshops".
+
+WORKSHOPS, AS THEY REALLY RUN (owner, 28 Sept): every workshop is the same house and the same mix; the length sets the
+emphasis - 3 nights the brocantes, 5 the kitchen, 7 the restoration - and guests mostly take the pool, the wine and the
+food. The copy is retreat-led now and no longer claims long working days:
+- Workshops hero and intro say exactly that (the intro's 3/5/7 line, removed in the morning's rewrite, is back); "most of
+  the time is your own"; "Choose by length; the emphasis follows."
+- The Shape of a Day: a morning session, lunch with wine, "The afternoon is yours: the pool, a walk up the valley, a book
+  in the music room. Most people take it." (was "Back to it until about six. A good afternoon is measured in
+  centimetres."). The summary box (_glance) the same, with an aperitif before dinner, and "How long" notes 3/5/7.
+- The physical note is about the restoration sessions only; "Not a craft holiday" dropped; the homepage's workshop
+  block follows 3/5/7.
+- The workshops intro names the four-night workshops from the data with their length only (owner: they are a trial
+  and may become regular - never "new", "trial" or an exception): "...seven towards the restoration itself - and
+  Immersive Artisan Workshops and Noël at Gudanes run for four nights each." Only 3/5/7, one other, and mixed lengths tested.
+
+NO COUNT OF WORKSHOPS (owner, 28 Sept: the programme is not fixed; workshops are added as she pleases)
+- Workshops: the hero's "Five a Year" -> "Ariège · Small Groups"; the intro opens "Every workshop is the same house and the
+  same mix"; "Five Workshops, One House" -> "Choose Your Workshop" ("The length sets the emphasis; the house and the table
+  are the same on every one."); the share text "Workshop retreats at Château de Gudanes..." (was "Five workshop retreats").
+- "75 Places, All Year" removed ("5 sessions this year ... That is the whole year: every place there is"); the groups note
+  now says "One workshop runs at a time, with fifteen places" (was "there are 75 places in a year").
+- Homepage: "One workshop at a time, and fifteen places on each. That is every seat there is." (was "Five workshops a year").
+- Privacy: "asked for one workshop and deleted when the workshop is over" (was "atelier").
+- Workshops, read again as one piece against the owner's picture (the same mix; the length sets the emphasis; mostly a
+  retreat): "Do not: Come for a demonstration. You will be doing it" -> "Do not: Plan every hour. Most of the time is your
+  own"; "clothes you would not mind ruining" -> "marking"; the definition box's "a place you work in alongside the people
+  who do it for a living" -> "Gudanes has been one for ten years"; Le Domaine "Yours between the working hours" -> "Yours
+  for most of the day"; the close's "unlikely to come round twice" -> "Fifteen places on each". Every English "atelier"
+  guests read is "workshop" (menu, stairs, FAQ, teaching card, reviews, _glance, _exclusive, and the structured data:
+  "- a workshop retreat at Château de Gudanes"). The French lines keep "atelier".
+
+STAY VERSUS WORKSHOP (owner, 28 Sept: "nightly stay is a room and breakfast; the workshops are the full experience";
+"experience" and "retreat"; the workshops include a tour of the château)
+- Workshops: hero "The full Gudanes experience, as a small-group retreat..."; Included "The full experience, at one price";
+  the activity card is "A Tour, and Every Activity" (a tour of the château and its restoration, shown to you by the people
+  doing it); a "Stay or workshop" note under the cards. The summary box and You Have the Whole House list the tour in the
+  price; the workshop page's included list adds "A tour of the château and its restoration" under "The full experience,
+  at one price: a night's stay is a room and breakfast, a workshop is everything below."
+- Stay: a "Stay or workshop" note under What Is Included (room and breakfast, with the house and the grounds / the full
+  experience, with every meal, the wines, a tour, the excursions and the transfers) and a new question, "What is the
+  difference between a stay and a workshop?"; "Transfers from Toulouse, or from the train" (was "or the train at Foix").
+- Room page: its note opens "Room and continental breakfast; the workshops are the full experience, with every meal, the
+  wine and a tour of the château." Homepage: the rooms lede opens "Room and breakfast."; the workshops block "The full
+  experience, as a small-group retreat. ... with a tour of the château, full board, the château's wines and every
+  excursion included."
+
+AFTER THE FULL 28 SEPT HANDOVER (next zip)
+- Each workshop's page, against the retreat framing: "There is an itinerary, and most people want every hour of it" ->
+  "There is an itinerary, and nothing on it is compulsory. Most afternoons end at the pool, on a walk up the valley or
+  with a book in the music room, and the work is there again in the morning."; "The house is yours between the working
+  hours" -> "for most of the day"; the quote band's "It is also what you will be working on" -> "what the restoration
+  mornings are spent on"; the glance box's price line includes "a tour of the château".
+- A NIGHT, OR THE FULL EXPERIENCE (owner, 28 Sept, again: "good distinction - a nightly stay is a room and breakfast, the
+  workshops are the full experience"). A new shared partial, _stay_or_workshop.html, sets the two side by side: "Stay the
+  Night - Room and breakfast" (your room and breakfast; the house and the grounds; dinner - when the dining switch is on -
+  transfers and excursions booked separately; from one night, from €X a night) beside "A Workshop - The full experience"
+  (every meal with the wines and spirits; a tour of the château, the sessions and every excursion; the Toulouse transfers;
+  three to seven nights, fifteen at most, from €X per person). On the homepage after the rooms, on Stay after What Is
+  Included, on Workshops after Included in Every Workshop - replacing the two one-line "Stay or workshop" notes. Prices come
+  from the page's own data, never typed in; each page hides the button to itself. Checked in all three dining modes,
+  desktop side by side and equal height, phone stacked; no overflow; contrast clean.
+- Every price now says what it covers: the workshop cards and date cards "€2,600 per person, everything included" (was
+  "per person"); the room page's top line "€280 per night, room and breakfast" (the Stay cards already carry "Breakfast
+  included" beside the rate).
+- THE FULL COMPARISON (owner: "really market the workshops as the full experience - tour of house etc, maybe a comparison
+  thing"). stay_vs_workshop() in _stay_or_workshop.html: a table, "A Night, or the Full Experience", row by row - your room,
+  breakfast, lunch and dinner (a stay's dinner "booked separately" only while the dining switch is on), the wines and
+  spirits, a tour of the château and its restoration, the sessions, excursions, Toulouse transfers, the pool and grounds,
+  the house to yourselves, length, price - ticks and dashes with "Included" / "Not included" for screen readers. On
+  Workshops (id="compare"), in place of the two cards; a second hero button, "Compare with a stay". Stay and the homepage
+  keep the two cards, with "Compare everything, side by side" linking to it. Its classes are g-vs: the first name, g-cmp,
+  collided with the old room-comparison styles (.g-cmp__t has min-width 30rem), and the site's table rules (sticky,
+  uppercase, nowrap heads; display: block and nowrap on phones; sticky 9rem row heads) are undone for this table only.
+  Fits from 320px to 1920px with no sideways scroll.
+- The nightly tour (owner, 28 Sept: "add tour of chateau to nightly bookings for 50 euros ... so people do not book nightly
+  expecting more, and push them towards the workshops"):
+  * the comparison table's stay column: "A tour of the château and its restoration - An extra, €50" (workshop: Included);
+    the two cards: "Dinner, a tour of the château, transfers and excursions, booked separately".
+  * night_notice() - "Before you book a night / A night here is a room and breakfast. Every meal, the château's wines, a
+    tour of the house, the excursions and the transfers come with the workshops: the full experience. On a stay, a tour
+    of the château can be added for €50 [and dinner booked on the nights the table is open]." + See the workshops - on
+    Stay before the rooms, and on each room page directly above the booking form.
+- Luggage (owner, 28 Sept): recommend a small suitcase, because of the stairs - never say who carries the bags, and
+  nothing about staff. The old "your bags go up while you are still looking at the valley" line (in _care.html on
+  main) is gone; the partial is in the handover. The wording everywhere, as the owner chose it: "Pack lightly: the
+  bedrooms are reached by the original staircase, and there is no lift." - Le Service, the arrival step ("The original
+  staircase"), What to Pack, Stay's Arrival, the room page's Luggage row, the workshops' Bring list. Email
+  wording for the admin email templates in PARTIALS_FIX.
+- Privacy: "a table, a workshop" (was "an atelier").
+
+1 OCT - MERGED WITH MAIN b9b4dc5 (the full 28 Sept handover is on main exactly as sent)
+- book_room.html three-way merged with Code's fix to the booking bar (the bar now follows the quote once the quote carries
+  the tax - my tax script had stopped writing it, so phones showed "Choose dates" beside Pay & book); privacy.html with
+  Code's reworded Stripe and analytics lines. guest_statement.html and workshop_manage.html are Code's alone - not sent.
+- The room page's note returns to "Continental breakfast included." (it repeated the before-you-book notice 500px below
+  it; the top line keeps "room and breakfast").
+- Homepage: the comparison now sits after Old Walls, New Beds (it was between the two rooms sections) - the bridge from the
+  rooms to Workshops & Retreats.
+- Stay's extras ("Things to Do With the Days") open with the château tour: "The House - A Tour of the Château - The house and
+  its restoration, shown to you by the people doing it ... Included in every workshop; added to a stay on request. €50 ·
+  arranged when you book." The price basis (per person or per booking) is still the owner's to confirm.
+- The tour is €50 PER BOOKING (owner, 1 Oct) - the extras list, the comparison table and the notice.
+- Food and drink stated plainly: the notice "A night here is a room and breakfast. Lunch, dinner and drinks are not included.
+  Every meal and the château's wines and spirits come with the workshops..."; a new question on Stay and on Workshops, "Are
+  meals and drinks included?" (Stay: breakfast only - dinner bookable on open nights, said only while the switch is open;
+  Workshops: all of them, from the first evening to the last morning).
+- Booking.com guests: a spec and the welcome email and WhatsApp template for Code in PARTIALS_FIX.
+- After a night is booked - the manage page (where Booking.com guests will land) and the confirmation:
+  * manage: "Your stay is a room and breakfast. Lunch, dinner and drinks are not included; add anything you would like
+    below." (links to Add to your stay, now id="add"); "Pack lightly: the bedrooms are reached by the original staircase,
+    and there is no lift." beside the arrival time; a "Next time - The full experience" panel at the foot (next_time() in
+    _stay_or_workshop.html: the workshops' meals, wines and spirits, tour, excursions and transfers). Print mode still
+    prints the takeaway alone.
+  * confirmation: Anything Else? opens "Your stay is a room and breakfast; lunch, dinner and drinks are not included..."
+    and leads with a tour card ("The house and its restoration, shown to you by the people doing it. €50 per booking.");
+    the same Next time panel at the end.
+- The workshop booking path names everything: registration's Included "The full experience: every meal, the château's wines
+  and spirits, a tour of the château, the transfers..."; the workshop confirmation's Everything else "Already included, the
+  full experience: every meal, the château's wines and spirits, a tour of the château, the transfers, the excursions and the
+  teaching", and To bring opens with a small suitcase (the original staircase, no lift).
+- Homepage hero: a second way in under the room search, "Or come for the full experience: the workshops" (white, underlined,
+  44px tall; inside the hero at every size, clear of the pause button).
+- Transfers are per workshop (owner, 1 Oct: this year's two, autumn's and Noël, have no transfers or vans). tx_flag() in
+  _stay_or_workshop.html reads workshops.transfers_included (for Code to add), falling back to four nights / a 2026 start.
+  Each workshop's page, registration and confirmation promise transfers only when that workshop has them ("Transfers: Not
+  included on these dates. The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from
+  Les Cabannes station."). The Workshops page works out all / some / none from the workshops on sale - intro, Getting Here,
+  FAQ, the table ("On some; each workshop says"), the summary box. The general lines (notice, Next time, the two cards,
+  Stay's FAQ, You Have the Whole House) no longer list transfers. Excursions unchanged pending the owner's answer.
+- Excursions, the same way (owner, 1 Oct: this year's two are spent at the house - no transfers, vans or excursions). One
+  rule, inc_flag(), with tx_flag() and ex_flag(); excursions_included for Code to add. On those two: the included list loses
+  the excursions and the glance gains "The days - Spent at the château itself, with no outings to plan around: the making,
+  the meals and the house". Workshops page: the table's Excursions row and the FAQ follow the workshops on sale ("On some;
+  each workshop says"). General lines name "the sessions" instead of the excursions (notice, Next time, the two cards, Stay's
+  FAQ, the homepage's workshops block). Never called a trial.
+- Each workshop card says what it includes beyond the house (the page says "each workshop says", so each card does):
+  "Transfers and excursions included" / "Spent at the house" (/ "Transfers included" / "Excursions included" once the two
+  tick-boxes exist) - .g-wscard__inc, under the dates.
+- Homepage workshops block: when any workshop on sale is spent at the house, it names them - "Immersive Artisan Workshops and
+  Noël at Gudanes are spent entirely at the house: the making, the meals and the house itself, with no outings to plan
+  around." Titles from the data, never counted, never called a trial; nothing shown when there are none.
+- Routes to the workshops from the pages that had none: Dining's close ("On a workshop, every meal is cooked here, with the
+  château's wines and spirits throughout" + See the workshops, in every dining mode); In the Valley's closer (See the
+  workshops beside Check dates); the Gallery ("Be here - See It for Yourself": a night in one of the five bedrooms, or the
+  full experience; See the workshops / Stay the night), before Follow the Restoration; Private hire ("If your party would
+  rather spend its days learning something, ask us about the workshops..." - an invitation, since Taking a Session Outright
+  is written for institutions).
+- Site-wide: the Book menu draws the line too - Stay the Night "A room and breakfast, your own dates · Five rooms · from one
+  night"; Workshops "The full experience · Three to seven nights · every meal, wine and a tour of the château". Restoration's
+  sticky bar is the workshops one ("Workshops & Retreats · See dates", to #dates). The Workshops page's descriptions:
+  "The full experience: small-group retreats in a French château under restoration, with every meal, the wines and a tour
+  of the house. Three to seven nights." (and the French, which described restoration alone, now the same mix).
+- Workshops page, repetition: "fifteen" 14 -> 9 and "no other guests" (and its variants) 9 -> 7, counted on the page text
+  with the questions open. The facts list's Group size "Fifteen at
+  most" (its "and the château takes no other guests..." said three more times); Taking a Session Outright "every place"
+  (fifteen five times, three in one sentence); You Have the Whole House's Party size "Fifteen at most" (its lede says it); the
+  summary box's How many note "Small enough for one long table at dinner" (the line under the hero says the rest).
+- Error page: Stay the night "Room and breakfast, from €X"; The workshops "The full experience, three to seven nights".

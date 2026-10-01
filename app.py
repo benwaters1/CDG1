@@ -907,7 +907,6 @@ the way to find your booking at any time.
 - Where you booked through Booking.com or another travel site, that
   site's own cancellation terms apply instead of these, and any refund is
   arranged through them rather than with us.
-- We strongly recommend travel insurance that covers cancellation.
 
 5. Dining and workshops
 - A restaurant reservation is held for the time booked. If you have not

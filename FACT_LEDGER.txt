@@ -1,0 +1,176 @@
+FACT LEDGER — every claim the site makes about the property, one place.
+Built from commit fdd551d after this session's fixes. Two were already found
+wrong by chance (one dog not two, ten acres not six); this is so the rest can
+be caught on purpose. Please skim; correct me on any line.
+
+PROPERTY
+  Rooms in the house .............. 94
+  Bedrooms open to guests ......... 5  (89 to come)
+  Bedrooms location ............... top floor (all)
+  Bathrooms ....................... downstairs, private except Cerise+Tilleul (share)
+  Floors .......................... 5
+  Interior size ................... 43,000 sq ft / 4,000 m²
+  Grounds ......................... 10 acres / 4 hectares      [was 6 — fixed]
+  Salons .......................... 4, plus a chapel and a bar
+  Pool ............................ among the cherry/fruit trees, below the formal gardens
+  Tennis .......................... one court, lined for pickleball
+  Wi-Fi ........................... Starlink, select areas
+  Electricity ..................... limited by design; candlelight in the evenings
+  Animals ......................... Bruce (French bulldog, indoors) + 4 cats (outdoors)  [was 2 dogs/6 cats — fixed]
+
+HISTORY
+  Begun / façade date ............. 1741
+  Construction finished ........... 1750
+  Architect ....................... to Louis XV, also built the Petit Trianon
+  Family .......................... Marquis de Sales / de Gudanes
+  Empty since ..................... 1850
+  Bought (derelict) ............... March 2013
+  Rooms enterable in 2013 ......... 4 of 94
+  Stone cleared ................... 500 tonnes
+  Restoration since ............... 2013 (guests welcomed since 2016)
+
+GETTING THERE
+  From Toulouse ................... 1h45 by road (headings say "under two hours")
+  From Foix (train) ............... 20 minutes; château meets the train
+  Nearest village ................. Les Cabannes (turn), Château-Verdun (address)
+
+STAY / TABLE / ATELIER
+  Breakfast ....................... included, every morning
+  Children ........................ 8 and over
+  Atelier group ................... never more than 15; château exclusive during
+  Dinner .......................... one table, one sitting, from 19:30
+  Tourist tax ..................... charged locally on departure
+  Cancellation .................... non-refundable (move dates by writing)
+
+Nightly rates are in the app/settings, not hardcoded, so they are not listed here.
+
+TO CONFIRM
+  Gallery caption "Chambre Bleue" (gallery.html line 27) — a room name that is
+  not one of the five open rooms. Historic name for an unrestored room, or a
+  leftover from the Squarespace export? Rename or keep.
+
+TO CONFIRM — the length of the restoration
+  The site says "bought derelict in 2013" / "under restoration since 2013"
+  AND "fifteen years" (the restoration h1 "Fifteen years in, and not finished",
+  the homepage "Fifteen years on", the gallery "Fifteen Years of It", etc.).
+  2013 to 2026 is thirteen. They sit two sentences apart on the homepage.
+  Either the work began before the purchase (then say so once), or the count
+  is "thirteen years" / "since 2013". A journalist will do the subtraction.
+  A third figure is also in use: "a decade of work since" (Workshops) and
+  "over a decade of restoration" (Gallery, incl. its search description).
+  Pick one and I will make them agree.
+
+TO CONFIRM — how many buildings share the classification
+  Stay page: "one of fewer than fifteen hundred buildings in France holding
+  the highest grade of protection". My understanding is that roughly 14,000
+  buildings are classés monuments historiques (of ~45,000 protected in all),
+  so this reads like a dropped zero ("fifteen thousand"). If it means something
+  narrower (e.g. privately owned châteaux classés), say which.
+
+TO CONFIRM — the dining page
+  1. "Where You Will Eat": "No two days use the same room. That is deliberate
+     — there are ninety-four of them." The rest of the page says dinner is in
+     the dining room, and most of the 94 rooms are unrestored. Which rooms are
+     meals actually served in? The line reads as if all 94 are in use.
+  2. "40 seated at most, in the main salon" (stat block) vs "in the dining
+     room" everywhere else. Is the 40 a different room for large parties?
+  3. "317 people in the village that feeds [the kitchen]" (dining stat) vs
+     "a village of forty-one people" (homepage In Short). Two villages
+     (Les Cabannes / Château-Verdun)? If so, name them — a reader cannot tell.
+
+FROM A WEB SEARCH (for weddings), facts that bear on the ledger
+  - Château-Verdun population: 41 (Wikipedia, 2023 census). So the homepage's
+    "a village of forty-one people" is Château-Verdun, correctly. The dining
+    page's "317 people in the village that feeds [the kitchen]" must be a
+    different village (Les Cabannes?) — name it there.
+  - The château's own Instagram bio says "We've spent over a decade carefully
+    preserving this monument" — a fourth wording for the restoration's length.
+  - chateaugudanes.com/photoshoots says Toulouse is "about 1 hour 15 minutes"
+    by car; the rebuild says "an hour and three quarters" throughout. One is
+    wrong.
+  - Weddings history: the Over The Moon feature and pastry chef Jennifer
+    Pogmore's interview both call Dan & Carl's (2018) the first wedding at the
+    château in over a century; a September 2015 blog says the château "hosted a
+    wedding at the house" the previous weekend. Was 2015 a family occasion?
+
+CONFIRMED BY THE OWNER
+  Breakfast is always offered — independent of the dining switch.
+
+TO CONFIRM — which station guests are met at
+  Stay FAQ: "take the train to Foix and we will meet it"; Stay ledger:
+  "Transfers from Toulouse or the train at Foix". Key Information and The
+  Estate: "Les Cabannes station, three minutes" from the gates, on the
+  Toulouse–Latour-de-Carol line. Both may be true (more trains stop at Foix),
+  but a guest needs one answer: which station do you meet?
+
+TO CONFIRM — the ski season
+  The Estate says "December to March" in "Skiing at Ax 3 Domaines" and
+  "Dec–Apr, the usual season" in "Winter in the Valley".
+
+CONFIRMED BY THE OWNER — bathrooms
+  All five rooms have a private bathroom, on the first floor, not in the room
+  (no ensuites). The King Room also has a bath and a basin in the bedroom.
+  Resolves the ensuite question: "ensuites are not permitted" stays true.
+
+TO CONFIRM — Plateau de Beille
+  What's On: "Sixty kilometres of cross-country pistes". The Estate: "70 km of
+  Nordic trails". (Also: What's On gives the ski season as "December to April",
+  matching one of The Estate's two figures.)
+
+ADDED FROM RESEARCH — check before launch
+  - Barcelona by road "about three hours" (the site's own figure); route C-16 /
+    Cadí tunnel / Puigcerdà / N20 / Puymorens tunnel, both tolled.
+  - Barcelona to Latour-de-Carol by Rodalies: over three and a half hours; Latour
+    to Les Cabannes: about an hour and ten (derived: Latour-Toulouse ~2h45 direct,
+    Les Cabannes-Toulouse 1h37). Only a few trains a day.
+  - New What's On items (Montaillou, Forges de Pyrène, Yellow Train, Mas-d'Azil,
+    the summer list) are from the Ariège and Occitanie tourist boards, Wikipedia
+    and the operators. Drive times not stated; "within an hour" for Montaillou and
+    the Forges is my estimate.
+
+=== ATELIER DESCRIPTIONS (database, for the owner to edit in admin) ===
+Two open with brochure phrasing the rest of the site avoids:
+- Immersive Artisan Workshops: "Gather, create and restore amidst the golden landscapes of the French
+  Pyrénées." Suggest: "Four days of making, taught by the artisans who still practise the crafts this
+  house is being restored with - hands-on, in the rooms the work is for."
+- Noël at Gudanes: "The château as a sanctuary of gentle anticipation." Suggest: "The house at
+  Christmas, which is not like the château at any other time." (the rest of it is good)
+- "Seven Starry Nights" does not say it is the restoration week; its first line does. Your call.
+- Tutors: the programme and atelier pages show "with [name]" when lead_name / instructor_name are
+  set. Worth setting - the people are the point.
+- [ANSWERED 24 Sept: Château-Verdun is about fifty people - now "about fifty" everywhere.] Dining page, the story: "Two women had come up from a village of forty-nine people
+  nearby." Château-Verdun has forty-one. Is this a different village, or should it read forty-one?
+- [ANSWERED 24 Sept: not true - removed.] Ateliers: the summary box says guests take home "a panel you made - plaster, gilding or fresco depending
+  on the atelier - yours, finished, and packed to travel". True? For which ateliers? (The same page tells
+  guests not to expect to finish anything.)
+- [ANSWERED 24 Sept: "In the Valley" - renamed.] "What's On" is a contraction (house rule: none). It is the page's name, in the navigation and the title.
+  Keep it as a proper name, or rename (e.g. "In the Valley")?
+- Bathrooms: robes and slippers? ANSWERED 24 Sept - no. Nothing to add to the section.
+- [ANSWERED 24 Sept: fifteen - the chambres d'hôtes limit, five rooms with an extra bed; wedding guests beyond that
+  stay in the village.] Capacity: how many does the château sleep? Weddings says "Fifteen in the château", Private hire "Fifteen in
+  five bedrooms", the ateliers "fifteen places". By the rooms' own limits the five sleep fourteen (Twin 3, Queen
+  2, King 2, Gold 2, Family 5). Is there an extra bed somewhere, or should it read fourteen? (The room page no
+  longer gives a number.)
+- Station (updated 24 Sept): every page now says the train is met at Les Cabannes (three minutes) or Foix. The "Foix,
+  twenty minutes" claims are gone - the route map on Contact puts Foix about forty minutes away. If you only meet
+  at one of them, say which and it is one word to change.
+- In the Valley listings (admin, What's On / In the Valley): each listing's "distance" is typed in admin. The site now says
+  Tarascon is twenty minutes everywhere (the Contact route map: Tarascon 1 h 25, the château 1 h 45 from Toulouse) -
+  check the Tarascon market listings' distance field says the same.
+- Workshop descriptions (admin), after the owner's note of 28 Sept (every workshop is the same mix; 3 nights leans to
+  the brocantes, 5 to the kitchen, 7 to the restoration; guests mostly take the pool, the wine and the food):
+  * Seven Starry Nights says "You will spend real hours beside the artisans lifting eighteenth-century frescoes...".
+    Suggest: "A week in the house, leaning towards the restoration: mornings beside the artisans on the eighteenth-
+    century frescoes, then the pool, the valley and dinner at one long table."
+  * Immersive Artisan Workshops says "...taught by the artisans who still practise them — hands-on...". Suggest dropping
+    "hands-on" and saying what the days are: a morning's making, then the house.
+  * [ANSWERED 28 Sept: a trial that may become regular - named with their length only, never as new or an exception.] The two four-night workshops (Immersive
+    Artisan, Noël) sit outside the 3/5/7 pattern.
+- [ANSWERED 28 Sept: fine as it is.] Workshops page, "Taking a Session Outright" (schools, conservation courses): "The work is real ... Students are not shown
+  a demonstration - they lift overpaint from a Class I Historic Monument, and what they do stays on the wall." True for a
+  cohort that takes a whole session? If not, it should be softened like the rest of the page.
+- The comparison table marks "A tour of the château and its restoration" as the workshops' own (a stay: not included).
+  If nightly guests are also given a tour, it is one cell to change.
+- Immersive Artisan Workshops and Noël at Gudanes are spent at the house (owner, 1 Oct: no transfers, vans or excursions).
+  The site now says so; but each one's own description and itinerary come from admin - please check neither mentions an
+  outing, a market trip, a brocante visit or a pick-up.

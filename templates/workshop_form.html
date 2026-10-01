@@ -41,7 +41,7 @@
     <p class="upload-hint">Default capacity pre-fills new sessions — each session can still set its own.</p>
 
     <label class="field-label" style="margin-top:16px;" for="workshop_form-inclusions">What's included (shown to guests)</label>
-    <textarea id="workshop_form-inclusions" name="inclusions" placeholder="e.g. Accommodation, all meals and château beverages, and all workshop activities as per the itinerary. Excludes transport and travel insurance.">{{ workshop['inclusions'] if workshop else '' }}</textarea>
+    <textarea id="workshop_form-inclusions" name="inclusions" placeholder="e.g. Accommodation, all meals and château beverages, and all workshop activities as per the itinerary. Excludes transport.">{{ workshop['inclusions'] if workshop else '' }}</textarea>
 
     <label class="field-label" for="workshop_form-itinerary">Day-by-day itinerary (shown to guests)</label>
     <textarea id="workshop_form-itinerary" name="itinerary" rows="6" placeholder="Day 1: Arrival, welcome dinner&#10;Day 2: Morning session, free afternoon, group dinner&#10;Day 3: Closing session, departure">{{ workshop['itinerary'] if workshop else '' }}</textarea>

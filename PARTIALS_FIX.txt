@@ -1,0 +1,505 @@
+Rule breaches and stale claims in partials NOT in the design surface.
+I cannot change these; here is exactly what to change and to what.
+
+=== _explorer.html (restoration explorer, .g-rex) ===
+The room-status legend and its note use "finished" and "ready" as room
+status — the words the rest of the site now avoids. Three strings, confirmed
+on the live page:
+
+  legend key      "finished and in use"        -> "open to guests"
+  .g-rex__label   "Five ready"                 -> "Five open"
+  .g-rex__note    "Five bedrooms finished and open. ..." -> "Five bedrooms open to guests. ..."
+
+Also: restoration.html carries a [data-years] timeline script with no host
+element anywhere (the explorer's own scrubber replaced it). Dead code,
+harmless; left alone to keep the diff small.
+
+=== _approach.html (drive diagram + contact form) ===
+  diagram note: "There is no street number here, and an address search will
+  leave you in the square below." -> "Google Maps brings you to the front of
+  the house. The last four kilometres are unlit, so if you are arriving after
+  dark, telephone when you leave Les Cabannes and someone will meet you at
+  the gates."
+  contact form: rough_month is required and there is no name field. A press
+  or general enquiry should not have to pick a month. Make it optional; add
+  a name field with autocomplete="name".
+
+=== _summary.html (the money recap on the confirmation page) ===
+  If settings.cancel_free_days is set it prints "Cancel more than N days
+  before you arrive and there is nothing to pay." The policy is
+  non-refundable, so that setting must be EMPTY on live.
+
+=== _room_copy.html (per-room descriptions) ===
+  You fixed shared/private via r['bathroom'] upstream — good. Please also
+  check the descriptions for: "first floor", "ground floor", "along the
+  corridor", "steps away", "finished", "least expensive". All bedrooms are
+  on the top floor; all bathrooms are downstairs.
+
+=== ROUTE CHANGE (book_rooms view) — small, and the template is ready for it ===
+Live check: a room search inside an atelier week (24–26 Oct 2026) and one
+straddling into it (21–24 Oct) both correctly return no rooms. But the page
+says only "No rooms free on these dates" — a blind refusal. The house is
+free again the day the atelier ends, and a guest told that would try it.
+
+book_rooms.html now renders, ONLY when the route passes it:
+    blocking_atelier = {'start_date': ..., 'end_date': ...}
+    -> "No rooms free on these dates — an atelier holds the whole house
+        23 – 27 October 2026; it is free again from the day after"
+
+In the view: when availability is empty for every room, look up the
+workshop session whose [start_date, end_date] overlaps [arrival, departure)
+and pass its dates as blocking_atelier. Nothing else changes.
+
+=== EMAIL — withdrawn (24 Sept) ===
+The workshop_declined suggestion is withdrawn: that email follows the owner declining a pending
+registration, with no refund, so "the last place went as you were paying / you have not been
+charged" is not true of it.
+
+=== ANIMALS — confirmed by the owner: Bruce (French bulldog) and four cats ===
+book_rooms FAQ fixed in this round. _care.html (not in the surface) says
+"cats live outdoors" without a number — correct as is. If any other partial
+gives a count, it is four cats and one dog; no chickens.
+
+=== ESTATE SIZE — owner: TEN acres (≈4 hectares), not six ===
+21 instances corrected across five templates in this round. If any partial
+outside the surface (_care, _proof, _exclusive, _explorer, _approach) gives
+the grounds as "six acres" or "2.4 hectares", it is ten and four.
+
+=== ROUTE CHANGE (guest_portal view) — template ready ===
+The account listed stays, ateliers and dinners but not event enquiries, so a
+couple whose only booking is their wedding read "Nothing booked at the moment".
+guest_portal.html now renders a "Your events" block when the route passes
+    events = [rows with event_type, preferred_date, reference_code, status, manage_token]
+and counts them in the empty-state test. Nothing shows until the route does.
+
+=== SETTINGS — set max_occupancy on all five rooms (admin) ===
+Every "Sleeps N" on Home, Stay and the room pages, and the occupancy in the
+room JSON-LD, used to fall back to 2 when a room had no max_occupancy — which
+would have shown "Sleeps 2" under Les Deux Chambres' own "sleeping five".
+The templates now show nothing when it is unset. Set it for all five rooms
+(Les Deux Chambres: 5) so the figure appears everywhere.
+
+=== DECISION NEEDED — the dining page has two versions of four sections ===
+restaurant_info.html has an older unmarked block (top of the page) and a newer
+block with section markers. Four topics appear in both. Unlike What's On and
+Workshops, nothing in the file says which replaced which, so I have not cut any.
+Tell me which to keep in each pair and I will do the rest:
+
+  older block                              newer block
+  "Where It Comes From"                    "Named, Not Gestured At"  (marker WHERE IT COMES FROM)
+  "Through The Day"                        "Where You Will Eat"      (eyebrow THROUGH THE DAY)
+  (kitchen pair resolved: "A Camping Stove, Once" removed at the owner's request)
+  "How Dinner Runs"                        "One Table, One Sitting"  (partly)
+
+Note: "Where You Will Eat" carries the "no two days use the same room ... there
+are ninety-four of them" line queried in the fact ledger.
+
+=== DECISION NEEDED — Events has the same layering, plus one newer-block repeat ===
+Older unmarked block (top) vs newer marked sections, same ground:
+  "Rooms in every state between ruin and restoration"  (94 rooms, five floors, 43,000 sq ft)
+  "Which Room, For What"                                (four salons, chapel, bar, ten acres)
+  "What to Expect" stat row                             (94 rooms, five floors, ten acres)
+And within the newer block, "What to Expect" repeats five of the eight rows of
+"What It Costs" three screens earlier (exclusivity, how long, who sleeps where,
+season, how it is priced). The one-event-at-a-time point is also made three
+times (opening callout, "What to Expect", "One Wedding at a Time").
+Nothing cut; tell me which to keep.
+
+=== _took.html (homepage "took" facts) — owner does not want rough-living anecdotes ===
+One of the four facts reads: "The first winter — spent inside with no
+electricity, no heating and no water, in a tent pitched in one of the rooms".
+Remove it. The facts are now laid out two by two, so replace it rather than
+leave three, or one sits alone. A suggestion that keeps the register:
+  "Fifteen, at most — guests in the house during an atelier, and no one else"
+
+=== DINING SWITCH — templates done; Code needs two settings and three route checks ===
+Templates read two settings (nothing changes until they are set):
+
+  dining_mode     open    (default, also when empty) — as now
+                  closed  — "Closed for the season": dining page stays up with the
+                            notice in its hero and in place of the reservation
+                            panel; every Reserve link, the Book-menu dining option,
+                            the manage-booking dinner add-on and the dinner marks in
+                            the date picker disappear; mentions elsewhere say closed.
+                  hidden  — switched off: dining is removed from the nav, drawer,
+                            footer, Book menu, homepage, Stay page, Contact, FAQs and
+                            error page; the dining URLs show a short notice instead,
+                            with no Restaurant schema and no hero.
+  dining_reopens  optional free text shown when closed, e.g. "April 2027".
+
+Breakfast (in the room rate) and atelier meals (in the atelier price) are shown
+in every mode.
+
+Code, please:
+  1. Admin settings: a select for dining_mode (Open / Closed for the season /
+     Switched off) and a text field for dining_reopens.
+  2. The restaurant booking POST must refuse when dining_mode is not "open" —
+     the templates hide the form, but a saved or direct POST would still land.
+  3. restaurant_open (account page) and dinner_available (manage booking) are
+     already route flags; the templates now also require dining_mode == "open",
+     but set the flags false in the routes too so nothing else relies on them.
+  4. Existing reservations: restaurant_manage / restaurant_find are untouched in
+     every mode, so guests who already booked can still see and cancel.
+
+=== RESTORE? "Why People Come Back" (homepage) — I cut two paragraphs as brochure copy ===
+They match the LIVE site's current homepage word for word ("More than a château,
+Gudanes is a place shaped by history, connection and the people who pass through
+its doors..."), and the live site is where revised copy is harvested from. If
+that copy was chosen deliberately, say so and I will put it back.
+
+=== DECISION NEEDED — The Estate covers winter twice ===
+"Skiing at Ax 3 Domaines" (marker WINTER / SKIING) and "Winter in the Valley"
+(marker WINTER) give the same figures: 25 minutes, 80 km of piste, 2,400 m,
+ESF/ESI instructors, Plateau de Beille. The first is the fuller one (the
+gondola from Ax, the whole list of what is arranged, "Beyond the pistes");
+the second has the better opening ("Snow to the gates, fires lit in the
+salons") and the stat row. They also disagree on the season (see ledger).
+My suggestion: keep "Skiing at Ax 3 Domaines", take the opening line and the
+stat row from the other into it. Tell me and I will merge them.
+
+=== _room_copy.html — one dinner promise the dining switch cannot reach ===
+Les Deux Chambres' description: "Children of eight and over are welcome, and
+the kitchen will cook for them." A macro in an imported partial does not see
+the page's dining switch, so this still shows when dining is closed or off.
+Simplest: drop the clause — "Children of eight and over are welcome." (The Stay
+FAQ says the same thing and is already switched.)
+
+=== DECISION NEEDED — Restoration, "How It Began" (house rule: no Craig) ===
+Step 01: "A taxation accountant and a neurological surgeon from Perth, looking
+for a house in France." Step 03: "They bought it anyway." The surgeon is Craig,
+present by profession rather than name. Everywhere else the site says "the
+Waters family" or "the family". Not changed — it is the founding story.
+Suggested, if you want it to match the rest:
+  01  "An accountant from Perth and her family, looking for a house in France."
+  03  "The family bought it anyway."
+
+=== [RESOLVED 24 Sept - newer blocks kept, older facts moved in; see SINCE_LAST_ZIP] Restoration repeats three topics ===
+  "Nothing here is done quickly"   /  "What Class I Actually Means"
+  "What the Château Has Given Up"  /  "What Was Behind the Plaster"
+  "How It Began" (2011)            /  "How She Was Found" (2011–2013)
+Older block has the sentence-case headings, as on Dining and Events.
+
+=== THE NEW ROOM LINE-UP (owner) — database + _room_copy.html ===
+Every room has a PRIVATE bathroom, on the first floor — not in the room (no
+ensuites). The King Room also has a bath and a basin in the bedroom itself.
+Update the five rooms in the admin/database (rename rather than recreate, so
+photos and bookings follow the row):
+
+  old room            new name           price/night  bathroom  max_occupancy  bed_setup
+  Chambre Tilleul     The Twin Room      280          private   3 (keep)       Twin beds
+  Chambre Cerise      The Queen Room     280          private   2              Queen bed
+  Chambre du Levant   The King Room      380          private   2              King bed
+  Chambre Émeraude    The Gold Suite     480          private   2              Emperor bed  (CONFIRMED: the live row already says Emperor bed, 70 m²)
+  Les Deux Chambres   The Family Suite   580          private   5              Queen and doubles (keep the live value)
+Order them by price on the site. bed_setup is shown on the Stay cards when set;
+otherwise the card works it out from the name.
+
+In _room_copy.html replace the two dictionaries with these (facts carried over
+from each room's old copy, bathrooms corrected to private and first floor):
+
+  {%- set copy = {
+    'The Twin Room': 'Two beds that can be made up as a twin or pushed together as a double, whichever suits, and a private bathroom on the first floor. The most straightforward room in the house.',
+    'The Queen Room': 'A quiet room with a queen bed, floral papers and a marble chimneypiece, and a private bathroom on the first floor. Brass fittings and hexagonal terracotta underfoot, among the most recently restored work in the building.',
+    'The King Room': 'A king bed set against hand-painted panelling, with the mountains filling the window from first light. A bath and a basin stand in the room itself, and the bathroom on the first floor is yours alone.',
+    'The Gold Suite': 'The largest room in the house, on the top floor with the others, with two windows onto the valley and the peaks behind it. An emperor bed, a dressing room of your own, and a cast-iron bath on the first floor that is yours alone. The walls are as the eighteenth century left them; everything you sleep in and wash in is new.',
+    'The Family Suite': 'Two bedrooms opening into one another, sleeping five, with the valley on both sides. Children of eight and over are welcome. A private bathroom on the first floor.'
+  } -%}
+
+  {%- set notes = {
+    'The Twin Room': 'two beds, twin or double, with a private bathroom',
+    'The Queen Room': 'a queen bed, floral papers and a marble chimneypiece',
+    'The King Room': 'a king bed against hand-painted panelling, with a bath in the room',
+    'The Gold Suite': 'the largest room, an emperor bed and a dressing room of its own',
+    'The Family Suite': 'two bedrooms opening into one another, sleeping five'
+  } -%}
+
+Templates already handle the rename: photo fallbacks are keyed by old and new
+names; every "downstairs"/"shared bathroom" line on the site now says private,
+on the first floor (18 places); the "ensuites are not permitted" lines stay,
+because no room has one.
+
+PENDING FROM THE OWNER — room sizes
+  Each Stay card shows "{size_sqm} m²" when the room's size_sqm is set, and
+  nothing until then. Sizes for the five rooms to follow.
+
+=== SUGGESTION — Gallery press list ("Who Has Photographed Her") ===
+Your own Press page records pieces the list leaves out, including the most
+prestigious: The World of Interiors, Decoration Special, October 2019 (with
+Cire Trudon); Vogue's behind-the-scenes diary for Dôen; and Dan & Carl's
+wedding in Vogue Australia. The list is a 4x2 grid — swap rather than add.
+
+=== SETTINGS — gate coordinates (for the maps) ===
+house_maps is empty until the gate coordinates are set, and then every map on
+Contact, Stay, Events and Dining stays hidden. Contact used to tell the public
+"the coordinates of the gates have not been set"; it now says the road is
+described below. Set the coordinates so the maps appear.
+
+=== _approach.html — add the approach from Barcelona ===
+The approach diagram and its notes only describe arriving from Toulouse. Many
+guests drive up from Barcelona: C-16 through the Cadí tunnel to Puigcerdà,
+across the border, N20 through the Puymorens tunnel (both tolled) to
+Ax-les-Thermes, then DOWN the valley to Les Cabannes — so they reach the turn
+for the château from the south, not from Tarascon. Please add that route.
+(Contact, Stay and The Estate now carry Barcelona directions in the templates.)
+
+=== CORRECTIONS FROM THE LIVE DATA (checked on Railway after the milestone zip) ===
+- The Gold Suite IS Chambre Émeraude: its live row already has bed_setup
+  "Emperor bed" and 70 m². Mapping confirmed.
+- Tilleul's live max_occupancy is 3: keep it (the table above said 2).
+- Les Deux Chambres' live bed_setup is "Queen and doubles": keep it.
+- Cerise's live bed_setup is "Double bed": change it to "Queen bed".
+- size_sqm is already set for Émeraude (70) and Les Deux Chambres (140).
+- Live event_types, gate coordinates (maps show) and gallery slugs are all set.
+
+=== _took.html — a room-status line that breaks the house rules ===
+Homepage "took" facts, live today:  Five of ninety-four / "bedrooms finished.
+The other eighty-nine are the next fifteen years"
+Rooms are "open to guests", never "finished". Replace the dd with:
+  "bedrooms open to guests. The other eighty-nine are the work still ahead."
+(Also avoids a restoration-length figure until the owner picks one.)
+
+=== SEO — two things only the server can do ===
+- The site answers on both the Railway address and chateaugudanes.com, and each
+  page's canonical is built from request.base_url, so each host calls itself
+  canonical. Redirect the Railway host (301) to chateaugudanes.com once the
+  domain points at Railway - or set the canonical from a fixed SITE_URL.
+- Languages are switched by cookie at the same URL, so Google indexes English
+  only. Fine for now; separate URLs per language (/fr/...) would be needed for
+  French pages to rank.
+
+=== SPEED — server side ===
+1. Railway region: live takes ~625 ms before the first byte, typical of a US region
+   serving France. Move to Railway's EU region.
+2. Caching: /static/* is served with "cache-control: no-cache", so every page
+   revalidates the stylesheet and video. Serve static files with a long max-age and
+   versioned URLs (e.g. gudanes.css?v=<hash> or Flask's url_for with a version).
+3. Minify gudanes.css at build (39% of it is comments); keep the commented source.
+4. The new photographs: serve resized WebP variants and srcset/sizes from /static
+   rather than one large file per image.
+
+=== FOR CODE (24 Sept) ===
+- Your four fixes are not on GitHub yet (latest main is a601f1a): push them and
+  I will re-merge before the next handover.
+- Tourist tax: the price box now adds its own line from settings['tourist_tax']
+  (rate x adults x nights). If the quote from /api/quote should carry it instead,
+  add it there as a line labelled with "tax" and the page will stop adding its own.
+  Also set tourist_tax in settings - with none, no line appears.
+- The "Before you send this" panel has two stacked taxe de séjour blocks (both in
+  Wednesday's zip and on main): two rows, two var TAX (defaults 0 and 1.65). The
+  second writes into the first's hidden row, so the visible row stays "—" and the
+  total silently uses 1.65. Left alone because your unpushed tax wording is in that
+  panel; merge that, then delete the second block and its plain row.
+
+=== FOR CODE — test expectations that may change (24 Sept) ===
+- Printed euro amounts now use thousands separators: "€4,800.00" where it was
+  "€4800.00" (57 places; only amounts shown as text - input values/min/max and
+  structured data are unchanged). A test asserting an unseparated amount of €1,000 or
+  more will need the comma.
+- workshop_manage.html: superseded - your 32530e3 version ("The balance" card, from
+  card_on_file) is the one carried.
+- The room page's "Before you send this" panel (card payments off only) has one tax
+  block now; the second, defaulting to 1.65, is gone.
+
+=== FOR CODE — ateliers (24 Sept) ===
+- workshops.inclusions holds the price basis on live ("Per person, sharing a room."), not a list.
+  workshop_detail now shows the house's standard inclusions (or the field split at commas when it is
+  a real list) and the basis as a note. Consider a price_basis column and a real inclusions list.
+- workshops_public: the reviews section renders only when atelier_reviews has entries.
+
+=== LIVE CHECK (24 Sept, Chrome) — THE DATABASE STILL HOLDS THE OLD ROOMS ===
+Live serves main 32530e3 exactly (gudanes.css is character-for-character main's); none of the
+milestone or later handover is deployed. And the room rows have not been updated:
+  Chambre Émeraude   €450 (should be €480)   private
+  Chambre Cerise     €220 (should be €280)   SHARED with Tilleul (should be private); bed "Double"
+  Chambre du Levant  €400 (should be €380)   private
+  Les Deux Chambres  €675 (should be €580)   private
+  Chambre Tilleul    €240 (should be €280)   SHARED with Cerise (should be private)
+Prices and the bathroom field come from these rows, not the templates: deploying the handover
+alone will still show the old prices, and the room page's facts line reads the bathroom field
+("Shared bathroom, first floor" for Cerise and Tilleul). Update the rows as in THE NEW ROOM
+LINE-UP above, and apply the _room_copy.html dictionaries (the live descriptions still say
+"downstairs", "sharing a bathroom", "most recently finished" and "the kitchen will cook for them").
+
+=== FOR CODE — printing the stay (24 Sept, after deployment) ===
+Live: printing the manage page gives blank sheets. g-print-stay is right (thank you), but the older
+print rule `.g-footer, ..., .g-panel, ... { display: none !important }` also hides .g-takeaway, which
+is a .g-panel, and the invisible rest of the page still prints as empty pages. Fixed at the end of
+gudanes.css in the next handover (display the card; remove, not hide, everything else in that mode).
+
+=== FOR CODE — the two partials at the top of /workshops (live, 24 Sept) ===
+_glance.html ("What it is, and what it costs") and _exclusive.html ("You Have the Whole House") now
+render on live and contradict the page they sit on. Not in the handover surface - yours to edit.
+_glance.html
+- HOW LONG "Five days, four nights - arrive Sunday, work Monday to Thursday, leave Friday": true of two
+  of the five; they run three, four, five and seven nights. Suggest "Three to seven nights / Each
+  atelier's dates are below", or compute the range from the workshops.
+- TAUGHT BY "The conservators ... on the walls they are actually restoring": only the restoration
+  ateliers. Suggest "The people doing the work here / The conservators, the chef, the dealers".
+- WHAT YOU TAKE HOME "A panel you made ... yours, finished, and packed to travel": the page's own What
+  to Bring says "Do not: Expect to finish something. You are joining work in progress", and it does not
+  fit the kitchen, the brocantes or Noël. Owner to confirm (FACT_LEDGER); until then suggest "What you
+  worked on / It stays on the wall - or comes home, from the kitchen and the brocantes".
+_exclusive.html
+- "Booked as a private hire that would be one number. Booked as an atelier it is a per-person price...
+  That is the same house either way." is price justification (house rule 1: never justify the price).
+  Suggest cutting those three sentences; the rest of the paragraph stands.
+- WHAT YOU GET "Ninety-four rooms": most are unrestored; guests do not get them. Suggest "The building,
+  ten acres, the pool and the tennis court".
+- PARTY SIZE "Fifteen at most" repeats _glance's HOW MANY - "fifteen" now appears eleven times on the page.
+
+=== FOR CODE — live sweep, 24 Sept ===
+- Now in the handover, based on e875aee: events_private, events_weddings, events_photoshoots, privacy (wording
+  above in SINCE_LAST_ZIP); replace as with the rest.
+- _exclusive.html also renders on /book: its "Booked as a private hire that would be one number..." and
+  "What you get: Ninety-four rooms" are on the Stay page too (see the ateliers note above).
+- _room_copy.html is still the old dictionary: the Stay page reads "the Family Suite has two bedrooms opening
+  into one another, and the kitchen will cook for them" (the dining switch cannot reach it). Apply the
+  dictionaries in THE NEW ROOM LINE-UP.
+- Still to test on live when Chrome allows: the room page's price box now that /api/quote carries the tax -
+  the page's own tax line should step aside (it does when a quote line's label contains "tax").
+
+=== BATHROOMS — the owner's decision (24 Sept) ===
+One bathroom is allocated to each room (occupancy allows it), so every room's is private. They are where
+they have always been: all together downstairs, on the first floor; the bedrooms are on the top floor, and
+the only facility on the bedroom floor is the powder room. The King Room also has a bath and basin in the
+room. "Downstairs" is therefore TRUE - earlier notes here listed it among the old copy to remove; the fault
+was only "shared". Stay now has a clear bathrooms section (Les Salles de Bains, as facts) and each room page
+a "Your bathroom" note; the pill reads "Private bathroom, downstairs".
+- _arms.html: "Five bedrooms of ninety-four are open to guests, and you are welcome in the five." - suggest ending
+  at "open to guests." (the tail reads oddly).
+- _room_copy.html, The Twin Room: its description ends "and a private bathroom on the first floor", directly
+  under the room page's new "Your bathroom" note - consider dropping that clause from the room copy.
+
+=== PARTIALS NOW IN THE HANDOVER (24 Sept) ===
+_glance.html and _exclusive.html were fetched from deployed main e875aee, corrected and are included (see
+SINCE_LAST_ZIP). book_rooms no longer calls exclusive(); workshops_public still does.
+
+=== FOR CODE — "What's On" is now "In the Valley" (24 Sept) ===
+The menu label and the page heading call t("In the Valley"): add its French, "Dans la vallée", wherever the t()
+strings live (the old key was "What's On"). The route stays /whats-on - no redirect needed. The admin's own
+"What's On" labels are staff-facing; rename them too if you like.
+
+=== FOR CODE — workshops page (24 Sept) ===
+- The Year's Programme is removed (it repeated When You Can Come). The overbooking promise is KEPT, word for word,
+  directly under "Every date across the year" - the write lock and test_no_overbooking still stand behind it. If a
+  test looked for the promise inside .g-programme, point it at the page instead.
+- The sticky bar calls t('Workshops & Retreats') (was t('Château Ateliers')): add its French ("Ateliers & retraites"
+  or keep "Les Ateliers").
+- Date cards show "With {lead_name}, {lead_role}" once those are set in admin.
+
+=== DONE (checked 24 Sept, main eabfc24) ===
+- _room_copy.html: the 24 September line-up is applied (private bathrooms, the King Room's in-room bath, and the Family
+  Suite no longer promises dinner). Ignore the earlier notes asking for it. The harness now renders main's copy.
+- New t() keys for the French: 'Your workshop' (workshop_manage eyebrow, was 'Your atelier') and 'Your workshops' (guest
+  portal heading, was 'Your ateliers') - suggest "Votre atelier" / "Vos ateliers", as before.
+- CSS note: main > :not(.g-sec--dark) + .g-sec { border-top: 0 } also cancels .g-sec--sand + .g-sec--sand; the handover
+  restores the sand seam after it (end of gudanes.css). If you tidy the section rules, keep that case.
+- The "75 Places, All Year" band on /workshops is removed (the owner does not want the programme counted - workshops are
+  added as she pleases). The _seats totals are no longer shown anywhere; any test expecting "Places, All Year" or
+  "Sessions this year" should be dropped.
+
+=== FOR CODE — the stay-or-workshop comparison (new partial _stay_or_workshop.html) ===
+- stay_or_workshop(rooms_from, ws_from, dm, here) - prices only when given. Stay has the rooms, so its workshop side has no
+  "from" price; Workshops has the workshops, so its room side has none. If you pass the other list (or just the two
+  minimum prices) to book_rooms and workshops_public, both sides show a price on every page:
+    book_rooms:       ws_from = min(price_per_person) of the published workshops
+    workshops_public: rooms_from = min(price_per_night) of the rooms open to guests
+  and change the two calls to pass them. Nothing breaks without it.
+
+=== FOR THE OWNER / CODE — the nightly tour as a bookable extra (admin, Extras) ===
+The copy now offers "a tour of the château ... for €50" on a stay; the extra itself has to exist to be bookable on the
+room page's "Add to your stay" and the manage page:
+  Name:         A tour of the château
+  Description:  The house and its restoration, shown to you by the people doing it.
+  Price:        50            (per person or per booking - owner to say; per person = let the guest choose the number)
+  Max quantity: the room's guests if per person, 1 if per booking
+  Notice:       as the owner wants (lead_time_days)
+The €50 is written into _stay_or_workshop.html (the table cell and the notice). If the price changes, change it there
+too - or pass the extra's price to both macros.
+
+=== EMAILS — pack a small suitcase (owner, 28 Sept) ===
+The emails live in the database (admin, Email templates; app.py holds the defaults), not in the templates, so this is to
+paste in. Add to the booking confirmation and to the pre-arrival email, near the arrival details:
+  "Please pack lightly: the bedrooms are reached by the original staircase, and there is no lift."
+(the same for a workshop's confirmation). Owner, 28 Sept: never say who carries the bags, and say nothing of staff.
+Code: the same lines in app.py's default email bodies, so a reset keeps them.
+
+=== _care.html and _before.html are now in the handover ===
+Fetched from main 5892462 and changed only as below; take them as they are.
+- _care.html (homepage, Le Service): "Your bags go up while you are still looking at the valley" (not true) is now "Pack
+  lightly: the bedrooms are reached by the original staircase, and there is no lift."
+- _before.html: the arrival step "Your bags go up, and so do you" is "The original staircase" (ending "Pack lightly.");
+  What to Pack opens with "A small suitcase - Pack lightly: the bedrooms are reached by the original staircase, and there
+  is no lift".
+
+=== FOR CODE — Booking.com guests: their own stay page and a welcome message (owner, 1 Oct) ===
+Why: a guest who books through Booking.com never sees the site's "a night here is a room and breakfast", the château
+tour or the packing advice. The owner wants one place to see these bookings, and the guest told automatically, with a
+link to add extras.
+You already read Booking.com's booking emails into the site. From there:
+1. Each Booking.com booking becomes a booking in admin like any other (source: Booking.com), with the usual manage-page
+   link (the token link direct guests get). The owner sees and works it in one list.
+2. On import, send the guest the welcome message below - by EMAIL to the Booking.com relay address in the booking
+   (...@guest.booking.com). Booking.com passes messages about the stay through; keep it to the stay (no newsletter).
+   Send once; a second short reminder three days before arrival, if extras with a notice period are still open.
+3. The manage page works for them as for direct guests: extras (the tour, dinner when the table is open, transfers) paid
+   by Stripe there, since the room itself is paid to Booking.com. Show their dates and room read-only.
+4. WhatsApp, later and optional: needs a WhatsApp Business account (Meta's Cloud API, or Twilio), a pre-approved message
+   template, and the guest's number from the booking. Ask for consent on the manage page ("Send me arrival details on
+   WhatsApp") before using it. Template wording below.
+Extras in admin: "A tour of the château" - price 50, PER BOOKING (owner, 1 Oct): max quantity 1.
+
+THE EMAIL (subject: "Your stay at Château de Gudanes - before you arrive")
+  Dear {first name},
+  Thank you for booking {room} for {dates} through Booking.com. We are looking forward to having you.
+  A night here is a room and breakfast. If you would like more from your stay, you can add it here: {manage link}
+    - A tour of the château and its restoration, €50 per booking
+    - Dinner, on the nights the table is open            [only while the dining switch is open]
+    - A car from Toulouse, or from the train
+  Please pack lightly: the bedrooms are reached by the original staircase, and there is no lift.
+  Arrival is from 4pm, and someone will meet you at the gates. Directions, and everything else you need, are on the
+  same page.
+  With best wishes,
+  Château de Gudanes
+  [If the workshops have dates open: "Coming back for longer? The workshops are the full experience - every meal, the
+  wines and spirits, a tour of the house and the sessions: {workshops link}"]
+
+THE WHATSAPP TEMPLATE (for Meta's approval; {{n}} are its variables)
+  Hello {{1}}, thank you for booking {{2}} at Château de Gudanes for {{3}}. Your stay page, with directions and extras
+  such as a tour of the château (€50 per booking): {{4}}. Please pack lightly: the bedrooms are reached by the
+  original staircase, and there is no lift.
+
+=== EMAILS — the workshop confirmation (admin, Email templates), to match the site (owner, 1 Oct) ===
+Add near the dates:
+  "Everything is included, the full experience: every meal, the château's wines and spirits and a tour of the château.
+   Please pack lightly: the bedrooms are reached by the original staircase, and there is no lift."
+  Only for a workshop WITH excursions, add: "...and the excursions."
+  Only for a workshop WITH transfers, add: "We meet you at 11am in central Toulouse on the first day, and have you back by
+  about one on the last." (Not this year's two - autumn's and Noël are spent at the house: no transfers, vans or
+  excursions. Never call them a trial in anything a guest reads.)
+And to the NIGHTLY confirmation and pre-arrival emails, beside the packing line already given above:
+  "Your stay is a room and breakfast. Lunch, dinner and drinks are not included; a tour of the château (€50 per booking),
+   dinner on the nights the table is open, and a car can all be added from your booking page: {manage link}"
+
+=== FOR CODE — whether a workshop includes the Toulouse transfers (owner, 1 Oct) ===
+"The two ateliers this year (autumn and Noël): no transfers or vans." The pages no longer promise transfers to every
+workshop. Please add:
+  workshops.transfers_included INTEGER DEFAULT 1 and workshops.excursions_included INTEGER DEFAULT 1, each a tick-box in
+  admin ("Transfers from Toulouse included", "Excursions included"); untick both for this year's two (owner, 1 Oct: they
+  are spent at the house - no transfers, vans or excursions). Pass it through wherever a workshop or session row reaches a template - the session row on
+  workshop_register, and the workshop booking row on workshop_confirmation (booking['transfers_included'], booking['excursions_included']).
+The templates read them through tx_flag() / ex_flag() (one rule, inc_flag(), in _stay_or_workshop.html); only a real 1/0
+or true/false counts as set.
+The templates read it through tx_flag() in _stay_or_workshop.html. Until the column exists: a workshop whose nights label
+starts "4"/"Four", or a session starting in 2026, counts as without; the workshop confirmation names transfers only when
+booking['transfers_included'] is set. Workshops page: transfers are "included" only when every workshop on sale has them,
+otherwise "each workshop says" (the intro, Getting Here, the FAQ, the comparison table, the summary box).
+
+=== FOR CODE — new t() keys in the Book menu (French) ===
+  "A room and breakfast, your own dates"   -> "Une chambre et le petit-déjeuner, à vos dates"
+  "Five rooms · from one night"            -> "Cinq chambres · dès une nuit"
+  "The full experience"                    -> "L'expérience complète"
+  "Three to seven nights · every meal, wine and a tour of the château"
+                                           -> "Trois à sept nuits · tous les repas, le vin et une visite du château"
+(The old keys - "A room, your own dates", "Five rooms · breakfast included", "Fixed dates, a small group", "Three to seven
+nights · full board · itinerary included" - are no longer used.)

@@ -1,0 +1,9 @@
+Two static files the head now references but the repo may not have yet.
+Both have working fallbacks, so nothing is broken if they are absent —
+the inline SVG crest favicon shows meanwhile — but a real icon is better.
+
+  static/favicon.ico          — 32x32 (and 16x16) .ico, the house crest on navy
+  static/apple-touch-icon.png — 180x180 .png, same crest, for iOS home-screen
+
+If you would rather not add files, delete the two <link> lines that point at
+them in public_base.html (url_for('static', ...)) and the SVG favicon carries on.

@@ -7,6 +7,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
+{%- from '_stay_or_workshop.html' import tx_flag -%}{%- from '_stay_or_workshop.html' import ex_flag -%}{%- set _tx = tx_flag(workshop)|trim == 'yes' -%}{%- set _ex = ex_flag(workshop)|trim == 'yes' -%}
 {% from '_marks.html' import mark %}
 
 
@@ -61,12 +62,13 @@
   <dl class="g-facts-list">
     {% if workshop['nights_label'] %}<div><dt>Length</dt><dd>{{ workshop['nights_label'] }}</dd></div>{% endif %}
     {%- set _inc = (workshop['inclusions'] or '')|trim -%}{%- set _basis = _inc if _inc.lower().startswith('per person') else '' -%}
-    {% if workshop['price_per_person'] %}<div><dt>Price</dt><dd>€{{ '{:,.0f}'.format(workshop['price_per_person']) }} {% if _basis %}{{ (_basis|trim('.'))[:1]|lower }}{{ (_basis|trim('.'))[1:] }}{% else %}per person{% endif %}; all meals, wine and the transfers included</dd></div>{% endif %}
+    {% if workshop['price_per_person'] %}<div><dt>Price</dt><dd>€{{ '{:,.0f}'.format(workshop['price_per_person']) }} {% if _basis %}{{ (_basis|trim('.'))[:1]|lower }}{{ (_basis|trim('.'))[1:] }}{% else %}per person{% endif %}; all meals, wine, a tour of the château{% if _tx %} and the transfers{% endif %} included</dd></div>{% endif %}
     <div><dt>Group size</dt><dd>Never more than fifteen, and the château takes no others while it runs</dd></div>
       <div><dt>Experience needed</dt><dd>None. Most people who come have never done it before</dd></div>
     <div><dt>Where you sleep</dt><dd>In the château itself — bedrooms, not a nearby hotel</dd></div>
     <div><dt>Meals</dt><dd>Every one, cooked in the château kitchen, with the château's wines and spirits throughout</dd></div>
-    <div><dt>Transfers</dt><dd>Together from central Toulouse at 11am on the first day, and back by about one on the last</dd></div>
+    <div><dt>Transfers</dt><dd>{% if _tx %}Together from central Toulouse at 11am on the first day, and back by about one on the last{% else %}Not included on these dates. The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station{% endif %}</dd></div>
+    {% if not _ex %}<div><dt>The days</dt><dd>Spent at the château itself, with no outings to plan around: the making, the meals and the house</dd></div>{% endif %}
     <div><dt>To hold a place</dt><dd>A deposit. The balance is taken closer to the date</dd></div>
     <div><dt>Not included</dt><dd>Flights, insurance, and anything you buy at the brocantes</dd></div>
   </dl>
@@ -132,7 +134,7 @@
 
 <div class="g-band">
   {% for img in WS_IMAGES %}<img src="{{ img }}" alt="Work in progress on an eighteenth-century fresco" loading="lazy">{% endfor %}
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w" alt="The long table in the château kitchen" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The long table in the château kitchen" loading="lazy">
 </div>
 
 <!-- ============ INCLUDED ============ -->
@@ -157,9 +159,9 @@
     {% else %}
     <li>Every meal, cooked in the château kitchen, with the château's wines and spirits throughout</li>
     <li>Your room in the château, and a bathroom of its own, downstairs on the first floor</li>
-    <li>Everything on the itinerary — the teaching, the materials and the excursions</li>
+    <li>Everything on the itinerary — the teaching{% if _ex %}, the materials and the excursions{% else %} and the materials{% endif %}</li>
 <li>A tour of the château and its restoration</li>
-    <li>The transfers from central Toulouse, there and back</li>
+    {% if _tx %}<li>The transfers from central Toulouse, there and back</li>{% endif %}
     {% endif %}
   </ul>
   {% if _basis %}<p class="g-hint">Prices are {{ _basis[:1]|lower }}{{ _basis[1:] }}</p>{% endif %}
@@ -171,11 +173,11 @@
   <h2 class="g-h2">An Itinerary, Not an Obligation</h2>
   <div class="g-split">
     <div>
-      <p class="g-p">It is a retreat as much as a workshop. Fifteen at most, so the days stay unhurried. There is an itinerary, and most people want every hour of it — but nothing on it is compulsory.</p>
-      <p class="g-p">Take an afternoon by the pool, a walk up the valley or a book in the music room, and pick the work up again in the morning. Dinner is the one hour nearly everybody keeps.</p>
+      <p class="g-p">It is a retreat as much as a workshop. Fifteen at most, so the days stay unhurried. There is an itinerary, and nothing on it is compulsory.</p>
+      <p class="g-p">Most afternoons end at the pool, on a walk up the valley or with a book in the music room, and the work is there again in the morning. Dinner is the one hour nearly everybody keeps.</p>
     </div>
     <div>
-      <p class="g-p">The house is yours between the working hours: the formal gardens, the parkland running up toward the mountain, the four salons, the tennis court in the trees.</p>
+      <p class="g-p">The house is yours for most of the day: the formal gardens, the parkland running up toward the mountain, the four salons, the tennis court in the trees.</p>
       <p class="g-p">It is a house that is lived in, and it is meant to be used that way.</p>
     </div>
   </div>
@@ -223,7 +225,7 @@
   {# The percentage came from the atelier and could be empty ("A % deposit"); the balance window was written as thirty
      while the ateliers page reads the route's figure. Either figure now comes from the route when it is passed. #}
   {%- set _bd = (windows.workshop_balance_days if windows is defined and windows else none) or (balance_days if balance_days is defined else none) or 30 %}
-  <p class="g-p" style="color:rgba(255,255,255,.88)">{% if workshop['deposit_percent'] %}A {{ workshop['deposit_percent'] }}% deposit reserves your place; {% else %}Your place is reserved at booking; {% endif %}the balance is due {{ 'thirty' if _bd == 30 else _bd }} days before the stay, or in full if you are booking within {{ 'thirty' if _bd == 30 else _bd }} days of it. Travel insurance is required.</p>
+  <p class="g-p" style="color:rgba(255,255,255,.88)">{% if workshop['deposit_percent'] %}A {{ workshop['deposit_percent'] }}% deposit reserves your place; {% else %}Your place is reserved at booking; {% endif %}the balance is due {{ 'thirty' if _bd == 30 else _bd }} days before the stay, or in full if you are booking within {{ 'thirty' if _bd == 30 else _bd }} days of it.</p>
   {% endif %}
   <p class="g-p" style="color:rgba(255,255,255,.88)">Your place is confirmed as you register, and held from that moment. You will receive a reference code and a link to manage your registration and payment.</p>
   {% if session_rows %}
@@ -235,7 +237,7 @@
 <section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
   <p class="g-p" style="text-align:center;margin:0 auto">
     The walls of the room you work in are protected — conserved, never replaced. The bed you
-    sleep in, the linen on it and the bathroom on the first floor are not. The imperfection is deliberate. It is also what you will be working on.
+    sleep in, the linen on it and the bathroom on the first floor are not. The imperfection is deliberate. It is also what the restoration mornings are spent on.
   </p>
 </div></section>
 

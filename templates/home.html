@@ -71,6 +71,8 @@
       </div>
       <button type="submit" class="g-herosearch__go">{{ t('Check availability') }}</button>
     </form>
+    {# The second way in (owner, 1 Oct: push them towards the workshops) - the hero offered a room and nothing else. #}
+    <p class="g-hero__alt"><a href="{{ url_for('workshops_public') }}">Or come for the full experience: the workshops</a></p>
 </div>
   <button type="button" class="g-hero__pause" id="g-hero-pause" aria-label="Pause video">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
@@ -247,6 +249,9 @@
     <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--line">See the rooms</a></p>
   </div>
 </div></section>
+{# A night, or the full experience - the shared comparison (owner, 28 Sept). #}
+{% from '_stay_or_workshop.html' import stay_or_workshop %}
+{{ stay_or_workshop(rooms_from=(shown_rooms|selectattr('price_per_night')|map(attribute='price_per_night')|min) if shown_rooms else None, ws_from=(workshops|selectattr('price_per_person')|map(attribute='price_per_person')|min) if workshops else None, dm=_dm) }}
 <section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d05b0d21-75e0-464e-bcad-9faac533884c/IMG_4368.jpeg?format=1500w" alt="A workshop at Château de Gudanes" loading="lazy">
   <div class="g-half__text">
@@ -256,7 +261,12 @@
     {# No count of workshops (owner, 28 Sept: the programme is not fixed). #}
     <p class="g-scarcity-line">One workshop at a time, and fifteen places on each. That is every seat there is.</p>
     <p class="g-p"><em>Small retreats of three to seven nights, with the château given over to them entirely.</em></p>
-    <p class="g-p">The full experience, as a small-group retreat. Three nights for the brocantes, five for the kitchen, seven for the restoration, with a tour of the château, full board, the château's wines and every excursion included.</p>
+    <p class="g-p">The full experience, as a small-group retreat. Three nights for the brocantes, five for the kitchen, seven for the restoration, with a tour of the château, full board and the château's wines included.</p>
+    {# The ones spent at the house (owner, 1 Oct: this year's two - no transfers, vans or excursions), by name, never counted,
+       never called a trial. From the same rule as their own pages. #}
+    {%- from '_stay_or_workshop.html' import tx_flag, ex_flag -%}
+    {%- set _ah = namespace(names=[]) -%}{%- for w in (workshops or []) -%}{%- if tx_flag(w)|trim == 'no' and ex_flag(w)|trim == 'no' -%}{%- set _ah.names = _ah.names + [w['title']] -%}{%- endif -%}{%- endfor -%}
+    {% if _ah.names %}<p class="g-p">{% for n in _ah.names %}{{ n }}{% if not loop.last %}{{ ' and ' if loop.revindex == 2 else ', ' }}{% endif %}{% endfor %} {{ 'is' if _ah.names|length == 1 else 'are' }} spent entirely at the house: the making, the meals and the house itself, with no outings to plan around.</p>{% endif %}
     <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--line">See the workshops</a></p>
   </div>
 </div></section>

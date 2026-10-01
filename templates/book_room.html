@@ -42,7 +42,7 @@
     <p class="g-eyebrow">Ariège · French Pyrénées</p>
     <h1 class="g-display" >{{ room_name(room['name']) }}</h1>
     <p class="g-room__meta">
-      For up to {{ room['max_occupancy'] }} guests{% if room['price_per_night'] %} · <span class="g-fig" data-eur="{{ room['price_per_night']|int }}">€{{ '{:,.0f}'.format(room['price_per_night']) }}</span> per night{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{%- endif %}</p>
+      For up to {{ room['max_occupancy'] }} guests{% if room['price_per_night'] %} · <span class="g-fig" data-eur="{{ room['price_per_night']|int }}">€{{ '{:,.0f}'.format(room['price_per_night']) }}</span> per night, room and breakfast{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{%- endif %}</p>
     {# The arithmetic a guest would otherwise do in their head, and the deposit
        split they would otherwise meet for the first time at the payment step.
        deposit_shown is None when the amount genuinely depends on the booking,
@@ -60,7 +60,7 @@
     {# The button came before the price and facts; it now follows them. #}
   <p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Check these dates</a></p>
 
-    <p class="g-room__note">Room and continental breakfast; <a href="{{ url_for('workshops_public') }}">the workshops</a> are the full experience, with every meal, the wine and a tour of the château. Walls left as the centuries made them — under Class I protection, they stay that way. Everything within them is new.</p>
+    <p class="g-room__note">Continental breakfast included. Walls left as the centuries made them — under Class I protection, they stay that way. Everything within them is new.</p>
     {# Its own note, so the bathroom is clear on the page a guest books from (owner, 24 Sept). #}
     <p class="g-room__note g-room__bath"><b>Your bathroom.</b> {% if (room['bathroom'] or '')|lower == 'private' %}Yours alone for the stay, downstairs on the first floor{% else %}Downstairs, on the first floor{% endif %}; the bedrooms are on the top floor, with a powder room in the upstairs vestibule for the night.{% if room_name(room['name']) == 'The King Room' %} This room also has a bath and a basin of its own.{% endif %} There is no lift, and a great many stairs.</p>
   </div>
@@ -88,6 +88,7 @@
   <ul class="g-tags">{% for tag in room['amenities'].split(',') %}<li>{{ tag.strip() }}</li>{% endfor %}</ul>
   {% endif %}
 
+  {% from '_stay_or_workshop.html' import night_notice %}{{ night_notice(dm=_dm) }}
   <form id="book-form" method="post" class="g-form-full" style="margin-top:clamp(1.5rem,4vw,2.5rem);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -764,6 +765,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         <div><dt>Cancellation</dt><dd>Non-refundable. Write to us and we can sometimes move your dates instead</dd></div>
         <div><dt>Your reference</dt><dd>Emailed at once, with a link to see your booking and add to it</dd></div>
         <div><dt>Breakfast</dt><dd>Included every morning, in the rate you see</dd></div>
+        <div><dt>Luggage</dt><dd>Pack lightly: the bedrooms are reached by the original staircase, and there is no lift</dd></div>
         {#- It said "charged locally on departure". The checkout adds it to the
             card payment as its own line, so a guest who read this expected to
             pay it twice. The rate is the one the checkout charges. -#}

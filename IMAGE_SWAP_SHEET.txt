@@ -1,0 +1,231 @@
+IMAGE SWAP SHEET — every hotlinked Squarespace image, by template and line.
+Built from commit fdd551d. When a src changes, its alt must describe the NEW photograph.
+Slot class tells you the box: g-hero__img = full-bleed hero (any aspect, cover);
+g-band img = photo strip; g-half__img = half-width feature; g-wscard__img/g-card__img = card.
+167 images.
+
+template                  line  slot class       current alt                                  current file
+book_room.html              69                   The bathrooms                                Bathrooms+-+After+Work.jpg
+book_room.html              70                   La Table                                     GudanesCookingintheKitchenStay59of925.jp
+book_room.html              71                   The kitchen                                  Winter+kitchen+table-15.jpg
+book_room.html              72                   The château                                  Chambre+des+Fleurs+1.jpg
+book_room.html             632                   Original plaster, left as found              IMG_2142+3.webp
+book_room.html             636                   An antique French bed with new linen         ex+chef+room.jpg
+book_room.html             668  g-close__mark    Château de Gudanes                           Logo_white.png
+book_rooms.html             44  g-hero__img      A bedroom, walls left as found               Chambre+des+Fleurs+1.jpg
+book_rooms.html             78                   Restoration work in progress                 Chambre+Bleue+4.png
+book_rooms.html            106                   A bedroom under restoration, bare walls and  Chambre+du+Parc+1.jpg
+book_rooms.html            106                   Chambre Émeraude                             Chambre+Emeraude.jpg
+book_rooms.html            106                   A bathroom, restored                         Bathrooms+-+After+Work.jpg
+book_rooms.html            106                   The château de Gudanes                       day_1_19.jpg
+book_rooms.html            106                   The château de Gudanes                       day_1_21.jpg
+book_rooms.html            307                   A table laid outside with the mountains beyo Food+and+Dining+Full+Page.jpg
+book_rooms.html            312                   The kitchen                                  Kitchen+1.JPG
+book_rooms.html            313                   Copper pans                                  March+Kitchen+Shots-3.jpg
+book_rooms.html            314                   The dining room                              Dining+Room.jpg
+book_rooms.html            315                   The kitchen table in winter                  bedroom+3.jpg
+book_rooms.html            319  g-half__img      One of the château bathrooms                 Bathrooms+-+After+Work.jpg
+book_rooms.html            345                   The pool                                     Classic+Double.jpg
+book_rooms.html            352                   The gardens                                  home-31.jpg
+book_rooms.html            359                   The salon de thé                             Winter+kitchen+table-15.jpg
+book_rooms.html            542                   The château in winter                        Chateau+de+Gudanes+-+Winter.jpeg
+book_rooms.html            552                   The drive at night                           Chateau+At+Night_.jpg
+book_rooms.html            562                   The gardens and pool                         home-31.jpg
+book_rooms.html            572                   The valley in summer                         _DSC8827.jpg
+book_rooms.html            582                   Market produce                               March+Kitchen+Shots-3.jpg
+book_rooms.html            592                   The gates in autumn                          thumbnail_autumn.jpg
+book_rooms.html            602                   The parkland                                 Gardens+In+September.jpg
+book_rooms.html            860  g-close__mark    Linen turned down                            Logo_white.png
+booking_confirmation.html    72                   The gates in autumn                          thumbnail_autumn.jpg
+booking_confirmation.html    73                   A château bedroom                            Classic+Double.jpg
+booking_confirmation.html    74                   The kitchen                                  Winter+kitchen+table-15.jpg
+booking_confirmation.html    75                   The grounds from above                       home-31.jpg
+contact.html                36  g-hero__img      The gates at Château de Gudanes              Chateau+de+Gudanes+Spring+Gates+-+A5+Pos
+contact.html                72                   The château and the valley                   IMG_3493.jpg
+contact.html               169                   The château from above                       DJI_0275-2-Edit.jpg
+contact.html               170                   Wildflowers below the château                _DSC8827.jpg
+contact.html               171                   The gates in autumn                          thumbnail_autumn.jpg
+contact.html               172                   The château in snow                          Chateau+de+Gudanes+In+Winter+2.png
+contact.html               225  g-close__mark    Château de Gudanes                           Logo_white.png
+event_confirmation.html     56                   The château from above                       DJI_0275-2-Edit.jpg
+event_confirmation.html     57                   The formal gardens                           Gardens+-+Formal+Gardens+2.jpg
+event_confirmation.html     58                   The château                                  Chateau+At+Night_.jpg
+event_confirmation.html     59                   The gates in autumn                          thumbnail_autumn.jpg
+event_find.html             37  g-formhero       The gates at Château de Gudanes              thumbnail_autumn.jpg
+event_manage.html           87  g-formhero       The château from above                       DJI_0275-2-Edit.jpg
+events_info.html            36  g-hero__img      The château                                  _DSC8827.jpg
+events_info.html           162                   The gates in spring                          Chateau+de+Gudanes+Spring+Gates+-+A5+Pos
+events_info.html           163                   A table laid                                 DJI_0275-2-Edit.jpg
+events_info.html           164                   The formal gardens                           Chambre+Bleue+4.png
+events_info.html           165                   The château at night                         Chambre+du+Parc+1.jpg
+events_info.html           176                   A salon                                      day_1_21.jpg
+events_info.html           185                   The kitchen                                  Winter+kitchen+table-15.jpg
+events_info.html           192                   A bedroom                                    Chambre+des+Fleurs+1.jpg
+events_info.html           199                   The parkland                                 IMG_3493.jpg
+events_info.html           285                   The château and wildflowers                  _DSC8827.jpg
+events_info.html           454  g-close__mark    The salon set for dinner                     Logo_white.png
+facilities.html             16  g-hero__img      The château grounds                          IMG_3493.jpg
+facilities.html             35                   The pool                                     home-31.jpg
+facilities.html             42                   The gardens                                  _DSC8827.jpg
+facilities.html             49                   The grounds at dusk                          Chambre+des+Fleurs+1.jpg
+facilities.html            128  g-card__img      The drive at dusk                            Chateau+At+Night_.jpg
+facilities.html            135  g-card__img      Copper at the market                         March+Kitchen+Shots-3.jpg
+facilities.html            142  g-card__img      The gates in autumn                          thumbnail_autumn.jpg
+facilities.html            166                   The pool below the formal gardens            Gardens+In+Fall.jpg
+facilities.html            167                   The parkland and the mountains beyond        Gardens+In+September.jpg
+facilities.html            168                   The terraces in summer                       IMG_2142+3.webp
+facilities.html            169                   The estate in winter                         IMG_4368.jpeg
+facilities.html            217                   The château in snow                          Chateau+de+Gudanes+-+Winter.jpeg
+facilities.html            218                   Winter light on the façade                   Chateau+de+Gudanes+In+Winter+2.png
+facilities.html            219                   The kitchen table in winter                  Winter+kitchen+table-15.jpg
+facilities.html            220                   The château at night                         Chateau+At+Night_.jpg
+facilities.html            270                   The terraced gardens in September            Gardens+In+September.jpg
+facilities.html            375  g-close__mark    The pool below the gardens                   Logo_white.png
+find_booking.html           41  g-formhero       The gates at Château de Gudanes              thumbnail_autumn.jpg
+gallery.html               150                   A conservator at the fresco                  restoration+1.jpg
+gallery.html               151                   A bedroom against bare plaster               ex+chef+room.jpg
+gallery.html               152                   The dining room                              Dining+Room.jpg
+gallery.html               153                   The château and wildflowers                  _DSC8827.jpg
+guest_account_expired.html    20  g-formhero       The château in snow                          Chateau+de+Gudanes+In+Winter+2.png
+guest_account_request.html    41  g-formhero       Wildflowers below the château                _DSC8827.jpg
+guest_feedback_form.html    46  g-formhero       A château bedroom                            IMG_2988.jpg
+guest_feedback_submitted.html    27  g-formhero       The gates in autumn                          thumbnail_autumn.jpg
+home.html                  203                   The château seen from the valley road        Gardens+In+Fall.jpg
+home.html                  203                   The east façade above the parkland           Gardens+In+September.jpg
+home.html                  203                   The gates in spring                          Chateau+de+Gudanes+Spring+Gates+-+A5+Pos
+home.html                  203                   The château de Gudanes                       IMG_3493.jpg
+home.html                  203                   The château at night                         Chateau+At+Night_.jpg
+home.html                  206  g-half__img      A Place To Stay                              IMG_2142+3.webp
+home.html                  215  g-half__img      A Place To Create                            IMG_4368.jpeg
+home.html                  225  g-half__img      A Place To Dine                              Dining+Room.jpg
+home.html                  234  g-half__img      A Place To Celebrate                         GudanesCookingintheKitchenStay59of925.jp
+home.html                  243  g-half__img      A Place To Dream                             Winter+kitchen+table-15.jpg
+home.html                  390  g-close__mark    The façade from the drive                    Logo_white.png
+restaurant_book.html        16  g-formhero       The dining room at Château de Gudanes        Dining+Room.jpg
+restaurant_book.html       186  g-close__mark    Château de Gudanes                           Logo_white.png
+restaurant_confirmation.html    59                   The dining room                              Dining+Room.jpg
+restaurant_confirmation.html    60                   A table laid outside                         Food+and+Dining+Full+Page.jpg
+restaurant_confirmation.html    61                   Copper in the kitchen                        March+Kitchen+Shots-3.jpg
+restaurant_confirmation.html    62                   The kitchen                                  Winter+kitchen+table-15.jpg
+restaurant_find.html        37  g-formhero       The gates at Château de Gudanes              thumbnail_autumn.jpg
+restaurant_info.html        33  g-hero__img      The dining room at Château de Gudanes        Dining+Room.jpg
+restaurant_info.html        79                   The dining room laid for dinner              Kitchen+1.JPG
+restaurant_info.html        79                   The kitchen gardens in late summer           Winter+kitchen+table-15.jpg
+restaurant_info.html        79                   The long table before service                Food+and+Dining+Full+Page.jpg
+restaurant_info.html        79                   Produce from the Sunday market               March+Kitchen+Shots-3.jpg
+restaurant_info.html        79                   The formal gardens                           Gardens+-+Formal+Gardens+2.jpg
+restaurant_info.html        82  g-half__img      The gardens in autumn                        Gardens+In+Fall.jpg
+restaurant_info.html        95  g-half__img      The gardens in September                     Gardens+In+September.jpg
+restaurant_info.html       149  g-half__img      Chateau de Gudanes Spring Gates - A5 Postcar Chateau+de+Gudanes+Spring+Gates+-+A5+Pos
+restaurant_info.html       302                   The kitchen table                            March+Kitchen+Shots-3.jpg
+restaurant_info.html       525  g-close__mark    The table laid by candlelight                Logo_white.png
+restaurant_manage.html      52  g-formhero       The dining room                              Dining+Room.jpg
+restoration.html            34  g-hero__img      Restoration work in progress                 Chambre+des+Fleurs+1.jpg
+restoration.html            74                   Room by room                                 day_1_19.jpg
+restoration.html            75                   Bare plaster                                 day_1_21.jpg
+restoration.html            76                   The work itself                              day_1_18.jpg
+restoration.html            77                   The kitchen recovered                        Kitchen+1.JPG
+restoration.html            94                   Work in progress                             March+Kitchen+Shots-3.jpg
+restoration.html           127                   Bare plaster and original panelling          restoration+1.jpg
+restoration.html           145                   Fresco recovery                              day_1_19.jpg
+restoration.html           152                   Painted beams                                Dining+Room.jpg
+restoration.html           159                   Beneath the floorboards                      day_1_18.jpg
+restoration.html           424                   A room as found                              IMG_2988.jpg
+restoration.html           505                   A floor being relaid                         IMG_2988.jpg
+whats_on.html               16  g-hero__img      The Ariège                                   thumbnail_autumn.jpg
+whats_on.html              112                   Copper at the market                         March+Kitchen+Shots-3.jpg
+whats_on.html              113                   The kitchen in winter                        Winter+kitchen+table-15.jpg
+whats_on.html              114                   The gardens in autumn                        Gardens+In+Fall.jpg
+whats_on.html              115                   Snow at the château                          Chateau+de+Gudanes+-+Winter.jpeg
+whats_on.html              143                   Mirepoix                                     Chateau+de+Gudanes+Spring+Gates+-+A5+Pos
+whats_on.html              150                   The Niaux cave                               IMG_2142+3.webp
+whats_on.html              157                   Château de Foix                              Chateau+At+Night_.jpg
+whats_on.html              315  g-close__mark    The valley road                              Logo_white.png
+workshop_confirmation.html    69                   The kitchen                                  Kitchen+1.JPG
+workshop_confirmation.html    70                   A bedroom                                    ex+chef+room.jpg
+workshop_confirmation.html    71                   Restoration in progress                      restoration+1.jpg
+workshop_confirmation.html    72                   The château from above                       DJI_0275-2-Edit.jpg
+workshop_detail.html       105                   The long table in the château kitchen        Chambre+Bleue+4.png
+workshop_detail.html       150                   A château bedroom                            Chambre+des+Fleurs+1.jpg
+workshop_detail.html       157                   The bathrooms                                Bathrooms+-+After+Work.jpg
+workshop_detail.html       286  g-close__mark    Château de Gudanes                           Logo_white.png
+workshop_feedback_form.html    45  g-formhero       The kitchen                                  Kitchen+1.JPG
+workshop_find.html          37  g-formhero       The gates at Château de Gudanes              thumbnail_autumn.jpg
+workshop_register.html     273                   The kitchen                                  Kitchen+1.JPG
+workshop_register.html     274                   A bedroom                                    ex+chef+room.jpg
+workshop_register.html     275                   Restoration in progress                      restoration+1.jpg
+workshop_register.html     276                   The gates in autumn                          thumbnail_autumn.jpg
+workshop_register.html     309  g-close__mark    Château de Gudanes                           Logo_white.png
+workshops_public.html       51                   The kitchen table mid-morning                March+Kitchen+Shots-3.jpg
+workshops_public.html      220                   At the table                                 day_3_225.jpg
+workshops_public.html      228                   A château bedroom                            Chambre+des+Fleurs+1.jpg
+workshops_public.html      236                   The grounds                                  IMG_3493.jpg
+workshops_public.html      244                   The gates                                    Chateau+de+Gudanes+Spring+Gates+-+A5+Pos
+workshops_public.html      344                   A table laid outside with the mountains beyo Food+and+Dining+Full+Page.jpg
+workshops_public.html      349                   The kitchen                                  Classic+Double.jpg
+workshops_public.html      350                   Copper pans                                  March+Kitchen+Shots-3.jpg
+workshops_public.html      351                   The dining room                              Dining+Room.jpg
+workshops_public.html      352                   The kitchen table in winter                  Winter+kitchen+table-15.jpg
+workshops_public.html      358                   One of the château bathrooms                 Bathrooms+-+After+Work.jpg
+workshops_public.html      390                   The pool and formal gardens from above       home-31.jpg
+workshops_public.html      397                   The gardens and parkland                     _DSC8827.jpg
+workshops_public.html      404                   A château bedroom                            ex+chef+room.jpg
+workshops_public.html      434                   Market produce on the kitchen table          March+Kitchen+Shots-3.jpg
+workshops_public.html      792  g-close__mark    The workshop table                           Logo_white.png
+
+
+=== SHARE IMAGES (og:image, one per page) — 1200x630 ideally ===
+These are what appears when a page is shared to WhatsApp/Slack/Facebook.
+  book_room.html           Classic+Double.jpg
+  book_rooms.html          ex+chef+room.jpg
+  contact.html             Chateau+At+Night_.jpg
+  events_info.html         _DSC8827.jpg
+  facilities.html          home-31.jpg
+  gallery.html             DJI_0275-2-Edit.jpg
+  home.html                thumbnail_autumn.jpg
+  public_base.html         thumbnail_autumn.jpg
+  restaurant_info.html     Food+and+Dining+Full+Page.jpg
+  restoration.html         IMG_2142+3.webp
+  whats_on.html            Gardens+In+September.jpg
+  workshop_detail.html     restoration+1.jpg
+  workshops_public.html    restoration+1.jpg
+
+=== ROOM PHOTOS — set photo_filename on ALL FIVE rooms in the admin ===
+The room cards (home and Stay) fall back to hotlinked Squarespace photos when
+a room has no photo_filename. Both pages now map each named room to its own
+fallback, but the fallbacks are old pictures and will die with the swap. The
+moment all five rooms have a photo uploaded in the admin, no fallback is ever
+used. Check: Émeraude, Cerise, du Levant, Les Deux Chambres, Tilleul.
+Fallback pairings currently in the templates (home + Stay), if any room is
+still without an admin photo at launch — only the first is certain:
+  Chambre Émeraude   -> Chambre+Emeraude.jpg        (certain)
+  Chambre du Levant  -> Chambre+des+Fleurs+1.jpg    (guess from filename)
+  Les Deux Chambres  -> bedroom+3.jpg               (guess)
+  Chambre Cerise     -> Classic+Double.jpg          (guess)
+  Chambre Tilleul    -> ex+chef+room.jpg            (guess)
+
+=== INTERIM ROOM PHOTOS (24 Sept, owner's phone - not the proper shoot) ===
+Uploaded in admin per room, not through a handover: the templates use room.photo_filename wherever it
+is set (Stay cards, the homepage cards, the room page hero), and the room page shows gallery photos.
+Prepared: upright, 2400px long side, JPEG q82, ALL metadata removed (each original carried GPS).
+  The Queen Room  main     queen-room-1.jpg        (IMG_7685)  2400x1800
+  The Twin Room   main     twin-room-1.jpg         (IMG_7710)  2400x1800  straight on, both beds
+                  gallery  twin-room-2-window.jpg  (IMG_7709)  1800x2400  portrait - gallery only
+                  gallery  twin-room-3.jpg         (IMG_7708)  2400x1800
+Crops checked at the room hero (1168x414 desktop, 358x414 phone) and the 3:2 cards: centre works.
+For the proper shoot:
+- Twin: a power strip and cables show under the middle bedside table (main shot), and the clothes rail
+  with hangers in the angled one. Keep the window shot's angle - the unrestored ceiling above, the new
+  floor below and the mountain through the window is the house's whole argument in one frame.
+- Queen: bottled water on both bedside tables and a cable at the right-hand one.
+
+=== LIVE CHECK, 24 Sept (Chrome, 2246px window at 1.71x) ===
+Fourteen pages measured after scrolling every photo in: no broken images, no failed files, no
+sideways overflow; both Contact maps load. The only finding is soft heroes - admin-uploaded images
+(hashed names) at 1500px stretched to ~2230px: Stay, Workshops, the atelier page, Dining, Events,
+Restoration, Contact, What's On. The Estate's hero is 960px (2.3x) - soft on an ordinary laptop too,
+and the same image in the Gallery. Upload 2400px or larger originals; if the upload resizes to 1500,
+Code should raise that to 2400. The Twin Room's current photo (1067px in a 1168px hero) is replaced
+by the 2400px interim one.
+- Alt text: seventeen descriptions are shared by different photographs (e.g. "A château bedroom" on four). Harmless, but
+  when the new photographs go in, give each its own - the room's name, the season, what is in frame.

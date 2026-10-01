@@ -22,7 +22,7 @@
     than an empty one.
     ========================================================================== #}
 
-{% macro atelier_glance(w, settings, price_from=False) %}
+{% macro atelier_glance(w, settings, price_from=False, tx=None) %}
 <section class="g-gl">
   <div class="g-gl__in">
 
@@ -35,8 +35,9 @@
       <div class="g-gl__i g-gl__i--lead">
         <dt>{{ 'From, per person' if price_from else 'Per person' }}</dt>
         <dd class="g-gl__big">€{{ '{:,.0f}'.format(w.price_per_person|float) }}</dd>
-        <p class="g-gl__n">Everything in — bed, board, wine, a tour of the château,
-          the transfers from Toulouse, and the run of the house</p>
+        <p class="g-gl__n">{%- from '_stay_or_workshop.html' import tx_flag -%}
+          Everything in — bed, board, wine, a tour of the château,
+          {% if (tx and tx == 'all') or (not tx and tx_flag(w)|trim == 'yes') %}the transfers from Toulouse, {% endif %}and the run of the house</p>
       </div>
       {% endif %}
 
@@ -51,8 +52,7 @@
       <div class="g-gl__i">
         <dt>How many</dt>
         <dd>Fifteen</dd>
-        <p class="g-gl__n">And the château takes no other guests while a
-          workshop is running</p>
+        <p class="g-gl__n">Small enough for one long table at dinner</p>
       </div>
 
       <div class="g-gl__i">

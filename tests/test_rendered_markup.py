@@ -180,6 +180,14 @@ GUEST_FACING = [
 ]
 
 
+# The wrappers that make a wide table scroll instead of dragging the page
+# sideways. Two, because the staff and public sides have their own
+# stylesheets and their own name for it. Checked rather than trusted: the
+# suite proves each of these really is overflow-x:auto somewhere, so this
+# list cannot be used to wave through a wrapper that does not scroll.
+SCROLLING_WRAPPERS = ("table-wrap", "g-vs__wrap")
+
+
 def _attrs(raw):
     return dict(ATTR.findall(raw))
 
@@ -229,7 +237,8 @@ def _read(page, html, found):
             "%s: <%s class=%s>" % (page, tag, a.get("class", "")))
 
     for match in re.finditer(r"<table\b", body):
-        if "table-wrap" not in body[max(0, match.start() - 400):match.start()]:
+        before = body[max(0, match.start() - 400):match.start()]
+        if not any(w in before for w in SCROLLING_WRAPPERS):
             found["table outside table-wrap"].append(page)
             break
 
@@ -625,6 +634,29 @@ def run():
                     "no rule for its argument" if endpoint in no_rule
                     else "nothing in its table" if endpoint in unreachable
                     else "it answered, but not with a page"))
+
+    # The claim SCROLLING_WRAPPERS rests on, proved rather than asserted: a
+    # wrapper named there and not actually scrolling would wave every table
+    # inside it straight past the check below.
+    sheets = ""
+    # Absolute, from the harness's ROOT. The suite runs from tests/, so a
+    # relative "static/style.css" reads nothing, silently, and every wrapper
+    # then looks like it does not scroll.
+    for name in (os.path.join(_harness.ROOT, "static", "style.css"),
+                 os.path.join(_harness.ROOT, "static", "gudanes.css")):
+        try:
+            sheets += io.open(name, encoding="utf-8", errors="replace").read()
+        except OSError:
+            pass
+    flat = " ".join(sheets.split())
+    unscrolling = [w for w in SCROLLING_WRAPPERS
+                   if not re.search(r"\.%s[^{]*\{[^}]*overflow-x:\s*auto"
+                                    % re.escape(w), flat)]
+    s.check("every wrapper this trusts really does scroll",
+            not unscrolling,
+            detail="%s — named as a table wrapper with no overflow-x:auto, "
+                   "which would wave every table inside it past the check"
+                   % unscrolling)
 
     for kind in ("control with no name", "_blank with no noopener",
                  "duplicate id", "image with no alt",

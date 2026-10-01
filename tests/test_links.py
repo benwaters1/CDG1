@@ -104,15 +104,26 @@ def run():
     dupe_headings = []
     for rel, body in sorted(templates.items()):
         seen, twice = set(), set()
-        for raw in re.findall(H2_HEADING, body, re.S | re.I):
-            text = re.sub(SPACE_RUN, " ", re.sub(ANY_TAG, " ", raw)).strip()
-            # A heading built out of a variable says nothing here: two of them
-            # are one line of source and two different words on the page.
-            if not text or "{{" in text or "{%" in text:
-                continue
-            (twice if text in seen else seen).add(text)
-        for text in sorted(twice):
-            dupe_headings.append(f"{rel}: {text[:40]}")
+        # Each macro is its own page's worth of markup. A partial that
+        # defines two of them -- _stay_or_workshop has the two cards and the
+        # full comparison, with the same heading over each -- is not a page
+        # carrying that heading twice, and no page calls both. Checked per
+        # macro, and the text outside any macro checked as its own body.
+        for chunk in re.split(r"\{%-?\s*macro\b", body)[0:1] + [
+                c.split("{% endmacro %}")[0]
+                for c in re.split(r"\{%-?\s*macro\b", body)[1:]]:
+            seen, twice = set(), set()
+            for raw in re.findall(H2_HEADING, chunk, re.S | re.I):
+                text = re.sub(SPACE_RUN, " ",
+                               re.sub(ANY_TAG, " ", raw)).strip()
+                # A heading built out of a variable says nothing here: two of
+                # them are one line of source and two different words on the
+                # page.
+                if not text or "{{" in text or "{%" in text:
+                    continue
+                (twice if text in seen else seen).add(text)
+            for text in sorted(twice):
+                dupe_headings.append(f"{rel}: {text[:40]}")
     # THE GUARD THAT NEVER FIRES. The sketches wrap a link in
     # {% if 'X' in url_map %} to mean 'only if that page exists yet'. url_map
     # is not in the template context, so Jinja answers that a name it has

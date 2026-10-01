@@ -24,6 +24,8 @@
   <p class="g-p">Status: <span class="mini-status status-{{ (booking['status']|string)|lower }}">{{ booking['status'] }}</span>
     {% if booking['payment_status'] and (booking['payment_status']|lower) != 'unpaid' %}· Payment: <span class="mini-status status-{{ (booking['payment_status']|string)|lower }}">{{ booking['payment_status'] }}</span>{% endif %}
   </p>
+  {# What a night includes (owner, 1 Oct) - the page a Booking.com guest will land on, too. #}
+  <p class="g-p">Your stay is a room and breakfast. Lunch, dinner and drinks are not included{% if addable %}; <a href="#add">add anything you would like below</a>{% endif %}.</p>
   {#- Their days here, on one page. A guest knew their arrival date and
       nothing else: whether the restaurant served on the Tuesday, whether
       there was an atelier on while they were here, what they had already
@@ -152,6 +154,7 @@
 <div class="g-mb-card" style="margin-top:var(--s4);">
   <h2 class="g-panel__h">{{ t('Estimated arrival time') }}</h2>
   <p class="g-hint">{{ t("Let us know roughly when to expect you, so someone is there to meet you.") }}</p>
+  <p class="g-hint">Pack lightly: the bedrooms are reached by the original staircase, and there is no lift.</p>
   <form method="post" class="g-row" style="margin-top:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="arrival_time">
@@ -341,7 +344,7 @@
 {# Things a guest can add to a stay they have already booked. Goes on the bill
    rather than asking for a card each time — the balance is settled once. #}
 {% if addable and (booking['status']|lower) in ('pending', 'confirmed') %}
-<div class="g-mb-card" style="margin-top:var(--s4);">
+<div class="g-mb-card" id="add" style="margin-top:var(--s4);">
   <h2 class="g-panel__h">{{ t('Add to your stay') }}</h2>
   <p class="g-hint">Added to your bill, settled with the rest.</p>
   {% for e in addable %}
@@ -462,5 +465,6 @@
     View your bill
   </a>
 </p>
+{% from '_stay_or_workshop.html' import next_time %}{{ next_time() }}
 
 {% endblock %}

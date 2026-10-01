@@ -86,9 +86,14 @@
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <p class="g-eyebrow">While You Are Here</p>
   <h2 class="g-place">Anything Else?</h2>
-  <p class="g-p">All of it can be added from your booking link, and none of it needs deciding now.</p>
+  <p class="g-p">Your stay is a room and breakfast; lunch, dinner and drinks are not included. Anything below can be added from your booking link, and none of it needs deciding now.</p>
 
   <div class="g-finds">
+    <div class="g-find">
+      <p class="g-find__k">The House</p>
+      <h3 class="g-find__t">A tour of the château</h3>
+      <p class="g-find__d">The house and its restoration, shown to you by the people doing it. &euro;50 per booking.</p>
+    </div>
     {% if _dm == 'open' %}
     <div class="g-find">
       <p class="g-find__k">Dinner</p>
@@ -121,5 +126,7 @@
 {{ packing() }}
 
 {{ animals() }}
+
+<div class="g-wrap">{% from '_stay_or_workshop.html' import next_time %}{{ next_time() }}</div>
 
 {% endblock %}

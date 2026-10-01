@@ -1,0 +1,69 @@
+CHÂTEAU DE GUDANES — HANDOVER, 1 OCTOBER 2026
+
+BASE: main at f834ed7 (1 Oct, 10:29). Every file is based on it; replace them, do not merge. Line endings CRLF.
+Merged with your work since the 28 Sept full handover (which is on main exactly as sent): book_room.html keeps your booking-
+bar fix and the house's day on its picker; privacy.html your Stripe and analytics lines; public_base.html your house's-day
+script (window.houseDay). guest_statement, workshop_manage and guest_account are yours alone - not sent.
+NEW FILE: templates/_stay_or_workshop.html. Also now in the handover: _care.html and _before.html (fetched from main, changed
+only where listed in PARTIALS_FIX).
+
+FILES (23)
+static/gudanes.css
+templates/_before.html
+templates/_care.html
+templates/_exclusive.html
+templates/_glance.html
+templates/_stay_or_workshop.html
+templates/book_room.html
+templates/book_rooms.html
+templates/booking_confirmation.html
+templates/error.html
+templates/events_private.html
+templates/gallery.html
+templates/home.html
+templates/manage_booking.html
+templates/privacy.html
+templates/public_base.html
+templates/restaurant_info.html
+templates/restoration.html
+templates/whats_on.html
+templates/workshop_confirmation.html
+templates/workshop_detail.html
+templates/workshop_register.html
+templates/workshops_public.html
+
+WHAT CHANGED (page by page: SINCE_LAST_ZIP.txt, from "STAY VERSUS WORKSHOP" on)
+1. A night is a room and breakfast; a workshop is the full experience - said everywhere a guest chooses. The shared partial
+   _stay_or_workshop.html: stay_or_workshop() (two cards: Stay, homepage), stay_vs_workshop() (the full table, Workshops,
+   id="compare"), night_notice() ("Before you book a night", Stay before the rooms and each room page above the form),
+   next_time() (manage page, booking confirmation). Prices only from the page's own data.
+2. The château tour: included in every workshop; €50 PER BOOKING as a nightly extra (Stay's extras, the table, the notice,
+   the confirmation's Anything Else?).
+3. Meals and drinks stated plainly ("Lunch, dinner and drinks are not included" on a stay; all of it on a workshop), with
+   "Are meals and drinks included?" on Stay and Workshops.
+4. Transfers and excursions are per workshop: this year's two (autumn's Immersive Artisan, Noël) are spent at the house - no
+   transfers, vans or excursions - and nothing promises them there ("The days - Spent at the château itself..."; cards
+   "Spent at the house" / "Transfers and excursions included"; the Workshops page says "each workshop says" while the mix
+   lasts). Never called a trial.
+5. Luggage: "Pack lightly: the bedrooms are reached by the original staircase, and there is no lift." - never who carries
+   the bags, nothing about staff. The old "Your bags go up while you are still looking at the valley" (_care.html) is gone.
+6. More ways to the workshops: the homepage hero ("Or come for the full experience: the workshops"), the Book menu, Dining,
+   the Gallery, In the Valley, Private hire, Restoration's sticky bar, the error page. Repetition cut on Workshops.
+
+FOR YOU (all detailed in PARTIALS_FIX.txt)
+- workshops.transfers_included and workshops.excursions_included (INTEGER DEFAULT 1), each a tick-box in admin; untick both
+  for this year's two. Pass them on the session row (workshop_register) and the workshop booking row (workshop_confirmation).
+  Read by tx_flag()/ex_flag(); until they exist, four nights or a 2026 start counts as without.
+- Extras: "A tour of the château", price 50, per booking (max quantity 1).
+- Booking.com guests: a stay page and the welcome email on import (spec, email and WhatsApp template in PARTIALS_FIX).
+- t() keys needing French: the Book menu's four new lines (drafted); still "In the Valley", "Workshops & Retreats",
+  "Your workshop", "Your workshops" if not done.
+- Email wording for the admin templates and app.py's defaults (nightly: room and breakfast, the tour, pack lightly;
+  workshop: the full experience, transfers only where included).
+- Optional: pass the workshops' minimum price to book_rooms and the rooms' to workshops_public, so both sides of the
+  comparison show a price on every page.
+- Tests that may need their strings: the Workshops page's intro, Getting Here, FAQ "What is included?", the summary box's
+  How many note, the facts list's Group size; the Book menu's labels; the error page's two lines; Restoration's sticky bar
+  is now 'atelier'; the room page's note is "Continental breakfast included." again.
+- Checked here: 42 pages in all three dining modes x 5 widths, no script errors, no text below contrast, date picker 12/12
+  (with your house's day), function suite 6/6, manage page still prints its takeaway alone.
