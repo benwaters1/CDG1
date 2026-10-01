@@ -480,7 +480,7 @@ def staff_bare_h2_audit(srcs, stylesheets):
     for page in sorted(srcs):
         if page in ("base.html", "public_base.html", "pos_base.html"):
             continue
-        if not (_template_parent(srcs[page]) or re.search(r"<html\b", srcs[page], re.I)):
+        if not _is_page(srcs[page]):
             continue
         chain, t = [], page
         while t and t in srcs and t not in chain:
