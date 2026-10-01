@@ -64,11 +64,22 @@ def run():
         ).fetchone()["value"]
     finally:
         conn.close()
-    # Compared as text, not markup: the live first line is "BOOKING TERMS &
-    # CONDITIONS", and the page writes that ampersand as &amp;.
+    # Anchored on the SUBSTANCE, not the first line. The document opens with
+    # its own title — "BOOKING TERMS & CONDITIONS — …" — and the page
+    # deliberately drops that block because it only repeats the h1 above it.
+    # Keyed on the title, this check called a correct page broken.
+    #
+    # So: a clause from the middle, and one from the end, compared as text
+    # rather than markup because the page escapes ampersands and accents.
+    body_text = html.unescape(flat)
+    sample = [l.strip() for l in doc.splitlines()
+              if len(l.strip()) > 45 and not l.strip().isupper()]
+    missing = [l[:45] for l in (sample[:1] + sample[-1:])
+               if l[:45] not in body_text]
     s.check("the stored document is what the page shows",
-            doc.split("\n")[0][:40] in html.unescape(flat),
-            detail="the page is rendering something other than the setting")
+            not missing,
+            detail="%s — on the setting and not on the page, so the page is "
+                   "rendering something other than what is stored" % missing)
     # Square brackets around a word, which is how every unfinished note in
     # this document has been written. Not a bare "[", which appears in
     # ordinary prose.
@@ -120,9 +131,9 @@ def run():
                            "Assistance and guide dogs are welcome",
                            "Transfers and excursions are included only where",
                            "2 Route de Beille",
-                           # Required by L616-1: the mediator, by name and
-                           # address, wherever the terms are.
-                           "consumer mediator CM2C, 49 rue de Ponthieu",
+                           # L616-1 wants the mediator named. Generic until the
+                           # owner picks one (reminder set for 8 October 2026).
+                           "may be referred to a consumer mediator",
                            "Last updated: 1 October 2026")
                if c not in m.DEFAULT_TERMS]
     s.check("the seeded default carries the same clauses as the live page",
@@ -170,5 +181,47 @@ def run():
 
     s.check("and anybody may read it without logging in",
             anon.get("/terms").status_code == 200)
+
+    s.section("The readiness page reads both copies at once")
+    # The checks above compare DEFAULT_TERMS against clauses written into
+    # this file. That is the best the suite can do — it never touches the
+    # network, so from a laptop it has no live site to ask — and it goes
+    # stale the next time somebody edits the terms on the deployment.
+    #
+    # The deployed app has both halves in one process: the row it is serving
+    # and the constant it was built with. So the reading that matters is
+    # taken there, on /admin/readiness, and this only checks that it exists
+    # and that it is not permanently crying wolf.
+    # Its own connection: the one above is closed as soon as the document
+    # has been read, and readiness_checks does its own queries.
+    rconn = db()
+    rows = [r for r in m.readiness_checks(rconn, include_slow=False)
+            if r["label"] == "Terms, in the code and on the site"]
+    s.check("the readiness page carries the comparison", len(rows) == 1,
+            detail="%d check(s) named that" % len(rows))
+    s.check("and it passes when the two say the same thing",
+            rows and rows[0]["ok"],
+            detail=(rows[0]["detail"][:110] if rows else "")
+                   + " — the database row is CRLF because it is typed into a "
+                     "textarea and the constant is LF because it is Python, "
+                     "so a raw comparison reports drift every day forever and "
+                     "the check becomes furniture")
+
+    # And it has to be able to go off, or it is decoration. Changed here in
+    # the throwaway copy, never on anything the house serves.
+    rconn.execute("UPDATE app_settings SET value = ? "
+                  "WHERE key = 'terms_and_conditions'",
+                  (doc + "\n\nA clause nobody put in the code.",))
+    rconn.commit()
+    moved = [r for r in m.readiness_checks(rconn, include_slow=False)
+             if r["label"] == "Terms, in the code and on the site"]
+    s.check("and fails the moment the live wording moves",
+            moved and not moved[0]["ok"],
+            detail="a page edited on the deployment leaves the repository "
+                   "describing a contract the site no longer offers")
+    rconn.execute("UPDATE app_settings SET value = ? "
+                  "WHERE key = 'terms_and_conditions'", (doc,))
+    rconn.commit()
+    rconn.close()
 
     return s

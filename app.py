@@ -991,8 +991,8 @@ Please tell us at the time if something is wrong — almost everything is
 fixable while you are still here. If it is not, write to us at
 ariege@chateaugudanes.com. These terms are governed by French law, and the
 French courts have jurisdiction. A dispute we have not resolved in writing
-may be referred to the consumer mediator CM2C, 49 rue de Ponthieu, 75008
-Paris (www.cm2c.net), within one year of the written complaint.
+may be referred to a consumer mediator; write to us and we will send you
+the mediator's details.
 
 13. Contact
 Château de Gudanes SASU, 2 Route de Beille, 09310 Château-Verdun, France.
@@ -77822,6 +77822,49 @@ def readiness_checks(conn, *, include_slow=True):
             email_detail += (f" {held} message{'' if held == 1 else 's'} "
                              f"{'is' if held == 1 else 'are'} being held until this is set up.")
     add("blocker", "Email", "Outbound email", email_ok, email_detail)
+
+    # The terms, read from both places at once. This is the only process in
+    # which that is possible: the live wording is a row in app_settings on
+    # the deployment's own volume and never in git, DEFAULT_TERMS is in the
+    # code and never in a database, and the suite cannot compare them because
+    # it has no live site to ask. Here they are both to hand.
+    #
+    # Stripped, because admin_terms strips on save and a trailing newline is
+    # not a change to anybody's contract.
+    live_terms = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'terms_and_conditions'"
+    ).fetchone()
+    live_terms = (live_terms["value"] if live_terms else "") or ""
+
+    def _same_words(text):
+        """Line endings and trailing spaces are not a change to a contract.
+
+        The database row arrives with CRLF -- it is typed into a textarea on
+        a web page -- and DEFAULT_TERMS is LF, because it is Python source.
+        Compared raw, those two are never equal and this check would report
+        drift every day forever, which is worse than not having it: a warning
+        that is always on is furniture, and the day it means something nobody
+        looks.
+        """
+        lines = [l.rstrip() for l in (text or "").splitlines()]
+        return chr(10).join(lines).strip()
+
+    terms_match = _same_words(live_terms) == _same_words(DEFAULT_TERMS)
+    # Two states, and no guess about which copy is newer. Nothing in either
+    # carries a timestamp this can trust -- the page's "Last updated" line is
+    # typed by hand -- so a check that announced which side was ahead would
+    # be inventing it, and would be believed.
+    terms_detail = (
+        "The wording this site serves is the wording in the code, so a fresh "
+        "deployment would start from the same contract."
+        if terms_match else
+        "The terms this site serves are NOT the terms in the code. One of "
+        "them is out of date and this cannot tell you which: a fresh "
+        "deployment would serve the code's version, and anyone reading the "
+        "repository is reading a contract this site does not offer. Settle "
+        "which is right and bring the other to match.")
+    add("warn", "Guest-facing documents", "Terms, in the code and on the site",
+        terms_match, terms_detail)
 
     # The camera roll. Both of these fail by being quiet rather than by
     # breaking, which is the only kind of fault a list like this catches.
