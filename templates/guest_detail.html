@@ -339,7 +339,7 @@
   <tbody>
     {% for msg in messages %}
     <tr>
-      <th scope="row">{{ (msg.when or '')[:16]|replace('T', ' ') }}</th>
+      <th scope="row">{{ local_datetime_str(msg.when, unknown='not recorded') }}</th>
       <td>{{ msg.kind }}{% if msg.incoming %}<span class="cell-note">to us</span>{% endif %}</td>
       <td>
         {{ msg.subject }}

@@ -187,7 +187,9 @@ SUITES = [
     "test_design",
     "test_table_overflow",
     "test_row_headings",
+    "test_input_fields",
     "test_entities_as_text",
+    "test_form_layout",
     "test_links",
     "test_error_pages",
     "test_seo_files",
@@ -330,6 +332,7 @@ SUITES = [
     "test_weather",
     "test_own_record",
     "test_utc_slices",
+    "test_stamp_times",
     "test_read_write_parity",
     "test_no_overbooking",
     "test_add_room",
@@ -420,6 +423,7 @@ SUITES = [
     "test_job_hour_windows",
     "test_whatsapp_channel",
     "test_till_touch_targets",
+    "test_staff_header_on_a_phone",
 ]
 
 
@@ -523,9 +527,6 @@ COVERAGE_KNOWN_GAPS = set()
 BARE_DATE_KNOWN = {
     ("owner_home_figures", "clock_in_at"):
         "widened a day each way, then each shift filed by house_date_iso: right",
-    ("admin_incidents", "occurred_at"):
-        "the time as somebody typed it, local and without a zone: a date "
-        "compares with it correctly",
     ("delivery_shortfalls", "stock_movements.created_at"): "stock -- the other agent's",
     ("night_cost", "stock_movements.created_at"): "stock -- the other agent's",
     ("price_changes", "stock_movements.created_at"): "stock -- the other agent's",
@@ -536,6 +537,15 @@ BARE_DATE_KNOWN = {
     ("spend_by_vendor", "submitted_at"): "supplier invoices -- the other agent's",
     ("supplier_statement", "submitted_at"): "supplier invoices -- the other agent's",
 }
+
+
+# Templates that cut a stored moment to its first ten characters, which is
+# UTC's day -- measured on every full run by _harness, which sees each slice
+# with the value in it, so it finds them whatever the value is called. Keyed
+# by template, because a line number moves whenever the file is edited. The
+# same both-ways rule: a new one reds the run, and so does one on this list
+# that is no longer seen.
+DAY_CUT_KNOWN = {}      # {template: why}, and empty is the goal
 
 
 def main(argv):
@@ -645,6 +655,26 @@ def main(argv):
                 print(f"    {fn}: {col}")
         moments_ok = not fresh and not mended
 
+    # The same, for a template cutting a stored moment to [:10]. Full runs
+    # only, for the same reason: a partial run renders a fraction of the pages.
+    day_cuts_ok = True
+    if not wanted:
+        seen = _harness.DAY_CUTS_SEEN
+        pages = {name for name, _line in seen}
+        fresh = sorted(k for k in seen if k[0] not in DAY_CUT_KNOWN)
+        mended = sorted(name for name in DAY_CUT_KNOWN if name not in pages)
+        print(f"\nDAY CUTS — {len(seen)} place(s) in {len(pages)} template(s) "
+              f"cut a stored moment to its first ten characters, "
+              f"{len(fresh)} of them new")
+        for name, line in fresh:
+            print(f"    NEW  {name}:{line} (x{seen[(name, line)]}) -- that is "
+                  "UTC's day; |date_short or |house_day gives the house's")
+        if mended:
+            print("  ON THE KNOWN LIST AND NOT SEEN ANY MORE — take these off it:")
+            for name in mended:
+                print(f"    {name}")
+        day_cuts_ok = not fresh and not mended
+
     print("\n" + "=" * 64)
     total = total_passed + len(all_failed)
     print(f"{total_passed}/{total} checks passed across {len(names)} suite(s)")
@@ -666,8 +696,12 @@ def main(argv):
     if not moments_ok:
         print("\nA query compares a stored moment with a bare date, or one on "
               "the known list has been mended — see MOMENTS above.")
+    if not day_cuts_ok:
+        print("\nA template cuts a stored moment to UTC's day, or one on the "
+              "known list has been mended — see DAY CUTS above.")
     return 0 if (not all_failed and not crashed and control_ok
-                 and registry_ok and coverage_ok and moments_ok) else 1
+                 and registry_ok and coverage_ok and moments_ok
+                 and day_cuts_ok) else 1
 
 
 if __name__ == "__main__":

@@ -74,7 +74,7 @@
       <td><span class="upload-hint">{{ msg.body }}</span></td>
       <td>{{ msg.purpose }}</td>
       <td><span class="upload-hint">{{ msg.reason }}</span></td>
-      <td><span class="upload-hint">{{ msg.created_at[:16]|replace('T', ' ') }}</span></td>
+      <td><span class="upload-hint">{{ local_datetime_str(msg.created_at) }}</span></td>
     </tr>
     {% endfor %}
   </tbody>

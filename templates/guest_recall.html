@@ -34,13 +34,20 @@
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.visits }}</span>
-    <span class="stat-tile-label">{{ 'Stays' if data.returning else 'Stay' }}</span></span></div>
+    <span class="stat-tile-label">{{ 'Stay' if data.visits == 1 else 'Stays' }} made</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ euro(data.spend) }}</span>
     <span class="stat-tile-label">Spent on rooms</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.last or '&mdash;'|safe }}</span>
     <span class="stat-tile-label">Last here</span></span></div>
+  {# The stay they are about to arrive for is a booking, not a visit, so it is
+     never their "last here". It has its own tile rather than being folded in. #}
+  {% if data.here_now or data.next %}
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.here_now %}Here now{% else %}{{ data.next }}{% endif %}</span>
+    <span class="stat-tile-label">{% if data.here_now %}In the house{% else %}Booked to arrive{% endif %}</span></span></div>
+  {% endif %}
 </div>
 
 {% if data.dietary or data.preferences %}
@@ -65,7 +72,7 @@
     <tbody>
       {% for st in data.stays %}
       <tr>
-        <th scope="row">{{ st.arrival_date }}</th>
+        <th scope="row">{{ st.arrival_date }}{% if st.ahead %} <span class="mini-status status-upcoming">booked</span>{% endif %}</th>
         <td>{{ st.departure_date }}</td>
         <td>{{ st.room_name or '&mdash;'|safe }}</td>
         <td class="num">{{ euro(st.total_price) }}</td>

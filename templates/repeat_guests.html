@@ -85,7 +85,10 @@
       <td class="num">€{{ '%.0f'|format(g.spend) }}</td>
       <td>
         {{ g.last|date_short }}
+        {% if g.here_now %}<span class="mini-status status-current">here now</span>{% endif %}
         {% if g.overdue %}<span class="mini-status status-pending">overdue</span>{% endif %}
+        {% if g.next %}<span class="mini-status status-upcoming">booked</span>
+        <span class="upload-hint">arriving {{ g.next|date_short }}</span>{% endif %}
       </td>
       <td class="num">{{ g.rating if g.rating else '—' }}</td>
     </tr>
@@ -100,6 +103,12 @@
   eats here four times is a regular by any reading that matters. It is what was charged, not what
   was collected; an unpaid balance still shows here and is chased on
   <a href="{{ url_for('money_ahead_page') }}">Money ahead</a>.
+</p>
+<p class="pay-disclaimer">
+  A stay counts once it has begun. One still to come is a booking, not a visit: it is shown
+  beside their last stay rather than counted among their stays, and a guest booked to come back
+  is never called overdue &mdash; their next stay is already in the diary. So somebody who has
+  been once and booked again appears here on the day they arrive.
 </p>
 <p class="pay-disclaimer">
   Guests are matched by email address. Somebody who books under a work address one year and a

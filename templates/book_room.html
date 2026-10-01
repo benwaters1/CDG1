@@ -374,15 +374,19 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   var arrive = f.querySelector('#arrival_date'), depart = f.querySelector('#departure_date');
   var party = f.querySelector('#party_size'), hint = f.querySelector('#nights_hint');
   var minN = {{ room['min_nights'] or 1 }};
-  arrive.min = new Date().toISOString().slice(0,10);
+  /* The house's day (window.houseDay, in public_base's head). This was
+     the first ten characters of toISOString(), UTC's day, so after midnight here the
+     picker offered yesterday and the form refused it on submit. */
+  arrive.min = houseDay.today();
 
   function nights(){ if(!arrive.value||!depart.value) return null;
     return Math.round((new Date(depart.value)-new Date(arrive.value))/86400000); }
 
   function sync(){
     if (arrive.value){
-      var n=new Date(arrive.value); n.setDate(n.getDate()+1);
-      depart.min=n.toISOString().slice(0,10);
+      /* Counted on the calendar: the local-clock version gave the arrival
+         day itself on the Sunday the clocks go forward. */
+      depart.min=houseDay.after(arrive.value);
       if (depart.value && depart.value<=arrive.value) {
         depart.value='';
         /* Say why it went, rather than letting the field empty itself in
@@ -431,8 +435,10 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     var monthsEl = document.getElementById('cal_months');
     var statusEl = document.getElementById('cal_status');
     var taken = {};          // 'YYYY-MM-DD' -> why
-    var cursor = new Date(); cursor.setDate(1);
-    var today = new Date(); today.setHours(0,0,0,0);
+    /* The house's today, not the browser's: for a guest in New York the
+       browser is on the house's yesterday all evening, and offered it. */
+    var today = houseDay.date();
+    var cursor = houseDay.date(); cursor.setDate(1);
 
     function iso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
     function parse(s){ var p=s.split('-'); return new Date(+p[0], +p[1]-1, +p[2]); }
@@ -580,10 +586,18 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     });
   }
   f.querySelectorAll('[name="extras"]').forEach(function(cb){ cb.addEventListener('change',fillWhen); });
+  /* The bar at the foot of the page says what the box says. Only the tax script below ever
+     wrote it, and that steps aside once the quote carries the tax itself - so from then on a
+     phone showed "Choose dates" beside Pay & book with the dates chosen and priced. The bar
+     is further down the page than this script, so it is looked up each time. */
+  function barTotal(x){
+    var b=document.querySelector('[data-bar-total]');
+    if(b) b.textContent = x==null ? 'Choose dates' : '€'+Math.round(x).toLocaleString('en-GB');
+  }
   function refreshQuote(){
     fillWhen();
     if(!box) return;
-    if(!arrive.value||!depart.value){ box.hidden=true; return; }
+    if(!arrive.value||!depart.value){ box.hidden=true; barTotal(null); return; }
     var q=new URLSearchParams();
     q.set('room_id','{{ room["id"] }}');
     q.set('arrival',arrive.value);
@@ -619,7 +633,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
           lines.innerHTML='';
           if(!d.available){
             reason.textContent=d.reason||'Not available.'; reason.hidden=false;
-            totalRow.hidden=true; note.textContent=''; return;
+            totalRow.hidden=true; note.textContent=''; barTotal(null); return;
           }
           reason.hidden=true;
           d.lines.forEach(function(line){
@@ -630,6 +644,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
             row.appendChild(dt); row.appendChild(dd); lines.appendChild(row);
           });
           document.getElementById('quote_total').textContent=money(d.total);
+          barTotal(d.total);
           totalRow.hidden=false;
           note.textContent=d.per_night?money(d.per_night)+' a night average.':'';
         })
@@ -676,7 +691,10 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     if (tot.textContent !== tot.getAttribute('data-shown')) tot.setAttribute('data-base', num(tot.textContent));
     var base = Number(tot.getAttribute('data-base') || 0);
     var n = nights(), ad = Number(val('adults') || 0), tax = TAXR * ad * n;
-    if (theirs || !base || box.hidden || !n || !ad) { return; }
+    /* A quote that could not be had has no total to add to. The box says why; this put a tax
+       line under the reason, and a price for a stay nobody can book in the bar beside Pay & book. */
+    var refused = (document.getElementById('quote_total_row') || {}).hidden;
+    if (theirs || refused || !base || box.hidden || !n || !ad) { return; }
     var row = document.createElement('div'); row.setAttribute('data-tax-line', '');
     var dt = document.createElement('dt'); dt.textContent = 'Taxe de séjour ';
     var how = document.createElement('span'); how.className = 'g-opt';

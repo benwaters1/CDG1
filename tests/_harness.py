@@ -92,6 +92,8 @@ def _cleanup():
 
 
 import app as m  # noqa: E402  — must follow the env setup above
+import jinja2.compiler  # noqa: E402
+import jinja2.nodes  # noqa: E402
 from flask import request  # noqa: E402
 
 m.app.config["WTF_CSRF_ENABLED"] = False
@@ -417,6 +419,88 @@ def _connect_watched(*args, **kwargs):
 
 
 sqlite3.connect = _connect_watched
+
+
+# ---------------------------------------------------------------------------
+# A STORED MOMENT, CUT TO ITS FIRST TEN CHARACTERS IN A TEMPLATE.
+#
+# `stamp[:10]` reads UTC's day, so from midnight to 02:00 in the Ariege it
+# prints yesterday. test_utc_slices greps the templates for it, but only on a
+# name ending _at, and a moment is not always called that: the manual printed
+# `last_updated[:10]` and the guest account `expires[:10]|date_short`, and
+# the grep walked past both. What a value is called proves nothing. What it
+# HOLDS does, and only the running page knows that.
+#
+# Jinja writes a slice as plain Python slicing, straight past
+# environment.getitem, so there is no hook to wrap. This hands the app's
+# environment a code generator that writes every slice as a call instead,
+# which looks at the value, records the template and line when it cuts a
+# moment to ten characters, and returns exactly what the slice would have.
+# run.py names them at the end of a full run, both ways, as it does MOMENTS.
+#
+# A moment is what house_date() reads as one: a date and a time, taken as
+# UTC when it carries no zone, since that is how the house stores them. One
+# already in the house's own offset is left alone -- its first ten characters
+# ARE the house's day. A plain date is not a moment, and slicing one is fine.
+DAY_CUTS_SEEN = {}
+_MOMENT_TEXT = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")
+
+
+def _cuts_a_moment_to_its_day(value, part):
+    if not (isinstance(value, str) and isinstance(part, slice)):
+        return False
+    if part.start not in (None, 0) or part.stop != 10 or part.step not in (None, 1):
+        return False
+    if not _MOMENT_TEXT.match(value):
+        return False
+    when = m.parse_datetime_iso(value)
+    return (when is not None
+            and when.utcoffset() != when.astimezone(m.LOCAL_TZ).utcoffset())
+
+
+def _watched_slice(value, part):
+    if _cuts_a_moment_to_its_day(value, part):
+        caller = sys._getframe(1)
+        template = caller.f_globals.get("__jinja_template__")
+        if template is not None:
+            where = (template.name or "<string>",
+                     template.get_corresponding_lineno(caller.f_lineno))
+            DAY_CUTS_SEEN[where] = DAY_CUTS_SEEN.get(where, 0) + 1
+    return value[part]
+
+
+class _SliceWatchingCodeGenerator(jinja2.compiler.CodeGenerator):
+    """Jinja's own code generator, except that a slice becomes a call."""
+
+    def visit_Getitem(self, node, frame):
+        if not isinstance(node.arg, jinja2.nodes.Slice):
+            return super().visit_Getitem(node, frame)
+        self.write("environment.watched_slice(")
+        self.visit(node.node, frame)
+        self.write(", slice(")
+        for i, bound in enumerate((node.arg.start, node.arg.stop, node.arg.step)):
+            if i:
+                self.write(", ")
+            if bound is None:
+                self.write("None")
+            else:
+                self.visit(bound, frame)
+        self.write("))")
+
+
+m.app.jinja_env.watched_slice = _watched_slice
+m.app.jinja_env.code_generator_class = _SliceWatchingCodeGenerator
+if m.app.jinja_env.cache is not None:
+    m.app.jinja_env.cache.clear()       # nothing compiled before this is watched
+# Proved at import, as the stood-down providers are: a watcher that quietly
+# failed to install would report a clean run over pages it never looked at.
+_probe = m.app.jinja_env.from_string("{{ s[:10] }}")
+assert "watched_slice" in m.app.jinja_env.compile("{{ s[:10] }}", raw=True), (
+    "the template slice watcher is not installed")
+assert _probe.render(s="2026-09-04T22:30:00+00:00") == "2026-09-04"
+assert DAY_CUTS_SEEN.pop(("<string>", 1), 0) == 1, (
+    "the template slice watcher did not see a moment cut to its day")
+del _probe
 
 
 def coverage_report():
