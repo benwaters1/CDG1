@@ -80,6 +80,7 @@ SUITES = [
     "test_pos",
     "test_service_day",
     "test_after_midnight",
+    "test_moment_readers",
     "test_pos_journal",
     "test_pos_archive",
     "test_menu_day",
@@ -526,15 +527,8 @@ COVERAGE_KNOWN_GAPS = set()
 BARE_DATE_KNOWN = {
     ("owner_home_figures", "clock_in_at"):
         "widened a day each way, then each shift filed by house_date_iso: right",
-    ("delivery_shortfalls", "stock_movements.created_at"): "stock -- the other agent's",
-    ("night_cost", "stock_movements.created_at"): "stock -- the other agent's",
-    ("price_changes", "stock_movements.created_at"): "stock -- the other agent's",
-    ("waste_log", "stock_movements.created_at"): "stock -- the other agent's",
-    ("fridge_log", "fridge_readings.read_at"): "kitchen -- the other agent's",
-    ("what_sells", "pos_order_lines.created_at"): "till -- the other agent's",
-    ("service_times", "sent_at"): "till -- the other agent's",
-    ("spend_by_vendor", "submitted_at"): "supplier invoices -- the other agent's",
-    ("supplier_statement", "submitted_at"): "supplier invoices -- the other agent's",
+    # The stock, kitchen, till and supplier-invoice readers were here until
+    # they asked in house time; tests/test_moment_readers.py pins each edge.
 }
 
 
