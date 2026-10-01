@@ -52,6 +52,27 @@
            value="{{ workshop['single_supplement'] if workshop and workshop['single_supplement'] is not none else '' }}">
     <p class="upload-hint">The price above assumes a shared room. This is what a guest pays on top for a room to themselves — a common request, and the only way it gets charged. Left empty, a solo room is offered at no extra cost.</p>
 
+    {# What the price carries. The public pages ask these two questions
+       directly — the comparison table, Getting Here, the FAQ — and until
+       these boxes existed they guessed from the nights label and the year.
+       Ticked by default on a new workshop, because that is what a retreat
+       here has always included. #}
+    <label class="amenity" style="display:block; margin-top:16px;">
+      <input type="checkbox" name="transfers_included" value="1"
+             {{ 'checked' if (workshop['transfers_included'] if workshop else 1) else '' }}>
+      Transfers from Toulouse included
+    </label>
+    <label class="amenity" style="display:block;">
+      <input type="checkbox" name="excursions_included" value="1"
+             {{ 'checked' if (workshop['excursions_included'] if workshop else 1) else '' }}>
+      Excursions included
+    </label>
+    <p class="upload-hint">
+      Untick either and the public pages stop promising it — the atelier
+      page, the comparison table, Getting Here and the FAQ all read these.
+      A workshop spent entirely at the château has neither.
+    </p>
+
     <label class="field-label" for="workshop_form-deposit-percent">Deposit required at booking (%)</label>
     <input id="workshop_form-deposit-percent" type="number" name="deposit_percent" min="0" max="100" value="{{ workshop['deposit_percent'] if workshop else windows.workshop_deposit_percent }}">
     <p class="upload-hint">The rest is due as a balance {{ windows.workshop_balance_days }} days before the session starts (or in full, if booked within {{ windows.workshop_balance_days }} days).</p>

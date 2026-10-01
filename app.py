@@ -4649,6 +4649,18 @@ def init_db():
         ("social_posts_plan_date_unique",
          "CREATE UNIQUE INDEX IF NOT EXISTS idx_social_posts_plan_date ON social_posts(plan_id, scheduled_date) WHERE plan_id IS NOT NULL"),
         ("workshops_nights_label", "ALTER TABLE workshops ADD COLUMN nights_label TEXT"),
+
+        # Whether the price carries the transfers from Toulouse and the
+        # excursions. Default 1: every workshop before this year included
+        # both, and a NULL here would put inc_flag() back on its guess for
+        # all of them. This year's two are spent at the house, so they are
+        # unticked -- see the migration below.
+        ("workshops_transfers_included",
+         "ALTER TABLE workshops ADD COLUMN transfers_included "
+         "INTEGER NOT NULL DEFAULT 1"),
+        ("workshops_excursions_included",
+         "ALTER TABLE workshops ADD COLUMN excursions_included "
+         "INTEGER NOT NULL DEFAULT 1"),
         ("workshops_sample_day", "ALTER TABLE workshops ADD COLUMN sample_day TEXT"),
         ("rooms_min_nights", "ALTER TABLE rooms ADD COLUMN min_nights INTEGER NOT NULL DEFAULT 1"),
         ("bookings_promo_code_id", "ALTER TABLE bookings ADD COLUMN promo_code_id INTEGER REFERENCES promo_codes(id) ON DELETE SET NULL"),
@@ -48991,7 +49003,10 @@ def workshop_register(session_id):
     session_row = conn.execute(
         """SELECT workshop_sessions.*, workshops.title, workshops.price_per_person, workshops.instructor_name,
                workshops.instructor_user_id, workshops.active, workshops.deposit_percent, workshops.inclusions,
-               workshops.single_supplement
+               workshops.single_supplement,
+               -- What the price carries. The page asks directly, and without
+               -- these it falls back to guessing from the nights label.
+               workshops.transfers_included, workshops.excursions_included
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshop_sessions.id = ?""",
         (session_id,),
@@ -49169,7 +49184,11 @@ def workshop_confirmation(manage_token):
     conn = get_db()
     booking = conn.execute(
         """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date,
-               workshops.title FROM workshop_bookings
+               workshops.title,
+               -- So the confirmation promises exactly what the page the
+               -- guest chose from promised, and not the fallback guess.
+               workshops.transfers_included, workshops.excursions_included
+               FROM workshop_bookings
            JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
            JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshop_bookings.manage_token = ?""",
@@ -58630,8 +58649,9 @@ def new_workshop():
         max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM workshops").fetchone()["m"]
         conn.execute(
             """INSERT INTO workshops (title, description, instructor_name, instructor_user_id, price_per_person,
-               default_capacity, sort_order, deposit_percent, inclusions, itinerary, single_supplement, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               default_capacity, sort_order, deposit_percent, inclusions, itinerary, single_supplement,
+               transfers_included, excursions_included, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (title, description, instructor_name or None,
              instructor_id,
              float(price_raw) if price_raw else 0,
@@ -58640,6 +58660,8 @@ def new_workshop():
              max_order + 1,
              int(deposit_percent_raw) if deposit_percent_raw.isdigit() else WORKSHOP_DEPOSIT_PERCENT,
              inclusions or None, itinerary or None, supplement,
+             1 if request.form.get("transfers_included") else 0,
+             1 if request.form.get("excursions_included") else 0,
              datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
@@ -58687,13 +58709,19 @@ def edit_workshop(workshop_id):
         conn.execute(
             """UPDATE workshops SET title=?, description=?, instructor_name=?, instructor_user_id=?,
                price_per_person=?, default_capacity=?, deposit_percent=?, inclusions=?, itinerary=?,
-               single_supplement=?, active=? WHERE id=?""",
+               single_supplement=?, transfers_included=?, excursions_included=?,
+               active=? WHERE id=?""",
             (title, description, instructor_name or None,
              int(instructor_user_id) if instructor_user_id.isdigit() else None,
              float(price_raw) if price_raw else 0,
              int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0 else workshop["default_capacity"],
              int(deposit_percent_raw) if deposit_percent_raw.isdigit() else workshop["deposit_percent"],
-             inclusions or None, itinerary or None, supplement, active, workshop_id),
+             inclusions or None, itinerary or None, supplement,
+             # An unticked box sends nothing at all, so absence is the "no".
+             # Reading it any other way would make a box impossible to untick.
+             1 if request.form.get("transfers_included") else 0,
+             1 if request.form.get("excursions_included") else 0,
+             active, workshop_id),
         )
         conn.commit()
         conn.close()
