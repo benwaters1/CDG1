@@ -74,6 +74,9 @@ PROBE = """<script>
       zoom: page ? parseFloat(getComputedStyle(page).zoom || '1') : null,
       body_bg: getComputedStyle(document.body).backgroundColor,
       buttons: Array.prototype.filter.call(document.querySelectorAll('.page .btn-mini, .page .btn-ghost'),
+        function(b){ return b.getClientRects().length; }).length,
+      fields: Array.prototype.filter.call(
+        document.querySelectorAll('.page input:not([type=hidden]), .page select, .page textarea'),
         function(b){ return b.getClientRects().length; }).length
     };
   }
@@ -151,6 +154,8 @@ def run():
             detail="topbar %r, sidebar %r" % (first.get("topbar"), first.get("sidebar")))
     s.check("the controls are gone: nobody taps a wall", first.get("buttons") == 0,
             detail="%r buttons still showing" % first.get("buttons"))
+    s.check("and nothing on it asks to be typed into", first.get("fields") == 0,
+            detail="%r entry fields still showing" % first.get("fields"))
     s.check("the stamp is pinned to the foot of the screen",
             first.get("stamp_position") == "fixed" and first.get("stamp_bottom") == 0,
             detail="position %r, %r px off the bottom"

@@ -1669,7 +1669,10 @@ body.staff-shell:has(.kw-stamp) .list-toolbar,
 body.staff-shell:has(.kw-stamp) .btn-mini,
 body.staff-shell:has(.kw-stamp) .btn-ghost,
 body.staff-shell:has(.kw-stamp) .btn-primary,
-body.staff-shell:has(.kw-stamp) .page form:has(input:not([type="hidden"]), select, textarea){
+/* The cards that take an entry -- a prep line, a fridge reading, a new unit.
+   Keyed on the class the wall script puts on <html>: test_form_layout reads
+   every rule that can reach a form, and cannot evaluate :has(). */
+html.kw-wall .page form.detail-card{
   display:none !important;
 }
 body.staff-shell:has(.kw-stamp) .page{ max-width:none; padding:18px 26px 84px; }
