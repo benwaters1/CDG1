@@ -204,10 +204,6 @@ def run():
                 for mo in _re.finditer(
                         r"([A-Za-z0-9_]*_at)['\"]?\s*\]?\s*\[\s*0?:10\s*\]",
                         line):
-                    at = mo.start()
-                    before = line[:at + len(mo.group(0))]
-                    if _re.search(r"\)\s*\[\s*0?:10\s*\]$", before):
-                        continue
                     found.append("%s:%d %s" % (fn, i, mo.group(1)))
     s.check("no template slices a stored moment to get a day",
             not found,
@@ -218,6 +214,43 @@ def run():
                 f.endswith(".html") for _r, _d, fs in _os.walk(tpl_dir)
                 for f in fs),
             detail="a sweep that found no files to sweep passes for free")
+
+    s.section("And no view slices local_datetime_str, which is words, not a stamp")
+    # local_datetime_str returns "September 29, 2026 11:43". Three templates
+    # sliced it as though it were ISO: [:10] printed "September " under Since
+    # on the access register and after "reported" on an incident, and [:16]
+    # printed "September 29, 20" as the time Pennylane was last pulled.
+    # test_stamp_times sweeps the templates for that; it does not open
+    # app.py, where a view building an email or a flash could make the same
+    # cut. This reads app.py only, so the templates keep one check, not two.
+    # Scanned by balanced brackets, so a nested call is still one call.
+    def _sliced_calls(text):
+        hits = []
+        for mo in _re.finditer(r"\blocal_datetime_str\s*\(", text):
+            depth, j = 1, mo.end()
+            while j < len(text) and depth:
+                depth += {"(": 1, ")": -1}.get(text[j], 0)
+                j += 1
+            rest = text[j:j + 40].lstrip()
+            if depth == 0 and rest.startswith("["):
+                hits.append(text.count("\n", 0, mo.start()) + 1)
+        return hits
+
+    scanned = src.count("local_datetime_str(")
+    sliced = ["app.py:%d" % n for n in _sliced_calls(src)]
+    s.check("no view slices local_datetime_str's answer",
+            not sliced,
+            detail="; ".join(sliced[:6]) + " -- a day is house_date_iso() or "
+                   "format_date_short(), a moment is house_when(); its words "
+                   "cut short are neither")
+    s.check("and the scan found calls to look at",
+            scanned >= 8, detail=f"{scanned} calls -- a scan that finds none "
+                                 "passes for free")
+    s.check("the scanner itself catches a slice, nested call and all",
+            _sliced_calls('ok = 1\nnote = local_datetime_str(r.get("a_at"))[:10]') == [2]
+            and _sliced_calls('note = f"{local_datetime_str(r[\'a_at\'])} [draft]"') == [],
+            detail="checked against a written example, so the check above "
+                   "cannot pass by being unable to see")
 
     s.section("And a template can reach the right answer at all")
     # Most of why the templates went their own way: house_date_iso was not
