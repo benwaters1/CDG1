@@ -14437,10 +14437,12 @@ def night_cost(conn, *, months=3, today=None, start=None, end=None):
     today = end or today or house_today()
     start = start or (today - timedelta(days=30 * months))
     start_iso, end_iso = start.isoformat(), today.isoformat()
-    # A second bound for the TIMESTAMP columns. `created_at < '2026-09-01'`
-    # is false for '2026-09-01T22:14:...', so a single date bound silently
-    # drops everything recorded today -- every day, and never obviously.
-    end_stamp = (today + timedelta(days=1)).isoformat()
+    # The same window for the TIMESTAMP columns, as the instants the house's
+    # first day begins and last day ends. A date there is compared with
+    # midnight UTC, an hour or two into the house's day, so a sale rung up
+    # after midnight here was counted in the day before -- and a bare date as
+    # the upper bound dropped everything recorded on the last day.
+    stamp_from, stamp_to = house_day_window(start, today)
 
     # Nights actually sold in the window. The same counting room_economics
     # uses -- by night rather than by stay, so a booking across the edge
@@ -14491,7 +14493,7 @@ def night_cost(conn, *, months=3, today=None, start=None, end=None):
             WHERE stock_movements.reason IN ('sale', 'wastage', 'correction')
               AND stock_movements.created_at >= ?
               AND stock_movements.created_at < ?""",
-        (start_iso, end_stamp)).fetchone()["out"]
+        (stamp_from, stamp_to)).fetchone()["out"]
 
     total = round(standing + (labour or 0) + consumed, 2)
 
@@ -15469,12 +15471,16 @@ def spend_by_vendor(conn, *, start=None, end=None):
     a total nobody can check, and silently splitting them hides the real one.
     """
     where, params = ["status IN ('approved', 'paid')"], []
+    # submitted_at is a moment, so each bound is the instant the house's day
+    # begins: a date there is midnight UTC, and an invoice put in after
+    # midnight here was filed under the day before. house_moment hands back
+    # anything that is already a moment unchanged.
     if start:
         where.append("submitted_at >= ?")
-        params.append(start if isinstance(start, str) else start.isoformat())
+        params.append(house_moment(start))
     if end:
         where.append("submitted_at < ?")
-        params.append(end if isinstance(end, str) else end.isoformat())
+        params.append(house_moment(end))
 
     rows = conn.execute(
         # vendor_name is taken from the row carrying MAX(submitted_at) — SQLite's
@@ -27943,7 +27949,8 @@ def delivery_shortfalls(conn, *, months=6, today=None):
     eventually bill for it.
     """
     today = today or house_today()
-    since = (today - timedelta(days=30 * months)).isoformat()
+    # From the instant the house's day began, not midnight UTC.
+    since = house_moment(today - timedelta(days=30 * months))
     rows = conn.execute(
         """SELECT stock_movements.*, stock_items.name, stock_items.unit,
                   expenses.vendor_name, expenses.invoice_number
@@ -27979,7 +27986,8 @@ def price_changes(conn, *, months=12, today=None, threshold=0.05):
     at two prices is not a price rise, it is two merchants.
     """
     today = today or house_today()
-    since = (today - timedelta(days=30 * months)).isoformat()
+    # From the instant the house's day began, not midnight UTC.
+    since = house_moment(today - timedelta(days=30 * months))
     rows = conn.execute(
         """SELECT stock_movements.stock_item_id, stock_movements.unit_cost,
                   stock_movements.created_at, stock_items.name,
@@ -28030,7 +28038,8 @@ def supplier_statement(conn, vendor_name, *, months=12, today=None):
     run a finger down two lists.
     """
     today = today or house_today()
-    since = (today - timedelta(days=30 * months)).isoformat()
+    # From the instant the house's day began, not midnight UTC.
+    since = house_moment(today - timedelta(days=30 * months))
     rows = conn.execute(
         """SELECT * FROM expenses
             WHERE kind = 'supplier_invoice'
@@ -28570,7 +28579,9 @@ def fridge_log(conn, *, days=14, today=None):
     honest about a fridge nobody has told the app about.
     """
     today = today or house_today()
-    since = (today - timedelta(days=days)).isoformat()
+    # From the instant the house's day began, not midnight UTC: a reading
+    # taken at half past midnight on the first day is that day's.
+    since = house_moment(today - timedelta(days=days))
     units = conn.execute(
         "SELECT * FROM fridge_units WHERE active = 1 ORDER BY name").fetchall()
     out = []
@@ -28610,7 +28621,8 @@ def waste_log(conn, *, days=90, today=None):
     since stock was built and has never been added up.
     """
     today = today or house_today()
-    since = (today - timedelta(days=days)).isoformat()
+    # From the instant the house's day began, not midnight UTC.
+    since = house_moment(today - timedelta(days=days))
     rows = conn.execute(
         """SELECT stock_items.name, stock_items.unit,
                   SUM(-stock_movements.delta) AS quantity,
@@ -28659,28 +28671,36 @@ def service_times(conn, *, days=30, today=None):
     talking about.
     """
     today = today or house_today()
-    since = (today - timedelta(days=days)).isoformat()
+    # The window opens when the first day's service did, and each line is
+    # filed under the service it was sent in. Both were UTC dates: the bound
+    # let in the small hours of the night before, and DATE(sent_at) put the
+    # end of a late service -- anything sent after midnight UTC -- on the
+    # next night, so one bad evening read as two middling ones. SQLite
+    # cannot turn a stamp into the house's day, so the nights are made here.
+    since = service_day_window(today - timedelta(days=days))[0]
     rows = conn.execute(
-        """SELECT DATE(sent_at) AS night,
-                  COUNT(*) AS lines,
-                  AVG((julianday(ready_at) - julianday(sent_at)) * 1440.0) AS to_ready,
-                  AVG((julianday(served_at) - julianday(ready_at)) * 1440.0) AS to_table,
-                  MAX((julianday(ready_at) - julianday(sent_at)) * 1440.0) AS worst
+        """SELECT sent_at,
+                  (julianday(ready_at) - julianday(sent_at)) * 1440.0 AS to_ready,
+                  (julianday(served_at) - julianday(ready_at)) * 1440.0 AS to_table
              FROM pos_order_lines
             WHERE sent_at IS NOT NULL AND ready_at IS NOT NULL
               AND COALESCE(voided, 0) = 0
-              AND sent_at >= ?
-            GROUP BY DATE(sent_at)
-            ORDER BY night DESC""", (since,)).fetchall()
-    out = []
+              AND sent_at >= ?""", (since,)).fetchall()
+    nights = {}
     for r in rows:
+        nights.setdefault(service_day_iso(r["sent_at"]), []).append(r)
+    out = []
+    for night in sorted(nights, key=lambda n: n or "", reverse=True):
+        lines = nights[night]
+        ready = [r["to_ready"] for r in lines if r["to_ready"] is not None]
+        table = [r["to_table"] for r in lines if r["to_table"] is not None]
         out.append({
-            "night": r["night"], "lines": r["lines"],
-            "to_ready": round(r["to_ready"], 1) if r["to_ready"] is not None else None,
+            "night": night, "lines": len(lines),
+            "to_ready": round(sum(ready) / len(ready), 1) if ready else None,
             # The walk from the pass to the table, which is a different
             # problem from a slow kitchen and gets blamed on the kitchen.
-            "to_table": round(r["to_table"], 1) if r["to_table"] is not None else None,
-            "worst": round(r["worst"], 1) if r["worst"] is not None else None,
+            "to_table": round(sum(table) / len(table), 1) if table else None,
+            "worst": round(max(ready), 1) if ready else None,
         })
     return out
 
@@ -29001,7 +29021,10 @@ def what_sells(conn, *, days=90, today=None, limit=None):
     it would rank a dish by how often it is keyed in by mistake.
     """
     today = today or house_today()
-    since = (today - timedelta(days=days)).isoformat()
+    # The till's days run five to five, so the window opens when the first
+    # day's service did. A date here was midnight UTC, which counted the
+    # small hours of the night before as the first day's.
+    since = service_day_window(today - timedelta(days=days))[0]
     query = """SELECT pos_order_lines.name,
                       COALESCE(SUM(pos_order_lines.quantity), 0) AS sold,
                       COALESCE(SUM(pos_order_lines.quantity
@@ -60517,16 +60540,23 @@ def _recurring_dates(next_due, frequency, first, last):
     Walked forward from its own next-due date rather than from today, so a
     cost due on the 8th stays on the 8th. A cost whose next-due date is in the
     past is treated as due now — it has not stopped being owed.
+
+    Each date is counted from the cost's own date, never from the one before
+    it. Stepping from the last occurrence carried February's clamp forward for
+    good: a cost due on the 31st became the 28th in February and then stayed
+    on the 28th every month after, so the forecast moved it three days early.
     """
     if not next_due:
         return []
     step_months = 12 if frequency == "annual" else 1
-    out, cur = [], next_due
+    out, k, cur = [], 0, next_due
     while cur < first:
-        cur = _add_months(cur, step_months)
+        k += 1
+        cur = _add_months(next_due, k * step_months)
     while cur <= last:
         out.append(cur)
-        cur = _add_months(cur, step_months)
+        k += 1
+        cur = _add_months(next_due, k * step_months)
     return out
 
 

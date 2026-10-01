@@ -606,6 +606,15 @@ body.staff-shell .stat-tile-value{ color:var(--ivory); font-family:'Inter',sans-
    "CONFIRMED ROOM…", which tells the reader nothing. Two lines is fine; a
    clipped label is not. */
 .stat-tile-label{ font-size:11.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em; font-weight:600; line-height:1.3; }
+/* A tile with no icon and no body -- label and figure straight inside it, as
+   the event, statement and split-bill pages write them -- was laid out as a
+   row, so the figure sat BESIDE its label in a 150px tile and ran out of it:
+   "€25000.00" ended 41px past the padding at a desk width. Stack it the way
+   every other tile reads, figure above label. The markup keeps label first,
+   so a screen reader still hears what the figure is before the figure.
+   flex-end is the TOP of a reversed column: the figures in a row stay on one
+   line when one label runs to two. */
+.stat-tile:has(> .stat-tile-label){ flex-direction:column-reverse; align-items:flex-start; justify-content:flex-end; gap:4px; }
 
 /* ---------- Cards ---------- */
 .card-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:16px; }
@@ -865,6 +874,11 @@ body.staff-shell .announcement-banner{ background:var(--status-warn-bg); color:v
 .doc-delete{ background:none; border:none; color:var(--danger); cursor:pointer; font-size:14px; }
 .upload-form{ display:flex; flex-direction:column; gap:8px; padding-top:12px; border-top:1px dashed var(--parchment-line); }
 .upload-hint{ font-size:11px; color:var(--ink-soft); margin:0; }
+/* The disclaimer's -6px pulls it up under a form or table, which has margin to
+   spare. A hint has none, so after one the -6px printed the disclaimer's first
+   line over the hint's last -- "Should sit between 0°C and 5°C" over "2
+   readings outside the range" on every fridge with an unanswered reading. */
+.upload-hint + .pay-disclaimer{ margin-top:6px; }
 
 .view-link{ flex:0 0 auto !important; background:none; border:none; color:var(--steel); font-size:12.5px; font-weight:600; cursor:pointer; padding:0; font-family:inherit; }
 .view-link:hover{ text-decoration:underline; }
