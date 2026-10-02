@@ -43239,10 +43239,12 @@ def manage_booking(manage_token):
         elif not extra:
             flash("That isn't something we can add.", "error")
         elif extra["max_qty"] and held_now + quantity > extra["max_qty"]:
-            if held_now:
-                flash(f"{extra['name']} is already on this booking"
-                      + (f" — {extra['max_qty']} is the most we can do."
-                         if extra["max_qty"] > 1 else "."), "error")
+            if held_now and extra["max_qty"] == 1:
+                flash(f"{extra['name']} is already on this booking.", "error")
+            elif held_now:
+                flash(f"We can only do {extra['max_qty']} of those, and {held_now} "
+                      f"{'is' if held_now == 1 else 'are'} already on this booking.",
+                      "error")
             else:
                 flash(f"We can only do {extra['max_qty']} of those.", "error")
         else:

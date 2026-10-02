@@ -225,7 +225,8 @@ def _the_rest(s, room, added):
     s.check("one held and two more asked for is refused", _held(b["id"], two) == 1,
             detail=f"{_held(b['id'], two)} held")
     s.check("naming the most it can do",
-            any("2 is the most we can do" in f for f in flashes(r)), detail=str(flashes(r)))
+            any("only do 2 of those, and 1 is already on this booking" in f
+                for f in flashes(r)), detail=str(flashes(r)))
     _add(b["manage_token"], two, 1)
     s.check("but the second, within the limit, is taken", _held(b["id"], two) == 2)
     _add(b["manage_token"], free, 1)
