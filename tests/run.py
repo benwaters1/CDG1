@@ -535,11 +535,19 @@ COVERAGE_KNOWN_GAPS = {
     # 302 cannot answer, since a rejected form and a successful one both
     # redirect back to a page.
     #
-    # Four of these need a payment provider and one (sync_pennylane) is
+    # Three of these need a payment provider and one (sync_pennylane) is
     # stood down at import on purpose. The rest are ordinary owner-side
     # writes whose working branch has never run. Checked both ways, as
     # before: write a real post for one and the run reds until the name
     # comes off.
+    #
+    # THE THREE STRIPE CANCEL ROUTES CAME OFF THIS LIST on 2 October and are
+    # not fixed, they were never broken. Each one does a single thing -- tell
+    # a guest who abandoned checkout that nothing was booked -- so the only
+    # category it can flash is "error", and the measure read that as the app
+    # refusing. All three were already driven, room_id branch included. They
+    # are named in _harness._SUCCESS_IS_BAD_NEWS with the reason, beside
+    # logout, and that list is checked both ways too.
     "add_bill_share",
     "assign_access_preset",
     "assistant_say_route",
@@ -549,17 +557,14 @@ COVERAGE_KNOWN_GAPS = {
     "pos_pay_link",
     "read_invoice",
     "record_maintenance_done",
-    "restaurant_stripe_cancel",
     "save_access_preset",
     "scan_expense",
     "send_balance_links",
     "send_event_revenue",
     "send_workshop_revenue",
-    "stripe_cancel",
     "sync_pennylane",
     "workshop_pay_balance",
     "workshop_pay_deposit",
-    "workshop_stripe_cancel",
 }
 # EMPTY, and every name that was here now answers. The last four were the
 # three Stripe pages -- the dinner refund, and the atelier and split-bill
@@ -682,6 +687,21 @@ def main(argv):
                       "these off it:")
                 for ep in mended:
                     print(f"    {ep}")
+
+            # The exemptions, read the other way. A name in
+            # _SUCCESS_IS_BAD_NEWS claims the page has no success branch; if
+            # it ever flashes one, the claim has gone stale and the exemption
+            # is covering for a branch nothing tests.
+            outgrown = sorted(_harness.EXEMPTION_OUTGROWN)
+            if outgrown:
+                coverage_ok = False
+                print("\n  EXEMPT BUT REPORTING SUCCESS — these are named in "
+                      "_SUCCESS_IS_BAD_NEWS as having no success branch, and "
+                      "they just took one:")
+                for ep in outgrown:
+                    print(f"    {ep}")
+                print("  Take the name off and cover the branch, or the "
+                      "exemption is hiding it.")
         except Exception as e:                       # pragma: no cover
             print(f"\n(coverage report unavailable: {e})")
 

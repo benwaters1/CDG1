@@ -356,6 +356,38 @@ ANSWERS = {}
 # 400 belongs here for the same reason 403 does: it is the app saying no.
 _REFUSAL_CODES = {400, 401, 403, 404, 405, 500, 502, 503}
 
+# PAGES WHOSE SUCCESS IS BAD NEWS, AND THE ONE THING THAT UN-NAMES THEM.
+#
+# The flash rule below reads an "error" category as the app refusing. That is
+# right for a form and wrong for a page that exists to deliver bad news: there
+# the error flash is the page working, and there is no second branch to miss.
+#
+# logout was the first of these. Its success IS a redirect to the login page,
+# so the redirect rule above would call the only thing it does a refusal. The
+# three Stripe cancel routes are the same shape: Stripe returns a guest who
+# abandoned checkout, the route says nothing was booked, and sends them back.
+# One branch, already driven -- test_abandoned_checkout takes the room_id
+# path, test_payments the room and restaurant ones, test_public_writes the
+# workshop one with a real manage token.
+#
+# The alternative was flashing "success" at a guest whose payment just failed.
+# That buys a coverage tick and costs the guest a green tick on bad news, so
+# the name is written down here instead, with why.
+#
+# CHECKED BOTH WAYS, like COVERAGE_KNOWN_GAPS. An exemption is a claim that a
+# page has no success branch, and a claim that goes stale quietly is the whole
+# failure this file exists to stop. So the moment one of these flashes
+# success, it is recorded and run.py reds until the name comes off.
+_SUCCESS_IS_BAD_NEWS = {
+    "logout": "its success IS a redirect to the login page",
+    "stripe_cancel": "tells a guest their room payment was cancelled",
+    "restaurant_stripe_cancel": "the same, for a table",
+    "workshop_stripe_cancel": "the same, for a place on an atelier",
+}
+
+# Names above that turned out to have a success branch after all.
+EXEMPTION_OUTGROWN = set()
+
 # What each answer FLASHED, which is the only thing that separates a form
 # that worked from one that was refused. Both answer 302 back to a page, so
 # the status code cannot tell them apart -- but every one of the app's 742
@@ -404,12 +436,16 @@ def _record_answer(response):    # pragma: no cover - bookkeeping, not behaviour
         refused = True
         ANSWERS.setdefault(request.endpoint, set()).add(
             (request.method, code, "declined"))
-    # logout is the one endpoint whose SUCCESS is a redirect to the login
-    # page, so the rule above would call the only thing it does a refusal.
-    # Named rather than handled by loosening the rule, which would excuse
-    # every page that quietly sends people to log in.
-    if request.endpoint == "logout":
+    # A page whose only correct outcome is bad news, named with its reason in
+    # _SUCCESS_IS_BAD_NEWS above. Named rather than handled by loosening the
+    # rule, which would excuse every page that quietly sends people to log in
+    # or quietly refuses and says so.
+    if request.endpoint in _SUCCESS_IS_BAD_NEWS:
         refused = False
+        # And the other direction: it just said something worked, so it has a
+        # success branch and the exemption is now covering for it.
+        if "success" in said:
+            EXEMPTION_OUTGROWN.add(request.endpoint)
 
     if not refused:
         RENDERED.add(request.endpoint)
