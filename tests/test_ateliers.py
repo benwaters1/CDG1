@@ -187,11 +187,26 @@ def run():
     # price under it, reproducing the exact fault it exists to fix. Checked
     # here on the real page rather than on the macro in isolation, because the
     # wiring between the route and the template is exactly what went missing.
-    s.check("and the price panel actually carries a price",
-            "What it is, and what it costs" in body and "€" in body.split(
-                "What it is, and what it costs", 1)[1][:600],
-            detail="the panel exists to put a figure on the page; one with no "
-                   "€ near it is the fault it was written to fix, recurring")
+    #
+    # 2 OCTOBER: THE OWNER MOVED THE FIGURE, so the check follows it. He had
+    # the panel's "From, per person" taken out; the prices stay with each
+    # workshop's dates below. What this check was ever protecting is not the
+    # panel but the page -- a four-figure week sold with no figure on it -- so
+    # it is now asked of the dates: every workshop the page lists with dates
+    # ahead (public_sittings, the route's own rule) carries its price per
+    # person on the page.
+    today = m.house_today()
+    dated = [w for w in conn.execute(
+        "SELECT * FROM workshops WHERE active = 1 AND price_per_person > 0").fetchall()
+        if m.public_sittings(conn, w["id"], today)]
+    words = " ".join(_harness.visible_text(body).split())
+    unpriced = [w["title"] for w in dated
+                if "€{:,.0f} per person".format(w["price_per_person"]) not in words]
+    s.check("and every workshop with dates ahead shows what it costs",
+            dated and not unpriced,
+            detail="%d with dates; no price on the page for %s -- a week sold "
+                   "with no figure is the fault the glance panel was first "
+                   "written to fix" % (len(dated), unpriced))
 
     conn.close()
     return s

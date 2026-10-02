@@ -208,9 +208,40 @@ _STATES = {"hover", "focus", "focus-visible", "focus-within", "active",
 _OLD_PSEUDO_ELEMENTS = {"before", "after", "first-line", "first-letter"}
 
 
+_PSEUDO_NAME = re.compile(r"::?[\w-]+")
+
+
 def _parts(compound):
+    """The simple selectors in one compound, a pseudo-class with its argument.
+
+    The argument is read by matching brackets to any depth. _PART allows two
+    levels and no more, and the 2 October stylesheet wrote three --
+    .g-wrap:has(> .g-vignette):not(:has(> ul, ..., > div:not(.g-vignette)))
+    -- so the whole rule was unreadable, and the form-layout check reported
+    a rule about a page wrapper as one that might lay out a form.
+    """
     parts, i = [], 0
     while i < len(compound):
+        if compound[i] == ":":
+            m = _PSEUDO_NAME.match(compound, i)
+            if not m:
+                raise _Unread(compound)
+            j = m.end()
+            if j < len(compound) and compound[j] == "(":
+                depth = 0
+                for k in range(j, len(compound)):
+                    if compound[k] == "(":
+                        depth += 1
+                    elif compound[k] == ")":
+                        depth -= 1
+                        if not depth:
+                            j = k + 1
+                            break
+                else:
+                    raise _Unread(compound)
+            parts.append(compound[i:j])
+            i = j
+            continue
         m = _PART.match(compound, i)
         if not m:
             raise _Unread(compound)
