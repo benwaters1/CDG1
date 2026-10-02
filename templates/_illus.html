@@ -1,0 +1,145 @@
+{# =============================================================================
+   _illus.html - 2 Oct. Line illustrations for Gudanes, drawn for the site:
+   one hand, fine strokes in currentColor (the gilt), round ends, like the
+   engraved vignettes of an old French guide. Decorative: aria-hidden.
+   illus(kind, cls)   a 96x96 vignette
+   micon(kind)        a 24x24 moment of the day: matin, apresmidi, soir
+   ============================================================================= #}
+{% macro illus(kind, cls='') -%}
+<svg class="g-illus {{ cls }}" viewBox="0 0 96 96" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{%- if kind == 'chateau' %}
+  <path d="M4 50l13-15 9 8 11-13 9 9" opacity=".35"/><path d="M60 38l10-11 9 8 13-13" opacity=".35"/>
+  <path d="M6 80h84" opacity=".7"/>
+  <path d="M14 78V48h68v30"/>
+  <path d="M12 48h72"/>
+  <path d="M15 48l6-9h54l6 9"/>
+  <path d="M40 39l8-7 8 7"/>
+  <path d="M28 39v-5h4v5M64 39v-5h4v5"/>
+  <path d="M19 53h5v7h-5zM28 53h5v7h-5zM37 53h5v7h-5zM54 53h5v7h-5zM63 53h5v7h-5zM72 53h5v7h-5z"/>
+  <path d="M19 66h5v7h-5zM28 66h5v7h-5zM63 66h5v7h-5zM72 66h5v7h-5z"/>
+  <path d="M43 78v-9a5 5 0 0110 0v9"/>
+  <path d="M46 53h4v7h-4z" opacity=".8"/>
+  <path d="M30 86q18 -5 36 0" opacity=".45"/>
+{%- elif kind == 'key' %}
+  <circle cx="28" cy="48" r="11"/>
+  <path d="M28 41a4 4 0 010 14a4 4 0 010-14z" opacity=".7"/><path d="M21 48a4 4 0 0114 0a4 4 0 01-14 0z" opacity=".7"/>
+  <path d="M39 48h44"/><path d="M39 45h2v6h-2" opacity=".8"/>
+  <path d="M74 48v9h4v-5h3v7h3v-11"/>
+  <path d="M18 66h56" opacity=".4"/>
+{%- elif kind == 'restoration' %}
+  <path d="M30 80h36M32 76h32M34 72h28"/>
+  <path d="M37 72V34M59 72V34"/><path d="M43 70V36M48 70V36M53 70V36" opacity=".55"/>
+  <path d="M33 34h30"/><path d="M31 30h34"/>
+  <path d="M33 30a4 4 0 104-4M63 30a4 4 0 11-4-4"/>
+  <path d="M37 26h22" opacity=".8"/>
+  <path d="M70 82l9-30" /><path d="M77 52l5 1.5-2 6-5-1.5z"/><path d="M80 59l3 9M78 58.5l1 9.5M82 59.5l4 8" opacity=".75"/>
+  <path d="M14 82l10-8m0 0l6 6m-6-6l-3-3 8-8 9 9-8 8z" opacity=".8"/>
+{%- elif kind == 'brocante' %}
+  <ellipse cx="40" cy="32" rx="11" ry="13"/><ellipse cx="40" cy="32" rx="7.5" ry="9" opacity=".5"/>
+  <path d="M31 41l-2 13M49 41l2 13"/>
+  <path d="M25 54h30q2 0 2 2v2H23v-2q0-2 2-2z"/>
+  <path d="M27 58l-3 22M53 58l3 22M33 58l-1 18M47 58l1 18" />
+  <path d="M27 70h26" opacity=".5"/>
+  <path d="M51 22q8 -6 16 4" opacity=".8"/>
+  <path d="M66 24h14v15H66l-5-7.5z"/><circle cx="66.5" cy="31.5" r="1.4"/>
+  <path d="M70 29h6M70 33h4" opacity=".7"/>
+  <path d="M62 80h22M66 80q-1-7 7-7t7 7" opacity=".85"/><path d="M73 73v-3M71 70h4" opacity=".85"/><path d="M80 77q4-1 4 3" opacity=".7"/>
+{%- elif kind == 'cuisine' %}
+  <path d="M12 18h72"/><path d="M18 18v-3M78 18v-3" opacity=".7"/>
+  <path d="M30 18v6m0 0a2 2 0 102 2M62 18v6m0 0a2 2 0 102 2M46 18v4" opacity=".85"/>
+  <path d="M32 26v14"/><circle cx="32" cy="54" r="14"/><circle cx="32" cy="54" r="10" opacity=".45"/><path d="M26 49q3-3 7-3" opacity=".6"/>
+  <path d="M64 26v12"/><circle cx="64" cy="48" r="10"/><circle cx="64" cy="48" r="6.5" opacity=".45"/>
+  <path d="M46 22v20"/><path d="M46 42q-6 6 0 16q6-10 0-16zM46 42v16" opacity=".85"/><path d="M43 46q3 8 0 10M49 46q-3 8 0 10" opacity=".55"/>
+  <path d="M14 84h68" opacity=".55"/><path d="M58 84q4-12 10-12t10 12" opacity=".7"/><path d="M68 72v-4" opacity=".7"/>
+{%- elif kind == 'kayak' %}
+  <path d="M4 44l15-16 10 9 13-15 12 13 10-9 16 18" opacity=".35"/>
+  <path d="M10 64q38 12 76 0q-38-7-76 0z"/>
+  <path d="M38 63q10 3 20 0" opacity=".6"/>
+  <circle cx="48" cy="45" r="3.2"/>
+  <path d="M48 48.5v8M48 51l-6 4M48 51l6 3"/>
+  <path d="M28 40l40 26"/>
+  <path d="M24 37.4q-3.6 1.4-1.6 5q3.6 0.6 5.6-2.6zM72 68.6q3.6-1.4 1.6-5q-3.6-0.6-5.6 2.6z"/>
+  <path d="M8 74q6-3 12 0t12 0 12 0M52 76q6-3 12 0t12 0 12 0M22 82q6-3 12 0t12 0" opacity=".6"/>
+{%- elif kind == 'hike' %}
+  <circle cx="74" cy="20" r="6" opacity=".7"/>
+  <path d="M6 76l22-38 10 14 14-26 20 32 6-8 12 26"/>
+  <path d="M24 45l4-7 4 6M48 33l4-7 5 9" opacity=".6"/>
+  <path d="M48 90q-16-6-2-14t-4-14q-10-6 6-12" stroke-dasharray="2 3" opacity=".85"/>
+  <path d="M52 50v-12l7 3-7 3" opacity=".9"/>
+  <path d="M4 84q22-5 44 0t44 0" opacity=".45"/>
+{%- elif kind == 'yoga' %}
+  <path d="M24 70a24 24 0 0148 0" opacity=".3"/><path d="M48 40v-5M29 50l-4-2.5M67 50l4-2.5" opacity=".3"/>
+  <circle cx="48" cy="28" r="5"/>
+  <path d="M48 33v3"/>
+  <path d="M40 38q8-3 16 0"/>
+  <path d="M41 38l2 20M55 38l-2 20"/>
+  <path d="M40 39q-7 9-10 20M56 39q7 9 10 20"/>
+  <circle cx="30" cy="61" r="1.6"/><circle cx="66" cy="61" r="1.6"/>
+  <path d="M24 64q24-10 48 0q-24 9-48 0z"/>
+  <path d="M38 63q10 4 20 0" opacity=".5"/>
+  <path d="M22 75h52"/><path d="M25 78h46" opacity=".5"/>
+{%- elif kind == 'bbq' %}
+  <path d="M40 22q-4-5 0-9t0-9M50 24q-4-5 0-9t0-9M60 22q-4-5 0-9" opacity=".5"/>
+  <path d="M26 40h44"/><path d="M28 36h40" opacity=".6"/><path d="M34 36v4M42 36v4M50 36v4M58 36v4M64 36v4" opacity=".5"/>
+  <path d="M26 40a22 18 0 0044 0"/>
+  <path d="M48 58v6"/><path d="M36 54l-8 26M60 54l8 26M48 64v16"/>
+  <path d="M30 70h36" opacity=".55"/>
+  <path d="M10 84h76" opacity=".55"/>
+  <path d="M10 30q8 6 16 2M70 32q8 4 16-2" opacity=".45"/><circle cx="18" cy="33" r="1.2" opacity=".6"/><circle cx="78" cy="33" r="1.2" opacity=".6"/>
+{%- elif kind == 'candelabra' %}
+  <path d="M10 66h76"/><path d="M14 66q2 10 0 18M82 66q-2 10 0 18" opacity=".6"/><path d="M14 74q34 6 68 0" opacity=".45"/>
+  <path d="M48 66v-26"/><path d="M42 66h12M44 62h8" />
+  <path d="M48 48q-14 0-16-10M48 48q14 0 16-10"/>
+  <path d="M29 38h6M61 38h6M45 34h6"/>
+  <path d="M32 38v-12M64 38v-12M48 34v-14"/>
+  <path d="M32 22q-2.4-3 0-6q2.4 3 0 6zM64 22q-2.4-3 0-6q2.4 3 0 6zM48 16q-2.4-3 0-6q2.4 3 0 6z"/>
+  <path d="M32 13v-2M64 13v-2M48 7V5" opacity=".5"/>
+  <path d="M18 66v-8a4 4 0 008 0v8M22 66v-4" opacity=".75"/><path d="M70 66v-8a4 4 0 008 0v8M74 66v-4" opacity=".75"/>
+  <path d="M78 44l3-10 3 2-3 10zM81 34v-4m0 0l3 1" opacity=".6"/>
+{%- elif kind == 'wine' %}
+  <path d="M30 22h16l-1 14a7 7 0 01-14 0z"/><path d="M38 43v20M31 63h14"/>
+  <path d="M32 30h12" opacity=".5"/>
+  <path d="M56 70V40q0-6 4-9V20h6v11q4 3 4 9v30z"/><path d="M60 20h6" /><path d="M56 50h14" opacity=".55"/>
+  <path d="M20 70h56" opacity=".6"/>
+{%- elif kind == 'pool' %}
+  <circle cx="72" cy="22" r="7"/><path d="M72 10v-3M72 37v-3M84 22h3M57 22h3M80.5 13.5l2-2M61.5 32.5l2-2M80.5 30.5l2 2M61.5 11.5l2 2" opacity=".6"/>
+  <path d="M14 58l14-14h22l-6 14z"/><path d="M18 58v10M40 58v10" /><path d="M22 52h16" opacity=".5"/>
+  <path d="M8 76q6-3 12 0t12 0 12 0 12 0 12 0 12 0 12 0M8 84q6-3 12 0t12 0 12 0 12 0 12 0 12 0 12 0" opacity=".7"/>
+{%- elif kind == 'depart' %}
+  <path d="M48 20l-14 66M48 20l14 66" opacity=".35"/><path d="M48 30v6M48 44v8M48 60v10" opacity=".35"/>
+  <path d="M20 46h40a3 3 0 013 3v26a3 3 0 01-3 3H20a3 3 0 01-3-3V49a3 3 0 013-3z"/>
+  <path d="M32 46v-5a3 3 0 013-3h10a3 3 0 013 3v5"/>
+  <path d="M28 46v32M52 46v32" opacity=".6"/><path d="M17 60h46" opacity=".45"/>
+  <path d="M26 78v4M54 78v4" />
+  <path d="M68 30l14-14M74 16h8v8" opacity=".7"/>
+{%- elif kind == 'atelier' %}
+  <path d="M26 82h44"/><path d="M30 82l3-30h30l3 30" /><path d="M32 60h32" opacity=".5"/>
+  <path d="M40 52l-6-30M48 52V18M56 52l6-28"/>
+  <path d="M33 22l1-6 2 6M46 18q2-6 4 0M61 24q2-6 3 1" opacity=".85"/>
+  <path d="M14 74q8-10 14-4M82 70q-8-10-14-4" opacity=".55"/>
+{%- elif kind == 'ski' %}
+  <path d="M6 54l16-20 10 9 14-17 14 15 10-8 20 21" opacity=".35"/><path d="M42 30l4-4 5 5M18 40l4-5 3 3" opacity=".5"/>
+  <path d="M22 82l52-30M30 86l52-30"/><path d="M74 52q4-3 2-6M82 56q4-3 2-6"/>
+  <path d="M34 50l22 34M60 48l-16 36"/><circle cx="36.5" cy="54" r="2.4" opacity=".75"/><circle cx="57.5" cy="52" r="2.4" opacity=".75"/>
+  <path d="M33 47l3-1M58 45l3 1" />
+  <path d="M78 22v8M74 26h8M75.2 23.2l5.6 5.6M80.8 23.2l-5.6 5.6" opacity=".7"/><path d="M16 18v6M13 21h6" opacity=".55"/>
+{%- elif kind == 'laurel' %}
+  <path d="M48 88V14"/>
+  {%- for y in [22,32,42,52,62,72] %}
+  <path d="M48 {{ y }}q-12-2-16-10q11 0 16 10zM48 {{ y+4 }}q12-2 16-10q-11 0-16 10z" opacity=".85"/>
+  {%- endfor %}
+{%- elif kind == 'mountains' %}
+  <path d="M2 80l20-34 10 14 16-30 16 26 8-10 22 34"/><path d="M42 40l6-10 6 10M18 54l4-8 4 6" opacity=".6"/>
+  <path d="M2 88q23-5 46 0t46 0" opacity=".5"/>
+{%- endif %}
+</svg>
+{%- endmacro %}
+
+{% macro micon(kind) -%}
+<svg class="g-micon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{%- if kind == 'matin' %}<path d="M3 17h18"/><path d="M7 17a5 5 0 0110 0"/><path d="M12 8v2M5.5 11l1.4 1.4M18.5 11l-1.4 1.4" />
+{%- elif kind == 'apresmidi' %}<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>
+{%- else %}<path d="M15.5 4.5a7.5 7.5 0 107 10.5 6 6 0 01-7-10.5z"/><path d="M6 5l.6 1.4L8 7l-1.4.6L6 9l-.6-1.4L4 7l1.4-.6z" />
+{%- endif %}
+</svg>
+{%- endmacro %}

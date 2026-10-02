@@ -1,3 +1,4 @@
+{% from '_illus.html' import illus, micon %}
 {# =============================================================================
    1 Oct - the site writes each workshop's words itself, from its length, so no
    admin description or itinerary can say more than the house can stand behind.
@@ -61,43 +62,91 @@
 {%- set ORD = ['Premier jour','Deuxième jour','Troisième jour','Quatrième jour','Cinquième jour','Sixième jour','Septième jour','Huitième jour','Neuvième jour'] -%}
 {%- set ROM = ['I','II','III','IV','V','VI','VII','VIII','IX'] -%}
 {%- set WORD = {'3':'Three','4':'Four','5':'Five','7':'Seven'} -%}
-{%- set ARRIVE = ("L’arrivée", "Arrival", "We meet in Toulouse and travel up into the Pyrénées together. Then the gates, the drive, and the house at the end of it: your room, a first walk through the grounds, and the first evening at the table.", [("Après-midi","The journey up from Toulouse"),("Soir","The first dinner together")]) -%}
-{%- set ARRIVE_H = ("L’arrivée", "Arrival", "Make your way to the château in the afternoon. Then the gates, the drive, and the house is yours: your room, a first walk through the grounds, and the first evening at the table.", [("Après-midi","Arriving at the house"),("Soir","The first dinner together")]) -%}
-{%- set TOUR = ("La maison", "The house", "A tour of the château and its restoration: the rooms brought back, the rooms still waiting, and the story of how the house is returning. The afternoon is yours.", [("Matin","The tour of the château"),("Après-midi","The pool, the grounds, or a book"),("Soir","Dinner together")]) -%}
-{%- set BROC = ("À la brocante", "Into the antique fairs", "Out into the brocantes and antique fairs of the valley: the stalls, the bargaining, and the piece you did not know you were looking for. Back to the house with your finds, and the pool before dinner.", [("Matin","The brocantes"),("Après-midi","Back at the house"),("Soir","Dinner, and the day’s finds")]) -%}
-{%- set KITCHEN = ("La cuisine", "The kitchen", "A morning in the château kitchen: French cooking, unhurried, and the table at the end of it. The afternoon is yours.", [("Matin","The kitchen"),("Après-midi","The pool or the grounds"),("Soir","Dinner together")]) -%}
-{%- set KITCHEN2 = ("La cuisine, encore", "The kitchen, again", "A second morning in the kitchen, the afternoon by the pool, and the last long evening together.", [("Matin","The kitchen"),("Après-midi","The pool"),("Soir","The last dinner")]) -%}
-{%- set HOUSEKITCHEN = ("La maison et la cuisine", "The house and the kitchen", "A tour of the château and its restoration in the morning, the kitchen after it, and a last long evening together.", [("Matin","The tour of the château"),("Après-midi","The kitchen"),("Soir","The last dinner")]) -%}
-{%- set RESTO = ("La restauration", "The restoration", "A morning with the restoration itself: how the work is done, why the walls are left as they are, and what the house gives up as it returns. The afternoon is yours.", [("Matin","The restoration"),("Après-midi","The pool or the grounds"),("Soir","Dinner together")]) -%}
-{%- set RESTO2 = ("La restauration, de plus près", "The restoration, closer", "A second morning with the work, closer this time, then the pool and a long evening.", [("Matin","The restoration"),("Après-midi","The pool"),("Soir","Dinner together")]) -%}
-{%- set SESSIONS = ("Les ateliers", "The sessions", "A day of the workshop’s own sessions at the house, with the kitchen and the restoration in the mix, and time between for the pool and the grounds.", [("Matin","The sessions"),("Après-midi","The sessions, or the pool"),("Soir","Dinner together")]) -%}
-{%- set LAST = ("Le dernier jour", "The last day", "A last morning with the workshop, the afternoon your own, and the last long dinner together.", [("Matin","The last session"),("Après-midi","Yours"),("Soir","The last dinner")]) -%}
-{%- set DEPART = ("Le départ", "Departure", "Breakfast, a last look at the house, and back to Toulouse together.", [("Matin","Breakfast, and the journey back")]) -%}
-{%- set DEPART_H = ("Le départ", "Departure", "Breakfast, a last look at the house, and the journey home.", [("Matin","Breakfast, and the journey home")]) -%}
+{%- set MI = {'Matin':'matin','Après-midi':'apresmidi','Soir':'soir'} -%}
+{#- each day: (French title, English title, the day, [(moment, what)], illustration) - the owner's activities (2 Oct):
+    cooking classes, bargaining at the brocantes, kayaking, hiking, yoga, a barbecue in the grounds, and the formal dinner
+    in the Salon de Musique by candlelight. Outdoor plans follow the season; the four-night ones stay at the house. -#}
+{%- set ARRIVE = ("L’arrivée", "Arrival", "We meet in Toulouse and travel up into the Pyrénées together. Then the gates, the drive, and the house at the end of it: your room, a first walk through the grounds, and the first evening at the table.", [("Après-midi","The journey up from Toulouse"),("Soir","The first dinner together")], 'chateau') -%}
+{%- set ARRIVE_H = ("L’arrivée", "Arrival", "Make your way to the château in the afternoon. Then the gates, the drive, and the house is yours: your room, a first walk through the grounds, and the first evening at the table.", [("Après-midi","Arriving at the house"),("Soir","The first dinner together")], 'chateau') -%}
+{%- set TOUR = ("La maison", "The house", "The morning begins with yoga, then a tour of the château and its restoration: the rooms brought back, the rooms still waiting, and the story of how the house is returning. The afternoon is yours.", [("Matin","Yoga, then the tour of the château"),("Après-midi","The pool, the grounds, or a book"),("Soir","Dinner together")], 'key') -%}
+{%- set RESTO_BBQ = ("La restauration", "The restoration", "A morning with the restoration itself: how the work is done, why the walls are left as they are, and what the house gives up as it returns. In the evening, a barbecue in the grounds, weather permitting.", [("Matin","The restoration"),("Après-midi","The pool or the grounds"),("Soir","A barbecue in the grounds")], 'restoration') -%}
+{%- set BROC = ("À la brocante", "Into the antique fairs", "Out to the brocantes and antique fairs of the valley, where the bargaining is half the pleasure: the stalls, the haggling, and the piece you did not know you were looking for. Back to the house with your finds.", [("Matin","The brocantes"),("Après-midi","Back at the house, and the pool"),("Soir","Dinner, and the day’s finds")], 'brocante') -%}
+{%- set BROC_BBQ = ("À la brocante", "Into the antique fairs", "Out to the brocantes and antique fairs of the valley, where the bargaining is half the pleasure: the stalls, the haggling, and the piece you did not know you were looking for. In the evening, a barbecue in the grounds, weather permitting.", [("Matin","The brocantes"),("Après-midi","Back at the house, and the pool"),("Soir","A barbecue in the grounds")], 'brocante') -%}
+{%- set VALLEY = ("Dans la vallée", "Into the valley", "A day out in the Ariège: kayaking on the river, or hiking up into the mountains, as the season and the weather allow. Back to the house for the evening.", [("Matin","Kayaking or hiking"),("Après-midi","The valley"),("Soir","Dinner together")], 'kayak') -%}
+{%- set KITCHEN = ("La cuisine", "The cooking class", "A cooking class in the château kitchen: French cooking, unhurried, and the table at the end of it. The afternoon is yours.", [("Matin","The cooking class"),("Après-midi","The pool or the grounds"),("Soir","Dinner together")], 'cuisine') -%}
+{%- set KITCHEN_BBQ = ("La cuisine", "The cooking class", "A cooking class in the château kitchen: French cooking, unhurried. The afternoon is yours, and in the evening, a barbecue in the grounds, weather permitting.", [("Matin","The cooking class"),("Après-midi","The pool or the grounds"),("Soir","A barbecue in the grounds")], 'cuisine') -%}
+{%- set HIKE_DAY = ("Dans les montagnes", "Into the mountains", "Out into the Pyrénées: a hike into the mountains, or kayaking on the river, as the season and the weather allow. Back to the house for the evening.", [("Matin","Hiking or kayaking"),("Après-midi","The mountains"),("Soir","Dinner together")], 'hike') -%}
+{%- set FINALE3 = ("La maison et la cuisine", "The house and the kitchen", "Morning yoga and a tour of the château, then a cooking class in the château kitchen. In the evening, a formal dinner in the Salon de Musique, by candlelight.", [("Matin","Yoga, and the tour of the château"),("Après-midi","The cooking class"),("Soir","Dinner in the Salon de Musique")], 'candelabra') -%}
+{%- set FINALE5 = ("La cuisine, et l’adieu", "The kitchen, and farewell", "A last cooking class in the morning, a walk into the hills in the afternoon, and in the evening a formal dinner in the Salon de Musique, by candlelight.", [("Matin","The cooking class"),("Après-midi","A walk into the hills"),("Soir","Dinner in the Salon de Musique")], 'candelabra') -%}
+{%- set LAST = ("Le dernier jour", "The last day", "A last morning with the workshop, and the afternoon your own. In the evening, a formal dinner in the Salon de Musique, by candlelight.", [("Matin","The last session"),("Après-midi","Yours"),("Soir","Dinner in the Salon de Musique")], 'candelabra') -%}
+{%- set SESSIONS = ("Les ateliers", "The sessions", "A day of the workshop’s own sessions at the house, with a cooking class in the château kitchen and time between for the grounds.", [("Matin","The sessions"),("Après-midi","A cooking class"),("Soir","Dinner together")], 'atelier') -%}
+{%- set DEPART = ("Le départ", "Departure", "Breakfast, a last look at the house, and back to Toulouse together.", [("Matin","Breakfast, and the journey back")], 'depart') -%}
+{%- set DEPART_H = ("Le départ", "Departure", "Breakfast, a last look at the house, and the journey home.", [("Matin","Breakfast, and the journey home")], 'depart') -%}
+{#- 3, 5 and 7 nights (owner, 2 Oct): every activity optional; afternoons are free time. The four-night autumn and Noël
+    plans above are kept exactly as written. -#}
+{%- set TOUR_F = ("La maison", "The house", "The morning begins with yoga for anyone who would like it, then a tour of the château and its restoration: the rooms brought back, the rooms still waiting, and the story of how the house is returning. The afternoon is free time.", [("Matin","Yoga (optional), then the tour of the château"),("Après-midi","Free time"),("Soir","Dinner together")], 'key') -%}
+{%- set RESTO_BBQ_F = ("La restauration", "The restoration", "A morning with the restoration itself: how the work is done, why the walls are left as they are, and what the house gives up as it returns. The afternoon is free time, and in the evening, a barbecue in the grounds, weather permitting.", [("Matin","The restoration"),("Après-midi","Free time"),("Soir","A barbecue in the grounds")], 'restoration') -%}
+{%- set BROC_F = ("À la brocante", "Into the antique fairs", "Out to the brocantes and antique fairs of the valley, where the bargaining is half the pleasure: the stalls, the haggling, and the piece you did not know you were looking for. Back to the house with your finds, and the rest of the day free.", [("Matin","The brocantes"),("Après-midi","Free time"),("Soir","Dinner, and the day’s finds")], 'brocante') -%}
+{%- set BROC_BBQ_F = ("À la brocante", "Into the antique fairs", "Out to the brocantes and antique fairs of the valley, where the bargaining is half the pleasure: the stalls, the haggling, and the piece you did not know you were looking for. Free time in the afternoon, and in the evening, a barbecue in the grounds, weather permitting.", [("Matin","The brocantes"),("Après-midi","Free time"),("Soir","A barbecue in the grounds")], 'brocante') -%}
+{%- set VALLEY_F = ("Dans la vallée", "Into the valley", "An optional day out in the Ariège: kayaking on the river, or hiking up into the mountains, as the season and the weather allow. Or stay behind, and keep the day for yourself.", [("Matin","Kayaking or hiking (optional)"),("Après-midi","The valley, or free time"),("Soir","Dinner together")], 'kayak') -%}
+{%- set KITCHEN_F = ("La cuisine", "The cooking class", "A cooking class in the château kitchen: French cooking, unhurried, and the table at the end of it. The afternoon is free time.", [("Matin","The cooking class"),("Après-midi","Free time"),("Soir","Dinner together")], 'cuisine') -%}
+{%- set KITCHEN_BBQ_F = ("La cuisine", "The cooking class", "A cooking class in the château kitchen: French cooking, unhurried. The afternoon is free time, and in the evening, a barbecue in the grounds, weather permitting.", [("Matin","The cooking class"),("Après-midi","Free time"),("Soir","A barbecue in the grounds")], 'cuisine') -%}
+{%- set FINALE3_F = ("La maison et la cuisine", "The house and the kitchen", "Yoga for anyone who would like it and a tour of the château in the morning, then a cooking class in the château kitchen. In the evening, a formal dinner in the Salon de Musique, by candlelight.", [("Matin","Yoga (optional), and the tour of the château"),("Après-midi","The cooking class"),("Soir","Dinner in the Salon de Musique")], 'candelabra') -%}
+{%- set FINALE5_F = ("La cuisine, et l’adieu", "The kitchen, and farewell", "A last cooking class in the morning; in the afternoon, free time, or an optional walk into the hills. In the evening, a formal dinner in the Salon de Musique, by candlelight.", [("Matin","The cooking class"),("Après-midi","Free time, or a walk into the hills (optional)"),("Soir","Dinner in the Salon de Musique")], 'candelabra') -%}
+{%- set LAST_F = ("Le dernier jour", "The last day", "A last morning with the restoration, and the afternoon free. In the evening, a formal dinner in the Salon de Musique, by candlelight.", [("Matin","The last morning with the restoration"),("Après-midi","Free time"),("Soir","Dinner in the Salon de Musique")], 'candelabra') -%}
 {%- if _h -%}{%- set PLAN = [ARRIVE_H, TOUR, SESSIONS, LAST, DEPART_H] if _n == '4' else none -%}
-{%- elif _n == '3' -%}{%- set PLAN = [ARRIVE, BROC, HOUSEKITCHEN, DEPART] -%}
-{%- elif _n == '5' -%}{%- set PLAN = [ARRIVE, KITCHEN, TOUR, BROC, KITCHEN2, DEPART] -%}
-{%- elif _n == '7' -%}{%- set PLAN = [ARRIVE, TOUR, RESTO, BROC, RESTO2, KITCHEN, LAST, DEPART] -%}
+{%- elif _n == '3' -%}{%- set PLAN = [ARRIVE, BROC_BBQ_F, FINALE3_F, DEPART] -%}
+{%- elif _n == '5' -%}{%- set PLAN = [ARRIVE, KITCHEN_BBQ_F, TOUR_F, BROC_F, FINALE5_F, DEPART] -%}
+{%- elif _n == '7' -%}{%- set PLAN = [ARRIVE, TOUR_F, RESTO_BBQ_F, BROC_F, VALLEY_F, KITCHEN_F, LAST_F, DEPART] -%}
 {%- else -%}{%- set PLAN = none -%}{%- endif -%}
-<section class="g-sec g-sec--sand"><div class="g-wrap">
+{%- set _free = (not _h) and (_n in ['3','5','7']) -%}
+{%- set _noel = ('Noël' in (w['title'] or '')) or ('Noel' in (w['title'] or '')) or ('Christmas' in (w['title'] or '')) -%}
+<section class="g-sec g-sec--sand g-journey-sec"><div class="g-wrap">
+  <div class="g-journey-sec__art" aria-hidden="true">{{ illus('chateau') }}</div>
   <p class="g-fr">Le déroulé des journées<span class="g-fr__en">The shape of the days</span></p>
   <p class="g-eyebrow">The Experience, Day by Day</p>
   <h2 class="g-place">{{ (WORD.get(_n) ~ ' Nights at Gudanes') if (PLAN and WORD.get(_n)) else 'The Days Themselves' }}</h2>
+  {% if _free %}
+  <p class="g-p g-lede-first">Every activity on it is optional: join what you like, and leave what you do not. The rest of the time is free time, and it is yours.</p>
+  <div class="g-journey__free">
+    <div class="g-journey__free-ill" aria-hidden="true">{{ illus('wine') }}</div>
+    <div class="g-journey__free-b">
+      <p class="g-journey__free-fr" lang="fr">Le temps libre<span lang="en">Free time</span></p>
+      <p class="g-journey__free-p">Free time is yours to spend as you choose: relaxing with a glass of local wine on the terraces, a game of tennis or padel, a swim in the pool, or nothing at all.</p>
+    </div>
+  </div>
+  {% else %}
   <p class="g-p g-lede-first">Nothing on it is compulsory. Join what you like, and keep the afternoons for the pool, the grounds and a glass of something.</p>
+  {% endif %}
   {% if PLAN %}
   <ol class="g-journey">
-    {% for fr, en, p, moments in PLAN %}
+    {% for fr, en, p, moments, ill in PLAN %}
     <li class="g-journey__d">
       <div class="g-journey__n"><span class="g-journey__r" aria-hidden="true">{{ ROM[loop.index0] }}</span><span class="g-journey__l">{{ ORD[loop.index0] }}</span></div>
-      <div class="g-journey__b">
-        <h3 class="g-journey__t"><span class="g-vh">Day {{ loop.index }}: </span>{{ fr }}<em lang="en">{{ en }}</em></h3>
-        <p class="g-journey__p">{{ p }}</p>
-        <ul class="g-journey__m">{% for k, v in moments %}<li><b lang="fr">{{ k }}</b>{{ v }}</li>{% endfor %}</ul>
+      <div class="g-journey__card">
+        <div class="g-journey__b">
+          <h3 class="g-journey__t"><span class="g-vh">Day {{ loop.index }}: </span>{{ fr }}<em lang="en">{{ en }}</em></h3>
+          <p class="g-journey__p">{{ p }}</p>
+          <ul class="g-journey__m">{% for k, v in moments %}<li><b lang="fr">{{ micon(MI.get(k, 'soir')) }}{{ k }}</b>{{ v }}</li>{% endfor %}</ul>
+        </div>
+        <div class="g-journey__ill" aria-hidden="true">{{ illus(ill) }}</div>
       </div>
     </li>
     {% endfor %}
   </ol>
-  <p class="g-journey__note">A typical shape. The order of the days is set for each workshop, and sent to you before you arrive.</p>
+  {% if _noel %}
+  <div class="g-journey__free g-journey__opt">
+    <div class="g-journey__free-ill" aria-hidden="true">{{ illus('ski') }}</div>
+    <div class="g-journey__free-b">
+      <p class="g-journey__free-fr" lang="fr">En option<span lang="en">Snow permitting</span></p>
+      <p class="g-journey__free-p">If the snow has come, there is the chance to ski nearby. It depends on the weather, and the ski pass and ski hire are an additional cost.</p>
+    </div>
+  </div>
+  {% endif %}
+  <div class="g-journey__end">
+    <div class="g-journey__laurel" aria-hidden="true">{{ illus('laurel') }}</div>
+    <p class="g-journey__note">A typical shape{% if _free %}, and every activity on it optional{% endif %}. The order of the days is set for each workshop and sent to you before you arrive; outdoor plans follow the season and the weather.</p>
+  </div>
   {% else %}
   {{ ws_days(w, at_house) }}
   {% endif %}

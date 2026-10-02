@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_illus.html' import illus %}
 {% set crumbs = [('In the Valley', None)] %}
 {% block title %}In the Valley{% endblock %}
 {% block description %}Markets, brocantes, mountain days and the fairs of the Ariège — everything within an hour of Château de Gudanes, and when to catch it.{% endblock %}
@@ -114,6 +115,7 @@
 {# Distances and figures from Ariège Pyrénées Tourisme and the Cathar castle
    record. The Niaux paintings and the Montségur siege are matters of history. #}
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('hike') }}</div>
   <p class="g-fr">Le pays<span class="g-fr__en">The country</span></p>
   <p class="g-eyebrow">The Valley</p>
   <h2 class="g-place">L’Ariège</h2>

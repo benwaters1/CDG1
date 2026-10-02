@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_illus.html' import illus %}
 {# The bar offers "Stay the Night — Book", which on this page is a link to
    the page it is drawn on. book_room and booking_confirmation already say
    none for the same reason: the guest is here, doing it. #}
@@ -84,6 +85,7 @@
 </div></section>
 
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('chateau') }}</div>
   <p class="g-fr">Une nuit au château<span class="g-fr__en">A night at the château</span></p>
   <p class="g-eyebrow">Your Stay</p>
   <h2 class="g-place">A Night at Gudanes</h2>
@@ -353,7 +355,7 @@
   <div class="g-key">
     <div class="g-key__i"><p class="g-key__k">Breakfast</p><p class="g-key__v">Every morning</p></div>
     <div class="g-key__i"><p class="g-key__k">Bathrooms</p><p class="g-key__v">Your own, private, on the first floor rather than in the room. The King Room also has a bath and a basin in the room itself</p></div>
-    <div class="g-key__i"><p class="g-key__k">The grounds</p><p class="g-key__v">The pool, the tennis court and the grounds</p></div>
+    <div class="g-key__i"><p class="g-key__k">The grounds</p><p class="g-key__v">The pool, the tennis court, a barbecue area for your use, and the grounds</p></div>
     <div class="g-key__i"><p class="g-key__k">Wi-Fi</p><p class="g-key__v">In a common area of the château</p></div>
     {% if _dm == 'open' %}<div class="g-key__i"><p class="g-key__k">Dinner</p><p class="g-key__v">Not included, and can be booked on the nights the kitchen is open; served inside, by candles and lamps</p></div>{% endif %}
     <div class="g-key__i"><p class="g-key__k">Not included</p><p class="g-key__v">Lunch, dinner and drinks</p></div>

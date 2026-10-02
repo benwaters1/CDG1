@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_illus.html' import illus %}
 {% block schema %}{% if _dm != 'hidden' %}
 <script type="application/ld+json">
 {
@@ -113,6 +114,7 @@
 </div></section>
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('candelabra') }}</div>
   <p class="g-fr">À table<span class="g-fr__en">At the table</span></p>
   <p class="g-eyebrow">The French Table</p>
   <h2 class="g-place">La Table Française</h2>

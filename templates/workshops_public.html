@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_illus.html' import illus %}
 {% from '_ws_copy.html' import ws_lead, ws_copy with context %}
 {% set sticky_bar = 'atelier' %}
 {% set crumbs = [('Workshops', None)] %}
@@ -134,9 +135,9 @@
   <h2 class="g-place">Three Threads, Every Workshop</h2>
   <p class="g-p g-lede-first">Every workshop weaves the same three together. The length decides which leads.</p>
   <ul class="g-threads">
-    <li class="g-threads__i"><p class="g-threads__fr">La Brocante</p><p class="g-threads__en">The hunt</p><p class="g-threads__p">The Ariège is a country of brocantes and antique fairs, and a good one is a morning well spent: the stalls, the bargaining, the piece you did not know you were looking for. The brocante workshop puts them at the centre; every workshop has a taste of them.</p></li>
-    <li class="g-threads__i"><p class="g-threads__fr">La Cuisine</p><p class="g-threads__en">The kitchen</p><p class="g-threads__p">French cooking at the château, without hurry, and the table at the end of it. The cooking workshop puts the kitchen at the centre; every workshop eats well, with every meal and drinks included.</p></li>
-    <li class="g-threads__i"><p class="g-threads__fr">La Restauration</p><p class="g-threads__en">The house</p><p class="g-threads__p">A Class I Historic Monument coming back to life, seen up close: how the work is done, why the walls are left as they are, and what the house gives up as it returns. The restoration workshop puts it at the centre.</p></li>
+    <li class="g-threads__i"><div class="g-threads__ill" aria-hidden="true">{{ illus('brocante') }}</div><p class="g-threads__fr">La Brocante</p><p class="g-threads__en">The hunt</p><p class="g-threads__p">The Ariège is a country of brocantes and antique fairs, and a good one is a morning well spent: the stalls, the bargaining, the piece you did not know you were looking for. The brocante workshop puts them at the centre; every workshop has a taste of them.</p></li>
+    <li class="g-threads__i"><div class="g-threads__ill" aria-hidden="true">{{ illus('cuisine') }}</div><p class="g-threads__fr">La Cuisine</p><p class="g-threads__en">The kitchen</p><p class="g-threads__p">French cooking at the château, without hurry, and the table at the end of it. The cooking workshop puts the kitchen at the centre; every workshop eats well, with every meal and drinks included.</p></li>
+    <li class="g-threads__i"><div class="g-threads__ill" aria-hidden="true">{{ illus('restoration') }}</div><p class="g-threads__fr">La Restauration</p><p class="g-threads__en">The house</p><p class="g-threads__p">A Class I Historic Monument coming back to life, seen up close: how the work is done, why the walls are left as they are, and what the house gives up as it returns. The restoration workshop puts it at the centre.</p></li>
   </ul>
 </div></section>
 
@@ -180,11 +181,13 @@
 </div></section>
 
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('yoga') }}</div>
   <p class="g-fr">Une journée<span class="g-fr__en">A day</span></p>
   <p class="g-eyebrow">The Rhythm</p>
   <h2 class="g-place">A Day at the Château</h2>
-  <p class="g-p g-lede-first">Mornings begin slowly, with breakfast and the day ahead. The session takes the morning: the brocantes, the kitchen or the restoration, depending on the day. Lunch is together, and the afternoon is yours: the pool, the grounds, a book, or nothing at all.</p>
+  <p class="g-p g-lede-first">Mornings begin slowly, with breakfast and the day ahead. The session takes the morning: the brocantes, the kitchen or the restoration, depending on the day. Lunch is together, and the afternoon is free time, yours to spend as you choose: a glass of local wine on the terraces, a game of tennis or padel, a swim in the pool, or nothing at all.</p>
   <p class="g-p">Before dinner there is an apéritif in the salon. Dinner is the hour nearly everybody keeps, and the conversation tends to run on long after it.</p>
+  <p class="g-p">Along the way, and every one of them optional: morning yoga, kayaking or hiking in the valley as the season allows, a barbecue in the grounds, and a formal dinner in the Salon de Musique, by candlelight.</p>
 </div></section>
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">

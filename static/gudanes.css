@@ -10294,3 +10294,56 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
 .g .g-full .g-full__t, .g .g-full .g-full__fren{ font-size: var(--t-xs) !important; }
 .g .g-full .g-full__m{ font-size: 15px !important; }
 .g .g-full .g-full__threads li span{ font-size: var(--t-xs) !important; }
+
+/* =====================================================================
+   2 Oct - LE DÉROULÉ, illustrated. Each day a card with its vignette in the
+   margin; matin / après-midi / soir with their icons; a faint château behind
+   the heading and a laurel by the closing note.
+   ===================================================================== */
+.g .g-illus{ display: block; width: 100%; height: auto; }
+.g .g-micon{ display: inline-block; width: 16px; height: 16px; vertical-align: -3px; margin-right: .4rem; color: var(--gilt); }
+.g .g-journey-sec{ position: relative; overflow: hidden; }
+.g .g-journey-sec > .g-wrap{ position: relative; }
+.g .g-journey-sec__art{ position: absolute; top: -12px; right: 0; width: min(34vw, 380px); color: var(--gilt-leaf); opacity: .22; pointer-events: none; }
+.g .g-journey{ max-width: 64rem; }
+.g .g-journey::before{ left: 3.25rem; }
+.g .g-journey__card{ position: relative; display: grid; grid-template-columns: 1fr 9rem; gap: var(--s5); align-items: center;
+  background: #FBF8F1; border: 1px solid var(--line); border-top: 2px solid var(--gilt-leaf); padding: var(--s5) var(--s6);
+  box-shadow: 0 1px 0 rgba(115,86,45,.05), 0 14px 32px -22px rgba(20,48,95,.35); }
+.g .g-journey__b{ min-width: 0; }
+.g .g-journey__t{ margin-top: 0; }
+.g .g-journey__ill{ color: var(--gilt); opacity: .95; }
+.g .g-journey__ill svg{ width: 100%; height: auto; }
+.g .g-journey__m{ max-width: none; }
+.g .g-journey__m b{ display: flex; align-items: center; }
+.g .g-journey__end{ display: flex; align-items: center; gap: var(--s5); margin: var(--s7) 0 0; padding-left: calc(6.5rem + var(--s5)); max-width: 64rem; }
+.g .g-journey__laurel{ flex: none; width: 3.5rem; color: var(--gilt-leaf); }
+.g .g-journey__end .g-journey__note{ margin: 0; padding: 0; }
+@media (max-width: 40rem){
+  .g .g-journey-sec__art{ width: 46vw; opacity: .16; top: 0; }
+  .g .g-journey__card{ grid-template-columns: 1fr; padding: var(--s4); }
+  .g .g-journey__ill{ position: absolute; top: var(--s3); right: var(--s3); width: 3.4rem; }
+  .g .g-journey__t{ padding-right: 3.6rem; }
+  .g .g-journey__end{ padding-left: 0; }
+  .g .g-journey__laurel{ width: 2.6rem; }
+}
+/* each day is an <li>, and "main li" caps list items at the reading width - the days use the itinerary's full width */
+.g .g-journey > .g-journey__d{ max-width: none; }
+
+/* 2 Oct - vignettes around the site: one drawing at the head of a section, in the gilt. */
+.g .g-vignette{ width: 88px; color: var(--gilt); margin: 0 0 var(--s4); }
+.g .g-sec--navy .g-vignette, .g .g-full .g-vignette{ color: var(--gilt-on-dark, #C6A66E); }
+.g .g-threads__ill{ width: 76px; color: var(--gilt); margin: 0 0 var(--s4); }
+@media (max-width: 40rem){ .g .g-vignette{ width: 72px; } .g .g-threads__ill{ width: 64px; } }
+.g .g-journey__end .g-journey__note{ max-width: 40rem; }
+.g .g-journey__end .g-journey__note{ max-width: 34rem; }
+
+/* 2 Oct - "Le temps libre" (3, 5, 7 nights) and Noël's "En option": a framed card in the itinerary, drawing at left. */
+.g .g-journey__free{ display: grid; grid-template-columns: 5.5rem 1fr; gap: var(--s5); align-items: center; max-width: 64rem; margin: var(--s6) 0 0;
+  padding: var(--s5) var(--s6); background: #FBF8F1; border: 1px solid var(--gilt-leaf); outline: 1px solid var(--gilt-leaf); outline-offset: -6px; }
+.g .g-journey__free-ill{ color: var(--gilt); }
+.g .g-journey__free-fr{ margin: 0 0 var(--s2); font-family: var(--display); font-style: italic; font-size: var(--t-h3); line-height: 1.2; color: var(--blue-deep); }
+.g .g-journey__free-fr span{ margin-left: .6em; font-family: var(--ui); font-style: normal; font-size: var(--t-xs) !important; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
+.g .g-journey__free-p{ margin: 0; font-family: var(--serif); font-size: var(--t-base); line-height: 1.7; color: var(--ink); max-width: 46rem; }
+.g .g-journey__opt{ margin-top: var(--s7); }
+@media (max-width: 40rem){ .g .g-journey__free{ grid-template-columns: 3.6rem 1fr; gap: var(--s4); padding: var(--s4); } .g .g-journey__free-fr span{ display: block; margin: .2rem 0 0; } }

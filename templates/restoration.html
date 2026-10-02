@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_illus.html' import illus %}
 {# The restoration page's readers are the workshops' readers (owner, 1 Oct: keep promoting the workshops). #}
 {% set sticky_bar = 'atelier' %}
 {% block schema %}
@@ -87,6 +88,7 @@
 
 
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('restoration') }}</div>
   <p class="g-fr">À l’intérieur<span class="g-fr__en">Inside</span></p>
   <p class="g-eyebrow">Inside</p>
   <h2 class="g-place">What You Will See</h2>

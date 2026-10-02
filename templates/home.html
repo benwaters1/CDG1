@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_illus.html' import illus %}
 {% block title %}A French Château Experience in the Pyrénées{% endblock %}
 {% block description %}A French château experience in the Pyrénées: an eighteenth-century Class I Historic Monument, under restoration and open to guests. Rooms{% if (setting(site, 'dining_mode') or 'open')|lower|trim == 'open' %}, a table,{% endif %} and workshop retreats.{% endblock %}
 {% block og_desc %}An eighteenth-century Class I Historic Monument in the Ariège, still under restoration and open to guests. Rooms, dinner, and workshop retreats.{% endblock %}
@@ -84,7 +85,7 @@
   <div class="g-full__copy">
     <p class="g-full__fr" lang="fr">La pleine expérience<span class="g-full__fren" lang="en">The château in full</span></p>
     <h2 class="g-full__h" id="full-h">Experience the Château in Full</h2>
-    <p class="g-full__p">Built in 1741, very nearly lost, and brought back room by room: this is a house with a long history, and a workshop lets you live inside it. Three to seven nights, with every meal and drinks, a tour of the château and its restoration, the brocantes, the kitchen, and the house to yourselves.</p>
+    <p class="g-full__p">Built in 1741, very nearly lost, and brought back room by room: this is a house with a long history, and a workshop lets you live inside it. Three to seven nights, with every meal and drinks, a tour of the château and its restoration, the brocantes and cooking classes, yoga, the valley, a formal dinner in the Salon de Musique by candlelight, and the house to yourselves.</p>
     <p class="g-full__btns">
       <a class="g-full__cta" href="{{ url_for('workshops_public') }}">See the Experiences</a>
       <a class="g-full__link" href="{{ url_for('restoration_page') }}#monument">The house and its history</a>
@@ -143,6 +144,7 @@
 </div></section>
 
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('pool') }}</div>
   <p class="g-fr">L’art de vivre<span class="g-fr__en">The art of living</span></p>
   <p class="g-eyebrow">The Gudanes Experience</p>
   <h2 class="g-place">La Vie de Château</h2>

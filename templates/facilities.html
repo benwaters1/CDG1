@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_illus.html' import illus %}
 {% set crumbs = [('The Estate', None)] %}
 {% block title %}The Estate: Pool, Tennis and Grounds{% endblock %}
 {% block description %}The pool, the tennis court and the grounds. All of it included with the room.{% endblock %}
@@ -28,12 +29,13 @@
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">The Grounds</p>
   <h2 class="g-place">Yours, Simply by Staying</h2>
-  <p class="g-p g-lede-first">Days by the pool with the mountains above you, a game of tennis, and the grounds to wander. All of it is yours while you stay.</p>
+  <p class="g-p g-lede-first">Days by the pool with the mountains above you, a game of tennis, a barbecue area for long evenings, and the grounds to wander. All of it is yours while you stay.</p>
   <p class="g-p">About fifty-five rooms, and five of them are yours to sleep in. The rest are the restoration still ahead.</p>
   <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
 </div></section>
 
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('pool') }}</div>
   <p class="g-fr">Le domaine<span class="g-fr__en">The estate</span></p>
   <p class="g-eyebrow">The Grounds</p>
   <h2 class="g-place">Le Domaine</h2>
@@ -125,7 +127,7 @@
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">It is all included</h2>
-  <p class="g-close__p">The pool, the court, the parkland and the salons come with the room. None of it appears on your bill; anything we arrange beyond the gates, we price before we book it.</p>
+  <p class="g-close__p">The pool, the court, the barbecue area, the parkland and the salons come with the room. None of it appears on your bill; anything we arrange beyond the gates, we price before we book it.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
       <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Join a workshop</a>

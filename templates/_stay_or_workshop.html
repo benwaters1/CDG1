@@ -24,7 +24,7 @@
       <h3 class="g-sow__t">Room and breakfast</h3>
       <ul class="g-sow__list">
         <li>Your room, and breakfast each morning</li>
-        <li>The house and the grounds, with the pool and the tennis court</li>
+        <li>The house and the grounds, with the pool, the tennis court and a barbecue area</li>
         <li>{% if dm == 'open' %}Dinner, a tour of the château, transfers and excursions, booked separately{% else %}A tour of the château, transfers and excursions, booked separately{% endif %}</li>
       </ul>
       <p class="g-sow__foot">From one night{% if rooms_from %}, from &euro;{{ '{:,.0f}'.format(rooms_from) }} a night{% endif %}</p>
@@ -72,7 +72,7 @@
       <tr><th scope="row">The sessions: the brocantes, the kitchen, the restoration</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">Excursions</th><td>Booked separately</td><td class="g-vs__full">{% if ex == 'all' %}{{ Y|safe }}{% elif ex == 'some' %}On some; each workshop says{% else %}{{ N|safe }}{% endif %}</td></tr>
       <tr><th scope="row">Transfers from Toulouse</th><td>Booked separately</td><td class="g-vs__full">{% if tx == 'all' %}{{ Y|safe }}{% elif tx == 'some' %}On some; each workshop says{% else %}{{ N|safe }}{% endif %}</td></tr>
-      <tr><th scope="row">The pool, the tennis court and the grounds</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
+      <tr><th scope="row">The pool, the tennis court, the barbecue area and the grounds</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">The house to yourselves</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }} No other guests while it runs</td></tr>
       <tr class="g-vs__sum"><th scope="row">Length</th><td>From one night</td><td class="g-vs__full">Three to seven nights</td></tr>
       <tr class="g-vs__sum"><th scope="row">Price</th><td>{% if rooms_from %}From &euro;{{ '{:,.0f}'.format(rooms_from) }} a night, the room{% else %}Per room, per night{% endif %}</td><td class="g-vs__full">{% if ws_from %}From &euro;{{ '{:,.0f}'.format(ws_from) }} per person, everything{% else %}Per person, everything{% endif %}</td></tr>
