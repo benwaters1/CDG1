@@ -226,6 +226,7 @@ SUITES = [
     "test_booking_email",
     "test_booking_form_errors",
     "test_abandoned_checkout",
+    "test_checkout_starts",
     "test_room_deposits",
     "test_deposit_categories",
     "test_vouchers",
@@ -535,11 +536,21 @@ COVERAGE_KNOWN_GAPS = {
     # 302 cannot answer, since a rejected form and a successful one both
     # redirect back to a page.
     #
-    # Three of these need a payment provider and one (sync_pennylane) is
-    # stood down at import on purpose. The rest are ordinary owner-side
-    # writes whose working branch has never run. Checked both ways, as
-    # before: write a real post for one and the run reds until the name
-    # comes off.
+    # One of these (sync_pennylane) is stood down at import on purpose and
+    # the rest are ordinary owner-side writes whose working branch has never
+    # run. Checked both ways, as before: write a real post for one and the
+    # run reds until the name comes off.
+    #
+    # NO PAYMENT PAGE IS ON THIS LIST ANY MORE, as of 2 October. The two
+    # workshop payment starts and the till's pay-link are covered by
+    # test_checkout_starts, which drives the branch where a checkout actually
+    # opens: the 303, the amount in cents, both ends of the part-payment
+    # guard exactly on the boundary, and the session id written onto the tab
+    # that settle_pos_from_stripe_session later looks the payment up by.
+    # Stripe is stood in for the length of each branch and the key stays
+    # neutralised throughout. That branch stops being hypothetical the day
+    # the live keys go in, which is the argument for covering it before then
+    # rather than after.
     #
     # THE THREE STRIPE CANCEL ROUTES CAME OFF THIS LIST on 2 October and are
     # not fixed, they were never broken. Each one does a single thing -- tell
@@ -554,7 +565,6 @@ COVERAGE_KNOWN_GAPS = {
     "bulk_tag_guests",
     "edit_menu_day",
     "paste_event_guests",
-    "pos_pay_link",
     "read_invoice",
     "record_maintenance_done",
     "save_access_preset",
@@ -563,8 +573,6 @@ COVERAGE_KNOWN_GAPS = {
     "send_event_revenue",
     "send_workshop_revenue",
     "sync_pennylane",
-    "workshop_pay_balance",
-    "workshop_pay_deposit",
 }
 # EMPTY, and every name that was here now answers. The last four were the
 # three Stripe pages -- the dinner refund, and the atelier and split-bill
