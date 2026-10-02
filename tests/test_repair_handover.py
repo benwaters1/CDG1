@@ -196,6 +196,87 @@ def run():
     finally:
         shutil.rmtree(cwd, ignore_errors=True)
 
+    s.section("The seven from 1 October go back, once")
+    # Every zip that week was built on 8114e1c, before any of these existed,
+    # so every one arrived without them: the slider's import, the Workshops
+    # deposit and rooms lines, the bathroom read from its column, the arrival
+    # card's context, the after-dark instruction, the Legal Notice's host and
+    # RCS line, and its footer link. A miniature of each fault, repaired once
+    # and left alone the second time. The other repairs find nothing of
+    # theirs in these miniatures; only these seven are read.
+    seven = ("the slider's import on Restoration",
+             "the deposit and rooms lines on Workshops",
+             "the bathroom read from its column",
+             "the arrival card's context",
+             "the after-dark instruction on Contact",
+             "the Legal Notice's host and RCS line",
+             "the Legal Notice footer links")
+    cwd = tempfile.mkdtemp(prefix="ztest-repair7-")
+    try:
+        _git(cwd, "init", "-q")
+        faults = {
+            "templates/restoration.html":
+                "{% from '_floorplan.html' import floorplan %}\n{{ the_reveal(reveal_pairs) }}\n",
+            "templates/workshops_public.html":
+                '  <div class="g-key">\n    <div class="g-key__i">\n'
+                '      <p class="g-key__k">Excursions and transfers</p>\n'
+                '      <p class="g-key__v">Included, except on the workshops spent at the house</p>\n'
+                '    </div>\n  </div>\n',
+            "templates/book_rooms.html":
+                "          {% if room['amenities'] %}\n"
+                "            {% for tag in room['amenities'].split(',') %}<li>{{ tag.strip() }}</li>{% endfor %}\n"
+                "          {% else %}\n          {% endif %}\n",
+            "templates/booking_confirmation.html":
+                "{% from '_arrival_card.html' import arrival_card %}\n{{ arrival_card(booking) }}\n",
+            "templates/contact.html":
+                '      <p class="g-key__k">By car</p>\n'
+                '      <p class="g-key__v">An hour away. The last stretch climbs; take it slowly after dark</p>\n',
+            "templates/legal.html":
+                "    {% if company and company['vat_number'] %}\n    {% endif %}\n"
+                '    <div><dt>Host</dt><dd>Railway Corp., San Francisco, California, United States \u00b7 '
+                '<a href="https://railway.com" rel="noopener">railway.com</a></dd></div>\n',
+            "templates/public_base.html":
+                "        <ul>\n          <li><a href=\"{{ url_for('privacy_page') }}\">{{ t('Privacy Policy') }}</a></li>\n        </ul>\n",
+        }
+        for rel, text in faults.items():
+            _write(cwd, rel, text)
+        _git(cwd, "add", "-A")
+        _git(cwd, "commit", "-q", "-m", "a tree carrying the seven faults")
+        code, out = _run(cwd, src)
+        named = {label: next((l for l in out.splitlines() if l.rstrip().endswith(label)), "")
+                 for label in seven}
+        s.check("each of the seven ran", all(named.values()) and
+                not any("COULD NOT RUN" in l for l in named.values()),
+                detail=str({k: v.strip()[:30] for k, v in named.items()}))
+        r = lambda rel: _read(cwd, rel)
+        s.check("the slider is imported", "import the_reveal" in r("templates/restoration.html"))
+        ws = r("templates/workshops_public.html")
+        s.check("the deposit line reads the route",
+                "deposit_pct" in ws and "The whole amount is due then" in ws)
+        s.check("and the rooms line is back", "Arranged for two" in ws)
+        s.check("the bathroom follows its column",
+                "'bathroom' not in tag|lower" in r("templates/book_rooms.html"))
+        s.check("the arrival card is imported with context",
+                "import arrival_card with context" in r("templates/booking_confirmation.html"))
+        s.check("the after-dark instruction is in the By car line",
+                "telephone when you leave Les Cabannes" in r("templates/contact.html"))
+        legal = r("templates/legal.html")
+        s.check("the host is named in full", "548 Market St PMB 68956" in legal)
+        s.check("and the RCS line sits above the VAT row",
+                legal.find("Trade register") < legal.find("company['vat_number']"))
+        s.check("the footer links the Legal Notice beside the privacy policy",
+                "<li><a href=\"{{ url_for('legal_page') }}\">" in r("templates/public_base.html"))
+        before = {rel: r(rel) for rel in faults}
+        code2, out2 = _run(cwd, src)
+        again = [l for l in out2.splitlines()
+                 if any(l.rstrip().endswith(label) for label in seven)]
+        s.check("a second run leaves all seven alone",
+                len(again) == 7 and all("already fine" in l for l in again),
+                detail=" | ".join(l.strip()[:40] for l in again))
+        s.check("and changes no file", all(r(rel) == text for rel, text in before.items()))
+    finally:
+        shutil.rmtree(cwd, ignore_errors=True)
+
     s.section("It says where the tool is documented")
     s.check("the docstring points at check_handover first",
             "check_handover" in src[:2000], detail="ordering advice is missing")

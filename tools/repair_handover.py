@@ -1279,6 +1279,181 @@ def repair_reverted_guest_pages():
     return 0
 
 
+# ---------------------------------------------------------------------------
+# The seven put back after the 1 October handovers (g, k), and again on 2 Oct.
+# Every zip this week is built on 8114e1c, before any of these existed, so each
+# one arrives without them. Each is keyed on the FAULT being present, and puts
+# back the exact text main carries, so a file the design side did not touch
+# comes out of install-and-repair byte-identical to main.
+# ---------------------------------------------------------------------------
+
+REVEAL_IMPORT = (
+    "{# Put back after the 1 October handovers (g, k): the_reveal is still called below, "
+    "and its import went out with the explorer's. #}\n"
+    "{% from '_interactive.html' import the_reveal %}\n")
+
+
+def repair_reveal_import():
+    """/restoration answered 500: the slider is called, and its import was cut
+    beside the explorer's (which the design did mean to cut)."""
+    rel = "templates/restoration.html"
+    src = _read(rel)
+    if "the_reveal(" not in src or "import the_reveal" in src:
+        return 0
+    anchor = "{% from '_floorplan.html' import floorplan %}\n"
+    if anchor not in src:
+        raise ValueError("no floorplan import to put the_reveal's beside")
+    _write(rel, src.replace(anchor, anchor + REVEAL_IMPORT, 1))
+    return 1
+
+
+WORKSHOP_TERMS_KEYS = '    {# Put back after the 1 October handovers (g, k), which cut the facts list these lived in.\n       Both are the code\'s, not copy: the rooms line is what the registration page says\n       (two to a room; no extra beds, per the owner\'s facts of 1 October), and the deposit\n       and balance are read from the workshops and from WORKSHOP_BALANCE_DAYS by the route.\n       Inside the balance window the WHOLE amount is due at booking, and a page that says\n       "10% to reserve" three weeks out has told a guest one figure and charged another.\n       Reverted by handovers three times. #}\n    <div class="g-key__i">\n      <p class="g-key__k">Rooms</p>\n      <p class="g-key__v">Arranged for two. Coming alone, you share with another guest travelling solo, or take a room to yourself with a single supplement</p>\n    </div>\n    <div class="g-key__i">\n      <p class="g-key__k">To reserve</p>\n      <p class="g-key__v">{% if deposit_pct %}{{ deposit_pct }}% to reserve; the balance {{ balance_days }} days before.{% else %}It depends on the workshop &mdash; the figure is on the session you choose.{% endif %}{% if balance_days %} Booking inside {{ balance_days }} days? The whole amount is due then, not a deposit.{% endif %}</p>\n    </div>\n'
+
+
+def repair_workshop_terms_keys():
+    """The Workshops page's deposit, 30-day balance and whole-amount-inside-
+    the-window line, and how rooms are arranged. Cut with the facts list they
+    lived in; read from the route, so they are the code's, not copy."""
+    rel = "templates/workshops_public.html"
+    src = _read(rel)
+    if "deposit_pct" in src:
+        return 0
+    anchor = ('      <p class="g-key__v">Included, except on the workshops spent at the house</p>\n'
+              '    </div>\n')
+    if anchor not in src:
+        raise ValueError("the Excursions and transfers key item has moved")
+    _write(rel, src.replace(anchor, anchor + WORKSHOP_TERMS_KEYS, 1))
+    return 1
+
+
+BATHROOM_UNGUARDED = ("          {% if room['amenities'] %}\n"
+                      "            {% for tag in room['amenities'].split(',') %}"
+                      "<li>{{ tag.strip() }}</li>{% endfor %}\n")
+BATHROOM_GUARDED = '          {% if room[\'amenities\'] %}\n            {#- Put back after the 1 October handovers (g, k). Free-text amenities may override the\n                derived list, but never the bathroom: shared-or-private is the one claim on this\n                card that costs an apology when it is wrong, and imported amenities on two rooms\n                still said "Shared bathroom" after every room became private. The column decides. -#}\n            {% for tag in room[\'amenities\'].split(\',\') if \'bathroom\' not in tag|lower %}<li>{{ tag.strip() }}</li>{% endfor %}\n            {% if room[\'bathroom\'] %}<li>{{ room[\'bathroom\']|capitalize }} bathroom</li>{% endif %}\n'
+
+
+def repair_bathroom_follows_column():
+    """Free-text amenities may replace the derived tags, never the bathroom:
+    shared-or-private is the claim that costs an apology when it is wrong."""
+    rel = "templates/book_rooms.html"
+    src = _read(rel)
+    if BATHROOM_UNGUARDED not in src:
+        return 0
+    _write(rel, src.replace(BATHROOM_UNGUARDED, BATHROOM_GUARDED, 1))
+    return 1
+
+
+ARRIVAL_CARD_NOTE = (
+    "{# with context: the card reads house_maps from the context processor, and imported without it the\n"
+    "   'Open in maps' link never rendered on any confirmation (found after the 1 October (g) handover). #}\n")
+
+
+def repair_arrival_card_context():
+    """The card reads house_maps; imported without context it never drew the
+    'Open in maps' link on any confirmation."""
+    rel = "templates/booking_confirmation.html"
+    src = _read(rel)
+    bare = "{% from '_arrival_card.html' import arrival_card %}"
+    if bare not in src:
+        return 0
+    _write(rel, src.replace(
+        bare, ARRIVAL_CARD_NOTE + "{% from '_arrival_card.html' import arrival_card with context %}", 1))
+    return 1
+
+
+AFTER_DARK = ("The last four kilometres climb and are unlit: if you are arriving after dark, "
+              "telephone when you leave Les Cabannes and someone will meet you at the gates")
+
+
+def repair_after_dark_line():
+    """Contact's only rendered instruction for arriving after dark went with
+    its map. The design's own sentence for it, in the By car line."""
+    rel = "templates/contact.html"
+    src = _read(rel)
+    if "telephone when you leave Les Cabannes" in src:
+        return 0
+    old = "The last stretch climbs; take it slowly after dark</p>"
+    if old in src:
+        _write(rel, src.replace(old, AFTER_DARK + "</p>", 1))
+        return 1
+    m = re.search(r'(<p class="g-key__k">By car</p>\s*<p class="g-key__v">)(.*?)(</p>)', src, re.S)
+    if not m:
+        raise ValueError("no By car line to carry the after-dark instruction")
+    value = m.group(2).rstrip(". ") + ". " + AFTER_DARK[0].upper() + AFTER_DARK[1:]
+    _write(rel, src[:m.start(2)] + value + src[m.end(2):])
+    return 1
+
+
+LEGAL_HOST_OLD = ('    <div><dt>Host</dt><dd>Railway Corp., San Francisco, California, United States \u00b7 '
+                  '<a href="https://railway.com" rel="noopener">railway.com</a></dd></div>')
+LEGAL_HOST_NEW = (
+    "    {# Railway's own wording, from railway.com/legal/privacy (1 Oct 2026). "
+    "LCEN asks for the host's name, address and telephone. #}\n"
+    '    <div><dt>Host</dt><dd>Railway Corporation, 548 Market St PMB 68956, San Francisco, California 94104, '
+    'United States \u00b7 +1 415 707 7675 \u00b7 <a href="https://railway.com" rel="noopener">railway.com</a></dd></div>')
+LEGAL_RCS = (
+    '    {# LCEN 6-III also asks for the trade-register entry: "RCS Foix" and the SIREN, '
+    "which is the SIRET's first nine digits. #}\n"
+    "    {% if company and company['registration_office'] %}\n"
+    "    {% set _siren = (company['registration_number'] or '')|replace(' ', '') %}\n"
+    "    <div><dt>Trade register</dt><dd>{{ company['registration_office'] }}{% if _siren|length >= 9 %} "
+    "{{ _siren[:3] }} {{ _siren[3:6] }} {{ _siren[6:9] }}{% endif %}</dd></div>\n"
+    "    {% endif %}\n")
+
+
+def repair_legal_notice():
+    """The host in full (name, address, telephone) and the RCS line, which
+    LCEN 6-III asks for and the design's page leaves out."""
+    rel = "templates/legal.html"
+    src = _read(rel)
+    n = 0
+    if "548 Market St" not in src and LEGAL_HOST_OLD in src:
+        src = src.replace(LEGAL_HOST_OLD, LEGAL_HOST_NEW, 1)
+        n += 1
+    if "Trade register" not in src:
+        vat = "    {% if company and company['vat_number'] %}"
+        if vat not in src:
+            raise ValueError("no VAT row to put the RCS line above")
+        src = src.replace(vat, LEGAL_RCS + vat, 1)
+        n += 1
+    if n:
+        _write(rel, src)
+    return n
+
+
+PRIVACY_A = "<a href=\"{{ url_for('privacy_page') }}\">{{ t('Privacy Policy') }}</a>"
+LEGAL_A = "<a href=\"{{ url_for('legal_page') }}\">{{ t('Legal Notice') }}</a>"
+
+
+def repair_legal_footer_links():
+    """The Legal Notice, linked beside every privacy link the base carries --
+    the footer's Help list and the drawer's legal row. Keyed on the privacy
+    link itself rather than on the markup around it, so a redrawn footer
+    still gets one, in the same shape as its neighbour: a list item beside a
+    list item, a bare link on the next line beside a bare link."""
+    rel = "templates/public_base.html"
+    src = _read(rel)
+    if "url_for('legal_page')" in src:
+        return 0
+    out, n = [], 0
+    for line in src.split("\n"):
+        out.append(line)
+        if PRIVACY_A not in line:
+            continue
+        indent = line[:len(line) - len(line.lstrip())]
+        if line.strip() == "<li>" + PRIVACY_A + "</li>":
+            out.append(indent + "<li>" + LEGAL_A + "</li>")
+        elif line.strip() == PRIVACY_A:
+            out.append(indent + LEGAL_A)
+        else:
+            out[-1] = line.replace(PRIVACY_A, PRIVACY_A + " " + LEGAL_A, 1)
+        n += 1
+    if not n:
+        raise ValueError("no privacy link to put the legal link beside")
+    _write(rel, "\n".join(out))
+    return n
+
+
 def main():
     steps = [
         ("the robots block in public_base", repair_parent_robots_block),
@@ -1314,6 +1489,13 @@ def main():
         ("column names the database does not have", repair_invented_columns),
         ("the French room names, which are not landed", repair_room_name_map),
         ("guest pages to read before committing", repair_reverted_guest_pages),
+        ("the slider's import on Restoration", repair_reveal_import),
+        ("the deposit and rooms lines on Workshops", repair_workshop_terms_keys),
+        ("the bathroom read from its column", repair_bathroom_follows_column),
+        ("the arrival card's context", repair_arrival_card_context),
+        ("the after-dark instruction on Contact", repair_after_dark_line),
+        ("the Legal Notice's host and RCS line", repair_legal_notice),
+        ("the Legal Notice footer links", repair_legal_footer_links),
     ]
     total, failed = 0, []
     for label, fn in steps:

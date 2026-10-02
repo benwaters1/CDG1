@@ -32,6 +32,7 @@
     and paid in full. There is nothing further to do — we will write again a few days before
     you travel, with directions and arrival times.{% else %}Your request for <strong>{{ room_name(booking['room_name']) }}</strong> has been received.
     We will be in touch shortly.{%- endif %}</p>
+  {% if (booking['status']|lower) == 'confirmed' %}<p class="g-p">Every stay helps bring the house back to life. Thank you for being part of it.</p>{% endif %}
 
   <div class="g-conf g-plate-edge">
     <dl class="g-facts-list">
