@@ -1454,6 +1454,44 @@ def repair_legal_footer_links():
     return n
 
 
+# Claims about the house the owner has corrected, in the design side's copy.
+# The design side writes from its own fact ledger, which can lag the owner, so
+# a correction made here would arrive reverted in the next whole-file zip.
+# Each is a whole word, fixed only outside comments: a design note that
+# mentions the word is a record of what was said, and rewriting it would
+# make the record false.
+COPY_CORRECTIONS = [
+    # 2 October: no padel court. The tennis court is lined for pickleball.
+    ("padel", "pickleball"),
+]
+_COMMENT_SPLIT = re.compile(r"(\{#.*?#\}|<!--.*?-->)", re.S)
+
+
+def repair_corrected_claims():
+    """Owner-corrected claims, rewritten in the copy wherever a zip puts
+    them back. test_confirmed_facts names any that get past this."""
+    n = 0
+    for name in sorted(os.listdir(TEMPLATE_DIR)):
+        if not name.endswith(".html"):
+            continue
+        rel = "templates/" + name
+        src = _read(rel)
+        parts = _COMMENT_SPLIT.split(src)
+        changed = 0
+        for i in range(0, len(parts), 2):
+            for wrong, right in COPY_CORRECTIONS:
+                def fix(m, right=right):
+                    word = m.group(0)
+                    return right.capitalize() if word[0].isupper() else right
+                parts[i], k = re.subn(r"\b%s\b" % re.escape(wrong), fix, parts[i],
+                                      flags=re.I)
+                changed += k
+        if changed:
+            _write(rel, "".join(parts))
+            n += changed
+    return n
+
+
 def main():
     steps = [
         ("the robots block in public_base", repair_parent_robots_block),
@@ -1496,6 +1534,7 @@ def main():
         ("the after-dark instruction on Contact", repair_after_dark_line),
         ("the Legal Notice's host and RCS line", repair_legal_notice),
         ("the Legal Notice footer links", repair_legal_footer_links),
+        ("claims the owner has corrected", repair_corrected_claims),
     ]
     total, failed = 0, []
     for label, fn in steps:

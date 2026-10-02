@@ -277,6 +277,39 @@ def run():
     finally:
         shutil.rmtree(cwd, ignore_errors=True)
 
+    s.section("A claim the owner corrected is rewritten in the copy, not in the notes")
+    # 2 October: "tennis or padel" arrived in the free-time copy. There is no
+    # padel court; the tennis court is lined for pickleball. The design side's
+    # ledger still says padel, so the next zip will too.
+    cwd = tempfile.mkdtemp(prefix="ztest-repair-claims-")
+    try:
+        _git(cwd, "init", "-q")
+        page = ("{# 2 Oct (owner): tennis or padel, the pool #}\n"
+                "<p>A game of tennis or padel, a swim in the pool.</p>\n"
+                "<li>Padel, tennis and the pool</li>\n")
+        _write(cwd, "templates/free_time.html", page)
+        _git(cwd, "add", "-A")
+        _git(cwd, "commit", "-q", "-m", "a page carrying the word")
+        code, out = _run(cwd, src)
+        fixed = _read(cwd, "templates/free_time.html")
+        s.check("the copy says pickleball",
+                "tennis or pickleball, a swim" in fixed and "<li>Pickleball, tennis" in fixed,
+                detail=fixed)
+        s.check("and keeps the capital where the word began a line",
+                "<li>Pickleball," in fixed, detail=fixed)
+        s.check("the design's note is left as it was written",
+                "{# 2 Oct (owner): tennis or padel, the pool #}" in fixed, detail=fixed)
+        s.check("it reports what it changed",
+                re.search(r"restored\s+2\s+claims the owner has corrected", out) is not None,
+                detail=out[-400:])
+        code2, out2 = _run(cwd, src)
+        s.check("a second run leaves it alone",
+                re.search(r"already fine\s+claims the owner has corrected", out2) is not None
+                and _read(cwd, "templates/free_time.html") == fixed,
+                detail=out2[-300:])
+    finally:
+        shutil.rmtree(cwd, ignore_errors=True)
+
     s.section("It says where the tool is documented")
     s.check("the docstring points at check_handover first",
             "check_handover" in src[:2000], detail="ordering advice is missing")

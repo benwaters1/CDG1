@@ -55,6 +55,11 @@ RETIRED = {
     "chickens": "there are none",
     "put you on the ground floor": "no bedroom is on the ground floor",
     "along the corridor": "the bathrooms are downstairs",
+    # 2 October: the design side wrote "tennis or padel" into the free-time
+    # copy. There is no padel court -- padel needs a walled court of its own --
+    # and the tennis court is lined for pickleball, which is what the owner
+    # means. tools/repair_handover.py rewrites it on install.
+    "padel": "no padel court; the tennis court is lined for pickleball",
 }
 COMMENTS = re.compile(r"\{#.*?#\}|<!--.*?-->", re.S)
 
