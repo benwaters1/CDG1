@@ -237,6 +237,7 @@ SUITES = [
     "test_revenue_categories",
     "test_extras_due",
     "test_extras_at_booking",
+    "test_chateau_tour",
     "test_extra_vat",
     "test_ics_feeds",
     "test_shift_actions",

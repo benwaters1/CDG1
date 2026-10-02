@@ -261,6 +261,56 @@ def run():
     s.check("deleting one that never existed is a 404, not a crash",
             r.status_code == 404, detail=str(r.status_code))
 
+    s.section("Mirepoix is 53 minutes, and a house already seeded is told once")
+    # Google Maps, 1 October 2026: 53 minutes, where the seed had "1 hour". The
+    # seed only inserts a market that is missing, so the house already running
+    # needed WHATS_ON_CORRECTIONS -- once, and only on a row still saying what
+    # the seed first said.
+    seed = next(e for e in m.DEFAULT_WHATS_ON if e["title"] == "Mirepoix Market")
+    s.check("the seed says 53 minutes", seed["distance"] == "53 minutes",
+            detail=seed["distance"])
+    row = conn.execute("SELECT * FROM whats_on WHERE title = 'Mirepoix Market'").fetchone()
+    if row is None:
+        s.check("there is a Mirepoix row to correct", False)
+    else:
+        before = dict(row)
+        try:
+            old_desc = ("Monday, under the medieval arcades of the Place des Couverts. "
+                        "An hour each way, and people still go.")
+            conn.execute("UPDATE whats_on SET distance = '1 hour', description = ? "
+                         "WHERE id = ?", (old_desc, row["id"]))
+            conn.execute("DELETE FROM app_settings WHERE key = 'whats_on_mirepoix_53'")
+            conn.commit()
+            changed = m.correct_whats_on(conn)
+            fixed = conn.execute("SELECT * FROM whats_on WHERE id = ?", (row["id"],)).fetchone()
+            s.check("a row still saying \"1 hour\" is corrected",
+                    changed == 2 and fixed["distance"] == "53 minutes"
+                    and fixed["description"].startswith("Monday") and "Just under an hour"
+                    in fixed["description"],
+                    detail=f"{changed} changed; {fixed['distance']!r}")
+            conn.execute("UPDATE whats_on SET distance = '1 hour' WHERE id = ?", (row["id"],))
+            conn.commit()
+            s.check("and only once: the key is remembered",
+                    m.correct_whats_on(conn) == 0
+                    and conn.execute("SELECT distance FROM whats_on WHERE id = ?",
+                                     (row["id"],)).fetchone()["distance"] == "1 hour",
+                    detail="the owner may set it back on purpose, and a restart "
+                           "must not undo that")
+            conn.execute("UPDATE whats_on SET distance = 'about an hour' WHERE id = ?",
+                         (row["id"],))
+            conn.execute("DELETE FROM app_settings WHERE key = 'whats_on_mirepoix_53'")
+            conn.commit()
+            m.correct_whats_on(conn)
+            s.check("a row the owner has edited is theirs, and is left alone",
+                    conn.execute("SELECT distance FROM whats_on WHERE id = ?",
+                                 (row["id"],)).fetchone()["distance"] == "about an hour")
+        finally:
+            conn.execute("UPDATE whats_on SET distance = ?, description = ? WHERE id = ?",
+                         (before["distance"], before["description"], row["id"]))
+            conn.execute("INSERT INTO app_settings (key, value) VALUES "
+                         "('whats_on_mirepoix_53', 'test') ON CONFLICT(key) DO NOTHING")
+            conn.commit()
+
     _cleanup(conn)
     conn.close()
     return s

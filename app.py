@@ -7343,6 +7343,7 @@ def init_db():
                  entry.get("start_time", "08:00"), entry.get("end_time", "13:00"),
                  position, datetime.now(timezone.utc).isoformat()))
     conn.commit()
+    correct_whats_on(conn)
 
     for defaults in (AUTOMATION_SETTING_DEFAULTS, HOUSE_SETTING_DEFAULTS,
                      LEAVE_SETTING_DEFAULTS):
@@ -11589,8 +11590,9 @@ DEFAULT_WHATS_ON = [
      "distance": "30 minutes", "weekday": 4},
     {"title": "Mirepoix Market",
      "description": "Monday, under the medieval arcades of the Place des "
-                    "Couverts. An hour each way, and people still go.",
-     "location": "Place des Couverts", "distance": "1 hour", "weekday": 0},
+                    "Couverts. Just under an hour each way, and people still go.",
+     # 53 minutes by Google Maps (1 October 2026); was "1 hour".
+     "location": "Place des Couverts", "distance": "53 minutes", "weekday": 0},
     {"title": "Saint-Girons Market",
      "description": "Saturday, and the largest in the Couserans — produce, "
                     "cheese, and a good deal that is not food at all.",
@@ -11605,6 +11607,42 @@ DEFAULT_WHATS_ON = [
      # shape could not hold without inventing both.
      "weekday": None, "start_time": None, "end_time": None},
 ]
+
+# Corrections to markets a house was already seeded with, which the seed above
+# cannot make: it only inserts a market that is missing. Each runs once per
+# database, remembered by its key, and changes a field only while it still
+# says exactly what the seed first said -- a row the owner has edited since
+# is theirs, and is left alone.
+WHATS_ON_CORRECTIONS = [
+    ("whats_on_mirepoix_53", "Mirepoix Market", (
+        ("distance", "1 hour", "53 minutes"),
+        ("description",
+         "Monday, under the medieval arcades of the Place des Couverts. An hour "
+         "each way, and people still go.",
+         "Monday, under the medieval arcades of the Place des Couverts. Just "
+         "under an hour each way, and people still go."),
+    )),
+]
+_WHATS_ON_CORRECTABLE = {"distance", "description"}
+
+
+def correct_whats_on(conn):
+    """Apply WHATS_ON_CORRECTIONS once each. Returns how many fields changed."""
+    changed = 0
+    for key, title, fields in WHATS_ON_CORRECTIONS:
+        if conn.execute("SELECT 1 FROM app_settings WHERE key = ?", (key,)).fetchone():
+            continue
+        for column, old, new in fields:
+            assert column in _WHATS_ON_CORRECTABLE, column
+            changed += conn.execute(
+                f"UPDATE whats_on SET {column} = ? WHERE title = ? AND {column} = ?",
+                (new, title, old)).rowcount
+        conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                     "ON CONFLICT(key) DO NOTHING",
+                     (key, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    return changed
+
 
 DEFAULT_EXTRAS = [
     {"name": "Airport Transfer (Toulouse, up to 3 guests)", "price": 350.0, "category": "other", "sort_order": 1, "guest_bookable": 1},
@@ -11623,6 +11661,19 @@ ADDED_EXTRAS = [
                         "stay you choose."),
         "price": 80.0, "category": "food", "sort_order": 2,
         "guest_bookable": 1, "lead_time_days": 3, "ask_when": 1,
+    }),
+    # From the 1 October launch checklist: the tour every workshop includes,
+    # bookable with a stay. Per booking -- one price whatever the size of the
+    # party -- and at most one, which max_qty now holds per booking rather
+    # than per click. It asks for a day, so it lands on that day's list of
+    # what the house owes and on the calendar.
+    ("added_extra_chateau_tour", {
+        "name": "A tour of the château",
+        "description": ("A guided tour of the house and its restoration, on a "
+                        "day of your stay you choose. One price for the "
+                        "booking, however many of you there are."),
+        "price": 50.0, "category": "activity", "sort_order": 0,
+        "guest_bookable": 1, "max_qty": 1, "ask_when": 1,
     }),
 ]
 
@@ -16480,6 +16531,20 @@ def stock_overview(conn):
         if row["is_low"]:
             low.append(row)
     return {"rows": rows, "low": low, "value": value, "count": len(items)}
+
+
+def extras_held(conn, category, booking_id):
+    """{extra_id: quantity} already on a booking, cancelled lines left out.
+
+    max_qty is a limit per BOOKING. Checked against one request at a time it
+    let a guest tick the château tour when booking and add it again from the
+    manage page -- two tours on one bill, for a tour sold at one per booking.
+    """
+    return {r["extra_id"]: r["n"] for r in conn.execute(
+        """SELECT extra_id, SUM(quantity) AS n FROM booking_extras
+            WHERE category = ? AND booking_id = ? AND status != 'cancelled'
+              AND extra_id IS NOT NULL
+            GROUP BY extra_id""", (category, booking_id))}
 
 
 def add_booking_extra(conn, category, booking_id, extra, quantity=1, *,
@@ -43166,13 +43231,20 @@ def manage_booking(manage_token):
             """SELECT * FROM extras WHERE id = ? AND active = 1
                AND guest_bookable = 1""",
             (extra_id,)).fetchone() if extra_id.isdigit() else None
+        held_now = (extras_held(conn, "room", booking["id"]).get(extra["id"], 0)
+                    if extra else 0)
 
         if departure and departure < house_today():
             flash("That stay has already finished.", "error")
         elif not extra:
             flash("That isn't something we can add.", "error")
-        elif extra["max_qty"] and quantity > extra["max_qty"]:
-            flash(f"We can only do {extra['max_qty']} of those.", "error")
+        elif extra["max_qty"] and held_now + quantity > extra["max_qty"]:
+            if held_now:
+                flash(f"{extra['name']} is already on this booking"
+                      + (f" — {extra['max_qty']} is the most we can do."
+                         if extra["max_qty"] > 1 else "."), "error")
+            else:
+                flash(f"We can only do {extra['max_qty']} of those.", "error")
         else:
             # Some things need notice — a transfer booked for tomorrow morning
             # cannot be arranged, and promising it would be worse than refusing.
@@ -43283,10 +43355,13 @@ def manage_booking(manage_token):
     days_until = 0
     if parse_date(booking["arrival_date"]):
         days_until = (parse_date(booking["arrival_date"]) - house_today()).days
+    held = extras_held(conn, "room", booking["id"])
     addable = [e for e in conn.execute(
         """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
            ORDER BY category, sort_order, name""").fetchall()
-        if (e["lead_time_days"] or 0) <= max(days_until, 0)]
+        if (e["lead_time_days"] or 0) <= max(days_until, 0)
+        # Nor anything the booking already holds as many of as it may.
+        and not (e["max_qty"] and held.get(e["id"], 0) >= e["max_qty"])]
     # The days a guest can still choose for the extras that ask.
     when_days = []
     if parse_date(booking["arrival_date"]) and parse_date(booking["departure_date"]):
