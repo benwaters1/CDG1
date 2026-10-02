@@ -1,0 +1,40 @@
+{# =============================================================================
+   _facilities.html - 2 Oct. LES ÉQUIPEMENTS: what a stay gives you, as twelve
+   framed tiles inside an ornamental frame, each with its gilt drawing, the
+   French name, the English and one line. The owner's facts only. Stay, Estate.
+   facilities(dm, heading, eyebrow)   dm = the dining switch ('open' adds the dinner line)
+   ============================================================================= #}
+{% from '_illus.html' import illus %}
+{% macro facilities(dm='open', heading='What Is Included', eyebrow='Your Stay') %}
+<section class="g-sec g-facil-sec"><div class="g-wrap">
+  <p class="g-fr">Les équipements<span class="g-fr__en">The facilities</span></p>
+  <p class="g-eyebrow">{{ eyebrow }}</p>
+  <h2 class="g-place">{{ heading }}</h2>
+  <div class="g-facil-frame">
+    <p class="g-facil-frame__cart" aria-hidden="true">{{ illus('laurel') }}<b>Les équipements</b>{{ illus('laurel') }}</p>
+    <ul class="g-facil">
+      {%- for kind, fr, en, line in [
+        ('breakfast', 'Le petit-déjeuner', 'Breakfast', 'Every morning, included'),
+        ('bed', 'La chambre', 'Your room', 'A new bed, lamps and power points'),
+        ('bath', 'La salle de bains', 'A private bathroom', 'Your own, on the first floor'),
+        ('lounge', 'Le salon', 'The lounge', 'To read and gather in'),
+        ('games', 'Les jeux de société', 'Board games', 'For the evenings'),
+        ('wifi', 'Le Wi-Fi', 'Wi-Fi', 'In a common area of the château'),
+        ('pool', 'La piscine', 'The pool', 'Yours to use while you stay'),
+        ('tennis', 'Le tennis et le pickleball', 'Tennis and pickleball', 'For whoever is keen'),
+        ('pingpong', 'Le ping-pong', 'Table tennis', 'For a friendly match'),
+        ('terrace', 'Les terrasses', 'The terraces', 'For a glass of local wine'),
+        ('bbq', 'Le barbecue', 'The barbecue area', 'For your use on long evenings'),
+        ('tree', 'Le domaine', 'The grounds', 'To wander, with the mountains all around')] %}
+      <li class="g-facil__i">
+        <div class="g-facil__ill" aria-hidden="true">{{ illus(kind) }}</div>
+        <p class="g-facil__fr" lang="fr">{{ fr }}</p>
+        <p class="g-facil__en">{{ en }}</p>
+        <p class="g-facil__d">{{ line }}</p>
+      </li>
+      {%- endfor %}
+    </ul>
+    <p class="g-facil__note">Not included in a stay: lunch, dinner and drinks.{% if dm == 'open' %} Dinner can be booked on the nights the kitchen is open.{% endif %} In winter the heating is limited and the château is cold; every room has an electric blanket and a space heater.</p>
+  </div>
+</div></section>
+{% endmacro %}

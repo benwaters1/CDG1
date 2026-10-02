@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_facilities.html' import facilities with context %}
 {% from '_illus.html' import illus %}
 {# The bar offers "Stay the Night — Book", which on this page is a link to
    the page it is drawn on. book_room and booking_confirmation already say
@@ -125,6 +126,7 @@
 {# 1 Oct: ">Why the Walls Stay As They Are<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('bed') }}</div>
   <p class="g-fr">Les chambres<span class="g-fr__en">The rooms</span></p>
   <p class="g-eyebrow">The Rooms</p>
   <h2 class="g-place">Five Rooms, Each Its Own</h2>
@@ -349,18 +351,7 @@
 {# The commonest reason a luxury booking is abandoned is not knowing what the
    number covers. Both columns, stated before anyone reaches a payment page.
    Every line below is checked against what the app actually does. #}
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Your Stay</p>
-  <h2 class="g-place">What Is Included</h2>
-  <div class="g-key">
-    <div class="g-key__i"><p class="g-key__k">Breakfast</p><p class="g-key__v">Every morning</p></div>
-    <div class="g-key__i"><p class="g-key__k">Bathrooms</p><p class="g-key__v">Your own, private, on the first floor rather than in the room. The King Room also has a bath and a basin in the room itself</p></div>
-    <div class="g-key__i"><p class="g-key__k">The grounds</p><p class="g-key__v">The pool, the tennis court, a barbecue area for your use, and the grounds</p></div>
-    <div class="g-key__i"><p class="g-key__k">Wi-Fi</p><p class="g-key__v">In a common area of the château</p></div>
-    {% if _dm == 'open' %}<div class="g-key__i"><p class="g-key__k">Dinner</p><p class="g-key__v">Not included, and can be booked on the nights the kitchen is open; served inside, by candles and lamps</p></div>{% endif %}
-    <div class="g-key__i"><p class="g-key__k">Not included</p><p class="g-key__v">Lunch, dinner and drinks</p></div>
-  </div>
-</div></section>
+{{ facilities(_dm) }}
 {# A night, or the full experience - the shared comparison (owner, 28 Sept). #}
 {% from '_stay_or_workshop.html' import stay_or_workshop %}
 {{ stay_or_workshop(rooms_from=(rooms|selectattr('price_per_night')|map(attribute='price_per_night')|min) if rooms else None, dm=_dm, here='stay') }}
@@ -474,6 +465,7 @@
 
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('candelabra') }}</div>
   <p class="g-fr">Les ateliers<span class="g-fr__en">The workshops</span></p>
   <p class="g-eyebrow">The Full Experience</p>
   <h2 class="g-place">If One Night Is Not Enough</h2>

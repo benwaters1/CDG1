@@ -22,56 +22,69 @@
     than an empty one.
     ========================================================================== #}
 
+{# 2 Oct (owner): the "From, per person" figure, the lopsided columns and the missing activities are gone. The prices
+   stay with each workshop's dates below; this panel says what a workshop gives you - the length, what is included,
+   who it is for, the activities (all optional) and the shape of a day. Transfers and excursions are stated only for
+   the three-, five- and seven-night workshops (the four-night ones are at the house). #}
 {% macro atelier_glance(w, settings, price_from=False, tx=None) %}
-<section class="g-gl">
+{%- from '_illus.html' import illus, micon -%}
+<section class="g-gl g-gl2">
   <div class="g-gl__in">
+    <p class="g-gl2__fr" lang="fr">L'essentiel<span lang="en">The full experience, at a glance</span></p>
+    <h2 class="g-gl2__h">Everything a Retreat Gives You</h2>
 
-    <p class="g-gl__fr">L'essentiel</p>
-    <h2 class="g-gl__h">What it is, and what it costs</h2>
-
-    <dl class="g-gl__grid">
-
-      {% if w and w.price_per_person %}
-      <div class="g-gl__i g-gl__i--lead">
-        <dt>{{ 'From, per person' if price_from else 'Per person' }}</dt>
-        <dd class="g-gl__big">€{{ '{:,.0f}'.format(w.price_per_person|float) }}</dd>
-        <p class="g-gl__n">{%- from '_stay_or_workshop.html' import tx_flag -%}
-          Everything in — bed, board, wine, a tour of the château,
-          {% if (tx and tx == 'all') or (not tx and tx_flag(w)|trim == 'yes') %}the transfers from Toulouse, {% endif %}and the run of the house</p>
+    <div class="g-gl2__facts">
+      <div class="g-gl2__f">
+        <div class="g-gl2__fill" aria-hidden="true">{{ illus('chateau') }}</div>
+        <p class="g-gl2__k">How long</p>
+        <p class="g-gl2__v">Three to seven nights</p>
+        <p class="g-gl2__n">Three for the brocantes, five for the kitchen, seven for the restoration, and four at the house in autumn and at Noël.</p>
       </div>
-      {% endif %}
-
-      <div class="g-gl__i">
-        <dt>How long</dt>
-        {# On the listing (price_from) this is every atelier, and they run three to seven nights; one atelier's
-           length and its Sunday-to-Friday pattern are only true of that atelier. #}
-        <dd>{% if price_from or not (w and w.duration_label) %}Three to seven nights{% else %}{{ w.duration_label }}{% endif %}</dd>
-        <p class="g-gl__n">Three for the brocantes, five for the kitchen, seven for the restoration</p>
+      <div class="g-gl2__f">
+        <div class="g-gl2__fill" aria-hidden="true">{{ illus('wine') }}</div>
+        <p class="g-gl2__k">Everything included</p>
+        <p class="g-gl2__v">Every meal and drink</p>
+        <p class="g-gl2__n">Local wine and drinks, the activities and a tour of the château{% if tx == 'all' %}, with the transfers from Toulouse{% elif tx == 'none' %}{% else %}; the transfers from Toulouse and the excursions on the three-, five- and seven-night workshops{% endif %}.</p>
       </div>
-
-      <div class="g-gl__i">
-        <dt>Who it is for</dt>
-        <dd>No experience</dd>
-        <p class="g-gl__n">Nobody arrives knowing how to do this</p>
+      <div class="g-gl2__f">
+        <div class="g-gl2__fill" aria-hidden="true">{{ illus('key') }}</div>
+        <p class="g-gl2__k">Who it is for</p>
+        <p class="g-gl2__v">Anyone curious</p>
+        <p class="g-gl2__n">No experience needed, and every activity is optional.</p>
       </div>
+    </div>
 
-      {# "What you take home: a panel you made ... finished, and packed to travel" - not true (owner, 24 Sept). #}
+    <div class="g-gl2__acts">
+      <p class="g-gl2__sub" lang="fr">Les activités<span lang="en">The activities</span></p>
+      <ul class="g-gl2__grid">
+        {%- for kind, label in [
+          ('cuisine', 'Cooking classes'),
+          ('brocante', 'Bargaining at the brocantes'),
+          ('yoga', 'Morning yoga'),
+          ('kayak', 'Kayaking on the river'),
+          ('hike', 'Hiking in the mountains'),
+          ('bbq', 'A barbecue in the grounds'),
+          ('candelabra', 'A formal dinner in the Salon de Musique, by candlelight'),
+          ('tennis', 'Tennis, pickleball and the pool')] %}
+        <li class="g-gl2__a1"><span class="g-gl2__ill" aria-hidden="true">{{ illus(kind) }}</span><span class="g-gl2__lbl">{{ label }}</span></li>
+        {%- endfor %}
+      </ul>
+      <p class="g-gl2__note">Every activity is optional. Outdoor activities follow the season and the weather, and the four-night workshops stay at the house.</p>
+    </div>
 
-    </dl>
-
-    {# The day itself, brought up from 79% of the way down the page. #}
-    <div class="g-gl__day">
-      <p class="g-gl__k">A day, from waking</p>
-      <ol class="g-gl__ol">
-        <li><b>Morning</b> The session: the brocantes, the kitchen or the restoration</li>
-        <li><b>Afternoon</b> Yours: the pool, the valley, or nothing at all</li>
-        <li><b>Evening</b> Dinner together</li>
+    <div class="g-gl2__day">
+      <p class="g-gl2__sub" lang="fr">Une journée<span lang="en">A day, from waking</span></p>
+      <ol class="g-gl2__ol">
+        <li><b>{{ micon('matin') }}Morning</b><span>Yoga, then a class or an outing: the kitchen, the brocantes or the restoration</span></li>
+        <li><b>{{ micon('apresmidi') }}Afternoon</b><span>Free time: a glass of local wine on the terraces, tennis or pickleball, the pool</span></li>
+        <li><b>{{ micon('soir') }}Evening</b><span>Dinner together, and one night a formal dinner in the Salon de Musique, by candlelight</span></li>
       </ol>
     </div>
 
-    <p class="g-gl__a">
-      <a href="{{ url_for('workshops_public') }}#dates" class="g-btn g-btn--solid">See the dates</a>
-      <a href="{{ url_for('contact_page') }}" class="g-btn">Ask about a private group</a>
+    <p class="g-gl2__price">Each workshop’s price, per person and everything included, is shown with its dates below.</p>
+    <p class="g-gl2__btns">
+      <a href="{{ url_for('workshops_public') }}#dates" class="g-gl2__cta">See the dates</a>
+      <a href="{{ url_for('contact_page') }}" class="g-gl2__ghost">Ask about a private group</a>
     </p>
   </div>
 </section>

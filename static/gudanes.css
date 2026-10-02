@@ -10347,3 +10347,125 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
 .g .g-journey__free-p{ margin: 0; font-family: var(--serif); font-size: var(--t-base); line-height: 1.7; color: var(--ink); max-width: 46rem; }
 .g .g-journey__opt{ margin-top: var(--s7); }
 @media (max-width: 40rem){ .g .g-journey__free{ grid-template-columns: 3.6rem 1fr; gap: var(--s4); padding: var(--s4); } .g .g-journey__free-fr span{ display: block; margin: .2rem 0 0; } }
+
+/* 2 Oct - LES ÉQUIPEMENTS: the facilities as tiles, each with its gilt drawing. */
+.g .g-facil{ list-style: none; margin: var(--s7) 0 0; padding: 0; display: grid; gap: var(--s6) var(--s5); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 48rem){ .g .g-facil{ grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.g .g-facil > .g-facil__i{ max-width: none; text-align: center; padding: var(--s5) var(--s3) var(--s4); border-top: 1px solid var(--gilt-leaf); }
+.g .g-facil__ill{ width: 72px; margin: 0 auto var(--s3); color: var(--gilt); }
+.g .g-facil__fr{ margin: 0; font-family: var(--display); font-style: italic; font-size: clamp(19px, .6vw + 15px, 23px); line-height: 1.2; color: var(--blue-deep); }
+.g .g-facil__en{ margin: .3rem 0 var(--s2); font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
+.g .g-facil__d{ margin: 0 auto; max-width: 15rem; font-family: var(--serif); font-size: var(--t-small); line-height: 1.55; color: var(--ink-2); }
+.g .g-facil__note{ margin: var(--s7) auto 0; max-width: 46rem; text-align: center; font-family: var(--serif); font-style: italic; font-size: var(--t-small); line-height: 1.6; color: var(--stone); }
+@media (max-width: 40rem){ .g .g-facil__ill{ width: 56px; } }
+.g .g-facil-sec .g-facil__note{ margin-left: auto !important; margin-right: auto !important; }
+
+/* =====================================================================
+   2 Oct - ORNAMENT. Flourished gilt corners around the site's boxes (one
+   background layer per corner, so no markup changes and the box keeps its
+   own colour), and the facilities in an ornamental frame.
+   ===================================================================== */
+.g .g-journey__card, .g .g-journey__free, .g .g-wscard, .g .g-three__i, .g .g-mb-card, .g .g-conf, .g .g-sit,
+.g .g-sow__grid > *, .g .g-facil > .g-facil__i{
+  background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg %3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(34 0) scale(-1 1)'%3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(0 34) scale(1 -1)'%3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(34 34) scale(-1 -1)'%3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: 6px 6px, calc(100% - 6px) 6px, 6px calc(100% - 6px), calc(100% - 6px) calc(100% - 6px);
+  background-size: 30px 30px; }
+.g .g-facil > .g-facil__i{ background-size: 18px 18px; background-position: 5px 5px, calc(100% - 5px) 5px, 5px calc(100% - 5px), calc(100% - 5px) calc(100% - 5px); }
+.g .g-journey__free{ background-color: #FBF8F1; }
+
+/* the facilities: an ornamental frame, the title set into its top rule like a cartouche */
+.g .g-facil-frame{ position: relative; margin: var(--s7) 0 0; padding: clamp(36px, 5vw, 64px) clamp(16px, 4vw, 56px) clamp(28px, 4vw, 48px);
+  border: 1px solid var(--gilt-leaf); outline: 1px solid var(--gilt-leaf); outline-offset: -8px;
+  background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg %3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(34 0) scale(-1 1)'%3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(0 34) scale(1 -1)'%3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(34 34) scale(-1 -1)'%3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E"); background-repeat: no-repeat; background-size: 48px 48px;
+  background-position: 14px 14px, calc(100% - 14px) 14px, 14px calc(100% - 14px), calc(100% - 14px) calc(100% - 14px); }
+.g .g-facil-frame__cart{ position: absolute; top: 0; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: .9rem;
+  padding: .35rem 1.4rem; background: var(--sand); white-space: nowrap; }
+.g .g-facil-frame__cart svg{ width: 26px; height: 26px; color: var(--gilt-leaf); flex: none; }
+.g .g-facil-frame__cart b{ font-family: var(--display); font-style: italic; font-weight: 400; font-size: clamp(20px, .8vw + 16px, 26px); color: var(--blue-deep); }
+.g .g-facil-frame .g-facil{ margin-top: 0; gap: var(--s5); }
+@media (min-width: 48rem){ .g .g-facil-frame .g-facil{ grid-template-columns: repeat(3, minmax(0,1fr)); } }
+@media (min-width: 64rem){ .g .g-facil-frame .g-facil{ grid-template-columns: repeat(4, minmax(0,1fr)); } }
+.g .g-facil-frame .g-facil > .g-facil__i{ border: 1px solid var(--line); border-top: 1px solid var(--line); background-color: #FBF8F1; padding: var(--s5) var(--s3) var(--s5);
+  transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+.g .g-facil-frame .g-facil > .g-facil__i:hover{ transform: translateY(-3px); border-color: var(--gilt-leaf); box-shadow: 0 16px 30px -22px rgba(20,48,95,.45); }
+.g .g-facil-frame .g-facil__ill{ width: 78px; }
+.g .g-facil-frame .g-facil__note{ margin-top: var(--s6); }
+@media (max-width: 40rem){ .g .g-facil-frame{ padding: 40px 12px 24px; outline-offset: -6px; background-size: 30px 30px; } .g .g-facil-frame .g-facil__ill{ width: 58px; } .g .g-facil-frame__cart{ padding: .3rem .8rem; } }
+.g .g-sec--sand .g-facil-frame__cart{ background: var(--sand-2); }
+/* the cartouche's laurels lie on their sides, framing the title */
+.g .g-facil-frame__cart svg{ width: 34px; height: 34px; }
+.g .g-facil-frame__cart svg:first-child{ transform: rotate(-90deg); }
+.g .g-facil-frame__cart svg:last-child{ transform: rotate(90deg); }
+
+/* =====================================================================
+   2 Oct - L'ESSENTIEL, rebuilt: three even facts with drawings, the
+   activities as illustrated tiles, the day in three panels, buttons in line.
+   On the existing navy .g-gl band.
+   ===================================================================== */
+.g .g-gl2 .g-gl__in{ max-width: 76rem; }
+.g .g-gl2__fr{ margin: 0; font-family: var(--display); font-style: italic; font-size: 22px; color: var(--gilt-on-dark, #C6A66E); }
+.g .g-gl2__fr span, .g .g-gl2__sub span{ display: block; margin-top: .3rem; font-family: var(--ui); font-style: normal; font-size: var(--t-xs) !important; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.78); }
+.g .g-gl2__h{ margin: var(--s4) 0 0; font-family: var(--display); font-weight: 400; font-size: clamp(32px, 2.2vw + 18px, 50px); line-height: 1.08; color: #fff; }
+.g .g-gl2__facts{ display: grid; gap: var(--s6); margin: var(--s7) 0 0; }
+@media (min-width: 52rem){ .g .g-gl2__facts{ grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--s6) clamp(28px, 3vw, 56px); } }
+.g .g-gl2__f{ border-top: 1px solid var(--gilt-on-dark, #C6A66E); padding-top: var(--s5); }
+.g .g-gl2__fill{ width: 64px; color: var(--gilt-on-dark, #C6A66E); margin-bottom: var(--s3); }
+.g .g-gl2__k{ margin: 0; font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .16em; text-transform: uppercase; color: var(--gilt-on-dark, #C6A66E); }
+.g .g-gl2__v{ margin: var(--s2) 0 var(--s3); font-family: var(--display); font-size: clamp(24px, 1vw + 18px, 30px); line-height: 1.15; color: #fff; }
+.g .g-gl2__n{ margin: 0; font-family: var(--serif); font-size: var(--t-base); line-height: 1.65; color: rgba(255,255,255,.86); max-width: 26rem; }
+.g .g-gl2__acts{ margin: clamp(48px, 6vw, 80px) 0 0; }
+.g .g-gl2__sub{ margin: 0 0 var(--s5); font-family: var(--display); font-style: italic; font-size: clamp(22px, .8vw + 18px, 28px); color: #fff; }
+.g .g-gl2__grid{ list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s4); grid-template-columns: repeat(2, minmax(0,1fr)); }
+@media (min-width: 52rem){ .g .g-gl2__grid{ grid-template-columns: repeat(4, minmax(0,1fr)); } }
+.g .g-gl2__grid > .g-gl2__a1{ max-width: none; display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--s3); padding: var(--s5) var(--s3);
+  border: 1px solid rgba(198,166,110,.45); background-color: rgba(255,255,255,.03);
+  background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23C6A66E' stroke-width='1.1' stroke-linecap='round'%3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3C/svg%3E"), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23C6A66E' stroke-width='1.1' stroke-linecap='round'%3E%3Cg transform='translate(34 34) scale(-1 -1)'%3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-size: 18px 18px; background-position: 5px 5px, calc(100% - 5px) calc(100% - 5px); transition: border-color .25s, background-color .25s; }
+.g .g-gl2__grid > .g-gl2__a1:hover{ border-color: var(--gilt-on-dark, #C6A66E); background-color: rgba(255,255,255,.06); }
+.g .g-gl2__ill{ display: block; width: 64px; color: var(--gilt-on-dark, #C6A66E); }
+.g .g-gl2 .g-gl2__lbl{ font-family: var(--serif); font-size: var(--t-base) !important; line-height: 1.4; color: #fff; }
+.g .g-gl2__note{ margin: var(--s4) 0 0; font-family: var(--serif); font-style: italic; font-size: var(--t-small); color: rgba(255,255,255,.8); }
+.g .g-gl2__day{ margin: clamp(48px, 6vw, 80px) 0 0; }
+.g .g-gl2__ol{ list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s4); }
+@media (min-width: 52rem){ .g .g-gl2__ol{ grid-template-columns: repeat(3, minmax(0,1fr)); } }
+.g .g-gl2__ol > li{ max-width: none; padding: var(--s5); border-top: 1px solid var(--gilt-on-dark, #C6A66E); background: rgba(255,255,255,.04); }
+.g .g-gl2__ol b{ display: flex; align-items: center; margin-bottom: var(--s2); font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .16em; text-transform: uppercase; color: var(--gilt-on-dark, #C6A66E); }
+.g .g-gl2__ol .g-micon{ color: var(--gilt-on-dark, #C6A66E); width: 18px; height: 18px; }
+.g .g-gl2 .g-gl2__ol span{ display: block; font-family: var(--serif); font-size: var(--t-base) !important; line-height: 1.6; color: rgba(255,255,255,.92); }
+.g .g-gl2__price{ margin: clamp(40px, 5vw, 64px) 0 0; font-family: var(--serif); font-style: italic; font-size: var(--t-base); color: rgba(255,255,255,.86); }
+.g .g-gl2__btns{ margin: var(--s5) 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s4); }
+.g .g-gl2 .g-gl2__cta, .g .g-gl2 .g-gl2__ghost{ display: inline-flex; align-items: center; justify-content: center; min-height: 50px; margin: 0; padding: 0 var(--s6);
+  font-family: var(--ui); font-weight: 600; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; text-decoration: none !important; transition: background .2s, color .2s; }
+.g .g-gl2 .g-gl2__cta{ background: var(--gilt-on-dark, #C6A66E); border: 1px solid var(--gilt-on-dark, #C6A66E); color: var(--blue-deep); }
+.g .g-gl2 .g-gl2__cta:hover{ background: transparent; color: #fff; }
+.g .g-gl2 .g-gl2__ghost{ background: transparent; border: 1px solid rgba(255,255,255,.7); color: #fff; }
+.g .g-gl2 .g-gl2__ghost:hover{ border-color: var(--gilt-on-dark, #C6A66E); color: var(--gilt-on-dark, #C6A66E); }
+@media (max-width: 40rem){ .g .g-gl2__ill{ width: 52px; } .g .g-gl2__btns a{ flex: 1 1 100%; } }
+
+/* =====================================================================
+   2 Oct - ONE LEFT EDGE, ONE RHYTHM (owner: "still a lot of spacing issues").
+   1. Text-only sections were squeezed to the reading width AND centred (the
+      ".g-wrap:has(> p.g-p):not(...)" rule), so 33 sections sat in a column
+      in the middle while the rest started at the left. Every section now
+      starts at the same edge; text keeps its measure.
+   2. Sections after the first had 24px above the heading and 40-84px below.
+      Now the same generous space above and below.
+   3. A text-only section with a drawing puts it in the right-hand column, in
+      a gilt medallion, filling the space the alignment opens.
+   ===================================================================== */
+.g .g-sec .g-wrap:has(> p.g-p), .g .g-sec .g-wrap--narrow{ max-width: min(var(--wrap, 76rem), 100vw) !important; margin-left: auto; margin-right: auto; }
+.g .g-sec .g-wrap--narrow > :not(.g-vignette){ max-width: 46rem; }
+.g .g-sec .g-wrap > p.g-p{ max-width: 46rem; }
+.g main > .g-sec, .g main > .g-sec ~ .g-sec{ padding-top: clamp(56px, 6vw, 96px); padding-bottom: clamp(56px, 6vw, 96px); }
+.g .g-gl2 .g-gl__in{ max-width: min(var(--wrap, 76rem), 100vw); margin-left: auto; margin-right: auto; padding-left: var(--s5); padding-right: var(--s5); box-sizing: border-box; }
+@media (min-width: 64rem){
+  .g .g-sec .g-wrap:has(> .g-vignette):not(:has(> ul, > ol, > dl, > form, > table, > div:not(.g-vignette))){
+    display: grid; grid-template-columns: minmax(0, 46rem) minmax(0, 1fr); column-gap: clamp(40px, 6vw, 120px); align-items: start; }
+  .g .g-sec .g-wrap:has(> .g-vignette):not(:has(> ul, > ol, > dl, > form, > table, > div:not(.g-vignette))) > *{ grid-column: 1; }
+  .g .g-sec .g-wrap:has(> .g-vignette):not(:has(> ul, > ol, > dl, > form, > table, > div:not(.g-vignette))) > .g-vignette{
+    grid-column: 2; grid-row: 1 / span 40; align-self: center; justify-self: center; box-sizing: border-box;
+    width: clamp(190px, 16vw, 250px); aspect-ratio: 1; margin: 0; padding: clamp(34px, 3vw, 48px); display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--gilt-leaf); border-radius: 50%; outline: 1px solid var(--gilt-leaf); outline-offset: 7px; background: #FBF8F1; }
+  .g .g-sec .g-wrap:has(> .g-vignette):not(:has(> ul, > ol, > dl, > form, > table, > div:not(.g-vignette))) > .g-vignette svg{ width: 100%; height: auto; }
+}
+.g main > .g-sec, .g main > .g-sec ~ .g-sec{ padding-top: clamp(48px, 5vw, 80px); padding-bottom: clamp(48px, 5vw, 80px); }

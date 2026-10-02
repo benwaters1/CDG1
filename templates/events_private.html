@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_illus.html' import illus %}
 {% block title %}Private Hire &amp; Celebrations{% endblock %}
 {% block description %}Private dinners, birthdays, anniversaries and family gatherings at Château de Gudanes. One party at a time, and the house is yours.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
@@ -26,6 +27,7 @@
 
 
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('wine') }}</div>
   <p class="g-eyebrow">Private Events</p>
   <h2 class="g-place">Smaller Than a Wedding, Longer Than a Dinner</h2>
   <p class="g-p g-lede-first">The whole house for a few days, for a birthday, an anniversary or a gathering of your own.</p>
@@ -33,6 +35,7 @@
 </div></section>
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('key') }}</div>
   <p class="g-fr">Entre soi<span class="g-fr__en">Among your own</span></p>
   <p class="g-eyebrow">Private Hire</p>
   <h2 class="g-place">A Few Days of Your Own</h2>

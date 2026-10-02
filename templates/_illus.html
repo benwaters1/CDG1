@@ -123,6 +123,75 @@
   <path d="M34 50l22 34M60 48l-16 36"/><circle cx="36.5" cy="54" r="2.4" opacity=".75"/><circle cx="57.5" cy="52" r="2.4" opacity=".75"/>
   <path d="M33 47l3-1M58 45l3 1" />
   <path d="M78 22v8M74 26h8M75.2 23.2l5.6 5.6M80.8 23.2l-5.6 5.6" opacity=".7"/><path d="M16 18v6M13 21h6" opacity=".55"/>
+{%- elif kind == 'breakfast' %}
+  <path d="M22 50h34v8a14 14 0 01-14 14h-6a14 14 0 01-14-14z"/><path d="M56 54h4a6 6 0 010 12h-6" />
+  <path d="M14 78h50" /><path d="M30 44q-3-5 0-10t0-10M40 44q-3-5 0-10" opacity=".55"/>
+  <path d="M66 62q8-12 20-4q-2 12-16 10z"/><path d="M70 60q2 6 0 9M76 58q2 6 1 10M82 59q1 5 0 8" opacity=".6"/>
+{%- elif kind == 'bed' %}
+  <path d="M14 70V40M82 70V50"/><path d="M14 46q0-8 8-8h6q4 0 4 4v6"/>
+  <path d="M14 58h68"/><path d="M14 66h68" opacity=".5"/>
+  <path d="M20 58v-6q0-4 4-4h14q4 0 4 4v6" /><path d="M42 52h40v6" />
+  <path d="M14 70v6M82 70v6"/><path d="M48 52q12-6 34-2" opacity=".55"/>
+  <path d="M60 30v10M56 30h8l-2-8h-4z" opacity=".75"/>
+{%- elif kind == 'bath' %}
+  <path d="M14 50h68"/><path d="M18 50v8a16 16 0 0016 16h28a16 16 0 0016-16v-8"/>
+  <path d="M26 74l-4 8M70 74l4 8"/><path d="M22 82h4M70 82h4" />
+  <path d="M74 50V26a6 6 0 00-12 0v2"/><path d="M58 30h8" /><path d="M62 34v3M60 38v2M64 38v2" opacity=".55"/>
+  <path d="M28 56q20 6 40 0" opacity=".45"/><circle cx="36" cy="44" r="2.5" opacity=".5"/><circle cx="44" cy="40" r="1.8" opacity=".45"/>
+{%- elif kind == 'tennis' %}
+  <ellipse cx="38" cy="38" rx="16" ry="20" transform="rotate(-35 38 38)"/>
+  <path d="M27 26l22 24M23 33l22 24M31 21l20 22M30 45l16-16M24 39l16-16M35 50l14-14" opacity=".45"/>
+  <path d="M48 54l18 20"/><path d="M64 70l6 6a3 3 0 01-4 4l-6-6" />
+  <circle cx="72" cy="30" r="7"/><path d="M66 27q6 4 12 0M66 33q6-4 12 0" opacity=".6"/>
+  <path d="M14 84h68" opacity=".5"/>
+{%- elif kind == 'tree' %}
+  <path d="M48 84V54"/><path d="M48 66l-8-6M48 62l9-7" />
+  <path d="M48 56c-18 0-26-10-22-20c-6-8 2-20 12-18c4-10 18-10 22 0c10-2 18 10 12 18c4 10-4 20-24 20z"/>
+  <path d="M36 36q4-4 10-2M54 30q5 2 6 7" opacity=".5"/>
+  <path d="M10 84h76" opacity=".55"/><path d="M14 84q4-6 8 0M74 84q4-6 8 0" opacity=".5"/>
+{%- elif kind == 'wifi' %}
+  <path d="M20 44q28-26 56 0"/><path d="M28 52q20-17 40 0"/><path d="M36 60q12-9 24 0"/><circle cx="48" cy="68" r="2.6"/>
+  <path d="M30 80h36" opacity=".45"/>
+{%- elif kind == 'lounge' %}
+  <path d="M18 70V52q0-6 6-6h4V36q0-8 8-8h24q8 0 8 8v10h4q6 0 6 6v18"/><path d="M28 46v10h40V46"/><path d="M28 56H18M68 56h10" opacity=".6"/>
+  <path d="M18 70h60"/><path d="M22 70v6M74 70v6"/><path d="M36 36q12-4 24 0" opacity=".45"/>
+  <path d="M84 70V40M80 40h8l-2-8h-4z" opacity=".8"/><path d="M80 70h8" opacity=".8"/>
+  <path d="M8 80h80" opacity=".45"/>
+{%- elif kind == 'games' %}
+  <path d="M14 46l26-12 26 12-26 12z"/><path d="M14 46v6l26 12 26-12v-6"/>
+  <path d="M27 40l26 12M33 37l26 12M21 43l26 12M40 34v24M47 37L21 49M53 40L27 52" opacity=".35"/>
+  <path d="M66 62h14v14H66z"/><circle cx="70" cy="66" r="1" /><circle cx="76" cy="72" r="1"/><circle cx="73" cy="69" r="1"/>
+  <circle cx="72" cy="26" r="4"/><path d="M68 30.5h8l-2 9h-4z"/><path d="M65 44h14l-1.5-4.5h-11z"/>
+  <path d="M10 84h76" opacity=".45"/>
+{%- elif kind == 'pingpong' %}
+  <path d="M10 60h76"/><path d="M48 60V44M48 44l-2-2M48 44l2-2" opacity=".75"/><path d="M40 52h16" opacity=".5"/>
+  <path d="M14 60v18M82 60v18M30 60v14M66 60v14" opacity=".6"/>
+  <ellipse cx="26" cy="38" rx="8" ry="9"/><path d="M30 45l5 7"/>
+  <ellipse cx="70" cy="34" rx="8" ry="9"/><path d="M66 41l-5 7"/>
+  <circle cx="50" cy="28" r="2.4"/><path d="M38 34q6-8 10-6" opacity=".45" stroke-dasharray="1.5 2.5"/>
+{%- elif kind == 'terrace' %}
+  <path d="M8 56h80M8 52h80"/><path d="M14 56v20M26 56v20M38 56v20M50 56v20M62 56v20M74 56v20M86 56v20" opacity=".7"/><path d="M8 76h80"/>
+  <path d="M32 44h22l-1 8M33 44v8" opacity=".85"/><path d="M38 40h8l-1 4h-6z" opacity=".85"/>
+  <path d="M60 30h7l-.5 6a3 3 0 01-6 0z"/><path d="M63.5 39v9M60 48h7"/>
+  <path d="M20 22q10-6 20 0t20 0" opacity=".4"/><path d="M70 18l12-8 10 8" opacity=".4"/>
+{%- elif kind == 'rings' %}
+  <circle cx="38" cy="56" r="16"/><circle cx="38" cy="56" r="12.5" opacity=".45"/>
+  <circle cx="58" cy="50" r="16"/><circle cx="58" cy="50" r="12.5" opacity=".45"/>
+  <path d="M58 34l-4-6 4-4 4 4z"/><path d="M54 28h8" opacity=".6"/>
+  <path d="M20 26q4-6 8 0q4 6 8 0M66 78q4-6 8 0q4 6 8 0" opacity=".5"/>
+{%- elif kind == 'camera' %}
+  <path d="M16 36h16l5-8h22l5 8h16a4 4 0 014 4v32a4 4 0 01-4 4H16a4 4 0 01-4-4V40a4 4 0 014-4z"/>
+  <circle cx="48" cy="55" r="14"/><circle cx="48" cy="55" r="9" opacity=".55"/><path d="M43 50q3-3 7-2" opacity=".5"/>
+  <path d="M20 42h8" opacity=".6"/><circle cx="74" cy="44" r="2"/>
+{%- elif kind == 'medal' %}
+  <path d="M36 14l8 26M60 14l-8 26"/><path d="M30 14h12l6 18M66 14H54l-6 18" opacity=".5"/>
+  <circle cx="48" cy="60" r="20"/><circle cx="48" cy="60" r="15" opacity=".5"/>
+  <path d="M48 50l3 6.5 7 .8-5.2 4.8 1.4 7-6.2-3.6-6.2 3.6 1.4-7-5.2-4.8 7-.8z"/>
+  <path d="M22 86q26-6 52 0" opacity=".45"/>
+{%- elif kind == 'letter' %}
+  <path d="M14 30h68v44H14z"/><path d="M14 30l34 26 34-26"/><path d="M14 74l26-22M82 74L56 52" opacity=".55"/>
+  <circle cx="48" cy="58" r="7"/><path d="M45 58q3-4 6 0q-3 4-6 0z" opacity=".75"/>
+  <path d="M40 20q8-6 16 0" opacity=".45"/>
 {%- elif kind == 'laurel' %}
   <path d="M48 88V14"/>
   {%- for y in [22,32,42,52,62,72] %}

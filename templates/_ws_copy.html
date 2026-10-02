@@ -21,8 +21,8 @@
 {% macro _house(w, at_house) -%}
 {%- set _n = ws_nights(w)|trim -%}
 {%- if at_house is not none -%}{{ 'yes' if at_house else '' }}
-{%- elif w['transfers_included'] is defined and w['transfers_included'] is not none and not w['transfers_included'] -%}yes
-{%- elif _n == '4' -%}yes{%- endif -%}
+{%- elif _n == '4' -%}yes
+{%- elif w['transfers_included'] is defined and w['transfers_included'] is not none and not w['transfers_included'] -%}yes{%- endif -%}
 {%- endmacro %}
 
 {% macro ws_lead(w) -%}
@@ -107,7 +107,7 @@
   <p class="g-eyebrow">The Experience, Day by Day</p>
   <h2 class="g-place">{{ (WORD.get(_n) ~ ' Nights at Gudanes') if (PLAN and WORD.get(_n)) else 'The Days Themselves' }}</h2>
   {% if _free %}
-  <p class="g-p g-lede-first">Every activity on it is optional: join what you like, and leave what you do not. The rest of the time is free time, and it is yours.</p>
+  <p class="g-p g-lede-first">It is a retreat, so every activity on it is optional: join what you like, and leave what you do not. The rest of the time is free time, and it is yours.</p>
   <div class="g-journey__free">
     <div class="g-journey__free-ill" aria-hidden="true">{{ illus('wine') }}</div>
     <div class="g-journey__free-b">

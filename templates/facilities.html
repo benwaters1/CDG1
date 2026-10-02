@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_facilities.html' import facilities with context %}
 {% from '_illus.html' import illus %}
 {% set crumbs = [('The Estate', None)] %}
 {% block title %}The Estate: Pool, Tennis and Grounds{% endblock %}
@@ -27,12 +28,16 @@
 
 <!-- ====================== AT THE CHÂTEAU ====================== -->
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('tree') }}</div>
   <p class="g-eyebrow">The Grounds</p>
   <h2 class="g-place">Yours, Simply by Staying</h2>
   <p class="g-p g-lede-first">Days by the pool with the mountains above you, a game of tennis, a barbecue area for long evenings, and the grounds to wander. All of it is yours while you stay.</p>
   <p class="g-p">About fifty-five rooms, and five of them are yours to sleep in. The rest are the restoration still ahead.</p>
   <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
 </div></section>
+
+{{ facilities(_dm if _dm is defined else 'open', 'Yours While You Stay', 'The Facilities') }}
+
 
 <section class="g-sec"><div class="g-wrap">
   <div class="g-vignette" aria-hidden="true">{{ illus('pool') }}</div>

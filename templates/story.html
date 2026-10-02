@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_illus.html' import illus %}
 {% block title %}The Family{% endblock %}
 {% block description %}Karina Waters bought Château de Gudanes in 2013, and has been restoring it since. What happened next, and why it is still happening.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
@@ -16,6 +17,7 @@
 </div></section>
 
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('chateau') }}</div>
   <p class="g-fr">Une maison de famille<span class="g-fr__en">A family house</span></p>
   <p class="g-eyebrow">The Story</p>
   <h2 class="g-place">A Family House</h2>
@@ -26,6 +28,7 @@
 
 
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('laurel') }}</div>
   <p class="g-eyebrow">The Family</p>
   <h2 class="g-place">Since 2013</h2>
   <p class="g-p g-lede-first">Karina Waters bought Château de Gudanes in 2013, and has been bringing it back ever since. She is its Châtelaine.</p>

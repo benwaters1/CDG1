@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_illus.html' import illus %}
 {% block title %}Press{% endblock %}
 {% block description %}Château de Gudanes in the press — Vogue, AD Italia, House &amp; Garden and the Australian Financial Review — and the 2016 Medal of Honour of the Fondation Prince Louis de Polignac.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
@@ -16,6 +17,7 @@
 </div></section>
 
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('camera') }}</div>
   <p class="g-fr">L’histoire<span class="g-fr__en">The story</span></p>
   <p class="g-eyebrow">The Story</p>
   <h2 class="g-place">The Story the World Has Followed</h2>
@@ -36,6 +38,7 @@
 </div></section>
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('medal') }}</div>
   <p class="g-fr">La médaille d’honneur<span class="g-fr__en">The Medal of Honour</span></p>
   <p class="g-eyebrow">Recognition</p>
   <h2 class="g-place">The Medal of Honour</h2>
@@ -48,6 +51,7 @@
 {# 1 Oct: ">The Polignac Medal<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('letter') }}</div>
   <p class="g-eyebrow">For Editors</p>
   <h2 class="g-place">Enquiries and Images</h2>
   <p class="g-p">For interviews, location visits or image requests, write to <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a>. Photographs of the château belong to whoever took them, so usage is agreed in writing rather than assumed.</p>

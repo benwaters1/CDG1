@@ -7,9 +7,14 @@
     Code adds them; until then a four-night workshop, or a session starting in 2026, counts as without. 'yes' or 'no'.
     Pages never promise what they cannot confirm. Never call these workshops a trial or an exception. -#}
 {% macro inc_flag(w, field) -%}
+{#- 2 Oct (owner): the four-night workshops are spent at the house, so their length decides first - the tick-boxes
+    were added switched on for every workshop, which put "transfers and excursions included" on autumn and Noël. -#}
+{%- set _nl4 = ((((w['nights_label'] if w else '') or '')|string)|trim|lower).startswith(('4 ','4n','four')) -%}
+{%- if _nl4 -%}no{%- else -%}
 {%- set v = w[field] if w else none -%}
 {%- if v is defined and v in (0, 1, true, false, '0', '1', 'yes', 'no', 'true', 'false') -%}{{ 'yes' if v in (1, true, '1', 'yes', 'true') else 'no' }}
 {%- else -%}{%- set nl = (((w['nights_label'] if w else '') or '')|string)|trim|lower -%}{%- set sd = (((w['start_date'] if w else '') or '')|string)[:4] -%}{{ 'no' if (nl.startswith('4') or nl.startswith('four') or sd == '2026') else 'yes' }}{%- endif -%}
+{%- endif -%}
 {%- endmacro %}
 {% macro tx_flag(w) -%}{{ inc_flag(w, 'transfers_included')|trim }}{%- endmacro %}
 {% macro ex_flag(w) -%}{{ inc_flag(w, 'excursions_included')|trim }}{%- endmacro %}

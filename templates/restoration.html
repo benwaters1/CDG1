@@ -30,8 +30,6 @@
 {% from '_scale.html' import scale %}
 {% from '_marks.html' import mark, monogram %}
 {% from '_floorplan.html' import floorplan %}
-{# Put back after the 1 October handovers (g, k): the_reveal is still called below, and its import went out with the explorer's. #}
-{% from '_interactive.html' import the_reveal %}
 {# Needs a route, e.g.:
    @app.route('/restoration')
    def restoration_page(): return render_template('restoration.html')  #}
@@ -61,6 +59,7 @@
 </section>
 
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('restoration') }}</div>
   <p class="g-fr">Restaurer, pas rénover<span class="g-fr__en">Restore, not renovate</span></p>
   <p class="g-eyebrow">The Principle</p>
   <h2 class="g-place">Why the Walls Stay</h2>
@@ -233,6 +232,7 @@
 
 <!-- ============ WHAT WAS FOUND IN THE WALLS ============ -->
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('camera') }}</div>
   <p class="g-eyebrow">The Discoveries</p>
   <h2 class="g-place">What Was Behind the Plaster</h2>
   <p class="g-p g-lede-first">Each room brought back has uncovered something of the house as it was. What is found is recorded and kept, not replaced.</p>
@@ -263,12 +263,15 @@
 
 
 {# 1 Oct: the year-by-year explorer and the 94-cell reveal are off the page - built on ninety-four rooms (about fifty-five now) and on conservators at work. The scale below is redrawn at fifty-five. #}
+{# 2 Oct: the before-and-after slider stays - only the 94-room graphics went. Its import had gone with them, which broke the page. #}
+{% from '_interactive.html' import the_reveal %}
 {{ the_reveal(reveal_pairs) }}
 
 {{ scale() }}
 
 <!-- ============ THE CLOSER ============ -->
 <section class="g-sec g-sec--sand"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('key') }}</div>
   <p class="g-fr">De plus près<span class="g-fr__en">Closer</span></p>
   <p class="g-eyebrow">The Restoration Workshop</p>
   <h2 class="g-place">See It Up Close</h2>
@@ -277,6 +280,7 @@
 </div></section>
 
 <section class="g-sec g-sec--dark g-closer"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('bed') }}</div>
   <p class="g-fr">Restons-en là pour l'instant<span class="g-fr__en">Enough for now</span></p>
   <p class="g-eyebrow">The Part You Can Do</p>
   <h2 class="g-place">Five Rooms Are Open to Guests</h2>
