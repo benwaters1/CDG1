@@ -43,7 +43,7 @@
         <li>A tour of the château and its restoration</li>
         <li>The sessions: the brocantes, the kitchen, the restoration</li>
       </ul>
-      <p class="g-sow__foot">Three to seven nights{% if ws_from %}, from &euro;{{ '{:,.0f}'.format(ws_from) }} per person{% endif %}</p>
+      <p class="g-sow__foot">Three to seven nights, per person, everything included</p>
       {% if here != 'workshop' %}<p class="g-sow__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>{% endif %}
     </article>
   </div>
@@ -80,7 +80,7 @@
       <tr><th scope="row">The pool, the tennis court, the barbecue area and the grounds</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">The house to yourselves</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }} No other guests while it runs</td></tr>
       <tr class="g-vs__sum"><th scope="row">Length</th><td>From one night</td><td class="g-vs__full">Three to seven nights</td></tr>
-      <tr class="g-vs__sum"><th scope="row">Price</th><td>{% if rooms_from %}From &euro;{{ '{:,.0f}'.format(rooms_from) }} a night, the room{% else %}Per room, per night{% endif %}</td><td class="g-vs__full">{% if ws_from %}From &euro;{{ '{:,.0f}'.format(ws_from) }} per person, everything{% else %}Per person, everything{% endif %}</td></tr>
+      <tr class="g-vs__sum"><th scope="row">Price</th><td>{% if rooms_from %}From &euro;{{ '{:,.0f}'.format(rooms_from) }} a night, the room{% else %}Per room, per night{% endif %}</td><td class="g-vs__full">Per person, everything included</td></tr>
     </tbody>
     <tfoot><tr><td></td>
       <td><a href="{{ url_for('book_rooms') }}" class="g-btn">See the rooms</a></td>

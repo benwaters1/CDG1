@@ -10469,3 +10469,32 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
   .g .g-sec .g-wrap:has(> .g-vignette):not(:has(> ul, > ol, > dl, > form, > table, > div:not(.g-vignette))) > .g-vignette svg{ width: 100%; height: auto; }
 }
 .g main > .g-sec, .g main > .g-sec ~ .g-sec{ padding-top: clamp(48px, 5vw, 80px); padding-bottom: clamp(48px, 5vw, 80px); }
+
+/* 2 Oct - CHOOSE YOUR EXPERIENCE: four illustrated cards in one row (it was three text columns with "Four nights"
+   stranded on a second row). Ordered by length; gilt corners; each links to the dates. */
+.g .g-choose{ list-style: none; margin: var(--s7) 0 0; padding: 0; display: grid; gap: var(--s5); grid-template-columns: 1fr; }
+@media (min-width: 40rem){ .g .g-choose{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (min-width: 64rem){ .g .g-choose{ grid-template-columns: repeat(4, minmax(0,1fr)); } }
+.g .g-choose > .g-choose__i{ max-width: none; display: flex; flex-direction: column; align-items: center; text-align: center; padding: var(--s6) var(--s5) var(--s5);
+  background-color: #FBF8F1; border: 1px solid var(--line); border-top: 2px solid var(--gilt-leaf);
+  background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg %3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(34 0) scale(-1 1)'%3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(0 34) scale(1 -1)'%3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E"), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none' stroke='%23B08D57' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(34 34) scale(-1 -1)'%3E%3Cpath d='M2 32V10q0-8 8-8h22'/%3E%3Cpath d='M7 32V13q0-6 6-6h19' opacity='.5'/%3E%3Cpath d='M12 12q5 .5 6 6q-5-.5-6-6z'/%3E%3Ccircle cx='22' cy='12' r='1.1'/%3E%3Ccircle cx='12' cy='22' r='1.1'/%3E%3C/g%3E%3C/svg%3E"); background-repeat: no-repeat; background-size: 22px 22px;
+  background-position: 6px 8px, calc(100% - 6px) 8px, 6px calc(100% - 6px), calc(100% - 6px) calc(100% - 6px);
+  box-shadow: 0 14px 30px -24px rgba(20,48,95,.4); transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+.g .g-choose > .g-choose__i:hover{ transform: translateY(-3px); border-color: var(--gilt-leaf); box-shadow: 0 20px 36px -24px rgba(20,48,95,.5); }
+.g .g-choose__ill{ width: 92px; color: var(--gilt); margin-bottom: var(--s4); }
+.g .g-choose__n{ margin: 0; font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .16em; text-transform: uppercase; color: var(--gilt); }
+.g .g-choose__t{ margin: var(--s2) 0 var(--s3); font-family: var(--display); font-style: italic; font-weight: 400; font-size: clamp(24px, .8vw + 18px, 30px); line-height: 1.15; color: var(--blue-deep); }
+.g .g-choose__d{ margin: 0 0 var(--s5); font-family: var(--serif); font-size: var(--t-base); line-height: 1.6; color: var(--ink-2); max-width: 17rem; flex: 1; }
+.g .g-choose .g-choose__a{ font-family: var(--ui); font-size: var(--t-xs); font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--blue-deep); text-decoration: none !important;
+  border-bottom: 1px solid var(--gilt-leaf); padding-bottom: 3px; }
+.g .g-choose .g-choose__a:hover{ color: var(--gilt); }
+
+/* 2 Oct - "A Small Group, the Whole House": Who Comes and The House to Yourselves side by side (they were two
+   look-alike sections in a row, with a third between them). */
+.g .g-pair{ display: grid; gap: var(--s6); margin: var(--s6) 0 0; }
+@media (min-width: 52rem){ .g .g-pair{ grid-template-columns: repeat(2, minmax(0,1fr)); gap: clamp(32px, 4vw, 72px); } }
+.g .g-pair__i{ display: grid; grid-template-columns: 88px 1fr; column-gap: var(--s5); align-items: start; padding-top: var(--s5); border-top: 1px solid var(--gilt-leaf); }
+.g .g-pair__ill{ grid-row: 1 / span 2; width: 88px; aspect-ratio: 1; box-sizing: border-box; padding: 16px; border: 1px solid var(--gilt-leaf); border-radius: 50%; outline: 1px solid var(--gilt-leaf); outline-offset: 4px; color: var(--gilt); background: #FBF8F1; }
+.g .g-pair__t{ margin: 0 0 var(--s2); font-family: var(--display); font-weight: 400; font-size: clamp(22px, .8vw + 17px, 28px); line-height: 1.2; color: var(--blue-deep); }
+.g .g-pair__p{ margin: 0; font-family: var(--serif); font-size: var(--t-base); line-height: 1.65; color: var(--ink); max-width: 32rem; }
+@media (max-width: 40rem){ .g .g-pair__i{ grid-template-columns: 64px 1fr; } .g .g-pair__ill{ width: 64px; padding: 11px; } }

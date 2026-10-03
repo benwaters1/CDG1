@@ -1313,17 +1313,44 @@ WORKSHOP_TERMS_KEYS = '    {# Put back after the 1 October handovers (g, k), whi
 def repair_workshop_terms_keys():
     """The Workshops page's deposit, 30-day balance and whole-amount-inside-
     the-window line, and how rooms are arranged. Cut with the facts list they
-    lived in; read from the route, so they are the code's, not copy."""
+    lived in; read from the route, so they are the code's, not copy. Put back
+    beside whichever grid the zip carries: the old included grid, or the Key
+    Information grid that replaced it on 3 October."""
     rel = "templates/workshops_public.html"
     src = _read(rel)
     if "deposit_pct" in src:
         return 0
     anchor = ('      <p class="g-key__v">Included, except on the workshops spent at the house</p>\n'
               '    </div>\n')
-    if anchor not in src:
-        raise ValueError("the Excursions and transfers key item has moved")
-    _write(rel, src.replace(anchor, anchor + WORKSHOP_TERMS_KEYS, 1))
+    if anchor in src:
+        _write(rel, src.replace(anchor, anchor + WORKSHOP_TERMS_KEYS, 1))
+        return 1
+    # 3 October (2oct-k): the included grid is gone, and a "Key Information"
+    # grid carries the design's own Rooms line. Only the money goes back, right
+    # after that line: a second Rooms item would say the same thing twice.
+    head = src.find('<h2 class="g-place">Key Information</h2>')
+    rooms = src.find('<p class="g-key__k">Rooms</p>', head) if head >= 0 else -1
+    end = src.find("    </div>\n", rooms) if rooms >= 0 else -1
+    if end < 0:
+        raise ValueError("neither the included grid nor Key Information's Rooms item "
+                         "is there to carry the deposit line")
+    end += len("    </div>\n")
+    _write(rel, src[:end] + TO_RESERVE_KEY + src[end:])
     return 1
+
+
+TO_RESERVE_KEY = (
+    "    {# Put back after every handover since 1 October. The deposit and the balance are read\n"
+    "       from the workshops and from WORKSHOP_BALANCE_DAYS by the route, and inside the balance\n"
+    "       window the WHOLE amount is due at booking: a page that says \"10% to reserve\" three\n"
+    "       weeks out has told a guest one figure and charged another. #}\n"
+    "    <div class=\"g-key__i\">\n"
+    "      <p class=\"g-key__k\">To reserve</p>\n"
+    "      <p class=\"g-key__v\">{% if deposit_pct %}{{ deposit_pct }}% to reserve; the balance "
+    "{{ balance_days }} days before.{% else %}It depends on the workshop &mdash; the figure is on "
+    "the session you choose.{% endif %}{% if balance_days %} Booking inside {{ balance_days }} days? "
+    "The whole amount is due then, not a deposit.{% endif %}</p>\n"
+    "    </div>\n")
 
 
 BATHROOM_UNGUARDED = ("          {% if room['amenities'] %}\n"

@@ -67,7 +67,7 @@
 {{ atelier_glance(glance_workshop, settings, glance_from, tx=_tx) }}
 
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
-  <h2 class="g-place">Choose Your Workshop</h2>
+  <h2 class="g-place">The Retreats</h2>
   <p class="g-p">The length sets the emphasis; the house and the table are the same on every one.</p>
   {# A static list of the five formats stood here ("The brocantes", "The kitchen", "The restoration"...), naming them
      differently from the cards below it and repeating the opening paragraph. The cards say it, by their real names. #}
@@ -130,76 +130,56 @@
   <p class="g-p">You are not only a guest here. You are part of how the house comes back: every retreat helps bring it back to life.</p>
 </div></section>
 
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-fr">Les trois fils<span class="g-fr__en">The three threads</span></p>
-  <p class="g-eyebrow">What You Do</p>
-  <h2 class="g-place">Three Threads, Every Retreat</h2>
-  <p class="g-p g-lede-first">Every retreat weaves the same three together. The length decides which leads.</p>
-  <ul class="g-threads">
-    <li class="g-threads__i"><div class="g-threads__ill" aria-hidden="true">{{ illus('brocante') }}</div><p class="g-threads__fr">La Brocante</p><p class="g-threads__en">The hunt</p><p class="g-threads__p">The Ariège is a country of brocantes and antique fairs, and a good one is a morning well spent: the stalls, the bargaining, the piece you did not know you were looking for. The brocante workshop puts them at the centre; every workshop has a taste of them.</p></li>
-    <li class="g-threads__i"><div class="g-threads__ill" aria-hidden="true">{{ illus('cuisine') }}</div><p class="g-threads__fr">La Cuisine</p><p class="g-threads__en">The kitchen</p><p class="g-threads__p">French cooking at the château, without hurry, and the table at the end of it. The cooking workshop puts the kitchen at the centre; every workshop eats well, with every meal and drinks included.</p></li>
-    <li class="g-threads__i"><div class="g-threads__ill" aria-hidden="true">{{ illus('restoration') }}</div><p class="g-threads__fr">La Restauration</p><p class="g-threads__en">The house</p><p class="g-threads__p">A Class I Historic Monument coming back to life, seen up close: how the work is done, why the walls are left as they are, and what the house gives up as it returns. The restoration workshop puts it at the centre.</p></li>
-  </ul>
-</div></section>
+{# 2 Oct: "Three Threads, Every Retreat" cut - covered elsewhere on the page (CUT_SECTIONS.txt keeps it) #}
 
 
-<div class="g-quote-band">
-  <p class="g-quote-band__t"></p>
-</div>
 
 <!-- ============ EVERY DATE, IN ONE PLACE ============ -->
 {# The point of this page is choosing a date and booking it. Every sitting
    across every workshop, in date order, filterable — not five essays. #}
-<section class="g-sec"><div class="g-wrap">
+<section class="g-sec g-choose-sec"><div class="g-wrap">
   <p class="g-fr">La durée<span class="g-fr__en">The length</span></p>
   <p class="g-eyebrow">Three to Seven Nights</p>
   <h2 class="g-place">Choose Your Experience</h2>
-  <div class="g-key">
-    <div class="g-key__i">
-      <p class="g-key__k">Three nights</p>
-      <p class="g-key__v">The brocantes at the centre: the antique fairs of the valley, with the kitchen and the restoration around them</p>
+  <p class="g-p g-lede-first">Every retreat mixes the same three threads; the length decides which one leads.</p>
+  <ul class="g-choose">
+    {%- for kind, fr, nights, line in [
+      ('brocante', 'La Brocante', 'Three nights', 'The brocantes at the centre: the antique fairs and the bargaining, with the kitchen and the restoration around them.'),
+      ('chateau', 'À la maison', 'Four nights', 'A retreat spent at the house, with all three threads in the mix and nothing to plan around.'),
+      ('cuisine', 'La Cuisine', 'Five nights', 'The kitchen at the centre: cooking classes at the château, and long dinners together.'),
+      ('restoration', 'La Restauration', 'Seven nights', 'The restoration at the centre: the house up close as it comes back to life.')] %}
+    <li class="g-choose__i">
+      <div class="g-choose__ill" aria-hidden="true">{{ illus(kind) }}</div>
+      <p class="g-choose__n">{{ nights }}</p>
+      <h3 class="g-choose__t" lang="fr">{{ fr }}</h3>
+      <p class="g-choose__d">{{ line }}</p>
+      <a class="g-choose__a" href="#dates">See the dates <span aria-hidden="true">→</span></a>
+    </li>
+    {%- endfor %}
+  </ul>
+</div></section>
+
+<section class="g-sec g-pair-sec"><div class="g-wrap">
+  <p class="g-fr">Entre amis<span class="g-fr__en">Among friends</span></p>
+  <p class="g-eyebrow">The Company and the House</p>
+  <h2 class="g-place">A Small Group, the Whole House</h2>
+  <div class="g-pair">
+    <div class="g-pair__i">
+      <div class="g-pair__ill" aria-hidden="true">{{ illus('games') }}</div>
+      <h3 class="g-pair__t">Who Comes</h3>
+      <p class="g-pair__p">People who love France, old houses and a good table. Couples, friends travelling together, and those who come alone and leave having met everyone. A retreat for people who would rather live in a place than pass through it.</p>
     </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Five nights</p>
-      <p class="g-key__v">The kitchen at the centre: French cooking at the château, and long dinners together</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Seven nights</p>
-      <p class="g-key__v">The restoration at the centre: the house up close as it comes back to life</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Four nights</p>
-      <p class="g-key__v">Spent at the house, with all three in the mix, and nothing to plan around</p>
+    <div class="g-pair__i">
+      <div class="g-pair__ill" aria-hidden="true">{{ illus('key') }}</div>
+      <h3 class="g-pair__t">The House to Yourselves</h3>
+      <p class="g-pair__p">While a retreat runs, the château is given over to it: no other guests, and no strangers at the next table. For a few days it is your house, and the people around you are the group you came with.</p>
     </div>
   </div>
 </div></section>
 
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('games') }}</div>
-  <p class="g-fr">Entre amis<span class="g-fr__en">Among friends</span></p>
-  <p class="g-eyebrow">The Company</p>
-  <h2 class="g-place">Who Comes</h2>
-  <p class="g-p g-lede-first">People who love France, old houses and a good table. Couples, friends travelling together, and those who come alone and leave having met everyone. A retreat for people who would rather live in a place than pass through it.</p>
-</div></section>
+{# 2 Oct: "A Day at the Château" cut - covered elsewhere on the page (CUT_SECTIONS.txt keeps it) #}
 
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('yoga') }}</div>
-  <p class="g-fr">Une journée<span class="g-fr__en">A day</span></p>
-  <p class="g-eyebrow">A day on retreat</p>
-  <h2 class="g-place">A Day at the Château</h2>
-  <p class="g-p g-lede-first">Mornings begin slowly, with breakfast and the day ahead. The session takes the morning: the brocantes, the kitchen or the restoration, depending on the day. Lunch is together, and the afternoon is free time, yours to spend as you choose: a glass of local wine on the terraces, a game of tennis or pickleball, a swim in the pool, or nothing at all.</p>
-  <p class="g-p">Before dinner there is an apéritif in the salon. Dinner is the hour nearly everybody keeps, and the conversation tends to run on long after it.</p>
-  <p class="g-p">Along the way, and every one of them optional: morning yoga, kayaking or hiking in the valley as the season allows, a barbecue in the grounds, and a formal dinner in the Salon de Musique, by candlelight.</p>
-</div></section>
 
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('key') }}</div>
-  <p class="g-fr">Chez vous<span class="g-fr__en">At home</span></p>
-  <p class="g-eyebrow">Yours Alone</p>
-  <h2 class="g-place">The House to Yourselves</h2>
-  <p class="g-p g-lede-first">While a retreat runs, the château is given over to it: no other guests, and no strangers at the next table. For a few days it is your house, and the people around you are the group you came with.</p>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>
-</div></section>
 
 
 <section class="g-sec" id="dates"><div class="g-wrap">
@@ -275,47 +255,7 @@
 </div></section>
 
 <!-- ============ WHAT EVERY WORKSHOP INCLUDES ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">The Full Experience</p>
-  <h2 class="g-place">Included in Every Workshop</h2>
-  <div class="g-key">
-    <div class="g-key__i">
-      <p class="g-key__k">Meals</p>
-      <p class="g-key__v">Every meal, cooked at the château, and dinner together</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Drinks</p>
-      <p class="g-key__v">Alcoholic and non-alcoholic, mostly local</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">The château</p>
-      <p class="g-key__v">A tour of the house and its restoration</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">The days</p>
-      <p class="g-key__v">Mornings for the sessions (the brocantes, the kitchen, the restoration); the afternoons your own. Nothing is compulsory</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">Excursions and transfers</p>
-      <p class="g-key__v">Included, except on the workshops spent at the house</p>
-    </div>
-    {# Put back after the 1 October handovers (g, k), which cut the facts list these lived in.
-       Both are the code's, not copy: the rooms line is what the registration page says
-       (two to a room; no extra beds, per the owner's facts of 1 October), and the deposit
-       and balance are read from the workshops and from WORKSHOP_BALANCE_DAYS by the route.
-       Inside the balance window the WHOLE amount is due at booking, and a page that says
-       "10% to reserve" three weeks out has told a guest one figure and charged another.
-       Reverted by handovers three times. #}
-    <div class="g-key__i">
-      <p class="g-key__k">Rooms</p>
-      <p class="g-key__v">Arranged for two. Coming alone, you share with another guest travelling solo, or take a room to yourself with a single supplement</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">To reserve</p>
-      <p class="g-key__v">{% if deposit_pct %}{{ deposit_pct }}% to reserve; the balance {{ balance_days }} days before.{% else %}It depends on the workshop &mdash; the figure is on the session you choose.{% endif %}{% if balance_days %} Booking inside {{ balance_days }} days? The whole amount is due then, not a deposit.{% endif %}</p>
-    </div>
-  </div>
-</div></section>
+{# 2 Oct: "Included in Every Workshop" cut - covered elsewhere on the page (CUT_SECTIONS.txt keeps it) #}
 {# A night, or the full experience - the shared comparison (owner, 28 Sept). #}
 {% from '_stay_or_workshop.html' import stay_vs_workshop %}
 {{ stay_vs_workshop(ws_from=(workshops|selectattr('price_per_person')|map(attribute='price_per_person')|min) if workshops else None, dm=_dm, tx=_tx, ex=_ex) }}
@@ -389,6 +329,14 @@
     <div class="g-key__i">
       <p class="g-key__k">Rooms</p>
       <p class="g-key__v">Each with a private bathroom on the first floor. Prices are per person, sharing a room</p>
+    </div>
+    {# Put back after every handover since 1 October. The deposit and the balance are read
+       from the workshops and from WORKSHOP_BALANCE_DAYS by the route, and inside the balance
+       window the WHOLE amount is due at booking: a page that says "10% to reserve" three
+       weeks out has told a guest one figure and charged another. #}
+    <div class="g-key__i">
+      <p class="g-key__k">To reserve</p>
+      <p class="g-key__v">{% if deposit_pct %}{{ deposit_pct }}% to reserve; the balance {{ balance_days }} days before.{% else %}It depends on the workshop &mdash; the figure is on the session you choose.{% endif %}{% if balance_days %} Booking inside {{ balance_days }} days? The whole amount is due then, not a deposit.{% endif %}</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">The stairs</p>

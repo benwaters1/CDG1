@@ -310,6 +310,54 @@ def run():
     finally:
         shutil.rmtree(cwd, ignore_errors=True)
 
+    s.section("The deposit line finds the Key Information grid when the old one is gone")
+    # 3 October (2oct-k): the included grid the deposit line sat in was cut,
+    # and a "Key Information" grid with the design's own Rooms line replaced
+    # it. The step raised on that zip -- loudly, as it should -- and now puts
+    # the money after that Rooms line, without adding a second Rooms item.
+    cwd = tempfile.mkdtemp(prefix="ztest-repair-keyinfo-")
+    try:
+        _git(cwd, "init", "-q")
+        page = ('<section class="g-sec"><div class="g-wrap">\n'
+                '  <h2 class="g-place">Key Information</h2>\n'
+                '  <div class="g-key">\n'
+                '    <div class="g-key__i">\n'
+                '      <p class="g-key__k">Rooms</p>\n'
+                '      <p class="g-key__v">Each with a private bathroom</p>\n'
+                '    </div>\n'
+                '    <div class="g-key__i">\n'
+                '      <p class="g-key__k">The stairs</p>\n'
+                '      <p class="g-key__v">No lift</p>\n'
+                '    </div>\n'
+                '  </div>\n'
+                '</div></section>\n')
+        _write(cwd, "templates/workshops_public.html", page)
+        _git(cwd, "add", "-A")
+        _git(cwd, "commit", "-q", "-m", "the 3 October layout")
+        code, out = _run(cwd, src)
+        fixed = _read(cwd, "templates/workshops_public.html")
+        s.check("the deposit line goes in",
+                "deposit_pct" in fixed and "The whole amount is due then" in fixed,
+                detail=out[-300:])
+        s.check("straight after the design's Rooms line, before the stairs",
+                fixed.find('g-key__k">Rooms<') < fixed.find("To reserve")
+                < fixed.find('g-key__k">The stairs<'), detail=fixed)
+        s.check("without a second Rooms item", fixed.count('g-key__k">Rooms<') == 1)
+        s.check("and the step reports it ran",
+                re.search(r"restored\s+1\s+the deposit and rooms lines on Workshops", out)
+                is not None, detail=out[-300:])
+        code2, out2 = _run(cwd, src)
+        s.check("a second run leaves it alone",
+                _read(cwd, "templates/workshops_public.html") == fixed
+                and re.search(r"already fine\s+the deposit and rooms lines", out2) is not None)
+        _write(cwd, "templates/workshops_public.html",
+               '<section><h2 class="g-place">Something Else</h2></section>\n')
+        code3, out3 = _run(cwd, src)
+        s.check("with neither grid there, it says so and does not exit 0",
+                "COULD NOT RUN" in out3 and code3 != 0, detail=out3[-300:])
+    finally:
+        shutil.rmtree(cwd, ignore_errors=True)
+
     s.section("It says where the tool is documented")
     s.check("the docstring points at check_handover first",
             "check_handover" in src[:2000], detail="ordering advice is missing")

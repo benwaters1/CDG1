@@ -532,19 +532,35 @@ def run():
     floors.close()
     picker = pub.get("/book").get_data(as_text=True)
     flags = re.findall(r'stairs:"(\w+)"', picker)
-    s.check("the picker publishes a stairs flag for every room",
-            len(flags) == len(recorded),
-            detail="%d flags for %d rooms" % (len(flags), len(recorded)))
-    s.check("and calls step-free exactly the rooms recorded as ground floor",
-            flags.count("ground")
-            == sum(1 for f in recorded.values() if f == "ground"),
-            detail="%d called step-free, %d recorded as ground"
-            % (flags.count("ground"),
-               sum(1 for f in recorded.values() if f == "ground")))
-    s.check("so a room with no floor recorded is never called step-free",
-            not [n for n, f in recorded.items() if not f]
-            or flags.count("ground") < len(recorded),
-            detail="an unrecorded floor must read as stairs, not as none")
+    if flags:
+        s.check("the picker publishes a stairs flag for every room",
+                len(flags) == len(recorded),
+                detail="%d flags for %d rooms" % (len(flags), len(recorded)))
+        s.check("and calls step-free exactly the rooms recorded as ground floor",
+                flags.count("ground")
+                == sum(1 for f in recorded.values() if f == "ground"),
+                detail="%d called step-free, %d recorded as ground"
+                % (flags.count("ground"),
+                   sum(1 for f in recorded.values() if f == "ground")))
+        s.check("so a room with no floor recorded is never called step-free",
+                not [n for n, f in recorded.items() if not f]
+                or flags.count("ground") < len(recorded),
+                detail="an unrecorded floor must read as stairs, not as none")
+    else:
+        # 3 October (2oct-k): the picker stopped asking about stairs at all.
+        # Every bedroom is up the original staircase, so the question could
+        # not change the answer. With no flag there must be no promise
+        # either, anywhere on the page: the danger was always the sentence
+        # "no staircase" said to the guest who needs it to be true.
+        said = visible_text(picker)
+        promises = re.findall(r"(?i)\b(ground[- ]floor|no staircase|no stairs|"
+                              r"step[- ]free|without (?:any )?stairs)\b", said)
+        s.check("the picker makes no stairs promise, so none can be wrong",
+                not promises, detail=str(promises[:3]))
+        s.check("and the page still says the bedrooms are up the staircase",
+                "original staircase" in said.lower(),
+                detail="the honest answer to 'how are you with stairs' has to "
+                       "be on the page somewhere")
 
     _clean(conn)
     conn.close()
