@@ -35,6 +35,7 @@ from _harness import Suite
 
 import io
 import os
+import re
 import subprocess
 import sys
 import zipfile
@@ -62,6 +63,12 @@ def _tree(path):
             full = os.path.join(base, f)
             out[os.path.relpath(full, path)] = os.path.getsize(full)
     return out
+
+
+def _balanced(css):
+    """Every block closed. Comments are blanked first, so a brace in one does not count."""
+    bare = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    return bare.count("{") == bare.count("}")
 
 
 def _zip(tmp, files):
@@ -108,7 +115,17 @@ def run():
 
     # THE ONE THAT MATTERS. The third export dropped a macro parameter the live
     # call site passes -- a page that raises, not a page that looks odd.
-    cut = "\n".join(head_css.split("\n")[:-40])
+    # Cut at the end of a rule, not at a fixed line count. Forty lines from
+    # the end landed on "@media (min-width: 64rem){" in the 3 October
+    # stylesheet: the cut left a block open, the added block's closing brace
+    # was paired with it, and the tool -- rightly -- would not write half a
+    # rule. The fixture was measuring where the stylesheet happens to end,
+    # not the tool, so it now steps back until what is left is balanced.
+    lines = head_css.split("\n")
+    k = len(lines) - 40
+    while k > 0 and not _balanced("\n".join(lines[:k])):
+        k -= 1
+    cut = "\n".join(lines[:k])
     removes = _zip(tmp, {"static/gudanes.css": cut})
     out = _run(removes)
     s.check("a file that only removes is refused", "REMOVES ONLY" in out,
