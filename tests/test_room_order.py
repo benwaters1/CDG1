@@ -133,7 +133,17 @@ def run():
         # case is the wrong flourish rather than the wrong bathroom.
         if _os.path.basename(path_) == "_emblems.html":
             continue
-        for var in _re.findall(r"set\s+(\w+)\s*=\s*\(\s*\w+\[.name.\]\s*or\s*..\)\|lower", html):
+        for var, sub in _re.findall(
+                r"set\s+(\w+)\s*=\s*\(\s*(\w+)\[.name.\]\s*or\s*..\)\|lower", html):
+            # Rooms only. Since 3 October the Stay page also lowercases each
+            # EXTRA's name to pick its drawing (a kayak, the key for the tour);
+            # that is a name read for a picture, not a room's bathroom read
+            # from its title. Skipped only when the name provably comes from a
+            # loop over something other than rooms -- a variable this cannot
+            # place is still flagged.
+            loop = _re.search(r"for\s+%s\s+in\s+(\w+)" % _re.escape(sub), html)
+            if loop and "room" not in loop.group(1).lower():
+                continue
             for word in _re.findall(r"'(\w+)' in %s(?!\w)" % var, html):
                 guessers.append(f"{_os.path.basename(path_)}: '{word}' in the room name")
     s.check("no template reads a room's facts out of its name", not guessers,
