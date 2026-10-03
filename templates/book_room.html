@@ -777,6 +777,9 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
+<div class="g-wrap">{{ animals_note() }}</div>
+<div class="g-wrap">{{ terms_upfront(settings, room['min_nights'] if room else none, deposit_shown) }}</div>
+
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Not this room?</h2>
@@ -811,13 +814,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
    is unreachable without scrolling back. This bar carries the total and the
    same submit. #}
 
-<div class="g-wrap">
-  <p class="g-backtoform">
-    <span class="g-backtoform__k">Still here?</span>
-    <span class="g-backtoform__t">Everything above is worth reading before you book.</span>
-  <a href="#book" class="g-btn g-btn--solid">Back to the dates</a>
-  </p>
-</div>
+{# 2 Oct: "Still here?" prompt removed - it came after the closing band and repeated it #}
 
 <div class="g-bookbar" role="region" aria-label="Your booking">
   <span class="g-bookbar__sum">
@@ -846,9 +843,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 })();
 </script>
 
-<div class="g-wrap">{{ animals_note() }}</div>
 
-<div class="g-wrap">{{ terms_upfront(settings, room['min_nights'] if room else none, deposit_shown) }}</div>
 
 <script>
 /* The whole stay in one place, immediately above the button. A guest was

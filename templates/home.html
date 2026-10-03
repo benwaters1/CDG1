@@ -139,7 +139,6 @@
 </script>
 
 <section class="g-sec g-sec--plate"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('laurel') }}</div>
 <h2 class="g-h2 g-h2--lead">Bienvenue</h2>
 <p class="g-p g-lede-first">An eighteenth-century château in the French Pyrénées, followed the world over as it is brought back to life, room by room, since 2013. In 2016 the restoration received the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco. You are welcome while the work goes on, for a night, or for the full experience.</p>
 </div></section>
@@ -234,41 +233,7 @@
 
 <!-- ============ THE NEXT WORKSHOP DATES ============ -->
 {% if upcoming %}
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">Château Workshops</p>
-  <h2 class="g-place">The Next Dates</h2>
-  <p class="g-p">Three to seven nights, a small group, and the château given over to it entirely.</p>
-
-  {% set WS_PIC = {
-    'Antique': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w",
-    'Artisan': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w",
-    'Noël':    "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/03ca0108-8c1e-423f-a790-84ed2b154fac/Chateau+de+Gudanes+In+Winter+2.png?format=1000w",
-    'Cooking': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1000w",
-    'Seven':   "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1000w"
-  } %}
-  <div class="g-sittings-grid">
-    {% for s in upcoming %}
-    {% set pic = namespace(u=None) %}
-    {% for k, v in WS_PIC.items() %}{% if k in s['title'] %}{% set pic.u = v %}{% endif %}{% endfor %}
-    <article class="g-sit">
-      <img class="g-sit__img" src="{{ pic.u or WS_PIC['Cooking'] }}" alt="{{ s['title'] }}" loading="lazy">
-      <div class="g-sit__b">
-        <p class="g-sit__name">{{ s['title'] }}</p>
-        <h3 class="g-sit__when">{{ date_range(s['start_date'], s['end_date']) }}</h3>
-        {% if s['nights_label'] %}<p class="g-sit__meta">{{ s['nights_label'] }}</p>{% endif %}
-        {% if s['price_per_person'] %}
-        <p class="g-sit__rate">
-          <span class="g-fig">€{{ '{:,.0f}'.format(s['price_per_person']) }}</span>
-          <span>per person</span>
-        </p>
-        {% endif %}
-        <a href="{{ url_for('workshop_detail', workshop_id=s['workshop_id']) }}" class="g-btn g-btn--solid">See what happens</a>
-      </div>
-    </article>
-    {% endfor %}
-  </div>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>
-</div></section>
+{# 2 Oct: "The Next Dates" cut - the band under the hero lists the next dates and sells the workshops (CUT_SECTIONS.txt keeps it) #}
 {% endif %}
 
 <div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1500w" alt="The château seen from the valley road" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1500w" alt="The east façade above the parkland" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="The gates in spring" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="The château de Gudanes" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1500w" alt="The château at night" loading="lazy"></div>
@@ -287,24 +252,7 @@
 {# A night, or the full experience - the shared comparison (owner, 28 Sept). #}
 {% from '_stay_or_workshop.html' import stay_or_workshop %}
 {{ stay_or_workshop(rooms_from=(shown_rooms|selectattr('price_per_night')|map(attribute='price_per_night')|min) if shown_rooms else None, ws_from=(workshops|selectattr('price_per_person')|map(attribute='price_per_person')|min) if workshops else None, dm=_dm) }}
-<section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
-  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d05b0d21-75e0-464e-bcad-9faac533884c/IMG_4368.jpeg?format=1500w" alt="A workshop at Château de Gudanes" loading="lazy">
-  <div class="g-half__text">
-    <h2 class="g-place">Workshops &amp; Retreats</h2>
-    {# Spelled out, and singular when it is one - it read "1 ateliers a year". #}
-    {% set _wn = workshops|length if workshops else 0 %}
-    {# No count of workshops (owner, 28 Sept: the programme is not fixed). #}
-    <p class="g-scarcity-line">The full Gudanes experience, one workshop at a time.</p>
-    <p class="g-p"><em>Small-group retreats of three to seven nights.</em></p>
-    <p class="g-p">The brocantes, the kitchen and the restoration, with every meal, drinks and a tour of the château included. Most of all, a retreat: the pool, good food and wine, and the house to yourselves.</p>
-    {# The ones spent at the house (owner, 1 Oct: this year's two - no transfers, vans or excursions), by name, never counted,
-       never called a trial. From the same rule as their own pages. #}
-    {%- from '_stay_or_workshop.html' import tx_flag, ex_flag -%}
-    {%- set _ah = namespace(names=[]) -%}{%- for w in (workshops or []) -%}{%- if tx_flag(w)|trim == 'no' and ex_flag(w)|trim == 'no' -%}{%- set _ah.names = _ah.names + [w['title']] -%}{%- endif -%}{%- endfor -%}
-    {% if _ah.names %}<p class="g-p">{% for n in _ah.names %}{{ n }}{% if not loop.last %}{{ ' and ' if loop.revindex == 2 else ', ' }}{% endif %}{% endfor %} {{ 'is' if _ah.names|length == 1 else 'are' }} spent entirely at the house: the making, the meals and the house itself, with no outings to plan around.</p>{% endif %}
-    <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--line">See the workshops</a></p>
-  </div>
-</div></section>
+{# 2 Oct: "Workshops & Retreats" cut - the band under the hero lists the next dates and sells the workshops (CUT_SECTIONS.txt keeps it) #}
 {% if _dm != 'hidden' %}<section class="g-sec--flush"><div class="g-half">
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w" alt="The dining room at Château de Gudanes" loading="lazy">
   <div class="g-half__text">
@@ -407,7 +355,7 @@
 <div class="g-wrap">
   <p class="g-devise">
     <span class="g-devise__fr">« On ne restaure pas une maison. On la laisse revenir. »</span>
-    <span class="g-devise__en">A house is not restored. It is let back</span>
+    <span class="g-devise__en">A house is not restored. It is allowed to come back.</span>
   </p>
 </div>
 

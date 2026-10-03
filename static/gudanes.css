@@ -10498,3 +10498,37 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
 .g .g-pair__t{ margin: 0 0 var(--s2); font-family: var(--display); font-weight: 400; font-size: clamp(22px, .8vw + 17px, 28px); line-height: 1.2; color: var(--blue-deep); }
 .g .g-pair__p{ margin: 0; font-family: var(--serif); font-size: var(--t-base); line-height: 1.65; color: var(--ink); max-width: 32rem; }
 @media (max-width: 40rem){ .g .g-pair__i{ grid-template-columns: 64px 1fr; } .g .g-pair__ill{ width: 64px; padding: 11px; } }
+
+/* =====================================================================
+   2 Oct - TIDYING (owner: "a lot of the spacing/design is off").
+   1. Empty containers (a wrapper left after a cut) took 30-80px of blank space on nine pages - hidden.
+   2. A section holding a single introductory paragraph read as forgotten - it now reads as a deliberate statement:
+      larger italic display type, centred under a small gilt flourish.
+   ===================================================================== */
+.g main > .g-wrap:not(:has(*)){ display: none; }
+.g main > .g-sec:has(> .g-wrap > p.g-lede-first:only-child){ text-align: center; }
+.g main > .g-sec:has(> .g-wrap > p.g-lede-first:only-child) .g-wrap{ display: flex; flex-direction: column; align-items: center; }
+.g main > .g-sec:has(> .g-wrap > p.g-lede-first:only-child) .g-wrap::before{ content: ""; display: block; width: 120px; height: 18px; margin: 0 auto var(--s4);
+  background: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 18' fill='none' stroke='%23B08D57' stroke-width='1' stroke-linecap='round'%3E%3Cpath d='M4 9h40M76 9h40'/%3E%3Cpath d='M60 3l6 6-6 6-6-6z'/%3E%3Ccircle cx='48' cy='9' r='1.4'/%3E%3Ccircle cx='72' cy='9' r='1.4'/%3E%3C/svg%3E") center/contain no-repeat; }
+.g main > .g-sec:has(> .g-wrap > p.g-lede-first:only-child) p.g-lede-first{ max-width: 40rem; margin: 0 auto; font-family: var(--display); font-style: italic;
+  font-size: clamp(22px, 1vw + 17px, 30px); line-height: 1.45; color: var(--blue-deep); }
+.g main > .g-sec:has(> .g-wrap > p.g-lede-first:only-child) p.g-lede-first::first-letter{ float: none; font-size: inherit; line-height: inherit; margin: 0; padding: 0; color: inherit; font-family: inherit; }
+/* a small divider directly above the motto doubles its own rule - one ornament, not two */
+.g main > .g-mark__wrap:has(+ .g-wrap > .g-devise){ display: none; }
+/* the live-weather fallback line showed huge and unstyled against the screen edge */
+.g main > .g-wx{ max-width: min(var(--wrap, 76rem), 100vw); margin: 0 auto; padding: var(--s4) var(--s5); box-sizing: border-box; }
+.g .g-wx__fallback{ margin: 0; font-family: var(--serif); font-style: italic; font-size: var(--t-small) !important; line-height: 1.5; color: var(--stone); }
+/* workshop page: a stray hairline ornament under the hero */
+.g main > .g-wrap:has(> .g-hairs){ display: none; }
+/* a single date reads as a wide card on the left edge, not a small card in the middle */
+@media (min-width: 48rem){
+  .g .g-sittings-grid:has(> .g-sit:only-child){ display: block; }
+  .g .g-sittings-grid > .g-sit:only-child{ display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); max-width: 48rem; margin: 0; }
+  .g .g-sittings-grid > .g-sit:only-child .g-sit__img{ height: 100%; min-height: 16rem; aspect-ratio: auto; object-fit: cover; }
+  .g .g-sittings-grid > .g-sit:only-child .g-sit__b{ display: flex; flex-direction: column; justify-content: center; padding: var(--s6); }
+}
+/* a divider next to a photo strip is one ornament too many */
+.g main > .g-mark__wrap:has(+ .g-band), .g main > .g-band + .g-mark__wrap{ display: none; }
+/* two ornaments side by side: keep the more meaningful one (the motto over the monogram, the monogram over a divider) */
+.g main > .g-mark__wrap:has(+ .g-mono__wrap), .g main > .g-mark__wrap + .g-mark__wrap{ display: none; }
+.g main > .g-mono__wrap:has(+ .g-wrap > .g-devise), .g main > .g-wrap:has(> .g-devise) + .g-mono__wrap{ display: none; }

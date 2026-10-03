@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_illus.html' import illus %}
 {% from '_ws_copy.html' import ws_copy, ws_days, ws_journey with context %}
 {% set sticky_bar = 'atelier' %}
 {% set crumbs = [('Workshops', url_for('workshops_public')), (workshop['title'], None)] %}
@@ -45,6 +46,7 @@
 <!-- ============ THE INVITATION ============ -->
 {% if workshop %}
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('atelier') }}</div>
   <p class="g-fr">L'atelier<span class="g-fr__en">The atelier</span></p>
     <p class="g-eyebrow">The Invitation</p>
   <h2 class="g-h2 g-h2--lead">A Retreat With a Purpose</h2>
@@ -118,6 +120,7 @@
 {% if workshop %}{{ ws_journey(workshop) }}{% endif %}
 
 <section class="g-sec"><div class="g-wrap">
+  <div class="g-vignette" aria-hidden="true">{{ illus('wine') }}</div>
   <p class="g-fr">Pour qui ?<span class="g-fr__en">Who for?</span></p>
   <p class="g-eyebrow">Who Comes</p>
   <h2 class="g-place">Is It for You?</h2>
@@ -151,7 +154,7 @@
     {% if _inc and not _basis %}{% for item in _inc.split(',') if item.strip() %}{% set _x = item.strip() %}<li>{{ _x[:1]|upper }}{{ _x[1:] }}</li>{% endfor %}
     {% else %}
     <li>Every meal, cooked in the château kitchen, with drinks throughout</li>
-    <li>Your room in the château, and a bathroom of its own, downstairs on the first floor</li>
+    <li>Your room in the château, with a private bathroom on the first floor</li>
     <li>Everything on the itinerary — the teaching{% if _ex %}, the materials and the excursions{% else %} and the materials{% endif %}</li>
 <li>A tour of the château and its restoration</li>
     {% if _tx %}<li>The transfers from central Toulouse, there and back</li>{% endif %}

@@ -126,16 +126,10 @@
 {# 1 Oct: ">Why the Walls Stay As They Are<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
 <section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('bed') }}</div>
   <p class="g-fr">Les chambres<span class="g-fr__en">The rooms</span></p>
   <p class="g-eyebrow">The Rooms</p>
-  <h2 class="g-place">Five Rooms, Each Its Own</h2>
+  <h2 id="rooms" class="g-place">Five Rooms, Each Its Own</h2>
   <p class="g-p g-lede-first">Each room is different, because the house is: its own shape, its own light, its own view of the valley and the mountains. All five share what matters most: a new bed, a private bathroom of your own on the first floor, and walls left as the centuries made them.</p>
-</div></section>
-
-<section class="g-sec"><div class="g-wrap">
-  {% from '_stay_or_workshop.html' import night_notice %}{{ night_notice(dm=_dm) }}
-  <h2 id="rooms" class="g-place">Les Chambres</h2>
   {% if searched %}
   <div class="g-searched" role="status">
     <p class="g-searched__dates">
@@ -312,6 +306,7 @@
       <p class="g-hint">Only about these dates. No newsletter unless you ask for one.</p>
     </div>
 {% endif %}
+  {% from '_stay_or_workshop.html' import night_notice %}{{ night_notice(dm=_dm) }}
 </div></section>
 
 {{ room_pick(rooms) }}
@@ -381,6 +376,7 @@
    the include does not save the work -- it throws the answer away. #}
 {% from '_availability_strip.html' import next_free as next_free_strip %}
 {{ next_free_strip(next_free) }}
+{{ avail_cal(booked_dates, 2, dinner_dates=(dinner_dates if _dm == 'open' else none)) }}
 
 {# What it is doing at the chateau. Read from a cache the house refreshes
    hourly -- NOT fetched by the guest's own browser, which would hand their
@@ -464,15 +460,9 @@
 {{ animals() }}
 
 
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('candelabra') }}</div>
-  <p class="g-fr">Les ateliers<span class="g-fr__en">The workshops</span></p>
-  <p class="g-eyebrow">The Full Experience</p>
-  <h2 class="g-place">If One Night Is Not Enough</h2>
-  <p class="g-p g-lede-first">A night here is a room and breakfast. A workshop is the full experience: three to seven nights with every meal, drinks, a tour of the château, and days shaped around the brocantes, the kitchen and the restoration.</p>
-  <p class="g-p">It is the best way to experience Gudanes: not as a visitor passing through, but as part of the house for a few days.</p>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>
-</div></section>
+{# 2 Oct: "If One Night Is Not Enough" cut - the stay-or-workshop comparison above does it (CUT_SECTIONS.txt keeps it) #}
+
+{{ honest() }}
 
 {% from '_faq.html' import faq %}
 {{ faq([
@@ -578,7 +568,7 @@
 <div class="g-wrap">
   <p class="g-devise">
     <span class="g-devise__fr">« Cinq chambres ouvertes. Les autres attendent. »</span>
-    <span class="g-devise__en">Five rooms open to guests. The rest waiting</span>
+    <span class="g-devise__en">Five rooms open to guests. The rest are waiting.</span>
   </p>
 </div>
 
@@ -603,13 +593,11 @@
 {# Room-level structured data. The organisation markup already exists in the
    base; this is what actually puts rooms and prices into rich results. Built
    from the same values the page renders, so it cannot drift. #}
-{{ avail_cal(booked_dates, 2, dinner_dates=(dinner_dates if _dm == 'open' else none)) }}
 
 {# 1 Oct: "Tell Us Roughly" (the flexible-dates form) cut - the calendar and Contact cover it #}
 
 {# 1 Oct: What a Week Here Costs cut - fewer statements #}
 
-{{ honest() }}
 
 {# "Tell Us When You Are Thinking Of" (notify) asked what "Tell Us Roughly" (flexible), above, already asks - month and email - so the page carried two such forms. Off Stay (1 Oct); the partial stays. #}
 
