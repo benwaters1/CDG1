@@ -1488,8 +1488,21 @@ def repair_legal_footer_links():
 # mentions the word is a record of what was said, and rewriting it would
 # make the record false.
 COPY_CORRECTIONS = [
-    # 2 October: no padel court. The tennis court is lined for pickleball.
+    # 2 October: no padel court. Guests play pickleball on the tennis court,
+    # with the house's racquets -- the court has no pickleball lines (owner,
+    # 3 October).
     ("padel", "pickleball"),
+]
+# Run after the words, on what the words leave: the design's "Padel court"
+# and "tennis and padel courts" become a pickleball COURT, which there is not.
+# A pattern that finds nothing does nothing; a line it cannot remove cleanly
+# (the last of a list, with no comma to take with it) raises, so the run says
+# so rather than leaving a list a parser would refuse.
+PHRASE_CORRECTIONS = [
+    (re.compile(r'\n[ \t]*\{"@type": "LocationFeatureSpecification", '
+                r'"name": "Pickleball court", "value": true\},(?=\s*\n)'), ""),
+    (re.compile(r"\bthe tennis and pickleball courts\b"),
+     "the tennis court (with racquets for tennis and pickleball)"),
 ]
 _COMMENT_SPLIT = re.compile(r"(\{#.*?#\}|<!--.*?-->)", re.S)
 
@@ -1513,6 +1526,12 @@ def repair_corrected_claims():
                 parts[i], k = re.subn(r"\b%s\b" % re.escape(wrong), fix, parts[i],
                                       flags=re.I)
                 changed += k
+            for pattern, right in PHRASE_CORRECTIONS:
+                parts[i], k = pattern.subn(right, parts[i])
+                changed += k
+            if '"name": "Pickleball court"' in parts[i]:
+                raise ValueError("a Pickleball court amenity in %s is not in a list "
+                                 "position this can remove cleanly" % name)
         if changed:
             _write(rel, "".join(parts))
             n += changed

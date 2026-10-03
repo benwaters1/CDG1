@@ -279,8 +279,9 @@ def run():
 
     s.section("A claim the owner corrected is rewritten in the copy, not in the notes")
     # 2 October: "tennis or padel" arrived in the free-time copy. There is no
-    # padel court; the tennis court is lined for pickleball. The design side's
-    # ledger still says padel, so the next zip will too.
+    # padel court; guests play pickleball on the tennis court with the house's
+    # racquets, and it has no pickleball lines. The design side's ledger still
+    # says padel, so the next zip will too.
     cwd = tempfile.mkdtemp(prefix="ztest-repair-claims-")
     try:
         _git(cwd, "init", "-q")
@@ -307,6 +308,33 @@ def run():
                 re.search(r"already fine\s+claims the owner has corrected", out2) is not None
                 and _read(cwd, "templates/free_time.html") == fixed,
                 detail=out2[-300:])
+
+        # And what the word leaves behind. "Padel court" becomes a pickleball
+        # COURT, which there is not: no lines, a tennis court with racquets.
+        listing = ('  "amenityFeature": [\n'
+                   '    {"@type": "LocationFeatureSpecification", "name": "Tennis court", "value": true},\n'
+                   '    {"@type": "LocationFeatureSpecification", "name": "Padel court", "value": true},\n'
+                   '    {"@type": "LocationFeatureSpecification", "name": "Table tennis", "value": true}\n'
+                   '  ],\n'
+                   "<p>The pool, the tennis and padel courts, the terraces.</p>\n")
+        _write(cwd, "templates/estate.html", listing)
+        code3, out3 = _run(cwd, src)
+        estate = _read(cwd, "templates/estate.html")
+        s.check("a padel court in the amenity list is taken out, not renamed",
+                "Pickleball court" not in estate and "Padel court" not in estate
+                and '"Tennis court", "value": true},\n    {"@type": "LocationFeatureSpecification", '
+                    '"name": "Table tennis"' in estate,
+                detail=estate)
+        s.check("and the tennis and padel courts become one court with racquets",
+                "the tennis court (with racquets for tennis and pickleball)" in estate,
+                detail=estate)
+        _write(cwd, "templates/estate.html",
+               '  "amenityFeature": [\n'
+               '    {"@type": "LocationFeatureSpecification", "name": "Padel court", "value": true}\n'
+               '  ],\n')
+        code4, out4 = _run(cwd, src)
+        s.check("one it cannot take out cleanly, last in its list, is reported, not left",
+                "COULD NOT RUN" in out4 and code4 != 0, detail=out4[-300:])
     finally:
         shutil.rmtree(cwd, ignore_errors=True)
 
