@@ -296,6 +296,9 @@ ID_TABLES = {
 # failure this house has a rule about, and it is worse here than most because
 # these are the pages people who do not work here have to get through.
 ENDPOINT_ARGS = {
+    # A callable is asked for the value: the newest row is not always one the
+    # page will open. See _registrable_session.
+    ("workshop_register", "session_id"): lambda conn: _registrable_session(conn),
     ("campaign_unsubscribe", "token"): ("campaign_sends", "unsubscribe_token"),
     ("event_quote", "token"): ("event_quotes", "token"),
     ("guest_account", "token"): ("guest_sessions", "token"),
@@ -356,6 +359,27 @@ def _one(conn, table, column):
     return row["v"] if row else None
 
 
+def _registrable_session(conn):
+    """The newest sitting a guest could register for, or None.
+
+    "The newest row" was whatever the last suite left behind. In a partial
+    run that was a session whose workshop had been deleted, or whose dates
+    had passed, and the registration page rightly answered 404 for it -- so
+    the sweep named workshop_register as a page it could not read, twice on
+    3 October, while every full run passed because a later suite happened to
+    leave a newer, valid one. Asked by the route's own rules instead: an
+    active workshop, a date still to come, and not called off.
+    """
+    row = conn.execute(
+        """SELECT workshop_sessions.id AS v FROM workshop_sessions
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
+              AND %s
+            ORDER BY workshop_sessions.id DESC LIMIT 1""" % m.SESSION_IS_LIVE,
+        (m.house_today_iso(),)).fetchone()
+    return row["v"] if row else None
+
+
 def _reachable(conn):
     """Every GET page, with a real id filled in wherever one is known.
 
@@ -378,7 +402,8 @@ def _reachable(conn):
             if known is None:
                 missing_rule = True
                 break
-            value = known if isinstance(known, str) else _one(conn, *known)
+            value = (known if isinstance(known, str)
+                     else known(conn) if callable(known) else _one(conn, *known))
             if value is None:
                 break
             values[arg] = value
