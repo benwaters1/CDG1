@@ -10,6 +10,13 @@
 {#- 2 Oct (owner): the four-night workshops are spent at the house, so their length decides first - the tick-boxes
     were added switched on for every workshop, which put "transfers and excursions included" on autumn and Noël. -#}
 {%- set _nl4 = ((((w['nights_label'] if w else '') or '')|string)|trim|lower).startswith(('4 ','4n','four')) -%}
+{#- a single date (the registration page passes one) carries no label: count its nights from the two dates -#}
+{%- if not _nl4 and w and w['start_date'] and w['end_date'] -%}
+  {%- set _a = (w['start_date']|string)[:10] -%}{%- set _b = (w['end_date']|string)[:10] -%}
+  {%- set _n = namespace(v=[]) -%}
+  {%- for _s in [_a, _b] -%}{%- set _y = _s[0:4]|int -%}{%- set _m = _s[5:7]|int -%}{%- set _d = _s[8:10]|int -%}{%- set _y2 = _y - (1 if _m <= 2 else 0) -%}{%- set _mp = (_m + 9) % 12 -%}{%- set _n.v = _n.v + [365*_y2 + _y2//4 - _y2//100 + _y2//400 + (153*_mp + 2)//5 + _d] -%}{%- endfor -%}
+  {%- set _nl4 = (_n.v[1] - _n.v[0]) == 4 -%}
+{%- endif -%}
 {%- if _nl4 -%}no{%- else -%}
 {%- set v = w[field] if w else none -%}
 {%- if v is defined and v in (0, 1, true, false, '0', '1', 'yes', 'no', 'true', 'false') -%}{{ 'yes' if v in (1, true, '1', 'yes', 'true') else 'no' }}
@@ -29,7 +36,7 @@
       <h3 class="g-sow__t">Room and breakfast</h3>
       <ul class="g-sow__list">
         <li>Your room, and breakfast each morning</li>
-        <li>The house and the grounds, with the pool, the tennis court and a barbecue area</li>
+        <li>The pool, tennis and pickleball, table tennis, the lounge and board games, the terraces and a barbecue area</li>
         <li>{% if dm == 'open' %}Dinner, a tour of the château, transfers and excursions, booked separately{% else %}A tour of the château, transfers and excursions, booked separately{% endif %}</li>
       </ul>
       <p class="g-sow__foot">From one night{% if rooms_from %}, from &euro;{{ '{:,.0f}'.format(rooms_from) }} a night{% endif %}</p>
@@ -39,9 +46,9 @@
       <p class="g-sow__k">A Workshop</p>
       <h3 class="g-sow__t">The full experience</h3>
       <ul class="g-sow__list">
-        <li>Every meal, and drinks throughout</li>
-        <li>A tour of the château and its restoration</li>
-        <li>The sessions: the brocantes, the kitchen, the restoration</li>
+        <li>Every meal, with drinks throughout</li>
+        <li>The activities: cooking classes, the brocantes, yoga, kayaking and hiking</li>
+        <li>A tour of the château, and a formal dinner in the Salon de Musique</li>
       </ul>
       <p class="g-sow__foot">Three to seven nights, per person, everything included</p>
       {% if here != 'workshop' %}<p class="g-sow__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>{% endif %}
@@ -74,10 +81,13 @@
       <tr><th scope="row">Lunch and dinner</th><td>{% if dm == 'open' %}Dinner, booked separately{% else %}{{ N|safe }}{% endif %}</td><td class="g-vs__full">{{ Y|safe }} Every meal</td></tr>
       <tr><th scope="row">Drinks, alcoholic and non-alcoholic</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">A tour of the château and its restoration</th><td>An extra, &euro;50 per booking</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
-      <tr><th scope="row">The sessions: the brocantes, the kitchen, the restoration</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
-      <tr><th scope="row">Excursions</th><td>Booked separately</td><td class="g-vs__full">{% if ex == 'all' %}{{ Y|safe }}{% elif ex == 'some' %}On some; each workshop says{% else %}{{ N|safe }}{% endif %}</td></tr>
-      <tr><th scope="row">Transfers from Toulouse</th><td>Booked separately</td><td class="g-vs__full">{% if tx == 'all' %}{{ Y|safe }}{% elif tx == 'some' %}On some; each workshop says{% else %}{{ N|safe }}{% endif %}</td></tr>
-      <tr><th scope="row">The pool, the tennis court, the barbecue area and the grounds</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
+      <tr><th scope="row">The activities: cooking classes, the brocantes, yoga, kayaking, hiking, a barbecue</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }} All optional</td></tr>
+      <tr><th scope="row">A formal dinner in the Salon de Musique, by candlelight</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
+      <tr><th scope="row">Excursions</th><td>Booked separately</td><td class="g-vs__full">{% if ex == 'all' %}{{ Y|safe }}{% elif ex == 'some' %}On the three-, five- and seven-night workshops{% else %}{{ N|safe }}{% endif %}</td></tr>
+      <tr><th scope="row">Transfers from Toulouse</th><td>Booked separately</td><td class="g-vs__full">{% if tx == 'all' %}{{ Y|safe }}{% elif tx == 'some' %}On the three-, five- and seven-night workshops{% else %}{{ N|safe }}{% endif %}</td></tr>
+      <tr><th scope="row">The pool, tennis and pickleball, table tennis</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
+      <tr><th scope="row">The lounge, board games, the terraces, the barbecue area and the grounds</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
+      <tr><th scope="row">Wi-Fi, in a common area of the château</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">The house to yourselves</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }} No other guests while it runs</td></tr>
       <tr class="g-vs__sum"><th scope="row">Length</th><td>From one night</td><td class="g-vs__full">Three to seven nights</td></tr>
       <tr class="g-vs__sum"><th scope="row">Price</th><td>{% if rooms_from %}From &euro;{{ '{:,.0f}'.format(rooms_from) }} a night, the room{% else %}Per room, per night{% endif %}</td><td class="g-vs__full">Per person, everything included</td></tr>

@@ -16,25 +16,32 @@
   <h1 class="g-pagehead">Who bought it, and why</h1>
 </div></section>
 
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('chateau') }}</div>
+<section class="g-sec g-duo-sec"><div class="g-wrap">
+  {# 2 Oct: two short sections that sat one after another, each with a medallion, now side by side - nothing reworded #}
+  <div class="g-duo">
+    <div class="g-duo__i">
+      <div class="g-duo__ill" aria-hidden="true">{{ illus('chateau') }}</div>
   <p class="g-fr">Une maison de famille<span class="g-fr__en">A family house</span></p>
   <p class="g-eyebrow">The Story</p>
   <h2 class="g-place">A Family House</h2>
   <p class="g-p g-lede-first">When Karina Waters bought Château de Gudanes, it had stood empty for generations, and much of it could not be entered. Since then the restoration has been followed the world over, room by room, and the house has begun, slowly, to live again. In 2016 the restoration received the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco.</p>
   <p class="g-p">Gudanes is a family house, not a hotel. Guests are welcomed into it as it returns, and the workshops, the full Gudanes experience, let them stay long enough to become part of its story.</p>
   <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>
-</div></section>
-
-
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('laurel') }}</div>
+    </div>
+    <div class="g-duo__i">
+      <div class="g-duo__ill" aria-hidden="true">{{ illus('laurel') }}</div>
+      <p class="g-fr">La famille<span class="g-fr__en">The family</span></p>
   <p class="g-eyebrow">The Family</p>
   <h2 class="g-place">Since 2013</h2>
   <p class="g-p g-lede-first">Karina Waters bought Château de Gudanes in 2013, and has been bringing it back ever since. She is its Châtelaine.</p>
   <p class="g-p">A house like this was never meant to stand empty, so it is lived in while it is restored. Five bedrooms are open to guests, and the workshops bring people to stay, cook and take part in the house as it comes back.</p>
   <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">See the workshops</a></p>
+    </div>
+  </div>
 </div></section>
+
+
+
 
 
 

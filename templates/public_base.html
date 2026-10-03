@@ -171,11 +171,18 @@ window.houseDay = (function () {
   "paymentAccepted": "Credit Card",
   "petsAllowed": false,
   "amenityFeature": [
-    { "@type": "LocationFeatureSpecification", "name": "Swimming pool", "value": true },
-    { "@type": "LocationFeatureSpecification", "name": "Tennis court", "value": true },
-    { "@type": "LocationFeatureSpecification", "name": "Free parking", "value": true },
-    { "@type": "LocationFeatureSpecification", "name": "Wi-Fi", "value": true },
-    { "@type": "LocationFeatureSpecification", "name": "Breakfast included", "value": true }
+    {"@type": "LocationFeatureSpecification", "name": "Swimming pool", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Tennis court", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Pickleball court", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Table tennis", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Board games", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Guest lounge", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Terrace", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Barbecue area", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Grounds", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Wi-Fi in common areas", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Free parking", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Breakfast included", "value": true}
   ]{% if site.get('score_overall') and site.get('review_count') %},
   {# Read from the same settings the Stay page displays, so the figure Google
      shows can never differ from the one a guest reads on the site. Was hardcoded
@@ -414,7 +421,6 @@ window.houseDay = (function () {
         <div class="g-navwrap__legal">
           <a href="{{ url_for('terms_page') }}">{{ t('Terms & Conditions') }}</a>
           <a href="{{ url_for('privacy_page') }}">{{ t('Privacy Policy') }}</a>
-          <a href="{{ url_for('legal_page') }}">{{ t('Legal Notice') }}</a>
         </div>
       </div>
     </div>
@@ -577,6 +583,8 @@ window.houseDay = (function () {
           <li><a href="{{ url_for('book_rooms') }}">{{ t('Nightly stays') }}</a></li>
           <li><a href="{{ url_for('workshops_public') }}">Workshops</a></li>
           {% if _dm != 'hidden' %}<li><a href="{{ url_for('restaurant_info') }}">{{ t('Dining') }}</a></li>{% endif %}
+          <li><a href="{{ url_for('facilities_page') }}">{{ t('The Estate') }}</a></li>
+          <li><a href="{{ url_for('whats_on') }}">{{ t('In the Valley') }}</a></li>
           <li><a href="{{ url_for('events_info') }}">{{ t('Weddings & Celebrations') }}</a></li>
           <li><a href="/restoration">{{ t('The restoration') }}</a></li>
           <li><a href="/gallery">{{ t('Gallery') }}</a></li>
@@ -596,7 +604,7 @@ window.houseDay = (function () {
           <li><a href="{{ url_for('event_find') }}">{{ t('Find an enquiry') }}</a></li>
           <li><a href="{{ url_for('terms_page') }}">{{ t('Terms & Conditions') }}</a></li>
           <li><a href="{{ url_for('privacy_page') }}">{{ t('Privacy Policy') }}</a></li>
-          <li><a href="{{ url_for('legal_page') }}">{{ t('Legal Notice') }}</a></li>
+          <li><a href="{{ url_for('legal_page') }}" lang="fr">{{ t('Mentions légales') }}</a></li>
         </ul>
       </div>
     </div>

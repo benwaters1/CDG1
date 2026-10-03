@@ -352,19 +352,56 @@
 {{ stay_or_workshop(rooms_from=(rooms|selectattr('price_per_night')|map(attribute='price_per_night')|min) if rooms else None, dm=_dm, here='stay') }}
 
 <section class="g-sec" id="extras"><div class="g-wrap">
+  {# 2 Oct: the extras as cards. They come from admin (extras: active, guest-bookable) when the route passes `extras`;
+     until it does, only the tour (the owner's €50) and the airport transfer show, with no price that could go stale. #}
+  <p class="g-fr">En plus<span class="g-fr__en">To add</span></p>
   <p class="g-eyebrow">Extras</p>
   <h2 class="g-place">Add to Your Stay</h2>
-  <div class="g-key">
-    <div class="g-key__i">
-      <p class="g-key__k">A tour of the château</p>
-      <p class="g-key__v">A guided tour of the house and its restoration. &euro;50 per booking; included in every workshop.</p>
-    </div>
-    <div class="g-key__i">
-      <p class="g-key__k">An airport transfer</p>
-      <p class="g-key__v">From Toulouse-Blagnac and back, arranged when you book.</p>
-    </div>
-  </div>
-  <p class="g-p" style="margin-top:var(--s4)">For walks, riding, skiing and the brocantes, see <a href="{{ url_for('whats_on') }}">In the Valley</a>.</p>
+  <p class="g-p g-intro">A night here is a room and breakfast. These can be added when you book.</p>
+  {% set _xs = (extras if (extras is defined and extras) else []) %}
+  {% set _seen = namespace(tour=false) %}
+  <ul class="g-addon">
+    {%- for e in _xs %}
+    {%- set nm = (e['name'] or '')|lower %}
+    {%- if 'tour' in nm %}{% set _seen.tour = true %}{% endif %}
+    {%- set ill = 'depart' if ('transfer' in nm or 'airport' in nm) else ('wine' if ('crémant' in nm or 'cremant' in nm or 'wine' in nm or 'charcuterie' in nm or 'champagne' in nm) else ('key' if 'tour' in nm else ('candelabra' if ('dinner' in nm or 'meal' in nm) else 'laurel'))) %}
+    <li class="g-addon__i">
+      <div class="g-addon__ill" aria-hidden="true">{{ illus(ill) }}</div>
+      <h3 class="g-addon__t">{{ e['name'] }}</h3>
+      {% if e['description'] %}<p class="g-addon__d">{{ e['description'] }}</p>{% endif %}
+      {% if e['price'] %}<p class="g-addon__p">&euro;{{ '{:,.0f}'.format(e['price']) }}</p>{% endif %}
+    </li>
+    {%- endfor %}
+    {%- if not _seen.tour %}
+    <li class="g-addon__i">
+      <div class="g-addon__ill" aria-hidden="true">{{ illus('key') }}</div>
+      <h3 class="g-addon__t">A tour of the château</h3>
+      <p class="g-addon__d">A guided tour of the house and its restoration. Included in every workshop.</p>
+      <p class="g-addon__p">&euro;50 per booking</p>
+    </li>
+    {%- endif %}
+    {%- if not _xs %}
+    <li class="g-addon__i">
+      <div class="g-addon__ill" aria-hidden="true">{{ illus('depart') }}</div>
+      <h3 class="g-addon__t">An airport transfer</h3>
+      <p class="g-addon__d">From Toulouse-Blagnac and back, arranged when you book.</p>
+    </li>
+    {%- endif %}
+    {%- if _dm == 'open' %}
+    <li class="g-addon__i">
+      <div class="g-addon__ill" aria-hidden="true">{{ illus('candelabra') }}</div>
+      <h3 class="g-addon__t">Dinner at La Table</h3>
+      <p class="g-addon__d">On the nights the kitchen is open, inside, by candles and lamps.</p>
+      <a class="g-addon__a" href="{{ url_for('restaurant_info') }}">Reserve a table <span aria-hidden="true">→</span></a>
+    </li>
+    {%- endif %}
+    <li class="g-addon__i">
+      <div class="g-addon__ill" aria-hidden="true">{{ illus('hike') }}</div>
+      <h3 class="g-addon__t">In the valley</h3>
+      <p class="g-addon__d">Walks, riding, skiing, kayaking and the brocantes, a short drive away.</p>
+      <a class="g-addon__a" href="{{ url_for('whats_on') }}">In the Valley <span aria-hidden="true">→</span></a>
+    </li>
+  </ul>
 </div></section>
 
 
@@ -480,6 +517,8 @@
    'Yes, in a common area of the château.'),
   ('What is a Historic Monument?',
    'A building protected by French law for its history or its art. Gudanes is classé, the higher of the two levels, so every intervention is approved by the state, and the walls stay as they are.'),
+  ('What can I use while I stay?',
+   'The pool, the tennis and pickleball courts, table tennis, the lounge and board games, the terraces, the barbecue area and the grounds, with breakfast every morning and Wi-Fi in a common area.'),
   ('Is the château heated?',
    'Heating is limited, and in the winter months the château is cold. Every bedroom has an electric blanket and a space heater.'),
   ('What about the tourist tax?',
@@ -622,12 +661,19 @@
   "petsAllowed": false,
   "numberOfRooms": {{ rooms|length }},
   "amenityFeature": [
-    {"@type":"LocationFeatureSpecification","name":"Breakfast included","value":true},
-    {"@type":"LocationFeatureSpecification","name":"Free parking","value":true},
-    {"@type":"LocationFeatureSpecification","name":"Swimming pool","value":true},
-    {"@type":"LocationFeatureSpecification","name":"Tennis court","value":true},
-    {"@type":"LocationFeatureSpecification","name":"Wi-fi","value":true},
-    {"@type":"LocationFeatureSpecification","name":"Lift","value":false}
+    {"@type": "LocationFeatureSpecification", "name": "Swimming pool", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Tennis court", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Pickleball court", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Table tennis", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Board games", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Guest lounge", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Terrace", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Barbecue area", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Grounds", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Wi-Fi in common areas", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Free parking", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Breakfast included", "value": true},
+    {"@type": "LocationFeatureSpecification", "name": "Lift", "value": false}
   ],
   "containsPlace": [
     {% for r in rooms %}{

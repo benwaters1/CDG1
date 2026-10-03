@@ -2,9 +2,9 @@
 {% from '_facilities.html' import facilities with context %}
 {% from '_illus.html' import illus %}
 {% set crumbs = [('The Estate', None)] %}
-{% block title %}The Estate: Pool, Tennis and Grounds{% endblock %}
-{% block description %}The pool, the tennis court and the grounds. All of it included with the room.{% endblock %}
-{% block og_desc %}The pool, the tennis court and the grounds. All of it included with the room.{% endblock %}
+{% block title %}The Estate: Pool, Tennis, Pickleball and the Grounds{% endblock %}
+{% block description %}The pool, tennis and pickleball, table tennis, the lounge, the terraces, a barbecue area and the grounds. All of it included with the room.{% endblock %}
+{% block og_desc %}The pool, tennis and pickleball, table tennis, the lounge, the terraces, a barbecue area and the grounds. All of it included with the room.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
@@ -21,7 +21,7 @@
     <p class="g-hero__eyebrow">Le Domaine</p>
     {# The nav says "The Estate"; the page answered to "Facilities & Activities". The <title> keeps the search wording. #}
     <h1 class="g-hero__title">{{ t('The Estate') }}</h1>
-    <p class="g-hero__lede">The pool, the tennis court and the grounds, with the mountains all around.</p>
+    <p class="g-hero__lede">The pool, tennis and pickleball, the terraces and the grounds, with the mountains all around.</p>
     <p class="g-hero__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
   </div>
 </section>

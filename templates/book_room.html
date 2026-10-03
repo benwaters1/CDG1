@@ -731,6 +731,8 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 {# Every line here matches what book_room() actually does: Stripe takes the
    payment, the château reads every request, a decline refunds automatically,
    and the manage link is emailed with the reference code. #}
+{% from '_facilities.html' import facilities_strip %}{{ facilities_strip() }}
+
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <p class="g-eyebrow">Before You Commit</p>
   <h2 class="g-place">What Happens Next</h2>

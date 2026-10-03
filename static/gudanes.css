@@ -10532,3 +10532,82 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
 /* two ornaments side by side: keep the more meaningful one (the motto over the monogram, the monogram over a divider) */
 .g main > .g-mark__wrap:has(+ .g-mono__wrap), .g main > .g-mark__wrap + .g-mark__wrap{ display: none; }
 .g main > .g-mono__wrap:has(+ .g-wrap > .g-devise), .g main > .g-wrap:has(> .g-devise) + .g-mono__wrap{ display: none; }
+
+/* 2 Oct - ADD TO YOUR STAY as illustrated cards (it was two plain lines). From admin's extras when the route passes them. */
+.g .g-addon{ list-style: none; margin: var(--s6) 0 0; padding: 0; display: grid; gap: var(--s5); grid-template-columns: 1fr; }
+@media (min-width: 40rem){ .g .g-addon{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (min-width: 64rem){ .g .g-addon{ grid-template-columns: repeat(4, minmax(0,1fr)); } }
+.g .g-addon > .g-addon__i{ max-width: none; display: flex; flex-direction: column; align-items: center; text-align: center; padding: var(--s6) var(--s5) var(--s5);
+  background-color: #FBF8F1; border: 1px solid var(--line); border-top: 2px solid var(--gilt-leaf); box-shadow: 0 14px 30px -24px rgba(20,48,95,.4); }
+.g .g-addon__ill{ width: 80px; color: var(--gilt); margin-bottom: var(--s4); }
+.g .g-addon__t{ margin: 0 0 var(--s3); font-family: var(--display); font-weight: 400; font-size: clamp(21px, .6vw + 17px, 26px); line-height: 1.2; color: var(--blue-deep); }
+.g .g-addon__d{ margin: 0 0 var(--s4); font-family: var(--serif); font-size: var(--t-base); line-height: 1.6; color: var(--ink-2); max-width: 17rem; flex: 1; }
+.g .g-addon__p{ margin: 0; font-family: var(--ui); font-size: var(--t-xs); font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
+.g .g-addon .g-addon__a{ font-family: var(--ui); font-size: var(--t-xs); font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--blue-deep); text-decoration: none !important; border-bottom: 1px solid var(--gilt-leaf); padding-bottom: 3px; }
+/* the comparison table on a phone: each row's label across the full width, the two answers side by side beneath it */
+@media (max-width: 40rem){
+  .g table.g-vs, .g table.g-vs thead, .g table.g-vs tbody, .g table.g-vs tfoot{ display: block; width: 100%; }
+  .g table.g-vs tr{ display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  .g table.g-vs thead td:first-child, .g table.g-vs tfoot td:first-child{ display: none; }
+  .g table.g-vs tbody th{ grid-column: 1 / -1; padding: var(--s3) var(--s3) 2px; border-bottom: 0; font-weight: 600; }
+  .g table.g-vs tbody td{ padding: 2px var(--s3) var(--s3); }
+  .g table.g-vs tfoot td{ padding: var(--s3); }
+  .g table.g-vs tfoot .g-btn{ display: flex; width: 100%; justify-content: center; white-space: nowrap; }
+}
+@media (max-width: 40rem){ .g table.g-vs tbody th, .g table.g-vs thead th{ width: auto !important; max-width: none !important; min-width: 0 !important; } }
+/* a short opening line: no drop cap (it needs several lines beside it), a touch larger instead */
+.g .g-p.g-intro{ font-size: clamp(18px, .4vw + 16px, 21px); line-height: 1.6; color: var(--ink); max-width: 46rem; }
+/* 2 Oct - the facilities as a compact strip (room page) */
+.g .g-fstrip{ list-style: none; margin: var(--s6) 0 0; padding: var(--s5) 0 0; border-top: 1px solid var(--gilt-leaf); display: grid; gap: var(--s4) var(--s3);
+  grid-template-columns: repeat(3, minmax(0,1fr)); }
+@media (min-width: 48rem){ .g .g-fstrip{ grid-template-columns: repeat(5, minmax(0,1fr)); } }
+@media (min-width: 72rem){ .g .g-fstrip{ grid-template-columns: repeat(9, minmax(0,1fr)); } }
+.g .g-fstrip > .g-fstrip__i{ max-width: none; display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--s2); }
+.g .g-fstrip__ill{ display: block; width: 52px; color: var(--gilt); }
+.g .g-fstrip .g-fstrip__l{ font-family: var(--serif); font-size: var(--t-small) !important; line-height: 1.35; color: var(--ink-2); }
+
+/* 2 Oct - two short sections side by side (Weddings, Private, Photoshoots, The Family), each with a small medallion */
+.g .g-duo{ display: grid; gap: var(--s7); }
+@media (min-width: 56rem){ .g .g-duo{ grid-template-columns: repeat(2, minmax(0,1fr)); gap: clamp(40px, 5vw, 96px); } }
+.g .g-duo__i{ border-top: 1px solid var(--gilt-leaf); padding-top: var(--s5); min-width: 0; }
+.g .g-duo__ill{ width: 92px; aspect-ratio: 1; box-sizing: border-box; padding: 17px; margin: 0 0 var(--s4); border: 1px solid var(--gilt-leaf); border-radius: 50%;
+  outline: 1px solid var(--gilt-leaf); outline-offset: 5px; background: #FBF8F1; color: var(--gilt); }
+.g .g-duo__ill svg{ width: 100%; height: auto; }
+.g .g-duo .g-place{ font-size: clamp(28px, 1.3vw + 18px, 38px); }
+.g .g-duo .g-p{ max-width: none; }
+@media (max-width: 40rem){ .g .g-duo__ill{ width: 72px; padding: 13px; } }
+
+/* =====================================================================
+   2 Oct - ON A PHONE, CARD RUNS SWIPE. The room cards, the retreats, the
+   four lengths, the dates and the extras were each a stack of full-screen
+   cards (the homepage rooms alone ran ~3000px). Each is now a row you swipe,
+   one card at a time with the next peeking in. Desktop is unchanged.
+   ===================================================================== */
+@media (max-width: 40rem){
+  .g .g-homerooms, .g .g-cards, .g .g-wscards, .g .g-choose, .g .g-sittings-grid, .g .g-addon{
+    display: flex !important; grid-template-columns: none !important; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    gap: var(--s4); margin-left: calc(-1 * var(--s5)); margin-right: calc(-1 * var(--s5)); padding: 6px var(--s5) var(--s5); scroll-padding-left: var(--s5); }
+  .g .g-homerooms::-webkit-scrollbar, .g .g-cards::-webkit-scrollbar, .g .g-wscards::-webkit-scrollbar, .g .g-choose::-webkit-scrollbar,
+  .g .g-sittings-grid::-webkit-scrollbar, .g .g-addon::-webkit-scrollbar{ display: none; }
+  .g .g-homerooms > *, .g .g-cards > *, .g .g-wscards > *, .g .g-choose > *, .g .g-sittings-grid > *, .g .g-addon > *{
+    flex: 0 0 84%; max-width: none !important; scroll-snap-align: start; grid-column: auto !important; }
+  /* the wide last-room layout is a desktop idea */
+  .g .g-homerooms > .g-homeroom:last-child:nth-child(odd){ display: block; }
+  .g .g-homerooms > .g-homeroom:last-child:nth-child(odd) .g-homeroom__img{ height: auto; min-height: 0; aspect-ratio: 4 / 3; }
+  .g .g-sittings-grid > .g-sit:only-child{ flex-basis: 100%; }
+}
+
+@media (max-width: 40rem){ .g .g-sittings-grid > .g-sit{ flex: 0 0 84%; } .g .g-sittings-grid > .g-sit:only-child{ flex-basis: 100%; } }
+/* the facilities frame on a phone: three compact tiles to a row (it ran ~2000px as two full cards a row) */
+@media (max-width: 40rem){
+  .g .g-facil-frame .g-facil{ grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--s2); }
+  .g .g-facil-frame .g-facil > .g-facil__i{ padding: var(--s3) 4px var(--s3); background-size: 12px 12px; }
+  .g .g-facil-frame .g-facil__ill{ width: 40px; margin-bottom: var(--s2); }
+  .g .g-facil-frame .g-facil__fr{ font-size: 14px; line-height: 1.2; }
+  .g .g-facil-frame .g-facil__en{ font-size: 9.5px !important; letter-spacing: .1em; margin: .2rem 0 0; }
+  .g .g-facil-frame .g-facil__d{ display: none; }
+}
+@media (max-width: 40rem){ .g .g-facil-frame .g-facil__en{ font-size: 10px !important; } }
+/* an introductory line on a dark band reads light (it took the navy text colour and vanished on In the Valley's navy band) */
+.g .g-sec--navy .g-p.g-intro, .g .g-sec--dark .g-p.g-intro, .g .g-gl .g-p.g-intro, .g .g-full .g-p.g-intro, .g .g-close .g-p.g-intro{ color: rgba(255,255,255,.92); }

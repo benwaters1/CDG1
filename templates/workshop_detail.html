@@ -153,11 +153,15 @@
   <ul class="g-ticks">
     {% if _inc and not _basis %}{% for item in _inc.split(',') if item.strip() %}{% set _x = item.strip() %}<li>{{ _x[:1]|upper }}{{ _x[1:] }}</li>{% endfor %}
     {% else %}
-    <li>Every meal, cooked in the château kitchen, with drinks throughout</li>
-    <li>Your room in the château, with a private bathroom on the first floor</li>
-    <li>Everything on the itinerary — the teaching{% if _ex %}, the materials and the excursions{% else %} and the materials{% endif %}</li>
-<li>A tour of the château and its restoration</li>
+    <li>Every meal, cooked in the château kitchen, with drinks throughout, alcoholic and non-alcoholic, mostly local</li>
+    <li>Your room in the château, with a private bathroom downstairs, on the first floor</li>
+    {% if _ex %}<li>The activities: cooking classes, bargaining at the brocantes, morning yoga, kayaking or hiking, and a barbecue in the grounds, all optional</li>
+    <li>The excursions, and everything on the itinerary, materials included</li>{% else %}<li>The activities: the workshop's sessions at the house, a cooking class and morning yoga, all optional</li>
+    <li>Everything on the itinerary, materials included</li>{% endif %}
+    <li>A formal dinner in the Salon de Musique, by candlelight</li>
+    <li>A tour of the château and its restoration</li>
     {% if _tx %}<li>The transfers from central Toulouse, there and back</li>{% endif %}
+    <li>Free time with the pool, tennis and pickleball, table tennis, the lounge and the terraces</li>
     {% endif %}
   </ul>
   {% if _basis %}<p class="g-hint">Prices are {{ _basis[:1]|lower }}{{ _basis[1:] }}</p>{% endif %}
