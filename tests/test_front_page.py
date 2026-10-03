@@ -21,7 +21,10 @@ m = _harness.m
 # page before they are counted, so renaming them in a design pass fails
 # here rather than quietly turning every count into zero.
 ROOM_MARK = "g-homeroom__name"
-SIT_MARK = "g-sit__name"
+# 3 October (2oct-l): the "Next Dates" cards (g-sit__name) were cut; the band
+# under the hero lists the next three sittings instead, each title marked
+# g-full__t. Same promises: dates still ahead, at most three, none when empty.
+SIT_MARK = 'class="g-full__t"'
 
 
 def run():
