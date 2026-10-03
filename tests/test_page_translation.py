@@ -715,6 +715,22 @@ def run():
                 detail="%d stale: %s" % (len(stale), "; ".join(
                     k[:60] for k in stale[:3])))
 
+    s.section("A key in a provider's error is redacted before it is kept")
+    # The last error is stored in app_settings and shown on a page, and a
+    # provider that quotes the credential back would put it there. The
+    # long-token half of redact_secrets was written through a heredoc and
+    # arrived with two backspace characters where its \\b word boundaries
+    # belonged, so from 20 September to 3 October it never matched anything:
+    # a 36-character key with no sk- prefix went into the setting as typed.
+    key = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"
+    said = m.redact_secrets("provider said: invalid key %s for project" % key)
+    s.check("a long key with no prefix is redacted", key not in said and "[redacted]" in said,
+            detail=said)
+    s.check("so is a prefixed one",
+            "sk-ABCDEFGHIJKLMNOP" not in m.redact_secrets("bad key sk-ABCDEFGHIJKLMNOP here"))
+    prose = "The translation provider timed out after 30 seconds."
+    s.check("and the words around it are left readable", m.redact_secrets(prose) == prose)
+
     s.section("How much of the site can actually be read in each language")
     # PRINTED, NOT ASSERTED, and deliberately the number that was missing: not
     # "is the table full" but "how much of what a guest reads is translated".

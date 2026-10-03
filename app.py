@@ -81426,7 +81426,7 @@ def redact_secrets(text):
     costs nothing. A provider quoting the credential is a different matter,
     and this page is public."""
     out = re.sub(r"(sk-|key-)[A-Za-z0-9_\-]{8,}", "[key redacted]", text or "")
-    return re.sub(r"[A-Za-z0-9_\-]{32,}", "[redacted]", out)
+    return re.sub(r"\b[A-Za-z0-9_\-]{32,}\b", "[redacted]", out)
 
 
 def run_page_translation_job(conn, limit=None):

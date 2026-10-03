@@ -49,7 +49,7 @@ def fix_file(path):
     changes = 0
     # Seeded with the ids already in the file, so a generated one cannot
     # collide with a hand-written one either.
-    used = {i: 1 for i in re.findall(r'id="([^"]+)"', src)}
+    used = {i: 1 for i in re.findall(r'\bid="([^"]+)"', src)}
 
     # ---- Pattern A: label immediately before a control -------------------
     # Allow whitespace, Jinja comments/tags and one wrapping <div> between.
