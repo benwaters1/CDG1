@@ -423,6 +423,28 @@ def run():
     s.check("and NOT marked as inside the stay's total, because it is not",
             l6 and l6[0]["in_booking_total"] == 0)
 
+    s.section("The Stay page lists what a guest can add, from the catalogue")
+    # 3 October (2oct-n): "Add to Your Stay" draws the extras the route passes
+    # and, without them, only a hand-written tour and transfer with no prices.
+    # Read from the catalogue so a price changed in admin is the price shown.
+    conn = db()
+    offered = conn.execute(
+        "SELECT name, price FROM extras WHERE active = 1 AND guest_bookable = 1").fetchall()
+    hidden = conn.execute(
+        "INSERT INTO extras (name, price, category, guest_bookable, active) "
+        "VALUES ('ztest-switched-off hamper', 77, 'food', 1, 0)").lastrowid
+    conn.commit()
+    conn.close()
+    # Read as text: the template writes the euro sign as &euro;.
+    stay = html.unescape(_guest().get("/book").get_data(as_text=True))
+    missing = [r["name"] for r in offered
+               if r["name"] not in stay
+               or "€{:,.0f}".format(r["price"]) not in stay]
+    s.check("every extra a guest can book is on it, at its price",
+            offered and not missing, detail=str(missing))
+    s.check("nothing kept for the till", "ztest-till-only glass" not in stay)
+    s.check("and nothing switched off", "ztest-switched-off hamper" not in stay)
+
     s.section("The catalogue can say it")
     oc.post("/admin/extras/new", data={"name": "ztest-asks-when", "price": "12",
                                        "category": "food", "ask_when": "on",

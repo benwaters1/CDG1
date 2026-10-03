@@ -41227,10 +41227,17 @@ def book_rooms():
     # a missing panel -- and the page still looked fine, because the error page
     # renders too.
     welcome = returning_guest_welcome(conn)
+    # "Add to Your Stay" lists what a guest can add when they book, from the
+    # catalogue rather than from copy, so a price changed in admin is the
+    # price shown here. The same rows the booking form and the guest account
+    # offer: active and guest-bookable, nothing kept for the till.
+    stay_extras = conn.execute(
+        """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
+           ORDER BY category, sort_order, name""").fetchall()
     conn.close()
     return render_template(
         "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
-        returning_guest=welcome,
+        returning_guest=welcome, extras=stay_extras,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
         stay_nights=stay_nights,
         nothing_available=nothing_available, next_free=next_free,
