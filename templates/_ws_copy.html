@@ -103,7 +103,7 @@
 {%- set _noel = ('Noël' in (w['title'] or '')) or ('Noel' in (w['title'] or '')) or ('Christmas' in (w['title'] or '')) -%}
 <section class="g-sec g-sec--sand g-journey-sec"><div class="g-wrap">
   <div class="g-journey-sec__art" aria-hidden="true">{{ illus('chateau') }}</div>
-  <p class="g-fr">Le déroulé des journées<span class="g-fr__en">The shape of the days</span></p>
+  <p class="g-fr">Le déroulé des journées <span class="g-fr__en">The shape of the days</span></p>
   <p class="g-eyebrow">The Experience, Day by Day</p>
   <h2 class="g-place">{{ (WORD.get(_n) ~ ' Nights at Gudanes') if (PLAN and WORD.get(_n)) else 'The Days Themselves' }}</h2>
   {% if _free %}
@@ -111,7 +111,7 @@
   <div class="g-journey__free">
     <div class="g-journey__free-ill" aria-hidden="true">{{ illus('wine') }}</div>
     <div class="g-journey__free-b">
-      <p class="g-journey__free-fr" lang="fr">Le temps libre<span lang="en">Free time</span></p>
+      <p class="g-journey__free-fr" lang="fr">Le temps libre <span lang="en">Free time</span></p>
       <p class="g-journey__free-p">Free time is yours to spend as you choose: relaxing with a glass of local wine on the terraces, a game of tennis or pickleball, a swim in the pool, or nothing at all.</p>
     </div>
   </div>
@@ -125,9 +125,9 @@
       <div class="g-journey__n"><span class="g-journey__r" aria-hidden="true">{{ ROM[loop.index0] }}</span><span class="g-journey__l">{{ ORD[loop.index0] }}</span></div>
       <div class="g-journey__card">
         <div class="g-journey__b">
-          <h3 class="g-journey__t"><span class="g-vh">Day {{ loop.index }}: </span>{{ fr }}<em lang="en">{{ en }}</em></h3>
+          <h3 class="g-journey__t"><span class="g-vh">Day {{ loop.index }}: </span>{{ fr }} <em lang="en">{{ en }}</em></h3>
           <p class="g-journey__p">{{ p }}</p>
-          <ul class="g-journey__m">{% for k, v in moments %}<li><b lang="fr">{{ micon(MI.get(k, 'soir')) }}{{ k }}</b>{{ v }}</li>{% endfor %}</ul>
+          <ul class="g-journey__m">{% for k, v in moments %}<li><b lang="fr">{{ micon(MI.get(k, 'soir')) }}{{ k }}</b> {{ v }}</li>{% endfor %}</ul>
         </div>
         <div class="g-journey__ill" aria-hidden="true">{{ illus(ill) }}</div>
       </div>
@@ -138,7 +138,7 @@
   <div class="g-journey__free g-journey__opt">
     <div class="g-journey__free-ill" aria-hidden="true">{{ illus('ski') }}</div>
     <div class="g-journey__free-b">
-      <p class="g-journey__free-fr" lang="fr">En option<span lang="en">Snow permitting</span></p>
+      <p class="g-journey__free-fr" lang="fr">En option <span lang="en">Snow permitting</span></p>
       <p class="g-journey__free-p">If the snow has come, there is the chance to ski nearby. It depends on the weather, and the ski pass and ski hire are an additional cost.</p>
     </div>
   </div>

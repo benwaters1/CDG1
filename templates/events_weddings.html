@@ -15,8 +15,9 @@
 {% from '_bits.html' import event_tabs, fact_strip %}
 {% from '_marks.html' import mark %}
 
-<section class="g-hero g-hero--short">
+<section class="g-hero g-hero--short g-hero--art">
   <div class="g-hero__wash"></div>
+  <div class="g-hero__art" aria-hidden="true">{{ illus('rings') }}</div>
   <div class="g-wrap">
     <p class="g-hero__eyebrow">Ariège · One At A Time</p>
     <h1 class="g-hero__title">Married in a monument</h1>
@@ -40,7 +41,7 @@
   <div class="g-duo">
     <div class="g-duo__i">
       <div class="g-duo__ill" aria-hidden="true">{{ illus('chateau') }}</div>
-      <p class="g-fr">La maison entière<span class="g-fr__en">The whole house</span></p>
+      <p class="g-fr">La maison entière <span class="g-fr__en">The whole house</span></p>
   <p class="g-eyebrow">Weddings</p>
   <h2 class="g-place">The Whole House, Not a Room In It</h2>
   <p class="g-p g-lede-first">The whole château for your wedding: the house and the grounds are yours for the days you take it.</p>
@@ -49,7 +50,7 @@
     </div>
     <div class="g-duo__i">
       <div class="g-duo__ill" aria-hidden="true">{{ illus('rings') }}</div>
-  <p class="g-fr">Le grand jour<span class="g-fr__en">The day itself</span></p>
+  <p class="g-fr">Le grand jour <span class="g-fr__en">The day itself</span></p>
   <p class="g-eyebrow">The Day</p>
   <h2 class="g-place">A Wedding in a Château</h2>
   <p class="g-p g-lede-first">Say your vows in a château the world has watched come back to life, with the Pyrénées all around and the whole house yours for the days you take it.</p>
@@ -89,10 +90,10 @@
 <!-- ============ ENQUIRE ============ -->
 <section class="g-sec g-sec--sand" id="enquire"><div class="g-wrap">
   <p class="g-eyebrow">Tell Us</p>
-  <h2 class="g-place">Tell us the shape of it</h2>
+  <h2 class="g-place">Tell Us the Shape of It</h2>
   <p class="g-p">Dates, a rough number, and anything you already know you want. You will get a figure rather than a brochure.</p>
   <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
-  <p class="g-limit"><span class="g-limit__k">One at a time</span>Only one event runs at the château at once, and only a handful are taken each year.</p>
+  <p class="g-limit"><span class="g-limit__k">One at a time</span> Only one event runs at the château at once, and only a handful are taken each year.</p>
 </div></section>
 
 <div class="g-wrap">{{ proof(settings) }}</div>

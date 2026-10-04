@@ -65,7 +65,7 @@
 {% if _dm == 'open' %}<section class="g-book-bar"><div class="g-wrap">
   <div class="g-table-cta">
     <div>
-      <h2 class="g-h3" style="margin-bottom:var(--s2)">Reserve a table</h2>
+      <h2 class="g-h3" style="margin-bottom:var(--s2)">Reserve a Table</h2>
       <p class="g-table-cta__d">
         {%- if settings and settings['price_per_person'] -%}
           <span class="g-fig" data-eur="{{ settings['price_per_person']|int }}">€{{ '{:,.0f}'.format(settings['price_per_person']) }}</span> per person ·
@@ -88,10 +88,10 @@
     <a href="{{ url_for('restaurant_find') }}">Manage an existing reservation</a>
   </p>
 </div></section>{% else %}
-<section class="g-sec"><div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Closed for the season</span>La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}. Breakfast is served every morning for guests staying in the house.</p></div></section>
+<section class="g-sec"><div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Closed for the season</span> La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}. Breakfast is served every morning for guests staying in the house.</p></div></section>
 {% endif %}
 
-<div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w" alt="The dining room laid for dinner" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w" alt="The kitchen gardens in late summer" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1500w" alt="The long table before service" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1500w" alt="Produce from the Sunday market" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1728027560330-AOHMYTLQV9BVVSYW5FS3/Gardens+-+Formal+Gardens+2.jpg?format=1500w" alt="The formal gardens" loading="lazy"></div>
+<div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w" alt="The kitchen gardens in late summer" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1500w" alt="The long table before service" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1500w" alt="Produce from the Sunday market" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1728027560330-AOHMYTLQV9BVVSYW5FS3/Gardens+-+Formal+Gardens+2.jpg?format=1500w" alt="The formal gardens" loading="lazy"></div>
 
 {# 1 Oct: ">Occasions<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
@@ -115,7 +115,7 @@
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <div class="g-vignette" aria-hidden="true">{{ illus('candelabra') }}</div>
-  <p class="g-fr">À table<span class="g-fr__en">At the table</span></p>
+  <p class="g-fr">À table <span class="g-fr__en">At the table</span></p>
   <p class="g-eyebrow">The French Table</p>
   <h2 class="g-place">La Table Française</h2>
   <p class="g-p g-lede-first">French cooking is about time as much as taste: a meal that is not hurried, and a table that is not cleared too soon. Dinner at Gudanes is cooked that way, seasonal and generous, in a dining room brought back from ruin, and it begins, as it should, with an apéritif.</p>

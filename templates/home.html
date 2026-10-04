@@ -1,7 +1,7 @@
 {% extends "public_base.html" %}
 {% from '_illus.html' import illus %}
 {% block title %}A French Château Experience in the Pyrénées{% endblock %}
-{% block description %}A French château experience in the Pyrénées: an eighteenth-century Class I Historic Monument, under restoration and open to guests. Rooms{% if (setting(site, 'dining_mode') or 'open')|lower|trim == 'open' %}, a table,{% endif %} and workshop retreats.{% endblock %}
+{% block description %}A French château experience in the Pyrénées: a Class I Historic Monument under restoration, open to guests for a night or a workshop retreat.{% endblock %}
 {% block og_desc %}An eighteenth-century Class I Historic Monument in the Ariège, still under restoration and open to guests. Rooms, dinner, and workshop retreats.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--full{% endblock %}
@@ -83,7 +83,7 @@
 <!-- ============ LA PLEINE EXPÉRIENCE - the château in full, under the calendar (2 Oct) ============ -->
 <section class="g-full" aria-labelledby="full-h"><div class="g-wrap g-full__in">
   <div class="g-full__copy">
-    <p class="g-full__fr" lang="fr">La pleine expérience<span class="g-full__fren" lang="en">The château in full</span></p>
+    <p class="g-full__fr" lang="fr">La pleine expérience <span class="g-full__fren" lang="en">The château in full</span></p>
     <h2 class="g-full__h" id="full-h">Experience the Château in Full</h2>
     <p class="g-full__p">Built in 1741, very nearly lost, and brought back room by room: this is a house with a long history, and a workshop retreat lets you live inside it. Three to seven nights, with every meal and drinks, a tour of the château and its restoration, the brocantes and cooking classes, yoga, the valley, a formal dinner in the Salon de Musique by candlelight, and the house to yourselves.</p>
     <p class="g-full__btns">
@@ -108,9 +108,9 @@
     {% else %}
     <p class="g-full__k">Every workshop</p>
     <ul class="g-full__threads">
-      <li lang="fr">La Brocante<span lang="en">The antique fairs of the valley</span></li>
-      <li lang="fr">La Cuisine<span lang="en">French cooking at the château</span></li>
-      <li lang="fr">La Restauration<span lang="en">The house up close</span></li>
+      <li lang="fr">La Brocante <span lang="en">The antique fairs of the valley</span></li>
+      <li lang="fr">La Cuisine <span lang="en">French cooking at the château</span></li>
+      <li lang="fr">La Restauration <span lang="en">The house up close</span></li>
     </ul>
     {% endif %}
   </div>
@@ -145,7 +145,7 @@
 
 <section class="g-sec"><div class="g-wrap">
   <div class="g-vignette" aria-hidden="true">{{ illus('pool') }}</div>
-  <p class="g-fr">L’art de vivre<span class="g-fr__en">The art of living</span></p>
+  <p class="g-fr">L’art de vivre <span class="g-fr__en">The art of living</span></p>
   <p class="g-eyebrow">The Gudanes Experience</p>
   <h2 class="g-place">La Vie de Château</h2>
   <p class="g-p g-lede-first">There is a particular pleasure in waking in a house like this: light across old stone, the valley below, and breakfast waiting. The days are slow here by design, with the pool, the grounds and the mountains on every side.</p>
@@ -236,7 +236,7 @@
 {# 2 Oct: "The Next Dates" cut - the band under the hero lists the next dates and sells the workshops (CUT_SECTIONS.txt keeps it) #}
 {% endif %}
 
-<div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1500w" alt="The château seen from the valley road" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1500w" alt="The east façade above the parkland" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="The gates in spring" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="The château de Gudanes" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1500w" alt="The château at night" loading="lazy"></div>
+<div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1500w" alt="The château seen from the valley road" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1500w" alt="The restoration of a fresco, close up" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="The gates in spring" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="The château de Gudanes" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1500w" alt="The château at night" loading="lazy"></div>
 
 <section class="g-sec--flush"><div class="g-half">
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1500w" alt="A bedroom at Château de Gudanes" loading="lazy">

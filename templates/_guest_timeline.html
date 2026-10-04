@@ -48,7 +48,7 @@
 
     <li class="g-timeline__i">
       <span class="g-timeline__k">A week before</span>
-      <span class="g-timeline__v">Arrival details, directions and the dinner menu, by email.</span>
+      <span class="g-timeline__v">Arrival details{% if site is defined and (setting(site, 'dining_mode') or 'open')|lower|trim == 'open' %}, directions and the dinner menu{% else %} and directions{% endif %}, by email.</span>
     </li>
 
     <li class="g-timeline__i">

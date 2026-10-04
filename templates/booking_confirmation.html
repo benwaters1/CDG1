@@ -7,8 +7,6 @@
 
 {% from '_before.html' import packing, arriving %}
 {% from '_animals.html' import animals %}
-{# with context: the card reads house_maps from the context processor, and imported without it the
-   'Open in maps' link never rendered on any confirmation (found after the 1 October (g) handover). #}
 {% from '_arrival_card.html' import arrival_card with context %}
 {% from '_paydates.html' import pay_dates, no_reply %}
 {% from '_room_copy.html' import room_name %}

@@ -148,7 +148,7 @@
 {% from '_print_stay.html' import print_stay %}
 {{ print_stay(booking, room) }}
 
-{% from '_guest_timeline.html' import timeline %}
+{% from '_guest_timeline.html' import timeline with context %}
 {{ timeline(booking) }}
 
 <div class="g-mb-card" style="margin-top:var(--s4);">

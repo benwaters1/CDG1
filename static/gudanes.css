@@ -10611,3 +10611,26 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
 @media (max-width: 40rem){ .g .g-facil-frame .g-facil__en{ font-size: 10px !important; } }
 /* an introductory line on a dark band reads light (it took the navy text colour and vanished on In the Valley's navy band) */
 .g .g-sec--navy .g-p.g-intro, .g .g-sec--dark .g-p.g-intro, .g .g-gl .g-p.g-intro, .g .g-full .g-p.g-intro, .g .g-close .g-p.g-intro{ color: rgba(255,255,255,.92); }
+
+/* 2 Oct - the Workshops page lists every workshop twice with the same photograph (The Retreats cards, then the date
+   cards). The date cards there drop the photo and read as a compact list of dates; a workshop's own page keeps it. */
+.g #dates .g-sit__img{ display: none; }
+.g #dates .g-sit{ border-top: 2px solid var(--gilt-leaf); }
+@media (min-width: 64rem){ .g #dates .g-sittings-grid{ display: grid !important; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); justify-content: start; gap: var(--s4); }
+  .g #dates .g-sittings-grid > .g-sit{ width: auto; max-width: none; margin: 0; } }
+@media (min-width: 64rem){
+  .g #dates .g-sit__when{ font-size: clamp(19px, .6vw + 13px, 22px) !important; line-height: 1.25; }
+  .g #dates .g-sit .g-btn{ display: flex; width: 100%; justify-content: center; text-align: center; white-space: nowrap; padding-left: .75rem; padding-right: .75rem; }
+}
+
+/* 2 Oct - HERO LAYERING. The wash (absolute) painted over hero text in an unpositioned container, greying out the title,
+   lede and button (the event pages, where the text sits in a plain .g-wrap). Hero content now sits above the wash. */
+.g .g-hero > .g-wrap, .g .g-hero > .g-hero__in{ position: relative; z-index: 2; }
+/* a hero with no photograph carries its drawing, large and faint, on the right of the navy */
+.g .g-hero--art{ overflow: hidden; }
+.g .g-hero__art{ position: absolute; z-index: 1; right: clamp(16px, 6vw, 120px); top: 50%; transform: translateY(-50%); width: clamp(180px, 26vw, 400px);
+  color: var(--gilt-on-dark, #C6A66E); opacity: .32; pointer-events: none; }
+.g .g-hero__art svg{ width: 100%; height: auto; }
+@media (max-width: 40rem){ .g .g-hero__art{ width: 48vw; right: -6vw; opacity: .16; } }
+.g .g-hero__art{ color: #C6A66E !important; opacity: .5; width: clamp(150px, 15vw, 280px); right: clamp(16px, 3vw, 64px); }
+@media (max-width: 40rem){ .g .g-hero__art{ width: 40vw; right: -4vw; opacity: .22; } }

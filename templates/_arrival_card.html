@@ -55,8 +55,8 @@
 
   <p class="g-arrive__n">Save this page, or print it. Nothing on it needs a connection.</p>
   <p class="g-arrive__a">
-    <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--solid">Book a table</a>
-    <a href="{{ url_for('facilities_page') }}">What is in the valley</a>
+    {% if site is defined and (setting(site, 'dining_mode') or 'open')|lower|trim == 'open' %}<a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--solid">Book a table</a>{% endif %}
+    <a href="{{ url_for('whats_on') }}">What is in the valley</a>
   </p>
 </section>
 {% endmacro %}

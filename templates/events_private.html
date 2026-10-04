@@ -13,8 +13,9 @@
 {% from '_bits.html' import event_tabs, fact_strip %}
 {% from '_marks.html' import mark %}
 
-<section class="g-hero g-hero--short">
+<section class="g-hero g-hero--short g-hero--art">
   <div class="g-hero__wash"></div>
+  <div class="g-hero__art" aria-hidden="true">{{ illus('wine') }}</div>
   <div class="g-wrap">
     <p class="g-hero__eyebrow">Ariège · Private Hire</p>
     <h1 class="g-hero__title">A private house for a few days</h1>
@@ -31,7 +32,7 @@
   <div class="g-duo">
     <div class="g-duo__i">
       <div class="g-duo__ill" aria-hidden="true">{{ illus('wine') }}</div>
-      <p class="g-fr">Une fête privée<span class="g-fr__en">A private celebration</span></p>
+      <p class="g-fr">Une fête privée <span class="g-fr__en">A private celebration</span></p>
   <p class="g-eyebrow">Private Events</p>
   <h2 class="g-place">Smaller Than a Wedding, Longer Than a Dinner</h2>
   <p class="g-p g-intro">The whole house for a few days, for a birthday, an anniversary or a gathering of your own.</p>
@@ -39,7 +40,7 @@
     </div>
     <div class="g-duo__i">
       <div class="g-duo__ill" aria-hidden="true">{{ illus('key') }}</div>
-  <p class="g-fr">Entre soi<span class="g-fr__en">Among your own</span></p>
+  <p class="g-fr">Entre soi <span class="g-fr__en">Among your own</span></p>
   <p class="g-eyebrow">Private Hire</p>
   <h2 class="g-place">A Few Days of Your Own</h2>
   <p class="g-p g-lede-first">For the birthdays and anniversaries that deserve more than a restaurant: the whole house for a few days, the people you choose, and the evenings as long as you like.</p>
@@ -57,11 +58,11 @@
 <!-- ============ ENQUIRE ============ -->
 <section class="g-sec g-sec--sand" id="enquire"><div class="g-wrap">
   <p class="g-eyebrow">Tell Us</p>
-  <h2 class="g-place">What are you marking?</h2>
+  <h2 class="g-place">What Are You Marking?</h2>
   <p class="g-p">Tell us the occasion, roughly when, and how many. We will come back with what the house can do and what it costs.</p>
   <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
   <p class="g-p">If your party would rather spend its days learning something, ask us about <a href="{{ url_for('workshops_public') }}">the workshops</a>: every meal and drinks, a tour of the house and the sessions.</p>
-  <p class="g-limit"><span class="g-limit__k">One at a time</span>Only one event runs at the château at once, and only a handful are taken each year.</p>
+  <p class="g-limit"><span class="g-limit__k">One at a time</span> Only one event runs at the château at once, and only a handful are taken each year.</p>
 </div></section>
 <div class="g-wrap">{{ proof(settings) }}</div>
 
