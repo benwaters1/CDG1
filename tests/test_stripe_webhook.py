@@ -183,6 +183,169 @@ def run():
     s.check("it is a 200", r.status_code == 200, detail=str(r.status_code))
     s.check("and nothing was created", not _booking(conn, TAG + "noop"))
 
+    # ------------------------------------------------------------------
+    # MONEY GOING BACK. Everything above is a guest paying. The handler also
+    # listens for five refund events and every charge.dispute.*, and until
+    # now neither branch had ever run: record_refund_from_stripe and
+    # record_dispute appear in no test file at all.
+    #
+    # They are the half that fails silently. A payment that does not arrive
+    # is noticed, because somebody is waiting for a booking. A refund that
+    # does not arrive leaves the books saying a guest was paid back when the
+    # money is still here, or still says they paid when it has gone -- and
+    # nothing on any page disagrees.
+    # ------------------------------------------------------------------
+    s.section("A refund made in Stripe's own dashboard")
+    # The case the helper's own docstring calls invisible: refunded in
+    # Stripe, so the money has gone, while the booking here still reads paid.
+    rid = TAG + "re-unplaced"
+    title = "A refund in Stripe that matches no booking (%s)" % rid
+    conn.execute("DELETE FROM tasks WHERE title = ?", (title,))
+    conn.commit()
+    r = _post(anon, "refund.created",
+              {"id": rid, "status": "succeeded", "amount": 4500,
+               "payment_intent": TAG + "pi-nothing-matches", "metadata": {}})
+    s.check("the webhook accepts it", r.status_code == 200, detail=str(r.status_code))
+    task = conn.execute("SELECT * FROM tasks WHERE title = ?", (title,)).fetchone()
+    s.check("and a refund matching no booking becomes a task, not a silence",
+            bool(task),
+            detail="45.00 left the account and nothing here would ever have "
+                   "said so")
+    if task:
+        s.check("the task says what to do about it",
+                "record it on the booking's refund page" in (task["notes"] or ""),
+                detail=(task["notes"] or "")[:90])
+        s.check("and it is raised as high priority",
+                task["priority"] == "high", detail=str(task["priority"]))
+
+    # Twice is one task. Stripe retries, and a duplicate for every retry is
+    # how a list stops being read.
+    _post(anon, "refund.created",
+          {"id": rid, "status": "succeeded", "amount": 4500,
+           "payment_intent": TAG + "pi-nothing-matches", "metadata": {}})
+    again = conn.execute("SELECT COUNT(*) FROM tasks WHERE title = ?", (title,)).fetchone()[0]
+    s.check("and Stripe retrying it does not raise a second task", again == 1,
+            detail="%d task(s)" % again)
+    conn.execute("DELETE FROM tasks WHERE title = ?", (title,))
+    conn.commit()
+
+    s.section("A refund this app made is not counted twice")
+    # The app records its own refunds when it makes them, and the same refund
+    # then arrives here as an event. Counting it again would double every
+    # refund the house issues.
+    #
+    # ASKED AS A DECISION, NOT AS A ROW COUNT, and the difference matters.
+    # Counting rows in `refunds` before and after looked like the obvious
+    # check and was worthless: take the dedup out altogether and the refund
+    # falls through to the branch for one that matches no booking, which
+    # writes a TASK and not a refund row -- so the count is unchanged and the
+    # check passes against broken code. It was a negative control that found
+    # that, by removing the dedup and watching this go green.
+    #
+    # record_refund_from_stripe returns a word for precisely this decision.
+    # Pinned on the word, losing the dedup turns "ours" into "unplaced".
+    word = m.record_refund_from_stripe(
+        conn, {"id": TAG + "re-ours", "status": "succeeded", "amount": 2500,
+               "payment_intent": TAG + "pi-ours",
+               "metadata": {"made_by": "gudanes"}})
+    s.check("it is recognised as one we made, and left alone",
+            word == "ours",
+            detail="returned %r -- anything else means the house's own "
+                   "refunds are being recorded a second time" % word)
+    conn.commit()
+
+    # And through the webhook, which is how it actually arrives.
+    before = conn.execute("SELECT COUNT(*) FROM refunds").fetchone()[0]
+    r = _post(anon, "refund.created",
+              {"id": TAG + "re-ours2", "status": "succeeded", "amount": 2500,
+               "payment_intent": TAG + "pi-ours",
+               "metadata": {"made_by": "gudanes"}})
+    s.check("the webhook accepts it", r.status_code == 200, detail=str(r.status_code))
+    after = conn.execute("SELECT COUNT(*) FROM refunds").fetchone()[0]
+    s.check("and no second refund is written", after == before,
+            detail="%d refunds before, %d after" % (before, after))
+
+    s.section("charge.refunded, when Stripe cannot be asked")
+    # This branch asks Stripe to list the refunds on the payment, and falls
+    # back to the ones embedded in the event if that call fails. Under test
+    # the key is neutralised so the call cannot succeed -- which makes the
+    # FALLBACK the path that runs, and it is the path that matters when
+    # Stripe is unreachable. Stood in explicitly rather than relying on the
+    # library to refuse, so this is a test of the fallback and not of luck.
+    real_list = m.stripe.Refund.list
+
+    def _no_list(*_a, **_kw):
+        raise AssertionError("Stripe was asked to list refunds")
+
+    m.stripe.Refund.list = _no_list
+    try:
+        embedded = {
+            "id": TAG + "ch-1", "payment_intent": TAG + "pi-embedded",
+            "refunds": {"data": [
+                {"id": TAG + "re-embedded", "status": "succeeded",
+                 "amount": 1000, "payment_intent": TAG + "pi-embedded",
+                 "metadata": {"made_by": "gudanes"}}]},
+        }
+        r = _post(anon, "charge.refunded", embedded)
+    finally:
+        m.stripe.Refund.list = real_list
+    s.check("it falls back to the refunds in the event rather than failing",
+            r.status_code == 200,
+            detail="status %s -- if this 500s, an unreachable Stripe loses "
+                   "every refund it tries to tell us about" % r.status_code)
+
+    s.section("A card dispute, which has a deadline")
+    # A chargeback the house loses by default if nobody answers it in time.
+    did = TAG + "dp-1"
+    conn.execute("DELETE FROM payment_disputes WHERE stripe_dispute_id = ?", (did,))
+    conn.commit()
+    due = int((m.datetime.now(m.timezone.utc) + timedelta(days=10)).timestamp())
+    r = _post(anon, "charge.dispute.created",
+              {"id": did, "status": "needs_response", "amount": 12000,
+               "reason": "fraudulent", "payment_intent": TAG + "pi-dispute",
+               "evidence_details": {"due_by": due}})
+    s.check("the webhook accepts it", r.status_code == 200, detail=str(r.status_code))
+    row = conn.execute("SELECT * FROM payment_disputes WHERE stripe_dispute_id = ?",
+                       (did,)).fetchone()
+    s.check("the dispute is written down", bool(row),
+            detail="a chargeback nobody records is one the house loses by "
+                   "default when the clock runs out")
+    if row:
+        s.check("with the amount in euros, not cents",
+                abs((row["amount"] or 0) - 120.0) < 0.01, detail=str(row["amount"]))
+        s.check("and the date the evidence is due",
+                bool(row["evidence_due_by"]), detail=str(row["evidence_due_by"]))
+        s.check("and it is open", not row["closed_at"])
+
+    s.section("The same dispute again, which Stripe sends often")
+    r = _post(anon, "charge.dispute.updated",
+              {"id": did, "status": "under_review", "amount": 12000,
+               "reason": "fraudulent", "payment_intent": TAG + "pi-dispute",
+               "evidence_details": {}})
+    n = conn.execute("SELECT COUNT(*) FROM payment_disputes WHERE stripe_dispute_id = ?",
+                     (did,)).fetchone()[0]
+    s.check("it updates rather than duplicating", n == 1, detail="%d row(s)" % n)
+    row = conn.execute("SELECT * FROM payment_disputes WHERE stripe_dispute_id = ?",
+                       (did,)).fetchone()
+    s.check("the status moves on", row and row["status"] == "under_review",
+            detail=str(row["status"] if row else None))
+    s.check("and an update carrying no deadline does not erase the one we had",
+            row and bool(row["evidence_due_by"]),
+            detail="COALESCE keeps it; without that, one ordinary update "
+                   "would drop the only date that matters")
+
+    s.section("And when it closes")
+    r = _post(anon, "charge.dispute.closed",
+              {"id": did, "status": "won", "amount": 12000,
+               "reason": "fraudulent", "payment_intent": TAG + "pi-dispute",
+               "evidence_details": {}})
+    row = conn.execute("SELECT * FROM payment_disputes WHERE stripe_dispute_id = ?",
+                       (did,)).fetchone()
+    s.check("it is marked closed", row and bool(row["closed_at"]),
+            detail="a won dispute left open sits on the list for ever")
+    conn.execute("DELETE FROM payment_disputes WHERE stripe_dispute_id = ?", (did,))
+    conn.commit()
+
     _cleanup(conn)
     conn.close()
     return s
