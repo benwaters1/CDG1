@@ -71,9 +71,13 @@ ENABLING PAYMENTS (guest pays the full total via Stripe Checkout when
 requesting a booking; auto-refunded if the owner declines or cancels)
 Set STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY from your Stripe
 Dashboard → Developers → API keys (test-mode keys first). Also set
-STRIPE_WEBHOOK_SECRET and point a webhook at /webhooks/stripe listening
-for checkout.session.completed — that's what reliably creates the booking
-even if a guest closes their browser right after paying. Card data never
+STRIPE_WEBHOOK_SECRET and point a webhook at /webhooks/stripe. That is
+what reliably creates the booking even if a guest closes their browser
+right after paying, and it is also the only way a refund made in
+Stripe's own dashboard, or a chargeback, ever reaches the books.
+DEPLOY.md lists every event to subscribe to and why. This used to name
+one of them, which would have you build an endpoint that quietly loses
+the rest. Card data never
 touches this server; Stripe's hosted Checkout page handles it.
 
 ENABLING SCHEDULED iCAL SYNC (pull Airbnb/Booking.com/VRBO calendars

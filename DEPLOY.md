@@ -92,9 +92,10 @@ these events:
 
 - `checkout.session.completed` and `checkout.session.async_payment_succeeded`
   / `checkout.session.async_payment_failed` — payments arriving
-- `charge.refunded`, `refund.created`, `refund.updated` and `refund.failed` — a
-  refund made in Stripe's own dashboard reaches the books, and one that fails
-  after Stripe accepted it is booked back
+- `charge.refunded`, `charge.refund.updated`, `refund.created`,
+  `refund.updated` and `refund.failed` — a refund made in Stripe's own
+  dashboard reaches the books, and one that fails after Stripe accepted it is
+  booked back
 - `charge.dispute.created`, `charge.dispute.updated` and
   `charge.dispute.closed` — a card dispute becomes a task with its deadline,
   and a lost one a refund in the record
