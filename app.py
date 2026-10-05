@@ -77966,6 +77966,35 @@ def readiness_checks(conn, *, include_slow=True):
     add("warn", "Guest-facing documents", "Terms, in the code and on the site",
         terms_match, terms_detail)
 
+    # What the site currently tells a guest about dinner. Read from the same
+    # helper every public page and every booking route reads, so this cannot
+    # disagree with what is actually being served.
+    #
+    # The point of it: 'open' is the value when NOTHING is set, so a house
+    # that has never touched this setting is advertising a restaurant and
+    # accepting reservations for it. That is a promise made by default rather
+    # than by decision, and the cost of it is a guest arriving expecting
+    # dinner. The switch is at /admin/restaurant/settings.
+    dining_now = dining_mode(conn)
+    dining_detail = {
+        "open": "The dining page is up, tables can be reserved and the "
+                "confirmation letters promise a menu. If the restaurant is "
+                "not serving, switch it off at Restaurant settings -- this is "
+                "also what an untouched setting does, so it may be on because "
+                "nobody chose it rather than because somebody did.",
+        "closed": "The dining page is up with a seasonal notice and nothing "
+                  "can be reserved. Right for a restaurant that is shut for "
+                  "the winter, not for one that is not running at all.",
+        "hidden": "Dining is off the site and the dining addresses show a "
+                  "short notice. Nothing promises a guest dinner.",
+    }.get(dining_now, "")
+    # Not a blocker, because open is correct the day the restaurant serves,
+    # and a check that cries wolf every day is furniture. It is a warn so it
+    # is READ before launch, which is the one morning it matters.
+    add("warn", "Guest-facing documents",
+        "Dining, and what the site promises about it",
+        dining_now != "open", dining_detail)
+
     # The camera roll. Both of these fail by being quiet rather than by
     # breaking, which is the only kind of fault a list like this catches.
     add("info", "Camera roll", "Looking inside video",

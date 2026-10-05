@@ -112,5 +112,58 @@ def run():
                 email[0]["severity"] == "blocker",
                 detail="a guest books and hears nothing back")
 
+    s.section("What the site currently promises about dinner")
+    # The restaurant is not running, and dining_mode is 'open' when nothing is
+    # set -- so an untouched deployment advertises a dining page, takes table
+    # reservations and promises a menu in the confirmation letters. A promise
+    # made because nobody chose, rather than because somebody did.
+    #
+    # The launch checklist carries a line about switching it off. A line on a
+    # checklist is read the week it is written and not the morning it matters,
+    # so it belongs where the owner already looks before going live.
+    label = "Dining, and what the site promises about it"
+    before = m.dining_mode(conn)
+    try:
+        conn.execute("DELETE FROM app_settings WHERE key = 'dining_mode'")
+        conn.commit()
+        found = [c for c in m.readiness_checks(conn, include_slow=False)
+                 if c["label"] == label]
+        s.check("the readiness page carries it", len(found) == 1,
+                detail="%d check(s) named that" % len(found))
+        s.check("and an untouched setting is reported, not passed over",
+                found and not found[0]["ok"],
+                detail="dining_mode is 'open' when unset, so silence here "
+                       "would mean a restaurant advertised by default")
+        s.check("it says where the switch is",
+                found and "Restaurant settings" in found[0]["detail"],
+                detail="a warning nobody can act on is furniture")
+
+        # And it has to go quiet, or it becomes furniture of the other kind.
+        conn.execute("INSERT OR REPLACE INTO app_settings (key, value) "
+                     "VALUES ('dining_mode', 'hidden')")
+        conn.commit()
+        off = [c for c in m.readiness_checks(conn, include_slow=False)
+               if c["label"] == label]
+        s.check("and passes once dining is switched off",
+                off and off[0]["ok"],
+                detail="a check that can never pass is one nobody reads twice")
+
+        # 'open' is right the day the restaurant serves, so this is a warn the
+        # owner reads before launch rather than a blocker that cries wolf.
+        conn.execute("DELETE FROM app_settings WHERE key = 'dining_mode'")
+        conn.commit()
+        sev = [c for c in m.readiness_checks(conn, include_slow=False)
+               if c["label"] == label]
+        s.check("it is a warn, not a blocker",
+                sev and sev[0]["severity"] == "warn",
+                detail="open is correct the day the restaurant serves; a "
+                       "blocker every day until then is noise")
+    finally:
+        conn.execute("DELETE FROM app_settings WHERE key = 'dining_mode'")
+        if before != "open":
+            conn.execute("INSERT OR REPLACE INTO app_settings (key, value) "
+                         "VALUES ('dining_mode', ?)", (before,))
+        conn.commit()
+
     conn.close()
     return s
