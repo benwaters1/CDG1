@@ -1409,6 +1409,62 @@ def repair_dining_hours_table():
     return 1
 
 
+OCCASION_ROOM = (
+    "          {# 7 October (owner): the occasion on nightly stays as well as\n"
+    "             workshops. Its own field rather than a line in the free text:\n"
+    "             \"Dietary needs, occasion, arrival time\" in one box is three\n"
+    "             different things to act on, and an anniversary buried in a\n"
+    "             paragraph is one nobody marks. #}\n"
+    '          <p class="g-field">\n'
+    '            <label for="special_occasion">Celebrating something? <span class="g-opt">optional</span></label>\n'
+    '            <input type="text" id="special_occasion" name="special_occasion"\n'
+    '                   placeholder="An anniversary, a birthday &mdash; tell us and we will mark it"\n'
+    "                   maxlength=\"200\" value=\"{{ (prefill_guest or {}).get('special_occasion') or (request.form.get('special_occasion') if request.method == 'POST' else '') or '' }}\">\n"
+    "          </p>\n")
+
+OCCASION_WORKSHOP = (
+    '          <div class="g-field">\n'
+    '            <label for="special_occasion">Celebrating something? <span class="g-opt">optional</span></label>\n'
+    '            <input type="text" id="special_occasion" name="special_occasion"\n'
+    '                   placeholder="An anniversary, a birthday &mdash; tell us and we will mark it"\n'
+    "                   maxlength=\"200\" value=\"{{ prefill_special_occasion | default('') }}\">\n"
+    "          </div>\n")
+
+
+def repair_special_occasion():
+    """The field handover q removed from both booking forms.
+
+    The owner asked for it back on 7 October, for nightly stays as well as
+    workshops. workshop_bookings has had the column since its form was
+    written; bookings gained one the same day. A missing optional field
+    breaks nothing, which is why it would go again unnoticed.
+    """
+    done = 0
+    room = "templates/book_room.html"
+    if os.path.exists(os.path.join(ROOT, room)):
+        src = _read(room)
+        if 'name="special_occasion"' not in src:
+            anchor = ('          <p class="g-field">\n'
+                      '            <label for="special_requests" class="g-vh">')
+            if anchor not in src:
+                raise ValueError("no special_requests field on book_room.html "
+                                 "to put the occasion above")
+            _write(room, src.replace(anchor, OCCASION_ROOM + anchor, 1))
+            done += 1
+    reg = "templates/workshop_register.html"
+    if os.path.exists(os.path.join(ROOT, reg)):
+        src = _read(reg)
+        if 'name="special_occasion"' not in src:
+            anchor = ('          <div class="g-field">\n'
+                      '            <label for="bed_preference">')
+            if anchor not in src:
+                raise ValueError("no bed_preference field on "
+                                 "workshop_register.html to put it above")
+            _write(reg, src.replace(anchor, OCCASION_WORKSHOP + anchor, 1))
+            done += 1
+    return done
+
+
 def repair_reveal_import():
     """/restoration answered 500: the slider is called, and its import was cut
     beside the explorer's (which the design did mean to cut)."""
@@ -1701,6 +1757,7 @@ def main():
         ("the phone field keeping its country code", repair_phone_keeps_its_country_code),
         ("the allergy note on the room list", repair_animals_note_called),
         ("the dining hours table in a wrapper", repair_dining_hours_table),
+        ("the occasion on both booking forms", repair_special_occasion),
     ]
     total, failed = 0, []
     for label, fn in steps:

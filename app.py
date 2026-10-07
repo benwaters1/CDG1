@@ -4577,6 +4577,11 @@ def init_db():
         # R. 814-1 item 5: the guest's mobile telephone and email address.
         # The register had no column for either, so a fiche filled in
         # correctly was still missing a field the article names.
+        # 7 October (owner): the occasion on nightly stays as well as
+        # workshops. workshop_bookings has had this column since the
+        # registration form was written; a room booking never did.
+        ("bookings_special_occasion",
+         "ALTER TABLE bookings ADD COLUMN special_occasion TEXT"),
         ("police_register_phone",
          "ALTER TABLE police_register ADD COLUMN phone TEXT"),
         ("police_register_email",
@@ -26015,10 +26020,19 @@ app.jinja_env.globals["address_one_line"] = address_one_line
 # GUEST DETAILS asked on the booking forms, each kept in its own column (5 Oct). Lengths are generous for any country's
 # address and short enough for Stripe's 500-character metadata values, which carry them through the card page.
 GUEST_DETAIL_LIMITS = {"guest_address": 200, "guest_city": 100, "guest_postcode": 20, "guest_country": 60,
-                       "estimated_arrival_time": 60, "bed_preference": 40}
-ROOM_GUEST_DETAILS = ("guest_address", "guest_city", "guest_postcode", "guest_country", "estimated_arrival_time")
+                       "estimated_arrival_time": 60, "bed_preference": 40,
+                       # 7 October (owner): on nightly stays as well. The
+                       # workshop registration reads its own, which is older
+                       # than this plumbing and writes the same column.
+                       "special_occasion": 200}
+ROOM_GUEST_DETAILS = ("guest_address", "guest_city", "guest_postcode", "guest_country",
+                      "estimated_arrival_time", "special_occasion")
 WORKSHOP_GUEST_DETAILS = ("guest_address", "guest_city", "guest_postcode", "guest_country", "bed_preference")
-ROOM_GUEST_DETAILS_REQUIRED = ROOM_GUEST_DETAILS
+# WRITTEN OUT, not ROOM_GUEST_DETAILS. They were the same tuple, so adding an
+# optional field above would have made it required here -- and a stay refused
+# for not saying what the occasion is would be a poor way to discover that.
+ROOM_GUEST_DETAILS_REQUIRED = ("guest_address", "guest_city", "guest_postcode",
+                               "guest_country", "estimated_arrival_time")
 WORKSHOP_GUEST_DETAILS_REQUIRED = ("guest_address", "guest_city", "guest_postcode", "guest_country")
 
 

@@ -25,7 +25,7 @@ length of one form and no longer is part of the claim, not a detail.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, db, flashes, house_today
+from _harness import Suite, db, flashes, house_today, BOOKING_DETAILS
 import _harness
 
 m = _harness.m
@@ -119,14 +119,10 @@ def run():
         "notes": "first time throwing a pot",
         "dietary_notes": "vegetarian, no dairy",
         "medical_notes": "epilepsy — carries medication",
-        # NO LONGER ASKED. Handover q's forms dropped special_occasion from
-        # both the room booking and the workshop registration. The column is
-        # still there, the route still reads it and the prefill map still
-        # names it -- nothing collects it. So it cannot come back from a
-        # failed submission, and a check that it does would be testing a
-        # field no guest can fill in. Raised with the owner: knowing it is
-        # somebody's tenth anniversary is the sort of thing this house uses,
-        # and it is now asked nowhere.
+        # ASKED AGAIN since 7 October. Handover q had taken this field off
+        # both forms; the owner wanted it back for nightly stays as well as
+        # workshops, and repair_handover puts it back when a zip removes it.
+        "special_occasion": "our tenth anniversary",
         "requested_roommate": "Sam Delacroix",
         "promo_code": "AUTUMNLIGHT",
     }
@@ -136,6 +132,7 @@ def run():
     for label, needle in (
             ("the dietary notes", "vegetarian, no dairy"),
             ("the medical notes", "epilepsy — carries medication"),
+            ("the occasion", "our tenth anniversary"),
             ("who they want to share with", "Sam Delacroix"),
             ("their own notes", "first time throwing a pot"),
             ("the promo code", "AUTUMNLIGHT")):
@@ -211,6 +208,87 @@ def run():
         missing = sorted(wanted - supplied - {"prefill_email"})  # newsletter box
         s.check(f"{tpl} asks for nothing the route does not pass", not missing,
                 detail=str(missing))
+
+    s.section("Celebrating something, on both forms")
+    # Handover q removed this field from the room booking and the workshop
+    # registration. Nothing broke -- an optional field that stops being asked
+    # breaks nothing, which is exactly why it went unnoticed and why it is
+    # worth a check: the only symptom is guests mysteriously never mentioning
+    # their anniversaries.
+    import datetime as _dt2
+    conn2 = db()
+    room2 = conn2.execute(
+        "SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+    ses2 = conn2.execute(
+        "SELECT id FROM workshop_sessions ORDER BY id DESC LIMIT 1").fetchone()
+    pub2 = m.app.test_client()
+    if room2:
+        page = pub2.get("/book/%d" % room2["id"]).get_data(as_text=True)
+        s.check("the room booking form asks",
+                'name="special_occasion"' in page,
+                detail="an anniversary nobody is asked about is one the house "
+                       "cannot mark")
+    if ses2:
+        page = pub2.get("/workshops/register/%d" % ses2["id"]).get_data(as_text=True)
+        s.check("and so does the workshop registration",
+                'name="special_occasion"' in page)
+
+    # And a stay keeps it. bookings had no such column until 7 October: the
+    # field existed on the workshop side only.
+    if room2:
+        today2 = m.house_today()
+        conn2.execute("DELETE FROM bookings WHERE guest_email = 'zzocc@example.invalid'")
+        conn2.commit()
+        pub2.post("/book/%d" % room2["id"], data={
+            "arrival_date": (today2 + _dt2.timedelta(days=460)).isoformat(),
+            "departure_date": (today2 + _dt2.timedelta(days=462)).isoformat(),
+            "guest_name": "ZZ Occ", "guest_email": "zzocc@example.invalid",
+            "guest_phone": "+33 6 00 00 00 00", "party_size": "2",
+            "adults": "2", "agree_terms": "on", "special_requests": "",
+            "special_occasion": "our tenth anniversary",
+            **BOOKING_DETAILS,
+        }, follow_redirects=True)
+        kept = conn2.execute(
+            "SELECT special_occasion FROM bookings "
+            "WHERE guest_email = 'zzocc@example.invalid' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        s.check("and a nightly stay keeps what they said",
+                kept is not None
+                and (kept["special_occasion"] or "") == "our tenth anniversary",
+                detail=repr(kept["special_occasion"]) if kept else "no booking")
+        conn2.execute("DELETE FROM bookings WHERE guest_email = 'zzocc@example.invalid'")
+        conn2.commit()
+
+        # AND IT IS OPTIONAL, which is the half that could break silently.
+        # ROOM_GUEST_DETAILS_REQUIRED was the same tuple object as
+        # ROOM_GUEST_DETAILS, so adding this field to the second would have
+        # made it required in the first -- and a stay refused for not saying
+        # what the occasion is would be a poor way to find that out. A
+        # control that made it required walked straight past the check above,
+        # because that one always sends an occasion.
+        conn2.execute("DELETE FROM bookings WHERE guest_email = 'zznoocc@example.invalid'")
+        conn2.commit()
+        pub2.post("/book/%d" % room2["id"], data={
+            "arrival_date": (today2 + _dt2.timedelta(days=470)).isoformat(),
+            "departure_date": (today2 + _dt2.timedelta(days=472)).isoformat(),
+            "guest_name": "ZZ NoOcc", "guest_email": "zznoocc@example.invalid",
+            "guest_phone": "+33 6 00 00 00 00", "party_size": "2",
+            "adults": "2", "agree_terms": "on", "special_requests": "",
+            **BOOKING_DETAILS,
+        }, follow_redirects=True)
+        plain = conn2.execute(
+            "SELECT special_occasion FROM bookings "
+            "WHERE guest_email = 'zznoocc@example.invalid' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        s.check("a stay with nothing to celebrate is still taken",
+                plain is not None,
+                detail="celebrating nothing must not stop somebody booking")
+        s.check("and stores no occasion rather than an empty one",
+                plain is not None and not (plain["special_occasion"] or ""),
+                detail=repr(plain["special_occasion"]) if plain else "no booking")
+        conn2.execute("DELETE FROM bookings WHERE guest_email = 'zznoocc@example.invalid'")
+        conn2.commit()
+    conn2.close()
 
     _cleanup()
     return s

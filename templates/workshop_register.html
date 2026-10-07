@@ -74,6 +74,12 @@
                    placeholder="Their name, and we will put you together" value="{{ prefill_requested_roommate | default('') }}">
           </div>
           <div class="g-field">
+            <label for="special_occasion">Celebrating something? <span class="g-opt">optional</span></label>
+            <input type="text" id="special_occasion" name="special_occasion"
+                   placeholder="An anniversary, a birthday &mdash; tell us and we will mark it"
+                   maxlength="200" value="{{ prefill_special_occasion | default('') }}">
+          </div>
+          <div class="g-field">
             <label for="bed_preference">Bed preference <span class="g-opt">optional</span></label>
             {%- set _bp = request.form.get('bed_preference') if request.method == 'POST' else '' -%}
             <select id="bed_preference" name="bed_preference">
