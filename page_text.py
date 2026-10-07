@@ -40,7 +40,6 @@ FR = {
     "The restoration itself": "La restauration elle-même",
     "See what it looks like first": "Voir à quoi cela ressemble",
     "Subscribe": "S'abonner",
-    "Contact us": "Nous contacter",
     "Groups": "Groupes",
 }
 
@@ -52,6 +51,5 @@ ES = {
     "The restoration itself": "La restauración en sí",
     "See what it looks like first": "Ver primero cómo es",
     "Subscribe": "Suscribirse",
-    "Contact us": "Contactar con nosotros",
     "Groups": "Grupos",
 }

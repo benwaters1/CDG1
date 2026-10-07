@@ -115,7 +115,23 @@ def run():
     s.check("the sheet is on the page", "Take this with you" in body)
     s.check("with the reference", TAG + "OWING" in body)
     s.check("the room", room["name"] in body)
-    s.check("the dates", (today + timedelta(days=30)).isoformat() in body)
+    # Read through the app's own filter rather than as an ISO string.
+    # Handover q turned "2026-11-06" into "6 Nov 2026" on the printed sheet,
+    # which is right -- somebody holding a piece of paper wants a date they
+    # can read -- and keyed to the raw column this check called that a fault.
+    # Asking the filter what the page should say tests that the date is the
+    # RIGHT one, and survives the house changing how it writes dates.
+    # SCOPED TO THE SHEET. A control that made the sheet print the departure
+    # date twice did NOT red this: the arrival date appears elsewhere on the
+    # booking page, so "somewhere in the body" was satisfied by markup the
+    # guest will not be carrying. The sheet is the thing under test, so read
+    # the sheet.
+    _shown = m.app.jinja_env.filters["date_short"](
+        (today + timedelta(days=30)).isoformat())
+    _sheet = body.split("g-takeaway__card", 1)[-1].split("</div>", 1)[0]         if "g-takeaway__card" in body else ""
+    s.check("the dates", _shown in _sheet,
+            detail="expected %r on the take-away sheet, which is what they "
+                   "will be holding" % _shown)
     s.check("a telephone number", "+33" in body)
     s.check("and the last stretch of the drive",
             "gates are on the left" in body,

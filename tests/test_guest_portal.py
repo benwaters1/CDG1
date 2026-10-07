@@ -53,9 +53,42 @@ def _room():
     return rid
 
 
+def _free_window(conn, room_id, days_out, nights=2):
+    """The first date from days_out where this room can really be booked.
+
+    A fixed offset is a date that moves. 260 days out was free when this was
+    written and is the Cooking in the Cuisine week today, and an atelier holds
+    the whole house -- so the booking could not be confirmed, no confirmation
+    email was written, and a check about the portal link failed for a reason
+    that had nothing to do with it. Dates the house cannot sell are chosen
+    here instead of hoped for.
+    """
+    start = house_today() + timedelta(days=days_out)
+    for step in range(0, 730):
+        a = start + timedelta(days=step)
+        b = a + timedelta(days=nights)
+        held = conn.execute(
+            """SELECT 1 FROM workshop_sessions
+                WHERE start_date <= ? AND end_date >= ?""",
+            (b.isoformat(), a.isoformat())).fetchone()
+        if held:
+            continue
+        taken = conn.execute(
+            """SELECT 1 FROM bookings WHERE room_id = ?
+                AND status IN ('pending','confirmed')
+                AND arrival_date < ? AND departure_date > ?""",
+            (room_id, b.isoformat(), a.isoformat())).fetchone()
+        if not taken:
+            return a
+    raise AssertionError(
+        "no free window for room %s within two years of day %d -- reported "
+        "rather than booking into a week the house is not selling"
+        % (room_id, days_out))
+
+
 def _stay(room_id, email, ref, status="confirmed", days_out=260):
     conn = db()
-    arrival = house_today() + timedelta(days=days_out)
+    arrival = _free_window(conn, room_id, days_out)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name, guest_email,
            arrival_date, departure_date, party_size, status, created_at)
