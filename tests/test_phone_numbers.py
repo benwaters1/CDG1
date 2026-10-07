@@ -27,7 +27,7 @@ could not tell would be worse than trying.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes, house_today
+from _harness import Suite, clients, db, flashes, house_today, BOOKING_DETAILS, WORKSHOP_DETAILS
 import _harness
 
 m = _harness.m
@@ -104,7 +104,7 @@ def run():
         "arrival_date": arrival.isoformat(),
         "departure_date": (arrival + timedelta(days=2)).isoformat(),
         "agree_terms": "on",
-    }, follow_redirects=True)
+     **BOOKING_DETAILS}, follow_redirects=True)
     conn = db()
     made = conn.execute(
         "SELECT * FROM bookings WHERE guest_email = 'amelie@example.invalid' "
@@ -129,7 +129,7 @@ def run():
         "arrival_date": (arrival + timedelta(days=10)).isoformat(),
         "departure_date": (arrival + timedelta(days=12)).isoformat(),
         "agree_terms": "on",
-    }, follow_redirects=True)
+     **BOOKING_DETAILS}, follow_redirects=True)
     conn = db()
     odd = conn.execute(
         "SELECT * FROM bookings WHERE guest_email = 'bernard@example.invalid' "

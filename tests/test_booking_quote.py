@@ -11,7 +11,7 @@ with it, and the guest will be right.
 from datetime import date, timedelta
 from urllib.parse import urlencode
 
-from _harness import Suite, clients, db, ensure_room, house_today
+from _harness import Suite, clients, db, ensure_room, house_today, BOOKING_DETAILS, WORKSHOP_DETAILS
 import _harness
 
 m = _harness.m
@@ -123,7 +123,7 @@ def run():
         "arrival_date": later.isoformat(),
         "departure_date": (later + timedelta(days=3)).isoformat(),
         "party_size": "2", "agree_terms": "on", "extras": str(extra_id),
-    }, follow_redirects=True)
+     **BOOKING_DETAILS}, follow_redirects=True)
     conn = db()
     booking = conn.execute(
         "SELECT total_price, city_tax, extras_summary FROM bookings WHERE guest_email = ?",

@@ -8,7 +8,7 @@ Everything created is tagged ZZWF and deleted at the end.
 """
 from datetime import datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, ensure_room
+from _harness import Suite, clients, db, ensure_room, BOOKING_DETAILS, WORKSHOP_DETAILS
 import _harness
 
 m = _harness.m
@@ -50,7 +50,7 @@ def run():
         "guest_name": f"{TAG} Guest", "guest_email": f"{TAG.lower()}@example.invalid",
         "arrival_date": SOON, "departure_date": SOON_END, "party_size": "2",
         "agree_terms": "on",
-    }, follow_redirects=True)
+     **BOOKING_DETAILS}, follow_redirects=True)
     conn = db()
     bk = conn.execute("SELECT * FROM bookings WHERE guest_name LIKE ?", (TAG + "%",)).fetchone()
     conn.close()

@@ -636,6 +636,31 @@ def coverage_knocked_only():
             for ep in sorted((pages & EXERCISED) - RENDERED)]
 
 
+# WHAT THE PUBLIC BOOKING FORMS NOW INSIST ON.
+#
+# PATCH_guest_details (7 October) made the guest's address required on /book
+# and on the workshop registration, "as on Booking.com", and added an
+# estimated arrival time to the room form. A post without them is refused,
+# which is right -- and which turned every hand-written booking in this suite
+# into a booking that never happened, failing thirty-eight checks and
+# crashing four suites in ways that said nothing about the field that caused
+# it.
+#
+# Kept here so the next required field is one line rather than a morning of
+# grep. Spread into a post: data={..., **BOOKING_DETAILS}.
+BOOKING_DETAILS = {
+    "guest_address": "1 Rue de l'Eglise",
+    "guest_city": "Chateau-Verdun",
+    "guest_postcode": "09310",
+    "guest_country": "France",
+    "estimated_arrival_time": "16:00",
+}
+
+# The registration asks for the address but not the arrival time.
+WORKSHOP_DETAILS = {k: v for k, v in BOOKING_DETAILS.items()
+                    if k != "estimated_arrival_time"}
+
+
 def db():
     return m.get_db()
 

@@ -29,7 +29,7 @@ from datetime import timedelta
 
 from werkzeug.datastructures import MultiDict
 
-from _harness import Suite, clients, db, flashes, free_window
+from _harness import Suite, clients, db, flashes, free_window, BOOKING_DETAILS
 import _harness
 
 m = _harness.m
@@ -76,7 +76,7 @@ def _book(room, arrival, departure, tag, extras=(), **form):
     conn.close()
     data = {"arrival_date": arrival.isoformat(), "departure_date": departure.isoformat(),
             "guest_name": "Ztest Tour", "guest_email": EMAIL.format(tag),
-            "party_size": "2", "agree_terms": "on"}
+            "party_size": "2", "agree_terms": "on", **BOOKING_DETAILS}
     data.update(form)
     data = MultiDict(list(data.items()) + [("extras", str(i)) for i in extras])
     return _guest().post(f"/book/{room['id']}", data=data, follow_redirects=True)

@@ -119,7 +119,14 @@ def run():
         "notes": "first time throwing a pot",
         "dietary_notes": "vegetarian, no dairy",
         "medical_notes": "epilepsy — carries medication",
-        "special_occasion": "our tenth anniversary",
+        # NO LONGER ASKED. Handover q's forms dropped special_occasion from
+        # both the room booking and the workshop registration. The column is
+        # still there, the route still reads it and the prefill map still
+        # names it -- nothing collects it. So it cannot come back from a
+        # failed submission, and a check that it does would be testing a
+        # field no guest can fill in. Raised with the owner: knowing it is
+        # somebody's tenth anniversary is the sort of thing this house uses,
+        # and it is now asked nowhere.
         "requested_roommate": "Sam Delacroix",
         "promo_code": "AUTUMNLIGHT",
     }
@@ -129,7 +136,6 @@ def run():
     for label, needle in (
             ("the dietary notes", "vegetarian, no dairy"),
             ("the medical notes", "epilepsy — carries medication"),
-            ("the occasion", "our tenth anniversary"),
             ("who they want to share with", "Sam Delacroix"),
             ("their own notes", "first time throwing a pot"),
             ("the promo code", "AUTUMNLIGHT")):

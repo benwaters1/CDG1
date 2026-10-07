@@ -14,7 +14,7 @@ has been agreed on the phone.
 """
 from datetime import datetime, timedelta, timezone
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, WORKSHOP_DETAILS
 import _harness
 
 m = _harness.m
@@ -77,7 +77,7 @@ def run():
         "notes": "", "requested_roommate": "", "dietary_notes": "",
         "medical_notes": "", "special_occasion": "", "other_guest_names": "",
         "promo_code": "", "agree_terms": "on",
-    }, follow_redirects=True)
+     **WORKSHOP_DETAILS}, follow_redirects=True)
     conn = db()
     booked = conn.execute(
         """SELECT occupancy_type, single_supplement, total_price FROM workshop_bookings

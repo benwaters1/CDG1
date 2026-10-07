@@ -13,7 +13,7 @@ not what the owner's own staff can do.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db, house_today
+from _harness import Suite, clients, db, house_today, BOOKING_DETAILS, WORKSHOP_DETAILS
 import _harness
 
 m = _harness.m
@@ -178,7 +178,7 @@ def run():
         "guest_name": f"{TAG} overflow", "guest_email": f"{TAG.lower()}o@example.invalid",
         "arrival_date": start.isoformat(), "departure_date": (start + timedelta(days=3)).isoformat(),
         "party_size": "4", "agree_terms": "on",
-    })
+     **BOOKING_DETAILS})
     conn = db()
     created = conn.execute("SELECT 1 FROM bookings WHERE guest_name = ?", (f"{TAG} overflow",)).fetchone()
     conn.close()
@@ -188,7 +188,7 @@ def run():
         "guest_name": f"{TAG} fits", "guest_email": f"{TAG.lower()}i@example.invalid",
         "arrival_date": start.isoformat(), "departure_date": (start + timedelta(days=3)).isoformat(),
         "party_size": "3", "agree_terms": "on",
-    })
+     **BOOKING_DETAILS})
     conn = db()
     fits_row = conn.execute("SELECT 1 FROM bookings WHERE guest_name = ?", (f"{TAG} fits",)).fetchone()
     conn.close()

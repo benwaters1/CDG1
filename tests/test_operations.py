@@ -7,7 +7,7 @@ Everything created is tagged ZZOPS and deleted at the end.
 """
 from datetime import datetime, timedelta, timezone
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, WORKSHOP_DETAILS
 import _harness
 
 m = _harness.m
@@ -48,7 +48,7 @@ def run():
         r = pub.post(f"/workshops/register/{session['id']}", data={
             "guest_name": f"{TAG} Attendee", "guest_email": f"{TAG.lower()}@example.invalid",
             "party_size": "1", "occupancy_type": "shared", "agree_terms": "on",
-        }, follow_redirects=True)
+         **WORKSHOP_DETAILS}, follow_redirects=True)
         conn = db()
         booking = conn.execute("SELECT * FROM workshop_bookings WHERE guest_name LIKE ?",
                                (TAG + "%",)).fetchone()

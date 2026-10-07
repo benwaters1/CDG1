@@ -35,7 +35,7 @@ guest could never reach the bill" are different problems with different fixes.
 import re
 from datetime import timedelta
 
-from _harness import Suite, clients, db, ensure_room, forms_on, links_on, fill
+from _harness import Suite, clients, db, ensure_room, forms_on, links_on, fill, BOOKING_DETAILS
 import _harness
 
 m = _harness.m
@@ -121,7 +121,7 @@ def run():
             "guest_name": TAG + " Eleanor", "guest_email": EMAIL,
             "guest_phone": "+33 6 00 00 00 00",
             "adults": "2", "party_size": "2", "agree_terms": "on",
-            "special_requests": "", "promo_code": "",
+            "special_requests": "", "promo_code": "", **BOOKING_DETAILS,
         }), follow_redirects=True)
         s.check("it takes the booking", sent.status_code == 200, sent)
         row = conn.execute("SELECT * FROM bookings WHERE guest_email = ? "

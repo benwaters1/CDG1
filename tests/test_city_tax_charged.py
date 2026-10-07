@@ -24,7 +24,7 @@ import re
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlencode
 
-from _harness import Suite, clients, db, forms_on, house_today, visible_text
+from _harness import Suite, clients, db, forms_on, house_today, visible_text, BOOKING_DETAILS, WORKSHOP_DETAILS
 import _harness
 
 m = _harness.m
@@ -135,7 +135,7 @@ def run():
         "guest_name": f"{TAG} Family", "guest_email": "zzctax@example.invalid",
         "guest_phone": "", "party_size": "4", "guests_under_18": "2",
         "special_requests": "", "agree_terms": "on",
-    }, follow_redirects=False)
+     **BOOKING_DETAILS}, follow_redirects=False)
     s.check("the form takes it", r.status_code in (302, 303),
             detail=f"HTTP {r.status_code}")
     b = _booked(TAG)
@@ -450,7 +450,7 @@ def run():
         "guest_name": f"{TAG} Odd", "guest_email": "zzctax.odd@example.invalid",
         "guest_phone": "", "party_size": "2", "guests_under_18": "-5",
         "special_requests": "", "agree_terms": "on",
-    }, follow_redirects=False)
+     **BOOKING_DETAILS}, follow_redirects=False)
     odd = _booked(TAG + " Odd")
     if odd:
         s.check("a negative exempt count is floored at zero",
@@ -468,7 +468,7 @@ def run():
         "guest_name": f"{TAG} Many", "guest_email": "zzctax.many@example.invalid",
         "guest_phone": "", "party_size": "2", "guests_under_18": "9",
         "special_requests": "", "agree_terms": "on",
-    }, follow_redirects=False)
+     **BOOKING_DETAILS}, follow_redirects=False)
     many = _booked(TAG + " Many")
     if many:
         s.check("the exempt count is clamped to the party",

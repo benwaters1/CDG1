@@ -18,7 +18,7 @@ Two decisions carry most of the weight here:
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes, house_today
+from _harness import Suite, clients, db, flashes, house_today, BOOKING_DETAILS, WORKSHOP_DETAILS
 import _harness
 
 m = _harness.m
@@ -153,7 +153,7 @@ def run():
         "guest_name": f"{TAG} Website", "guest_email": "zzsrc.web@example.invalid",
         "guest_phone": "", "party_size": "2", "guests_under_18": "0",
         "special_requests": "", "agree_terms": "on",
-    }, follow_redirects=False)
+     **BOOKING_DETAILS}, follow_redirects=False)
     web = _booked(f"{TAG} Website")
     s.check("a website booking is taken", web is not None,
             detail=f"HTTP {r.status_code}")
@@ -203,7 +203,7 @@ def run():
         "guest_name": f"{TAG} Website Again", "guest_email": "zzsrc.web@example.invalid",
         "guest_phone": "", "party_size": "2", "guests_under_18": "0",
         "special_requests": "", "agree_terms": "on",
-    }, follow_redirects=False)
+     **BOOKING_DETAILS}, follow_redirects=False)
     second = _booked(f"{TAG} Website Again")
     # When there is no row at all the source is not the story -- the booking
     # was refused and the reason is on the page. Saying "None" instead sends
@@ -216,7 +216,7 @@ def run():
             "guest_name": f"{TAG} Website Again", "guest_email": "zzsrc.web@example.invalid",
             "guest_phone": "", "party_size": "2", "guests_under_18": "0",
             "special_requests": "", "agree_terms": "on",
-        }, follow_redirects=True)
+         **BOOKING_DETAILS}, follow_redirects=True)
         why = "; ".join(flashes(page)[:2]) or "refused, and said nothing"
     else:
         why = repr(second["source"])
@@ -233,7 +233,7 @@ def run():
         "guest_name": f"{TAG} Planner", "guest_email": "zzsrc.plan@example.invalid",
         "guest_phone": "", "party_size": "2", "guests_under_18": "0",
         "special_requests": "", "agree_terms": "on",
-    }, follow_redirects=False)
+     **BOOKING_DETAILS}, follow_redirects=False)
     planner_two = _free(planner_one + timedelta(days=30))
     anon4 = m.app.test_client()
     anon4.post(f"/book/{room['id']}", data={
@@ -242,7 +242,7 @@ def run():
         "guest_name": f"{TAG} Planner Two", "guest_email": "zzsrc.plan@example.invalid",
         "guest_phone": "", "party_size": "2", "guests_under_18": "0",
         "special_requests": "", "agree_terms": "on",
-    }, follow_redirects=False)
+     **BOOKING_DETAILS}, follow_redirects=False)
     planner = _booked(f"{TAG} Planner Two")
     s.check("two forward bookings are not loyalty",
             planner and planner["source"] != "returning",

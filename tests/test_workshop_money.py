@@ -13,7 +13,7 @@ the same part twice.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db, house_today
+from _harness import Suite, clients, db, house_today, WORKSHOP_DETAILS
 import _harness
 
 m = _harness.m
@@ -304,6 +304,7 @@ def run():
     r = pub.post(f"/workshops/register/{session_row['id']}", data={
         "guest_name": f"{TAG} form guest", "guest_email": f"{TAG.lower()}f@example.invalid",
         "party_size": "2", "occupancy_type": "solo", "notes": "",
+        **WORKSHOP_DETAILS,
     }, follow_redirects=True)
     conn = db()
     booked = conn.execute(
