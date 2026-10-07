@@ -117,6 +117,20 @@
         <strong>{{ inv['vendor_name'] }}</strong> — €{{ '%.2f'|format(inv['amount']) }}
         <span class="mini-status status-{{ inv['status'] }}" style="margin-left:8px;">{{ inv['status'] }}</span>
         {% if inv['restaurant_related'] %}<span class="mini-status status-upcoming" style="margin-left:4px;">restaurant</span>{% endif %}
+        {# READ, NOT TYPED. A figure a machine took off a scan and nobody has
+           looked at must not sit on this page looking like one somebody
+           entered. read_invoice puts the reason plainly: one misread decimal,
+           silently. It is the owner's money here. The mark goes the moment
+           anybody saves the row. #}
+        {% if inv['scan_read'] and inv['status'] == 'pending' %}
+        <span class="mini-status status-pending" style="margin-left:4px;">read off the scan &mdash; check it</span>
+        {% endif %}
+        {# Nobody could read it. It still arrived, which is the point, and it
+           sits at zero because the column is NOT NULL DEFAULT 0 -- so the row
+           says what it needs rather than looking like a free delivery. #}
+        {% if inv['scanned_at'] and not inv['scan_read'] %}
+        <span class="mini-status status-declined" style="margin-left:4px;">scanned &mdash; no amount read yet</span>
+        {% endif %}
       </div>
     </div>
     {# The one thing on this page that is worth interrupting for. A supplier

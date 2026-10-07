@@ -217,6 +217,17 @@ m.assess_media_with_claude = _refuse(
     "stand in for assess_media_with_claude in the test; a card is four "
     "hundred frames and each one is a paid request")
 
+# And the receipt reader, added the same afternoon and blocked for the same
+# reason. A scanner on a desk at the house is a bulk source by design: a
+# morning of receipts is a morning of paid requests, and the suite runs
+# against a COPY OF THE REAL expenses table, so "it would only read test
+# data" is never true in here.
+REAL_READ_RECEIPT = m.read_receipt
+m.read_receipt = _refuse(
+    "Anthropic, to read a receipt",
+    "stand in for read_receipt in the test; a scanner feeds these in bulk "
+    "and each one is a paid request")
+
 # Browser push, for the same reason and at the same stage as the two above.
 # A staff member who turns notifications on has handed us an endpoint at a
 # browser vendor's push service and a key to sign for it, and notify_user
@@ -285,6 +296,9 @@ assert m.webpush.__name__ == "_blocked", (
 assert m.fetch_one_image.__name__ == "_blocked", (
     "the photograph mirror is not blocked under test — it needs no key, which "
     "is why it is the kind that gets forgotten")
+assert m.read_receipt.__name__ == "_blocked", (
+    "the receipt reader is not blocked under test — a scanner feeds these in "
+    "bulk and the suite reads a copy of the real expenses table")
 assert m.assess_media_with_claude.__name__ == "_blocked", (
     "the camera roll's vision call is not blocked under test — assessing one "
     "card is four hundred paid requests, and the suite reads a copy of the "

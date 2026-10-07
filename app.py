@@ -4582,6 +4582,19 @@ def init_db():
         # registration form was written; a room booking never did.
         ("bookings_special_occasion",
          "ALTER TABLE bookings ADD COLUMN special_occasion TEXT"),
+        # What a scanner's image was read as, kept beside the fields it
+        # filled in. So the review screen can say a figure was READ rather
+        # than typed, and so a wrong reading can be told from a wrong typing
+        # afterwards.
+        ("expenses_scan_read",
+         "ALTER TABLE expenses ADD COLUMN scan_read TEXT"),
+        ("expenses_scanned_at",
+         "ALTER TABLE expenses ADD COLUMN scanned_at TEXT"),
+        # The bytes a scan arrived as. A watcher that dies between posting a
+        # file and moving it posts it again, and a receipt entered twice is a
+        # supplier paid twice.
+        ("expenses_scan_sha256",
+         "ALTER TABLE expenses ADD COLUMN scan_sha256 TEXT"),
         ("police_register_phone",
          "ALTER TABLE police_register ADD COLUMN phone TEXT"),
         ("police_register_email",
@@ -39002,6 +39015,17 @@ def send_to_pennylane(expense_id):
         conn.close()
         flash("That's already in Pennylane.", "error")
         return redirect(url_for("expenses"))
+    # A SCAN NOBODY HAS FINISHED. expenses.amount is NOT NULL DEFAULT 0, so a
+    # receipt the reader could not make out lands at zero -- which is right,
+    # because refusing it would lose the only copy of something somebody paid
+    # for. It must not go on to the accountant that way: a zero supplier
+    # invoice in the accounts is worse than a missing one, because it looks
+    # settled.
+    if (expense["amount"] or 0) <= 0:
+        conn.close()
+        flash("That one has no amount on it yet. Open it, put the total in, "
+              "and then send it.", "error")
+        return redirect(url_for("expenses"))
     if not pennylane_configured():
         conn.close()
         flash("Pennylane isn't connected — add PENNYLANE_API_TOKEN. See DEPLOY.md.", "error")
@@ -68115,6 +68139,89 @@ def ingest_known():
     return {"known": known}
 
 
+@app.route("/ingest/receipt", methods=["POST"])
+@csrf.exempt
+def ingest_receipt():
+    """One receipt off the scanner at the house.
+
+    Nobody at the château opens the app for this: a receipt goes under the
+    scanner, the button is pressed, and the file its software writes is
+    posted here by tools/watch_receipts.py. What arrives is a pending expense
+    with the image attached -- the same place a submitted one lands -- so the
+    owner reviews it from wherever they are and sends it on to Pennylane.
+
+    The reading is a PROPOSAL and is marked as one. read_invoice's docstring
+    gives the reason and it is the owner's money here: a figure read off an
+    image and never looked at must not reach the accounts wearing the clothes
+    of one somebody typed.
+    """
+    if not MEDIA_INGEST_KEY:
+        abort(404)
+    if not _ingest_key_ok():
+        abort(403)
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return {"error": "no file"}, 400
+    raw = upload.read()
+    if not raw:
+        return {"error": "empty file"}, 400
+    if len(raw) > 12 * 1024 * 1024:
+        return {"error": "over 12MB"}, 413
+    digest = hashlib.sha256(raw).hexdigest()
+
+    conn = get_db()
+    seen = conn.execute(
+        "SELECT id FROM expenses WHERE scan_sha256 = ?", (digest,)).fetchone()
+    if seen:
+        conn.close()
+        # Not an error. A watcher that could not move its file will send it
+        # again, and the right answer is the row it already made.
+        return {"expense_id": seen["id"], "already_had_it": True}
+
+    if not allowed_file(upload.filename):
+        conn.close()
+        return {"error": "file type not allowed"}, 415
+    stored_name = f"expense_{secrets.token_hex(6)}_{secure_filename(upload.filename)}"
+    with open(os.path.join(UPLOAD_DIR, stored_name), "wb") as fh:
+        fh.write(raw)
+
+    read = read_receipt(raw, upload.mimetype or "image/jpeg")
+    spent_on = parse_date((read or {}).get("spent_on") or "")
+    amount = (read or {}).get("amount")
+    try:
+        amount = round(float(amount), 2) if amount is not None else 0.0
+    except (TypeError, ValueError):
+        amount = 0.0
+    # ZERO, NOT NULL. expenses.amount is NOT NULL DEFAULT 0, which is this
+    # schema's own way of saying "not known yet". A receipt nobody could read
+    # still has to arrive -- refusing it would lose the only copy of
+    # something somebody paid for -- and send-to-pennylane refuses to pass a
+    # zero on, so it cannot reach the accounts looking settled.
+    tax = (read or {}).get("tax_amount")
+    try:
+        tax = round(float(tax), 2) if tax is not None else None
+    except (TypeError, ValueError):
+        tax = None
+
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        """INSERT INTO expenses
+           (kind, vendor_name, description, amount, tax_amount, invoice_number,
+            filename, status, spent_on, doc_type, submitted_at,
+            scan_read, scanned_at, scan_sha256)
+           VALUES ('supplier_invoice', ?, ?, ?, ?, ?, ?, 'pending', ?, 'invoice',
+                   ?, ?, ?, ?)""",
+        ((read or {}).get("vendor_name") or None,
+         (read or {}).get("description") or "Scanned at the château",
+         amount, tax, (read or {}).get("invoice_number") or None,
+         stored_name, spent_on.isoformat() if spent_on else None,
+         now, json.dumps(read) if read else None, now, digest))
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return {"expense_id": new_id, "read": bool(read)}
+
+
 @app.route("/ingest/media", methods=["POST"])
 @csrf.exempt
 def ingest_media():
@@ -69500,6 +69607,78 @@ PHOTO_CAPTION_SYSTEM = (
     "5. Write the alt text for somebody who cannot see the picture: what is "
     "actually there, concretely, under 125 characters, not a caption."
 )
+
+
+RECEIPT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "vendor_name": {"type": ["string", "null"],
+                        "description": "The shop or supplier, as printed."},
+        "spent_on": {"type": ["string", "null"],
+                     "description": "The date on the receipt, YYYY-MM-DD."},
+        "amount": {"type": ["number", "null"],
+                   "description": "The total paid, including tax."},
+        "tax_amount": {"type": ["number", "null"],
+                       "description": "The VAT/TVA shown, if any."},
+        "invoice_number": {"type": ["string", "null"]},
+        "description": {"type": ["string", "null"],
+                        "description": "A few words on what was bought."},
+        "currency": {"type": ["string", "null"]},
+        "unreadable": {"type": "boolean",
+                       "description": "True if the image cannot be read at all."},
+    },
+    "required": ["unreadable"],
+    "additionalProperties": False,
+}
+
+RECEIPT_SYSTEM = (
+    "You read photographs of receipts and supplier invoices for a chateau in "
+    "the Ariege, in France. Report only what is printed. Leave a field null "
+    "rather than guessing it: a missing value is corrected in seconds and a "
+    "confident wrong one is found months later in the accounts. Amounts are "
+    "numbers without a currency symbol, and the total is what was actually "
+    "paid including tax. Dates are the date of the purchase, not today, and "
+    "French receipts write them day first. If the image is blank, upside "
+    "down beyond reading, or not a receipt at all, set unreadable."
+)
+
+
+def read_receipt(image_bytes, media_type="image/jpeg"):
+    """What a scanned receipt appears to say. A dict, or None.
+
+    PROPOSES. Nothing here is written anywhere a person has not looked at,
+    for the reason read_invoice gives about one misread decimal, which is the
+    owner's money rather than a stock level.
+
+    None on every failure, so the caller can say the reading did not happen
+    rather than showing an empty form that looks like a receipt with nothing
+    on it.
+    """
+    if not claude_configured() or not image_bytes:
+        return None
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    try:
+        response = client.messages.parse(
+            model="claude-opus-5", max_tokens=1024,
+            system=RECEIPT_SYSTEM,
+            output_config={"format": {"type": "json_schema",
+                                      "schema": RECEIPT_SCHEMA}},
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {
+                    "type": "base64", "media_type": media_type,
+                    "data": base64.standard_b64encode(image_bytes).decode("ascii")}},
+                {"type": "text", "text": "Read this receipt."},
+            ]}],
+        )
+    except Exception as e:
+        print(f"[claude] receipt reading failed: {e}")
+        return None
+    if getattr(response, "stop_reason", None) == "refusal":
+        return None
+    parsed = getattr(response, "parsed_output", None)
+    if not parsed or parsed.get("unreadable"):
+        return None
+    return parsed
 
 
 def suggest_photo_caption(image_bytes):
