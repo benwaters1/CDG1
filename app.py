@@ -4574,6 +4574,37 @@ def init_db():
          "ALTER TABLE bookings ADD COLUMN balance_amount REAL"),
         ("bookings_balance_due_date",
          "ALTER TABLE bookings ADD COLUMN balance_due_date TEXT"),
+        # The guest's own address, asked for on the booking form since the
+        # 5 October handover and until now folded into special_requests by a
+        # script. police_register wants it at check-in; collected here it is
+        # already known, which is the whole point of asking.
+        ("bookings_guest_address",
+         "ALTER TABLE bookings ADD COLUMN guest_address TEXT"),
+        ("bookings_guest_city",
+         "ALTER TABLE bookings ADD COLUMN guest_city TEXT"),
+        ("bookings_guest_postcode",
+         "ALTER TABLE bookings ADD COLUMN guest_postcode TEXT"),
+        ("bookings_guest_country",
+         "ALTER TABLE bookings ADD COLUMN guest_country TEXT"),
+        # R. 814-1 item 5: the guest's mobile telephone and email address.
+        # The register had no column for either, so a fiche filled in
+        # correctly was still missing a field the article names.
+        ("police_register_phone",
+         "ALTER TABLE police_register ADD COLUMN phone TEXT"),
+        ("police_register_email",
+         "ALTER TABLE police_register ADD COLUMN email TEXT"),
+        ("channel_police_register_phone",
+         "ALTER TABLE channel_police_register ADD COLUMN phone TEXT"),
+        ("channel_police_register_email",
+         "ALTER TABLE channel_police_register ADD COLUMN email TEXT"),
+        ("workshop_bookings_guest_address",
+         "ALTER TABLE workshop_bookings ADD COLUMN guest_address TEXT"),
+        ("workshop_bookings_guest_city",
+         "ALTER TABLE workshop_bookings ADD COLUMN guest_city TEXT"),
+        ("workshop_bookings_guest_postcode",
+         "ALTER TABLE workshop_bookings ADD COLUMN guest_postcode TEXT"),
+        ("workshop_bookings_guest_country",
+         "ALTER TABLE workshop_bookings ADD COLUMN guest_country TEXT"),
         ("bookings_balance_paid_at",
          "ALTER TABLE bookings ADD COLUMN balance_paid_at TEXT"),
         ("stripe_session_id", "ALTER TABLE bookings ADD COLUMN stripe_session_id TEXT"),
@@ -25883,12 +25914,91 @@ def send_notification(conn, user_id, kind, title, body=None, link=None, related_
 # once, with the same emails, regardless of which path got it there.
 # ---------------------------------------------------------------------------
 
+ADDRESS_FIELDS = ("guest_address", "guest_city", "guest_postcode", "guest_country")
+
+
+def address_from_form(form=None):
+    """The four address fields a booking form asks for, as a dict.
+
+    One reader so the room form, the workshop registration and the desk all
+    take the same four names and trim them the same way. Empty strings become
+    None: a column holding "" reads as an address that was given and was
+    blank, which is not what happened.
+    """
+    src = form if form is not None else request.form
+    out = {}
+    for name in ADDRESS_FIELDS:
+        out[name] = ((src.get(name, "") or "").strip() or None)
+    return out
+
+
+def address_one_line(row):
+    """The address as a person would write it, or "" if there is none.
+
+    Used for the police register and anywhere a human reads it. Skips what is
+    missing rather than leaving the commas behind, because "1 Rue, , , France"
+    is how a register entry looks when nobody checked.
+    """
+    if row is None:
+        return ""
+    def get(key):
+        try:
+            return (row[key] or "").strip()
+        except (KeyError, IndexError, TypeError):
+            return ""
+    town = " ".join(x for x in (get("guest_postcode"), get("guest_city")) if x)
+    return ", ".join(x for x in (get("guest_address"), town,
+                                 get("guest_country")) if x)
+
+
+def fiche_prefill(booking):
+    """What the register can fill in from a booking, as the form's own names.
+
+    Item 1 is one field at booking and two on the fiche, so the name is split
+    on the LAST space: "Marie Claire Dubois" gives Dubois and Marie Claire.
+    That is right far more often than not and wrong for compound surnames, so
+    it is a starting point in a box somebody is already reading rather than
+    anything written down unseen -- the fiche is checked against a passport
+    at the door, which is the moment to correct it.
+
+    Nationality and date and place of birth are deliberately absent. The
+    booking does not ask, and country of residence is not nationality.
+    """
+    if booking is None:
+        return {}
+    def get(key):
+        try:
+            return (booking[key] or "").strip()
+        except (KeyError, IndexError, TypeError):
+            return ""
+    whole = " ".join(get("guest_name").split())
+    surname, first_names = "", ""
+    if whole:
+        bits = whole.rsplit(" ", 1)
+        if len(bits) == 2:
+            first_names, surname = bits[0], bits[1]
+        else:
+            surname = whole
+    return {"surname": surname, "first_names": first_names,
+            "home_address": address_one_line(booking),
+            "phone": get("guest_phone"), "email": get("guest_email")}
+
+
+app.jinja_env.globals["fiche_prefill"] = fiche_prefill
+
+
+# Readable by the register form, which fills its address in from what the
+# guest gave when they booked. A Booking.com stay has no such columns and
+# address_one_line answers "" for it rather than raising.
+app.jinja_env.globals["address_one_line"] = address_one_line
+
+
 def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, departure,
                     party_size, special_requests, chosen_extras, payment_status="unpaid",
                     stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
                     total_price_override=None, discount_amount_override=None,
                    guests_under_18=0, source="direct", confirm_now=False,
-                   extra_details=None):
+                   extra_details=None, address=None):
     """Write a stay down. With confirm_now, it is booked rather than requested.
 
     THE HOUSE TAKES BOOKINGS, NOT REQUESTS FOR BOOKINGS. Every stay used to
@@ -25977,8 +26087,10 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
             extras_summary, payment_status, stripe_session_id, stripe_payment_intent_id, created_at,
             promo_code_id, discount_amount,
             deposit_amount, deposit_paid_at, balance_amount, balance_due_date,
-            guests_under_18, city_tax, source)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            guests_under_18, city_tax, source,
+            guest_address, guest_city, guest_postcode, guest_country)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                   ?, ?, ?, ?)""",
         (room["id"], reference_code, manage_token, guest_name, guest_email, guest_phone,
          arrival.isoformat(), departure.isoformat(), party_size, special_requests or None,
          total_price, extras_summary, payment_status, stripe_session_id, stripe_payment_intent_id,
@@ -25987,7 +26099,9 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
          deposit_amount if balance_amount else None, deposit_paid_at,
          balance_amount or None, balance_due,
          int(guests_under_18 or 0), city_tax,
-         booking_source_for(conn, guest_email, source)),
+         booking_source_for(conn, guest_email, source),
+         (address or {}).get("guest_address"), (address or {}).get("guest_city"),
+         (address or {}).get("guest_postcode"), (address or {}).get("guest_country")),
     )
     # Recorded in the SAME transaction as the booking insert, not a
     # separate commit after — otherwise a crash between the two would
@@ -26143,6 +26257,7 @@ def create_booking_from_stripe_session(conn, session):
         conn, room, meta["guest_name"], meta["guest_email"], meta.get("guest_phone", ""),
         arrival, departure, int(meta["party_size"]), meta.get("special_requests", ""),
         chosen_extras, payment_status="paid", confirm_now=True,
+        address=address_from_form(meta),
         stripe_session_id=session["id"], stripe_payment_intent_id=sval(session, "payment_intent"),
         promo_code=meta.get("promo_code") or None,
         guests_under_18=int(meta.get("guests_under_18") or 0),
@@ -42025,6 +42140,11 @@ def book_room(room_id):
                         "party_size": str(party_size),
                         "guests_under_18": str(guests_under_18),
                         "special_requests": special_requests[:490],
+                        # The address travels with the payment or a card
+                        # booking arrives without one -- collected, promised,
+                        # and missing for precisely the guests who paid.
+                        **{k: (v or "")[:200]
+                           for k, v in address_from_form().items()},
                         "extra_ids": ",".join(str(e["id"]) for e in chosen_extras),
                         **({"extra_when": pack_extra_details(extra_details)}
                            if extra_details else {}),
@@ -42086,7 +42206,7 @@ def book_room(room_id):
             conn, room, guest_name, guest_email, guest_phone, arrival, departure,
             party_size, special_requests, chosen_extras, promo_code=promo_code or None,
             guests_under_18=guests_under_18, confirm_now=True,
-            extra_details=extra_details,
+            extra_details=extra_details, address=address_from_form(),
         )
         conn.close()
         return redirect(url_for("booking_confirmation", manage_token=manage_token))
@@ -54368,6 +54488,12 @@ def police_fiche_fields(form):
     born_on_raw = form.get("born_on", "").strip()
     born_at = form.get("born_at", "").strip()[:120]
     home_address = form.get("home_address", "").strip()[:300]
+    # R. 814-1 item 5. Not required to submit: a guest who gives no mobile
+    # still has to be on the register, and refusing the fiche over a blank
+    # telephone would leave the house with no entry at all, which is worse
+    # than an entry with one field empty.
+    phone = form.get("phone", "").strip()[:40]
+    email = form.get("email", "").strip()[:200]
     if not surname or not first_names or not nationality:
         return None, "A surname, first names and nationality are what the register asks for."
     born_on = parse_date(born_on_raw) if born_on_raw else None
@@ -54378,6 +54504,7 @@ def police_fiche_fields(form):
     return {"surname": surname, "first_names": first_names,
             "born_on": born_on.isoformat() if born_on else None, "born_at": born_at or None,
             "nationality": nationality, "home_address": home_address or None,
+            "phone": phone or None, "email": email or None,
             "recorded_at": datetime.now(timezone.utc).isoformat(),
             "recorded_by_user_id": current_user()["id"] if current_user() else None}, None
 
@@ -54399,10 +54526,12 @@ def add_police_fiche(booking_id):
 
     conn.execute(
         """INSERT INTO police_register (booking_id, surname, first_names, born_on,
-           born_at, nationality, home_address, recorded_at, recorded_by_user_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           born_at, nationality, home_address, phone, email,
+           recorded_at, recorded_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (booking_id, fiche["surname"], fiche["first_names"], fiche["born_on"],
          fiche["born_at"], fiche["nationality"], fiche["home_address"],
+         fiche["phone"], fiche["email"],
          fiche["recorded_at"], fiche["recorded_by_user_id"]))
     # The name is not in the audit line. Who touched the register and when is
     # worth recording; copying a guest's name into a second table that is not
@@ -54455,10 +54584,12 @@ def add_channel_police_fiche(reservation_id):
         return redirect(url_for("police_register_page"))
     conn.execute(
         """INSERT INTO channel_police_register (ota_reservation_id, surname, first_names,
-               born_on, born_at, nationality, home_address, recorded_at, recorded_by_user_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               born_on, born_at, nationality, home_address, phone, email,
+               recorded_at, recorded_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (reservation_id, fiche["surname"], fiche["first_names"], fiche["born_on"],
          fiche["born_at"], fiche["nationality"], fiche["home_address"],
+         fiche["phone"], fiche["email"],
          fiche["recorded_at"], fiche["recorded_by_user_id"]))
     # As for the house's own: the act is recorded, the name is not.
     log_audit(conn, "police_fiche_recorded", target=f"Booking.com {stay['reservation_number']}")

@@ -282,6 +282,145 @@ def run():
     s.check("and nothing was added",
             _one("SELECT COUNT(*) AS c FROM police_register WHERE surname = 'Sneaky'")["c"] == 0)
 
+    s.section("The address the register needs, asked for once")
+    # The arrêté asks for a home address, and until now the booking form
+    # collected one and threw it away: four required fields folded into the
+    # special-requests box by a script, which meant nothing at all without a
+    # script and a guest's home address in an operational note with one.
+    #
+    # The owner's reason for asking at booking was "I don't want to get
+    # anything on arrival". That only works if it is stored.
+    import datetime as _dt
+    conn = db()
+    room = conn.execute(
+        "SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+    anon2 = m.app.test_client()
+    today2 = m.house_today()
+    conn.execute("DELETE FROM bookings WHERE guest_email = 'zzfiche@example.invalid'")
+    conn.commit()
+    posted = anon2.post("/book/%d" % room["id"], data={
+        # Inside the window the register page shows. It lists who is staying
+        # around now, which is the question it answers, so a stay more than a
+        # year out is correctly absent from it and would prove nothing here.
+        "arrival_date": (today2 + _dt.timedelta(days=2)).isoformat(),
+        "departure_date": (today2 + _dt.timedelta(days=4)).isoformat(),
+        "guest_name": "ZZ Fiche", "guest_email": "zzfiche@example.invalid",
+        "guest_phone": "+33 6 00 00 00 00", "party_size": "2", "adults": "2",
+        "agree_terms": "on", "special_requests": "",
+        "guest_address": "12 Route de Beille", "guest_city": "Chateau-Verdun",
+        "guest_postcode": "09310", "guest_country": "France",
+    }, follow_redirects=True)
+    made = conn.execute(
+        "SELECT * FROM bookings WHERE guest_email = 'zzfiche@example.invalid' "
+        "ORDER BY id DESC LIMIT 1").fetchone()
+    s.check("a booking made through the form keeps the address",
+            made is not None and (made["guest_address"] or "") == "12 Route de Beille",
+            detail="status %s; stored %r" % (posted.status_code,
+                                             made["guest_address"] if made else None))
+    if made:
+        s.check("and the town, postcode and country with it",
+                (made["guest_city"] or "") == "Chateau-Verdun"
+                and (made["guest_postcode"] or "") == "09310"
+                and (made["guest_country"] or "") == "France",
+                detail="%r %r %r" % (made["guest_city"], made["guest_postcode"],
+                                     made["guest_country"]))
+        # The thing that was happening before, which must not still happen.
+        s.check("and it is NOT written into the special requests",
+                "Address:" not in (made["special_requests"] or ""),
+                detail="a guest's home address in a free-text note that staff "
+                       "read on run sheets is not where the privacy notice "
+                       "says this house keeps it")
+        s.check("the register reads it back as one line",
+                m.address_one_line(made)
+                == "12 Route de Beille, 09310 Chateau-Verdun, France",
+                detail=m.address_one_line(made))
+
+    # Written out with gaps rather than with the commas left behind: a fiche
+    # reading "12 Route, , , France" is one nobody checked.
+    s.check("a part-given address does not print its empty commas",
+            m.address_one_line({"guest_address": "12 Route de Beille",
+                                "guest_city": "", "guest_postcode": "",
+                                "guest_country": "France"})
+            == "12 Route de Beille, France",
+            detail=m.address_one_line({"guest_address": "12 Route de Beille",
+                                       "guest_city": "", "guest_postcode": "",
+                                       "guest_country": "France"}))
+    # A Booking.com stay has no such columns at all, and the same page draws
+    # its fiche form. Answering "" beats raising on the register page.
+    s.check("and a stay with no address columns answers empty, not an error",
+            m.address_one_line({"reservation_number": "X"}) == "",
+            detail="the channel register draws the same form")
+
+    s.section("So the fiche form has it already filled in")
+    if made:
+        # The register lists stays that have ARRIVED -- "a stay three weeks
+        # out with no fiches is not late, it has not happened" -- so the one
+        # booked above is correctly absent from it. Walk it back a day: the
+        # booking had to be made through the form to prove the address is
+        # stored, and the form will not take a date in the past.
+        conn.execute("UPDATE bookings SET arrival_date = ?, departure_date = ? "
+                     "WHERE id = ?",
+                     ((today2 - _dt.timedelta(days=1)).isoformat(),
+                      (today2 + _dt.timedelta(days=1)).isoformat(), made["id"]))
+        conn.commit()
+        page = oc.get("/admin/register").get_data(as_text=True)
+        # The name is one field at booking and two on the fiche. Split on the
+        # last space: right far more often than not, wrong for a compound
+        # surname, and sitting in a box somebody is reading while they check a
+        # passport -- which is the moment to correct it. Untested, the split
+        # could quietly stop happening and nobody would notice until they were
+        # typing every name again.
+        s.check("the guest's name is split into the two fields it needs",
+                'value="Fiche"' in oc.get("/admin/register").get_data(as_text=True)
+                and 'value="ZZ"' in oc.get("/admin/register").get_data(as_text=True),
+                detail="ZZ Fiche should give first names ZZ and surname Fiche")
+        s.check("the register page carries the address in the form",
+                "12 Route de Beille, 09310 Chateau-Verdun, France" in page,
+                detail="asked for at booking so there is nothing to ask at "
+                       "the door, which was the point of asking")
+        s.section("R. 814-1 item 5, which the register had no column for")
+        # The article lists "the foreign national's mobile phone number and
+        # email address". police_register held surname, first names, birth,
+        # nationality and address, and NOTHING for either of those -- so a
+        # fiche filled in perfectly was missing a field the law names. The
+        # booking has both and was not copying them across.
+        posted2 = oc.post("/admin/bookings/%d/register" % made["id"], data={
+            "surname": "Fiche", "first_names": "Test", "nationality": "Belgian",
+            "home_address": "12 Route de Beille, 09310 Chateau-Verdun, France",
+            "phone": "+33 6 11 22 33 44", "email": "zzfiche@example.invalid",
+        }, follow_redirects=True)
+        saved = conn.execute(
+            "SELECT * FROM police_register WHERE booking_id = ? "
+            "ORDER BY id DESC LIMIT 1", (made["id"],)).fetchone()
+        s.check("a fiche records the telephone", saved is not None
+                and (saved["phone"] or "") == "+33 6 11 22 33 44",
+                detail="status %s; stored %r" % (posted2.status_code,
+                       saved["phone"] if saved else None))
+        s.check("and the email", saved is not None
+                and (saved["email"] or "") == "zzfiche@example.invalid",
+                detail=saved["email"] if saved else None)
+        s.check("and the register shows them back",
+                saved is not None
+                and "+33 6 11 22 33 44" in oc.get("/admin/register").get_data(as_text=True),
+                detail="a register nobody can read back is one nobody can check")
+        # A guest who gives no mobile still has to be on the register.
+        posted3 = oc.post("/admin/bookings/%d/register" % made["id"], data={
+            "surname": "Noreach", "first_names": "Test", "nationality": "Swiss",
+        }, follow_redirects=True)
+        blank = conn.execute(
+            "SELECT * FROM police_register WHERE booking_id = ? AND surname = 'Noreach'",
+            (made["id"],)).fetchone()
+        s.check("and a guest with no telephone is still recorded",
+                blank is not None,
+                detail="refusing the entry over a blank mobile leaves the "
+                       "house with no entry at all, which is worse")
+        conn.execute("DELETE FROM police_register WHERE booking_id = ?", (made["id"],))
+        conn.commit()
+
+    conn.execute("DELETE FROM bookings WHERE guest_email = 'zzfiche@example.invalid'")
+    conn.commit()
+    conn.close()
+
     _cleanup()
     return s
 
