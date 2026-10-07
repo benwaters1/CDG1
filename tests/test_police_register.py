@@ -374,6 +374,22 @@ def run():
                 'value="Fiche"' in oc.get("/admin/register").get_data(as_text=True)
                 and 'value="ZZ"' in oc.get("/admin/register").get_data(as_text=True),
                 detail="ZZ Fiche should give first names ZZ and surname Fiche")
+        # Suggested from where they live, at the owner's request on 7 October.
+        # The address holds a country NAME and the register wants a
+        # NATIONALITY, so "France" in this box would be wrong on the page as
+        # well as on the document -- it is mapped, not copied.
+        s.check("nationality is suggested from the country they live in",
+                'value="French"' in oc.get("/admin/register").get_data(as_text=True),
+                detail="the booking says France; the register wants French")
+        s.check("and the page says where that came from",
+                "check the passport" in oc.get("/admin/register").get_data(as_text=True),
+                detail="residence is not nationality, and the one person who "
+                       "can tell them apart is holding the passport")
+        s.check("a country the mapping does not know suggests nothing",
+                m.nationality_for_country("Freedonia") == ""
+                and m.nationality_for_country("Other") == "",
+                detail="an empty box beats a confident wrong one on a legal "
+                       "document")
         s.check("the register page carries the address in the form",
                 "12 Route de Beille, 09310 Chateau-Verdun, France" in page,
                 detail="asked for at booking so there is nothing to ask at "

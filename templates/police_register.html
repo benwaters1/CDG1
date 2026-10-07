@@ -68,7 +68,14 @@
       </div>
       <div style="flex:1 1 140px;">
         <label class="field-label" for="nat_{{ key }}">Nationality</label>
-        <input type="text" id="nat_{{ key }}" name="nationality" required maxlength="60">
+        {# Suggested from the country they gave as their address, at the
+           owner's request on 7 October. Residence is NOT nationality -- a
+           British guest living in Toulouse lives in France and is British --
+           so the hint under it says where the suggestion came from, and this
+           is read with a passport in hand. #}
+        <input type="text" id="nat_{{ key }}" name="nationality" required maxlength="60"
+               value="{{ pre.nationality or '' }}">
+        {% if pre.nationality %}<span class="upload-hint">From their address &mdash; check the passport</span>{% endif %}
       </div>
       <div style="flex:1 1 140px;">
         <label class="field-label" for="dob_{{ key }}">Date of birth</label>

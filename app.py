@@ -25951,6 +25951,42 @@ def address_one_line(row):
                                  get("guest_country")) if x)
 
 
+# The nationality that usually goes with living somewhere, for the countries
+# the booking form offers. Suggested into the register's nationality box so it
+# is not typed again for the great majority of guests, who are nationals of
+# the country they live in -- and corrected on sight for the ones who are not.
+# A country not on this list leaves the box empty: an empty field in front of
+# somebody holding a passport is better than a confident wrong one.
+NATIONALITY_BY_COUNTRY = {
+    "France": "French", "United Kingdom": "British", "Ireland": "Irish",
+    "United States": "American", "Canada": "Canadian", "Australia": "Australian",
+    "New Zealand": "New Zealander", "Germany": "German", "Netherlands": "Dutch",
+    "Belgium": "Belgian", "Switzerland": "Swiss", "Luxembourg": "Luxembourgish",
+    "Spain": "Spanish", "Portugal": "Portuguese", "Italy": "Italian",
+    "Austria": "Austrian", "Denmark": "Danish", "Sweden": "Swedish",
+    "Norway": "Norwegian", "Finland": "Finnish", "Iceland": "Icelandic",
+    "Poland": "Polish", "Czechia": "Czech", "Hungary": "Hungarian",
+    "Greece": "Greek", "Monaco": "Monegasque", "Andorra": "Andorran",
+    "Israel": "Israeli", "United Arab Emirates": "Emirati",
+    "Saudi Arabia": "Saudi", "Qatar": "Qatari", "South Africa": "South African",
+    "Singapore": "Singaporean", "Hong Kong": "Hong Konger", "Japan": "Japanese",
+    "South Korea": "South Korean", "China": "Chinese", "Taiwan": "Taiwanese",
+    "India": "Indian", "Thailand": "Thai", "Malaysia": "Malaysian",
+    "Indonesia": "Indonesian", "Philippines": "Filipino", "Brazil": "Brazilian",
+    "Mexico": "Mexican", "Argentina": "Argentine", "Chile": "Chilean",
+    "Colombia": "Colombian",
+}
+
+
+def nationality_for_country(country):
+    """The demonym for a country of residence, or "" if it is not known.
+
+    Deliberately not a guess: "Other", a blank, or anything typed by hand
+    comes back empty rather than put into a legal document as a fact.
+    """
+    return NATIONALITY_BY_COUNTRY.get((country or "").strip(), "")
+
+
 def fiche_prefill(booking):
     """What the register can fill in from a booking, as the form's own names.
 
@@ -25961,8 +25997,13 @@ def fiche_prefill(booking):
     anything written down unseen -- the fiche is checked against a passport
     at the door, which is the moment to correct it.
 
-    Nationality and date and place of birth are deliberately absent. The
-    booking does not ask, and country of residence is not nationality.
+    Nationality is SUGGESTED from the country of residence, which the owner
+    asked for on 7 October. It is not the same thing -- a British guest living
+    in Toulouse lives in France and is British -- so the form says where the
+    suggestion came from, and it is read with a passport in hand. A country
+    the mapping does not know leaves the box empty rather than guessing.
+
+    Date and place of birth stay absent: the booking does not ask.
     """
     if booking is None:
         return {}
@@ -25981,7 +26022,12 @@ def fiche_prefill(booking):
             surname = whole
     return {"surname": surname, "first_names": first_names,
             "home_address": address_one_line(booking),
-            "phone": get("guest_phone"), "email": get("guest_email")}
+            "phone": get("guest_phone"), "email": get("guest_email"),
+            # SUGGESTED from where they live, at the owner's request on
+            # 7 October. Residence is not nationality and the form says so
+            # beside the box; this saves typing for the great majority who
+            # are nationals of the country they live in.
+            "nationality": nationality_for_country(get("guest_country"))}
 
 
 app.jinja_env.globals["fiche_prefill"] = fiche_prefill
