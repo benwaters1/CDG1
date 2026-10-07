@@ -1,0 +1,70 @@
+{#- 2 Oct: THE EVENINGS LA TABLE COOKS, from the restaurant settings page.
+    dining_days = the weekdays it opens, 0=Monday .. 6=Sunday, comma-separated ("3,4,5,6" = Thursday to Sunday);
+    dining_time = the dinner time ("19:30"). Both live in app_settings and reach pages through `site`
+    (see PATCH_dining_days.txt). Import WITH CONTEXT so `site` is readable:
+      {% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
+    Until the days are set, every macro returns nothing and each page keeps its own wording. -#}
+
+{%- macro _open() -%}
+{%- set raw = ((setting(site, 'dining_days') if site is defined else '') or '')|string -%}
+{%- set parts = raw.replace(' ', '').split(',') -%}
+{%- set ns = namespace(b='') -%}
+{%- for i in range(7) -%}{%- set ns.b = ns.b ~ ('1' if (i|string) in parts else '0') -%}{%- endfor -%}
+{{- ns.b -}}
+{%- endmacro -%}
+
+{%- macro days_text() -%}
+{%- set bits = _open()|trim -%}
+{%- set N = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] -%}
+{%- if bits and '1' in bits -%}
+  {%- if '0' not in bits -%}every evening{%- else -%}
+    {#- start the walk just after a closed day, so a run over the weekend (Friday to Monday) stays whole -#}
+    {%- set ns = namespace(s=0, items=[], a=-1, n=0) -%}
+    {%- for i in range(7) -%}{%- if bits[i] == '1' and bits[(i + 6) % 7] == '0' and ns.a < 0 -%}{%- set ns.s = i -%}{%- set ns.a = i -%}{%- endif -%}{%- endfor -%}
+    {%- set ns.a = -1 -%}
+    {%- for k in range(7) -%}
+      {%- set i = (ns.s + k) % 7 -%}
+      {%- if bits[i] == '1' -%}
+        {%- if ns.a < 0 -%}{%- set ns.a = i -%}{%- set ns.n = 0 -%}{%- endif -%}
+        {%- set ns.n = ns.n + 1 -%}
+        {%- if bits[(i + 1) % 7] == '0' or k == 6 -%}
+          {%- if ns.n >= 3 -%}{%- set ns.items = ns.items + [N[ns.a] ~ ' to ' ~ N[i]] -%}
+          {%- elif ns.n == 2 -%}{%- set ns.items = ns.items + [N[ns.a], N[i]] -%}
+          {%- else -%}{%- set ns.items = ns.items + [N[i]] -%}{%- endif -%}
+          {%- set ns.a = -1 -%}
+        {%- endif -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {%- if ns.items|length == 1 -%}{{ ns.items[0] }}{%- else -%}{{ ns.items[:-1]|join(', ') }} and {{ ns.items[-1] }}{%- endif -%}
+  {%- endif -%}
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro when_text() -%}
+{%- set d = days_text()|trim -%}
+{%- if d -%}
+  {%- set t = ((setting(site, 'dining_time') if site is defined else '') or '')|string|trim -%}
+  {{- d[:1]|upper ~ d[1:] -}}{%- if t -%}, from {{ t }}{%- endif -%}
+{%- endif -%}
+{%- endmacro -%}
+
+{#- The opening hours, a day to a line: for the Dining page. Nothing until the days are set. -#}
+{%- macro hours_card() -%}
+{%- set bits = _open()|trim -%}
+{%- if bits and '1' in bits -%}
+{%- set N = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] -%}
+{%- set t = ((setting(site, 'dining_time') if site is defined else '') or '')|string|trim -%}
+<div class="g-hours" aria-labelledby="g-hours-h">
+  <p class="g-hours__fr" lang="fr">Heures d’ouverture</p>
+  <h3 class="g-hours__h" id="g-hours-h">Opening Hours</h3>
+  <table class="g-hours__t">
+    <caption class="g-hours__cap">{{ when_text() }}</caption>
+    <tbody>
+    {%- for i in range(7) %}
+      <tr class="{{ 'is-open' if bits[i] == '1' else 'is-closed' }}"><th scope="row">{{ N[i] }}</th><td>{% if bits[i] == '1' %}Dinner{% if t %} from {{ t }}{% endif %}{% else %}Closed{% endif %}</td></tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+</div>
+{%- endif -%}
+{%- endmacro -%}

@@ -9,7 +9,7 @@
   "@type": "ContactPage",
   "name": "Contact — Château de Gudanes",
   "mainEntity": {"@type":"LodgingBusiness","name":"Château de Gudanes",
-    "telephone":"+33 6 28 06 97 76","email":"ariege@chateaugudanes.com",
+    "telephone":"+33 6 28 06 97 76","email":"reservations@chateaugudanes.com",
     "address":{"@type":"PostalAddress","streetAddress":"2 Route de Beille",
       "addressLocality":"Château-Verdun","postalCode":"09310","addressCountry":"FR"}}
 }
@@ -50,9 +50,10 @@
     <p class="g-p">Every message is read. The booking pages are the fastest route for a stay{% if _dm == 'open' %}, a workshop or a table{% else %} or a workshop{% endif %}; for anything else, write and we will answer.</p>
 
     <dl class="g-facts-list" style="margin-top:var(--s6)">
-      <div><dt>Stays &amp; general</dt><dd><a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></dd></div>
+      <div><dt>Stays &amp; reservations</dt><dd><a href="mailto:reservations@chateaugudanes.com">reservations@chateaugudanes.com</a></dd></div>
       <div><dt>Workshops</dt><dd><a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a></dd></div>
       <div><dt>Weddings &amp; events</dt><dd><a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a></dd></div>
+      <div><dt>General enquiries</dt><dd><a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></dd></div>
       <div><dt>Telephone</dt><dd><a href="tel:+33628069776">+33 6 28 06 97 76</a></dd></div>
     </dl>
 
@@ -125,7 +126,7 @@
     </a>{% endif %}
     <a href="{{ url_for('find_booking') }}" class="g-contact-link">
       <b>{{ t('Manage a booking') }}</b>
-      <span>Change, pay or cancel an existing reservation</span>
+      <span>See, pay or add to an existing reservation</span>
     </a>
   </div>
 </div></section>
@@ -145,7 +146,7 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">A workshop</p>
-      <p class="g-key__v">The full experience: every meal, drinks, a tour of the château and the activities</p>
+      <p class="g-key__v">The full experience: all meals and drinks, a tour of the château and the activities</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Children</p>
@@ -178,9 +179,7 @@
 </div>
 
 
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-p g-lede-first">It is a restoration, not a renovation: the walls stay as they are, by law; the floors, the bathrooms and the beds are new.</p>
-</div></section>
+{# 5 Oct (design review): a one-sentence section left over from earlier cuts, repeating the Estate and Restoration line #}
 
 
 <div class="g-wrap"><svg class="g-ridge" viewBox="0 0 480 34" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">

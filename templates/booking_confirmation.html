@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% set sticky_bar = 'none' %}
 {% block title %}{% if (booking['status']|lower) == 'confirmed' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{% endif %}{% endblock %}
@@ -76,7 +77,7 @@
 <div class="g-band">
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w" alt="The gates in autumn" loading="lazy">
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1000w" alt="A château bedroom" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen table in winter" loading="lazy">
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1000w" alt="The grounds from above" loading="lazy">
 </div>
 
@@ -99,7 +100,7 @@
     <div class="g-find">
       <p class="g-find__k">Dinner</p>
       <h3 class="g-find__t">A table at La Table</h3>
-      <p class="g-find__d">Dinner at the château, on the nights the kitchen is open. It is worth claiming early.</p>
+      <p class="g-find__d">{% set _w = when_text()|trim %}Dinner at the château, {% if _w %}{{ _w }}{% else %}on the nights the kitchen is open{% endif %}. It is worth claiming early.</p>
     </div>
     {% endif %}
     <div class="g-find">
@@ -110,7 +111,7 @@
     <div class="g-find">
       <p class="g-find__k">The valley</p>
       <h3 class="g-find__t">Something to do with the days</h3>
-      <p class="g-find__d">The full experience: the brocantes, the kitchen and the restoration, with every meal, drinks and a tour of the château.</p>
+      <p class="g-find__d">The full experience: the brocantes, the kitchen and the restoration, with all meals and drinks, and a tour of the château.</p>
     </div>
       <p style="margin-top:var(--s6)">
       <a href="{{ url_for('manage_booking', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid">{{ t('Add to your stay') }}</a>

@@ -21,7 +21,7 @@
     <div><dt>Registered office</dt><dd>{{ company['registered_address'] }}</dd></div>
     {% endif %}
     {% if company and company['registration_number'] %}
-    <div><dt>SIRET</dt><dd>{{ company['registration_number'] }}</dd></div>
+    <div><dt>Registration</dt><dd>RCS Foix {{ company['registration_number'] }}</dd></div>
     {% endif %}
     {# LCEN 6-III also asks for the trade-register entry: "RCS Foix" and the SIREN, which is the SIRET's first nine digits. #}
     {% if company and company['registration_office'] %}

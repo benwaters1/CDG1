@@ -29,7 +29,7 @@
     <p class="g-field">
       <label for="nf_year">Which year</label>
       <select id="nf_year" name="notify_year">
-        {% for y in range(2026, 2030) %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+        {% set _ny = (house_today_iso()[:4]|int) if house_today_iso is defined else 2026 %}{% for y in range(_ny, _ny + 4) %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
       </select>
     </p>
     <p class="g-field">

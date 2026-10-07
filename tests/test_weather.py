@@ -66,16 +66,25 @@ def run():
             detail="a render that can block on somebody else's network is one "
                    "that eventually does")
 
-    s.section("With nothing cached, the written line stands")
+    s.section("With nothing cached, the page says nothing rather than something wrong")
     _clear(conn)
     s.check("there is no reading", m.weather_now(conn) is None)
     body = anon.get("/book").get_data(as_text=True)
-    # The fallback was cut to the owner's approved facts on 1 October ("In the
-    # Ariège -- cold winters and warm summers"); what matters is that a
-    # sentence stands where the reading would be.
-    s.check("the page still says something true",
-            "cold winters and warm summers" in body,
-            detail="an empty box is worse than a sentence")
+    # Until 5 October a written line stood where the reading would be -- the
+    # owner's approved "In the Ariège, cold winters and warm summers". The
+    # design cut it that day, with its reason in the partial: alone between
+    # two sections it read as an orphan. Whether it should come back is the
+    # owner's call and is with him; it is not a thing a test decides.
+    #
+    # What a test does decide is that the absence is CLEAN. An empty
+    # <div class="g-wx"> with nothing inside it reads to a guest as something
+    # that failed to load, which is worse than either the sentence or
+    # silence, and it is what a careless `{% if %}` around the inner markup
+    # would leave behind.
+    s.check("no empty weather box is left on the page",
+            'class="g-wx"' not in body,
+            detail="the wrapper renders with nothing in it, which reads as a "
+                   "broken widget rather than as nothing to say")
     s.check("and offers no temperature", "&deg;C" not in body
             and "°C" not in body.split("What Guests Say")[0])
 
@@ -101,8 +110,10 @@ def run():
         {"c": 30, "code": 0, "at": (now - timedelta(hours=5)).isoformat()}))
     s.check("nothing comes back", m.weather_now(conn) is None)
     body = anon.get("/book").get_data(as_text=True)
-    s.check("the page falls back to the sentence",
-            "cold winters and warm summers" in body)
+    s.check("and the box goes with it rather than standing empty",
+            'class="g-wx"' not in body,
+            detail="a stale reading must leave nothing behind, not an "
+                   "outline where a figure used to be")
     s.check("and does not show the old figure", "30&deg;C" not in body)
 
     s.section("An hours-old reading says how old it is")

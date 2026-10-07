@@ -1,3 +1,4 @@
+{% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
 {# ==========================================================================
    THE THREE INTENTS
    A persistent panel offering the three things someone can actually do here —
@@ -43,7 +44,7 @@
         <span class="g-three__n">02</span>
         <div class="g-three__b">
           <h3 class="g-three__t">The full experience</h3>
-          <p class="g-three__d">Retreats of three to seven nights, with every meal and drinks, cooking classes, the brocantes, yoga, kayaking and hiking, and a tour of the house. A small group, and the house to yourselves.</p>
+          <p class="g-three__d">Retreats of three to seven nights, with all meals and drinks, cooking classes, the brocantes, yoga, kayaking and hiking, and a tour of the house. A small group, and the house to yourselves.</p>
           <p class="g-three__p">Per person, everything included</p>
           <p class="g-three__a">
             <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the dates</a>
@@ -56,7 +57,7 @@
         <span class="g-three__n">03</span>
         <div class="g-three__b">
           <h3 class="g-three__t">Eat at La Table</h3>
-          <p class="g-three__d">Dinner at the château, on the nights the kitchen is open.</p>
+          <p class="g-three__d">{% set _w = when_text()|trim %}Dinner at the château, {% if _w %}{{ _w }}{% else %}on the nights the kitchen is open{% endif %}.</p>
           {% if settings and settings['price_per_person'] %}<p class="g-three__p">From <b>&euro;{{ settings['price_per_person']|int }}</b> a head</p>{% endif %}
           <p class="g-three__a">
             <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--solid">Reserve a table</a>

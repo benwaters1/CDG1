@@ -11,11 +11,11 @@
    take back when the dining switch closes the restaurant. #}
 {% macro room_copy(name, fallback='') -%}
 {%- set RM_DESC = {
-  'The Twin Room':    'A twin room, with a private bathroom on the first floor.',
-  'The Queen Room':   'A queen bed, with a private bathroom on the first floor.',
-  'The King Room':    'A king bed, with a bath and a basin in the room itself, and a private bathroom on the first floor.',
-  'The Gold Suite':   'An emperor bed, with a private bathroom on the first floor.',
-  'The Family Suite': 'For a family, with a private bathroom on the first floor. Children of eight and over are welcome.'
+  'The Twin Room':    'Twin beds.',
+  'The Queen Room':   'A queen bed.',
+  'The King Room':    'A king bed, with a bath and a basin in the room itself.',
+  'The Gold Suite':   'An emperor bed, and a fireplace to sit by.',
+  'The Family Suite': 'Two bedrooms, for a family. Children of eight and over are welcome.'
 } -%}
 {{- RM_DESC.get(name) or fallback -}}
 {%- endmacro %}

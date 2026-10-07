@@ -1,3 +1,4 @@
+{% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
 {# =============================================================================
    _facilities.html - 2 Oct. LES ÉQUIPEMENTS: what a stay gives you, as twelve
    framed tiles inside an ornamental frame, each with its gilt drawing, the
@@ -16,7 +17,7 @@
       {%- for kind, fr, en, line in [
         ('breakfast', 'Le petit-déjeuner', 'Breakfast', 'Every morning, included'),
         ('bed', 'La chambre', 'Your room', 'A new bed, lamps and power points'),
-        ('bath', 'La salle de bains', 'A private bathroom', 'Your own, downstairs on the first floor'),
+        ('bath', 'La salle de bains', 'A private bathroom', 'Your own, on the ground floor'),
         ('lounge', 'Le salon', 'The lounge', 'To read and gather in'),
         ('games', 'Les jeux de société', 'Board games', 'For the evenings'),
         ('wifi', 'Le Wi-Fi', 'Wi-Fi', 'In a common area of the château'),
@@ -34,7 +35,7 @@
       </li>
       {%- endfor %}
     </ul>
-    <p class="g-facil__note">Not included in a stay: lunch, dinner and drinks.{% if dm == 'open' %} Dinner can be booked on the nights the kitchen is open.{% endif %} In winter the heating is limited and the château is cold; every room has an electric blanket and a space heater.</p>
+    <p class="g-facil__note">Not included in a stay: lunch, dinner and drinks.{% if dm == 'open' %} {% set _w = when_text()|trim %}Dinner can be booked {% if _w %}{{ _w }}{% else %}on the nights the kitchen is open{% endif %}.{% endif %} In winter the heating is limited and the château is cold; every room has an electric blanket and a space heater.</p>
   </div>
 </div></section>
 {% endmacro %}
@@ -44,7 +45,7 @@
 <section class="g-sec g-fstrip-sec"><div class="g-wrap">
   <p class="g-fr">Avec la chambre <span class="g-fr__en">Included</span></p>
   <h2 class="g-place">With the Room</h2>
-  <p class="g-p g-intro">Breakfast every morning, a private bathroom of your own downstairs on the first floor, and the house and its grounds to enjoy.</p>
+  <p class="g-p g-intro">Breakfast every morning, and the house and its grounds to enjoy.</p>
   <ul class="g-fstrip">
     {%- for kind, label in [('pool','The pool'),('tennis','Tennis and pickleball'),('pingpong','Table tennis'),('lounge','The lounge'),('games','Board games'),('terrace','The terraces'),('bbq','A barbecue area'),('tree','The grounds'),('wifi','Wi-Fi, in a common area')] %}
     <li class="g-fstrip__i"><span class="g-fstrip__ill" aria-hidden="true">{{ illus(kind) }}</span><span class="g-fstrip__l">{{ label }}</span></li>

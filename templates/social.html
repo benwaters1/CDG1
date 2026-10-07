@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
 {# home.hero, not 'chateau.facade': that is not one of the fifteen slots, so
    site_image returns nothing and the tag can only ever be the fallback.
    Dead the morning somebody uploads a photograph for it and wonders why
@@ -28,12 +29,12 @@
     </div>
     <div class="g-panel">
       <h2 class="g-h3">The full experience</h2>
-      <p class="g-p">Retreats of three to seven nights: the brocantes, the kitchen and the restoration, with every meal and drinks, and a tour of the house. A small group, and the house to yourselves.</p>
+      <p class="g-p">Retreats of three to seven nights: the brocantes, the kitchen and the restoration, with all meals and drinks, and a tour of the house. A small group, and the house to yourselves.</p>
       <p><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the dates</a></p>
     </div>
     {% if _dm == 'open' %}<div class="g-panel">
       <h2 class="g-h3">Eat here</h2>
-      <p class="g-p">Dinner at the château, on the nights the kitchen is open.</p>
+      <p class="g-p">{% set _w = when_text()|trim %}Dinner at the château, {% if _w %}{{ _w }}{% else %}on the nights the kitchen is open{% endif %}.</p>
       <p><a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--solid">La Table</a></p>
     </div>{% endif %}
   </div>

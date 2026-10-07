@@ -1,5 +1,6 @@
 {% extends "public_base.html" %}
 {% block title %}Check a gift voucher{% endblock %}
+{% block description %}Check what is left on a Château de Gudanes gift voucher: enter the code from the card to see its balance.{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
 
@@ -11,9 +12,10 @@
   voucher code is a bearer instrument: somebody holding one is entitled to know
   what it is worth and nothing at all about the household it came from.
 #}
-<div class="g-wrap g-wrap--narrow">
-  <h1>Check a gift voucher</h1>
-  <p>Enter the code from the card to see what is left on it.</p>
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+  <p class="g-fr">Bon cadeau <span class="g-fr__en">Gift voucher</span></p>
+  <h1 class="g-pagehead">Check a gift voucher</h1>
+  <p class="g-p">Enter the code from the card to see what is left on it.</p>
 
   <form method="post" action="{{ url_for('check_gift_voucher') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -47,6 +49,6 @@
     arrive.</p>
   </div>
   {% endif %}
-</div>
+</div></section>
 
 {% endblock %}

@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_phone.html' import phone_field %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {# The atelier bar's button jumps to a dates section this page does not have; the form ends in its own Pay & register. #}
 {% set sticky_bar = 'none' %}
@@ -85,9 +86,12 @@
             </div>
           </div>
 
-          <div class="g-field g-field--narrow">
-            <label for="guest_phone">Phone <span class="g-opt">optional</span></label>
-            <input type="tel" inputmode="tel" id="guest_phone" name="guest_phone" inputmode="tel" value="{{ prefill_phone }}" autocomplete="tel">
+          {{ phone_field('guest_phone', 'guest_phone', prefill_phone, wrap='div') }}
+          <div class="g-field">
+            <label for="emergency_contact">Emergency contact<span class="g-req" aria-hidden="true">*</span></label>
+            <input type="text" id="emergency_contact" name="emergency_contact" required autocomplete="off"
+                   placeholder="Name and telephone">
+            <span class="g-hint">Someone not travelling with you, in case we need them.</span>
           </div>
         </section>
 
@@ -116,6 +120,16 @@
             <label for="special_occasion">Celebrating something <span class="g-opt">optional</span></label>
             <input type="text" id="special_occasion" name="special_occasion"
                    placeholder="Birthday, anniversary…" value="{{ prefill_special_occasion | default('') }}">
+          </div>
+
+          {#- 5 Oct (owner: "for the workshops we want more info"): an emergency contact and travel for the Toulouse
+              transfer. Carried into the registration's notes on submit until the app stores them (LAUNCH_CHECKLIST). -#}
+
+          <div class="g-field">
+            <label for="travel_details">Your travel <span class="g-opt">optional</span></label>
+            <input type="text" id="travel_details" name="travel_details" autocomplete="off"
+                   placeholder="Flight or train, and the time it arrives">
+            <span class="g-hint">So we know when to expect you &mdash; and for the transfer, on the workshops that include one. You can add it later from your reservation.</span>
           </div>
 
           <div class="g-field">
@@ -297,7 +311,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   <div class="g-plate">
     <div class="g-plate__row">
       <dl class="g-plate__l">
-        <div><dt>Included</dt><dd>The full experience: every meal and drinks, the activities (all optional), a formal dinner in the Salon de Musique, a tour of the château, {% if _tx %}the transfers from Toulouse, {% endif %}{% if _ex %}the excursions, {% endif %}the teaching and your room</dd></div>
+        <div><dt>Included</dt><dd>The full experience: all meals and drinks, the activities (all optional), a formal dinner in the Salon de Musique, a tour of the château, {% if _tx %}the transfers from Toulouse, {% endif %}{% if _ex %}the excursions, {% endif %}the teaching and your room</dd></div>
         <div><dt>Not included</dt><dd>Flights, and whatever you buy at the brocantes</dd></div>
         <div><dt>Transfers</dt><dd>{% if _tx %}From Toulouse on the first day, and back on the last{% else %}Not included on these dates. The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station{% endif %}</dd></div>
         <div><dt>To hold a place</dt><dd>A deposit now. The balance closer to the date, or pay it yourself</dd></div>
@@ -321,4 +335,16 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 </div></section>
 
 {{ form_keep('workshop_register-form', 'gudanes.atelier') }}
+
+<script>
+/* 5 Oct: emergency contact and travel go into the registration's notes until the app stores them itself. */
+(function(){
+  var ec=document.getElementById('emergency_contact'); if(!ec || !ec.form) return; var f=ec.form;
+  f.addEventListener('submit', function(){
+    var notes=f.querySelector('#notes'), tr=document.getElementById('travel_details'); if(!notes || /^Emergency contact:/.test(notes.value)) return;
+    var lead='Emergency contact: '+ec.value.trim()+'.'+(tr && tr.value.trim() ? ' Travel: '+tr.value.trim()+'.' : '');
+    notes.value=(lead+' '+notes.value).trim();
+  });
+})();
+</script>
 {% endblock %}

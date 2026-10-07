@@ -78,6 +78,19 @@
     <label class="field-label" for="admin_restaurant_settings-dining-reopens" style="margin-top:10px;">Reopens (shown when closed for the season, optional)</label>
     <input id="admin_restaurant_settings-dining-reopens" type="text" name="dining_reopens" maxlength="60"
            value="{{ dining_reopens }}" placeholder="April 2027">
+    {# 2 Oct: the evenings La Table opens. Shown on the website as the opening hours (Dining page, footer, Stay, the
+       homepage) with the dinner time above, and a table cannot be requested on any other evening. Saved by the patch
+       in PATCH_dining_days.txt. #}
+    {% set _dd = (dining_days if dining_days is defined else '')|string %}
+    <p class="field-label" style="margin-top:14px;">Open on these evenings</p>
+    <div style="display:flex; flex-wrap:wrap; gap:6px 14px; margin:4px 0 2px;">
+      {% for name in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}
+      <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:normal; text-transform:none;">
+        <input type="checkbox" name="dining_days" value="{{ loop.index0 }}" {{ 'checked' if (loop.index0|string) in _dd.replace(' ', '').split(',') }}> {{ name }}
+      </label>
+      {% endfor %}
+    </div>
+    <p class="upload-hint" style="margin-top:4px;">Shown as the opening hours, with the dinner time set above. Leave all unticked to keep the general wording (“on the nights the kitchen is open”).</p>
   </fieldset>
 
   <button type="submit" class="btn-primary" style="margin-top:18px;">Save settings</button>

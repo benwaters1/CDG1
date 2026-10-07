@@ -4,8 +4,8 @@
 {% set sticky_bar = 'atelier' %}
 {% set crumbs = [('Workshops', url_for('workshops_public')), (workshop['title'], None)] %}
 {% block title %}{{ workshop['title'] }} · The Full Experience{% endblock %}
-{# Every atelier shared one generic description; this one is the atelier's own, trimmed for search. #}{% block description %}{{ (ws_copy(workshop)|trim)|truncate(158, False, '…') if workshop else 'The full Gudanes experience: a workshop retreat at a French château under restoration.' }}{% endblock %}
-{% block og_desc %}A small-group workshop retreat at Château de Gudanes: the brocantes, the kitchen and the restoration, with every meal and drinks included.{% endblock %}
+{# Every atelier shared one generic description; this one is the atelier's own, trimmed for search. #}{% block description %}{{ ((workshop['title'] ~ ': ' ~ (ws_copy(workshop)|trim))|truncate(158, False, '…')) if workshop else 'The full Gudanes experience: a workshop retreat at a French château under restoration.' }}{% endblock %}
+{% block og_desc %}A small-group workshop retreat at Château de Gudanes: the brocantes, the kitchen and the restoration, with all meals and drinks included.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
@@ -72,7 +72,7 @@
     <div><dt>Transfers</dt><dd>{% if _tx %}From Toulouse on the first day, and back on the last{% else %}Not included on these dates. The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station{% endif %}</dd></div>
     {% if not _ex %}<div><dt>The days</dt><dd>Spent at the château itself, with no outings to plan around: the making, the meals and the house</dd></div>{% endif %}
     <div><dt>To hold a place</dt><dd>A deposit. The balance is taken closer to the date</dd></div>
-    <div><dt>Not included</dt><dd>Flights, and anything you buy at the brocantes</dd></div>
+    <div><dt>Not included</dt><dd>{% if _ex %}Flights, and anything you buy at the brocantes{% else %}Flights, and the journey to the château{% endif %}</dd></div>
   </dl>
 </div></section>
 
@@ -129,8 +129,10 @@
 </div></section>
 
 <div class="g-band">
-  {% for img in WS_IMAGES %}<img src="{{ img }}" alt="Work in progress on an eighteenth-century fresco" loading="lazy">{% endfor %}
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The long table in the château kitchen" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/64c3e06f-00b3-4c61-9f61-4b3476de1d30/Screenshot+2026-08-15+at+5.54.52+pm.png?format=1000w" alt="Guests at the table in the château kitchen" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/cae70da6-8137-478b-83e3-dc2082fba455/Screenshot+2025-01-08+at+9.58.01+pm.png?format=1500w" alt="Dishes from the château kitchen" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d1eac941-8c47-4513-8417-647b6cf77c16/Screenshot+2026-08-15+at+5.01.24+pm.png?format=1500w" alt="Guests walking out into the valley" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1000w" alt="The restoration of a fresco, close up" loading="lazy">
 </div>
 
 <!-- ============ INCLUDED ============ -->
@@ -154,7 +156,7 @@
     {% if _inc and not _basis %}{% for item in _inc.split(',') if item.strip() %}{% set _x = item.strip() %}<li>{{ _x[:1]|upper }}{{ _x[1:] }}</li>{% endfor %}
     {% else %}
     <li>Every meal, cooked in the château kitchen, with drinks throughout, alcoholic and non-alcoholic, mostly local</li>
-    <li>Your room in the château, with a private bathroom downstairs, on the first floor</li>
+    <li>Your room in the château, with a private bathroom on the ground floor</li>
     {% if _ex %}<li>The activities: cooking classes, bargaining at the brocantes, morning yoga, kayaking or hiking, and a barbecue in the grounds, all optional</li>
     <li>The excursions, and everything on the itinerary, materials included</li>{% else %}<li>The activities: the workshop's sessions at the house, a cooking class and morning yoga, all optional</li>
     <li>Everything on the itinerary, materials included</li>{% endif %}
@@ -174,7 +176,7 @@
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">Guest Quarters</p>
   <h2 class="g-place">Les Chambres</h2>
-  <p class="g-p g-lede-first">Each room has a private bathroom on the first floor, and lamps and power points. Prices are per person, sharing a room; coming alone, write to us.</p>
+  <p class="g-p g-lede-first">Each room has a private bathroom on the ground floor, and lamps and power points. Prices are per person, sharing a room; coming alone, write to us.</p>
 </div></section>
 
 <!-- ============ LES SALLES DE BAINS ============ -->
@@ -206,7 +208,7 @@
 <section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
   <p class="g-p" style="text-align:center;margin:0 auto">
     The walls of the room you work in are protected — conserved, never replaced. The bed you
-    sleep in, the linen on it and the bathroom on the first floor are not. The imperfection is deliberate. It is also what the restoration mornings are spent on.
+    sleep in, the linen on it and the bathroom on the ground floor are not. The imperfection is deliberate. It is also what the restoration mornings are spent on.
   </p>
 </div></section>
 

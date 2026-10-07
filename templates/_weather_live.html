@@ -16,8 +16,9 @@
    in the markup rather than something injected.
    ========================================================================== #}
 {% macro weather_now(wx) %}
+{#- 5 Oct (design review): with no live reading, nothing - the stand-in sentence sat alone between sections. -#}
+{% if wx and wx.c is not none %}
 <div class="g-wx">
-  {% if wx and wx.c is not none %}
   <p class="g-wx__live">
     <span class="g-wx__k">At the château</span>
     <span class="g-wx__t">{{ wx.c }}&deg;C</span>
@@ -37,10 +38,6 @@
       {%- endif %}
     </span>
   </p>
-  {% else %}
-  <p class="g-wx__fallback">
-    In the Ariège &mdash; cold winters and warm summers.
-  </p>
-  {% endif %}
 </div>
+{% endif %}
 {% endmacro %}

@@ -6,8 +6,8 @@
 {% block title_fr %}Les Ateliers{% endblock %}
 {% block description_fr %}Ateliers et retraites dans un château en restauration : la cuisine, les brocantes et la restauration. Tous les repas, les boissons et une visite de la maison compris.{% endblock %}
 {% block title %}The Full Experience: Château Workshop Retreats{% endblock %}
-{% block description %}The full Gudanes experience: small-group retreats in a French château under restoration, with every meal, drinks and a tour of the house. Three to seven nights.{% endblock %}
-{% block og_desc %}Workshop retreats at Château de Gudanes: every meal and drinks, and a tour of the house, a small group, and the house to yourselves.{% endblock %}
+{% block description %}The full Gudanes experience: small-group retreats in a French château under restoration, with all meals and drinks, and a tour of the house. Three to seven nights.{% endblock %}
+{% block og_desc %}Workshop retreats at Château de Gudanes: all meals and drinks, and a tour of the house, a small group, and the house to yourselves.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
@@ -50,7 +50,7 @@
 
 
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-p g-lede-first">The full Gudanes experience: a few days inside a château under restoration, with every meal, drinks and the house around you. Most of all it is a retreat: the pool, good food and wine, and the house to yourselves. Every workshop mixes the same three things: the brocantes, the kitchen and the restoration. The length sets the emphasis: three nights for the brocantes, five for the kitchen, seven for the restoration. The four-night workshops are spent at the house.</p>
+  <p class="g-p g-lede-first">A few days inside a château under restoration, with all meals and drinks and the house around you. Most of all it is a retreat: the pool, good food and wine, and the house to yourselves. Every workshop mixes the brocantes, the kitchen and the restoration; the length sets which leads.</p>
   <p class="g-p">A workshop is the full experience: every meal, alcoholic and non-alcoholic drinks, a tour of the château and the activities, with excursions and transfers from Toulouse except on the workshops spent at the house.</p>
 </div></section>
 
@@ -113,7 +113,7 @@
     </article>
     {% endfor %}
   </div>
-  <p class="g-hint" style="margin-top:var(--s5)">All prices are charged in euros. Other currencies shown are an approximate live conversion for reference only.</p>
+  <p class="g-hint" style="margin-top:var(--s5)">Prices are charged in euros; other currencies shown are approximate.</p>
   {% else %}
   <p class="g-p">Dates for the coming season are being finalised. They are released here first, and to the newsletter before that.</p>
   {% endif %}
@@ -260,7 +260,7 @@
 {% from '_stay_or_workshop.html' import stay_vs_workshop %}
 {{ stay_vs_workshop(ws_from=(workshops|selectattr('price_per_person')|map(attribute='price_per_person')|min) if workshops else None, dm=_dm, tx=_tx, ex=_ex) }}
 
-<div class="g-wrap">{{ animals_note() }}</div>
+{# 5 Oct: the loose animals note became an entry in Key Information below #}
 
 {# 1 Oct: You Have the Whole House cut - fewer statements #}
 
@@ -300,12 +300,7 @@
    mentioned it. Same voice as the nightly page. #}
 {# 1 Oct: "<h2 class="g-h2">À Table</h2>" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
-<div class="g-band">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1000w" alt="The kitchen" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w" alt="Copper pans" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1000w" alt="The dining room" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen table in winter" loading="lazy">
-</div>
+<div class="g-band"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d1eac941-8c47-4513-8417-647b6cf77c16/Screenshot+2026-08-15+at+5.01.24+pm.png?format=1500w" alt="Guests walking out into the valley" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/64c3e06f-00b3-4c61-9f61-4b3476de1d30/Screenshot+2026-08-15+at+5.54.52+pm.png?format=1000w" alt="Guests at the table in the château kitchen" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/cae70da6-8137-478b-83e3-dc2082fba455/Screenshot+2025-01-08+at+9.58.01+pm.png?format=1500w" alt="Dishes from the château kitchen" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/a92dff93-ba4c-438a-8a7f-88a1f47fa97e/Screenshot+2026-08-14+at+11.53.43+pm.png?format=1000w" alt="Guests walking up through the grounds" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f9f1c0b6-db5b-403a-bb61-e33ac936819f/Screenshot+2026-07-22+at+1.29.44+pm.png?format=1000w" alt="Produce and flowers on the kitchen table" loading="lazy"></div>
 
 <!-- ============ LES SALLES DE BAINS ============ -->
 {# 1 Oct: ">Les Salles de Bains<" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
@@ -328,7 +323,7 @@
   <div class="g-key">
     <div class="g-key__i">
       <p class="g-key__k">Rooms</p>
-      <p class="g-key__v">Each with a private bathroom on the first floor. Prices are per person, sharing a room</p>
+      <p class="g-key__v">Each with a private bathroom on the ground floor. Prices are per person, sharing a room</p>
     </div>
     {# Put back after every handover since 1 October. The deposit and the balance are read
        from the workshops and from WORKSHOP_BALANCE_DAYS by the route, and inside the balance
@@ -349,6 +344,10 @@
     <div class="g-key__i">
       <p class="g-key__k">Heating</p>
       <p class="g-key__v">Limited, and the château is cold in winter. Electric blankets and space heaters in the rooms</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Animals</p>
+      <p class="g-key__v">Bruce, a French bulldog, and four cats live here. Tell us of any allergy when you register</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Wi-Fi</p>
@@ -394,7 +393,7 @@
   ('Are meals and drinks included?',
    'Yes: every meal, and alcoholic and non-alcoholic drinks throughout, mostly local.'),
   ('Is everything included?',
-   'Every meal and drinks, the activities (cooking classes, the brocantes and yoga, with kayaking, hiking and a barbecue on the outings), a formal dinner in the Salon de Musique and a tour of the château. Excursions and transfers from Toulouse are included too, except on the workshops spent at the house. Every activity is optional.'),
+   'All meals and drinks, the activities (cooking classes, the brocantes and yoga, with kayaking, hiking and a barbecue on the outings), a formal dinner in the Salon de Musique and a tour of the château. Excursions and transfers from Toulouse are included too, except on the workshops spent at the house. Every activity is optional.'),
   ('Can I come on my own?',
    'Yes. Write to us about a room.'),
   ('What if I need to change my dates?',

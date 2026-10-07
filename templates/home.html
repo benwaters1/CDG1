@@ -1,4 +1,6 @@
 {% extends "public_base.html" %}
+{% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO %}
+{% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
 {% from '_illus.html' import illus %}
 {% block title %}A French Château Experience in the Pyrénées{% endblock %}
 {% block description %}A French château experience in the Pyrénées: a Class I Historic Monument under restoration, open to guests for a night or a workshop retreat.{% endblock %}
@@ -85,7 +87,7 @@
   <div class="g-full__copy">
     <p class="g-full__fr" lang="fr">La pleine expérience <span class="g-full__fren" lang="en">The château in full</span></p>
     <h2 class="g-full__h" id="full-h">Experience the Château in Full</h2>
-    <p class="g-full__p">Built in 1741, very nearly lost, and brought back room by room: this is a house with a long history, and a workshop retreat lets you live inside it. Three to seven nights, with every meal and drinks, a tour of the château and its restoration, the brocantes and cooking classes, yoga, the valley, a formal dinner in the Salon de Musique by candlelight, and the house to yourselves.</p>
+    <p class="g-full__p">Built in 1741, very nearly lost, and brought back room by room. A workshop retreat lets you live inside it for three to seven nights: all meals and drinks, the brocantes, the kitchen, the valley, a candlelit dinner in the Salon de Musique, and the house to yourselves.</p>
     <p class="g-full__btns">
       <a class="g-full__cta" href="{{ url_for('workshops_public') }}">See the Experiences</a>
       <a class="g-full__link" href="{{ url_for('restoration_page') }}#monument">The house and its history</a>
@@ -104,7 +106,6 @@
       </a></li>
       {% endfor %}
     </ul>
-    <p class="g-full__note">Every stay helps bring the house back to life.</p>
     {% else %}
     <p class="g-full__k">Every workshop</p>
     <ul class="g-full__threads">
@@ -140,7 +141,7 @@
 
 <section class="g-sec g-sec--plate"><div class="g-wrap">
 <h2 class="g-h2 g-h2--lead">Bienvenue</h2>
-<p class="g-p g-lede-first">An eighteenth-century château in the French Pyrénées, followed the world over as it is brought back to life, room by room, since 2013. In 2016 the restoration received the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco. You are welcome while the work goes on, for a night, or for the full experience.</p>
+<p class="g-p g-lede-first">An eighteenth-century château in the French Pyrénées, brought back to life room by room since 2013 and followed the world over. In 2016 the restoration received the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco. Come for a night, or for the full experience.</p>
 </div></section>
 
 <section class="g-sec"><div class="g-wrap">
@@ -199,6 +200,7 @@
         'The Gold Suite': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w',
         'The Family Suite': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/cc7f6cb2-243c-47a9-ab7e-5200a66afca1/bedroom+3.jpg?format=1000w'
       } %}
+      {%- for _n, _ph in ROOM_PHOTOS.items() %}{% set _ = HR_IMG.update({_n: _ph[0][0]}) %}{% endfor %}
       <img class="g-homeroom__img"
            src="{% if r.get('img') %}{{ r['img'] }}{% elif r['photo_filename'] %}{{ url_for('room_photo', filename=r['photo_filename']) }}{% else %}{{ HR_IMG.get(room_name(r['name']), 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583507444802-ZWPKZA5RWBS7BHZ9LJ0V/IMG_2988.jpg?format=1000w') }}{% endif %}"
            alt="{{ room_name(r['name']) }}" loading="lazy">
@@ -236,7 +238,7 @@
 {# 2 Oct: "The Next Dates" cut - the band under the hero lists the next dates and sells the workshops (CUT_SECTIONS.txt keeps it) #}
 {% endif %}
 
-<div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1500w" alt="The château seen from the valley road" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1500w" alt="The restoration of a fresco, close up" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="The gates in spring" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="The château de Gudanes" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1500w" alt="The château at night" loading="lazy"></div>
+<div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1500w" alt="The château in autumn" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1500w" alt="The restoration of a fresco, close up" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="The gates in spring" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/a92dff93-ba4c-438a-8a7f-88a1f47fa97e/Screenshot+2026-08-14+at+11.53.43+pm.png?format=1000w" alt="Guests walking up through the grounds" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1500w" alt="The château at night" loading="lazy"></div>
 
 <section class="g-sec--flush"><div class="g-half">
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1500w" alt="A bedroom at Château de Gudanes" loading="lazy">
@@ -257,7 +259,7 @@
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w" alt="The dining room at Château de Gudanes" loading="lazy">
   <div class="g-half__text">
     <h2 class="g-place">Dine at La Table</h2>
-    <p class="g-p"><em>Dinner at the château, on the nights the kitchen is open.</em></p>
+    <p class="g-p"><em>{% set _w = when_text()|trim %}Dinner at the château, {% if _w %}{{ _w }}{% else %}on the nights the kitchen is open{% endif %}.</em></p>
     
     {% if _dm == 'open' %}<p style="margin-top:var(--s6)"><a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--line">Reserve a table</a></p>
     {% else %}<p class="g-hint" style="margin-top:var(--s5)">La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}.</p>{% endif %}

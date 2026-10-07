@@ -1,4 +1,6 @@
 {% extends "public_base.html" %}
+{% from '_phone.html' import phone_field %}
+{% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
 {% set sticky_bar = 'dining' %}
 {# Crumbs are set before the base template reads the dining switch, so read it here. #}
 {% set crumbs = [('Dining', url_for('restaurant_info') if (setting(site, 'dining_mode') or 'open')|lower|trim != 'hidden' else None), ('Reserve', None)] %}
@@ -42,7 +44,9 @@
             <p class="g-field">
               <label for="dinner_date">Date</label>
               <input type="date" id="dinner_date" name="dinner_date"
-                     min="{{ min_date.isoformat() }}" value="{{ prefill_date }}" required>
+                     min="{{ min_date.isoformat() }}" value="{{ prefill_date }}" required
+                     data-open-days="{{ (setting(site, 'dining_days') or '')|string|replace(' ', '') }}">
+              {% set _w = when_text()|trim %}{% if _w %}<span class="g-hint" id="dinner_date_hint">La Table is open {{ _w[:1]|lower ~ _w[1:] if _w.startswith('Every') else _w }}.</span>{% endif %}
             </p>
             <p class="g-field">
               <label for="party_size">Guests</label>
@@ -65,10 +69,7 @@
               <label for="guest_email">Email</label>
               <input type="email" inputmode="email" id="guest_email" name="guest_email" autocomplete="email" value="{{ prefill_email }}" required>
             </p>
-            <p class="g-field">
-              <label for="guest_phone">Telephone <span class="g-opt">optional</span></label>
-              <input type="tel" inputmode="tel" id="guest_phone" name="guest_phone" inputmode="tel" autocomplete="tel" value="{{ prefill_phone }}">
-            </p>
+            {{ phone_field('guest_phone', 'guest_phone', prefill_phone) }}
           </div>
         </section>
 
@@ -207,4 +208,24 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
 {{ form_keep('restaurant_book-form', 'gudanes.table') }}
 {% endif %}
+
+<script>
+/* 2 Oct: a closed evening cannot be chosen. The server refuses it too (PATCH_dining_days.txt); this only says so sooner. */
+(function(){
+  var el = document.getElementById('dinner_date'); if(!el) return;
+  var raw = (el.getAttribute('data-open-days') || '').split(',').filter(function(x){ return /^\d$/.test(x); }).map(Number);
+  if(!raw.length) return;
+  var names = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  var hint = document.getElementById('dinner_date_hint');
+  function check(){
+    if(!el.value){ el.setCustomValidity(''); return; }
+    var d = new Date(el.value + 'T12:00:00'); var wd = (d.getDay() + 6) % 7;
+    if(raw.indexOf(wd) === -1){
+      el.setCustomValidity('La Table is closed on ' + names[wd] + 's. ' + (hint ? hint.textContent : ''));
+    } else { el.setCustomValidity(''); }
+  }
+  el.addEventListener('change', function(){ check(); el.reportValidity && el.reportValidity(); });
+  el.addEventListener('input', check); check();
+})();
+</script>
 {% endblock %}

@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
 {% from '_illus.html' import illus %}
 {% block schema %}{% if _dm != 'hidden' %}
 <script type="application/ld+json">
@@ -24,7 +25,7 @@
 {% block title_fr %}La Table{% endblock %}
 {% block description_fr %}Le dîner au château, dans la salle à manger. Pas tous les soirs.{% endblock %}
 {% block title %}Dining in a French Château, Ariège{% endblock %}
-{% block description %}Dinner in the dining room of a Class I French château, on the nights the kitchen is open.{% endblock %}
+{% block description %}{% set _w = when_text()|trim %}Dinner in the dining room of a Class I French château, {% if _w %}{{ _w }}{% else %}on the nights the kitchen is open{% endif %}.{% endblock %}
 {% block og_desc %}Dinner at Château de Gudanes, in the dining room of a Class I Historic Monument.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1200w{% endblock %}
 {% block bodyclass %}{% if _dm != 'hidden' %} has-hero hero--short{% endif %}{% endblock %}
@@ -73,7 +74,7 @@
         {%- if settings and settings['dinner_time'] %} from {{ settings['dinner_time'] }} · {% endif -%}
         {# Always true, so the line is never empty even before the settings
            are filled in. #}
-        on the nights it runs
+        {% set _d = days_text()|trim %}{% if _d %}{{ _d[:1]|upper ~ _d[1:] }}{% else %}on the nights it runs{% endif %}
         {%- if settings and settings['capacity'] %}, up to {{ settings['capacity'] }} at the table{% endif -%}
       </p>
     </div>
@@ -91,7 +92,7 @@
 <section class="g-sec"><div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Closed for the season</span> La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}. Breakfast is served every morning for guests staying in the house.</p></div></section>
 {% endif %}
 
-<div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w" alt="The kitchen gardens in late summer" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1500w" alt="The long table before service" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1500w" alt="Produce from the Sunday market" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1728027560330-AOHMYTLQV9BVVSYW5FS3/Gardens+-+Formal+Gardens+2.jpg?format=1500w" alt="The formal gardens" loading="lazy"></div>
+<div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w" alt="The kitchen table in winter" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1500w" alt="The long table before service" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1500w" alt="Copper pans in the château kitchen" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1728027560330-AOHMYTLQV9BVVSYW5FS3/Gardens+-+Formal+Gardens+2.jpg?format=1500w" alt="The formal gardens" loading="lazy"></div>
 
 {# 1 Oct: ">Occasions<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
@@ -103,7 +104,7 @@
   <p class="g-eyebrow">La Table</p>
   <h2 class="g-place">The Evening</h2>
   <div class="g-key">
-    <div class="g-key__i"><p class="g-key__k">When</p><p class="g-key__v">On the nights the kitchen is open</p></div>
+    <div class="g-key__i"><p class="g-key__k">When</p><p class="g-key__v">{% set _w = when_text()|trim %}{% if _w %}{{ _w }}{% else %}On the nights the kitchen is open{% endif %}</p></div>
     <div class="g-key__i"><p class="g-key__k">Where</p><p class="g-key__v">The dining room, part of the monument: its walls stay as they are</p></div>
     <div class="g-key__i"><p class="g-key__k">By</p><p class="g-key__v">Candles and lamps</p></div>
     <div class="g-key__i"><p class="g-key__k">The menu</p><p class="g-key__v">It changes with the season</p></div>
@@ -111,6 +112,7 @@
     <div class="g-key__i"><p class="g-key__k">Birthdays and anniversaries</p><p class="g-key__v">Tell us when you book</p></div>
     <div class="g-key__i"><p class="g-key__k">Address</p><p class="g-key__v">2 Route de Beille, Château-Verdun, Ariège 09310</p></div>
   </div>
+  {% if _dm == 'open' %}{{ hours_card() }}{% endif %}
 </div></section>
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">

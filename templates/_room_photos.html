@@ -1,0 +1,34 @@
+{#- 5 Oct (owner: "the room photos don't match booking.com, and the room photos when you've selected should be the correct
+    ones"). Each room's own photographs, as tagged to that room on the Booking.com listing (Bed and Breakfast Chateau de
+    Gudanes): Twin, Queen, Suite (= the Gold Suite) and Family Suite. The King Room has none there - it keeps its own
+    photograph until room photos are uploaded in the admin (an uploaded photo always wins).
+    Booking.com images only load with their signature (?k=...); the app's photo mirror should hold them too
+    (LAUNCH_CHECKLIST: add cf.bstatic.com to the mirror). -#}
+{%- set _BK = 'https://cf.bstatic.com/xdata/images/hotel/max1024x768/' -%}
+{%- set ROOM_PHOTOS = {
+  'The Twin Room': [
+    (_BK ~ '921670896.jpg?k=a988f75d70a0bf03bc5a97dd99b3ebc692d77eabc0820f88a3245d44e7a49f28&o=', 'The Twin Room'),
+    (_BK ~ '921671142.jpg?k=0463664adc5e7567227c32258c08ab5670be8c953791d63ad7c98e8f075ae85e&o=', 'The two beds in the Twin Room'),
+    (_BK ~ '921671149.jpg?k=a99b3aa66a3c823dbdc953387c2af1ed5b2f4a7c3e959db84f6a126bc8b19141&o=', 'The Twin Room, by the window'),
+  ],
+  'The Queen Room': [
+    (_BK ~ '921671001.jpg?k=81d3277437f8a0c9290ba074cc8fe547c7d49e2e27ebf78b25d319923482ce9f&o=', 'The Queen Room'),
+    (_BK ~ '798764955.jpg?k=d8653db73b32b57205f0af9b550ee5ee521deae7ec1638ed4dafcc67057d01c9&o=', 'The bed in the Queen Room'),
+    (_BK ~ '798764951.jpg?k=dd03eaa0759e0ec0da87d5272a0091623d54e13e073ace8580be58a478a5c56c&o=', 'The Queen Room, the seating'),
+  ],
+  'The Gold Suite': [
+    (_BK ~ '903132433.jpg?k=fc8c9e1901ebe5a7e4fd9946bb22ace693da1ff02dfae59801351b2ed1e31753&o=', 'The Gold Suite, the bed and the fireside chairs'),
+    (_BK ~ '903132506.jpg?k=811b8839a6591fedad373a4fdadbe663f017a838829239048e179d2c57106ff8&o=', 'The mirror above the fireplace in the Gold Suite'),
+    (_BK ~ '903132525.jpg?k=b560290a40931fdc0c28b32329c5485e9a48ecbe4450795bb3fa2ec0ecdbd9a1&o=', 'The Gold Suite, the bed and a table'),
+  ],
+  'The Family Suite': [
+    (_BK ~ '799432918.jpg?k=92504ccbbb71665f6edb7454ec16d877018713a9f9e603dcb62aa3bb166f0a91&o=', 'The Family Suite'),
+    (_BK ~ '799432864.jpg?k=ebda5e5045693aab2c11f0a9b643d8bc01db6f0247640660e15f2125e1b1f41d&o=', 'The large bed in the Family Suite'),
+    (_BK ~ '921671186.jpg?k=a5670a5a51ac1bf53f853d25ff405ae439028dc711265e0afa7b4bf116e3c9f6&o=', 'A bedroom of the Family Suite'),
+    (_BK ~ '790004185.jpg?k=c368a1bd82adf70e3d26e3629c4646c5781ef052ced007424000f7c7cd375c9f&o=', 'A bed against the floral wallpaper, Family Suite'),
+    (_BK ~ '799483474.jpg?k=6048ecc7cc013b2674bb20fa1d9d081920cd74c9a993ca30522fd4be5416eb00&o=', 'Chairs and a table by the windows, Family Suite'),
+    (_BK ~ '799432953.jpg?k=bfe46237a062c76163feac464aa8a8aa65e4f2d55d0bebc5842f0b5f785c5fa6&o=', 'The second bedroom, Family Suite'),
+  ],
+} -%}
+{#- A bathroom, for strips that need one (the bathrooms are downstairs; these are not room-specific). -#}
+{%- set BATH_PHOTO = (_BK ~ '799433081.jpg?k=10f484ed1a3138706d9d005e29e3187c577281eeff9cbfb7cf598085565fb638&o=', 'One of the bathrooms') -%}

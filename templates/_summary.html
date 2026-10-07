@@ -84,16 +84,15 @@
     {% endif %}
 
     <div class="g-recap__terms">
-      <p class="g-recap__k">If you need to change it</p>
+      <p class="g-recap__k">If your plans change</p>
       {#- Rather than invent a policy: point at the page that holds it. There
           was a branch here that promised "cancel more than N days before you
           arrive and there is nothing to pay" whenever a cancel_free_days
           setting existed. None does, and the house refunds nothing, so it was
           a free-cancellation promise waiting for somebody to add a setting. -#}
       <p class="g-recap__t">
-        Plans change and we would rather know early. Write to us or use your
-        booking page, and the terms are set out in full on the
-        <a href="{{ url_for('terms_page') }}">terms</a>.
+        The booking is non-refundable. Write to us and we can sometimes move
+        your dates instead; the <a href="{{ url_for('terms_page') }}">terms</a> set out the detail.
       </p>
 
       <p class="g-recap__t">
@@ -105,7 +104,7 @@
 
     <p class="g-recap__a">
       {% if booking.manage_url %}
-      <a href="{{ booking.manage_url }}" class="g-btn g-btn--solid">Change or add to this booking</a>
+      <a href="{{ booking.manage_url }}" class="g-btn g-btn--solid">Manage your reservation</a>
       {% endif %}
       <button type="button" class="g-btn" data-print>Print or save as PDF</button>
     </p>

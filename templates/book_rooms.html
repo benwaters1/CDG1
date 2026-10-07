@@ -1,4 +1,6 @@
 {% extends "public_base.html" %}
+{% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO %}
+{% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
 {% from '_facilities.html' import facilities with context %}
 {% from '_illus.html' import illus %}
 {# The bar offers "Stay the Night — Book", which on this page is a link to
@@ -129,7 +131,7 @@
   <p class="g-fr">Les chambres <span class="g-fr__en">The rooms</span></p>
   <p class="g-eyebrow">The Rooms</p>
   <h2 id="rooms" class="g-place">Five Rooms, Each Its Own</h2>
-  <p class="g-p g-lede-first">Each room is different, because the house is: its own shape, its own light, its own view of the valley and the mountains. All five share what matters most: a new bed, a private bathroom of your own on the first floor, and walls left as the centuries made them.</p>
+  <p class="g-p g-lede-first">Each room is different, because the house is: its own shape, its own light, its own view of the valley and the mountains. All five share what matters most: a new bed, a private bathroom of your own on the ground floor, and walls left as the centuries made them.</p>
   {% if searched %}
   <div class="g-searched" role="status">
     <p class="g-searched__dates">
@@ -189,10 +191,12 @@
   'The Twin Room': RM_IMG[1], 'The Queen Room': RM_IMG[3], 'The King Room': RM_IMG[0],
   'The Gold Suite': RM_IMG[5], 'The Family Suite': RM_IMG[4]
 } %}
+{#- 5 Oct: each room's own photograph (Booking.com) wins over the old mapping. -#}
+{%- for _n, _ph in ROOM_PHOTOS.items() %}{% set _ = RM_FOR.update({_n: _ph[0][0]}) %}{% endfor %}
 {# Written descriptions per room, used when the database field is thin.
    Anything entered in the admin overrides these. #}
       <img class="g-card__img"
-           src="{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% else %}{{ RM_FOR.get(room['name'], RM_IMG[loop.index0 % RM_IMG|length]) }}?format=1000w{% endif %}"
+           src="{% set _rp = ROOM_PHOTOS.get(room_name(room['name'])) %}{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% elif _rp %}{{ _rp[0][0] }}{% else %}{{ RM_FOR.get(room['name'], RM_IMG[loop.index0 % RM_IMG|length]) }}?format=1000w{% endif %}"
            alt="{{ room_name(room['name']) }}" loading="lazy">
       <div class="g-card__b">
         {{ emblem(room['name']) }}
@@ -357,7 +361,7 @@
   <p class="g-fr">En plus <span class="g-fr__en">To add</span></p>
   <p class="g-eyebrow">Extras</p>
   <h2 class="g-place">Add to Your Stay</h2>
-  <p class="g-p g-intro">A night here is a room and breakfast. These can be added when you book.</p>
+  <p class="g-p g-intro">These can be added when you book.</p>
   {% set _xs = (extras if (extras is defined and extras) else []) %}
   {% set _seen = namespace(tour=false) %}
   <ul class="g-addon">
@@ -391,7 +395,7 @@
     <li class="g-addon__i">
       <div class="g-addon__ill" aria-hidden="true">{{ illus('candelabra') }}</div>
       <h3 class="g-addon__t">Dinner at La Table</h3>
-      <p class="g-addon__d">On the nights the kitchen is open, inside, by candles and lamps.</p>
+      <p class="g-addon__d">{% set _w = when_text()|trim %}{% if _w %}{{ _w }}{% else %}On the nights the kitchen is open{% endif %}, inside, by candles and lamps.</p>
       <a class="g-addon__a" href="{{ url_for('restaurant_info') }}">Reserve a table <span aria-hidden="true">→</span></a>
     </li>
     {%- endif %}
@@ -413,7 +417,7 @@
    the include does not save the work -- it throws the answer away. #}
 {% from '_availability_strip.html' import next_free as next_free_strip %}
 {{ next_free_strip(next_free) }}
-{{ avail_cal(booked_dates, 2, dinner_dates=(dinner_dates if _dm == 'open' else none)) }}
+{# 5 Oct (design review): the house calendar "What Is Free" cut here - What Is Open Next just above gives each room's next free nights, and every room page has its own calendar. To restore: { { avail_cal(booked_dates, 2, dinner_dates=(dinner_dates if _dm == 'open' else none)) } } #}
 
 {# What it is doing at the chateau. Read from a cache the house refreshes
    hourly -- NOT fetched by the guest's own browser, which would hand their
@@ -494,7 +498,7 @@
   {% endif %}
 </div></section>
 
-{{ animals() }}
+{# 5 Oct: the Bruce section repeated Key Information's Animals line - cut here (kept on the confirmation) #}
 
 
 {# 2 Oct: "If One Night Is Not Enough" cut - the stay-or-workshop comparison above does it (CUT_SECTIONS.txt keeps it) #}
@@ -504,7 +508,7 @@
 {% from '_faq.html' import faq %}
 {{ faq([
   ('Are meals and drinks included?',
-   'Breakfast is. Lunch, dinner and drinks are not part of a stay. Every meal and drinks come with the workshops.'),
+   'Breakfast is. Lunch, dinner and drinks are not part of a stay; they come with the workshops, the full experience.'),
   ('When do I pay?',
    'When you book. Your room is confirmed as soon as the payment goes through.'),
   ('Is there a lift?',

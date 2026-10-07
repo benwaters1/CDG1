@@ -2144,7 +2144,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
    This clips at the page level so nothing can ever widen the viewport, while
    scrollable children keep scrolling inside themselves.
    ========================================================================== */
-html, body{ max-width: 100%; overflow-x: hidden; }
+html, body{ max-width: 100%; overflow-x: clip; }  /* 4 Oct: clip, not hidden - hidden makes body a scroll box and stops every position:sticky (the booking card) from sticking */
 .g main, .g header, .g footer, .g section{ max-width: 100vw; }
 .g .g-wrap, .g .g-wrap--narrow{ max-width: min(var(--wrap, 76rem), 100vw); }
 @media (max-width: 34rem){
@@ -10634,3 +10634,214 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
 @media (max-width: 40rem){ .g .g-hero__art{ width: 48vw; right: -6vw; opacity: .16; } }
 .g .g-hero__art{ color: #C6A66E !important; opacity: .5; width: clamp(150px, 15vw, 280px); right: clamp(16px, 3vw, 64px); }
 @media (max-width: 40rem){ .g .g-hero__art{ width: 40vw; right: -4vw; opacity: .22; } }
+
+/* 2 Oct - OPENING HOURS, a day to a line (the Dining page, under The Evening). From the restaurant settings. */
+.g .g-hours{ margin: var(--s7) 0 0; max-width: 30rem; padding: var(--s5) var(--s5) var(--s4); background: #FBF8F1; border: 1px solid var(--line); border-top: 2px solid var(--gilt-leaf); }
+.g .g-hours__fr{ margin: 0; font-family: var(--display); font-style: italic; font-size: 17px; color: var(--gilt); }
+.g .g-hours__h{ margin: 0 0 var(--s3); font-family: var(--display); font-weight: 400; font-size: clamp(22px, .6vw + 18px, 26px); color: var(--blue-deep); }
+.g .g-hours__t{ width: 100%; border-collapse: collapse; font-family: var(--serif); font-size: var(--t-base); }
+.g .g-hours__cap{ caption-side: top; text-align: left; margin: 0 0 var(--s3); font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .12em; text-transform: uppercase; color: var(--gilt); }
+.g .g-hours__t th, .g .g-hours__t td{ padding: .45rem 0; border-top: 1px solid var(--line); text-align: left; font-weight: 400; }
+.g .g-hours__t td{ text-align: right; }
+.g .g-hours__t tr.is-open th, .g .g-hours__t tr.is-open td{ color: var(--blue-deep); }
+.g .g-hours__t tr.is-closed th, .g .g-hours__t tr.is-closed td{ color: var(--stone); font-style: italic; }
+
+/* 2 Oct - keyboard focus was invisible on the search bars' date fields (homepage hero, Stay) and the flexible-dates
+   month field (Contact): the gilt ring every other control has. */
+.g .g-search input:focus-visible, .g .g-herosearch input:focus-visible, .g .g-flex__f input:focus-visible,
+.g .g-search select:focus-visible, .g .g-herosearch select:focus-visible{ outline: 2px solid var(--gilt, #A8823F) !important; outline-offset: 2px; }
+/* (a date or month input does not match :focus-visible while a segment holds focus - use plain :focus for them) */
+.g .g-search input[type="date"]:focus, .g .g-herosearch input[type="date"]:focus, .g .g-flex__f input[type="month"]:focus,
+.g .g-search input[type="date"]:focus-within, .g .g-herosearch input[type="date"]:focus-within, .g .g-flex__f input[type="month"]:focus-within{ outline: 2px solid var(--gilt, #A8823F) !important; outline-offset: 2px; }
+.g main input[type="date"]:focus, .g main input[type="month"]:focus{ outline: 2px solid var(--gilt, #A8823F) !important; outline-offset: 2px; }
+
+/* 2 Oct - BEFORE THE WORK (Restoration): the kitchen before and now, side by side, then a grid of before/during. */
+.g .g-ba{ display: grid; gap: var(--s4); margin: var(--s6) 0 var(--s5); grid-template-columns: 1fr; }
+@media (min-width: 48rem){ .g .g-ba{ grid-template-columns: 1fr 1fr; } }
+.g .g-ba__i{ margin: 0; }
+.g .g-ba__i img{ display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.g .g-ba__i figcaption{ margin-top: var(--s2); font-family: var(--serif); font-size: var(--t-small); color: var(--ink-2); }
+.g .g-ba__k{ display: inline-block; margin-right: .5em; font-family: var(--ui); font-size: var(--t-xs); font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
+.g .g-befgrid{ list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s4); grid-template-columns: repeat(2, minmax(0,1fr)); }
+@media (min-width: 64rem){ .g .g-befgrid{ grid-template-columns: repeat(3, minmax(0,1fr)); } }
+.g .g-befgrid li{ max-width: none; margin: 0; }
+.g .g-befgrid figure{ margin: 0; }
+.g .g-befgrid img{ display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.g .g-befgrid figcaption{ margin-top: var(--s2); font-family: var(--serif); font-style: italic; font-size: var(--t-small); color: var(--ink-2); }
+
+/* 2 Oct - KARINA (The Family): a portrait beside a short introduction */
+.g .g-person{ display: grid; gap: var(--s6); align-items: center; }
+@media (min-width: 52rem){ .g .g-person{ grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 5vw, 80px); } }
+.g .g-person__fig{ margin: 0; }
+.g .g-person__fig img{ display: block; width: 100%; max-width: 30rem; aspect-ratio: 2 / 3; object-fit: cover; border: 1px solid var(--gilt-leaf); outline: 1px solid var(--gilt-leaf); outline-offset: 6px; }
+.g .g-person__t .g-p{ max-width: 34rem; }
+
+/* 4 Oct (owner: "the spacing is all really bad, the pay and book doesn't scroll with it") - THE ROOM BOOKING PAGE.
+   1. The summary card follows the page (sticky now works - see html, body overflow-x: clip) and has no inner scroll,
+      so Pay & book is never hidden inside it. */
+@media (min-width: 62rem){
+  .g .g-aside{ max-height: none; overflow: visible; top: 96px; }
+}
+/* 2. The price lines wrapped off the card's edge ("€760.", "€0.80 × 2 adults × 2 n..."): label wraps, figure stays whole. */
+.g .g-quote__l div{ align-items: baseline; }
+.g .g-quote__l dt{ flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.g .g-quote__l dd{ flex: 0 0 auto; }
+/* 3. One even space between the four steps (was 96-138px, different each time). */
+.g .g-cols > div > .g-step{ padding-bottom: 0; margin: 0; }
+.g .g-cols > div > * + *{ margin-top: clamp(40px, 4vw, 56px) !important; }
+.g .g-cols > div > .g-wrap:has(.g-fleur){ margin-top: clamp(32px, 3vw, 44px) !important; }
+.g .g-cols > div > .g-wrap:has(.g-fleur) + *{ margin-top: clamp(32px, 3vw, 44px) !important; }
+.g .g-step__h{ margin-top: 0; }
+/* 4. The calendar: days were 96px squares (two months stacked = 1,271px). Cap the day height; two months side by side
+      from 64rem. The gap under it no longer touches "Adults". */
+.g .g-dates__day{ aspect-ratio: auto; height: 2.75rem; }
+@media (min-width: 64rem){ .g .g-cal__months{ display: grid; grid-template-columns: 1fr 1fr; gap: var(--s5); } .g .g-dates__day{ height: 2.5rem; } }
+.g .g-cal{ margin-bottom: var(--s5); }
+/* 5. "Anything you tick here..." sat on the cards. */
+.g .g-step .g-addons + .g-hint, .g .g-step .g-extras + .g-hint{ margin-top: var(--s3); }
+/* (steps that touch got a rule + 82px padding + a hairline; the first pair got an ornament instead - one rhythm now:
+   the numbered circles carry the sequence, the same gap between all four) */
+.g .g-cols > div > .g-step + .g-step{ padding-top: 0; border-top: 0; }
+.g .g-cols > div > .g-step + .g-step::before{ display: none; }
+.g .g-cols > div > .g-wrap:has(.g-fleur){ display: none; }
+.g .g-cols > div > * + *{ margin-top: clamp(48px, 4.5vw, 64px) !important; }
+.g .g-cols > div > svg{ display: none; }   /* the swirl between steps 2-3 and 3-4 - one rhythm, no ornaments between steps */
+.g .g-cols > div > .g-wrap:has(.g-hairs){ display: none; }   /* the hairline ornament between steps 1-2 */
+
+/* 4 Oct - TELEPHONE: country code, then the number (owner). Mandatory on the room, workshop and table forms. */
+.g .g-phone__row{ display: flex; gap: var(--s2); align-items: stretch; }
+.g .g-phone__cc{ flex: 0 0 auto; width: 11.5rem; max-width: 46%; }
+.g .g-phone__row input{ flex: 1 1 auto; min-width: 0; }
+@media (max-width: 30rem){ .g .g-phone__cc{ width: 9.5rem; } }
+/* the telephone row needs the width: email and telephone each take a full row where they shared one */
+.g .g-row:has(.g-phone){ grid-template-columns: 1fr !important; }
+.g .g-phone{ max-width: 34rem; }
+
+/* 5 Oct - ROOM PAGE, BELOW THE FORM (owner: "lots of spacing and design issues").
+   The closing logo sat on a grey box: every image gets a sand background while it loads, and the logo is transparent. */
+.g .g-close__mark{ background: none !important; }
+/* "This Room Was a Ruin" was one line under a drop cap; now a photograph beside it. */
+.g .g-ruin{ display: grid; gap: var(--s6); align-items: center; }
+@media (min-width: 52rem){ .g .g-ruin{ grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(32px, 5vw, 72px); } }
+.g .g-ruin__fig{ margin: 0; }
+.g .g-ruin__fig img{ display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; }
+.g .g-ruin__fig figcaption{ margin-top: var(--s2); font-family: var(--serif); font-style: italic; font-size: var(--t-small); color: var(--ink-2); }
+.g .g-ruin__t .g-p{ max-width: 32rem; }
+/* The end of the booking area: the form's last step, then straight into "With the Room" - no stacked padding. */
+.g main > .g-wrap:has(.g-form-full){ padding-bottom: 0; }
+.g main > .g-wrap:has(.g-form-full) + .g-sec{ padding-top: clamp(48px, 5vw, 72px); }
+/* The private bathroom line in the night card reads as part of the promise, not small print. */
+.g .g-night__bath{ color: var(--ink); }
+
+/* 5 Oct - ROOM AT A GLANCE (owner: tidy how the bathroom and the room are shown). One table under the title, in place of
+   tags, a second price calculator and three bathroom sentences. */
+.g .g-glance{ margin: var(--s5) 0 var(--s4); display: grid; grid-template-columns: repeat(2, minmax(0,1fr));
+  border-top: 1px solid var(--gilt-leaf); max-width: 46rem; }
+@media (min-width: 48rem){ .g .g-glance{ grid-template-columns: repeat(3, minmax(0,1fr)); } }
+.g .g-glance > div{ padding: var(--s3) var(--s4) var(--s3) 0; border-bottom: 1px solid var(--line); }
+.g .g-glance__wide{ grid-column: 1 / -1; }
+.g .g-glance dt{ font-family: var(--ui); font-size: var(--t-xs); font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); margin: 0 0 .25rem; }
+.g .g-glance dd{ margin: 0; font-family: var(--serif); font-size: var(--t-base); line-height: 1.45; color: var(--blue-deep); }
+.g .g-glance__sub{ display: block; font-size: var(--t-small); font-style: italic; color: var(--ink-2); }
+.g .g-room__meta{ margin-bottom: var(--s2); }
+.g .g-roomtop__cta{ margin: var(--s5) 0 0; }
+/* (lines under each item stopped short on part-filled rows - a rule above and below the table instead) */
+.g .g-glance{ border-bottom: 1px solid var(--gilt-leaf); padding: var(--s2) 0; row-gap: var(--s1); }
+.g .g-glance > div{ border-bottom: 0; padding: var(--s2) var(--s4) var(--s2) 0; }
+
+/* 5 Oct - THE BOOKING CARD, REDESIGNED (owner: "the design is not nice and text isn't fitting"). One card, no box inside
+   it; stay details compact; price lines in sentence case, the tax detail legible; a clear total; then Pay & book. */
+.g .g-dossier{ padding: var(--s5) var(--s5) var(--s5); }
+.g .g-dossier__k{ margin: 0 0 .15rem; }
+.g .g-dossier__room{ margin: 0 0 var(--s3); font-size: clamp(22px, 1vw + 14px, 26px); line-height: 1.15; }
+.g .g-dossier .g-dossier__l > div{ padding: .55rem 0; }
+.g .g-dossier .g-dossier__l dt{ font-size: 12px; letter-spacing: .14em; }
+.g .g-dossier .g-dossier__l dd{ font-size: 18px; line-height: 1.3; }
+.g .g-dossier .g-quote{ margin: var(--s4) 0 0; padding: var(--s3) 0 0; border-left: 0; border-top: 1px solid rgba(255,255,255,.22); }
+.g .g-dossier .g-quote__l{ gap: .5rem; margin: 0 0 .75rem; }
+.g .g-dossier .g-quote__l > div{ display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: 0; border: 0; }
+.g .g-dossier .g-quote__l dt{ flex: 1 1 auto; min-width: 0; text-transform: none; letter-spacing: 0; font-family: var(--serif);
+  font-size: 16px; font-weight: 400; line-height: 1.35; color: #EFE7D8; }
+.g .g-dossier .g-quote__l dt .g-opt{ display: block; margin: .1rem 0 0; font-family: var(--serif); font-size: 13.5px; font-style: italic;
+  letter-spacing: 0; text-transform: none; color: rgba(239,231,216,.82); }
+.g .g-dossier .g-quote__l dd{ flex: 0 0 auto; text-align: right; font-family: var(--serif); font-size: 16px; font-weight: 400; color: #fff; white-space: nowrap; }
+.g .g-dossier .g-quote__total{ display: flex; justify-content: space-between; align-items: baseline; margin: 0; padding: .7rem 0 0;
+  border-top: 1px solid rgba(255,255,255,.3); }
+.g .g-dossier .g-quote__total > span:first-child{ font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #D9C79B; }
+.g .g-dossier .g-quote__total .g-fig{ font-family: var(--display); font-size: clamp(28px, 1.2vw + 18px, 32px); color: #fff; }
+.g .g-dossier #quote_note{ margin: .2rem 0 0; font-size: 13.5px; text-align: right; color: rgba(239,231,216,.8); }
+.g .g-dossier .g-terms-line{ margin: var(--s4) 0 var(--s3) !important; font-size: 13.5px; }
+.g .g-dossier .g-submit{ width: 100%; padding-top: .95rem; padding-bottom: .95rem; font-size: 17px; }
+.g .g-dossier .g-foot-note{ margin: var(--s3) 0 0; font-size: 13.5px; line-height: 1.55; }
+
+/* 5 Oct - ROOM PAGE DESIGN REVIEW. No rules round the photo strip (the table above has its own); the strip sits close
+   under the button; the night card opens the form column; email and telephone no longer have an extra gap between. */
+.g main > .g-wrap > .g-strip{ border-top: 0 !important; border-bottom: 0 !important; padding-top: 0; padding-bottom: 0;
+  margin-top: var(--s6); margin-bottom: 0; }
+.g .g-cols > div > .g-night{ margin: 0 0 clamp(40px, 4vw, 56px); max-width: none; }
+.g .g-cols > div > .g-night + .g-step{ margin-top: 0 !important; }
+.g .g-step .g-row:has(.g-phone){ margin-top: 0; row-gap: var(--s4); }
+.g .g-step .g-field + .g-row, .g .g-step .g-row + .g-row{ margin-top: var(--s4); }
+.g .g-row:has(.g-phone) > *{ margin-top: 0; margin-bottom: 0; }
+/* the telephone row now sits the same 24px under email as email under name */
+.g .g-step .g-row:has(.g-phone){ margin-top: var(--s5) !important; }
+.g .g-eta{ margin-top: var(--s5); max-width: 34rem; }
+.g .g-row:has(.g-phone){ row-gap: var(--s5) !important; }   /* email, telephone, arrival: the same 24px as name to email */
+.g .g-row:has(.g-phone) > .g-eta{ margin-top: 0; }
+
+/* 5 Oct - ONE LABEL ABOVE A HEADING (design review: ~35 headings stacked a French line, its English translation and a
+   capitals eyebrow - "Votre chambre / Your room / Ariège"; "Avant les travaux / Before the work / HOW IT WAS / Before
+   the Work"). Now the French line, then the heading. The translation stays for screen readers. */
+.g .g-fr .g-fr__en{ position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.g .g-fr + .g-eyebrow{ display: none; }
+.g .g-fr{ margin-bottom: .35rem; }
+
+/* 5 Oct - NO DROP CAPS (design review). All 31 opening paragraphs carrying one were two or three lines long - too short
+   for a drop cap - and those beginning "A" read as one word ("Afew days", "Anight here", "Achâteau"); the owner's
+   screenshot showed "E very room". Opening paragraphs are set in normal type. */
+.g .g-lede-first::first-letter, .g .g-drop::first-letter, .g .g-drop-cap::first-letter, .g .g-versal::first-letter{
+  float: none !important; font-size: inherit !important; line-height: inherit !important; margin: 0 !important;
+  padding: 0 !important; border: 0 !important; color: inherit !important; font-family: inherit !important; font-weight: inherit !important; }
+
+/* 5 Oct - GALLERY: grids of 5 and 3 photographs in two columns ended on a lone photo beside an empty space. A lone last
+   photograph spans the row, in a wider shape. */
+.g .g-grid--gal > :last-child:nth-child(odd){ grid-column: 1 / -1; }
+.g .g-grid--gal > :last-child:nth-child(odd) img{ aspect-ratio: 21 / 9; width: 100%; height: auto; object-fit: cover; }
+
+/* 5 Oct - PHONES (design review, part 3). Nothing under 12px; sentences at least 14-15px; anything tapped on its own
+   line at least 44px tall (calendar arrows, "See the other four", "Open in maps", "See the dates", "The house and its
+   history"). */
+.g .g-facil__en{ font-size: 12px; }
+.g .g-hero label, .g .g-book-bar label, .g .g-hero__bar label{ font-size: 12px; }
+@media (max-width: 48rem){
+  .g .g-room__note, .g .g-book-bar__note, .g .g-room__meta{ font-size: 15px; }
+  .g .g-cred{ font-size: 14px; }
+  .g .g-full__link, .g .g-choose__a, .g .g-arrive__map, .g .g-second a, .g main .g-find a:not(.g-btn), .g main p > a:only-child:not(.g-btn){
+    display: inline-flex; align-items: center; min-height: 44px; }
+  .g .g-cal__btn{ min-height: 44px; min-width: 44px; }
+}
+.g .g-facil .g-facil__en, .g p.g-facil__en{ font-size: 12px !important; }
+.g .g-vs__k{ font-size: 12px !important; }
+@media (max-width: 48rem){ .g .g-extra a:not(.g-btn), .g [class*=g-extra] a:not(.g-btn), .g .g-addon a:not(.g-btn){ display: inline-flex; align-items: center; min-height: 44px; } }
+@media (max-width: 48rem){
+  .g .g-facil-frame .g-facil__en, .g .g-facil__en{ letter-spacing: .05em !important; line-height: 1.3; }
+  .g .g-facil-frame{ padding-bottom: 3.25rem !important; }
+}
+/* the full-experience band's translation, like every other heading's (one label above a heading) */
+.g .g-full__fren{ position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* 5 Oct - RANDOM TEXT (design review, inventory of 281 small texts): English subtitles under French subheads in the
+   workshop glance and the free-time panel (kept for screen readers); the second hero eyebrow on the homepage; the
+   "See what it looks like first" link under every newsletter button. */
+.g .g-gl2__fr span[lang=en], .g .g-gl2__sub span[lang=en], .g .g-journey__free-fr span[lang=en]{
+  position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.g .g-hero__eyeplace{ display: none; }
+.g .g-news__see{ display: none; }
+
+/* 5 Oct - ONE RHYTHM INSIDE SECTIONS (design review). In grid-laid sections (those with a medallion) the heading's 24px
+   bottom margin and the next block's 24px top margin did not merge - 48px under some headings, 24px under others.
+   Text-to-button gaps ran 16-48px. Now: 24px under every heading; 24px between text and its buttons. */
+.g main h2.g-place + *{ margin-top: 0 !important; }
+.g main :is(p, ul, dl, div):not(:has(.g-btn)) + :is(p, div):has(> .g-btn:first-child){ margin-top: 24px !important; }
+.g main :is(p, ul, dl):not(:has(.g-btn)):has(+ :is(p, div):has(> .g-btn:first-child)){ margin-bottom: 0 !important; }
+.g .g-gl2__h + .g-gl2__facts{ margin-top: 24px !important; }

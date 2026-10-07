@@ -37,7 +37,6 @@
     {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1500w", 'caption': 'The gates in autumn'},
     {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1728027560330-AOHMYTLQV9BVVSYW5FS3/Gardens+-+Formal+Gardens+2.jpg?format=1500w", 'caption': 'The formal gardens'},
     {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1500w", 'caption': 'The gardens in autumn'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1500w", 'caption': 'September'},
     {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1500w", 'caption': 'The parkland'}
   ],
   'restoration': [
@@ -84,7 +83,7 @@
       {% if gal['blurb'] %}<p class="g-p" style="margin-bottom:var(--s5);">{{ gal['blurb'] }}</p>{% endif %}
       {% set shown = gal['images'] or FALLBACK.get(gal['slug'], []) %}
       {% if shown %}
-      <div class="g-grid g-grid--3" style="margin-bottom:var(--s7);">
+      <div class="g-grid g-grid--3 g-grid--gal" style="margin-bottom:var(--s7);">
         {% for img in shown %}
         <figure style="margin:0;">
           <img src="{{ img['url'] }}" alt="{{ img['caption'] or gal['title'] }}" loading="lazy"
@@ -200,7 +199,6 @@
     <a href="https://www.instagram.com/chateaugudanes/" class="g-btn g-btn--solid" rel="me noopener">Instagram</a>
     <a href="https://www.facebook.com/chateaugudanes/" class="g-btn" rel="me noopener">Facebook</a>
   </p>
-  <p class="g-limit"><span class="g-limit__k">If you would rather not</span> The journal goes out a few times a year by email, and carries the same things without an account.</p>
 </div></section>
 
 
@@ -221,7 +219,7 @@
   <div class="g-vignette" aria-hidden="true">{{ illus('chateau') }}</div>
   <p class="g-eyebrow">Be here</p>
   <h2 class="g-place">See It for Yourself</h2>
-  <p class="g-p">A night in one of the five bedrooms, or the full experience: a workshop, with every meal and drinks, and a tour of the house.</p>
+  <p class="g-p">A night in one of the five bedrooms, or the full experience: a workshop, with all meals and drinks, and a tour of the house.</p>
   <p style="display:flex;flex-wrap:wrap;align-items:center;gap:var(--s3);margin-top:var(--s5)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a> <a href="{{ url_for('book_rooms') }}" class="g-btn">Stay the night</a></p>
 </div></section>
 <section class="g-sec g-sec--sand g-journal"><div class="g-wrap">

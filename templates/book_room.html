@@ -1,4 +1,6 @@
 {% extends "public_base.html" %}
+{% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO %}
+{% from '_phone.html' import phone_field %}
 {% from '_room_copy.html' import room_copy, room_name, room_note %}
 {% set crumbs = [('Stay', url_for('book_rooms')), (room_name(room['name']), None)] %}
 {% block title %}Book {{ room_name(room['name']) }}{% endblock %}
@@ -34,15 +36,14 @@
     'https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/71e505e9-4a57-4bd6-9ed7-96530cbaa16b/day_1_18.jpg?format=1500w'
   ] %}
   <img loading="eager" fetchpriority="high" decoding="async" class="g-roomhero"
-       src="{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% else %}{{ ROOM_FALLBACKS[room['id'] % 3] }}{% endif %}"
+       src="{% set _rp = ROOM_PHOTOS.get(room_name(room['name'])) %}{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% elif _rp %}{{ _rp[0][0] }}{% elif room_name(room['name']) == 'The King Room' %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w{% else %}{{ ROOM_FALLBACKS[room['id'] % 3] }}{% endif %}"
        alt="{{ room_name(room['name']) }}">
 
   <div style="padding:clamp(1.25rem,4vw,2rem) 0 0;">
     <p class="g-fr">Votre chambre <span class="g-fr__en">Your room</span></p>
-    <p class="g-eyebrow">Ariège · French Pyrénées</p>
     <h1 class="g-display" >{{ room_name(room['name']) }}</h1>
     <p class="g-room__meta">
-      For up to {{ room['max_occupancy'] }} guests{% if room['price_per_night'] %} · <span class="g-fig" data-eur="{{ room['price_per_night']|int }}">€{{ '{:,.0f}'.format(room['price_per_night']) }}</span> per night, room and breakfast{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{%- endif %}</p>
+      {% if room['price_per_night'] %}<span class="g-fig" data-eur="{{ room['price_per_night']|int }}">€{{ '{:,.0f}'.format(room['price_per_night']) }}</span> per night, room and breakfast{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{%- endif %}</p>
     {# The arithmetic a guest would otherwise do in their head, and the deposit
        split they would otherwise meet for the first time at the payment step.
        deposit_shown is None when the amount genuinely depends on the booking,
@@ -52,17 +53,21 @@
     {# The room's own facts, as on the Stay cards: the page a guest pays from showed none of them. #}
     {%- set _rn = room_name(room['name']) %}
     {%- set _bl = room['bed_setup'] or ('Twin beds' if ('Twin' in _rn or 'Tilleul' in _rn) else ('Queen bed' if ('Queen' in _rn or 'Cerise' in _rn) else ('King bed' if ('King' in _rn or 'Levant' in _rn) else ('Emperor bed' if ('Gold' in _rn or 'Émeraude' in _rn) else ('Two bedrooms' if ('Family' in _rn or 'Deux' in _rn) else ''))))) %}
-    <ul class="g-tags g-roomtop__facts">{% if _bl %}<li>{{ _bl }}</li>{% endif %}{% if room['bathroom'] %}<li>{{ room['bathroom']|capitalize }} bathroom, downstairs</li>{% endif %}<li>Breakfast included</li></ul>
-    {% if room['price_per_night'] %}
-      {% from '_nights_calc.html' import stay_cost %}
-      {{ stay_cost(room, deposit_shown) }}
-    {% endif %}
-    {# The button came before the price and facts; it now follows them. #}
-  <p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Check these dates</a></p>
-
-    <p class="g-room__note">Continental breakfast included. Walls left as the centuries made them — under Class I protection, they stay that way. Everything within them is new.</p>
-    {# Its own note, so the bathroom is clear on the page a guest books from (owner, 24 Sept). #}
-    <p class="g-room__note g-room__bath"><b>Your bathroom.</b> {% if (room['bathroom'] or '')|lower == 'private' %}Yours alone for the stay, downstairs on the first floor{% else %}Downstairs, on the first floor{% endif %}; the bedrooms are on the top floor, with a powder room in the upstairs vestibule for the night.{% if room_name(room['name']) == 'The King Room' %} This room also has a bath and a basin of its own.{% endif %} There is no lift, and a great many stairs.</p>
+    {# 5 Oct (owner: "it should all be tidied up how it's displayed ... at the top it has 1 night then under it has the
+       calendar with 2 selected"). The tags, a second nights-and-total calculator that ignored the form's dates, and
+       three bathroom sentences became one table; the form and its summary card are the only price. #}
+    {%- set _private = (room['bathroom'] or 'private')|lower == 'private' %}
+    <dl class="g-glance">
+      <div><dt>Sleeps</dt><dd>Up to {{ room['max_occupancy'] }}</dd></div>
+      {% if _bl %}<div><dt>The bed</dt><dd>{{ _bl }}</dd></div>{% endif %}
+      {% if _rn == 'The King Room' %}<div><dt>In the room</dt><dd>A bath and a basin of its own</dd></div>{% endif %}
+      <div class="g-glance__wide"><dt>Your bathroom</dt><dd>{{ 'Private, and yours alone, ' if _private else '' }}on the ground floor<span class="g-glance__sub">A powder room, with a toilet and basin, in the upstairs vestibule</span></dd></div>
+      <div><dt>Check-in / out</dt><dd>From 4pm &middot; by 11am<span class="g-glance__sub">Early check-in on request</span></dd></div>
+      <div><dt>Breakfast</dt><dd>Included</dd></div>
+      <div><dt>Stairs</dt><dd>No lift; the bedrooms are on the top floor</dd></div>
+    </dl>
+    <p class="g-room__note">Walls left as the centuries made them &mdash; under Class I protection, they stay that way. Everything within them is new.</p>
+    <p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Choose your dates</a></p>
   </div>
 
   <div class="g-strip">
@@ -70,30 +75,37 @@
       {% for p in gallery_photos %}
       <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt="{{ room_name(room['name']) }}" loading="lazy">
       {% endfor %}
+    {% elif ROOM_PHOTOS.get(room_name(room['name'])) %}
+      {#- 5 Oct: this room's own photographs (Booking.com), then one of the bathrooms downstairs. -#}
+      {% for _u, _a in ROOM_PHOTOS[room_name(room['name'])][1:4] %}<img src="{{ _u }}" alt="{{ _a }}" loading="lazy">{% endfor %}
+      <img src="{{ BATH_PHOTO[0] }}" alt="{{ BATH_PHOTO[1] }}" loading="lazy">
     {% else %}
       {# Until room photography is uploaded, show the château: the bathrooms
          guests actually use, the dining room, the gardens. #}
       <img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1000w" alt="The bathrooms" loading="lazy">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg?format=1000w" alt="La Table" loading="lazy">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen" loading="lazy">
+      <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/a92dff93-ba4c-438a-8a7f-88a1f47fa97e/Screenshot+2026-08-14+at+11.53.43+pm.png?format=1000w" alt="Guests walking up through the grounds" loading="lazy">
+      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen table in winter" loading="lazy">
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1000w" alt="The gardens in September" loading="lazy">
     {% endif %}
   </div>
 
   {# Gated on the database description, so the written copy - meant to replace that field - never showed when it was empty. #}
   {%- set _rcopy = room_copy(room['name'], room['description'] or '')|trim %}
-  {% if _rcopy %}<p class="g-p">{{ _rcopy }}</p>{% endif %}
+  {# (the room's one-line description repeated the bed and bathroom - shown in the table above) #}
 
   {% if room['amenities'] %}
   <ul class="g-tags">{% for tag in room['amenities'].split(',') %}<li>{{ tag.strip() }}</li>{% endfor %}</ul>
   {% endif %}
 
-  {% from '_stay_or_workshop.html' import night_notice %}{{ night_notice(dm=_dm) }}
+  {% from '_stay_or_workshop.html' import night_notice %}
   <form id="book-form" method="post" class="g-form-full" style="margin-top:clamp(1.5rem,4vw,2.5rem);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="g-cols">
       <div>
+        {#- 5 Oct: the night card sat alone above the form with half the page empty beside it; it now opens the form's
+            column, so the booking card sits beside it from the start. -#}
+        {{ night_notice(dm=_dm) }}
 
         <section class="g-step">
           <h2 id="book" class="g-step__h"><span class="g-num">01</span> Your dates</h2>
@@ -111,8 +123,6 @@
   </p>
 </div>
 {% endif %}
-
-          <p class="g-reqkey"><span class="g-req" aria-hidden="true">*</span> Needed to hold the room. Everything else can wait.</p>
           <div class="g-row">
             <p class="g-field">
               <label for="arrival_date">Arrival<span class="g-req" aria-hidden="true">*</span></label>
@@ -152,7 +162,7 @@
             </p>
           </div>
           {# Beneath both fields, not inside one — it describes the party. #}
-          <p class="g-hint g-hint--row">Guests under eighteen. Children are welcome from eight: the staircases are eighteenth-century, with no handrails in places. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s pay no taxe de séjour.</p>
+          <p class="g-hint g-hint--row">Guests under eighteen. Children are welcome from eight. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s pay no taxe de séjour.</p>
           {# party_size is what the route already reads, so it is kept and
              filled from the two fields above rather than replaced. #}
           <input type="hidden" name="party_size" id="party_size" value="{{ prefill_party_size or 2 }}">
@@ -160,7 +170,7 @@
           <p class="g-second">
   <span class="g-second__k">More than one room?</span>
   {# Fifteen is the chambres d'hôtes limit (owner, 24 Sept): the five rooms take fifteen with an extra bed. #}
-  Tell us, and we will hold them together.
+  You can book them together: choose each room for the same dates.
   <a href="{{ url_for('book_rooms') }}#rooms">See the other four</a>
 </p>
         </section>
@@ -179,9 +189,24 @@
               <label for="guest_email">Email<span class="g-req" aria-hidden="true">*</span></label>
               <input type="email" inputmode="email" id="guest_email" name="guest_email" autocomplete="email" value="{{ prefill_email }}" required>
             </p>
-            <p class="g-field">
-              <label for="guest_phone">Phone <span class="g-opt">optional</span></label>
-              <input type="tel" inputmode="tel" id="guest_phone" name="guest_phone" inputmode="tel" autocomplete="tel" value="{{ prefill_phone }}">
+            {{ phone_field('guest_phone', 'guest_phone', prefill_phone) }}
+            {#- 5 Oct (owner): an estimated arrival time, with check-in and check-out stated and early check-in on request.
+                The times are the terms' own ("Arrival is from 4pm and departure by 11am"). Until book_room() saves
+                estimated_arrival_time (LAUNCH_CHECKLIST), the choice is added to the guest's notes on submit. -#}
+            <p class="g-field g-eta">
+              <label for="estimated_arrival_time">Estimated arrival time<span class="g-req" aria-hidden="true">*</span></label>
+              <select id="estimated_arrival_time" name="estimated_arrival_time" required data-eta>
+                <option value="">Choose a time</option>
+                <option value="Before 4pm (early check-in requested)">Before 4pm &mdash; early check-in, on request</option>
+                <option value="4pm-5pm">4pm &ndash; 5pm</option>
+                <option value="5pm-6pm">5pm &ndash; 6pm</option>
+                <option value="6pm-7pm">6pm &ndash; 7pm</option>
+                <option value="7pm-8pm">7pm &ndash; 8pm</option>
+                <option value="8pm-9pm">8pm &ndash; 9pm</option>
+                <option value="9pm-10pm">9pm &ndash; 10pm</option>
+                <option value="After 10pm">After 10pm</option>
+              </select>
+              <span class="g-hint">Check-in from 4pm, check-out by 11am. Arriving earlier? Early check-in is on request &mdash; choose it above and we will do our best.</span>
             </p>
           </div>
         </section>
@@ -260,9 +285,9 @@
         <section class="g-step">
           <h2 class="g-step__h"><span class="g-num">{{ '04' if extras else '03' }}</span> Anything we should know</h2>
           <p class="g-field">
-            <label for="special_requests">Anything we should know <span class="g-opt">optional</span></label>
+            <label for="special_requests" class="g-vh">Anything we should know (optional)</label>
             <textarea id="special_requests" name="special_requests" rows="4" placeholder="Dietary needs, occasion, arrival time, questions...">{{ prefill_requests | default('') }}</textarea>
-              <span class="g-hint">Anything here can be changed after booking — use the link in your confirmation.</span>
+              <span class="g-hint">Optional. You can add to this later from your reservation.</span>
           </p>
           <p class="g-field g-field--narrow">
             <label for="promo_code">Promo code <span class="g-opt">optional</span></label>
@@ -318,7 +343,7 @@
 
           {% if stripe_enabled and room['price_per_night'] %}
           <button type="submit" class="g-btn g-submit">Pay &amp; book</button>
-          <p class="g-foot-note">Your booking is confirmed the moment your payment goes through. You get a reference code and a link to change anything — dates, guests, extras, or what the kitchen should know.</p>
+          <p class="g-foot-note">Your booking is confirmed the moment your payment goes through. You get a reference code and a link to manage your reservation.</p>
           {% else %}
           
 {# Families decide they need two rooms while looking at one, not afterwards
@@ -740,16 +765,18 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   <div class="g-plate">
     <div class="g-plate__row">
       <dl class="g-plate__l">
-        <div><dt>The payment</dt><dd>Taken by Stripe. Your card details never reach the château</dd></div>
+        <div><dt>The payment</dt><dd>Paid in full when you book, by Stripe. Your card details never reach the château</dd></div>
         <div><dt>The booking</dt><dd>Confirmed straight away, with your dates held</dd></div>
         <div><dt>Cancellation</dt><dd>Non-refundable. Write to us and we can sometimes move your dates instead</dd></div>
         <div><dt>Your reference</dt><dd>Emailed at once, with a link to see your booking and add to it</dd></div>
         <div><dt>Breakfast</dt><dd>Included every morning, in the rate you see</dd></div>
+        <div><dt>Minimum stay</dt><dd>{% set _mn = (room['min_nights'] if room and room['min_nights'] else 1)|int %}{{ _mn }} night{{ 's' if _mn != 1 }}</dd></div>
         <div><dt>Luggage</dt><dd>Pack lightly: the bedrooms are reached by the original staircase, and there is no lift</dd></div>
         {#- It said "charged locally on departure". The checkout adds it to the
             card payment as its own line, so a guest who read this expected to
             pay it twice. The rate is the one the checkout charges. -#}
         <div><dt>Tourist tax</dt><dd>{% if settings and settings['tourist_tax'] %}€{{ '{:,.2f}'.format(settings['tourist_tax']|float) }} per adult per night, set by the commune. {% endif %}Added to the total when you pay</dd></div>
+        <div><dt>Animals</dt><dd>Bruce, a French bulldog, and four cats live here. Tell us of any allergy when you book</dd></div>
       </dl>
     </div>
   </div>
@@ -770,17 +797,21 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
    Every figure here is already stated on the homepage and the restoration
    page. Nothing new is claimed. #}
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Before This</p>
-  <h2 class="g-place">This Room Was a Ruin</h2>
-  <p class="g-p g-lede-first">Every room now open to guests was a ruin when the restoration began in 2013. This one included.</p>
+<section class="g-sec g-ruin-sec"><div class="g-wrap g-ruin">
+  <figure class="g-ruin__fig"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8e2d96ea-4524-4f3b-ae0d-88e6191e7b09/Before+The+Work+-+Bedroom.JPG?format=1000w" alt="A bedroom before the work" loading="lazy"><figcaption>A bedroom, before the work</figcaption></figure>
+  <div class="g-ruin__t">
+    <p class="g-eyebrow">Before This</p>
+    <h2 class="g-place">This Room Was a Ruin</h2>
+    <p class="g-p">Every room now open to guests was a ruin when the restoration began in 2013. This one included.</p>
+    <p class="g-p"><a href="{{ url_for('restoration_page') }}#before" class="g-link">See the château before the work</a></p>
+  </div>
 </div></section>
 
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
-<div class="g-wrap">{{ animals_note() }}</div>
-<div class="g-wrap">{{ terms_upfront(settings, room['min_nights'] if room else none, deposit_shown) }}</div>
+{# 5 Oct (owner): "Before you fill anything in" sat after the form and repeated the cancellation line; it and the
+   animals note now live in What Happens Next. #}
 
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
@@ -921,4 +952,16 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 })();
 </script>
 {{ form_keep('book-form', 'gudanes.book') }}
+
+<script>
+/* 5 Oct: the estimated arrival travels in the guest's notes until book_room() saves estimated_arrival_time itself. */
+(function(){
+  var f = document.getElementById('book-form'); if (!f) return;
+  f.addEventListener('submit', function(){
+    var eta = f.querySelector('[data-eta]'), notes = f.querySelector('[name="special_requests"]');
+    if (!eta || !eta.value || !notes || /^Estimated arrival:/.test(notes.value)) return;
+    notes.value = ('Estimated arrival: ' + eta.value + '. ' + notes.value).slice(0, 490);
+  });
+})();
+</script>
 {% endblock %}
