@@ -219,8 +219,15 @@ def run():
     conn2 = db()
     room2 = conn2.execute(
         "SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+    # A SESSION A GUEST COULD ACTUALLY REGISTER FOR. "The newest row" is a
+    # leftover from whichever suite ran last -- cancelled, or already over --
+    # and its registration page 404s, so this check passed on its own and
+    # failed in a full run. The same trap caught test_rendered_markup.
     ses2 = conn2.execute(
-        "SELECT id FROM workshop_sessions ORDER BY id DESC LIMIT 1").fetchone()
+        """SELECT id FROM workshop_sessions
+            WHERE cancelled_at IS NULL AND start_date >= ?
+            ORDER BY start_date LIMIT 1""",
+        (m.house_today().isoformat(),)).fetchone()
     pub2 = m.app.test_client()
     if room2:
         page = pub2.get("/book/%d" % room2["id"]).get_data(as_text=True)
@@ -229,9 +236,17 @@ def run():
                 detail="an anniversary nobody is asked about is one the house "
                        "cannot mark")
     if ses2:
-        page = pub2.get("/workshops/register/%d" % ses2["id"]).get_data(as_text=True)
+        got = pub2.get("/workshops/register/%d" % ses2["id"])
+        # Said out loud rather than left to fail as a missing field three
+        # lines later, which is how this read the first time.
+        s.check("the registration page opens at all", got.status_code == 200,
+                detail="HTTP %s for session %s" % (got.status_code, ses2["id"]))
         s.check("and so does the workshop registration",
-                'name="special_occasion"' in page)
+                'name="special_occasion"' in got.get_data(as_text=True))
+    else:
+        s.check("there is a sitting to register for", False,
+                detail="reported rather than skipped: the check above would "
+                       "pass on nothing")
 
     # And a stay keeps it. bookings had no such column until 7 October: the
     # field existed on the workshop side only.
