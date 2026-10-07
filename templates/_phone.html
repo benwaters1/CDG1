@@ -1,7 +1,6 @@
 {#- 4 Oct (owner): "phone number should have a country code selector then input number and is mandatory".
-    phone_field(id, name, value): a dialling-code menu, then the number. The input itself always carries the WHOLE
-    international number, so it survives a re-render with no script running; the script splits it for display on load
-    and joins a freshly typed national number on submit. The server receives what it always did - no app change.
+    phone_field(id, name, value): a dialling-code menu, then the number. On submit the two are joined into one
+    international number in `name` ("+61 412 345 678"), so the server receives what it always did - no app change.
     With no saved number, the code is picked from the browser's language region (en-AU -> +61), else France.
     Import: {% from '_phone.html' import phone_field %} -#}
 

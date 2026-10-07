@@ -10845,3 +10845,79 @@ html:has(.g-bookbar), html:has(.g-stickybar){ scroll-padding-bottom: 112px; }
 .g main :is(p, ul, dl, div):not(:has(.g-btn)) + :is(p, div):has(> .g-btn:first-child){ margin-top: 24px !important; }
 .g main :is(p, ul, dl):not(:has(.g-btn)):has(+ :is(p, div):has(> .g-btn:first-child)){ margin-bottom: 0 !important; }
 .g .g-gl2__h + .g-gl2__facts{ margin-top: 24px !important; }
+
+/* 5 Oct - MANAGE / CHECK-IN PAGE (owner, screenshot after the test payment: "design needs work here"). Its cards had no
+   container and stretched edge to edge on a wide screen (2,500px boxes; Name far left, Mobile far right). Now one centred
+   reading column; the ornament aligns with the text under it. */
+.g main:has(> .g-mb-card){ max-width: 60rem; margin-left: auto; margin-right: auto; padding-left: clamp(20px, 4vw, 40px); padding-right: clamp(20px, 4vw, 40px); }
+.g main > .g-mb-card:first-child > .g-fleur{ margin-left: 0; margin-right: auto; display: block; }
+.g main:has(> .g-mb-card) > .g-mb-card{ max-width: 100%; }
+/* the first card holds the whole page - frames inside a frame; the page itself is the frame now */
+.g main > .g-mb-card:first-child{ border: 0 !important; background: none !important; box-shadow: none !important; padding-left: 0; padding-right: 0; }
+.g main > .g-mb-card:first-child::before, .g main > .g-mb-card:first-child::after{ display: none !important; }
+.g main .g-hint + .g-mb-card{ margin-top: var(--s4) !important; }
+
+/* 5 Oct - MANAGE PAGE, second pass (owner: "it's not very good ... all a bit weird"). Extras: name and price, the
+   description beneath, then the controls together on one row (they were scattered across the width). */
+.g .g-mb-extra{ display: grid !important; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto; gap: var(--s2) var(--s3);
+  align-items: center; padding: var(--s4) 0; border-top: 1px solid var(--line); margin: 0 !important; }
+.g .g-mb-extra:first-of-type{ border-top: 0; }
+.g .g-mb-extra__t{ grid-column: 1 / -1; display: block; }
+.g .g-mb-extra__n{ font-family: var(--serif); font-weight: 400; font-size: 18px; color: var(--blue-deep); }
+.g .g-mb-extra__p{ font-family: var(--serif); font-size: 18px; color: var(--gilt); margin-left: .35rem; }
+.g .g-mb-extra__d{ display: block; margin-top: .25rem; max-width: 40rem; }
+.g .g-mb-extra__q{ width: 4.5rem; }
+.g .g-mb-extra > input[type=hidden] + select, .g .g-mb-extra select{ min-width: 0; }
+.g .g-mb-extra > .g-btn{ justify-self: start; }
+.g .g-mb-extra:not(:has(select)):not(:has(.g-mb-extra__q)) > .g-btn{ grid-column: 1; }
+@media (max-width: 40rem){ .g .g-mb-extra{ grid-template-columns: 1fr 1fr; } .g .g-mb-extra > .g-btn{ grid-column: 1 / -1; } }
+/* "Ask for this room" was stretched to the height of the whole form row */
+.g .g-mb-card form .g-btn{ align-self: end; height: auto; min-height: 44px; }
+
+/* 5 Oct - LAYOUT REVIEW. Story's two side-by-side columns: the buttons sat ~100px apart (one column's text is longer) -
+   they now meet the foot of both columns. */
+.g .g-duo__i{ display: flex; flex-direction: column; }
+.g .g-duo__i > p:has(> .g-btn), .g .g-duo__i > div:has(> .g-btn){ margin-top: auto !important; padding-top: 24px; }
+.g main .g-duo > .g-duo__i > p:has(> .g-btn):last-child, .g main .g-duo > .g-duo__i > div:has(> .g-btn):last-child{ margin-top: auto !important; }
+/* two sand sections running together on the workshop page (112px of unbroken blank): a hairline, and a tighter join */
+.g main > .g-sec--sand + .g-sec--sand{ border-top: 1px solid color-mix(in srgb, var(--gilt) 30%, transparent); padding-top: clamp(40px, 4vw, 56px); }
+@media (max-width: 52rem){ .g main .g-duo > .g-duo__i > p:has(> .g-btn):last-child, .g main .g-duo > .g-duo__i > div:has(> .g-btn):last-child{ margin-top: 24px !important; padding-top: 0; } }
+@media (max-width: 52rem){ .g main .g-duo > .g-duo__i > p:has(> .g-btn):last-child, .g main .g-duo > .g-duo__i > div:has(> .g-btn):last-child{ margin-top: 8px !important; } }
+/* the note under the facilities grid ran ~98 characters a line */
+.g .g-facil__note{ max-width: 62ch; margin-left: auto; margin-right: auto; }
+
+/* 5 Oct - HERO HEIGHTS (layout review): the inner pages' heroes sized to their own text (Contact 56% of the window,
+   workshop pages 62%, Stay 67%, the Estate 74%). One height for every inner page; the homepage keeps its full screen. */
+body.hero--short .g-hero, body.hero--tall .g-hero{ min-height: clamp(560px, 72vh, 720px); }
+@media (max-width: 48rem){ .g .g-hero--art .g-hero__art{ height: 88px; max-height: 88px; overflow: hidden; } .g .g-hero--art .g-hero__art svg{ height: 88px; width: auto; } }
+
+/* 5 Oct - HOW WE TAKE PAYMENT (anti-scam notice) on the confirmations, the manage pages and the booking cards */
+.g .g-paysafe{ margin: var(--s5) 0; padding: var(--s4) var(--s5); border: 1px solid color-mix(in srgb, var(--gilt) 45%, transparent);
+  border-left: 3px solid var(--gilt); background: color-mix(in srgb, var(--gilt) 6%, transparent); }
+.g .g-paysafe__k{ margin: 0 0 .35rem; font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
+.g .g-paysafe__t{ margin: 0; font-size: 15px; line-height: 1.6; color: var(--ink); max-width: 44rem; }
+.g .g-dossier .g-paysafe--compact{ margin: var(--s3) 0 0; font-size: 12.5px; line-height: 1.5; color: rgba(239,231,216,.82); }
+.g .g-paysafe--compact{ font-size: 13px; }
+.g .g-address-row{ display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--s4); }
+@media (max-width: 30rem){ .g .g-address-row{ grid-template-columns: 1fr; } }
+/* first and last name side by side, as on Booking.com */
+.g .g-namerow{ display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
+.g .g-namerow > .g-field{ margin: 0; }
+@media (max-width: 30rem){ .g .g-namerow{ grid-template-columns: 1fr; } }
+
+/* 5 Oct - THE DETAILS STEP, one rhythm (design check after the Booking.com order): every field 24px below the last, all
+   full width (the telephone and arrival time were narrower), the town/postcode row and name row inside the same rhythm. */
+.g .g-stack{ display: flex; flex-direction: column; gap: 24px; margin-top: 24px; }
+.g .g-stack > *, .g .g-stack .g-field, .g .g-stack .g-row{ margin: 0 !important; }
+.g .g-stack .g-phone, .g .g-stack .g-eta{ max-width: none; }
+.g .g-stack .g-address-row{ gap: var(--s4); }
+.g .g-stack .g-address-row > .g-field{ margin: 0 !important; }
+.g .g-stack--arrive{ padding-top: 24px; border-top: 1px solid var(--line); }
+.g .g-namerow{ margin-top: 24px !important; }
+/* the name/email pair on the workshop form, inside the same rhythm on phones */
+.g .g-step .g-row:has(#guest_name){ row-gap: 24px; }
+@media (max-width: 30rem){ .g .g-step .g-row:has(#guest_name) > .g-field{ margin: 0 !important; } .g .g-address-row{ row-gap: 24px; } .g .g-address-row > .g-field{ margin: 0 !important; } }
+.g .g-step .g-row:has(#guest_name) + .g-stack{ margin-top: 0; }
+.g .g-namerow, .g .g-address-row{ row-gap: 24px; }
+.g .g-stack .g-address-row{ row-gap: 24px; }
+@media (max-width: 52rem){ .g .g-step .g-row:has(#guest_name){ display: grid; grid-template-columns: 1fr; row-gap: 24px; } }

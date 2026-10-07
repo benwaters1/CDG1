@@ -1325,6 +1325,90 @@ def repair_expected_weather():
     return 1
 
 
+PHONE_SPLIT_JS = """      // SPLIT WHAT THE SERVER SENT. The input carries the whole
+      // international number so that it survives a re-render with no script
+      // running. Where there is a script, show it the way the design meant:
+      // the code in the menu, the national part in the box.
+      var num = sel.form && sel.form.querySelector('[data-phone-num][id="' + sel.getAttribute('data-phone-cc') + '"]');
+      if (num && (num.value || '').trim().charAt(0) === '+'){
+        var whole = num.value.replace(/\\s+/g, ''), best = null;
+        Array.prototype.forEach.call(sel.options, function(o){
+          if (whole.indexOf(o.value) === 0 && (!best || o.value.length > best.value.length)) best = o;
+        });
+        if (best){
+          sel.value = best.value;
+          sel.setAttribute('data-chosen', '');
+          num.value = whole.slice(best.value.length);
+        }
+      }
+"""
+
+
+def repair_phone_keeps_its_country_code():
+    """The dialling code was thrown away on every re-render.
+
+    The menu has no name, so only the national part is submitted and a script
+    joins the two on the way out. A guest who mistyped their email got the
+    form back with "+33" missing, and so did one returning from Stripe.
+    """
+    rel = "templates/_phone.html"
+    if not os.path.exists(os.path.join(ROOT, rel)):
+        return 0
+    src = _read(rel)
+    fault = 'value="{{ ns.national }}" required'
+    if fault not in src:
+        return 0                      # already carries the whole number
+    src = src.replace(fault, 'value="{{ v }}" required', 1)
+    anchor = "      var form = sel.form; if (!form || form.__gPhoneBound) return;"
+    if anchor not in src:
+        raise ValueError("no phone script to put the split into")
+    src = src.replace(anchor, PHONE_SPLIT_JS + anchor, 1)
+    _write(rel, src)
+    return 1
+
+
+ANIMALS_NOTE_CALL = ('\n{# The animals are named twice above -- the dog question and the key\n'
+                     '   panel -- and the warning that has to travel with them was imported\n'
+                     '   and never called. A guest who reacts to cats was reading the\n'
+                     '   charming half. #}\n'
+                     '<div class="g-wrap">{{ animals_note() }}</div>\n')
+
+
+def repair_animals_note_called():
+    """Imported and never called, on the page that names the animals twice."""
+    rel = "templates/book_rooms.html"
+    if not os.path.exists(os.path.join(ROOT, rel)):
+        return 0
+    src = _read(rel)
+    if "animals_note()" in src:
+        return 0
+    if "import animals" not in src:
+        return 0                      # nothing imports it; not this to fix
+    anchor = '<div class="g-mono__wrap">{{ monogram() }}</div>\n'
+    if anchor not in src:
+        raise ValueError("no monogram wrap on book_rooms.html to put the "
+                         "allergy note above")
+    _write(rel, src.replace(anchor, ANIMALS_NOTE_CALL + "\n" + anchor, 1))
+    return 1
+
+
+def repair_dining_hours_table():
+    """A wide table outside table-wrap drags the page sideways on a phone."""
+    rel = "templates/_dining_hours.html"
+    if not os.path.exists(os.path.join(ROOT, rel)):
+        return 0
+    src = _read(rel)
+    if "table-wrap" in src or "<table" not in src:
+        return 0
+    open_tag = '  <table class="g-hours__t">'
+    if open_tag not in src or src.count("</table>") != 1:
+        raise ValueError("the dining hours table is not the shape this knows")
+    src = src.replace(open_tag, '  <div class="table-wrap">\n' + open_tag, 1)
+    src = src.replace("</table>", "</table>\n  </div>", 1)
+    _write(rel, src)
+    return 1
+
+
 def repair_reveal_import():
     """/restoration answered 500: the slider is called, and its import was cut
     beside the explorer's (which the design did mean to cut)."""
@@ -1614,6 +1698,9 @@ def main():
         ("the Legal Notice footer links", repair_legal_footer_links),
         ("claims the owner has corrected", repair_corrected_claims),
         ("the expected weather under the dates", repair_expected_weather),
+        ("the phone field keeping its country code", repair_phone_keeps_its_country_code),
+        ("the allergy note on the room list", repair_animals_note_called),
+        ("the dining hours table in a wrapper", repair_dining_hours_table),
     ]
     total, failed = 0, []
     for label, fn in steps:

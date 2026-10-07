@@ -61,6 +61,12 @@ def _answers(when, later):
         "emergency_contact": TAG + " Next Of Kin, +33 6 00 00 00 01",
         "travel_details": "",
         "estimated_arrival_time": "16:00",
+        # The revised handover q puts a billing address on the registration
+        # too, all of it required, "as on Booking.com".
+        "guest_address": "1 Rue de l'Eglise",
+        "guest_city": "Chateau-Verdun",
+        "guest_postcode": "09310",
+        "guest_country": "FR",
         "agree_terms": "on",
     }
 

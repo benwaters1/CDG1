@@ -1,4 +1,6 @@
 {% extends "public_base.html" %}
+{% from '_payment_safety.html' import payment_safety %}
+{% from '_country.html' import country_field %}
 {% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO %}
 {% from '_phone.html' import phone_field %}
 {% from '_room_copy.html' import room_copy, room_name, room_note %}
@@ -62,7 +64,7 @@
       {% if _bl %}<div><dt>The bed</dt><dd>{{ _bl }}</dd></div>{% endif %}
       {% if _rn == 'The King Room' %}<div><dt>In the room</dt><dd>A bath and a basin of its own</dd></div>{% endif %}
       <div class="g-glance__wide"><dt>Your bathroom</dt><dd>{{ 'Private, and yours alone, ' if _private else '' }}on the ground floor<span class="g-glance__sub">A powder room, with a toilet and basin, in the upstairs vestibule</span></dd></div>
-      <div><dt>Check-in / out</dt><dd>From 4pm &middot; by 11am<span class="g-glance__sub">Early check-in on request</span></dd></div>
+      <div><dt>Check-in / out</dt><dd>From 2pm &middot; by 11am<span class="g-glance__sub">Early check-in on request</span></dd></div>
       <div><dt>Breakfast</dt><dd>Included</dd></div>
       <div><dt>Stairs</dt><dd>No lift; the bedrooms are on the top floor</dd></div>
     </dl>
@@ -180,24 +182,39 @@
 
         <section class="g-step">
           <h2 class="g-step__h"><span class="g-num">02</span> Who is coming</h2>
-          <p class="g-field">
-            <label for="guest_name">Your name<span class="g-req" aria-hidden="true">*</span></label>
-            <input type="text" id="guest_name" name="guest_name" autocomplete="name" value="{{ prefill_name }}" required spellcheck="false" autocapitalize="words">
-          </p>
-          <div class="g-row">
+          {#- 5 Oct (owner: "nightly - similar to booking.com"): first and last name, joined into guest_name on submit. -#}
+          {%- set _pn = (prefill_name or '')|trim -%}{%- set _pf = _pn.split(' ', 1)[0] if _pn else '' -%}{%- set _pl = _pn.split(' ', 1)[1] if (_pn and ' ' in _pn) else '' -%}
+          <div class="g-row g-namerow">
+            <p class="g-field">
+              <label for="guest_first">First name<span class="g-req" aria-hidden="true">*</span></label>
+              <input type="text" id="guest_first" autocomplete="given-name" value="{{ _pf }}" required spellcheck="false" autocapitalize="words" data-first>
+            </p>
+            <p class="g-field">
+              <label for="guest_last">Last name<span class="g-req" aria-hidden="true">*</span></label>
+              <input type="text" id="guest_last" autocomplete="family-name" value="{{ _pl }}" required spellcheck="false" autocapitalize="words" data-last>
+            </p>
+          </div>
+          <input type="hidden" id="guest_name" name="guest_name" value="{{ prefill_name }}">
+          {#- 5 Oct: Booking.com's order - name, email, address, town, postcode, country, telephone; then the arrival. -#}
+          <div class="g-stack">
             <p class="g-field">
               <label for="guest_email">Email<span class="g-req" aria-hidden="true">*</span></label>
               <input type="email" inputmode="email" id="guest_email" name="guest_email" autocomplete="email" value="{{ prefill_email }}" required>
             </p>
+            {{ country_field('special_requests') }}
             {{ phone_field('guest_phone', 'guest_phone', prefill_phone) }}
+          </div>
+          <div class="g-stack g-stack--arrive">
             {#- 5 Oct (owner): an estimated arrival time, with check-in and check-out stated and early check-in on request.
-                The times are the terms' own ("Arrival is from 4pm and departure by 11am"). Until book_room() saves
+                Check-in from 2pm (owner, 5 Oct - the terms in app.py still say 4pm), check-out by 11am. Until book_room() saves
                 estimated_arrival_time (LAUNCH_CHECKLIST), the choice is added to the guest's notes on submit. -#}
             <p class="g-field g-eta">
               <label for="estimated_arrival_time">Estimated arrival time<span class="g-req" aria-hidden="true">*</span></label>
               <select id="estimated_arrival_time" name="estimated_arrival_time" required data-eta>
                 <option value="">Choose a time</option>
-                <option value="Before 4pm (early check-in requested)">Before 4pm &mdash; early check-in, on request</option>
+                <option value="Before 2pm (early check-in requested)">Before 2pm &mdash; early check-in, on request</option>
+                <option value="2pm-3pm">2pm &ndash; 3pm</option>
+                <option value="3pm-4pm">3pm &ndash; 4pm</option>
                 <option value="4pm-5pm">4pm &ndash; 5pm</option>
                 <option value="5pm-6pm">5pm &ndash; 6pm</option>
                 <option value="6pm-7pm">6pm &ndash; 7pm</option>
@@ -206,7 +223,7 @@
                 <option value="9pm-10pm">9pm &ndash; 10pm</option>
                 <option value="After 10pm">After 10pm</option>
               </select>
-              <span class="g-hint">Check-in from 4pm, check-out by 11am. Arriving earlier? Early check-in is on request &mdash; choose it above and we will do our best.</span>
+              <span class="g-hint">Check-in from 2pm, check-out by 11am. Arriving earlier? Early check-in is on request &mdash; choose it above and we will do our best.</span>
             </p>
           </div>
         </section>
@@ -344,6 +361,7 @@
           {% if stripe_enabled and room['price_per_night'] %}
           <button type="submit" class="g-btn g-submit">Pay &amp; book</button>
           <p class="g-foot-note">Your booking is confirmed the moment your payment goes through. You get a reference code and a link to manage your reservation.</p>
+        {{ payment_safety(compact=true) }}
           {% else %}
           
 {# Families decide they need two rooms while looking at one, not afterwards
@@ -966,9 +984,19 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   var f = document.getElementById('book-form'); if (!f) return;
   f.addEventListener('submit', function(){
     var eta = f.querySelector('[data-eta]'), notes = f.querySelector('[name="special_requests"]');
-    if (!eta || !eta.value || !notes || /^Estimated arrival:/.test(notes.value)) return;
+    if (!eta || !eta.value || !notes || /Estimated arrival:/.test(notes.value)) return;
     notes.value = ('Estimated arrival: ' + eta.value + '. ' + notes.value).slice(0, 490);
   });
+})();
+</script>
+
+<script>
+/* 5 Oct: first and last name travel as guest_name, which the app stores. */
+(function(){
+  var f=document.getElementById('book-form'); if(!f) return;
+  var join=function(){ var a=(f.querySelector('[data-first]')||{}).value||'', b=(f.querySelector('[data-last]')||{}).value||''; var g=f.querySelector('#guest_name'); if(g) g.value=(a.trim()+' '+b.trim()).trim(); };
+  f.addEventListener('input', function(e){ if(e.target.matches('[data-first],[data-last]')) join(); });
+  f.addEventListener('submit', join, true);
 })();
 </script>
 {% endblock %}

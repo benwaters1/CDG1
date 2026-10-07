@@ -713,6 +713,13 @@ FR = {
     "October": "Octobre",
     "November": "Novembre",
     "December": "Décembre",
+    # The revised handover q, 7 October: the bill on the manage page,
+    # which the owner's test payment showed was leaving the tourist
+    # tax out of its total.
+    "In full": "Intégralement",
+    "Paid": "Payé",
+    "Taxe de séjour": "Taxe de séjour",
+    "The rest stays on your bill and can be paid any time before you arrive.": "Le solde reste sur votre note et peut être réglé à tout moment avant votre arrivée.",
     "What to expect": "À quoi s'attendre",
     "At the château right now": "Au château en ce moment",
     "The valley at 900 metres, written from here rather than from an average. Not a forecast.": "La vallée à 900 mètres, écrite d'ici plutôt que d'après une moyenne. Ce n'est pas une prévision.",
@@ -1291,6 +1298,13 @@ ES = {
     "October": "Octubre",
     "November": "Noviembre",
     "December": "Diciembre",
+    # The revised handover q, 7 October: the bill on the manage page,
+    # which the owner's test payment showed was leaving the tourist
+    # tax out of its total.
+    "In full": "Por completo",
+    "Paid": "Pagado",
+    "Taxe de séjour": "Tasa turística",
+    "The rest stays on your bill and can be paid any time before you arrive.": "El resto queda en su cuenta y puede abonarse en cualquier momento antes de su llegada.",
     "What to expect": "Qué esperar",
     "At the château right now": "En el château en este momento",
     "The valley at 900 metres, written from here rather than from an average. Not a forecast.": "El valle a 900 metros, escrito desde aquí y no a partir de una media. No es una previsión.",

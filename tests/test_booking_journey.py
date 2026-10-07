@@ -185,6 +185,14 @@ def run():
         "agree_terms": "on",
         "special_requests": "",
         "promo_code": "",
+        # The revised handover q adds a billing address to the form, all of
+        # it required, "as on Booking.com". A required field this bank cannot
+        # answer is what the check below is for, and it found these the first
+        # time the form carried them.
+        "guest_address": "1 Rue de l'Église",
+        "guest_city": "Château-Verdun",
+        "guest_postcode": "09310",
+        "guest_country": "FR",
     }
     data = fill(form, answers)
 

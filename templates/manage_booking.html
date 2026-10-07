@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_payment_safety.html' import payment_safety %}
 {% set sticky_bar = 'none' %}
 {% block title %}{{ t('Check In') }}{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
@@ -44,7 +45,11 @@
       <div><dt>{{ t('Party size') }}</dt><dd>{{ booking['party_size'] }}</dd></div>
       <div><dt>{{ t('Arrival') }}</dt><dd>{{ booking['arrival_date']|date_short }}</dd></div>
       <div><dt>{{ t('Departure') }}</dt><dd>{{ booking['departure_date']|date_short }}</dd></div>
-      {% if booking['total_price'] %}<div><dt>{{ t('Total') }}</dt><dd><span class="g-fig">€{{ '{:,.2f}'.format(booking['total_price']) }}</span></dd></div>{% endif %}
+      {#- 5 Oct (test payment): the total left out the tourist tax - the guest paid €763.20 and read €760.00. -#}
+      {% if booking['total_price'] %}{% set _tax = (booking['city_tax'] or 0)|float %}
+      {% if _tax %}<div><dt>{{ t('Room') }}</dt><dd><span class="g-fig">€{{ '{:,.2f}'.format(booking['total_price']) }}</span></dd></div>
+      <div><dt>{{ t('Taxe de séjour') }}</dt><dd><span class="g-fig">€{{ '{:,.2f}'.format(_tax) }}</span></dd></div>{% endif %}
+      <div><dt>{{ t('Total') }}</dt><dd><span class="g-fig">€{{ '{:,.2f}'.format(booking['total_price']|float + _tax) }}</span></dd></div>{% endif %}
     </dl>
     {% if booking['extras_summary'] %}
     <div class="g-mb-note">
@@ -63,7 +68,7 @@
   {% if (booking['status']|lower) in ('pending', 'confirmed') %}
   <p class="g-hint" style="margin-top:var(--s4);"><a href="{{ url_for('booking_calendar_ics', manage_token=booking['manage_token']) }}" style="color:var(--steel);">{{ t('Add to calendar (.ics)') }}</a></p>
   {% endif %}
-  {% if (booking['status']|lower) == 'confirmed' %}
+  {% if (booking['status']|lower) == 'confirmed' and booking['departure_date'] and house_today_iso() >= (booking['departure_date']|string)[:10] %}
   <p class="g-hint" style="margin-top:var(--s4);"><a href="{{ url_for('guest_feedback', token=booking['manage_token']) }}" style="color:var(--steel);">Share feedback about your stay</a></p>
   {% endif %}
   {# The front door -- keep this line when a new version of this page arrives. #}
@@ -136,8 +141,8 @@
       <button type="submit" class="g-btn">Stop the link working</button>
     </form>
   {% else %}
-    <p class="g-hint">Arrival details{% if _dm == 'open' %}, directions and the dinner time{% else %} and directions{% endif %} &mdash; without your bill,
-      and without the ability to change or cancel anything. Nothing is made until you ask.</p>
+    <p class="g-hint">Arrival details{% if _dm == 'open' %}, directions and the dinner time{% else %} and directions{% endif %} for the others in your party &mdash;
+      without your bill or your booking page. Nothing is made until you ask.</p>
     <form method="post" action="{{ url_for('toggle_share_link', manage_token=booking['manage_token']) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="g-btn g-btn--solid">Make a link</button>
@@ -160,7 +165,7 @@
     <input type="hidden" name="action" value="arrival_time">
     <div style="flex:1 1 200px;">
       <label for="mb_estimated_arrival_time">What time do you expect to arrive?</label>
-      <input type="text" id="mb_estimated_arrival_time" name="estimated_arrival_time" value="{{ booking['estimated_arrival_time'] or '' }}" placeholder="e.g. around 4pm">
+      <input type="text" id="mb_estimated_arrival_time" name="estimated_arrival_time" value="{{ booking['estimated_arrival_time'] or '' }}" placeholder="e.g. around 3pm">
     </div>
     <button type="submit" class="g-btn g-btn--sm">{{ t('Save') }}</button>
   </form>
@@ -256,13 +261,14 @@
 
 {# What the stay costs and what is still owed. A guest could previously see
    neither, which is also why they could not add anything to it. #}
+{{ payment_safety() }}
 {% if bill and bill.lines %}
 <div class="g-mb-card" style="margin-top:var(--s4);">
   <h3>Your bill</h3>
   <div class="quote-box" style="margin-top:0;">
     {% for line in bill.lines %}
     <div class="g-mb-line">
-      <span>{{ line.label }}
+      <span>{{ line.label|replace('Taxe de sejour', 'Taxe de séjour') }}
         {#- Taking a line off is the house's to do, not the guest's. Some of
             these have already been ordered in or driven somewhere by the time
             anybody changes their mind, and the app does not know which. So the
@@ -288,7 +294,12 @@
     {% if bill.refunded %}
     <div class="g-mb-line"><span>{{ t('Refunded to you') }}</span><span>€{{ '{:,.2f}'.format(bill.refunded) }}</span></div>
     {% endif %}
-    {% if bill.owed > 0 %}
+    {#- 5 Oct (test payment): the booking said PAID while the bill, with no payment recorded against it, asked for the
+        full amount again. Until the webhook records the amount (LAUNCH_CHECKLIST), a paid booking is never asked to pay. -#}
+    {% set _marked_paid = (booking['payment_status']|lower) == 'paid' and not bill.paid %}
+    {% if _marked_paid %}
+    <div class="g-mb-total"><span>{{ t('Paid') }}</span><span>{{ t('In full') }}</span></div>
+    {% elif bill.owed > 0 %}
     <div class="g-mb-total"><span>{{ t('Still to pay') }}</span><span>€{{ '{:,.2f}'.format(bill.owed) }}</span></div>
     {% if bill.balance_overdue %}
     {# The bill has always known this and never said it. Plainly, and
@@ -325,12 +336,11 @@
                placeholder="{{ '%.2f'|format(bill.owed) }}">
         <button type="submit" class="g-btn">{{ t('Continue') }}</button>
       </form>
-      <p class="g-hint">{{ t('The rest stays on your bill and can be paid any time, or on arrival.') }}</p>
+      <p class="g-hint">{{ t('The rest stays on your bill and can be paid any time before you arrive.') }}</p>
     </details>
     {% endif %}
-    <p class="g-hint">Or we will take it on arrival — whichever you prefer.</p>
     {% else %}
-    <p class="g-hint">We will take this on arrival unless you hear otherwise.</p>
+    <p class="g-hint">We will send you a link to pay.</p>
     {% endif %}
     {% elif bill.overpaid > 0 %}
     <div class="g-mb-total"><span>{{ t('In credit') }}</span><span>€{{ '{:,.2f}'.format(bill.overpaid) }}</span></div>
@@ -348,19 +358,20 @@
   <h2 class="g-panel__h">{{ t('Add to your stay') }}</h2>
   <p class="g-hint">Added to your bill, settled with the rest.</p>
   {% for e in addable %}
-  <form method="post" class="g-mb-acts" style="margin-bottom:var(--s2);">
+  <form method="post" class="g-mb-acts g-mb-extra" style="margin-bottom:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="add_extra">
     <input type="hidden" name="extra_id" value="{{ e['id'] }}">
-    <span style="flex:1; min-width:0;">
-      {{ e['name'] }} — €{{ '{:,.2f}'.format(e['price'] or 0) }}
-      {% if e['description'] %}<span class="g-hint">{{ e['description'] }}</span>{% endif %}
+    <span class="g-mb-extra__t">
+      <b class="g-mb-extra__n">{{ e['name'] }}</b> <span class="g-mb-extra__p">&euro;{{ '{:,.2f}'.format(e['price'] or 0) }}</span>
+      {% if e['description'] %}<span class="g-hint g-mb-extra__d">{{ e['description'] }}</span>{% endif %}
     </span>
     {# One id per extra: the page lists several, and a repeated id is a
        label pointing at whichever input the browser happens to find first. #}
+    {% if e['max_qty'] == 1 %}<input type="hidden" name="quantity" value="1">{% else %}
     <input type="number" inputmode="numeric" id="mb_quantity_{{ e['id'] }}" name="quantity" value="1" min="1"
            {% if e['max_qty'] %}max="{{ e['max_qty'] }}"{% endif %}
-           style="width:64px;" aria-label="How many {{ e['name'] }}">
+           class="g-mb-extra__q" aria-label="How many {{ e['name'] }}">{% endif %}
     {% if e['ask_when'] and when_days %}
     {# WHEN, for the extras that ask: the days still to come of this stay. #}
     <select name="extra_when" aria-label="When would you like the {{ e['name'] }}?">
@@ -444,7 +455,7 @@
       <button type="submit" class="btn-text-danger">{{ t('Cancel this booking anyway') }}</button>
     </form>
   </details>
-  {% if (booking['payment_status']|lower) == 'paid' %}<p class="g-hint">Payments are not refunded on cancellation. Write to us first — we can often move your dates instead.</p>{% endif %}
+  {% if (booking['payment_status']|lower) == 'paid' %}<p class="g-hint">Payments are not refunded on cancellation. Write to us first &mdash; we can sometimes move your dates instead.</p>{% endif %}
 </div>
 
 {% endif %}

@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_payment_safety.html' import payment_safety %}
 {% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% set sticky_bar = 'none' %}
@@ -40,8 +41,10 @@
       <div><dt>{{ t('Arrival') }}</dt><dd>{{ booking['arrival_date']|date_short }}</dd></div>
       <div><dt>{{ t('Departure') }}</dt><dd>{{ booking['departure_date']|date_short }}</dd></div>
       <div><dt>{{ t('Guests') }}</dt><dd>{{ booking['party_size'] }}</dd></div>
-      {% if booking['total_price'] %}
-      <div><dt>{{ t('Total') }}</dt><dd><span class="g-fig">€{{ '{:,.2f}'.format(booking['total_price']) }}</span></dd></div>
+      {% if booking['total_price'] %}{% set _tax = (booking['city_tax'] or 0)|float %}
+      {% if _tax %}<div><dt>{{ t('Room') }}</dt><dd><span class="g-fig">€{{ '{:,.2f}'.format(booking['total_price']) }}</span></dd></div>
+      <div><dt>{{ t('Taxe de séjour') }}</dt><dd><span class="g-fig">€{{ '{:,.2f}'.format(_tax) }}</span></dd></div>{% endif %}
+      <div><dt>{{ t('Total') }}</dt><dd><span class="g-fig">€{{ '{:,.2f}'.format(booking['total_price']|float + _tax) }}</span></dd></div>
       {% endif %}
     </dl>
     {% if booking['extras_summary'] %}
@@ -121,7 +124,8 @@
 
 <div class="g-wrap">{{ no_reply() }}</div>
 
-<div class="g-wrap">{{ arrival_card(booking) }}</div>
+<div class="g-wrap">{{ payment_safety() }}
+{{ arrival_card(booking) }}</div>
 
 {{ arriving(settings) }}
 
