@@ -126,6 +126,8 @@
       {% if owed_by_booking.get(b['id']) %} · <strong class="owed-flag">€{{ '%.2f'|format(owed_by_booking[b['id']]) }} still owed</strong>{% endif %}
     </p>
     <p class="upload-hint">{{ b['guest_email'] }}{% if b['guest_phone'] %} · {{ b['guest_phone'] }}{% endif %}</p>
+    {% if b['guest_address'] or b['guest_country'] %}<p class="upload-hint">Address: {{ [b['guest_address'], ((b['guest_city'] or '') ~ ' ' ~ (b['guest_postcode'] or ''))|trim, b['guest_country']]|select|join(', ') }}</p>{% endif %}
+    {% if b['estimated_arrival_time'] %}<p class="upload-hint">Arriving: {{ b['estimated_arrival_time'] }}</p>{% endif %}
     {% if b['special_requests'] %}<p class="upload-hint">Notes: {{ b['special_requests'] }}</p>{% endif %}
     {% if b['extras_summary'] %}<p class="upload-hint">Add-ons: {{ b['extras_summary'] }}</p>{% endif %}
     {% if b['estimated_arrival_time'] %}<p class="upload-hint">Estimated arrival: {{ b['estimated_arrival_time'] }}</p>{% endif %}

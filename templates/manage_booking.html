@@ -105,6 +105,9 @@
     {{ t('Booked under') }} <strong>{{ booking['guest_email'] }}</strong>.
     {{ t('If that address is wrong, send us a message below and we will change it.') }}
   </p>
+  {% if booking['guest_address'] or booking['guest_country'] %}
+  <p class="g-hint">{{ t('Your address on the booking') }}: {{ [booking['guest_address'], ((booking['guest_city'] or '') ~ ' ' ~ (booking['guest_postcode'] or ''))|trim, booking['guest_country']]|select|join(', ') }}</p>
+  {% endif %}
 </div>
 
 {# What happens next: the deposit, the balance date, the week before,

@@ -10921,3 +10921,34 @@ body.hero--short .g-hero, body.hero--tall .g-hero{ min-height: clamp(560px, 72vh
 .g .g-namerow, .g .g-address-row{ row-gap: 24px; }
 .g .g-stack .g-address-row{ row-gap: 24px; }
 @media (max-width: 52rem){ .g .g-step .g-row:has(#guest_name){ display: grid; grid-template-columns: 1fr; row-gap: 24px; } }
+
+/* 5 Oct - FULL REVIEW (owner: "run a full review again").
+   Form rows: fields kept their own 24px foot inside rows that already space them 24px apart, so wherever a row stacked
+   (dates and guests on the booking form, the events enquiry, Add another room) fields sat 48px apart; the contact form's
+   rows used 16px. One rule: 24px between fields, in a row or stacked, and 24px below the row. */
+.g main form .g-row{ row-gap: 24px; margin-bottom: 24px; }
+.g main form .g-row > .g-field{ margin-bottom: 0 !important; margin-top: 0 !important; }
+.g main form .g-flex__row{ row-gap: 24px; }
+.g main .g-stack .g-row{ margin-bottom: 0; }
+/* the gallery's section headings sat 48px above their text (24px everywhere else) */
+.g main h2.g-h2.g-rule{ margin-bottom: 24px; }
+.g main .g-flex__row{ row-gap: 24px !important; }
+.g main .g-flex__f{ row-gap: 24px !important; }
+/* "Not sure of the dates" (contact page): a wrapping row put the fields in whatever width was left and the button beside
+   the message box, stretched square. Now a two-column grid - dates/nights/guests above, flexibility, name and email, the
+   message and the button on full rows, the button at its own height. */
+.g main .g-flex__f{ display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px !important; max-width: 44rem; }
+.g main .g-flex__f > .g-flex__row, .g main .g-flex__f > .g-field:has(textarea), .g main .g-flex__f > .g-field:has(#fx_flex),
+.g main .g-flex__f > button, .g main .g-flex__f > .g-hint{ grid-column: 1 / -1; }
+.g main .g-flex__f > .g-field{ margin: 0 !important; }
+.g main .g-flex__f > .g-field input, .g main .g-flex__f > .g-field select, .g main .g-flex__f > .g-field textarea{ width: 100%; }
+.g main .g-flex__f > button{ justify-self: start; height: auto; margin: 0; }
+.g main .g-flex__f > .g-hint{ margin: 0; }
+.g main .g-flex__row{ display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px !important; margin: 0 !important; }
+.g main .g-flex__row > .g-field{ margin: 0 !important; } .g main .g-flex__row input, .g main .g-flex__row select{ width: 100%; }
+@media (max-width: 40rem){ .g main .g-flex__f, .g main .g-flex__row{ grid-template-columns: 1fr; } }
+/* Add another room: the button on its own row under the fields, at its own height */
+.g .g-addroom__f > .g-btn{ display: inline-flex; margin-top: 0; align-self: flex-start; height: auto; }
+.g .g-addroom__f > .g-row{ margin-bottom: 24px; }
+.g .g-addroom__f{ display: block !important; }
+.g .g-addroom__f > .g-btn{ margin: 0 0 16px; }

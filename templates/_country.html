@@ -1,34 +1,39 @@
-{#- 5 Oct (owner): "we should have address or country definitely for nightly" - and for workshops.
-    country_field(): Street address, town, postcode and country - all required, as on Booking.com. Both are added to the booking's notes
-    on submit (data-notes-into names the notes field) until the app stores them in their own columns
-    (LAUNCH_CHECKLIST). Choosing a country also sets the telephone code, unless the guest has already picked one.
-    The address is what the guest register (police_register, recorded at check-in) needs for visitors from abroad. -#}
+{#- 5 Oct (owner): the guest's address as Booking.com asks it - Street address, Town or city, Postcode, Country of residence,
+    all required. Each is posted as its own field (guest_address, guest_city, guest_postcode, guest_country) and stored in
+    its own column (app.py, PATCH_guest_details.diff) - never added to the special requests. Choosing a country also sets
+    the telephone code, unless the guest has already picked one. -#}
 {%- from '_phone.html' import PHONE_CODES -%}
 
-{%- macro country_field(notes_name='special_requests', country='', address='') -%}
+{%- macro country_field(details=None) -%}
+{#- details: what the app saved (returning from Stripe), else what was just posted (a validation error) -#}
+{%- set _d = details or {} -%}
+{%- set _v = namespace(f={}) -%}
+{%- for _k in ['guest_address','guest_city','guest_postcode','guest_country'] -%}
+  {%- set _v.f = dict(_v.f, **{_k: (_d.get(_k) or (request.form.get(_k) if request and request.method == 'POST' else '') or '')}) -%}
+{%- endfor -%}
 
 {#- 5 Oct (owner): "make them put address in ... the same as booking.com - I don't want to get anything on arrival". -#}
 <div class="g-field g-address">
   <label for="guest_address">Street address<span class="g-req" aria-hidden="true">*</span></label>
-  <input type="text" id="guest_address" name="guest_address" autocomplete="address-line1" value="{{ address }}" required data-address>
+  <input type="text" id="guest_address" name="guest_address" autocomplete="address-line1" value="{{ _v.f.guest_address }}" required data-address>
 </div>
 <div class="g-row g-address-row">
   <div class="g-field">
     <label for="guest_city">Town or city<span class="g-req" aria-hidden="true">*</span></label>
-    <input type="text" id="guest_city" name="guest_city" autocomplete="address-level2" required data-city>
+    <input type="text" id="guest_city" name="guest_city" autocomplete="address-level2" value="{{ _v.f.guest_city }}" required data-city>
   </div>
   <div class="g-field">
     <label for="guest_postcode">Postcode<span class="g-req" aria-hidden="true">*</span></label>
-    <input type="text" id="guest_postcode" name="guest_postcode" autocomplete="postal-code" required data-postcode>
+    <input type="text" id="guest_postcode" name="guest_postcode" autocomplete="postal-code" value="{{ _v.f.guest_postcode }}" required data-postcode>
   </div>
 </div>
 <div class="g-field g-country">
   <label for="guest_country">Country of residence<span class="g-req" aria-hidden="true">*</span></label>
-  <select id="guest_country" name="guest_country" required data-country data-notes-into="{{ notes_name }}" autocomplete="country-name">
+  <select id="guest_country" name="guest_country" required data-country autocomplete="country-name">
     <option value="">Choose your country</option>
     {%- for iso, cname, code in PHONE_CODES|sort(attribute=1) %}
     {%- if not (iso == 'CA' and cname == 'Canada' and false) %}
-    <option value="{{ cname }}" data-iso="{{ iso }}" {{ 'selected' if country == cname }}>{{ cname }}</option>
+    <option value="{{ cname }}" data-iso="{{ iso }}" {{ 'selected' if _v.f.guest_country == cname }}>{{ cname }}</option>
     {%- endif %}
     {%- endfor %}
     <option value="Other" data-iso="">Another country</option>
@@ -46,15 +51,6 @@
     sel.addEventListener('change', function(){
       var iso = (sel.selectedOptions[0] || {}).dataset ? sel.selectedOptions[0].dataset.iso : '';
       if (cc && iso && !cc.dataset.touched){ var p = cc.querySelector('option[data-iso="' + iso + '"]'); if (p) cc.value = p.value; }
-    });
-    if (!form) return;
-    form.addEventListener('submit', function(){
-      var notes = form.querySelector('[name="' + sel.dataset.notesInto + '"]'); if (!notes) return;
-      if (/Address: /.test(notes.value)) return;
-      var v = function(q){ return ((form.querySelector(q) || {}).value || '').trim(); };
-      var addr = [v('[data-address]'), [v('[data-city]'), v('[data-postcode]')].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-      var extra = 'Address: ' + addr + ', ' + sel.value + '.';
-      notes.value = (extra + ' ' + notes.value).trim();
     });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();

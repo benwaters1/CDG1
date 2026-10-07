@@ -713,6 +713,7 @@ FR = {
     "October": "Octobre",
     "November": "Novembre",
     "December": "Décembre",
+    "Your address on the booking": "Votre adresse sur la réservation",
     # The revised handover q, 7 October: the bill on the manage page,
     # which the owner's test payment showed was leaving the tourist
     # tax out of its total.
@@ -1298,6 +1299,7 @@ ES = {
     "October": "Octubre",
     "November": "Noviembre",
     "December": "Diciembre",
+    "Your address on the booking": "Su dirección en la reserva",
     # The revised handover q, 7 October: the bill on the manage page,
     # which the owner's test payment showed was leaving the tourist
     # tax out of its total.

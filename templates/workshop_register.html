@@ -67,10 +67,20 @@
                       placeholder="One per line"></textarea>
           </div>
 
+          {#- 5 Oct (owner): people booking separately often come together - not worded as "sharing a room". -#}
           <div class="g-field">
-            <label for="requested_roommate">Requested roommate <span class="g-opt">optional</span></label>
+            <label for="requested_roommate">Travelling with another guest who has booked? <span class="g-opt">optional</span></label>
             <input type="text" id="requested_roommate" name="requested_roommate"
-                   placeholder="Name, if you are travelling with someone" value="{{ prefill_requested_roommate | default('') }}">
+                   placeholder="Their name, and we will put you together" value="{{ prefill_requested_roommate | default('') }}">
+          </div>
+          <div class="g-field">
+            <label for="bed_preference">Bed preference <span class="g-opt">optional</span></label>
+            {%- set _bp = request.form.get('bed_preference') if request.method == 'POST' else '' -%}
+            <select id="bed_preference" name="bed_preference">
+              <option value="">No preference</option>
+              <option value="one bed, together" {{ 'selected' if _bp == 'one bed, together' }}>One bed, together</option>
+              <option value="two separate beds" {{ 'selected' if _bp == 'two separate beds' }}>Two separate beds</option>
+            </select>
           </div>
         </section>
 
@@ -88,7 +98,7 @@
               <label for="guest_email">Email<span class="g-req" aria-hidden="true">*</span></label>
               <input type="email" inputmode="email" id="guest_email" name="guest_email" value="{{ prefill_email }}" required autocomplete="email">
             </div>
-          {{ country_field('notes') }}
+          {{ country_field() }}
           {{ phone_field('guest_phone', 'guest_phone', prefill_phone, wrap='div') }}
           </div>
         </section>
@@ -103,50 +113,23 @@
           <h2 class="g-step__h"><span class="g-num">03</span> Anything we should know</h2>
 
           <div class="g-field">
-            <label for="dietary_notes">Dietary notes <span class="g-opt">optional</span></label>
+            <label for="dietary_notes">Dietary requirements <span class="g-opt">optional</span></label>
             <textarea id="dietary_notes" name="dietary_notes" rows="2"
                       placeholder="Allergies, preferences — designed into the menu, not worked around on the night">{{ prefill_dietary_notes | default('') }}</textarea>
           </div>
 
           <div class="g-field">
-            <label for="medical_notes">Anything medical we should know <span class="g-opt">optional</span></label>
+            <label for="medical_notes">Any pre-existing health conditions <span class="g-opt">optional</span></label>
             <textarea id="medical_notes" name="medical_notes" rows="2"
                       placeholder="Anything our team should be aware of">{{ prefill_medical_notes | default('') }}</textarea>
           </div>
 
-          <div class="g-field">
-            <label for="special_occasion">Celebrating something <span class="g-opt">optional</span></label>
-            <input type="text" id="special_occasion" name="special_occasion"
-                   placeholder="Birthday, anniversary…" value="{{ prefill_special_occasion | default('') }}">
-          </div>
 
           {#- 5 Oct (owner: "for the workshops we want more info"): an emergency contact and travel for the Toulouse
               transfer. Carried into the registration's notes on submit until the app stores them (LAUNCH_CHECKLIST). -#}
 
-          <div class="g-field">
-            <label for="travel_details">Your travel <span class="g-opt">optional</span></label>
-            <input type="text" id="travel_details" name="travel_details" autocomplete="off"
-                   placeholder="Flight or train, and the time it arrives">
-            <span class="g-hint">So we know when to expect you &mdash; and for the transfer, on the workshops that include one. You can add it later from your reservation.</span>
-          </div>
 
-          <div class="g-field">
-            <label for="bed_preference">Sharing a room? <span class="g-opt">optional</span></label>
-            <select id="bed_preference" name="bed_preference" data-ws-extra="Room">
-              <option value="">No preference</option>
-              <option value="one bed">One bed, please</option>
-              <option value="two beds">Two beds, please</option>
-            </select>
-          </div>
 
-          <div class="g-field">
-            <label for="heard_about">How did you hear about us? <span class="g-opt">optional</span></label>
-            <select id="heard_about" name="heard_about" data-ws-extra="Heard about us">
-              <option value="">Choose</option>
-              <option>Instagram</option><option>A friend</option><option>The press</option>
-              <option>A search engine</option><option>Booking.com</option><option>We have stayed before</option><option>Somewhere else</option>
-            </select>
-          </div>
 
           <div class="g-field">
             <label for="notes">Anything else <span class="g-opt">optional</span></label>
@@ -353,16 +336,5 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
 {{ form_keep('workshop_register-form', 'gudanes.atelier') }}
 
-<script>
-/* 5 Oct: emergency contact and travel go into the registration's notes until the app stores them itself. */
-(function(){
-  var ec=document.getElementById('travel_details') || document.getElementById('bed_preference'); if(!ec || !ec.form) return; var f=ec.form;
-  f.addEventListener('submit', function(){
-    var notes=f.querySelector('#notes'), tr=document.getElementById('travel_details'); if(!notes || /(Travel|Room|Heard about us): /.test(notes.value)) return;
-    var lead=(tr && tr.value.trim() ? 'Travel: '+tr.value.trim()+'.' : '');
-    f.querySelectorAll('[data-ws-extra]').forEach(function(x){ if(x.value) lead += ' '+x.dataset.wsExtra+': '+x.value+'.'; });
-    if(lead.trim()) notes.value=(lead.trim()+' '+notes.value).trim();
-  });
-})();
-</script>
+
 {% endblock %}

@@ -201,27 +201,27 @@
               <label for="guest_email">Email<span class="g-req" aria-hidden="true">*</span></label>
               <input type="email" inputmode="email" id="guest_email" name="guest_email" autocomplete="email" value="{{ prefill_email }}" required>
             </p>
-            {{ country_field('special_requests') }}
+            {{ country_field(prefill_guest) }}
             {{ phone_field('guest_phone', 'guest_phone', prefill_phone) }}
           </div>
           <div class="g-stack g-stack--arrive">
             {#- 5 Oct (owner): an estimated arrival time, with check-in and check-out stated and early check-in on request.
-                Check-in from 2pm (owner, 5 Oct - the terms in app.py still say 4pm), check-out by 11am. Until book_room() saves
-                estimated_arrival_time (LAUNCH_CHECKLIST), the choice is added to the guest's notes on submit. -#}
+                Check-in from 2pm (owner, 5 Oct - the terms in app.py still say 4pm), check-out by 11am. Saved in bookings.estimated_arrival_time. -#}
             <p class="g-field g-eta">
               <label for="estimated_arrival_time">Estimated arrival time<span class="g-req" aria-hidden="true">*</span></label>
+              {%- set _eta = (prefill_guest or {}).get('estimated_arrival_time') or (request.form.get('estimated_arrival_time') if request.method == 'POST' else '') -%}
               <select id="estimated_arrival_time" name="estimated_arrival_time" required data-eta>
                 <option value="">Choose a time</option>
-                <option value="Before 2pm (early check-in requested)">Before 2pm &mdash; early check-in, on request</option>
-                <option value="2pm-3pm">2pm &ndash; 3pm</option>
-                <option value="3pm-4pm">3pm &ndash; 4pm</option>
-                <option value="4pm-5pm">4pm &ndash; 5pm</option>
-                <option value="5pm-6pm">5pm &ndash; 6pm</option>
-                <option value="6pm-7pm">6pm &ndash; 7pm</option>
-                <option value="7pm-8pm">7pm &ndash; 8pm</option>
-                <option value="8pm-9pm">8pm &ndash; 9pm</option>
-                <option value="9pm-10pm">9pm &ndash; 10pm</option>
-                <option value="After 10pm">After 10pm</option>
+                <option value="Before 2pm (early check-in requested)" {{ 'selected' if _eta == 'Before 2pm (early check-in requested)' }}>Before 2pm &mdash; early check-in, on request</option>
+                <option value="2pm-3pm" {{ 'selected' if _eta == '2pm-3pm' }}>2pm &ndash; 3pm</option>
+                <option value="3pm-4pm" {{ 'selected' if _eta == '3pm-4pm' }}>3pm &ndash; 4pm</option>
+                <option value="4pm-5pm" {{ 'selected' if _eta == '4pm-5pm' }}>4pm &ndash; 5pm</option>
+                <option value="5pm-6pm" {{ 'selected' if _eta == '5pm-6pm' }}>5pm &ndash; 6pm</option>
+                <option value="6pm-7pm" {{ 'selected' if _eta == '6pm-7pm' }}>6pm &ndash; 7pm</option>
+                <option value="7pm-8pm" {{ 'selected' if _eta == '7pm-8pm' }}>7pm &ndash; 8pm</option>
+                <option value="8pm-9pm" {{ 'selected' if _eta == '8pm-9pm' }}>8pm &ndash; 9pm</option>
+                <option value="9pm-10pm" {{ 'selected' if _eta == '9pm-10pm' }}>9pm &ndash; 10pm</option>
+                <option value="After 10pm" {{ 'selected' if _eta == 'After 10pm' }}>After 10pm</option>
               </select>
               <span class="g-hint">Check-in from 2pm, check-out by 11am. Arriving earlier? Early check-in is on request &mdash; choose it above and we will do our best.</span>
             </p>
@@ -978,17 +978,6 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 </script>
 {{ form_keep('book-form', 'gudanes.book') }}
 
-<script>
-/* 5 Oct: the estimated arrival travels in the guest's notes until book_room() saves estimated_arrival_time itself. */
-(function(){
-  var f = document.getElementById('book-form'); if (!f) return;
-  f.addEventListener('submit', function(){
-    var eta = f.querySelector('[data-eta]'), notes = f.querySelector('[name="special_requests"]');
-    if (!eta || !eta.value || !notes || /Estimated arrival:/.test(notes.value)) return;
-    notes.value = ('Estimated arrival: ' + eta.value + '. ' + notes.value).slice(0, 490);
-  });
-})();
-</script>
 
 <script>
 /* 5 Oct: first and last name travel as guest_name, which the app stores. */

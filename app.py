@@ -4574,18 +4574,6 @@ def init_db():
          "ALTER TABLE bookings ADD COLUMN balance_amount REAL"),
         ("bookings_balance_due_date",
          "ALTER TABLE bookings ADD COLUMN balance_due_date TEXT"),
-        # The guest's own address, asked for on the booking form since the
-        # 5 October handover and until now folded into special_requests by a
-        # script. police_register wants it at check-in; collected here it is
-        # already known, which is the whole point of asking.
-        ("bookings_guest_address",
-         "ALTER TABLE bookings ADD COLUMN guest_address TEXT"),
-        ("bookings_guest_city",
-         "ALTER TABLE bookings ADD COLUMN guest_city TEXT"),
-        ("bookings_guest_postcode",
-         "ALTER TABLE bookings ADD COLUMN guest_postcode TEXT"),
-        ("bookings_guest_country",
-         "ALTER TABLE bookings ADD COLUMN guest_country TEXT"),
         # R. 814-1 item 5: the guest's mobile telephone and email address.
         # The register had no column for either, so a fiche filled in
         # correctly was still missing a field the article names.
@@ -4597,14 +4585,6 @@ def init_db():
          "ALTER TABLE channel_police_register ADD COLUMN phone TEXT"),
         ("channel_police_register_email",
          "ALTER TABLE channel_police_register ADD COLUMN email TEXT"),
-        ("workshop_bookings_guest_address",
-         "ALTER TABLE workshop_bookings ADD COLUMN guest_address TEXT"),
-        ("workshop_bookings_guest_city",
-         "ALTER TABLE workshop_bookings ADD COLUMN guest_city TEXT"),
-        ("workshop_bookings_guest_postcode",
-         "ALTER TABLE workshop_bookings ADD COLUMN guest_postcode TEXT"),
-        ("workshop_bookings_guest_country",
-         "ALTER TABLE workshop_bookings ADD COLUMN guest_country TEXT"),
         ("bookings_balance_paid_at",
          "ALTER TABLE bookings ADD COLUMN balance_paid_at TEXT"),
         ("stripe_session_id", "ALTER TABLE bookings ADD COLUMN stripe_session_id TEXT"),
@@ -4652,6 +4632,17 @@ def init_db():
         ("bookings_transfer_arrival_time", "ALTER TABLE bookings ADD COLUMN transfer_arrival_time TEXT"),
         ("bookings_transfer_notes", "ALTER TABLE bookings ADD COLUMN transfer_notes TEXT"),
         ("bookings_estimated_arrival_time", "ALTER TABLE bookings ADD COLUMN estimated_arrival_time TEXT"),
+        # The guest's home address, asked on the booking form (owner, 5 Oct: as Booking.com asks it) - its own columns,
+        # not the special requests. Also what the guest register (police_register) needs for visitors from abroad.
+        ("bookings_guest_address", "ALTER TABLE bookings ADD COLUMN guest_address TEXT"),
+        ("bookings_guest_city", "ALTER TABLE bookings ADD COLUMN guest_city TEXT"),
+        ("bookings_guest_postcode", "ALTER TABLE bookings ADD COLUMN guest_postcode TEXT"),
+        ("bookings_guest_country", "ALTER TABLE bookings ADD COLUMN guest_country TEXT"),
+        ("workshop_bookings_guest_address", "ALTER TABLE workshop_bookings ADD COLUMN guest_address TEXT"),
+        ("workshop_bookings_guest_city", "ALTER TABLE workshop_bookings ADD COLUMN guest_city TEXT"),
+        ("workshop_bookings_guest_postcode", "ALTER TABLE workshop_bookings ADD COLUMN guest_postcode TEXT"),
+        ("workshop_bookings_guest_country", "ALTER TABLE workshop_bookings ADD COLUMN guest_country TEXT"),
+        ("workshop_bookings_bed_preference", "ALTER TABLE workshop_bookings ADD COLUMN bed_preference TEXT"),
         ("tasks_booking_id", "ALTER TABLE tasks ADD COLUMN booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL"),
         ("expenses_restaurant_related", "ALTER TABLE expenses ADD COLUMN restaurant_related INTEGER NOT NULL DEFAULT 0"),
         # 10: the owner's figure (WORKSHOP_DEPOSIT_PERCENT). Only a fresh
@@ -25914,24 +25905,6 @@ def send_notification(conn, user_id, kind, title, body=None, link=None, related_
 # once, with the same emails, regardless of which path got it there.
 # ---------------------------------------------------------------------------
 
-ADDRESS_FIELDS = ("guest_address", "guest_city", "guest_postcode", "guest_country")
-
-
-def address_from_form(form=None):
-    """The four address fields a booking form asks for, as a dict.
-
-    One reader so the room form, the workshop registration and the desk all
-    take the same four names and trim them the same way. Empty strings become
-    None: a column holding "" reads as an address that was given and was
-    blank, which is not what happened.
-    """
-    src = form if form is not None else request.form
-    out = {}
-    for name in ADDRESS_FIELDS:
-        out[name] = ((src.get(name, "") or "").strip() or None)
-    return out
-
-
 def address_one_line(row):
     """The address as a person would write it, or "" if there is none.
 
@@ -26039,12 +26012,41 @@ app.jinja_env.globals["fiche_prefill"] = fiche_prefill
 app.jinja_env.globals["address_one_line"] = address_one_line
 
 
+# GUEST DETAILS asked on the booking forms, each kept in its own column (5 Oct). Lengths are generous for any country's
+# address and short enough for Stripe's 500-character metadata values, which carry them through the card page.
+GUEST_DETAIL_LIMITS = {"guest_address": 200, "guest_city": 100, "guest_postcode": 20, "guest_country": 60,
+                       "estimated_arrival_time": 60, "bed_preference": 40}
+ROOM_GUEST_DETAILS = ("guest_address", "guest_city", "guest_postcode", "guest_country", "estimated_arrival_time")
+WORKSHOP_GUEST_DETAILS = ("guest_address", "guest_city", "guest_postcode", "guest_country", "bed_preference")
+ROOM_GUEST_DETAILS_REQUIRED = ROOM_GUEST_DETAILS
+WORKSHOP_GUEST_DETAILS_REQUIRED = ("guest_address", "guest_city", "guest_postcode", "guest_country")
+
+
+def read_guest_details(source, keys):
+    """The guest details in `keys`, trimmed and capped, from a form or a Stripe metadata dict."""
+    return {k: ((source.get(k, "") or "").strip())[:GUEST_DETAIL_LIMITS[k]] for k in keys}
+
+
+def missing_guest_details(details, required):
+    return [k for k in required if not details.get(k)]
+
+
+def store_booking_guest_details(conn, table, key_column, key_value, details):
+    """Write the non-empty details onto one row. table and key_column are fixed names from this file, never input."""
+    assert table in ("bookings", "workshop_bookings") and key_column in ("reference_code", "id")
+    cols = [k for k, v in details.items() if v and k in GUEST_DETAIL_LIMITS]
+    if not cols or key_value is None:
+        return
+    conn.execute(f"UPDATE {table} SET " + ", ".join(f"{c} = ?" for c in cols) + f" WHERE {key_column} = ?",
+                 tuple(details[c] for c in cols) + (key_value,))
+
+
 def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, departure,
                     party_size, special_requests, chosen_extras, payment_status="unpaid",
                     stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
                     total_price_override=None, discount_amount_override=None,
                    guests_under_18=0, source="direct", confirm_now=False,
-                   extra_details=None, address=None):
+                   extra_details=None):
     """Write a stay down. With confirm_now, it is booked rather than requested.
 
     THE HOUSE TAKES BOOKINGS, NOT REQUESTS FOR BOOKINGS. Every stay used to
@@ -26133,10 +26135,8 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
             extras_summary, payment_status, stripe_session_id, stripe_payment_intent_id, created_at,
             promo_code_id, discount_amount,
             deposit_amount, deposit_paid_at, balance_amount, balance_due_date,
-            guests_under_18, city_tax, source,
-            guest_address, guest_city, guest_postcode, guest_country)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                   ?, ?, ?, ?)""",
+            guests_under_18, city_tax, source)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (room["id"], reference_code, manage_token, guest_name, guest_email, guest_phone,
          arrival.isoformat(), departure.isoformat(), party_size, special_requests or None,
          total_price, extras_summary, payment_status, stripe_session_id, stripe_payment_intent_id,
@@ -26145,9 +26145,7 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
          deposit_amount if balance_amount else None, deposit_paid_at,
          balance_amount or None, balance_due,
          int(guests_under_18 or 0), city_tax,
-         booking_source_for(conn, guest_email, source),
-         (address or {}).get("guest_address"), (address or {}).get("guest_city"),
-         (address or {}).get("guest_postcode"), (address or {}).get("guest_country")),
+         booking_source_for(conn, guest_email, source)),
     )
     # Recorded in the SAME transaction as the booking insert, not a
     # separate commit after — otherwise a crash between the two would
@@ -26303,7 +26301,6 @@ def create_booking_from_stripe_session(conn, session):
         conn, room, meta["guest_name"], meta["guest_email"], meta.get("guest_phone", ""),
         arrival, departure, int(meta["party_size"]), meta.get("special_requests", ""),
         chosen_extras, payment_status="paid", confirm_now=True,
-        address=address_from_form(meta),
         stripe_session_id=session["id"], stripe_payment_intent_id=sval(session, "payment_intent"),
         promo_code=meta.get("promo_code") or None,
         guests_under_18=int(meta.get("guests_under_18") or 0),
@@ -26315,6 +26312,8 @@ def create_booking_from_stripe_session(conn, session):
         # When they want the things that ask, carried through the card page.
         extra_details=unpack_extra_details(meta.get("extra_when", "")),
     )
+    # The guest's address and arrival time, carried through the card page as metadata.
+    store_booking_guest_details(conn, "bookings", "reference_code", reference_code, read_guest_details(meta, ROOM_GUEST_DETAILS))
     # Record the amount, not just the fact. Without this the stay shows as paid
     # with nothing received against it, so adding a night later would look like
     # the whole stay was owed again.
@@ -41912,6 +41911,7 @@ def book_room_prefill(form=None, conn=None):
         "prefill_under_18": field("guests_under_18"),
         "prefill_requests": field("special_requests"),
         "prefill_promo": field("promo_code"),
+        "prefill_guest": read_guest_details(form, ROOM_GUEST_DETAILS) if form else {},
         "prefill_extras": {int(i) for i in (form.getlist("extras")
                            if hasattr(form, "getlist") else [])
                            if str(i).isdigit()},
@@ -42002,6 +42002,7 @@ def book_room(room_id):
         # seven places and written in none.
         under_18_raw = request.form.get("guests_under_18", "").strip()
         special_requests = request.form.get("special_requests", "").strip()
+        guest_details = read_guest_details(request.form, ROOM_GUEST_DETAILS)
         selected_extra_ids = {int(i) for i in request.form.getlist("extras") if i.isdigit()}
         agreed_to_terms = request.form.get("agree_terms") == "on"
         promo_code = request.form.get("promo_code", "").strip()
@@ -42073,6 +42074,9 @@ def book_room(room_id):
                 error = reason
             else:
                 error = house_capacity_error(conn, arrival, departure, party_size)
+
+        if not error and missing_guest_details(guest_details, ROOM_GUEST_DETAILS_REQUIRED):
+            error = "Please give your address, town, postcode, country and estimated arrival time."
 
         if error:
             flash(error, "error")
@@ -42186,11 +42190,7 @@ def book_room(room_id):
                         "party_size": str(party_size),
                         "guests_under_18": str(guests_under_18),
                         "special_requests": special_requests[:490],
-                        # The address travels with the payment or a card
-                        # booking arrives without one -- collected, promised,
-                        # and missing for precisely the guests who paid.
-                        **{k: (v or "")[:200]
-                           for k, v in address_from_form().items()},
+                        **{k: v for k, v in guest_details.items() if v},
                         "extra_ids": ",".join(str(e["id"]) for e in chosen_extras),
                         **({"extra_when": pack_extra_details(extra_details)}
                            if extra_details else {}),
@@ -42238,6 +42238,7 @@ def book_room(room_id):
                 "guest_phone": guest_phone, "party_size": party_size_raw,
                 "guests_under_18": guests_under_18,
                 "special_requests": special_requests[:490],
+                "guest_details": guest_details,
                 "promo_code": promo_code,
                 "extras": sorted(e["id"] for e in chosen_extras),
                 "extra_when": {str(k): request.form.get(f"extra_when_{k}", "")
@@ -42248,12 +42249,14 @@ def book_room(room_id):
             }
             return redirect(checkout_session.url, code=303)
 
-        _, manage_token = create_booking(
+        _ref, manage_token = create_booking(
             conn, room, guest_name, guest_email, guest_phone, arrival, departure,
             party_size, special_requests, chosen_extras, promo_code=promo_code or None,
             guests_under_18=guests_under_18, confirm_now=True,
-            extra_details=extra_details, address=address_from_form(),
+            extra_details=extra_details,
         )
+        store_booking_guest_details(conn, "bookings", "reference_code", _ref, guest_details)
+        conn.commit()
         conn.close()
         return redirect(url_for("booking_confirmation", manage_token=manage_token))
 
@@ -42278,6 +42281,7 @@ def book_room(room_id):
     #
     # The query string still wins where it is present, so an ordinary link from
     # the room list behaves exactly as before.
+    prefill_guest = {}
     stashed = session.pop("abandoned_booking", None)
     if stashed and stashed.get("room_id") == room_id:
         arrival_raw = arrival_raw or stashed.get("arrival", "")
@@ -42294,6 +42298,7 @@ def book_room(room_id):
         prefill_extras = set(stashed.get("extras", []))
         prefill_extra_when = stashed.get("extra_when") or {}
         prefill_extra_note = stashed.get("extra_note") or {}
+        prefill_guest = stashed.get("guest_details") or {}
 
     # Priced server-side when the guest arrives with dates already chosen, which
     # they usually do — the room list carries them through. The same figures are
@@ -42327,7 +42332,7 @@ def book_room(room_id):
         prefill_requests=prefill_requests, prefill_promo=prefill_promo,
         prefill_extras=prefill_extras, initial_quote=initial_quote,
         prefill_extra_when=prefill_extra_when, prefill_extra_note=prefill_extra_note,
-        deposit_shown=deposit_shown,
+        deposit_shown=deposit_shown, prefill_guest=prefill_guest,
     )
 
 
@@ -49755,6 +49760,7 @@ def workshop_register(session_id):
         dietary_notes = request.form.get("dietary_notes", "").strip()[:500]
         medical_notes = request.form.get("medical_notes", "").strip()[:500]
         special_occasion = request.form.get("special_occasion", "").strip()[:200]
+        guest_details = read_guest_details(request.form, WORKSHOP_GUEST_DETAILS)
         other_guest_names = [
             line.strip()[:200] for line in request.form.get("other_guest_names", "").splitlines() if line.strip()
         ][:19]  # party_size has no hard cap, but a sane ceiling keeps this from becoming a spam vector
@@ -49799,6 +49805,8 @@ def workshop_register(session_id):
                     break
                 custom_values[f["id"]] = raw
 
+        if not error and missing_guest_details(guest_details, WORKSHOP_GUEST_DETAILS_REQUIRED):
+            error = "Please give your address, town, postcode and country."
         if error:
             flash(error, "error")
             conn.commit()  # persist the rate-limit log entry even on a validation error
@@ -49824,6 +49832,7 @@ def workshop_register(session_id):
             medical_notes=medical_notes, special_occasion=special_occasion, promo_code=promo_code or None,
             confirm_now=True,
         )
+        store_booking_guest_details(conn, "workshop_bookings", "id", booking_row_id, guest_details)
         now_iso = datetime.now(timezone.utc).isoformat()
         conn.execute(
             "INSERT INTO workshop_booking_guests (workshop_booking_id, guest_name, is_lead, created_at) VALUES (?, ?, 1, ?)",

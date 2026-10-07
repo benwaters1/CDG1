@@ -309,6 +309,10 @@ def run():
         "agree_terms": "on", "special_requests": "",
         "guest_address": "12 Route de Beille", "guest_city": "Chateau-Verdun",
         "guest_postcode": "09310", "guest_country": "France",
+        # Required since PATCH_guest_details: the form will not take a booking
+        # without it, and this check went red reading "stored None" because
+        # the booking had been refused rather than because nothing was stored.
+        "estimated_arrival_time": "16:00",
     }, follow_redirects=True)
     made = conn.execute(
         "SELECT * FROM bookings WHERE guest_email = 'zzfiche@example.invalid' "

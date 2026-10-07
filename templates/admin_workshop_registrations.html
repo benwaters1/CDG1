@@ -117,7 +117,9 @@
       <a href="mailto:{{ r['guest_email'] }}">{{ r['guest_email'] }}</a>{% if r['guest_phone'] %} · <a href="tel:{{ r['guest_phone'] }}">{{ r['guest_phone'] }}</a>{% endif %}
       · <a href="{{ url_for('guest_by_email', email=r['guest_email']) }}" class="small-link" style="color:var(--steel);">their record</a>
     </p>
-    {% if r['requested_roommate'] %}<p class="upload-hint">Requested roommate: {{ r['requested_roommate'] }}</p>{% endif %}
+    {% if r['guest_address'] or r['guest_country'] %}<p class="upload-hint">Address: {{ [r['guest_address'], ((r['guest_city'] or '') ~ ' ' ~ (r['guest_postcode'] or ''))|trim, r['guest_country']]|select|join(', ') }}</p>{% endif %}
+    {% if r['requested_roommate'] %}<p class="upload-hint">Travelling with: {{ r['requested_roommate'] }}</p>{% endif %}
+    {% if r['bed_preference'] %}<p class="upload-hint">Bed preference: {{ r['bed_preference'] }}</p>{% endif %}
     {% if r['dietary_notes'] %}<p class="upload-hint">Dietary: {{ r['dietary_notes'] }}</p>{% endif %}
     {% if r['medical_notes'] %}<p class="upload-hint">Medical: {{ r['medical_notes'] }}</p>{% endif %}
     {% if r['special_occasion'] %}<p class="upload-hint">Occasion: {{ r['special_occasion'] }}</p>{% endif %}
