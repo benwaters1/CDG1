@@ -89,4 +89,37 @@ def run():
             detail=f"{pp!r} — expense receipts and asset photos use "
                    "<input capture>, and this would break them on phones only")
 
+    s.section("form-action, which decides whether anybody can pay")
+    # The directive that took the payment path down without erroring. Every
+    # checkout here is a form POST answered with a 303 to Stripe's hosted
+    # page, and a browser checks form-action against where a submission ENDS
+    # UP, redirects included. Set to 'self' alone, the POST is made, the
+    # Checkout Session is created and charged to the account, and the browser
+    # refuses to follow the redirect. Nothing on this side errors. From the
+    # outside it is indistinguishable from a dead API key, and that is what
+    # it was taken for -- the keys were checked twice before anyone read a
+    # header.
+    #
+    # Checked on a PUBLIC page, because that is where a guest pays. The one
+    # above reads the owner's home.
+    guest_csp = anon.get("/book").headers.get("Content-Security-Policy") or ""
+    action = [d.strip() for d in guest_csp.split(";")
+              if d.strip().startswith("form-action")]
+    s.check("the public booking page carries form-action", bool(action),
+            detail=repr(guest_csp))
+    s.check("and it names Stripe's checkout, or no guest can pay",
+            action and "https://checkout.stripe.com" in action[0],
+            detail="%s -- the browser blocks the redirect and the app never "
+                   "hears about it" % (action[0] if action else "absent"))
+    s.check("while still keeping this site's own forms on this site",
+            action and "'self'" in action[0],
+            detail="%s -- dropping 'self' would stop every ordinary form"
+                   % (action[0] if action else "absent"))
+    # Narrow on purpose: whatever Stripe does after the redirect happens on
+    # Stripe's origin, where this policy does not apply. Widening it to a
+    # wildcard buys nothing and costs the thing form-action is for.
+    s.check("and is not widened to the whole of stripe.com",
+            action and "*.stripe.com" not in action[0],
+            detail=action[0] if action else "absent")
+
     return s

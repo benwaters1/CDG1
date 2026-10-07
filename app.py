@@ -1630,12 +1630,25 @@ def set_security_headers(response):
     inline <script> blocks and 1,525 inline style attributes, so a script-src
     or style-src rule would need a nonce through all 207 of them. The three
     directives here need none of that and still close real holes.
+
+    form-action NAMES STRIPE, and without it nobody can pay. Every checkout
+    is a form POST answered with a 303 to Stripe's hosted page, and a browser
+    checks form-action against where a submission ends up, redirects
+    included. So the POST was made, the Session was created, and the browser
+    refused the redirect -- which looks from the outside exactly like a dead
+    API key, and was taken for one.
+
+    Only checkout.stripe.com. What happens after that is on Stripe's own
+    origin where this policy does not apply, so widening it to *.stripe.com
+    buys nothing and costs the thing form-action is for: stopping a page here
+    posting a guest's details somewhere else.
     """
     if not request.path.startswith(FRAMEABLE_PATH_PREFIX):
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault(
             "Content-Security-Policy",
-            "frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+            "frame-ancestors 'none'; base-uri 'self'; "
+            "form-action 'self' https://checkout.stripe.com")
 
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
 
