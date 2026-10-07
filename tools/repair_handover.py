@@ -1293,6 +1293,38 @@ REVEAL_IMPORT = (
     "{% from '_interactive.html' import the_reveal %}\n")
 
 
+EXPECTED_WEATHER_BLOCK = (
+    "\n{# WHAT IT WILL BE LIKE WHEN THEY COME, under the dates they are choosing.\n"
+    "   Imported WITH CONTEXT because the macro calls t(), which a context\n"
+    "   processor supplies -- an imported macro sees none of the caller's context\n"
+    "   otherwise, and the page would 500 on the first translated word. #}\n"
+    "{% from '_expected_weather.html' import expected_weather with context %}\n"
+    "{{ expected_weather(arrival, departure, house_weather) }}\n")
+
+
+def repair_expected_weather():
+    """The weather block the owner asked for on 7 October: what a month is
+    like at 900 metres, under the dates a guest is choosing, with the live
+    reading as a line inside it.
+
+    The partial is safe -- the zips do not carry _expected_weather.html -- but
+    the two lines that put it on the page are not the design's and are cut
+    with every whole-file replacement of book_room.html.
+    """
+    rel = "templates/book_room.html"
+    src = _read(rel)
+    if "expected_weather" in src:
+        return 0
+    if not os.path.exists(os.path.join(ROOT, "templates", "_expected_weather.html")):
+        return 0                      # nothing to call; not this tool's job
+    anchor = "{% from '_facilities.html' import facilities_strip %}{{ facilities_strip() }}\n"
+    if anchor not in src:
+        raise ValueError("no facilities strip on book_room.html to put the "
+                         "weather block under")
+    _write(rel, src.replace(anchor, anchor + EXPECTED_WEATHER_BLOCK, 1))
+    return 1
+
+
 def repair_reveal_import():
     """/restoration answered 500: the slider is called, and its import was cut
     beside the explorer's (which the design did mean to cut)."""
@@ -1581,6 +1613,7 @@ def main():
         ("the Legal Notice's host and RCS line", repair_legal_notice),
         ("the Legal Notice footer links", repair_legal_footer_links),
         ("claims the owner has corrected", repair_corrected_claims),
+        ("the expected weather under the dates", repair_expected_weather),
     ]
     total, failed = 0, []
     for label, fn in steps:

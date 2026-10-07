@@ -27588,6 +27588,35 @@ def inject_exchange_rates():
 
 
 @app.context_processor
+def inject_house_weather():
+    """The cached reading on every public page, for templates that want it.
+
+    Same shape as the rates above and for the same reasons: endpoint-less
+    requests return the safe value rather than leaving the name Undefined,
+    the connection closes in a finally, and anything going wrong here must
+    not take the page with it.
+
+    NEVER fetches -- weather_now only reads a cache the house refreshes
+    hourly. A page that can block on somebody else's network is a page that
+    eventually does, and these are the booking pages.
+
+    Called house_weather and not weather: book_rooms already passes a
+    `weather` of its own, and a processor shadowed by a route keyword on one
+    page but not the next is a difference nobody finds.
+    """
+    if not request.endpoint or request.endpoint.startswith("static"):
+        return {"house_weather": None}
+    try:
+        conn = get_db()
+        try:
+            return {"house_weather": weather_now(conn)}
+        finally:
+            conn.close()
+    except Exception:
+        return {"house_weather": None}
+
+
+@app.context_processor
 def inject_road_notice():
     """The road notice, everywhere, so no arrival page can forget it.
 
@@ -44938,6 +44967,98 @@ def fetch_weather(timeout=8):
         raise ValueError("no current reading in the response")
     return {"c": round(float(temp)), "code": int(code),
             "at": datetime.now(timezone.utc).isoformat()}
+
+
+# ---------------------------------------------------------------------------
+# WHAT A MONTH IS LIKE AT 900 METRES IN THE ARIEGE.
+#
+# Written from the valley rather than from an average, because a forecast is
+# useless six months out and the month is what somebody choosing dates is
+# actually asking about.
+#
+# This lived in a <script> inside _weather.html and was reachable from one
+# page, only by a browser that ran it, and never by t(). Moved here it can be
+# rendered into the HTML of any page, read without a script, and translated.
+MONTHS_AT_GUDANES = {
+    1: ("Deep winter. Snow on the peaks and the valley quiet. The château is "
+        "cold; every room has an electric blanket and a space heater.",
+        ["Skiing at Ax 3 Domaines, about half an hour away", "Dark by six",
+         "The quietest month"]),
+    2: ("Still winter, with the light coming back by the end of it.",
+        ["Skiing nearby, snow permitting", "Cold, bright days",
+         "Quiet in the valley"]),
+    3: ("The thaw. Water comes off the mountains and the valley turns green.",
+        ["Snow still on the peaks", "The rivers running hard",
+         "The valley to yourselves"]),
+    4: ("Spring in the valley, fresh and changeable.",
+        ["Cool evenings", "Snow on the high peaks", "Easter in the villages"]),
+    5: ("Everything green at once.",
+        ["Warm days, cool nights", "The walking season begins",
+         "The rivers full"]),
+    6: ("The longest evenings of the year.",
+        ["Warm, not yet hot", "Mountain walks",
+         "Long light on the terraces"]),
+    7: ("High summer: hot by day, cool by night.",
+        ["The pool", "Mountain walking at its best",
+         "Kayaking on the river"]),
+    8: ("The hottest month, and the fullest in the valley.",
+        ["The pool", "The thick walls keep the house cool",
+         "Long evenings on the terraces"]),
+    9: ("Warmer than people expect, and quieter.",
+        ["Swimming still possible early on", "Walking weather",
+         "The valley quieter"]),
+    10: ("Autumn colour, and the first snow on the peaks.",
+         ["Cool, clear days", "Colour on the hillsides", "Quiet"]),
+    11: ("The quiet before winter: mist, rain and low light.",
+         ["The most atmospheric month", "Very quiet",
+          "Cold evenings in the house"]),
+    12: ("Cold and clear, or cold and white.",
+         ["Skiing nearby, snow permitting", "Dark by five",
+          "Noël at Gudanes"]),
+}
+
+def weather_for_stay(arrival=None, departure=None):
+    """The month or months a stay runs through, written out.
+
+    Returns a list of {month, name, text, notes}. A week that crosses the end
+    of a month gets BOTH, because late June and early July are not the same
+    answer and a stay spanning them is an ordinary booking rather than an
+    edge case.
+
+    With no dates it answers for the month it is now, so the block has
+    something true to say before anybody has chosen anything.
+    """
+    start = house_date(arrival) if arrival else house_today()
+    end = house_date(departure) if departure else start
+    if not start:
+        start = house_today()
+    if not end or end < start:
+        end = start
+    months, seen = [], set()
+    cur = start
+    # Walk by month rather than by day: a fortnight is two entries, not
+    # fourteen, and a stay longer than a year is somebody testing.
+    for _ in range(14):
+        key = (cur.year, cur.month)
+        if key not in seen:
+            seen.add(key)
+            text, notes = MONTHS_AT_GUDANES.get(cur.month, ("", []))
+            months.append({"month": cur.month,
+                           # app.py already defines MONTH_NAMES twice, both
+                           # 0-indexed with January first. A third copy here,
+                           # 1-indexed, was shadowed by the later of those and
+                           # read every month one ahead -- October answered
+                           # November and December raised IndexError. One
+                           # convention, used the way the file already uses it.
+                           "name": MONTH_NAMES[cur.month - 1],
+                           "text": text, "notes": list(notes)})
+        if (cur.year, cur.month) >= (end.year, end.month):
+            break
+        cur = (cur.replace(day=1) + timedelta(days=32)).replace(day=1)
+    return months
+
+
+app.jinja_env.globals["weather_for_stay"] = weather_for_stay
 
 
 def weather_now(conn, *, max_age_minutes=WEATHER_MAX_AGE_MINUTES, now=None):

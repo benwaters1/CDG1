@@ -1,0 +1,63 @@
+{# ==========================================================================
+   WHAT IT WILL BE LIKE WHEN THEY COME, AND WHAT IT IS DOING NOW.
+
+       {% from '_expected_weather.html' import expected_weather %}
+       {{ expected_weather(arrival, departure, weather) }}
+
+   arrival/departure are optional ISO dates. With none it answers for the
+   month it is now, so the block always has something true to say before
+   anybody has chosen anything. A stay crossing a month gets both months --
+   late June and early July are different answers, and a week spanning them
+   is an ordinary booking rather than an edge case.
+
+   The writing comes from MONTHS_AT_GUDANES in app.py. It used to sit in a
+   <script> inside _weather.html, reachable on one page and only by a browser
+   that ran it. Rendered here it is in the HTML, needs nothing to execute, and
+   t() can reach it.
+
+   THE LIVE READING IS A LINE INSIDE THIS, not a block of its own. Alone it
+   had no home: the stand-in sentence under it was removed on 5 October
+   because it sat by itself between two sections, and an empty cache then left
+   that part of the page showing nothing at all. Here the month's writing
+   stands whether or not a reading exists, so there is nothing to orphan.
+
+   EVERY CLASS HERE ALREADY EXISTS in gudanes.css. The stylesheet arrives as a
+   whole-file replacement with each handover, so a new class invented for this
+   block would survive exactly one of them and then style nothing.
+   ========================================================================== #}
+
+{%- macro expected_weather(arrival=None, departure=None, wx=None, heading='What to expect') -%}
+{%- set months = weather_for_stay(arrival, departure) -%}
+{%- if months %}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">{{ t(heading) }}</p>
+
+  {%- if wx and wx.c is not none %}
+  {# Right now, out of a cache the house refreshes hourly -- never fetched by
+     the guest's own browser, which would hand their address to a third party
+     on a page whose privacy notice promises otherwise. #}
+  <div class="g-wx">
+    <p class="g-wx__live">
+      <span class="g-wx__k">{{ t('At the château right now') }}</span>
+      <span class="g-wx__t">{{ wx.c }}&deg;C</span>
+      {%- if wx.words %}<span class="g-wx__d">{{ wx.words }}</span>{% endif %}
+    </p>
+  </div>
+  {%- endif %}
+
+  {%- for mo in months %}
+  <h3 class="g-h3">{{ t(mo.name) }}</h3>
+  <p class="g-p">{{ t(mo.text) }}</p>
+  {%- if mo.notes %}
+  <ul class="g-season__l">
+    {%- for n in mo.notes %}<li>{{ t(n) }}</li>{% endfor %}
+  </ul>
+  {%- endif %}
+  {%- endfor %}
+
+  {# Said plainly rather than implied. Six months out there is no forecast to
+     give, and a page that looked like one would be read as one. #}
+  <p class="g-p"><small>{{ t('The valley at 900 metres, written from here rather than from an average. Not a forecast.') }}</small></p>
+</div></section>
+{%- endif %}
+{%- endmacro -%}

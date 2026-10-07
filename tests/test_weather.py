@@ -219,6 +219,90 @@ def run():
     s.check("and the page a guest loads names no third party",
             "open-meteo" not in anon.get("/book").get_data(as_text=True).lower())
 
+    # ------------------------------------------------------------------
+    # WHAT IT WILL BE LIKE WHEN THEY COME. Asked for on 7 October: weather
+    # tied to the dates a guest is choosing, and the current reading
+    # somewhere. The month writing already existed and was unreachable --
+    # twelve paragraphs in a <script> on one page, invisible without a script
+    # and never translated.
+    # ------------------------------------------------------------------
+    s.section("The month a guest is actually booking")
+    room = conn.execute(
+        "SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+    if not room:
+        s.check("a room exists to price", False,
+                detail="reported rather than skipped")
+    else:
+        rid = room["id"]
+
+        def room_page(q=""):
+            return anon.get("/book/%d%s" % (rid, q)).get_data(as_text=True)
+
+        # Read with the scripts taken out. The whole point of moving this out
+        # of _weather.html was that it used to exist only for a browser that
+        # ran it.
+        import re as _re
+        def markup(q=""):
+            return _re.sub(r"(?is)<script.*?</script>", "", room_page(q))
+
+        plain = markup()
+        s.check("the block is on the room page", "What to expect" in plain,
+                detail="the page where somebody is choosing dates")
+        s.check("and it is in the markup, not built by a script",
+                "What to expect" in plain,
+                detail="twelve paragraphs that only exist once javascript "
+                       "runs are twelve paragraphs some guests never read")
+
+        # With no dates it still answers, for the month it is now. A block
+        # that is blank until somebody picks dates is a block most visitors
+        # never see.
+        this_month = m.MONTHS_AT_GUDANES[m.house_today().month][0]
+        s.check("with no dates chosen it answers for this month",
+                this_month[:40] in plain,
+                detail="expected the writing for month %d"
+                       % m.house_today().month)
+
+        aug = markup("?arrival=2027-08-02&departure=2027-08-05")
+        s.check("an August stay reads as August",
+                m.MONTHS_AT_GUDANES[8][0][:40] in aug)
+        s.check("and not as whatever month it is today",
+                m.house_today().month == 8
+                or this_month[:40] not in aug,
+                detail="the dates have to change the answer, or they are "
+                       "ornament")
+
+        # A week across the end of a month is an ordinary booking, and late
+        # June is not early July.
+        both = markup("?arrival=2027-06-27&departure=2027-07-02")
+        s.check("a stay crossing a month gets both months",
+                m.MONTHS_AT_GUDANES[6][0][:40] in both
+                and m.MONTHS_AT_GUDANES[7][0][:40] in both,
+                detail="June and July are different answers")
+
+        s.section("The live reading has somewhere to live now")
+        # Its own fallback was removed on 5 October because the sentence sat
+        # alone between two sections. Inside this block there is nothing to
+        # orphan: the month's writing stands either way.
+        _clear(conn)
+        empty = markup()
+        s.check("with no reading the block still says something true",
+                "What to expect" in empty and this_month[:40] in empty,
+                detail="this is the failure the stand-in sentence was deleted "
+                       "for -- a part of the page that simply vanishes")
+        s.check("and offers no temperature it does not have",
+                "&deg;C" not in empty.split("What to expect")[-1][:900],
+                detail="no reading must mean no figure, not a blank one")
+
+        _set(conn, m.json.dumps(
+            {"c": 17, "code": 0,
+             "at": m.datetime.now(m.timezone.utc).isoformat()}))
+        live = markup()
+        s.check("and when there is a reading it is shown", "17&deg;C" in live,
+                detail="the current reading the owner asked for")
+        s.check("beside the month, not instead of it",
+                this_month[:40] in live,
+                detail="both answers at once is the whole point")
+
     if keep is None:
         _clear(conn)
     else:

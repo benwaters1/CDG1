@@ -695,6 +695,27 @@ FR = {
     'The Restoration': 'La restauration',
     'general enquiries': 'demandes générales',
     'stays': 'séjours',
+    # The months, and the expected-weather block. t() is called on a
+    # variable there, so the key scanner never asks for these -- but it
+    # looks them up at runtime all the same, and without them a French
+    # guest reads English headings on a page that is otherwise French.
+    # The twelve paragraphs are the owner's own writing and are not
+    # translated here.
+    "January": "Janvier",
+    "February": "Février",
+    "March": "Mars",
+    "April": "Avril",
+    "May": "Mai",
+    "June": "Juin",
+    "July": "Juillet",
+    "August": "Août",
+    "September": "Septembre",
+    "October": "Octobre",
+    "November": "Novembre",
+    "December": "Décembre",
+    "What to expect": "À quoi s'attendre",
+    "At the château right now": "Au château en ce moment",
+    "The valley at 900 metres, written from here rather than from an average. Not a forecast.": "La vallée à 900 mètres, écrite d'ici plutôt que d'après une moyenne. Ce n'est pas une prévision.",
 }
 
 ES = {
@@ -1257,6 +1278,22 @@ ES = {
     'The Restoration': 'La restauración',
     'general enquiries': 'consultas generales',
     'stays': 'estancias',
+    # See the note on the French table.
+    "January": "Enero",
+    "February": "Febrero",
+    "March": "Marzo",
+    "April": "Abril",
+    "May": "Mayo",
+    "June": "Junio",
+    "July": "Julio",
+    "August": "Agosto",
+    "September": "Septiembre",
+    "October": "Octubre",
+    "November": "Noviembre",
+    "December": "Diciembre",
+    "What to expect": "Qué esperar",
+    "At the château right now": "En el château en este momento",
+    "The valley at 900 metres, written from here rather than from an average. Not a forecast.": "El valle a 900 metros, escrito desde aquí y no a partir de una media. No es una previsión.",
 }
 
 # The public pages' own prose, kept in its own file because it is 1,900

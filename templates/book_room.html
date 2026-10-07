@@ -758,6 +758,13 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
    and the manage link is emailed with the reference code. #}
 {% from '_facilities.html' import facilities_strip %}{{ facilities_strip() }}
 
+{# WHAT IT WILL BE LIKE WHEN THEY COME, under the dates they are choosing.
+   Imported WITH CONTEXT because the macro calls t(), which a context
+   processor supplies -- an imported macro sees none of the caller's context
+   otherwise, and the page would 500 on the first translated word. #}
+{% from '_expected_weather.html' import expected_weather with context %}
+{{ expected_weather(arrival, departure, house_weather) }}
+
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <p class="g-eyebrow">Before You Commit</p>
   <h2 class="g-place">What Happens Next</h2>
