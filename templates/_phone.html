@@ -1,6 +1,7 @@
 {#- 4 Oct (owner): "phone number should have a country code selector then input number and is mandatory".
-    phone_field(id, name, value): a dialling-code menu, then the number. On submit the two are joined into one
-    international number in `name` ("+61 412 345 678"), so the server receives what it always did - no app change.
+    phone_field(id, name, value): a dialling-code menu, then the number. The input itself always carries the WHOLE
+    international number, so it survives a re-render with no script running; the script splits it for display on load
+    and joins a freshly typed national number on submit. The server receives what it always did - no app change.
     With no saved number, the code is picked from the browser's language region (en-AU -> +61), else France.
     Import: {% from '_phone.html' import phone_field %} -#}
 
@@ -35,7 +36,7 @@
       <option value="{{ code }}" data-iso="{{ iso }}" {{ 'selected' if (ns.iso == iso) or (not ns.iso and iso == 'FR') }}>{{ country }} {{ code }}</option>
       {%- endfor %}
     </select>
-    <input type="tel" inputmode="tel" id="{{ id }}" name="{{ name }}" autocomplete="tel-national" value="{{ ns.national }}" required
+    <input type="tel" inputmode="tel" id="{{ id }}" name="{{ name }}" autocomplete="tel-national" value="{{ v }}" required
            data-phone-num aria-describedby="{{ id }}_hint">
   </span>
   <span class="g-hint" id="{{ id }}_hint">So we can reach you about your arrival.</span>
@@ -48,6 +49,22 @@
     document.querySelectorAll('[data-phone-cc]').forEach(function(sel){
       if (!sel.hasAttribute('data-chosen') && region){
         var o = sel.querySelector('option[data-iso="' + region + '"]'); if (o) sel.value = o.value;
+      }
+      // SPLIT WHAT THE SERVER SENT. The input carries the whole
+      // international number so that it survives a re-render with no script
+      // running. Where there is a script, show it the way the design meant:
+      // the code in the menu, the national part in the box.
+      var num = sel.form && sel.form.querySelector('[data-phone-num][id="' + sel.getAttribute('data-phone-cc') + '"]');
+      if (num && (num.value || '').trim().charAt(0) === '+'){
+        var whole = num.value.replace(/\s+/g, ''), best = null;
+        Array.prototype.forEach.call(sel.options, function(o){
+          if (whole.indexOf(o.value) === 0 && (!best || o.value.length > best.value.length)) best = o;
+        });
+        if (best){
+          sel.value = best.value;
+          sel.setAttribute('data-chosen', '');
+          num.value = whole.slice(best.value.length);
+        }
       }
       var form = sel.form; if (!form || form.__gPhoneBound) return; form.__gPhoneBound = true;
       form.addEventListener('submit', function(){

@@ -136,7 +136,6 @@ FR = {
     "Subscribe": "S'abonner",
     "Email": "E-mail",
     "Email address": "Adresse e-mail",
-    "Contact us": "Nous contacter",
     "Groups": "Groupes",
     "Change or cancel a reservation": "Modifier ou annuler une réservation",
     "Manage your booking": "Gérer ma réservation",
@@ -683,6 +682,19 @@ FR = {
     'Your events': 'Vos événements',
     'stays &amp; general': 'séjours et questions générales',
     'workshops &amp; events': 'ateliers et événements',
+    # Handover q, 7 October: new English on the nav and the
+    # booking pages. t() falls back silently, so without these a
+    # French guest gets one English phrase mid-sentence and
+    # nothing says so.
+    'Ask to move your dates': 'Demander à déplacer vos dates',
+    'Find an Enquiry': 'Retrouver une demande',
+    'Manage a Booking': 'Gérer une réservation',
+    'Nightly Stays': 'Séjours à la nuitée',
+    'Photoshoots & Filming': 'Photographie et tournages',
+    'The Family': 'La famille',
+    'The Restoration': 'La restauration',
+    'general enquiries': 'demandes générales',
+    'stays': 'séjours',
 }
 
 ES = {
@@ -788,7 +800,6 @@ ES = {
     "Subscribe": "Suscribirse",
     "Email": "Correo electrónico",
     "Email address": "Dirección de correo electrónico",
-    "Contact us": "Contáctenos",
     "Groups": "Grupos",
     "Change or cancel a reservation": "Modificar o cancelar una reserva",
     "Manage your booking": "Gestionar mi reserva",
@@ -1236,6 +1247,16 @@ ES = {
     'Your events': 'Sus eventos',
     'stays &amp; general': 'estancias y consultas generales',
     'workshops &amp; events': 'talleres y eventos',
+    # Handover q, 7 October. See the note on the French table.
+    'Ask to move your dates': 'Solicitar un cambio de fechas',
+    'Find an Enquiry': 'Buscar una consulta',
+    'Manage a Booking': 'Gestionar una reserva',
+    'Nightly Stays': 'Estancias por noche',
+    'Photoshoots & Filming': 'Sesiones de fotos y rodajes',
+    'The Family': 'La familia',
+    'The Restoration': 'La restauración',
+    'general enquiries': 'consultas generales',
+    'stays': 'estancias',
 }
 
 # The public pages' own prose, kept in its own file because it is 1,900

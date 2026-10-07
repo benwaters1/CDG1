@@ -55,6 +55,12 @@ def _answers(when, later):
         "event_type": "wedding", "message": TAG + " enquiry",
         "notes": "", "dietary_notes": "", "medical_notes": "",
         "other_guest_names": "", "interests": "", "promo_code": "",
+        # Handover q made this required on the workshop registration, and a
+        # required field this bank cannot answer is what the check below is
+        # for -- it found it the first time the form carried one.
+        "emergency_contact": TAG + " Next Of Kin, +33 6 00 00 00 01",
+        "travel_details": "",
+        "estimated_arrival_time": "16:00",
         "agree_terms": "on",
     }
 

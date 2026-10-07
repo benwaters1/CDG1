@@ -553,8 +553,21 @@ def run():
         # either, anywhere on the page: the danger was always the sentence
         # "no staircase" said to the guest who needs it to be true.
         said = visible_text(picker)
-        promises = re.findall(r"(?i)\b(ground[- ]floor|no staircase|no stairs|"
-                              r"step[- ]free|without (?:any )?stairs)\b", said)
+        # An outright claim about stairs, in any wording.
+        promises = re.findall(r"(?i)\b(no staircase|no stairs|step[- ]free|"
+                              r"without (?:any )?stairs)\b", said)
+        # And "ground floor" ONLY where it is said about somewhere a guest
+        # sleeps. Handover q writes "a private bathroom of your own on the
+        # ground floor", which is true and is the opposite of a promise: it
+        # says the bathroom is down a flight from the bed, which is the thing
+        # somebody who struggles with stairs most needs to read. Matching the
+        # phrase alone would have had that sentence deleted to make this pass.
+        promises += [mm.group(0) for mm in re.finditer(
+            r"(?i)\b(?:room|rooms|bedroom|bedrooms|suite|stay|sleep\w*)\b"
+            r"[^.]{0,60}?\bground[- ]floor\b", said)]
+        promises += [mm.group(0) for mm in re.finditer(
+            r"(?i)\bground[- ]floor\b[^.]{0,60}?"
+            r"\b(?:room|rooms|bedroom|bedrooms|suite)\b", said)]
         s.check("the picker makes no stairs promise, so none can be wrong",
                 not promises, detail=str(promises[:3]))
         s.check("and the page still says the bedrooms are up the staircase",

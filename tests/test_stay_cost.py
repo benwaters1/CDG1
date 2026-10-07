@@ -63,15 +63,27 @@ def run():
         r = anon.get(f"/book/{room_id}")
         return r.status_code, r.get_data(as_text=True)
 
-    s.section("The arithmetic is done for them")
+    s.section("What a stay costs, before any script has run")
+    # The second calculator went on 5 October at the owner's request: two
+    # things on one page were counting nights differently. The form's own
+    # summary card is the only price now. What has to survive that is not a
+    # widget but an answer -- a guest reading with nothing executing must
+    # still learn the rate and the minimum, because the total is built from
+    # them and they are the part the server knows.
     code, body = page()
     s.check("the room page opens", code == 200, detail=f"HTTP {code}")
-    s.check("the calculator is on it", "g-cost" in body)
-    s.check("it starts at the minimum stay", 'value="3"' in body,
-            detail="a three-night minimum starting at one night shows a total "
-                   "the guest cannot actually book")
-    s.check("and the total is the nights times the rate",
-            "€750" in body, detail="250 a night, three nights")
+    # The PRICE AS WRITTEN, not the bare digits. A control that blanked the
+    # visible figure walked straight through "250 in body": the number
+    # survives in a data-eur attribute that feeds the quote script and that
+    # no guest can read. Asking for the formatted price is asking whether it
+    # was rendered for a person.
+    s.check("the nightly rate is in the HTML, not only in a script",
+            "€250" in body and "per night" in body,
+            detail="a price that exists only once a script runs is a price "
+                   "some guests never see")
+    s.check("and the minimum stay is stated",
+            "3-night minimum" in body,
+            detail="without it a guest prices a stay the house will not take")
 
     s.section("A house that takes no deposit says so")
     # The default. The sketch would have said "a 30% deposit holds the room"
@@ -130,10 +142,23 @@ def run():
             m.deposit_percent_to_show(conn) == 40,
             detail=str(m.deposit_percent_to_show(conn)))
     code, body = page()
-    s.check("the page quotes it", "A 40% deposit holds the room" in body)
-    s.check("and splits the total", "To hold it now" in body)
-    s.check("into the right halves", "€300" in body and "€450" in body,
-            detail="40% of 750 is 300, and 450 later")
+    # The wording lived in the calculator the owner had removed, so the split
+    # is checked where it is computed rather than where it used to be shown.
+    dep_c, bal_c, due_c = m.room_payment_schedule(
+        conn, date.today() + timedelta(days=60), 750.0, 2)
+    s.check("the schedule splits a 40% rule into the right halves",
+            abs(dep_c - 300.0) < 0.01 and abs(bal_c - 450.0) < 0.01,
+            detail=f"take now {dep_c}, later {bal_c} — 40% of 750 is 300")
+    # AND THE GAP, NAMED. Nothing on the room page says any of that now. The
+    # house takes the whole amount today so nothing is wrong on the live
+    # site, but a rule set tomorrow would be invisible to the guest deciding.
+    # Written as a check so that the day it is put back this fails and has to
+    # be deleted on purpose, rather than sitting in a comment nobody reads.
+    s.check("and the page does not disclose it, which is a gap not a pass",
+            "A 40% deposit holds the room" not in body
+            and "To hold it now" not in body,
+            detail="if this fails the disclosure has returned to the page: "
+                   "delete this check and restore the two above it")
 
     s.section("A deposit that DEPENDS on the booking is not quoted")
     # The one a naive version gets wrong, because it looks right nine times
@@ -149,8 +174,13 @@ def run():
             m.deposit_percent_to_show(conn) is None,
             detail=str(m.deposit_percent_to_show(conn)))
     code, body = page()
-    s.check("the page says how much depends on the dates",
-            "how much depends on the dates" in body)
+    # Same gap, other branch: a deposit that varies was explained in the same
+    # removed markup. What must still hold is that NO figure is offered, which
+    # is the half that could mislead, and that is checked below.
+    s.check("no figure is put in front of the guest for a varying deposit",
+            "how much depends on the dates" not in body,
+            detail="recorded alongside the gap above; the sentence went with "
+                   "the calculator")
     s.check("and quotes no percentage at all",
             "40% deposit" not in body and "60% deposit" not in body,
             detail="a figure on the page that changes at checkout is the "
@@ -169,30 +199,25 @@ def run():
             detail="a group of eight paying more than a couple is exactly "
                    "what one flat figure cannot express")
 
-    s.section("It works more than once on a page")
-    # querySelector picks the FIRST match. A page listing three rooms would
-    # have had two calculators whose numbers never move, which reads as a
-    # broken price rather than a broken widget.
-    import io as _io
-    import os as _os
-    src = _io.open(_os.path.join(_os.path.dirname(_os.path.dirname(
-        _os.path.abspath(__file__))), "templates", "_nights_calc.html"),
-        encoding="utf-8").read()
-    s.check("the script binds every calculator, not the first",
-            "querySelectorAll('[data-cost]')" in src,
-            detail="querySelector picks one")
-    s.check("and the input id is per room, not fixed",
-            'id="cost_n_{{ uid or room[\'id\'] }}"' in src,
-            detail="two elements with the same id is a label pointing at "
-                   "whichever the browser saw first")
-
-    s.section("And the arithmetic degrades to something true with no script")
-    # The figures are rendered server-side as well, so a guest with no
-    # JavaScript sees the minimum-stay total rather than an empty box.
-    s.check("the total is in the HTML, not only in the script",
-            ">€750</dd>" in body or "€750" in body.split("<script")[0],
-            detail="a price that only exists once a script runs is a price "
+    s.section("And the figures survive with no script at all")
+    # MEASURED, not approximated. This used to ask whether the total appeared
+    # before the first <script> tag, which this page defeats by carrying an
+    # inline script near the top -- everything real on the page sits after it.
+    # Stripping the script blocks and reading what is left is the actual
+    # question: would a guest with nothing executing still learn the price?
+    import re as _re2
+    markup = _re2.sub(r"(?is)<script.*?</script>", "", body)
+    s.check("the nightly rate is in the markup",
+            "€250" in markup and "per night" in markup,
+            detail="a price that exists only once a script runs is a price "
                    "some guests never see")
+    s.check("so is the minimum stay", "3-night minimum" in markup,
+            detail="the rate alone prices a stay the house will not take")
+    s.check("and so is what they will actually be charged",
+            "paid in full when you book" in markup,
+            detail="the whole amount leaves the card at booking; a guest who "
+                   "cannot read that before pressing the button is told "
+                   "nothing by a page that knows")
 
     _cleanup(conn)
     conn.close()
@@ -206,8 +231,10 @@ def run():
     import glob as _g
     import os as _o
     import re as _re
+    # _nights_calc.html was on this list and is deleted: the owner had the
+    # second calculator removed on 5 October and the file was left behind.
     ROOM_PAGES = ("book_room.html", "book_rooms.html", "_before.html",
-                  "_nights_calc.html", "_paydates.html", "_weekcost.html",
+                  "_paydates.html", "_weekcost.html",
                   "_stay_panel.html", "home.html")
     wrong = []
     for path in _g.glob(_o.path.join(_harness.ROOT, "templates", "*.html")):

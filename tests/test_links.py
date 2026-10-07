@@ -187,7 +187,14 @@ def run():
     for name in os.listdir(TPL_DIR):
         if name.endswith(".html"):
             src = open(os.path.join(TPL_DIR, name), encoding="utf-8").read()
+            # Macros AND top-level {% set %}, because Jinja exports both and
+            # handover q is the first partial to export a variable:
+            # _room_photos.html defines ROOM_PHOTOS and BATH_PHOTO that way,
+            # and book_room/book_rooms import them. Reading only macros called
+            # four correct imports broken. Anchored at the line start, because
+            # a set INSIDE a macro is local and is not exported.
             exports[name] = set(re.findall(r"{%-?\s*macro\s+([A-Za-z_][\w]*)", src))
+            exports[name] |= set(re.findall(r"(?m)^{%-?\s*set\s+([A-Za-z_][\w]*)\s*=", src))
     for rel, body in templates.items():
         for partial, names in re.findall(
                 r"{%-?\s*from\s+['\"]([^'\"]+)['\"]\s+import\s+([^%]+?)-?%}", body):
