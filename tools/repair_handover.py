@@ -1431,6 +1431,39 @@ OCCASION_WORKSHOP = (
     "          </div>\n")
 
 
+def repair_settings_dot_get():
+    """`.get` on settings raises on a sqlite3.Row, and settings is often one.
+
+    Twice before, this took the public dining page down -- each time from a
+    handover, each time from a line that worked on every page except the ones
+    whose routes pass their own settings. Handover q put it in _email.html,
+    where the dining line on a booking confirmation reads it.
+
+    The house has one way to read a setting whatever it happens to be:
+    setting(obj, key, default), registered as a Jinja global so it works
+    inside an imported macro too. test_settings_readable scans every template
+    for the other way and names the file and line.
+
+    Only the shape that has actually arrived is rewritten. A .get on settings
+    in some new spelling is left for the test to name rather than guessed at
+    here, because a wrong rewrite of a template is silent.
+    """
+    rel = "templates/_email.html"
+    if not os.path.exists(os.path.join(ROOT, rel)):
+        return 0
+    src = _read(rel)
+    old = ("{%- set _dm = ((settings.get('dining_mode') if (settings and "
+           "settings.get) else none) or 'hidden')|lower|trim -%}")
+    if old not in src:
+        return 0
+    src = src.replace(
+        old,
+        "{%- set _dm = (setting(settings, 'dining_mode', 'hidden') "
+        "or 'hidden')|lower|trim -%}", 1)
+    _write(rel, src)
+    return 1
+
+
 def repair_special_occasion():
     """The field handover q removed from both booking forms.
 
@@ -1758,6 +1791,7 @@ def main():
         ("the allergy note on the room list", repair_animals_note_called),
         ("the dining hours table in a wrapper", repair_dining_hours_table),
         ("the occasion on both booking forms", repair_special_occasion),
+        ("settings read with .get, which a Row refuses", repair_settings_dot_get),
     ]
     total, failed = 0, []
     for label, fn in steps:

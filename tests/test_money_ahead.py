@@ -159,8 +159,52 @@ def run():
     s.check("for what is left, not the whole price",
             owed and owed[0]["amount"] == 700.0,
             detail=str(owed[0]["amount"] if owed else None))
-    s.check("dated to their arrival, when they settle",
+    # No balance date on this one, which is every stay while the deposit is
+    # set to 0 -- so arrival stands as the latest point the money can land.
+    s.check("dated to their arrival when nothing set a balance date",
             owed and owed[0]["date"] == d(20), detail=owed[0]["date"] if owed else "?")
+
+    s.section("A stay is settled before arrival, so that is when it lands")
+    # 5 October: stays and workshops are paid online in advance, not at the
+    # door. Filing them on the arrival date put the money later than it comes.
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+             guest_email, arrival_date, departure_date, party_size, status,
+             total_price, amount_paid, balance_due_date, created_at)
+           VALUES (?, ?, ?, ?, 'x@example.com', ?, ?, 2, 'confirmed', 500, 0, ?, ?)""",
+        (room["id"], TAG + "R4", TAG + "tok4", TAG + "Early", d(40), d(42), d(26), now))
+    _stamp(conn, TAG + "R4")
+    conn.commit()
+    ahead = m.money_ahead(conn, days=90, today=today)
+    early = [i for i in ahead["incoming"] if TAG + "Early" in i["label"]]
+    s.check("on the balance date the house set, not on the arrival",
+            early and early[0]["date"] == d(26),
+            detail=(early[0]["date"] if early else "not listed at all"))
+
+    # Arriving six days PAST a thirty-day window, with the balance falling due
+    # four days inside it. Keyed on arrival, this stay and its money were
+    # simply not there.
+    ahead30 = m.money_ahead(conn, days=30, today=today)
+    inside = [i for i in ahead30["incoming"] if TAG + "Early" in i["label"]]
+    s.check("and a stay arriving past the window still shows a balance inside it",
+            inside and inside[0]["date"] == d(26),
+            detail="arrival %s, balance %s, window ends %s"
+                   % (d(40), d(26), d(30)))
+
+    s.section("A balance date that has gone is money expected now")
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+             guest_email, arrival_date, departure_date, party_size, status,
+             total_price, amount_paid, balance_due_date, created_at)
+           VALUES (?, ?, ?, ?, 'x@example.com', ?, ?, 2, 'confirmed', 400, 0, ?, ?)""",
+        (room["id"], TAG + "R5", TAG + "tok5", TAG + "Late", d(9), d(11), d(-5), now))
+    _stamp(conn, TAG + "R5")
+    conn.commit()
+    ahead = m.money_ahead(conn, days=90, today=today)
+    late = [i for i in ahead["incoming"] if TAG + "Late" in i["label"]]
+    s.check("filed today rather than under a day that has passed",
+            late and late[0]["date"] == d(0),
+            detail=(late[0]["date"] if late else "not listed at all"))
 
     s.section("A guest who has paid in full is not")
     # Counting money already banked as money still to come is the fastest way

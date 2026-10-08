@@ -220,5 +220,50 @@ def run():
     s.check("so the task says who to answer",
             task and "Margot" in task["title"], detail=f"{task['title'] if task else None}")
 
+    s.section("A stay is paid online, and the letter does not argue with itself")
+    # The confirmation ends by saying the house only ever takes payment on its
+    # own site. {stay_details} is built separately and dropped into the middle
+    # of it, and used to say the balance was due on arrival, in cash -- so the
+    # one sentence that helps a guest spot a scam was contradicted above it.
+    conn = db()
+    room = conn.execute("SELECT * FROM rooms WHERE active = 1 "
+                        "ORDER BY id LIMIT 1").fetchone()
+    day = m.house_today()
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+             guest_email, arrival_date, departure_date, party_size, status,
+             total_price, amount_paid, balance_due_date, created_at)
+           VALUES (?, ?, ?, ?, 'zzfact@example.invalid', ?, ?, 2, 'confirmed',
+                   900, 200, ?, ?)""",
+        (room["id"], TAG + "PAY", TAG + "paytok", TAG + " Payer",
+         (day + timedelta(days=30)).isoformat(),
+         (day + timedelta(days=33)).isoformat(),
+         (day + timedelta(days=16)).isoformat(),
+         m.utc_now_iso() if hasattr(m, "utc_now_iso") else day.isoformat()))
+    conn.commit()
+    booking = conn.execute("SELECT * FROM bookings WHERE reference_code = ?",
+                           (TAG + "PAY",)).fetchone()
+    # An app context: the builder makes the guest's own links with url_for,
+    # which is the whole reason the letter can be read without the app.
+    with m.app.test_request_context("/"):
+        # It answers (context, the figures the caller also needs), so the
+        # letter's own merge fields are the first half.
+        details = m.room_confirmation_context(
+            conn, booking, room["name"])[0]["stay_details"]
+    conn.close()
+    s.check("the balance is not asked for at the door",
+            "on arrival" not in details.lower() and "cash" not in details.lower(),
+            detail=details)
+    # The MONEY line, not the whole block: "Check in online" sits a few lines
+    # below, so searching the block passed with the sentence deleted. The
+    # control caught that, which is the only reason it is written this way.
+    money_line = next((l for l in details.splitlines()
+                       if "to pay" in l.lower()), "")
+    s.check("and that line says where to settle it",
+            "online" in money_line.lower(), detail=repr(money_line))
+    s.check("with the date the house set, so nobody has to work out the day",
+            m.format_date_human((day + timedelta(days=16)).isoformat()) in details,
+            detail=details)
+
     _cleanup()
     return s

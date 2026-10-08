@@ -2119,8 +2119,14 @@ PAYMENT_SAFETY_LINE = ("We only ever take payment on chateaugudanes.com, by card
 _EMAIL_CONTRACTIONS = (("We're", "We are"), ("we're", "we are"), ("We've", "We have"), ("we've", "we have"),
                        ("you'd", "you would"), ("we'd", "we would"), ("it's", "it is"), ("you're", "you are"),
                        ("we'll", "we will"))
+# Stays and workshops only. An EVENT is not on this list on purpose: the house
+# asks event clients for a bank transfer -- see event_balance_due_days_before,
+# set further out than the others for exactly that reason -- and a letter
+# promising "we will never ask you to pay by bank transfer" would teach a real
+# client to refuse a real request. Put events back on it the day events are
+# online-only, and not before.
 _EMAIL_PAYMENT_SAFETY_KEYS = ("room_balance_before", "room_balance_after", "workshop_balance_reminder",
-                              "event_balance_reminder", "workshop_deposit_receipt", "workshop_confirmed")
+                              "workshop_deposit_receipt", "workshop_confirmed")
 _ROOM_CONFIRMED_BODY_5OCT = (
     "Your stay is booked, {first_name}\n\n"
     "Five bedrooms are open to guests, and one of them is yours for the dates below. Everything here is also on your "
@@ -61747,21 +61753,37 @@ def money_ahead(conn, *, days=90, today=None):
     last = today + timedelta(days=max(1, min(730, days)))
     incoming, outgoing = [], []
 
-    # Rooms. Settled on arrival, so that is the date the money is expected.
+    # Rooms. Settled online BEFORE arrival since 5 October, not on it, so the
+    # date the money is expected is the balance date the house set -- and the
+    # search has to reach past the end of the window by that many days, or a
+    # stay arriving just after it hides a balance falling due inside it. Each
+    # row is then filed on its own date, and only if that date lands in the
+    # window, so reaching further does not pull in money from beyond it.
+    #
+    # Overdue money is expected now rather than on a date that has gone, which
+    # is what the workshop line below already does with an unpaid deposit.
+    try:
+        reach = int(room_payment_setting(conn, "room_balance_due_days_before") or 14)
+    except (TypeError, ValueError):
+        reach = 14
     for b in conn.execute(
             """SELECT bookings.*, rooms.name AS room_name FROM bookings
                  LEFT JOIN rooms ON rooms.id = bookings.room_id
                 WHERE bookings.status = 'confirmed'
                   AND bookings.arrival_date >= ? AND bookings.arrival_date <= ?""",
-            (today.isoformat(), last.isoformat())).fetchall():
+            (today.isoformat(),
+             (last + timedelta(days=max(0, reach))).isoformat())).fetchall():
         # The bill's own figure. This took the discount off total_price a
         # second time -- total_price is already net of it -- so every stay
         # booked with a code was forecast short by its discount, and anything
         # added to a stay afterwards was not forecast at all.
         bill = booking_bill(conn, b["id"])
         due = round(bill["owed"], 2) if bill else 0.0
-        if due > 0.01:
-            incoming.append({"date": b["arrival_date"], "amount": due,
+        when = (bill.get("balance_due_date") if bill else None) or b["arrival_date"]
+        if when < today.isoformat():
+            when = today.isoformat()
+        if due > 0.01 and today.isoformat() <= when <= last.isoformat():
+            incoming.append({"date": when, "amount": due,
                              "label": f"{b['guest_name']} — {b['room_name'] or 'room'}",
                              "kind": "Room", "ref": b["reference_code"]})
 
@@ -72919,7 +72941,19 @@ def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
                f"Room: {room_name}",
                f"Reference code: {booking['reference_code']}"]
     if balance_due:
-        details.append(f"{balance_due} is due on arrival. We take cards and cash.")
+        # 5 October: a stay is settled online before arrival, not at the door.
+        # This line sits inside {stay_details}, in the middle of a letter that
+        # now ends by saying the house only ever takes payment on the website
+        # -- so "due on arrival, we take cards and cash" made the letter argue
+        # with itself, and the part it undermined was the anti-scam one.
+        #
+        # The date whenever the house has set one: "before you arrive" leaves
+        # the guest to work out which day, and the reminder goes on a schedule.
+        due_on = bill.get("balance_due_date") if bill else None
+        details.append(
+            f"{balance_due} still to pay"
+            + (f", by {format_date_human(due_on)}" if due_on else "")
+            + ". You can settle it online on your booking page.")
     details += ["", "Your booking page:", manage_url, "",
                 "Check in online \u2014 confirm your arrival time, tell us about "
                 "any requests" + (" and your airport transfer details"
