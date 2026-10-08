@@ -1,13 +1,9 @@
-{#- 5 Oct (owner, after a Booking.com WhatsApp scam on Reddit: "how are we preventing similar issues"). Scammers with a
-    real booking reference and the amount owing ask the guest to pay into their own account. The one defence a guest has
-    is knowing how the house does and does not take money - said plainly wherever a booking is shown. -#}
+{#- 5 Oct (owner, after a Booking.com WhatsApp scam): guests should know how the house takes money for a booking, so a
+    scam message asking them to pay elsewhere stands out. 8 Oct (owner): quietly - one plain line, only where a booking is
+    paid (confirmation and booking pages), and true: the house does invoice events by bank transfer, so nothing here says
+    "never by bank transfer"; it speaks only of this booking. -#}
 {%- macro payment_safety(compact=false) -%}
-{%- if compact -%}
-<p class="g-hint g-paysafe g-paysafe--compact">Payment is only ever taken here, on chateaugudanes.com. We never ask for a bank transfer, or send payment links by WhatsApp or text.</p>
-{%- else -%}
-<aside class="g-paysafe" aria-label="How we take payment">
-  <p class="g-paysafe__k">How we take payment</p>
-  <p class="g-paysafe__t">Payment is only ever taken on <b>chateaugudanes.com</b>, by card through Stripe, from your booking page. We will never ask you to pay by bank transfer, or through a link sent by WhatsApp or text message. If anyone does, do not pay &mdash; call us on <a href="tel:+33628069776">+33 6 28 06 97 76</a>.</p>
-</aside>
+{%- if not compact -%}
+<p class="g-paysafe-line">Payment for this booking is only ever taken by card, here on chateaugudanes.com. If anyone asks you to pay another way, please call us first on <a href="tel:+33628069776">+33 6 28 06 97 76</a>.</p>
 {%- endif -%}
 {%- endmacro -%}

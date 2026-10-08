@@ -792,6 +792,12 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 {% from '_facilities.html' import facilities_strip %}{{ facilities_strip() }}
 
 {# WHAT IT WILL BE LIKE WHEN THEY COME, under the dates they are choosing.
+   IN THE MARKUP, not built by a script: this block used to live in a
+   <script> and existed only for a browser that ran it, which is what
+   moving it here undid. The 8 October handover brought a script-built
+   one back; it stays on the stay page, where it follows the date boxes
+   as they are typed, and this page keeps the one a guest can read with
+   javascript off.
    Imported WITH CONTEXT because the macro calls t(), which a context
    processor supplies -- an imported macro sees none of the caller's context
    otherwise, and the page would 500 on the first translated word. #}

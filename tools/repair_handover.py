@@ -1293,38 +1293,6 @@ REVEAL_IMPORT = (
     "{% from '_interactive.html' import the_reveal %}\n")
 
 
-EXPECTED_WEATHER_BLOCK = (
-    "\n{# WHAT IT WILL BE LIKE WHEN THEY COME, under the dates they are choosing.\n"
-    "   Imported WITH CONTEXT because the macro calls t(), which a context\n"
-    "   processor supplies -- an imported macro sees none of the caller's context\n"
-    "   otherwise, and the page would 500 on the first translated word. #}\n"
-    "{% from '_expected_weather.html' import expected_weather with context %}\n"
-    "{{ expected_weather(arrival, departure, house_weather) }}\n")
-
-
-def repair_expected_weather():
-    """The weather block the owner asked for on 7 October: what a month is
-    like at 900 metres, under the dates a guest is choosing, with the live
-    reading as a line inside it.
-
-    The partial is safe -- the zips do not carry _expected_weather.html -- but
-    the two lines that put it on the page are not the design's and are cut
-    with every whole-file replacement of book_room.html.
-    """
-    rel = "templates/book_room.html"
-    src = _read(rel)
-    if "expected_weather" in src:
-        return 0
-    if not os.path.exists(os.path.join(ROOT, "templates", "_expected_weather.html")):
-        return 0                      # nothing to call; not this tool's job
-    anchor = "{% from '_facilities.html' import facilities_strip %}{{ facilities_strip() }}\n"
-    if anchor not in src:
-        raise ValueError("no facilities strip on book_room.html to put the "
-                         "weather block under")
-    _write(rel, src.replace(anchor, anchor + EXPECTED_WEATHER_BLOCK, 1))
-    return 1
-
-
 PHONE_SPLIT_JS = """      // SPLIT WHAT THE SERVER SENT. The input carries the whole
       // international number so that it survives a re-render with no script
       // running. Where there is a script, show it the way the design meant:
@@ -1429,6 +1397,34 @@ OCCASION_WORKSHOP = (
     '                   placeholder="An anniversary, a birthday &mdash; tell us and we will mark it"\n'
     "                   maxlength=\"200\" value=\"{{ prefill_special_occasion | default('') }}\">\n"
     "          </div>\n")
+
+
+KITCHEN_PHOTO = ("https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg")
+GOLD_SUITE_PHOTO = ("https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg")
+
+
+def repair_gold_suite_photograph():
+    """The Gold Suite's gallery photograph, which keeps arriving as the kitchen.
+
+    Two handovers in a row have put a photograph of somebody cooking under the
+    caption "The Gold Suite, the four-poster bed" on the booking page. The
+    page's own map settles which it should be: RM_FOR gives the Gold Suite
+    RM_IMG[5], the Émeraude photograph, and the kitchen is RM_IMG[6] -- the
+    generic one the pool rotates to when a room is not named.
+
+    A caption describing a bed over a photograph of a kitchen renders every
+    word and reports nothing, on the page somebody books from.
+    """
+    rel = "templates/book_rooms.html"
+    if not os.path.exists(os.path.join(ROOT, rel)):
+        return 0
+    src = _read(rel)
+    wrong = ('<img src="%s?format=1000w" alt="The Gold Suite' % KITCHEN_PHOTO)
+    if wrong not in src:
+        return 0
+    src = src.replace(wrong, '<img src="%s?format=1000w" alt="The Gold Suite' % GOLD_SUITE_PHOTO, 1)
+    _write(rel, src)
+    return 1
 
 
 def repair_tour_is_an_extra():
@@ -1816,13 +1812,13 @@ def main():
         ("the Legal Notice's host and RCS line", repair_legal_notice),
         ("the Legal Notice footer links", repair_legal_footer_links),
         ("claims the owner has corrected", repair_corrected_claims),
-        ("the expected weather under the dates", repair_expected_weather),
         ("the phone field keeping its country code", repair_phone_keeps_its_country_code),
         ("the allergy note on the room list", repair_animals_note_called),
         ("the dining hours table in a wrapper", repair_dining_hours_table),
         ("the occasion on both booking forms", repair_special_occasion),
         ("settings read with .get, which a Row refuses", repair_settings_dot_get),
         ("the tour, which is an extra for a nightly stay", repair_tour_is_an_extra),
+        ("the Gold Suite, shown as the kitchen", repair_gold_suite_photograph),
     ]
     total, failed = 0, []
     for label, fn in steps:

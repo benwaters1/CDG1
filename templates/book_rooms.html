@@ -120,6 +120,7 @@
     Booked here, and confirmed the moment you pay.
     <a class="g-inline-link" href="{{ url_for('find_booking') }}">Manage an existing booking</a>
   </p>
+  {% from '_typical_weather.html' import typical_weather %}{{ typical_weather('#s_arrival', '#s_departure') }}
 </div></section>
 
 <div class="g-band"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9d1b8c99-13c5-4bc9-9a69-9a32a4c1eb8c/Screenshot+2026-07-20+at+2.31.12+pm.png?format=1000w" alt="A bedroom with old floral wallpaper" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f8a75998-9665-4bdf-bda4-9c252e7c8acb/P1088759+2.png?format=1000w" alt="A salon brought back" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/4bb7604e-6c78-44c5-a89a-a146d1da4fa9/Screenshot+2026-08-15+at+12.02.30+am.png?format=1000w" alt="A salon in the morning light" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c90f49a0-5f8f-489f-8d51-2f3ea727c57a/Screenshot+2026-07-30+at+7.54.08+pm.png?format=1500w" alt="A bedroom with floral wallpaper" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w" alt="A fireplace and old wallpaper in one of the rooms" loading="lazy"></div>

@@ -1,0 +1,54 @@
+{#- 8 Oct (owner: "a typical weather sort of thing when they put their dates in on the room selection").
+    TYPICAL, NOT A FORECAST. Half-month averages of ten years of daily records (2015-2024) for the valley beside the
+    château, computed for 600 m (Open-Meteo historical archive, ERA5; lat 42.7847, lon 1.6564, elevation=600 - the commune
+    of Château-Verdun runs 529-766 m and the château stands on a terrace above the confluence; the archive's own terrain
+    point there is 1,179 m, which would make every figure about 3 degrees too cold). Daytime highs and night lows only, plus
+    the share of nights below freezing and days at 28 C or more: the archive's rain and snow day counts overstate light rain
+    and valley snow, so they are not shown. Built into the page - nothing is fetched while a guest browses.
+    Use: {% from '_typical_weather.html' import typical_weather %}{{ typical_weather('#arrival_field', '#departure_field') }} -#}
+{%- macro typical_weather(arrival_sel, departure_sel) -%}
+<p class="g-typwx" data-typwx data-a="{{ arrival_sel }}" data-d="{{ departure_sel }}" aria-live="polite" hidden></p>
+<script>
+(function(){
+  var el = document.currentScript.previousElementSibling;
+  if (!el || !el.hasAttribute('data-typwx')) return;
+  /* month+half: [day high, night low, share of frosty nights, share of days at 28 C or more] */
+  var W = {"1a":[9.5,0.6,.39,0],"1b":[9.1,0.1,.49,0],"2a":[11.0,0.8,.35,0],"2b":[12.0,1.9,.22,0],"3a":[12.4,3.0,.15,0],
+    "3b":[13.7,3.6,.13,0],"4a":[15.3,4.7,.07,0],"4b":[15.8,6.6,.02,0],"5a":[17.7,8.5,0,.01],"5b":[19.1,9.9,0,.04],
+    "6a":[21.5,12.4,0,.06],"6b":[24.0,14.5,0,.21],"7a":[24.8,15.5,0,.25],"7b":[26.0,15.9,0,.34],"8a":[25.8,16.0,0,.37],
+    "8b":[25.2,15.3,0,.32],"9a":[23.0,13.7,0,.17],"9b":[20.7,11.5,0,.01],"10a":[19.8,10.0,0,.02],"10b":[18.8,9.1,.01,.02],
+    "11a":[14.9,5.8,.03,0],"11b":[12.4,3.1,.17,0],"12a":[10.9,1.7,.23,0],"12b":[13.2,2.4,.21,0]};
+  var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var a = document.querySelector(el.getAttribute('data-a')), d = document.querySelector(el.getAttribute('data-d'));
+  if (!a || !d) return;
+  function parse(v){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); return m ? new Date(Date.UTC(+m[1], +m[2]-1, +m[3])) : null; }
+  function label(x, y){
+    var sameMonth = x.getUTCMonth() === y.getUTCMonth() && x.getUTCFullYear() === y.getUTCFullYear();
+    return sameMonth ? x.getUTCDate() + ' to ' + y.getUTCDate() + ' ' + MONTHS[y.getUTCMonth()]
+                     : x.getUTCDate() + ' ' + MONTHS[x.getUTCMonth()] + ' to ' + y.getUTCDate() + ' ' + MONTHS[y.getUTCMonth()];
+  }
+  var last = '';
+  /* 8 Oct (owner: "it doesn't need to be too specific"): month by month - the month they arrive, or this month before
+     any dates are chosen. */
+  function draw(){
+    var key = a.value + '|' + d.value; if (key === last) return; last = key;
+    var x = parse(a.value), y = parse(d.value);
+    var mo = (x && y && y > x) ? x.getUTCMonth() + 1 : new Date().getMonth() + 1;
+    var A = W[mo + 'a'], B = W[mo + 'b'];
+    var hi = Math.round((A[0] + B[0]) / 2), lo = Math.round((A[1] + B[1]) / 2), fr = (A[2] + B[2]) / 2, hot = (A[3] + B[3]) / 2;
+    var notes = [];
+    if (fr >= 0.2) notes.push('Frosty nights are common.');
+    if (mo === 12 || mo <= 3) notes.push('There is usually snow on the mountains.');
+    if (hot >= 0.25) notes.push('Some days reach 28°C or more.');
+    el.innerHTML = '<span class="g-typwx__k">Typical in ' + MONTHS[mo - 1] + ':</span> days around ' + hi +
+      '°C, nights around ' + lo + '°C.' + (notes.length ? ' ' + notes.join(' ') : '');
+    /* owner, 8 Oct: no source note - "Typical in" already says it is an average, not a forecast */
+    el.hidden = false;
+  }
+  a.addEventListener('change', draw); d.addEventListener('change', draw);
+  a.addEventListener('input', draw); d.addEventListener('input', draw);
+  /* the date-range picker sets the fields without firing events, so look again now and then */
+  setInterval(draw, 700); draw();
+})();
+</script>
+{%- endmacro -%}

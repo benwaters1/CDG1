@@ -85,8 +85,16 @@ def run():
             'class="g-wx"' not in body,
             detail="the wrapper renders with nothing in it, which reads as a "
                    "broken widget rather than as nothing to say")
-    s.check("and offers no temperature", "&deg;C" not in body
-            and "°C" not in body.split("What Guests Say")[0])
+    # WITH THE SCRIPTS TAKEN OUT, the way the room-page checks below read it.
+    # The 8 October typical-weather block keeps its figures in javascript
+    # string literals, so searching the raw document finds a degree sign that
+    # no guest is ever shown. What this is about is a temperature RENDERED
+    # when the house has no reading, and that is what stripping scripts asks.
+    import re as _re0
+    drawn = _re0.sub(r"(?is)<script.*?</script>", "", body)
+    s.check("and offers no temperature", "&deg;C" not in drawn
+            and "°C" not in drawn.split("What Guests Say")[0],
+            detail="a figure in the markup with nothing cached behind it")
 
     s.section("A fresh reading is shown")
     _set(conn, m.json.dumps({"c": 14, "code": 61, "at": now.isoformat()}))

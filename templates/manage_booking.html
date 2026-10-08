@@ -75,199 +75,19 @@
   {% include "_door_card.html" %}
 
 {% if (booking['status']|lower) in ('pending', 'confirmed') %}
-
-<div class="g-mb-card" style="margin-top:var(--s4);">
-  <h2 class="g-panel__h">{{ t('Your details') }}</h2>
-  <p class="g-hint">{{ t("If we have your mobile we will text you the day before with everything you need to find us. A number we cannot read means we cannot do that.") }}</p>
-  <form method="post" class="g-row" style="margin-top:var(--s2);">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="action" value="contact">
-    <div style="flex:1 1 220px;">
-      <label for="mb_guest_name">{{ t('Name') }}</label>
-      <input type="text" id="mb_guest_name" name="guest_name" required
-             value="{{ booking['guest_name'] or '' }}" autocomplete="name" spellcheck="false" autocapitalize="words">
-    </div>
-    <div style="flex:1 1 220px;">
-      <label for="mb_guest_phone">{{ t('Mobile') }}</label>
-      <input type="tel" inputmode="tel" autocomplete="tel" id="mb_guest_phone"
-             name="guest_phone" value="{{ booking['guest_phone'] or '' }}"
-             placeholder="06 12 34 56 78">
-    </div>
-    <div style="align-self:flex-end;">
-      <button type="submit" class="g-btn">{{ t('Save') }}</button>
-    </div>
-  </form>
-  {# The email is not editable here on purpose: it is the address this booking is
-     filed under and the one the account page is keyed on, so changing it from a
-     page reached by a link would move the booking to whoever holds the link.
-     The message box below sends it to a person instead. #}
-  <p class="g-hint" style="margin-top:var(--s2);">
-    {{ t('Booked under') }} <strong>{{ booking['guest_email'] }}</strong>.
-    {{ t('If that address is wrong, send us a message below and we will change it.') }}
-  </p>
-  {% if booking['guest_address'] or booking['guest_country'] %}
-  <p class="g-hint">{{ t('Your address on the booking') }}: {{ [booking['guest_address'], ((booking['guest_city'] or '') ~ ' ' ~ (booking['guest_postcode'] or ''))|trim, booking['guest_country']]|select|join(', ') }}</p>
-  {% endif %}
-</div>
-
-{# What happens next: the deposit, the balance date, the week before,
-   arrival and departure on one dated line. Four emails the house writes by
-   hand every time, and the balance one is the email guests write FIRST. #}
-{# One page a guest can hold in the dark. The valley has patchy signal and
-   the drive is unlit; a booking that lives only in an email is nothing at the
-   moment it is most needed. #}
-{# Bookings that are one arrival. Renders nothing at all unless staff have
-   said so -- it is never inferred from a shared surname, because two
-   bookings called Martin on the same dates are sometimes two families. #}
+{#- 8 Oct (owner: "is the manage booking good"): ordered by what a guest opens this page for - what is owed and how to
+    pay, when they arrive, asking for something - then the trip (what happens next, the page to print, the link for the
+    others), then changes (details, longer, other dates, extras, a second room), then cancelling. -#}
 {% from '_linked_bookings.html' import linked, add_room %}
-{{ linked(booking, group) }}
-
-{# Asking for a second room on the same dates. A family deciding three weeks
-   later currently sends an email; this makes it one arrival instead of two
-   unconnected bookings. Nothing is charged -- it is a request. #}
-<div class="g-mb-card" style="margin-top:var(--s4);">
-  {{ add_room(booking, addable_rooms) }}
-</div>
-
-{# A read-only link for the rest of the party. Forwarding the confirmation
-   email hands everybody the manage link, which carries the bill and the
-   cancel button -- so telling five people what time to arrive currently
-   means giving five people the ability to cancel the stay. #}
-<div class="g-mb-card" style="margin-top:var(--s4);">
-  <h2 class="g-panel__h">Send this to the others</h2>
-  {% if booking['share_token'] %}
     {% from '_sharelink.html' import share_link %}
-    {{ share_link(booking) }}
-    <form method="post" action="{{ url_for('toggle_share_link', manage_token=booking['manage_token']) }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="off" value="1">
-      <button type="submit" class="g-btn">Stop the link working</button>
-    </form>
-  {% else %}
-    <p class="g-hint">Arrival details{% if _dm == 'open' %}, directions and the dinner time{% else %} and directions{% endif %} for the others in your party &mdash;
-      without your bill or your booking page. Nothing is made until you ask.</p>
-    <form method="post" action="{{ url_for('toggle_share_link', manage_token=booking['manage_token']) }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="g-btn g-btn--solid">Make a link</button>
-    </form>
-  {% endif %}
-</div>
-
 {% from '_print_stay.html' import print_stay %}
-{{ print_stay(booking, room) }}
-
 {% from '_guest_timeline.html' import timeline with context %}
-{{ timeline(booking) }}
-
-<div class="g-mb-card" style="margin-top:var(--s4);">
-  <h2 class="g-panel__h">{{ t('Estimated arrival time') }}</h2>
-  <p class="g-hint">{{ t("Let us know roughly when to expect you, so someone is there to meet you.") }}</p>
-  <p class="g-hint">Pack lightly: the bedrooms are reached by the original staircase, and there is no lift.</p>
-  <form method="post" class="g-row" style="margin-top:var(--s2);">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="action" value="arrival_time">
-    <div style="flex:1 1 200px;">
-      <label for="mb_estimated_arrival_time">What time do you expect to arrive?</label>
-      <input type="text" id="mb_estimated_arrival_time" name="estimated_arrival_time" value="{{ booking['estimated_arrival_time'] or '' }}" placeholder="e.g. around 3pm">
-    </div>
-    <button type="submit" class="g-btn g-btn--sm">{{ t('Save') }}</button>
-  </form>
-</div>
-
-<div class="g-mb-card" style="margin-top:var(--s4);">
-  <h2 class="g-panel__h">{{ t('Stay longer') }}</h2>
-  <p class="g-hint">If the room is free we will extend it straight away, and the extra nights go on your bill.</p>
-  <form method="post" class="g-mb-acts" style="margin-top:var(--s2);">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="action" value="add_nights">
-    <label for="mb_nights" class="g-mb-label" style="margin:0;">{{ t('Extra nights') }}</label>
-    <input type="number" inputmode="numeric" id="mb_nights" name="nights" value="1" min="1" max="30" style="width:74px;"
-           aria-label="How many extra nights">
-    <button type="submit" class="g-btn g-btn--sm">{{ t('Add them') }}</button>
-  </form>
-</div>
-
-<div class="g-mb-card" style="margin-top:var(--s4);">
-  <h2 class="g-panel__h">{{ t('Ask to move your dates') }}</h2>
-  <p class="g-hint">
-    {% if (booking['status']|lower) == 'pending' and (booking['payment_status']|lower) != 'paid' %}
-      Pick new dates and they'll update right away, as long as the room is free.
-    {% else %}
-      The booking is non-refundable, but we can sometimes move your dates. Pick new ones and we will tell you whether we can.
-    {% endif %}
-    {% if room and room['min_nights'] and room['min_nights'] > 1 %} This room requires a {{ room['min_nights'] }}-night minimum stay.{% endif %}
-  </p>
-  <form method="post" class="g-row" style="margin-top:var(--s2);">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="action" value="change_dates">
-    <div>
-      <label for="mb_new_arrival_date" class="g-mb-label">{{ t('New arrival') }}</label>
-      <input type="date" id="mb_new_arrival_date" name="new_arrival_date" value="{{ booking['arrival_date']|date_short }}" required>
-    </div>
-    <div>
-      <label for="mb_new_departure_date" class="g-mb-label">{{ t('New departure') }}</label>
-      <input type="date" id="mb_new_departure_date" name="new_departure_date" value="{{ booking['departure_date']|date_short }}" required>
-    </div>
-    <button type="submit" class="g-btn g-btn--sm">{{ t('Update dates') }}</button>
-  </form>
-</div>
-
-{% if has_transfer %}
-<div class="g-mb-card" style="margin-top:var(--s4);">
-  <h2 class="g-panel__h">{{ t('Airport transfer') }}</h2>
-  {% if booking['transfer_flight_number'] or booking['transfer_arrival_time'] %}
-  <p class="g-hint">On file: {{ booking['transfer_flight_number'] or 'no flight number' }}{% if booking['transfer_arrival_time'] %}, arriving {{ booking['transfer_arrival_time'] }}{% endif %}{% if booking['transfer_notes'] %} — {{ booking['transfer_notes'] }}{% endif %}. Update below if anything changes.</p>
-  {% else %}
-  <p class="g-hint">Your booking includes an airport transfer — tell us your flight details so we can plan the pickup.</p>
-  {% endif %}
-  <form method="post" style="margin-top:var(--s2);">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="action" value="transfer">
-    <div class="g-row">
-      <div>
-        <label for="mb_flight_number" class="g-mb-label">{{ t('Flight number') }}</label>
-        <input type="text" id="mb_flight_number" name="flight_number" value="{{ booking['transfer_flight_number'] or '' }}" placeholder="e.g. AF1234">
-      </div>
-      <div>
-        <label for="mb_arrival_time" class="g-mb-label">Arrival date &amp; time</label>
-        <input type="text" id="mb_arrival_time" name="arrival_time" value="{{ booking['transfer_arrival_time'] or '' }}" placeholder="e.g. 12 May, 14:30">
-      </div>
-    </div>
-    <label for="mb_notes" class="g-mb-label" style="margin-top:var(--s2); display:block;">Notes</label>
-    <textarea id="mb_notes" name="notes" rows="2" placeholder="Anything else the driver should know">{{ booking['transfer_notes'] or '' }}</textarea>
-    <button type="submit" class="g-btn g-btn--solid" style="margin-top:var(--s2);">{{ t('Save transfer details') }}</button>
-  </form>
-</div>
-{% endif %}
-
-<div class="g-mb-card" style="margin-top:var(--s4);">
-  <h2 class="g-panel__h">{{ t('Requests') }}</h2>
-  <p class="g-hint">Need something for your stay — a bottle of wine waiting in the room, a late checkout, dietary notes? Tell us here.</p>
-  <form method="post" style="margin-top:var(--s2);">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="action" value="request">
-    <label for="mb_message">What can we arrange for you?</label>
-    <textarea id="mb_message" name="message" rows="3" placeholder="e.g. Could we have a bottle of red waiting in the room?" required></textarea>
-    <button type="submit" class="g-btn g-btn--solid" style="margin-top:var(--s2);">{{ t('Send request') }}</button>
-  </form>
-  {% if guest_requests %}
-  <div class="g-mb-list" style="margin-top:var(--s4);">
-    {% for r in guest_requests %}
-    <div class="g-mb-row">
-      <span class="g-mb-rowt">{{ r['notes'] or r['title'] }}</span>
-      <span class="mini-status {{ 'status-active' if (r['status']|lower) == 'done' else 'status-pending' }}">{{ 'done' if (r['status']|lower) == 'done' else 'received' }}</span>
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-</div>
 
 {# What the stay costs and what is still owed. A guest could previously see
    neither, which is also why they could not add anything to it. #}
-{{ payment_safety() }}
 {% if bill and bill.lines %}
 <div class="g-mb-card" style="margin-top:var(--s4);">
-  <h3>Your bill</h3>
+  <h2 class="g-panel__h">Your bill</h2>
   <div class="quote-box" style="margin-top:0;">
     {% for line in bill.lines %}
     <div class="g-mb-line">
@@ -353,6 +173,183 @@
   </div>
 </div>
 {% endif %}
+{{ payment_safety() }}
+
+<div class="g-mb-card" style="margin-top:var(--s4);">
+  <h2 class="g-panel__h">{{ t('Estimated arrival time') }}</h2>
+  <p class="g-hint">{{ t("Let us know roughly when to expect you, so someone is there to meet you.") }}</p>
+  <p class="g-hint">Pack lightly: the bedrooms are reached by the original staircase, and there is no lift.</p>
+  <form method="post" class="g-row" style="margin-top:var(--s2);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="arrival_time">
+    <div style="flex:1 1 200px;">
+      <label for="mb_estimated_arrival_time">What time do you expect to arrive?</label>
+      <input type="text" id="mb_estimated_arrival_time" name="estimated_arrival_time" value="{{ booking['estimated_arrival_time'] or '' }}" placeholder="e.g. around 3pm">
+    </div>
+    <button type="submit" class="g-btn g-btn--sm">{{ t('Save') }}</button>
+  </form>
+</div>
+
+<div class="g-mb-card" style="margin-top:var(--s4);">
+  <h2 class="g-panel__h">{{ t('Requests') }}</h2>
+  <p class="g-hint">Need something for your stay — a bottle of wine waiting in the room, a late checkout, dietary notes? Tell us here.</p>
+  <form method="post" style="margin-top:var(--s2);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="request">
+    <label for="mb_message">What can we arrange for you?</label>
+    <textarea id="mb_message" name="message" rows="3" placeholder="e.g. Could we have a bottle of red waiting in the room?" required></textarea>
+    <button type="submit" class="g-btn g-btn--solid" style="margin-top:var(--s2);">{{ t('Send request') }}</button>
+  </form>
+  {% if guest_requests %}
+  <div class="g-mb-list" style="margin-top:var(--s4);">
+    {% for r in guest_requests %}
+    <div class="g-mb-row">
+      <span class="g-mb-rowt">{{ r['notes'] or r['title'] }}</span>
+      <span class="mini-status {{ 'status-active' if (r['status']|lower) == 'done' else 'status-pending' }}">{{ 'done' if (r['status']|lower) == 'done' else 'received' }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+{% if has_transfer %}
+<div class="g-mb-card" style="margin-top:var(--s4);">
+  <h2 class="g-panel__h">{{ t('Airport transfer') }}</h2>
+  {% if booking['transfer_flight_number'] or booking['transfer_arrival_time'] %}
+  <p class="g-hint">On file: {{ booking['transfer_flight_number'] or 'no flight number' }}{% if booking['transfer_arrival_time'] %}, arriving {{ booking['transfer_arrival_time'] }}{% endif %}{% if booking['transfer_notes'] %} — {{ booking['transfer_notes'] }}{% endif %}. Update below if anything changes.</p>
+  {% else %}
+  <p class="g-hint">Your booking includes an airport transfer — tell us your flight details so we can plan the pickup.</p>
+  {% endif %}
+  <form method="post" style="margin-top:var(--s2);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="transfer">
+    <div class="g-row">
+      <div>
+        <label for="mb_flight_number" class="g-mb-label">{{ t('Flight number') }}</label>
+        <input type="text" id="mb_flight_number" name="flight_number" value="{{ booking['transfer_flight_number'] or '' }}" placeholder="e.g. AF1234">
+      </div>
+      <div>
+        <label for="mb_arrival_time" class="g-mb-label">Arrival date &amp; time</label>
+        <input type="text" id="mb_arrival_time" name="arrival_time" value="{{ booking['transfer_arrival_time'] or '' }}" placeholder="e.g. 12 May, 14:30">
+      </div>
+    </div>
+    <label for="mb_notes" class="g-mb-label" style="margin-top:var(--s2); display:block;">Notes</label>
+    <textarea id="mb_notes" name="notes" rows="2" placeholder="Anything else the driver should know">{{ booking['transfer_notes'] or '' }}</textarea>
+    <button type="submit" class="g-btn g-btn--solid" style="margin-top:var(--s2);">{{ t('Save transfer details') }}</button>
+  </form>
+</div>
+{% endif %}
+
+{{ timeline(booking) }}
+
+{{ print_stay(booking, room) }}
+
+{# A read-only link for the rest of the party. Forwarding the confirmation
+   email hands everybody the manage link, which carries the bill and the
+   cancel button -- so telling five people what time to arrive currently
+   means giving five people the ability to cancel the stay. #}
+<div class="g-mb-card" style="margin-top:var(--s4);">
+  <h2 class="g-panel__h">Send this to the others</h2>
+  {% if booking['share_token'] %}
+    {{ share_link(booking) }}
+    <form method="post" action="{{ url_for('toggle_share_link', manage_token=booking['manage_token']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="off" value="1">
+      <button type="submit" class="g-btn">Stop the link working</button>
+    </form>
+  {% else %}
+    <p class="g-hint">Arrival details{% if _dm == 'open' %}, directions and the dinner time{% else %} and directions{% endif %} for the others in your party &mdash;
+      without your bill or your booking page. Nothing is made until you ask.</p>
+    <form method="post" action="{{ url_for('toggle_share_link', manage_token=booking['manage_token']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="g-btn g-btn--solid">Make a link</button>
+    </form>
+  {% endif %}
+</div>
+
+{# What happens next: the deposit, the balance date, the week before,
+   arrival and departure on one dated line. Four emails the house writes by
+   hand every time, and the balance one is the email guests write FIRST. #}
+{# One page a guest can hold in the dark. The valley has patchy signal and
+   the drive is unlit; a booking that lives only in an email is nothing at the
+   moment it is most needed. #}
+{# Bookings that are one arrival. Renders nothing at all unless staff have
+   said so -- it is never inferred from a shared surname, because two
+   bookings called Martin on the same dates are sometimes two families. #}
+{{ linked(booking, group) }}
+
+
+<div class="g-mb-card" style="margin-top:var(--s4);">
+  <h2 class="g-panel__h">{{ t('Your details') }}</h2>
+  <p class="g-hint">{{ t("If we have your mobile we will text you the day before with everything you need to find us. A number we cannot read means we cannot do that.") }}</p>
+  <form method="post" class="g-row" style="margin-top:var(--s2);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="contact">
+    <div style="flex:1 1 220px;">
+      <label for="mb_guest_name">{{ t('Name') }}</label>
+      <input type="text" id="mb_guest_name" name="guest_name" required
+             value="{{ booking['guest_name'] or '' }}" autocomplete="name" spellcheck="false" autocapitalize="words">
+    </div>
+    <div style="flex:1 1 220px;">
+      <label for="mb_guest_phone">{{ t('Mobile') }}</label>
+      <input type="tel" inputmode="tel" autocomplete="tel" id="mb_guest_phone"
+             name="guest_phone" value="{{ booking['guest_phone'] or '' }}"
+             placeholder="06 12 34 56 78">
+    </div>
+    <div style="align-self:flex-end;">
+      <button type="submit" class="g-btn">{{ t('Save') }}</button>
+    </div>
+  </form>
+  {# The email is not editable here on purpose: it is the address this booking is
+     filed under and the one the account page is keyed on, so changing it from a
+     page reached by a link would move the booking to whoever holds the link.
+     The message box below sends it to a person instead. #}
+  <p class="g-hint" style="margin-top:var(--s2);">
+    {{ t('Booked under') }} <strong>{{ booking['guest_email'] }}</strong>.
+    {{ t('If that address is wrong, send us a message below and we will change it.') }}
+  </p>
+  {% if booking['guest_address'] or booking['guest_country'] %}
+  <p class="g-hint">{{ t('Your address on the booking') }}: {{ [booking['guest_address'], ((booking['guest_city'] or '') ~ ' ' ~ (booking['guest_postcode'] or ''))|trim, booking['guest_country']]|select|join(', ') }}</p>
+  {% endif %}
+</div>
+
+<div class="g-mb-card" style="margin-top:var(--s4);">
+  <h2 class="g-panel__h">{{ t('Stay longer') }}</h2>
+  <p class="g-hint">If the room is free we will extend it straight away, and the extra nights go on your bill.</p>
+  <form method="post" class="g-mb-acts" style="margin-top:var(--s2);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="add_nights">
+    <label for="mb_nights" class="g-mb-label" style="margin:0;">{{ t('Extra nights') }}</label>
+    <input type="number" inputmode="numeric" id="mb_nights" name="nights" value="1" min="1" max="30" style="width:74px;"
+           aria-label="How many extra nights">
+    <button type="submit" class="g-btn g-btn--sm">{{ t('Add them') }}</button>
+  </form>
+</div>
+
+<div class="g-mb-card" style="margin-top:var(--s4);">
+  <h2 class="g-panel__h">{{ t('Ask to move your dates') }}</h2>
+  <p class="g-hint">
+    {% if (booking['status']|lower) == 'pending' and (booking['payment_status']|lower) != 'paid' %}
+      Pick new dates and they'll update right away, as long as the room is free.
+    {% else %}
+      The booking is non-refundable, but we can sometimes move your dates. Pick new ones and we will tell you whether we can.
+    {% endif %}
+    {% if room and room['min_nights'] and room['min_nights'] > 1 %} This room requires a {{ room['min_nights'] }}-night minimum stay.{% endif %}
+  </p>
+  <form method="post" class="g-row" style="margin-top:var(--s2);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="change_dates">
+    <div>
+      <label for="mb_new_arrival_date" class="g-mb-label">{{ t('New arrival') }}</label>
+      <input type="date" id="mb_new_arrival_date" name="new_arrival_date" value="{{ booking['arrival_date']|date_short }}" required>
+    </div>
+    <div>
+      <label for="mb_new_departure_date" class="g-mb-label">{{ t('New departure') }}</label>
+      <input type="date" id="mb_new_departure_date" name="new_departure_date" value="{{ booking['departure_date']|date_short }}" required>
+    </div>
+    <button type="submit" class="g-btn g-btn--sm">{{ t('Update dates') }}</button>
+  </form>
+</div>
 
 {# Things a guest can add to a stay they have already booked. Goes on the bill
    rather than asking for a card each time — the balance is settled once. #}
@@ -430,6 +427,13 @@
   {% endif %}
 </div>
 {% endif %}
+
+{# Asking for a second room on the same dates. A family deciding three weeks
+   later currently sends an email; this makes it one arrival instead of two
+   unconnected bookings. Nothing is charged -- it is a request. #}
+<div class="g-mb-card" style="margin-top:var(--s4);">
+  {{ add_room(booking, addable_rooms) }}
+</div>
 
 {# Cancelling is not free and is not automatic, so it is not offered as a
    standing button. It was a one-click action with a generic browser confirm,

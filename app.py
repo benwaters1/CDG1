@@ -2119,18 +2119,12 @@ DEFAULT_EMAIL_TEMPLATES = [
 #     recognise a scam message asking them to pay elsewhere);
 #   - the stay confirmation: about fifty-five rooms, not ninety-four, and rooms are "open to guests", never "finished".
 # ---------------------------------------------------------------------------
-PAYMENT_SAFETY_LINE = ("We only ever take payment on chateaugudanes.com, by card through Stripe. We will never ask you to "
-                       "pay by bank transfer, or through a link sent by WhatsApp or text message. If anyone does, please "
-                       "do not pay, and call us on +33 6 28 06 97 76.")
+PAYMENT_SAFETY_LINE = ("Payment for this booking is only ever taken by card, on chateaugudanes.com. If anyone asks you to "
+                       "pay another way, please call us first on +33 6 28 06 97 76.")
 _EMAIL_CONTRACTIONS = (("We're", "We are"), ("we're", "we are"), ("We've", "We have"), ("we've", "we have"),
                        ("you'd", "you would"), ("we'd", "we would"), ("it's", "it is"), ("you're", "you are"),
                        ("we'll", "we will"))
-# Stays and workshops only. An EVENT is not on this list on purpose: the house
-# asks event clients for a bank transfer -- see event_balance_due_days_before,
-# set further out than the others for exactly that reason -- and a letter
-# promising "we will never ask you to pay by bank transfer" would teach a real
-# client to refuse a real request. Put events back on it the day events are
-# online-only, and not before.
+# 8 Oct (owner): rooms and workshops only - events are invoiced by bank transfer, so the line would be untrue there.
 _EMAIL_PAYMENT_SAFETY_KEYS = ("room_balance_before", "room_balance_after", "workshop_balance_reminder",
                               "workshop_deposit_receipt", "workshop_confirmed")
 _ROOM_CONFIRMED_BODY_5OCT = (
@@ -2153,13 +2147,85 @@ def _email_wording_5oct(key, subject, body):
         sign = "\n\n— Château de Gudanes"
         body = (body[:body.rfind(sign)] + "\n\n" + PAYMENT_SAFETY_LINE + body[body.rfind(sign):]
                 if sign in body else body + "\n\n" + PAYMENT_SAFETY_LINE)
+    if _APPLY_8OCT:
+        subject, body = _email_wording_8oct(subject, body)
     return subject, body
 
 
+# 8 Oct: the wording of 5 Oct as stored on the live site (it said "never ... by bank transfer", and was on the event email
+# too) - replaced in init_db where it is still stored word for word and was never edited. Recomputed here from the 5 Oct
+# rules so nothing has to be pasted twice.
+_PAYMENT_SAFETY_LINE_5OCT = ("We only ever take payment on chateaugudanes.com, by card through Stripe. We will never ask you to "
+                            "pay by bank transfer, or through a link sent by WhatsApp or text message. If anyone does, please "
+                            "do not pay, and call us on +33 6 28 06 97 76.")
+_EMAIL_PAYMENT_SAFETY_KEYS_5OCT = _EMAIL_PAYMENT_SAFETY_KEYS + ("event_balance_reminder",)
+
+
+# 8 Oct (owner: "are the emails we send all designed nicely"): every guest email looked at as sent. Web addresses written
+# inside a sentence showed as bare links - each is now its own line under a short label, which the builder makes a button;
+# every button says what it does; "€{amount}" doubled the euro sign the amount already carries; and a placeholder glued to
+# a full stop ran two sentences together ("...2026).Nothing has been charged").
+_EMAIL_LINES_8OCT = [
+    ("Manage your registration and pay online: {manage_url}", "Pay the balance:\n{manage_url}"),
+    ("Manage your registration: {manage_url}", "Your registration page:\n{manage_url}"),
+    ("Manage your reservation: {manage_url}", "Your reservation:\n{manage_url}"),
+    ("Manage your inquiry: {manage_url}", "Your inquiry:\n{manage_url}"),
+    ("Check in online, manage your booking, or send us a request: {checkin_url}",
+     "You can check in online, manage your booking or send us a request from your booking page.\nYour booking page:\n{checkin_url}"),
+    ("Check in / manage your booking: {checkin_url}", "Your booking page:\n{checkin_url}"),
+    ("Your statement is below, and always here:", "Your statement is below.\nSee your statement:"),
+    ("Everything about it is here:", "Your event page:"),
+    ("You can settle it here, in whole or in part:", "You can settle it in whole or in part.\nPay the balance:"),
+    ("helps us more than almost anything else:", "helps us more than almost anything else.\nLeave a review:"),
+    ("it takes a minute and we read every one:", "it takes a minute and we read every one.\nTell us how it was:"),
+    ("we would love to hear how it went:", "we would love to hear how it went.\nTell us how it went:"),
+    ("book now before it is taken again:", "book now before it is taken again.\nBook now:"),
+    ("If you would still like to join us, reserve it now:", "If you would still like to join us, reserve it now.\nReserve the table:"),
+    ("If you would still like to join, register now:", "If you would still like to join, register now.\nRegister now:"),
+    ("The full statement, and the way to settle it, is here:", "The full statement, and the way to settle it, are on your statement page.\nYour statement:"),
+    ("You can settle it online before you travel:", "You can settle it online before you travel.\nPay the balance:"),
+    ("You can settle it here whenever suits:", "You can settle it whenever suits.\nPay the balance:"),
+    ("You can pay it here:", "Pay your share:"),
+    ("It is always here, with a way to settle anything outstanding:", "It is always online, with a way to settle anything outstanding.\nYour statement:"),
+    ("Everything it covers, the terms, and a button to accept it are here:", "Everything it covers and the terms are on the quote, with a button to accept it.\nSee the quote:"),
+    ("Please confirm your address by opening this link:", "Please confirm your address.\nConfirm my subscription:"),
+    ("€{deposit_amount}", "{deposit_amount}"), ("€{balance_amount}", "{balance_amount}"),
+    (".{refund_note}", ". {refund_note}"), (".{price_block}", ".\n\n{price_block}"),
+    ("{dietary_line}{price_block}", "{dietary_line}\n\n{price_block}"),
+    ("confirmation.{dietary_line}", "confirmation. {dietary_line}"),
+    ("\n\n{new_link}\n\n", "\n\nYour new link:\n{new_link}\n\n"),
+]
+_APPLY_8OCT = True
+
+
+def _email_wording_8oct(subject, body):
+    for old, new in _EMAIL_LINES_8OCT:
+        subject, body = subject.replace(old, new), body.replace(old, new)
+    return subject, body
+
+
+def _email_wording_as_of_5oct(key, subject, body):
+    global PAYMENT_SAFETY_LINE, _EMAIL_PAYMENT_SAFETY_KEYS, _ROOM_CONFIRMED_BODY_5OCT
+    saved = (PAYMENT_SAFETY_LINE, _EMAIL_PAYMENT_SAFETY_KEYS, _ROOM_CONFIRMED_BODY_5OCT)
+    try:
+        global _APPLY_8OCT
+        _APPLY_8OCT = False
+        PAYMENT_SAFETY_LINE, _EMAIL_PAYMENT_SAFETY_KEYS = _PAYMENT_SAFETY_LINE_5OCT, _EMAIL_PAYMENT_SAFETY_KEYS_5OCT
+        _ROOM_CONFIRMED_BODY_5OCT = saved[2].replace(saved[0], _PAYMENT_SAFETY_LINE_5OCT)
+        return _email_wording_5oct(key, subject, body)
+    finally:
+        _APPLY_8OCT = True
+        PAYMENT_SAFETY_LINE, _EMAIL_PAYMENT_SAFETY_KEYS, _ROOM_CONFIRMED_BODY_5OCT = saved
+
+
+EMAIL_WORDING_STORED_5OCT = {}   # key -> (subject, body) as the 5 Oct wording stored them
 EMAIL_WORDING_REPLACED_5OCT = {}   # key -> (old subject, old body): what init_db may replace, and only that
 _fixed = []
 for _key, _label, _subject, _body in DEFAULT_EMAIL_TEMPLATES:
+    _s5, _b5 = _email_wording_as_of_5oct(_key, _subject, _body)
     _ns, _nb = _email_wording_5oct(_key, _subject, _body)
+    if (_s5, _b5) != (_ns, _nb):
+        EMAIL_WORDING_STORED_5OCT[_key] = (_s5, _b5)
     if (_ns, _nb) != (_subject, _body):
         EMAIL_WORDING_REPLACED_5OCT[_key] = (_subject, _body)
     _fixed.append((_key, _label, _ns, _nb))
@@ -7030,7 +7096,10 @@ def init_db():
     conn.commit()
     # 5 Oct: the old default wording, where it is still stored exactly as shipped and nobody has edited it.
     _new_defaults = {k: (sj, bd) for k, _l, sj, bd in DEFAULT_EMAIL_TEMPLATES}
-    for template_key, (old_subject, old_body) in EMAIL_WORDING_REPLACED_5OCT.items():
+    # The 8 Oct wording also replaces what the 5 Oct run stored, where that is
+    # still there word for word and nobody has edited it.
+    for template_key, (old_subject, old_body) in (list(EMAIL_WORDING_REPLACED_5OCT.items())
+                                                  + list(EMAIL_WORDING_STORED_5OCT.items())):
         new_subject, new_body = _new_defaults[template_key]
         conn.execute(
             "UPDATE email_templates SET subject = ?, body = ? WHERE template_key = ? AND updated_at IS NULL "
@@ -17215,7 +17284,7 @@ def booking_bill(conn, booking_id):
     if nights and booking["status"] not in ("cancelled",):
         stay_tax = stay_city_tax(booking)
         if stay_tax:
-            lines.append({"label": "Taxe de sejour", "amount": stay_tax,
+            lines.append({"label": "Taxe de séjour", "amount": stay_tax,
                           "kind": "city_tax"})
 
     extras = extras_for_booking(conn, "room", booking_id)
@@ -17591,7 +17660,7 @@ def mark_booking_payment_paid(conn, session):
             "balance_line": (f"Still to pay: €{bill['owed']:.2f}."
                              if bill and bill["owed"] > 0
                              else "Your stay is now paid in full."),
-            "account_block": ("Your bookings and balances are always here:\n"
+            "account_block": ("Your bookings and balances:\n"
                               + url_for("guest_portal", token=portal_token, _external=True)
                               if portal_token else ""),
         })
@@ -26477,7 +26546,7 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
     ]
     if city_tax:
         detail_lines.append(
-            f"Taxe de sejour: €{city_tax:.2f} ({tax_adults} adult"
+            f"Taxe de séjour: €{city_tax:.2f} ({tax_adults} adult"
             f"{'' if tax_adults == 1 else 's'} x {nights} night"
             f"{'' if nights == 1 else 's'} x €{tax_rate_used:.2f})")
     if extras_summary:
@@ -36309,7 +36378,7 @@ PALETTE_PAGES = [
      "clock in out fix amend hours wrong"),
     ("VAT", "admin_vat",
      "tva tax return quarter declaration"),
-    ("Taxe de sejour", "admin_city_tax",
+    ("Taxe de séjour", "admin_city_tax",
      "city tax tourist tax commune declaration nights return"),
     ("Pennylane", "admin_pennylane",
      "accounting ledger accountant sync bookkeeping"),
@@ -39921,7 +39990,7 @@ def charge_city_tax_upcoming():
         flash("Nothing to charge — every stay still to come already carries it.",
               "success")
     else:
-        flash(f"Taxe de sejour added to {done} stay"
+        flash(f"Taxe de séjour added to {done} stay"
               f"{'' if done == 1 else 's'}, €{total:.2f} in total.", "success")
     return redirect(url_for("admin_city_tax"))
 
@@ -42448,7 +42517,7 @@ def book_room(room_id):
                     "price_data": {
                         "currency": "eur",
                         "product_data": {"name": (
-                            f"Taxe de sejour ({_cta} adult"
+                            f"Taxe de séjour ({_cta} adult"
                             f"{'' if _cta == 1 else 's'} x {nights} night"
                             f"{'' if nights == 1 else 's'})")},
                         "unit_amount": int(round(checkout_city_tax * 100)),
@@ -45433,6 +45502,8 @@ def fetch_weather(timeout=8):
             "at": datetime.now(timezone.utc).isoformat()}
 
 
+
+
 # ---------------------------------------------------------------------------
 # WHAT A MONTH IS LIKE AT 900 METRES IN THE ARIEGE.
 #
@@ -45444,7 +45515,7 @@ def fetch_weather(timeout=8):
 # page, only by a browser that ran it, and never by t(). Moved here it can be
 # rendered into the HTML of any page, read without a script, and translated.
 MONTHS_AT_GUDANES = {
-    1: ("Deep winter. Snow on the peaks and the valley quiet. The château is "
+    1: ("Deep winter. Snow on the peaks and the valley quiet. The chÃ¢teau is "
         "cold; every room has an electric blanket and a space heater.",
         ["Skiing at Ax 3 Domaines, about half an hour away", "Dark by six",
          "The quietest month"]),
@@ -45478,7 +45549,7 @@ MONTHS_AT_GUDANES = {
           "Cold evenings in the house"]),
     12: ("Cold and clear, or cold and white.",
          ["Skiing nearby, snow permitting", "Dark by five",
-          "Noël at Gudanes"]),
+          "NoÃ«l at Gudanes"]),
 }
 
 def weather_for_stay(arrival=None, departure=None):
@@ -48906,6 +48977,22 @@ def _letter_text(lines):
 
 
 def _letter_label(blocks):
+    """8 Oct: a short line ending in a colon just before the button ("Pay the balance:") IS the button's label - it moves
+    into the button instead of being written twice, once as text and once on the button."""
+    if blocks and blocks[-1]["kind"] == "text" and blocks[-1].get("lines"):
+        last = blocks[-1]["lines"][-1].strip()
+        words = last.rstrip(":").split()
+        if last.endswith(":") and 1 <= len(words) <= 6:
+            blocks[-1]["lines"] = blocks[-1]["lines"][:-1]
+            blocks[-1]["text"] = " ".join(blocks[-1]["lines"])
+            if not blocks[-1]["lines"]:
+                blocks.pop()
+            label = last.rstrip(":").strip()
+            return (label[:1].upper() + label[1:])[:40]
+    return _letter_label_from_sentence(blocks)
+
+
+def _letter_label_from_sentence(blocks):
     """What to write on a button, taken from the sentence before it.
 
     The letters all introduce their link the same way -- "Check in online:",
@@ -49025,8 +49112,8 @@ SAMPLE_MERGE_VALUES = {
     "contact_name": "Marie Dubois",
     "name": "Marie Dubois",
     "reference_code": "GUD-4417",
-    "room_name": "Chambre \u00c9meraude",
-    "workshop_title": "Lime Plaster and Fresco",
+    "room_name": "The Gold Suite",
+    "workshop_title": "Noël at Gudanes",
     "event_type": "wedding",
     "dates": "14 to 17 October 2026",
     "desired_arrival": "14 October 2026",
@@ -49050,12 +49137,12 @@ SAMPLE_MERGE_VALUES = {
     "balance_line": "Balance of \u20ac736.60 due by 30 September 2026.",
     "dietary_line": "No shellfish, and one guest is coeliac.",
     "refund_note": "Nothing has been charged.",
-    "what_for": "for your stay in Chambre \u00c9meraude, 14 to 17 October 2026",
+    "what_for": "for your stay in The Gold Suite, 14 to 17 October 2026",
     "period": ", 1 September 2026 to 30 September 2026",
     "refund_how": ("It is going back to the card you paid with. Banks usually take "
                    "five to ten working days to show it."),
     "status_line": "Paid in full",
-    "company_block": "Ch\u00e2teau de Gudanes\n09310 Ch\u00e2teau-Verdun\nSIRET 000 000 000 00000",
+    "company_block": "Ch\u00e2teau de Gudanes\n2 Route de Beille, 09310 Ch\u00e2teau-Verdun",
     "items": "2 \u00d7 Men\u00fc du march\u00e9\u2003\u20ac110.00\n"
              "1 \u00d7 Bottle, Ari\u00e8ge red\u2003\u20ac38.00",
     "totals": "Subtotal\u2003\u20ac148.00\nService\u2003\u20ac14.80\nTotal\u2003\u20ac162.80",
@@ -49086,13 +49173,18 @@ SAMPLE_MERGE_VALUES = {
     "stay_lines": "Arrival: 14 October 2026\nDeparture: 17 October 2026\n"
                   "Party size: 2\nTotal: €666.60",
     "statement_lines": "3 night(s), Chambre Émeraude   €660.00\n"
-                       "Taxe de sejour   €6.60\n\n"
+                       "Taxe de séjour   €6.60\n\n"
                        "Total   €666.60\nReceived   €250.00\n"
                        "Still to pay   €416.60",
-    "account_block": "Your bookings and balances are always here:\n"
+    "account_block": "Your bookings and balances:\n"
                       "https://chateaugudanes.com/you/c05d9e",
     "note_block": "Thank you for sorting this so quickly — Marie",
     "reason_block": "The plasterer who teaches it has broken his wrist.",
+    # 8 Oct: the house's payment notice is sent with these - without them its preview showed "{guest_email}" and the like
+    "guest_email": "marie.dubois@example.com",
+    "paid_at": "8 October 2026, 14:32",
+    "paid_how": "Card, online, Visa ending 4242",
+    "booking_url": "https://chateaugudanes.com/admin/refunds/room/4417",
 }
 
 # The confirmation's card, for the preview: what the design draws around the

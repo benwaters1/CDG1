@@ -10998,3 +10998,14 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
    licences require the credit - never hide it. */
 .g .g-gallery figcaption .g-credit{ display: block; margin-top: 2px; font-style: normal; font-family: var(--sans, inherit); font-size: 11px; letter-spacing: .01em; color: var(--ink-2); opacity: .85; }
 .g .g-gallery figcaption .g-credit a{ color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+/* 8 Oct (owner: "I didn't want it so prominent") - the payment note is one quiet line, no box, only on the
+   confirmation and booking pages; not on the booking cards. */
+.g .g-paysafe-line{ margin: var(--s5) 0 0; max-width: 44rem; font-size: 13px; line-height: 1.6; color: var(--ink-2); }
+.g .g-paysafe-line a{ color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+
+/* 8 Oct - TYPICAL WEATHER for the chosen dates (Stay's search bar and the room page): one quiet line, not a widget. */
+.g .g-typwx{ margin: var(--s3) 0 0; max-width: 46rem; font-size: 14px; line-height: 1.6; color: inherit; }
+.g .g-typwx__k{ font-weight: 600; }
+.g .g-typwx__src{ display: block; margin-top: 2px; font-size: 12px; opacity: .75; }
+.g .g-book-bar .g-typwx{ color: inherit; }
