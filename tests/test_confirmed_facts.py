@@ -265,5 +265,29 @@ def run():
             m.format_date_human((day + timedelta(days=16)).isoformat()) in details,
             detail=details)
 
+    # 8 October (owner): "events are more likely to be bank transfer". The
+    # anti-scam sentence promises the house never asks for one -- true of a
+    # stay and an atelier, not of an event, where this file already says the
+    # balance is usually a transfer somebody arranges. On an event letter it
+    # would teach a real client to refuse a real request.
+    #
+    # Both ways in one check: the sentence quietly going missing from the
+    # letters it protects is the same kind of silent failure as it appearing
+    # where it is false.
+    MONEY_LETTERS_THAT_WARN = {
+        "room_confirmed", "room_balance_before", "room_balance_after",
+        "workshop_confirmed", "workshop_deposit_receipt",
+        "workshop_balance_reminder"}
+    bodies = {k: b for k, _l, _s, b in m.DEFAULT_EMAIL_TEMPLATES}
+    warns = {k for k, b in bodies.items() if m.PAYMENT_SAFETY_LINE in b}
+    s.check("no event letter promises the house never asks for a transfer",
+            not any(k.startswith("event") for k in warns),
+            detail=str(sorted(k for k in warns if k.startswith("event"))))
+    s.check("and every stay and atelier money letter still carries it",
+            warns == MONEY_LETTERS_THAT_WARN,
+            detail="missing %s; unexpected %s"
+                   % (sorted(MONEY_LETTERS_THAT_WARN - warns),
+                      sorted(warns - MONEY_LETTERS_THAT_WARN)))
+
     _cleanup()
     return s
