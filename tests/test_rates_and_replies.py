@@ -126,30 +126,40 @@ def run():
                 m.reply_to_for("workshops") == "experience@chateaugudanes.com",
                 detail="the inbox is named experience@, not workshops@, and "
                        "the map knows both names for the same area")
-        # Still no GUESSING -- events@ is not configured here and no address
-        # is invented from the area name. It falls through to the one the
-        # house set instead, because the alternative is now a dead end rather
-        # than the wrong inbox.
-        s.check("an area with no inbox falls back to the house address",
-                m.reply_to_for("events") == m.RESEND_REPLY_TO,
-                detail="RESEND_FROM receives nothing, so None would mean the "
-                       "reply reaches nobody at all")
-        s.check("and so does a letter with no area at all",
-                m.reply_to_for(None) == m.RESEND_REPLY_TO)
-        # THE ONE THAT WOULD HAVE CAUGHT THIS. A fallback on the send-only
-        # subdomain is a Reply-To that looks set and goes nowhere, which is
-        # worse than none because nothing looks wrong.
-        s.check("and the fallback is not on the send-only domain",
-                "send." not in (m.RESEND_REPLY_TO or "nothing"),
-                detail=repr(m.RESEND_REPLY_TO))
-        was_rt = m.RESEND_REPLY_TO
-        try:
-            m.RESEND_REPLY_TO = ""
-            s.check("and an empty setting still means no header at all",
-                    m.reply_to_for("events") is None,
-                    detail="the old silence stays reachable on purpose")
-        finally:
-            m.RESEND_REPLY_TO = was_rt
+        # STILL NONE WHEN IT DOES NOT KNOW, and it has to be: contact_address
+        # reads PUBLIC_CONTACT only when this says so, and the first attempt
+        # at the fix made this always answer something -- which silently sent
+        # every "Write to us first" link and every payment notice to one
+        # address. The full suite caught it in three places; these two
+        # suites did not, because both stub the mailbox list.
+        s.check("an area with no inbox is still not guessed at",
+                m.reply_to_for("events") is None,
+                detail="contact_address and the payment notices are built on "
+                       "this answering honestly")
+        s.check("and neither is a letter with no area at all",
+                m.reply_to_for(None) is None)
+
+        s.section("But a letter always has somewhere for the reply to go")
+        # RESEND_FROM is on send.chateaugudanes.com, which receives nothing,
+        # so a letter with no Reply-To is a letter nobody can answer.
+        s.check("an atelier letter answers to the atelier inbox",
+                m.reply_to_header_for("workshops") == "experience@chateaugudanes.com")
+        s.check("and one whose area has no mailbox uses what its pages print",
+                m.reply_to_header_for("events") == m.PUBLIC_CONTACT["events"],
+                detail="the page and the letter name the same inbox, rather "
+                       "than the letter naming a house-wide one")
+        s.check("a letter with no area at all falls to the house setting",
+                m.reply_to_header_for(None) == m.RESEND_REPLY_TO)
+        # THE ONE THAT WOULD HAVE CAUGHT THE ORIGINAL FAULT. A Reply-To on the
+        # send-only subdomain looks set and goes nowhere, which is worse than
+        # none, because nothing looks wrong.
+        dead = [a for a in (None, "rooms", "restaurant", "workshops", "events")
+                if "send." in (m.reply_to_header_for(a) or "")]
+        s.check("and no letter answers to the send-only domain",
+                not dead, detail=str(dead))
+        s.check("nor to nothing at all",
+                all(m.reply_to_header_for(a)
+                    for a in (None, "rooms", "restaurant", "workshops", "events")))
 
         s.section("And it reaches the letter")
 
@@ -171,7 +181,8 @@ def run():
                 m.send_email("zzfx@example.invalid", "Anything", "b", keep=False)
             s.check("and a letter with no area carries the house address",
                     sent and sent[0]["reply_to"] == m.RESEND_REPLY_TO,
-                    detail=str(sent[:1]))
+                    detail=str(sent[:1]) + " — never None: the From address "
+                           "receives nothing")
         finally:
             m.resend_enabled, m.send_email_via_resend = was_enabled, was_resend
 

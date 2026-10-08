@@ -52,6 +52,10 @@ SERIALISED_WHOLE = {
     "guest_data_erase": "reported back to the requester whole",
     # Handed to the reply drafter as context about what the house sells.
     "current_offerings_snapshot": "passed whole as model context",
+    # Handed straight to urllib as the request's headers. Nothing reads
+    # "Authorization" by name because nothing is meant to -- the library
+    # sends the map as it stands.
+    "resend_headers": "passed entire to urllib as HTTP headers",
 }
 
 # Minimum keys before a returned dict is worth sweeping. Below this it is

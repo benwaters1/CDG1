@@ -25124,6 +25124,27 @@ def contact_address(area):
             or PUBLIC_CONTACT["rooms"])
 
 
+def reply_to_header_for(area):
+    """What an outgoing letter puts in Reply-To. Never nothing.
+
+    Every letter went out from one address with no Reply-To, which was
+    survivable while that address was one somebody reads: a reply reached the
+    wrong inbox and was forwarded. RESEND_FROM is now on
+    send.chateaugudanes.com, which receives nothing at all, so a letter
+    without this header is a letter nobody can answer -- and the Graph
+    mailboxes that would have matched are not connected yet, so that was
+    every letter the house sent.
+
+    The area's own inbox first, then the address its public pages already
+    print for that kind of guest: an atelier reply reaches the atelier inbox
+    rather than a house-wide one, and the letter and the page agree. A letter
+    belonging to no area falls to RESEND_REPLY_TO.
+    """
+    if area:
+        return reply_to_for(area) or contact_address(area)
+    return RESEND_REPLY_TO or contact_address(None)
+
+
 def read_setting(obj, key, default=None):
     """One setting off whatever a template was handed as `settings`.
 
@@ -25293,23 +25314,21 @@ def reply_to_for(area):
     into one and nobody could tell, because a reply that lands in the wrong
     inbox still lands.
 
-    AND WHAT "NOTHING MATCHED" MEANS CHANGED WITH THE FROM ADDRESS. This
-    answered None, on the grounds that a guessed Reply-To sends a guest's
-    reply somewhere nobody reads -- which was right while the letter came
-    FROM an address somebody reads. Mail now goes out as RESEND_FROM on the
-    send-only subdomain, which receives nothing, so None stopped meaning
-    "the wrong inbox" and started meaning "no inbox at all". The mailboxes
-    that would have matched are not connected yet, so that was every letter.
+    None when nothing matches, and it must stay None: contact_address is
+    built on this, and reads PUBLIC_CONTACT only when this says it does not
+    know. Answering something here instead collapsed every area onto one
+    address -- the "Write to us first" link on four manage pages, and the
+    inbox told about a payment. A guessed Reply-To is still worse than none.
 
-    RESEND_REPLY_TO is the floor, and it is not a guess: somebody set it.
-    The area still wins wherever it matches, and setting it empty restores
-    the old silence.
+    What a LETTER puts in its header is a different question, because an
+    unanswerable Reply-To is now a dead end rather than the wrong inbox.
+    reply_to_header_for asks it.
     """
     for local in REPLY_TO_AREAS.get(area, ()):
         for mailbox in MS_GRAPH_MAILBOXES:
             if mailbox.split("@")[0].strip().lower() == local:
                 return mailbox
-    return RESEND_REPLY_TO or None
+    return None
 
 
 def resend_enabled():
@@ -25870,7 +25889,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         # when the first item is False, so every refusal would report success.
         went, why = send_email_via_resend(to_address, subject, body, ics_content,
                                           ics_filename, html=html,
-                                          reply_to=reply_to_for(area))
+                                          reply_to=reply_to_header_for(area))
         if went:
             if keep:
                 keep_guest_message(to_address, subject, body, delivered=True, **filed)
@@ -25917,7 +25936,7 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         # Same address the Resend branch uses. A rule that applied to one
         # transport and not the other is a rule that stops applying the day
         # somebody changes which one is configured.
-        replies_to = reply_to_for(area)
+        replies_to = reply_to_header_for(area)
         if replies_to:
             msg["Reply-To"] = replies_to
         msg.set_content(body)

@@ -428,15 +428,10 @@ def run():
     # and, without them, only a hand-written tour and transfer with no prices.
     # Read from the catalogue so a price changed in admin is the price shown.
     #
-    # 5 October (owner): the tour is deliberately not featured here -- a stay
-    # is a room, and the tour is not what it is for. Named rather than simply
-    # dropped from the rule, and checked both ways below, because a showcase
-    # quietly losing an extra looks exactly like this from the page alone.
-    NOT_FEATURED_ON_STAY = ("tour",)
-
-    def _held_back(name):
-        return any(w in (name or "").lower() for w in NOT_FEATURED_ON_STAY)
-
+    # 8 October (owner): "a tour is an extra for nightly stays". The 5 October
+    # handover had filtered it off this page and this check was loosened to
+    # match; both are undone. Every extra the catalogue offers a guest belongs
+    # on the page it is sold from, and repair_handover keeps the filter out.
     conn = db()
     offered = conn.execute(
         "SELECT name, price FROM extras WHERE active = 1 AND guest_bookable = 1").fetchall()
@@ -448,20 +443,16 @@ def run():
     conn.close()
     # Read as text: the template writes the euro sign as &euro;.
     stay = html.unescape(_guest().get("/book").get_data(as_text=True))
-    featured = [r for r in offered if not _held_back(r["name"])]
-    missing = [r["name"] for r in featured
+    missing = [r["name"] for r in offered
                if r["name"] not in stay
                or "€{:,.0f}".format(r["price"]) not in stay]
     s.check("every extra a guest can book is on it, at its price",
-            featured and not missing, detail=str(missing))
-    # Both directions. A word matching nothing is a line nobody will remove;
-    # one that appears anyway means the page and this list have diverged.
-    stale = [w for w in NOT_FEATURED_ON_STAY
-             if not any(w in (r["name"] or "").lower() for r in offered)]
-    shown_anyway = [r["name"] for r in offered if _held_back(r["name"]) and r["name"] in stay]
-    s.check("and what is held back is held back, and still exists to hold back",
-            not stale and not shown_anyway,
-            detail="matching nothing: %s; featured anyway: %s" % (stale, shown_anyway))
+            offered and not missing, detail=str(missing))
+    s.check("the tour among them, which two handovers filtered out",
+            not any("tour" in (r["name"] or "").lower() and r["name"] not in stay
+                    for r in offered),
+            detail="the owner sells it with a stay; a filter on the word "
+                   "'tour' took it off the page it is sold from")
     s.check("nothing kept for the till", "ztest-till-only glass" not in stay)
     s.check("and nothing switched off", "ztest-switched-off hamper" not in stay)
 

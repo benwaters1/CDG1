@@ -1431,6 +1431,36 @@ OCCASION_WORKSHOP = (
     "          </div>\n")
 
 
+def repair_tour_is_an_extra():
+    """The tour is an extra for a nightly stay, and two zips have hidden it.
+
+    5 October the handover filtered any extra whose name contains "tour" out
+    of "Add to Your Stay"; 6 October brought the same filter back. The owner
+    said on 8 October that a tour IS an extra for nightly stays, so the page
+    draws the catalogue and holds nothing back.
+
+    An extra missing from the page it is sold on is a sale nobody finds out
+    was lost -- the booking form still offered it, so nothing errored and no
+    guest complained. The template was always built to draw one, which is why
+    its illustration map still picks a key for the word.
+    """
+    rel = "templates/book_rooms.html"
+    if not os.path.exists(os.path.join(ROOT, rel)):
+        return 0
+    src = _read(rel)
+    loop = "{%- for e in _xs if 'tour' not in (e['name'] or '')|lower %}"
+    if loop not in src:
+        return 0
+    # Dropped by line rather than by an exact string: the comment has
+    # arrived with different wrapping, and a match that misses leaves a
+    # note in the file saying the opposite of what the page now does.
+    mark = ("5 Oct (owner): the tour is not the focus of a stay")
+    src = "".join(l for l in src.splitlines(True) if mark not in l)
+    src = src.replace(loop, "{%- for e in _xs %}", 1)
+    _write(rel, src)
+    return 1
+
+
 def repair_settings_dot_get():
     """`.get` on settings raises on a sqlite3.Row, and settings is often one.
 
@@ -1792,6 +1822,7 @@ def main():
         ("the dining hours table in a wrapper", repair_dining_hours_table),
         ("the occasion on both booking forms", repair_special_occasion),
         ("settings read with .get, which a Row refuses", repair_settings_dot_get),
+        ("the tour, which is an extra for a nightly stay", repair_tour_is_an_extra),
     ]
     total, failed = 0, []
     for label, fn in steps:

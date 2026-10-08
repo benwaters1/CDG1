@@ -10966,3 +10966,12 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
    legal notice used 42px. Now all match Press, Story, Gallery and the 404 (60px desktop, 36px phone). The room and workshop
    booking pages keep their large titles. */
 .g main h1.g-display--page{ font-size: var(--g-pagehead-size, clamp(36px, 4.2vw, 60px)) !important; line-height: 1.1; }
+
+/* 6 Oct - PHOTOGRAPH GALLERIES (Stay, Workshops, the Estate): the restoration page's captioned grid, nine to a section -
+   three across on desktop, two on a phone; the intro sits 24px above it. Before/after pairs stack with a gap. */
+.g .g-gallery-sec .g-intro{ margin-bottom: 24px; }
+.g .g-gallery{ margin-top: 0; }
+.g .g-gallery img{ border: 1px solid color-mix(in srgb, var(--gilt) 35%, transparent); }
+.g .g-ba + .g-ba{ margin-top: var(--s5); }
+/* two across (below 64rem), an odd count leaves one photograph alone: the last one runs the full width instead */
+@media (max-width: 63.99rem){ .g .g-gallery li:last-child:nth-child(odd){ grid-column: 1 / -1; } }
