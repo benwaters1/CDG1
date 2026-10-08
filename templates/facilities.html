@@ -15,7 +15,7 @@
 {# Needs: @app.route("/facilities") -> render_template("facilities.html") #}
 
 <section class="g-hero">
-  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/03bb742f-839e-47c4-b4fc-7e4d2fd52e8f/Screenshot+2026-08-12+at+3.13.20+pm.png?format=1500w" alt="The château above its terraced gardens, the mountains beyond">
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/03bb742f-839e-47c4-b4fc-7e4d2fd52e8f/Screenshot+2026-08-12+at+3.13.20+pm.png?format=2500w" alt="The château above its terraced gardens, the mountains beyond">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Ten Acres Above the Valley</p>
@@ -31,7 +31,7 @@
   <div class="g-vignette" aria-hidden="true">{{ illus('pool') }}</div>
   <p class="g-eyebrow">The Grounds</p>
   <h2 class="g-place">Le Domaine</h2>
-  <p class="g-p g-lede-first">The château stands above the valley with the Pyrénées all around it. The grounds are for wandering, the pool for long afternoons, and the tennis court for whoever is keen; in winter the mountain is close, with skiing about half an hour away.</p>
+  <p class="g-p g-lede-first">The château stands above the valley with the Pyrénées all around it. The grounds are for wandering, the pool for long afternoons, and the tennis court for whoever is keen; in winter the mountain is close, with skiing about half an hour away and Andorra about an hour.</p>
   <p class="g-p">On a workshop, part of the full experience, the grounds are yours every afternoon, between the sessions and dinner.</p>
   <p class="g-p">About fifty-five rooms, and five of them are yours to sleep in. The rest are the restoration still ahead.</p>
   <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>
@@ -71,7 +71,7 @@
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fad6453b-f801-43fb-b3bc-6ed223ec09e0/Rebecca%26Ken_Preview_paulinaweddings.com-1_websize.jpg?format=1000w" alt="The château, the gardens and the pool from above" loading="lazy"><figcaption>From above, with the pool</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24dd7adf-2d85-46bd-8399-4a3fc96ce444/Gardens+-+Formal+Gardens+2.jpg?format=1000w" alt="The formal gardens in flower" loading="lazy"><figcaption>The formal gardens</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/dcbab094-c5e9-4450-b4e2-b8045cd85708/Screen+Shot+2023-02-09+at+1.30.36+pm.png?format=1000w" alt="The gardens below the château" loading="lazy"><figcaption>Below the château</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/03bb742f-839e-47c4-b4fc-7e4d2fd52e8f/Screenshot+2026-08-12+at+3.13.20+pm.png?format=1000w" alt="The château above its terraced gardens, the mountains beyond" loading="lazy"><figcaption>The terraces</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aa7e337d-6a3c-437b-9b9f-a128c57f849e/Screenshot+2026-07-31+at+2.08.26+pm.png?format=1000w" alt="The château in the late sun, the mountains around it" loading="lazy"><figcaption>The late sun</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e7d7162c-28a2-4083-962d-ecc142dfdac8/Chateau+de+Gudanes+-+Summer+1.jpg?format=1000w" alt="Through the gates in summer" loading="lazy"><figcaption>Through the gates in summer</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/bd9a0a5d-ebc1-4f91-b7d8-6ed0560cec33/Screenshot+2026-08-15+at+3.08.47+pm.png?format=1000w" alt="The château and its gardens, the mountains around" loading="lazy"><figcaption>The gardens and the mountains</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/88924c05-3cda-4481-8a8f-5145405147c0/Screenshot+2026-08-15+at+5.12.55+pm.png?format=1000w" alt="The gardens, the mountains beyond" loading="lazy"><figcaption>Late summer</figcaption></figure></li>
@@ -98,12 +98,20 @@
    stations, and both are a short drive from Château-Verdun. #}
 {# 1 Oct: "Winter in the Valley" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
-<div class="g-band">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/42ac040d-dc88-4253-8d3d-7084f6e05ea4/Chateau+de+Gudanes+-+Winter.jpeg?format=1000w" alt="The château in snow" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/03ca0108-8c1e-423f-a790-84ed2b154fac/Chateau+de+Gudanes+In+Winter+2.png?format=1000w" alt="Winter light on the façade" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen table in winter" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/IMG_4368.JPG?format=1000w" alt="The château lit at night, under the stars" loading="lazy">
-</div>
+{#- 6 Oct (owner: "photos of the house in snow") - the château's own winter photographs -#}
+<section class="g-sec g-sec--sand g-gallery-sec" id="winter"><div class="g-wrap">
+  <p class="g-fr">L&rsquo;hiver <span class="g-fr__en">In winter</span></p>
+  <h2 class="g-place">Winter at Gudanes</h2>
+  <p class="g-p g-intro">Snow on the mountains from late autumn, and some winters on the château itself, with the ski slopes half an hour away.</p>
+  <ul class="g-befgrid g-gallery">
+    <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587876383030-3F2JQGIE0MVC505DYP32/Chateau+de+Gudanes+in+Snow+A6.jpg?format=1500w" alt="The château in snow, among the trees" loading="lazy"><figcaption>The château in snow</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587892891915-NZ0CL0Q7H20GV9705G6V/Gates%2BIn%2BSnow.jpg?format=1500w" alt="The gates and the pigeonnier in snow" loading="lazy"><figcaption>The gates and the pigeonnier</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1588022376114-0SP20H7DFV3Y2L2LBEZE/Snow+day+14.jpg?format=1500w" alt="The château, snow on the peaks behind" loading="lazy"><figcaption>Snow on the peaks</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/42ac040d-dc88-4253-8d3d-7084f6e05ea4/Chateau+de+Gudanes+-+Winter.jpeg?format=1500w" alt="The château in snow, a dog running" loading="lazy"><figcaption>A snow day</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1588023366035-0J9AFG2XFX0BGL7LWGKI/Snow+day+15.jpg?format=1500w" alt="The valley under snow" loading="lazy"><figcaption>The valley under snow</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1588482960242-ZRBAGFA605FV5BSPM6FH/Chateau+Snow+In+Spring?format=1500w" alt="The château in spring, snow still on the mountains" loading="lazy"><figcaption>Snow into spring</figcaption></figure></li>
+  </ul>
+</div></section>
 
 <!-- ============ BY THE NUMBERS ============ -->
 {# Every figure here is from the public record: Wikipedia's monument entry

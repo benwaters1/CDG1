@@ -23,37 +23,92 @@
    they exist — this only fills a section that has none. #}
 {% set FALLBACK = {
   'inside': [
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1500w", 'caption': 'The kitchen'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w", 'caption': 'The dining room'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w", 'caption': 'The kitchen table in winter'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w", 'caption': 'A bedroom'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1500w", 'caption': 'A bedroom'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1500w", 'caption': 'A bedroom'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1500w", 'caption': 'The Gold Suite'},
-    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w", 'caption': 'The bathrooms'}
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba4114a3-c057-4df8-8fd9-c080ebc6fff2/Chambre+Olympe+de+Gouges+2.jpg?format=1500w", 'caption': 'The Queen Room'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg?format=1500w", 'caption': 'The Gold Suite'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9d1b8c99-13c5-4bc9-9a69-9a32a4c1eb8c/Screenshot+2026-07-20+at+2.31.12+pm.png?format=1500w", 'caption': 'The Family Suite'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c9165a78-1300-47a7-b1c0-b46f4172bf44/Screenshot+2026-07-30+at+8.03.10+pm.png?format=1500w", 'caption': 'The Family Suite, the blue bedroom'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c90f49a0-5f8f-489f-8d51-2f3ea727c57a/Screenshot+2026-07-30+at+7.54.08+pm.png?format=1500w", 'caption': 'The Family Suite, the floral bedroom'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/393b1bed-532a-41a0-8000-c964f7fec141/Screenshot+2023-08-23+at+2.28.37+pm.png?format=1500w", 'caption': 'The King Room'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/b2a8b7f3-150f-42cf-b311-ea8901270793/Screenshot+2023-08-23+at+2.28.50+pm.png?format=1500w", 'caption': 'The King Room, the canopy'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/657893f1-a613-477d-b909-f6b9f7227f97/Music+Room+1.jpg?format=1500w", 'caption': 'The music room'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f1de700e-0871-4811-9769-4a3c5c5a3a51/Screenshot+2026-08-15+at+12.04.53+am.png?format=1500w", 'caption': 'The lounge'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/4bb7604e-6c78-44c5-a89a-a146d1da4fa9/Screenshot+2026-08-15+at+12.02.30+am.png?format=1500w", 'caption': 'A salon in the morning'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f8a75998-9665-4bdf-bda4-9c252e7c8acb/P1088759+2.png?format=1500w", 'caption': 'A salon brought back'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba275193-d2de-4cb7-86a8-07825dbaf1d5/Screenshot+2026-07-30+at+7.56.05+pm.png?format=1500w", 'caption': 'The dining room'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2ff5aa70-fc65-4aa1-91dc-befc589d5322/Screenshot+2026-08-13+at+2.28.25+pm.png?format=1500w", 'caption': 'The chandelier lit'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/900b3c3f-286a-45cb-abe8-53a83da726ce/Screenshot%2B2024-11-08%2Bat%2B12.59.50%2Bpm.webp?format=1500w", 'caption': 'By the fire'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w", 'caption': 'A ground-floor bathroom'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/67145726-32e2-4832-bfce-a7fdb809b057/Screenshot+2026-07-30+at+7.53.46+pm.png?format=1500w", 'caption': 'The spiral staircase'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/dd096969-0a3d-4765-aa39-8223dd6a23b4/Screenshot+2024-06-02+at+10.58.42+am.png?format=1500w", 'caption': 'A tall window, the mountains beyond'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1691467283089-Z9QX59G01KY8N8VFBTZG/Chambre+Jeanne+d%27Arc.PNG?format=1500w", 'caption': 'The Twin Room'}
   ],
   'grounds': [
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w", 'caption': 'The gates in spring'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1500w", 'caption': 'The gates in autumn'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1728027560330-AOHMYTLQV9BVVSYW5FS3/Gardens+-+Formal+Gardens+2.jpg?format=1500w", 'caption': 'The formal gardens'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1500w", 'caption': 'The gardens in autumn'},
-    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/99530054-b37e-429a-9026-6a92ac8dadec/Screenshot+2024-06-02+at+10.53.53+am.png?format=1500w", 'caption': 'The parkland'}
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fad6453b-f801-43fb-b3bc-6ed223ec09e0/Rebecca%26Ken_Preview_paulinaweddings.com-1_websize.jpg?format=1500w", 'caption': 'From above, with the pool'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24dd7adf-2d85-46bd-8399-4a3fc96ce444/Gardens+-+Formal+Gardens+2.jpg?format=1500w", 'caption': 'The formal gardens'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/dcbab094-c5e9-4450-b4e2-b8045cd85708/Screen+Shot+2023-02-09+at+1.30.36+pm.png?format=1500w", 'caption': 'Below the château'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/03bb742f-839e-47c4-b4fc-7e4d2fd52e8f/Screenshot+2026-08-12+at+3.13.20+pm.png?format=1500w", 'caption': 'The terraces'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/6b56ee62-5ff0-4bf5-bbf8-e62cee21fc2e/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w", 'caption': 'The garden gates in spring'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e7d7162c-28a2-4083-962d-ecc142dfdac8/Chateau+de+Gudanes+-+Summer+1.jpg?format=1500w", 'caption': 'Through the gates in summer'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/bd9a0a5d-ebc1-4f91-b7d8-6ed0560cec33/Screenshot+2026-08-15+at+3.08.47+pm.png?format=1500w", 'caption': 'The gardens and the mountains'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/88924c05-3cda-4481-8a8f-5145405147c0/Screenshot+2026-08-15+at+5.12.55+pm.png?format=1500w", 'caption': 'Late summer'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587876383030-3F2JQGIE0MVC505DYP32/Chateau+de+Gudanes+in+Snow+A6.jpg?format=1500w", 'caption': 'The château in snow'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/99530054-b37e-429a-9026-6a92ac8dadec/Screenshot+2024-06-02+at+10.53.53+am.png?format=1500w", 'caption': 'The parkland'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aabd8580-5420-43e7-92c9-779b82294ee3/home-7.jpg?format=1500w", 'caption': 'The meadow, mist on the hills'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c2998346-182b-476a-83cc-fefc2cad0bba/P1260363.jpeg?format=1500w", 'caption': 'Wildflowers'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/54da3cc9-ec56-4445-8d66-b8c80fc8ffc1/Screenshot+2026-08-15+at+6.56.27+pm.png?format=1500w", 'caption': 'Autumn'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/42ac040d-dc88-4253-8d3d-7084f6e05ea4/Chateau+de+Gudanes+-+Winter.jpeg?format=1500w", 'caption': 'Snow'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1587892891915-NZ0CL0Q7H20GV9705G6V/Gates%2BIn%2BSnow.jpg?format=1500w", 'caption': 'The gates in snow'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/IMG_4368.JPG?format=1500w", 'caption': 'At night'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aa7e337d-6a3c-437b-9b9f-a128c57f849e/Screenshot+2026-07-31+at+2.08.26+pm.png?format=1500w", 'caption': 'The late sun'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7a36c33c-f53e-4ea3-976b-14191b0cbdc5/Screenshot%2B2026-08-15%2Bat%2B3.08.35%2Bpm.png?format=1500w", 'caption': 'Summer'}
   ],
   'restoration': [
-    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/edc68ec5-2523-4935-8d27-ad2bbda74d96/day_1_19.jpg?format=1500w", 'caption': 'Room by room'},
-    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w", 'caption': 'Bare plaster'},
-    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/71e505e9-4a57-4bd6-9ed7-96530cbaa16b/day_1_18.jpg?format=1500w", 'caption': 'The work itself'}
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/b7a07599-6d24-4085-bb8d-b669d04c7bb1/unspecified-3+2.jpg?format=1500w", 'caption': 'The work begins'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d07f91bb-54cb-444c-9ae0-db4eab3d9b47/Gudanes-+the+work+begins+%2812+of+7%29.jpg?format=1500w", 'caption': 'The first workers'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2d44af9c-cd2c-472d-ae18-ac16cebd285f/Screen+Shot+2019-04-16+at+8.35.01+am.png?format=1500w", 'caption': 'At a window'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8e2d96ea-4524-4f3b-ae0d-88e6191e7b09/Before+The+Work+-+Bedroom.JPG?format=1500w", 'caption': 'A bedroom, before'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/598861b7-9f24-4244-8420-468734c135e5/Before+The+Work+-+Vestibule+Ceiling.JPG?format=1500w", 'caption': 'The vestibule ceiling, before'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/97532472-ef1c-439c-bc1e-da09f3d43046/Before+The+Work+-+Windows.jpg?format=1500w", 'caption': 'The windows, before'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e7e008f3-afc8-440d-8974-abb6b7bbce80/Dining+Room+-+During+Work+1.jpg?format=1500w", 'caption': 'The dining room floor'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fcd0c757-5913-4e42-a648-d131642818ad/Dining+Room+-+During+Work+4.jpg?format=1500w", 'caption': 'The dining room under scaffolding'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2b9c1192-bf9a-40a9-8913-4bc98c8a43c7/Screenshot+2026-07-20+at+3.41.43+pm.png?format=1500w", 'caption': 'The kitchen, before'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/92af7109-0e28-4b75-bdf0-4b1a6fe7cc9a/Screenshot+2026-07-20+at+2.33.25+pm.png?format=1500w", 'caption': 'The kitchen now'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7503dc41-3d7d-477e-91f8-3a18010b35a3/2.jpg?format=1500w", 'caption': 'A room, the floor gone'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/6bdcc62e-ad87-4139-9d1c-37532889bc83/48.JPG?format=1500w", 'caption': 'A ceiling, before'}
   ],
   'life': [
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583297759377-LT0T1KCEJ62D41AXR6N8/fluffy+in+kitchen.JPG?format=1500w", 'caption': 'A resident, on the kitchen windowsill'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1500w", 'caption': 'At the table'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1500w", 'caption': 'A March morning'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1500w", 'caption': 'The château at night'}
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/64c3e06f-00b3-4c61-9f61-4b3476de1d30/Screenshot+2026-08-15+at+5.54.52+pm.png?format=1500w", 'caption': 'At the table together'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1786539831270-OCIZ2OFNTUC22Z6T9SMI/Screenshot%2B2026-08-12%2Bat%2B8.38.07%2Bpm.png?format=1500w", 'caption': 'The chef, before dinner'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6528360-4808-4dc3-82ca-28a9d2d22c81/Screenshot+2026-08-12+at+8.38.20+pm.png?format=1500w", 'caption': 'Lighting the candles'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c7a763e0-e047-4bc6-ac87-6bc312a89731/_DSC9185.jpg?format=1500w", 'caption': 'Laying the table'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9df28121-271f-40e4-8b15-131a03f75991/Screenshot+2026-08-12+at+8.39.57+pm.png?format=1500w", 'caption': 'From the garden'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/0fba4375-e1f0-449b-ba58-d1a5d3a48069/Screenshot+2026-07-30+at+8.05.38+pm.png?format=1500w", 'caption': 'Dinner by candlelight'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/355ed207-f7a3-4e62-b7ec-13d8dfaf09a8/Screenshot+2026-08-15+at+12.37.15+am.png?format=1500w", 'caption': 'From the kitchen'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/6d17b683-1688-4dad-8d5d-b0e75a6de675/Cre%CC%80me+Bru%CC%82le%CC%81e-7.jpg?format=1500w", 'caption': 'Crème brûlée'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d0c360a2-3609-44fe-9775-07ccf909ea3c/Screenshot+2026-07-30+at+7.55.27+pm.png?format=1500w", 'caption': 'From the market'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/5589cd5d-9fd8-4363-a8e8-1c7db5e8e8fb/VeronicaOlson_August2022_ChateaudeGudanes__2012.jpg?format=1500w", 'caption': 'Breakfast'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/82882b98-6d8d-4e43-a8dd-d483ea19aec8/Screenshot+2026-07-30+at+7.57.59+pm.png?format=1500w", 'caption': 'Bread in the morning'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d1eac941-8c47-4513-8417-647b6cf77c16/Screenshot+2026-08-15+at+5.01.24+pm.png?format=1500w", 'caption': 'Setting out into the valley'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/096e3877-6b97-4d5c-85c9-0daa1740052a/Screenshot+2026-08-15+at+2.33.18+pm.png?format=1500w", 'caption': 'Walking in the hills'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9ee310fe-0248-4c96-8116-8797e5efb084/Screenshot+2026-08-12+at+3.39.10+pm.png?format=1500w", 'caption': 'Walking up to the château'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8770ace1-5dd0-4249-95e3-4a4cfee01e67/Concert+by+candlelight-8.jpg?format=1500w", 'caption': 'Cellists in the salon'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/48dc09e5-c623-4f0a-bd02-ed1b614f7e81/4764E339-9EE5-4DC8-9349-B87245BAC7FB.jpg?format=1500w", 'caption': 'A gingerbread château at Christmas'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/35718cba-ae0d-4d2a-adc1-cace54a9e369/Screenshot+2026-08-12+at+8.40.54+pm.png?format=1500w", 'caption': 'In the salon, flowers on the table'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/748f2e28-aac7-4076-99a9-2cd362f5b94e/Screenshot+2026-08-12+at+3.52.50+pm.png?format=1500w", 'caption': 'On the terrace'}
   ],
   'views': [
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1500w", 'caption': 'From the windows'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d05b0d21-75e0-464e-bcad-9faac533884c/IMG_4368.jpeg?format=1500w", 'caption': 'The valley'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w", 'caption': 'Toward the Pyrénées'}
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/501aab26-c7a6-4348-9204-84cfdfdd8e8b/Screenshot+2026-08-15+at+3.09.59+pm.png?format=1500w", 'caption': 'The valley from a balcony'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/de9d57fb-3dd3-450e-9a61-6b51054f2765/Screenshot+2026-08-15+at+12.44.51+am.png?format=1500w", 'caption': 'The mountains of the Ariège'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/76390795-5943-4978-bab4-8b922010d403/Screenshot+2026-08-15+at+2.31.10+pm.png?format=1500w", 'caption': 'The plain below the mountains'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1588023366035-0J9AFG2XFX0BGL7LWGKI/Snow+day+15.jpg?format=1500w", 'caption': 'The valley under snow'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1588482960242-ZRBAGFA605FV5BSPM6FH/Chateau+Snow+In+Spring?format=1500w", 'caption': 'Snow on the mountains in spring'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8ae931a3-3935-4f46-b742-e7d26cb6508a/Screenshot+2026-07-18+at+8.03.37+pm.png?format=1500w", 'caption': 'The château among the trees'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1bb9dccd-36dd-4f81-b830-959d7ca822dc/Screenshot+2026-08-15+at+2.33.37+pm.png?format=1500w", 'caption': 'A village bell tower'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/878fd78d-f725-46cf-9253-ed39d25e95c7/53.jpg?format=1500w", 'caption': 'A village street'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fca57c81-108b-4b2a-bbab-77cda1891874/The+Chateau+From+Afar+-+Chateau+de+Gudanes.JPG?format=1500w", 'caption': 'The château below the cliffs'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ade15820-1100-46e0-b369-548cf364c28b/Screenshot+2026-08-15+at+12.44.08+am.png?format=1500w", 'caption': 'A ruined castle'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/bb14466b-9cbb-461b-94f3-0f1f463f6924/Chateau+de+Gudanes+Spring.png?format=1500w", 'caption': 'The château in spring'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1588022376114-0SP20H7DFV3Y2L2LBEZE/Snow+day+14.jpg?format=1500w", 'caption': 'Snow on the peaks'}
   ]
 } %}
 
@@ -130,9 +185,9 @@
 
 <div class="g-band">
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1000w" alt="The restoration of a fresco, close up" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c9165a78-1300-47a7-b1c0-b46f4172bf44/Screenshot+2026-07-30+at+8.03.10+pm.png?format=1000w" alt="A bedroom, an old portrait above the bed" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7fabd381-88e6-481d-9380-00222dd920fa/Screenshot+2026-08-15+at+3.31.41+pm.png?format=1000w" alt="Flowers and candles on the table" loading="lazy">
   <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24c85ec2-72d4-45e6-9755-68ff10cce381/Screenshot+2026-08-14+at+11.53.22+pm.png?format=1000w" alt="The dining room" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c2998346-182b-476a-83cc-fefc2cad0bba/P1260363.jpeg?format=1000w" alt="The château above wildflowers, snow on the mountain" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/11875582-fd74-4541-b375-177df3985b05/Concert+By+Candelight+Image.png?format=1000w" alt="The château lit at dusk" loading="lazy">
 </div>
 
 

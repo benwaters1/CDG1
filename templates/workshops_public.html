@@ -8,7 +8,7 @@
 {% block title %}The Full Experience: Château Workshop Retreats{% endblock %}
 {% block description %}The full Gudanes experience: small-group retreats in a French château under restoration, with all meals and drinks, and a tour of the house. Three to seven nights.{% endblock %}
 {% block og_desc %}Workshop retreats at Château de Gudanes: all meals and drinks, and a tour of the house, a small group, and the house to yourselves.{% endblock %}
-{% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1200w{% endblock %}
+{% block og_image %}https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/64c3e06f-00b3-4c61-9f61-4b3476de1d30/Screenshot+2026-08-15+at+5.54.52+pm.png?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
 {%- from '_stay_or_workshop.html' import tx_flag -%}
@@ -25,7 +25,7 @@
    .net page — not the .com. Structure: choose, then the region, then each
    workshop in full with a sample day, then stay/arrival/inclusions. #}
 
-{% set WS_HERO = 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1500w' %}
+{% set WS_HERO = 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d1eac941-8c47-4513-8417-647b6cf77c16/Screenshot+2026-08-15+at+5.01.24+pm.png?format=2500w' %}
 
 <section class="g-hero">
   <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ WS_HERO }}" alt="Château Workshops">
@@ -76,11 +76,11 @@
   <div class="g-wscards">
     {% for w in workshops %}
     {% set WS_CARD_IMG = {
-      'Antique': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg",
-      'Artisan': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg",
-      'Noël':    "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/03ca0108-8c1e-423f-a790-84ed2b154fac/Chateau+de+Gudanes+In+Winter+2.png",
-      'Cooking': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG",
-      'Seven':   "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg"
+      'Antique': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fa0ac24f-4a8c-4140-8a2f-41dc5beb9b99/AB23770B-DF11-4893-95A0-C89825994C9A.jpg",
+      'Artisan': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b146f7d-b922-485d-a1db-87385a1c1e30/825819a7-e5b4-4509-be9d-6e44688f6857.JPG",
+      'Noël':    "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/48dc09e5-c623-4f0a-bd02-ed1b614f7e81/4764E339-9EE5-4DC8-9349-B87245BAC7FB.jpg",
+      'Cooking': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9df28121-271f-40e4-8b15-131a03f75991/Screenshot+2026-08-12+at+8.39.57+pm.png",
+      'Seven':   "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/IMG_4368.JPG"
     } %}
     {% set wp = namespace(u=None) %}
     {% for k, v in WS_CARD_IMG.items() %}{% if k in w['title'] %}{% set wp.u = v %}{% endif %}{% endfor %}
@@ -205,11 +205,11 @@
   {# The same photograph per atelier as the cards above. This map had bedrooms for the
      Cooking, Artisans and Seven-night ateliers (Chambre Bleue, bedroom 3, Chambre du Parc). #}
   {% set WS_PIC = {
-    'Antique': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w",
-    'Artisan': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w",
-    'Noël':    "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/03ca0108-8c1e-423f-a790-84ed2b154fac/Chateau+de+Gudanes+In+Winter+2.png?format=1000w",
-    'Cooking': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1000w",
-    'Seven':   "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1000w"
+    'Antique': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fa0ac24f-4a8c-4140-8a2f-41dc5beb9b99/AB23770B-DF11-4893-95A0-C89825994C9A.jpg",
+    'Artisan': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b146f7d-b922-485d-a1db-87385a1c1e30/825819a7-e5b4-4509-be9d-6e44688f6857.JPG",
+    'Noël':    "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/48dc09e5-c623-4f0a-bd02-ed1b614f7e81/4764E339-9EE5-4DC8-9349-B87245BAC7FB.jpg",
+    'Cooking': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9df28121-271f-40e4-8b15-131a03f75991/Screenshot+2026-08-12+at+8.39.57+pm.png",
+    'Seven':   "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/IMG_4368.JPG"
   } %}
 
   <p class="g-p" style="margin-top:calc(var(--s2)*-1)">Every date across the year, in one place. Choose a workshop above to narrow it.</p>
@@ -300,7 +300,7 @@
    mentioned it. Same voice as the nightly page. #}
 {# 1 Oct: "<h2 class="g-h2">À Table</h2>" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
-<div class="g-band"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d1eac941-8c47-4513-8417-647b6cf77c16/Screenshot+2026-08-15+at+5.01.24+pm.png?format=1500w" alt="Guests setting out into the valley" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/64c3e06f-00b3-4c61-9f61-4b3476de1d30/Screenshot+2026-08-15+at+5.54.52+pm.png?format=1000w" alt="Guests at the table together" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/355ed207-f7a3-4e62-b7ec-13d8dfaf09a8/Screenshot+2026-08-15+at+12.37.15+am.png?format=1500w" alt="A dish at the château table" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/a92dff93-ba4c-438a-8a7f-88a1f47fa97e/Screenshot+2026-08-14+at+11.53.43+pm.png?format=1000w" alt="Guests walking through the grounds" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d0c360a2-3609-44fe-9775-07ccf909ea3c/Screenshot+2026-07-30+at+7.55.27+pm.png?format=1000w" alt="Produce on the kitchen table" loading="lazy"></div>
+<div class="g-band"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/78356bc2-c168-42b2-b1b1-02d9660281c7/Screenshot+2026-08-15+at+12.34.25+am.png?format=1000w" alt="Spring vegetables, plated" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/35718cba-ae0d-4d2a-adc1-cace54a9e369/Screenshot+2026-08-12+at+8.40.54+pm.png?format=1000w" alt="In the salon, flowers on the table" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f9f1c0b6-db5b-403a-bb61-e33ac936819f/Screenshot+2026-07-22+at+1.29.44+pm.png?format=1000w" alt="Market produce on the table" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/82882b98-6d8d-4e43-a8dd-d483ea19aec8/Screenshot+2026-07-30+at+7.57.59+pm.png?format=1000w" alt="Fresh bread in a basket" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7fabd381-88e6-481d-9380-00222dd920fa/Screenshot+2026-08-15+at+3.31.41+pm.png?format=1000w" alt="Flowers and candles on the table" loading="lazy"></div>
 
 <!-- ============ LES SALLES DE BAINS ============ -->
 {# 1 Oct: ">Les Salles de Bains<" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
@@ -326,12 +326,15 @@
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/64c3e06f-00b3-4c61-9f61-4b3476de1d30/Screenshot+2026-08-15+at+5.54.52+pm.png?format=1000w" alt="Guests at the table together" loading="lazy"><figcaption>At the table together</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1786539831270-OCIZ2OFNTUC22Z6T9SMI/Screenshot%2B2026-08-12%2Bat%2B8.38.07%2Bpm.png?format=1000w" alt="The chef in the candlelit salon" loading="lazy"><figcaption>The chef, before dinner</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/0fba4375-e1f0-449b-ba58-d1a5d3a48069/Screenshot+2026-07-30+at+8.05.38+pm.png?format=1000w" alt="The table by candlelight" loading="lazy"><figcaption>Dinner by candlelight</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d1eac941-8c47-4513-8417-647b6cf77c16/Screenshot+2026-08-15+at+5.01.24+pm.png?format=1000w" alt="Guests setting out into the valley" loading="lazy"><figcaption>Setting out into the valley</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/a92dff93-ba4c-438a-8a7f-88a1f47fa97e/Screenshot+2026-08-14+at+11.53.43+pm.png?format=1000w" alt="Guests walking through the grounds" loading="lazy"><figcaption>Walking through the grounds</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/096e3877-6b97-4d5c-85c9-0daa1740052a/Screenshot+2026-08-15+at+2.33.18+pm.png?format=1000w" alt="Walking in the hills" loading="lazy"><figcaption>Walking in the hills</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/355ed207-f7a3-4e62-b7ec-13d8dfaf09a8/Screenshot+2026-08-15+at+12.37.15+am.png?format=1000w" alt="A dish at the château table" loading="lazy"><figcaption>From the kitchen</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/6d17b683-1688-4dad-8d5d-b0e75a6de675/Cre%CC%80me+Bru%CC%82le%CC%81e-7.jpg?format=1000w" alt="Crème brûlée" loading="lazy"><figcaption>Crème brûlée</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d0c360a2-3609-44fe-9775-07ccf909ea3c/Screenshot+2026-07-30+at+7.55.27+pm.png?format=1000w" alt="Produce on the kitchen table" loading="lazy"><figcaption>From the market</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6528360-4808-4dc3-82ca-28a9d2d22c81/Screenshot+2026-08-12+at+8.38.20+pm.png?format=1000w" alt="Lighting the candles in the salon" loading="lazy"><figcaption>Lighting the candles</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/5ab05774-1ec5-48e4-9811-e51b8fd7d720/Screenshot+2025-02-14+at+1.52.45+pm.png?format=1000w" alt="A tart and tomatoes from the market" loading="lazy"><figcaption>A tart and tomatoes</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/cf0358b6-3536-4ce5-812a-a17e640d8ed4/Screenshot+2026-07-30+at+7.58.56+pm.png?format=1000w" alt="A dessert from the château kitchen" loading="lazy"><figcaption>Dessert</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/5589cd5d-9fd8-4363-a8e8-1c7db5e8e8fb/VeronicaOlson_August2022_ChateaudeGudanes__2012.jpg?format=1000w" alt="Breakfast" loading="lazy"><figcaption>Breakfast</figcaption></figure></li>
   </ul>
 </div></section>
 

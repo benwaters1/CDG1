@@ -10975,3 +10975,26 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-ba + .g-ba{ margin-top: var(--s5); }
 /* two across (below 64rem), an odd count leaves one photograph alone: the last one runs the full width instead */
 @media (max-width: 63.99rem){ .g .g-gallery li:last-child:nth-child(odd){ grid-column: 1 / -1; } }
+
+/* 6 Oct - THE GALLERY reads like a contact sheet: three across on desktop, two on a phone, every photograph 4:3 (it was
+   two across with a fixed 16rem height, one across on a phone - 69 photographs made a page of endless scrolling). Each
+   section holds a multiple of six, so neither width leaves one alone on its last row. */
+.g .g-grid--gal{ display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+@media (min-width: 48rem){ .g .g-grid--gal{ grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 16px !important; } }
+.g .g-grid--gal > figure img{ height: auto !important; aspect-ratio: 4 / 3; }
+.g .g-grid--gal > :last-child:nth-child(odd){ grid-column: auto; }
+.g .g-grid--gal > :last-child:nth-child(odd) img{ aspect-ratio: 4 / 3; }
+.g .g-grid--gal figcaption{ margin-top: 6px; }
+
+/* 6 Oct - THE ROOM PAGE GALLERY: every photograph of the room in a grid, three or two across by count, 4:3 */
+.g .g-strip.g-roomgal{ display: grid !important; gap: 12px !important; grid-auto-flow: row !important; overflow: visible !important; }
+.g .g-strip.g-roomgal--c3{ grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+.g .g-strip.g-roomgal--c2{ grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+.g .g-strip.g-roomgal img{ width: 100% !important; height: auto !important; aspect-ratio: 4 / 3; object-fit: cover; }
+@media (max-width: 47.99rem){ .g .g-strip.g-roomgal--c3, .g .g-strip.g-roomgal--c2{ grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; }
+  .g .g-strip.g-roomgal--c3 > img:last-child:nth-child(odd){ grid-column: 1 / -1; } }
+
+/* 6 Oct - PHOTOGRAPH CREDITS (Wikimedia Commons photographs on In the Ariège): small, under the caption, linked; the
+   licences require the credit - never hide it. */
+.g .g-gallery figcaption .g-credit{ display: block; margin-top: 2px; font-style: normal; font-family: var(--sans, inherit); font-size: 11px; letter-spacing: .01em; color: var(--ink-2); opacity: .85; }
+.g .g-gallery figcaption .g-credit a{ color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }

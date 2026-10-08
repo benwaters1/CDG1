@@ -345,6 +345,12 @@ VEHICLE_TRANSFER_BUFFER_HOURS = 2
 # because a legal number can change and nobody should need a deploy for that.
 HOUSE_SETTING_DEFAULTS = {
     "house_guest_capacity": "15",
+    # Whether the house writes to anybody outside it. "1" on an existing
+    # deployment, because a global mute that arrives switched ON by a deploy
+    # is how a house silently stops confirming bookings -- the owner turns it
+    # off deliberately while getting ready, and the pages say so loudly while
+    # it is off.
+    "guest_mail_live": "1",
 }
 # Paid leave is EARNED, month by month, not granted in a lump on the 1st of
 # January. Somebody who works June to September has earned about ten days, not a
@@ -25375,6 +25381,71 @@ def reply_to_for(area):
     return None
 
 
+def house_mail_domains():
+    """The domains the house's own addresses sit on.
+
+    Worked out from what the house is configured with rather than written
+    down: a second list would go stale the first time a mailbox is added, and
+    going stale quietly is the whole failure this guards against.
+    """
+    found = set()
+    for address in (list(PUBLIC_CONTACT.values()) + list(MS_GRAPH_MAILBOXES)
+                    + [RESEND_REPLY_TO, RESEND_FROM, SMTP_FROM]):
+        parts = (address or "").strip().lower().rsplit("@", 1)
+        if len(parts) == 2 and parts[1]:
+            found.add(parts[1].strip(" >"))
+    return found
+
+
+def writes_outside_the_house(address):
+    """Whether this letter is going to somebody who is not the house.
+
+    A send-only subdomain counts as the house, and so does the bare domain
+    when only the subdomain is configured -- which is this deployment exactly:
+    mail goes out as send.chateaugudanes.com and the owner reads
+    accounts@chateaugudanes.com. Treating those as strangers would hold the
+    owner's own digest.
+    """
+    parts = (address or "").strip().lower().rsplit("@", 1)
+    if len(parts) != 2 or not parts[1]:
+        return True
+    domain = parts[1].strip(" >")
+    for ours in house_mail_domains():
+        if domain == ours or domain.endswith("." + ours) or ours.endswith("." + domain):
+            return False
+    return True
+
+
+def guest_mail_live():
+    """Whether the house is writing to anybody outside it yet.
+
+    Read per request rather than per letter: a job sending forty reminders
+    should ask once, and the background tick runs inside a request context of
+    its own for exactly this kind of reason.
+    """
+    if has_request_context():
+        cached = g.get("_guest_mail_live")
+        if cached is not None:
+            return cached
+    live = True
+    try:
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = 'guest_mail_live'").fetchone()
+        finally:
+            conn.close()
+        live = ((row["value"] if row else HOUSE_SETTING_DEFAULTS["guest_mail_live"])
+                or "1") != "0"
+    except Exception:
+        # Before the table exists, or a database that will not open: the
+        # safe answer is the one that does not silently stop the post.
+        live = True
+    if has_request_context():
+        g._guest_mail_live = live
+    return live
+
+
 def resend_enabled():
     return bool(RESEND_API_KEY and RESEND_FROM)
 
@@ -25928,6 +25999,29 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     # Filed whether it goes or not, and marked with which. "We wrote to them
     # and it bounced" is a different fact from "we never wrote", and the whole
     # point of keeping this is being able to tell somebody which happened.
+
+    # NOT LIVE YET, and held HERE for the same reason MAIL_REDIRECT_TO is: one
+    # door, two transports, and a rule kept anywhere else is a rule that stops
+    # applying the day somebody adds a job. The alternative was a list of nine
+    # automations to switch off by hand, which is tedious and goes stale the
+    # moment a tenth is written.
+    #
+    # Held rather than dropped, so going live sends nothing by surprise and
+    # nothing was lost. Credentials are exempt: keep=False is a password reset
+    # or a staff invitation, short-lived by design and addressed to the
+    # house's own people, and holding one locks somebody out.
+    if keep and writes_outside_the_house(to_address) and not guest_mail_live():
+        why = "the house is not writing to guests yet"
+        print(f"[email held — {why}] To: {to_address} | Subject: {subject}")
+        if report is not None:
+            report["why"] = ("Writing to guests is switched off until the house "
+                             "goes live.")
+        outbox_id = queue_undelivered(to_address, subject, body, ics_content,
+                                      ics_filename, why)
+        keep_guest_message(to_address, subject, body, outbox_id=outbox_id,
+                           failure=why, **filed)
+        return False
+
     if resend_enabled():
         # UNPACKED, never truth-tested: a bare `if` on a 2-tuple is true even
         # when the first item is False, so every refusal would report success.
@@ -76786,10 +76880,19 @@ def mail_log_list_view(conn, args):
         address = (r["to_address"] or "").strip().lower()
         r["type"] = (labels.get(r["template_key"]) or
                      ("Written by hand" if r["sent_by_user_id"] else "A letter of the house's own"))
-        r["audience"] = ("The house" if address in house else
-                         "A colleague" if address in staff else
-                         "A guest" if (r["kept"] == "correspondence" or r["about_category"]
-                                       or address in profiles) else "Somebody else")
+        # Filed against a booking, or an address the house holds a guest
+        # profile for: a guest letter whatever address it went to, so a test
+        # booking made with one of the house's own inboxes is still one.
+        #
+        # Then the house's own DOMAIN rather than the single address configured
+        # today -- which filed twelve notes to the owner under "Somebody else"
+        # the day the house moved from owner@ to accounts@, and would do it
+        # again for every inbox it ever retires.
+        r["audience"] = ("A guest" if (r["kept"] == "correspondence" or address in profiles)
+                         else "The house" if (address in house
+                                              or not writes_outside_the_house(address))
+                         else "A colleague" if address in staff
+                         else "A guest" if r["about_category"] else "Somebody else")
         r["guest_id"] = profiles.get(address)
         # A letter held and sent later is sent, and says when.
         if r["status"] == "held" and r["resent_at"]:
@@ -85880,8 +85983,23 @@ def admin_automation():
         "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
     watch_routing = watch_task_assignees(conn)
     conn.close()
+    # How many letters this has held, so the switch says what it is doing
+    # rather than only that it is on. A control whose effect is invisible is
+    # one somebody leaves on by accident.
+    held_by_switch = conn2 = None
+    try:
+        conn2 = get_db()
+        held_by_switch = conn2.execute(
+            "SELECT COUNT(*) AS n FROM email_outbox WHERE sent_at IS NULL "
+            "AND reason LIKE '%not writing to guests%'").fetchone()["n"]
+    except sqlite3.OperationalError:
+        held_by_switch = 0
+    finally:
+        if conn2 is not None:
+            conn2.close()
     return render_template(
         "admin_automation.html", settings=settings, last_runs=last_runs, job_labels=AUTOMATION_JOB_LABELS,
+        guest_mail_live=guest_mail_live(), held_by_switch=held_by_switch,
         # Anything in the registry the page does not write out by hand, so
         # a job registered tomorrow gets its switch the same day instead of
         # running unstoppably until somebody remembers to edit a template.
@@ -85919,6 +86037,9 @@ def update_automation_settings():
         "automation_campaign_triggers_enabled": "1" if request.form.get("automation_campaign_triggers_enabled") else "0",
         "automation_stale_shift_enabled": "1" if request.form.get("automation_stale_shift_enabled") else "0",
         "automation_backup_email_enabled": "1" if request.form.get("automation_backup_email_enabled") else "0",
+        # Not a job: the one switch that holds every letter to anybody outside
+        # the house, whichever job wrote it.
+        "guest_mail_live": "1" if request.form.get("guest_mail_live") else "0",
     })
     interval_raw = request.form.get("automation_ical_sync_interval_hours", "").strip()
     try:

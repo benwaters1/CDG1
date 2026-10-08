@@ -22,7 +22,7 @@ What this holds:
 """
 import csv
 import io
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, db, visible_text, clients
 import _harness
@@ -184,6 +184,40 @@ def _run(s):
     s.check("counted by who it went to",
             counts.get("A guest") == 3 and counts.get("The house") == 1
             and counts.get("A colleague") == 1, detail=str(counts))
+    # AN INBOX THE HOUSE HAS RETIRED IS STILL THE HOUSE. The audience was
+    # decided against the one owner address configured today, so the day the
+    # house moved from owner@ to accounts@, twelve notes it had written to
+    # itself were filed under "Somebody else" -- a catch-all chip standing for
+    # twelve letters to the owner, which is worse than no chip at all.
+    conn = db()
+    conn.execute(
+        "INSERT INTO mail_log (to_address, subject, status, kept, created_at) "
+        "VALUES (?, ?, 'sent', 'here', ?)",
+        ("owner@chateaugudanes.com", TAG + " Retired inbox",
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    # The owner address is accounts@ for this check, which is what the house
+    # actually moved to. Without that, owner@ IS the configured address here
+    # and the check passes for the wrong reason -- a control found exactly
+    # that, and it would have gone on reading green while production filed
+    # twelve letters to the owner under "Somebody else".
+    was_owner = m.owner_email
+    try:
+        m.owner_email = lambda _conn: "accounts@chateaugudanes.com"
+        retired = m.mail_log_list_view(conn, {"q": TAG + " Retired"})
+    finally:
+        m.owner_email = was_owner
+    conn.close()
+    s.check("a letter to an inbox the house no longer uses is still the house",
+            retired["rows"] and retired["rows"][0]["audience"] == "The house",
+            detail=str([(r["to_address"], r["audience"]) for r in retired["rows"]]))
+    # Taken out again: the export check below counts what the view holds, and
+    # a fixture left lying about would move a number that is being asserted.
+    conn = db()
+    conn.execute("DELETE FROM mail_log WHERE subject = ?", (TAG + " Retired inbox",))
+    conn.commit()
+    conn.close()
+
     conn = db()
     found = m.mail_log_list_view(conn, {"q": COLLEAGUE})
     conn.close()

@@ -4,8 +4,16 @@
     photograph until room photos are uploaded in the admin (an uploaded photo always wins).
     Booking.com images only load with their signature (?k=...); the app's photo mirror should hold them too
     (LAUNCH_CHECKLIST: add cf.bstatic.com to the mirror). -#}
-{%- set _BK = 'https://cf.bstatic.com/xdata/images/hotel/max1024x768/' -%}
+{#- 6 Oct: 2048px (Booking.com serves the same photograph larger with the same signature; 1024 was soft across a room
+    page) - the small room cards ask for the 1024 one. -#}
+{%- set _BK = 'https://cf.bstatic.com/xdata/images/hotel/max2048x2048/' -%}
+{#- 6 Oct (owner): the King Room is the four-poster bed that is not gold - the château's own photographs (none on
+    Booking.com). -#}
 {%- set ROOM_PHOTOS = {
+  'The King Room': [
+    ('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/393b1bed-532a-41a0-8000-c964f7fec141/Screenshot+2023-08-23+at+2.28.37+pm.png?format=2500w', 'The King Room, the four-poster bed'),
+    ('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/b2a8b7f3-150f-42cf-b311-ea8901270793/Screenshot+2023-08-23+at+2.28.50+pm.png?format=1500w', 'The King Room, the four-poster and its canopy'),
+  ],
   'The Twin Room': [
     (_BK ~ '921670896.jpg?k=a988f75d70a0bf03bc5a97dd99b3ebc692d77eabc0820f88a3245d44e7a49f28&o=', 'The Twin Room'),
     (_BK ~ '921671142.jpg?k=0463664adc5e7567227c32258c08ab5670be8c953791d63ad7c98e8f075ae85e&o=', 'The two beds in the Twin Room'),
@@ -22,13 +30,22 @@
     (_BK ~ '903132525.jpg?k=b560290a40931fdc0c28b32329c5485e9a48ecbe4450795bb3fa2ec0ecdbd9a1&o=', 'The Gold Suite, the bed and a table'),
   ],
   'The Family Suite': [
+    (_BK ~ '799432953.jpg?k=bfe46237a062c76163feac464aa8a8aa65e4f2d55d0bebc5842f0b5f785c5fa6&o=', 'The second bedroom, Family Suite'),
     (_BK ~ '799432918.jpg?k=92504ccbbb71665f6edb7454ec16d877018713a9f9e603dcb62aa3bb166f0a91&o=', 'The Family Suite'),
     (_BK ~ '799432864.jpg?k=ebda5e5045693aab2c11f0a9b643d8bc01db6f0247640660e15f2125e1b1f41d&o=', 'The large bed in the Family Suite'),
     (_BK ~ '921671186.jpg?k=a5670a5a51ac1bf53f853d25ff405ae439028dc711265e0afa7b4bf116e3c9f6&o=', 'A bedroom of the Family Suite'),
     (_BK ~ '790004185.jpg?k=c368a1bd82adf70e3d26e3629c4646c5781ef052ced007424000f7c7cd375c9f&o=', 'A bed against the floral wallpaper, Family Suite'),
     (_BK ~ '799483474.jpg?k=6048ecc7cc013b2674bb20fa1d9d081920cd74c9a993ca30522fd4be5416eb00&o=', 'Chairs and a table by the windows, Family Suite'),
-    (_BK ~ '799432953.jpg?k=bfe46237a062c76163feac464aa8a8aa65e4f2d55d0bebc5842f0b5f785c5fa6&o=', 'The second bedroom, Family Suite'),
   ],
 } -%}
+{#- 6 Oct: the château's own photographs of the same rooms, matched by eye to the Booking.com ones (the valet stand and
+    red cushions of the Queen Room; the gold four-poster of the Gold Suite; the red velvet bed under the portrait and the
+    floral wallpaper of the Family Suite's two bedrooms). The King Room's own are above. -#}
+{%- set ROOM_EXTRA = {
+  'The Twin Room': [('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1691467283089-Z9QX59G01KY8N8VFBTZG/Chambre+Jeanne+d%27Arc.PNG?format=1500w', 'The Twin Room, the tapestry above the beds'), ('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f48b527d-f987-44e5-b612-bd5cedb2ea5b/Screenshot+2026-07-31+at+2.15.48+pm.png?format=1500w', 'The Twin Room by candlelight')],
+  'The Queen Room': [('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba4114a3-c057-4df8-8fd9-c080ebc6fff2/Chambre+Olympe+de+Gouges+2.jpg?format=1500w', 'The Queen Room')],
+  'The Gold Suite': [('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg?format=1500w', 'The Gold Suite, the four-poster bed')],
+  'The Family Suite': [('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c9165a78-1300-47a7-b1c0-b46f4172bf44/Screenshot+2026-07-30+at+8.03.10+pm.png?format=1500w', 'The Family Suite, the blue bedroom'), ('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9d1b8c99-13c5-4bc9-9a69-9a32a4c1eb8c/Screenshot+2026-07-20+at+2.31.12+pm.png?format=1500w', 'The Family Suite, the floral bedroom'), ('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c90f49a0-5f8f-489f-8d51-2f3ea727c57a/Screenshot+2026-07-30+at+7.54.08+pm.png?format=1500w', 'The floral bedroom of the Family Suite, from the window')],
+} -%}
 {#- A bathroom, for strips that need one (the bathrooms are downstairs; these are not room-specific). -#}
-{%- set BATH_PHOTO = (_BK ~ '799433081.jpg?k=10f484ed1a3138706d9d005e29e3187c577281eeff9cbfb7cf598085565fb638&o=', 'One of the bathrooms') -%}
+{%- set BATH_PHOTO = (_BK ~ '799433081.jpg?k=10f484ed1a3138706d9d005e29e3187c577281eeff9cbfb7cf598085565fb638&o=', 'One of the ground-floor bathrooms') -%}

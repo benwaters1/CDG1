@@ -10,6 +10,31 @@
 
 <form method="post" action="{{ url_for('update_automation_settings') }}" class="detail-card" style="max-width:680px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  {# ONE SWITCH, at the top, because the alternative was telling somebody to
+     find nine jobs in the list below and untick each -- which is tedious and
+     goes stale the moment a tenth is written. This is held in send_email, the
+     one door every letter goes through, so no job can escape it. #}
+  <div class="detail-card not-live {{ 'not-live--off' if not guest_mail_live }}"
+       style="margin:0 0 18px;">
+    <label class="bc-tick" style="font-weight:600;">
+      <input type="checkbox" name="guest_mail_live" {{ 'checked' if guest_mail_live }}>
+      <span>Write to guests</span>
+    </label>
+    {% if guest_mail_live %}
+    <p class="upload-hint">On. Everything below that writes to a guest will
+      actually reach them. Untick this while you are still getting ready and
+      every letter to anybody outside the house waits in Held Email instead —
+      whichever job wrote it, including any added later.</p>
+    {% else %}
+    <p class="upload-hint"><strong>Off — nothing is being written to guests.</strong>
+      Letters to anybody outside the house are being held, not thrown away, so
+      switching this back on sends nothing by surprise.
+      {% if held_by_switch %}<a href="{{ url_for('admin_email_outbox') }}">{{ held_by_switch }}
+      waiting because of this.</a>{% endif %}
+      Passwords and staff invitations still go.</p>
+    {% endif %}
+  </div>
   <div class="detail-grid" style="grid-template-columns:1fr; gap:16px;">
 
     {% if generated_jobs %}

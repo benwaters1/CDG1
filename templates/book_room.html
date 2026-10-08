@@ -1,7 +1,7 @@
 {% extends "public_base.html" %}
 {% from '_payment_safety.html' import payment_safety %}
 {% from '_country.html' import country_field %}
-{% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO %}
+{% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO, ROOM_EXTRA %}
 {% from '_phone.html' import phone_field %}
 {% from '_room_copy.html' import room_copy, room_name, room_note %}
 {% set crumbs = [('Stay', url_for('book_rooms')), (room_name(room['name']), None)] %}
@@ -13,7 +13,7 @@
    general sentence for a room with no rate on it yet. #}
 {% block description %}{{ room_name(room['name']) }} at Château de Gudanes, a Class I monument under restoration in the Pyrénées.{% if room['max_occupancy'] %} Sleeps {{ room['max_occupancy'] }}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}.{% elif room['price_per_night'] %} From &euro;{{ room['price_per_night']|int }} a night.{% endif %} Breakfast included.{% endblock %}
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
-{% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
+{% block og_image %}https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba4114a3-c057-4df8-8fd9-c080ebc6fff2/Chambre+Olympe+de+Gouges+2.jpg?format=1200w{% endblock %}
 {% set sticky_bar = 'none' %}
 {% block content %}
 {% from '_before.html' import terms_upfront %}
@@ -32,13 +32,14 @@
   {# A room page selling a night at this price cannot be a bare form. If no
      photo has been uploaded for this room yet, fall back to the château's own
      photography rather than showing nothing at all. #}
+  {#- never another room's bedroom under this room's name: the château instead -#}
   {% set ROOM_FALLBACKS = [
-    'https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/edc68ec5-2523-4935-8d27-ad2bbda74d96/day_1_19.jpg?format=1500w',
-    'https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w',
-    'https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/71e505e9-4a57-4bd6-9ed7-96530cbaa16b/day_1_18.jpg?format=1500w'
+    'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aabd8580-5420-43e7-92c9-779b82294ee3/home-7.jpg?format=1500w',
+    'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c2998346-182b-476a-83cc-fefc2cad0bba/P1260363.jpeg?format=1500w',
+    'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7a36c33c-f53e-4ea3-976b-14191b0cbdc5/Screenshot%2B2026-08-15%2Bat%2B3.08.35%2Bpm.png?format=1500w'
   ] %}
-  <img loading="eager" fetchpriority="high" decoding="async" class="g-roomhero"
-       src="{% set _rp = ROOM_PHOTOS.get(room_name(room['name'])) %}{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% elif _rp %}{{ _rp[0][0] }}{% elif room_name(room['name']) == 'The King Room' %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w{% else %}{{ ROOM_FALLBACKS[room['id'] % 3] }}{% endif %}"
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-roomhero"{% if room_name(room['name']) == 'The King Room' %} style="object-position: 22% 70%"{% endif %}
+       src="{% set _rp = ROOM_PHOTOS.get(room_name(room['name'])) %}{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% elif _rp %}{{ _rp[0][0] }}{% else %}{{ ROOM_FALLBACKS[room['id'] % 3] }}{% endif %}"
        alt="{{ room_name(room['name']) }}">
 
   <div style="padding:clamp(1.25rem,4vw,2rem) 0 0;">
@@ -72,15 +73,22 @@
     <p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Choose your dates</a></p>
   </div>
 
-  <div class="g-strip">
+  {#- 6 Oct (owner: "make sure the bedroom ones are correct and they show them well"): every photograph of the room, not
+      three - its Booking.com ones, the château's own of the same room, one of the ground-floor bathrooms - in a grid
+      sized to the count (three across when it divides by three, two when it divides by two) so none sits alone. -#}
+  {%- set _rn = room_name(room['name']) -%}
+  {%- set _rg0 = (ROOM_PHOTOS.get(_rn, [])[1:] + ROOM_EXTRA.get(_rn, [])) if ROOM_PHOTOS.get(_rn) else [] -%}
+  {#- the bathroom photograph joins unless it would leave one photograph alone on its row -#}
+  {%- set _rg = (_rg0 + [BATH_PHOTO]) if (_rg0 and ((_rg0|length + 1) % 2 == 0 or (_rg0|length + 1) % 3 == 0)) else _rg0 -%}
+  {%- set _rgn = (gallery_photos|length) if gallery_photos else (_rg|length if _rg else 4) -%}
+  <div class="g-strip g-roomgal g-roomgal--c{{ 3 if _rgn % 3 == 0 else (2 if _rgn % 2 == 0 else 3) }}">
     {% if gallery_photos %}
       {% for p in gallery_photos %}
       <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt="{{ room_name(room['name']) }}" loading="lazy">
       {% endfor %}
     {% elif ROOM_PHOTOS.get(room_name(room['name'])) %}
       {#- 5 Oct: this room's own photographs (Booking.com), then one of the bathrooms downstairs. -#}
-      {% for _u, _a in ROOM_PHOTOS[room_name(room['name'])][1:4] %}<img src="{{ _u }}" alt="{{ _a }}" loading="lazy">{% endfor %}
-      <img src="{{ BATH_PHOTO[0] }}" alt="{{ BATH_PHOTO[1] }}" loading="lazy">
+      {% for _u, _a in _rg %}<img src="{{ _u }}" alt="{{ _a }}" loading="lazy">{% endfor %}
     {% else %}
       {# Until room photography is uploaded, show the château: the bathrooms
          guests actually use, the dining room, the gardens. #}
