@@ -1,0 +1,46 @@
+{#
+  The pager under a long list.
+
+  Used as {% with lv = <the dict from list_view(), through list_page()> %}
+          {% include "_list_pager.html" %}{% endwith %}
+
+  Like the toolbar above it, every control is a plain link, so a page of a
+  filtered list is a URL that can be bookmarked or sent to somebody. No
+  JavaScript.
+
+  `keep` carries the rest of the query string -- the search, the chips, the
+  sort, and anything the page owns -- so turning the page never quietly drops
+  a filter. `page` itself is dropped and set again, or every link would
+  accumulate the one before it.
+
+  It draws nothing when everything fits on one page: a pager under a list of
+  six is furniture, and the count is already in the toolbar.
+#}
+{% if lv.pages and lv.pages > 1 %}
+{% set keep = request.args.to_dict() %}
+{% set _ = keep.pop('page', None) %}
+<nav class="list-pager" aria-label="Pages">
+  <p class="list-pager__count">
+    Showing {{ lv.page_from }}&ndash;{{ lv.page_to }} of {{ lv.shown }}
+  </p>
+  <p class="list-pager__links">
+    {% if lv.page > 1 %}
+    <a class="btn-mini btn-ghost"
+       href="{{ url_for(request.endpoint, page=lv.page - 1, **dict(keep, **(request.view_args or {}))) }}"
+       rel="prev">&larr; Previous</a>
+    {% else %}
+    <span class="btn-mini btn-ghost" aria-disabled="true">&larr; Previous</span>
+    {% endif %}
+
+    <span class="list-pager__where">Page {{ lv.page }} of {{ lv.pages }}</span>
+
+    {% if lv.page < lv.pages %}
+    <a class="btn-mini btn-ghost"
+       href="{{ url_for(request.endpoint, page=lv.page + 1, **dict(keep, **(request.view_args or {}))) }}"
+       rel="next">Next &rarr;</a>
+    {% else %}
+    <span class="btn-mini btn-ghost" aria-disabled="true">Next &rarr;</span>
+    {% endif %}
+  </p>
+</nav>
+{% endif %}

@@ -91,12 +91,24 @@
 <h2 class="section-heading">Everything Booking.com has sent</h2>
 {% include "_list_toolbar.html" %}
 
+{# The form lives OUTSIDE the list on purpose: every message already carries
+   its own "Answered" form and its reply form, and a form cannot contain
+   another. The checkboxes join this one by its id, which is what admin_bookings
+   does with a script -- the same effect here without needing one, so ticking
+   and clearing works with javascript off like the rest of the toolbar. #}
+<form id="bc-bulk" method="post" action="{{ url_for('booking_com_answered_many') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+
 {% if not rows %}
   <div class="empty-state">
     {% if lv.filtered %}Nothing matches that. <a href="{{ url_for('management_booking_com') }}">Show all {{ lv.total }}</a>
     {% else %}Nothing from Booking.com yet.{% endif %}
   </div>
 {% else %}
+  {# Whether anything on THIS page can be ticked. A bar with a button
+     that cannot act on anything is furniture. #}
+  {% set tick = namespace(any=false) %}
   {% for r in rows %}
   <div class="detail-card bc-mail {{ 'is-waiting' if r['id'] in waiting_ids }}" id="m{{ r['id'] }}" style="margin-bottom:10px;">
     <div class="bc-head">
@@ -108,6 +120,13 @@
       </div>
       <span class="upload-hint">{{ r['received_at']|house_when }}</span>
     </div>
+    {% if r['kind'] == 'message' and not (r['handled_at'] or r['replied_at']) %}
+    {% set tick.any = true %}
+    <label class="bc-tick">
+      <input type="checkbox" name="mail_ids" value="{{ r['id'] }}" form="bc-bulk">
+      <span>Mark this one answered</span>
+    </label>
+    {% endif %}
     <strong class="bc-subject">{{ r['subject'] or '(no subject)' }}</strong>
 
     {# What the email does not say about the stay, the booking on record may:
@@ -190,6 +209,15 @@
     {% endif %}
   </div>
   {% endfor %}
+  {% if tick.any %}
+  <div class="bc-bulkbar">
+    <button type="submit" form="bc-bulk" class="btn-mini btn-ghost">
+      Mark everything ticked as answered</button>
+    <span class="upload-hint">Ticking is for the ones answered in Booking.com
+      itself. It says afterwards what it could not do, and why.</span>
+  </div>
+  {% endif %}
+  {% include "_list_pager.html" %}
 {% endif %}
 
 {# ---- adding emails by hand ---------------------------------------------- #}

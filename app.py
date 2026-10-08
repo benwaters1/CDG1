@@ -7933,7 +7933,8 @@ NAV_AREAS = {
         "restore_email_template_revision", "test_email_template",
         # Booking.com's email, read into the site.
         "management_booking_com", "set_booking_com_mailbox", "upload_booking_com_email",
-        "booking_com_answered", "reply_booking_com_message",
+        "booking_com_answered", "booking_com_answered_many",
+        "reply_booking_com_message",
         "allow_texting_number", "management_texting", "run_checkin_texts_now",
         "save_checkin_text", "stop_texting_number",
         # Pages that had no area at all until now, so they were
@@ -10905,6 +10906,49 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
         "filtered": bool(q or explicit),
         "defaulted": not (q or explicit) and len(visible) < len(rows),
     }
+
+
+# Fifty rows is about a screen and a half of a dense list, and small enough
+# that a page carrying a message body each stays a page rather than a download.
+LIST_PAGE_SIZE = 50
+
+
+def list_page(lv, args, per_page=LIST_PAGE_SIZE):
+    """One page of a list_view's rows, and what a pager needs to draw itself.
+
+    Takes the dict list_view returned and narrows its `rows` in place, so a
+    template that already renders `lv.rows` needs nothing changed but the
+    include. `shown` is left alone on purpose -- it is the filtered total, and
+    "Showing 51-100 of 312" is the sentence that stops a page of fifty reading
+    as the whole list.
+
+    THE PAGE NUMBER IS CLAMPED, NEVER REFUSED. A bookmark to page 7 of a list
+    that has since been dealt with down to two pages is somebody returning to
+    work they half finished; answering 404 for it would be technically correct
+    and useless. Rubbish in the parameter lands on page one for the same
+    reason.
+
+    Filters are not touched here. The toolbar already drops `page` from the
+    arguments it keeps, so changing a filter starts again at the beginning
+    rather than landing on a page that no longer exists.
+    """
+    rows = lv["rows"]
+    total = len(rows)
+    per_page = max(1, int(per_page or LIST_PAGE_SIZE))
+    pages = max(1, -(-total // per_page))
+    try:
+        page = int((args or {}).get("page") or 1)
+    except (TypeError, ValueError):
+        page = 1
+    page = min(max(page, 1), pages)
+    start = (page - 1) * per_page
+    lv["rows"] = rows[start:start + per_page]
+    lv["page"] = page
+    lv["pages"] = pages
+    lv["per_page"] = per_page
+    lv["page_from"] = start + 1 if total else 0
+    lv["page_to"] = min(start + per_page, total)
+    return lv
 
 
 # ---------------------------------------------------------------------------
@@ -84609,10 +84653,17 @@ def management_booking_com():
                   order=["Waiting for an answer", "Answered", "Past the reply window"],
                   labels={}, hide_empty=True),
         ],
+        # Oldest first is not decoration here: newest first is for glancing at
+        # what has just come in, and a backlog is worked from the other end.
         sorts=[sort_option("newest", "Newest first", lambda r: r["received_at"] or "", reverse=True),
+               sort_option("oldest", "Oldest first", lambda r: r["received_at"] or "~"),
                sort_option("guest", "Guest", lambda r: (r["guest_name"] or "~").lower())],
         default_sort="newest",
     )
+    # Every message here renders its body and a reply box, so this is the
+    # first list in the house where drawing all of it is the problem rather
+    # than the filtering. A busy property takes hundreds of these.
+    list_page(lv, request.args)
     stays = {r["reservation_number"]: r for r in reservations}
     return render_template(
         "management_booking_com.html", rows=lv["rows"], lv=lv, kinds=OTA_KINDS,
@@ -84681,24 +84732,77 @@ def upload_booking_com_email():
     return redirect(url_for("management_booking_com"))
 
 
+def mark_booking_com_answered(conn, mail_id, user):
+    """Take one Booking.com message off the list, answered elsewhere.
+
+    BOTH BUTTONS COME THROUGH HERE, the single one and the bulk one, because
+    a bulk action that is a loop over something smaller than the whole action
+    quietly does less than the single one -- which is how declining ten
+    bookings together worked the waitlist not at all.
+
+    Answers (label, reason): reason None when it worked, and the label is
+    what the caller NAMES in its message, because a count tells somebody that
+    four were skipped and not which four.
+    """
+    row = conn.execute(
+        "SELECT id, subject, guest_name, handled_at FROM ota_mail "
+        "WHERE id = ? AND kind = 'message'", (mail_id,)).fetchone()
+    if not row:
+        return None, "there is no message with that number"
+    label = (row["guest_name"] or row["subject"] or "").strip() or f"message {mail_id}"
+    # Not an error, but not a success either: saying "marked 10" when one was
+    # already done overstates what this run did.
+    if row["handled_at"]:
+        return label, "already marked as answered"
+    conn.execute("UPDATE ota_mail SET handled_at = ?, handled_by = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat(),
+                  user["id"] if user else None, mail_id))
+    log_audit(conn, "booking_com_message_answered", target=str(mail_id))
+    return label, None
+
+
 @app.route("/management/booking-com/<int:mail_id>/answered", methods=["POST"])
 @owner_required
 def booking_com_answered(mail_id):
     """Answered somewhere else -- the extranet, the Pulse app -- so off the list."""
     conn = get_db()
-    row = conn.execute("SELECT id FROM ota_mail WHERE id = ? AND kind = 'message'",
-                       (mail_id,)).fetchone()
-    if not row:
+    label, why = mark_booking_com_answered(conn, mail_id, current_user())
+    if label is None:
         conn.close()
         abort(404)
-    user = current_user()
-    conn.execute("UPDATE ota_mail SET handled_at = ?, handled_by = ? WHERE id = ?",
-                 (datetime.now(timezone.utc).isoformat(), user["id"] if user else None, mail_id))
-    log_audit(conn, "booking_com_message_answered", target=str(mail_id))
     conn.commit()
     conn.close()
-    flash("Marked as answered.", "success")
+    if why:
+        flash(f"That one was {why}.", "error")
+    else:
+        flash("Marked as answered.", "success")
     return redirect(url_for("management_booking_com") + f"#m{mail_id}")
+
+
+@app.route("/management/booking-com/answered", methods=["POST"])
+@owner_required
+def booking_com_answered_many():
+    """The same thing, for everything ticked.
+
+    Hundreds of these arrive and most want no reply. Clearing them one at a
+    time is how a list stops being looked at, and a list nobody opens is worth
+    nothing -- which is the failure the owner home guards against from the
+    other side.
+    """
+    chosen = [i for i in request.form.getlist("mail_ids") if i.isdigit()]
+    conn = get_db()
+    user = current_user()
+    done, skipped = 0, []
+    for raw in chosen:
+        label, why = mark_booking_com_answered(conn, int(raw), user)
+        if why:
+            skipped.append((label or f"message {raw}", why))
+        else:
+            done += 1
+    conn.commit()
+    conn.close()
+    flash(*bulk_message("Marked", "message", done, skipped))
+    return redirect(url_for("management_booking_com"))
 
 
 @app.route("/management/booking-com/<int:mail_id>/reply", methods=["POST"])

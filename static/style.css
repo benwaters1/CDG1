@@ -1797,6 +1797,25 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 .list-sort .field-label{ margin:0; white-space:nowrap; }
 .list-sort select{ margin:0; width:auto; }
 
+/* Ticking a Booking.com message, and the one button that clears them. */
+.bc-tick{ display:flex; gap:7px; align-items:center; margin:6px 0 0; font-size:.9rem; }
+.bc-tick input{ margin:0; }
+.bc-bulkbar{
+  display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:12px 0 0;
+}
+
+/* The pager under a long list. It mirrors .list-toolbar above the list, and
+   wraps to two rows on a phone rather than pushing the page sideways -- the
+   count and the controls are separate blocks for exactly that. */
+.list-pager{
+  display:flex; gap:12px; align-items:center; flex-wrap:wrap;
+  justify-content:space-between; margin:14px 0 4px;
+}
+.list-pager__count{ margin:0; color:var(--ink-soft); font-size:.92rem; }
+.list-pager__links{ display:flex; gap:8px; align-items:center; margin:0; flex-wrap:wrap; }
+.list-pager__where{ color:var(--ink-soft); font-size:.92rem; white-space:nowrap; }
+.list-pager [aria-disabled="true"]{ opacity:.45; cursor:default; }
+
 .facet-row{ display:flex; gap:7px; align-items:center; flex-wrap:wrap; margin:0 0 9px; }
 .facet-label{
   font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;

@@ -1095,6 +1095,120 @@ def _run(s, oc, ec, owner, emp, conn, room):
     s.check("and that a security email is never kept",
             "such as a sign-in code, is never kept at all" in notice)
 
+    # ------------------------------------------------------------------
+    s.section("A list long enough that drawing all of it is the problem")
+    # Every message here renders its body and its reply box, so a busy
+    # property's few hundred is a few hundred emails in one document. The
+    # toolbar has dropped a `page` parameter from the arguments it keeps since
+    # the day it was written, for a pager that did not exist until now.
+    MANY = m.LIST_PAGE_SIZE + 5
+    for i in range(MANY):
+        conn.execute(
+            """INSERT INTO ota_mail (channel, source, source_id, received_at, kind,
+                 subject, from_booking_com, created_at)
+               VALUES ('booking.com', 'test', ?, ?, 'message', ?, 1, ?)""",
+            (_mid("pg%d" % i), _ago(minutes=i + 1), "ZZBCPAGE %d" % i,
+             _ago(minutes=i + 1)))
+    conn.commit()
+
+    def _drawn(text):
+        return text.count("detail-card bc-mail")
+
+    def _page(n=None):
+        url = "/management/booking-com?q=ZZBCPAGE"
+        return oc.get(url + ("&page=%d" % n if n else "")).get_data(as_text=True)
+
+    one = _page()
+    s.check("one page's worth is drawn, not the lot",
+            _drawn(one) == m.LIST_PAGE_SIZE,
+            detail="%d drawn, %d matched" % (_drawn(one), MANY))
+    s.check("and it says so, so fifty does not read as all of them",
+            "Showing 1&ndash;%d of %d" % (m.LIST_PAGE_SIZE, MANY) in one,
+            detail="a page of fifty with no count is a list that looks finished")
+    two = _page(2)
+    s.check("the rest are on the next page", _drawn(two) == MANY - m.LIST_PAGE_SIZE,
+            detail=str(_drawn(two)))
+    # THE PAGER'S OWN LINK, not the page. Searching the whole document for the
+    # query passed with the link stripped bare, because the toolbar's hidden
+    # search field carries it too -- the control found that, not the reading.
+    nxt = re.search(r'href="([^"]*)"[^>]*rel="next"', one)
+    s.check("and turning the page keeps the search on it",
+            bool(nxt) and "q=ZZBCPAGE" in nxt.group(1) and "page=2" in nxt.group(1),
+            detail=(nxt.group(1) if nxt else "there is no next link"))
+    s.check("a page that no longer exists lands on the last one rather than a 404",
+            _drawn(_page(99)) == MANY - m.LIST_PAGE_SIZE,
+            detail="a bookmark into work somebody half finished")
+    s.check("and rubbish in the parameter lands on the first",
+            _drawn(oc.get("/management/booking-com?q=ZZBCPAGE&page=nonsense")
+                     .get_data(as_text=True)) == m.LIST_PAGE_SIZE)
+    s.check("nothing is drawn twice across the two pages",
+            not (set(re.findall(r"ZZBCPAGE \d+", one))
+                 & set(re.findall(r"ZZBCPAGE \d+", two))),
+            detail="an off-by-one in the slice repeats or skips a row, and "
+                   "either way somebody deals with the wrong message")
+
+    # ------------------------------------------------------------------
+    s.section("And clearing them many at a time")
+    # A bulk action must be the same action done many times, so both buttons
+    # go through mark_booking_com_answered -- anything added to the single
+    # route would otherwise never happen in bulk. And it must say what it did
+    # NOT do: ten ticked and six done must never read as finished.
+    ids = [r["id"] for r in conn.execute(
+        "SELECT id FROM ota_mail WHERE subject LIKE 'ZZBCPAGE%' ORDER BY id LIMIT 3")]
+    r = oc.post("/management/booking-com/answered",
+                data={"mail_ids": [str(i) for i in ids]}, follow_redirects=True)
+    said = r.get_data(as_text=True)
+    marked = conn.execute(
+        "SELECT COUNT(*) FROM ota_mail WHERE handled_at IS NOT NULL AND id IN (%s)"
+        % ",".join("?" * len(ids)), ids).fetchone()[0]
+    s.check("every one ticked is marked", marked == 3, detail="%d of 3" % marked)
+    s.check("and it says what it did", "Marked 3 messages" in said, detail=said[:200])
+    s.check("the audit says who, for each of them",
+            conn.execute(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'booking_com_message_answered' "
+                "AND target IN (%s)" % ",".join("?" * len(ids)),
+                [str(i) for i in ids]).fetchone()[0] == 3,
+            detail="the single button logs one, so the bulk one must log each")
+
+    r2 = oc.post("/management/booking-com/answered",
+                 data={"mail_ids": [str(ids[0]), "99000001"]}, follow_redirects=True)
+    said2 = r2.get_data(as_text=True)
+    s.check("one already done and one that is not there are both refused",
+            "Nothing was marked" in said2, detail=said2[:220])
+    s.check("the one already answered is named, with the reason",
+            "already marked as answered" in said2)
+    s.check("and so is the one that does not exist",
+            "no message with that number" in said2)
+    s.check("an empty tick list says so rather than claiming success",
+            "Nothing was selected" in oc.post(
+                "/management/booking-com/answered", data={},
+                follow_redirects=True).get_data(as_text=True))
+
+    s.check("and the single button still works, through the same function",
+            oc.post("/management/booking-com/%d/answered" % ids[0],
+                    follow_redirects=True).status_code == 200)
+
+    # ------------------------------------------------------------------
+    s.section("Working a backlog from the right end")
+    # Newest first is for glancing at what has just arrived. A backlog is
+    # worked from the other end, and that was not on the menu.
+    oldest = oc.get("/management/booking-com?q=ZZBCPAGE&sort=oldest").get_data(as_text=True)
+    newest = oc.get("/management/booking-com?q=ZZBCPAGE&sort=newest").get_data(as_text=True)
+
+    def _first(text):
+        hit = re.search(r"ZZBCPAGE (\d+)", text)
+        return int(hit.group(1)) if hit else None
+
+    s.check("oldest first starts at the far end of the pile",
+            _first(oldest) is not None and _first(newest) is not None
+            and _first(oldest) > _first(newest),
+            detail="newest starts at %s, oldest at %s" % (_first(newest), _first(oldest)))
+    done_only = oc.get(
+        "/management/booking-com?q=ZZBCPAGE&answer=Answered").get_data(as_text=True)
+    s.check("and a page where nothing can be ticked draws no button",
+            "bc-bulkbar" in oldest and "bc-bulkbar" not in done_only,
+            detail="a control that cannot act on anything is furniture")
+
 
 if __name__ == "__main__":
     print(run().report())
