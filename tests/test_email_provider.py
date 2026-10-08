@@ -90,6 +90,39 @@ def run():
     s.check("and being unable to reach it is a different sentence",
             "reach" in whynet.lower() and "nodename" in whynet, detail=whynet)
 
+    s.section("The request gets through the door in front of Resend")
+    # 8 October: every send was refused 403 with nothing in Resend's own logs,
+    # because Cloudflare sits in front of the API and turns urllib's default
+    # "Python-urllib/3.x" away before Resend sees it. A 403 whose reason is
+    # not in the provider's logs is the one refusal this suite could not
+    # explain, and the house spent it looking at the key.
+    heads = m.resend_headers()
+    s.check("the call says who it is",
+            bool((heads.get("User-Agent") or "").strip()),
+            detail="urllib sends Python-urllib/3.x by default, and that is "
+                   "refused before the request arrives")
+    s.check("and not as urllib",
+            "urllib" not in (heads.get("User-Agent") or "").lower(),
+            detail=repr(heads.get("User-Agent")))
+    s.check("while the key and the content type are still sent",
+            (heads.get("Authorization") or "").startswith("Bearer ")
+            and heads.get("Content-Type") == "application/json",
+            detail=str(sorted(heads)))
+    # Read rather than run. Everything else here mocks the transport, so a
+    # second call site that built its own headers would pass every check above
+    # and still be turned away. There are two endpoints; the next one written
+    # must not be a third spelling.
+    _src = io.open("app.py", encoding="utf-8").read()
+    _hand = _src.count('headers={"Authorization": f"Bearer {RESEND_API_KEY}"')
+    # The quoted endpoint, not the bare domain -- which also appears in the
+    # docstring explaining why this check exists, and counted itself.
+    _ends = _src.count('"https://api.resend.com/emails"')
+    _shared = _src.count("headers=resend_headers()")
+    s.check("and every call to Resend is built the same way",
+            _ends == _shared and not _hand,
+            detail="%d endpoints, %d using the shared headers, %d hand-rolled"
+                   % (_ends, _shared, _hand))
+
     s.section("The reason reaches the outbox, not a constant")
 
     was_enabled, was_resend = m.resend_enabled, m.send_email_via_resend

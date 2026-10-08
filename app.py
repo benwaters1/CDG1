@@ -1012,6 +1012,12 @@ Last updated: 1 October 2026"""
 # SMTP is the fallback so existing deployments keep working unchanged.
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 RESEND_FROM = os.environ.get("RESEND_FROM")
+# Where a guest's reply should land when nothing more specific claims it.
+# RESEND_FROM is a send-only subdomain and receives nothing, so without
+# this a reply goes nowhere rather than to the wrong inbox.
+RESEND_REPLY_TO = os.environ.get("RESEND_REPLY_TO", "reservations@chateaugudanes.com")
+# Cloudflare refuses urllib's default agent in front of Resend (error 1010).
+RESEND_USER_AGENT = os.environ.get("RESEND_USER_AGENT", "ChateauDeGudanes/1.0")
 SMTP_HOST = os.environ.get("SMTP_HOST")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME")
@@ -25281,19 +25287,45 @@ def reply_to_for(area):
     into one and nobody could tell, because a reply that lands in the wrong
     inbox still lands.
 
-    None when nothing matches, which means the letter goes out exactly as it
-    does today. A guessed Reply-To is worse than none: it would send a guest's
-    reply to an address the house does not read.
+    AND WHAT "NOTHING MATCHED" MEANS CHANGED WITH THE FROM ADDRESS. This
+    answered None, on the grounds that a guessed Reply-To sends a guest's
+    reply somewhere nobody reads -- which was right while the letter came
+    FROM an address somebody reads. Mail now goes out as RESEND_FROM on the
+    send-only subdomain, which receives nothing, so None stopped meaning
+    "the wrong inbox" and started meaning "no inbox at all". The mailboxes
+    that would have matched are not connected yet, so that was every letter.
+
+    RESEND_REPLY_TO is the floor, and it is not a guess: somebody set it.
+    The area still wins wherever it matches, and setting it empty restores
+    the old silence.
     """
     for local in REPLY_TO_AREAS.get(area, ()):
         for mailbox in MS_GRAPH_MAILBOXES:
             if mailbox.split("@")[0].strip().lower() == local:
                 return mailbox
-    return None
+    return RESEND_REPLY_TO or None
 
 
 def resend_enabled():
     return bool(RESEND_API_KEY and RESEND_FROM)
+
+
+def resend_headers():
+    """Every header a call to Resend needs, in one place.
+
+    THE USER-AGENT IS NOT DECORATION. Cloudflare stands in front of
+    api.resend.com and turns urllib's default "Python-urllib/3.x" away
+    with error 1010 before the request reaches Resend at all. What the
+    house sees is a 403 with nothing in Resend's own logs to match it,
+    which sends somebody to check the API key -- the one thing that is
+    not wrong. Every message the house tried to send was refused here.
+
+    One definition because there are two callers, the guest mail path
+    and the nightly backup, and a third would be written without it.
+    """
+    return {"Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+            "User-Agent": RESEND_USER_AGENT}
 
 
 def email_enabled():
@@ -25352,7 +25384,7 @@ def send_email_via_resend(to_address, subject, body, ics_content=None,
         req = Request(
             "https://api.resend.com/emails",
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+            headers=resend_headers(),
             method="POST",
         )
         with urlopen(req, timeout=10) as resp:
@@ -79006,7 +79038,7 @@ def send_backup_email(to_address, zip_bytes, filename, note=""):
             req = Request(
                 "https://api.resend.com/emails",
                 data=json.dumps(payload).encode("utf-8"),
-                headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                headers=resend_headers(),
                 method="POST",
             )
             with urlopen(req, timeout=30) as resp:

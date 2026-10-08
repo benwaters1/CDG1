@@ -21,10 +21,18 @@ happened to name. Nobody could tell, because a reply that lands in the wrong
 inbox still lands -- it is just answered by the wrong person, or late, or not
 at all.
 
-The rule for both: WHEN IT CANNOT DO THE JOB IT DOES NOT DRAW THE CONTROL.
-No rates means no currency selector, rather than one that changes nothing. No
-matching mailbox means no Reply-To header, rather than a guessed address that
-sends a guest's reply somewhere the house does not read.
+The rule for the first: WHEN IT CANNOT DO THE JOB IT DOES NOT DRAW THE
+CONTROL. No rates means no currency selector, rather than one that changes
+nothing.
+
+The Reply-To half of that rule changed on 8 October, when RESEND_FROM moved to
+send.chateaugudanes.com. "No matching mailbox means no header" was right while
+the letter came FROM an address somebody reads -- the reply landed in the
+wrong inbox, which is recoverable. That subdomain receives nothing, so no
+header means the reply reaches nobody at all, and the mailboxes that would
+have matched are not connected yet: that was every letter the house sent.
+RESEND_REPLY_TO is the floor underneath it and is not a guess, because
+somebody set it. The area still wins wherever it matches.
 """
 from _harness import Suite, clients, db
 
@@ -118,14 +126,30 @@ def run():
                 m.reply_to_for("workshops") == "experience@chateaugudanes.com",
                 detail="the inbox is named experience@, not workshops@, and "
                        "the map knows both names for the same area")
-        # The refusal to guess. events@ is not configured here.
-        s.check("an area with no inbox gets no Reply-To",
-                m.reply_to_for("events") is None,
-                detail="a guessed address sends a guest's reply somewhere "
-                       "nobody reads, which is worse than the single inbox "
-                       "this replaced")
-        s.check("and neither does a letter with no area at all",
-                m.reply_to_for(None) is None)
+        # Still no GUESSING -- events@ is not configured here and no address
+        # is invented from the area name. It falls through to the one the
+        # house set instead, because the alternative is now a dead end rather
+        # than the wrong inbox.
+        s.check("an area with no inbox falls back to the house address",
+                m.reply_to_for("events") == m.RESEND_REPLY_TO,
+                detail="RESEND_FROM receives nothing, so None would mean the "
+                       "reply reaches nobody at all")
+        s.check("and so does a letter with no area at all",
+                m.reply_to_for(None) == m.RESEND_REPLY_TO)
+        # THE ONE THAT WOULD HAVE CAUGHT THIS. A fallback on the send-only
+        # subdomain is a Reply-To that looks set and goes nowhere, which is
+        # worse than none because nothing looks wrong.
+        s.check("and the fallback is not on the send-only domain",
+                "send." not in (m.RESEND_REPLY_TO or "nothing"),
+                detail=repr(m.RESEND_REPLY_TO))
+        was_rt = m.RESEND_REPLY_TO
+        try:
+            m.RESEND_REPLY_TO = ""
+            s.check("and an empty setting still means no header at all",
+                    m.reply_to_for("events") is None,
+                    detail="the old silence stays reachable on purpose")
+        finally:
+            m.RESEND_REPLY_TO = was_rt
 
         s.section("And it reaches the letter")
 
@@ -145,8 +169,9 @@ def run():
             del sent[:]
             with m.app.test_request_context("/"):
                 m.send_email("zzfx@example.invalid", "Anything", "b", keep=False)
-            s.check("and a letter with no area carries none",
-                    sent and sent[0]["reply_to"] is None, detail=str(sent[:1]))
+            s.check("and a letter with no area carries the house address",
+                    sent and sent[0]["reply_to"] == m.RESEND_REPLY_TO,
+                    detail=str(sent[:1]))
         finally:
             m.resend_enabled, m.send_email_via_resend = was_enabled, was_resend
 
