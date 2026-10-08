@@ -1,7 +1,7 @@
 {% extends "public_base.html" %}
 {% from '_illus.html' import illus %}
-{% set crumbs = [('In the Valley', None)] %}
-{% block title %}In the Valley{% endblock %}
+{% set crumbs = [("In the Ariège", None)] %}
+{% block title %}In the Ariège{% endblock %}
 {% block description %}Markets, brocantes, mountain days and the fairs of the Ariège — everything within an hour of Château de Gudanes, and when to catch it.{% endblock %}
 {% block og_desc %}Markets, brocantes, mountain days and the fairs of the Ariège — everything within an hour of Château de Gudanes, and when to catch it.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1200w{% endblock %}
@@ -17,10 +17,10 @@
   <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1500w" alt="The Ariège">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
-    <p class="g-hero__eyebrow">Ariège · Within an Hour</p>
-    {# Was "What's On" - a contraction; renamed by the owner, 24 Sept. The address stays /whats-on. #}
-    <h1 class="g-hero__title">{{ t("In the Valley") }}</h1>
-    <p class="g-hero__lede">Markets, fairs and mountain days below the château — and what is happening in the house itself.</p>
+    <p class="g-hero__eyebrow">Pyrénées · Within an Hour</p>
+    {# 5 Oct (owner): named for the Ariège - promoting the area, which the commune will welcome (was "In the Valley", 24 Sept; "What's On" is a contraction - house rule: none). The address stays /whats-on. #}
+    <h1 class="g-hero__title">{{ t("In the Ariège") }}</h1>
+    <p class="g-hero__lede">Markets, fairs, festivals and mountain days across the Ariège, all within an hour of the château.</p>
   
     <p class="g-hero__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
   </div>
@@ -117,7 +117,7 @@
 <section class="g-sec"><div class="g-wrap">
   <div class="g-vignette" aria-hidden="true">{{ illus('hike') }}</div>
   <p class="g-fr">Le pays <span class="g-fr__en">The country</span></p>
-  <p class="g-eyebrow">The Valley</p>
+  <p class="g-eyebrow">Ariège</p>
   <h2 class="g-place">L’Ariège</h2>
   <p class="g-p g-lede-first">The Ariège is one of the quietest corners of France: the Pyrénées, Cathar castles on their peaks, caves painted in prehistory, spa towns and market squares, and brocantes through the summer.</p>
   <p class="g-p">The château is a base for all of it, and a place to come back to at the end of the day. The brocante workshop, part of the full experience, takes you out to the fairs.</p>
@@ -126,7 +126,7 @@
 
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">Places</p>
-  <h2 class="g-place">In the Valley and Around It</h2>
+  <h2 class="g-place">Towns and Places Nearby</h2>
   <div class="g-key">
     <div class="g-key__i">
       <p class="g-key__k">Tarascon-sur-Ariège · about fifteen minutes</p>

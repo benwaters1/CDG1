@@ -74,12 +74,6 @@
                    placeholder="Their name, and we will put you together" value="{{ prefill_requested_roommate | default('') }}">
           </div>
           <div class="g-field">
-            <label for="special_occasion">Celebrating something? <span class="g-opt">optional</span></label>
-            <input type="text" id="special_occasion" name="special_occasion"
-                   placeholder="An anniversary, a birthday &mdash; tell us and we will mark it"
-                   maxlength="200" value="{{ prefill_special_occasion | default('') }}">
-          </div>
-          <div class="g-field">
             <label for="bed_preference">Bed preference <span class="g-opt">optional</span></label>
             {%- set _bp = request.form.get('bed_preference') if request.method == 'POST' else '' -%}
             <select id="bed_preference" name="bed_preference">
@@ -128,6 +122,13 @@
             <label for="medical_notes">Any pre-existing health conditions <span class="g-opt">optional</span></label>
             <textarea id="medical_notes" name="medical_notes" rows="2"
                       placeholder="Anything our team should be aware of">{{ prefill_medical_notes | default('') }}</textarea>
+          </div>
+
+          {#- 5 Oct (owner): back - people use it. Posts special_occasion, which the app already stores. -#}
+          <div class="g-field">
+            <label for="special_occasion">Celebrating something? <span class="g-opt">optional</span></label>
+            <input type="text" id="special_occasion" name="special_occasion" maxlength="200"
+                   placeholder="A birthday, an anniversary&hellip;" value="{{ request.form.get('special_occasion', '') if request.method == 'POST' else '' }}">
           </div>
 
 
@@ -317,7 +318,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   <div class="g-plate">
     <div class="g-plate__row">
       <dl class="g-plate__l">
-        <div><dt>Included</dt><dd>The full experience: all meals and drinks, the activities (all optional), a formal dinner in the Salon de Musique, a tour of the château, {% if _tx %}the transfers from Toulouse, {% endif %}{% if _ex %}the excursions, {% endif %}the teaching and your room</dd></div>
+        <div><dt>Included</dt><dd>The full experience: all meals and drinks, the activities (all optional), a formal dinner in the Salon de Musique, {% if _tx %}the transfers from Toulouse, {% endif %}{% if _ex %}the excursions, {% endif %}your room and the house itself</dd></div>
         <div><dt>Not included</dt><dd>Flights, and whatever you buy at the brocantes</dd></div>
         <div><dt>Transfers</dt><dd>{% if _tx %}From Toulouse on the first day, and back on the last{% else %}Not included on these dates. The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station{% endif %}</dd></div>
         <div><dt>To hold a place</dt><dd>A deposit now. The balance closer to the date, or pay it yourself</dd></div>

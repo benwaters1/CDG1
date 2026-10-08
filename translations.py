@@ -170,6 +170,7 @@ FR = {
     "charged in EUR": "débité en EUR",
     "Ariège · French Pyrénées · Restored since 2013":
         "Ariège · Pyrénées françaises · En restauration depuis 2013",
+    "In the Ariège": "En Ariège",
 
     # -- Booking ---------------------------------------------------------
     "Your dates": "Vos dates",
@@ -860,6 +861,7 @@ ES = {
     "charged in EUR": "cobrado en EUR",
     "Ariège · French Pyrénées · Restored since 2013":
         "Ariège · Pirineos franceses · En restauración desde 2013",
+    "In the Ariège": "En el Ariège",
 
     # -- Booking ---------------------------------------------------------
     "Your dates": "Sus fechas",

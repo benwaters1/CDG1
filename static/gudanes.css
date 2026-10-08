@@ -10952,3 +10952,17 @@ body.hero--short .g-hero, body.hero--tall .g-hero{ min-height: clamp(560px, 72vh
 .g .g-addroom__f > .g-row{ margin-bottom: 24px; }
 .g .g-addroom__f{ display: block !important; }
 .g .g-addroom__f > .g-btn{ margin: 0 0 16px; }
+/* Stay's add-on cards share the row however many there are (two or three once the tour is no longer featured) */
+.g .g-addon{ display: grid !important; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)) !important; gap: var(--s4); }
+
+/* 5 Oct - THE CURRENT PAGE IN THE HEADER, at the top of every photo-header page: it turned white (left from when the
+   header sat transparent over the photo), but the header is solid sand there now - "The Estate", "Stay" and the rest
+   vanished until the page was scrolled. Gold with its underline, the same as after scrolling. */
+body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav a[aria-current="page"],
+.g.has-hero.at-top .g-nav a.is-here, .g.has-hero.at-top .g-nav a[aria-current="page"]{ color: var(--gilt) !important; }
+
+/* 5 Oct - ONE PAGE-HEADING SIZE for pages without a photo header. The confirmations ("Thank you, Olivia"), the find-a-
+   booking pages, the shared stay and privacy used the 88px display size meant for titles over a photograph; terms and the
+   legal notice used 42px. Now all match Press, Story, Gallery and the 404 (60px desktop, 36px phone). The room and workshop
+   booking pages keep their large titles. */
+.g main h1.g-display--page{ font-size: var(--g-pagehead-size, clamp(36px, 4.2vw, 60px)) !important; line-height: 1.1; }

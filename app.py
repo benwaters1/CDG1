@@ -2098,6 +2098,57 @@ DEFAULT_EMAIL_TEMPLATES = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# GUEST EMAIL WORDING, 5 Oct (owner's house rules). Applied to the defaults above, and - once, in init_db - to any stored
+# template still holding the old default word for word (never one the owner has edited: updated_at is set on every save).
+#   - no contractions (house rule);
+#   - the house takes no payment on arrival;
+#   - every letter that asks for or acknowledges money says how the house takes payment (a guest who knows that can
+#     recognise a scam message asking them to pay elsewhere);
+#   - the stay confirmation: about fifty-five rooms, not ninety-four, and rooms are "open to guests", never "finished".
+# ---------------------------------------------------------------------------
+PAYMENT_SAFETY_LINE = ("We only ever take payment on chateaugudanes.com, by card through Stripe. We will never ask you to "
+                       "pay by bank transfer, or through a link sent by WhatsApp or text message. If anyone does, please "
+                       "do not pay, and call us on +33 6 28 06 97 76.")
+_EMAIL_CONTRACTIONS = (("We're", "We are"), ("we're", "we are"), ("We've", "We have"), ("we've", "we have"),
+                       ("you'd", "you would"), ("we'd", "we would"), ("it's", "it is"), ("you're", "you are"),
+                       ("we'll", "we will"))
+_EMAIL_PAYMENT_SAFETY_KEYS = ("room_balance_before", "room_balance_after", "workshop_balance_reminder",
+                              "event_balance_reminder", "workshop_deposit_receipt", "workshop_confirmed")
+_ROOM_CONFIRMED_BODY_5OCT = (
+    "Your stay is booked, {first_name}\n\n"
+    "Five bedrooms are open to guests, and one of them is yours for the dates below. Everything here is also on your "
+    "booking page, so there is nothing you need to keep.\n\n"
+    "{stay_details}\n\n"
+    "The walls of the house stay as the centuries left them; the beds, the floors and the bathrooms are new. If anything "
+    "at all needs saying before you arrive, reply to this message; it reaches us.\n\n" + PAYMENT_SAFETY_LINE)
+
+
+def _email_wording_5oct(key, subject, body):
+    if key == "room_confirmed":
+        body = _ROOM_CONFIRMED_BODY_5OCT
+    body = body.replace("You can settle it online before you travel, or on arrival if you would rather:",
+                        "You can settle it online before you travel:")
+    for a, b in _EMAIL_CONTRACTIONS:
+        subject, body = subject.replace(a, b), body.replace(a, b)
+    if key in _EMAIL_PAYMENT_SAFETY_KEYS and PAYMENT_SAFETY_LINE not in body:
+        sign = "\n\n— Château de Gudanes"
+        body = (body[:body.rfind(sign)] + "\n\n" + PAYMENT_SAFETY_LINE + body[body.rfind(sign):]
+                if sign in body else body + "\n\n" + PAYMENT_SAFETY_LINE)
+    return subject, body
+
+
+EMAIL_WORDING_REPLACED_5OCT = {}   # key -> (old subject, old body): what init_db may replace, and only that
+_fixed = []
+for _key, _label, _subject, _body in DEFAULT_EMAIL_TEMPLATES:
+    _ns, _nb = _email_wording_5oct(_key, _subject, _body)
+    if (_ns, _nb) != (_subject, _body):
+        EMAIL_WORDING_REPLACED_5OCT[_key] = (_subject, _body)
+    _fixed.append((_key, _label, _ns, _nb))
+DEFAULT_EMAIL_TEMPLATES = _fixed
+del _fixed
+
+
 def init_db():
     fresh = not os.path.exists(DB_PATH)
     conn = get_db()
@@ -6958,6 +7009,15 @@ def init_db():
                 "INSERT INTO email_templates (template_key, label, subject, body, updated_at) VALUES (?, ?, ?, ?, ?)",
                 (template_key, label, subject, body, None),
             )
+    conn.commit()
+    # 5 Oct: the old default wording, where it is still stored exactly as shipped and nobody has edited it.
+    _new_defaults = {k: (sj, bd) for k, _l, sj, bd in DEFAULT_EMAIL_TEMPLATES}
+    for template_key, (old_subject, old_body) in EMAIL_WORDING_REPLACED_5OCT.items():
+        new_subject, new_body = _new_defaults[template_key]
+        conn.execute(
+            "UPDATE email_templates SET subject = ?, body = ? WHERE template_key = ? AND updated_at IS NULL "
+            "AND subject = ? AND body = ?",
+            (new_subject, new_body, template_key, old_subject, old_body))
     conn.commit()
 
     for slug, name, description, areas, full, order in DEFAULT_ACCESS_PRESETS:
@@ -48738,6 +48798,8 @@ def confirmation_letter_html(subject, body_src, context, *, conn=None, card=None
             heading = opening.pop(0)["text"].rstrip(".")
         card = card or {}
         settings = card.get("house") or (house_coordinates(conn) if conn else {})
+        # 5 Oct: the confirmation offers dinner only while the table is open (hidden at launch).
+        settings = dict(settings or {}, dining_mode=(dining_mode(conn) if conn else "hidden"))
         return render_template(
             "email_booking_confirmed.html",
             heading=heading, opening=opening,

@@ -152,8 +152,12 @@ def run():
     r = fr.get("/whats-on")
     s.check("the page opens in French", r.status_code == 200, detail=str(r.status_code))
     body = r.data.decode("utf-8", "replace")
-    # "What's On" became "In the Valley" on 24 September; the address stays.
-    s.check("the heading is translated", "Dans la vallée" in body)
+    # "What's On" became "In the Valley" on 24 September and "In the
+    # Ariège" on 5 October; the address stays. The table is keyed on the
+    # English source, so this follows the heading rather than pinning one
+    # spelling of it -- but it still has to BE translated, which is the
+    # thing that broke: the new heading arrived in English only.
+    s.check("the heading is translated", "En Ariège" in body)
     s.check("and the day names with it, not just the Today flag",
             any(d in body for d in ("Lundi", "Mardi", "Mercredi", "Jeudi",
                                     "Vendredi", "Samedi", "Dimanche",

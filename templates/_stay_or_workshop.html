@@ -37,7 +37,7 @@
       <ul class="g-sow__list">
         <li>Your room, and breakfast each morning</li>
         <li>The pool, tennis and pickleball, table tennis, the lounge and board games, the terraces and a barbecue area</li>
-        <li>{% if dm == 'open' %}Dinner on the nights the table is open, a tour of the château and an airport transfer, added when you book{% else %}A tour of the château and an airport transfer, added when you book{% endif %}</li>
+        <li>{% if dm == 'open' %}Dinner on the nights the table is open, and an airport transfer, added when you book{% else %}An airport transfer from Toulouse, added when you book{% endif %}</li>
       </ul>
       <p class="g-sow__foot">From one night{% if rooms_from %}, from &euro;{{ '{:,.0f}'.format(rooms_from) }} a night{% endif %}</p>
       {% if here != 'stay' %}<p class="g-sow__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn">See the rooms</a></p>{% endif %}
@@ -48,7 +48,7 @@
       <ul class="g-sow__list">
         <li>Every meal, with drinks throughout</li>
         <li>The activities: cooking classes, the brocantes, yoga, kayaking and hiking</li>
-        <li>A tour of the château, and a formal dinner in the Salon de Musique</li>
+        <li>The house opened to you, and a formal dinner in the Salon de Musique</li>
       </ul>
       <p class="g-sow__foot">Three to seven nights, per person, everything included</p>
       {% if here != 'workshop' %}<p class="g-sow__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>{% endif %}
@@ -108,7 +108,7 @@
   <p class="g-night__k">Before you book a night</p>
   <p class="g-night__t">A night here is a room and breakfast.</p>
   {% if bath %}<p class="g-night__p g-night__bath">Every room has a private bathroom of its own, on the ground floor &mdash; not in the room itself.</p>{% endif %}
-  <p class="g-night__p">Lunch, dinner and drinks are not included &mdash; they come with the workshops, the full experience. A tour of the château can be added to any stay for &euro;50{% if dm == 'open' %}, and dinner booked on the nights the table is open{% endif %}.</p>
+  <p class="g-night__p">Lunch, dinner and drinks are not included &mdash; they come with the workshops, the full experience, along with the rest of the house{% if dm == 'open' %}. Dinner can be booked on the nights the table is open{% endif %}.</p>
   <p class="g-night__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>
 </aside>
 {% endmacro %}
@@ -118,7 +118,7 @@
 <aside class="g-night g-night--next" aria-label="The workshops">
   <p class="g-night__k">Next time</p>
   <p class="g-night__t">The full experience</p>
-  <p class="g-night__p">The workshops are small retreats of three to seven nights, with all meals and drinks, a tour of the house and the sessions.</p>
+  <p class="g-night__p">The workshops are small retreats of three to seven nights, with all meals and drinks, the activities, and the rest of the house.</p>
   <p class="g-night__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn">See the workshops</a></p>
 </aside>
 {% endmacro %}

@@ -301,17 +301,13 @@
 </svg>
         <section class="g-step">
           <h2 class="g-step__h"><span class="g-num">{{ '04' if extras else '03' }}</span> Anything we should know</h2>
-          {# 7 October (owner): the occasion on nightly stays as well as
-             workshops. Its own field rather than a line in the free text:
-             "Dietary needs, occasion, arrival time" in one box is three
-             different things to act on, and an anniversary buried in a
-             paragraph is one nobody marks. #}
-          <p class="g-field">
+          {#- 5 Oct (owner): "Celebrating something?" - as on the workshop form. Stored in bookings.special_occasion. -#}
+          {%- set _occ = (prefill_guest or {}).get('special_occasion') or (request.form.get('special_occasion') if request.method == 'POST' else '') -%}
+          <div class="g-field g-occasion">
             <label for="special_occasion">Celebrating something? <span class="g-opt">optional</span></label>
-            <input type="text" id="special_occasion" name="special_occasion"
-                   placeholder="An anniversary, a birthday &mdash; tell us and we will mark it"
-                   maxlength="200" value="{{ (prefill_guest or {}).get('special_occasion') or (request.form.get('special_occasion') if request.method == 'POST' else '') or '' }}">
-          </p>
+            <input type="text" id="special_occasion" name="special_occasion" maxlength="200"
+                   placeholder="A birthday, an anniversary&hellip;" value="{{ _occ or '' }}">
+          </div>
           <p class="g-field">
             <label for="special_requests" class="g-vh">Anything we should know (optional)</label>
             <textarea id="special_requests" name="special_requests" rows="4" placeholder="Dietary needs, occasion, arrival time, questions...">{{ prefill_requests | default('') }}</textarea>

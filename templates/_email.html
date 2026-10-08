@@ -156,8 +156,7 @@
                 line-height:1.65; color:#2C3E50;">
         The château is above the village of Château-Verdun, an hour and three
         quarters south of Toulouse. <strong>Use the pin below rather than
-        searching the address</strong> — there is no street number, and a
-        search will send you to the village square.
+        searching the address</strong> — a search can send you to the village square instead of the gates.
       </p>
 
       {{ email_button('https://www.google.com/maps/search/?api=1&query=' ~ lat ~ ',' ~ lng,
@@ -168,9 +167,7 @@
       <p style="margin:0 0 18px; font-family:Helvetica,Arial,sans-serif; font-size:15px;
                 line-height:1.65; color:#2C3E50;">
         The château is above the village of Château-Verdun, an hour and three
-        quarters south of Toulouse. <strong>Do not search the address</strong>
-        — there is no street number, and a search sends you to the village
-        square. Telephone us and we will talk you up the last few miles.
+        quarters south of Toulouse. <strong>Do not search the address</strong> — a search can send you to the village square instead of the gates. Telephone us and we will talk you up the last few miles.
       </p>
       {% endif %}
 
@@ -180,22 +177,21 @@
           <td style="padding:10px 0; border-top:1px solid #E6DCC8;
                      font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.6; color:#2C3E50;">
             <strong style="color:#14305F;">Driving</strong> — 1 h 45 from Toulouse
-            airport by the A61 and N20. The last four kilometres climb and narrow;
+            airport by the A66 and the N20. The last four kilometres climb and narrow;
             take them slowly.
           </td>
         </tr>
         <tr>
           <td style="padding:10px 0; border-top:1px solid #E6DCC8;
                      font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.6; color:#2C3E50;">
-            <strong style="color:#14305F;">By train</strong> — to Ax-les-Thermes,
-            then fifteen minutes by taxi. Tell us your train and we will arrange one.
+            <strong style="color:#14305F;">By train</strong> — to Les Cabannes, three minutes from the gates, or Foix, further down the valley. Tell us your train and we can arrange a car.
           </td>
         </tr>
         <tr>
           <td style="padding:10px 0; border-top:1px solid #E6DCC8;
                      font-family:Helvetica,Arial,sans-serif; font-size:14px; line-height:1.6; color:#2C3E50;">
             <strong style="color:#14305F;">Arriving after dark</strong> — the drive
-            is unlit. Telephone when you leave Ax and someone will meet you at the gates.
+            is unlit. Telephone as you reach Les Cabannes and someone will meet you at the gates.
           </td>
         </tr>
       </table>
@@ -216,6 +212,9 @@
     catalogue.
     ========================================================================== #}
 {% macro email_extras(manage_url, settings) %}
+{#- 5 Oct: dinner only when the table is open (hidden at launch); never "changes your dates" or "cancels" (dates are not
+    flexible, a stay is non-refundable). Unknown dining mode -> no dinner. -#}
+{%- set _dm = (setting(settings, 'dining_mode', 'hidden') or 'hidden')|lower|trim -%}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
        style="margin:26px 0 0;">
   <tr>
@@ -227,16 +226,14 @@
 
       <p style="margin:0 0 18px; font-family:Helvetica,Arial,sans-serif; font-size:15px;
                 line-height:1.65; color:#2C3E50;">
-        Dinner at La Table is one sitting and the kitchen cooks for one table,
-        so it is worth claiming early. A transfer from Toulouse, or anything
-        else, can be added to the same booking.
+        {% if _dm == 'open' %}Dinner at La Table is one sitting and the kitchen cooks for one table, so it is worth claiming early. A transfer from Toulouse, or anything else, can be added to the same booking.{% else %}A car from Toulouse, or a bottle of crémant waiting in your room, can be added to the same booking.{% endif %}
       </p>
 
-      {{ email_button(manage_url, 'Add dinner, or a transfer') }}
+      {{ email_button(manage_url, 'Add dinner, or a transfer' if _dm == 'open' else 'Add to your stay') }}
 
       <p style="margin:10px 0 0; font-family:Helvetica,Arial,sans-serif; font-size:13px;
                 line-height:1.6; color:#4A6076;">
-        The same link changes your dates, tells us of an allergy, or cancels —
+        The same link manages your reservation and tells us of an allergy —
         no password, and it works for as long as the booking does.
       </p>
     </td>

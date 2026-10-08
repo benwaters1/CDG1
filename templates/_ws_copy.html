@@ -36,7 +36,7 @@
 
 {% macro ws_copy(w, at_house=None) -%}
 {%- set _h = _house(w, at_house)|trim -%}
-{{ ws_lead(w) }} Most of all it is the full Gudanes experience: a retreat, with the pool, good food and wine, and the house to yourselves. Nothing on the itinerary is compulsory, and most afternoons are your own. Every meal, alcoholic and non-alcoholic drinks and a tour of the château are included{{ '.' if _h else ', with the excursions and the transfers from Toulouse.' }}
+{{ ws_lead(w) }} Most of all it is the full Gudanes experience: a retreat, with the pool, good food and wine, and the house to yourselves. Nothing on the itinerary is compulsory, and most afternoons are your own. Every meal and every drink, alcoholic or not, is included{{ '.' if _h else ', with the excursions and the transfers from Toulouse.' }}
 {%- endmacro %}
 
 {% macro ws_days(w, at_house=None) -%}

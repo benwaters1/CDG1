@@ -65,7 +65,7 @@
   <dl class="g-facts-list">
     {% if workshop['nights_label'] %}<div><dt>Length</dt><dd>{{ workshop['nights_label'] }}</dd></div>{% endif %}
     {%- set _inc = (workshop['inclusions'] or '')|trim -%}{%- set _basis = _inc if _inc.lower().startswith('per person') else '' -%}
-    {% if workshop['price_per_person'] %}<div><dt>Price</dt><dd>€{{ '{:,.0f}'.format(workshop['price_per_person']) }} {% if _basis %}{{ (_basis|trim('.'))[:1]|lower }}{{ (_basis|trim('.'))[1:] }}{% else %}per person{% endif %}; all meals, wine, a tour of the château{% if _tx %} and the transfers{% endif %} included</dd></div>{% endif %}
+    {% if workshop['price_per_person'] %}<div><dt>Price</dt><dd>€{{ '{:,.0f}'.format(workshop['price_per_person']) }} {% if _basis %}{{ (_basis|trim('.'))[:1]|lower }}{{ (_basis|trim('.'))[1:] }}{% else %}per person{% endif %}; all meals, wine{% if _tx %}, the activities and the transfers{% else %} and the activities{% endif %} included</dd></div>{% endif %}
       <div><dt>Experience needed</dt><dd>None. Most people who come have never done it before</dd></div>
     <div><dt>Where you sleep</dt><dd>In the château itself — bedrooms, not a nearby hotel</dd></div>
     <div><dt>Meals</dt><dd>Every one, cooked in the château kitchen, with drinks throughout</dd></div>

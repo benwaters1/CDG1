@@ -228,8 +228,23 @@ def run():
             "C'est confirm" in (conf.get("html") or "")
             and "GUD-4417" in (conf.get("html") or ""),
             detail="the card, with the reference, between the words")
+    # UNSAVED WORDS, which is the only thing the editor is for. This used to
+    # post the shipped body and then look for a sentence out of the shipped
+    # body -- so a preview that ignored the draft and drew the stored row
+    # passed it, which is exactly the failure that would make the editor
+    # useless while looking perfect. Confirmed: stubbing the route to discard
+    # the draft did not turn it red.
+    #
+    # The draft now differs from the stored row by a marker, and the marker is
+    # what is looked for. The copy can be rewritten without touching this.
+    drafted = shipped["room_confirmed"][2].replace(
+        "{first_name}", "{first_name} — ZZDRAFT", 1)
+    draft = oc.post("/management/email-templates/room_confirmed/preview",
+                    json={"subject": shipped["room_confirmed"][1],
+                          "body": drafted}).get_json() or {}
     s.check("with the words the template holds",
-            "Your room is held, Marie" in (conf.get("html") or ""))
+            "ZZDRAFT" in (draft.get("html") or ""),
+            detail="the preview has to draw the draft, not the saved row")
     s.check("and the plain text writes the card out",
             "Reference code: GUD-4417" in (conf.get("body") or "")
             and "{stay_details}" not in (conf.get("body") or ""))

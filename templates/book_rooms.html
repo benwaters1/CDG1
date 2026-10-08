@@ -83,7 +83,7 @@
    restoration". It said nothing about availability. The lede carries it. #}
 
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-p g-lede-first">Five bedrooms, each brought back from ruin, in an eighteenth-century château in the Pyrénées. A stay is a room and breakfast, with the whole house and the grounds to enjoy; the workshops are the full experience.</p>
+  <p class="g-p g-lede-first">Five bedrooms, each brought back from ruin, in an eighteenth-century château in the Pyrénées. A stay is your room, breakfast and the lounge, with the pool, tennis and the grounds outside; the workshops are the full experience, and the rest of the house comes with them.</p>
   <p class="g-p">It is a restoration, not a renovation. The walls stay as they are, by law; the floors, the bathrooms and the beds are new, and the one place in this house where nothing has been compromised. Every stay helps bring the house back to life.</p>
 </div></section>
 
@@ -93,7 +93,7 @@
   <p class="g-eyebrow">Your Stay</p>
   <h2 class="g-place">A Night at Gudanes</h2>
   <p class="g-p g-lede-first">You come through the gates and up the drive, and the house rises at the end of it. Your room is up the original staircase: a new bed, a new bathroom of your own, and walls the centuries left as they are.</p>
-  <p class="g-p">The morning begins with breakfast. The day is yours: the pool, the tennis court, the grounds, or the valley below. In the evening the house goes quiet, and the mountains turn blue.</p>
+  <p class="g-p">The morning begins with breakfast. The day is yours: the pool, the tennis court, the grounds, or the valley below, and the lounge to come back to. In the evening the house goes quiet, and the mountains turn blue.</p>
 </div></section>
 
 
@@ -365,9 +365,9 @@
   {% set _xs = (extras if (extras is defined and extras) else []) %}
   {% set _seen = namespace(tour=false) %}
   <ul class="g-addon">
-    {%- for e in _xs %}
+    {#- 5 Oct (owner): the tour is not the focus of a stay - not featured here; still bookable on the booking page -#}
+    {%- for e in _xs if 'tour' not in (e['name'] or '')|lower %}
     {%- set nm = (e['name'] or '')|lower %}
-    {%- if 'tour' in nm %}{% set _seen.tour = true %}{% endif %}
     {%- set ill = 'depart' if ('transfer' in nm or 'airport' in nm) else ('wine' if ('crémant' in nm or 'cremant' in nm or 'wine' in nm or 'charcuterie' in nm or 'champagne' in nm) else ('key' if 'tour' in nm else ('candelabra' if ('dinner' in nm or 'meal' in nm) else 'laurel'))) %}
     <li class="g-addon__i">
       <div class="g-addon__ill" aria-hidden="true">{{ illus(ill) }}</div>
@@ -376,14 +376,6 @@
       {% if e['price'] %}<p class="g-addon__p">&euro;{{ '{:,.0f}'.format(e['price']) }}</p>{% endif %}
     </li>
     {%- endfor %}
-    {%- if not _seen.tour %}
-    <li class="g-addon__i">
-      <div class="g-addon__ill" aria-hidden="true">{{ illus('key') }}</div>
-      <h3 class="g-addon__t">A tour of the château</h3>
-      <p class="g-addon__d">A guided tour of the house and its restoration. Included in every workshop.</p>
-      <p class="g-addon__p">&euro;50 per booking</p>
-    </li>
-    {%- endif %}
     {%- if not _xs %}
     <li class="g-addon__i">
       <div class="g-addon__ill" aria-hidden="true">{{ illus('depart') }}</div>
@@ -401,9 +393,9 @@
     {%- endif %}
     <li class="g-addon__i">
       <div class="g-addon__ill" aria-hidden="true">{{ illus('hike') }}</div>
-      <h3 class="g-addon__t">In the valley</h3>
+      <h3 class="g-addon__t">In the Ariège</h3>
       <p class="g-addon__d">Walks, riding, skiing, kayaking and the brocantes, a short drive away.</p>
-      <a class="g-addon__a" href="{{ url_for('whats_on') }}">In the Valley <span aria-hidden="true">→</span></a>
+      <a class="g-addon__a" href="{{ url_for('whats_on') }}">See what is on <span aria-hidden="true">→</span></a>
     </li>
   </ul>
 </div></section>
