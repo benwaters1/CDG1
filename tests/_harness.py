@@ -331,6 +331,19 @@ assert not (m.email_enabled() or m.resend_enabled()), (
 # migration that copy predates.
 m.init_db()
 
+# WRITE TO GUESTS, PINNED ON. The copy is of a house that may have the switch
+# either way -- it was off on 9 October 2026, the house not being live -- and a
+# suite about WhatsApp, or the texting page, or a test deployment's redirect,
+# must not pass or fail on how somebody left a switch on another machine. That
+# is the .env argument at the top of this file, for a setting rather than a
+# key. The suites about the switch set it themselves and put it back.
+_pin = sqlite3.connect(SCRATCH_DB)
+_pin.execute("INSERT INTO app_settings (key, value) VALUES ('guest_mail_live', '1') "
+             "ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+_pin.commit()
+_pin.close()
+del _pin
+
 assert m.DB_PATH == SCRATCH_DB, (
     f"tests would have run against {m.DB_PATH} — refusing. "
     "The GUDANES_DB_PATH override in app.py is missing or was overwritten."

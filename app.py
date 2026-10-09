@@ -8026,7 +8026,7 @@ NAV_AREAS = {
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
         "admin_images", "admin_image_upload",
         "admin_inbox_flags_status", "announcements", "delete_announcement",
-        "delete_campaign_template", "discard_email_outbox",
+        "delete_campaign_template", "discard_email_outbox", "held_email_ticked",
         "discard_stale_email_outbox", "edit_announcement",
         "edit_campaign_template", "edit_email_template", "management_email_templates",
         "preview_email_template_route",
@@ -26432,6 +26432,10 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         # has no business in it -- worse, it would be filed against whichever
         # booking owns the redirect address.
         keep = False
+        # And not held by Write to guests: it is going to the test inbox, not
+        # to the guest, which is the whole of what the switch protects. It used
+        # to slip past because keep=False was the exemption; named now.
+        despite_switch = despite_switch or "a test deployment sends it to the test inbox"
     if not to_address:
         return False
     # Which letter this is, when a template made it: render_email_template
@@ -86730,8 +86734,10 @@ def admin_automation():
         "AND reason LIKE '%not writing to guests%'").fetchone()["n"]
     conn.close()
 
-    facts = {"decline_hours": STALE_PENDING_BOOKING_HOURS, "prep_days": ARRIVAL_PREP_DAYS,
-             "digest_hours": DIGEST_INTERVAL_HOURS}
+    windows = house_windows()
+    facts = {"decline_hours": STALE_PENDING_BOOKING_HOURS,
+             "prep_days": windows["arrival_prep_days"],
+             "digest_hours": windows["digest_interval_hours"]}
     groups, everything = [], []
     for key, title, about in AUTOMATION_GROUPS:
         entries = []

@@ -178,7 +178,7 @@ def run():
     # with the leak wide open. Force a provider on, and capture instead of send.
     sent = []
 
-    def capture(to, subject, body, ics_content=None, ics_filename=None, keep=True):
+    def capture(to, subject, body, ics_content=None, ics_filename=None, keep=True, **_more):
         sent.append(to)
         return True
 

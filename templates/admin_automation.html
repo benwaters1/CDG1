@@ -32,6 +32,8 @@
       the house waits instead, whichever job wrote it.</p>
     {% else %}
     <p class="upload-hint"><strong>Off &mdash; nothing is being written to guests.</strong>
+      The {{ guest_writers }} switches under <a href="#writes-to-guests">Writes to guests</a>
+      are waiting on this one.
       Letters wait in Held Email and texts on the Texting page, not thrown away, so
       switching this back on sends nothing by surprise.
       {% if held_by_switch %}<a href="{{ url_for('admin_email_outbox') }}">{{ held_by_switch }}
@@ -43,7 +45,9 @@
   </div>
 
   {% for g in groups %}
-  <section class="detail-card auto-group" id="{{ g.anchor }}" style="margin-bottom:16px;">
+  {# The guests' group by a literal id, so the link from the switch above can
+     be checked from the template as well as on the page. #}
+  <section class="detail-card auto-group" {% if g.key == 'guests' %}id="writes-to-guests"{% else %}id="{{ g.anchor }}"{% endif %} style="margin-bottom:16px;">
     <div class="page-head" style="margin-bottom:2px;">
       <h2 class="section-heading" style="margin:0;">{{ g.title }}</h2>
       <span class="upload-hint">{{ g.on }} of {{ g.entries|length }} on</span>

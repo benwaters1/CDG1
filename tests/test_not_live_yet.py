@@ -196,6 +196,23 @@ def run():
                 asks and len(named) == len(asks),
                 detail=f"{len(asks)} asked, {len(named)} with a reason written in")
 
+        s.section("A test deployment's letter goes to its test inbox, switch or no switch")
+        # MAIL_REDIRECT_TO sends every letter to one test address and never to
+        # the guest, so the switch has nothing to protect. It used to slip past
+        # as keep=False; it is named now, and this is the check that it is.
+        del sent[:]
+        was_redirect = m.MAIL_REDIRECT_TO
+        m.MAIL_REDIRECT_TO = "zznl.tests@example.invalid"
+        try:
+            with m.app.test_request_context("/"):
+                m.send_email(OUTSIDE, "ZZNL redirected", "Body.")
+        finally:
+            m.MAIL_REDIRECT_TO = was_redirect
+        s.check("it reaches the test inbox while the switch is off",
+                bool(sent) and sent[0]["to"] == "zznl.tests@example.invalid", detail=str(sent))
+        s.check("and the guest still is not written to",
+                not any(x["to"] == OUTSIDE for x in sent))
+
         s.section("Texts wait for the switch too")
         texts = []
         was_sms = (m.sms_enabled, m.sms_provider_send)

@@ -76,7 +76,8 @@ MAY_WRITE_IN_CODE = {
     "reply_to_feedback": "the owner writes the reply",
     "reply_booking_com_message": "the owner writes the reply, to the guest's Booking.com address",
     "send_campaign": "a campaign the owner wrote on the campaigns page",
-    "send_email_outbox": "re-sends letters already written and held",
+    "send_held_letter": "re-sends letters already written and held -- the batch, the "
+                        "single Send and the ticked ones all come through it",
     "test_email_provider": "a test of the provider, to the owner",
     "test_email_template": "sends a template's own draft, to the owner",
     "write_about_stay": "the helper every stay letter goes through",

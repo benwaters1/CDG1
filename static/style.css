@@ -955,6 +955,10 @@ body.staff-shell .manual-section h3{ color:var(--ivory); font-family:'Inter',san
 .auto-route .field-label{ flex:1 1 14rem; margin:0; }
 .auto-route select{ flex:0 1 14rem; }
 .auto-status{ display:flex; flex-direction:column; align-items:flex-start; gap:4px; font-size:12.5px; }
+.auto-group{ scroll-margin-top:80px; }     /* the switch links here; land below the header */
+.auto-main{ min-width:0; }
+.auto-ran, .auto-how{ display:block; }
+.auto-when{ font-variant-numeric:tabular-nums; }
 .auto-savebar{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin:6px 0 24px; }
 @media (max-width:720px){
   .auto-row{ grid-template-columns:minmax(0,1fr); }
