@@ -268,7 +268,8 @@ def run():
             "unwritten" in summary, detail=str(sorted(summary)))
 
     page = oc.get(f"/admin/restoration/{wid}").get_data(as_text=True)
-    s.check("the job's own page shows the cost", "3180.50" in page)
+    s.check("the job's own page shows the cost", m.money(3180.50) in page,
+            detail=f"looked for {m.money(3180.50)}, the one spelling of money on a staff page")
     s.check("and says the figure is gross, as invoiced",
             "as invoiced" in page,
             detail="every figure in this app states which it is")
