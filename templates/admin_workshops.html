@@ -12,7 +12,7 @@
     <a href="{{ url_for('new_workshop') }}" class="btn-primary" style="margin-top:0;">+ Add workshop</a>
   </div>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">A workshop is the program (title, instructor, price); sessions are the specific dates it actually runs. Add a workshop, then schedule sessions under it.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">A workshop is the program (title, instructor, price); sessions are the specific dates it actually runs. Add a workshop, then schedule sessions under it. Record what a workshop uses up and each session says what to have ready.</p>
 
 {% with endpoint = 'admin_workshops' %}{% include "_period_selector.html" %}{% endwith %}
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
@@ -49,8 +49,10 @@
         {% for row in rows %}
         {% set s = row.session %}
         <div class="doc-row">
-          <span style="flex:1;">
-            {{ s['start_date'] }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date'] }}{% endif %}
+          {# The whole first line: when it is and how full. The links follow it
+             rather than squeezing it into a column of its own. #}
+          <span style="flex:1 1 100%;">
+            {{ date_range(s['start_date'], s['end_date']) if s['end_date'] != s['start_date'] else s['start_date']|date_short }}
             {% if not s['cancelled_at'] %}
             · {{ row.remaining }}/{{ s['capacity'] }} spots left
             {% if row.remaining <= 0 %}<span class="mini-status status-inactive" style="margin-left:6px;">full</span>{% endif %}
@@ -97,6 +99,9 @@
              made it findable either — so the step is here, next to the
              session it is about. #}
           <a href="{{ url_for('admin_emails') }}" class="small-link" style="color:var(--steel);">Announce</a>
+          <details class="refund-box" style="flex-basis:100%;">
+          <summary>Places, the teaching link, or calling it off</summary>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding:10px 12px;">
           {# Capacity could only ever be set when the session was made, so
              changing it meant deleting the session and losing its
              registrations. It is a number the house changes as rooms open. #}
@@ -108,7 +113,7 @@
             <label class="upload-hint" for="cap_{{ s['id'] }}">Places</label>
             <input type="number" id="cap_{{ s['id'] }}" name="capacity" min="1" step="1"
                    value="{{ s['capacity'] }}" style="width:4.5em;"
-                   aria-label="Places on the session starting {{ s['start_date'] }}">
+                   aria-label="Places on the session starting {{ s['start_date']|date_short }}">
             <button type="submit" class="btn-mini">Save</button>
           </form>
           {#- CALLING IT OFF, which deleting could never be. Deleting refuses
@@ -139,8 +144,10 @@
           </form>
           <form method="post" action="{{ url_for('delete_workshop_session', session_id=s['id']) }}" onsubmit="return confirm('Remove this session?');" style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="doc-delete">×</button>
+            <button type="submit" class="btn-text-danger">Remove this session</button>
           </form>
+          </div>
+          </details>
         </div>
         {% endfor %}
       </div>
@@ -155,7 +162,7 @@
         {% set s = row.session %}
         <div class="doc-row">
           <span style="flex:1;">
-            {{ s['start_date'] }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date'] }}{% endif %}
+            {{ date_range(s['start_date'], s['end_date']) if s['end_date'] != s['start_date'] else s['start_date']|date_short }}
             · {{ row.attended }}/{{ s['capacity'] }} attended
             {% if s['notes'] %} <span class="upload-hint">— {{ s['notes'] }}</span>{% endif %}
           </span>
@@ -168,34 +175,49 @@
     </details>
     {% endif %}
 
+    <details class="refund-box">
+    <summary>+ Add a session</summary>
     <form method="post" action="{{ url_for('new_workshop_session', workshop_id=w['id']) }}" class="upload-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field-row-2">
         <div>
-          <label class="field-label">Start date</label>
-          <input aria-label="Start date" type="date" name="start_date" required>
+          <label class="field-label" for="s-start-{{ w['id'] }}">First day</label>
+          <input id="s-start-{{ w['id'] }}" type="date" name="start_date" required>
         </div>
         <div>
-          <label class="field-label">End date (leave blank for a single day)</label>
-          <input aria-label="End date (leave blank for a single day)" type="date" name="end_date">
+          <label class="field-label" for="s-end-{{ w['id'] }}">Last day (blank for a single day)</label>
+          <input id="s-end-{{ w['id'] }}" type="date" name="end_date">
         </div>
       </div>
       <div class="field-row-2">
-        <input aria-label="Capacity ( default)" type="number" name="capacity" min="1" placeholder="Capacity ({{ w['default_capacity'] }} default)">
-        <input aria-label="Minimum to run (blank = no minimum)" type="number" name="min_participants" min="0" placeholder="Minimum to run (blank = no minimum)">
+        <div>
+          <label class="field-label" for="s-cap-{{ w['id'] }}">Places</label>
+          <input id="s-cap-{{ w['id'] }}" type="number" name="capacity" min="1" placeholder="{{ w['default_capacity'] }} if left blank">
+        </div>
+        <div>
+          <label class="field-label" for="s-min-{{ w['id'] }}">Fewest it can run with</label>
+          <input id="s-min-{{ w['id'] }}" type="number" name="min_participants" min="0" placeholder="Blank for no minimum">
+        </div>
       </div>
       <div class="field-row-2">
-        <input aria-label="Decide this many days before (21 default)" type="number" name="decide_by_days" min="0" placeholder="Decide this many days before (21 default)">
-        <input aria-label="Notes (optional)" type="text" name="notes" placeholder="Notes (optional)">
+        <div>
+          <label class="field-label" for="s-decide-{{ w['id'] }}">Decide this many days before</label>
+          <input id="s-decide-{{ w['id'] }}" type="number" name="decide_by_days" min="0" placeholder="21 if left blank">
+        </div>
+        <div>
+          <label class="field-label" for="s-notes-{{ w['id'] }}">Notes (optional)</label>
+          <input id="s-notes-{{ w['id'] }}" type="text" name="notes">
+        </div>
       </div>
-      <p class="pay-disclaimer" style="margin-top:-4px;">Capacity is the most it can take; the minimum is the fewest it can run with. Set one and a session that will not reach it appears on your home page while there is still time to ring the waitlist or call it off.</p>
-      <button type="submit" class="btn-mini">+ Add session</button>
+      <p class="pay-disclaimer" style="margin-top:-4px;">Set a minimum and a session that will not reach it appears on your home page while there is still time to ring the waitlist or call it off.</p>
+      <button type="submit" class="btn-mini">Add session</button>
     </form>
+    </details>
 
     <p class="field-label" style="margin-top:14px;">What it uses up</p>
     {% set mats = materials_by_workshop.get(w['id'], []) %}
     {% if not mats %}
-      <p class="empty-inline">Nothing recorded. Add what it consumes and each session says what to have ready.</p>
+      <p class="empty-inline">Nothing recorded.</p>
     {% else %}
       <div class="doc-list">
         {% for mt in mats %}
@@ -209,17 +231,19 @@
           </span>
           <form method="post" action="{{ url_for('remove_workshop_material', material_id=mt['id']) }}" style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="doc-delete">×</button>
+            <button type="submit" class="doc-delete" aria-label="Stop listing {{ mt['name'] }}" title="Stop listing this">×</button>
           </form>
         </div>
         {% endfor %}
       </div>
     {% endif %}
     {% if stock_choices %}
-    <form method="post" action="{{ url_for('add_workshop_material', workshop_id=w['id']) }}">
+    <details class="refund-box">
+    <summary>+ Add something it uses up</summary>
+    <form method="post" action="{{ url_for('add_workshop_material', workshop_id=w['id']) }}" class="upload-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field-row-2">
-        <select name="stock_item_id" required>
+        <select name="stock_item_id" required aria-label="What, from stock">
           <option value="">Something from stock…</option>
           {% for it in stock_choices %}
           <option value="{{ it['id'] }}">{{ it['name'] }} ({{ it['unit'] }})</option>
@@ -231,15 +255,16 @@
         <input aria-label="Per person (e.g. 2)" type="text" name="qty_per_person" placeholder="Per person (e.g. 2)">
         <input aria-label="Per session (e.g. 8)" type="text" name="qty_per_session" placeholder="Per session (e.g. 8)">
       </div>
-      <button type="submit" class="btn-mini">+ Add material</button>
+      <p class="pay-disclaimer">Per person scales with who comes; per session does not — eight aprons is eight aprons whether four people come or ten. Set either or both.</p>
+      <button type="submit" class="btn-mini">Add it</button>
     </form>
-    <p class="pay-disclaimer" style="margin-top:6px;">Per person scales with who comes; per session does not — eight aprons is eight aprons whether four people come or ten. Set either or both.</p>
+    </details>
     {% endif %}
 
     <p class="field-label" style="margin-top:14px;">Custom registration questions</p>
     {% set fields = custom_fields_by_workshop.get(w['id'], []) %}
     {% if not fields %}
-      <p class="empty-inline">No extra questions — the standard registration fields are used as-is.</p>
+      <p class="empty-inline">None &mdash; the standard questions only.</p>
     {% else %}
       <div class="doc-list">
         {% for f in fields %}
@@ -247,17 +272,19 @@
           <span style="flex:1;">{{ f['label'] }} <span class="upload-hint">({{ f['field_type'] }}{% if f['required'] %} · required{% endif %}{% if f['options'] %} · {{ f['options'] }}{% endif %})</span></span>
           <form method="post" action="{{ url_for('delete_workshop_custom_field', field_id=f['id']) }}" onsubmit="return confirm('Remove this question?');" style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="doc-delete">×</button>
+            <button type="submit" class="doc-delete" aria-label="Stop asking: {{ f['label'] }}" title="Stop asking this">×</button>
           </form>
         </div>
         {% endfor %}
       </div>
     {% endif %}
+    <details class="refund-box">
+    <summary>+ Ask the people registering something extra</summary>
     <form method="post" action="{{ url_for('new_workshop_custom_field', workshop_id=w['id']) }}" class="upload-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field-row-2">
         <input aria-label="Question (e.g. Shuttle pickup time)" type="text" name="label" placeholder="Question (e.g. Shuttle pickup time)" required>
-        <select name="field_type">
+        <select name="field_type" aria-label="How they answer">
           <option value="text">Short text</option>
           <option value="textarea">Long text</option>
           <option value="select">Choice (comma-separated options)</option>
@@ -270,8 +297,9 @@
           <input type="checkbox" name="required"> Required
         </label>
       </div>
-      <button type="submit" class="btn-mini">+ Add question</button>
+      <button type="submit" class="btn-mini">Add question</button>
     </form>
+    </details>
   </div>
   {% endfor %}
 {% endif %}

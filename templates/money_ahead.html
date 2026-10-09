@@ -34,7 +34,7 @@
     the real thing. It is only used here.
   </p>
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-    <input aria-label="42000" type="text" name="opening" inputmode="decimal" placeholder="42000"
+    <input aria-label="In the bank today, in euros" type="text" name="opening" inputmode="decimal" placeholder="42000"
            style="max-width:180px; margin:0;">
     <button type="submit" class="btn-mini">Save</button>
   </div>
@@ -60,7 +60,7 @@
     {% endif %}
   </p>
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-    <input aria-label="6500" type="text" name="monthly_staff" inputmode="decimal" placeholder="6500"
+    <input aria-label="Wages in a normal month, in euros" type="text" name="monthly_staff" inputmode="decimal" placeholder="6500"
            value="{{ '%.2f'|format(ahead.monthly_staff) if ahead.monthly_staff is not none else '' }}"
            style="max-width:180px; margin:0;">
     <button type="submit" class="btn-mini">Save</button>
@@ -100,7 +100,12 @@
 </p>
 {% endif %}
 
-<div class="pos-layout" style="margin-top:22px;">
+{# Its own grid. It borrowed the till's, whose right column is fixed at
+   340px for the tab -- so what is going out was set one word to a line
+   beside an "Expected in" with the whole width and nothing in it. #}
+<div class="money-sides">
+{# Each line is its name first, then when, what and how much: in half the
+   page, the name squeezed between them ran one word to a line. #}
   <div>
     <h2 class="section-heading" style="margin-top:0;">Expected in</h2>
     {% if not ahead.incoming %}
@@ -108,11 +113,11 @@
     {% else %}
     <div class="doc-list">
       {% for i in ahead.incoming %}
-      <div class="doc-row" style="gap:10px; align-items:baseline; flex-wrap:wrap;">
-        <span style="min-width:104px;">{{ i.date|date_short }}</span>
-        <strong style="flex:1;">{{ i.label }}</strong>
+      <div class="doc-row" style="gap:4px 10px; align-items:baseline; flex-wrap:wrap;">
+        <strong style="flex:1 1 100%;">{{ i.label }}</strong>
+        <span>{{ i.date|date_short }}</span>
         <span class="mini-status status-inactive">{{ i.kind }}</span>
-        <span class="room-price">€{{ '%.2f'|format(i.amount) }}</span>
+        <span class="room-price" style="margin-left:auto;">€{{ '%.2f'|format(i.amount) }}</span>
       </div>
       {% endfor %}
     </div>
@@ -130,11 +135,11 @@
     {% else %}
     <div class="doc-list">
       {% for o in ahead.outgoing %}
-      <div class="doc-row" style="gap:10px; align-items:baseline; flex-wrap:wrap;">
-        <span style="min-width:104px;">{{ o.date|date_short }}</span>
-        <strong style="flex:1;">{{ o.label }}</strong>
+      <div class="doc-row" style="gap:4px 10px; align-items:baseline; flex-wrap:wrap;">
+        <strong style="flex:1 1 100%;">{{ o.label }}</strong>
+        <span>{{ o.date|date_short }}</span>
         <span class="mini-status status-inactive">{{ o.kind }}</span>
-        <span class="room-price">€{{ '%.2f'|format(o.amount) }}</span>
+        <span class="room-price" style="margin-left:auto;">€{{ '%.2f'|format(o.amount) }}</span>
       </div>
       {% endfor %}
     </div>

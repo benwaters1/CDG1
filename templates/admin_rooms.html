@@ -4,18 +4,25 @@
 
 <div class="page-head">
   <h1>Rooms</h1>
-  <div style="display:flex; gap:10px;">
+  <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
     <a href="{{ url_for('admin_bookings') }}" class="btn-mini">Booking requests</a>
     <a href="{{ url_for('book_rooms') }}" class="btn-mini">View public page</a>
     <form method="post" action="{{ url_for('sync_all_ical_sources') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Sync all calendars</button></form>
     <a href="{{ url_for('new_room') }}" class="btn-primary" style="margin-top:0;">+ Add room</a>
   </div>
 </div>
+{# Said once, here. It was printed under every room, word for word. #}
+<p class="pay-disclaimer" style="margin-top:-10px;">Each room has a calendar link. Paste it into
+  Airbnb, Booking.com or VRBO's calendar import so they see what is booked here and do not sell
+  the same nights twice; add theirs to a room and it stops this site selling nights they have sold.
+  Dates off sale are for maintenance, family, or anything else that keeps a room empty.</p>
 
 {% if not rooms %}
   <div class="empty-state">No rooms yet. Add one to start taking bookings.</div>
 {% else %}
   {% for room in rooms %}
+  {% set sources = sources_by_room.get(room['id'], []) %}
+  {% set blocks = blocks_by_room.get(room['id'], []) %}
   <div class="expense-card">
     {% if room['photo_filename'] %}
     <img src="{{ url_for('room_photo', filename=room['photo_filename']) }}" alt="" class="room-photo-thumb">
@@ -32,25 +39,28 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="direction" value="up">
           <button type="submit" class="small-link" title="Show earlier on the front page"
-                  {{ 'disabled' if loop.first }} aria-label="Move up">&uarr;</button>
+                  {{ 'disabled' if loop.first }} aria-label="Move {{ room['name'] }} up">&uarr;</button>
         </form>
         <form method="post" action="{{ url_for('move_room', room_id=room['id']) }}" style="display:inline;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="direction" value="down">
           <button type="submit" class="small-link" title="Show later on the front page"
-                  {{ 'disabled' if loop.last }} aria-label="Move down">&darr;</button>
+                  {{ 'disabled' if loop.last }} aria-label="Move {{ room['name'] }} down">&darr;</button>
         </form>
         <a href="{{ url_for('edit_room', room_id=room['id']) }}" class="small-link" style="color:var(--steel);">Edit</a>
       </div>
     </div>
 
-    <p class="upload-hint">Paste this link into Airbnb/Booking.com/VRBO's calendar import so they see bookings made here and don't double-book this room:</p>
+    <p class="field-label" style="margin-top:10px;">Its calendar link, for the channels</p>
     <p class="share-link-box">{{ ics_urls[room['id']] }}</p>
 
-    <p class="field-label" style="margin-top:14px;">Imported calendars (Airbnb, Booking.com, VRBO...)</p>
-    {% set sources = sources_by_room.get(room['id'], []) %}
+    {# Side by side where there is room for it: what the channels have sold,
+       and what the house keeps off sale. #}
+    <div class="room-sides">
+    <div>
+    <p class="field-label" style="margin-top:14px;">Calendars it reads from the channels</p>
     {% if not sources %}
-      <p class="empty-inline">None added — this room only checks bookings made here.</p>
+      <p class="empty-inline">None yet.</p>
     {% else %}
       <div class="doc-list">
         {% for s, is_stale, last_log in sources %}
@@ -74,51 +84,70 @@
           </form>
           <form method="post" action="{{ url_for('delete_ical_source', source_id=s['id']) }}" onsubmit="return confirm('Remove this calendar?');" style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="doc-delete">×</button>
+            <button type="submit" class="doc-delete" aria-label="Remove the {{ s['label'] }} calendar" title="Remove this calendar">×</button>
           </form>
         </div>
         {% if s['last_sync_error'] %}<p class="upload-hint" style="color:var(--danger);">{{ s['last_sync_error'] }}</p>{% endif %}
         {% endfor %}
       </div>
     {% endif %}
+    {# Folded. Four rooms each drew this form and the one below open, so the
+       page was mostly empty boxes -- and the two dates further down had no
+       label at all, so nothing said which was the first night. #}
+    <details class="refund-box">
+      <summary>+ Read a calendar from Airbnb, Booking.com or VRBO</summary>
+      <form method="post" action="{{ url_for('new_ical_source', room_id=room['id']) }}" class="upload-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="field-label" for="ical-label-{{ room['id'] }}">What to call it</label>
+        <input id="ical-label-{{ room['id'] }}" type="text" name="label" placeholder="e.g. Airbnb">
+        <label class="field-label" for="ical-url-{{ room['id'] }}">Its calendar address</label>
+        <input id="ical-url-{{ room['id'] }}" type="text" name="url" placeholder="https://www.airbnb.com/calendar/ical/....ics">
+        <button type="submit" class="btn-mini">Add calendar</button>
+      </form>
+    </details>
+    </div>
 
-    <form method="post" action="{{ url_for('new_ical_source', room_id=room['id']) }}" class="upload-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input aria-label="e.g. Airbnb" type="text" name="label" placeholder="e.g. Airbnb">
-      <input aria-label="https://www.airbnb.com/calendar/ical/....ics" type="text" name="url" placeholder="https://www.airbnb.com/calendar/ical/....ics">
-      <button type="submit" class="btn-mini">+ Add calendar</button>
-    </form>
-
-    <p class="field-label" style="margin-top:14px;">Blocked dates (maintenance, personal use, etc.)</p>
-    {% set blocks = blocks_by_room.get(room['id'], []) %}
+    <div>
+    <p class="field-label" style="margin-top:14px;">Dates it is not for sale</p>
     {% if not blocks %}
-      <p class="empty-inline">No manual blocks on this room.</p>
+      <p class="empty-inline">None.</p>
     {% else %}
       <div class="doc-list">
         {% for b in blocks %}
         <div class="doc-row">
           <span style="flex:1;">
-            {{ b['start_date'] }} → {{ b['end_date'] }}{% if b['reason'] %} — {{ b['reason'] }}{% endif %}
+            Off sale from {{ b['start_date']|date_short }}, back on sale {{ b['end_date']|date_short }}{% if b['reason'] %} — {{ b['reason'] }}{% endif %}
             {% if b['end_date'] < today.isoformat() %}<span class="mini-status status-past" style="margin-left:6px;">past</span>{% endif %}
           </span>
           <form method="post" action="{{ url_for('delete_room_block', block_id=b['id']) }}" onsubmit="return confirm('Remove this block?');" style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="doc-delete">×</button>
+            <button type="submit" class="doc-delete" aria-label="Put {{ b['start_date']|date_short }} back on sale" title="Put these dates back on sale">×</button>
           </form>
         </div>
         {% endfor %}
       </div>
     {% endif %}
-
-    <form method="post" action="{{ url_for('new_room_block', room_id=room['id']) }}" class="upload-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="field-row-2">
-        <input type="date" name="start_date" required>
-        <input type="date" name="end_date" required>
-      </div>
-      <input aria-label="Reason (optional) — e.g. Renovation, Family visit" type="text" name="reason" placeholder="Reason (optional) — e.g. Renovation, Family visit">
-      <button type="submit" class="btn-mini">+ Block these dates</button>
-    </form>
+    <details class="refund-box">
+      <summary>+ Take dates off sale</summary>
+      <form method="post" action="{{ url_for('new_room_block', room_id=room['id']) }}" class="upload-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field-row-2">
+          <div>
+            <label class="field-label" for="block-from-{{ room['id'] }}">First night off sale</label>
+            <input id="block-from-{{ room['id'] }}" type="date" name="start_date" required>
+          </div>
+          <div>
+            <label class="field-label" for="block-to-{{ room['id'] }}">Back on sale from</label>
+            <input id="block-to-{{ room['id'] }}" type="date" name="end_date" required>
+          </div>
+        </div>
+        <label class="field-label" for="block-why-{{ room['id'] }}">Why (optional)</label>
+        <input id="block-why-{{ room['id'] }}" type="text" name="reason" placeholder="e.g. Renovation, family visit">
+        <button type="submit" class="btn-mini">Take these dates off sale</button>
+      </form>
+    </details>
+    </div>
+    </div>
   </div>
   {% endfor %}
 {% endif %}

@@ -4,21 +4,26 @@
 
 <div class="page-head">
   <h1>Emails</h1>
-  <a href="{{ url_for('admin_email_outbox') }}" class="btn-ghost">Held email{% if held %} ({{ held }}){% endif %}</a>
-  <a href="{{ url_for('admin_automation') }}" class="btn-ghost">Automation settings</a>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_email_outbox') }}" class="btn-ghost">Held email{% if held %} ({{ held }}){% endif %}</a>
+    <a href="{{ url_for('admin_automation') }}" class="btn-ghost">Automation settings</a>
+  </div>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">Reusable templates for guest emails — announcements, offers, pre-arrival notes. Send to a chosen audience, or set one to go out automatically around a guest's stay.</p>
 
-{% if not email_configured %}
+{# One box. It was two, and the second said "once email is connected"
+   whatever had held the letters -- on the live site email IS connected, and
+   what holds them is Write to guests being off. #}
+{% if not email_configured or held %}
 <div class="flash flash-error" style="margin-bottom:16px;">
+  {% if not email_configured %}
   <strong>Email isn't connected yet.</strong> Templates can be written and previewed, but nothing can actually be sent until <code>RESEND_API_KEY</code> or the <code>SMTP_*</code> settings are configured — see DEPLOY.md.
-</div>
-{% endif %}
-
-{% if held %}
-<div class="flash flash-error" style="margin-bottom:16px;">
-  <strong>{{ held }} message{{ '' if held == 1 else 's' }} couldn't be sent</strong> — including guest confirmations. They are being kept, not dropped, and can go out once email is connected.
-  <a href="{{ url_for('admin_email_outbox') }}">See what's waiting</a>
+  {% endif %}
+  {% if held %}
+  <strong>{{ held }} letter{{ '' if held == 1 else 's' }} waiting</strong> —
+  {% for n, why in held_by %}{{ n }} {{ why }}{{ '; ' if not loop.last else '.' }}{% endfor %}
+  Kept, not dropped. <a href="{{ url_for('admin_email_outbox') }}">See what's waiting</a>
+  {% endif %}
 </div>
 {% endif %}
 

@@ -24378,11 +24378,16 @@ def admin_emails():
            ORDER BY at DESC LIMIT 25"""
     ).fetchall()
     optouts = conn.execute("SELECT COUNT(*) AS c FROM email_optouts").fetchone()["c"]
-    held = conn.execute(
-        "SELECT COUNT(*) AS c FROM email_outbox WHERE sent_at IS NULL").fetchone()["c"]
+    waiting = [held_reason_words(r["reason"]) for r in conn.execute(
+        "SELECT reason FROM email_outbox WHERE sent_at IS NULL").fetchall()]
+    held = len(waiting)
+    held_by = [(sum(1 for w in waiting if w == words),
+                HELD_REASON_PHRASES.get(words, words.lower()))
+               for words in HELD_REASONS + sorted(set(waiting) - set(HELD_REASONS))
+               if words in waiting]
     conn.close()
     return render_template("admin_emails.html", templates=templates, recent=recent,
-                           areas=CAMPAIGN_AREAS, optouts=optouts, held=held,
+                           areas=CAMPAIGN_AREAS, optouts=optouts, held=held, held_by=held_by,
                            email_configured=bool(RESEND_API_KEY or SMTP_HOST))
 
 
@@ -24994,6 +24999,12 @@ def held_reason_words(reason):
 
 HELD_REASONS = ["Writing to guests is off", "Email is not connected",
                 "The provider refused it"]
+# The same three, as the end of a sentence that starts with a number.
+HELD_REASON_PHRASES = {
+    "Writing to guests is off": "because Write to guests is off",
+    "Email is not connected": "because email is not connected",
+    "The provider refused it": "refused by the provider",
+}
 HELD_AGES = ["This week", "Older, still sendable", "Too old to send by itself"]
 
 
@@ -53462,7 +53473,8 @@ def new_room_block(room_id):
     reason = request.form.get("reason", "").strip()
     start, end = parse_date(start_raw), parse_date(end_raw)
     if not start or not end or end <= start:
-        flash("Choose a valid date range to block.", "error")
+        flash("The day it goes back on sale has to come after the first night off "
+              "-- one night off is that night to the next morning.", "error")
         return redirect(url_for("admin_rooms"))
 
     conn = get_db()
@@ -53486,7 +53498,8 @@ def new_room_block(room_id):
     )
     conn.commit()
     conn.close()
-    flash(f"{room['name']} blocked {start.isoformat()} to {end.isoformat()}.", "success")
+    flash(f"{room['name']} is off sale from {format_date_short(start.isoformat())}, "
+          f"back on sale {format_date_short(end.isoformat())}.", "success")
     return redirect(url_for("admin_rooms"))
 
 
@@ -57743,6 +57756,7 @@ def admin_restaurant():
         ],
         default_sort="latest" if args.get("when") == "History" else "date",
     )
+    lv = list_page(lv, request.args)
     reservations = lv["rows"]
 
     pending_count = conn.execute("SELECT COUNT(*) AS c FROM restaurant_bookings WHERE status = 'pending'").fetchone()["c"]
@@ -75979,7 +75993,7 @@ def log_vehicle_service(vehicle_id):
     log_audit(conn, "vehicle_service_logged", target=vehicle["name"], details=f"next due {new_due.isoformat()}")
     conn.commit()
     conn.close()
-    flash(f"Service logged — next due {new_due.isoformat()}.", "success")
+    flash(f"Service logged — the next is due {format_date_short(new_due.isoformat())}.", "success")
     return redirect(url_for("management_vehicles"))
 
 

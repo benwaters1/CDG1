@@ -16,7 +16,7 @@
 <div class="expense-card">
   <div class="expense-head">
     <div>
-      <strong>{{ s['requested_by_name'] }}</strong> → <strong>{{ s['offered_to_name'] }}</strong> — {{ s['shift_date'] }}
+      <strong>{{ s['requested_by_name'] }}</strong> → <strong>{{ s['offered_to_name'] }}</strong> — {{ s['shift_date']|date_short }}
       {% if s['start_time'] or s['end_time'] %}({{ s['start_time'] or '?' }}–{{ s['end_time'] or '?' }}){% endif %}
     </div>
   </div>
@@ -42,8 +42,8 @@
     </div>
   </div>
   <div>
-    <label class="field-label">Date</label>
-    <input type="date" name="shift_date" value="{{ week.range_start.isoformat() }}" required>
+    <label class="field-label" for="admin_shifts-date">Date</label>
+    <input id="admin_shifts-date" type="date" name="shift_date" value="{{ week.range_start.isoformat() }}" required>
   </div>
   <div>
     <label class="field-label" for="admin_shifts-start-time">Start</label>
@@ -60,9 +60,12 @@
   <button type="submit" class="btn-mini">+ Add shift</button>
 </form>
 
-<div class="search-bar" style="justify-content:space-between;">
+{# Not a search-bar: that stacks every group inside it in a column, which
+   stretched Copy last week and Next week across the page one above the
+   other. #}
+<div class="week-nav">
   <a href="{{ url_for('admin_shifts', date=week.prev_anchor) }}" class="btn-mini">&larr; Prev week</a>
-  <strong>{{ week.range_start.strftime('%b') }} {{ week.range_start.day }} – {{ week.range_end.strftime('%b') }} {{ week.range_end.day }}, {{ week.range_end.year }}</strong>
+  <strong>{{ date_range(week.range_start.isoformat(), week.range_end.isoformat()) }}</strong>
   <div style="display:flex; gap:10px;">
     <form method="post" action="{{ url_for('copy_previous_week_shifts') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -105,9 +108,12 @@
 {% if not week.employees %}
   <div class="empty-state">Add employees first to build a schedule.</div>
 {% else %}
-<div style="overflow-x:auto;">
+{# The booking calendar's table, which packs a cell to nothing -- right for
+   a strip of nights, wrong here: each person's row was the height of their
+   name. rota-grid gives it room. #}
+<div>
   <div class="table-wrap">
-<table class="cal-table" style="font-size:12px;">
+<table class="cal-table rota-grid" style="font-size:12px;">
     <thead>
       <tr>
         <th class="cal-room-col">Employee</th>

@@ -13,7 +13,9 @@
 </div>
 {% endif %}
 
-{% if error %}
+{# With Stripe off, the reader lookup's error is the banner above in other
+   words; it printed underneath it as a second red box. #}
+{% if error and stripe_on %}
 <div class="flash flash-error" style="margin-bottom:16px;">{{ error }}</div>
 {% endif %}
 

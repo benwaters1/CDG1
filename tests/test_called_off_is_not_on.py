@@ -254,9 +254,12 @@ def _consume_link(sid):
 
 
 def _spots_row(first, last):
-    """A row on the owner's workshops page saying how many places are left."""
-    return re.compile(re.escape(f"{first.isoformat()} → {last.isoformat()}")
-                      + r"\s*·\s*\d+/\d+ spots left")
+    """A row on the owner's workshops page saying how many places are left.
+    The dates as the page prints them -- "5 – 7 November 2026" -- rather than
+    the ISO pair it printed until 9 October 2026."""
+    said = (m.format_date_range(first.isoformat(), last.isoformat()) if first != last
+            else m.format_date_short(first.isoformat()))
+    return re.compile(re.escape(said) + r"\s*·\s*\d+/\d+ spots left")
 
 
 def _standing_line(html):

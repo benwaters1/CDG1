@@ -444,6 +444,7 @@ SUITES = [
     "test_automation_page",
     "test_held_email_list",
     "test_chips_not_dropdowns",
+    "test_cards_fold_their_forms",
 ]
 
 

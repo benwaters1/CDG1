@@ -3190,3 +3190,19 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
    figure with no TVA number and nothing saying why. Same treatment
    pos_receipt.html already gives it. */
 .statement-missing{ color:var(--status-warn-fg, #8A6A1F); font-weight:600; }
+
+/* ---------- Batch 4: pages that borrowed another page's layout ---------- */
+/* Money ahead's two lists, side by side at the same width. */
+.money-sides{ display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));
+  gap:22px; align-items:start; margin-top:22px; }
+/* A week bar: back, the dates, then the week's own actions -- one row that
+   wraps, never a column of stretched buttons. */
+.week-nav{ display:flex; align-items:center; justify-content:space-between; gap:10px;
+  flex-wrap:wrap; margin-bottom:14px; }
+.week-nav > div{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+/* The rota grid. Built on .cal-table, which packs cells to nothing for the
+   booking strip; a person's row needs to be a row. */
+.cal-table.rota-grid td{ height:44px; }
+.cal-table.rota-grid .cal-room-col{ padding:6px 14px 6px 8px !important; }
+/* A room card's two lists, side by side when the page is wide enough. */
+.room-sides{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:0 22px; }
