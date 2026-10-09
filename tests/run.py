@@ -461,6 +461,34 @@ def _positive_control():
     return ok
 
 
+def _switch_left_off():
+    """Whether the suite that just ran left Write to guests off, putting it back.
+
+    _harness pins the switch on for the run. A suite that switches it off and
+    forgets does not fail itself: it makes every suite after it test a house
+    writing to nobody, and the one that goes red is twenty suites later and
+    innocent. It happened twice in one day, from two suites that each posted
+    the automation form and restored only the settings they knew about. So
+    the runner asks after every suite, names the one that did it, and puts
+    the switch back so the rest of the run means what it says.
+
+    Returns what it was left as, or None when it is still on.
+    """
+    import sqlite3
+    conn = sqlite3.connect(_harness.SCRATCH_DB)
+    try:
+        row = conn.execute("SELECT value FROM app_settings WHERE key = 'guest_mail_live'"
+                           ).fetchone()
+        if row and row[0] == "1":
+            return None
+        conn.execute("INSERT INTO app_settings (key, value) VALUES ('guest_mail_live', '1') "
+                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        conn.commit()
+        return row[0] if row else "missing"
+    finally:
+        conn.close()
+
+
 def _registry_complete():
     """Prove every suite on disk is one this runner actually runs.
 
@@ -643,9 +671,17 @@ def main(argv):
             crashed.append(name)
             print(f"    CRASH  {name}")
             traceback.print_exc()
+            if _switch_left_off() is not None:
+                print(f"    FAIL  {name} left Write to guests switched off as it fell over "
+                      "-- put back on for the suites after it")
             continue
         total_passed += suite.passed
         all_failed += [f"{suite.name}: {f}" for f in suite.failed]
+        left = _switch_left_off()
+        if left is not None:
+            print(f"    FAIL  {name} left Write to guests switched off ({left!r}) "
+                  "-- put back on for the suites after it")
+            all_failed.append(f"{suite.name}: left Write to guests switched off")
 
     # What the suite actually reached. Printed even when everything passes,
     # because a green run over half the app is exactly the failure this guards

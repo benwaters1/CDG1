@@ -173,15 +173,22 @@ def run():
     route_to = _emp["id"]
     before = {r["key"]: r["value"] for r in conn.execute(
         "SELECT key, value FROM app_settings WHERE key LIKE 'automation_%'").fetchall()}
+    # The whole table, to put back. The form also carries Write to guests,
+    # which is not an automation_ key, and restoring only those left it off
+    # for every suite after this one.
+    every_setting = {r["key"]: r["value"] for r in conn.execute(
+        "SELECT key, value FROM app_settings").fetchall()}
     form = {"watch_task_assignee_certification": str(route_to)}
     form.update({k: v for k, v in before.items() if v == "1"})
     posted = _oc.post("/admin/automation/settings", data=form, follow_redirects=True)
     s.check("the owner can set the route from the automation page",
             posted.status_code == 200, detail=f"HTTP {posted.status_code}")
-    # That POST rewrites every automation toggle from the form. Put them back,
-    # or this suite quietly changes the app for every suite that runs after it.
-    for k, v in before.items():
-        conn.execute("UPDATE app_settings SET value = ? WHERE key = ?", (v, k))
+    # That POST rewrites every switch on the form. Put them back, or this suite
+    # quietly changes the app for every suite that runs after it -- all but
+    # the route it came to set, which the check below reads.
+    for k, v in every_setting.items():
+        if k != "watch_task_assignee_certification":
+            conn.execute("UPDATE app_settings SET value = ? WHERE key = ?", (v, k))
     conn.commit()
     stored = conn.execute(
         "SELECT value FROM app_settings WHERE key = 'watch_task_assignee_certification'"
