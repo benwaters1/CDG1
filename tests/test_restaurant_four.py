@@ -41,7 +41,7 @@ def _cleanup(conn):
     conn.execute("DELETE FROM stock_items WHERE name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM restaurant_bookings WHERE guest_name LIKE ?",
                  (TAG + "%",))
-    conn.execute("DELETE FROM dining_tables WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM restaurant_tables WHERE label LIKE ?", (TAG + "%",))
     conn.commit()
 
 
@@ -201,19 +201,21 @@ def run():
                        "not run — reported rather than skipped quietly")
 
     s.section("Where they sit")
+    # A table of the floor plan: the one list of tables the till and the
+    # table plan share (see test_one_list_of_tables).
     conn.execute(
-        """INSERT INTO dining_tables (name, seats, active, sort_order, created_at)
-           VALUES (?, 4, 1, 0, ?)""", (TAG + " Window", now))
-    table = conn.execute("SELECT id FROM dining_tables WHERE name = ?",
+        """INSERT INTO restaurant_tables (label, area, seats, sort_order, active, created_at)
+           VALUES (?, 'salle', 4, 900, 1, ?)""", (TAG + " Window", now))
+    table = conn.execute("SELECT id FROM restaurant_tables WHERE label = ?",
                          (TAG + " Window",)).fetchone()["id"]
     conn.commit()
     aline = conn.execute("SELECT id FROM restaurant_bookings WHERE guest_name = ?",
                          (TAG + " Aline",)).fetchone()["id"]
     ec.post(f"/restaurant/tables/seat/{aline}",
-            data={"dining_table_id": str(table)}, follow_redirects=True)
+            data={"table_id": str(table)}, follow_redirects=True)
     s.check("a party can be put on a table",
-            conn.execute("SELECT dining_table_id FROM restaurant_bookings "
-                         "WHERE id = ?", (aline,)).fetchone()["dining_table_id"]
+            conn.execute("SELECT table_id FROM restaurant_bookings "
+                         "WHERE id = ?", (aline,)).fetchone()["table_id"]
             == table)
 
     s.section("Overfilling a table is allowed and says so")
@@ -222,24 +224,24 @@ def run():
     bruno = conn.execute("SELECT id FROM restaurant_bookings WHERE guest_name = ?",
                          (TAG + " Bruno",)).fetchone()["id"]
     r = ec.post(f"/restaurant/tables/seat/{bruno}",
-                data={"dining_table_id": str(table)}, follow_redirects=True)
+                data={"table_id": str(table)}, follow_redirects=True)
     said = " ".join(flashes(r))
     s.check("it warns rather than refusing",
             "seats 4" in said and "would have 6" in said, detail=said)
     s.check("naming who is already there",
             TAG + " Aline" in said, detail=said)
     s.check("and seats them anyway",
-            conn.execute("SELECT dining_table_id FROM restaurant_bookings "
-                         "WHERE id = ?", (bruno,)).fetchone()["dining_table_id"]
+            conn.execute("SELECT table_id FROM restaurant_bookings "
+                         "WHERE id = ?", (bruno,)).fetchone()["table_id"]
             == table,
             detail="refusing would make the app wrong about a long table")
 
     s.section("And a party can be taken off a table")
-    ec.post(f"/restaurant/tables/seat/{bruno}", data={"dining_table_id": ""},
+    ec.post(f"/restaurant/tables/seat/{bruno}", data={"table_id": ""},
             follow_redirects=True)
     s.check("back to not seated",
-            conn.execute("SELECT dining_table_id FROM restaurant_bookings "
-                         "WHERE id = ?", (bruno,)).fetchone()["dining_table_id"]
+            conn.execute("SELECT table_id FROM restaurant_bookings "
+                         "WHERE id = ?", (bruno,)).fetchone()["table_id"]
             is None)
 
     s.section("An employee cannot rewrite the menu costs")

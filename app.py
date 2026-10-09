@@ -4107,9 +4107,9 @@ def init_db():
             UNIQUE(menu_item_id, stock_item_id)
         );
 
-        -- Where a party sits. Tables are named rather than numbered
-        -- because that is how a house like this refers to them, and a
-        -- booking without one is normal -- most are seated on the night.
+        -- SUPERSEDED: the floor plan's restaurant_tables is the one list of
+        -- tables, and merge_old_dining_tables() moves anything here across.
+        -- Kept, not dropped, so nothing that was written down is lost.
         CREATE TABLE IF NOT EXISTS dining_tables (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -6286,6 +6286,19 @@ def init_db():
         ("restaurant_table", "ALTER TABLE restaurant_bookings ADD COLUMN "
                              "dining_table_id INTEGER REFERENCES "
                              "dining_tables(id) ON DELETE SET NULL"),
+        # ONE LIST OF TABLES. The column above pointed at dining_tables, a
+        # second list nothing but the reservations' table plan ever read: the
+        # till's floor plan held the house's ten tables, and the table plan,
+        # the seating check and "how full the room was" all said there were
+        # none. A party is seated at a table of the floor plan now, and
+        # merge_old_dining_tables() carries any old seating across.
+        ("restaurant_booking_table_id", "ALTER TABLE restaurant_bookings ADD COLUMN "
+                                        "table_id INTEGER REFERENCES "
+                                        "restaurant_tables(id) ON DELETE SET NULL"),
+        # Where each old row went, so the merge runs once per row and a table
+        # the owner later removes from the floor plan is not put back.
+        ("dining_tables_merged_into", "ALTER TABLE dining_tables ADD COLUMN "
+                                      "merged_into INTEGER"),
         # What the invoice CHARGED for, where that differs from what turned
         # up. One nullable column rather than a table: the ledger already
         # holds the quantity, cost, item, date and invoice, and a movement
@@ -7534,6 +7547,7 @@ def init_db():
     # on the first night instead of an empty page and a text box.
     seed_dining_tables(conn)
     conn.commit()
+    merge_old_dining_tables(conn)
 
     # Tabs opened before tables existed carry the table's name and no id. Link
     # them where the name matches exactly, so the floor, the seating check and
@@ -18946,6 +18960,51 @@ def seed_dining_tables(conn):
         )
 
 
+def merge_old_dining_tables(conn):
+    """Carry the reservations' old table list into the floor plan, once per row.
+
+    There were two lists of tables. The till's floor plan (restaurant_tables)
+    held the house's ten; the reservations' table plan read a second one,
+    dining_tables, that the floor plan never saw -- so a booking could only be
+    seated at a table typed in twice, and the room's seats were counted from
+    the empty list. Each old table joins the floor plan under its own name
+    (or meets the one already there by that name), every party seated at it
+    follows, and the old row records where it went so this never runs on it
+    again. Nothing is deleted.
+    """
+    areas = {key for key, _title in DINING_AREAS}
+    spelled = {"terrasse": "terrace", "privé": "private", "prive": "private"}
+    old_rows = conn.execute(
+        "SELECT * FROM dining_tables WHERE merged_into IS NULL ORDER BY sort_order, id"
+    ).fetchall()
+    for old in old_rows:
+        label = (old["name"] or "").strip()[:40] or f"Table {old['id']}"
+        same = conn.execute(
+            "SELECT id FROM restaurant_tables WHERE lower(trim(label)) = lower(?)",
+            (label,)).fetchone()
+        if same:
+            new_id = same["id"]
+        else:
+            area = (old["area"] or "").strip().lower()
+            area = spelled.get(area, area)
+            order = conn.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM restaurant_tables"
+            ).fetchone()["n"]
+            conn.execute(
+                """INSERT INTO restaurant_tables (label, area, seats, sort_order, active,
+                   created_at) VALUES (?, ?, ?, ?, ?, ?)""",
+                (label, area if area in areas else "salle", old["seats"] or 2, order,
+                 1 if old["active"] else 0, old["created_at"]))
+            new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        conn.execute(
+            """UPDATE restaurant_bookings SET table_id = ?, dining_table_id = NULL
+                WHERE dining_table_id = ? AND table_id IS NULL""", (new_id, old["id"]))
+        conn.execute("UPDATE dining_tables SET merged_into = ? WHERE id = ?",
+                     (new_id, old["id"]))
+    conn.commit()
+    return len(old_rows)
+
+
 def dining_tables(conn, *, include_retired=False):
     return conn.execute(
         f"""SELECT * FROM restaurant_tables
@@ -21875,8 +21934,9 @@ def table_utilisation(conn, start=None, end=None):
     """
     start = start or (house_today() - timedelta(days=90))
     end = end or house_today()
+    # The floor plan's seats: the one list of tables (see merge_old_dining_tables).
     seats = conn.execute(
-        "SELECT COALESCE(SUM(seats), 0) AS s FROM dining_tables WHERE active = 1"
+        "SELECT COALESCE(SUM(seats), 0) AS s FROM restaurant_tables WHERE active = 1"
     ).fetchone()["s"] or 0
 
     rows = conn.execute(
@@ -34436,7 +34496,9 @@ def admin_dining_tables():
     conn = get_db()
     rows = dining_tables(conn, include_retired=True)
     in_use = {r["table_id"] for r in conn.execute(
-        "SELECT DISTINCT table_id FROM pos_orders WHERE table_id IS NOT NULL").fetchall()}
+        """SELECT table_id FROM pos_orders WHERE table_id IS NOT NULL
+           UNION SELECT table_id FROM restaurant_bookings WHERE table_id IS NOT NULL"""
+    ).fetchall()}
     conn.close()
     tables = [{"row": r, "has_history": r["id"] in in_use} for r in rows]
     return render_template("admin_dining_tables.html", tables=tables,
@@ -34528,8 +34590,12 @@ def retire_dining_table(table_id):
         conn.close()
         flash(f"Table {table['label']} has a tab open on it. Settle that first.", "error")
         return redirect(url_for("admin_dining_tables"))
+    # A table a reservation has been seated at is history too: deleting it
+    # would quietly unseat the party.
     used = conn.execute(
-        "SELECT 1 FROM pos_orders WHERE table_id = ? LIMIT 1", (table_id,)).fetchone()
+        """SELECT 1 FROM pos_orders WHERE table_id = ?
+           UNION ALL SELECT 1 FROM restaurant_bookings WHERE table_id = ?
+           LIMIT 1""", (table_id, table_id)).fetchone()
     if used:
         conn.execute("UPDATE restaurant_tables SET active = 0 WHERE id = ?", (table_id,))
         msg = f"Table {table['label']} taken off the floor. Its past tabs are untouched."
@@ -66898,50 +66964,31 @@ def restaurant_what_sells():
                            overview=overview, days=days)
 
 
-@app.route("/restaurant/tables", methods=["GET", "POST"])
+@app.route("/restaurant/tables")
 @login_required
 def restaurant_tables():
-    """The table plan for a night."""
+    """The table plan for a night: who is booked, and which table they are at.
+
+    The tables are the floor plan's -- the same ones the till opens tabs on.
+    This page kept a second list of its own, and the two never met: the till
+    had the house's ten tables while this page said none were laid out. Tables
+    are added and changed in one place now, the floor plan.
+    """
     conn = get_db()
-
-    if request.method == "POST":
-        name = (request.form.get("name", "") or "").strip()[:60]
-        seats_raw = (request.form.get("seats", "") or "").strip()
-        area = (request.form.get("area", "") or "").strip()[:60]
-        if not name:
-            conn.close()
-            flash("A table needs a name.", "error")
-            return redirect(url_for("restaurant_tables"))
-        order = conn.execute(
-            "SELECT COALESCE(MAX(sort_order), -1) AS m FROM dining_tables"
-        ).fetchone()["m"]
-        conn.execute(
-            """INSERT INTO dining_tables (name, seats, area, active,
-                       sort_order, created_at)
-               VALUES (?, ?, ?, 1, ?, ?)""",
-            (name, int(seats_raw) if seats_raw.isdigit() and int(seats_raw) > 0 else 2,
-             area or None, order + 1, datetime.now(timezone.utc).isoformat()))
-        conn.commit()
-        conn.close()
-        flash(f"{name} added.", "success")
-        return redirect(url_for("restaurant_tables"))
-
     on = parse_date(request.args.get("date", "")) or house_today()
-    tables = conn.execute(
-        "SELECT * FROM dining_tables WHERE active = 1 ORDER BY sort_order, name"
-    ).fetchall()
+    tables = dining_tables(conn)
     bookings = conn.execute(
-        """SELECT restaurant_bookings.*, dining_tables.name AS table_name
+        """SELECT restaurant_bookings.*, restaurant_tables.label AS table_name
              FROM restaurant_bookings
-             LEFT JOIN dining_tables
-               ON dining_tables.id = restaurant_bookings.dining_table_id
+             LEFT JOIN restaurant_tables
+               ON restaurant_tables.id = restaurant_bookings.table_id
             WHERE restaurant_bookings.dinner_date = ?
               AND restaurant_bookings.status = 'confirmed'
               AND restaurant_bookings.no_show_at IS NULL
             ORDER BY restaurant_bookings.guest_name""", (on.isoformat(),)).fetchall()
     conn.close()
 
-    seated = [b for b in bookings if b["dining_table_id"]]
+    seated = [b for b in bookings if b["table_id"]]
     covers = sum(b["party_size"] or 0 for b in bookings)
     seats = sum(t["seats"] or 0 for t in tables)
     overview = [
@@ -66967,32 +67014,40 @@ def seat_restaurant_booking(booking_id):
     if not row:
         conn.close()
         abort(404)
-    table_raw = (request.form.get("dining_table_id", "") or "").strip()
+    table_raw = (request.form.get("table_id", "") or "").strip()
     table_id = int(table_raw) if table_raw.isdigit() else None
 
     if table_id:
         table = conn.execute(
-            "SELECT name, seats FROM dining_tables WHERE id = ?",
+            "SELECT label, seats FROM restaurant_tables WHERE id = ? AND active = 1",
             (table_id,)).fetchone()
+        if not table:
+            # Refused and said, rather than an integrity error: a table taken
+            # off the floor while this page was open is the likely way here.
+            conn.close()
+            flash("That table is not on the floor plan any more. Pick another.", "error")
+            return redirect(url_for("restaurant_tables", date=row["dinner_date"]))
         # Two parties on one table is a real thing at a long table and a
         # mistake at a small one, so this reports rather than refuses --
         # and says who is already there so the choice is informed.
         already = conn.execute(
             """SELECT guest_name, party_size FROM restaurant_bookings
-                WHERE dining_table_id = ? AND dinner_date = ? AND id != ?
+                WHERE table_id = ? AND dinner_date = ? AND id != ?
                   AND status = 'confirmed' AND no_show_at IS NULL""",
             (table_id, row["dinner_date"], booking_id)).fetchall()
         taken = sum(a["party_size"] or 0 for a in already)
         if table and taken + (row["party_size"] or 0) > (table["seats"] or 0):
-            flash(f"{table['name']} seats {table['seats']} and would have "
+            flash(f"{table['label']} seats {table['seats']} and would have "
                   f"{taken + (row['party_size'] or 0)}"
                   + (f" \u2014 {', '.join(a['guest_name'] for a in already)} "
                      "already on it." if already else ".")
                   + " Seated anyway; move somebody if that is wrong.",
                   "error")
 
-    conn.execute("UPDATE restaurant_bookings SET dining_table_id = ? WHERE id = ?",
-                 (table_id, booking_id))
+    # dining_table_id cleared as well: it pointed at the old list, and a
+    # booking carrying both could be read two ways.
+    conn.execute("UPDATE restaurant_bookings SET table_id = ?, dining_table_id = NULL "
+                 "WHERE id = ?", (table_id, booking_id))
     conn.commit()
     conn.close()
     return redirect(url_for("restaurant_tables", date=row["dinner_date"]))

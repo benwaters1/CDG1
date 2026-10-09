@@ -440,6 +440,7 @@ SUITES = [
     "test_nothing_overprints",
     "test_owner_pages_read_cleanly",
     "test_text_stands_clear",
+    "test_one_list_of_tables",
 ]
 
 

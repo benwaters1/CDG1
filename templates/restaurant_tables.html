@@ -29,7 +29,7 @@
       <thead><tr><th>Party</th><th class="num">Covers</th><th>Anything to know</th><th>Table</th></tr></thead>
       <tbody>
         {% for b in bookings %}
-        <tr class="{{ '' if b['dining_table_id'] else 'row-alert' }}">
+        <tr class="{{ '' if b['table_id'] else 'row-alert' }}">
           <th scope="row">{{ b['guest_name'] }}</th>
           <td class="num">{{ b['party_size'] }}</td>
           <td>{% if b['dietary_notes'] %}<span class="upload-hint">{{ b['dietary_notes'] }}</span>{% endif %}</td>
@@ -37,12 +37,12 @@
             <form method="post" action="{{ url_for('seat_restaurant_booking', booking_id=b['id']) }}"
                   style="display:flex; gap:6px; align-items:center;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <select name="dining_table_id" onchange="this.form.submit()"
+              <select name="table_id" onchange="this.form.submit()"
                   aria-label="Which table for {{ b['guest_name'] }}">
                 <option value="">Not seated</option>
                 {% for t in tables %}
-                <option value="{{ t['id'] }}" {{ 'selected' if t['id'] == b['dining_table_id'] }}>
-                  {{ t['name'] }} ({{ t['seats'] }})</option>
+                <option value="{{ t['id'] }}" {{ 'selected' if t['id'] == b['table_id'] }}>
+                  {{ t['label'] }} ({{ t['seats'] }})</option>
                 {% endfor %}
               </select>
             </form>
@@ -56,16 +56,22 @@
 </div>
 
 <div class="detail-card">
-  <h2 class="section-heading">The tables</h2>
+  <div class="page-head" style="margin-bottom:6px;">
+    <h2 class="section-heading" style="margin:0;">The tables</h2>
+    {% if can('admin_dining_tables') %}
+    <a href="{{ url_for('admin_dining_tables') }}" class="btn-mini">Change the floor plan</a>
+    {% endif %}
+  </div>
   {% if not tables %}
-  <p class="empty-inline">No tables laid out yet.</p>
+  <p class="empty-inline">No tables are on the floor plan yet{% if can('admin_dining_tables') %}
+    &mdash; <a href="{{ url_for('admin_dining_tables') }}">lay out the room</a>{% endif %}.</p>
   {% else %}
   <div class="doc-list">
     {% for t in tables %}
-    {% set on_it = bookings|selectattr('dining_table_id', 'equalto', t['id'])|list %}
+    {% set on_it = bookings|selectattr('table_id', 'equalto', t['id'])|list %}
     <div class="doc-row">
       <span style="flex:1;">
-        <b>{{ t['name'] }}</b> <span class="upload-hint">seats {{ t['seats'] }}{% if t['area'] %} &middot; {{ t['area'] }}{% endif %}</span>
+        <b>{{ t['label'] }}</b> <span class="upload-hint">seats {{ t['seats'] }}{% if t['area'] %} &middot; {{ t['area']|capitalize }}{% endif %}</span>
         {% if on_it %}
         <div class="upload-hint" style="margin-top:2px;">
           {% for b in on_it %}{{ b['guest_name'] }} ({{ b['party_size'] }}){% if not loop.last %}, {% endif %}{% endfor %}
@@ -79,17 +85,6 @@
   </div>
   {% endif %}
 </div>
-
-<form method="post" class="detail-card">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <h2 class="section-heading">Add a table</h2>
-  <div class="field-row-2">
-    <input aria-label="What it is called, e.g. By the window" type="text" name="name" placeholder="What it is called, e.g. By the window" required>
-    <input aria-label="Seats (2)" type="number" name="seats" min="1" placeholder="Seats (2)">
-  </div>
-  <input aria-label="Where, e.g. orangery" type="text" name="area" placeholder="Where, e.g. orangery" style="width:100%;">
-  <button type="submit" class="btn-mini" style="margin-top:8px;">Add</button>
-</form>
 
 <p class="upload-hint">Seating a party onto a full table is allowed and says so &mdash; two parties
   on one table is a real thing at a long table and a mistake at a small one, and only the person
