@@ -687,7 +687,11 @@ body.staff-shell a.mini-row:hover{
 
 /* ---------- Tasks ---------- */
 .task-list{ display:flex; flex-direction:column; gap:6px; }
-.task-row{ display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--parchment-line); border-radius:9px; padding:11px 12px; }
+/* flex-wrap: a row carries a tick, a name and as many as five buttons, and on
+   a phone they did not fit. The breakfast checklist ran to 480px inside 390,
+   dragging the page sideways for whoever was ticking it off. The name keeps
+   room before anything wraps under it. */
+.task-row{ display:flex; flex-wrap:wrap; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--parchment-line); border-radius:9px; padding:11px 12px; }
 .task-row form{ display:inline; }
 .task-check{
   width:30px; height:30px; border-radius:7px; border:1.5px solid var(--parchment-line); background:var(--surface);
@@ -696,7 +700,7 @@ body.staff-shell a.mini-row:hover{
   transition: border-color .15s ease, transform .1s ease;
 }
 .task-check:hover{ border-color:var(--success); transform:scale(1.05); }
-.task-title{ flex:1; font-size:14.5px; line-height:1.4; }
+.task-title{ flex:1 1 8rem; min-width:0; font-size:14.5px; line-height:1.4; }
 
 /* Readiness rows carry a label, a long explanation and a severity badge. The
    label used to be a rigid `flex:0 0 220px` that could not shrink, so on a
@@ -870,7 +874,9 @@ body.staff-shell .announcement-banner{ background:var(--status-warn-bg); color:v
 .announcement-banner strong{ font-family:'Playfair Display', serif; }
 
 .doc-list{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
-.doc-row{ display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--parchment-line); border-radius:7px; padding:8px 10px; }
+/* flex-wrap for the same reason as .task-row: an atelier's session row carries
+   its dates, a places box and four buttons, and ran to 651px inside 390. */
+.doc-row{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--parchment-line); border-radius:7px; padding:8px 10px; }
 .doc-row a{ flex:1; color:var(--steel); font-size:12.5px; font-weight:600; text-decoration:none; }
 .doc-row a:hover{ text-decoration:underline; }
 /* Switched off but still listed, so it can be switched back on. */
@@ -921,6 +927,13 @@ body.staff-shell .manual-section h3{ color:var(--ivory); font-family:'Inter',san
 .danger-link{ background:none; border:none; font-size:12.5px; color:var(--danger); cursor:pointer; padding:0; }
 .manual-body{ font-size:13.5px; line-height:1.75; white-space:pre-wrap; margin:0; }
 .manual-body.empty{ color:var(--ink-soft); font-style:italic; }
+/* The same type for a line the PAGE composes rather than one somebody typed.
+   pre-wrap is right for a note -- it keeps the writer's line breaks -- and
+   wrong for a sentence split across the template's own lines, because then it
+   keeps the template's: the indentation printed mid-sentence, and Booking
+   Requests drew a blank band inside every card. test_owner_pages_read_cleanly
+   finds any manual-body whose source spans lines without this. */
+.manual-body.wraps{ white-space:normal; }
 .manual-edit-form textarea{ min-height:140px; margin-bottom:10px; }
 .new-section-form{ display:flex; gap:8px; align-items:center; }
 .new-section-form input{ flex:1; }
@@ -948,6 +961,11 @@ body.staff-shell .room-price{ color:var(--gold-soft); font-family:'IBM Plex Mono
 .search-bar > div{ display:flex; flex-direction:column; flex:1 1 150px; min-width:150px; }
 .search-bar input, .search-bar select{ width:100%; }
 .search-bar > button, .search-bar > a.btn-mini{ flex:0 0 auto; }
+/* A Day / Week / Month switch in the bar is a row of buttons, not a field.
+   The rule above is for a label over its input, and it caught this too: on
+   Overview and Tasks the three choices stood one above the other, a tall box
+   stretched across the page. */
+.search-bar > .segmented{ flex-direction:row; flex:0 0 auto; min-width:0; }
 .amenity-tags{ display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
 .amenity-tag{
   font-size:11px; padding:3px 9px; border-radius:10px;
@@ -2579,6 +2597,12 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 }
 @media (max-width:720px){
   .oh-qrow{ grid-template-columns:16px minmax(0,1fr); row-gap:8px; }
+  /* Everything but the bar in the wide column, the bar down the side of all
+     of it. Left to auto-placement the item fell into the 16px column on the
+     second row -- the supplier's name one word per line -- with the amount
+     printed over it in the column beside. */
+  .oh-qrow > :not(.oh-bar){ grid-column:2; }
+  .oh-qrow > .oh-bar{ grid-row:1 / span 4; align-self:stretch; height:auto; }
   .oh-qrow--head{ display:none; }
   .oh-qrow .oh-amount,.oh-qrow .oh-decide{ grid-column:2; justify-content:flex-start;
     text-align:left; }

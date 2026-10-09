@@ -8,12 +8,17 @@
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">Who the companies are, and what the house is insured for — the things you'd otherwise dig through files or your inbox to find. For the scans and certificates themselves, use <a href="{{ url_for('management_documents') }}" style="color:inherit;">Documents</a>.</p>
 
-<h2 class="section-heading" id="companies">Legal &amp; Registration</h2>
-<p class="pay-disclaimer" style="margin-top:-10px;">
+{# The button beside the heading, as on HR's chase-ups, rather than inside
+   the small italic line under it: a button set in a line of 11.5px text,
+   pulled up 10px, printed over the end of the sentence above. #}
+<div class="page-head" style="margin-bottom:6px;">
+  <h2 class="section-heading" id="companies" style="margin:0;">Legal &amp; Registration</h2>
+  <a href="{{ url_for('new_company') }}" class="btn-mini">Add a company</a>
+</div>
+<p class="pay-disclaimer">
   Every company in the group. One of them is the company guest invoices,
   receipts and statements are issued by, and one is the employer named on
   staff paperwork. Each is marked on that company's page.
-  <a href="{{ url_for('new_company') }}" class="btn-mini" style="margin-left:8px;">Add a company</a>
 </p>
 
 {% if not issuer %}

@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}What a night costs{% endblock %}
+{% block title %}What a night leaves{% endblock %}
 {% block content %}
 
 <div class="page-head">
-  <h1>What a night costs</h1>
+  <h1>What a night leaves</h1>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     <a href="{{ url_for('management_break_even') }}" class="btn-ghost">Break-even</a>
     <a href="{{ url_for('export_night_margin_csv', period=period.period, date=period.start_iso) }}" class="btn-ghost">Export CSV</a>

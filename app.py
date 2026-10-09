@@ -1392,6 +1392,22 @@ app.config["SESSION_COOKIE_SECURE"] = not DEBUG_MODE
 # might walk up to.
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
 
+# NOTHING ON A PAGE PRINTS AS THE WORD "None".
+#
+# Jinja writes a Python None out as "None", so every `{{ row['x'] }}` over an
+# empty column put the word in front of somebody -- and inside an input it is
+# worse than untidy, because it is then SAVED. Two were found by reading every
+# owner page: the house card on Company & Insurance, where the browser refused
+# the Save outright ("None" is not an email address), so the guest limit for
+# the whole house could not be changed until somebody cleared two boxes; and
+# every dish's edit form, where changing a price wrote "None" into the
+# description guests read for fourteen of the twenty-five dishes.
+#
+# Fixed once, here, rather than with `or ''` on each tag: there are thousands
+# of tags, and the one that gets missed is the next one written. An empty
+# value is an empty string on every page, public and staff alike.
+app.jinja_env.finalize = lambda value: "" if value is None else value
+
 csrf = CSRFProtect(app)
 
 
@@ -10720,9 +10736,15 @@ def facet(key, label, bucket, *, order=None, labels=None, hide_empty=True, limit
     facet -- how a list opens on what is current, with what is over one chip
     away under History rather than filling the top of the page. ?key=all
     (LIST_ALL) is the explicit "everything".
+
+    `order` is de-duplicated here, keeping the first place a name appears.
+    Orders are built from lookup tables, and a table that maps two prefixes to
+    one name ("room" and "review" are both Rooms) handed the same name in
+    twice -- so Email Wording drew "Rooms 14" twice, and clicking either gave
+    the same list.
     """
     return {"key": key, "label": label, "bucket": bucket,
-            "order": list(order or []), "labels": dict(labels or {}),
+            "order": list(dict.fromkeys(order or [])), "labels": dict(labels or {}),
             "hide_empty": hide_empty, "limit": limit, "default": default}
 
 
@@ -36385,8 +36407,11 @@ PALETTE_PAGES = [
      "channel commission ota agent direct booking.com airbnb expedia cost"),
     ("What the extras earn", "management_extras_performance",
      "extras attach rate upsell add ons champagne transfers conversion"),
-    ("What a night costs", "management_night_margin",
-     "cost per night sold labour expenses margin per room night"),
+    # Named for what it shows -- the average night against what it cost, and
+    # what is left. It and management_night_cost were both called "What a
+    # night costs", so the reports page offered the same title twice.
+    ("What a night leaves", "management_night_margin",
+     "cost per night sold labour expenses margin per room night left over"),
     ("Which rooms earn", "management_room_league",
      "room league revpar occupancy adr best worst room performance"),
     ("Atelier margins", "management_workshop_margins",
@@ -37099,7 +37124,9 @@ def admin_wages():
         search_hint="Search a name, role or pay note",
         facets=[
             facet("state", "Wage", lambda r: r["state"]),
-            facet("basis", "Paid", lambda r: (r["basis"] or "—").title()),
+            # "Not set" rather than a dash: a chip is an answer, and "— 4" read
+            # as a broken label rather than as four people with no basis yet.
+            facet("basis", "Paid", lambda r: r["basis"].title() if r["basis"] else "Not set"),
             facet("status", "Status", lambda r: (r["person"]["status"] or "active").title()),
         ],
         sorts=[
@@ -52590,9 +52617,12 @@ def admin_extras():
             facet("stock", "Stock",
                   lambda e: "Comes out of stock" if e["stock_item_id"] else "Not stock-tracked",
                   order=["Comes out of stock", "Not stock-tracked"]),
+            # "No notice" rather than "None", which read as a value missing
+            # rather than as an answer; and "1 day", not "1 days".
             facet("notice", "Notice needed",
-                  lambda e: f"{e['lead_time_days']} days" if (e["lead_time_days"] or 0) > 0
-                  else "None"),
+                  lambda e: (f"{e['lead_time_days']} day"
+                             + ("" if e["lead_time_days"] == 1 else "s"))
+                  if (e["lead_time_days"] or 0) > 0 else "No notice"),
         ],
         sorts=[
             sort_option("order", "House order", lambda e: (e["sort_order"] or 0,

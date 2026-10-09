@@ -108,7 +108,7 @@
       </div>
       <span class="upload-hint">{{ r['reference_code'] }}{% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='workshop_booking', record_id=r['id']) }}" class="small-link">What changed</a>{% endif %}</span>
     </div>
-    <p class="manual-body">
+    <p class="manual-body wraps">
       {{ r['start_date'] }}{% if r['end_date'] != r['start_date'] %} → {{ r['end_date'] }}{% endif %}
       · Party of {{ r['party_size'] }} · {{ r['occupancy_type']|capitalize }}{% if r['single_supplement'] %} (+€{{ '%.0f'|format(r['single_supplement']) }} pp single){% endif %}{% if r['total_price'] %} · €{{ '%.2f'|format(r['total_price']) }}{% endif %}
     </p>

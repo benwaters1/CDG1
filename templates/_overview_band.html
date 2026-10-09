@@ -7,7 +7,10 @@
   {% for c in cells %}
   {% set body %}
     <div class="overview-value">
-      {{ c.value }}{% if c.sub %}<span class="overview-sub">{{ c.sub }}</span>{% endif %}
+      {#- <wbr>: the figure and its note are written flush, so with no break
+          between them "Verified" and "recomputed" were one word to the
+          browser, and on a narrow tile the note ran on into the next one. -#}
+      {{ c.value }}{% if c.sub %}<wbr><span class="overview-sub">{{ c.sub }}</span>{% endif %}
       {% if c.delta is not none %}
         {% set down = (c.delta is string and c.delta.startswith('-')) or (c.delta is not string and c.delta < 0) %}
         {% set up = (c.delta is string and c.delta.startswith('+')) or (c.delta is not string and c.delta > 0) %}

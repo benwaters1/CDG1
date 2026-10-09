@@ -120,7 +120,7 @@
         {% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='booking', record_id=b['id']) }}" class="small-link" style="color:var(--steel);">What changed</a>{% endif %}
       </span>
     </div>
-    <p class="manual-body">
+    <p class="manual-body wraps">
       {{ b['arrival_date'] }} → {{ b['departure_date'] }} · Party of {{ b['party_size'] }}
       {% if b['total_price'] %} · €{{ '%.2f'|format(b['total_price']) }}{% endif %}
       {% if owed_by_booking.get(b['id']) %} · <strong class="owed-flag">€{{ '%.2f'|format(owed_by_booking[b['id']]) }} still owed</strong>{% endif %}

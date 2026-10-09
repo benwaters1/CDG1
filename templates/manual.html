@@ -2,16 +2,18 @@
 {% block title %}Employee Manual{% endblock %}
 {% block content %}
 
-{% if last_updated %}
-{# A staff manual with no date on it is one nobody can tell is current.
-   last_updated is a stored moment, so it is the house's day of it: [:10]
-   read UTC's, and an edit made after midnight was dated the day before. #}
-<p class="upload-hint">Last changed {{ last_updated|date_short }}.</p>
-{% endif %}
-
 <div class="page-head">
   <h1>{{ t('Employee Manual') }}</h1>
 </div>
+
+{% if last_updated %}
+{# A staff manual with no date on it is one nobody can tell is current.
+   last_updated is a stored moment, so it is the house's day of it: [:10]
+   read UTC's, and an edit made after midnight was dated the day before.
+   Under the title, not above it: a line printed over a page's name reads as
+   part of whatever page came before. #}
+<p class="upload-hint" style="margin-top:-10px;">Last changed {{ last_updated|date_short }}.</p>
+{% endif %}
 
 {% if user['role'] != 'owner' %}
   {% if not my_ack %}

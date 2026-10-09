@@ -438,6 +438,8 @@ SUITES = [
     "test_till_touch_targets",
     "test_staff_header_on_a_phone",
     "test_nothing_overprints",
+    "test_owner_pages_read_cleanly",
+    "test_text_stands_clear",
 ]
 
 

@@ -87,12 +87,12 @@
 {% if cost['avoidable_per_night'] is not none %}
 <div class="detail-card">
   <h2 class="section-heading">Should you take it at a discount?</h2>
-  <p class="manual-body">
+  <p class="manual-body wraps">
     Not selling a room saves <strong>&euro;{{ '%.2f'|format(cost['avoidable_per_night']) }}</strong>
     a night, not &euro;{{ '%.2f'|format(cost['per_night']) }}. Everything else is spent whether the
     room goes or not.
   </p>
-  <p class="manual-body">
+  <p class="manual-body wraps">
     So a night sold above &euro;{{ '%.2f'|format(cost['avoidable_per_night']) }} leaves the house
     better off than an empty one, and that is the honest floor &mdash; not a recommendation to sell
     there. Filling the house at that price means the standing costs are never covered, and the

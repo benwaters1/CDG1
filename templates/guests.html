@@ -83,7 +83,7 @@
         {% endif %}
       </div>
     </div>
-    <p class="manual-body">
+    <p class="manual-body wraps">
       {{ s['room_name'] }} · {{ s['arrival_date'] }} → {{ s['departure_date'] }}
       {%- if s['channel'] %} · booked through {{ s['channel'] }}{% endif %}
       {%- if s['party_size'] %} · Party of {{ s['party_size'] }}{% endif -%}
@@ -108,7 +108,7 @@
         {% if s['email'] %}<a href="{{ url_for('guest_booking_history', email=s['email']) }}" class="small-link">History</a>{% endif %}
       </div>
     </div>
-    <p class="manual-body">
+    <p class="manual-body wraps">
       {{ s['room_name'] }} · {{ s['arrival_date'] }} → {{ s['departure_date'] }}
       {%- if s['channel'] %} · booked through {{ s['channel'] }}{% endif %}
       {%- if s['party_size'] %} · Party of {{ s['party_size'] }}{% endif -%}
@@ -158,7 +158,7 @@
       </div>
     </div>
     {% if g['email'] or g['phone'] %}
-    <p class="manual-body">
+    <p class="manual-body wraps">
       {{ g['email'] or '' }}{% if g['email'] and g['phone'] %} · {% endif %}{{ g['phone'] or '' }}
     </p>
     {% endif %}

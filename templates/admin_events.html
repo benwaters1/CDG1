@@ -132,7 +132,7 @@
     </div>
     <span class="upload-hint">{{ e['reference_code'] }}{% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='event', record_id=e['id']) }}" class="small-link">What changed</a>{% endif %}</span>
   </div>
-  <p class="manual-body">
+  <p class="manual-body wraps">
     {% if e['preferred_date'] %}{{ e['preferred_date'] }}{% if e['end_date'] %} → {{ e['end_date'] }}{% endif %}{% else %}No date set yet{% endif %}
     {%- if e['alternate_date'] %} · Alt: {{ e['alternate_date'] }}{% endif %}
     {%- if e['spaces'] %} · {{ e['spaces'] }}{% endif %}

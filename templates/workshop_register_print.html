@@ -18,7 +18,7 @@
   somebody holds when a guest is taken ill; the running sheet has them too.
 #}
 <h2 class="section-heading">{{ session['title'] }}</h2>
-<p class="manual-body">
+<p class="manual-body wraps">
   {{ session['start_date']|date_short }}{% if session['end_date'] and session['end_date'] != session['start_date'] %} to {{ session['end_date']|date_short }}{% endif %}
   · {{ people }} {{ 'person' if people == 1 else 'people' }} of {{ session['capacity'] }}
   {% if owed %}· €{{ '{:,.2f}'.format(owed) }} still owed{% endif %}
