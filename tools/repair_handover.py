@@ -1795,10 +1795,12 @@ ROOM_COUNT_CORRECTIONS = [
 # Partials built on a room count -- the fifty-five-square grid, the "What It
 # Took" facts, the year-by-year explorer and the ninety-four-cell reveal, both
 # drawn on ninety-four rooms -- taken out while no page renders them. The 9
-# October Restoration page dropped the last of them. One a page has wired back
-# in is left for test_confirmed_facts to name, rather than deleted from under
-# the page that uses it.
-RULED_OUT_PARTIALS = ("_scale.html", "_took.html", "_explorer.html", "_interactive.html")
+# October Restoration page dropped the last of them. The floor plan went the
+# same day, on the owner's word: five rooms lit and the rest blank, and not
+# even accurate. One a page has wired back in is left for test_orphan_templates
+# to name, rather than deleted from under the page that uses it.
+RULED_OUT_PARTIALS = ("_scale.html", "_took.html", "_explorer.html", "_interactive.html",
+                      "_floorplan.html")
 
 
 def repair_room_count_lines():

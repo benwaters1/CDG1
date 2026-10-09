@@ -116,16 +116,6 @@ AWAITING_WIRING = {
         "there is nothing to download. The macro renders nothing on an empty "
         "list, so wiring it would be dead markup until somebody puts a menu "
         "and an atelier programme in static/"),
-    # Imported by Restoration and never called from 1 October; the 9 October
-    # page dropped even the import, and the same zip corrected the plan's own
-    # words ("Of about fifty-five rooms, five are open" -> "Five bedrooms are
-    # open"), so the design side still keeps it. Whether it goes on a page is
-    # the owner's call, not a zip's: it draws rooms as finished, under way or
-    # untouched, which is close to the "rest to come" the owner ruled out.
-    "_floorplan.html": (
-        "g-plan2",
-        "a drawn plan of the principal floor, each room finished, under way "
-        "or untouched; the owner's call before any page shows it"),
 }
 
 
@@ -369,7 +359,11 @@ def run():
             ("_explorer.html", "built on ninety-four rooms; off Restoration since "
                                "1 October and its note gone with the 9 October page"),
             ("_interactive.html", "the ninety-four-cell reveal and a slider with "
-                                  "no pairs, both cut from Restoration")):
+                                  "no pairs, both cut from Restoration"),
+            # The owner, 9 October, on being asked whether it should go on a
+            # page: five rooms lit and the rest blank, and not even accurate.
+            ("_floorplan.html", "the floor plan, five rooms lit and the rest "
+                                "blank: the owner said no")):
         s.check(f"{gone} is not back ({why})", gone not in names)
 
     s.section("The self-reference hole is really closed")
