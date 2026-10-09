@@ -162,6 +162,25 @@ def _run(s, oc, conn, now, today):
         "SELECT id, created_at FROM email_outbox WHERE sent_at IS NULL").fetchall()
     conn.execute("UPDATE email_outbox SET created_at = ? WHERE sent_at IS NULL",
                  (now,))
+    # A day with work on it and nobody rostered is on the panel too, and the
+    # copied database has real work in it: on 9 October an atelier session
+    # came into the fortnight with no shift against it, and this check went
+    # red for a reason that had nothing to do with the panel. Settled the way
+    # the house would settle it -- somebody rostered on each of those days --
+    # and taken off again by _cleanup at the end. test_cover_gaps proves a
+    # gap clears when a shift arrives; this only needs the fortnight clear.
+    conn.execute(
+        """INSERT INTO users (email, password_hash, role, name, job_role, status,
+           created_at) VALUES (?, 'x', 'employee', 'Cover', 'General', 'active', ?)""",
+        (TAG + "cover@example.invalid", now))
+    cover_uid = conn.execute("SELECT id FROM users WHERE email = ?",
+                             (TAG + "cover@example.invalid",)).fetchone()["id"]
+    for gap in m.cover_gaps(conn, today, today + timedelta(days=14)):
+        if gap["uncovered"]:
+            conn.execute(
+                """INSERT INTO shifts (user_id, shift_date, start_time, end_time,
+                   role_note, created_at) VALUES (?, ?, '09:00', '17:00', ?, ?)""",
+                (cover_uid, gap["date"], TAG + "cover", now))
     conn.commit()
     # And the deployment's own faults, which are on the panel now and cannot
     # be settled from the database at all. The harness deliberately stands
