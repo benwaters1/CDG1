@@ -38739,8 +38739,11 @@ def import_catalogue():
 
 @app.route("/facilities")
 def facilities_page():
-    """What the house has. Static copy, no data behind it."""
-    return render_template("facilities.html")
+    """What the house has. 9 Oct (owner): with the reading the house keeps of the weather at the château, as on Stay."""
+    conn = get_db()
+    weather = weather_now(conn)
+    conn.close()
+    return render_template("facilities.html", weather=weather)
 
 
 # The days of the week, written out. Not strftime('%A'), which follows the
@@ -38788,6 +38791,7 @@ def whats_on():
     conn = get_db()
     rows = conn.execute(
         "SELECT * FROM whats_on WHERE is_active = 1 ORDER BY sort_order, id").fetchall()
+    weather = weather_now(conn)      # 9 Oct (owner): the weather at the château, as on Stay
     conn.close()
 
     # The château's own date, not the server's. A UTC host rolls over an hour
@@ -38850,7 +38854,7 @@ def whats_on():
                   f"{whats_on_date_label(today + timedelta(days=6))}")
     return render_template("whats_on.html", this_week=this_week,
                            upcoming=upcoming, standing=standing,
-                           week_label=week_label)
+                           week_label=week_label, weather=weather)
 
 
 @app.route("/admin/whats-on")

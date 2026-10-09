@@ -11016,7 +11016,7 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-tn__pair{ display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
 .g .g-tn__pair figure{ margin: 0; position: relative; overflow: hidden; background: var(--sand, #EDE4D3); }
 .g .g-tn__pair img{ width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
-.g .g-tn__pair--tall{ max-width: 880px; }
+.g .g-tn__pair--tall{ max-width: 880px; margin-inline: auto; width: 100%; }
 .g .g-tn__pair--tall img{ aspect-ratio: 3 / 4; }
 .g .g-tn__tag{ position: absolute; top: 14px; left: 14px; padding: 7px 11px; background: rgba(20, 48, 95, .86); color: #fff;
   font-size: 12px; font-weight: 600; line-height: 1; letter-spacing: .16em; text-transform: uppercase; }
@@ -11035,3 +11035,19 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-cred, .g-cred{ font-size: 15px; line-height: 1.5; }
 .g .g-cred__m, .g-cred__m{ font-size: 14px; }
 @media (max-width: 600px){ .g .g-cred, .g-cred{ font-size: 15px; } }
+
+/* 9 Oct - ARRANGED FOR YOU (the Estate): the extras on request - yoga, riding, a guided hike, skiing - as four tiles in the
+   facilities' own manner (gilt drawing, French name, English, one line). */
+.g .g-extras{ list-style: none; margin: var(--s6) 0 0; padding: 0; display: grid; gap: var(--s5); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 48rem){ .g .g-extras{ grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.g .g-extras__i{ text-align: center; padding: var(--s5) var(--s3); border: 1px solid var(--line); background: #FBF8F1; transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+.g .g-extras__i:hover{ transform: translateY(-3px); border-color: var(--gilt-leaf); box-shadow: 0 16px 30px -22px rgba(20,48,95,.45); }
+.g .g-extras__ill{ width: 78px; margin: 0 auto var(--s3); color: var(--gilt); }
+.g .g-extras__fr{ margin: 0; font-family: var(--display); font-style: italic; font-size: clamp(19px, .6vw + 15px, 23px); line-height: 1.2; color: var(--blue-deep); }
+.g .g-extras__en{ margin: .3rem 0 var(--s2); font-family: var(--ui); font-size: var(--t-xs); letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
+.g .g-extras__d{ margin: 0 auto; max-width: 15rem; font-family: var(--serif); font-size: var(--t-small); line-height: 1.55; color: var(--ink-2); }
+@media (max-width: 40rem){ .g .g-extras__ill{ width: 58px; } .g .g-extras__i{ padding: var(--s4) var(--s2); } }
+@media (prefers-reduced-motion: reduce){ .g .g-extras__i, .g .g-extras__i:hover{ transition: none; transform: none; } }
+
+/* 9 Oct - the monument's rules as four tiles, inside its section */
+.g .g-rules{ margin-top: var(--s6); }

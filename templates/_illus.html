@@ -20,6 +20,32 @@
   <path d="M43 78v-9a5 5 0 0110 0v9"/>
   <path d="M46 53h4v7h-4z" opacity=".8"/>
   <path d="M30 86q18 -5 36 0" opacity=".45"/>
+{#- 9 Oct (owner): three more for the Estate - a film night, riding, the gardens -#}
+{%- elif kind == 'film' %}
+  <path d="M46 16h42v28H46z"/><path d="M49 19h36v22H49z" opacity=".35"/>
+  <path d="M67 44v6M60 50h14" opacity=".6"/>
+  <circle cx="17" cy="49" r="7"/><circle cx="33" cy="49" r="7"/><circle cx="17" cy="49" r="2" opacity=".6"/><circle cx="33" cy="49" r="2" opacity=".6"/>
+  <path d="M10 58h30v15H10z"/><path d="M40 62l7-3v12l-7-3"/>
+  <path d="M47 61L58 43M47 69L86 43" opacity=".3"/>
+  <path d="M15 73l-3 9M35 73l3 9" opacity=".8"/><path d="M8 84h80" opacity=".45"/>
+{%- elif kind == 'horse' %}
+  <path d="M27 76l-3-9C15 46 26 20 48 20s33 26 24 47l-3 9"/>
+  <path d="M36 76l-3-8c-6-17 2-37 15-37s21 20 15 37l-3 8"/>
+  <path d="M27 76h9M60 76h9"/>
+  <path d="M27 58l3-1M24 47l3 0M27 36l3 1M66 57l3 1M69 47l3 0M66 36l3-1" opacity=".75"/>
+  <path d="M12 84h72" opacity=".45"/>
+{%- elif kind == 'garden' %}
+  <path d="M8 80h80" opacity=".7"/>
+  <circle cx="30" cy="40" r="11"/><path d="M30 51v13"/><path d="M23 64h14l-2 14H25z"/>
+  <circle cx="66" cy="46" r="8"/><path d="M66 54v10"/><path d="M60 64h12l-2 14H62z"/>
+  <path d="M40 80q8-6 16 0" opacity=".45"/><path d="M44 72h8M42 76h12" opacity=".35"/>
+  <path d="M26 36q4-3 8 0M62 43q4-2.5 8 0" opacity=".5"/>
+{%- elif kind == 'laundry' %}
+  <path d="M20 66h50c0-14-8-24-22-24H36c-8 0-14 6-16 14z"/>
+  <path d="M30 42c0-6 4-10 10-10h14" opacity=".8"/><path d="M54 32v10" opacity=".8"/>
+  <path d="M27 60h38" opacity=".45"/><circle cx="33" cy="54" r="1.4" opacity=".7"/><circle cx="41" cy="54" r="1.4" opacity=".7"/>
+  <path d="M70 58q8-4 6-12M76 46q-4-6 2-12" opacity=".45"/>
+  <path d="M10 76h76" opacity=".7"/><path d="M14 80h68" opacity=".35"/>
 {%- elif kind == 'key' %}
   <circle cx="28" cy="48" r="11"/>
   <path d="M28 41a4 4 0 010 14a4 4 0 010-14z" opacity=".7"/><path d="M21 48a4 4 0 0114 0a4 4 0 01-14 0z" opacity=".7"/>

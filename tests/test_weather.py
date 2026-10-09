@@ -311,6 +311,23 @@ def run():
                 this_month[:40] in live,
                 detail="both answers at once is the whole point")
 
+    # 9 October (owner): the Estate and In the Ariège show the reading as
+    # Stay does. Both templates call the partial; until that day neither route
+    # passed it anything, so the partial drew nothing and nothing said so.
+    s.section("The Estate and In the Ariège show it too")
+    for path, name in (("/facilities", "the Estate"), ("/whats-on", "In the Ariège")):
+        _set(conn, m.json.dumps({"c": 21, "code": 61, "at": now.isoformat()}))
+        r = anon.get(path)
+        body = r.get_data(as_text=True)
+        s.check(f"{name} shows a fresh reading",
+                r.status_code == 200 and 'class="g-wx"' in body and "light rain" in body,
+                detail=f"{path} {r.status_code}")
+        _set(conn, m.json.dumps(
+            {"c": 30, "code": 0, "at": (now - timedelta(hours=5)).isoformat()}))
+        body = anon.get(path).get_data(as_text=True)
+        s.check(f"and on {name} a stale one leaves no box behind",
+                'class="g-wx"' not in body and "30&deg;C" not in body)
+
     if keep is None:
         _clear(conn)
     else:

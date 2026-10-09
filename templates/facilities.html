@@ -31,12 +31,34 @@
   <div class="g-vignette" aria-hidden="true">{{ illus('pool') }}</div>
   <p class="g-eyebrow">The Grounds</p>
   <h2 class="g-place">Le Domaine</h2>
-  <p class="g-p g-lede-first">The château stands above the valley with the Pyrénées all around it. The grounds are for wandering, the pool for long afternoons, and the tennis court for whoever is keen; in winter the mountain is close, with skiing about half an hour away and Andorra about an hour.</p>
-  <p class="g-p">On a workshop, part of the full experience, the grounds are yours every afternoon, between the sessions and dinner.</p>
+  <p class="g-p g-lede-first">The château stands above the valley with the Pyrénées all around it: ten acres of gardens and grounds to wander, a pool for long afternoons and a court for whoever is keen. In winter the slopes are about half an hour away, and Andorra about an hour.</p>
+  {% from '_weather_live.html' import weather_now %}{{ weather_now(weather) }}
+  <p class="g-p">On a workshop, the grounds are yours every afternoon, between the sessions and dinner.</p>
   <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>
 </div></section>
 
 {{ facilities(_dm if _dm is defined else 'open', 'Yours While You Stay', 'The Facilities') }}
+{#- 9 Oct (owner: "extras can be yoga, horse riding, hiking tour, skiing subject to weather") - arranged on request, at an
+    extra cost; nothing here names who teaches or guides, or a price. -#}
+<section class="g-sec g-sec--sand g-extras-sec" id="arranged"><div class="g-wrap">
+  <p class="g-fr">Sur demande <span class="g-fr__en">On request</span></p>
+  <h2 class="g-place">Arranged for You</h2>
+  <p class="g-p g-intro">Arranged on request, at an extra cost. Ask when you book, or from your booking page.</p>
+  <ul class="g-extras">
+    {%- for kind, fr, en, line in [
+      ('yoga', 'Le yoga', 'Yoga', 'A session at the château'),
+      ('horse', "L'équitation", 'Horse riding', 'In the valley'),
+      ('hike', 'La randonnée', 'A guided hike', 'Into the mountains'),
+      ('ski', 'Le ski', 'Skiing', 'In winter, when the snow allows')] %}
+    <li class="g-extras__i">
+      <div class="g-extras__ill" aria-hidden="true">{{ illus(kind) }}</div>
+      <p class="g-extras__fr" lang="fr">{{ fr }}</p>
+      <p class="g-extras__en">{{ en }}</p>
+      <p class="g-extras__d">{{ line }}</p>
+    </li>
+    {%- endfor %}
+  </ul>
+</div></section>
 
 
 
@@ -53,19 +75,13 @@
 <!-- ====================== ARRANGED FOR YOU ====================== -->
 {# 1 Oct: "Ask, and it is organised" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
 
-<div class="g-band">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="The gates in spring" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7a36c33c-f53e-4ea3-976b-14191b0cbdc5/Screenshot%2B2026-08-15%2Bat%2B3.08.35%2Bpm.png?format=1000w" alt="The château in summer, the gardens before it" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/748f2e28-aac7-4076-99a9-2cd362f5b94e/Screenshot+2026-08-12+at+3.52.50+pm.png?format=1000w" alt="A guest on the terrace" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d05b0d21-75e0-464e-bcad-9faac533884c/IMG_4368.jpeg?format=1000w" alt="The estate in winter" loading="lazy">
-</div>
 
 
 {# 6 Oct (owner): "yes the grounds of course" - photographs from the original site #}
 <section class="g-sec g-gallery-sec"><div class="g-wrap">
   <p class="g-fr">Les jardins <span class="g-fr__en">The gardens</span></p>
   <h2 class="g-place">The Grounds</h2>
-  <p class="g-p g-intro">Ten acres around the château: the formal gardens, the terraces, the pool and the parkland, with the mountains on every side.</p>
+  <p class="g-p g-intro">The formal gardens, the terraces, the pool and the parkland, with the mountains on every side.</p>
   <ul class="g-befgrid g-gallery">
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fad6453b-f801-43fb-b3bc-6ed223ec09e0/Rebecca%26Ken_Preview_paulinaweddings.com-1_websize.jpg?format=1000w" alt="The château, the gardens and the pool from above" loading="lazy"><figcaption>From above, with the pool</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24dd7adf-2d85-46bd-8399-4a3fc96ce444/Gardens+-+Formal+Gardens+2.jpg?format=1000w" alt="The formal gardens in flower" loading="lazy"><figcaption>The formal gardens</figcaption></figure></li>
@@ -76,12 +92,12 @@
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/88924c05-3cda-4481-8a8f-5145405147c0/Screenshot+2026-08-15+at+5.12.55+pm.png?format=1000w" alt="The gardens, the mountains beyond" loading="lazy"><figcaption>Late summer</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8ae931a3-3935-4f46-b742-e7d26cb6508a/Screenshot+2026-07-18+at+8.03.37+pm.png?format=1000w" alt="The château among the trees, the mountains behind" loading="lazy"><figcaption>Among the trees</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/99530054-b37e-429a-9026-6a92ac8dadec/Screenshot+2024-06-02+at+10.53.53+am.png?format=1000w" alt="The parkland" loading="lazy"><figcaption>The parkland</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="The gates in spring" loading="lazy"><figcaption>The gates in spring</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7a36c33c-f53e-4ea3-976b-14191b0cbdc5/Screenshot%2B2026-08-15%2Bat%2B3.08.35%2Bpm.png?format=1000w" alt="The château in summer, the gardens before it" loading="lazy"><figcaption>Summer, the gardens before the house</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/748f2e28-aac7-4076-99a9-2cd362f5b94e/Screenshot+2026-08-12+at+3.52.50+pm.png?format=1000w" alt="A guest on the terrace" loading="lazy"><figcaption>On the terrace</figcaption></figure></li>
   </ul>
 </div></section>
 
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-p g-lede-first">It is a restoration, not a renovation. The walls stay as they are, by law; the floors, the bathrooms and the beds are new.</p>
-</div></section>
 
 
 <div class="g-wrap"><svg class="g-ridge" viewBox="0 0 480 34" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
@@ -149,15 +165,8 @@
    generic, and set on navy so it reads as a full stop. #}
 {{ stay_panel() }}
 
-<section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
-  <h2 class="g-close__h">It is all included</h2>
-  <p class="g-close__p">The pool, the court, the barbecue area, the parkland and the salons come with the room. None of it appears on your bill; anything we arrange beyond the gates, we price before we book it.</p>
-  <div class="g-close__acts">
-      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Join a workshop</a>
-  </div>
-</div></section>
+{#- 9 Oct: "It is all included" removed - it said the salons come with the room (they do not: a night is the room,
+    breakfast and the lounge) and repeated the facilities; the stay panel above already ends the page with both choices. -#}
 
 
 {% endblock %}

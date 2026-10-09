@@ -32,6 +32,7 @@
   <p class="g-fr">Ce qui se passe <span class="g-fr__en">What is happening</span></p>
     <p class="g-eyebrow">This Week</p>
   <h2 class="g-h2">{{ week_label }}</h2>
+  {% from '_weather_live.html' import weather_now %}{{ weather_now(weather) }}
   <div class="g-agenda">
     {% for e in this_week %}
     <article class="g-agenda__row{{ ' is-today' if e.is_today }}">

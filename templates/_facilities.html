@@ -14,19 +14,21 @@
   <div class="g-facil-frame">
     <p class="g-facil-frame__cart" aria-hidden="true">{{ illus('laurel') }}<b>Les équipements</b>{{ illus('laurel') }}</p>
     <ul class="g-facil">
+      {#- 9 Oct (owner): film night, the gardens, laundry and ironing added; board games folded into the lounge and the barbecue
+          into the terraces, so the frame stays twelve -#}
       {%- for kind, fr, en, line in [
         ('breakfast', 'Le petit-déjeuner', 'Breakfast', 'Every morning, included'),
-        ('bed', 'La chambre', 'Your room', 'A new bed, lamps and power points'),
+        ('bed', 'La chambre', 'Your room', 'A new bed, reading lamps and power points'),
         ('bath', 'La salle de bains', 'A private bathroom', 'Your own, on the ground floor'),
-        ('lounge', 'Le salon', 'The lounge', 'To read and gather in'),
-        ('games', 'Les jeux de société', 'Board games', 'For the evenings'),
+        ('lounge', 'Le salon', 'The lounge', 'Books and board games for the evenings'),
+        ('film', 'La soirée cinéma', 'Film night', 'A projector, set up on request'),
         ('wifi', 'Le Wi-Fi', 'Wi-Fi', 'In a common area of the château'),
         ('pool', 'La piscine', 'The pool', 'Yours to use while you stay'),
-        ('tennis', 'Le tennis et le pickleball', 'Tennis and pickleball', 'For whoever is keen'),
+        ('tennis', 'Le tennis et le pickleball', 'Tennis and pickleball', 'A court for whoever is keen'),
         ('pingpong', 'Le ping-pong', 'Table tennis', 'For a friendly match'),
-        ('terrace', 'Les terrasses', 'The terraces', 'For a glass of local wine'),
-        ('bbq', 'Le barbecue', 'The barbecue area', 'For your use on long evenings'),
-        ('tree', 'Le domaine', 'The grounds', 'To wander, with the mountains all around')] %}
+        ('garden', 'Les jardins', 'The gardens', 'Ten acres of gardens and grounds'),
+        ('terrace', 'Les terrasses', 'The terraces and barbecue', 'A glass of local wine, and long summer evenings'),
+        ('laundry', 'La buanderie', 'Laundry and ironing', 'Facilities for guests')] %}
       <li class="g-facil__i">
         <div class="g-facil__ill" aria-hidden="true">{{ illus(kind) }}</div>
         <p class="g-facil__fr" lang="fr">{{ fr }}</p>
@@ -47,7 +49,7 @@
   <h2 class="g-place">With the Room</h2>
   <p class="g-p g-intro">Breakfast every morning, and the house and its grounds to enjoy.</p>
   <ul class="g-fstrip">
-    {%- for kind, label in [('pool','The pool'),('tennis','Tennis and pickleball'),('pingpong','Table tennis'),('lounge','The lounge'),('games','Board games'),('terrace','The terraces'),('bbq','A barbecue area'),('tree','The grounds'),('wifi','Wi-Fi, in a common area')] %}
+    {%- for kind, label in [('pool','The pool'),('tennis','Tennis and pickleball'),('pingpong','Table tennis'),('garden','The gardens'),('lounge','The lounge and board games'),('film','Film night, on request'),('terrace','The terraces'),('bbq','The barbecue'),('laundry','Laundry and ironing'),('wifi','Wi-Fi, in a common area')] %}
     <li class="g-fstrip__i"><span class="g-fstrip__ill" aria-hidden="true">{{ illus(kind) }}</span><span class="g-fstrip__l">{{ label }}</span></li>
     {%- endfor %}
   </ul>
