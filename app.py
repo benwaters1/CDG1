@@ -8407,6 +8407,38 @@ NAV_AREA_OF = dict(ENDPOINT_AREA)
 NAV_AREA_OF.update({e: a for e, a in OWNER_ONLY_AREAS.items() if a})
 
 
+def _menu_area_of():
+    """Which menu each page is linked from, read from the menu itself.
+
+    NAV_AREA_OF decides who may open a page, and the sidebar opened whichever
+    menu that area named -- so a page filed under one area and listed in
+    another menu lit up the wrong one. Held, not earned is listed under
+    Financial and filed under Management, and opened Management; the kitchen
+    pages are in the Restaurant menu and opened Estate. Sixteen pages, and
+    changing their area would change who may open them, which is a different
+    decision. So the menu answers "where am I" from base.html, read once
+    here, and the area answers only for pages no menu lists.
+    """
+    path = os.path.join(app.root_path, app.template_folder or "templates", "base.html")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            src = fh.read()
+    except OSError:
+        return {}
+    found = {}
+    for block in re.finditer(
+            r"""<div class="nav-dropdown \{\{ 'open' if current_area """
+            r"""(?:== '(\w+)'|in \['(\w+)'[^\]]*\]) \}\}">(.*?)\n    </div>""", src, re.S):
+        area = block.group(1) or block.group(2)
+        for endpoint in re.findall(r"url_for\('(\w+)'", block.group(3)):
+            found.setdefault(endpoint, area)
+    return found
+
+
+# Read at import, from the template the sidebar is drawn from.
+MENU_AREA_OF = _menu_area_of()
+
+
 def user_access(user):
     """The set of areas this person may reach, or {"*"} for everything.
 
@@ -28832,7 +28864,10 @@ def inject_user():
         # pages did not light up their own menu, 25 of them in Financial.
         # You opened a page and the sidebar could not tell you where you
         # were.
-        "current_area": NAV_AREA_OF.get(request.endpoint),
+        #
+        # And for a page a menu lists, the menu it is listed in -- see
+        # MENU_AREA_OF. Who may open the page is still NAV_AREA_OF's answer.
+        "current_area": MENU_AREA_OF.get(request.endpoint) or NAV_AREA_OF.get(request.endpoint),
         # Translation, available to every template rather than passed in by
         # each route — a page that forgot it would silently render English.
         "t": t, "lang": current_language(), "languages": translations.LANGUAGES,
@@ -75498,10 +75533,10 @@ def room_economics_page():
     faults = [r for r in live if r["open_faults"]]
     overview = [
         overview_cell("Rooms earning", len([r for r in live if r["nights"]])),
-        overview_cell("From the rooms", f"EUR {data['room_revenue']:,.0f}",
+        overview_cell("From the rooms", euro(data['room_revenue']),
                       hint="the room itself, extras excluded"),
         overview_cell("Best", best["name"] if best else "—",
-                      sub=f"EUR {best['room_revenue']:,.0f}" if best else None),
+                      sub=euro(best['room_revenue']) if best else None),
         overview_cell("Never sold in the window", len(data["never_sold"]),
                       alert=bool(data["never_sold"])),
         overview_cell("With an open fault", len(faults), alert=bool(faults)),
@@ -75521,7 +75556,7 @@ def repeat_guests_page():
     top = data["guests"][0] if data["guests"] else None
     overview = [
         overview_cell("Guests who came back", len(data["guests"])),
-        overview_cell("Worth to the house", f"EUR {data['total_spend']:,.0f}",
+        overview_cell("Worth to the house", euro(data['total_spend']),
                       hint="rooms, table and ateliers"),
         overview_cell("Overdue a visit", len(data["overdue"]),
                       alert=bool(data["overdue"]),
@@ -75626,7 +75661,7 @@ def spend_by_vendor_page():
     conn.close()
     biggest = data["rows"][0] if data["rows"] else None
     overview = [
-        overview_cell("Paid out", f"EUR {data['total']:,.2f}"),
+        overview_cell("Paid out", money(data['total'])),
         overview_cell("Suppliers", data["vendors"]),
         overview_cell("Biggest", biggest["vendor_name"] if biggest else "—",
                       sub=f"EUR {biggest['total']:,.2f}" if biggest else None),
@@ -75659,7 +75694,7 @@ def discount_cost_page():
     conn.close()
     share = (data["given"] / data["gross"] * 100) if data["gross"] else 0.0
     overview = [
-        overview_cell("Given away", f"EUR {data['given']:,.2f}",
+        overview_cell("Given away", money(data['given']),
                       alert=data["given"] > 0 and share >= 15,
                       hint="revenue earned and not taken"),
         overview_cell("Share of those sales", f"{share:.1f}%"),
@@ -75681,10 +75716,10 @@ def held_not_earned_page():
     conn.close()
     this_year = sum(v for k, v in data["by_month"] if k[:4] == str(today.year))
     overview = [
-        overview_cell("Held, not earned", f"EUR {data['total']:,.2f}",
+        overview_cell("Held, not earned", money(data['total']),
                       hint="in the bank, not yet income"),
-        overview_cell("Becomes income this year", f"EUR {this_year:,.2f}"),
-        overview_cell("Carries into next", f"EUR {data['total'] - this_year:,.2f}",
+        overview_cell("Becomes income this year", money(this_year)),
+        overview_cell("Carries into next", money(data['total'] - this_year),
                       alert=(data["total"] - this_year) > 0),
         overview_cell("Bookings involved", data["count"]),
     ]
@@ -89243,8 +89278,9 @@ def revenue_on_the_books(conn, today=None, months=12):
     for i in range(months):
         y, mth = divmod(first.month - 1 + i, 12)
         key = date(first.year + y, mth + 1, 1).strftime("%Y-%m")
-        buckets[key] = {"month": key, "rooms": 0.0, "workshops": 0.0,
-                        "nights": 0, "pending": 0.0}
+        # The month as a person reads it; the key stays ISO for sorting.
+        buckets[key] = {"month": key, "label": date(first.year + y, mth + 1, 1).strftime("%B %Y"),
+                        "rooms": 0.0, "workshops": 0.0, "nights": 0, "pending": 0.0}
 
     def _add(key, field, amount):
         if key in buckets:

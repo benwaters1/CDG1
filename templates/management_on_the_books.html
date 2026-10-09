@@ -54,7 +54,7 @@
     <tbody>
       {% for r in data.rows %}
       <tr>
-        <td>{{ r.month }}</td>
+        <th scope="row">{{ r.label }}</th>
         <td class="num">{{ r.rooms|money }}</td>
         <td class="num">{{ r.nights or '&mdash;'|safe }}</td>
         <td class="num">{{ r.workshops|money }}</td>

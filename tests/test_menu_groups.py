@@ -98,6 +98,30 @@ def run():
     body_b = b[b.find("<h1>"):]
     s.check("and each page links to the other, below its title",
             f'href="{held}"' in body_a and f'href="{books}"' in body_b)
+    # Every page a menu lists opens that menu. The open menu came from the
+    # area a page is FILED under, which also decides who may open it, and
+    # sixteen pages were filed under one area and listed in another menu:
+    # Held, not earned opened Management, the kitchen pages opened Estate.
+    label_re = (r'<div class="nav-dropdown[^"]*">\s*<a href="[^"]*" class="nav-dropdown-label'
+                r'[^"]*">(?:<svg.*?</svg>)?\s*([^<]+?)(?:\s*\(\d+\))?</a>')
+    menus = re.findall(label_re + r'.*?<div class="nav-dropdown-menu">(.*?)</div>\s*</div>',
+                       page, re.S)
+    listed_in = {}
+    for label, body in menus:
+        for href in re.findall(r'<a href="([^"]+)"', body):
+            listed_in.setdefault(href, set()).add(label.strip())
+    wrong = []
+    for href, labels in sorted(listed_in.items()):
+        got = oc.get(href)
+        html_ = got.get_data(as_text=True)
+        if got.status_code != 200 or 'class="nav-dropdown' not in html_:
+            continue        # not drawn in the staff shell (the till's own screen)
+        opened = {o.strip() for o in re.findall(
+            label_re.replace('nav-dropdown[^"]*"', 'nav-dropdown open"'), html_, re.S)}
+        if not opened & labels:
+            wrong.append(f"{href} opens {sorted(opened) or 'nothing'}, listed in {sorted(labels)}")
+    s.check("every page a menu lists opens that menu", not wrong and len(listed_in) > 80,
+            detail="; ".join(wrong[:4]) or f"{len(listed_in)} pages")
     css = open("static/style.css", encoding="utf-8").read()
     s.check("the headings are styled as headings, not links",
             re.search(r"\.nav-subhead\s*\{[^}]*text-transform:\s*uppercase", css))
