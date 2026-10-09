@@ -24,7 +24,7 @@
   <div class="g-grid {% if _dm == 'open' %}g-grid--3{% else %}g-grid--2{% endif %}">
     <div class="g-panel">
       <h2 class="g-h3">Stay the night</h2>
-      <p class="g-p">Five bedrooms of about fifty-five rooms{% if house_rooms and house_rooms.from_price %}, from &euro;{{ house_rooms.from_price }}{% endif %}. Room and breakfast{% if _dm == 'open' %}, with dinner on the nights the table is open{% endif %}.</p>
+      <p class="g-p">Five bedrooms{% if house_rooms and house_rooms.from_price %}, from &euro;{{ house_rooms.from_price }}{% endif %}. Room and breakfast{% if _dm == 'open' %}, with dinner on the nights the table is open{% endif %}.</p>
       <p><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See the rooms</a></p>
     </div>
     <div class="g-panel">

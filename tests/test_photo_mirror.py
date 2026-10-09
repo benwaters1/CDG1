@@ -500,6 +500,138 @@ def run():
         _clean(conn)
         m.mirror_cache_clear()
 
+    # ------------------------------------------------------------ PNG -> JPEG
+    #
+    # 9 October (owner's live review): eighty of the photographs on guest
+    # pages are PNG screenshots, and the restoration header was 7.8 MB. A
+    # photograph with no transparency is served as a JPEG; a transparent one
+    # is left alone; and the PNG is kept, set aside, because the house's copy
+    # is the only one the day the Squarespace account goes.
+    s.section("A PNG photograph is served as a JPEG, and the PNG is kept")
+    from PIL import Image
+
+    def _png(mode="RGB", hole=False):
+        noise = Image.effect_noise((480, 320), 40)
+        grad = Image.linear_gradient("L").resize((480, 320))
+        im = Image.merge("RGB", (noise, grad, Image.blend(noise, grad, 0.5)))
+        if mode == "RGBA":
+            im = im.convert("RGBA")
+            if hole:
+                im.putpixel((10, 10), (0, 0, 0, 0))
+        out = io.BytesIO()
+        im.save(out, "PNG")
+        return out.getvalue()
+
+    photo = _png()
+    jpg = m.photo_png_to_jpeg(photo)
+    s.check("a photograph saved as PNG comes back as a JPEG",
+            bool(jpg) and jpg[:3] == b"\xff\xd8\xff", detail=repr((jpg or b"")[:4]))
+    s.check("and a good deal smaller",
+            bool(jpg) and len(jpg) * 3 < len(photo),
+            detail="%d -> %d bytes" % (len(photo), len(jpg or b"")))
+    s.check("one with an alpha channel that is opaque everywhere converts too",
+            bool(m.photo_png_to_jpeg(_png("RGBA"))))
+    s.check("one transparent in a single pixel stays a PNG",
+            m.photo_png_to_jpeg(_png("RGBA", hole=True)) is None,
+            detail="a logo on a dark band would come out on a white box")
+    s.check("and something that is not a picture at all is left as it came",
+            m.photo_png_to_jpeg(b"\x89PNG\r\n\x1a\nnot really") is None)
+
+    # What happens to a fresh copy. fetch_one_image itself is the harness's
+    # raiser; what it does with the bytes is store_mirror_copy, on its own.
+    png_name = m.mirror_name(FAKE_URL) + ".png"
+    jpg_name = m.mirror_name(FAKE_URL) + ".jpg"
+    originals = os.path.join(m.MIRROR_DIR, m.MIRROR_ORIGINALS)
+    try:
+        name, size, ctype = m.store_mirror_copy(FAKE_URL, photo, "image/png")
+        s.check("a PNG that comes down is written as the JPEG",
+                (name, ctype) == (jpg_name, "image/jpeg")
+                and os.path.exists(os.path.join(m.MIRROR_DIR, jpg_name)),
+                detail="%s %s" % (name, ctype))
+        s.check("with its PNG kept, byte for byte, in originals/",
+                io.open(os.path.join(originals, png_name), "rb").read() == photo
+                if os.path.exists(os.path.join(originals, png_name)) else False)
+        s.check("and nothing left beside the JPEG to be served by mistake",
+                not os.path.exists(os.path.join(m.MIRROR_DIR, png_name)))
+    finally:
+        for p in (os.path.join(m.MIRROR_DIR, jpg_name), os.path.join(originals, png_name)):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+    # The copies already held: converted a few a run, the old PNG served an
+    # hour more (other workers' indexes may still point at it), then set aside.
+    with io.open(os.path.join(m.MIRROR_DIR, png_name), "wb") as fh:
+        fh.write(photo)
+    logo = _png("RGBA", hole=True)
+    logo_name = m.mirror_name(FAKE_TWO) + ".png"
+    with io.open(os.path.join(m.MIRROR_DIR, logo_name), "wb") as fh:
+        fh.write(logo)
+    m.record_mirror(conn, FAKE_URL, png_name, len(photo), "image/png")
+    m.record_mirror(conn, FAKE_TWO, logo_name, len(logo), "image/png")
+    conn.commit()
+    real_scan_p = m.hotlinked_urls
+    real_convert = m.photo_png_to_jpeg
+    decoded = []
+    try:
+        m.hotlinked_urls = lambda: [FAKE_URL, FAKE_TWO]
+        m.mirror_cache_clear()
+        said = m.run_photo_mirror_job(conn)
+        row = conn.execute("SELECT filename, bytes, content_type FROM mirrored_images "
+                           "WHERE source_url = ?", (FAKE_URL,)).fetchone()
+        s.check("a held PNG photograph is converted by the hourly job",
+                row and row["filename"] == jpg_name and row["content_type"] == "image/jpeg"
+                and row["bytes"] == os.path.getsize(os.path.join(m.MIRROR_DIR, jpg_name)),
+                detail=str(dict(row)) if row else "no row")
+        s.check("and the job says so", "1 PNG photographs now served as JPEG" in said
+                and said.startswith("all 2 held"), detail=said)
+        s.check("the page is pointed at the JPEG straight away on this worker",
+                m.mirrored_index(conn).get(FAKE_URL) == jpg_name)
+        s.check("while the PNG stays where it was, for the workers that have not re-read",
+                os.path.exists(os.path.join(m.MIRROR_DIR, png_name)))
+        s.check("the transparent one is left a PNG",
+                conn.execute("SELECT content_type FROM mirrored_images WHERE source_url = ?",
+                             (FAKE_TWO,)).fetchone()["content_type"] == "image/png")
+
+        def _counting(data):
+            decoded.append(len(data))
+            return real_convert(data)
+        m.photo_png_to_jpeg = _counting
+        again = m.run_photo_mirror_job(conn)
+        s.check("and is not decoded again every hour for the same answer",
+                not decoded and again == "all 2 held", detail="%r, %d decode(s)" % (again, len(decoded)))
+        s.check("the old PNG is not set aside inside the hour",
+                os.path.exists(os.path.join(m.MIRROR_DIR, png_name)))
+
+        hour_ago = os.path.getmtime(os.path.join(m.MIRROR_DIR, jpg_name)) - m.PHOTO_PNG_KEEP_OLD_SECONDS - 60
+        os.utime(os.path.join(m.MIRROR_DIR, jpg_name), (hour_ago, hour_ago))
+        later = m.run_photo_mirror_job(conn)
+        s.check("an hour on, the PNG is set aside", "1 PNG originals set aside" in later
+                and not os.path.exists(os.path.join(m.MIRROR_DIR, png_name)), detail=later)
+        s.check("kept, not removed: originals/ holds it, byte for byte",
+                os.path.exists(os.path.join(originals, png_name))
+                and io.open(os.path.join(originals, png_name), "rb").read() == photo)
+        r = oc.get("/mirrored-photo/" + png_name)
+        s.check("and it is no longer served", r.status_code == 404, r)
+        r = oc.get("/mirrored-photo/" + jpg_name)
+        s.check("the JPEG is, as a JPEG", r.status_code == 200
+                and r.headers.get("Content-Type", "").startswith("image/jpeg"), r)
+        r.close()
+        s.check("and the coverage still counts both as held",
+                m.mirror_coverage(conn)["held"] == 2)
+    finally:
+        m.hotlinked_urls = real_scan_p
+        m.photo_png_to_jpeg = real_convert
+        for p in (os.path.join(m.MIRROR_DIR, png_name), os.path.join(m.MIRROR_DIR, jpg_name),
+                  os.path.join(m.MIRROR_DIR, logo_name), os.path.join(originals, png_name)):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        _clean(conn)
+        m.mirror_cache_clear()
+
     # ---------------------------------------------------------- the button
     #
     # Both paths, with hotlinked_urls standing in so the route has two

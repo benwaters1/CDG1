@@ -20,16 +20,13 @@
 {% endblock %}
 {% set crumbs = [('Restoration', None)] %}
 {% block title_fr %}La restauration{% endblock %}
-{% block description_fr %}Une cinquantaine de pièces, cinq ouvertes aux hôtes. Une restauration menée depuis 2013 sur un Monument Historique classé, suivie par Vogue et AD Italia.{% endblock %}
+{% block description_fr %}Une restauration menée depuis 2013 sur un Monument Historique classé, suivie par Vogue et AD Italia.{% endblock %}
 {% block title %}The Restoration{% endblock %}
 {% block description %}A Class I Historic Monument since 1994, under restoration since 2013: why the walls stay as they are, what you will see, and the 2016 Medal of Honour.{% endblock %}
 {% block og_desc %}Under restoration since 2013, every intervention approved. A restoration, not a renovation.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--tall{% endblock %}
 {% block content %}
-{% from '_scale.html' import scale %}
-{% from '_marks.html' import mark, monogram %}
-{% from '_floorplan.html' import floorplan %}
 {# Needs a route, e.g.:
    @app.route('/restoration')
    def restoration_page(): return render_template('restoration.html')  #}
@@ -57,45 +54,58 @@
     </ul>
   </div>
 </section>
-
 <section class="g-sec"><div class="g-wrap">
   <div class="g-vignette" aria-hidden="true">{{ illus('chateau') }}</div>
   <p class="g-fr">Restaurer, pas rénover <span class="g-fr__en">Restore, not renovate</span></p>
   <p class="g-eyebrow">The Principle</p>
   <h2 class="g-place">Why the Walls Stay</h2>
   <p class="g-p g-lede-first">A renovation makes a house new. A restoration lets it return. At Gudanes the law and the family want the same thing: the walls are kept as the centuries left them, the plaster and stone read and recorded rather than replaced, and everything new is placed within them, never over them.</p>
-  <p class="g-p">So the bare walls are not unfinished work, and they are not an apology. They are the house itself, and the reason it is worth coming to.</p>
+  <p class="g-p">So the bare walls are not unfinished work, and they are not an apology. They are the house itself, and the reason it is worth coming to. Within them, the rooms brought back have floors relaid by hand, antique French beds and new bathrooms.</p>
 </div></section>
-
+{#- 9 Oct (owner: "the restoration page need more photos, a better before/after"): three pairs, large and matched, each
+    labelled on the photograph. None of the library's pairs is taken from the same spot, so a drag slider would blend two
+    different views - side by side is the honest comparison. -#}
 <section class="g-sec g-before-sec" id="before"><div class="g-wrap">
-  {# 2 Oct: photographs from before and during the work, from the château's own site (owner: "decent before photos
-     ... to use on the renovation page"). #}
-  <p class="g-fr">Avant les travaux <span class="g-fr__en">Before the work</span></p>
+  <p class="g-fr">Avant, après <span class="g-fr__en">Before and now</span></p>
   <p class="g-eyebrow">How It Was</p>
-  <h2 class="g-place">Before the Work</h2>
+  <h2 class="g-place">Then and Now</h2>
   <p class="g-p g-intro">When the family came in 2013, the château had stood empty for years. Floors, walls and ceilings came first, then the slow work of bringing each room back.</p>
-  <div class="g-ba">
-    <figure class="g-ba__i"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2b9c1192-bf9a-40a9-8913-4bc98c8a43c7/Screenshot+2026-07-20+at+3.41.43+pm.png?format=1000w" alt="The kitchen before the work" loading="lazy"><figcaption><span class="g-ba__k">Before</span> The kitchen</figcaption></figure>
-    <figure class="g-ba__i"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/92af7109-0e28-4b75-bdf0-4b1a6fe7cc9a/Screenshot+2026-07-20+at+2.33.25+pm.png?format=1000w" alt="The kitchen now, through the same windows" loading="lazy"><figcaption><span class="g-ba__k">Now</span> The kitchen</figcaption></figure>
+<div class="g-tn">
+  <div class="g-tn__pair">
+    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2b9c1192-bf9a-40a9-8913-4bc98c8a43c7/Screenshot+2026-07-20+at+3.41.43+pm.png?format=1500w" alt="The kitchen before the work, the floor gone" loading="lazy"><span class="g-tn__tag">Before</span></figure>
+    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/92af7109-0e28-4b75-bdf0-4b1a6fe7cc9a/Screenshot+2026-07-20+at+2.33.25+pm.png?format=1500w" alt="The kitchen now" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
+    <p class="g-tn__cap">The kitchen</p>
   </div>
-  <div class="g-ba">
-    <figure class="g-ba__i"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fcd0c757-5913-4e42-a648-d131642818ad/Dining+Room+-+During+Work+4.jpg?format=1000w" alt="The dining room under scaffolding" loading="lazy"><figcaption><span class="g-ba__k">During</span> The dining room</figcaption></figure>
-    <figure class="g-ba__i"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba275193-d2de-4cb7-86a8-07825dbaf1d5/Screenshot+2026-07-30+at+7.56.05+pm.png?format=1000w" alt="The dining room now" loading="lazy"><figcaption><span class="g-ba__k">Now</span> The dining room</figcaption></figure>
+  <div class="g-tn__pair">
+    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e7e008f3-afc8-440d-8974-abb6b7bbce80/Dining+Room+-+During+Work+1.jpg?format=1500w" alt="The dining room floor during the work" loading="lazy"><span class="g-tn__tag">During</span></figure>
+    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba275193-d2de-4cb7-86a8-07825dbaf1d5/Screenshot+2026-07-30+at+7.56.05+pm.png?format=1500w" alt="The dining room now" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
+    <p class="g-tn__cap">The dining room</p>
   </div>
-  <div class="g-ba">
-    <figure class="g-ba__i"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583425112883-PHWCNAGHEHX4SLL4XY22/bathroom.jpg?format=1000w" alt="The bathrooms before, the work under way" loading="lazy"><figcaption><span class="g-ba__k">Before</span> The bathrooms</figcaption></figure>
-    <figure class="g-ba__i"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1000w" alt="One of the ground-floor bathrooms" loading="lazy"><figcaption><span class="g-ba__k">Now</span> The bathrooms</figcaption></figure>
+  <div class="g-tn__pair g-tn__pair--tall">
+    <figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583425112883-PHWCNAGHEHX4SLL4XY22/bathroom.jpg?format=1500w" alt="The bathrooms during the work, under scaffolding" loading="lazy"><span class="g-tn__tag">Before</span></figure>
+    <figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w" alt="One of the ground-floor bathrooms now" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
+    <p class="g-tn__cap">The bathrooms</p>
   </div>
-  <ul class="g-befgrid">
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8e2d96ea-4524-4f3b-ae0d-88e6191e7b09/Before+The+Work+-+Bedroom.JPG?format=1000w" alt="A bedroom before the work" loading="lazy"><figcaption>A bedroom, before</figcaption></figure></li>
+</div>
+</div></section>
+<section class="g-sec g-sec--sand g-gallery-sec" id="the-work"><div class="g-wrap">
+  <p class="g-fr">Le chantier <span class="g-fr__en">The work</span></p>
+  <h2 class="g-place">The Work, Room by Room</h2>
+  <ul class="g-befgrid g-gallery">
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/b7a07599-6d24-4085-bb8d-b669d04c7bb1/unspecified-3+2.jpg?format=1000w" alt="A crane at the façade as the work begins" loading="lazy"><figcaption>The work begins</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d07f91bb-54cb-444c-9ae0-db4eab3d9b47/Gudanes-+the+work+begins+%2812+of+7%29.jpg?format=1000w" alt="The first workers in one of the rooms" loading="lazy"><figcaption>The first workers</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1557937338357-7HNYHXDXYVTM0TW170NP/Gudanes-+the+work+begins+%282+of+2%29.jpg?format=1000w" alt="A worker clearing rubble from a floor" loading="lazy"><figcaption>Clearing the rubble</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7503dc41-3d7d-477e-91f8-3a18010b35a3/2.jpg?format=1000w" alt="A room before the work, the floor gone" loading="lazy"><figcaption>A room, the floor gone</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/598861b7-9f24-4244-8420-468734c135e5/Before+The+Work+-+Vestibule+Ceiling.JPG?format=1000w" alt="The vestibule ceiling before the work" loading="lazy"><figcaption>The vestibule ceiling, before</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/6bdcc62e-ad87-4139-9d1c-37532889bc83/48.JPG?format=1000w" alt="A ceiling before the work" loading="lazy"><figcaption>A ceiling, before</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/97532472-ef1c-439c-bc1e-da09f3d43046/Before+The+Work+-+Windows.jpg?format=1000w" alt="The windows before the work" loading="lazy"><figcaption>The windows, before</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/b7a07599-6d24-4085-bb8d-b669d04c7bb1/unspecified-3+2.jpg?format=1500w" alt="A crane at the façade as the work begins" loading="lazy"><figcaption>The work begins</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e7e008f3-afc8-440d-8974-abb6b7bbce80/Dining+Room+-+During+Work+1.jpg?format=1000w" alt="The dining room floor during the work" loading="lazy"><figcaption>The dining room floor, during the work</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/87a84b73-e4df-4f54-9d30-f84035a5985c/Bathrooms+-+During+Work+2.JPG?format=1000w" alt="The bathrooms during the work" loading="lazy"><figcaption>A bathroom, during the work</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8e2d96ea-4524-4f3b-ae0d-88e6191e7b09/Before+The+Work+-+Bedroom.JPG?format=1000w" alt="A bedroom before the work" loading="lazy"><figcaption>A bedroom, before</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fcd0c757-5913-4e42-a648-d131642818ad/Dining+Room+-+During+Work+4.jpg?format=1000w" alt="The dining room under scaffolding" loading="lazy"><figcaption>The dining room, under scaffolding</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8d75088d-53ce-4cfb-811e-ed67bf1ae159/Bathrooms+-+During+Work+3.jpg?format=1000w" alt="A bathroom during the work" loading="lazy"><figcaption>A bathroom, during the work</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e8217555-28d9-487f-9956-eb6ab8aebcdd/Screenshot+2026-08-13+at+9.31.45+pm.png?format=1000w" alt="Old wallpaper and bare plaster" loading="lazy"><figcaption>Old wallpaper and bare plaster</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1429617974662-OIFU6BKPH1U85GTO9A7V/workshop.jpg?format=1000w" alt="Gilt and old paint over a doorway, mid-restoration" loading="lazy"><figcaption>Gilt over a doorway, mid-restoration</figcaption></figure></li>
   </ul>
 </div></section>
-
 <section class="g-sec g-sec--sand" id="monument"><div class="g-wrap">
   <p class="g-fr">Monument historique <span class="g-fr__en">A Historic Monument</span></p>
   <p class="g-eyebrow">French Heritage Law</p>
@@ -113,8 +123,6 @@
   </div>
   <p class="g-p" style="margin-top:var(--s6)">Château de Gudanes is classé, and has been a Historic Monument since 1994. It is why every intervention is applied for and approved before work begins, why original stone and timber are kept rather than replaced, and why the walls stay as they are. It is also why a night here is an experience unlike a night anywhere else.</p>
 </div></section>
-
-
 <section class="g-sec"><div class="g-wrap">
   <div class="g-vignette" aria-hidden="true">{{ illus('restoration') }}</div>
   <p class="g-fr">À l’intérieur <span class="g-fr__en">Inside</span></p>
@@ -123,197 +131,23 @@
   <p class="g-p g-lede-first">Rooms in every state: some brought back and lived in, some opened up and left as they were found, some still waiting behind closed doors. Plaster as the centuries left it, painted surfaces coming back to the light, and the work itself, slow and deliberate.</p>
   <p class="g-p">A night here is your room, breakfast and the lounge. The rest of the house, the rooms brought back and the rooms still waiting, is opened to the workshops.</p>
 </div></section>
-
-
-
-
-
-<section class="g-sec">
-  <div class="g-wrap">
-    <div class="g-panel g-panel--dark">
-      <h2 class="g-h2">A Restoration, <em>Not a Renovation</em></h2>
-      <p style="line-height:1.8; max-width:52ch; margin:0 0 24px;">Restoration answers for every decision: each intervention approved by the Monuments Historiques before a tool is lifted, overpaint lifted by hand, original stone and timber conserved rather than replaced. It is the slower and more exacting course, and the only one worth taking with a house of this consequence.</p>
-      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See rooms and rates</a>
-    </div>
-  </div>
-</section>
-
-
-<div class="g-band">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1b864cf7-45ea-4b82-9a42-7a7f06f8bd93/Dining+Room+-+During+Work+2.png?format=1000w" alt="The dining room during the work" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e8217555-28d9-487f-9956-eb6ab8aebcdd/Screenshot+2026-08-13+at+9.31.45+pm.png?format=1000w" alt="Old wallpaper and bare plaster" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d07f91bb-54cb-444c-9ae0-db4eab3d9b47/Gudanes-+the+work+begins+%2812+of+7%29.jpg?format=1000w" alt="The first workers in one of the rooms" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f8a75998-9665-4bdf-bda4-9c252e7c8acb/P1088759+2.png?format=1000w" alt="A salon brought back" loading="lazy">
-</div>
-
-{# 1 Oct: ">The Building in Numbers<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
-
-<section class="g-sec"><div class="g-two">
-  <div class="g-two__media">
-    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1500w" alt="Copper pans in the kitchen" loading="lazy">
-  </div>
-  <div>
-    <p class="g-eyebrow">Staying Here</p>
-    <h2 class="g-h2">Guests Are Part of It</h2>
-    <p class="g-p">The house is open while it is still coming back, which is an unusual thing to be able to say: bare walls on one side of the door, new floors and beds on the other.</p>
-    <p class="g-p">You are not only a guest here. Every stay helps bring the house back to life, and the rooms you sleep in today are part of how the next ones open.</p>
-    <p style="margin-top:var(--s5)">
-      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-      <a href="{{ url_for('workshops_public') }}" class="g-btn" style="margin-left:var(--s3)">See the workshops</a>
-    </p>
-  </div>
-</div></section>
-
-
-
-<!-- ============ THE HOUSE BEFORE ============ -->
-{# Researched from the château's own Captain's Log, The Good Life France,
-   Lonely Planet, Wikipedia and the Ariège heritage record. None of this
-   detail was on the site, and it is the most interesting thing about it. #}
-
-
-<div class="g-wrap g-mark__wrap">{{ mark('ledger') }}</div>
-
-{# "Nothing here is done quickly" stood here: the older block on Class I. Its lines are now in What Class I Actually Means. #}
-{# "What the Château Has Given Up" stood here: the older block of discoveries. Its frescoes and erased crests are now in What Was Behind the Plaster. #}
-<!-- ============ EIGHT HUNDRED YEARS ============ -->
-{# 1 Oct: "Before Any of This" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
-
-
-<!-- ============ A SINGLE LINE ============ -->
-{# La Maison Bleue's pattern: one quotation given a whole section rather than
-   a grid of cards. This is the château's own restoration record, which is
-   the strongest thing anyone has said about it. #}
-{# 5 Oct (design review): the loose monument paragraph cut - it repeated What a Historic Monument Is and Why the Walls Stay. CUT_SECTIONS.txt keeps it. #}
-
-<!-- ============ PRESS ============ -->
-{# The nav links here twice and there was nothing to land on. This is the
-   château's real credibility, and none of it was on the site. #}
+{#- 9 Oct (owner: "some parts seem duplicated"): the press list is the Press page's - a line and a link here. -#}
 <section class="g-sec g-sec--sand" id="press"><div class="g-wrap">
   <p class="g-eyebrow">Press &amp; Campaigns</p>
   <h2 class="g-place">Written About, Filmed In</h2>
-  <p class="g-p">The restoration has been followed closely for over a decade, and the château has been chosen as a setting by names that could shoot anywhere. In 2016 the restoration received the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco.</p>
-
-  <ul class="g-press">
-    <li><b>Vogue</b><span>Netherlands, November issue</span></li>
-    <li><b>AD Italia</b><span>The restoration, in full</span></li>
-    <li><b>Zimmermann</b><span>Fall collection campaign</span></li>
-    <li><b>Mango Home</b><span>Christmas collection</span></li>
-    <li><b>Rosemary Hallgarten</b><span>Winter interiors campaign</span></li>
-    <li><b>Australian Financial Review</b><span>FIN! Magazine — cover and centrefold</span></li>
-    <li><b>The Daily Mail</b><span>On opening the gates to guests</span></li>
-    <li><b>Home Beautiful</b><span>Twelve years of restoration</span></li>
-    <li><b>The Good Life France</b><span>A springtime stay, by the editor</span></li>
-    <li><b>Moments Magazine</b><span>The Editor-in-Chief, in residence</span></li>
-  </ul>
-
-  <p class="g-hint" style="margin-top:var(--s6)">For press enquiries, filming or photography, write to
-    <a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a>.</p>
+  <p class="g-p g-lede-first">The restoration has been followed closely for over a decade, in Vogue, AD Italia, the Australian Financial Review and Home Beautiful among others, and the château has been chosen as a setting for campaigns by Zimmermann and Mango Home.</p>
+  <p style="margin-top:var(--s5)"><a href="{{ url_for('press') }}" class="g-btn">See the press</a></p>
 </div></section>
-
-
-<section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
-  <p class="g-p" style="text-align:center;margin:0 auto">
-    Gudanes is a Class I Historic Monument, which means the walls stay as the
-    centuries left them — bare plaster, weathered stone, protected by law and
-    not ours to change. Everything within them is new: antique French beds
-    dressed in floors relaid by hand, bathrooms
-    finished to a standard the rest of the château has not reached yet. The imperfection is deliberate, and it is the whole argument of this page.
-  </p>
-</div></section>
-
-
-<!-- ============ HOW IT BEGAN ============ -->
-{# Quotations from Karina Waters, published in The Good Life France, Home
-   Beautiful, Domain and the Daily Mail. The bracketed detail about the
-   French friend is from the Domain interview. #}
-{# "How It Began" stood here: the older telling of 2011-13, which opened on "a taxation accountant and a urologist from Perth" (house rule: no Craig). Its French friend, its 2016 and Karina's line are now in How She Was Found; its tent is still told in the timeline above (the owner's decision on it is pending). #}
-<!-- ============ THE ARCHITECT ============ -->
-{# Gabriel's works are a matter of record. The Petit Trianon connection is the
-   reason Gudanes carries the classification it does, and the site named him
-   without ever saying who he was. #}
-{# 1 Oct: ">Who Designed Her<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
-
-<!-- ============ WHAT CLASS I MEANS ============ -->
-{# The classification and reference are from the Monuments Historiques
-   listing. The permit wait is from the château's own account of the Chambre
-   Jeanne d'Arc, where work stopped for years awaiting permission. #}
-{# 1 Oct: "What Class I Actually Means" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
-
-<!-- ============ WABI-SABI ============ -->
-{# Karina's own framing, from The Good Life France. This is the argument that
-   turns bare walls from a limitation into a position, so it is set as the
-   centrepiece rather than buried in prose. #}
-{# 1 Oct: "Wabi-Sabi" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
-
-<div class="g-wrap g-mark__wrap">{{ mark('window') }}</div>
-
-<!-- ============ HOW IT WAS FOUND ============ -->
-{# Every figure and quotation on this page is from the public record — the
-   château's own Captain's Log, The Good Life France, Studio Beleta, Lonely
-   Planet and the Monuments Historiques listing. Nothing is estimated. #}
-{# 1 Oct: "How She Was Found" cut - The Family tells it (CUT_SECTIONS.txt keeps it) #}
-
-<!-- ============ WHAT WAS FOUND IN THE WALLS ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('camera') }}</div>
-  <p class="g-eyebrow">The Discoveries</p>
-  <h2 class="g-place">What Was Behind the Plaster</h2>
-  <p class="g-p g-lede-first">Each room brought back has uncovered something of the house as it was. What is found is recorded and kept, not replaced.</p>
-</div></section>
-
-
-<!-- ============ WHAT SURVIVED ============ -->
-{# Every item here is documented elsewhere on this page or in the château's
-   own record. Named, not admired — the reader does the admiring. #}
-{# 1 Oct: ">What Came Through<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
-
-<!-- ============ THE FLOORS ============ -->
-{# Sourced from the château's own Captain's Log and Karina Waters quoted in
-   Hello Lovely. The floors are the clearest case of the whole method: modern
-   engineering underneath, the original surface put back on top. #}
-{# 1 Oct: "What You Are Walking On" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
-
-<!-- ============ WHO DOES THE WORK ============ -->
-
-
-
-<div class="g-wrap g-mark__wrap">{{ mark('plaster') }}</div>
-
-<!-- ============ HOW A ROOM IS BROUGHT BACK ============ -->
-{# 1 Oct: "Seven Steps, In This Order" cut - fewer statements (CUT_SECTIONS.txt keeps it) #}
-
-
-
-
-{# 1 Oct: the year-by-year explorer and the 94-cell reveal are off the page - built on ninety-four rooms (about fifty-five now) and on conservators at work. The scale below is redrawn at fifty-five. #}
-{# 2 Oct: the before-and-after slider stays - only the 94-room graphics went. Its import had gone with them, which broke the page. #}
-{% from '_interactive.html' import the_reveal %}
-{{ the_reveal(reveal_pairs) }}
-
-{{ scale() }}
-
-<!-- ============ THE CLOSER ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <div class="g-vignette" aria-hidden="true">{{ illus('key') }}</div>
-  <p class="g-fr">De plus près <span class="g-fr__en">Closer</span></p>
-  <p class="g-eyebrow">The Restoration Workshop</p>
-  <h2 class="g-place">See It Up Close</h2>
-  <p class="g-p g-lede-first">The restoration workshop is the closest you can come to the work, and the fullest experience of the house: seven nights with the house as it comes back, and every meal, drinks and the house to yourselves around it.</p>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>
-</div></section>
-
+{#- 9 Oct (owner): one closing section. Never "the rest still to come" or "the next ones": five bedrooms is what the house
+    offers, and nothing says why. -#}
 <section class="g-sec g-sec--dark g-closer"><div class="g-wrap">
   <div class="g-vignette" aria-hidden="true">{{ illus('bed') }}</div>
-  <p class="g-fr">Les chambres ouvertes <span class="g-fr__en">The open rooms</span></p>
-  <p class="g-eyebrow">The Part You Can Do</p>
-  <h2 class="g-place">Five Rooms Are Open to Guests</h2>
-  <p class="g-p g-lede-first">The rest of this takes as long as it takes. Stay in one of the rooms that are open; every stay helps the next ones come back.</p>
-  <p class="g-p">
+  <p class="g-fr">Venir à Gudanes <span class="g-fr__en">Coming to Gudanes</span></p>
+  <h2 class="g-place">Stay While It Happens</h2>
+  <p class="g-p g-lede-first">Five bedrooms are open to guests: bare walls on one side of the door, new floors and beds on the other. The workshops open the rest of the house. Every stay helps the restoration go on.</p>
+  <p class="g-closer__cta">
     <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See the rooms</a>
-    <a href="{{ url_for('workshops_public') }}">Or see the workshops</a>
+    <a href="{{ url_for('workshops_public') }}" class="g-btn">See the workshops</a>
   </p>
 </div></section>
-
-{# 1 Oct: the year-by-year script is gone with its slider #}
 {% endblock %}

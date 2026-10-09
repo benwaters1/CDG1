@@ -11009,3 +11009,29 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-typwx__k{ font-weight: 600; }
 .g .g-typwx__src{ display: block; margin-top: 2px; font-size: 12px; opacity: .75; }
 .g .g-book-bar .g-typwx{ color: inherit; }
+
+/* 9 Oct - THEN AND NOW (the restoration page): three large matched pairs, each labelled on the photograph. Side by side,
+   not a slider - none of the pairs was taken from the same spot. */
+.g .g-tn{ display: grid; gap: var(--s7, 56px); margin-top: var(--s6); }
+.g .g-tn__pair{ display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+.g .g-tn__pair figure{ margin: 0; position: relative; overflow: hidden; background: var(--sand, #EDE4D3); }
+.g .g-tn__pair img{ width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+.g .g-tn__pair--tall{ max-width: 880px; }
+.g .g-tn__pair--tall img{ aspect-ratio: 3 / 4; }
+.g .g-tn__tag{ position: absolute; top: 14px; left: 14px; padding: 7px 11px; background: rgba(20, 48, 95, .86); color: #fff;
+  font-size: 12px; font-weight: 600; line-height: 1; letter-spacing: .16em; text-transform: uppercase; }
+.g .g-tn__tag--now{ background: rgba(122, 90, 48, .9); }
+.g .g-tn__cap{ grid-column: 1 / -1; margin: var(--s2) 0 0; font-family: var(--serif); font-size: 22px; line-height: 1.3; color: var(--ink); }
+@media (max-width: 600px){
+  .g .g-tn{ gap: var(--s6); }
+  .g .g-tn__pair{ gap: 6px; }
+  .g .g-tn__tag{ top: 8px; left: 8px; padding: 5px 7px; font-size: 10px; }
+  .g .g-tn__cap{ font-size: 18px; }
+}
+.g .g-closer__cta{ display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); margin-top: var(--s5); }
+
+/* 9 Oct (owner: "some of the text is too small"): the Monument Historique strip's sentence was 13px - 15px, and the
+   gilt label 13px with its spacing. */
+.g .g-cred, .g-cred{ font-size: 15px; line-height: 1.5; }
+.g .g-cred__m, .g-cred__m{ font-size: 14px; }
+@media (max-width: 600px){ .g .g-cred, .g-cred{ font-size: 15px; } }

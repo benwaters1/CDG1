@@ -1769,6 +1769,66 @@ def repair_corrected_claims():
     return n
 
 
+# 9 October (the owner, and not for the first time: "I have always said the
+# 5 rooms/rest to come isn't right"): never "five of fifty-five", never "the
+# rest to come", "the next ones" or rooms opening as the restoration reaches
+# them, never a reason why there are five, and no room-count graphic. The
+# design side's sweep that day missed the Stay page and the availability
+# strip, which reach this tree unchanged in every zip that does not touch
+# them. Each line is cut back to what is true or taken out; nothing new is
+# written in the owner's voice. test_confirmed_facts names any that get past.
+ROOM_COUNT_CORRECTIONS = [
+    ("templates/book_rooms.html",
+     re.compile(r'\n[ \t]*<p class="g-fr">Cinq chambres ouvertes, les autres \S+ venir\s*'
+                r'<span class="g-fr__en">Five rooms open to guests, the rest to come</span></p>'),
+     ""),
+    ("templates/book_rooms.html",
+     re.compile(r", and rooms open as the restoration reaches them\."), "."),
+    ("templates/book_rooms.html",
+     re.compile(r'<div class="g-wrap">\s*<p class="g-devise">\s*<span class="g-devise__fr">'
+                r'[^<]*Les autres attendent[^<]*</span>\s*<span class="g-devise__en">'
+                r'Five rooms open to guests\. The rest are waiting\.</span>\s*</p>\s*</div>\n'),
+     ""),
+    ("templates/_availability_strip.html",
+     re.compile(r"Rooms open one at a time, as the restoration reaches them\. "), ""),
+]
+# Partials built on a room count -- the fifty-five-square grid, the "What It
+# Took" facts, the year-by-year explorer and the ninety-four-cell reveal, both
+# drawn on ninety-four rooms -- taken out while no page renders them. The 9
+# October Restoration page dropped the last of them. One a page has wired back
+# in is left for test_confirmed_facts to name, rather than deleted from under
+# the page that uses it.
+RULED_OUT_PARTIALS = ("_scale.html", "_took.html", "_explorer.html", "_interactive.html")
+
+
+def repair_room_count_lines():
+    """The rest-to-come lines and room-count partials the owner ruled out."""
+    n = 0
+    for rel, pattern, right in ROOM_COUNT_CORRECTIONS:
+        try:
+            src = _read(rel)
+        except FileNotFoundError:
+            continue
+        fixed, k = pattern.subn(right, src)
+        if k:
+            _write(rel, fixed)
+            n += k
+    # Every page read once, before anything is removed: reading a page this
+    # loop had just deleted raised FileNotFoundError, which main() reports as
+    # "not in tree" -- a step that had done its work, reported as one that
+    # found nothing to do.
+    pages = {f: _read("templates/" + f)
+             for f in os.listdir(TEMPLATE_DIR) if f.endswith(".html")}
+    for partial in RULED_OUT_PARTIALS:
+        if partial not in pages:
+            continue
+        if any(partial in text for f, text in pages.items() if f != partial):
+            continue
+        os.remove(os.path.join(TEMPLATE_DIR, partial))
+        n += 1
+    return n
+
+
 def main():
     steps = [
         ("the robots block in public_base", repair_parent_robots_block),
@@ -1819,6 +1879,7 @@ def main():
         ("settings read with .get, which a Row refuses", repair_settings_dot_get),
         ("the tour, which is an extra for a nightly stay", repair_tour_is_an_extra),
         ("the Gold Suite, shown as the kitchen", repair_gold_suite_photograph),
+        ("the rest-to-come lines the owner ruled out", repair_room_count_lines),
     ]
     total, failed = 0, []
     for label, fn in steps:

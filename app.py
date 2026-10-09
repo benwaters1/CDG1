@@ -23374,6 +23374,113 @@ def mirror_coverage(conn):
     }
 
 
+# 9 Oct (owner's live review): more than half the library's photographs are PNG
+# screenshots, and a 2,000-pixel photograph saved as PNG is 5-8 MB -- the
+# restoration header was 7.8 MB and sat grey while it arrived. A photograph
+# needs no PNG: one with no transparency is served as a JPEG at quality 82
+# (about a twentieth of the size, no visible difference). A PNG that really is
+# transparent (a logo, a drawing) is left alone.
+PHOTO_PNG_JPEG_QUALITY = 82
+PHOTO_PNG_CONVERT_SECONDS = 20       # per run of the mirror job, for the copies already held
+PHOTO_PNG_KEEP_OLD_SECONDS = 3600    # the old .png is served an hour more: other workers' indexes may still point at it
+# And then it is KEPT, out of the way, rather than removed. A JPEG at 82 is a
+# fine picture and a lossy one, and the day the Squarespace account goes the
+# house's copy is the only copy there is. Deleting a photograph is the one
+# thing this mirror exists to prevent, so the original moves to originals/.
+# Nothing is served from there: /mirrored-photo takes a bare hash and a dot.
+MIRROR_ORIGINALS = "originals"     # a folder inside MIRROR_DIR, wherever that is pointed
+# PNGs judged to stay PNG (transparent, or no smaller as a JPEG), by name, size
+# and mtime, so the hourly run does not decode the same logo twenty-four times
+# a day for the same answer. An idle run is meant to cost a directory listing.
+_PNG_STAYS_PNG = set()
+
+
+def photo_png_to_jpeg(data):
+    """JPEG bytes for a PNG photograph, or None if it should stay a PNG (transparent, unreadable, or no smaller)."""
+    try:
+        from PIL import Image
+        im = Image.open(io.BytesIO(data))
+        im.load()
+        if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+            alpha = im.convert("RGBA").getchannel("A")
+            if alpha.getextrema()[0] < 255:
+                return None              # really transparent somewhere - keep it a PNG
+        out = io.BytesIO()
+        im.convert("RGB").save(out, "JPEG", quality=PHOTO_PNG_JPEG_QUALITY, optimize=True, progressive=True)
+        jpg = out.getvalue()
+        return jpg if len(jpg) < len(data) else None
+    except Exception:                    # noqa: BLE001 - a photograph that will not convert is kept as it came
+        return None
+
+
+def keep_png_original(name, data=None, source=None):
+    """Put the PNG a JPEG was made from in originals/, from bytes or by moving a file."""
+    folder = os.path.join(MIRROR_DIR, MIRROR_ORIGINALS)
+    os.makedirs(folder, exist_ok=True)
+    dest = os.path.join(folder, name)
+    if source is not None:
+        os.replace(source, dest)
+    else:
+        with open(dest, "wb") as fh:
+            fh.write(data)
+
+
+def convert_held_png_mirrors(conn, budget_seconds=PHOTO_PNG_CONVERT_SECONDS):
+    """Turn the PNG photographs already held into JPEGs, a few at a time; an hour on, set the old PNGs aside.
+
+    (converted, set_aside). The JPEG is a new name -- the filename is the hash
+    plus the extension -- so nothing cached against the PNG is rewritten in
+    place, and the PNG goes on being served until every worker has re-read the
+    index.
+    """
+    started = time.monotonic()
+    converted = set_aside = 0
+    try:
+        rows = conn.execute("SELECT source_url, filename FROM mirrored_images "
+                            "WHERE content_type = 'image/png' AND filename LIKE '%.png'").fetchall()
+    except sqlite3.OperationalError:
+        return 0, 0
+    for row in rows:
+        if time.monotonic() - started > budget_seconds:
+            break
+        old = os.path.join(MIRROR_DIR, row["filename"])
+        try:
+            st = os.stat(old)
+        except OSError:
+            continue
+        seen = (row["filename"], st.st_size, st.st_mtime)
+        if seen in _PNG_STAYS_PNG:
+            continue
+        with open(old, "rb") as fh:
+            jpg = photo_png_to_jpeg(fh.read())
+        if not jpg:
+            _PNG_STAYS_PNG.add(seen)
+            continue
+        new_name = mirror_name(row["source_url"]) + ".jpg"
+        with open(os.path.join(MIRROR_DIR, new_name), "wb") as fh:
+            fh.write(jpg)
+        conn.execute("UPDATE mirrored_images SET filename = ?, bytes = ?, content_type = 'image/jpeg' "
+                     "WHERE source_url = ?", (new_name, len(jpg), row["source_url"]))
+        conn.commit()
+        converted += 1
+    # The old PNGs, once their JPEG has been in place an hour.
+    try:
+        for row in conn.execute("SELECT source_url, filename FROM mirrored_images "
+                                "WHERE content_type = 'image/jpeg'").fetchall():
+            png_name = mirror_name(row["source_url"]) + ".png"
+            png = os.path.join(MIRROR_DIR, png_name)
+            jpg = os.path.join(MIRROR_DIR, row["filename"])
+            if (os.path.exists(png) and os.path.exists(jpg)
+                    and time.time() - os.path.getmtime(jpg) > PHOTO_PNG_KEEP_OLD_SECONDS):
+                keep_png_original(png_name, source=png)
+                set_aside += 1
+    except (sqlite3.OperationalError, OSError):
+        pass
+    if converted:
+        mirror_cache_clear()
+    return converted, set_aside
+
+
 def fetch_one_image(url, timeout=20):
     """Take a copy of one photograph. (filename, bytes, content_type) or raises.
 
@@ -23394,6 +23501,21 @@ def fetch_one_image(url, timeout=20):
         raise ValueError("over %d MB" % (MIRROR_MAX_BYTES // (1024 * 1024)))
     if not data:
         raise ValueError("empty response")
+    return store_mirror_copy(url, data, ctype)
+
+
+def store_mirror_copy(url, data, ctype):
+    """Write one photograph that came down. (filename, bytes, content_type).
+
+    Apart from fetch_one_image so that what happens to the bytes -- a PNG
+    photograph served as a JPEG, the PNG set aside -- can be tested without
+    the network, which the suite never touches.
+    """
+    if ctype == "image/png":
+        jpg = photo_png_to_jpeg(data)
+        if jpg:
+            keep_png_original(mirror_name(url) + ".png", data)
+            data, ctype = jpg, "image/jpeg"
     os.makedirs(MIRROR_DIR, exist_ok=True)
     filename = mirror_name(url) + MIRROR_ALLOWED_TYPES[ctype]
     with open(os.path.join(MIRROR_DIR, filename), "wb") as fh:
@@ -83849,9 +83971,14 @@ def run_photo_mirror_job(conn):
     dead address every hour is twenty-four requests at somebody else's CDN for
     an answer that will not change, and it would bury the ones that might.
     """
+    converted, set_aside = convert_held_png_mirrors(conn)
+    lighter = ", ".join(
+        ["%d PNG photographs now served as JPEG" % converted] * bool(converted)
+        + ["%d PNG originals set aside" % set_aside] * bool(set_aside))
+    lighter = " (%s)" % lighter if lighter else ""
     cover = mirror_coverage(conn)
     if not cover["missing"]:
-        return "all %d held" % len(cover["wanted"])
+        return "all %d held%s" % (len(cover["wanted"]), lighter)
 
     recent = set()
     try:
@@ -83882,12 +84009,12 @@ def run_photo_mirror_job(conn):
     mirror_cache_clear()
     left = len(mirror_coverage(conn)["missing"])
     if not todo:
-        return "%d still missing, all of them tried within the day" % len(cover["missing"])
+        return "%d still missing, all of them tried within the day%s" % (len(cover["missing"]), lighter)
     parts = ["copied %d" % done]
     if failed:
         parts.append("%d would not come down" % failed)
     parts.append("%d left" % left if left else "the site is now held here")
-    return ", ".join(parts)
+    return ", ".join(parts) + lighter
 
 
 # ==========================================================================

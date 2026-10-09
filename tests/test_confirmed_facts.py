@@ -65,6 +65,21 @@ RETIRED = {
     "pickleball court": "no pickleball court or lines; guests play it on the "
                         "tennis court with the house's racquets",
     "lined for pickleball": "the tennis court has no pickleball lines",
+    # 9 October, the owner, and not for the first time: "I have always said
+    # the 5 rooms/rest to come isn't right". About fifty-five rooms may say how
+    # big the house is and five bedrooms what a guest can stay in, but never
+    # together, never the rest to come, and never why five. The design side's
+    # sweep that day missed the Stay page and the availability strip;
+    # tools/repair_handover.py now cuts these on install.
+    "five of fifty-five": "five bedrooms for guests -- never set against fifty-five",
+    "five of about fifty-five": "five bedrooms for guests -- never set against fifty-five",
+    "the rest to come": "never the rest to come (owner, 9 October)",
+    "rest still to come": "never the rest to come (owner, 9 October)",
+    "the rest are waiting": "never the rest to come (owner, 9 October)",
+    "work still ahead": "never the rest to come (owner, 9 October)",
+    "les autres à venir": "never the rest to come (owner, 9 October)",
+    "les autres attendent": "never the rest to come (owner, 9 October)",
+    "as the restoration reaches them": "never why five, nor when more will open",
 }
 COMMENTS = re.compile(r"\{#.*?#\}|<!--.*?-->", re.S)
 

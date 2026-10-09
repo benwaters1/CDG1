@@ -31,7 +31,7 @@
         <span class="g-three__n">01</span>
         <div class="g-three__b">
           <h3 class="g-three__t">Stay the night</h3>
-          <p class="g-three__d">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} bedrooms of about fifty-five rooms. Room and breakfast.</p>
+          <p class="g-three__d">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} bedrooms. Room and breakfast.</p>
           {% if house_rooms and house_rooms.from_price %}<p class="g-three__p">From <b>&euro;{{ house_rooms.from_price }}</b> a night</p>{% endif %}
           <p class="g-three__a">
             <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check dates</a>

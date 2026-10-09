@@ -386,6 +386,72 @@ def run():
     finally:
         shutil.rmtree(cwd, ignore_errors=True)
 
+    s.section("The rest-to-come lines are taken out, and the partials nobody renders")
+    # 9 October (owner): never "five of fifty-five", never "the rest to come",
+    # never why five. The design side's sweep that day missed the Stay page and
+    # the availability strip, and every later zip that does not touch them
+    # leaves them as they are -- so the repair has to keep them out.
+    cwd = tempfile.mkdtemp(prefix="ztest-repair-roomcount-")
+    try:
+        _git(cwd, "init", "-q")
+        stay = ('    <div class="g-waitlist">\n'
+                '      <p class="g-fr">Cinq chambres ouvertes, les autres à venir '
+                '<span class="g-fr__en">Five rooms open to guests, the rest to come</span></p>\n'
+                '    <p class="g-eyebrow">If Those Dates Are Taken</p>\n'
+                '      <p class="g-p">Rooms come back. People move dates, and rooms open as '
+                'the restoration reaches them. If you leave your dates we will write.</p>\n'
+                '    </div>\n'
+                '<div class="g-mono__wrap">{{ monogram() }}</div>\n\n'
+                '<div class="g-wrap">\n'
+                '  <p class="g-devise">\n'
+                '    <span class="g-devise__fr">« Cinq chambres ouvertes. Les autres attendent. »</span>\n'
+                '    <span class="g-devise__en">Five rooms open to guests. The rest are waiting.</span>\n'
+                '  </p>\n'
+                '</div>\n'
+                '<!-- THE CLOSE -->\n')
+        strip = ('  <h2 class="g-place">What Is Open Next</h2>\n'
+                 '  <p class="g-p">Rooms open one at a time, as the restoration reaches them. '
+                 'These are the next nights actually free.</p>\n')
+        _write(cwd, "templates/book_rooms.html", stay)
+        _write(cwd, "templates/_availability_strip.html", strip)
+        # One ruled-out partial nothing renders, and one a page still imports.
+        _write(cwd, "templates/_scale.html", "{% macro scale() %}55{% endmacro %}\n")
+        _write(cwd, "templates/_took.html", "{% macro took() %}five of 55{% endmacro %}\n")
+        _write(cwd, "templates/estate.html", "{% from '_took.html' import took %}{{ took() }}\n")
+        _git(cwd, "add", "-A")
+        _git(cwd, "commit", "-q", "-m", "the Stay page before the sweep")
+        code, out = _run(cwd, src)
+        fixed = _read(cwd, "templates/book_rooms.html")
+        s.check("the French line and its English go together",
+                "les autres" not in fixed and "the rest to come" not in fixed, detail=fixed)
+        s.check("the reason is cut and the sentence still ends",
+                "People move dates. If you leave your dates" in fixed, detail=fixed)
+        s.check("the motto block goes whole, leaving no empty wrapper",
+                "The rest are waiting" not in fixed and "g-devise" not in fixed
+                and "<!-- THE CLOSE -->" in fixed and fixed.count("<div") == fixed.count("</div>"),
+                detail=fixed)
+        s.check("and the eyebrow that followed it stays",
+                "If Those Dates Are Taken" in fixed, detail=fixed)
+        s.check("the strip keeps only what is true",
+                '<p class="g-p">These are the next nights actually free.</p>'
+                in _read(cwd, "templates/_availability_strip.html"))
+        s.check("a ruled-out partial nothing renders is taken out",
+                not os.path.exists(os.path.join(cwd, "templates", "_scale.html")))
+        s.check("but one a page still imports is left for the facts suite to name",
+                os.path.exists(os.path.join(cwd, "templates", "_took.html")))
+        s.check("it reports what it changed",
+                re.search(r"restored\s+5\s+the rest-to-come lines", out) is not None,
+                detail=out[-400:])
+        after = {rel: _read(cwd, rel) for rel in
+                 ("templates/book_rooms.html", "templates/_availability_strip.html")}
+        code2, out2 = _run(cwd, src)
+        s.check("a second run leaves it alone",
+                re.search(r"already fine\s+the rest-to-come lines", out2) is not None
+                and all(_read(cwd, rel) == text for rel, text in after.items()),
+                detail=out2[-300:])
+    finally:
+        shutil.rmtree(cwd, ignore_errors=True)
+
     s.section("It says where the tool is documented")
     s.check("the docstring points at check_handover first",
             "check_handover" in src[:2000], detail="ordering advice is missing")

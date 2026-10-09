@@ -294,10 +294,9 @@
     {# A guest who finds nothing available currently leaves with nothing.
        These are the people most likely to book — they arrived with dates. #}
     <div class="g-waitlist">
-      <p class="g-fr">Cinq chambres ouvertes, les autres à venir <span class="g-fr__en">Five rooms open to guests, the rest to come</span></p>
     <p class="g-eyebrow">If Those Dates Are Taken</p>
       <h3 class="g-h3">Tell us and we will write when they open</h3>
-      <p class="g-p">Rooms come back. People move dates, and rooms open as the restoration reaches them. If you leave your dates we will write to you before they go public.</p>
+      <p class="g-p">Rooms come back. People move dates. If you leave your dates we will write to you before they go public.</p>
       <form method="post" action="{{ url_for('newsletter_subscribe') }}" class="g-waitlist__form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="source" value="waitlist">
@@ -625,12 +624,6 @@
 
 <div class="g-mono__wrap">{{ monogram() }}</div>
 
-<div class="g-wrap">
-  <p class="g-devise">
-    <span class="g-devise__fr">« Cinq chambres ouvertes. Les autres attendent. »</span>
-    <span class="g-devise__en">Five rooms open to guests. The rest are waiting.</span>
-  </p>
-</div>
 
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than
