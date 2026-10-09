@@ -22,18 +22,18 @@
 {% if result.invoice_total %}
 <div class="overview-band">
   <div class="overview-cell">
-    <div class="overview-value">€{{ '{:,.2f}'.format(result.invoice_total) }}</div>
+    <div class="overview-value">{{ result.invoice_total|money }}</div>
     <div class="overview-label">Invoice total</div>
     <div class="overview-hint">as printed</div>
   </div>
   <div class="overview-cell">
-    <div class="overview-value">€{{ '{:,.2f}'.format(expense['amount'] or 0) }}</div>
+    <div class="overview-value">{{ (expense['amount'] or 0)|money }}</div>
     <div class="overview-label">Recorded as</div>
     <div class="overview-hint">on this expense</div>
   </div>
   {% if (result.invoice_total - (expense['amount'] or 0))|abs > 0.5 %}
   <div class="overview-cell overview-cell-alert">
-    <div class="overview-value">€{{ '{:,.2f}'.format((result.invoice_total - (expense['amount'] or 0))|abs) }}</div>
+    <div class="overview-value">{{ ((result.invoice_total - (expense['amount'] or 0))|abs)|money }}</div>
     <div class="overview-label">Doesn't match</div>
     <div class="overview-hint">worth checking</div>
   </div>
@@ -67,7 +67,7 @@
             <input type="hidden" name="desc_{{ i }}" value="{{ line.description }}">
             <div class="upload-hint">
               {% if line.unit %}{{ line.unit }}{% endif %}
-              {% if line.line_total %} · line total €{{ '%.2f'|format(line.line_total) }}{% endif %}
+              {% if line.line_total %} · line total {{ line.line_total|money }}{% endif %}
               {% if line.match_confidence == 'low' %}
                 <span class="mini-status status-pending">unsure of the match</span>
               {% elif line.match_confidence == 'none' or not line.stock_item_id %}

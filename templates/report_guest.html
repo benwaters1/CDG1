@@ -34,7 +34,7 @@
       <tr>
         <td><a href="{{ url_for('guest_booking_history', email=g.email) }}">{{ g.name or g.email }}</a></td>
         <td class="num">{{ g.stays }}</td>
-        <td class="num">€{{ '{:,.2f}'.format(g.total) }}</td>
+        <td class="num">{{ g.total|money }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -64,7 +64,7 @@
         <td class="num">{{ r.nights }}</td>
         <td class="num">{{ '%.0f'|format(r.nights_pct) ~ '%' if r.nights_pct is not none else '—' }}</td>
         <td class="num">{{ r.stays }}</td>
-        <td class="num">€{{ '{:,.0f}'.format(r.revenue) }}</td>
+        <td class="num">{{ r.revenue|money(0) }}</td>
       </tr>
       {% endfor %}
     </tbody>

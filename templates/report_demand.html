@@ -4,12 +4,6 @@
 
 <div class="page-head">
   <h1>What a night earns</h1>
-  <div style="display:flex; gap:10px;">
-    {% for n in [30, 90, 180, 365] %}
-    <a href="{{ url_for('demand_report', days=n) }}"
-       class="btn-ghost{{ ' btn-primary' if n == days }}">{{ n }} days</a>
-    {% endfor %}
-  </div>
 </div>
 
 <p class="pay-disclaimer" style="margin-top:-10px;">
@@ -21,6 +15,8 @@
   night the house failed to fill. Otherwise the number gets worse the more
   restoration happens.
 </p>
+
+{% with endpoint='demand_report', param='days', choices=[30, 90, 180, 365], current=days, ahead=false %}{% include "_window_choice.html" %}{% endwith %}
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 

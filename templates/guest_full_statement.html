@@ -86,7 +86,7 @@
       <td class="num">{{ money(st.charged) }}</td>
       <td class="num">{{ money(st.paid) }}</td>
       <td class="num">{{ money(st.back) }}</td>
-      <td class="num"><strong>€{{ '%.2f'|format(st.closing|abs) }}</strong></td>
+      <td class="num"><strong>{{ (st.closing|abs)|money }}</strong></td>
     </tr>
   </tbody>
 </table>
@@ -111,7 +111,7 @@
     <tr><th scope="row">Received</th><td class="num">{{ money(-b.paid) }}</td></tr>
     {% if b.back %}<tr><th scope="row">Refunded to them</th><td class="num">{{ money(b.back) }}</td></tr>{% endif %}
     <tr><th scope="row"><strong>{{ 'Still to pay' if b.net > 0.005 else ('In credit' if b.net < -0.005 else 'Settled') }}</strong></th>
-        <td class="num"><strong>€{{ '%.2f'|format(b.net|abs) }}</strong></td></tr>
+        <td class="num"><strong>{{ (b.net|abs)|money }}</strong></td></tr>
   </tbody>
 </table>
 </div>
@@ -152,7 +152,7 @@
     <tr><th scope="row">Received, less refunds</th><td class="num">{{ money(-st.lifetime_paid) }}</td></tr>
     <tr>
       <th scope="row"><strong>{{ 'Outstanding' if st.balance > 0.005 else ('In credit' if st.balance < -0.005 else 'Settled') }}</strong></th>
-      <td class="num"><strong>€{{ '%.2f'|format(st.balance|abs) }}</strong></td>
+      <td class="num"><strong>{{ (st.balance|abs)|money }}</strong></td>
     </tr>
   </tbody>
 </table>

@@ -40,7 +40,7 @@
     <div class="doc-row" style="align-items:flex-start; flex-direction:column; gap:4px;">
       <div style="display:flex; width:100%; gap:10px; align-items:baseline; flex-wrap:wrap;">
         <strong style="flex:1;">{{ i['name'] }}</strong>
-        <span>€{{ '%.2f'|format(i['price'] or 0) }}</span>
+        <span>{{ (i['price'] or 0)|money }}</span>
         <span class="upload-hint">TVA {{ vat_rates.get(i['id'], 0)|round(0)|int }}%</span>
         {% if not i['available'] %}<span class="mini-status status-declined">off</span>{% endif %}
         {% if not i['sold_in_pos'] %}<span class="mini-status status-inactive">not on POS</span>{% endif %}
@@ -68,7 +68,7 @@
         <span class="pour-chip">
           {{ serve_sizes.get(pr['serve_size'], pr['serve_size']) }}
           {%- if pr['serve_volume_ml'] %} · {{ pr['serve_volume_ml']|round(0)|int }}ml{% endif %}
-          · €{{ '%.2f'|format(pr['price'] or 0) }}
+          · {{ (pr['price'] or 0)|money }}
           <small>takes {{ '%.3f'|format(pr['stock_qty_per_unit'] or 0) }} of a bottle</small>
         </span>
         {% endfor %}

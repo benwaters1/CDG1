@@ -28,7 +28,7 @@
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
     <span class="stat-tile-body">
-      <span class="stat-tile-value">€{{ '%.2f'|format(working.total) }}</span>
+      <span class="stat-tile-value">{{ working.total|money }}</span>
       <span class="stat-tile-label">Owed to the commune</span>
     </span>
   </div>
@@ -48,10 +48,10 @@
   </div>
 </div>
 
-<p class="upload-hint">At €{{ '%.2f'|format(working.rate) }} per adult per night,
+<p class="upload-hint">At {{ working.rate|money }} per adult per night,
 across {{ working.stays }} stay{{ '' if working.stays == 1 else 's' }}.
 {% if working.unpaid %}
-<strong>€{{ '%.2f'|format(working.unpaid) }} of this is on stays that have not
+<strong>{{ working.unpaid|money }} of this is on stays that have not
 settled yet</strong> — the tax is due on the nights, not on our collecting it,
 so it is declared either way.
 {% endif %}
@@ -87,7 +87,7 @@ so it is declared either way.
         <td class="num">{{ r.adults }}</td>
         <td class="num">{{ r.exempt_guests or '' }}</td>
         <td class="num">{{ r.adult_nights }}</td>
-        <td class="num">€{{ '%.2f'|format(r.amount) }}</td>
+        <td class="num">{{ r.amount|money }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -98,7 +98,7 @@ so it is declared either way.
         <th></th>
         <th class="num">{{ working.exempt_nights }}</th>
         <th class="num">{{ working.adult_nights }}</th>
-        <th class="num">€{{ '%.2f'|format(working.total) }}</th>
+        <th class="num">{{ working.total|money }}</th>
       </tr>
     </tfoot>
   </table>
@@ -129,19 +129,19 @@ so it is declared either way.
 #}
 {% if arrears and arrears.count %}
 <h2 class="section-heading" style="margin-top:32px;">Stays carrying no taxe de séjour</h2>
-<p class="upload-hint">At the current rate of €{{ '%.2f'|format(arrears.rate) }}
+<p class="upload-hint">At the current rate of {{ arrears.rate|money }}
 per adult per night. Charging a stay recalculates it from today's rate — for a
 stay still to come that is right; for one long finished, the rate then may have
 been different.</p>
 
 {% if arrears.upcoming %}
 <h3 class="sub-heading">Still to come — {{ arrears.upcoming|length }},
-  €{{ '%.2f'|format(arrears.upcoming_total) }}</h3>
+  {{ arrears.upcoming_total|money }}</h3>
 <form method="post" action="{{ url_for('charge_city_tax_upcoming') }}"
       style="margin-bottom:12px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button type="submit" class="btn-primary">Charge all
-    {{ arrears.upcoming|length }} — €{{ '%.2f'|format(arrears.upcoming_total) }}</button>
+    {{ arrears.upcoming|length }} — {{ arrears.upcoming_total|money }}</button>
   <span class="upload-hint">These guests have not arrived, so it goes on the bill
   they have yet to settle.</span>
 </form>
@@ -157,7 +157,7 @@ been different.</p>
         <td>{{ r.booking['arrival_date']|date_short }}</td>
         <td class="num">{{ r.nights }}</td>
         <td class="num">{{ r.adults }}</td>
-        <td class="num">€{{ '%.2f'|format(r.would_be) }}</td>
+        <td class="num">{{ r.would_be|money }}</td>
         <td>
           <form method="post" action="{{ url_for('charge_city_tax', booking_id=r.booking['id']) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -173,7 +173,7 @@ been different.</p>
 
 {% if arrears.departed %}
 <h3 class="sub-heading" style="margin-top:24px;">Already departed — {{ arrears.departed|length }},
-  €{{ '%.2f'|format(arrears.departed_total) }}</h3>
+  {{ arrears.departed_total|money }}</h3>
 <p class="upload-hint">No button for all of these on purpose. Charging a stay
 that has settled creates a balance the reminder will chase, so each is a
 decision on its own.</p>
@@ -189,9 +189,9 @@ decision on its own.</p>
         <td class="num">{{ r.nights }}</td>
         <td>
           {% if r.settled %}<span class="mini-status status-paid">settled</span>
-          {% else %}<span class="mini-status status-unpaid">€{{ '%.2f'|format(r.owed) }} owing</span>{% endif %}
+          {% else %}<span class="mini-status status-unpaid">{{ r.owed|money }} owing</span>{% endif %}
         </td>
-        <td class="num">€{{ '%.2f'|format(r.would_be) }}</td>
+        <td class="num">{{ r.would_be|money }}</td>
         <td>
           <form method="post" action="{{ url_for('charge_city_tax', booking_id=r.booking['id']) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

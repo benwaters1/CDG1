@@ -68,7 +68,7 @@
 </form>
 
 <p class="upload-hint" style="margin-top:14px;">
-  €{{ '%.2f'|format(owed) }} of taxe de séjour has been collected on confirmed stays so far this
+  {{ owed|money }} of taxe de séjour has been collected on confirmed stays so far this
   year. That figure is owed to the commune, not kept.
 </p>
 

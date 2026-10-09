@@ -12,12 +12,7 @@
   was not sold, and counting it would rank a dish by how often it is keyed in by mistake.
 </p>
 
-<div style="margin:-4px 0 14px;">
-  {% for n in [30, 90, 365] %}
-  <a href="{{ url_for('restaurant_what_sells', days=n) }}"
-     class="btn-mini{{ '' if n == days else ' btn-ghost' }}">{{ n }}d</a>
-  {% endfor %}
-</div>
+{% with endpoint='restaurant_what_sells', param='days', choices=[30, 90, 365], current=days, ahead=false %}{% include "_window_choice.html" %}{% endwith %}
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 

@@ -42,11 +42,11 @@ the house builds a second year of history.</p>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-body">
-      <span class="stat-tile-value">€{{ '{:,.0f}'.format(data.revenue) }}</span>
+      <span class="stat-tile-value">{{ data.revenue|money(0) }}</span>
       {# The absolute figure beside the percentage. "Up 18%" on its own is a
          number nobody can check; against 118 nights it is one they can. #}
       <span class="stat-tile-label">at today's prices{% if data.has_baseline %},
-        against €{{ '{:,.0f}'.format(data.revenue_last_year) }} then{% endif %}</span>
+        against {{ data.revenue_last_year|money(0) }} then{% endif %}</span>
     </span>
   </div>
   {% if data.has_baseline %}
@@ -90,7 +90,7 @@ the house builds a second year of history.</p>
             {% else %}level{% endif %}
           {% else %}—{% endif %}
         </td>
-        <td class="num">€{{ '{:,.0f}'.format(r.now.revenue) }}</td>
+        <td class="num">{{ r.now.revenue|money(0) }}</td>
         <td class="num">{{ '€{:,.0f}'.format(r.then.revenue) if data.has_baseline else '—' }}</td>
       </tr>
       {% endfor %}

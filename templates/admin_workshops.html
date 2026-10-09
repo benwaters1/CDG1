@@ -32,7 +32,7 @@
     <div class="expense-head">
       <div>
         <strong>{{ w['title'] }}</strong>
-        {% if w['price_per_person'] %} — €{{ '%.0f'|format(w['price_per_person']) }}/person{% endif %}
+        {% if w['price_per_person'] %} — {{ w['price_per_person']|money(0) }}/person{% endif %}
         {% if w['instructor_name'] or w['instructor_user_id'] %} · {{ w['instructor_name'] or 'instructor on staff' }}{% endif %}
         <span class="mini-status {{ 'status-active' if w['active'] else 'status-inactive' }}" style="margin-left:8px;">{{ 'open for registration' if w['active'] else 'hidden' }}</span>
       </div>
@@ -72,7 +72,7 @@
             <div class="upload-hint" style="margin-top:4px;">
               <b>Materials</b> for {{ mp.heads }} {{ 'place' if mp.heads == 1 else 'places' }}:
               {% for l in mp.lines %}{{ '%g'|format(l.need) }} {{ l.unit }} {{ l.name }}{% if not loop.last %}, {% endif %}{% endfor %}
-              {%- if mp.cost %} · €{{ '%.2f'|format(mp.cost) }}{% endif %}.
+              {%- if mp.cost %} · {{ mp.cost|money }}{% endif %}.
               {% if mp.taken_out %}
                 <span class="mini-status status-inactive">taken out of stock</span>
               {% elif mp.short %}
@@ -91,7 +91,7 @@
             <button type="submit" class="small-link" style="background:none;border:0;padding:0;cursor:pointer;color:var(--steel);">Take out of stock</button>
           </form>
           {% endif %}
-          <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Who is coming ({{ row.register.booked }}){% if row.register.owed %} · €{{ '{:,.0f}'.format(row.register.owed) }} owed{% endif %}</a>
+          <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Who is coming ({{ row.register.booked }}){% if row.register.owed %} · {{ row.register.owed|money(0) }} owed{% endif %}</a>
           <a href="{{ url_for('workshop_running_sheet', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Running sheet</a>
           <a href="{{ url_for('workshop_rooming', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Rooming</a>
           {# The public workshops page promises dates reach the newsletter
@@ -166,7 +166,7 @@
             · {{ row.attended }}/{{ s['capacity'] }} attended
             {% if s['notes'] %} <span class="upload-hint">— {{ s['notes'] }}</span>{% endif %}
           </span>
-          <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Who came ({{ row.register.booked }}){% if row.register.owed %} · €{{ '{:,.0f}'.format(row.register.owed) }} owed{% endif %}</a>
+          <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Who came ({{ row.register.booked }}){% if row.register.owed %} · {{ row.register.owed|money(0) }} owed{% endif %}</a>
           <a href="{{ url_for('workshop_running_sheet', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Running sheet</a>
           <a href="{{ url_for('workshop_rooming', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Rooming</a>
         </div>

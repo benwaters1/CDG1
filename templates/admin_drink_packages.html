@@ -25,12 +25,12 @@
       <strong style="flex:1;">{{ p['name'] }}</strong>
       {% if p['kind'] == 'allowance' %}
       <span class="mini-status status-upcoming">
-        €{{ '%.2f'|format(p['allowance_amount'] or 0) }} per {{ p['per'] }}
+        {{ (p['allowance_amount'] or 0)|money }} per {{ p['per'] }}
       </span>
       {% else %}
       <span class="mini-status status-upcoming">fixed list</span>
       {% endif %}
-      {% if p['price'] %}<span>charged €{{ '%.2f'|format(p['price']) }} per {{ p['per'] }}</span>
+      {% if p['price'] %}<span>charged {{ p['price']|money }} per {{ p['per'] }}</span>
       {% else %}<span class="upload-hint">included, no separate charge</span>{% endif %}
       {% if not p['active'] %}<span class="mini-status status-inactive">off</span>{% endif %}
       <form method="post" action="{{ url_for('toggle_drink_package', package_id=p['id']) }}">
@@ -62,7 +62,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <select name="menu_item_id" style="width:auto; margin:0;">
         {% for d in drinks %}
-        <option value="{{ d['id'] }}">{{ d['name'] }} — €{{ '%.2f'|format(d['price'] or 0) }}</option>
+        <option value="{{ d['id'] }}">{{ d['name'] }} — {{ (d['price'] or 0)|money }}</option>
         {% endfor %}
       </select>
       <button type="submit" class="btn-mini">Add to the package</button>

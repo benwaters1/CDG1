@@ -39,7 +39,7 @@
         {% if m['title'] %} — {{ m['title'] }}{% endif %}
       </strong>
       {% if m['formule_price'] %}
-      <span>{{ m['formule_label'] or 'Set menu' }} · €{{ '%.2f'|format(m['formule_price']) }}</span>
+      <span>{{ m['formule_label'] or 'Set menu' }} · {{ m['formule_price']|money }}</span>
       {% else %}<span class="upload-hint">à la carte</span>{% endif %}
       <span class="upload-hint">{{ m['dish_count'] }} dish{{ '' if m['dish_count'] == 1 else 'es' }}</span>
       {% if m['status'] == 'draft' %}

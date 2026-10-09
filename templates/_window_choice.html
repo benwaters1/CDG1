@@ -1,0 +1,30 @@
+{# How far a page looks: the last 30 days, the next 3 months.
+
+   One control for the seventeen pages that each drew their own. They marked
+   the chosen one four different ways, wrote the same choice as "30 days",
+   "30d" or "3m", and most sat among the page's links to other pages looking
+   exactly like them -- so "90 days" and "Timesheets" were the same kind of
+   button, and only one of them stayed on the page.
+
+   Caller sets, with a {% with %}:
+     endpoint  the page's own route
+     param     'days', 'weeks' or 'months' -- whatever the route reads
+     choices   the numbers it offers
+     current   the one in force
+     ahead     true for a page that looks forward
+     label     optional: the words in front, when "The last"/"The next" is wrong
+     extra     optional: query arguments the page owns, kept on every link
+#}
+{% set extra = extra | default({}) %}
+{% set unit = param[:-1] %}
+<div class="window-bar">
+  <span class="field-label" id="window-{{ endpoint }}">{{ label | default('The next' if ahead else 'The last') }}</span>
+  <nav class="segmented" aria-labelledby="window-{{ endpoint }}">
+    {% for n in choices %}
+    <a href="{{ url_for(endpoint, **dict(extra, **{param: n})) }}"
+       class="{{ 'is-active' if n == current }}"{% if n == current %} aria-current="true"{% endif %}>
+      {%- if n == 0 and unit == 'day' %}Today{% else %}{{ n }} {{ unit }}{{ '' if n == 1 else 's' }}{% endif -%}
+    </a>
+    {% endfor %}
+  </nav>
+</div>

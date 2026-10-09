@@ -4,12 +4,6 @@
 
 <div class="page-head">
   <h1>What the contract says, against what happened</h1>
-  <div style="display:flex; gap:10px;">
-    {% for n in [1, 4, 13, 52] %}
-    <a href="{{ url_for('contracted_hours_page', weeks=n) }}"
-       class="btn-ghost{{ ' btn-primary' if n == weeks }}">{{ n }} week{{ '' if n == 1 else 's' }}</a>
-    {% endfor %}
-  </div>
 </div>
 
 <p class="pay-disclaimer" style="margin-top:-10px;">
@@ -20,6 +14,8 @@
   they will raise. Hours are net of breaks, and a clock-out recorded before its
   clock-in cannot subtract from anybody&rsquo;s total.
 </p>
+
+{% with endpoint='contracted_hours_page', param='weeks', choices=[1, 4, 13, 52], current=weeks, ahead=false %}{% include "_window_choice.html" %}{% endwith %}
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 

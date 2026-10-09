@@ -29,7 +29,7 @@
 <div class="stat-tiles">
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(monthly_equivalent) }}</span><span class="stat-tile-label">Active monthly-equivalent total</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ monthly_equivalent|money(0) }}</span><span class="stat-tile-label">Active monthly-equivalent total</span></span>
   </div>
 </div>
 
@@ -49,7 +49,7 @@
     {% for c in costs %}
     <div class="mini-row {{ 'inactive' if not c['active'] }}" id="view-cost-{{ c['id'] }}">
       <span class="mini-name">{{ c['label'] }}{% if c['category'] %} <span class="upload-hint">({{ c['category'] }})</span>{% endif %}</span>
-      <span class="mini-role">€{{ '%.2f'|format(c['amount']) }} / {{ c['frequency'] }}{% if c['next_due_date'] %} · next due {{ c['next_due_date'] }}{% endif %}</span>
+      <span class="mini-role">{{ c['amount']|money }} / {{ c['frequency'] }}{% if c['next_due_date'] %} · next due {{ c['next_due_date'] }}{% endif %}</span>
       <span class="mini-status status-{{ 'onshift' if c['active'] else 'inactive' }}">{{ 'active' if c['active'] else 'paused' }}</span>
       <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleCostEdit({{ c['id'] }})">Edit</span>
       {% if c['active'] and c['next_due_date'] %}

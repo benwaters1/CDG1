@@ -67,7 +67,7 @@
         {%- if v['odometer_km'] %} · {{ '{:,}'.format(v['odometer_km']).replace(',', ' ') }} km
           {%- if v['odometer_read_at'] %} read {{ v['odometer_read_at']|date_short }}{% endif %}
         {%- endif %}
-        {% if spend_by_vehicle.get(v['id']) %} · €{{ '%.0f'|format(spend_by_vehicle[v['id']]) }} lifetime spend{% endif %}
+        {% if spend_by_vehicle.get(v['id']) %} · {{ (spend_by_vehicle[v['id']])|money(0) }} lifetime spend{% endif %}
       </div>
       <div style="display:flex; gap:10px; margin-bottom:14px; align-items:center; flex-wrap:wrap;">
         <form method="post" action="{{ url_for('log_vehicle_service', vehicle_id=v['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini" title="Records a service today; the next falls due in six months">Serviced today</button></form>

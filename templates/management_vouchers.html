@@ -84,8 +84,8 @@
           <span class="upload-hint">from {{ r.voucher['purchaser_name'] }}</span>
           {% endif %}
         </td>
-        <td class="num">€{{ '%.2f'|format(r.original) }}</td>
-        <td class="num"><strong>€{{ '%.2f'|format(r.balance) }}</strong></td>
+        <td class="num">{{ r.original|money }}</td>
+        <td class="num"><strong>{{ r.balance|money }}</strong></td>
         <td>
           {# mini-status + status-<name>, the classes the rest of the app uses.
              .pill does not exist in either stylesheet; a class nobody defines

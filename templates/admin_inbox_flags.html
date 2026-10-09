@@ -135,7 +135,7 @@
         {% set g = guest_context.get((f['from_address'] or '')|lower) %}
         {% if g %}
           {% if g['vip'] %}<span class="mini-status status-pending" style="margin-left:4px;">VIP</span>{% endif %}
-          {% if g['stays'] %}<span class="mini-status status-confirmed" style="margin-left:4px;">{{ g['stays'] }} stay{{ '' if g['stays'] == 1 else 's' }}{% if g['lifetime'] %} · €{{ '%.0f'|format(g['lifetime']) }}{% endif %}</span>{% endif %}
+          {% if g['stays'] %}<span class="mini-status status-confirmed" style="margin-left:4px;">{{ g['stays'] }} stay{{ '' if g['stays'] == 1 else 's' }}{% if g['lifetime'] %} · {{ g['lifetime']|money(0) }}{% endif %}</span>{% endif %}
         {% endif %}
       </div>
       <span class="upload-hint">{{ local_datetime_str(f['received_at']) }}</span>
@@ -165,8 +165,8 @@
     {% if f['conflict_category'] %}<p class="upload-hint">Matched: {{ f['conflict_category'] }}</p>{% endif %}
     {% if f['extracted_price'] is not none or f['computed_price'] is not none %}
     <p class="upload-hint">
-      {% if f['extracted_price'] is not none %}Email mentions €{{ '%.2f'|format(f['extracted_price']) }}{% endif %}
-      {% if f['computed_price'] is not none %} · Actual price €{{ '%.2f'|format(f['computed_price']) }}{% endif %}
+      {% if f['extracted_price'] is not none %}Email mentions {{ f['extracted_price']|money }}{% endif %}
+      {% if f['computed_price'] is not none %} · Actual price {{ f['computed_price']|money }}{% endif %}
     </p>
     {% endif %}
     {% if f['extracted_dates'] %}<p class="upload-hint">Dates mentioned: {{ f['extracted_dates'] }}</p>{% endif %}

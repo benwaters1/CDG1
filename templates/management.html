@@ -17,9 +17,9 @@
    lives in Financial, one click away in the first card below. #}
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 <p class="upload-hint" style="margin:-12px 0 20px;">
-  {{ current_financials.month.strftime('%B') }} so far: €{{ '%.0f'|format(current_financials.revenue) }} in,
-  €{{ '%.0f'|format(current_financials.expenses_total) }} out,
-  <strong{% if current_financials.net < 0 %} style="color:var(--danger);"{% endif %}>{{ '−' if current_financials.net < 0 }}€{{ '%.0f'|format(current_financials.net|abs) }} net</strong> —
+  {{ current_financials.month.strftime('%B') }} so far: {{ current_financials.revenue|money(0) }} in,
+  {{ current_financials.expenses_total|money(0) }} out,
+  <strong{% if current_financials.net < 0 %} style="color:var(--danger);"{% endif %}>{{ '−' if current_financials.net < 0 }}{{ (current_financials.net|abs)|money(0) }} net</strong> —
   <a href="{{ url_for('management_financials') }}">full financials</a>
 </p>
 

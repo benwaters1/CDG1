@@ -117,7 +117,7 @@
 <div class="overview-band">
   {% for l in by_location[:8] %}
   <div class="overview-cell">
-    <div class="overview-value" style="font-size:17px;">€{{ '{:,.0f}'.format(l['v']) }}</div>
+    <div class="overview-value" style="font-size:17px;">{{ l['v']|money(0) }}</div>
     <div class="overview-label">{{ l['loc'] }}</div>
     <div class="overview-hint">{{ l['n'] }} item{{ '' if l['n'] == 1 else 's' }}</div>
   </div>
@@ -159,7 +159,7 @@
         {% if not a['insurance_policy_id'] %}<span class="mini-status status-pending">not insured</span>{% endif %}
       </div>
       <span class="room-price">
-        {% if a['estimated_value'] %}€{{ '{:,.0f}'.format(a['estimated_value']) }}{% else %}<span class="upload-hint">no value</span>{% endif %}
+        {% if a['estimated_value'] %}{{ a['estimated_value']|money(0) }}{% else %}<span class="upload-hint">no value</span>{% endif %}
       </span>
     </div>
     <p class="upload-hint" style="margin:4px 0;">

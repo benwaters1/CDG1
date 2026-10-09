@@ -189,7 +189,7 @@
           <a href="{{ url_for('admin_reports') }}" class="oh-link oh-link--sm">Financials →</a>
         </div>
         <div class="oh-card__value">
-          <span class="oh-big">€{{ '{:,.0f}'.format(revenue_now) }}</span>
+          <span class="oh-big">{{ revenue_now|money(0) }}</span>
           {% if revenue_prev %}
           {% set pc = ((revenue_now - revenue_prev) / revenue_prev * 100)|round|int %}
           <span class="oh-delta oh-tone--{{ 'good' if pc >= 0 else 'bad' }}">
@@ -211,7 +211,7 @@
                          ('oh-cbar--mid' if loop.revindex <= 3 else
                          ('oh-cbar--early' if loop.revindex == 4 else '')) %}
           <span class="oh-cbar {{ shade }}" style="height:{{ m['height_pct'] }}%"
-                title="{{ m['label'] }} · €{{ '{:,.0f}'.format(m['value']) }}{% if m['budget'] %} against €{{ '{:,.0f}'.format(m['budget']) }}{% endif %}">
+                title="{{ m['label'] }} · {{ m['value']|money(0) }}{% if m['budget'] %} against {{ m['budget']|money(0) }}{% endif %}">
             {% if m['budget_pct'] %}<i class="oh-budget-mark" style="bottom:{{ m['budget_pct'] }}%"></i>{% endif %}
           </span>
           {% endfor %}
@@ -222,7 +222,7 @@
         <div class="oh-legend">
           <span><i class="oh-sw oh-sw--gold"></i>Revenue</span>
           {% if revenue_budget %}
-          <span><i class="oh-sw oh-sw--dash"></i>This month's target €{{ '{:,.0f}'.format(revenue_budget) }}</span>
+          <span><i class="oh-sw oh-sw--dash"></i>This month's target {{ revenue_budget|money(0) }}</span>
           {% else %}
           <span class="oh-mono oh-muted">No target set</span>
           {% endif %}

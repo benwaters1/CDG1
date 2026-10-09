@@ -105,7 +105,7 @@
     {% for r in rate_overrides %}
     <div class="mini-row">
       <span class="mini-name">{{ r['start_date'] }} → {{ r['end_date'] }}</span>
-      <span class="mini-role">€{{ '%.2f'|format(r['price_per_person']) }} / person{% if r['label'] %} · {{ r['label'] }}{% endif %}</span>
+      <span class="mini-role">{{ r['price_per_person']|money }} / person{% if r['label'] %} · {{ r['label'] }}{% endif %}</span>
       <form method="post" action="{{ url_for('delete_restaurant_rate_override', rate_id=r['id']) }}" onsubmit="return confirm('Remove this rate override?');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-mini btn-mini-danger">Remove</button>

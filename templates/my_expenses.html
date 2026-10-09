@@ -14,7 +14,7 @@
   <div class="expense-card">
     <div class="expense-head">
       <div>
-        {% if c['vendor_name'] %}<strong>{{ c['vendor_name'] }}</strong> — {% endif %}€{{ '%.2f'|format(c['amount']) }}
+        {% if c['vendor_name'] %}<strong>{{ c['vendor_name'] }}</strong> — {% endif %}{{ c['amount']|money }}
         <span class="mini-status status-{{ c['status'] }}" style="margin-left:8px;">{{ c['status'] }}</span>
       </div>
     </div>

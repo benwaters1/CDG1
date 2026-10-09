@@ -71,7 +71,7 @@
     <td>{% if r['arrival_date'] and r['departure_date'] %}{{ date_range(r['arrival_date'], r['departure_date']) }}{% elif r['arrival_date'] %}{{ r['arrival_date']|date_short }}{% else %}—{% endif %}</td>
     <td>{{ rooms.get(r['room_id']) or r['room_label'] or '—' }}</td>
     <td>{{ r['guests'] or '—' }}</td>
-    <td>{% if r['amount'] %}€{{ '{:,.2f}'.format(r['amount']) }}{% else %}—{% endif %}</td>
+    <td>{% if r['amount'] %}{{ r['amount']|money }}{% else %}—{% endif %}</td>
     <td><span class="mini-status {{ 'status-declined' if r['status'] == 'cancelled' else 'status-confirmed' }}">{{ r['status'] }}</span></td>
     <td>
       {%- if r['status'] == 'cancelled' %}—

@@ -14,12 +14,7 @@
   stops being done.
 </p>
 
-<div style="margin:-4px 0 14px;">
-  {% for n in [0, 2, 7] %}
-  <a href="{{ url_for('room_checks_page', days=n) }}"
-     class="btn-mini{{ '' if n == days else ' btn-ghost' }}">{{ 'Today' if n == 0 else n ~ ' days' }}</a>
-  {% endfor %}
-</div>
+{% with endpoint='room_checks_page', param='days', choices=[0, 2, 7], current=days, ahead=true, label='Arriving' %}{% include "_window_choice.html" %}{% endwith %}
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 

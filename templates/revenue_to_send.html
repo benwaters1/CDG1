@@ -18,7 +18,7 @@
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
     <span class="stat-tile-body">
-      <span class="stat-tile-value">€{{ '%.2f'|format(waiting_total) }}</span>
+      <span class="stat-tile-value">{{ waiting_total|money }}</span>
       <span class="stat-tile-label">Not yet with the accountant</span>
     </span>
   </div>
@@ -57,7 +57,7 @@
           {{ b['room_name'] }}
           <span class="cell-note">{{ b['arrival_date']|date_short }} → {{ b['departure_date']|date_short }}</span>
         </td>
-        <td class="num">€{{ '%.2f'|format(r['total']) }}</td>
+        <td class="num">{{ r['total']|money }}</td>
         <td>
           {% if r['sent'] %}
           <span class="mini-status status-active">Sent</span>
@@ -71,7 +71,7 @@
         <td>
           {% if not r['sent'] and r['total'] > 0 and configured %}
           <form method="post" action="{{ url_for('send_revenue_to_pennylane', booking_id=b['id']) }}"
-                onsubmit="return confirm('Send €{{ '%.2f'|format(r['total']) }} for {{ b['reference_code'] }} to Pennylane? This writes a real invoice.');">
+                onsubmit="return confirm('Send {{ r['total']|money }} for {{ b['reference_code'] }} to Pennylane? This writes a real invoice.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-mini">Send</button>
           </form>
@@ -100,7 +100,7 @@
       <tr>
         <td>{{ v['contact_name'] }}<span class="cell-note">{{ v['reference_code'] or '' }}</span></td>
         <td>{{ v['event_type'] }}<span class="cell-note">{{ v['preferred_date']|date_short }}</span></td>
-        <td class="num">€{{ '%.2f'|format(e['total']) }}</td>
+        <td class="num">{{ e['total']|money }}</td>
         <td>
           {% if e['sent'] %}<span class="mini-status status-active">Sent</span>
           <span class="cell-note">{{ e['sent']['sent_at']|house_day }}</span>
@@ -110,7 +110,7 @@
         <td>
           {% if not e['sent'] and e['total'] > 0 and configured %}
           <form method="post" action="{{ url_for('send_event_revenue', event_id=v['id']) }}"
-                onsubmit="return confirm('Send €{{ '%.2f'|format(e['total']) }} to Pennylane? This writes a real invoice.');">
+                onsubmit="return confirm('Send {{ e['total']|money }} to Pennylane? This writes a real invoice.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-mini">Send</button>
           </form>
@@ -147,7 +147,7 @@
         <td>{{ b['guest_name'] }}<span class="cell-note">{{ b['reference_code'] }}</span></td>
         <td>{{ b['workshop_title'] }}
           <span class="cell-note">{{ b['start_date']|date_short }}</span></td>
-        <td class="num">€{{ '%.2f'|format(w['total']) }}</td>
+        <td class="num">{{ w['total']|money }}</td>
         <td>
           {% if w['sent'] %}
           <span class="mini-status status-active">Sent</span>
@@ -161,7 +161,7 @@
         <td>
           {% if not w['sent'] and w['total'] > 0 and configured %}
           <form method="post" action="{{ url_for('send_workshop_revenue', booking_id=b['id']) }}"
-                onsubmit="return confirm('Send €{{ '%.2f'|format(w['total']) }} for {{ b['reference_code'] }} to Pennylane? This writes a real invoice.');">
+                onsubmit="return confirm('Send {{ w['total']|money }} for {{ b['reference_code'] }} to Pennylane? This writes a real invoice.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-mini">Send</button>
           </form>
@@ -248,7 +248,7 @@
       <tr>
         <td>{{ d['closure']['period']|date_short }}</td>
         <td class="num">{{ d['closure']['ticket_count'] }}</td>
-        <td class="num">€{{ '%.2f'|format(d['total']) }}</td>
+        <td class="num">{{ d['total']|money }}</td>
         <td>
           {% if d['sent'] %}
           <span class="mini-status status-active">Sent</span>
@@ -262,7 +262,7 @@
         <td>
           {% if not d['sent'] and d['total'] > 0 and configured %}
           <form method="post" action="{{ url_for('send_pos_day_revenue', closure_id=d['closure']['id']) }}"
-                onsubmit="return confirm('Send €{{ '%.2f'|format(d['total']) }} of takings for {{ d['closure']['period'] }} to Pennylane? This writes a real invoice.');">
+                onsubmit="return confirm('Send {{ d['total']|money }} of takings for {{ d['closure']['period'] }} to Pennylane? This writes a real invoice.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-mini">Send</button>
           </form>

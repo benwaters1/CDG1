@@ -25,7 +25,7 @@
     <div class="doc-row" id="view-vendor-{{ v['id'] }}" style="align-items:flex-start; flex-direction:column; gap:2px; padding:10px 12px;">
       <div style="display:flex; align-items:center; width:100%; gap:8px;">
         <strong style="flex:1;">{{ v['name'] }}{% if v['contact_person'] %} <span class="upload-hint">— {{ v['contact_person'] }}</span>{% endif %}</strong>
-        {% if spend_by_vendor.get(v['name']) %}<span class="mini-status status-pending">€{{ '%.0f'|format(spend_by_vendor[v['name']]) }} lifetime</span>{% endif %}
+        {% if spend_by_vendor.get(v['name']) %}<span class="mini-status status-pending">{{ (spend_by_vendor[v['name']])|money(0) }} lifetime</span>{% endif %}
         <a href="{{ url_for('submit_expense', vendor=v['name']) }}" class="small-link" style="color:var(--steel);">Log expense</a>
         <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleVendorEdit({{ v['id'] }})">Edit</span>
         <a href="{{ url_for('record_history_page', kind='vendor', record_id=v['id']) }}" class="small-link" style="color:var(--steel);">What changed</a>
@@ -45,7 +45,7 @@
       {% set money = owed.get(v['id']) %}
       {% if money %}
       <span class="upload-hint">
-        <strong>€{{ '%.2f'|format(money.total) }}</strong> outstanding across
+        <strong>{{ money.total|money }}</strong> outstanding across
         {{ money.count }} invoice{{ '' if money.count == 1 else 's' }}
         {%- if money.soonest %} ·
           {% if money.soonest < today %}<span class="mini-status status-overdue">oldest due {{ money.soonest }}</span>

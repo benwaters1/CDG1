@@ -57,12 +57,12 @@
   <div class="receipt-formule">
     <div class="receipt-line is-formule-head">
       <span>{{ f.formule['label'] }} — couvert {{ f.formule['seat_number'] }}</span>
-      <span>€{{ '%.2f'|format(f.formule['price']) }}</span>
+      <span>{{ f.formule['price']|money }}</span>
     </div>
     {% for l in live %}
     <div class="receipt-line is-small">
       <span>{{ l['name'] }}{% if l['is_supplement'] %} (supplément){% endif %}</span>
-      <span>€{{ '%.2f'|format((l['unit_price'] or 0) * l['quantity']) }}</span>
+      <span>{{ ((l['unit_price'] or 0) * l['quantity'])|money }}</span>
     </div>
     {% endfor %}
   </div>
@@ -74,37 +74,37 @@
   {% for l in lines %}
   <div class="receipt-line">
     <span>{{ l['quantity'] }} × {{ l['name'] }}{% if l['seat_number'] %} <small>(seat {{ l['seat_number'] }})</small>{% endif %}</span>
-    <span>€{{ '%.2f'|format((l['unit_price'] or 0) * l['quantity']) }}</span>
+    <span>{{ ((l['unit_price'] or 0) * l['quantity'])|money }}</span>
   </div>
   {% endfor %}
   {% endfor %}
 
   <div class="receipt-totals">
-    <div class="receipt-line"><span>Sous-total</span><span>€{{ '%.2f'|format(bill.gross) }}</span></div>
+    <div class="receipt-line"><span>Sous-total</span><span>{{ bill.gross|money }}</span></div>
     {% if bill.package %}
     {# The guest should see what the package took off, not just a smaller
        number they cannot account for. #}
     <div class="receipt-line">
       <span>{{ bill.package_row['name'] if bill.package_row else 'Formule boisson' }} — compris</span>
-      <span>−€{{ '%.2f'|format(bill.package) }}</span>
+      <span>−{{ bill.package|money }}</span>
     </div>
     {% endif %}
     {% if bill.discount %}
-    <div class="receipt-line"><span>Remise{% if order['discount_reason'] %} — {{ order['discount_reason'] }}{% endif %}</span><span>−€{{ '%.2f'|format(bill.discount) }}</span></div>
+    <div class="receipt-line"><span>Remise{% if order['discount_reason'] %} — {{ order['discount_reason'] }}{% endif %}</span><span>−{{ bill.discount|money }}</span></div>
     {% endif %}
     {% if bill.service %}
-    <div class="receipt-line"><span>Service</span><span>€{{ '%.2f'|format(bill.service) }}</span></div>
+    <div class="receipt-line"><span>Service</span><span>{{ bill.service|money }}</span></div>
     {% endif %}
     {% if bill.deposit %}
-    <div class="receipt-line"><span>Acompte déjà versé</span><span>−€{{ '%.2f'|format(bill.deposit) }}</span></div>
+    <div class="receipt-line"><span>Acompte déjà versé</span><span>−{{ bill.deposit|money }}</span></div>
     {% endif %}
-    <div class="receipt-line is-total"><span>Total TTC</span><span>€{{ '%.2f'|format(bill.total) }}</span></div>
+    <div class="receipt-line is-total"><span>Total TTC</span><span>{{ bill.total|money }}</span></div>
 
     <p class="receipt-vat-head">Dont TVA</p>
     {% for rate, b in bill.vat_by_rate.items() %}
     <div class="receipt-line is-small">
-      <span>TVA {{ rate|round(0)|int }}% (HT €{{ '%.2f'|format(b.net) }})</span>
-      <span>€{{ '%.2f'|format(b.vat) }}</span>
+      <span>TVA {{ rate|round(0)|int }}% (HT {{ b.net|money }})</span>
+      <span>{{ b.vat|money }}</span>
     </div>
     {% endfor %}
   </div>
@@ -114,7 +114,7 @@
     {% for pay in payments %}
     <div class="receipt-line is-small">
       <span>{{ payment_methods.get(pay['method'], pay['method']) }}</span>
-      <span>€{{ '%.2f'|format(pay['amount']) }}</span>
+      <span>{{ pay['amount']|money }}</span>
     </div>
     {% endfor %}
   </div>

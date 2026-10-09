@@ -27,7 +27,7 @@
     {{ g.name }} — {{ g.stays }} stays, last {{ g.last|date_short }}
     ({{ (g.days_since / 30)|round|int }} months ago; they usually came about every
     {{ (g.typical_gap / 30)|round|int }} months)
-    · worth €{{ '%.0f'|format(g.spend) }}
+    · worth {{ g.spend|money(0) }}
   </span>
   {% endfor %}
   <span class="upload-hint">
@@ -82,7 +82,7 @@
         {% if g.workshops %}{% set _ = extra.append(g.workshops ~ ' ateliers') %}{% endif %}
         <span class="upload-hint">{{ extra|join(', ') or '—' }}</span>
       </td>
-      <td class="num">€{{ '%.0f'|format(g.spend) }}</td>
+      <td class="num">{{ g.spend|money(0) }}</td>
       <td>
         {{ g.last|date_short }}
         {% if g.here_now %}<span class="mini-status status-current">here now</span>{% endif %}

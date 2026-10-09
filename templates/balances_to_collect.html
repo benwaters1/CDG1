@@ -18,21 +18,21 @@
   <div class="stat-tile">
     <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if due_count else 'stat-tile-icon-steel' }}">{{ icon('financial', 19) }}</span>
     <span class="stat-tile-body">
-      <span class="stat-tile-value">€{{ '{:,.2f}'.format(due_total) }}</span>
+      <span class="stat-tile-value">{{ due_total|money }}</span>
       <span class="stat-tile-label">Due now, {{ due_count }} balance{{ '' if due_count == 1 else 's' }}</span>
     </span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('receipt', 19) }}</span>
     <span class="stat-tile-body">
-      <span class="stat-tile-value">€{{ '{:,.2f}'.format(ready_total) }}</span>
+      <span class="stat-tile-value">{{ ready_total|money }}</span>
       <span class="stat-tile-label">On a card, {{ ready_count }} ready to take</span>
     </span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
     <span class="stat-tile-body">
-      <span class="stat-tile-value">€{{ '{:,.2f}'.format(coming_total) }}</span>
+      <span class="stat-tile-value">{{ coming_total|money }}</span>
       <span class="stat-tile-label">Coming in {{ ahead_days }} days, {{ coming_count }}</span>
     </span>
   </div>
@@ -77,7 +77,7 @@ here. Links to pay can still be sent.</p>
                that was on the screen and nothing else. #}
             <input type="checkbox" name="reg_id" value="{{ r['id'] }}" checked
                    data-collect-take data-owed="{{ '%.2f'|format(r['owed']) }}"
-                   aria-label="Take €{{ '%.2f'|format(r['owed']) }} from {{ r['who'] }}'s card">
+                   aria-label="Take {{ r['owed']|money }} from {{ r['who'] }}'s card">
             <input type="hidden" name="expect_{{ r['id'] }}" value="{{ '%.2f'|format(r['owed']) }}">
             {% elif r['state'] in ('no_card', 'opted_out', 'refused') %}
             <input type="checkbox" name="link_id" value="{{ r['id'] }}"
@@ -102,7 +102,7 @@ here. Links to pay can still be sent.</p>
             <span class="cell-note">in {{ -r['days_late'] }} day{{ '' if r['days_late'] == -1 else 's' }}</span>
             {% endif %}
           </td>
-          <td class="num"><strong>€{{ '{:,.2f}'.format(r['owed']) }}</strong></td>
+          <td class="num"><strong>{{ r['owed']|money }}</strong></td>
           <td>
             {% if r['state'] == 'ready' %}
             <span class="mini-status status-confirmed">{{ r['state_label'] }}</span>
@@ -129,7 +129,7 @@ here. Links to pay can still be sent.</p>
                     onclick="return confirm('Checked in Stripe, and nothing more came in for {{ r['reference'] }}?');">Checked, release it</button>
             {% elif r['state'] == 'refused' and stripe_on %}
             <button type="submit" form="retry-{{ r['id'] }}" class="btn-mini"
-                    onclick="return confirm('Try the card again for {{ r['reference'] }}, €{{ '%.2f'|format(r['owed']) }}?');">Try the card again</button>
+                    onclick="return confirm('Try the card again for {{ r['reference'] }}, {{ r['owed']|money }}?');">Try the card again</button>
             {% endif %}
           </td>
         </tr>

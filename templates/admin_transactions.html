@@ -21,10 +21,10 @@
 <div class="table-wrap">
   <table class="data-table">
     <tbody>
-      <tr><th scope="row">Charged</th><td class="num">€{{ '{:,.2f}'.format(lv.totals.charged) }}</td>
-          <th scope="row">Paid in</th><td class="num">€{{ '{:,.2f}'.format(lv.totals.paid) }}</td>
-          <th scope="row">Refunded</th><td class="num">€{{ '{:,.2f}'.format(lv.totals.refunded) }}</td>
-          <th scope="row"><strong>Received, less refunds</strong></th><td class="num"><strong>€{{ '{:,.2f}'.format(lv.totals.net) }}</strong></td></tr>
+      <tr><th scope="row">Charged</th><td class="num">{{ lv.totals.charged|money }}</td>
+          <th scope="row">Paid in</th><td class="num">{{ lv.totals.paid|money }}</td>
+          <th scope="row">Refunded</th><td class="num">{{ lv.totals.refunded|money }}</td>
+          <th scope="row"><strong>Received, less refunds</strong></th><td class="num"><strong>{{ lv.totals.net|money }}</strong></td></tr>
     </tbody>
   </table>
 </div>
@@ -68,8 +68,8 @@
           <td>{{ x.method or '' }}{% if x.card_words %}<br><span class="cell-note">{{ x.card_words }}</span>{% endif %}
               {% if x.payer %}<br><span class="cell-note">{{ x.payer }}</span>{% endif %}</td>
           <td>{{ x.note if x.note and x.note != 'Payment' else '' }}</td>
-          <td class="num">{% if x.charge %}{% if x.charge < 0 %}−€{{ '{:,.2f}'.format(-x.charge) }}{% else %}€{{ '{:,.2f}'.format(x.charge) }}{% endif %}{% endif %}</td>
-          <td class="num">{% if x.paid %}€{{ '{:,.2f}'.format(x.paid) }}{% elif x.back %}{% if x.back < 0 %}€{{ '{:,.2f}'.format(-x.back) }}{% else %}(€{{ '{:,.2f}'.format(x.back) }}){% endif %}{% endif %}</td>
+          <td class="num">{% if x.charge %}{% if x.charge < 0 %}−{{ (-x.charge)|money }}{% else %}{{ x.charge|money }}{% endif %}{% endif %}</td>
+          <td class="num">{% if x.paid %}{{ x.paid|money }}{% elif x.back %}{% if x.back < 0 %}{{ (-x.back)|money }}{% else %}({{ x.back|money }}){% endif %}{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

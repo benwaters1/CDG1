@@ -15,12 +15,7 @@
   Saturday&rdquo; has only ever been an argument.
 </p>
 
-<div style="margin:-4px 0 14px;">
-  {% for n in [7, 30, 90] %}
-  <a href="{{ url_for('kitchen_service_times', days=n) }}"
-     class="btn-mini{{ '' if n == days else ' btn-ghost' }}">{{ n }}d</a>
-  {% endfor %}
-</div>
+{% with endpoint='kitchen_service_times', param='days', choices=[7, 30, 90], current=days, ahead=false %}{% include "_window_choice.html" %}{% endwith %}
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 

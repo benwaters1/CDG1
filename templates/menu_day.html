@@ -83,7 +83,7 @@ Tarte aux mirabelles | glace verveine | gluten, eggs, milk"></textarea>
       <span style="flex:1;">
         <strong>{{ r['service_date'] }}</strong>
         {% if r['title'] %} — {{ r['title'] }}{% endif %}
-        {% if r['formule_price'] %}<span class="upload-hint"> · €{{ '%.2f'|format(r['formule_price']) }}</span>{% endif %}
+        {% if r['formule_price'] %}<span class="upload-hint"> · {{ r['formule_price']|money }}</span>{% endif %}
       </span>
       <form method="post" action="{{ url_for('copy_menu_day', menu_id=r['id']) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -185,8 +185,8 @@ Tarte aux mirabelles | glace verveine | gluten, eggs, milk"></textarea>
     <div class="doc-row {{ 'is-off' if not d['available'] }}" style="align-items:flex-start; flex-direction:column; gap:3px;">
       <div style="display:flex; width:100%; gap:10px; align-items:baseline; flex-wrap:wrap;">
         <strong style="flex:1;">{{ d['name'] }}</strong>
-        {% if d['carte_price'] %}<span>€{{ '%.2f'|format(d['carte_price']) }}</span>{% endif %}
-        {% if d['supplement'] %}<span class="mini-status status-pending">+€{{ '%.2f'|format(d['supplement']) }}</span>{% endif %}
+        {% if d['carte_price'] %}<span>{{ d['carte_price']|money }}</span>{% endif %}
+        {% if d['supplement'] %}<span class="mini-status status-pending">+{{ d['supplement']|money }}</span>{% endif %}
         {% if not d['in_formule'] %}<span class="mini-status status-inactive">à la carte only</span>{% endif %}
         {% if not d['available'] %}<span class="mini-status status-declined">off{% if d['unavailable_note'] %} — {{ d['unavailable_note'] }}{% endif %}</span>{% endif %}
         {% if d['menu_item_id'] %}<span class="upload-hint" title="Served before — its sales history carries over">seen before</span>{% endif %}

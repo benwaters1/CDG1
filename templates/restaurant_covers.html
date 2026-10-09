@@ -12,12 +12,7 @@
   this exists to prevent, not to cause.
 </p>
 
-<div style="margin:-4px 0 14px;">
-  {% for n in [7, 21, 60] %}
-  <a href="{{ url_for('restaurant_covers', days=n) }}"
-     class="btn-mini{{ '' if n == days else ' btn-ghost' }}">{{ n }}d</a>
-  {% endfor %}
-</div>
+{% with endpoint='restaurant_covers', param='days', choices=[7, 21, 60], current=days, ahead=true %}{% include "_window_choice.html" %}{% endwith %}
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 

@@ -48,8 +48,8 @@ we send goes by email.</p>
 
   {% if bill and bill.owed > 0 %}
   <p class="arrival-card__owed">
-    Still to pay: <strong>€{{ '%.2f'|format(bill.owed) }}</strong>
-    {%- if bill.paid %} · €{{ '%.2f'|format(bill.paid) }} received{% endif %}
+    Still to pay: <strong>{{ bill.owed|money }}</strong>
+    {%- if bill.paid %} · {{ bill.paid|money }} received{% endif %}
   </p>
   {% elif bill and bill.total %}
   <p class="arrival-card__owed">Settled in full — thank you.</p>

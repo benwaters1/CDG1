@@ -69,7 +69,7 @@
           {% else %}{{ r.pay_rate or '—' }}{% endif %}
         </td>
         <td class="num">
-          {% if r.cost is not none %}€{{ '%.2f'|format(r.cost) }}{% else %}—{% endif %}
+          {% if r.cost is not none %}{{ r.cost|money }}{% else %}—{% endif %}
           {% if r.basis and r.basis != 'hourly' %}
             <div class="upload-hint">salary for this window, not hours × rate</div>
           {% endif %}

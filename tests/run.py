@@ -445,6 +445,9 @@ SUITES = [
     "test_held_email_list",
     "test_chips_not_dropdowns",
     "test_cards_fold_their_forms",
+    "test_one_money_spelling",
+    "test_one_window_control",
+    "test_menu_groups",
 ]
 
 

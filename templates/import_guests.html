@@ -82,7 +82,7 @@
   <p class="upload-hint">
     The file carries an outstanding balance for <strong>{{ money.people }}</strong>
     {{ 'person' if money.people == 1 else 'people' }}, totalling
-    <strong>€{{ '%.2f'|format(money.total) }}</strong>. None of it has been
+    <strong>{{ money.total|money }}</strong>. None of it has been
     written.
   </p>
   <p class="upload-hint">

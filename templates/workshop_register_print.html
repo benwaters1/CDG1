@@ -21,7 +21,7 @@
 <p class="manual-body wraps">
   {{ session['start_date']|date_short }}{% if session['end_date'] and session['end_date'] != session['start_date'] %} to {{ session['end_date']|date_short }}{% endif %}
   · {{ people }} {{ 'person' if people == 1 else 'people' }} of {{ session['capacity'] }}
-  {% if owed %}· €{{ '{:,.2f}'.format(owed) }} still owed{% endif %}
+  {% if owed %}· {{ owed|money }} still owed{% endif %}
 </p>
 
 {% if not rows %}
@@ -59,8 +59,8 @@
           {% if r['phone'] %}{{ r['phone'] }}<br>{% endif %}
           <span class="cell-note">{{ r['email'] }}</span>
         </td>
-        <td class="num">€{{ '{:,.2f}'.format(r['paid']) }}</td>
-        <td class="num">{% if r['owed'] > 0.005 %}<strong>€{{ '{:,.2f}'.format(r['owed']) }}</strong>{% else %}—{% endif %}</td>
+        <td class="num">{{ r['paid']|money }}</td>
+        <td class="num">{% if r['owed'] > 0.005 %}<strong>{{ r['owed']|money }}</strong>{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

@@ -34,7 +34,7 @@
 {# Capacity and price are settings rather than performance, so they sit as a
    caption instead of competing with the figures above. #}
 <p class="upload-hint" style="margin:-12px 0 20px;">
-  Nightly capacity {{ settings['capacity'] }}{% if settings['price_per_person'] %} · €{{ '%.0f'|format(settings['price_per_person']) }} per person{% endif %}
+  Nightly capacity {{ settings['capacity'] }}{% if settings['price_per_person'] %} · {{ settings['price_per_person']|money(0) }} per person{% endif %}
   · {{ no_show_count }} no-show{{ '' if no_show_count == 1 else 's' }} in the last {{ windows.restaurant_no_show_days }} days ·
   <a href="{{ url_for('admin_restaurant_settings') }}">Change</a>
 </p>
@@ -56,9 +56,9 @@
       </div>
       <span class="upload-hint">{{ r['reference_code'] }}{% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='restaurant_booking', record_id=r['id']) }}" class="small-link">What changed</a>{% endif %}</span>
     </div>
-    <p class="manual-body">{{ r['dinner_date']|date_short }}{% if r['total_price'] %} · €{{ '%.2f'|format(r['total_price']) }}{% endif %}</p>
+    <p class="manual-body">{{ r['dinner_date']|date_short }}{% if r['total_price'] %} · {{ r['total_price']|money }}{% endif %}</p>
     {% if r['total_price'] and r['deposit_amount'] and r['deposit_amount'] < r['total_price'] %}
-    <p class="upload-hint"><span class="mini-status status-paid">deposit €{{ '%.2f'|format(r['deposit_amount']) }} paid</span> · <strong>€{{ '%.2f'|format(r['total_price'] - r['deposit_amount']) }} due onsite</strong></p>
+    <p class="upload-hint"><span class="mini-status status-paid">deposit {{ r['deposit_amount']|money }} paid</span> · <strong>{{ (r['total_price'] - r['deposit_amount'])|money }} due onsite</strong></p>
     {% endif %}
     <p class="upload-hint">{{ r['guest_email'] }}{% if r['guest_phone'] %} · {{ r['guest_phone'] }}{% endif %} · <a href="{{ url_for('guest_by_email', email=r['guest_email']) }}" class="small-link" style="color:var(--steel);">their record</a></p>
     {% if no_show_history.get(r['id']) %}
@@ -110,14 +110,14 @@
     </div>
   </div>
   <div class="detail-grid" style="margin-top:10px;">
-    <div><span class="detail-label">Revenue (confirmed dinners)</span>€{{ '%.2f'|format(profit.revenue) }}</div>
-    <div><span class="detail-label">Expense costs</span>€{{ '%.2f'|format(profit.expense_costs) }}</div>
-    <div><span class="detail-label">Staffing labor (est.)</span>€{{ '%.2f'|format(profit.labor_cost) }}{% if profit.unestimated_labor_shifts %} <span class="upload-hint">({{ profit.unestimated_labor_shifts }} shift{{ '' if profit.unestimated_labor_shifts == 1 else 's' }} not estimable)</span>{% endif %}</div>
-    <div><span class="detail-label">Total costs</span>€{{ '%.2f'|format(profit.costs) }}</div>
-    <div><span class="detail-label">Profit</span>€{{ '%.2f'|format(profit.profit) }}</div>
+    <div><span class="detail-label">Revenue (confirmed dinners)</span>{{ profit.revenue|money }}</div>
+    <div><span class="detail-label">Expense costs</span>{{ profit.expense_costs|money }}</div>
+    <div><span class="detail-label">Staffing labor (est.)</span>{{ profit.labor_cost|money }}{% if profit.unestimated_labor_shifts %} <span class="upload-hint">({{ profit.unestimated_labor_shifts }} shift{{ '' if profit.unestimated_labor_shifts == 1 else 's' }} not estimable)</span>{% endif %}</div>
+    <div><span class="detail-label">Total costs</span>{{ profit.costs|money }}</div>
+    <div><span class="detail-label">Profit</span>{{ profit.profit|money }}</div>
     <div><span class="detail-label">Split</span>{{ profit.share_pct|round(1) }}% chef / {{ (100 - profit.share_pct)|round(1) }}% owner</div>
-    <div><span class="detail-label">Chef/partner share</span>€{{ '%.2f'|format(profit.chef_share) }}</div>
-    <div><span class="detail-label">Owner share</span>€{{ '%.2f'|format(profit.owner_share) }}</div>
+    <div><span class="detail-label">Chef/partner share</span>{{ profit.chef_share|money }}</div>
+    <div><span class="detail-label">Owner share</span>{{ profit.owner_share|money }}</div>
   </div>
   <p class="upload-hint" style="margin-top:8px;">Staffing labor is a best-effort estimate from assigned shift hours × hourly pay rate — salaried staff or anyone without a clean hourly rate on file aren't counted. Never a payroll figure.</p>
 </div>

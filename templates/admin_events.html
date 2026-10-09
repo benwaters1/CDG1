@@ -137,13 +137,13 @@
     {%- if e['alternate_date'] %} · Alt: {{ e['alternate_date'] }}{% endif %}
     {%- if e['spaces'] %} · {{ e['spaces'] }}{% endif %}
     {%- if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %}
-    {%- if e['quoted_price'] %} · Quoted €{{ '%.2f'|format(e['quoted_price']) }}{% endif %}
+    {%- if e['quoted_price'] %} · Quoted {{ e['quoted_price']|money }}{% endif %}
     {%- set bill = bills.get(e['id']) if bills else None %}
-    {%- if bill and bill.paid %} · €{{ '%.2f'|format(bill.paid) }} received{% endif %}
-    {%- if bill and bill.owed %} · <strong>€{{ '%.2f'|format(bill.owed) }} still to pay</strong>
+    {%- if bill and bill.paid %} · {{ bill.paid|money }} received{% endif %}
+    {%- if bill and bill.owed %} · <strong>{{ bill.owed|money }} still to pay</strong>
     {%- elif bill and bill.quoted and bill.settled %} · settled{% endif %}
-  {%- if bill and bill.discount %} · <span class="upload-hint">€{{ '%.2f'|format(bill.gross_quote) }} before</span> · <span class="mini-status status-approved">code
-    {{ e['promo_code'] }} \u2212€{{ '%.2f'|format(bill.discount) }}</span>{% endif %}
+  {%- if bill and bill.discount %} · <span class="upload-hint">{{ bill.gross_quote|money }} before</span> · <span class="mini-status status-approved">code
+    {{ e['promo_code'] }} \u2212{{ bill.discount|money }}</span>{% endif %}
   </p>
 
   {# Recording money on an event. The route existed and nothing linked to it,

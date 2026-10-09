@@ -13,12 +13,7 @@
   &mdash; both are fixable, but only once somebody can see which it is.
 </p>
 
-<div style="margin:-4px 0 14px;">
-  {% for n in [30, 90, 365] %}
-  <a href="{{ url_for('kitchen_waste', days=n) }}"
-     class="btn-mini{{ '' if n == days else ' btn-ghost' }}">{{ n }}d</a>
-  {% endfor %}
-</div>
+{% with endpoint='kitchen_waste', param='days', choices=[30, 90, 365], current=days, ahead=false %}{% include "_window_choice.html" %}{% endwith %}
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 

@@ -11,13 +11,13 @@
 <div class="stat-tiles">
   <div class="stat-tile">
     <span class="stat-tile-body">
-      <span class="stat-tile-value">€{{ '%.2f'|format(totals.shown) }}</span>
+      <span class="stat-tile-value">{{ totals.shown|money }}</span>
       <span class="stat-tile-label">Refunded, in this view</span>
     </span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-body">
-      <span class="stat-tile-value">€{{ '%.2f'|format(totals.last_30) }}</span>
+      <span class="stat-tile-value">{{ totals.last_30|money }}</span>
       <span class="stat-tile-label">Of it, in the last {{ windows.refunds_recent_days }} days</span>
     </span>
   </div>
@@ -29,7 +29,7 @@
   </div>
   <div class="stat-tile">
     <span class="stat-tile-body">
-      <span class="stat-tile-value">€{{ '%.2f'|format(totals.taken_off) }}</span>
+      <span class="stat-tile-value">{{ totals.taken_off|money }}</span>
       <span class="stat-tile-label">Taken off the bill as well</span>
     </span>
   </div>
@@ -47,7 +47,7 @@
       <tr>
         <td>{{ r.name }}<span class="cell-note">{{ r.ref }}</span></td>
         <td>A refund that did not reach them<span class="cell-note">{{ r.why }}</span></td>
-        <td class="num">€{{ '%.2f'|format(r.amount) }}</td>
+        <td class="num">{{ r.amount|money }}</td>
         <td>{% if can('refund_desk') %}<a href="{{ url_for('refund_desk', category=r.category, booking_id=r.id) }}" class="btn-mini">Make it again</a>{% endif %}</td>
       </tr>
     {% endfor %}
@@ -55,15 +55,15 @@
       <tr>
         <td>{{ r.name }}<span class="cell-note">{{ r.ref }}</span></td>
         <td>Still held on {{ r.what }} {{ r.why }}</td>
-        <td class="num">€{{ '%.2f'|format(r.amount) }}</td>
+        <td class="num">{{ r.amount|money }}</td>
         <td>{% if can('refund_desk') %}<a href="{{ url_for('refund_desk', category=r.category, booking_id=r.id) }}" class="btn-mini">Give it back</a>{% endif %}</td>
       </tr>
     {% endfor %}
     {% for r in left_owing %}
       <tr>
         <td>{{ r.name }}<span class="cell-note">{{ r.ref }}</span></td>
-        <td>Refunded in Stripe's dashboard, and the bill asks for €{{ '%.2f'|format(r.owed) }} again</td>
-        <td class="num">€{{ '%.2f'|format(r.amount) }}</td>
+        <td>Refunded in Stripe's dashboard, and the bill asks for {{ r.owed|money }} again</td>
+        <td class="num">{{ r.amount|money }}</td>
         <td>{% if can('refund_desk') %}<a href="{{ url_for('refund_desk', category=r.category, booking_id=r.id) }}" class="btn-mini">Decide</a>{% endif %}</td>
       </tr>
     {% endfor %}
@@ -86,7 +86,7 @@
       <tr>
         <td>{{ local_datetime_str(d['opened_at']) }}</td>
         <td>{{ d['guest_name'] or '—' }}{% if d['reference_code'] %}<span class="cell-note">{{ d['reference_code'] }}</span>{% endif %}</td>
-        <td class="num">€{{ '%.2f'|format(d['amount']) }}</td>
+        <td class="num">{{ d['amount']|money }}</td>
         <td>{{ dispute_words.get(d['reason'], d['reason']) }}</td>
         <td>{{ (d['status'] or '')|replace('_', ' ')|capitalize }}{% if d['closed_at'] %}<span class="cell-note">closed</span>{% endif %}</td>
         <td>{{ d['evidence_due_by']|date_short if d['evidence_due_by'] and not d['closed_at'] else '—' }}</td>
@@ -122,8 +122,8 @@
           {% else %}{{ r['guest_name'] or '—' }}{% endif %}
           {% if r['reference_code'] %}<span class="cell-note">{{ r['reference_code'] }}</span>{% endif %}
         </td>
-        <td class="num">€{{ '%.2f'|format(r['amount']) }}
-          {% if r['reduces_bill'] %}<span class="cell-note">€{{ '%.2f'|format(r['reduces_bill']) }} off the bill</span>{% endif %}
+        <td class="num">{{ r['amount']|money }}
+          {% if r['reduces_bill'] %}<span class="cell-note">{{ r['reduces_bill']|money }} off the bill</span>{% endif %}
         </td>
         <td>{{ r['reason'] }}</td>
         <td>

@@ -60,9 +60,9 @@
       <tr>
         <td>{{ l.source }}</td>
         <td class="num">{{ '%g'|format(l.rate) }}%</td>
-        <td class="num">{% if l.gross is not none %}€{{ '%.2f'|format(l.gross) }}{% else %}—{% endif %}</td>
-        <td class="num">{% if l.net is not none %}€{{ '%.2f'|format(l.net) }}{% else %}—{% endif %}</td>
-        <td class="num">€{{ '%.2f'|format(l.vat) }}</td>
+        <td class="num">{% if l.gross is not none %}{{ l.gross|money }}{% else %}—{% endif %}</td>
+        <td class="num">{% if l.net is not none %}{{ l.net|money }}{% else %}—{% endif %}</td>
+        <td class="num">{{ l.vat|money }}</td>
         <td>
           {{ l.basis }}
           {% if not l.exact %}<span class="mini-status status-pending">{{ t('estimate') }}</span>{% endif %}
@@ -74,10 +74,10 @@
         <td class="num"></td>
         <td class="num"></td>
         <td class="num"></td>
-        <td class="num"><strong>€{{ '%.2f'|format(working.total_vat) }}</strong></td>
+        <td class="num"><strong>{{ working.total_vat|money }}</strong></td>
         <td class="upload-hint">
-          €{{ '%.2f'|format(working.exact_vat) }} {{ t('sealed') }} ·
-          €{{ '%.2f'|format(working.estimated_vat) }} {{ t('estimated') }}
+          {{ working.exact_vat|money }} {{ t('sealed') }} ·
+          {{ working.estimated_vat|money }} {{ t('estimated') }}
         </td>
       </tr>
     </tbody>

@@ -96,7 +96,7 @@
         {%- if b['party_name'] %}
         <a href="{{ url_for('party_statement', party_id=b['party_id']) }}" class="mini-status status-upcoming" style="margin-left:4px; text-decoration:none;" title="One bill for the whole party">{{ b['party_name'] }}</a>
         {%- endif %}
-        {% if b['guest_email'] in returning_emails %}<a href="{{ url_for('guest_booking_history', email=b['guest_email']) }}" class="mini-status status-onshift" style="margin-left:4px; text-decoration:none;">returning guest · €{{ '%.0f'|format(confirmed_spend_by_email[b['guest_email']]) }} lifetime</a>{% endif %}
+        {% if b['guest_email'] in returning_emails %}<a href="{{ url_for('guest_booking_history', email=b['guest_email']) }}" class="mini-status status-onshift" style="margin-left:4px; text-decoration:none;">returning guest · {{ (confirmed_spend_by_email[b['guest_email']])|money(0) }} lifetime</a>{% endif %}
       </div>
       <span class="upload-hint">
         {{ b['reference_code'] }}
@@ -122,8 +122,8 @@
     </div>
     <p class="manual-body wraps">
       {{ b['arrival_date'] }} → {{ b['departure_date'] }} · Party of {{ b['party_size'] }}
-      {% if b['total_price'] %} · €{{ '%.2f'|format(b['total_price']) }}{% endif %}
-      {% if owed_by_booking.get(b['id']) %} · <strong class="owed-flag">€{{ '%.2f'|format(owed_by_booking[b['id']]) }} still owed</strong>{% endif %}
+      {% if b['total_price'] %} · {{ b['total_price']|money }}{% endif %}
+      {% if owed_by_booking.get(b['id']) %} · <strong class="owed-flag">{{ (owed_by_booking[b['id']])|money }} still owed</strong>{% endif %}
     </p>
     <p class="upload-hint">{{ b['guest_email'] }}{% if b['guest_phone'] %} · {{ b['guest_phone'] }}{% endif %}</p>
     {% if b['guest_address'] or b['guest_country'] %}<p class="upload-hint">Address: {{ [b['guest_address'], ((b['guest_city'] or '') ~ ' ' ~ (b['guest_postcode'] or ''))|trim, b['guest_country']]|select|join(', ') }}</p>{% endif %}

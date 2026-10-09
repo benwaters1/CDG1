@@ -43,12 +43,12 @@
     {% for month, amount in data.by_month %}
     <tr class="{{ 'row-alert' if month[:4] != today.year|string }}">
       <td>{{ month|date_short }}</td>
-      <td class="num">€{{ '%.2f'|format(amount) }}</td>
+      <td class="num">{{ amount|money }}</td>
     </tr>
     {% endfor %}
   </tbody>
   <tfoot>
-    <tr><th>Held today</th><th class="num">€{{ '%.2f'|format(data.total) }}</th></tr>
+    <tr><th>Held today</th><th class="num">{{ data.total|money }}</th></tr>
   </tfoot>
 </table>
 </div>
@@ -63,7 +63,7 @@
      ('workshops', 'Ateliers', 'deposit or balance settled for a session still to run'),
      ('restaurant', 'The table', 'deposit taken for a dinner still to be served')] %}
   {% if data[key] %}
-  <h2 class="section-heading">{{ label }} — €{{ '%.2f'|format(data.totals[key]) }}</h2>
+  <h2 class="section-heading">{{ label }} — {{ data.totals[key]|money }}</h2>
   <p class="field-hint" style="margin-top:-6px; max-width:900px;">{{ note }}.</p>
   <div class="doc-list" style="max-width:900px;">
     {% for r in data[key] %}
@@ -72,10 +72,10 @@
       <strong style="flex:1;">{{ r['label'] }}</strong>
       {% if r['total_price'] and r['paid'] < r['total_price'] %}
         <span class="upload-hint">
-          of €{{ '%.2f'|format(r['total_price']) }} agreed
+          of {{ r['total_price']|money }} agreed
         </span>
       {% endif %}
-      <span class="room-price">€{{ '%.2f'|format(r['paid']) }}</span>
+      <span class="room-price">{{ r['paid']|money }}</span>
     </div>
     {% endfor %}
   </div>

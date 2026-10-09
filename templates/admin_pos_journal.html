@@ -42,13 +42,13 @@
       {% for c in closures %}
       <tr>
         <td>{{ c['period'] }} <span class="upload-hint">{{ c['kind'] }}</span></td>
-        <td class="num">€{{ '%.2f'|format(c['taken_total']) }}</td>
-        <td class="num">€{{ '%.2f'|format(c['gross_total']) }}</td>
+        <td class="num">{{ c['taken_total']|money }}</td>
+        <td class="num">{{ c['gross_total']|money }}</td>
         <td class="num">{{ c['ticket_count'] }}</td>
         <td class="num">{{ c['covers'] }}</td>
         {# The control total: if the closed periods stop summing to this,
            something has been taken out of the middle. #}
-        <td class="num">€{{ '%.2f'|format(c['perpetual_total']) }}</td>
+        <td class="num">{{ c['perpetual_total']|money }}</td>
         <td class="upload-hint">
           {{ local_datetime_str(c['closed_at']) }}
           {# Who counted it. Recorded on every closure since the table existed

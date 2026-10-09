@@ -231,7 +231,7 @@
   <p class="field-hint" style="margin-top:-8px;">
     A different nightly rate for a date range — peak season, New Year, a festival week.
     <strong>“To” is the last night the rate applies to</strong>, not a checkout date. Any night not
-    covered uses the €{{ '%g'|format(room['price_per_night']) }} base rate above.
+    covered uses the {{ room['price_per_night']|money(0) }} base rate above.
   </p>
 
   {% if rate_overrides %}
@@ -242,7 +242,7 @@
         {% for r in rate_overrides %}
         <tr>
           <td>{{ r['start_date'] }} → {{ r['end_date'] }}</td>
-          <td><strong>€{{ '%.2f'|format(r['price_per_night']) }}</strong> / night</td>
+          <td><strong>{{ r['price_per_night']|money }}</strong> / night</td>
           <td class="upload-hint">{{ r['label'] or '—' }}</td>
           <td class="num">
             <form method="post" action="{{ url_for('delete_room_rate_override', room_id=room['id'], rate_id=r['id']) }}"

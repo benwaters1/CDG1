@@ -437,7 +437,7 @@
           {% for c in expense_claims %}
           <div class="doc-row" style="flex-direction:column; align-items:flex-start; gap:2px;">
             <div style="display:flex; width:100%; gap:8px; align-items:center;">
-              <strong style="flex:1;">{% if c['vendor_name'] %}{{ c['vendor_name'] }} — {% endif %}€{{ '%.2f'|format(c['amount']) }}</strong>
+              <strong style="flex:1;">{% if c['vendor_name'] %}{{ c['vendor_name'] }} — {% endif %}{{ c['amount']|money }}</strong>
               <span class="mini-status status-{{ c['status'] }}">{{ c['status'] }}</span>
             </div>
             <span class="upload-hint">{{ c['description'] }} · {{ c['submitted_at']|house_day }}</span>

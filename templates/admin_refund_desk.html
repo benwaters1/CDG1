@@ -19,24 +19,24 @@
 
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">€{{ '%.2f'|format(money.cost) }}</span>
+    <span class="stat-tile-value">{{ money.cost|money }}</span>
     <span class="stat-tile-label">{{ 'What it costs' if stands else 'What it would have cost' }}</span>
   </span></div>
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">€{{ '%.2f'|format(money.received) }}</span>
+    <span class="stat-tile-value">{{ money.received|money }}</span>
     <span class="stat-tile-label">Received, after refunds</span>
   </span></div>
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">€{{ '%.2f'|format(money.refunded) }}</span>
-    <span class="stat-tile-label">Refunded{% if money.taken_off %}, €{{ '%.2f'|format(money.taken_off) }} of it off the bill{% endif %}</span>
+    <span class="stat-tile-value">{{ money.refunded|money }}</span>
+    <span class="stat-tile-label">Refunded{% if money.taken_off %}, {{ money.taken_off|money }} of it off the bill{% endif %}</span>
   </span></div>
   {% if money.owed is not none %}
   <div class="stat-tile"><span class="stat-tile-body">
     {% if money.credit > 0 %}
-    <span class="stat-tile-value">€{{ '%.2f'|format(money.credit) }}</span>
+    <span class="stat-tile-value">{{ money.credit|money }}</span>
     <span class="stat-tile-label">In credit: more paid than it costs</span>
     {% else %}
-    <span class="stat-tile-value">€{{ '%.2f'|format(money.owed) }}</span>
+    <span class="stat-tile-value">{{ money.owed|money }}</span>
     <span class="stat-tile-label">Still owed</span>
     {% endif %}
   </span></div>
@@ -63,7 +63,7 @@
           {% elif p.reference %}<span class="cell-note">{{ p.reference }}</span>{% endif %}
         </td>
         <td>{{ p.payer or p.taken_by or '—' }}</td>
-        <td class="num">€{{ '%.2f'|format(p.amount) }}</td>
+        <td class="num">{{ p.amount|money }}</td>
         <td class="num">{{ '€%.2f'|format(p.refunded) if p.refunded else '—' }}</td>
         <td class="num">{{ '€%.2f'|format(p.refundable) if p.refundable else '—' }}</td>
       </tr>
@@ -82,13 +82,13 @@
     {% for p in payments if p.refundable > 0 %}
     <label class="checkbox-row refund-reason">
       <input type="radio" name="payment" value="{{ p.key }}" {{ 'checked' if loop.first }}>
-      <span>{{ p.method_label }}, {{ p.at|house_day if p.at else 'earlier' }}: €{{ '%.2f'|format(p.refundable) }} can go back{% if p.payer %} ({{ p.payer }}'s share){% endif %}</span>
+      <span>{{ p.method_label }}, {{ p.at|house_day if p.at else 'earlier' }}: {{ p.refundable|money }} can go back{% if p.payer %} ({{ p.payer }}'s share){% endif %}</span>
     </label>
     {% endfor %}
     {% if refundable_count > 1 %}
     <label class="checkbox-row refund-reason">
       <input type="radio" name="payment" value="all">
-      <span>All of it, €{{ '%.2f'|format(ceiling) }}: each payment back the way it came</span>
+      <span>All of it, {{ ceiling|money }}: each payment back the way it came</span>
     </label>
     {% endif %}
   </fieldset>
@@ -136,7 +136,7 @@
       <span>The price stands: they still owe it, and will pay it again</span>
     </label>
     {% if money.credit > 0 %}
-    <p class="upload-hint refund-reason">The first €{{ '%.2f'|format(money.credit) }} only hands back what they overpaid, and changes no bill either way.</p>
+    <p class="upload-hint refund-reason">The first {{ money.credit|money }} only hands back what they overpaid, and changes no bill either way.</p>
     {% endif %}
   </fieldset>
   {% endif %}
@@ -167,8 +167,8 @@
     {% for r in history %}
       <tr>
         <td>{{ local_datetime_str(r['created_at']) }}</td>
-        <td class="num">€{{ '%.2f'|format(r['amount']) }}
-          {% if r['reduces_bill'] %}<span class="cell-note">€{{ '%.2f'|format(r['reduces_bill']) }} off the bill</span>{% endif %}
+        <td class="num">{{ r['amount']|money }}
+          {% if r['reduces_bill'] %}<span class="cell-note">{{ r['reduces_bill']|money }} off the bill</span>{% endif %}
         </td>
         <td>{{ against.get(r['payment_key'], 'A payment since changed') if r['payment_key'] else 'The booking as a whole' }}</td>
         <td>{{ 'To the card' if r['method'] == 'stripe' else r['method']|replace('_', ' ')|capitalize }}

@@ -5,10 +5,6 @@
 <div class="page-head">
   <h1>Long weeks</h1>
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-    {% for n in [8, 12, 26, 52] %}
-    <a href="{{ url_for('overtime_page', weeks=n) }}"
-       class="{{ 'btn-mini' if n == weeks else 'btn-ghost' }}">{{ n }} weeks</a>
-    {% endfor %}
     <a href="{{ url_for('admin_timesheets') }}" class="btn-ghost">Timesheets</a>
     <a href="{{ url_for('cover_gaps_page') }}" class="btn-ghost">Nobody on</a>
   </div>
@@ -19,6 +15,8 @@
   opposite answers, one a conversation and the other another pair of hands. This is the same
   figure with a memory, next to what was actually on.
 </p>
+
+{% with endpoint='overtime_page', param='weeks', choices=[8, 12, 26, 52], current=weeks, ahead=false %}{% include "_window_choice.html" %}{% endwith %}
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 

@@ -75,7 +75,7 @@
       {% if sc.last_visit %}
         Last done {{ sc.last_visit['done_on']|date_short }}
         {%- if sc.last_visit['done_by'] %} by {{ sc.last_visit['done_by'] }}{% endif %}
-        {%- if sc.last_visit['cost'] %} · €{{ '%.2f'|format(sc.last_visit['cost']) }}{% endif %}
+        {%- if sc.last_visit['cost'] %} · {{ sc.last_visit['cost']|money }}{% endif %}
         {%- if sc.last_visit['certificate_filename'] %}
           · <a href="{{ url_for('maintenance_certificate', visit_id=sc.last_visit['id']) }}"
                target="_blank" rel="noopener">certificate</a>

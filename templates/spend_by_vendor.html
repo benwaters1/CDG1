@@ -5,10 +5,6 @@
 <div class="page-head">
   <h1>Spend by supplier</h1>
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-    {% for n in [3, 12, 24] %}
-    <a href="{{ url_for('spend_by_vendor_page', months=n) }}"
-       class="{{ 'btn-mini' if n == months else 'btn-ghost' }}">{{ n }} months</a>
-    {% endfor %}
     <a href="{{ url_for('vendors') }}" class="btn-ghost">Suppliers</a>
     <a href="{{ url_for('expenses') }}" class="btn-ghost">Expenses</a>
   </div>
@@ -20,6 +16,8 @@
   without anyone deciding it should.
 </p>
 
+{% with endpoint='spend_by_vendor_page', param='months', choices=[3, 12, 24], current=months, ahead=false %}{% include "_window_choice.html" %}{% endwith %}
+
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 
 {# The honest caveat, stated where it matters rather than in a footnote. #}
@@ -28,7 +26,7 @@
   <strong>Paid, but not on the supplier list</strong>
   {% for r in data.unmatched %}
   <span class="pass-short-row">
-    {{ r.vendor_name }} — €{{ '%.2f'|format(r.total) }}
+    {{ r.vendor_name }} — {{ r.total|money }}
     across {{ r.invoices }} invoice{{ '' if r.invoices == 1 else 's' }}
   </span>
   {% endfor %}
@@ -67,10 +65,10 @@
       </td>
       <td class="num">{{ r.invoices }}</td>
       <td class="num">
-        €{{ '%.2f'|format(r.total) }}
+        {{ r.total|money }}
         {% if r.standing_yearly %}
           <span class="upload-hint">
-            + €{{ '%.2f'|format(r.standing_yearly) }}/yr standing:
+            + {{ r.standing_yearly|money }}/yr standing:
             {{ r.standing_items|join(', ') }}
           </span>
         {% endif %}
@@ -85,7 +83,7 @@
   <tfoot>
     <tr>
       <th>Total</th><th class="num"></th>
-      <th class="num">€{{ '%.2f'|format(data.total) }}</th>
+      <th class="num">{{ data.total|money }}</th>
       <th class="num">100%</th><th></th>
     </tr>
   </tfoot>
@@ -98,13 +96,13 @@
   nothing is grouped into an "other" bucket that hides a name.
   {% if data.standing_total %}
     Standing costs are shown against a supplier but <strong>not added in</strong>: the total is
-    what has been paid, and €{{ '%.2f'|format(data.standing_total) }} a year of subscriptions
+    what has been paid, and {{ data.standing_total|money }} a year of subscriptions
     and retainers is what will be. Adding them together would answer neither question. A
     standing cost only appears here once it has been linked to a supplier on
     <a href="{{ url_for('management_recurring_costs') }}">Recurring costs</a>.
   {% endif %}
   {% if data.unnamed_total %}
-    €{{ '%.2f'|format(data.unnamed_total) }} was recorded with no supplier named at all; it is
+    {{ data.unnamed_total|money }} was recorded with no supplier named at all; it is
     the last row rather than being dropped.
   {% endif %}
 </p>

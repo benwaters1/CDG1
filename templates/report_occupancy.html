@@ -17,9 +17,9 @@
     <div class="overview-label">Average nightly rate</div>
   </div>
   <div class="overview-cell">
-    <div class="overview-value">€{{ '{:,.0f}'.format(data.revenue) }}</div>
+    <div class="overview-value">{{ data.revenue|money(0) }}</div>
     <div class="overview-label">Room revenue</div>
-    {% if data.refunds %}<div class="overview-hint">after €{{ '{:,.0f}'.format(data.refunds) }} refunded</div>{% endif %}
+    {% if data.refunds %}<div class="overview-hint">after {{ data.refunds|money(0) }} refunded</div>{% endif %}
   </div>
   <div class="overview-cell">
     <div class="overview-value">{{ data.arrivals }}</div>

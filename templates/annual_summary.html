@@ -23,43 +23,43 @@
 <div class="stat-tiles" style="margin-bottom:14px;">
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(financials.revenue) }}</span><span class="stat-tile-label">Revenue</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ financials.revenue|money(0) }}</span><span class="stat-tile-label">Revenue</span></span>
   </div>
   {% if financials.restaurant_revenue or financials.workshop_revenue or financials.event_revenue %}
   <div class="stat-tile">
     <span class="stat-tile-icon">{{ icon('rooms', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(financials.room_revenue) }}</span><span class="stat-tile-label">— rooms</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ financials.room_revenue|money(0) }}</span><span class="stat-tile-label">— rooms</span></span>
   </div>
   {% if financials.restaurant_revenue %}
   <div class="stat-tile">
     <span class="stat-tile-icon">{{ icon('restaurant', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(financials.restaurant_revenue) }}</span><span class="stat-tile-label">— restaurant</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ financials.restaurant_revenue|money(0) }}</span><span class="stat-tile-label">— restaurant</span></span>
   </div>
   {% endif %}
   {% if financials.workshop_revenue %}
   <div class="stat-tile">
     <span class="stat-tile-icon">{{ icon('workshop', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(financials.workshop_revenue) }}</span><span class="stat-tile-label">— workshops</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ financials.workshop_revenue|money(0) }}</span><span class="stat-tile-label">— workshops</span></span>
   </div>
   {% endif %}
   {% if financials.event_revenue %}
   <div class="stat-tile">
     <span class="stat-tile-icon">{{ icon('megaphone', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(financials.event_revenue) }}</span><span class="stat-tile-label">— events</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ financials.event_revenue|money(0) }}</span><span class="stat-tile-label">— events</span></span>
   </div>
   {% endif %}
   {% endif %}
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('receipt', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(financials.expenses_total) }}</span><span class="stat-tile-label">Expenses</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ financials.expenses_total|money(0) }}</span><span class="stat-tile-label">Expenses</span></span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon">{{ icon('employee', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{% if financials.labour_cost is not none %}€{{ '%.0f'|format(financials.labour_cost) }}{% else %}—{% endif %}</span><span class="stat-tile-label">Est. labour cost</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{% if financials.labour_cost is not none %}{{ financials.labour_cost|money(0) }}{% else %}—{% endif %}</span><span class="stat-tile-label">Est. labour cost</span></span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if financials.net < 0 else 'stat-tile-icon-success' }}">{{ icon('financial', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value {{ 'stat-tile-value-danger' if financials.net < 0 }}">€{{ '%.0f'|format(financials.net) }}</span><span class="stat-tile-label">Net{% if financials.labour_unpriced %} — excludes {{ financials.labour_unpriced }} unpriced{% else %} (estimate){% endif %}</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value {{ 'stat-tile-value-danger' if financials.net < 0 }}">{{ financials.net|money(0) }}</span><span class="stat-tile-label">Net{% if financials.labour_unpriced %} — excludes {{ financials.labour_unpriced }} unpriced{% else %} (estimate){% endif %}</span></span>
   </div>
   {% if financials.capital_spend %}
   {# Kept out of net, because net says how the house TRADED and a new roof
@@ -68,7 +68,7 @@
      bad month. The money did leave the account. #}
   <div class="stat-tile">
     <span class="stat-tile-icon">{{ icon('building', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(financials.capital_spend) }}</span><span class="stat-tile-label">Spent on the house, not in Net</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ financials.capital_spend|money(0) }}</span><span class="stat-tile-label">Spent on the house, not in Net</span></span>
   </div>
   {% endif %}
 </div>
@@ -97,7 +97,7 @@
     <div class="mini-row">
       <span class="mini-name">{{ r['room_name'] }}</span>
       <span class="mini-role">{{ r['booking_count'] }} booking{{ '' if r['booking_count'] == 1 else 's' }}</span>
-      <span class="mini-status status-pending">€{{ '%.0f'|format(r['revenue']) }}</span>
+      <span class="mini-status status-pending">{{ r['revenue']|money(0) }}</span>
     </div>
     {% endfor %}
   </div>
@@ -112,7 +112,7 @@
     <div class="mini-row">
       <span class="mini-name">{{ c['category'] }}</span>
       <span class="mini-role">{{ c['count'] }} expense{{ '' if c['count'] == 1 else 's' }}</span>
-      <span class="mini-status status-inactive">€{{ '%.0f'|format(c['total']) }}</span>
+      <span class="mini-status status-inactive">{{ c['total']|money(0) }}</span>
     </div>
     {% endfor %}
   </div>
@@ -126,7 +126,7 @@
     {% for v in top_vendors %}
     <div class="mini-row">
       <span class="mini-name">{{ v['vendor_name'] }}</span>
-      <span class="mini-status status-pending">€{{ '%.0f'|format(v['total']) }}</span>
+      <span class="mini-status status-pending">{{ v['total']|money(0) }}</span>
     </div>
     {% endfor %}
   </div>

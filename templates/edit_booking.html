@@ -14,7 +14,7 @@
   </p>
 
   {% if booking['payment_status'] == 'paid' %}
-  <p class="pay-disclaimer">This booking was already paid (€{{ '%.2f'|format(booking['total_price']) if booking['total_price'] else '0.00' }}). Changing dates or party size updates the record and the reference total shown here, but does <strong>not</strong> automatically charge or refund the difference on Stripe — use the Refund button on the bookings list if you need to adjust the payment.</p>
+  <p class="pay-disclaimer">This booking was already paid ({{ (booking['total_price'] or 0)|money }}). Changing dates or party size updates the record and the reference total shown here, but does <strong>not</strong> automatically charge or refund the difference on Stripe — use the Refund button on the bookings list if you need to adjust the payment.</p>
   {% endif %}
 
   <form method="post">

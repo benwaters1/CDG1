@@ -61,7 +61,7 @@
       <div>
         <input type="checkbox" name="items" value="expense:{{ r['id'] }}" form="bulk-approve-form" class="bulk-check" style="margin-right:8px;">
         <span class="mini-status status-pending" style="margin-right:8px;">{{ 'Invoice' if r['kind'] == 'supplier_invoice' else 'Expense claim' }}</span>
-        <strong>{{ r['vendor_name'] or r['submitter_name'] or 'Former employee' }}</strong> — €{{ '%.2f'|format(r['amount']) }}
+        <strong>{{ r['vendor_name'] or r['submitter_name'] or 'Former employee' }}</strong> — {{ r['amount']|money }}
       </div>
     </div>
     <p class="manual-body">{{ r['description'] }}</p>

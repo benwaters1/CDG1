@@ -27,9 +27,9 @@
   <div class="detail-grid">
     <div><span class="detail-label">Coming</span>{{ panel.people }} {{ 'person' if panel.people == 1 else 'people' }}, {{ panel.confirmed }} confirmed{% if panel.pending %}, {{ panel.pending }} pending{% endif %}</div>
     <div><span class="detail-label">Places left</span>{{ panel.places_left }} of {{ panel.capacity }}</div>
-    <div><span class="detail-label">Charged</span>€{{ '{:,.2f}'.format(panel.charged) }}</div>
-    <div><span class="detail-label">Paid</span>€{{ '{:,.2f}'.format(panel.paid) }}</div>
-    <div><span class="detail-label">Still owed</span><strong>€{{ '{:,.2f}'.format(panel.owed) }}</strong></div>
+    <div><span class="detail-label">Charged</span>{{ panel.charged|money }}</div>
+    <div><span class="detail-label">Paid</span>{{ panel.paid|money }}</div>
+    <div><span class="detail-label">Still owed</span><strong>{{ panel.owed|money }}</strong></div>
   </div>
   <div class="register-panel__actions">
     <a href="{{ url_for('workshop_register_print', session_id=panel.session_id) }}" class="btn-mini">Print the register</a>
@@ -82,7 +82,7 @@
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('financial', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '{:,.2f}'.format(owed_shown) }}</span><span class="stat-tile-label">Owed on what is shown</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ owed_shown|money }}</span><span class="stat-tile-label">Owed on what is shown</span></span>
   </div>
 </div>
 
@@ -110,7 +110,7 @@
     </div>
     <p class="manual-body wraps">
       {{ r['start_date'] }}{% if r['end_date'] != r['start_date'] %} → {{ r['end_date'] }}{% endif %}
-      · Party of {{ r['party_size'] }} · {{ r['occupancy_type']|capitalize }}{% if r['single_supplement'] %} (+€{{ '%.0f'|format(r['single_supplement']) }} pp single){% endif %}{% if r['total_price'] %} · €{{ '%.2f'|format(r['total_price']) }}{% endif %}
+      · Party of {{ r['party_size'] }} · {{ r['occupancy_type']|capitalize }}{% if r['single_supplement'] %} (+{{ r['single_supplement']|money(0) }} pp single){% endif %}{% if r['total_price'] %} · {{ r['total_price']|money }}{% endif %}
     </p>
     {# Links, not text: an address you can click is one you write to. #}
     <p class="upload-hint">
@@ -219,10 +219,10 @@
     {% if r['total_price'] or (transactions_by_booking.get(r['id'])) %}
     <div class="detail-card" style="margin:10px 0 0;">
       <div class="detail-grid">
-        <div><span class="detail-label">Total charged</span>€{{ '%.2f'|format(balance[1]) }}</div>
-        <div><span class="detail-label">Paid</span>€{{ '%.2f'|format(balance[2]) }}</div>
-        <div><span class="detail-label">Balance due</span><span style="color:{{ 'var(--danger)' if balance[0] > 0 else 'inherit' }};">€{{ '%.2f'|format(balance[0]) }}</span></div>
-        {% if r['deposit_amount'] %}<div><span class="detail-label">Deposit</span>€{{ '%.2f'|format(r['deposit_amount']) }} {{ 'paid' if r['deposit_paid_at'] else 'not paid yet' }}</div>{% endif %}
+        <div><span class="detail-label">Total charged</span>{{ balance[1]|money }}</div>
+        <div><span class="detail-label">Paid</span>{{ balance[2]|money }}</div>
+        <div><span class="detail-label">Balance due</span><span style="color:{{ 'var(--danger)' if balance[0] > 0 else 'inherit' }};">{{ balance[0]|money }}</span></div>
+        {% if r['deposit_amount'] %}<div><span class="detail-label">Deposit</span>{{ r['deposit_amount']|money }} {{ 'paid' if r['deposit_paid_at'] else 'not paid yet' }}</div>{% endif %}
         {% if r['balance_due_date'] and balance[0] > 0 %}<div><span class="detail-label">Balance falls due</span>{{ r['balance_due_date']|date_short }}</div>{% endif %}
         {# Whether the balance can be taken from a card, and if not, why not. #}
         <div><span class="detail-label">Card</span>{{ reg['card'] }}</div>
@@ -234,7 +234,7 @@
         <div class="mini-row">
           <span class="mini-name">{{ t['kind']|capitalize }} — {{ t['description'] }}</span>
           <span class="mini-role">{{ t['created_at']|house_day }}{% if t['method'] %} · {{ t['method'] }}{% endif %}</span>
-          <span class="mini-status status-{{ 'onshift' if t['kind'] in ('payment',) else 'pending' if t['kind'] == 'charge' else 'inactive' }}">€{{ '%.2f'|format(t['amount']) }}</span>
+          <span class="mini-status status-{{ 'onshift' if t['kind'] in ('payment',) else 'pending' if t['kind'] == 'charge' else 'inactive' }}">{{ t['amount']|money }}</span>
         </div>
         {% endfor %}
       </div>
@@ -262,14 +262,14 @@
       <form method="post" action="{{ url_for('mark_workshop_deposit_paid', registration_id=r['id']) }}" style="display:inline-block; margin-top:6px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="method" value="other">
-        <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">Quick: mark deposit (€{{ '%.2f'|format(r['deposit_amount']) }}) paid</button>
+        <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">Quick: mark deposit ({{ r['deposit_amount']|money }}) paid</button>
       </form>
       {% endif %}
       {% if not r['balance_paid_at'] and balance[0] > 0 and r['deposit_paid_at'] %}
       <form method="post" action="{{ url_for('mark_workshop_balance_paid', registration_id=r['id']) }}" style="display:inline-block; margin-top:6px; margin-left:10px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="method" value="other">
-        <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">Quick: mark the rest (€{{ '%.2f'|format(balance[0]) }}) paid</button>
+        <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">Quick: mark the rest ({{ balance[0]|money }}) paid</button>
       </form>
       {% endif %}
       {% endif %}

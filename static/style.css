@@ -3206,3 +3206,11 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 .cal-table.rota-grid .cal-room-col{ padding:6px 14px 6px 8px !important; }
 /* A room card's two lists, side by side when the page is wide enough. */
 .room-sides{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:0 22px; }
+/* How far a page looks -- _window_choice.html. A row of its own under the
+   title, never among the links to other pages. */
+.window-bar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 14px; }
+.window-bar .field-label{ margin:0; }
+/* A heading inside a long menu. Not a link, and quieter than one. */
+.nav-subhead{ display:block; padding:10px 12px 3px; font-size:10.5px; font-weight:600;
+  letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-faint, var(--ink-soft)); }
+.nav-dropdown-menu .nav-subhead:first-of-type{ padding-top:4px; }

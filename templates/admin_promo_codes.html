@@ -103,8 +103,8 @@
     {% endif %}
     {% if c['description'] %}<p class="manual-body">{{ c['description'] }}</p>{% endif %}
     <p class="upload-hint">
-      {% if c['discount_type'] == 'percent' %}{{ c['discount_value']|int if c['discount_value'] % 1 == 0 else c['discount_value'] }}% off{% if c['max_discount_amount'] %}, up to €{{ '%.2f'|format(c['max_discount_amount']) }}{% endif %}{% else %}€{{ '%.2f'|format(c['discount_value']) }} off{% endif %}
-      {% if c['min_spend'] %} · min. spend €{{ '%.2f'|format(c['min_spend']) }}{% endif %}
+      {% if c['discount_type'] == 'percent' %}{{ c['discount_value']|int if c['discount_value'] % 1 == 0 else c['discount_value'] }}% off{% if c['max_discount_amount'] %}, up to {{ c['max_discount_amount']|money }}{% endif %}{% else %}{{ c['discount_value']|money }} off{% endif %}
+      {% if c['min_spend'] %} · min. spend {{ c['min_spend']|money }}{% endif %}
       {% if c['valid_from'] or c['valid_until'] %} · valid {{ c['valid_from'] or 'now' }} to {{ c['valid_until'] or 'no end date' }}{% endif %}
     </p>
 

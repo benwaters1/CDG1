@@ -18,18 +18,61 @@
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('financial', 19) }}</span>
     <span class="stat-tile-body">
-      <span class="stat-tile-value">€{{ '%.2f'|format(total) }}</span>
+      <span class="stat-tile-value">{{ total|money }}</span>
       <span class="stat-tile-label">Outstanding</span>
     </span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if gone else 'stat-tile-icon-steel' }}">{{ icon('receipt', 19) }}</span>
     <span class="stat-tile-body">
-      <span class="stat-tile-value {{ 'stat-tile-value-danger' if gone }}">€{{ '%.2f'|format(gone) }}</span>
+      <span class="stat-tile-value {{ 'stat-tile-value-danger' if gone }}">{{ gone|money }}</span>
       <span class="stat-tile-label">From guests who have left</span>
     </span>
   </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if ageing.over_60 else 'stat-tile-icon-steel' }}">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value {{ 'stat-tile-value-danger' if ageing.over_60 }}">{{ ageing.over_60|money }}</span>
+      <span class="stat-tile-label">Older than 60 days</span>
+    </span>
+  </div>
 </div>
+
+{# How old it is: the question an accountant and a bank both ask, and the one
+   that says whether the house has a collection problem or three unlucky
+   months. This was a page of its own, Debtor Ageing, reading these same debts.
+   Every debt, whatever the chips below are set to. #}
+{% if ageing['items'] %}
+<details class="refund-box" id="ageing" style="margin:0 0 16px;" open>
+  <summary><strong>How old it is</strong> &mdash; {{ ageing.total|money }} across
+    {{ ageing['items']|length }} bill{{ '' if ageing['items']|length == 1 else 's' }}</summary>
+  <div class="table-wrap" style="padding:0 12px 12px;">
+    <table class="data-table">
+      <thead>
+        <tr><th scope="col">Age</th><th scope="col" class="num">Bills</th>
+            <th scope="col" class="num">Owed</th><th scope="col" class="num">Share</th></tr>
+      </thead>
+      <tbody>
+        {% for key in ageing.order %}
+        <tr>
+          <th scope="row">{{ ageing.labels[key] }}</th>
+          <td class="num">{{ ageing.buckets[key]|length }}</td>
+          <td class="num">{{ ageing.totals[key]|money }}</td>
+          <td class="num">{%- if ageing.total %}{{ '%.0f'|format(ageing.totals[key] / ageing.total * 100) }}%{% else %}—{% endif -%}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr><th scope="row">Total</th><td class="num">{{ ageing['items']|length }}</td>
+            <td class="num">{{ ageing.total|money }}</td><td class="num">100%</td></tr>
+      </tfoot>
+    </table>
+    <p class="upload-hint" style="margin-top:8px;">Rooms and ateliers both &mdash; dinner is
+      settled at the table and an event enquiry is a quote, so neither has a balance to age.
+      <a href="{{ url_for('export_debtors_csv') }}">Export, by age</a></p>
+  </div>
+</details>
+{% endif %}
 
 {% if not can_email %}
 <p class="upload-hint">No email provider is connected yet, so a chase is written and
@@ -92,9 +135,9 @@ held rather than sent. It goes out on its own once one is.</p>
           {% if r['refused_at'] %}<span class="cell-note">{{ r['refused_at']|house_day|date_short }}</span>{% endif %}
           {% endif %}
         </td>
-        <td class="num">€{{ '%.2f'|format(r['total']) }}</td>
-        <td class="num">€{{ '%.2f'|format(r['paid']) }}</td>
-        <td class="num"><strong>€{{ '%.2f'|format(r['owed']) }}</strong></td>
+        <td class="num">{{ r['total']|money }}</td>
+        <td class="num">{{ r['paid']|money }}</td>
+        <td class="num"><strong>{{ r['owed']|money }}</strong></td>
         <td>
           {# Cash at the desk, a transfer that landed, a card taken in
              person. None of it could be recorded before: the only writers
@@ -125,7 +168,7 @@ held rather than sent. It goes out on its own once one is.</p>
           {% if r['kind'] == 'stay' and r['email'] %}
           <form method="post"
                 action="{{ url_for('chase_outstanding_balance', booking_id=b['id']) }}"
-                onsubmit="return confirm('Email {{ b['guest_name']|e }} about €{{ '%.2f'|format(r['owed']) }}?');">
+                onsubmit="return confirm('Email {{ b['guest_name']|e }} about {{ r['owed']|money }}?');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-mini">Ask for it</button>
           </form>

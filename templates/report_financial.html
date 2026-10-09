@@ -3,7 +3,7 @@
 {% block content %}
 {% include "_report_head.html" %}
 
-{% macro money(v) %}{{ '−' if v < 0 }}€{{ '{:,.2f}'.format(v|abs) }}{% endmacro %}
+{% macro money(v) %}{{ '−' if v < 0 }}{{ (v|abs)|money }}{% endmacro %}
 {% macro change(c) %}
   {% if c is not none %}
     <span class="overview-delta {{ 'overview-delta-up' if c >= 0 else 'overview-delta-down' }}">

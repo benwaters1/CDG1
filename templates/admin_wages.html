@@ -84,12 +84,12 @@
         <td><a href="{{ url_for('profile', user_id=r.user_id) }}">{{ r.name }}</a></td>
         <td class="upload-hint">{{ 'By the hour' if r.basis == 'hourly' else 'By the month' }}</td>
         <td class="num">{{ '%.1f'|format(r.hours) }}</td>
-        <td class="num">€{{ '%.2f'|format(r.gross) }}</td>
+        <td class="num">{{ r.gross|money }}</td>
         <td class="num">
-          €{{ '%.2f'|format(r.employer) }}
+          {{ r.employer|money }}
           {% if r.employer_rate %}<div class="upload-hint">{{ '%g'|format(r.employer_rate) }}%</div>{% endif %}
         </td>
-        <td class="num"><strong>€{{ '%.2f'|format(r.total) }}</strong></td>
+        <td class="num"><strong>{{ r.total|money }}</strong></td>
         <td>
           {% if r.source == 'wage on file' %}
             <span class="mini-status status-active">Wage on file</span>
@@ -104,9 +104,9 @@
       <tr>
         <th colspan="2">Total</th>
         <th class="num">{{ '%.1f'|format(cost.hours) }}</th>
-        <th class="num">€{{ '%.2f'|format(cost.gross) }}</th>
-        <th class="num">€{{ '%.2f'|format(cost.employer) }}</th>
-        <th class="num">€{{ '%.2f'|format(cost.total) }}</th>
+        <th class="num">{{ cost.gross|money }}</th>
+        <th class="num">{{ cost.employer|money }}</th>
+        <th class="num">{{ cost.total|money }}</th>
         <th></th>
       </tr>
     </tfoot>
@@ -143,7 +143,7 @@
         <td class="upload-hint">{{ r.person.job_role or '—' }}</td>
         <td>
           {% if r.wage %}
-            €{{ '%.2f'|format(r.gross_amount) }}
+            {{ r.gross_amount|money }}
             <div class="upload-hint">{{ 'an hour' if r.basis == 'hourly' else 'a month' }}, gross</div>
           {% else %}
             <span class="mini-status status-declined">No figure on file</span>
@@ -238,7 +238,7 @@
         <td>{{ h['employee_name'] }}</td>
         <td>{{ h['effective_from'] }}</td>
         <td class="upload-hint">{{ 'By the hour' if h['basis'] == 'hourly' else 'By the month' }}</td>
-        <td class="num">€{{ '%.2f'|format(h['gross_amount']) }}</td>
+        <td class="num">{{ h['gross_amount']|money }}</td>
         <td class="upload-hint">{{ h['note'] or '—' }}</td>
         <td class="upload-hint">{{ h['set_by'] or '—' }}</td>
       </tr>

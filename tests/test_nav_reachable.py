@@ -103,6 +103,9 @@ NOT_BROWSED = (
     "admin_inbox_flags_status", "admin_overview_status",
     # Rendered inside Outlook's own pane, which has no nav of ours.
     "admin_outlook_addin",
+    # Not a page any more: where Debtor Ageing was, kept so a bookmark lands
+    # on its section of What we are owed (test_menu_groups holds that it does).
+    "management_debtors",
 )
 
 

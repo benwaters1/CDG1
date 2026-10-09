@@ -263,26 +263,31 @@
       <a href="{{ url_for('admin_approvals') }}" class="nav-dropdown-label {{ 'active' if current_area == 'financial' }}">{{ icon('financial') }}Financial</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Financial submenu" onclick="toggleNavDropdown(event, this)">▾</button>
       <div class="nav-dropdown-menu">
+        {# Twenty links in one list, in the order they were added. Grouped by
+           what somebody opening Financial is asking. #}
+        <span class="nav-subhead">Waiting on you</span>
         <a href="{{ url_for('admin_approvals') }}" class="{{ 'active' if request.endpoint=='admin_approvals' }}">{{ icon('approvals') }}Approvals{% if pending_approvals_count %} ({{ pending_approvals_count }}){% endif %}</a>
         <a href="{{ url_for('expenses') }}" class="{{ 'active' if request.endpoint in ['expenses','decide_expense'] }}">{{ icon('receipt') }}Expenses &amp; Invoices</a>
-        <a href="{{ url_for('management_financials') }}" class="{{ 'active' if request.endpoint=='management_financials' }}">{{ icon('financial') }}Financials</a>
+        <a href="{{ url_for('admin_refunds') }}" class="{{ 'active' if request.endpoint=='admin_refunds' }}">{{ icon('receipt') }}Refunds</a>
+        <span class="nav-subhead">Owed to the house</span>
         <a href="{{ url_for('management_outstanding') }}" class="{{ 'active' if request.endpoint=='management_outstanding' }}">{{ icon('financial') }}What We're Owed</a>
         {% if can('balances_to_collect') %}<a href="{{ url_for('balances_to_collect') }}" class="{{ 'active' if request.endpoint=='balances_to_collect' }}">{{ icon('financial') }}Balances To Collect</a>{% endif %}
-        <a href="{{ url_for('management_debtors') }}" class="{{ 'active' if request.endpoint=='management_debtors' }}">{{ icon('financial') }}Debtor Ageing</a>
-        <a href="{{ url_for('management_cash_banking') }}" class="{{ 'active' if request.endpoint=='management_cash_banking' }}">{{ icon('financial') }}Cash Banking</a>
+        {% if can('held_not_earned_page') %}<a href="{{ url_for('held_not_earned_page') }}" class="{{ 'active' if request.endpoint=='held_not_earned_page' }}">{{ icon('financial') }}Held, Not Earned</a>{% endif %}
         <a href="{{ url_for('management_on_the_books') }}" class="{{ 'active' if request.endpoint=='management_on_the_books' }}">{{ icon('financial') }}On The Books</a>
-        <a href="{{ url_for('management_break_even') }}" class="{{ 'active' if request.endpoint=='management_break_even' }}">{{ icon('financial') }}Break-even</a>
-        <a href="{{ url_for('management_payment_cost') }}" class="{{ 'active' if request.endpoint=='management_payment_cost' }}">{{ icon('financial') }}Cost Of Taking Money</a>
-        <a href="{{ url_for('admin_transactions') }}" class="{{ 'active' if request.endpoint=='admin_transactions' }}">{{ icon('receipt') }}Transactions</a>
-        <a href="{{ url_for('admin_refunds') }}" class="{{ 'active' if request.endpoint=='admin_refunds' }}">{{ icon('receipt') }}Refunds</a>
-        <a href="{{ url_for('admin_reports') }}" class="{{ 'active' if request.endpoint in ['admin_reports','admin_report'] }}">{{ icon('financial') }}Reports</a>
-        <a href="{{ url_for('management_bank_details') }}" class="{{ 'active' if request.endpoint=='management_bank_details' }}">{{ icon('financial') }}Bank Details</a>
-        {% if can('admin_tax') %}<a href="{{ url_for('admin_tax') }}" class="{{ 'active' if request.endpoint=='admin_tax' }}">{{ icon('financial') }}Tax</a>{% endif %}
+        <span class="nav-subhead">Going out</span>
         <a href="{{ url_for('management_recurring_costs') }}" class="{{ 'active' if request.endpoint=='management_recurring_costs' }}">{{ icon('repeat') }}Recurring Costs</a>
         <a href="{{ url_for('supplier_agreements_page') }}" class="{{ 'active' if request.endpoint=='supplier_agreements_page' }}">{{ icon('receipt') }}What We Are Tied Into</a>
         {% if can('spend_by_vendor_page') %}<a href="{{ url_for('spend_by_vendor_page') }}" class="{{ 'active' if request.endpoint=='spend_by_vendor_page' }}">{{ icon('receipt') }}Spend by Supplier</a>{% endif %}
+        <a href="{{ url_for('management_payment_cost') }}" class="{{ 'active' if request.endpoint=='management_payment_cost' }}">{{ icon('financial') }}Cost Of Taking Money</a>
         {% if can('discount_cost_page') %}<a href="{{ url_for('discount_cost_page') }}" class="{{ 'active' if request.endpoint=='discount_cost_page' }}">{{ icon('financial') }}What Discounts Cost</a>{% endif %}
-        {% if can('held_not_earned_page') %}<a href="{{ url_for('held_not_earned_page') }}" class="{{ 'active' if request.endpoint=='held_not_earned_page' }}">{{ icon('financial') }}Held, Not Earned</a>{% endif %}
+        <span class="nav-subhead">The books</span>
+        <a href="{{ url_for('management_financials') }}" class="{{ 'active' if request.endpoint=='management_financials' }}">{{ icon('financial') }}Financials</a>
+        <a href="{{ url_for('admin_transactions') }}" class="{{ 'active' if request.endpoint=='admin_transactions' }}">{{ icon('receipt') }}Transactions</a>
+        <a href="{{ url_for('management_cash_banking') }}" class="{{ 'active' if request.endpoint=='management_cash_banking' }}">{{ icon('financial') }}Cash Banking</a>
+        <a href="{{ url_for('admin_reports') }}" class="{{ 'active' if request.endpoint in ['admin_reports','admin_report'] }}">{{ icon('financial') }}Reports</a>
+        <a href="{{ url_for('management_break_even') }}" class="{{ 'active' if request.endpoint=='management_break_even' }}">{{ icon('financial') }}Break-even</a>
+        {% if can('admin_tax') %}<a href="{{ url_for('admin_tax') }}" class="{{ 'active' if request.endpoint=='admin_tax' }}">{{ icon('financial') }}Tax</a>{% endif %}
+        <a href="{{ url_for('management_bank_details') }}" class="{{ 'active' if request.endpoint=='management_bank_details' }}">{{ icon('financial') }}Bank Details</a>
       </div>
     </div>
     {% endif %}
@@ -339,27 +344,30 @@
       <a href="{{ url_for('management') }}" class="nav-dropdown-label {{ 'active' if current_area == 'management' }}">{{ icon('management') }}Management</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Management submenu" onclick="toggleNavDropdown(event, this)">▾</button>
       <div class="nav-dropdown-menu">
+        {# Settings, records and logs were one list of twenty-two. #}
+        <span class="nav-subhead">Settings</span>
         <a href="{{ url_for('management') }}" class="{{ 'active' if request.endpoint=='management' }}">{{ icon('management') }}All settings</a>
-        {# The way into the thirty-six reports that were reachable only by
-           knowing they existed and opening the command palette. #}
-        <a href="{{ url_for('reports_index') }}" class="{{ 'active' if request.endpoint=='reports_index' }}">{{ icon('eye') }}All the reports</a>
+        <a href="{{ url_for('admin_automation') }}" class="{{ 'active' if request.endpoint=='admin_automation' }}">{{ icon('repeat') }}Automation</a>
+        <a href="{{ url_for('admin_access_levels') }}" class="{{ 'active' if request.endpoint in ['admin_access_levels','save_access_preset','assign_access_preset'] }}">{{ icon('lock') }}Access Levels</a>
         <a href="{{ url_for('management_company_info') }}" class="{{ 'active' if request.endpoint=='management_company_info' }}">{{ icon('building') }}Company &amp; Insurance</a>
+        <a href="{{ url_for('admin_promo_codes') }}" class="{{ 'active' if request.endpoint=='admin_promo_codes' }}">{{ icon('receipt') }}Promo Codes</a>
+        <a href="{{ url_for('management_vault') }}" class="{{ 'active' if request.endpoint=='management_vault' }}">{{ icon('lock') }}Vault</a>
+        <a href="{{ url_for('admin_readiness') }}" class="{{ 'active' if request.endpoint=='admin_readiness' }}">{{ icon('shield') }}Go-live Checklist</a>
+        <span class="nav-subhead">Records</span>
+        <a href="{{ url_for('reports_index') }}" class="{{ 'active' if request.endpoint=='reports_index' }}">{{ icon('eye') }}All the reports</a>
         <a href="{{ url_for('management_documents') }}" class="{{ 'active' if request.endpoint=='management_documents' }}">{{ icon('folder') }}Documents</a>
         <a href="{{ url_for('meetings_page') }}" class="{{ 'active' if request.endpoint in ('meetings_page', 'meeting_page') }}">{{ icon('calendar') }}Meetings</a>
         <a href="{{ url_for('restoration_record') }}" class="{{ 'active' if request.endpoint in ('restoration_record', 'restoration_work_page') }}">{{ icon('wrench') }}Restoration record</a>
         <a href="{{ url_for('camera_roll') }}" class="{{ 'active' if request.endpoint == 'camera_roll' }}">{{ icon('camera') }}Camera roll</a>
         <a href="{{ url_for('channel_stays_page') }}" class="{{ 'active' if request.endpoint == 'channel_stays_page' }}">{{ icon('guests') }}Booking.com stays</a>
-
         <a href="{{ url_for('vendors') }}" class="{{ 'active' if request.endpoint=='vendors' }}">{{ icon('contacts') }}Vendors</a>
-        <a href="{{ url_for('admin_promo_codes') }}" class="{{ 'active' if request.endpoint=='admin_promo_codes' }}">{{ icon('receipt') }}Promo Codes</a>
+        <span class="nav-subhead">The website</span>
         <a href="{{ url_for('admin_gallery') }}" class="{{ 'active' if request.endpoint=='admin_gallery' }}">{{ icon('folder') }}Public Gallery</a>
         <a href="{{ url_for('admin_images') }}" class="{{ 'active' if request.endpoint=='admin_images' }}">{{ icon('folder') }}Site Photographs</a>
-        <a href="{{ url_for('admin_automation') }}" class="{{ 'active' if request.endpoint=='admin_automation' }}">{{ icon('repeat') }}Automation</a>
-        <a href="{{ url_for('management_vault') }}" class="{{ 'active' if request.endpoint=='management_vault' }}">{{ icon('lock') }}Vault</a>
-        <a href="{{ url_for('admin_access_levels') }}" class="{{ 'active' if request.endpoint in ['admin_access_levels','save_access_preset','assign_access_preset'] }}">{{ icon('lock') }}Access Levels</a>
-        <a href="{{ url_for('admin_readiness') }}" class="{{ 'active' if request.endpoint=='admin_readiness' }}">{{ icon('shield') }}Go-live Checklist</a>
+        <span class="nav-subhead">Bringing things in</span>
         <a href="{{ url_for('import_catalogue') }}" class="{{ 'active' if request.endpoint=='import_catalogue' }}">{{ icon('folder') }}Import Catalogue</a>
         <a href="{{ url_for('import_guests') }}" class="{{ 'active' if request.endpoint=='import_guests' }}">{{ icon('guests') }}Import Guests</a>
+        <span class="nav-subhead">What happened</span>
         <a href="{{ url_for('audit_log') }}" class="{{ 'active' if request.endpoint=='audit_log' }}">{{ icon('eye') }}Audit Log</a>
         <a href="{{ url_for('mail_log') }}" class="{{ 'active' if request.endpoint in ['mail_log','mail_log_letter'] }}">{{ icon('eye') }}Mail Log</a>
         <a href="{{ url_for('changes_log') }}" class="{{ 'active' if request.endpoint=='changes_log' }}">{{ icon('eye') }}Changes Log</a>

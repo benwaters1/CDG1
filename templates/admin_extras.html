@@ -106,7 +106,7 @@
   <div class="doc-list">
     {% for e in extras %}
     <div class="doc-row">
-      <span style="flex:1;">{{ e['name'] }} — €{{ '%.2f'|format(e['price']) }} {% if not e['active'] %}<span class="mini-status status-inactive">hidden</span>{% endif %}</span>
+      <span style="flex:1;">{{ e['name'] }} — {{ e['price']|money }} {% if not e['active'] %}<span class="mini-status status-inactive">hidden</span>{% endif %}</span>
       <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleExtraEdit({{ e['id'] }})">Edit</span>
       <form method="post" action="{{ url_for('toggle_extra', extra_id=e['id']) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

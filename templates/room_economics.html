@@ -5,10 +5,6 @@
 <div class="page-head">
   <h1>What each room earns</h1>
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-    {% for n in [3, 12, 24] %}
-    <a href="{{ url_for('room_economics_page', months=n) }}"
-       class="{{ 'btn-mini' if n == months else 'btn-ghost' }}">{{ n }} months</a>
-    {% endfor %}
     <a href="{{ url_for('admin_rooms') }}" class="btn-ghost">Rooms</a>
     <a href="{{ url_for('room_faults_page') }}" class="btn-ghost">Sold with a fault</a>
   </div>
@@ -20,6 +16,8 @@
   rather than landing whole in whichever month the report happens to start.
 </p>
 
+{% with endpoint='room_economics_page', param='months', choices=[3, 12, 24], current=months, ahead=false %}{% include "_window_choice.html" %}{% endwith %}
+
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 
 {% if data.never_sold %}
@@ -27,7 +25,7 @@
   <strong>Not sold once in {{ months }} months</strong>
   {% for r in data.never_sold %}
   <span class="pass-short-row">
-    {{ r.name }}{% if r.list_rate %} — listed at €{{ '%.0f'|format(r.list_rate) }} a night{% endif %}
+    {{ r.name }}{% if r.list_rate %} — listed at {{ r.list_rate|money(0) }} a night{% endif %}
     {%- if r.open_faults %} · {{ r.open_faults }} open fault{{ '' if r.open_faults == 1 else 's' }}{% endif %}
   </span>
   {% endfor %}
@@ -60,11 +58,11 @@
       </td>
       <td class="num">{{ r.nights or '—' }}</td>
       <td class="num">{{ r.occupancy }}%</td>
-      <td class="num">€{{ '%.0f'|format(r.room_revenue) }}</td>
-      <td class="num">{% if r.nightly %}€{{ '%.0f'|format(r.nightly) }}{% else %}—{% endif %}</td>
-      <td class="num">{% if r.list_rate %}€{{ '%.0f'|format(r.list_rate) }}{% else %}—{% endif %}</td>
+      <td class="num">{{ r.room_revenue|money(0) }}</td>
+      <td class="num">{% if r.nightly %}{{ r.nightly|money(0) }}{% else %}—{% endif %}</td>
+      <td class="num">{% if r.list_rate %}{{ r.list_rate|money(0) }}{% else %}—{% endif %}</td>
       <td class="num">
-        {%- if r.extras_revenue %}€{{ '%.0f'|format(r.extras_revenue) }}{% else %}—{% endif -%}
+        {%- if r.extras_revenue %}{{ r.extras_revenue|money(0) }}{% else %}—{% endif -%}
       </td>
     </tr>
     {% endfor %}
@@ -72,9 +70,9 @@
   <tfoot>
     <tr>
       <th>Total</th><th class="num">{{ data.nights }}</th><th class="num"></th>
-      <th class="num">€{{ '%.0f'|format(data.room_revenue) }}</th>
+      <th class="num">{{ data.room_revenue|money(0) }}</th>
       <th class="num"></th><th class="num"></th>
-      <th class="num">€{{ '%.0f'|format(data.extras_revenue) }}</th>
+      <th class="num">{{ data.extras_revenue|money(0) }}</th>
     </tr>
   </tfoot>
 </table>

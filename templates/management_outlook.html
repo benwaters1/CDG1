@@ -17,12 +17,7 @@
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 
-<div class="period-choices" style="margin-bottom:16px;">
-  {% for n in [3, 6, 12] %}
-    <a href="{{ url_for('management_outlook', months=n) }}"
-       class="btn-mini {{ 'btn-mini-active' if months == n }}">{{ n }} months</a>
-  {% endfor %}
-</div>
+{% with endpoint='management_outlook', param='months', choices=[3, 6, 12], current=months, ahead=true %}{% include "_window_choice.html" %}{% endwith %}
 
 {% if outlook.unpriced %}
 <div class="flash flash-error" style="margin-bottom:16px;">
@@ -66,18 +61,18 @@
         <td class="num">{{ '%.0f'|format(r.in_rooms) }}</td>
         <td class="num">{{ '%.0f'|format(r.in_ateliers) }}</td>
         <td class="num">{{ '%.0f'|format(r.in_events) }}</td>
-        <td class="num"><strong>€{{ '%.0f'|format(r.money_in) }}</strong></td>
+        <td class="num"><strong>{{ r.money_in|money(0) }}</strong></td>
         <td class="num">{{ '%.0f'|format(r.out_recurring) }}</td>
         <td class="num">
           {{ '%.0f'|format(r.out_labour) }}
           {% if r.labour.hours %}<div class="upload-hint">{{ '%.0f'|format(r.labour.hours) }}h</div>{% endif %}
         </td>
-        <td class="num"><strong>€{{ '%.0f'|format(r.money_out) }}</strong></td>
+        <td class="num"><strong>{{ r.money_out|money(0) }}</strong></td>
         <td class="num">
           {% if r.net < 0 %}
-            <span class="mini-status status-declined">−€{{ '%.0f'|format(-r.net) }}</span>
+            <span class="mini-status status-declined">−{{ (-r.net)|money(0) }}</span>
           {% else %}
-            <strong>€{{ '%.0f'|format(r.net) }}</strong>
+            <strong>{{ r.net|money(0) }}</strong>
           {% endif %}
         </td>
       </tr>
@@ -89,11 +84,11 @@
         <th class="num">{{ '%.0f'|format(outlook.rows|sum(attribute='in_rooms')) }}</th>
         <th class="num">{{ '%.0f'|format(outlook.rows|sum(attribute='in_ateliers')) }}</th>
         <th class="num">{{ '%.0f'|format(outlook.rows|sum(attribute='in_events')) }}</th>
-        <th class="num">€{{ '%.0f'|format(outlook.money_in) }}</th>
+        <th class="num">{{ outlook.money_in|money(0) }}</th>
         <th class="num">{{ '%.0f'|format(outlook.rows|sum(attribute='out_recurring')) }}</th>
         <th class="num">{{ '%.0f'|format(outlook.rows|sum(attribute='out_labour')) }}</th>
-        <th class="num">€{{ '%.0f'|format(outlook.money_out) }}</th>
-        <th class="num">€{{ '%.0f'|format(outlook.net) }}</th>
+        <th class="num">{{ outlook.money_out|money(0) }}</th>
+        <th class="num">{{ outlook.net|money(0) }}</th>
       </tr>
     </tfoot>
   </table>
@@ -111,8 +106,8 @@
 <h2 class="section-heading">The tightest month</h2>
 <p>
   On committed figures alone, <strong>{{ outlook.worst.label }}</strong> is
-  €{{ '%.0f'|format(-outlook.worst.net) }} short — €{{ '%.0f'|format(outlook.worst.money_out) }}
-  going out against €{{ '%.0f'|format(outlook.worst.money_in) }} already booked in. That is normal
+  {{ (-outlook.worst.net)|money(0) }} short — {{ outlook.worst.money_out|money(0) }}
+  going out against {{ outlook.worst.money_in|money(0) }} already booked in. That is normal
   for a quiet month and is what the restaurant and the till are for; it is worth knowing early all
   the same.
 </p>
@@ -130,7 +125,7 @@
       <tr>
         <td>{{ c['label'] }}{% if c['category'] %}<div class="upload-hint">{{ c['category'] }}</div>{% endif %}</td>
         <td class="upload-hint">{{ 'Every month' if c['frequency'] == 'monthly' else 'Once a year' }}</td>
-        <td class="num">€{{ '%.2f'|format(c['amount']) }}</td>
+        <td class="num">{{ c['amount']|money }}</td>
         <td class="upload-hint">{{ c['next_due_date'] or '—' }}</td>
       </tr>
       {% endfor %}

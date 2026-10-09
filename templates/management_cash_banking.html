@@ -21,19 +21,19 @@
 <div class="stat-tiles">
   <div class="stat-tile">
     <span class="stat-tile-body">
-      <span class="stat-tile-value">€{{ '%.2f'|format(position.counted) }}</span>
+      <span class="stat-tile-value">{{ position.counted|money }}</span>
       <span class="stat-tile-label">Counted out of the drawer</span>
     </span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-body">
-      <span class="stat-tile-value">€{{ '%.2f'|format(position.banked) }}</span>
+      <span class="stat-tile-value">{{ position.banked|money }}</span>
       <span class="stat-tile-label">Paid into the bank</span>
     </span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-body">
-      <span class="stat-tile-value">€{{ '%.2f'|format(position.on_hand) }}</span>
+      <span class="stat-tile-value">{{ position.on_hand|money }}</span>
       <span class="stat-tile-label">Should be in the safe</span>
     </span>
   </div>
@@ -41,10 +41,10 @@
 
 {% if position.variance|abs > 0.005 %}
 <div class="detail-card" style="max-width:840px;">
-  <h3 style="margin-top:0;">The drawer and the till disagree by €{{ '%.2f'|format(position.variance) }}</h3>
+  <h3 style="margin-top:0;">The drawer and the till disagree by {{ position.variance|money }}</h3>
   <p class="field-hint" style="margin-top:0;">
-    Across this period the till expected €{{ '%.2f'|format(position.expected) }} in cash and
-    €{{ '%.2f'|format(position.counted) }} was counted. That gap is a counting question, not a
+    Across this period the till expected {{ position.expected|money }} in cash and
+    {{ position.counted|money }} was counted. That gap is a counting question, not a
     banking one — the banking figures below use what was <em>counted</em>, because paying in
     what the till expected rather than what was there carries a shortfall forward silently.
   </p>
@@ -103,7 +103,7 @@
       {% for b in position.bankings %}
       <tr>
         <td>{{ b['banked_on'] }}</td>
-        <td class="num">€{{ '%.2f'|format(b['amount']) }}</td>
+        <td class="num">{{ b['amount']|money }}</td>
         <td>{{ b['reference'] or '—' }}{% if b['note'] %}<br><span class="upload-hint">{{ b['note'] }}</span>{% endif %}</td>
         <td>{{ b['who'] or '—' }}</td>
         <td style="text-align:right;">
@@ -138,9 +138,9 @@
       {% for d in position.days %}
       <tr>
         <td>{{ d.day }}</td>
-        <td class="num">€{{ '%.2f'|format(d.expected) }}</td>
-        <td class="num">{% if d.uncounted %}<span class="upload-hint">not counted</span>{% else %}€{{ '%.2f'|format(d.counted) }}{% endif %}</td>
-        <td class="num">{% if d.uncounted %}—{% else %}€{{ '%.2f'|format(d.variance) }}{% endif %}</td>
+        <td class="num">{{ d.expected|money }}</td>
+        <td class="num">{% if d.uncounted %}<span class="upload-hint">not counted</span>{% else %}{{ d.counted|money }}{% endif %}</td>
+        <td class="num">{% if d.uncounted %}—{% else %}{{ d.variance|money }}{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

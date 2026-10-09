@@ -20,11 +20,11 @@
   <div class="field-row-2">
     <div>
       <p class="field-label">Worth</p>
-      <p style="font-size:22px; margin:0;">€{{ '%.2f'|format(ledger.original) }}</p>
+      <p style="font-size:22px; margin:0;">{{ ledger.original|money }}</p>
     </div>
     <div>
       <p class="field-label">Left to spend</p>
-      <p style="font-size:22px; margin:0;"><strong>€{{ '%.2f'|format(ledger.balance) }}</strong></p>
+      <p style="font-size:22px; margin:0;"><strong>{{ ledger.balance|money }}</strong></p>
     </div>
   </div>
   <p style="margin-top:12px;">
@@ -82,7 +82,7 @@
       {% for o in owing %}
       <option value="{{ o.booking['id'] }}">
         {{ o.booking['guest_name'] }} — {{ o.booking['room_name'] or 'room TBC' }},
-        {{ o.booking['arrival_date']|date_short }} (€{{ '%.2f'|format(o.owed) }} owing)
+        {{ o.booking['arrival_date']|date_short }} ({{ o.owed|money }} owing)
       </option>
       {% endfor %}
     </select>
@@ -110,16 +110,16 @@
         <td>{{ r['created_at']|house_day|date_short }}</td>
         <td>{{ kinds.get(r['kind'], r['kind']) }}</td>
         <td>{{ r['reference'] or '—' }}</td>
-        <td class="num">€{{ '%.2f'|format(r['amount']) }}</td>
+        <td class="num">{{ r['amount']|money }}</td>
       </tr>
       {% endfor %}
       <tr class="total">
         <td colspan="3"><strong>Spent</strong></td>
-        <td class="num"><strong>€{{ '%.2f'|format(ledger.spent) }}</strong></td>
+        <td class="num"><strong>{{ ledger.spent|money }}</strong></td>
       </tr>
       <tr>
         <td colspan="3">Left</td>
-        <td class="num">€{{ '%.2f'|format(ledger.balance) }}</td>
+        <td class="num">{{ ledger.balance|money }}</td>
       </tr>
     </tbody>
   </table>

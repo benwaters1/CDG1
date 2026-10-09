@@ -15,12 +15,7 @@
   answer to whether a cheap booking is worth taking.
 </p>
 
-<div style="margin:-4px 0 14px;">
-  {% for n in [1, 3, 6, 12] %}
-  <a href="{{ url_for('management_night_cost', months=n) }}"
-     class="btn-mini{{ '' if n == months else ' btn-ghost' }}">{{ n }}m</a>
-  {% endfor %}
-</div>
+{% with endpoint='management_night_cost', param='months', choices=[1, 3, 6, 12], current=months, ahead=false %}{% include "_window_choice.html" %}{% endwith %}
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 

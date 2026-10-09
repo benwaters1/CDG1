@@ -17,18 +17,18 @@
   <strong>Owed right now</strong>
   {% if ageing.total %}
   <span class="pass-short-row">
-    Suppliers: <strong>€{{ '%.2f'|format(ageing.total) }}</strong>
+    Suppliers: <strong>{{ ageing.total|money }}</strong>
     {%- if ageing.totals.overdue %} ·
-      <span class="mini-status status-overdue">€{{ '%.2f'|format(ageing.totals.overdue) }} overdue</span>
+      <span class="mini-status status-overdue">{{ ageing.totals.overdue|money }} overdue</span>
     {%- endif %}
-    {%- if ageing.totals.due_soon %} · €{{ '%.2f'|format(ageing.totals.due_soon) }} due this week{% endif %}
-    {%- if ageing.totals.no_date %} · €{{ '%.2f'|format(ageing.totals.no_date) }} with no date on it{% endif %}
+    {%- if ageing.totals.due_soon %} · {{ ageing.totals.due_soon|money }} due this week{% endif %}
+    {%- if ageing.totals.no_date %} · {{ ageing.totals.no_date|money }} with no date on it{% endif %}
   </span>
   {% endif %}
   {% if owed_to_staff.total %}
   <span class="pass-short-row">
-    Our own people: <strong>€{{ '%.2f'|format(owed_to_staff.total) }}</strong> —
-    {% for p in owed_to_staff.people %}{{ p.name }} €{{ '%.2f'|format(p.total) }}
+    Our own people: <strong>{{ owed_to_staff.total|money }}</strong> —
+    {% for p in owed_to_staff.people %}{{ p.name }} {{ p.total|money }}
       {%- if p.waiting_days and p.waiting_days > 14 %} <span class="mini-status status-overdue">waiting {{ p.waiting_days }} days</span>{% endif %}
       {%- if not loop.last %} · {% endif %}{% endfor %}
   </span>
@@ -82,11 +82,11 @@
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('receipt', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(totals.pending_value) }}</span><span class="stat-tile-label">Pending value</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ totals.pending_value|money(0) }}</span><span class="stat-tile-label">Pending value</span></span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('financial', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(totals.unpaid_value) }}</span><span class="stat-tile-label">Approved, not yet paid</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ totals.unpaid_value|money(0) }}</span><span class="stat-tile-label">Approved, not yet paid</span></span>
   </div>
 </div>
 
@@ -114,7 +114,7 @@
   <div class="expense-card">
     <div class="expense-head">
       <div>
-        <strong>{{ inv['vendor_name'] }}</strong> — €{{ '%.2f'|format(inv['amount']) }}
+        <strong>{{ inv['vendor_name'] }}</strong> — {{ inv['amount']|money }}
         <span class="mini-status status-{{ inv['status'] }}" style="margin-left:8px;">{{ inv['status'] }}</span>
         {% if inv['restaurant_related'] %}<span class="mini-status status-upcoming" style="margin-left:4px;">restaurant</span>{% endif %}
         {# READ, NOT TYPED. A figure a machine took off a scan and nobody has
@@ -162,7 +162,7 @@
         {%- elif inv['due_date'] < today_iso %}<strong class="mini-status status-overdue">due {{ inv['due_date'] }}</strong>
         {%- else %}due {{ inv['due_date'] }}{% endif %}
       {%- endif -%}
-      {%- if inv['tax_amount'] is not none %} · VAT €{{ '%.2f'|format(inv['tax_amount']) }} as stated{% endif %}
+      {%- if inv['tax_amount'] is not none %} · VAT {{ inv['tax_amount']|money }} as stated{% endif %}
     </p>
     <p class="upload-hint">Submitted {{ inv['submitted_at']|house_day }}{% if inv['decided_at'] %} · Decided {{ inv['decided_at']|house_day }}{% endif %}</p>
     {% if inv['owner_note'] %}<p class="upload-hint">Note: {{ inv['owner_note'] }}</p>{% endif %}
@@ -215,7 +215,7 @@
   <div class="expense-card">
     <div class="expense-head">
       <div>
-        <strong>{{ c['submitter_name'] or 'Former employee' }}</strong>{% if c['vendor_name'] %} — {{ c['vendor_name'] }}{% endif %} — €{{ '%.2f'|format(c['amount']) }}
+        <strong>{{ c['submitter_name'] or 'Former employee' }}</strong>{% if c['vendor_name'] %} — {{ c['vendor_name'] }}{% endif %} — {{ c['amount']|money }}
         {%- if c['spent_on'] %} <span class="upload-hint">spent {{ c['spent_on'] }}</span>{% endif %}
         {%- if c['paid_at'] %} <span class="mini-status status-confirmed">paid back {{ c['paid_at']|house_day }}{% if c['paid_reference'] %} · {{ c['paid_reference'] }}{% endif %}</span>{% endif %}
         <span class="mini-status status-{{ c['status'] }}" style="margin-left:8px;">{{ c['status'] }}</span>

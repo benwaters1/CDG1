@@ -102,7 +102,7 @@
       <span class="mini-name">{{ d['guest_name'] }}</span>
       <span class="mini-role">Party of {{ d['party_size'] }}{% if d['dietary_notes'] %} · {{ d['dietary_notes'] }}{% endif %}</span>
       {% if d['total_price'] and d['deposit_amount'] and d['deposit_amount'] < d['total_price'] %}
-      <span class="mini-status status-pending">€{{ '%.2f'|format(d['total_price'] - d['deposit_amount']) }} due tonight</span>
+      <span class="mini-status status-pending">{{ (d['total_price'] - d['deposit_amount'])|money }} due tonight</span>
       {% endif %}
     </div>
     {% endfor %}

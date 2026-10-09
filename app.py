@@ -142,6 +142,7 @@ import shutil        # which(): whether ffmpeg is on this box
 import subprocess    # one frame out of a clip, and nothing else
 from email.message import EmailMessage
 from datetime import datetime, timezone, timedelta, date, time as dtime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from functools import wraps
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
@@ -9579,6 +9580,8 @@ app.jinja_env.globals["contact_address"] = lambda area: contact_address(area)
 # '%.2f'|format and a euro sign typed next to it. One definition instead, so a
 # figure reads the same wherever it appears.
 app.jinja_env.globals["euro"] = lambda v: euro(v)
+# Defined further down; the lambda looks it up when a page is drawn.
+app.jinja_env.filters["money"] = lambda v, places=2: money(v, places)
 
 
 # Who did it, when that is not whoever happens to be signed in. A job run on
@@ -11259,10 +11262,36 @@ def leave_impact(conn, start_date, end_date, exclude_user_id=None):
     }
 
 
+def money(value, places=2):
+    """Money as the staff pages write it: €3,400.00, and −€163.00 going the
+    other way.
+
+    ONE SPELLING. The staff pages wrote money four ways -- '%.2f' (€3400.00),
+    '%.0f' (€3400), '{:,.2f}' (€3,400.00) and this file's euro() (€3,400) --
+    so the same invoice read differently on two pages, and a refund printed
+    as "€-163.00", the minus inside the amount where nobody reads it.
+
+    Rounded half up, as money is, from the decimal it was written as: '%.2f'
+    rounded 2.675 to 2.67 because the float under it is 2.67499..., and
+    rounded halves to even. A value nobody recorded is a dash, not €0.00 --
+    the old spellings raised on None and took the page down with them.
+    """
+    if value is None or value == "":
+        return "—"
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return str(value)
+    step = Decimal(1).scaleb(-places) if places else Decimal(1)
+    amount = amount.quantize(step, rounding=ROUND_HALF_UP)
+    if amount == 0:
+        amount = abs(amount)      # never "−€0.00"
+    return f"{'−' if amount < 0 else ''}€{abs(amount):,.{places}f}"
+
+
 def euro(value):
-    """Money as it is written everywhere else in the app."""
-    value = value or 0
-    return f"{'−' if value < 0 else ''}€{abs(value):,.0f}"
+    """Whole euros, as the summary tiles write them: money() to no places."""
+    return money(value or 0, 0)
 
 
 def guests_overview(conn, period, today):
@@ -36956,7 +36985,7 @@ PALETTE_PAGES = [
     ("Expenses & invoices", "expenses", "receipts supplier bills"),
     ("Financials", "management_financials", "revenue profit money"),
     ("What we're owed", "management_outstanding",
-     "outstanding balance debtors owing unpaid chase arrears"),
+     "outstanding balance debtors owing unpaid chase arrears ageing aged old late"),
     ("Balances to collect", "balances_to_collect",
      "workshop balance due collect charge card take direct debit deposit"),
     ("Gift vouchers", "management_vouchers",
@@ -65473,11 +65502,9 @@ def delete_cash_banking(banking_id):
 @app.route("/management/debtors")
 @owner_required
 def management_debtors():
-    """What the house is owed, aged. The list is next door; this is the shape."""
-    conn = get_db()
-    ageing = debtor_ageing(conn)
-    conn.close()
-    return render_template("management_debtors.html", ageing=ageing)
+    """Where Debtor Ageing was. It is a section of What we are owed now -- the
+    same debts, regrouped by age -- and a bookmark lands on that section."""
+    return redirect(url_for("management_outstanding") + "#ageing")
 
 
 @app.route("/management/debtors/export.csv")
@@ -65505,6 +65532,9 @@ def management_outstanding():
     """What the house is owed, with the ones who have gone at the top."""
     conn = get_db()
     rows = outstanding_balances(conn)
+    # How old it is, from the same rows -- Debtor Ageing was a page of its own
+    # until 9 October 2026, reading the same debts and regrouping them.
+    ageing = debtor_ageing(conn, rows=rows)
     conn.close()
     lv = list_view(
         rows, request.args,
@@ -65535,7 +65565,7 @@ def management_outstanding():
     total = round(sum(r["owed"] for r in lv["rows"]), 2)
     gone = round(sum(r["owed"] for r in lv["rows"] if r["state"] == "gone"), 2)
     return render_template("management_outstanding.html", lv=lv, total=total,
-                           gone=gone, payment_methods=MANUAL_PAYMENT_METHODS,
+                           gone=gone, ageing=ageing, payment_methods=MANUAL_PAYMENT_METHODS,
                            can_email=bool(email_enabled() or resend_enabled()))
 
 
@@ -89249,7 +89279,7 @@ DEBTOR_BUCKETS = (
 )
 
 
-def debtor_ageing(conn, today=None):
+def debtor_ageing(conn, today=None, rows=None):
     """What guests owe the house, by how long they have owed it.
 
     payables_ageing answers this for money going out and has since the
@@ -89282,7 +89312,7 @@ def debtor_ageing(conn, today=None):
     # b["room_name"] off every row crashed the moment one of them was not a
     # stay, which is how this was found.
     items = []
-    for row in outstanding_balances(conn, today=day):
+    for row in (rows if rows is not None else outstanding_balances(conn, today=day)):
         items.append({
             "kind": row["kind"], "who": row["who"], "email": row["email"],
             "reference": row["reference"], "what": row["what"] or "",

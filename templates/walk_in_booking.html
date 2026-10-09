@@ -54,7 +54,7 @@
              required>
       <span class="room-pick__name">{{ o.room['name'] }}</span>
       {% if o.free %}
-      <span class="room-pick__price">€{{ '%.2f'|format(o.price) }}</span>
+      <span class="room-pick__price">{{ o.price|money }}</span>
       <span class="room-pick__note">sleeps {{ o.sleeps }}</span>
       {% else %}
       <span class="room-pick__note">{{ o.why or 'Not free' }}</span>

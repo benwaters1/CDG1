@@ -5,10 +5,6 @@
 <div class="page-head">
   <h1>Nobody on</h1>
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-    {% for n in [7, 28, 90] %}
-    <a href="{{ url_for('cover_gaps_page', days=n) }}"
-       class="{{ 'btn-mini' if n == days else 'btn-ghost' }}">{{ n }} days</a>
-    {% endfor %}
     <a href="{{ url_for('rota_clashes_page') }}" class="btn-ghost">Rota clashes</a>
     <a href="{{ url_for('skills_page') }}" class="btn-ghost">Who can do what</a>
     <a href="{{ url_for('admin_shifts') }}" class="btn-ghost">Shifts</a>
@@ -21,6 +17,8 @@
   <em>anybody</em>. Whether the number on is <em>enough</em> is a judgement about the day, and
   not one this app should be making.
 </p>
+
+{% with endpoint='cover_gaps_page', param='days', choices=[7, 28, 90], current=days, ahead=true %}{% include "_window_choice.html" %}{% endwith %}
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 

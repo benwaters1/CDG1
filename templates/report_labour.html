@@ -9,7 +9,7 @@
     <div class="overview-label">Hours worked</div>
   </div>
   <div class="overview-cell">
-    <div class="overview-value">€{{ '{:,.0f}'.format(data.total_cost) }}</div>
+    <div class="overview-value">{{ data.total_cost|money(0) }}</div>
     <div class="overview-label">Estimated cost</div>
   </div>
   <div class="overview-cell">

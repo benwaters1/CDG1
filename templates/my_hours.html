@@ -32,7 +32,7 @@
 </div>
 {% elif wage %}
 <p class="upload-hint" style="margin-bottom:16px;">
-  On file for you: <strong>€{{ '%.2f'|format(wage['gross_amount']) }}</strong>
+  On file for you: <strong>{{ wage['gross_amount']|money }}</strong>
   {{ 'an hour' if wage['basis'] == 'hourly' else 'a month' }}, gross, from
   {{ wage['effective_from'] }}.
   {%- if wage['basis'] == 'monthly' %}
@@ -46,7 +46,7 @@
 <p class="upload-hint" style="margin-bottom:16px;">
   {{ '%.1f'|format(mine.hours) }} hours over {{ mine.shifts }}
   {{ 'shift' if mine.shifts == 1 else 'shifts' }} comes to
-  <strong>€{{ '%.2f'|format(mine.gross) }} gross</strong> at the rate on file for you.
+  <strong>{{ mine.gross|money }} gross</strong> at the rate on file for you.
   That is before tax and before anything payroll deducts or adds.
 </p>
 {% endif %}
