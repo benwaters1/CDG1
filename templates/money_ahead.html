@@ -14,7 +14,7 @@
   year — only money somebody has actually committed to.
 </p>
 
-{% with endpoint='money_ahead_page', param='days', choices=[30, 90, 180, 365], current=days, ahead=true %}{% include "_window_choice.html" %}{% endwith %}
+{% with endpoint='money_ahead_page', param='days', choices=windows, current=days, ahead=true %}{% include "_window_choice.html" %}{% endwith %}
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 
@@ -105,12 +105,17 @@
 {# Each line is its name first, then when, what and how much: in half the
    page, the name squeezed between them ran one word to a line. #}
   <div>
-    <h2 class="section-heading" style="margin-top:0;">Expected in</h2>
+    <h2 class="section-heading" style="margin-top:0;" id="expected-in">Expected in</h2>
     {% if not ahead.incoming %}
       <div class="empty-state">Nothing outstanding in this window.</div>
     {% else %}
+    {# By the week it falls due. That was a page of its own, Money due to
+       arrive, reading the same list. #}
+    {% for wk in ahead.incoming|groupby('week') %}
+    <p class="field-label" style="margin:12px 0 4px;">Week of {{ wk.grouper|date_short }}
+      &mdash; {{ wk.list|sum(attribute='amount')|money }}</p>
     <div class="doc-list">
-      {% for i in ahead.incoming %}
+      {% for i in wk.list %}
       <div class="doc-row" style="gap:4px 10px; align-items:baseline; flex-wrap:wrap;">
         <strong style="flex:1 1 100%;">{{ i.label }}</strong>
         <span>{{ i.date|date_short }}</span>
@@ -119,6 +124,8 @@
       </div>
       {% endfor %}
     </div>
+    {% endfor %}
+    <p class="upload-hint" style="margin-top:8px;"><a href="{{ url_for('export_money_due_csv') }}">Export what is due, by week</a></p>
     {% endif %}
   </div>
 

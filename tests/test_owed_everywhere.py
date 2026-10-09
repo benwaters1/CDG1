@@ -193,6 +193,22 @@ def run():
     event_due = [i for i in due["csv"] if i["who"] == f"{TAG} Wed"]
     s.check("and the event at what is left", event_due and abs(event_due[0]["amount"] - 2000.0) < 0.01,
             detail=f"{event_due}")
+    # Money ahead, the page with the bank balance on it, had no events at
+    # all: a wedding's balance was in the outlook and in money due and
+    # nowhere on the one page that says whether the account goes below zero.
+    conn = db()
+    ahead = m.money_ahead(conn, days=120)
+    conn.close()
+    in_ahead = {i["ref"]: i for i in ahead["incoming"] if (i.get("ref") or "").startswith(TAG)}
+    s.check("Money ahead has the event, at what is left of it",
+            abs(in_ahead.get(f"{TAG}-Wed", {}).get("amount", 0) - 2000.0) < 0.01,
+            detail=f"{in_ahead.get(f'{TAG}-Wed')} -- events were not on the page at all")
+    s.check("on its balance date",
+            in_ahead.get(f"{TAG}-Wed", {}).get("date")
+            == (house_today() + timedelta(days=30)).isoformat(),
+            detail=str(in_ahead.get(f"{TAG}-Wed", {}).get("date")))
+    s.check("beside the stay and the atelier, as the other forecasts have them",
+            f"{TAG}-Real" in in_ahead and f"{TAG}Ws" in in_ahead, detail=str(sorted(in_ahead)))
     # Measured as a difference, so whatever else the database holds does not
     # move the answer: one more event, quoted 5000 with 1500 paid, must add
     # 3500 to what the outlook expects in, not 5000.

@@ -11,10 +11,14 @@ WHAT THIS PINS.
     every page that was in either menu still is, once.
   - Debtor Ageing is a section of What we are owed: the old address lands on
     it, its figures are the list's, and the menu no longer offers it twice.
+  - Money due to arrive is Money ahead's money in, by the week it falls due:
+    the old address lands there on the nearest window, and a balance shows
+    under its week.
 """
+from datetime import datetime, timedelta, timezone
 import re
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 import _harness
 
 m = _harness.m
@@ -113,6 +117,41 @@ def run():
     s.check("and the menu offers it once, not twice",
             ">Debtor Ageing</a>" not in page and 'href="/management/debtors"' not in page)
     s.check("an employee is still refused", ec.get("/management/debtors").status_code in (302, 403))
+
+    s.section("Money due to arrive is Money ahead's money in, by week")
+    for weeks, days in (("12", 90), ("4", 30), ("30", 365), ("rubbish", 90)):
+        r = oc.get(f"/management/money-due?weeks={weeks}")
+        loc = r.headers.get("Location", "")
+        s.check(f"?weeks={weeks} lands on {days} days of Money ahead, at the money in",
+                r.status_code == 302 and loc.endswith(f"/management/money-ahead?days={days}#expected-in"),
+                detail=f"{r.status_code} {loc}")
+    conn = db()
+    tag = "ZZMENUWED"
+    conn.execute("DELETE FROM event_inquiries WHERE reference_code = ?", (tag,))
+    due = house_today() + timedelta(days=10)
+    conn.execute(
+        """INSERT INTO event_inquiries (reference_code, manage_token, event_type, contact_name,
+           contact_email, contact_phone, preferred_date, guest_count, message, status,
+           quoted_price, amount_paid, balance_due_date, created_at)
+           VALUES (?, ?, 'wedding', 'Zz Menu Couple', 'zzmenu@example.invalid', '', ?, 40,
+                   'ZZ test', 'confirmed', 4000, 1000, ?, ?)""",
+        (tag, "tokzzmenuwed", (due + timedelta(days=40)).isoformat(), due.isoformat(),
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    page = oc.get("/management/money-ahead?days=30").get_data(as_text=True)
+    monday = due - timedelta(days=due.weekday())
+    s.check("a balance shows under the week it falls due",
+            f"Week of {m.format_date_short(monday.isoformat())}" in page
+            and "Zz Menu Couple" in page and "€3,000.00" in page,
+            detail="the event's balance, 4000 quoted and 1000 paid, was not under its week")
+    s.check("and the weekly export is still there",
+            oc.get("/management/money-due.csv").status_code == 200)
+    s.check("the palette offers Money ahead for it, not a page that has gone",
+            not any(ep == "management_money_due" for _l, ep, _k in m.PALETTE_PAGES)
+            and any(ep == "money_ahead_page" and "money due" in k for _l, ep, k in m.PALETTE_PAGES))
+    conn.execute("DELETE FROM event_inquiries WHERE reference_code = ?", (tag,))
+    conn.commit()
+    conn.close()
     return s
 
 

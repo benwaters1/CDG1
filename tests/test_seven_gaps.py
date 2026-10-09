@@ -406,8 +406,10 @@ def run():
             detail=str(len(ta["full_nights"])))
 
     s.section("The pages")
+    # Money due to arrive is a section of Money ahead now (test_menu_groups
+    # holds that the old address lands there), so that is the page drawn.
     for path in ("/management/suppliers-scorecard", "/admin/tenure", "/admin/reply-times",
-                 "/management/money-due", "/admin/linen", "/management/turned-away",
+                 "/management/money-ahead", "/admin/linen", "/management/turned-away",
                  "/guests/recall?email=" + TAG + "reg@example.invalid"):
         s.check("%s renders with data on it" % path.split("?")[0],
                 oc.get(path).status_code == 200,

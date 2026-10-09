@@ -58,6 +58,10 @@ NOT_LINKED_ON_PURPOSE = {
     # behind the very door that is shut. Reached by typing /status, which is
     # exactly how it was meant to be used.
     "status_page": "typed when you cannot get in",
+    # Where a page was before it was merged into another: a bookmark lands on
+    # the section it became. Nothing should link here any more.
+    "management_debtors": "old address, merged into What we are owed",
+    "management_money_due": "old address, merged into Money ahead",
 
     # Stripe sends the guest back to these.
     "booking_stripe_success": "Stripe returns here",

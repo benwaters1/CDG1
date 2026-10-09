@@ -73,6 +73,20 @@ def run():
     s.check("and the scan looked at the staff pages",
             sum(1 for _ in _staff_templates()) > 200)
 
+    s.section("A figure that can go negative is spelled by money(), in Python too")
+    # Found by the sweep below on a full run: the reports index built its
+    # headline as f"€{net:,.0f} net", and a month that lost money read
+    # "€-2 net". Only a run whose data happens to go negative can see that on a
+    # page, so the source is asked as well. Balances and change due are never
+    # negative and are left to their own spelling; these names can be.
+    signed = re.compile(r"€\{[^}:]*\b(?:net|profit|difference|margin|delta|running|variance)"
+                        r"[^}:]*:[^}]*f\}")
+    app_src = open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
+    hits = [line.strip()[:90] for line in app_src.split("\n") if signed.search(line)]
+    s.check("no f-string writes one with the minus inside", not hits, detail="; ".join(hits[:3]))
+    s.check("the scan can see one",
+            bool(signed.search('''"financial": f"€{fin['summary']['net']:,.0f} net",''')))
+
     s.section("No staff page prints the minus after the euro sign")
     conn = db()
     conn.execute("DELETE FROM expenses WHERE vendor_name LIKE ?", (TAG + "%",))

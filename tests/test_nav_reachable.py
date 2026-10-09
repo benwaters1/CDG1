@@ -106,6 +106,8 @@ NOT_BROWSED = (
     # Not a page any more: where Debtor Ageing was, kept so a bookmark lands
     # on its section of What we are owed (test_menu_groups holds that it does).
     "management_debtors",
+    # And where Money due to arrive was: its weeks are Money ahead's money in.
+    "management_money_due",
 )
 
 

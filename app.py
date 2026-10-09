@@ -25471,7 +25471,8 @@ def admin_reports():
     pace = booking_pace(conn, months=6)
     conn.close()
     headlines = {
-        "financial": f"€{fin['summary']['net']:,.0f} net",
+        # euro(), not an f-string: a month that lost money read "€-2 net".
+        "financial": f"{euro(fin['summary']['net'])} net",
         "occupancy": f"{occ['occupancy']}% full",
         "labour": (f"{lab['labour_pct']}% of revenue" if lab["labour_pct"] is not None
                    else f"{lab['total_hours']}h"),
@@ -36770,8 +36771,6 @@ PALETTE_PAGES = [
      "tenure turnover staff retention leavers how long started service"),
     ("How long guests wait for an answer", "admin_reply_times",
      "review reply response time feedback unanswered waiting complaint"),
-    ("Money due to arrive", "management_money_due",
-     "money due incoming balances forecast owed cash arriving weeks"),
     ("What we know about a guest", "guest_recall_page",
      "guest recall history preferences returning regular before they arrive "
      "dietary notes past stays"),
@@ -36891,7 +36890,8 @@ PALETTE_PAGES = [
     ("What's on locally", "admin_whats_on",
      "markets events local nearby whats on things to do village"),
     ("Money ahead", "money_ahead_page",
-     "cash flow forecast expected incoming coming in runway"),
+     "cash flow forecast expected incoming coming in runway money due to arrive "
+     "balances arriving weeks"),
     ("Management outlook", "management_outlook",
      "outlook forecast ahead labour cost rostered"),
     ("Today sheet", "today_sheet",
@@ -62432,7 +62432,8 @@ def money_ahead_page():
     if ahead["opening"] is not None:
         overview.append(overview_cell("Where that leaves you", euro(ahead["closing"]),
                                       alert=ahead["closing"] < 0))
-    return render_template("money_ahead.html", ahead=ahead, overview=overview, days=days)
+    return render_template("money_ahead.html", ahead=ahead, overview=overview, days=days,
+                           windows=MONEY_AHEAD_WINDOWS)
 
 
 def _save_money_setting(key, raw, *, cleared_msg, saved_msg, audit):
@@ -62559,6 +62560,9 @@ def _add_months(d, months):
     return date(year, month, min(d.day, monthrange(year, month)[1]))
 
 
+MONEY_AHEAD_WINDOWS = (30, 90, 180, 365)
+
+
 def money_ahead(conn, *, days=90, today=None):
     """What is expected in and out over the window, and when.
 
@@ -62618,6 +62622,29 @@ def money_ahead(conn, *, days=90, today=None):
             incoming.append({"date": x["date"], "amount": x["amount"],
                              "label": f"{x['who']} — {x['title']} {x['part']}",
                              "kind": "Workshop", "ref": x["ref"]})
+
+    # Events. They were not here at all: a wedding's balance was in the cash
+    # outlook and in money due, and missing from the one page with the bank in
+    # it. The same rule as a stay -- an event still to come, what its bill
+    # says is left, on its balance date, and overdue means now. Bounded by the
+    # date of the balance rather than the event: a wedding in five months
+    # whose balance falls due in two is money inside a ninety-day window.
+    for e in conn.execute(
+            """SELECT id FROM event_inquiries
+                WHERE status = 'confirmed' AND preferred_date >= ?""",
+            (today.isoformat(),)).fetchall():
+        bill = event_bill(conn, e["id"])
+        if not bill or bill["owed"] <= 0.01:
+            continue
+        ev = bill["event"]
+        when = ev["balance_due_date"] or ev["preferred_date"]
+        if when < today.isoformat():
+            when = today.isoformat()
+        if when <= last.isoformat():
+            incoming.append({"date": when, "amount": round(bill["owed"], 2),
+                             "label": f"{ev['contact_name'] or 'An event'} — "
+                                      f"{ev['event_type'] or 'event'}",
+                             "kind": "Event", "ref": ev["reference_code"]})
 
     # The restaurant. Paid on the night, less any deposit already taken.
     for r in conn.execute(
@@ -62709,6 +62736,9 @@ def money_ahead(conn, *, days=90, today=None):
 
     incoming.sort(key=lambda x: (x["date"], -x["amount"]))
     outgoing.sort(key=lambda x: (x["date"], -x["amount"]))
+    for x in incoming:
+        day = parse_date(x["date"])
+        x["week"] = (day - timedelta(days=day.weekday())).isoformat() if day else x["date"]
 
     opening = conn.execute(
         "SELECT value FROM app_settings WHERE key = ?",
@@ -65333,15 +65363,15 @@ def admin_reply_times():
 @app.route("/management/money-due")
 @owner_required
 def management_money_due():
-    """What is owed to the house, and which week it should arrive in."""
-    conn = get_db()
+    """Where Money due to arrive was. Its weeks are Money ahead's money in now,
+    from the same list; a bookmark lands there, on the window nearest to the
+    number of weeks it asked for."""
     try:
         weeks = max(2, min(52, int(request.args.get("weeks", 12))))
     except ValueError:
         weeks = 12
-    data = money_due(conn, weeks)
-    conn.close()
-    return render_template("management_money_due.html", data=data, weeks=weeks)
+    days = next((d for d in MONEY_AHEAD_WINDOWS if d >= weeks * 7), MONEY_AHEAD_WINDOWS[-1])
+    return redirect(url_for("money_ahead_page", days=days) + "#expected-in")
 
 
 @app.route("/management/money-due.csv")
