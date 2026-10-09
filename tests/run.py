@@ -443,6 +443,7 @@ SUITES = [
     "test_one_list_of_tables",
     "test_automation_page",
     "test_held_email_list",
+    "test_chips_not_dropdowns",
 ]
 
 

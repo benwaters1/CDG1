@@ -22662,7 +22662,12 @@ def menu_engineering(conn, days=90, today=None):
     keeps doing so.
     """
     today = today or house_today()
-    since = (today - timedelta(days=max(1, days))).isoformat()
+    # The till's days, start and end. This read DATE(created_at) >= a day,
+    # which is the UTC day of the sale -- a plate sold at half past midnight
+    # counted to the day before -- and had no end at all, so a card asked
+    # about a week in March counted every sale since.
+    since, _ = service_day_window(today - timedelta(days=max(1, days)))
+    _, until = service_day_window(today)
 
     # The till's own words: a tab is PAID at the counter or CHARGED_TO_ROOM,
     # and both mean a dish left the kitchen. 'settled' is not a status this
@@ -22677,8 +22682,8 @@ def menu_engineering(conn, days=90, today=None):
             WHERE pos_order_lines.menu_item_id IS NOT NULL
               AND COALESCE(pos_order_lines.voided, 0) = 0
               AND pos_orders.status IN ('paid', 'charged_to_room')
-              AND DATE(pos_order_lines.created_at) >= ?
-            GROUP BY pos_order_lines.menu_item_id""", (since,)).fetchall()
+              AND pos_order_lines.created_at >= ? AND pos_order_lines.created_at < ?
+            GROUP BY pos_order_lines.menu_item_id""", (since, until)).fetchall()
     by_item = {r["item_id"]: r for r in sold}
 
     costs = {c["item"]["id"]: c for c in dish_costs(conn)}
@@ -22707,6 +22712,8 @@ def menu_engineering(conn, days=90, today=None):
         if margin is None:
             quadrant = None
             uncosted.append(item["name"])
+        elif not total_qty:
+            quadrant = None
         elif popular and profitable:
             quadrant = "star"
         elif popular:
@@ -22727,10 +22734,14 @@ def menu_engineering(conn, days=90, today=None):
             "contribution": round((margin or 0) * qty, 2) if margin is not None else None,
             "popular": popular, "profitable": profitable,
             "quadrant": quadrant,
-            "label": MENU_QUADRANTS[quadrant][0] if quadrant else "Not costed",
-            "advice": MENU_QUADRANTS[quadrant][1] if quadrant else
-                      "No recipe costed, so this cannot be placed. It is also "
-                      "the most likely thing on the card to be losing money.",
+            "label": (MENU_QUADRANTS[quadrant][0] if quadrant
+                      else "Not costed" if margin is None else "Nothing sold to judge by"),
+            "advice": (MENU_QUADRANTS[quadrant][1] if quadrant
+                       else "No recipe costed, so this cannot be placed. It is also "
+                            "the most likely thing on the card to be losing money."
+                       if margin is None else
+                       "Nothing went through the till in this window, so there is "
+                       "no popularity to place it by. What it leaves a plate stands."),
             "missing_costs": cost["missing_costs"],
         })
 
@@ -33280,17 +33291,35 @@ def export_equipment_csv():
 @owner_required
 def candidates():
     """People who have applied, and where each application has got to."""
-    status_filter = request.args.get("status", "").strip()
     conn = get_db()
-    query = "SELECT * FROM candidates"
-    params = ()
-    if status_filter:
-        query += " WHERE status = ?"
-        params = (status_filter,)
-    query += " ORDER BY (status IN ('hired','rejected')), created_at DESC"
-    rows = conn.execute(query, params).fetchall()
+    rows = conn.execute("SELECT * FROM candidates ORDER BY created_at DESC").fetchall()
     conn.close()
-    return render_template("candidates.html", candidates=rows, status_filter=status_filter)
+    # Chips rather than a dropdown of its own, so the count of each stage is
+    # on the page before anybody clicks -- and ?status= from an old link still
+    # narrows to the same stage.
+    lv = list_view(
+        rows, request.args,
+        search=["name", "email", "phone", "role_applied", "notes"],
+        search_hint="Search a name, the role or the notes",
+        facets=[
+            facet("status", "Where they are", lambda c: c["status"],
+                  order=["new", "interviewing", "offered", "hired", "rejected"],
+                  labels={"new": "New", "interviewing": "Interviewing", "offered": "Offered",
+                          "hired": "Hired", "rejected": "Turned down"}),
+            facet("role", "Applied for", lambda c: (c["role_applied"] or "").strip() or None),
+        ],
+        sorts=[
+            sort_option("open", "Still in play first",
+                        lambda c: (c["status"] not in ("hired", "rejected"),
+                                   c["created_at"] or ""), reverse=True),
+            sort_option("newest", "Newest first", lambda c: c["created_at"] or "",
+                        reverse=True),
+            sort_option("name", "Name", lambda c: (c["name"] or "").lower()),
+        ],
+        default_sort="open",
+    )
+    lv = list_page(lv, request.args)
+    return render_template("candidates.html", candidates=lv["rows"], lv=lv)
 
 
 @app.route("/candidates/export.csv")
@@ -33993,17 +34022,43 @@ def timesheet_query(conn, employee_id, start, end):
     return conn.execute(sql, params).fetchall()
 
 
+TIMESHEET_STATES = ["Still clocked in", "Closed for them", "Ends before it starts", "Fine"]
+
+
+def timesheet_state(entry):
+    """Whether a shift can be paid as it stands, and if not, why."""
+    if not entry["clock_out_at"]:
+        return "Still clocked in"
+    if entry["clock_out_at"] < entry["clock_in_at"]:
+        return "Ends before it starts"
+    if entry["auto_closed"]:
+        return "Closed for them"
+    return "Fine"
+
+
 @app.route("/admin/timesheets")
 @owner_required
 def admin_timesheets():
     """Hours worked, from the clock rather than from memory."""
+    # The person was a dropdown of its own beside the dates. It is a chip now,
+    # with the others; a link that still carries employee_id lands on that
+    # person's chip rather than being quietly ignored.
+    legacy = (request.args.get("employee_id") or "").strip()
+    if legacy:
+        conn = get_db()
+        person = conn.execute("SELECT name FROM users WHERE id = ?", (legacy,)).fetchone() \
+            if legacy.isdigit() else None
+        conn.close()
+        args = {k: v for k, v in request.args.items() if k != "employee_id"}
+        if person and "who" not in args:
+            args["who"] = person["name"]
+        return redirect(url_for("admin_timesheets", **args))
+
     conn = get_db()
     today = house_today()
-    employee_id = request.args.get("employee_id", "").strip()
     start = parse_date(request.args.get("start", "")) or (today - timedelta(days=13))
     end = parse_date(request.args.get("end", "")) or today
-
-    entries = timesheet_query(conn, employee_id, start, end)
+    entries = [dict(e, in_window=True) for e in timesheet_query(conn, "", start, end)]
 
     # ANYTHING BLOCKING PAYROLL IS SHOWN, whatever window is being viewed.
     #
@@ -34013,71 +34068,99 @@ def admin_timesheets():
     # landed somewhere those entries were not -- which is exactly the gap
     # repair_time_entry was written to close, reopened by a date filter.
     #
-    # Appended rather than folded into the window, so the fortnight the owner
-    # asked for is still the fortnight they get, with the blockers after it.
+    # Kept apart from the window's figures: they are outside the fortnight being
+    # viewed, and counting them would put people with no shifts in the window on
+    # the summary and move the labour figure with whatever happens to be broken.
     seen = {e["id"] for e in entries}
-    outside = [b for b in conn.execute(
+    outside = [dict(b, in_window=False) for b in conn.execute(
         """SELECT time_entries.*, users.name AS user_name
              FROM time_entries JOIN users ON users.id = time_entries.user_id
             WHERE (time_entries.clock_out_at IS NULL
                    OR time_entries.clock_out_at < time_entries.clock_in_at
                    OR COALESCE(time_entries.auto_closed, 0) = 1)
             ORDER BY time_entries.clock_in_at DESC""").fetchall()
-        if b["id"] not in seen
-        and (not employee_id or str(b["user_id"]) == str(employee_id))]
-    # Appended AFTER the totals below are worked out, not before. These entries
-    # are outside the fortnight being viewed, and folding them into
-    # totals_by_user would put people with no shifts in the window onto the
-    # summary at zero hours and add to everyone's shift count -- a labour figure
-    # that moves depending on which blockers happen to be outstanding is worse
-    # than one that is merely narrow.
-    blockers_outside = outside
+        if b["id"] not in seen]
+    rows = entries + outside
 
-    # One query for all the breaks, not one per row. The template used to call
-    # net_hours() per line, which opens its OWN connection when it isn't given
-    # one — a fortnight of timesheets cost 260+ queries and a connection per
-    # row just to render the hours column.
+    # One query for all the breaks, not one per row: net_hours() per line
+    # opened its own connection, and a fortnight cost 260+ queries.
     hours_by_entry = net_hours_for_entries(conn, entries)
+    for r in rows:
+        r["state"] = timesheet_state(r)
+        r["hours"] = hours_by_entry.get(r["id"], 0.0) if r["state"] == "Fine" else 0.0
+        r["where"] = "In these dates" if r["in_window"] else "Earlier, still to fix"
+
+    lv = list_view(
+        rows, request.args,
+        search=["user_name"],
+        search_hint="Search a name",
+        facets=[
+            facet("who", "Who", lambda r: r["user_name"]),
+            facet("state", "State", lambda r: r["state"], order=TIMESHEET_STATES),
+            facet("where", "When", lambda r: r["where"],
+                  order=["In these dates", "Earlier, still to fix"]),
+        ],
+        sorts=[
+            # What blocks payroll first, so a blocker is never on page two.
+            sort_option("fix", "To fix first, then newest",
+                        lambda r: (r["state"] != "Fine", r["clock_in_at"] or ""),
+                        reverse=True),
+            sort_option("newest", "Newest first", lambda r: r["clock_in_at"] or "",
+                        reverse=True),
+            sort_option("oldest", "Oldest first", lambda r: r["clock_in_at"] or ""),
+            sort_option("longest", "Longest first", lambda r: r["hours"], reverse=True),
+            sort_option("who", "By person", lambda r: ((r["user_name"] or "").lower(),
+                                                       r["clock_in_at"] or "")),
+        ],
+        default_sort="fix",
+    )
+
+    # The window's figures follow the chips: choose a person and these are
+    # theirs. Only shifts inside the dates count; a blocker from March is
+    # listed to be fixed, not added to this fortnight's hours.
+    pay_ref = {r["id"]: r for r in conn.execute(
+        "SELECT id, pay_rate, pay_type FROM users").fetchall()}
     totals_by_user = {}
-    for e in entries:
-        hrs = hours_by_entry.get(e["id"], 0.0)
-        bucket = totals_by_user.setdefault(e["user_id"], {"name": e["user_name"], "hours": 0.0, "shifts": 0})
-        bucket["hours"] = round(bucket["hours"] + hrs, 2)
+    for r in lv["rows"]:
+        if not r["in_window"]:
+            continue
+        bucket = totals_by_user.setdefault(r["user_id"], {
+            "name": r["user_name"], "hours": 0.0, "shifts": 0})
+        bucket["hours"] = round(bucket["hours"] + r["hours"], 2)
         bucket["shifts"] += 1
-
-    # Now they can be shown: the summary above is the window the owner
-    # asked for, the list below is that window plus whatever blocks the
-    # export from wherever it happens to be.
-    entries = list(entries) + blockers_outside
-
-    pay_ref_by_user = {
-        r["id"]: r for r in conn.execute("SELECT id, pay_rate, pay_type FROM users").fetchall()
-    }
-    total_estimated_cost = 0.0
-    any_estimate = False
+    total_estimated_cost, any_estimate = 0.0, False
     for user_id, bucket in totals_by_user.items():
-        person = pay_ref_by_user.get(user_id)
-        pay_rate = person["pay_rate"] if person else None
-        pay_type = person["pay_type"] if person else None
-        bucket["pay_rate"] = pay_rate
-        bucket["pay_type"] = pay_type
-        bucket["estimated_cost"] = estimated_hourly_cost(bucket["hours"], pay_rate, pay_type)
+        person = pay_ref.get(user_id)
+        bucket["pay_rate"] = person["pay_rate"] if person else None
+        bucket["pay_type"] = person["pay_type"] if person else None
+        bucket["estimated_cost"] = estimated_hourly_cost(
+            bucket["hours"], bucket["pay_rate"], bucket["pay_type"])
         if bucket["estimated_cost"] is not None:
             total_estimated_cost += bucket["estimated_cost"]
             any_estimate = True
-
-    employees = conn.execute(
-        "SELECT id, name FROM users WHERE role = 'employee' ORDER BY name"
-    ).fetchall()
+    to_fix = sum(1 for r in rows if r["state"] != "Fine")
     pending_corrections_count = conn.execute(
         "SELECT COUNT(*) AS c FROM timesheet_corrections WHERE status = 'pending'"
     ).fetchone()["c"]
+    # The export follows the chosen person, as the dropdown did.
+    chosen = request.args.get("who")
+    who_id = next((r["user_id"] for r in rows if r["user_name"] == chosen), "") if chosen else ""
     conn.close()
 
+    lv = list_page(lv, request.args)
+    overview = [
+        overview_cell("Shifts in these dates", sum(t["shifts"] for t in totals_by_user.values())),
+        overview_cell("Hours", round(sum(t["hours"] for t in totals_by_user.values()), 2),
+                      hint="net of breaks"),
+        overview_cell("To fix before payroll", to_fix, alert=bool(to_fix),
+                      hint="each counts as zero hours until it is"),
+        overview_cell("Corrections asked for", pending_corrections_count,
+                      alert=bool(pending_corrections_count),
+                      endpoint="admin_timesheet_corrections"),
+    ]
     return render_template(
-        "admin_timesheets.html", entries=entries, totals_by_user=totals_by_user,
-        hours_by_entry=hours_by_entry,
-        employees=employees, employee_id=employee_id, start=start, end=end, today=today,
+        "admin_timesheets.html", lv=lv, rows=lv["rows"], totals_by_user=totals_by_user,
+        start=start, end=end, today=today, who_id=who_id, overview=overview, to_fix=to_fix,
         total_estimated_cost=round(total_estimated_cost, 2) if any_estimate else None,
         pending_corrections_count=pending_corrections_count,
     )
@@ -34203,19 +34286,42 @@ def admin_incidents():
     """Accidents and injuries, as the register the law expects."""
     conn = get_db()
     today = house_today()
-    status_filter = request.args.get("status", "open")
-    query = """SELECT incidents.*, u.name AS affected_name, r.name AS reporter_name,
-                      insurance_policies.provider AS insurer
-               FROM incidents
-               LEFT JOIN users AS u ON u.id = incidents.affected_user_id
-               LEFT JOIN users AS r ON r.id = incidents.reported_by_user_id
-               LEFT JOIN insurance_policies ON insurance_policies.id = incidents.insurance_policy_id"""
-    params = []
-    if status_filter in ("open", "actioned", "closed"):
-        query += " WHERE incidents.status = ?"
-        params.append(status_filter)
-    query += " ORDER BY incidents.occurred_at DESC"
-    incidents = conn.execute(query, params).fetchall()
+    # The register, whole, with where each stands as a chip. It was four tabs
+    # beside the heading that counted nothing; it still opens on the open
+    # ones, and ?status= from an old link lands where it did.
+    incidents = conn.execute(
+        """SELECT incidents.*, u.name AS affected_name, r.name AS reporter_name,
+                  insurance_policies.provider AS insurer
+             FROM incidents
+             LEFT JOIN users AS u ON u.id = incidents.affected_user_id
+             LEFT JOIN users AS r ON r.id = incidents.reported_by_user_id
+             LEFT JOIN insurance_policies ON insurance_policies.id = incidents.insurance_policy_id
+            ORDER BY incidents.occurred_at DESC""").fetchall()
+    lv = list_view(
+        incidents, request.args,
+        search=["summary", "detail", "location", "affected_name", "affected_person",
+                "reporter_name", "action_taken"],
+        search_hint="Search what happened, where, or who",
+        facets=[
+            facet("status", "Where it stands", lambda i: i["status"],
+                  order=["open", "actioned", "closed"],
+                  labels={"open": "Open", "actioned": "Actioned", "closed": "Closed"},
+                  default="open"),
+            facet("kind", "Kind", lambda i: INCIDENT_KINDS.get(i["kind"], i["kind"])
+                  if i["kind"] else None),
+            facet("severity", "How bad", lambda i: INCIDENT_SEVERITIES.get(
+                i["severity"], i["severity"]) if i["severity"] else None,
+                  order=list(INCIDENT_SEVERITIES.values())),
+        ],
+        sorts=[
+            sort_option("recent", "Most recent first", lambda i: i["occurred_at"] or "",
+                        reverse=True),
+            sort_option("oldest", "Oldest first", lambda i: i["occurred_at"] or ""),
+        ],
+        default_sort="recent",
+    )
+    lv = list_page(lv, request.args)
+    incidents = lv["rows"]
 
     # The first moment of 1 January here, not midnight UTC: an accident at
     # half past midnight on New Year's Day belongs to the year it happened in.
@@ -34260,7 +34366,7 @@ def admin_incidents():
     ]
     return render_template("admin_incidents.html", incidents=incidents, overview=overview,
                            employees=employees, policies=policies, insurer=insurer,
-                           status_filter=status_filter, today=today)
+                           lv=lv, today=today)
 
 
 @app.route("/admin/incidents/new", methods=["POST"])
@@ -51820,18 +51926,15 @@ def admin_rooms():
 def room_issues():
     """What is broken in which room, and whether it is fixed."""
     conn = get_db()
-    status_filter = request.args.get("status", "open")
-    query = (
+    # Every issue, with the status a chip like the rest. It was a dropdown in
+    # a bar of its own ABOVE the chips -- two ways of narrowing one list,
+    # which is the thing list_view exists to stop. It still opens on the open
+    # ones, and an old ?status=open, resolved or all lands where it did.
+    issues = conn.execute(
         """SELECT room_issues.*, rooms.name AS room_name, users.name AS reported_by_name
            FROM room_issues JOIN rooms ON rooms.id = room_issues.room_id
-           LEFT JOIN users ON users.id = room_issues.reported_by_user_id"""
-    )
-    params = ()
-    if status_filter in ("open", "resolved"):
-        query += " WHERE room_issues.status = ?"
-        params = (status_filter,)
-    query += " ORDER BY room_issues.created_at DESC"
-    issues = conn.execute(query, params).fetchall()
+           LEFT JOIN users ON users.id = room_issues.reported_by_user_id
+           ORDER BY room_issues.created_at DESC""").fetchall()
     rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
     employees = conn.execute("SELECT * FROM users WHERE role = 'employee' ORDER BY name").fetchall()
     # Counted separately rather than off `issues`, which the status filter
@@ -51880,7 +51983,9 @@ def room_issues():
         search=["title", "description", "room_name", "reported_by_name"],
         search_hint="Search fault, room or who reported it",
         facets=[
-            # First, because it is the only one that has a date attached to it.
+            facet("status", "Status", lambda i: i["status"], order=["open", "resolved"],
+                  labels={"open": "Open", "resolved": "Resolved"}, default="open"),
+            # First of the rest, because it is the only one with a date attached.
             facet("arriving", "Someone coming", guest_coming,
                   order=["Guest arriving this week", "Guest arriving soon"]),
             facet("age", "How long open", age,
@@ -51905,7 +52010,7 @@ def room_issues():
     )
     return render_template(
         "room_issues.html", issues=lv["rows"], lv=lv, rooms=rooms,
-        status_filter=status_filter, employees=employees, counts=counts,
+        employees=employees, counts=counts,
         rooms_affected=rooms_affected, arrivals=arrivals, days_until=days_until,
         in_words=in_words,
     )
@@ -70177,8 +70282,6 @@ def save_proof_figures():
 @owner_required
 def management_social():
     """What is going out on Instagram and Facebook, and when."""
-    status_filter = request.args.get("status", "").strip()
-    platform_filter = request.args.get("platform", "").strip()
     conn = get_db()
     # approved_by joined as well as the assignee: a *_by_user_id nothing joins
     # is a decision nobody can be asked about, and "who said this could go out"
@@ -70191,12 +70294,6 @@ def management_social():
                         ON approver.id = social_posts.approved_by_user_id
                 WHERE 1=1"""
     params = []
-    if status_filter:
-        query += " AND social_posts.status = ?"
-        params.append(status_filter)
-    if platform_filter:
-        query += " AND social_posts.platform = ?"
-        params.append(platform_filter)
     query += " ORDER BY (social_posts.scheduled_date IS NULL), social_posts.scheduled_date, social_posts.created_at"
     posts = []
     for row in conn.execute(query, params).fetchall():
@@ -70210,9 +70307,6 @@ def management_social():
         except (ValueError, TypeError):
             post["suggestions"] = None
         posts.append(post)
-    platforms = [r["platform"] for r in conn.execute(
-        "SELECT DISTINCT platform FROM social_posts ORDER BY platform"
-    ).fetchall()]
     employees = conn.execute(
         "SELECT id, name FROM users WHERE status = 'active' ORDER BY name"
     ).fetchall()
@@ -70223,9 +70317,45 @@ def management_social():
         "SELECT key, value FROM app_settings WHERE key IN (%s)"
         % ",".join("?" * len(PROOF_FIGURES)), list(PROOF_FIGURES)).fetchall()}
     conn.close()
+    # Chips, as on every other list: the two dropdowns of its own beside the
+    # heading each answered one question at a time and counted nothing.
+    week_on = _iso_plus_days(today, 7)
+
+    def when(p):
+        if p["status"] == "posted":
+            return "Gone out"
+        day = p["scheduled_date"] or ""
+        if not day:
+            return "No date yet"
+        return ("Past its date" if day < today else "This week" if day <= week_on
+                else "Later")
+    lv = list_view(
+        posts, request.args,
+        search=["caption", "notes", "link", "assignee_name"],
+        search_hint="Search the caption, notes or who writes it",
+        facets=[
+            facet("status", "Stage", lambda p: p["status"],
+                  order=["idea", "drafted", "scheduled", "posted"],
+                  labels={"idea": "Idea", "drafted": "Drafted", "scheduled": "Scheduled",
+                          "posted": "Posted"}),
+            facet("when", "When", when,
+                  order=["Past its date", "This week", "Later", "No date yet", "Gone out"]),
+            facet("platform", "Where", lambda p: p["platform"]),
+            facet("who", "Who writes it", lambda p: p["assignee_name"] or "Nobody yet"),
+        ],
+        sorts=[
+            sort_option("date", "Soonest first",
+                        lambda p: (p["scheduled_date"] is None, p["scheduled_date"] or "",
+                                   p["created_at"] or "")),
+            sort_option("newest", "Newest ideas first", lambda p: p["created_at"] or "",
+                        reverse=True),
+        ],
+        default_sort="date",
+    )
+    lv = list_page(lv, request.args)
     return render_template(
-        "management_social.html", posts=posts, platforms=platforms, employees=employees,
-        status_filter=status_filter, platform_filter=platform_filter, today=today,
+        "management_social.html", posts=lv["rows"], lv=lv,
+        employees=employees, today=today,
         proof_figures=PROOF_FIGURES, proof_now=proof_now,
     )
 
@@ -77468,11 +77598,10 @@ def mail_log_list_view(conn, args):
 def mail_log():
     """Every letter the house sends, and whether it went."""
     conn = get_db()
-    lv = mail_log_list_view(conn, request.args)
+    # Paged rather than stopping at 400, as the audit log is.
+    lv = list_page(mail_log_list_view(conn, request.args), request.args)
     conn.close()
-    cap = 400
-    return render_template("admin_mail_log.html", lv=lv, rows=lv["rows"][:cap], cap=cap,
-                           capped=len(lv["rows"]) > cap)
+    return render_template("admin_mail_log.html", lv=lv, rows=lv["rows"])
 
 
 @app.route("/admin/mail-log/<int:line_id>")
@@ -77981,11 +78110,12 @@ def website_analytics():
 def audit_log():
     """Who did what, and when."""
     conn = get_db()
-    lv = audit_list_view(conn, request.args)
+    # Paged, not capped. It stopped at the most recent 400 and said so in a
+    # line -- on a compliance record, the question "who revealed a bank
+    # detail in March" was answered by the export or not at all.
+    lv = list_page(audit_list_view(conn, request.args), request.args)
     conn.close()
-    cap = 400
-    return render_template("audit_log.html", entries=lv["rows"][:cap], lv=lv, cap=cap,
-                           capped=len(lv["rows"]) > cap)
+    return render_template("audit_log.html", entries=lv["rows"], lv=lv)
 
 
 @app.route("/admin/audit-log/export.csv")
@@ -81754,13 +81884,54 @@ def save_leave_settings():
 def admin_leave():
     """Who has asked for time off, who has it, and what is left."""
     conn = get_db()
-    requests_ = conn.execute(
+    everything = [dict(r) for r in conn.execute(
         """SELECT leave_requests.*, users.name AS employee_name FROM leave_requests
            JOIN users ON users.id = leave_requests.user_id
            ORDER BY (leave_requests.status = 'pending') DESC, start_date DESC"""
-    ).fetchall()
+    ).fetchall()]
+    # A list like the others. It drew every request ever made, one card each
+    # -- fifty-one of them on the copy read on 9 October 2026, the one waiting
+    # on a decision among them -- with no way to see one person's, or only
+    # what is still to come.
+    today_iso = house_today_iso()
+    words = {"pending": "Waiting on you", "approved": "Approved",
+             "declined": "Declined", "cancelled": "Cancelled"}
+    for r in everything:
+        r["stands"] = words.get(r["status"], (r["status"] or "").capitalize())
+        r["when"] = ("Over" if (r["end_date"] or "") < today_iso
+                     else "Under way" if (r["start_date"] or "") <= today_iso
+                     else "Coming up")
+        r["kind"] = (r["leave_type"] or "vacation").capitalize()
+    lv = list_view(
+        everything, request.args,
+        search=["employee_name", "reason", "kind"],
+        search_hint="Search a name or a reason",
+        facets=[
+            facet("stands", "Where it stands", lambda r: r["stands"],
+                  order=["Waiting on you", "Approved", "Declined", "Cancelled"]),
+            facet("when", "When", lambda r: r["when"],
+                  order=["Coming up", "Under way", "Over"]),
+            facet("who", "Who", lambda r: r["employee_name"]),
+            facet("kind", "Kind", lambda r: r["kind"]),
+        ],
+        sorts=[
+            sort_option("waiting", "Waiting on you first",
+                        lambda r: (r["status"] == "pending", r["start_date"] or ""),
+                        reverse=True),
+            sort_option("soonest", "Soonest first", lambda r: r["start_date"] or ""),
+            sort_option("asked", "Most recently asked",
+                        lambda r: r["requested_at"] or "", reverse=True),
+        ],
+        default_sort="waiting",
+    )
+    pending_total = sum(1 for r in everything if r["status"] == "pending")
+    approved_total = sum(1 for r in everything if r["status"] == "approved")
+    lv = list_page(lv, request.args)
+    requests_ = lv["rows"]
     # Shifts and open tasks already scheduled during a requested range —
-    # surfaced so the owner sees the clash before approving, not after.
+    # surfaced so the owner sees the clash before approving, not after. Only
+    # for the requests on screen: two queries for each of every request ever
+    # made, to draw fifty, was the page's whole cost.
     conflicts = {}
     task_conflicts = {}
     for r in requests_:
@@ -81800,7 +81971,9 @@ def admin_leave():
     }
     conn.close()
     return render_template(
-        "admin_leave.html", requests=requests_, conflicts=conflicts, task_conflicts=task_conflicts,
+        "admin_leave.html", requests=requests_, lv=lv, pending_total=pending_total,
+        approved_total=approved_total,
+        conflicts=conflicts, task_conflicts=task_conflicts,
         balances=balances, impact=impact, accruals=accruals, accrual_rate=accrual_rate,
         leave_year_start=leave_year_start,
         months_of_year=[(i, date(2000, i, 1).strftime("%B")) for i in range(1, 13)],
@@ -86886,14 +87059,37 @@ def run_automation_job_now(job_name):
     return redirect(url_for("admin_automation"))
 
 
+INBOX_FLAG_KINDS = {
+    "conflict": "A price or date that does not match",
+    "unanswered": "Unanswered",
+    "mentions": "Mentions a price, nothing to check",
+}
+
+
+def inbox_flag_kind(flag):
+    """Why a message was flagged, one reason each."""
+    if (flag["price_conflict"] or flag["availability_conflict"]
+            or flag["reply_price_conflict"] or flag["reply_availability_conflict"]):
+        return "conflict"
+    return "unanswered" if flag["unanswered"] else "mentions"
+
+
+def inbox_flags_back():
+    """Back to the list as it was being looked at -- the chips, the search and
+    the page -- after resolving, dismissing or assigning one. Only ever this
+    page: it is a path from a form, and a form can say anything."""
+    back = request.form.get("back") or ""
+    if back == "/admin/inbox-flags" or back.startswith("/admin/inbox-flags?"):
+        return back
+    # A form from before the chips sent its status alone.
+    return url_for("admin_inbox_flags", status=request.form.get("return_status", "open"))
+
+
 @app.route("/admin/inbox-flags")
 @owner_required
 def admin_inbox_flags():
     """Messages nobody has answered yet."""
     conn = get_db()
-    status_filter = request.args.get("status", "open")
-    kind_filter = request.args.get("kind", "all")
-    mailbox_filter = request.args.get("mailbox", "all")
     query = (
         # Who decided it needed no reply. Resolving a flagged message is a
         # judgement that a guest is owed nothing further, and it has been
@@ -86904,21 +87100,41 @@ def admin_inbox_flags():
         "mailbox_routing.label AS mailbox_label FROM email_flags "
         "LEFT JOIN users ON users.id = email_flags.assigned_to_user_id "
         "LEFT JOIN users AS closer ON closer.id = email_flags.resolved_by_user_id "
-        "LEFT JOIN mailbox_routing ON mailbox_routing.mailbox = email_flags.mailbox WHERE 1=1"
+        "LEFT JOIN mailbox_routing ON mailbox_routing.mailbox = email_flags.mailbox "
+        "ORDER BY email_flags.received_at DESC"
     )
-    params = []
-    if status_filter != "all":
-        query += " AND email_flags.status = ?"
-        params.append(status_filter)
-    if mailbox_filter != "all":
-        query += " AND email_flags.mailbox = ?"
-        params.append(mailbox_filter)
-    if kind_filter == "unanswered":
-        query += " AND email_flags.unanswered = 1"
-    elif kind_filter == "conflict":
-        query += " AND (email_flags.price_conflict = 1 OR email_flags.availability_conflict = 1 OR email_flags.reply_price_conflict = 1 OR email_flags.reply_availability_conflict = 1)"
-    query += " ORDER BY email_flags.received_at DESC"
-    flags = conn.execute(query, params).fetchall()
+    mailboxes = monitored_mailboxes(conn)
+    # Chips, as on every list. Status and type were two dropdowns behind a
+    # Filter button and the inboxes a row of buttons under them: three ways of
+    # narrowing one list, none of which said how many each choice held. It
+    # still opens on the open ones, and ?status=, ?kind= and ?mailbox= from an
+    # old link land where they did.
+    lv = list_view(
+        conn.execute(query).fetchall(), request.args,
+        search=["from_name", "from_address", "subject", "preview", "assigned_to_name"],
+        search_hint="Search who wrote, the subject, or who has it",
+        facets=[
+            facet("status", "Where it stands", lambda f: f["status"],
+                  order=["open", "resolved", "dismissed"],
+                  labels={"open": "Open", "resolved": "Resolved", "dismissed": "Dismissed"},
+                  default="open"),
+            # One reason each. A message both unanswered and quoting the wrong
+            # price goes under the price: that is the one that costs money.
+            facet("kind", "Why", inbox_flag_kind, order=list(INBOX_FLAG_KINDS),
+                  labels=INBOX_FLAG_KINDS),
+            facet("mailbox", "Inbox", lambda f: f["mailbox"],
+                  labels={mb["mailbox"]: mb["label"] or mb["mailbox"] for mb in mailboxes}),
+            facet("who", "Who has it", lambda f: f["assigned_to_name"] or "Nobody"),
+        ],
+        sorts=[
+            sort_option("recent", "Newest first", lambda f: f["received_at"] or "",
+                        reverse=True),
+            sort_option("oldest", "Waiting longest", lambda f: f["received_at"] or ""),
+        ],
+        default_sort="recent",
+    )
+    lv = list_page(lv, request.args)
+    flags = lv["rows"]
     counts = conn.execute(
         """SELECT
              SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_count,
@@ -86928,21 +87144,14 @@ def admin_inbox_flags():
            FROM email_flags"""
     ).fetchone()
     employees = conn.execute("SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
-    mailboxes = monitored_mailboxes(conn)
-    # Open flags per inbox, so it's obvious at a glance which area is behind.
-    per_mailbox = {
-        r["mailbox"]: r["c"] for r in conn.execute(
-            "SELECT mailbox, COUNT(*) AS c FROM email_flags WHERE status = 'open' AND mailbox IS NOT NULL GROUP BY mailbox"
-        ).fetchall()
-    }
     duplicates = cross_inbox_duplicates(conn)
     response_stats = inbox_response_stats(conn)
     guest_context = guest_context_for_emails(conn, [f["from_address"] for f in flags])
     conn.close()
     return render_template(
-        "admin_inbox_flags.html", flags=flags, status_filter=status_filter, kind_filter=kind_filter,
+        "admin_inbox_flags.html", flags=flags, lv=lv,
         counts=counts, graph_enabled=graph_enabled(), employees=employees,
-        mailboxes=mailboxes, mailbox_filter=mailbox_filter, per_mailbox=per_mailbox,
+        mailboxes=mailboxes,
         duplicates=duplicates, response_stats=response_stats, guest_context=guest_context,
         mailbox=MS_GRAPH_MAILBOX,
     )
@@ -87005,7 +87214,7 @@ def assign_email_flag(flag_id):
     conn.commit()
     conn.close()
     flash("Assigned." if assignee_id else "Unassigned.", "success")
-    return redirect(url_for("admin_inbox_flags", status=request.form.get("return_status", "open")))
+    return redirect(inbox_flags_back())
 
 
 @app.route("/admin/inbox-flags/<int:flag_id>/resolve", methods=["POST"])
@@ -87020,7 +87229,7 @@ def resolve_email_flag(flag_id):
     conn.commit()
     conn.close()
     flash("Marked resolved.", "success")
-    return redirect(url_for("admin_inbox_flags", status=request.form.get("return_status", "open")))
+    return redirect(inbox_flags_back())
 
 
 @app.route("/admin/inbox-flags/<int:flag_id>/dismiss", methods=["POST"])
@@ -87035,7 +87244,7 @@ def dismiss_email_flag(flag_id):
     conn.commit()
     conn.close()
     flash("Dismissed.", "success")
-    return redirect(url_for("admin_inbox_flags", status=request.form.get("return_status", "open")))
+    return redirect(inbox_flags_back())
 
 
 # ---------------------------------------------------------------------------

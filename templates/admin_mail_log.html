@@ -24,12 +24,6 @@
     {% endif %}
   </div>
 {% else %}
-  {% if capped %}
-  <p class="list-count">
-    Showing the most recent {{ cap }} of {{ lv.shown }} &mdash; narrow it down above, or
-    <a href="{{ url_for('export_mail_log_csv', **request.args.to_dict()) }}" class="small-link">export the lot</a>.
-  </p>
-  {% endif %}
   <div class="table-wrap">
     <table class="data-table">
       <thead><tr><th>When</th><th>To</th><th>Subject</th><th>Letter</th><th>About</th><th>Status</th><th></th></tr></thead>
@@ -50,6 +44,7 @@
       </tbody>
     </table>
   </div>
+  {% include "_list_pager.html" %}
 {% endif %}
 
 {% endblock %}

@@ -28,6 +28,13 @@ TOOLBAR_PAGES = [
     "/admin/extras",
     "/admin/feedback",
     "/admin/restaurant/menus",
+    "/admin/leave",
+    "/admin/timesheets",
+    "/admin/incidents",
+    "/admin/inbox-flags",
+    "/candidates",
+    "/management/social",
+    "/admin/mail-log",
 ]
 
 
@@ -169,10 +176,13 @@ def run():
             broken.append(f"{url} → HTTP {r.status_code}")
             continue
         page = r.get_data(as_text=True)
-        chips = re.findall(r'<a href="([^"]+)"\s*\n?\s*class="chip[^"]*">'
+        # A chip that is already on -- a facet's default, the open ones a
+        # page opens on -- is the page as it stands. Clicking it changes
+        # nothing, so it proves nothing about the wiring.
+        chips = re.findall(r'<a href="([^"]+)"\s*\n?\s*class="chip([^"]*)">'
                            r'([^<]*)<span class="chip-n">(\d+)</span>', page)
-        chips = [(html.unescape(h), lbl.strip(), int(n)) for h, lbl, n in chips
-                 if lbl.strip() != "All"]
+        chips = [(html.unescape(h), lbl.strip(), int(n)) for h, cls, lbl, n in chips
+                 if lbl.strip() != "All" and "is-on" not in cls]
         if not chips:
             vacuous.append(url)
             continue

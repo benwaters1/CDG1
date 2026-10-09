@@ -4,23 +4,22 @@
 
 <div class="page-head">
   <h1>Timesheets</h1>
-  <div style="display:flex; gap:10px;">
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
     <a href="{{ url_for('admin_timesheet_corrections') }}" class="btn-mini">Corrections{% if pending_corrections_count %} ({{ pending_corrections_count }}){% endif %}</a>
-    <a href="{{ url_for('export_timesheets_csv', employee_id=employee_id, start=start.isoformat(), end=end.isoformat()) }}" class="btn-mini">Export CSV</a>
-    <a href="{{ url_for('export_timesheets_summary_csv', employee_id=employee_id, start=start.isoformat(), end=end.isoformat()) }}" class="btn-mini">Export labour summary</a>
+    <a href="{{ url_for('export_timesheets_csv', employee_id=who_id, start=start.isoformat(), end=end.isoformat()) }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('export_timesheets_summary_csv', employee_id=who_id, start=start.isoformat(), end=end.isoformat()) }}" class="btn-mini">Export labour summary</a>
   </div>
 </div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Hours worked, from the clock rather than
+  from memory: the dates below, and anything earlier that still stops payroll.</p>
 
-<form method="get" class="search-bar">
-  <div>
-    <label class="field-label" for="admin_timesheets-employee-id">Employee</label>
-    <select id="admin_timesheets-employee-id" name="employee_id">
-      <option value="">Everyone</option>
-      {% for e in employees %}
-      <option value="{{ e['id'] }}" {{ 'selected' if employee_id == e['id']|string }}>{{ e['name'] }}</option>
-      {% endfor %}
-    </select>
-  </div>
+{# The dates are the page's own window, not a classification, so they stay a
+   form of their own -- and it carries the chips and the search, so changing
+   the dates does not quietly drop them. #}
+<form method="get" class="search-bar" style="margin-bottom:14px;">
+  {% for k, v in request.args.items() if k not in ('start', 'end', 'page') %}
+  <input type="hidden" name="{{ k }}" value="{{ v }}">
+  {% endfor %}
   <div>
     <label class="field-label" for="admin_timesheets-start">From</label>
     <input id="admin_timesheets-start" type="date" name="start" value="{{ start.isoformat() }}">
@@ -29,87 +28,94 @@
     <label class="field-label" for="admin_timesheets-end">To</label>
     <input id="admin_timesheets-end" type="date" name="end" value="{{ end.isoformat() }}">
   </div>
-  <button type="submit" class="btn-mini">Filter</button>
-  <a href="{{ url_for('admin_timesheets') }}" class="small-link" style="color:var(--steel); align-self:center;">Reset</a>
+  <button type="submit" class="btn-mini">Show these dates</button>
 </form>
 
-{% if totals_by_user %}
-<div class="search-bar" style="margin-bottom:6px;">
-  {% for uid, t in totals_by_user.items() %}
-  <div>
-    <span class="detail-label">{{ t.name }}</span>
-    <span class="room-price">{{ t.hours }}h</span>
-    {% if t.estimated_cost is not none %}<span class="upload-hint">≈ €{{ '%.2f'|format(t.estimated_cost) }} est.</span>
-    {% elif t.pay_rate %}<span class="upload-hint">{{ t.pay_rate }}{% if t.pay_type %} · {{ t.pay_type }}{% endif %}</span>{% endif %}
-  </div>
-  {% endfor %}
-</div>
-<p class="pay-disclaimer">
-  Estimated cost = hours × the pay rate on file, shown only where the rate is a plain hourly number — a rough figure for your own awareness, not a payslip or payroll calculation.
-  {% if total_estimated_cost is not none %}<strong style="color:inherit;">Total across estimable staff: €{{ '%.2f'|format(total_estimated_cost) }}</strong>{% endif %}
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if to_fix %}
+{# Said once, here, rather than under every row it applies to. #}
+<p class="upload-hint" style="margin:0 0 12px;">
+  <strong>{{ to_fix }} shift{{ '' if to_fix == 1 else 's' }} can't be paid as
+  {{ 'it stands' if to_fix == 1 else 'they stand' }}</strong> &mdash; nobody clocked out, the
+  end time was a guess made at their next login, or it ends before it starts. Each counts as
+  zero hours, and payroll will not export, until somebody sets the real clock-out or voids
+  it. They are listed first; open <em>Fix it</em> on the row.
 </p>
 {% endif %}
 
-{% if not entries %}
-  <div class="empty-state">No clock-ins in this date range.</div>
+{% include "_list_toolbar.html" %}
+
+{% if totals_by_user %}
+<div class="table-wrap" style="margin-bottom:14px;">
+  <table class="data-table">
+    <thead><tr><th scope="col">Hours in these dates</th><th scope="col" class="num">Shifts</th>
+      <th scope="col" class="num">Hours</th><th scope="col">Rate on file</th></tr></thead>
+    <tbody>
+      {% for uid, t in totals_by_user.items() %}
+      <tr>
+        <th scope="row">{{ t.name }}</th>
+        <td class="num">{{ t.shifts }}</td>
+        <td class="num">{{ '%.2f'|format(t.hours) }}</td>
+        <td>{% if t.estimated_cost is not none %}≈ €{{ '%.2f'|format(t.estimated_cost) }} estimated
+            {% elif t.pay_rate %}{{ t.pay_rate }}{% if t.pay_type %} · {{ t.pay_type }}{% endif %}
+            {% else %}<span class="muted">none</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="pay-disclaimer">
+  Estimated = hours × the pay rate on file, only where that rate is a plain hourly number.
+  For your own awareness &mdash; not a payslip; wages are on <a href="{{ url_for('admin_wages') }}">Wages</a>.
+  {% if total_estimated_cost is not none %}<strong style="color:inherit;">Together: €{{ '%.2f'|format(total_estimated_cost) }}.</strong>{% endif %}
+</p>
+{% endif %}
+
+{% if not rows %}
+  <div class="empty-state">
+    {% if lv.filtered %}Nothing matches that. <a href="{{ url_for('admin_timesheets', start=start.isoformat(), end=end.isoformat()) }}">Show everyone</a>
+    {% else %}No clock-ins between these dates.{% endif %}
+  </div>
 {% else %}
   <div class="task-list">
-    {% for e in entries %}
-    {% set impossible = e['clock_out_at'] and e['clock_out_at'] < e['clock_in_at'] %}
-    {# Three ways an entry is unsafe for payroll, and all three now block the
-       export — so all three need the repair form here. Offering it only for
-       the backwards case left the other two flagged on this page and fixable
-       nowhere, which is the gap repair_time_entry was written to close. #}
-    {% set unclocked = not e['clock_out_at'] %}
-    {% set guessed = e['auto_closed'] and e['clock_out_at'] %}
-    {% set needs_fixing = impossible or unclocked or guessed %}
-    <div class="task-row">
-      <span class="task-title" style="flex:0 0 160px;">{{ e['user_name'] }}</span>
-      <span class="upload-hint" style="flex:1;">
+    {% for e in rows %}
+    <div class="task-row {{ 'task-overdue' if e.state != 'Fine' }}">
+      <span class="task-title" style="flex:0 1 11rem;">{{ e['user_name'] }}</span>
+      <span class="upload-hint" style="flex:1 1 14rem;">
         {{ local_datetime_str(e['clock_in_at']) }} →
-        {% if e['clock_out_at'] %}{{ local_time_str(e['clock_out_at']) }}{% else %}<strong style="color:var(--steel-deep);">still clocked in</strong>{% endif %}
+        {% if e['clock_out_at'] %}{{ local_time_str(e['clock_out_at']) }}{% else %}<strong>still clocked in</strong>{% endif %}
       </span>
       <span class="upload-hint">
-        {% if e['clock_out_at'] and not impossible %}{{ '%.2f'|format(hours_by_entry.get(e['id'], 0)) }}h{% endif %}
-        {% if impossible %}<span class="mini-status status-declined">ends before it starts</span>{% endif %}
-        {% if e['auto_closed'] %}<span class="mini-status status-pending" style="margin-left:6px;">auto-closed — forgot to log out?</span>{% endif %}
+        {% if e.state == 'Fine' %}{{ '%.2f'|format(e.hours) }}h
+        {% else %}<span class="mini-status {{ 'status-declined' if e.state == 'Ends before it starts' else 'status-pending' }}">{{ e.state|lower }}</span>{% endif %}
+        {% if not e.in_window %}<span class="mini-status status-inactive">earlier</span>{% endif %}
       </span>
     </div>
-    {% if needs_fixing %}
-    {# Excluded from every hours total, so it can't quietly distort pay or the
-       labour cost — but it stays visible and fixable until someone deals with it. #}
-    <div class="refund-box" style="margin:-4px 0 10px;">
-      <p class="upload-hint" style="margin-top:0;">
-        {% if impossible %}
-        This shift is recorded as ending before it started, so it counts as zero hours everywhere.
-        Set the real clock-out, or void it if nobody can remember.
-        {% elif unclocked %}
-        Nobody clocked out of this shift, so it counts as zero hours and payroll won't export
-        until it's settled. Set the real clock-out, or void it.
-        {% else %}
-        This was closed automatically at their next login, so the end time is a guess rather
-        than a record — it counts as zero hours and payroll won't export until it's settled.
-        Set the real clock-out, or void it.
-        {% endif %}
-      </p>
+    {% if e.state != 'Fine' %}
+    {# Excluded from every hours total, so it cannot quietly distort pay or
+       the labour cost -- but it stays here, and fixable, until it is dealt with. #}
+    <details class="refund-box" style="margin:-4px 0 10px;">
+      <summary>Fix it &mdash; set the real clock-out, or void it</summary>
       <form method="post" action="{{ url_for('repair_time_entry', entry_id=e['id']) }}"
-            style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+            style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-top:8px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div>
-          <label class="field-label">Actual clock-out</label>
-          <input aria-label="Actual clock-out" type="datetime-local" name="clock_out_at" required>
+          <label class="field-label" for="clock-out-{{ e['id'] }}">Actual clock-out</label>
+          <input id="clock-out-{{ e['id'] }}" type="datetime-local" name="clock_out_at" required>
         </div>
         <button type="submit" name="action" value="set" class="btn-mini">Correct it</button>
         <button type="submit" name="action" value="void" class="btn-mini btn-mini-danger"
                 formnovalidate
                 onclick="return confirm('Record this shift as zero hours? The clock-in stays on file.');">
-          Void — zero hours
+          Void &mdash; zero hours
         </button>
       </form>
-    </div>
+    </details>
     {% endif %}
     {% endfor %}
   </div>
+  {% include "_list_pager.html" %}
 {% endif %}
 
 {% endblock %}

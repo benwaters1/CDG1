@@ -8,62 +8,35 @@
   <a href="{{ url_for('export_leave_csv') }}" class="btn-ghost">Export CSV</a>
 </div>
 
-{% if can('save_leave_settings') %}
-{# The two figures that differ by convention collective. Held as settings so a
-   different agreement does not need a deploy, and shown here rather than buried
-   in a settings page because this is where anybody thinks about leave. #}
-<form method="post" action="{{ url_for('save_leave_settings') }}" class="detail-card">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <h3 style="margin-top:0;">How leave is earned</h3>
-  <p class="upload-hint" style="margin-top:0;">
-    Paid leave is earned month by month, not granted in a lump — so somebody who
-    works a season has earned part of a year, and what they have earned and not
-    taken is paid when they leave. The French statutory default is 2.5 days a
-    month over a year running 1 June to 31 May. Confirm both with your accountant.
-  </p>
-  <div class="search-bar">
-    <div>
-      <label class="field-label" for="rate">Days earned per month worked</label>
-      <input type="text" id="rate" name="leave_accrual_days_per_month" inputmode="decimal"
-             value="{{ '%g'|format(accrual_rate) }}" style="width:110px;">
-    </div>
-    <div>
-      <label class="field-label" for="ystart">Leave year starts</label>
-      <select id="ystart" name="leave_year_start_month">
-        {% for mnum, mname in months_of_year %}
-        <option value="{{ mnum }}" {{ 'selected' if mnum == leave_year_start }}>{{ mname }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <button type="submit" class="btn-mini" style="margin-top:0;">Save</button>
-  </div>
-</form>
-{% endif %}
 
-{% set pending = requests|selectattr('status', 'equalto', 'pending')|list %}
-{% set approved = requests|selectattr('status', 'equalto', 'approved')|list %}
+
 <div class="stat-tiles">
   <div class="stat-tile">
-    <span class="stat-tile-icon {{ 'stat-tile-icon-gold' if pending else 'stat-tile-icon-success' }}">{{ icon('approvals', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ pending|length }}</span><span class="stat-tile-label">Awaiting your decision</span></span>
+    <span class="stat-tile-icon {{ 'stat-tile-icon-gold' if pending_total else 'stat-tile-icon-success' }}">{{ icon('approvals', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ pending_total }}</span><span class="stat-tile-label">Awaiting your decision</span></span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-success">{{ icon('leave', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ approved|length }}</span><span class="stat-tile-label">Approved</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ approved_total }}</span><span class="stat-tile-label">Approved</span></span>
   </div>
   {% if conflicts or task_conflicts %}
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-danger">{{ icon('wrench', 19) }}</span>
     <span class="stat-tile-body">
       <span class="stat-tile-value">{{ (conflicts|length) + (task_conflicts|length) }}</span>
-      <span class="stat-tile-label">With shift or task clashes</span>
+      <span class="stat-tile-label">With shift or task clashes, on this page</span>
     </span>
   </div>
   {% endif %}
 </div>
 
+{% include "_list_toolbar.html" %}
+
 {% if not requests %}
-  <div class="empty-state">No time off requests yet.</div>
+  <div class="empty-state">
+    {% if lv.filtered %}Nothing matches that. <a href="{{ url_for('admin_leave') }}">Show all {{ lv.total }}</a>
+    {% else %}No time off requests yet.{% endif %}
+  </div>
 {% else %}
   {% for r in requests %}
   <div class="expense-card">
@@ -127,6 +100,42 @@
     {% endif %}
   </div>
   {% endfor %}
+  {% include "_list_pager.html" %}
+{% endif %}
+
+{% if can('save_leave_settings') %}
+{# The two figures that differ by convention collective. Held as settings so a
+   different agreement does not need a deploy, and shown here rather than buried
+   in a settings page because this is where anybody thinks about leave. #}
+<details class="detail-card" style="margin-top:18px;">
+<summary><strong>How leave is earned</strong> &mdash; {{ '%g'|format(accrual_rate) }} days a month,
+  the year starting in {{ months_of_year[leave_year_start - 1][1] }}</summary>
+<form method="post" action="{{ url_for('save_leave_settings') }}" style="margin-top:10px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <p class="upload-hint" style="margin-top:0;">
+    Paid leave is earned month by month, not granted in a lump — so somebody who
+    works a season has earned part of a year, and what they have earned and not
+    taken is paid when they leave. The French statutory default is 2.5 days a
+    month over a year running 1 June to 31 May. Confirm both with your accountant.
+  </p>
+  <div class="search-bar">
+    <div>
+      <label class="field-label" for="rate">Days earned per month worked</label>
+      <input type="text" id="rate" name="leave_accrual_days_per_month" inputmode="decimal"
+             value="{{ '%g'|format(accrual_rate) }}" style="width:110px;">
+    </div>
+    <div>
+      <label class="field-label" for="ystart">Leave year starts</label>
+      <select id="ystart" name="leave_year_start_month">
+        {% for mnum, mname in months_of_year %}
+        <option value="{{ mnum }}" {{ 'selected' if mnum == leave_year_start }}>{{ mname }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn-mini" style="margin-top:0;">Save</button>
+  </div>
+</form>
+</details>
 {% endif %}
 
 {% endblock %}

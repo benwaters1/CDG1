@@ -48,7 +48,7 @@
     <span class="stat-tile-label">Puzzles &mdash; earn, rarely sell</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.counts.dog }}</span>
-    <span class="stat-tile-label">Taking a line on the card</span></span></div>
+    <span class="stat-tile-label">Dogs &mdash; rarely sell, earn little</span></span></div>
 </div>
 
 <p class="field-hint" style="max-width:780px;">
@@ -89,7 +89,7 @@
     </thead>
     <tbody>
       {% for r in data.rows %}
-      <tr{% if r.quadrant == 'dog' or not r.quadrant %} class="row-alert"{% endif %}>
+      <tr{% if r.quadrant == 'dog' or r.margin is none %} class="row-alert"{% endif %}>
         <th scope="row">
           {{ r.name }}
           {% if r.course %}<span class="field-hint" style="display:block; font-weight:400;">{{ r.course }}</span>{% endif %}
@@ -100,9 +100,10 @@
         <td class="num">{% if r.margin is not none %}{{ euro(r.margin) }}{% if r.margin_pct is not none %} <span class="field-hint">{{ r.margin_pct }}%</span>{% endif %}{% else %}&mdash;{% endif %}</td>
         <td class="num">{% if r.contribution is not none %}{{ euro(r.contribution) }}{% else %}&mdash;{% endif %}</td>
         <td>
-          <strong>{{ r.label }}</strong>
-          <span class="field-hint" style="display:block;">{{ r.advice }}</span>
-          {% if r.missing_costs %}<span class="field-hint" style="display:block;">No cost recorded for: {{ r.missing_costs|join(', ') }}</span>{% endif %}
+          {% if r.quadrant %}<a href="#what-{{ r.quadrant }}"><strong>{{ r.label }}</strong></a>
+          {% else %}<strong>{{ r.label }}</strong>{% endif %}
+          {% if r.missing_costs %}<span class="field-hint" style="display:block;">No cost recorded for: {{ r.missing_costs|join(', ') }}</span>
+          {% elif r.margin is none %}<span class="field-hint" style="display:block;">No recipe yet</span>{% endif %}
         </td>
       </tr>
       {% else %}
@@ -131,8 +132,8 @@
     <thead><tr><th>Name</th><th>What to do</th></tr></thead>
     <tbody>
       {% for key, pair in data.quadrants.items() %}
-      <tr>
-        <th scope="row">{{ pair[0] }}</th>
+      <tr id="what-{{ key }}">
+        <th scope="row">{{ pair[0] }}{% if not data.no_sales %} <span class="field-hint">{{ data.counts[key] }}</span>{% endif %}</th>
         <td>{{ pair[1] }}</td>
       </tr>
       {% endfor %}

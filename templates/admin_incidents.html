@@ -4,12 +4,6 @@
 
 <div class="page-head">
   <h1>Incidents &amp; accidents</h1>
-  <div style="display:flex; gap:10px; align-items:center;">
-    {% for key, label in {'open':'Open','actioned':'Actioned','closed':'Closed','':'All'}.items() %}
-    <a href="{{ url_for('admin_incidents', status=key) }}"
-       class="btn-mini {{ 'btn-mini-active' if status_filter == key }}">{{ label }}</a>
-    {% endfor %}
-  </div>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
   A record of workplace accidents — which an employer has to keep, including minor ones — and of guest
@@ -128,9 +122,11 @@
   </form>
 </details>
 
+{% include "_list_toolbar.html" %}
+
 {% if not incidents %}
   <div class="empty-state">
-    {% if status_filter == 'open' %}Nothing open. Switch to “All” to see the full register.
+    {% if lv.total %}Nothing matches that. <a href="{{ url_for('admin_incidents', status='all') }}">Show the whole register, {{ lv.total }}</a>
     {% else %}Nothing recorded yet.{% endif %}
   </div>
 {% else %}
@@ -194,6 +190,7 @@
     </form>
   </div>
   {% endfor %}
+  {% include "_list_pager.html" %}
 {% endif %}
 
 {% endblock %}

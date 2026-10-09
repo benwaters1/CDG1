@@ -24,26 +24,17 @@
   </div>
 </div>
 
-<form method="get" class="search-bar">
-  <div>
-    <label class="field-label" for="room_issues-status">Status</label>
-    <select id="room_issues-status" name="status" onchange="this.form.submit()">
-      <option value="open" {{ 'selected' if status_filter == 'open' }}>Open</option>
-      <option value="resolved" {{ 'selected' if status_filter == 'resolved' }}>Resolved</option>
-      <option value="all" {{ 'selected' if status_filter == 'all' }}>All</option>
-    </select>
-  </div>
-</form>
-
 {% include "_list_toolbar.html" %}
 
 {% if not issues %}
   <div class="empty-state">
     {% if lv.filtered %}
       Nothing matches that.
-      <a href="{{ url_for('room_issues', status=status_filter) }}">Show all {{ lv.total }}</a>
+      <a href="{{ url_for('room_issues', status='all') }}">Show all {{ lv.total }}</a>
+    {% elif lv.total %}
+      Nothing open.
     {% else %}
-      No {{ status_filter if status_filter != 'all' else '' }} room issues.
+      No room issues.
     {% endif %}
   </div>
 {% else %}

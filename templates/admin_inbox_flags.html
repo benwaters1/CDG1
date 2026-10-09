@@ -31,37 +31,7 @@
   </div>
 </div>
 
-<form method="get" class="search-bar">
-  <div>
-    <label class="field-label" for="admin_inbox_flags-status">Status</label>
-    <select id="admin_inbox_flags-status" name="status">
-      {% for s in ['open', 'resolved', 'dismissed', 'all'] %}
-      <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div>
-    <label class="field-label" for="admin_inbox_flags-kind">Type</label>
-    <select id="admin_inbox_flags-kind" name="kind">
-      <option value="all" {{ 'selected' if kind_filter == 'all' }}>All</option>
-      <option value="unanswered" {{ 'selected' if kind_filter == 'unanswered' }}>Unanswered only</option>
-      <option value="conflict" {{ 'selected' if kind_filter == 'conflict' }}>Conflicts only</option>
-    </select>
-  </div>
-  <button type="submit" class="btn-mini">Filter</button>
-</form>
-
 {% if mailboxes %}
-<div class="filter-bar" style="margin-bottom:12px;">
-  <a href="{{ url_for('admin_inbox_flags', status=status_filter, kind=kind_filter) }}"
-     class="btn-mini {{ 'btn-mini-active' if mailbox_filter == 'all' }}">All inboxes</a>
-  {% for mb in mailboxes %}
-  <a href="{{ url_for('admin_inbox_flags', status=status_filter, kind=kind_filter, mailbox=mb['mailbox']) }}"
-     class="btn-mini {{ 'btn-mini-active' if mailbox_filter == mb['mailbox'] }}">
-    {{ mb['label'] or mb['mailbox'] }}{% if per_mailbox.get(mb['mailbox']) %} ({{ per_mailbox[mb['mailbox']] }}){% endif %}
-  </a>
-  {% endfor %}
-</div>
 
 <details class="refund-box" style="margin-bottom:18px;">
   <summary>Who handles each inbox</summary>
@@ -76,10 +46,10 @@
           <tr>
             <td>{{ mb['mailbox'] }}</td>
             <td><input type="text" name="label_{{ mb['id'] }}" value="{{ mb['label'] or '' }}"
-                 aria-label="What to call the {{ mb['address'] }} inbox" style="font-size:12px;"></td>
+                 aria-label="What to call the {{ mb['mailbox'] }} inbox" style="font-size:12px;"></td>
             <td>
               <select name="default_user_{{ mb['id'] }}" style="font-size:12px;"
-                  aria-label="Who answers {{ mb['address'] }} by default">
+                  aria-label="Who answers {{ mb['mailbox'] }} by default">
                 <option value="">— me (owner) —</option>
                 {% for e in employees %}
                 <option value="{{ e['id'] }}" {{ 'selected' if mb['default_user_id'] == e['id'] }}>{{ e['name'] }}</option>
@@ -94,7 +64,7 @@
             </td>
             <td>
               <input type="number" name="escalate_{{ mb['id'] }}" min="1" step="1"
-                 aria-label="Escalate after, hours — {{ mb['address'] }}"
+                 aria-label="Escalate after, hours — {{ mb['mailbox'] }}"
                      value="{{ mb['escalate_hours']|int }}" style="width:70px; font-size:12px;">
               <span class="upload-hint">hours</span>
             </td>
@@ -144,8 +114,13 @@
 </details>
 {% endif %}
 
+{% include "_list_toolbar.html" %}
+
 {% if not flags %}
-  <div class="empty-state">{% if status_filter == 'open' %}Nothing flagged right now.{% else %}No flags match that filter.{% endif %}</div>
+  <div class="empty-state">
+    {% if lv.filtered %}Nothing matches that. <a href="{{ url_for('admin_inbox_flags', status='all') }}">Show all {{ lv.total }}</a>
+    {% else %}Nothing flagged right now.{% endif %}
+  </div>
 {% else %}
   {% for f in flags %}
   <div class="expense-card">
@@ -203,17 +178,17 @@
       {% if f['status'] == 'open' %}
       <form method="post" action="{{ url_for('resolve_email_flag', flag_id=f['id']) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="return_status" value="{{ status_filter }}">
+        <input type="hidden" name="back" value="{{ request.full_path }}">
         <button type="submit" class="btn-mini">Mark resolved</button>
       </form>
       <form method="post" action="{{ url_for('dismiss_email_flag', flag_id=f['id']) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="return_status" value="{{ status_filter }}">
+        <input type="hidden" name="back" value="{{ request.full_path }}">
         <button type="submit" class="btn-mini">Dismiss</button>
       </form>
       <form method="post" action="{{ url_for('assign_email_flag', flag_id=f['id']) }}" style="display:flex; gap:4px; align-items:center;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="return_status" value="{{ status_filter }}">
+        <input type="hidden" name="back" value="{{ request.full_path }}">
         <select name="user_id" style="width:auto;">
           <option value="">Assign to…</option>
           {% for e in employees %}
@@ -226,6 +201,7 @@
     </div>
   </div>
   {% endfor %}
+  {% include "_list_pager.html" %}
 {% endif %}
 
 <script>
@@ -244,7 +220,7 @@
 </script>
 <div id="inbox-flags-refresh-banner" class="flash flash-success" style="display:none; align-items:center; justify-content:space-between; position:sticky; bottom:16px; margin-top:16px;">
   <span>New activity — this list may be out of date.</span>
-  <a href="{{ url_for('admin_inbox_flags', status=status_filter, kind=kind_filter) }}" class="btn-mini">Refresh</a>
+  <a href="{{ request.full_path }}" class="btn-mini">Refresh</a>
 </div>
 
 {% endblock %}

@@ -7,20 +7,13 @@
   <a href="{{ url_for('export_candidates_csv') }}" class="btn-mini">Export CSV</a>
 </div>
 
-<form method="get" class="search-bar">
-  <div>
-    <label class="field-label" for="candidates-status">Status</label>
-    <select id="candidates-status" name="status" onchange="this.form.submit()">
-      <option value="">All</option>
-      {% for s in ['new','interviewing','offered','hired','rejected'] %}
-      <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
-      {% endfor %}
-    </select>
-  </div>
-</form>
+{% include "_list_toolbar.html" %}
 
 {% if not candidates %}
-  <div class="empty-state">No candidates yet.</div>
+  <div class="empty-state">
+    {% if lv.filtered %}Nothing matches that. <a href="{{ url_for('candidates') }}">Show all {{ lv.total }}</a>
+    {% else %}No candidates yet.{% endif %}
+  </div>
 {% else %}
   {% for c in candidates %}
   <div class="expense-card">
@@ -65,6 +58,7 @@
     </div>
   </div>
   {% endfor %}
+  {% include "_list_pager.html" %}
 {% endif %}
 
 <div class="detail-card" style="max-width:640px; margin-top:20px;">
