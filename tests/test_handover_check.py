@@ -268,6 +268,45 @@ def run():
         finally:
             E.ROOT, E.MANIFEST = real_root, real_manifest
 
+        s.section("The export finds every handover, however its commit was worded")
+        # 9 October: the snapshot went out without the availability strip, the
+        # Estate's facility tiles or the drawings, because the commits that
+        # delivered them were called "Handover u: ..." and the pattern wanted
+        # "install" beside "handover". Each subject below is one the house
+        # really used; the last is the kind that must stay out.
+        cwd = tempfile.mkdtemp(prefix="zzsurface_")
+        made.append(cwd)
+        try:
+            _git(cwd, "init", "-q")
+            for rel, subject in (
+                    ("templates/final.html", "final_31: installed, and the first handover the tree checked"),
+                    ("templates/installed.html", "Install handover 16, and put part-payments back into it"),
+                    ("templates/strip.html", "Handover u: Restoration rebuilt, and the rest-to-come lines it missed"),
+                    ("templates/dated.html", "The handover of 2 October (n)"),
+                    ("templates/staff.html", "Seven lists get the chips every list has")):
+                _write(cwd, rel, "<p>%s</p>\n" % rel)
+                _git(cwd, "add", rel)
+                _git(cwd, "commit", "-q", "-m", subject)
+            _write(cwd, "app.py", "x = 1\n")
+            _write(cwd, "templates/strip.html", "<p>again</p>\n")
+            _git(cwd, "add", "app.py", "templates/strip.html")
+            _git(cwd, "commit", "-q", "-m", "The handover of 9 October, and a patch to app.py")
+            E.ROOT = cwd
+            surface = E.design_surface()
+            s.check("the final_N and install-handover rounds are still found",
+                    {"templates/final.html", "templates/installed.html"} <= set(surface),
+                    detail=str(surface))
+            s.check("and so are the October ones, worded \"Handover u\" and "
+                    "\"The handover of\"",
+                    {"templates/strip.html", "templates/dated.html"} <= set(surface),
+                    detail=str(surface))
+            s.check("a commit that names no handover is not a handover",
+                    "templates/staff.html" not in surface, detail=str(surface))
+            s.check("and app.py stays out even when a handover patched it",
+                    "app.py" not in surface, detail=str(surface))
+        finally:
+            E.ROOT = real_root
+
     s.section("It is documented where somebody will look for it")
     # A tool nobody knows about is worth nothing, and the file that describes
     # the eight manual repairs is where a person lands after unzipping.

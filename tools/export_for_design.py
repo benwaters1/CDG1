@@ -73,9 +73,15 @@ OUT = os.path.join(ROOT, "gudanes-design-current.zip")
 MANIFEST = os.path.join(ROOT, ".design-export.json")
 
 # Commits that installed a handover. Matched on the subject because that is
-# what the convention has actually been for sixteen of them.
-HANDOVER = re.compile(r"^(final_\d+|install(ing)?\b.*handover|.*handover.*install)",
-                      re.I)
+# what the convention has actually been. It used to want "install" beside
+# "handover", which held for the final_N rounds and then quietly stopped: from
+# October the subjects read "Handover u: Restoration rebuilt" and "The
+# handover of 2 October (n)", fifty-six of them, and the files only those
+# delivered fell out of the export. The availability strip, the Estate's
+# facility tiles and the drawings went missing from the 9 October snapshot,
+# and nothing said so. Any subject naming a handover now counts; NEVER below
+# still keeps the code and the suite out of it.
+HANDOVER = re.compile(r"^(final_\d+|.*handover)", re.I)
 
 # Never handed out, whatever history says a handover once touched. app.py is
 # the other agent's and the owner's; the suite is what catches a bad handover,
