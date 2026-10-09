@@ -1,95 +1,47 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Management{% endblock %}
+{% block title %}All settings{% endblock %}
 {% block content %}
 
 <div class="page-head">
-  <h1>Management</h1>
+  <h1>All settings</h1>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Settings and permanent records — the things you set once and refer back to.
-  Money is under <a href="{{ url_for('management_financials') }}">Financial</a>,
-  guest email under <a href="{{ url_for('admin_emails') }}">Comms</a>,
-  and the restaurant under <a href="{{ url_for('admin_restaurant') }}">Restaurant</a>.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">Every place something is set once and
+  referred back to, grouped by what it is about. Money day to day is under
+  <a href="{{ url_for('management_financials') }}">Financial</a>.</p>
 
-{# No period control here on purpose: Management holds records, not activity, so
-   a day/week/month switch would move the arrows without moving the numbers.
-   This band answers "what has run out or is about to". The month's money now
-   lives in Financial, one click away in the first card below. #}
+{# No period control here on purpose: these are settings and records, not
+   activity, so a day/week/month switch would move the arrows without moving
+   the numbers. This band answers "what has run out or is about to". #}
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 <p class="upload-hint" style="margin:-12px 0 20px;">
   {{ current_financials.month.strftime('%B') }} so far: {{ current_financials.revenue|money(0) }} in,
   {{ current_financials.expenses_total|money(0) }} out,
-  <strong{% if current_financials.net < 0 %} style="color:var(--danger);"{% endif %}>{{ '−' if current_financials.net < 0 }}{{ (current_financials.net|abs)|money(0) }} net</strong> —
+  <strong{% if current_financials.net < 0 %} style="color:var(--danger);"{% endif %}>{{ current_financials.net|money(0) }} net</strong> —
   <a href="{{ url_for('management_financials') }}">full financials</a>
 </p>
 
+{# Where a card can say how things stand, it does; otherwise it says what is
+   set there. #}
+{% set live = {
+  'management_company_info': ('Registration, VAT, accountant, broker · ' ~ insurance_count ~ ' polic' ~ ('y' if insurance_count == 1 else 'ies')) if company_info_set else 'Not filled in yet',
+  'management_documents': doc_count ~ ' document' ~ ('' if doc_count == 1 else 's') ~ ' — certificates, registration, scans',
+  'vendors': vendor_count ~ ' supplier' ~ ('' if vendor_count == 1 else 's') ~ ' on file',
+  'management_vault': (vault_count ~ ' saved login' ~ ('' if vault_count == 1 else 's')) if vault_enabled else 'Not set up yet — needs VAULT_ENCRYPTION_KEY',
+  'management_social': social_scheduled_count ~ ' post' ~ ('' if social_scheduled_count == 1 else 's') ~ ' scheduled or drafted; the figures the posts may quote',
+} %}
 
-<h2 class="section-heading">Marketing</h2>
+{% for group, group_icon, entries in places %}
+<h2 class="section-heading">{{ group }}</h2>
 <div class="card-grid">
-  <a href="{{ url_for('management_social') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-steel">{{ icon('megaphone', 20) }}</div>
-    <div class="action-title">Social Media Schedule</div>
-    <div class="action-sub">{{ social_scheduled_count }} post{{ '' if social_scheduled_count == 1 else 's' }} scheduled or drafted</div>
+  {% for endpoint, title, what in entries %}
+  <a href="{{ url_for(endpoint) }}" class="action-card">
+    <div class="action-card-icon action-card-icon-steel">{{ icon(group_icon, 20) }}</div>
+    <div class="action-title">{{ title }}</div>
+    <div class="action-sub">{{ live.get(endpoint, what) }}</div>
   </a>
-  <a href="{{ url_for('admin_promo_codes') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-steel">{{ icon('receipt', 20) }}</div>
-    <div class="action-title">Promo Codes</div>
-    <div class="action-sub">Discount codes for room, dinner, and workshop bookings</div>
-  </a>
-  <a href="{{ url_for('admin_deposit_rules') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-steel">{{ icon('financial', 20) }}</div>
-    <div class="action-title">Deposit Rules</div>
-    <div class="action-sub">Vary the deposit percentage by date range or party size — restaurant and workshops</div>
-  </a>
+  {% endfor %}
 </div>
-
-<h2 class="section-heading">Automation</h2>
-<div class="card-grid">
-  <a href="{{ url_for('admin_automation') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-steel">{{ icon('repeat', 20) }}</div>
-    <div class="action-title">Automation</div>
-    <div class="action-sub">Background jobs: daily digest, iCal sync, balance reminders, waitlist auto-notify</div>
-  </a>
-  <a href="{{ url_for('admin_outlook_addin') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-steel">{{ icon('eye', 20) }}</div>
-    <div class="action-title">Outlook Add-in</div>
-    <div class="action-sub">See a guest's bookings inside Outlook when you open their email</div>
-  </a>
-</div>
-
-<h2 class="section-heading">The company</h2>
-<div class="card-grid">
-  <a href="{{ url_for('management_company_info') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-steel">{{ icon('building', 20) }}</div>
-    <div class="action-title">Company &amp; Insurance</div>
-    <div class="action-sub">{% if company_info_set %}Registration, VAT, accountant, broker · {{ insurance_count }} polic{{ 'y' if insurance_count == 1 else 'ies' }}{% else %}Not filled in yet{% endif %}</div>
-  </a>
-  <a href="{{ url_for('vendors') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-steel">{{ icon('truck', 20) }}</div>
-    <div class="action-title">Vendors</div>
-    <div class="action-sub">{{ vendor_count }} supplier{{ '' if vendor_count == 1 else 's' }} on file</div>
-  </a>
-  <a href="{{ url_for('management_documents') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-steel">{{ icon('folder', 20) }}</div>
-    <div class="action-title">Documents</div>
-    <div class="action-sub">{{ doc_count }} company document{{ '' if doc_count == 1 else 's' }} — certificates, registration, scans</div>
-  </a>
-</div>
-
-<h2 class="section-heading">Access</h2>
-<div class="card-grid">
-  <a href="{{ url_for('management_vault') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-success">{{ icon('lock', 20) }}</div>
-    <div class="action-title">Vault</div>
-    <div class="action-sub">
-      {% if not vault_enabled %}Not set up yet — needs VAULT_ENCRYPTION_KEY{% else %}{{ vault_count }} saved login{{ '' if vault_count == 1 else 's' }}{% endif %}
-    </div>
-  </a>
-  <a href="{{ url_for('audit_log') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-success">{{ icon('approvals', 20) }}</div>
-    <div class="action-title">Audit Log</div>
-    <div class="action-sub">Who changed, deleted, or revealed something sensitive — and when</div>
-  </a>
-</div>
+{% endfor %}
 
 {% endblock %}

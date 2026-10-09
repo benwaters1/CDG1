@@ -448,6 +448,7 @@ SUITES = [
     "test_one_money_spelling",
     "test_one_window_control",
     "test_menu_groups",
+    "test_settings_hub",
 ]
 
 

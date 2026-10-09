@@ -23155,7 +23155,6 @@ def money_due(conn, weeks=12, today=None):
     return {
         "today": today, "end": end, "weeks": weeks_out,
         "total": round(sum(b["total"] for b in weeks_out), 2),
-        "next_week": weeks_out[0] if weeks_out else None,
         "csv": [{"week": b["week"].isoformat(), "date": i["date"], "who": i["who"],
                  "what": i["what"], "amount": i["amount"]}
                 for b in weeks_out for i in b["items"]],
@@ -62375,6 +62374,72 @@ def export_guests_csv():
 # see the VAULT_ENCRYPTION_KEY comment near the top of the file.
 # ---------------------------------------------------------------------------
 
+# EVERY PLACE A SETTING LIVES, for All settings. The page said "everything
+# the owner can set, in one place" and held eleven cards; the restaurant's
+# settings, wages, leave, card fees, the terms, the review link, the channels'
+# commission and a dozen more were each on their own page and nowhere here.
+# test_settings_hub reads the source for every route that saves a setting and
+# fails if the page its form is on is missing from this list.
+#
+# (group, icon, [(endpoint, title, what is set there)])
+SETTINGS_PLACES = [
+    ("The house", "building", [
+        ("management_company_info", "Company & insurance",
+         "Registration, VAT number, accountant, broker, and the policies"),
+        ("admin_terms", "Terms and conditions", "What a guest agrees to when they book"),
+        ("management_documents", "Documents", "Certificates, registration, scans"),
+        ("vendors", "Suppliers", "Who the house buys from"),
+        ("admin_readiness", "Go-live checklist", "What is still to set before guests book here"),
+    ]),
+    ("Who can open what", "lock", [
+        ("admin_access_levels", "Access levels", "What each member of the team can see and do"),
+        ("management_vault", "Vault", "Logins the house keeps, encrypted"),
+        ("audit_log", "Audit log", "Who changed, deleted or revealed something sensitive"),
+    ]),
+    ("Writing to guests", "megaphone", [
+        ("admin_automation", "Automation and Write to guests",
+         "What runs by itself, and the one switch that holds every letter and text"),
+        ("management_email_templates", "Email wording", "What every letter the house sends says"),
+        ("management_texting", "Texts", "The check-in text, and what texting costs"),
+        ("admin_inbox_flags", "Inboxes", "Who answers each inbox, and when it is chased"),
+        ("admin_feedback", "Review link", "Where a guest who enjoyed it is sent to say so"),
+        ("management_social", "Social media", "The schedule, and the figures the posts may quote"),
+        ("admin_outlook_addin", "Outlook add-in", "A guest's bookings beside their email"),
+    ]),
+    ("Rooms and bookings", "rooms", [
+        ("admin_rooms", "Rooms and rates", "Each room, its price, its calendars, its dates off sale"),
+        ("admin_deposit_rules", "Deposits", "How much is taken up front, and when the rest is due"),
+        ("admin_promo_codes", "Promo codes", "Discount codes for rooms, dinners and ateliers"),
+        ("management_channels", "Channels", "What Booking.com and the others take"),
+        ("management_booking_com", "Booking.com messages", "Which mailbox their messages arrive in"),
+    ]),
+    ("Restaurant", "restaurant", [
+        ("admin_restaurant_settings", "Restaurant", "Online reservations, capacity, price per person"),
+        ("admin_dining_tables", "Tables", "The floor plan the till and reservations share"),
+        ("admin_terminal", "Card reader", "Which reader the till sends payments to"),
+    ]),
+    ("Events and ateliers", "calendar", [
+        ("admin_events", "Events", "The kinds of event the house takes, and their terms"),
+    ]),
+    ("Money", "financial", [
+        ("admin_tax", "Tax", "VAT rates and the tourist tax"),
+        ("management_payment_cost", "Card fees", "What each way of being paid costs the house"),
+        ("money_ahead_page", "What is in the bank, and wages",
+         "The two figures Money ahead cannot know by itself"),
+        ("admin_pennylane", "Pennylane", "Which of the accountant's codes each income and cost lands on"),
+    ]),
+    ("Team", "employee", [
+        ("admin_wages", "Wages", "Employer contributions and what a month of wages costs"),
+        ("admin_leave", "Leave", "How leave is earned, and when the year starts"),
+    ]),
+    ("The website", "folder", [
+        ("admin_images", "Site photographs", "The photographs on the public pages"),
+        ("admin_gallery", "Public gallery", "What the gallery shows"),
+        ("admin_photo_mirror", "Copies of the photographs", "The house's own copy of every image"),
+    ]),
+]
+
+
 @app.route("/management")
 @owner_required
 def management():
@@ -62392,7 +62457,6 @@ def management():
         conn, today.replace(day=1),
         date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1),
     )
-    restaurant_settings = get_restaurant_settings(conn)
     social_scheduled_count = conn.execute(
         "SELECT COUNT(*) AS c FROM social_posts WHERE status IN ('drafted', 'scheduled')"
     ).fetchone()["c"]
@@ -62402,7 +62466,7 @@ def management():
         insurance_count=insurance_count,
         company_info_set=company_info_set, current_financials=current_financials, vendor_count=vendor_count,
         social_scheduled_count=social_scheduled_count,
-        overview=overview, period=period,
+        overview=overview, period=period, places=SETTINGS_PLACES,
     )
 
 
