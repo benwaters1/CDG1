@@ -3,6 +3,15 @@
 {% block title %}Recurring Costs{% endblock %}
 {% block content %}
 
+<div class="page-head">
+  <h1>Recurring Costs</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('export_recurring_costs_csv') }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Software subscriptions, utilities, insurance premiums — the fixed costs that are easy to forget about between renewals.</p>
+
 {# A standing cost with no supplier behind it cannot be chased, questioned or
    reconciled against an invoice — it is a number leaving the account every
    month with nobody's name on it. #}
@@ -16,15 +25,6 @@
     invoice, and the supplier to be asked about it.</span>
 </div>
 {% endif %}
-
-<div class="page-head">
-  <h1>Recurring Costs</h1>
-  <div style="display:flex; gap:10px; align-items:center;">
-    <a href="{{ url_for('export_recurring_costs_csv') }}" class="btn-mini">Export CSV</a>
-    <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
-  </div>
-</div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Software subscriptions, utilities, insurance premiums — the fixed costs that are easy to forget about between renewals.</p>
 
 <div class="stat-tiles">
   <div class="stat-tile">

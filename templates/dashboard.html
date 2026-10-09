@@ -3,18 +3,6 @@
 {% block title %}Home{% endblock %}
 {% block content %}
 
-{# Annual reviews falling due. Worked out on every dashboard load and shown
-   nowhere, so the one HR obligation with a date on it was invisible on the
-   page it was computed for. #}
-{% if reviews_due %}
-<div class="pass-short" style="margin-bottom:12px;">
-  <strong>{{ reviews_due|length }} performance review{{ '' if reviews_due|length == 1 else 's' }} due</strong>
-  <span class="pass-short-row">
-    {% for r in reviews_due %}{{ r['name'] }}{% if not loop.last %} · {% endif %}{% endfor %}
-  </span>
-</div>
-{% endif %}
-
 <div class="page-head">
   <h1>{% if user['role'] == 'owner' %}Welcome back{% else %}Welcome, {{ user['name'].split(' ')[0] }}{% endif %}</h1>
   {% if user['role'] == 'owner' %}
@@ -42,6 +30,18 @@
   <span class="upload-hint">{{ my_week_hours }}h this week · {{ my_month_hours }}h this month</span>
   {% endif %}
 </div>
+
+{# Annual reviews falling due. Worked out on every dashboard load and shown
+   nowhere, so the one HR obligation with a date on it was invisible on the
+   page it was computed for. #}
+{% if reviews_due %}
+<div class="pass-short" style="margin-bottom:12px;">
+  <strong>{{ reviews_due|length }} performance review{{ '' if reviews_due|length == 1 else 's' }} due</strong>
+  <span class="pass-short-row">
+    {% for r in reviews_due %}{{ r['name'] }}{% if not loop.last %} · {% endif %}{% endfor %}
+  </span>
+</div>
+{% endif %}
 
 {% if announcements_current %}
 <div class="announcement-list" style="margin-bottom:22px;">

@@ -4,17 +4,6 @@
 {% block content %}
 
 {% set g = record.guest %}
-{% if restriction and restriction['restricted_at'] %}
-<p class="flash flash-error">They asked us to stop using their details
-  {{ restriction['restricted_at']|house_day|date_short }} &mdash; {{ restriction['restricted_how'] }}{% if restriction['by_name'] %}, written down by {{ restriction['by_name'] }}{% endif %}.
-  Nothing is sent to them now but what their bookings need.</p>
-{% endif %}
-{% if merged_into %}
-<p class="flash flash-error">This profile was merged into
-  <a href="{{ url_for('guest_detail', guest_id=merged_into['id']) }}">{{ merged_into['name'] }}</a>.
-  Everything it held is on theirs; anything written here now is not.</p>
-{% endif %}
-
 <div class="page-head">
   <h1>
     {{ g['name'] }}
@@ -30,6 +19,17 @@
     {% endif %}
   </div>
 </div>
+
+{% if restriction and restriction['restricted_at'] %}
+<p class="flash flash-error">They asked us to stop using their details
+  {{ restriction['restricted_at']|house_day|date_short }} &mdash; {{ restriction['restricted_how'] }}{% if restriction['by_name'] %}, written down by {{ restriction['by_name'] }}{% endif %}.
+  Nothing is sent to them now but what their bookings need.</p>
+{% endif %}
+{% if merged_into %}
+<p class="flash flash-error">This profile was merged into
+  <a href="{{ url_for('guest_detail', guest_id=merged_into['id']) }}">{{ merged_into['name'] }}</a>.
+  Everything it held is on theirs; anything written here now is not.</p>
+{% endif %}
 
 {# The words the house has put on them, to find them again. #}
 {% if guest_tags or can('tag_guest') %}

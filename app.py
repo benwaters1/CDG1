@@ -9589,6 +9589,12 @@ def log_audit(conn, action, target=None, details=None, via=None, *, actor=ACTOR_
     if actor is ACTOR_SIGNED_IN:
         user = current_user()
         actor = user["id"] if user else None
+    # Never the word "None". A value turned into a string before it arrived --
+    # str() of an id that was missing -- came in as the four letters, and the
+    # audit log printed "None" as the thing that was acted on. Kept as nothing,
+    # which is what it was.
+    target = None if target is None or str(target).strip() in ("", "None") else target
+    details = None if details is None or str(details).strip() in ("", "None") else details
     if via:
         details = f"{details} — via {via}" if details else f"via {via}"
     conn.execute(

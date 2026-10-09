@@ -116,6 +116,7 @@ class _Page(HTMLParser):
         self.facets = []
         self._facet = None
         self._chip = None
+        self._last = ""
 
     def _classes(self, a):
         return (a.get("class") or "").split()
@@ -188,7 +189,9 @@ class _Page(HTMLParser):
         if any(t in ("script", "style", "template", "textarea", "option") for t, _c, _i in self.stack):
             return
         if text == "None":
-            self.none_text.append(self.stack[-1][0] if self.stack else "?")
+            self.none_text.append(f"a {self.stack[-1][0] if self.stack else '?'}"
+                                  f" after “{self._last[-50:]}”")
+        self._last = text
         if self.first is None:
             # The flashes and the (hidden) push prompt come from base.html,
             # above every page's content, and are not the page's first words.
@@ -301,10 +304,24 @@ def run():
     boxes = [f"{url} ({', '.join(p.none_boxes)})" for _ep, url, p in parsed if p.none_boxes]
     s.check("no box on any page is filled with the word None", not boxes,
             detail="; ".join(boxes))
-    text = [f"{url} (in a {', '.join(sorted(set(p.none_text)))})"
+    text = [f"{url} ({'; '.join(sorted(set(p.none_text))[:3])})"
             for _ep, url, p in parsed if p.none_text]
     s.check("and no page says None where a value should be", not text,
             detail="; ".join(text))
+
+    conn = db()
+    try:
+        with m.app.test_request_context("/"):
+            m.log_audit(conn, TAG.lower() + "_none", target=str(None), details="None")
+        row = conn.execute("SELECT target, details FROM audit_log WHERE action = ?",
+                           (TAG.lower() + "_none",)).fetchone()
+        s.check("and the audit log does not keep the word None as what was acted on",
+                row is not None and row["target"] is None and row["details"] is None,
+                detail=str(dict(row)) if row else "not written")
+    finally:
+        conn.execute("DELETE FROM audit_log WHERE action = ?", (TAG.lower() + "_none",))
+        conn.commit()
+        conn.close()
 
     s.section("No chip twice in one row")
     s.check("a classification keeps the first place a name appears and drops the repeat",
@@ -386,6 +403,21 @@ def run():
         css = fh.read()
     s.check("and `wraps` sets the text flowing normally",
             re.search(r"\.manual-body\.wraps\s*\{[^}]*white-space\s*:\s*normal", css) is not None)
+    first = []
+    for name, src in _template_sources():
+        if '{% extends "base.html" %}' not in src or '<div class="page-head"' not in src:
+            continue
+        opened = src.find("{% block content %}")
+        before = src[opened:src.index('<div class="page-head"')] if opened >= 0 else ""
+        # What prints nothing: comments, macros (defined here, drawn later),
+        # and the tags that only set things up.
+        before = re.sub(r"\{#.*?#\}", "", before, flags=re.S)
+        before = re.sub(r"\{%-?\s*macro\b.*?\{%-?\s*endmacro\s*-?%\}", "", before, flags=re.S)
+        if re.search(r"<[a-zA-Z]", before):
+            first.append(name)
+    s.check("and in the templates, nothing is drawn before a page's title -- a "
+            "warning that only appears with data is still in the wrong place",
+            not first, detail=", ".join(first))
     stranded = []
     for name, src in _template_sources():
         if "{% extends" not in src or "{% endblock %}" not in src:

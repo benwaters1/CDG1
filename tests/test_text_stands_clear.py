@@ -85,6 +85,20 @@ PROBE = r"""
     if (el.closest('details:not([open])') && !el.closest('summary')) return false;
     return !fixedUp(el);
   }
+  // What of a line is actually on screen: a box that hides its overflow --
+  // the calendar clamps a long task title to three lines -- still reports
+  // the hidden lines where they would have been, over the next chip.
+  function clipped(el, r) {
+    var box = {left: r.left, right: r.right, top: r.top, bottom: r.bottom};
+    for (var e = el; e && e !== document.documentElement; e = e.parentElement) {
+      var cs = getComputedStyle(e);
+      if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+      var c = e.getBoundingClientRect();
+      if (cs.overflowX !== 'visible') { box.left = Math.max(box.left, c.left); box.right = Math.min(box.right, c.right); }
+      if (cs.overflowY !== 'visible') { box.top = Math.max(box.top, c.top); box.bottom = Math.min(box.bottom, c.bottom); }
+    }
+    return (box.right - box.left >= 2 && box.bottom - box.top >= 2) ? box : null;
+  }
   function ov(a, b) {
     return Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 &&
            Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2;
@@ -107,7 +121,8 @@ PROBE = r"""
       if (!p || p.closest('script,style,option,select,textarea,[hidden]') || !seen(p)) continue;
       var rg = document.createRange(); rg.selectNodeContents(n);
       [].forEach.call(rg.getClientRects(), function (r) {
-        if (r.width >= 2 && r.height >= 2) texts.push({node: n, el: p, r: r});
+        var shown = (r.width >= 2 && r.height >= 2) ? clipped(p, r) : null;
+        if (shown) texts.push({node: n, el: p, r: shown});
       });
     }
     texts.forEach(function (t) {
@@ -154,7 +169,14 @@ PROBE = r"""
 
 
 def _queue_row(conn):
-    """Something waiting on the owner, so the home page's queue has a row to lay out."""
+    """Something waiting on the owner, so the home page's queue has a row to lay
+    out -- and something in stock, so each atelier draws its materials form,
+    whose note printed behind its button. Without these the two pages are
+    measured only when an earlier suite happened to leave them, which is a
+    check that passes or fails on the order the suites ran in."""
+    conn.execute("""INSERT INTO stock_items (name, category, unit, active, created_at)
+                    VALUES (?, 'other', 'each', 1, ?)""",
+                 (TAG + " Aprons", _harness.datetime_now()))
     conn.execute(
         """INSERT INTO expenses (kind, vendor_name, description, amount, status, submitted_at)
            VALUES ('supplier_invoice', ?, 'Roofing materials, north tower', 3400, 'pending', ?)""",
@@ -164,6 +186,7 @@ def _queue_row(conn):
 
 def _cleanup(conn):
     conn.execute("DELETE FROM expenses WHERE vendor_name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM stock_items WHERE name LIKE ?", (TAG + "%",))
     conn.commit()
 
 
@@ -203,11 +226,18 @@ def run():
     _cleanup(conn)
     try:
         _queue_row(conn)
-        pages = [(ep, url, html) for ep, url, html in sweep.owner_pages(oc) if ep != "dashboard"]
+        fresh = {"dashboard": "/", "admin_workshops": "/admin/workshops"}
+        pages = [(ep, url, html) for ep, url, html in sweep.owner_pages(oc)
+                 if ep not in fresh]
         home = oc.get("/")
         s.check("the owner home renders with something waiting on it",
                 home.status_code == 200 and TAG in home.get_data(as_text=True), home)
         pages.append(("dashboard", "/", home.get_data(as_text=True)))
+        ateliers = oc.get("/admin/workshops")
+        s.check("the ateliers page renders with something in stock to use",
+                ateliers.status_code == 200 and TAG + " Aprons" in ateliers.get_data(as_text=True),
+                ateliers)
+        pages.append(("admin_workshops", "/admin/workshops", ateliers.get_data(as_text=True)))
     finally:
         _cleanup(conn)
         conn.close()
