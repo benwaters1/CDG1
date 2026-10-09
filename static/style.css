@@ -938,6 +938,28 @@ body.staff-shell .manual-section h3{ color:var(--ivory); font-family:'Inter',san
    Requests drew a blank band inside every card. test_owner_pages_read_cleanly
    finds any manual-body whose source spans lines without this. */
 .manual-body.wraps{ white-space:normal; }
+
+/* The automation page: one row per job, the switch and what it does on the
+   left, how it last went and Run now on the right; one column on a phone. */
+.auto-row{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,15rem); gap:8px 18px;
+  padding:12px 0; border-top:1px solid var(--parchment-line); }
+.auto-row.is-off .auto-label{ color:var(--ink-soft); }
+.auto-switch{ margin:0; }
+.auto-label{ font-weight:600; }
+.auto-reach{ display:flex; flex-wrap:wrap; gap:5px; margin:5px 0 0 25px; }
+.auto-what{ margin:5px 0 0 25px; }
+.auto-fields{ display:flex; flex-wrap:wrap; gap:10px 16px; margin:8px 0 0 25px; }
+.auto-fields > div{ flex:0 1 11rem; }
+.auto-routing{ margin:8px 0 0 25px; }
+.auto-route{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; margin-top:6px; }
+.auto-route .field-label{ flex:1 1 14rem; margin:0; }
+.auto-route select{ flex:0 1 14rem; }
+.auto-status{ display:flex; flex-direction:column; align-items:flex-start; gap:4px; font-size:12.5px; }
+.auto-savebar{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin:6px 0 24px; }
+@media (max-width:720px){
+  .auto-row{ grid-template-columns:minmax(0,1fr); }
+  .auto-status{ margin-left:25px; }
+}
 .manual-edit-form textarea{ min-height:140px; margin-bottom:10px; }
 .new-section-form{ display:flex; gap:8px; align-items:center; }
 .new-section-form input{ flex:1; }

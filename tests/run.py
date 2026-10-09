@@ -441,6 +441,8 @@ SUITES = [
     "test_owner_pages_read_cleanly",
     "test_text_stands_clear",
     "test_one_list_of_tables",
+    "test_automation_page",
+    "test_held_email_list",
 ]
 
 

@@ -52,16 +52,18 @@ def run():
     s.check("none is written out twice", not twice,
             detail=("two switches for: " + ", ".join(twice)) if twice else "")
 
-    s.section("The hand-written list matches what the page actually has")
-    # The constant exists so the generated block knows what to skip. When
-    # it drifts from the template, a job either appears twice or not at
-    # all — and typing it from the ROUTE's dict rather than the template is
-    # exactly how two jobs came to have no switch.
+    s.section("The page is drawn from one list, and the list is what is on it")
+    # There was a hand-written set of the switches the template wrote out by
+    # itself, so the generated block knew what to skip -- and it drifted, as
+    # every list beside the real one does. The page is now drawn entirely
+    # from AUTOMATION_SWITCHES; test_automation_page holds what each entry
+    # says, and this holds that the page shows exactly the list.
     on_page = set(re.findall(r'name="(automation_[a-z_]+_enabled)"', body))
-    claimed = set(m.AUTOMATION_EXPLAINED_ON_PAGE)
-    s.check("nothing is claimed as hand-written that is not there",
-            not (claimed - on_page),
-            detail=str(sorted(claimed - on_page)))
+    listed = {e["key"] for e in m.AUTOMATION_SWITCHES}
+    s.check("every switch on the list is on the page, and nothing else is",
+            on_page == listed,
+            detail=f"listed, not shown {sorted(listed - on_page)}; "
+                   f"shown, not listed {sorted(on_page - listed)}")
 
     s.section("Saving does not switch anything off by accident")
     # The live bug. Posting the form with a job's box ticked must leave it
@@ -70,7 +72,9 @@ def run():
     # And what is put back afterwards is EVERY switch, not every job. The empty POST below turns off everything
     # the form carries, and five of those are settings with no scheduled job
     # behind them -- waitlist auto-notify, the three balance reminders, the
-    # stale-shift alert. Restoring only the registry left those five off for
+    # stale-shift alert. (Two of the reminders, room and event, were not on
+    # the form at all until 9 October 2026; test_automation_page holds that
+    # every switch is.) Restoring only the registry left those five off for
     # the rest of the run, and the check below could not see it because it
     # compared the same list it had restored.
     conn = db()

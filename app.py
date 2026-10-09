@@ -24969,32 +24969,172 @@ def add_email_optout():
     return redirect(url_for("admin_emails"))
 
 
+def held_reason_words(reason):
+    """Why a letter is waiting, as the chip says it."""
+    said = (reason or "").lower()
+    if "not writing to guests" in said:
+        return "Writing to guests is off"
+    if "no email provider" in said:
+        return "Email is not connected"
+    if "reject" in said or "refused" in said:
+        return "The provider refused it"
+    return (reason or "Not recorded").capitalize()
+
+
+HELD_REASONS = ["Writing to guests is off", "Email is not connected",
+                "The provider refused it"]
+HELD_AGES = ["This week", "Older, still sendable", "Too old to send by itself"]
+
+
+def held_mail_list_view(conn, args):
+    """Held Email as a list: who each letter is for, why it is waiting, how old.
+
+    It was the one long list in the house with none of the controls the rest
+    have -- two hundred rows drawn at once, the same reason printed on every
+    one, and no way to see only the letters to guests, which is the question
+    the Write to guests switch makes worth asking.
+    """
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM email_outbox WHERE sent_at IS NULL "
+        "ORDER BY created_at DESC, id DESC").fetchall()]
+    logged = {}
+    ids = [r["id"] for r in rows]
+    for n in range(0, len(ids), 400):
+        chunk = ids[n:n + 400]
+        for line in conn.execute(
+                f"""SELECT outbox_id, template_key, about_category, kept FROM mail_log
+                     WHERE outbox_id IN ({','.join('?' * len(chunk))})
+                     ORDER BY id""", chunk).fetchall():
+            logged.setdefault(line["outbox_id"], line)
+    labels = {key: label for key, label, _s, _b in DEFAULT_EMAIL_TEMPLATES}
+    audience = mail_audience_reader(conn)
+    week_ago = 7
+    for r in rows:
+        line = logged.get(r["id"])
+        r["audience"] = audience(r["to_address"], line["kept"] if line else None,
+                                 line["about_category"] if line else None)
+        r["letter"] = (labels.get(line["template_key"]) if line and line["template_key"]
+                       else "A letter of the house's own" if line
+                       else "From before the mail log")
+        r["why"] = held_reason_words(r["reason"])
+        r["age"] = held_mail_age_days(r)
+        r["stale"] = held_mail_stale(r)
+        r["age_band"] = ("Too old to send by itself" if r["stale"]
+                         else "This week" if r["age"] is not None and r["age"] < week_ago
+                         else "Older, still sendable")
+        r["when"] = local_datetime_str(r["created_at"])
+    return list_view(
+        rows, args,
+        search=["to_address", "subject", "letter", "why", "last_error"],
+        search_hint="Search who it is to, the subject, what kind of letter",
+        facets=[
+            facet("to", "To", lambda r: r["audience"], order=MAIL_AUDIENCES),
+            facet("why", "Waiting because", lambda r: r["why"], order=HELD_REASONS),
+            facet("age", "Age", lambda r: r["age_band"], order=HELD_AGES),
+            facet("letter", "Letter", lambda r: r["letter"], limit=12),
+        ],
+        sorts=[
+            sort_option("recent", "Newest first",
+                        lambda r: (r["created_at"] or "", r["id"]), reverse=True),
+            sort_option("oldest", "Oldest first", lambda r: (r["created_at"] or "", r["id"])),
+            sort_option("to", "By who it is to",
+                        lambda r: ((r["to_address"] or "").lower(), r["created_at"] or "")),
+        ],
+        default_sort="recent",
+    )
+
+
 @app.route("/admin/email-outbox")
 @owner_required
 def admin_email_outbox():
     """Mail that never went out, and the way to send it once it can."""
     conn = get_db()
-    waiting = conn.execute(
-        """SELECT * FROM email_outbox WHERE sent_at IS NULL
-           ORDER BY created_at DESC LIMIT 200""").fetchall()
-    waiting_total = conn.execute(
-        "SELECT COUNT(*) AS c FROM email_outbox WHERE sent_at IS NULL").fetchone()["c"]
+    lv = list_page(held_mail_list_view(conn, request.args), request.args)
     recovered = conn.execute(
         """SELECT * FROM email_outbox WHERE sent_at IS NOT NULL
            ORDER BY sent_at DESC LIMIT 25""").fetchall()
+    sent_later = conn.execute(
+        "SELECT COUNT(*) AS c FROM email_outbox WHERE sent_at IS NOT NULL").fetchone()["c"]
     sendable_rows, stale_rows = held_mail_split(conn)
-    stale_total = len(stale_rows)
     conn.close()
-    # The age is worked out once, here, rather than in the template: the page
-    # shows it, the button counts on it, and two spellings of one idea is how
-    # the last figure of this kind drifted.
-    waiting = [dict(r, stale=held_mail_stale(r), age=held_mail_age_days(r))
-               for r in map(dict, waiting)]
+    stale_total = len(stale_rows)
+    live = guest_mail_live()
+    by_switch = sum(1 for r in sendable_rows + stale_rows
+                    if "not writing to guests" in (r["reason"] or "").lower())
+    overview = [
+        overview_cell("Waiting", lv["total"], alert=bool(lv["total"])),
+        overview_cell("Held by the switch", by_switch,
+                      hint="Write to guests is off" if not live else "the switch is on"),
+        overview_cell("Too old to send by itself", stale_total, alert=bool(stale_total),
+                      hint=f"over {EMAIL_OUTBOX_STALE_DAYS} days"),
+        overview_cell("Sent later", sent_later, hint="from here, after waiting"),
+    ]
     return render_template(
-        "admin_email_outbox.html", waiting=waiting, waiting_total=waiting_total,
+        "admin_email_outbox.html", lv=lv, rows=lv["rows"], overview=overview,
         stale_total=stale_total, stale_days=EMAIL_OUTBOX_STALE_DAYS,
-        sendable_total=len(sendable_rows),
+        sendable_total=len(sendable_rows), by_switch=by_switch, guest_mail_live=live,
         recovered=recovered, can_send=email_enabled() or resend_enabled())
+
+
+def send_held_letter(conn, row):
+    """Send one held letter now, and mark everything that said it had not gone.
+
+    THE one way a held letter is sent: the batch, the single Send and the
+    ticked ones all come through here, so what a send records cannot differ
+    by which button was pressed. Commits per letter, so a failure part-way
+    through leaves the ones already sent marked as sent -- a retry that lost
+    track would deliver the same confirmation twice.
+    """
+    # keep=False: this row IS the queue entry. Re-queueing on failure
+    # would add a duplicate every time the owner pressed the button.
+    why = {}
+    ok = send_email(row["to_address"], row["subject"], row["body"],
+                    row["ics_content"], row["ics_filename"], keep=False, report=why,
+                    log=False,
+                    despite_switch="a held letter somebody chose to send from Held Email")
+    now = datetime.now(timezone.utc).isoformat()
+    if ok:
+        conn.execute(
+            "UPDATE email_outbox SET sent_at = ?, attempts = attempts + 1 WHERE id = ?",
+            (now, row["id"]))
+        # The record of the letter said it did not go; now it has. Left
+        # alone, a confirmation held one morning and sent that afternoon
+        # read "did not go" on the guest's record forever.
+        conn.execute(
+            """UPDATE guest_messages SET delivered = 1, delivered_at = ?, failure = NULL
+                WHERE outbox_id = ?""", (now, row["id"]))
+        # And its line in the mail log: held that morning, sent now.
+        conn.execute(
+            """UPDATE mail_log SET status = 'sent', delivered_at = ?, failure = NULL
+                WHERE outbox_id = ?""", (now, row["id"]))
+    else:
+        # WHY, not "retry failed": that overwrote the reason the provider
+        # gave with a phrase that says only that it happened again.
+        conn.execute(
+            "UPDATE email_outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?",
+            (why.get("why") or "retry failed", row["id"]))
+        conn.execute("UPDATE mail_log SET failure = ? WHERE outbox_id = ? AND status = 'held'",
+                     (why.get("why") or "retry failed", row["id"]))
+    conn.commit()
+    return ok
+
+
+def discard_held_letters(conn, rows, audit_action, details):
+    """Take held letters out of the queue, for good, and say so everywhere.
+
+    THE one way they are discarded -- one, the stale ones, or the ticked ones
+    -- so the guest's copy and the mail log line are marked withdrawn whichever
+    button did it. Named in the audit by count and kind rather than by
+    address: this is mail nobody is going to read, and writing the addresses
+    into the audit log to record throwing them away keeps what is being thrown.
+    """
+    ids = [r["id"] for r in rows]
+    conn.executemany("DELETE FROM email_outbox WHERE id = ?", [(i,) for i in ids])
+    mark_letters_withdrawn(conn, ids)
+    log_audit(conn, audit_action, target="held letters" if len(ids) != 1 else "a held letter",
+              details=details)
+    conn.commit()
+    return len(ids)
 
 
 @app.route("/admin/email-outbox/send", methods=["POST"])
@@ -25038,40 +25178,12 @@ def send_email_outbox():
 
     sent = failed = 0
     for row in rows:
-        # keep=False: this row IS the queue entry. Re-queueing on failure
-        # would add a duplicate every time the owner pressed the button.
-        why = {}
-        ok = send_email(row["to_address"], row["subject"], row["body"],
-                        row["ics_content"], row["ics_filename"], keep=False, report=why,
-                        log=False)
-        now = datetime.now(timezone.utc).isoformat()
-        if ok:
+        if send_held_letter(conn, row):
             sent += 1
-            conn.execute(
-                "UPDATE email_outbox SET sent_at = ?, attempts = attempts + 1 WHERE id = ?",
-                (now, row["id"]))
-            # The record of the letter said it did not go; now it has. Left
-            # alone, a confirmation held one morning and sent that afternoon
-            # read "did not go" on the guest's record forever.
-            conn.execute(
-                """UPDATE guest_messages SET delivered = 1, delivered_at = ?, failure = NULL
-                    WHERE outbox_id = ?""", (now, row["id"]))
-            # And its line in the mail log: held that morning, sent now.
-            conn.execute(
-                """UPDATE mail_log SET status = 'sent', delivered_at = ?, failure = NULL
-                    WHERE outbox_id = ?""", (now, row["id"]))
         else:
             failed += 1
             skipped.append((f"{row['subject'] or 'no subject'} to "
                             f"{row['to_address']}", "the provider refused it"))
-            # WHY, not "retry failed": that overwrote the reason the provider
-            # gave with a phrase that says only that it happened again.
-            conn.execute(
-                "UPDATE email_outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?",
-                (why.get("why") or "retry failed", row["id"]))
-            conn.execute("UPDATE mail_log SET failure = ? WHERE outbox_id = ? AND status = 'held'",
-                         (why.get("why") or "retry failed", row["id"]))
-        conn.commit()
     if sent:
         log_audit(conn, "email_outbox_sent", details=f"{sent} sent, {failed} failed")
         conn.commit()
@@ -25148,7 +25260,7 @@ def test_email_provider():
     sender = ("Resend, from %s" % RESEND_FROM) if resend_enabled() \
         else ("SMTP via %s" % SMTP_HOST)
     went = send_email(to, "Test — the email provider is working", body,
-                      keep=False, report=report)
+                      keep=False, report=report, despite_switch="a test sent to yourself")
     why = report.get("why")
     if MAIL_REDIRECT_TO:
         sender += ", redirected to %s" % MAIL_REDIRECT_TO
@@ -25219,12 +25331,8 @@ def discard_stale_email_outbox():
         return redirect(url_for("admin_email_outbox"))
 
     oldest = max(held_mail_age_days(r) or 0 for r in stale)
-    conn.executemany("DELETE FROM email_outbox WHERE id = ?",
-                     [(r["id"],) for r in stale])
-    mark_letters_withdrawn(conn, [r["id"] for r in stale])
-    log_audit(conn, "email_outbox_discarded_stale", None,
-              f"{len(stale)} message(s), up to {oldest} days old")
-    conn.commit()
+    discard_held_letters(conn, stale, "email_outbox_discarded_stale",
+                         f"{len(stale)} message(s), up to {oldest} days old")
     conn.close()
     flash(f"Discarded {len(stale)} message"
           f"{'' if len(stale) == 1 else 's'} too old to send, "
@@ -25236,18 +25344,65 @@ def discard_stale_email_outbox():
 @owner_required
 def discard_email_outbox(outbox_id):
     conn = get_db()
-    row = conn.execute("SELECT to_address, subject FROM email_outbox WHERE id = ?",
+    row = conn.execute("SELECT id, to_address, subject FROM email_outbox WHERE id = ?",
                        (outbox_id,)).fetchone()
-    conn.execute("DELETE FROM email_outbox WHERE id = ?", (outbox_id,))
-    mark_letters_withdrawn(conn, [outbox_id])
     if row:
         # The letter, not the address it was for: this trail outlives an erasure.
-        log_audit(conn, "email_outbox_discarded", target="a held letter",
-                  details=row["subject"])
-    conn.commit()
+        discard_held_letters(conn, [row], "email_outbox_discarded", row["subject"])
     conn.close()
     flash("Discarded — that message will not be sent.", "success")
     return redirect(url_for("admin_email_outbox"))
+
+
+@app.route("/admin/email-outbox/ticked", methods=["POST"])
+@owner_required
+def held_email_ticked():
+    """Send, or discard, the letters ticked on the page.
+
+    The same action as the button on each row, done for each ticked one --
+    send_held_letter and discard_held_letters are what both call -- and it
+    says what it did not do. A ticked letter that has gone since the page
+    was drawn (sent by the batch, discarded in another tab) is named as
+    such rather than counted as done.
+
+    A ticked letter that is too old to send by itself IS sent: ticking it is
+    somebody choosing it, exactly as the single Send is.
+    """
+    action = request.form.get("action", "")
+    ids = sorted({int(i) for i in request.form.getlist("ids") if i.isdigit()})
+    if action not in ("send", "discard"):
+        flash("Choose whether to send or discard the ticked letters.", "error")
+        return redirect(url_for("admin_email_outbox"))
+    if action == "send" and not (email_enabled() or resend_enabled()):
+        flash("No email provider is configured yet, so there is nothing to send with.",
+              "error")
+        return redirect(url_for("admin_email_outbox"))
+    conn = get_db()
+    found = {r["id"]: r for r in conn.execute(
+        f"SELECT * FROM email_outbox WHERE sent_at IS NULL AND id IN "
+        f"({','.join('?' * len(ids)) or 'NULL'})", ids).fetchall()} if ids else {}
+    skipped = [(f"letter #{i}", "it is no longer waiting") for i in ids if i not in found]
+    rows = [found[i] for i in ids if i in found]
+    if action == "discard":
+        done = discard_held_letters(conn, rows, "email_outbox_discarded",
+                                    f"{len(rows)} ticked") if rows else 0
+        conn.close()
+        message, category = bulk_message("Discarded", "letter", done, skipped)
+    else:
+        sent = 0
+        for row in rows:
+            if send_held_letter(conn, row):
+                sent += 1
+            else:
+                skipped.append((f"{row['subject'] or 'no subject'} to {row['to_address']}",
+                                "the provider refused it"))
+        if sent:
+            log_audit(conn, "email_outbox_sent", details=f"{sent} ticked and sent")
+            conn.commit()
+        conn.close()
+        message, category = bulk_message("Sent", "letter", sent, skipped)
+    flash(message, category)
+    return redirect(url_for("admin_email_outbox", **{k: v for k, v in request.args.items()}))
 
 
 @app.route("/admin/reports")
@@ -26232,12 +26387,21 @@ def keep_guest_message(to_address, subject, body, channel="email", delivered=Fal
 
 def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                keep=True, html=None, report=None, area=None, about=None,
-               template_key=None, sent_by=None, log=True):
+               template_key=None, sent_by=None, log=True, despite_switch=None):
     """Send one message, and if it cannot go out, keep it.
 
-    `keep=False` for anything whose body is itself a credential — a password
-    reset or a staff invitation. Those are short-lived by design, so a retry
-    days later is useless, and storing one leaves a working key in a table.
+    `keep=False` for anything that must not be queued: a credential -- a
+    password reset, a guest's link to their bookings -- because storing one
+    leaves a working key in a table; and a message only true now, like "a room
+    has come free", because delivered a month late it is false.
+
+    `despite_switch` is the REASON a letter goes while Write to guests is off,
+    and the only way one does. keep=False used to be the exemption, which was
+    two different things under one flag: the password reset that must go, and
+    the waitlist offers that were never meant to be exempt -- three of them
+    reached guests with the house switched off. Now an exemption is asked for
+    by name, with why, at the call site: a credential, a test somebody sends
+    to themselves, a held letter somebody chose to send by hand.
 
     Every letter leaves a line in the mail log, `keep=False` ones included --
     that it went, never what it said. `log=False` only for the outbox sending
@@ -26289,12 +26453,21 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     # nothing was lost. Credentials are exempt: keep=False is a password reset
     # or a staff invitation, short-lived by design and addressed to the
     # house's own people, and holding one locks somebody out.
-    if keep and writes_outside_the_house(to_address) and not guest_mail_live():
+    if (writes_outside_the_house(to_address) and not guest_mail_live()
+            and not despite_switch):
         why = "the house is not writing to guests yet"
         print(f"[email held — {why}] To: {to_address} | Subject: {subject}")
         if report is not None:
             report["why"] = ("Writing to guests is switched off until the house "
                              "goes live.")
+        if not keep:
+            # Only true now, so not queued: the same answer as having no
+            # provider at all. The waitlist callers already read False as
+            # "not reached" and leave the entry for the owner to work by hand.
+            if log:
+                keep_guest_message(to_address, subject, None, not_kept=True,
+                                   failure=why, **filed)
+            return False
         outbox_id = queue_undelivered(to_address, subject, body, ics_content,
                                       ics_filename, why)
         keep_guest_message(to_address, subject, body, outbox_id=outbox_id,
@@ -28744,6 +28917,8 @@ def forgot_password():
                 f"If you didn't ask for this you can ignore it — nothing has "
                 f"changed.\n\n— Château de Gudanes",
                 keep=False,   # the body IS the credential; never queue it
+                despite_switch="a password reset code is a key; held, it locks "
+                               "somebody out",
             )
         # Carried so the address does not have to be retyped on the next page.
         # A convenience and nothing else: the code authorises the change, and
@@ -47533,6 +47708,22 @@ def send_sms(conn, raw_number, body, purpose="transactional", hold=True,
     number, refusal = can_text(conn, raw_number, purpose)
     if refusal:
         return False, refusal
+    # WRITE TO GUESTS, here as at send_email. Every text the house sends goes
+    # to a guest -- the arrival and departure notes, a waitlist offer -- and
+    # the switch held only letters: the day a texting provider was connected,
+    # the texts would have gone with the switch saying the house was not
+    # writing to guests. Held, as a letter is; a message only true now
+    # (hold=False) is not kept, as with no provider at all.
+    if not guest_mail_live():
+        if not hold:
+            return False, ("writing to guests is switched off, and this message "
+                           "would be stale later")
+        conn.execute(
+            """INSERT INTO sms_outbox (phone, body, purpose, reason, created_at,
+               channel) VALUES (?, ?, ?, 'the house is not writing to guests yet', ?, ?)""",
+            (number, body, purpose, datetime.now(timezone.utc).isoformat(), channel))
+        file_guest_text(conn, number, body, delivered=False, channel=channel)
+        return False, None          # held, not refused
     # Asked of the channel this message is actually going on. Gating on
     # sms_enabled() alone would hold every message in a house that had set up
     # WhatsApp and no SMS sender -- which is a likely shape here, since the
@@ -54377,7 +54568,8 @@ def send_new_link(conn, to, name, link_for, link):
     why = {}
     # keep=False: the letter IS the key. Queued, or copied onto their record,
     # it would be a working way in, sitting in a table.
-    if send_email(to, subject, body, html=letter, keep=False, report=why):
+    if send_email(to, subject, body, html=letter, keep=False, report=why,
+                  despite_switch="the letter is the key to their bookings"):
         return True, None
     return False, why.get("why") or "it could not be sent"
 
@@ -76358,7 +76550,8 @@ def test_email_template(template_key):
         to, "[Test] " + draft["subject"],
         f"This is a test of “{label}”, filled in with a made-up stay. "
         f"No guest has been sent it.\n\n" + draft["body"],
-        html=draft["html"] or None, keep=False, report=report)
+        html=draft["html"] or None, keep=False, report=report,
+        despite_switch="a test sent to yourself")
     conn = get_db()
     log_audit(conn, "email_template_tested", target=template_key)
     conn.commit()
@@ -77167,6 +77360,36 @@ def record_history_page(kind, record_id):
 # The mail log: every letter the house sends.
 # ---------------------------------------------------------------------------
 
+def mail_audience_reader(conn):
+    """A function saying who a letter is for: a guest, the house, a colleague
+    or somebody else.
+
+    One reading, shared by the mail log and Held Email, because the two
+    disagreeing about whether a letter went to a guest is the one disagreement
+    the Write to guests switch cannot afford. The rules and their history are
+    in mail_log_list_view, where they were first written.
+    """
+    house = {a.strip().lower() for a in list(PUBLIC_CONTACT.values()) + list(MS_GRAPH_MAILBOXES)
+             + [owner_email(conn) or ""] if a and a.strip()}
+    staff = {(r["email"] or "").strip().lower() for r in conn.execute(
+        "SELECT email FROM users WHERE role != 'owner' AND email IS NOT NULL").fetchall()}
+    profiles = _profile_ids_by_address(conn)
+
+    def audience(address, kept=None, about_category=None):
+        address = (address or "").strip().lower()
+        return ("A guest" if (kept == "correspondence" or address in profiles)
+                else "The house" if (address in house
+                                     or not writes_outside_the_house(address))
+                else "A colleague" if address in staff
+                else "A guest" if about_category else "Somebody else")
+
+    audience.profiles = profiles
+    return audience
+
+
+MAIL_AUDIENCES = ["A guest", "The house", "A colleague", "Somebody else"]
+
+
 def mail_log_list_view(conn, args):
     """The mail log as the page and its export both see it."""
     rows = [dict(r) for r in conn.execute(
@@ -77176,11 +77399,8 @@ def mail_log_list_view(conn, args):
              LEFT JOIN email_outbox ON email_outbox.id = mail_log.outbox_id
             ORDER BY mail_log.created_at DESC, mail_log.id DESC""").fetchall()]
     labels = {key: label for key, label, _s, _b in DEFAULT_EMAIL_TEMPLATES}
-    house = {a.strip().lower() for a in list(PUBLIC_CONTACT.values()) + list(MS_GRAPH_MAILBOXES)
-             + [owner_email(conn) or ""] if a and a.strip()}
-    staff = {(r["email"] or "").strip().lower() for r in conn.execute(
-        "SELECT email FROM users WHERE role != 'owner' AND email IS NOT NULL").fetchall()}
-    profiles = _profile_ids_by_address(conn)
+    audience = mail_audience_reader(conn)
+    profiles = audience.profiles
     refs = {}
     for category, table in (("room", "bookings"), ("workshop", "workshop_bookings"),
                             ("event", "event_inquiries"), ("restaurant", "restaurant_bookings")):
@@ -77203,11 +77423,7 @@ def mail_log_list_view(conn, args):
         # today -- which filed twelve notes to the owner under "Somebody else"
         # the day the house moved from owner@ to accounts@, and would do it
         # again for every inbox it ever retires.
-        r["audience"] = ("A guest" if (r["kept"] == "correspondence" or address in profiles)
-                         else "The house" if (address in house
-                                              or not writes_outside_the_house(address))
-                         else "A colleague" if address in staff
-                         else "A guest" if r["about_category"] else "Somebody else")
+        r["audience"] = audience(address, r["kept"], r["about_category"])
         r["guest_id"] = profiles.get(address)
         # A letter held and sent later is sent, and says when.
         if r["status"] == "held" and r["resent_at"]:
@@ -77229,8 +77445,7 @@ def mail_log_list_view(conn, args):
         facets=[
             facet("status", "Status", lambda r: r["status_words"],
                   order=["Sent", "Held", "Did not go", "Thrown away"]),
-            facet("to", "To", lambda r: r["audience"],
-                  order=["A guest", "The house", "A colleague", "Somebody else"]),
+            facet("to", "To", lambda r: r["audience"], order=MAIL_AUDIENCES),
             facet("type", "Letter", lambda r: r["type"], limit=12),
             facet("when", "When", lambda r: r["period"],
                   order=["Today", "Last 7 days", "Last 30 days", "Older"]),
@@ -86229,72 +86444,274 @@ def automation_loop():
         time.sleep(AUTOMATION_TICK_SECONDS)
 
 
-# The toggles the automation page writes out by hand, each with its own
-# explanation. Everything else in AUTOMATION_JOBS is generated below them,
-# so a job registered tomorrow gets its switch the same day rather than
-# running unstoppably until somebody remembers this file.
+# ---------------------------------------------------------------------------
+# THE AUTOMATION PAGE, WRITTEN DOWN ONCE.
 #
-# Ten jobs were in exactly that state, including two that message guests
-# and one that deletes dietary and medical notes.
-AUTOMATION_EXPLAINED_ON_PAGE = {
-    "automation_backup_email_enabled",
-    "automation_daily_digest_enabled",
-    "automation_email_scan_enabled",
-    "automation_housekeeping_enabled",
-    "automation_ical_sync_enabled",
-    "automation_stale_shift_enabled",
-    "automation_waitlist_autonotify_enabled",
-    "automation_workshop_balance_reminder_enabled",
-    "automation_workshop_feedback_enabled",
+# Every switch the page shows, what it does in words, and WHO IT REACHES --
+# read from the code, not from the job's name. Until 9 October 2026 the page
+# was 29 switches in one list, half of them a bare label, and nothing said
+# which ones write to a guest; two attempts to list those from the labels
+# alone were both wrong, because the names do not say it. The privacy purge
+# ("delete dietary and medical notes") also lets waitlist offers lapse and
+# writes to the next guest waiting, by email and by text; the housekeeping
+# sweep declines an unanswered room request after 48 hours and the guest is
+# told. And two that write to guests -- the room and event balance reminders
+# -- were not on the page at all, so they could not be switched off.
+#
+# One entry per switch, grouped by who it reaches. test_automation_page reads
+# the code each entry runs and fails if an entry claims less than the code can
+# do -- a job that starts texting is red until its entry says so.
+#
+#   key      the app_settings switch
+#   job      the run it records under, for "last ran" and Run now; None for a
+#            behaviour that is not a scheduled job
+#   runs     the functions that do the work, which is what the test reads
+#   reaches  who it can write to or act on: guests, money, public, you, team
+#   fields   (setting, label, kind) for the numbers that go with it
+# ---------------------------------------------------------------------------
+
+AUTOMATION_GROUPS = [
+    ("guests", "Writes to guests",
+     "Each of these can send a guest an email or a text. While Write to guests is "
+     "off, what they write waits in Held Email; a waitlist offer, which would be "
+     "untrue by then, is not sent at all."),
+    ("money", "Takes money",
+     "Moves money with nobody present. Off until a test booking has been charged "
+     "end to end."),
+    ("public", "Publishes",
+     "Puts things where anybody can see them."),
+    ("house", "Writes to you and the team",
+     "Emails, notifications and tasks for the people who work here. Nothing here "
+     "reaches a guest."),
+    ("records", "Keeps things up to date",
+     "Fetches, files and tidies. Writes to nobody."),
+]
+
+AUTOMATION_REACH_WORDS = {
+    "guests": "Writes to guests",
+    "money": "Takes money",
+    "public": "Publishes",
+    "you": "Writes to you",
+    "team": "Writes to the team",
 }
 
+AUTOMATION_SWITCHES = [
+    # --- writes to guests ----------------------------------------------------
+    {"key": "automation_campaign_triggers_enabled", "job": "campaign_triggers",
+     "runs": ("run_campaign_triggers_job",), "group": "guests", "reaches": ("guests",),
+     "label": "Letters set to go around a stay",
+     "what": "Sends each letter you have set to go at a time around a stay or an "
+             "atelier — before arrival, after departure — once per guest."},
+    {"key": "automation_room_balance_reminder_enabled", "job": "room_balance_reminder",
+     "runs": ("run_room_balance_reminder_job",), "group": "guests", "reaches": ("guests",),
+     "label": "Room balance reminders",
+     "what": "Emails a guest who still owes on a stay, before they travel, once.",
+     "fields": (("automation_room_balance_reminder_days_before",
+                 "Days before it falls due", "days"),)},
+    {"key": "automation_workshop_balance_reminder_enabled", "job": "workshop_balance_reminder",
+     "runs": ("run_workshop_balance_reminder_job",), "group": "guests", "reaches": ("guests",),
+     "label": "Atelier balance reminders",
+     "what": "Emails an atelier guest once when their balance falls due soon and "
+             "is still unpaid.",
+     "fields": (("automation_workshop_balance_reminder_days_before",
+                 "Days before it falls due", "days"),)},
+    {"key": "automation_event_balance_reminder_enabled", "job": "event_balance_reminder",
+     "runs": ("run_event_balance_reminder_job",), "group": "guests", "reaches": ("guests",),
+     "label": "Event balance reminders",
+     "what": "Emails whoever booked an event before its balance falls due — longer "
+             "notice, because a wedding balance is usually a bank transfer.",
+     "fields": (("automation_event_balance_reminder_days_before",
+                 "Days before it falls due", "days"),)},
+    {"key": "automation_room_feedback_enabled", "job": "room_feedback_request",
+     "runs": ("run_room_feedback_job",), "group": "guests", "reaches": ("guests",),
+     "label": "Ask a room guest how it was",
+     "what": "Emails a guest after they leave, unless they already answered or asked "
+             "not to be written to."},
+    {"key": "automation_workshop_feedback_enabled", "job": "workshop_feedback_request",
+     "runs": ("run_workshop_feedback_request_job",), "group": "guests",
+     "reaches": ("guests",),
+     "label": "Ask an atelier guest how it was",
+     "what": "Emails each guest once, the day after their atelier ends."},
+    {"key": "automation_review_invitation_enabled", "job": "review_invitation",
+     "runs": ("run_review_invitation_job",), "group": "guests", "reaches": ("guests",),
+     "label": "Ask a delighted guest for a public review",
+     "what": "Emails only a guest whose answer was good, once, and nobody at all "
+             "until the review page is set."},
+    {"key": "automation_checkin_text_enabled", "job": "checkin_text",
+     "runs": ("run_checkin_text_job",), "group": "guests", "reaches": ("guests",),
+     "label": "Text a guest the day before they arrive",
+     "what": "How to find the house and what to expect — by text, or WhatsApp where "
+             "it is set up. Nothing until a texting service is connected."},
+    {"key": "automation_checkout_text_enabled", "job": "checkout_text",
+     "runs": ("run_checkout_text_job",), "group": "guests", "reaches": ("guests",),
+     "label": "Text a guest the day they leave",
+     "what": "Check-out time and a link to their bill. Nothing until a texting "
+             "service is connected."},
+    {"key": "automation_waitlist_autonotify_enabled", "job": None,
+     "runs": ("notify_room_waitlist_opening", "notify_restaurant_waitlist_opening",
+              "notify_workshop_waitlist_opening"),
+     "group": "guests", "reaches": ("guests",),
+     "label": "Offer a freed place to whoever is waiting",
+     "what": "When a room, a table or an atelier place is declined or cancelled, "
+             "writes to the next person waiting for it — by email, and for a room "
+             "by text — instead of leaving it to you."},
+    {"key": "automation_housekeeping_enabled", "job": "housekeeping",
+     "runs": ("run_housekeeping_job",), "group": "guests", "reaches": ("guests", "you"),
+     "label": "Housekeeping",
+     "what": "Every ten minutes: tells you about room requests still waiting for an "
+             "answer; declines any unpaid request nobody answered within "
+             "{decline_hours} hours, and the guest is emailed that it was declined; "
+             "and lays out the checklist for arrivals in the next {prep_days} days."},
+    {"key": "automation_health_notes_purge_enabled", "job": "health_notes_purge",
+     "runs": ("run_health_notes_purge_job",), "group": "guests",
+     "reaches": ("guests", "you"),
+     "label": "Clear out what the privacy notice promises to delete",
+     "what": "Daily: deletes dietary and medical notes once an event is over, dead "
+             "enquiries after twelve months, and the rest the notice lists. It also "
+             "lets lapsed event holds and waitlist offers go — telling you when an "
+             "event hold lapses, and offering a room to the next guest waiting, by "
+             "email and text. Off, the privacy notice stops being true.",
+     "warn_off": "The privacy notice says this happens. Off, it is not true."},
 
-AUTOMATION_JOB_LABELS = {
-    "weather": "What it is doing at the château",
-    "exchange_rates": "What a euro is worth, for the price converter",
-    "housekeeping": "Housekeeping (expire stale bookings, prep arrivals)",
-    "page_translation": "Translate new public-page text into French and Spanish",
-    "booking_com_mail": "Read Booking.com's email into the site",
-    "door_lock_check": "Check the front door lock can be reached",
-    "daily_digest": "Daily owner digest email",
-    "workshop_autocharge": "Workshop: charge the balance on its due date",
-    "balance_due_notice": "Workshop: tell the owner when balances fall due (once each)",
-    "workshop_decision": "Workshop: it will not reach the number it needs to run (once when the date is in sight, once if it passes)",
-    "ical_sync": "iCal sync",
-    "social_publish": "Put out approved posts whose time has come",
-    "meta_token": "Ask Meta about the Instagram token, and make it one that lasts",
-    "workshop_balance_reminder": "Workshop balance-due reminders",
-    "room_balance_reminder": "Room balance-due reminders (before the guest travels)",
-    "event_balance_reminder": "Event balance-due reminders (a wedding balance is a bank transfer, not a tap)",
-    "workshop_feedback_request": "Workshop feedback requests",
-    "review_invitation": "Ask a delighted guest for a public review (nobody else)",
-    "email_inbox_scan": "Inbox scan (unanswered + pricing/availability flags)",
-    "stale_shift_cleanup": "Stale shift cleanup (forgot to clock out)",
-    "hr_escalation": "HR chase-ups (overdue approvals, reviews, certificates)",
-    "campaign_triggers": "Automated guest emails (before arrival, after departure)",
-    "backup_email": "Automated backup email (database + uploads, to the owner)",
-    "social_schedule": "Social schedule (turn plans into dated posts and tasks)",
-    "maintenance": "Estate upkeep (raise tasks for work falling due)",
-    "photo_mirror": "Keep our own copy of the site's photographs "
-                    "(so the château stops depending on an account it no longer publishes from)",
-    "watch_tasks": "Blocking findings (raise a task, and close it when it stops being true)",
-    "card_details": "Name the card behind each card payment (its brand and last four, for statements)",
-    # Runnable but unlabelled until now, so it never appeared here at all —
-    # the one job whose whole purpose is a promise made in the privacy notice.
-    "health_notes_purge": "Delete dietary and medical notes once the event is over",
-    # Four that were written to run unattended and only ever ran from a
-    # button, so on a cron none of them fired.
-    "morning_digest": "The morning note (who is coming, who is going, what needs looking at)",
-    "room_feedback_request": "Ask a room guest how their stay was",
-    "checkin_text": "Text a guest the day before they arrive",
-    "checkout_text": "Text a guest the day they leave",
-}
+    # --- takes money ---------------------------------------------------------
+    {"key": "automation_workshop_autocharge_enabled", "job": "workshop_autocharge",
+     "runs": ("run_workshop_autocharge_job",), "group": "money",
+     "reaches": ("money", "guests", "you"),
+     "label": "Charge atelier balances on the day they fall due",
+     "what": "Takes what is still owed from the card a guest saved, once, on the "
+             "due date. If the card is refused, the guest is emailed what to do; if Stripe's answer is unclear, a task asks you to check before it is tried again. "
+             "Run by hand from Balances to collect, where you see who and how much "
+             "first."},
+
+    # --- publishes -----------------------------------------------------------
+    {"key": "automation_social_publish_enabled", "job": "social_publish",
+     "runs": ("run_social_publish_job",), "group": "public", "reaches": ("public",),
+     "label": "Put out approved posts",
+     "what": "Publishes to the house's Instagram and Facebook every post somebody "
+             "approved whose time has come. Nothing unapproved, nothing undated."},
+    {"key": "automation_meta_token_enabled", "job": "meta_token",
+     "runs": ("run_meta_token_job",), "group": "public", "reaches": (),
+     "label": "Keep the Instagram connection alive",
+     "what": "Daily: asks Meta about the access token and swaps it for one that "
+             "lasts. Publishes nothing."},
+
+    # --- writes to you and the team ------------------------------------------
+    {"key": "automation_daily_digest_enabled", "job": "daily_digest",
+     "runs": ("run_daily_digest_job",), "group": "house", "reaches": ("you",),
+     "label": "Daily summary",
+     "what": "Emails you what needs your attention — the home page's list — about "
+             "every {digest_hours} hours."},
+    {"key": "automation_morning_digest_enabled", "job": "morning_digest",
+     "runs": ("run_morning_digest_job",), "group": "house", "reaches": ("you",),
+     "label": "The morning note",
+     "what": "Emails you early who is coming, who is going and what needs looking "
+             "at, unless there is nothing in it."},
+    {"key": "automation_backup_email_enabled", "job": "backup_email",
+     "runs": ("run_backup_email_job",), "group": "house", "reaches": ("you",),
+     "label": "Backup by email",
+     "what": "Emails you a full backup — the database, documents and room photos -- "
+             "so a lost server is not the only copy. Just the database if the whole "
+             "thing is too big to email.",
+     "fields": (("automation_backup_interval_hours", "Every (hours)", "hours"),)},
+    {"key": "automation_balance_due_notice_enabled", "job": "balance_due_notice",
+     "runs": ("run_balance_due_notice_job",), "group": "house", "reaches": ("you",),
+     "label": "Tell me when atelier balances fall due",
+     "what": "Notifies you the morning a balance falls due, once each — balances "
+             "are taken by hand, so this is what collects them."},
+    {"key": "automation_workshop_decision_enabled", "job": "workshop_decision",
+     "runs": ("run_workshop_decision_job",), "group": "house", "reaches": ("you",),
+     "label": "Tell me when an atelier will not fill",
+     "what": "Notifies you once when a session is short of the number it needs as "
+             "its date comes into sight, and once more if the day to decide passes."},
+    {"key": "automation_hr_escalation_enabled", "job": "hr_escalation",
+     "runs": ("run_hr_escalation_job",), "group": "house", "reaches": ("team", "you"),
+     "label": "HR chase-ups",
+     "what": "Reminds whoever owes an HR action — an approval, a review, a "
+             "certificate — and tells you if it keeps waiting."},
+    {"key": "automation_stale_shift_enabled", "job": "stale_shift_cleanup",
+     "runs": ("run_stale_shift_cleanup_job",), "group": "house",
+     "reaches": ("team", "you"),
+     "label": "Close a shift nobody clocked out of",
+     "what": "Closes a shift left open too long and tells the person and you, so "
+             "the real time can be put in.",
+     "fields": (("automation_stale_shift_hours", "Close it after (hours)", "hours"),)},
+    {"key": "automation_email_scan_enabled", "job": "email_inbox_scan",
+     "runs": ("run_email_inbox_scan_job",), "group": "house", "reaches": ("you",),
+     "label": "Inbox flags",
+     "what": "Reads the connected mailbox for messages unanswered too long, or "
+             "quoting a price or date that does not match, and flags them for you. "
+             "Nothing until the mailbox is connected.",
+     "fields": (("automation_email_unanswered_hours", "Unanswered after (hours)",
+                 "hours"),
+                ("automation_email_scan_lookback_days", "Look back (days)", "days_back")),
+     "needs": "graph"},
+    {"key": "automation_booking_com_mail_enabled", "job": "booking_com_mail",
+     "runs": ("run_booking_com_mail_job",), "group": "house", "reaches": ("you",),
+     "label": "Read Booking.com's email into the site",
+     "what": "Every ten minutes, files what Booking.com sends and tells you when a "
+             "guest has written. Nothing until the mailbox is set."},
+    {"key": "automation_watch_tasks_enabled", "job": "watch_tasks",
+     "runs": ("run_watch_tasks_job",), "group": "house", "reaches": ("team", "you"),
+     "label": "Turn blocking findings into tasks",
+     "what": "Raises each blocking item from the home page as a task for whoever is "
+             "named below, and ticks it off when it stops being true.",
+     "routing": True},
+    {"key": "automation_maintenance_enabled", "job": "maintenance",
+     "runs": ("run_maintenance_job",), "group": "house", "reaches": ("team",),
+     "label": "Estate upkeep",
+     "what": "Raises a task when scheduled work — the chimney, the boiler, a "
+             "certificate — falls due."},
+    {"key": "automation_social_schedule_enabled", "job": "social_schedule",
+     "runs": ("run_social_schedule_job",), "group": "house", "reaches": ("team",),
+     "label": "Social schedule",
+     "what": "Turns standing plans into dated posts and a task for whoever writes "
+             "each, a month ahead. Publishes nothing."},
+
+    # --- keeps things up to date ---------------------------------------------
+    {"key": "automation_ical_sync_enabled", "job": "ical_sync",
+     "runs": ("run_ical_sync_job",), "group": "records", "reaches": (),
+     "label": "Calendar sync with Airbnb, Booking.com and VRBO",
+     "what": "Pulls in bookings from every connected calendar so nothing is sold "
+             "twice.",
+     "fields": (("automation_ical_sync_interval_hours", "Every (hours)", "hours"),)},
+    {"key": "automation_card_details_enabled", "job": "card_details",
+     "runs": ("run_card_details_job",), "group": "records", "reaches": (),
+     "label": "Name the card behind each payment",
+     "what": "Asks Stripe for a card payment's brand and last four, for statements."},
+    {"key": "automation_door_lock_check_enabled", "job": "door_lock_check",
+     "runs": ("run_door_lock_check_job",), "group": "records", "reaches": (),
+     "label": "Check the front door lock",
+     "what": "Every half hour, asks the lock whether it can be reached and how its "
+             "batteries are. Never opens it."},
+    {"key": "automation_photo_mirror_enabled", "job": "photo_mirror",
+     "runs": ("run_photo_mirror_job",), "group": "records", "reaches": (),
+     "label": "Keep the house's own copy of the site's photographs",
+     "what": "So the site stops depending on a Squarespace account it no longer "
+             "publishes from."},
+    {"key": "automation_page_translation_enabled", "job": "page_translation",
+     "runs": ("run_page_translation_job",), "group": "records", "reaches": (),
+     "label": "Translate new public-page text",
+     "what": "Into French and Spanish, only what guests have actually opened, using "
+             "Claude — a paid service, capped per run."},
+    {"key": "automation_weather_enabled", "job": "weather",
+     "runs": ("run_weather_job",), "group": "records", "reaches": (),
+     "label": "Weather at the château", "what": "Hourly, for the pages that show it."},
+    {"key": "automation_exchange_rates_enabled", "job": "exchange_rates",
+     "runs": ("run_exchange_rate_job",), "group": "records", "reaches": (),
+     "label": "What a euro is worth", "what": "Daily, for the price converter."},
+]
+
+# The label each job is shown by, everywhere a job is named -- Job status, the
+# owner home's "stopped working" line. Read from the page's own list so the two
+# cannot disagree.
+AUTOMATION_JOB_LABELS = {e["job"]: e["label"] for e in AUTOMATION_SWITCHES if e["job"]}
 
 
 @app.route("/admin/automation")
 @owner_required
 def admin_automation():
-    """The nightly jobs: whether each one ran, and how it went."""
+    """Everything the house does on its own: what each does, who it reaches,
+    and how it last went -- one row per job, grouped by who it reaches."""
     conn = get_db()
     settings = get_automation_settings(conn)
     last_runs = {r["job_name"]: r for r in conn.execute(
@@ -86302,96 +86719,93 @@ def admin_automation():
     employees = conn.execute(
         "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
     watch_routing = watch_task_assignees(conn)
+    # How much the Write to guests switch is holding, so it says what it is
+    # doing rather than only that it is on. A control whose effect is
+    # invisible is one somebody leaves on by accident.
+    held_by_switch = conn.execute(
+        "SELECT COUNT(*) AS n FROM email_outbox WHERE sent_at IS NULL "
+        "AND reason LIKE '%not writing to guests%'").fetchone()["n"]
+    held_texts = conn.execute(
+        "SELECT COUNT(*) AS n FROM sms_outbox WHERE sent_at IS NULL "
+        "AND reason LIKE '%not writing to guests%'").fetchone()["n"]
     conn.close()
-    # How many letters this has held, so the switch says what it is doing
-    # rather than only that it is on. A control whose effect is invisible is
-    # one somebody leaves on by accident.
-    held_by_switch = conn2 = None
-    try:
-        conn2 = get_db()
-        held_by_switch = conn2.execute(
-            "SELECT COUNT(*) AS n FROM email_outbox WHERE sent_at IS NULL "
-            "AND reason LIKE '%not writing to guests%'").fetchone()["n"]
-    except sqlite3.OperationalError:
-        held_by_switch = 0
-    finally:
-        if conn2 is not None:
-            conn2.close()
+
+    facts = {"decline_hours": STALE_PENDING_BOOKING_HOURS, "prep_days": ARRIVAL_PREP_DAYS,
+             "digest_hours": DIGEST_INTERVAL_HOURS}
+    groups, everything = [], []
+    for key, title, about in AUTOMATION_GROUPS:
+        entries = []
+        for e in AUTOMATION_SWITCHES:
+            if e["group"] != key:
+                continue
+            row = dict(e, on=settings.get(e["key"]) == "1",
+                       what=e["what"].format(**facts),
+                       run=last_runs.get(e["job"]) if e["job"] else None,
+                       reach_words=[AUTOMATION_REACH_WORDS[r] for r in e["reaches"]],
+                       fields=[(f, label, kind, settings.get(f))
+                               for f, label, kind in e.get("fields", ())])
+            entries.append(row)
+            everything.append(row)
+        groups.append({"key": key, "title": title, "about": about, "entries": entries,
+                       "on": sum(1 for x in entries if x["on"]),
+                       "anchor": title.lower().replace(" ", "-")})
+    live = guest_mail_live()
+    failing = [x for x in everything
+               if x["run"] and x["run"]["last_status"] and x["run"]["last_status"] != "ok"]
+    guest_writers = sum(1 for x in everything if "guests" in x["reaches"] and x["on"])
+    overview = [
+        overview_cell("Switched on", sum(1 for x in everything if x["on"]),
+                      hint=f"of {len(everything)}"),
+        overview_cell("Write to guests", "On" if live else "Off", alert=not live,
+                      hint=(f"{guest_writers} switches reach guests" if live
+                            else "letters and texts are held")),
+        overview_cell("Failed the last time", len(failing), alert=bool(failing),
+                      hint=", ".join(x["label"] for x in failing[:2]) or None),
+        overview_cell("Not run here yet",
+                      sum(1 for x in everything if x["job"] and not x["run"])),
+    ]
     return render_template(
-        "admin_automation.html", settings=settings, last_runs=last_runs, job_labels=AUTOMATION_JOB_LABELS,
-        guest_mail_live=guest_mail_live(), held_by_switch=held_by_switch,
-        # Anything in the registry the page does not write out by hand, so
-        # a job registered tomorrow gets its switch the same day instead of
-        # running unstoppably until somebody remembers to edit a template.
-        generated_jobs=[
-            (key, AUTOMATION_JOB_LABELS.get(name, name))
-            for name, key, _iv, _every, _fn in AUTOMATION_JOBS
-            if key and key not in AUTOMATION_EXPLAINED_ON_PAGE],
-        graph_enabled=graph_enabled(), employees=employees,
-        watch_kinds=WATCH_TASK_KINDS, watch_routing=watch_routing,
-    )
+        "admin_automation.html", groups=groups, overview=overview,
+        guest_mail_live=live, held_by_switch=held_by_switch, held_texts=held_texts,
+        guest_writers=guest_writers, graph_enabled=graph_enabled(), employees=employees,
+        watch_kinds=WATCH_TASK_KINDS, watch_routing=watch_routing)
 
 
 @app.route("/admin/automation/settings", methods=["POST"])
 @owner_required
 def update_automation_settings():
     conn = get_db()
-    # Every job in the registry, whether or not the page writes it out by
-    # hand. A checkbox that is not ticked sends nothing, so the default has
-    # to be the CURRENT value rather than "0" -- otherwise opening the page
-    # and saving would silently switch off everything not on it.
-    updates = {}
-    for _name, setting_key, _interval_key, _every, _fn in AUTOMATION_JOBS:
-        if not setting_key:
-            continue
-        updates[setting_key] = "1" if request.form.get(setting_key) else "0"
-    updates.update({
-        "automation_housekeeping_enabled": "1" if request.form.get("automation_housekeeping_enabled") else "0",
-        "automation_daily_digest_enabled": "1" if request.form.get("automation_daily_digest_enabled") else "0",
-        "automation_ical_sync_enabled": "1" if request.form.get("automation_ical_sync_enabled") else "0",
-        "automation_workshop_balance_reminder_enabled": "1" if request.form.get("automation_workshop_balance_reminder_enabled") else "0",
-        "automation_waitlist_autonotify_enabled": "1" if request.form.get("automation_waitlist_autonotify_enabled") else "0",
-        "automation_workshop_feedback_enabled": "1" if request.form.get("automation_workshop_feedback_enabled") else "0",
-        "automation_email_scan_enabled": "1" if request.form.get("automation_email_scan_enabled") else "0",
-        "automation_hr_escalation_enabled": "1" if request.form.get("automation_hr_escalation_enabled") else "0",
-        "automation_campaign_triggers_enabled": "1" if request.form.get("automation_campaign_triggers_enabled") else "0",
-        "automation_stale_shift_enabled": "1" if request.form.get("automation_stale_shift_enabled") else "0",
-        "automation_backup_email_enabled": "1" if request.form.get("automation_backup_email_enabled") else "0",
-        # Not a job: the one switch that holds every letter to anybody outside
-        # the house, whichever job wrote it.
-        "guest_mail_live": "1" if request.form.get("guest_mail_live") else "0",
-    })
-    interval_raw = request.form.get("automation_ical_sync_interval_hours", "").strip()
-    try:
-        updates["automation_ical_sync_interval_hours"] = str(max(1, float(interval_raw)))
-    except ValueError:
-        updates["automation_ical_sync_interval_hours"] = AUTOMATION_SETTING_DEFAULTS["automation_ical_sync_interval_hours"]
-    days_raw = request.form.get("automation_workshop_balance_reminder_days_before", "").strip()
-    updates["automation_workshop_balance_reminder_days_before"] = (
-        str(int(days_raw)) if days_raw.isdigit() else AUTOMATION_SETTING_DEFAULTS["automation_workshop_balance_reminder_days_before"]
-    )
-    unanswered_hours_raw = request.form.get("automation_email_unanswered_hours", "").strip()
-    try:
-        updates["automation_email_unanswered_hours"] = str(max(1, float(unanswered_hours_raw)))
-    except ValueError:
-        updates["automation_email_unanswered_hours"] = AUTOMATION_SETTING_DEFAULTS["automation_email_unanswered_hours"]
-    lookback_days_raw = request.form.get("automation_email_scan_lookback_days", "").strip()
-    updates["automation_email_scan_lookback_days"] = (
-        str(int(lookback_days_raw)) if lookback_days_raw.isdigit() else AUTOMATION_SETTING_DEFAULTS["automation_email_scan_lookback_days"]
-    )
-    stale_hours_raw = request.form.get("automation_stale_shift_hours", "").strip()
-    try:
-        updates["automation_stale_shift_hours"] = str(max(1, float(stale_hours_raw)))
-    except ValueError:
-        updates["automation_stale_shift_hours"] = AUTOMATION_SETTING_DEFAULTS["automation_stale_shift_hours"]
-    backup_interval_raw = request.form.get("automation_backup_interval_hours", "").strip()
-    try:
-        updates["automation_backup_interval_hours"] = str(max(1, float(backup_interval_raw)))
-    except ValueError:
-        updates["automation_backup_interval_hours"] = AUTOMATION_SETTING_DEFAULTS["automation_backup_interval_hours"]
+    current = get_automation_settings(conn)
+    # EVERY SWITCH ON THE PAGE, from the list the page is drawn from. This was a
+    # hand-typed dict beside the registry, and the two drifted twice: first
+    # ten jobs had no switch, then the room and event balance reminders --
+    # both writing to guests -- had none and were never saved. An unticked box
+    # sends nothing, so a switch the route did not know about was simply
+    # never switched off.
+    updates = {e["key"]: "1" if request.form.get(e["key"]) else "0"
+               for e in AUTOMATION_SWITCHES}
+    # Not a job: the one switch that holds every letter and text to anybody
+    # outside the house, whichever job wrote it.
+    updates["guest_mail_live"] = "1" if request.form.get("guest_mail_live") else "0"
+    # The numbers that go with them. Something that is not a number keeps what
+    # was there, rather than quietly becoming the shipped default.
+    for e in AUTOMATION_SWITCHES:
+        for field, _label, kind in e.get("fields", ()):
+            raw = (request.form.get(field) or "").strip()
+            try:
+                if kind == "hours":
+                    updates[field] = f"{max(1.0, float(raw)):g}"
+                else:
+                    updates[field] = str(max(1 if kind == "days_back" else 0, int(raw)))
+            except ValueError:
+                updates[field] = current.get(field) or AUTOMATION_SETTING_DEFAULTS[field]
 
+    # Upserted, not updated: a switch whose row was never seeded -- the room
+    # balance reminder was one -- would otherwise be saved nowhere.
     for key, value in updates.items():
-        conn.execute("UPDATE app_settings SET value = ? WHERE key = ?", (value, key))
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
 
     # Who each kind of blocking finding goes to. Upserted rather than updated:
     # these keys have no shipped default, because "nobody yet" is a real answer

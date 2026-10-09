@@ -155,13 +155,22 @@ def _shows_any(text, clock):
 
 
 def _job_row(body, label):
-    """The cells a person reads in one job's row of the Job status table."""
-    at = body.find(">Job status<")
-    table = body[at:body.find("</table>", at)] if at >= 0 else ""
-    for row in re.findall(r"<tr\b[^>]*>(.*?)</tr>", table, re.S):
-        cells = [visible_text(c) for c in re.findall(r"<td\b[^>]*>(.*?)</td>", row, re.S)]
-        if cells and cells[0] == label:
-            return cells
+    """What a person reads in one job's row on the automation page: its name,
+    when it last ran, and how it went.
+
+    The page had a separate Job status table, naming every job a second
+    time; each job's row now carries its own last run. Read by the row's
+    label, then its two status lines.
+    """
+    for row in re.findall(r'<div class="auto-row[^"]*"[^>]*>(.*?)(?=<div class="auto-row|</section>)',
+                          body, re.S):
+        name = re.search(r'<span class="auto-label">(.*?)</span>', row, re.S)
+        if not name or visible_text(name.group(1)) != label:
+            continue
+        ran = re.search(r'<span class="auto-when">(.*?)</span>', row, re.S)
+        how = re.search(r'<span class="auto-how">(.*?)</span>\s*<button', row, re.S)
+        return [label, visible_text(ran.group(1)) if ran else "",
+                visible_text(how.group(1)) if how else ""]
     return None
 
 

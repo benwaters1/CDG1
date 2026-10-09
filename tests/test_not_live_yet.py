@@ -24,13 +24,22 @@ WHAT HAS TO HOLD, and every one of these fails quietly:
   Treating the bare domain as a stranger would hold the owner's own post, and
   it would look exactly like the switch working.
 
-  CREDENTIALS STILL GO. A password reset or a staff invitation is keep=False,
-  short-lived by design and addressed to the house's own people. Holding one
-  locks somebody out and helps nobody.
+  CREDENTIALS STILL GO. A password reset, or a guest's link to their own
+  bookings, is a key: held, it locks somebody out and helps nobody. They go
+  because the call says so, by name and with why (despite_switch) -- NOT
+  because they are keep=False. That was the exemption until 9 October 2026,
+  and it let three things through that are not keys: the room, dinner and
+  atelier waitlist offers, which reached guests with the house switched off.
+
+  TEXTS WAIT TOO. Every text the house sends goes to a guest, and the switch
+  held only letters -- so the day a texting provider was connected, the
+  arrival and departure texts would have gone with the switch off.
 
   AND IT SAYS SO, LOUDLY. A global mute nobody notices is how a house silently
   stops confirming bookings. The switch names how many letters it is holding.
 """
+import re
+
 from _harness import Suite, clients, db
 import _harness
 
@@ -40,8 +49,13 @@ OUTSIDE = "zznl.guest@example.invalid"
 INSIDE = "accounts@chateaugudanes.com"
 
 
+PHONE = "+33612340099"
+
+
 def _cleanup():
     conn = db()
+    conn.execute("DELETE FROM sms_outbox WHERE body LIKE ?", ("ZZNL%",))
+    conn.execute("DELETE FROM guest_messages WHERE body LIKE ?", ("ZZNL%",))
     conn.execute("DELETE FROM email_outbox WHERE to_address LIKE ?", (TAG + ".%",))
     conn.execute("DELETE FROM guest_messages WHERE to_address LIKE ?", (TAG + ".%",))
     conn.execute("DELETE FROM email_outbox WHERE subject LIKE ?", ("ZZNL%",))
@@ -155,10 +169,69 @@ def run():
         s.section("And a credential still goes, because holding one locks somebody out")
         del sent[:]
         with m.app.test_request_context("/"):
-            m.send_email(OUTSIDE, "ZZNL password", "Your code.", keep=False)
+            m.send_email(OUTSIDE, "ZZNL password", "Your code.", keep=False,
+                         despite_switch="a password reset code is a key")
         s.check("a password reset is sent while the switch is off",
                 bool(sent) and sent[0]["subject"] == "ZZNL password",
-                detail="keep=False is short-lived by design and useless held")
+                detail="a key held is a person locked out")
+
+        s.section("But a message that is only true now is not a key")
+        # The waitlist offers are keep=False for a different reason -- "a room
+        # has come free" is false a month later -- and keep=False used to be
+        # the exemption, so all three reached guests with the switch off.
+        del sent[:]
+        with m.app.test_request_context("/"):
+            went = m.send_email(OUTSIDE, "ZZNL room free", "Your dates are free.",
+                                keep=False)
+        s.check("a waitlist offer does not reach a guest while the switch is off",
+                not sent and went is False, detail=str(sent))
+        s.check("and is not queued to arrive stale the day it goes back on",
+                _held("ZZNL room free") is None)
+        src = open("app.py", encoding="utf-8").read()
+        # Every call that asks for the exemption, and whether it wrote down
+        # why. The parameter's own default is not an ask.
+        asks = re.findall(r"despite_switch=(?!None\b)(\S)", src)
+        named = [a for a in asks if a in "\"'"]
+        s.check("every exemption says why, at the call that asks for it",
+                asks and len(named) == len(asks),
+                detail=f"{len(asks)} asked, {len(named)} with a reason written in")
+
+        s.section("Texts wait for the switch too")
+        texts = []
+        was_sms = (m.sms_enabled, m.sms_provider_send)
+        m.sms_enabled = lambda: True
+        m.sms_provider_send = (lambda number, body, channel="sms", template_id="",
+                               variables=None: (texts.append(body), (True, "SMzz"))[1])
+        try:
+            conn = db()
+            _switch(False)
+            went, refusal = m.send_sms(conn, PHONE, "ZZNL arriving tomorrow")
+            conn.commit()
+            s.check("an arrival text does not go while the switch is off",
+                    not texts and went is False and refusal is None,
+                    detail=f"sent {texts}, refusal {refusal!r}")
+            held = conn.execute("SELECT reason FROM sms_outbox WHERE body = ? "
+                                "AND sent_at IS NULL", ("ZZNL arriving tomorrow",)).fetchone()
+            s.check("it waits, with the switch named as why",
+                    held is not None and "not writing to guests" in (held["reason"] or ""),
+                    detail=repr(held["reason"] if held else None))
+            went, refusal = m.send_sms(conn, PHONE, "ZZNL a room is free", hold=False)
+            conn.commit()
+            s.check("a text only true now is neither sent nor kept",
+                    not texts and not went and "switched off" in (refusal or "")
+                    and conn.execute("SELECT 1 FROM sms_outbox WHERE body = ?",
+                                     ("ZZNL a room is free",)).fetchone() is None,
+                    detail=f"refusal {refusal!r}")
+            _switch(True)
+            went, refusal = m.send_sms(conn, PHONE, "ZZNL leaving tomorrow")
+            conn.commit()
+            s.check("and with the switch on, texts go as they did",
+                    went is True and texts == ["ZZNL leaving tomorrow"],
+                    detail=f"sent {texts}, refusal {refusal!r}")
+            conn.close()
+        finally:
+            m.sms_enabled, m.sms_provider_send = was_sms
+            _switch(False)
 
         s.section("The switch says what it is doing")
         page = oc.get("/admin/automation").get_data(as_text=True)
@@ -198,8 +271,12 @@ def run():
                        "an environment variable somebody set months ago")
         s.check("and it holds rather than drops",
                 "queue_undelivered(" in door.split("guest_mail_live()")[0][-600:]
-                or "queue_undelivered(" in door.split("not guest_mail_live()")[1][:600],
+                or "queue_undelivered(" in door.split("not guest_mail_live()")[1][:900],
                 detail="held, so going live loses nothing")
+        texting = src.split("def send_sms(")[1].split("\ndef ")[0]
+        s.check("and the door texts go through asks the same question",
+                "guest_mail_live()" in texting,
+                detail="a switch that holds letters and not texts is half a switch")
     finally:
         m.send_email_via_resend, m.resend_enabled = was_send, was_enabled
         conn = db()

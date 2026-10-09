@@ -6,231 +6,137 @@
   <h1>Automation</h1>
   <a href="{{ url_for('management') }}" class="btn-mini">Back to Management</a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Background jobs that run on their own — no need to keep the app open or set up an external cron service. Each one is safe to run more than once; running it manually below won't duplicate anything.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">Everything the house does on its own, grouped
+  by who it reaches. Each one is safe to run more than once: Run now never does anything twice.</p>
 
-<form method="post" action="{{ url_for('update_automation_settings') }}" class="detail-card" style="max-width:680px;">
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{# ONE FORM for every switch, so Save means all of them. Run now is a button in
+   the same form that posts to the job instead (formaction), because a form
+   cannot sit inside another and a row's controls belong together. #}
+<form method="post" action="{{ url_for('update_automation_settings') }}" id="automation-form">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-  {# ONE SWITCH, at the top, because the alternative was telling somebody to
-     find nine jobs in the list below and untick each -- which is tedious and
-     goes stale the moment a tenth is written. This is held in send_email, the
-     one door every letter goes through, so no job can escape it. #}
-  <div class="detail-card not-live {{ 'not-live--off' if not guest_mail_live }}"
-       style="margin:0 0 18px;">
+  {# ONE SWITCH for every letter and text to anybody outside the house, held
+     at the two doors they all go through -- send_email and send_sms -- so no
+     job escapes it, including one written next month. #}
+  <div class="detail-card not-live {{ 'not-live--off' if not guest_mail_live }}" style="margin:0 0 18px;">
     <label class="bc-tick" style="font-weight:600;">
       <input type="checkbox" name="guest_mail_live" {{ 'checked' if guest_mail_live }}>
       <span>Write to guests</span>
     </label>
     {% if guest_mail_live %}
-    <p class="upload-hint">On. Everything below that writes to a guest will
-      actually reach them. Untick this while you are still getting ready and
-      every letter to anybody outside the house waits in Held Email instead —
-      whichever job wrote it, including any added later.</p>
+    <p class="upload-hint">On. The {{ guest_writers }} switches under
+      <a href="#writes-to-guests">Writes to guests</a> reach real guests. Untick this
+      while you are still getting ready and every letter and text to anybody outside
+      the house waits instead, whichever job wrote it.</p>
     {% else %}
-    <p class="upload-hint"><strong>Off — nothing is being written to guests.</strong>
-      Letters to anybody outside the house are being held, not thrown away, so
+    <p class="upload-hint"><strong>Off &mdash; nothing is being written to guests.</strong>
+      Letters wait in Held Email and texts on the Texting page, not thrown away, so
       switching this back on sends nothing by surprise.
       {% if held_by_switch %}<a href="{{ url_for('admin_email_outbox') }}">{{ held_by_switch }}
       waiting because of this.</a>{% endif %}
-      Passwords and staff invitations still go.</p>
+      {% if held_texts %}<a href="{{ url_for('management_texting') }}">{{ held_texts }}
+      text{{ '' if held_texts == 1 else 's' }} waiting.</a>{% endif %}
+      A password reset, and a guest's own link to their bookings, still go: each is a key.</p>
     {% endif %}
   </div>
-  <div class="detail-grid" style="grid-template-columns:1fr; gap:16px;">
 
-    {% if generated_jobs %}
-    {# Written out from the registry rather than by hand. Ten jobs used to
-       run with no switch anywhere on this page -- two of them messaging
-       guests and one deleting dietary and medical notes -- because this
-       form was a hand-kept list beside a real one, and the real one grew.
-       Anything without its own explanation below appears here instead of
-       nowhere. #}
-    <div>
-      <p class="field-label">The rest of what runs</p>
-      {% for key, label in generated_jobs %}
-      <label style="display:flex; align-items:flex-start; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-bottom:6px;">
-        <input type="checkbox" name="{{ key }}" {{ 'checked' if settings[key] == '1' }}>
-        <span>{{ label }}</span>
-      </label>
-      {% endfor %}
+  {% for g in groups %}
+  <section class="detail-card auto-group" id="{{ g.anchor }}" style="margin-bottom:16px;">
+    <div class="page-head" style="margin-bottom:2px;">
+      <h2 class="section-heading" style="margin:0;">{{ g.title }}</h2>
+      <span class="upload-hint">{{ g.on }} of {{ g.entries|length }} on</span>
     </div>
-    {% endif %}
+    <p class="upload-hint" style="margin:0 0 10px;">{{ g.about }}</p>
 
-    <div>
-      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_housekeeping_enabled" {{ 'checked' if settings['automation_housekeeping_enabled'] == '1' }}>
-        Housekeeping sweep
-      </label>
-      <p class="upload-hint" style="margin-top:4px;">Auto-declines pending, unpaid room bookings the owner never acted on, and pre-generates the arrival-prep checklist for stays coming up in the next {{ windows.arrival_prep_days }} days — runs every few minutes.</p>
-    </div>
-
-    <div>
-      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_daily_digest_enabled" {{ 'checked' if settings['automation_daily_digest_enabled'] == '1' }}>
-        Daily owner digest email
-      </label>
-      <p class="upload-hint" style="margin-top:4px;">Sends the owner the same "what needs your attention" summary shown on the dashboard, roughly once every {{ windows.digest_interval_hours }} hours.</p>
-    </div>
-
-    <div>
-      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_ical_sync_enabled" {{ 'checked' if settings['automation_ical_sync_enabled'] == '1' }}>
-        iCal sync
-      </label>
-      <p class="upload-hint" style="margin-top:4px;">Pulls in bookings from every connected Airbnb/Booking.com/VRBO calendar so nothing double-books.</p>
-      <div style="margin-top:6px; max-width:220px;">
-        <label class="field-label">Sync interval (hours)</label>
-        <input type="number" name="automation_ical_sync_interval_hours" min="1" step="0.5" value="{{ settings['automation_ical_sync_interval_hours'] }}">
-      </div>
-    </div>
-
-    <div>
-      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_workshop_balance_reminder_enabled" {{ 'checked' if settings['automation_workshop_balance_reminder_enabled'] == '1' }}>
-        Workshop balance-due reminders
-      </label>
-      <p class="upload-hint" style="margin-top:4px;">Emails a confirmed workshop guest once, using the "Workshop: Balance due reminder" template, when their balance is due soon and still unpaid.</p>
-      <div style="margin-top:6px; max-width:220px;">
-        <label class="field-label">Days before due date</label>
-        <input type="number" name="automation_workshop_balance_reminder_days_before" min="1" value="{{ settings['automation_workshop_balance_reminder_days_before'] }}">
-      </div>
-    </div>
-
-    <div>
-      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_waitlist_autonotify_enabled" {{ 'checked' if settings['automation_waitlist_autonotify_enabled'] == '1' }}>
-        Auto-notify waitlists
-      </label>
-      <p class="upload-hint" style="margin-top:4px;">When a room, dinner reservation, or workshop registration is declined or cancelled, automatically emails any matching open waitlist entry instead of just flagging it for the owner to follow up manually.</p>
-    </div>
-
-    <div>
-      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_workshop_feedback_enabled" {{ 'checked' if settings['automation_workshop_feedback_enabled'] == '1' }}>
-        Workshop feedback requests
-      </label>
-      <p class="upload-hint" style="margin-top:4px;">Emails a confirmed workshop guest once, using the "Workshop: Feedback request" template, the day after their session ends — mirrors the room booking's checkout-time "How was your stay?" email.</p>
-    </div>
-
-    <div>
-      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_email_scan_enabled" {{ 'checked' if settings['automation_email_scan_enabled'] == '1' }}>
-        Inbox scan (Inbox Flags)
-      </label>
-      <p class="upload-hint" style="margin-top:4px;">
-        {% if graph_enabled %}Scans the connected mailbox for messages unanswered too long, and for prices/dates mentioned in an email that don't match real pricing or availability. See <a href="{{ url_for('admin_inbox_flags') }}">Inbox Flags</a>.{% else %}Not connected yet — needs a Microsoft Graph app registration (see "Microsoft Graph inbox monitoring" in DEPLOY.md), then <code>MS_GRAPH_TENANT_ID</code>, <code>MS_GRAPH_CLIENT_ID</code>, <code>MS_GRAPH_CLIENT_SECRET</code>, and <code>MS_GRAPH_MAILBOX</code>.{% endif %}
-      </p>
-      <div style="margin-top:6px; display:flex; gap:16px; flex-wrap:wrap;">
-        <div style="max-width:220px;">
-          <label class="field-label">Flag as unanswered after (hours)</label>
-          <input type="number" name="automation_email_unanswered_hours" min="1" step="1" value="{{ settings['automation_email_unanswered_hours'] }}">
+    {% for e in g.entries %}
+    <div class="auto-row {{ 'is-off' if not e.on }}" id="{{ e.key }}" data-job="{{ e.job or '' }}">
+      <div class="auto-main">
+        <label class="bc-tick auto-switch">
+          <input type="checkbox" name="{{ e.key }}" {{ 'checked' if e.on }}>
+          <span class="auto-label">{{ e.label }}</span>
+        </label>
+        <div class="auto-reach">
+          {% for word in e.reach_words %}
+          <span class="mini-status {{ 'status-declined' if word == 'Writes to guests' or word == 'Takes money' or word == 'Publishes' else 'status-upcoming' }}">{{ word }}</span>
+          {% else %}
+          <span class="mini-status status-inactive">Writes to nobody</span>
+          {% endfor %}
         </div>
-        <div style="max-width:220px;">
-          <label class="field-label" for="admin_automation-automation-email-scan-lookback-days">Scan messages from the last (days)</label>
-          <input id="admin_automation-automation-email-scan-lookback-days" type="number" name="automation_email_scan_lookback_days" min="1" step="1" value="{{ settings['automation_email_scan_lookback_days'] }}">
+        <p class="upload-hint auto-what">{{ e.what }}</p>
+        {% if e.needs == 'graph' and not graph_enabled %}
+        <p class="upload-hint"><em>Not connected yet</em> &mdash; it needs the Microsoft Graph
+          mailbox set up (DEPLOY.md, "Microsoft Graph inbox monitoring").</p>
+        {% endif %}
+        {% if e.warn_off and not e.on %}
+        <p class="upload-hint" style="color:var(--danger);"><strong>{{ e.warn_off }}</strong></p>
+        {% endif %}
+        {% if e.fields %}
+        <div class="auto-fields">
+          {% for field, label, kind, value in e.fields %}
+          <div>
+            <label class="field-label" for="{{ field }}">{{ label }}</label>
+            <input id="{{ field }}" type="number" name="{{ field }}" value="{{ value }}"
+                   min="{{ 1 if kind in ('hours', 'days_back') else 0 }}"
+                   step="{{ '0.5' if kind == 'hours' else '1' }}">
+          </div>
+          {% endfor %}
         </div>
+        {% endif %}
+        {% if e.routing %}
+        <details class="auto-routing">
+          <summary>Who gets each kind of finding</summary>
+          <p class="upload-hint">Name the person who can actually end each one; the task then
+            shows on their list and their calendar on the day it matters. Left as
+            <em>nobody yet</em> it stays on your list only.</p>
+          {% for kind, label in watch_kinds.items() %}
+          <div class="auto-route">
+            <label class="field-label" for="watch_task_assignee_{{ kind }}">{{ label }}</label>
+            <select id="watch_task_assignee_{{ kind }}" name="watch_task_assignee_{{ kind }}">
+              <option value="">&mdash; nobody yet &mdash;</option>
+              {% for p in employees %}
+              <option value="{{ p['id'] }}" {{ 'selected' if watch_routing.get(kind) == p['id'] }}>{{ p['name'] }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endfor %}
+        </details>
+        {% endif %}
       </div>
-    </div>
 
-    <div>
-      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_stale_shift_enabled" {{ 'checked' if settings['automation_stale_shift_enabled'] == '1' }}>
-        Stale shift cleanup
-      </label>
-      <p class="upload-hint" style="margin-top:4px;">Clocking in/out is a deliberate action now, not a side effect of logging in/out — this catches the "forgot to clock out" case instead, closing a shift left open too long and notifying both the employee and the owner so it can be corrected.</p>
-      <div style="margin-top:6px; max-width:220px;">
-        <label class="field-label">Auto-close after (hours)</label>
-        <input type="number" name="automation_stale_shift_hours" min="1" step="1" value="{{ settings['automation_stale_shift_hours'] }}">
+      <div class="auto-status">
+        {% if e.job %}
+        {% set run = e.run %}
+        {# The house's clock, never UTC's: a run at 00:30 here was shown the day
+           before. A row whose time cannot be read says so rather than "?". #}
+        <span class="auto-ran">Last ran: <span class="auto-when">{{ local_datetime_str(run['last_ran_at'], unknown='not recorded') if run else 'never' }}</span></span>
+        <span class="auto-how">
+          {% if not run or not run['last_status'] %}<span class="muted">how it went is not recorded</span>
+          {% elif run['last_status'] == 'ok' %}Worked{% if run['last_message'] %} &mdash; {{ run['last_message'] }}{% endif %}
+          {% else %}
+            <strong style="color:var(--danger);">Failed
+              {%- if run['consecutive_failures'] and run['consecutive_failures'] > 1 %}
+              {{ run['consecutive_failures'] }} times in a row{% endif %}</strong>
+            {% if run['last_message'] %}&mdash; {{ run['last_message'] }}{% endif %}
+            <span class="muted">Last worked: {{ local_datetime_str(run['last_ok_at'], unknown='not recorded') }}</span>
+          {% endif %}
+        </span>
+        <button type="submit" class="btn-mini" formnovalidate
+                formaction="{{ url_for('run_automation_job_now', job_name=e.job) }}">Run now</button>
+        {% else %}
+        <span class="auto-ran muted">Not a timed job: it happens when a place frees up.</span>
+        {% endif %}
       </div>
-    </div>
-
-    <div>
-      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_backup_email_enabled" {{ 'checked' if settings['automation_backup_email_enabled'] == '1' }}>
-        Automated backup email
-      </label>
-      <p class="upload-hint" style="margin-top:4px;">Emails a full backup (database, uploaded documents and room photos) to the owner on a schedule, so a lost or corrupted Railway volume isn't the only copy. Falls back to the database alone if the full backup is too large to email. Same content as Admin → Backup, just sent automatically.</p>
-      <div style="margin-top:6px; max-width:220px;">
-        <label class="field-label">Backup interval (hours)</label>
-        <input type="number" name="automation_backup_interval_hours" min="1" step="1" value="{{ settings['automation_backup_interval_hours'] }}">
-      </div>
-    </div>
-
-  </div>
-
-  <h3 style="margin-top:26px; margin-bottom:4px;">Who gets a blocking finding</h3>
-  <p class="upload-hint" style="margin-top:0;">Each morning the blocking items from the home page are raised as tasks, and ticked off again when they stop being true. Name the person who can actually end each one &mdash; the task then shows on their dashboard and their calendar, on the day it matters. Left as <em>nobody yet</em> it stays on the owner&rsquo;s list only, which is where the warning already was.</p>
-  <div style="display:grid; gap:10px; margin-top:10px;">
-    {% for kind, label in watch_kinds.items() %}
-    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-      <label class="field-label" style="flex:1 1 240px; margin:0;">{{ label }}</label>
-      <select name="watch_task_assignee_{{ kind }}" style="flex:0 1 220px;">
-        <option value="">&mdash; nobody yet &mdash;</option>
-        {% for e in employees %}
-        <option value="{{ e['id'] }}" {{ 'selected' if watch_routing.get(kind) == e['id'] }}>{{ e['name'] }}</option>
-        {% endfor %}
-      </select>
     </div>
     {% endfor %}
-  </div>
+  </section>
+  {% endfor %}
 
-  <button type="submit" class="btn-primary" style="margin-top:18px;">Save settings</button>
+  <div class="auto-savebar">
+    <button type="submit" class="btn-primary">Save every switch</button>
+    <span class="upload-hint">A box left unticked is switched off when you save.</span>
+  </div>
 </form>
-
-<div class="detail-card" style="max-width:680px; margin-top:20px;">
-  <h3 style="margin-top:0;">Job status</h3>
-  <div class="table-wrap">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Job</th>
-          <th>Last ran</th>
-          <th>How it went</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for job_name, label in job_labels.items() %}
-        <tr>
-          {% set run = last_runs.get(job_name) %}
-          <td>{{ label }}</td>
-          {# The house's clock, as What changed shows its stamps. The stamp is
-             UTC, and slicing it showed every run an hour or two early -- after
-             midnight, on the day before. No row is a job that has never run
-             here. A row whose time cannot be read says so, where
-             local_datetime_str alone would print "?". #}
-          <td>{{ local_datetime_str(run['last_ran_at'], unknown='not recorded') if run else 'never' }}</td>
-          <td>
-            {% if not run or not run['last_status'] %}
-              <span class="muted">not recorded yet</span>
-            {% elif run['last_status'] == 'ok' %}
-              Worked{% if run['last_message'] %} &mdash; {{ run['last_message'] }}{% endif %}
-            {% else %}
-              {# The whole point of the column: a job that ran and failed used to
-                 look exactly like one that ran and worked. #}
-              <strong style="color:var(--danger, #b3261e);">Failed
-                {%- if run['consecutive_failures'] and run['consecutive_failures'] > 1 %}
-                  {{ run['consecutive_failures'] }} times in a row
-                {%- endif %}</strong>
-              {% if run['last_message'] %}<br>{{ run['last_message'] }}{% endif %}
-              {# Not "never". last_ok_at was added after the jobs were, so a
-                 blank one can be a job that worked for months before anything
-                 wrote down when. What is known is that nothing on record says
-                 it has. #}
-              <br><span class="muted">Last worked:
-                {{ local_datetime_str(run['last_ok_at'], unknown='not recorded') }}</span>
-            {% endif %}
-          </td>
-          <td style="text-align:right;">
-            <form method="post" action="{{ url_for('run_automation_job_now', job_name=job_name) }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn-mini">Run now</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
 
 {% endblock %}

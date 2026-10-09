@@ -6,99 +6,125 @@
   <h1>Held email</h1>
   <a href="{{ url_for('admin_emails') }}" class="btn-ghost">Back to emails</a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Messages the app tried to send and couldn't. They are kept here rather than lost, so they can go out once email is connected.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">Letters the house wrote that have not
+  gone yet. They are kept here rather than lost: sent from here when you choose, or
+  discarded.</p>
 
-<div class="overview-band">
-  <div class="overview-cell {{ 'overview-cell-alert' if waiting_total }}">
-    <div class="overview-value">{{ waiting_total }}</div>
-    <div class="overview-label">Waiting to send</div>
-  </div>
-  <div class="overview-cell {{ 'overview-cell-alert' if stale_total }}">
-    <div class="overview-value">{{ stale_total }}</div>
-    <div class="overview-label">Too old to send</div>
-  </div>
-  <div class="overview-cell">
-    <div class="overview-value">{{ recovered|length }}</div>
-    <div class="overview-label">Sent on a retry</div>
-  </div>
-</div>
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 
-{% if stale_total %}
-<div class="flash flash-error" style="margin-bottom:16px;">
-  <strong>{{ stale_total }} of these have been waiting more than {{ stale_days }} days.</strong>
-  They are not included when you send the rest. A confirmation for a stay that
-  has already happened is not late, it is wrong &mdash; so the château would
-  rather not send it than send it by accident. Send one by hand if you still
-  want it to go, or discard them together.
+{# Why a letter waits, said once at the top rather than on every row. The
+   chips below count each reason; this says what to do about them. #}
+{% if not guest_mail_live %}
+<div class="flash flash-success" style="margin-bottom:12px;">
+  <strong>Write to guests is switched off</strong>, on
+  <a href="{{ url_for('admin_automation') }}">Automation</a>, so every letter to anybody
+  outside the house waits here instead of going.
+  {% if by_switch %}{{ by_switch }} {{ 'is' if by_switch == 1 else 'are' }} waiting
+  because of it.{% endif %}
+  Switching it back on sends none of these by surprise: they go from here, when you
+  send them.
 </div>
 {% endif %}
-
 {% if not can_send %}
-<div class="flash flash-error" style="margin-bottom:16px;">
-  <strong>Email isn't connected yet.</strong> Nothing here can be sent until <code>RESEND_API_KEY</code> or the <code>SMTP_*</code> settings are configured — see DEPLOY.md. Until then these are being kept, not dropped.
-</div>
-{% else %}
-{# Outside the "is there held mail" block on purpose: the moment you most want
-   to prove the provider works is the moment there is nothing waiting. #}
-<div class="filter-bar" style="margin-bottom:16px;">
-  <form method="post" action="{{ url_for('test_email_provider') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="btn-ghost">Send a test message to myself</button>
-  </form>
-  <span class="muted" style="align-self:center;">
-    It goes to your own address and nowhere else. If it does not arrive, the
-    reason the provider gave is shown here rather than in a log.
-  </span>
+<div class="flash flash-error" style="margin-bottom:12px;">
+  <strong>Email isn't connected yet.</strong> Nothing here can be sent until
+  <code>RESEND_API_KEY</code> or the <code>SMTP_*</code> settings are configured &mdash;
+  see DEPLOY.md. Until then these are being kept, not dropped.
 </div>
 {% endif %}
+{% if stale_total %}
+<p class="upload-hint" style="margin:0 0 12px;">
+  <strong>{{ stale_total }} {{ 'has' if stale_total == 1 else 'have' }} waited more than
+  {{ stale_days }} days.</strong> Those are left out when you send the rest: a confirmation
+  for a stay that has already happened is not late, it is wrong. Send one by hand if it
+  should still go, or discard them together.
+</p>
+{% endif %}
 
-{% if waiting %}
-<div class="filter-bar" style="margin-bottom:16px;">
+<div class="filter-bar" style="margin-bottom:14px; flex-wrap:wrap;">
   <form method="post" action="{{ url_for('send_email_outbox') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn-primary" {{ 'disabled' if not can_send or not sendable_total }}>
-      {% if sendable_total %}Try sending {{ 'all ' ~ sendable_total if sendable_total <= 100 else 'the oldest 100' }} again{% else %}Nothing here is current enough to send{% endif %}
+      {%- if not sendable_total %}Nothing here is current enough to send
+      {%- elif sendable_total == 1 %}Send the one waiting
+      {%- elif sendable_total <= 100 %}Send all {{ sendable_total }} waiting
+      {%- else %}Send the oldest 100{% endif -%}
     </button>
   </form>
   {% if stale_total %}
   <form method="post" action="{{ url_for('discard_stale_email_outbox') }}"
-        onsubmit="return confirm('Discard {{ stale_total }} message(s) too old to send? They will not go out.');">
+        onsubmit="return confirm('Discard {{ stale_total }} letter(s) too old to send? They will not go out.');">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn-ghost">Discard the {{ stale_total }} too old to send</button>
   </form>
   {% endif %}
+  {% if can_send %}
+  {# Outside the "is there held mail" question on purpose: the moment you most
+     want to prove the provider works is the moment nothing is waiting. #}
+  <form method="post" action="{{ url_for('test_email_provider') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-ghost"
+            title="It goes to your own address and nowhere else. If it does not arrive, the reason the provider gave is shown here.">
+      Send a test to myself</button>
+  </form>
+  {% endif %}
 </div>
 
+{% include "_list_toolbar.html" %}
+
+{# The ticked-letters form lives outside the table: each row already carries
+   its own Send and Discard forms, and a form cannot hold another. The boxes
+   join it by its id, so ticking works with javascript off. #}
+<form id="held-bulk" method="post"
+      action="{{ url_for('held_email_ticked', **request.args.to_dict()) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+
+{% if not rows %}
+<div class="empty-state">
+  {% if lv.filtered %}Nothing waiting matches that.
+    <a href="{{ url_for('admin_email_outbox') }}">Show all {{ lv.total }}</a>
+  {% else %}Nothing is waiting. Every letter the house has written has gone.{% endif %}
+</div>
+{% else %}
 <div class="table-wrap">
   <table class="data-table">
     <thead>
       <tr>
-        <th>To</th><th>Subject</th><th>Why it was held</th><th>Held since</th><th>Age</th><th>Tries</th><th></th>
+        <th scope="col" aria-label="Tick to send or discard"></th>
+        <th scope="col">To</th><th scope="col">Letter</th><th scope="col">Held</th>
+        <th scope="col" class="num">Tries</th><th scope="col"></th>
       </tr>
     </thead>
     <tbody>
-      {% for row in waiting %}
+      {% for row in rows %}
       <tr>
-        <td>{{ row.to_address }}</td>
-        <td>{{ row.subject }}</td>
+        <td><input type="checkbox" name="ids" value="{{ row.id }}" form="held-bulk"
+                   aria-label="Tick the letter to {{ row.to_address }}"></td>
         <td>
-          {{ row.reason }}
-          {% if row.last_error %}<span class="upload-hint">— {{ row.last_error }}</span>{% endif %}
+          {{ row.to_address }}
+          <div class="upload-hint">{{ row.audience }}</div>
         </td>
-        <td>{{ row.created_at|house_day }}</td>
-        <td class="num">{% if row.age is not none %}{{ row.age }}d{% if row.stale %}
-          <span class="mini-status status-pending">too old</span>{% endif %}
-          {% else %}&mdash;{% endif %}</td>
-        <td>{{ row.attempts }}</td>
         <td>
-          <div class="filter-bar">
+          {{ row.subject or '(no subject)' }}
+          <div class="upload-hint">{{ row.letter }} &middot; {{ row.why|lower }}
+            {%- if row.last_error %} &mdash; {{ row.last_error }}{% endif %}</div>
+        </td>
+        <td>
+          {{ row.when }}
+          <div class="upload-hint">{% if row.age is not none %}{{ row.age }} day{{ '' if row.age == 1 else 's' }}{% endif %}
+            {% if row.stale %}<span class="mini-status status-pending">too old</span>{% endif %}</div>
+        </td>
+        <td class="num">{{ row.attempts }}</td>
+        <td>
+          <div class="filter-bar" style="flex-wrap:wrap;">
             <form method="post" action="{{ url_for('send_email_outbox') }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="id" value="{{ row.id }}">
               <button type="submit" class="btn-mini" {{ 'disabled' if not can_send }}>Send</button>
             </form>
             <form method="post" action="{{ url_for('discard_email_outbox', outbox_id=row.id) }}"
-                  onsubmit="return confirm('Discard this message? It will not be sent.');">
+                  onsubmit="return confirm('Discard this letter? It will not be sent.');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn-mini btn-mini-danger">Discard</button>
             </form>
@@ -109,21 +135,23 @@
     </tbody>
   </table>
 </div>
-{% if waiting_total > waiting|length %}
-<p class="overview-hint">Showing the {{ waiting|length }} most recent of {{ waiting_total }}.</p>
-{% endif %}
-
-{% else %}
-<div class="empty-state">
-  <p>Nothing is waiting. Every message the app has tried to send has gone out.</p>
+<div class="bc-bulkbar">
+  <button type="submit" form="held-bulk" name="action" value="send" class="btn-mini"
+          {{ 'disabled' if not can_send }}>Send the ticked ones</button>
+  <button type="submit" form="held-bulk" name="action" value="discard"
+          class="btn-mini btn-mini-danger"
+          onclick="return confirm('Discard the ticked letters? They will not be sent.');">
+    Discard the ticked ones</button>
+  <span class="upload-hint">It says afterwards what it could not do, and why.</span>
 </div>
+{% with lv = lv %}{% include "_list_pager.html" %}{% endwith %}
 {% endif %}
 
 {% if recovered %}
-<h2 class="section-heading" style="margin-top:28px;">Recently recovered</h2>
+<h2 class="section-heading" style="margin-top:28px;">Sent later, most recent first</h2>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th>To</th><th>Subject</th><th>Sent</th></tr></thead>
+    <thead><tr><th scope="col">To</th><th scope="col">Subject</th><th scope="col">Sent</th></tr></thead>
     <tbody>
       {% for row in recovered %}
       <tr>
