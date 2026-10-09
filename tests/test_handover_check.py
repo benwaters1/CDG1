@@ -283,7 +283,11 @@ def run():
                     ("templates/installed.html", "Install handover 16, and put part-payments back into it"),
                     ("templates/strip.html", "Handover u: Restoration rebuilt, and the rest-to-come lines it missed"),
                     ("templates/dated.html", "The handover of 2 October (n)"),
-                    ("templates/staff.html", "Seven lists get the chips every list has")):
+                    ("templates/staff.html", "Seven lists get the chips every list has"),
+                    # Names a handover without being one. Matching the word
+                    # anywhere handed out the staff base and stylesheet.
+                    ("templates/base.html", "repair_handover gains a step, and the staff menu a heading"),
+                    (".gitignore", "The handover, and an ignore rule for the export")):
                 _write(cwd, rel, "<p>%s</p>\n" % rel)
                 _git(cwd, "add", rel)
                 _git(cwd, "commit", "-q", "-m", subject)
@@ -302,6 +306,12 @@ def run():
                     detail=str(surface))
             s.check("a commit that names no handover is not a handover",
                     "templates/staff.html" not in surface, detail=str(surface))
+            s.check("nor is one that only mentions repair_handover",
+                    "templates/base.html" not in surface,
+                    detail="that is how the staff base, the staff stylesheet and "
+                           "the kitchen pages went out in a design export")
+            s.check("and .gitignore is never handed out", ".gitignore" not in surface,
+                    detail=str(surface))
             s.check("and app.py stays out even when a handover patched it",
                     "app.py" not in surface, detail=str(surface))
         finally:

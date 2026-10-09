@@ -79,14 +79,19 @@ MANIFEST = os.path.join(ROOT, ".design-export.json")
 # handover of 2 October (n)", fifty-six of them, and the files only those
 # delivered fell out of the export. The availability strip, the Estate's
 # facility tiles and the drawings went missing from the 9 October snapshot,
-# and nothing said so. Any subject naming a handover now counts; NEVER below
-# still keeps the code and the suite out of it.
-HANDOVER = re.compile(r"^(final_\d+|.*handover)", re.I)
+# and nothing said so. A subject that BEGINS with the handover now counts as
+# well. Not any subject that mentions one: "handover" anywhere also matches
+# every repair_handover and check_handover commit, and that handed out the
+# staff base, the staff stylesheet and the kitchen pages -- files the design
+# side never sends, which another agent edits daily.
+HANDOVER = re.compile(r"^(final_\d+|install(ing)?\b.*handover|.*handover.*install"
+                      r"|(the )?handover\b)", re.I)
 
 # Never handed out, whatever history says a handover once touched. app.py is
 # the other agent's and the owner's; the suite is what catches a bad handover,
 # so shipping it out and back is how a check gets quietly softened.
-NEVER = ("app.py", "tests/", "tools/", "translations.py", ".env", "gudanes_hr.db")
+NEVER = ("app.py", "tests/", "tools/", "translations.py", ".env", "gudanes_hr.db",
+         ".gitignore")
 
 
 def git(*args, check=True):
