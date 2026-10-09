@@ -47,15 +47,37 @@ def run():
     s.check("there are forms to submit", len(rules) > 100,
             detail="%d found" % len(rules))
 
+    # An empty form to every settings page is every switch in the house
+    # turned off -- the automation form alone carries thirty-four of them and
+    # Write to guests. So the settings go back as they were afterwards, or
+    # every suite after this one tests a house that does nothing on its own
+    # and writes to nobody. The runner caught that on 9 October 2026.
+    conn = db()
+    settings_before = conn.execute("SELECT key, value FROM app_settings").fetchall()
+    conn.close()
+
     crashed = []
-    for endpoint, path in rules:
-        try:
-            code = oc.post(path, data={}).status_code
-        except Exception as exc:
-            crashed.append("%s (%s)" % (endpoint, type(exc).__name__))
-            continue
-        if code >= 500:
-            crashed.append("%s (HTTP %d)" % (endpoint, code))
+    try:
+        for endpoint, path in rules:
+            try:
+                code = oc.post(path, data={}).status_code
+            except Exception as exc:
+                crashed.append("%s (%s)" % (endpoint, type(exc).__name__))
+                continue
+            if code >= 500:
+                crashed.append("%s (HTTP %d)" % (endpoint, code))
+    finally:
+        conn = db()
+        kept = {r["key"] for r in settings_before}
+        for r in settings_before:
+            conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                         (r["key"], r["value"]))
+        for (key,) in conn.execute("SELECT key FROM app_settings").fetchall():
+            if key not in kept:
+                conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+        conn.commit()
+        conn.close()
     s.check("no form crashes when it arrives empty",
             not crashed,
             detail="%s — a 500 on an empty post is the person in front of it "
