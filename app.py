@@ -77039,11 +77039,17 @@ def audit_list_view(conn, args):
     # compliance record that is the wrong shape: you come here asking "who
     # revealed a bank detail in March", and the answer was silently outside
     # the window. Filter first, cap afterwards, and say when a cap was hit.
-    entries = conn.execute(
+    entries = [dict(r) for r in conn.execute(
         """SELECT audit_log.*, users.name AS actor_name FROM audit_log
            LEFT JOIN users ON users.id = audit_log.actor_user_id
            ORDER BY audit_log.created_at DESC"""
-    ).fetchall()
+    ).fetchall()]
+    # A line written before log_audit refused the word "None" can still hold
+    # it as what was acted on. It names nothing, so it is shown as nothing.
+    for e in entries:
+        for col in ("target", "details"):
+            if (e[col] or "").strip() == "None":
+                e[col] = None
 
     today = house_today()
 

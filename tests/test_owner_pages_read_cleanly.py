@@ -318,8 +318,17 @@ def run():
         s.check("and the audit log does not keep the word None as what was acted on",
                 row is not None and row["target"] is None and row["details"] is None,
                 detail=str(dict(row)) if row else "not written")
+        # A line written before that, holding the word, as the live log may.
+        conn.execute("INSERT INTO audit_log (action, target, created_at) VALUES (?, 'None', ?)",
+                     (TAG.lower() + "_none_old", _harness.datetime_now()))
+        conn.commit()
+        shown = read(oc.get("/admin/audit-log?q=" + TAG.lower() + "_none_old")
+                     .get_data(as_text=True))
+        s.check("nor shows it, for a line that was written before it refused to",
+                not shown.none_text, detail="; ".join(shown.none_text))
     finally:
-        conn.execute("DELETE FROM audit_log WHERE action = ?", (TAG.lower() + "_none",))
+        conn.execute("DELETE FROM audit_log WHERE action IN (?, ?)",
+                     (TAG.lower() + "_none", TAG.lower() + "_none_old"))
         conn.commit()
         conn.close()
 

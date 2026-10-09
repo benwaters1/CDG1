@@ -37,6 +37,10 @@ def _cleanup():
     conn.execute("DELETE FROM audit_log WHERE target LIKE ? OR details LIKE ?",
                  (TAG + "%", TAG + "%"))
     conn.execute("DELETE FROM audit_log WHERE target LIKE ?", ("%" + TAG + "%",))
+    # And by action, which every line this suite writes carries: one is filed
+    # under the word "None" on purpose, matches neither pattern above, and was
+    # left in the audit log for every suite after this one to read.
+    conn.execute("DELETE FROM audit_log WHERE action LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM vendors WHERE name LIKE ?", (TAG + "%",))
     conn.commit()
