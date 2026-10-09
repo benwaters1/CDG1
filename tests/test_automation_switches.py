@@ -77,9 +77,17 @@ def run():
     # every switch is.) Restoring only the registry left those five off for
     # the rest of the run, and the check below could not see it because it
     # compared the same list it had restored.
+    #
+    # The snapshot is the whole settings table, not the switches the suite
+    # knows about. The form also carries Write to guests, which is no job's
+    # switch; restoring only the automation settings left it off after the
+    # empty POST, and twenty-odd suites later the texting suite found every
+    # message held for a reason it had never asked about.
     conn = db()
     all_settings = m.get_automation_settings(conn)
     before = {k: all_settings[k] for k in sorted(all_settings)}
+    every_setting = {r["key"]: r["value"] for r in conn.execute(
+        "SELECT key, value FROM app_settings").fetchall()}
     conn.close()
 
     # Send every switch as ticked, which is what a browser does when the
@@ -110,20 +118,35 @@ def run():
     # Put them back as they were, so this suite does not leave the house's
     # automation in whatever state its last POST happened to set.
     conn = db()
-    for key, value in before.items():
+    for key, value in every_setting.items():
         conn.execute(
             """INSERT INTO app_settings (key, value) VALUES (?, ?)
                ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
             (key, value))
+    # And anything the POSTs added that was not there before goes again, so
+    # a default the code supplies is a default again.
+    for (key,) in conn.execute("SELECT key FROM app_settings").fetchall():
+        if key not in every_setting:
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
     conn.commit()
     restored = m.get_automation_settings(conn)
+    restored_all = {r["key"]: r["value"] for r in conn.execute(
+        "SELECT key, value FROM app_settings").fetchall()}
     conn.close()
     left_off = sorted(k for k in before if restored.get(k) != before[k])
+    left_off += sorted(k for k in set(every_setting) | set(restored_all)
+                       if k not in before and restored_all.get(k) != every_setting.get(k))
     s.check("and the suite puts them back as it found them",
             not left_off,
             detail="left changed: " + ", ".join(left_off) + " — a suite that "
                    "leaves an automation switched off does not fail, it makes "
                    "every suite after it test the switched-off path")
+    s.check("and Write to guests is as it was",
+            restored_all.get("guest_mail_live") == every_setting.get("guest_mail_live"),
+            detail=f"{every_setting.get('guest_mail_live')!r} before, "
+                   f"{restored_all.get('guest_mail_live')!r} after -- the empty form "
+                   "switches it off, and every suite after this one would test a "
+                   "house that is not writing to anybody")
     s.check("including the switches that have no scheduled job behind them",
             all(k in before for k in
                 ("automation_waitlist_autonotify_enabled",
