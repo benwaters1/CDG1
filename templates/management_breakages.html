@@ -70,10 +70,10 @@
             {% if b['note'] %}<span class="upload-hint">{{ b['note'] }}</span>{% endif %}</th>
           <td>{{ b['room_name'] or '—' }}</td>
           <td>{{ b['guest_name'] or '—' }}</td>
-          <td class="num">{% if b['replacement_cost'] %}&euro;{{ '%.2f'|format(b['replacement_cost']) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{% if b['replacement_cost'] %}{{ b['replacement_cost']|money }}{% else %}&mdash;{% endif %}</td>
           <td>
             {% if b['charge_decision'] == 'charged' %}
-              Charged &euro;{{ '%.2f'|format(b['charged_amount'] or 0) }}
+              Charged {{ (b['charged_amount'] or 0)|money }}
             {% elif b['charge_decision'] == 'let_it_go' %}
               Let go
             {% elif is_owner %}
@@ -100,8 +100,8 @@
       <tfoot>
         <tr>
           <th colspan="4">Over the year</th>
-          <th class="num">&euro;{{ '%.2f'|format(summary.cost) }}</th>
-          <th>recovered &euro;{{ '%.2f'|format(summary.recovered) }}</th>
+          <th class="num">{{ summary.cost|money }}</th>
+          <th>recovered {{ summary.recovered|money }}</th>
         </tr>
       </tfoot>
     </table>

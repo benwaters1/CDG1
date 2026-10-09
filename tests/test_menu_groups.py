@@ -84,6 +84,20 @@ def run():
         twice = sorted({h for h in hrefs if hrefs.count(h) > 1})
         s.check(f"{label}: every page it held is still in it, once", not missing and not twice,
                 detail=f"missing {missing}, twice {twice}")
+    # Sold ahead and held for it are their own question -- not "owed to the
+    # house": one is sold, the other is money the house may owe back.
+    fin = dict(_menu(page, "Financial"))
+    with m.app.test_request_context():
+        books, held = m.url_for("management_on_the_books"), m.url_for("held_not_earned_page")
+    s.check("On the books and Held, not earned sit together, under Sold ahead",
+            sorted(fin.get("Sold ahead", [])) == sorted([books, held]),
+            detail=str(fin.get("Sold ahead")))
+    a = oc.get(books).get_data(as_text=True)
+    b = oc.get(held).get_data(as_text=True)
+    body_a = a[a.find("<h1>"):]
+    body_b = b[b.find("<h1>"):]
+    s.check("and each page links to the other, below its title",
+            f'href="{held}"' in body_a and f'href="{books}"' in body_b)
     css = open("static/style.css", encoding="utf-8").read()
     s.check("the headings are styled as headings, not links",
             re.search(r"\.nav-subhead\s*\{[^}]*text-transform:\s*uppercase", css))

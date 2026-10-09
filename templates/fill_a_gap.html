@@ -16,7 +16,7 @@
 
 <p class="page-intro">
   {{ gaps.free_nights }} unsold room-nights in the next {{ days }} days,
-  worth about &euro;{{ '%.0f'|format(gaps.value_at_rate or 0) }} at the rate card.
+  worth about {{ (gaps.value_at_rate or 0)|money(0) }} at the rate card.
   {% if gaps.house_nights %}
   Not counted: {{ gaps.house_nights }} night{{ '' if gaps.house_nights == 1 else 's' }}
   held for the whole house by an atelier, an event or a hold. No room can be sold
@@ -43,7 +43,7 @@
         <td>{{ r['from'] }}</td>
         <td>{{ r['to'] }}</td>
         <td class="num">{{ r.nights }}</td>
-        <td class="num">&euro;{{ '%.0f'|format(r.value or 0) }}</td>
+        <td class="num">{{ (r.value or 0)|money(0) }}</td>
         <td>
           <a class="btn-mini"
              href="{{ url_for('fill_a_gap_page', days=days, **{'from': r['from'], 'to': r['to']}) }}">Who for?</a>
@@ -91,7 +91,7 @@
           {% endfor %}
         </td>
         <td class="num">{{ c.stays }}</td>
-        <td class="num">&euro;{{ '%.0f'|format(c.spend or 0) }}</td>
+        <td class="num">{{ (c.spend or 0)|money(0) }}</td>
         <td>{% if c.days_since is not none %}{{ c.days_since }} days ago{% else %}&mdash;{% endif %}</td>
         <td><a class="small-link" href="{{ url_for('guest_booking_history', email=c.email) }}">Everything about them</a></td>
       </tr>

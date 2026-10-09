@@ -47,7 +47,7 @@
             {% else %}&mdash;{% endif %}
           </td>
           <td>{{ a.renews.isoformat() if a.renews else '&mdash;'|safe }}</td>
-          <td class="num">{% if a.row['annual_value'] %}&euro;{{ '{:,.0f}'.format(a.row['annual_value']) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{% if a.row['annual_value'] %}{{ a.row['annual_value']|money(0) }}{% else %}&mdash;{% endif %}</td>
           <td>
             {% if a.state == 'open' %}
               Notice can still be given.

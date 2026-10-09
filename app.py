@@ -9581,7 +9581,7 @@ app.jinja_env.globals["contact_address"] = lambda area: contact_address(area)
 # figure reads the same wherever it appears.
 app.jinja_env.globals["euro"] = lambda v: euro(v)
 # Defined further down; the lambda looks it up when a page is drawn.
-app.jinja_env.filters["money"] = lambda v, places=2: money(v, places)
+app.jinja_env.filters["money"] = lambda v, places=2, up_to=None: money(v, places, up_to)
 
 
 # Who did it, when that is not whoever happens to be signed in. A job run on
@@ -11262,9 +11262,14 @@ def leave_impact(conn, start_date, end_date, exclude_user_id=None):
     }
 
 
-def money(value, places=2):
+def money(value, places=2, up_to=None):
     """Money as the staff pages write it: €3,400.00, and −€163.00 going the
     other way.
+
+    `up_to` is for prices a supplier quotes in fractions of a cent: at least
+    `places` decimals, and up to `up_to` where the price has them -- €0.345 an
+    egg stays €0.345, so a rise from €0.345 to €0.349 is not two identical
+    figures beside "+1%". €2.5 a kilo is still €2.50.
 
     ONE SPELLING. The staff pages wrote money four ways -- '%.2f' (€3400.00),
     '%.0f' (€3400), '{:,.2f}' (€3,400.00) and this file's euro() (€3,400) --
@@ -11282,6 +11287,10 @@ def money(value, places=2):
         amount = Decimal(str(value))
     except (InvalidOperation, ValueError, TypeError):
         return str(value)
+    if up_to and up_to > places:
+        # As many decimals as the price has, between the two.
+        shown = amount.quantize(Decimal(1).scaleb(-up_to), rounding=ROUND_HALF_UP).normalize()
+        places = min(up_to, max(places, -shown.as_tuple().exponent))
     step = Decimal(1).scaleb(-places) if places else Decimal(1)
     amount = amount.quantize(step, rounding=ROUND_HALF_UP)
     if amount == 0:

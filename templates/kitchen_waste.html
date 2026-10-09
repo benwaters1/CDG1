@@ -31,7 +31,7 @@
           <th scope="row">{{ r.name }}</th>
           <td class="num">{{ '%g'|format(r.quantity) }} {{ r.unit or '' }}</td>
           <td class="num">{{ r.times }}</td>
-          <td class="num">&euro;{{ '{:,.2f}'.format(r.worth) }}</td>
+          <td class="num">{{ r.worth|money }}</td>
         </tr>
         {% endfor %}
       </tbody>

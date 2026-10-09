@@ -122,7 +122,7 @@
           <th scope="row">{{ f['name'] }}</th>
           <td>{{ f['covered_due_on'] }}</td>
           <td>{{ f['filed_on'] }}</td>
-          <td class="num">{% if f['amount'] is not none %}&euro;{{ '%.2f'|format(f['amount']) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{% if f['amount'] is not none %}{{ f['amount']|money }}{% else %}&mdash;{% endif %}</td>
           <td>{{ f['reference'] or '—' }}</td>
         </tr>
         {% endfor %}

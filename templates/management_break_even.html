@@ -18,7 +18,7 @@
 
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.fixed) }}</span>
+    <span class="stat-tile-value">{{ data.fixed|money }}</span>
     <span class="stat-tile-label">Fixed cost this month</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{% if data.nights_needed %}{{ data.nights_needed }}{% else %}&mdash;{% endif %}</span>
@@ -42,7 +42,7 @@
   <h3 style="margin-top:0;">The month is covered</h3>
   <p class="field-hint" style="margin-top:0;">
     {{ data.nights_sold }} nights sold against {{ data.nights_needed }} needed, at an achieved
-    rate of &euro;{{ '%.2f'|format(data.rate) }}. Everything past this point contributes.
+    rate of {{ data.rate|money }}. Everything past this point contributes.
   </p>
 </div>
 {% else %}
@@ -50,7 +50,7 @@
   <h3 style="margin-top:0;">{{ data.shortfall }} more room-nights to cover the month</h3>
   <p class="field-hint" style="margin-top:0;">
     {{ data.nights_sold }} sold against {{ data.nights_needed }} needed, at an achieved rate of
-    &euro;{{ '%.2f'|format(data.rate) }} a night &mdash; what the rooms are getting, not what
+    {{ data.rate|money }} a night &mdash; what the rooms are getting, not what
     they are listed at.
   </p>
 </div>
@@ -61,16 +61,16 @@
   <table class="data-table">
     <thead><tr><th>Cost</th><th class="num">Per month</th></tr></thead>
     <tbody>
-      <tr><td>Salaried wages (gross)</td><td class="num">&euro;{{ '%.2f'|format(data.salaried) }}</td></tr>
+      <tr><td>Salaried wages (gross)</td><td class="num">{{ data.salaried|money }}</td></tr>
       {% for c in data.costs %}
       <tr>
         <td>{{ c.label }}{% if c.frequency == 'annual' %} <span class="upload-hint">annual, spread over twelve</span>{% endif %}</td>
-        <td class="num">&euro;{{ '%.2f'|format(c.monthly) }}</td>
+        <td class="num">{{ c.monthly|money }}</td>
       </tr>
       {% endfor %}
     </tbody>
     <tfoot><tr><th>Total</th>
-      <th class="num">&euro;{{ '%.2f'|format(data.fixed) }}</th></tr></tfoot>
+      <th class="num">{{ data.fixed|money }}</th></tr></tfoot>
   </table>
 </div>
 

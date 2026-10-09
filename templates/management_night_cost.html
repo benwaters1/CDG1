@@ -36,28 +36,28 @@
       <tbody>
         <tr>
           <th scope="row">Standing</th>
-          <td class="num">&euro;{{ '{:,.2f}'.format(cost['standing']) }}</td>
-          <td class="num">{% if cost['standing_per_night'] is not none %}&euro;{{ '%.2f'|format(cost['standing_per_night']) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{{ cost['standing']|money }}</td>
+          <td class="num">{% if cost['standing_per_night'] is not none %}{{ cost['standing_per_night']|money }}{% else %}&mdash;{% endif %}</td>
           <td>Happens whether anybody comes. A quiet month makes this figure frightening, which is
             true and is why a quiet month <em>is</em> frightening.</td>
         </tr>
         <tr>
           <th scope="row">Labour</th>
-          <td class="num">&euro;{{ '{:,.2f}'.format(cost['labour']) }}</td>
-          <td class="num">{% if cost['labour_per_night'] is not none %}&euro;{{ '%.2f'|format(cost['labour_per_night']) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{{ cost['labour']|money }}</td>
+          <td class="num">{% if cost['labour_per_night'] is not none %}{{ cost['labour_per_night']|money }}{% else %}&mdash;{% endif %}</td>
           <td>Rostered, so it moves with expected trade rather than with each arrival. Taken as it
             was really clocked, not modelled.</td>
         </tr>
         <tr>
           <th scope="row">Consumed</th>
-          <td class="num">&euro;{{ '{:,.2f}'.format(cost['consumed']) }}</td>
-          <td class="num">{% if cost['consumed_per_night'] is not none %}&euro;{{ '%.2f'|format(cost['consumed_per_night']) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{{ cost['consumed']|money }}</td>
+          <td class="num">{% if cost['consumed_per_night'] is not none %}{{ cost['consumed_per_night']|money }}{% else %}&mdash;{% endif %}</td>
           <td>Stock that went out of the door. The only genuinely per-night part.</td>
         </tr>
         <tr class="total">
           <th scope="row"><strong>All of it</strong></th>
-          <td class="num"><strong>&euro;{{ '{:,.2f}'.format(cost['total']) }}</strong></td>
-          <td class="num"><strong>{% if cost['per_night'] is not none %}&euro;{{ '%.2f'|format(cost['per_night']) }}{% else %}&mdash;{% endif %}</strong></td>
+          <td class="num"><strong>{{ cost['total']|money }}</strong></td>
+          <td class="num"><strong>{% if cost['per_night'] is not none %}{{ cost['per_night']|money }}{% else %}&mdash;{% endif %}</strong></td>
           <td></td>
         </tr>
       </tbody>
@@ -83,12 +83,12 @@
 <div class="detail-card">
   <h2 class="section-heading">Should you take it at a discount?</h2>
   <p class="manual-body wraps">
-    Not selling a room saves <strong>&euro;{{ '%.2f'|format(cost['avoidable_per_night']) }}</strong>
-    a night, not &euro;{{ '%.2f'|format(cost['per_night']) }}. Everything else is spent whether the
+    Not selling a room saves <strong>{{ cost['avoidable_per_night']|money }}</strong>
+    a night, not {{ cost['per_night']|money }}. Everything else is spent whether the
     room goes or not.
   </p>
   <p class="manual-body wraps">
-    So a night sold above &euro;{{ '%.2f'|format(cost['avoidable_per_night']) }} leaves the house
+    So a night sold above {{ cost['avoidable_per_night']|money }} leaves the house
     better off than an empty one, and that is the honest floor &mdash; not a recommendation to sell
     there. Filling the house at that price means the standing costs are never covered, and the
     figure above is what they come to.

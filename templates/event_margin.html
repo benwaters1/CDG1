@@ -27,15 +27,15 @@
 <div class="stat-tiles">
   <div class="stat-tile">
     <span class="stat-tile-label">Agreed</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.revenue) }}</span>
+    <span class="stat-tile-value">{{ data.revenue|money }}</span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-label">Suppliers</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.supplier_cost) }}</span>
+    <span class="stat-tile-value">{{ data.supplier_cost|money }}</span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-label">What it kept</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.margin) }}</span>
+    <span class="stat-tile-value">{{ data.margin|money }}</span>
   </div>
   {% if data.percent is not none %}
   <div class="stat-tile">
@@ -52,12 +52,12 @@
       {% for line in data.lines %}
       <tr>
         <th scope="row">{{ line.label }}</th>
-        <td class="num">{% if line.amount < 0 %}&minus;{% endif %}&euro;{{ '%.2f'|format(line.amount|abs) }}</td>
+        <td class="num">{% if line.amount < 0 %}&minus;{% endif %}{{ (line.amount|abs)|money }}</td>
       </tr>
       {% endfor %}
       <tr class="total">
         <th scope="row"><strong>What it kept</strong></th>
-        <td class="num"><strong>&euro;{{ '%.2f'|format(data.margin) }}</strong></td>
+        <td class="num"><strong>{{ data.margin|money }}</strong></td>
       </tr>
     </tbody>
   </table>
@@ -88,7 +88,7 @@
       <tr>
         <th scope="row">{{ row.name }}</th>
         <td class="num">{{ row.hours }}</td>
-        <td class="num">{% if row.gross is not none %}&euro;{{ '%.2f'|format(row.gross) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if row.gross is not none %}{{ row.gross|money }}{% else %}&mdash;{% endif %}</td>
         <td>{{ row.source }}</td>
       </tr>
       {% endfor %}

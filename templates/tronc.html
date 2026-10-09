@@ -22,7 +22,7 @@
 
 {% if data.nobody_clocked_in %}
 <div class="flash flash-error" style="margin-bottom:16px;">
-  <strong>&euro;{{ '{:,.2f}'.format(data.pot) }} was charged in service and nobody
+  <strong>{{ data.pot|money }} was charged in service and nobody
   was clocked in.</strong> The money is real and somebody worked for it, so this
   is a timesheet to fix rather than tips to write off.
 </div>
@@ -46,14 +46,14 @@
         <td>{{ r.name }}</td>
         <td class="num">{{ r.hours }}</td>
         <td class="num">{% if data.hours %}{{ (100 * r.hours / data.hours)|round(1) }}%{% else %}&mdash;{% endif %}</td>
-        <td class="num"><strong>&euro;{{ '{:,.2f}'.format(r.share) }}</strong></td>
+        <td class="num"><strong>{{ r.share|money }}</strong></td>
       </tr>
       {% endfor %}
     </tbody>
     <tfoot>
       <tr>
         <td colspan="3">Shared out</td>
-        <td class="num">&euro;{{ '{:,.2f}'.format(data.allocated) }}</td>
+        <td class="num">{{ data.allocated|money }}</td>
       </tr>
       {% if data.remainder %}
       {# Named rather than pushed onto the last row. A few cents a service is
@@ -61,7 +61,7 @@
          is noticed, and remembered. #}
       <tr>
         <td colspan="3">Left over after rounding down</td>
-        <td class="num">&euro;{{ '{:,.2f}'.format(data.remainder) }}</td>
+        <td class="num">{{ data.remainder|money }}</td>
       </tr>
       {% endif %}
     </tfoot>
@@ -80,7 +80,7 @@
       <tr{{ ' class="row-alert"'|safe if n.nobody_clocked_in }}>
         <td><a href="{{ url_for('tronc_page', day=n.day) }}">{{ n.day }}</a></td>
         <td class="num">{{ n.orders }}</td>
-        <td class="num">&euro;{{ '{:,.2f}'.format(n.pot) }}</td>
+        <td class="num">{{ n.pot|money }}</td>
         <td class="num">{{ n.shares|length }}</td>
       </tr>
       {% endfor %}

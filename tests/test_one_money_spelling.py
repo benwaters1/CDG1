@@ -26,11 +26,16 @@ m = _harness.m
 TAG = "ZZMONEY"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# The euro sign, however a template spells it. The character alone let 125
+# amounts on 27 pages through: they wrote it &euro;, and a rendered page
+# carries the entity, not the character, so the sweep below was blind to
+# them too.
+EURO = r"(?:€|&euro;|&#8364;)"
 # Money written out by hand: the euro sign, then an expression that formats
 # a number itself.
-BY_HAND = re.compile(r"""€\s*\{\{\s*['"](?:%\.?\d*[fg]|\{:,?\.\d+f\})['"]""")
+BY_HAND = re.compile(EURO + r"""\s*\{\{\s*['"](?:%\.?\d*[fg]|\{:,?\.\d+f\})['"]""")
 # The minus inside the amount.
-MINUS_INSIDE = re.compile(r"€\s*(?:-|−|&minus;)\s*\d")
+MINUS_INSIDE = re.compile(EURO + r"\s*(?:-|−|&minus;)\s*\d")
 
 
 def _staff_templates():
@@ -54,6 +59,13 @@ def run():
     wrong = [f"{v!r} to {p}: {m.money(v, p)!r}, wanted {want!r}"
              for v, p, want in cases if m.money(v, p) != want]
     s.check("each case comes out as written", not wrong, detail="; ".join(wrong))
+    # A supplier's unit price keeps the fraction of a cent it was quoted in.
+    unit = [(0.345, "€0.345"), (2.5, "€2.50"), (0.34567, "€0.3457"), (-0.345, "−€0.345"),
+            (12, "€12.00"), (1234.5678, "€1,234.5678"), (None, "—")]
+    wrong = [f"{v!r}: {m.money(v, 2, 4)!r}, wanted {want!r}"
+             for v, want in unit if m.money(v, 2, 4) != want]
+    s.check("a unit price keeps up to four decimals, and never fewer than two",
+            not wrong, detail="; ".join(wrong))
     s.check("euro() is money() to no places",
             all(m.euro(v) == m.money(v or 0, 0) for v in (0, None, 3461.2, -163, 12.5)))
     with m.app.test_request_context():
@@ -69,6 +81,8 @@ def run():
     s.check("the scan can see one",
             bool(BY_HAND.search("<td>€{{ '%.2f'|format(x) }}</td>"))
             and bool(BY_HAND.search("€{{ '{:,.0f}'.format(x) }}"))
+            and bool(BY_HAND.search("<td>&euro;{{ '%.2f'|format(x) }}</td>"))
+            and bool(BY_HAND.search("&euro;{{ '%g'|format(r.was) }}"))
             and not BY_HAND.search("<td>{{ x|money }}</td>"))
     s.check("and the scan looked at the staff pages",
             sum(1 for _ in _staff_templates()) > 200)
@@ -106,7 +120,9 @@ def run():
               if MINUS_INSIDE.search(html)]
     s.check("nor does any other staff page", not inside,
             detail="; ".join(f"{ep}: {h}" for ep, h in inside[:4]))
-    s.check("the sweep can see one", bool(MINUS_INSIDE.search("<td>€-3461.20</td>")))
+    s.check("the sweep can see one, however the sign is spelled",
+            bool(MINUS_INSIDE.search("<td>€-3461.20</td>"))
+            and bool(MINUS_INSIDE.search("<td>&euro;-3461.20</td>")))
     conn.execute("DELETE FROM expenses WHERE vendor_name LIKE ?", (TAG + "%",))
     conn.commit()
     conn.close()

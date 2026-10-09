@@ -101,9 +101,9 @@
 
 {% if summary.spend_all %}
 <p class="upload-hint" style="margin:-4px 0 14px;">
-  <strong>&euro;{{ '%.0f'|format(summary.spend_all) }}</strong> of invoices
+  <strong>{{ summary.spend_all|money(0) }}</strong> of invoices
   attached to the work so far{% if summary.spend_year %}, of which
-  <strong>&euro;{{ '%.0f'|format(summary.spend_year) }}</strong> this
+  <strong>{{ summary.spend_year|money(0) }}</strong> this
   year{% endif %} — gross, as invoiced, and only the jobs with invoices on
   them. Anything not attached is not in that figure.
 </p>
@@ -129,7 +129,7 @@
         {% elif not (w['summary'] or '').strip() %}<span class="mini-status status-declined">Not written up</span>
         {% endif %}
         {% if w['publishable'] %}<span class="mini-status status-approved">On the public page</span>{% endif %}
-        {% if w['cost'] %}<span class="mini-status status-pending">&euro;{{ '%.0f'|format(w['cost']) }}</span>{% endif %}
+        {% if w['cost'] %}<span class="mini-status status-pending">{{ w['cost']|money(0) }}</span>{% endif %}
       </div>
       <span class="upload-hint">
         {{ w['room_name'] or w['place'] or 'The estate' }}

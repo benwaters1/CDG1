@@ -45,16 +45,16 @@
   </div>
   <div class="stat-tile">
     <span class="stat-tile-label">Gross</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.gross) }}</span>
+    <span class="stat-tile-value">{{ data.gross|money }}</span>
   </div>
   {% if data.employer_rate %}
   <div class="stat-tile">
     <span class="stat-tile-label">Employer at {{ data.employer_rate }}%</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.employer) }}</span>
+    <span class="stat-tile-value">{{ data.employer|money }}</span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-label">Cost to the house</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.total) }}</span>
+    <span class="stat-tile-value">{{ data.total|money }}</span>
   </div>
   {% endif %}
 </div>
@@ -66,22 +66,22 @@
       {% for line in data.lines %}
       <tr>
         <th scope="row">{{ line.label }}</th>
-        <td class="num">&euro;{{ '%.2f'|format(line.amount) }}</td>
+        <td class="num">{{ line.amount|money }}</td>
       </tr>
       {% endfor %}
       <tr class="total">
         <th scope="row"><strong>Gross</strong></th>
-        <td class="num"><strong>&euro;{{ '%.2f'|format(data.gross) }}</strong></td>
+        <td class="num"><strong>{{ data.gross|money }}</strong></td>
       </tr>
       {% if data.employer_rate %}
       {# GROSS AND EMPLOYER NEVER ADDED INTO ONE UNLABELLED NUMBER. #}
       <tr>
         <th scope="row">Employer contributions at {{ data.employer_rate }}%</th>
-        <td class="num">&euro;{{ '%.2f'|format(data.employer) }}</td>
+        <td class="num">{{ data.employer|money }}</td>
       </tr>
       <tr class="total">
         <th scope="row"><strong>Cost to the house</strong></th>
-        <td class="num"><strong>&euro;{{ '%.2f'|format(data.total) }}</strong></td>
+        <td class="num"><strong>{{ data.total|money }}</strong></td>
       </tr>
       {% endif %}
     </tbody>
@@ -108,7 +108,7 @@
         <th scope="row">{{ label }}</th>
         <td class="num">{{ data.row.unsocial[key] }}</td>
         <td class="num">{% if data.row.premiums.get(key) %}+{{ data.row.premiums[key].percent }}%{% else %}<span class="mini-status status-pending">no rate set</span>{% endif %}</td>
-        <td class="num">{% if data.row.premiums.get(key) %}&euro;{{ '%.2f'|format(data.row.premiums[key].amount) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if data.row.premiums.get(key) %}{{ (data.row.premiums[key].amount)|money }}{% else %}&mdash;{% endif %}</td>
       </tr>
       {% endif %}
       {% endfor %}

@@ -272,8 +272,9 @@
         <span class="nav-subhead">Owed to the house</span>
         <a href="{{ url_for('management_outstanding') }}" class="{{ 'active' if request.endpoint=='management_outstanding' }}">{{ icon('financial') }}What We're Owed</a>
         {% if can('balances_to_collect') %}<a href="{{ url_for('balances_to_collect') }}" class="{{ 'active' if request.endpoint=='balances_to_collect' }}">{{ icon('financial') }}Balances To Collect</a>{% endif %}
-        {% if can('held_not_earned_page') %}<a href="{{ url_for('held_not_earned_page') }}" class="{{ 'active' if request.endpoint=='held_not_earned_page' }}">{{ icon('financial') }}Held, Not Earned</a>{% endif %}
+        <span class="nav-subhead">Sold ahead</span>
         <a href="{{ url_for('management_on_the_books') }}" class="{{ 'active' if request.endpoint=='management_on_the_books' }}">{{ icon('financial') }}On The Books</a>
+        {% if can('held_not_earned_page') %}<a href="{{ url_for('held_not_earned_page') }}" class="{{ 'active' if request.endpoint=='held_not_earned_page' }}">{{ icon('financial') }}Held, Not Earned</a>{% endif %}
         <span class="nav-subhead">Going out</span>
         <a href="{{ url_for('management_recurring_costs') }}" class="{{ 'active' if request.endpoint=='management_recurring_costs' }}">{{ icon('repeat') }}Recurring Costs</a>
         <a href="{{ url_for('supplier_agreements_page') }}" class="{{ 'active' if request.endpoint=='supplier_agreements_page' }}">{{ icon('receipt') }}What We Are Tied Into</a>

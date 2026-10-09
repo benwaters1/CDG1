@@ -30,21 +30,21 @@
 <div class="stat-tiles">
   <div class="stat-tile">
     <span class="stat-tile-label">The stay</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(state.bill.total) }}</span>
+    <span class="stat-tile-value">{{ state.bill.total|money }}</span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-label">Received</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(state.bill.paid) }}</span>
+    <span class="stat-tile-value">{{ state.bill.paid|money }}</span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-label">Still owed</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(state.bill.owed) }}</span>
+    <span class="stat-tile-value">{{ state.bill.owed|money }}</span>
   </div>
   {# The figure this page exists for: what is owed and not yet anybody's.
      Nought means every euro has a name against it. #}
   <div class="stat-tile">
     <span class="stat-tile-label">Nobody's yet</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(state.unassigned) }}</span>
+    <span class="stat-tile-value">{{ state.unassigned|money }}</span>
   </div>
 </div>
 
@@ -77,7 +77,7 @@
           {% if share['email'] %}<br><span class="upload-hint">{{ share['email'] }}</span>{% endif %}
           {% if share['note'] %}<br><span class="upload-hint">{{ share['note'] }}</span>{% endif %}
         </th>
-        <td class="num">&euro;{{ '%.2f'|format(share['amount']) }}</td>
+        <td class="num">{{ share['amount']|money }}</td>
         <td>
           {% if share['status'] == 'paid' %}
           <span class="mini-status status-onshift">paid {{ share['paid_at']|house_day }}</span>
@@ -147,7 +147,7 @@
 <div class="detail-card">
   <h2 class="section-heading" style="margin-top:0;">Add a share</h2>
   <p class="upload-hint">
-    &euro;{{ '%.2f'|format(state.unassigned) }} of this bill is still nobody's.
+    {{ state.unassigned|money }} of this bill is still nobody's.
     A share is refused if it would take the total over what is owed &mdash; a
     split that does not add up is worse than no split.
   </p>

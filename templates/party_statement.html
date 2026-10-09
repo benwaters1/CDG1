@@ -26,15 +26,15 @@
 <div class="stat-tiles">
   <div class="stat-tile">
     <span class="stat-tile-label">The whole party</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(party.total) }}</span>
+    <span class="stat-tile-value">{{ party.total|money }}</span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-label">Received</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(party.paid) }}</span>
+    <span class="stat-tile-value">{{ party.paid|money }}</span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-label">Still owed</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(party.owed) }}</span>
+    <span class="stat-tile-value">{{ party.owed|money }}</span>
   </div>
 </div>
 
@@ -61,18 +61,18 @@
         {% for line in bill.lines %}
         <tr>
           <th scope="row">{{ line.label }}</th>
-          <td class="num">&euro;{{ '%.2f'|format(line.amount) }}</td>
+          <td class="num">{{ line.amount|money }}</td>
         </tr>
         {% endfor %}
         <tr class="total">
           <th scope="row">This room</th>
-          <td class="num"><strong>&euro;{{ '%.2f'|format(bill.total) }}</strong></td>
+          <td class="num"><strong>{{ bill.total|money }}</strong></td>
         </tr>
         {% if bill.paid %}
-        <tr><th scope="row">Received</th><td class="num">&euro;{{ '%.2f'|format(bill.paid) }}</td></tr>
+        <tr><th scope="row">Received</th><td class="num">{{ bill.paid|money }}</td></tr>
         {% endif %}
         {% if bill.owed %}
-        <tr><th scope="row">Still owed</th><td class="num">&euro;{{ '%.2f'|format(bill.owed) }}</td></tr>
+        <tr><th scope="row">Still owed</th><td class="num">{{ bill.owed|money }}</td></tr>
         {% endif %}
       </tbody>
     </table>

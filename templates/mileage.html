@@ -28,7 +28,7 @@
   </div>
   <input aria-label="What for" type="text" name="reason" placeholder="What for" style="width:100%;">
   <button type="submit" class="btn-mini" style="margin-top:8px;">Claim</button>
-  <p class="pay-disclaimer" style="margin-top:6px;">At &euro;{{ '%.2f'|format(rate) }} a kilometre.
+  <p class="pay-disclaimer" style="margin-top:6px;">At {{ rate|money }} a kilometre.
     Claims need approving before they are paid.</p>
 </form>
 
@@ -53,8 +53,8 @@
             {% if c['reason'] %}<span class="upload-hint">{{ c['reason'] }}</span>{% endif %}
           </th>
           <td class="num">{{ '%g'|format(c['kilometres']) }}</td>
-          <td class="num">&euro;{{ '%.2f'|format(c['amount']) }}
-            <span class="upload-hint">at &euro;{{ '%.2f'|format(c['rate']) }}</span></td>
+          <td class="num">{{ c['amount']|money }}
+            <span class="upload-hint">at {{ c['rate']|money }}</span></td>
           <td>
             {% if is_owner and c['status'] == 'pending' %}
             <form method="post" action="{{ url_for('decide_mileage', claim_id=c['id']) }}"

@@ -32,17 +32,17 @@
         <td><strong>The {{ days }} days ahead</strong></td>
         <td class="num">{{ ahead.sellable }}</td>
         <td class="num">{{ ahead.sold }}{% if ahead.percent is not none %} · {{ ahead.percent }}%{% endif %}</td>
-        <td class="num">&euro;{{ '{:,.0f}'.format(ahead.money) }}</td>
-        <td class="num">{% if ahead.per_available is not none %}&euro;{{ '{:,.0f}'.format(ahead.per_available) }}{% else %}&mdash;{% endif %}</td>
-        <td class="num">{% if ahead.per_sold is not none %}&euro;{{ '{:,.0f}'.format(ahead.per_sold) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ ahead.money|money(0) }}</td>
+        <td class="num">{% if ahead.per_available is not none %}{{ ahead.per_available|money(0) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if ahead.per_sold is not none %}{{ ahead.per_sold|money(0) }}{% else %}&mdash;{% endif %}</td>
       </tr>
       <tr>
         <td>The {{ days }} days behind</td>
         <td class="num">{{ behind.sellable }}</td>
         <td class="num">{{ behind.sold }}{% if behind.percent is not none %} · {{ behind.percent }}%{% endif %}</td>
-        <td class="num">&euro;{{ '{:,.0f}'.format(behind.money) }}</td>
-        <td class="num">{% if behind.per_available is not none %}&euro;{{ '{:,.0f}'.format(behind.per_available) }}{% else %}&mdash;{% endif %}</td>
-        <td class="num">{% if behind.per_sold is not none %}&euro;{{ '{:,.0f}'.format(behind.per_sold) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ behind.money|money(0) }}</td>
+        <td class="num">{% if behind.per_available is not none %}{{ behind.per_available|money(0) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if behind.per_sold is not none %}{{ behind.per_sold|money(0) }}{% else %}&mdash;{% endif %}</td>
       </tr>
     </tbody>
   </table>
@@ -90,7 +90,7 @@
       <tr{{ ' class="muted"'|safe if r.key is none }}>
         <td>{{ r.label }}</td>
         <td class="num">{{ r.stays }}</td>
-        <td class="num">&euro;{{ '{:,.0f}'.format(r.money) }}</td>
+        <td class="num">{{ r.money|money(0) }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -126,8 +126,8 @@
           <a href="{{ url_for('guest_detail', guest_id=g.id) }}">{{ g.name }}</a>
           {% if g.vip %}<span class="chip">Looked after</span>{% endif %}
         </td>
-        <td class="num">&euro;{{ '{:,.0f}'.format(g.spent) }}</td>
-        <td class="num">{% if g.owed %}<strong>&euro;{{ '{:,.0f}'.format(g.owed) }}</strong>{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ g.spent|money(0) }}</td>
+        <td class="num">{% if g.owed %}<strong>{{ g.owed|money(0) }}</strong>{% else %}&mdash;{% endif %}</td>
         <td class="num">{{ g.stays }}</td>
         <td class="num">{{ g.nights }}</td>
         <td class="num">{{ g.workshops or '—' }}</td>

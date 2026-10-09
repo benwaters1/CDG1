@@ -25,7 +25,7 @@
 <div class="detail-card">
   <h2 class="section-heading">
     {% if group.vendor %}{{ group.vendor['name'] }}{% else %}No supplier on file{% endif %}
-    <span class="upload-hint">&euro;{{ '%.2f'|format(group.total) }}</span>
+    <span class="upload-hint">{{ group.total|money }}</span>
   </h2>
   {% if group.vendor %}
     {% if group.vendor['phone'] or group.vendor['email'] %}
@@ -57,7 +57,7 @@
             {% for reason in r.why %}{{ reason }}{% if not loop.last %}; {% endif %}{% endfor %}
             {%- if r.both %} <span class="mini-status status-pending">both</span>{% endif %}
           </td>
-          <td class="num">{% if r.cost %}&euro;{{ '%.2f'|format(r.cost) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{% if r.cost %}{{ r.cost|money }}{% else %}&mdash;{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

@@ -30,9 +30,9 @@
         <tr>
           <th scope="row">{{ r.name }}</th>
           <td class="num">{{ '%g'|format(r.sold) }}</td>
-          <td class="num">&euro;{{ '{:,.2f}'.format(r.took) }}</td>
-          <td class="num">{% if r.cost_each is not none %}&euro;{{ '%.2f'|format(r.cost_each) }}{% else %}&mdash;{% endif %}</td>
-          <td class="num">{% if r.kept is not none %}&euro;{{ '{:,.2f}'.format(r.kept) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{{ r.took|money }}</td>
+          <td class="num">{% if r.cost_each is not none %}{{ r.cost_each|money }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{% if r.kept is not none %}{{ r.kept|money }}{% else %}&mdash;{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

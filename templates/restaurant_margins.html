@@ -29,9 +29,9 @@
         <tr>
           <th scope="row">{{ d.item['name'] }}
             <span class="upload-hint">{{ d.item['course'] or d.item['category'] or '' }}</span></th>
-          <td class="num">&euro;{{ '%.2f'|format(d.item['price'] or 0) }}</td>
+          <td class="num">{{ (d.item['price'] or 0)|money }}</td>
           <td class="num">
-            {% if d.costed %}&euro;{{ '%.2f'|format(d.cost) }}
+            {% if d.costed %}{{ d.cost|money }}
             {% else %}
             {# Not zero. A dish with nothing against it would otherwise read
                as the best thing on the menu, which is the opposite of what
@@ -42,7 +42,7 @@
           <td class="num">
             {% if d.margin is not none %}
             <span style="color:{{ 'var(--danger)' if d.margin_pct is not none and d.margin_pct < 50 else 'inherit' }};">
-              &euro;{{ '%.2f'|format(d.margin) }}{% if d.margin_pct is not none %} &middot; {{ d.margin_pct }}%{% endif %}
+              {{ d.margin|money }}{% if d.margin_pct is not none %} &middot; {{ d.margin_pct }}%{% endif %}
             </span>
             {% else %}&mdash;{% endif %}
           </td>

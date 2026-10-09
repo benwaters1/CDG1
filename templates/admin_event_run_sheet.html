@@ -160,7 +160,7 @@
         {% set ready = data.readiness.by_id.get(sup.id) if data.readiness else none %}
         <td>
           {% if ready and ready.cost is not none %}
-            &euro;{{ '%.2f'|format(ready.cost) }}
+            {{ ready.cost|money }}
             <span class="field-hint" style="display:block;">{{ 'paid' if sup.paid_at else 'not paid' }}</span>
           {% else %}
             <span class="mini-status status-pending">no cost</span>
@@ -245,7 +245,7 @@
   {% endif %}
   {% if data.readiness.unpriced %}
   No cost yet for {{ data.readiness.unpriced|join(', ') }} &mdash; the
-  &euro;{{ '%.2f'|format(data.readiness.cost) }} above leaves
+  {{ data.readiness.cost|money }} above leaves
   {{ 'it' if data.readiness.unpriced|length == 1 else 'them' }} out.
   {% endif %}
 </p>

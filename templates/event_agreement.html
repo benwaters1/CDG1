@@ -29,19 +29,19 @@
 <div class="stat-tiles">
   <div class="stat-tile">
     <span class="stat-tile-label">Agreed</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(schedule.bill.quoted) }}</span>
+    <span class="stat-tile-value">{{ schedule.bill.quoted|money }}</span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-label">Received</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(schedule.bill.paid) }}</span>
+    <span class="stat-tile-value">{{ schedule.bill.paid|money }}</span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-label">Still owed</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(schedule.bill.owed) }}</span>
+    <span class="stat-tile-value">{{ schedule.bill.owed|money }}</span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-label">Not yet scheduled</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(schedule.unplanned) }}</span>
+    <span class="stat-tile-value">{{ schedule.unplanned|money }}</span>
   </div>
   {% if schedule.next_due %}
   {# The one figure somebody actually came to this page for: what is coming
@@ -49,7 +49,7 @@
      first. #}
   <div class="stat-tile">
     <span class="stat-tile-label">Next, {{ schedule.next_due.row['due_date'] }}</span>
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(schedule.next_due.outstanding) }}</span>
+    <span class="stat-tile-value">{{ schedule.next_due.outstanding|money }}</span>
   </div>
   {% endif %}
 </div>
@@ -70,8 +70,8 @@
       {% for q in quotes %}
       <tr>
         <th scope="row">{{ q['version'] }}<br><span class="upload-hint">{{ q['created_at']|house_day }}</span></th>
-        <td class="num">&euro;{{ '%.2f'|format((q['quoted_price'] or 0) - (q['discount_amount'] or 0)) }}
-          {%- if q['deposit_amount'] %}<br><span class="upload-hint">&euro;{{ '%.2f'|format(q['deposit_amount']) }} deposit</span>{% endif %}
+        <td class="num">{{ ((q['quoted_price'] or 0) - (q['discount_amount'] or 0))|money }}
+          {%- if q['deposit_amount'] %}<br><span class="upload-hint">{{ q['deposit_amount']|money }} deposit</span>{% endif %}
         </td>
         <td>
           {% if q['status'] == 'accepted' %}
@@ -227,7 +227,7 @@
       {% for i in schedule.instalments %}
       <tr>
         <th scope="row">{{ i.row['label'] or 'Instalment' }}</th>
-        <td class="num">&euro;{{ '%.2f'|format(i.amount) }}</td>
+        <td class="num">{{ i.amount|money }}</td>
         <td>{{ i.row['due_date'] }}</td>
         <td>
           {# Worked out from what has actually been received, oldest first.
@@ -236,9 +236,9 @@
           {% if i.met %}
           <span class="mini-status status-onshift">met</span>
           {% elif i.overdue %}
-          <span class="mini-status status-declined">overdue &mdash; &euro;{{ '%.2f'|format(i.outstanding) }} short</span>
+          <span class="mini-status status-declined">overdue &mdash; {{ i.outstanding|money }} short</span>
           {% elif i.covered %}
-          <span class="mini-status status-pending">&euro;{{ '%.2f'|format(i.covered) }} of it in</span>
+          <span class="mini-status status-pending">{{ i.covered|money }} of it in</span>
           {% else %}
           <span class="mini-status status-upcoming">to come</span>
           {% endif %}
@@ -259,7 +259,7 @@
 {% if schedule and schedule.unplanned > 0.005 %}
 <div class="detail-card">
   <p class="upload-hint">
-    &euro;{{ '%.2f'|format(schedule.unplanned) }} of what was agreed is not on
+    {{ schedule.unplanned|money }} of what was agreed is not on
     the plan yet. A stage is refused if it would take the plan over the
     agreement &mdash; a plan that does not add up to the quote is worse than no
     plan.

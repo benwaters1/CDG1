@@ -4,7 +4,8 @@
 
 <div class="page-head">
   <h1>Held, not earned</h1>
-  <div style="display:flex; gap:10px;">
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_on_the_books') }}" class="btn-ghost">On the books</a>
     <a href="{{ url_for('money_ahead_page') }}" class="btn-ghost">Money ahead</a>
     <a href="{{ url_for('management_financials') }}" class="btn-ghost">Financials</a>
   </div>
@@ -13,6 +14,11 @@
   Cash that is in the account and is not income. Until the guest stays, the dinner is served or
   the atelier runs, it is money owed back if the thing does not happen. It sits in the same
   balance as revenue and looks exactly like it.
+</p>
+<p class="pay-disclaimer">
+  The other side of it: everything sold for the months ahead, paid or not, is
+  <a href="{{ url_for('management_on_the_books') }}">On the books</a>. This page is only the
+  part of it that has already been paid.
 </p>
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}

@@ -81,13 +81,13 @@
         </th>
         <td class="num">
           {%- if mtr.now is none %}&mdash;
-          {%- elif mtr.unit == 'money' %}&euro;{{ '%.2f'|format(mtr.now) }}
+          {%- elif mtr.unit == 'money' %}{{ mtr.now|money }}
           {%- elif mtr.unit == '%' %}{{ mtr.now }}%
           {%- else %}{{ mtr.now }}{% endif -%}
         </td>
         <td class="num">
           {%- if mtr.then is none %}&mdash;
-          {%- elif mtr.unit == 'money' %}&euro;{{ '%.2f'|format(mtr.then) }}
+          {%- elif mtr.unit == 'money' %}{{ mtr.then|money }}
           {%- elif mtr.unit == '%' %}{{ mtr.then }}%
           {%- else %}{{ mtr.then }}{% endif -%}
         </td>

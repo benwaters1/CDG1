@@ -5,6 +5,7 @@
 <div class="page-head">
   <h1>On the books</h1>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('held_not_earned_page') }}" class="btn-ghost">Held, not earned</a>
     <a href="{{ url_for('money_ahead_page') }}" class="btn-ghost">Money ahead</a>
     <a href="{{ url_for('management_financials') }}" class="btn-ghost">Financials</a>
   </div>
@@ -16,16 +17,22 @@
   <a href="{{ url_for('money_ahead_page') }}">Money ahead</a> asks the cash question about the
   same euros. Do not add the two together.
 </p>
+<p class="pay-disclaimer">
+  The other side of it: of what is sold here, whatever the guest has <em>already paid</em> is in
+  the bank but not yet yours &mdash; owed back if the stay does not happen. That is
+  <a href="{{ url_for('held_not_earned_page') }}">Held, not earned</a>, the figure the
+  accountant asks for.
+</p>
 
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.total) }}</span>
+    <span class="stat-tile-value">{{ data.total|money }}</span>
     <span class="stat-tile-label">Confirmed, still to come</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.nights }}</span>
     <span class="stat-tile-label">Room-nights sold</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.pending) }}</span>
+    <span class="stat-tile-value">{{ data.pending|money }}</span>
     <span class="stat-tile-label">Held, not confirmed</span></span></div>
 </div>
 
@@ -48,21 +55,21 @@
       {% for r in data.rows %}
       <tr>
         <td>{{ r.month }}</td>
-        <td class="num">&euro;{{ '%.2f'|format(r.rooms) }}</td>
+        <td class="num">{{ r.rooms|money }}</td>
         <td class="num">{{ r.nights or '&mdash;'|safe }}</td>
-        <td class="num">&euro;{{ '%.2f'|format(r.workshops) }}</td>
-        <td class="num">&euro;{{ '%.2f'|format(r.total) }}</td>
-        <td class="num">{% if r.pending %}&euro;{{ '%.2f'|format(r.pending) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ r.workshops|money }}</td>
+        <td class="num">{{ r.total|money }}</td>
+        <td class="num">{% if r.pending %}{{ r.pending|money }}{% else %}&mdash;{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
     <tfoot><tr>
       <th>Total</th>
-      <th class="num">&euro;{{ '%.2f'|format(data.rooms) }}</th>
+      <th class="num">{{ data.rooms|money }}</th>
       <th class="num">{{ data.nights }}</th>
-      <th class="num">&euro;{{ '%.2f'|format(data.workshops) }}</th>
-      <th class="num">&euro;{{ '%.2f'|format(data.total) }}</th>
-      <th class="num">&euro;{{ '%.2f'|format(data.pending) }}</th>
+      <th class="num">{{ data.workshops|money }}</th>
+      <th class="num">{{ data.total|money }}</th>
+      <th class="num">{{ data.pending|money }}</th>
     </tr></tfoot>
   </table>
 </div>

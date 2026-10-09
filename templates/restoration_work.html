@@ -22,7 +22,7 @@
     and it stops being a story.
   </div>
 {% else %}
-<p style="font-size:22px; font-weight:600; margin:0 0 4px;">&euro;{{ '%.2f'|format(cost.total) }}</p>
+<p style="font-size:22px; font-weight:600; margin:0 0 4px;">{{ cost.total|money }}</p>
 <p class="upload-hint" style="margin-top:0;">
   Gross, as invoiced, across {{ cost.count }} invoice{{ '' if cost.count == 1 else 's' }}
   {%- if cost.suppliers %} from {{ cost.suppliers|join(', ') }}{% endif %}.
@@ -37,7 +37,7 @@
         <th scope="row" style="font-weight:500;">{{ i['description'] or '—' }}</th>
         <td>{{ i['vendor_name'] or '—' }}</td>
         <td>{{ (i['invoice_date'] or i['spent_on'] or '')|date_short }}</td>
-        <td class="num">&euro;{{ '%.2f'|format(i['amount'] or 0) }}</td>
+        <td class="num">{{ (i['amount'] or 0)|money }}</td>
         <td>
           <form method="post" action="{{ url_for('detach_restoration_expense', work_id=work['id'], expense_id=i['id']) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -71,7 +71,7 @@
             <th scope="row" style="font-weight:500;">{{ c['description'] or '—' }}{% if c['is_capital'] %} <span class="mini-status">capital</span>{% endif %}</th>
             <td>{{ c['vendor_name'] or '—' }}</td>
             <td>{{ (c['invoice_date'] or c['spent_on'] or '')|date_short }}</td>
-            <td class="num">&euro;{{ '%.2f'|format(c['amount'] or 0) }}</td>
+            <td class="num">{{ (c['amount'] or 0)|money }}</td>
           </tr>
           {% endfor %}
         </tbody>

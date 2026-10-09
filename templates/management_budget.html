@@ -36,8 +36,8 @@
         {% for y in year %}
         <tr>
           <th scope="row">{{ y.month.strftime('%b %Y') }}</th>
-          <td class="num">&euro;{{ '{:,.0f}'.format(y.revenue) }}</td>
-          <td class="num">{% if y.revenue_budget %}&euro;{{ '{:,.0f}'.format(y.revenue_budget) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{{ y.revenue|money(0) }}</td>
+          <td class="num">{% if y.revenue_budget %}{{ y.revenue_budget|money(0) }}{% else %}&mdash;{% endif %}</td>
           <td class="num">
             {% if y.revenue_delta is not none %}
             <span style="color:{{ 'var(--danger)' if y.revenue_delta < 0 else 'inherit' }};">
@@ -45,8 +45,8 @@
             </span>
             {% else %}<span class="upload-hint">not set</span>{% endif %}
           </td>
-          <td class="num">{% if y.spent is not none %}&euro;{{ '{:,.0f}'.format(y.spent) }}{% else %}&mdash;{% endif %}</td>
-          <td class="num">{% if y.cost_budget %}&euro;{{ '{:,.0f}'.format(y.cost_budget) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{% if y.spent is not none %}{{ y.spent|money(0) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{% if y.cost_budget %}{{ y.cost_budget|money(0) }}{% else %}&mdash;{% endif %}</td>
           <td class="num">
             {% if y.cost_delta is not none %}
             {# Over on cost is the bad direction, which is the opposite of revenue. #}
