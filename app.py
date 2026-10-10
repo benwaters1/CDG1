@@ -1000,15 +1000,15 @@ us what we hold about you, and ask us to correct or delete it.
 Please tell us at the time if something is wrong — almost everything is
 fixable while you are still here. If it is not, write to us at
 ariege@chateaugudanes.com. These terms are governed by French law, and the
-French courts have jurisdiction. A dispute we have not resolved in writing
-may be referred to a consumer mediator; write to us and we will send you
-the mediator's details.
+French courts have jurisdiction. Under French law you are entitled to take
+a dispute to a consumer mediator, free of charge, once you have tried to
+resolve it with us in writing.
 
 13. Contact
 Château de Gudanes SASU, 2 Route de Beille, 09310 Château-Verdun, France.
 +33 6 28 06 97 76 · ariege@chateaugudanes.com
 
-Last updated: 1 October 2026"""
+Last updated: 10 October 2026"""
 
 # Email — unset until you add either Resend or SMTP credentials as
 # environment variables. Until then, every send_email() call is a no-op

@@ -131,10 +131,11 @@ def run():
                            "Assistance and guide dogs are welcome",
                            "Transfers and excursions are included only where",
                            "2 Route de Beille",
-                           # L616-1 wants the mediator named. Generic until the
-                           # owner picks one (reminder set for 8 October 2026).
-                           "may be referred to a consumer mediator",
-                           "Last updated: 1 October 2026")
+                           # L616-1 wants the mediator named. Generic on the
+                           # owner's word (10 October 2026) until he picks one:
+                           # the right, stated, without naming anybody.
+                           "entitled to take\na dispute to a consumer mediator",
+                           "Last updated: 10 October 2026")
                if c not in m.DEFAULT_TERMS]
     s.check("the seeded default carries the same clauses as the live page",
             not missing,
