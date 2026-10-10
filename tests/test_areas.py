@@ -176,5 +176,49 @@ def run():
             not {a for a in m.OWNER_ONLY_AREAS.values() if a} - set(m.NAV_AREAS),
             detail="a home nothing draws is a page that highlights nothing")
 
+    s.section("Every link a menu draws opens for the person it is drawn for")
+    # Where a page is listed and who may open it are separate answers, so a
+    # link to a page filed in another area has to ask can() for itself. Four
+    # owner-only pages in the Financial menu did; "What We Are Tied Into" did
+    # not, so a manager was shown it and turned away. Asked of the menu as it
+    # is actually drawn, for each starting preset and for each area alone --
+    # the single-area case is where a cross-filed link shows up.
+    adapter = m.app.url_map.bind("localhost")
+    holders = {slug: areas.split(",") for slug, _n, _d, areas, full, _o
+               in m.DEFAULT_ACCESS_PRESETS if areas and not full}
+    holders.update({f"only {a}": [a] for a in sorted(m.NAV_AREAS)})
+    dead, drawn, hollow = [], 0, []
+    for who, granted in holders.items():
+        pc = _preset_client(granted)
+        page = pc.get("/today").get_data(as_text=True)
+        a, b = page.find('<nav class="nav">'), page.find("</nav>")
+        conn = db()
+        user = conn.execute("SELECT * FROM users WHERE email = ?",
+                            (TAG.lower() + "@example.invalid",)).fetchone()
+        conn.close()
+        for href in set(re.findall(r'href="(/[^"#?]*)', page[a:b])):
+            try:
+                endpoint, _args = adapter.match(href, method="GET")
+            except Exception:
+                continue
+            if endpoint not in guarded:
+                continue
+            drawn += 1
+            if not m.can_reach(user, endpoint):
+                dead.append(f"{who}: {endpoint}")
+        # Hiding the links must not leave their heading standing alone.
+        for menu in re.findall(r'<div class="nav-dropdown-menu">(.*?)</div>', page[a:b], re.S):
+            for head, under in re.findall(
+                    r'<span class="nav-subhead">([^<]+)</span>(.*?)(?=<span class="nav-subhead">|$)',
+                    menu, re.S):
+                if "<a " not in under:
+                    hollow.append(f"{who}: {head}")
+    s.check("the menus were drawn and read", drawn > 50,
+            detail=f"only {drawn} guarded links seen, so the next check proves little")
+    s.check("no menu offers a page that would refuse the person it is shown to",
+            not dead, detail="; ".join(sorted(dead)[:6]))
+    s.check("and no menu heading is drawn with nothing under it", not hollow,
+            detail="; ".join(sorted(set(hollow))[:6]))
+
     _cleanup()
     return s
