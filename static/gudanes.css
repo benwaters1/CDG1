@@ -11003,3 +11003,4 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-how__t{ margin: .2rem 0 var(--s2); font-family: var(--display); font-weight: 400; font-size: clamp(21px, .5vw + 17px, 25px); line-height: 1.2; color: var(--blue-deep); }
 .g .g-how__d{ margin: 0; font-family: var(--serif); font-size: 17px; line-height: 1.65; color: var(--ink-2); }
 @media (max-width: 600px){ .g .g-how__i{ grid-template-columns: 52px 1fr; gap: var(--s3); } .g .g-how__ill{ width: 52px; } .g .g-how__d{ font-size: 16px; } }
+.g .g-how__lead{ margin-top: var(--s4); font-style: italic; color: var(--ink-2); }

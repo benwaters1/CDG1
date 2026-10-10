@@ -51,6 +51,20 @@
   <path d="M54 10L36 44h13l-6 24 21-36H51l7-22z"/>
   <path d="M8 74h80" opacity=".7"/><path d="M22 74v11h52V74" opacity=".55"/>
   <path d="M26 80h44" /><circle cx="48" cy="80" r="2.2" opacity=".7"/>
+{#- 10 Oct: restoration steps - parquet (herringbone floor), moulding (a cornice profile), wallpaper (a roll), window (arched,
+    leaded panes) -#}
+{%- elif kind == 'parquet' %}
+  <path d="M14 70l14-14 14 14-14 14zM42 70l14-14 14 14-14 14zM28 56l14-14 14 14-14 14zM56 56l14-14 14 14-14 14zM42 42l14-14 14 14-14 14z" />
+  <path d="M8 86h80" opacity=".6"/>
+{%- elif kind == 'moulding' %}
+  <path d="M10 22h76M10 30h76" /><path d="M14 30c0 10 8 12 8 20s-8 10-8 20h68c0-10-8-12-8-20s8-10 8-20" opacity=".8"/>
+  <path d="M10 76h76" /><circle cx="48" cy="50" r="6" opacity=".7"/>
+{%- elif kind == 'wallpaper' %}
+  <rect x="20" y="14" width="40" height="62" rx="2"/><path d="M60 22c10 0 16 4 16 10v44c0-6-6-10-16-10" />
+  <path d="M30 26c4 4 4 8 0 12M46 26c4 4 4 8 0 12M30 50c4 4 4 8 0 12M46 50c4 4 4 8 0 12" opacity=".7"/>
+{%- elif kind == 'window' %}
+  <path d="M26 84V40a22 22 0 0 1 44 0v44z"/><path d="M48 18v66M26 50h44M26 66h44" opacity=".75"/>
+  <path d="M33 34l15 10 15-10" opacity=".55"/><path d="M18 86h60" />
 {%- elif kind == 'key' %}
   <circle cx="28" cy="48" r="11"/>
   <path d="M28 41a4 4 0 010 14a4 4 0 010-14z" opacity=".7"/><path d="M21 48a4 4 0 0114 0a4 4 0 01-14 0z" opacity=".7"/>
