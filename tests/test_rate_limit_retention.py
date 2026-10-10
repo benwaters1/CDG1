@@ -129,6 +129,36 @@ def run():
             detail="the purge must not make the limiter forget inside its "
                    "own window")
 
+    s.section("An attempt counts even when the form turns it away")
+    # The attempt waited for the caller to commit, and a form that refused
+    # the submission -- a bad field, a reset for an address with no account
+    # -- closed without committing, so it was never counted. Asked on a
+    # connection that is then closed WITHOUT a commit, as those forms do, and
+    # read back on a fresh one.
+    refused = db()
+    with m.app.test_request_context("/", environ_base={"REMOTE_ADDR": "198.51.100.8"}):
+        m.rate_limited(refused, TAG + "refused", limit=5)
+    refused.close()
+    fresh = db()
+    kept = fresh.execute("SELECT COUNT(*) AS c FROM submission_log WHERE action = ?",
+                         (TAG + "refused",)).fetchone()["c"]
+    s.check("the attempt is kept though nothing committed it", kept == 1,
+            detail=f"{kept} row(s)")
+    # A caller already writing keeps the attempt with its own writes: the
+    # limiter must not commit somebody else's half-finished work early.
+    mid = db()
+    mid.execute("INSERT INTO submission_log (ip_address, action, created_at) "
+                "VALUES ('198.51.100.9', ?, '2026-01-01T00:00:00+00:00')", (TAG + "theirs",))
+    with m.app.test_request_context("/", environ_base={"REMOTE_ADDR": "198.51.100.9"}):
+        m.rate_limited(mid, TAG + "mid", limit=5)
+    mid.rollback()
+    mid.close()
+    left = fresh.execute("SELECT COUNT(*) AS c FROM submission_log WHERE action IN (?, ?)",
+                         (TAG + "theirs", TAG + "mid")).fetchone()["c"]
+    s.check("and a caller's own unsaved writes are not committed for it", left == 0,
+            detail=f"{left} row(s) survived a rollback")
+    fresh.close()
+
     s.section("The privacy notice says what the code does")
     notice = " ".join(m.app.test_client().get("/privacy")
                       .get_data(as_text=True).split())

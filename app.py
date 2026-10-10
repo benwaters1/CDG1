@@ -9767,10 +9767,21 @@ def rate_limited(conn, action, limit, window_hours=1):
         "SELECT COUNT(*) AS c FROM submission_log WHERE ip_address = ? AND action = ? AND created_at >= ?",
         (ip, action, window_start),
     ).fetchone()["c"]
+    already_open = conn.in_transaction
     conn.execute(
         "INSERT INTO submission_log (ip_address, action, created_at) VALUES (?, ?, ?)",
         (ip, action, datetime.now(timezone.utc).isoformat()),
     )
+    # KEPT WHATEVER THE FORM DECIDES NEXT. The attempt used to wait for the
+    # caller to commit -- and a form that then turned the submission away
+    # (a bad field, an address with no account) closed its connection
+    # without committing, so the attempt was never counted. A script sending
+    # bad supplier invoices, or asking for reset codes for addresses that do
+    # not exist, was never throttled at all. Saved at once when it is the only
+    # thing written so far; a caller already mid-transaction keeps it with
+    # its own writes, so nothing of theirs is committed early.
+    if not already_open:
+        conn.commit()
     return count >= limit
 
 
