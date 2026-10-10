@@ -214,7 +214,7 @@
           </div>
           <div class="g-stack g-stack--arrive">
             {#- 5 Oct (owner): an estimated arrival time, with check-in and check-out stated and early check-in on request.
-                Check-in from 2pm (owner, 5 Oct - the terms in app.py still say 4pm), check-out by 11am. Saved in bookings.estimated_arrival_time. -#}
+                Check-in from 2pm, check-out by 11am. Saved in bookings.estimated_arrival_time. -#}
             <p class="g-field g-eta">
               <label for="estimated_arrival_time">Estimated arrival time<span class="g-req" aria-hidden="true">*</span></label>
               {%- set _eta = (prefill_guest or {}).get('estimated_arrival_time') or (request.form.get('estimated_arrival_time') if request.method == 'POST' else '') -%}

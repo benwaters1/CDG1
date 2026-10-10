@@ -49,7 +49,9 @@
       <li><b>1741</b><span>The château is built.</span></li>
       <li><b>1994</b><span>Classified a Historic Monument: classé, the highest level of protection in France.</span></li>
       <li><b>2013</b><span>Karina Waters buys it, and the restoration begins.</span></li>
+      <li><b>2014</b><span>The first winter spent inside: no electricity, heating or water yet, and a tent pitched in one of the rooms against the cold.</span></li>
       <li><b>2016</b><span>The restoration receives the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco.</span></li>
+      <li><b>2020</b><span>Work begins on bringing back the gardens.</span></li>
       <li><b>Now</b><span>A Class I Historic Monument under restoration, with five bedrooms open to guests, and the workshops.</span></li>
     </ul>
   </div>
@@ -75,6 +77,30 @@
 {#- 9 Oct (owner: "the restoration page need more photos, a better before/after"): three pairs, large and matched, each
     labelled on the photograph. None of the library's pairs is taken from the same spot, so a drag slider would blend two
     different views - side by side is the honest comparison. -#}
+{#- 9 Oct (owner: "more info on the work, from news articles - all new electricity and plumbing from the road and throughout
+    the house, where a large trench was dug"). Sources: the owner (power and water, the trench); Home Beautiful 2024 (the
+    first winter in a tent; the tunnel; the gardens since 2020); Nuvo 2020 (consolidation first; painted walls; wartime
+    hatches; frescoes and ceilings at the back); The Good Life France (trees in the slate); Bird in Flight 2017 (new roof
+    and windows); a guest's account, Molly Wilk (seventeenth-century beams; the table from wind-felled trees); Alex Lalak
+    2024 (doorknobs to roof tiles kept); Studio Beleta (candlelight while the power went in). -#}
+<section class="g-sec g-sec--sand" id="how"><div class="g-wrap">
+  <p class="g-fr">Pas à pas <span class="g-fr__en">Step by step</span></p>
+  <h2 class="g-place">How the House Came Back</h2>
+  <ul class="g-how">
+    {%- for kind, title, text in [
+      ('chateau', 'Made safe first', 'Small trees had taken root in the 300-year-old slate. Before anything else, the floors, walls and ceilings were secured, and the house was given a new roof and new windows.'),
+      ('power', 'Power and water, from the road', 'All the electricity and plumbing is new: brought up from the road through a large trench, then run throughout the house. Until it reached them, many rooms were lit by candle.'),
+      ('bed', 'The first winter inside', 'In the winter of 2014 there was still no electricity, heating or water. The first nights in the château were spent in a tent, pitched inside one of the rooms against the cold.'),
+      ('restoration', 'What the walls gave back', 'Taking away later damage uncovered painted walls; in one bedroom, seventeenth-century painted beams had been plastered over in the eighteenth. At the back of the house were frescoes, ornate ceilings, and the hatches of hiding places used by a family during the Second World War.'),
+      ('candelabra', 'Beneath the house', 'A tunnel runs six metres underground, under a vaulted ceiling; its floor has still not been found. Local legend has an owner escaping down it in a barrel during the War of the Demoiselles, around 1830.'),
+      ('key', 'Nothing thrown away', 'Everything found along the way, from doorknobs to roof tiles, has been kept and used again. A long table was made from trees the wind brought down on the grounds.')] %}
+    <li class="g-how__i">
+      <div class="g-how__ill" aria-hidden="true">{{ illus(kind) }}</div>
+      <div><h3 class="g-how__t">{{ title }}</h3><p class="g-how__d">{{ text }}</p></div>
+    </li>
+    {%- endfor %}
+  </ul>
+</div></section>
 <section class="g-sec g-before-sec" id="before"><div class="g-wrap">
   <p class="g-fr">Avant, après <span class="g-fr__en">Before and now</span></p>
   <h2 class="g-place">Then and Now</h2>
