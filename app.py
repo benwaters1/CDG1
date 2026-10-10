@@ -9145,7 +9145,7 @@ def monthly_pay_statement(conn, user_id, year, month):
     if row:
         if row["basis"] == "hourly" and wage:
             lines.append({
-                "label": f"{row['hours']} hours at EUR {float(wage['gross_amount'] or 0):.2f}",
+                "label": f"{row['hours']} hours at {money(float(wage['gross_amount'] or 0))}",
                 "amount": row["base"], "kind": "base"})
         elif row["basis"] == "monthly" and wage:
             lines.append({"label": "Monthly salary",
@@ -9165,7 +9165,7 @@ def monthly_pay_statement(conn, user_id, year, month):
             lines.append({
                 "label": (f"Meals provided: {row['benefit']['meals']} across "
                           f"{row['benefit']['shifts']} shifts at "
-                          f"EUR {row['benefit']['value']:.2f}"),
+                          f"{money(row['benefit']['value'])}"),
                 "amount": row["benefit"]["amount"], "kind": "benefit"})
     gross = round(sum(l["amount"] for l in lines), 2)
     employer = round(gross * (row["employer_rate"] if row else 0) / 100.0, 2)
@@ -9696,7 +9696,7 @@ def recent_activity(conn, limit=15):
     ).fetchall():
         label = "a supplier invoice" if e["kind"] == "supplier_invoice" else "an expense claim"
         who = e["who"] or e["vendor_name"] or "Someone"
-        events.append({"at": e["submitted_at"], "text": f"{who} submitted {label} for €{e['amount']:.2f}"})
+        events.append({"at": e["submitted_at"], "text": f"{who} submitted {label} for {money(e['amount'])}"})
     for lr in conn.execute(
         """SELECT leave_requests.start_date, leave_requests.end_date, leave_requests.requested_at,
                   users.name AS who
@@ -13661,7 +13661,7 @@ def promo_refusal_reason(conn, code, category, subtotal):
         return (f"Fully redeemed — {promo['redemption_count']} of "
                 f"{promo['max_redemptions']} used.")
     if promo["min_spend"] and subtotal < promo["min_spend"]:
-        return f"Below the €{promo['min_spend']:.2f} minimum spend."
+        return f"Below the {money(promo['min_spend'])} minimum spend."
     return None
 
 
@@ -14288,7 +14288,7 @@ def build_office_display_queues(conn, today):
     queues.append({
         "key": "expenses", "label": "Expenses", "link": url_for("admin_approvals"),
         "count": len(expenses),
-        "preview": [f"{r['submitter_name'] or r['vendor_name'] or 'Unknown'} — €{r['amount']:.2f}" for r in expenses[:4]],
+        "preview": [f"{r['submitter_name'] or r['vendor_name'] or 'Unknown'} — {money(r['amount'])}" for r in expenses[:4]],
     })
 
     corrections = conn.execute(
@@ -14374,7 +14374,7 @@ def build_office_display_queues(conn, today):
     queues.append({
         "key": "balances", "label": "Balances due (7d)", "link": url_for("admin_workshop_registrations"),
         "count": len(balances_due),
-        "preview": [f"{r['guest_name']} — €{r['balance_amount']:.2f} by {r['balance_due_date']}" for r in balances_due[:4]],
+        "preview": [f"{r['guest_name']} — {money(r['balance_amount'])} by {r['balance_due_date']}" for r in balances_due[:4]],
     })
 
     low_feedback = conn.execute(
@@ -17513,9 +17513,8 @@ def create_booking_share(conn, booking_id, name, email, amount, note=None):
         return None, "A share has to be more than nothing."
     state = split_state(conn, booking_id)
     if amount > state["unassigned"] + 0.005:
-        return None, ("Only EUR %.2f of this bill is unclaimed, so a share of "
-                      "EUR %.2f would take the total over what is owed."
-                      % (state["unassigned"], amount))
+        return None, (f"Only {money(state['unassigned'])} of this bill is unclaimed, so a "
+                      f"share of {money(amount)} would take the total over what is owed.")
     name = (name or "").strip()[:120]
     email = (email or "").strip()[:200]
     if not name and not email:
@@ -19373,7 +19372,7 @@ def pos_close_if_settled(conn, order_id, method, *, user_id=None):
          # being answerable.
          datetime.now(timezone.utc).isoformat(), after["total"], order_id))
     log_audit(conn, "pos_tab_settled", target=after["order"]["table_label"],
-              details=f"€{after['total']:.2f}")
+              details=f"{money(after['total'])}")
     pos_journal_append(conn, "tab_settled", {
         "table": after["order"]["table_label"], "total": after["total"],
         "gross": after["gross"], "discount": after["discount"],
@@ -19990,7 +19989,7 @@ def collect_hr_actions(conn, today):
            LEFT JOIN users ON users.id = expenses.submitted_by_user_id WHERE expenses.status = 'pending'"""
     ).fetchall():
         add("expense", r["id"], r["submitted_by_user_id"],
-            f"{r['n'] or r['vendor_name'] or 'Unknown'} — €{r['amount']:.2f}", house_date_iso(r["submitted_at"]), "/admin/approvals")
+            f"{r['n'] or r['vendor_name'] or 'Unknown'} — {money(r['amount'])}", house_date_iso(r["submitted_at"]), "/admin/approvals")
 
     for r in conn.execute(
         """SELECT timesheet_corrections.*, users.name AS n FROM timesheet_corrections
@@ -25831,10 +25830,10 @@ def tell_house_of_payment(conn, category, booking_id, amount, ref=None):
         "guest_email": email or "",
         "what_for": f"{view['kind']}: {view['booking']['what']}",
         "reference_code": view["booking"]["ref"],
-        "amount": f"€{amount:,.2f}",
+        "amount": f"{money(amount)}",
         "paid_at": local_datetime_str(datetime.now(timezone.utc).isoformat()),
         "paid_how": "Card, online" + (f", {card}" if card else ""),
-        "balance_line": (f"Still to pay: €{view['owed']:,.2f}." if view["owed"]
+        "balance_line": (f"Still to pay: {money(view['owed'])}." if view["owed"]
                          else "Now paid in full."),
         "booking_url": external_url("refund_desk", category=category, booking_id=booking_id),
     })
@@ -27806,7 +27805,7 @@ def make_refund(conn, category, booking, amount, reason, method="stripe", user_i
     if ceiling <= 0:
         return False, "There's nothing left to refund on this booking.", []
     if amount > ceiling + 0.005:  # tolerate float noise, not real over-refunds
-        return False, f"That's more than the €{ceiling:.2f} still refundable on this booking.", []
+        return False, f"That's more than the {money(ceiling)} still refundable on this booking.", []
 
     payments = payments_received(conn, category, booking)
     chosen = None
@@ -27815,7 +27814,7 @@ def make_refund(conn, category, booking, amount, reason, method="stripe", user_i
         if not chosen:
             return False, "That payment is not on this booking.", []
         if amount > chosen["refundable"] + 0.005:
-            return False, (f"That's more than the €{chosen['refundable']:.2f} still "
+            return False, (f"That's more than the {money(chosen['refundable'])} still "
                            "refundable on that payment."), []
 
     if method == "stripe":
@@ -27842,7 +27841,7 @@ def make_refund(conn, category, booking, amount, reason, method="stripe", user_i
             if left <= 0.005:
                 break
         if left > 0.005:
-            return False, (f"Only €{amount - left:.2f} of that was paid by card through "
+            return False, (f"Only {money(amount - left)} of that was paid by card through "
                            "Stripe. Refund the rest the way it was paid."), []
     else:
         pieces = [(chosen, amount)]
@@ -27920,7 +27919,7 @@ def make_refund(conn, category, booking, amount, reason, method="stripe", user_i
             pass  # workshop_bookings tracks money in its ledger, not a status column
     conn.commit()
     if error:
-        return False, f"€{done:.2f} went back, but the rest did not: {error}", ids
+        return False, f"{money(done)} went back, but the rest did not: {error}", ids
     return True, None, ids
 
 
@@ -27956,7 +27955,7 @@ def refund_booking(conn, booking, amount=None, reason="Cancelled by the château
     if by_card <= 0.005 and other <= 0.005:
         return False, "There's nothing left to refund on this booking."
     if by_card <= 0.005:
-        return False, (f"€{other:.2f} was paid another way, not by card, and needs "
+        return False, (f"{money(other)} was paid another way, not by card, and needs "
                        "giving back by hand.")
     ok, error = issue_refund(conn, "room", booking, by_card, reason, method="stripe",
                              user_id=user_id, reason_code="declined")
@@ -27964,9 +27963,9 @@ def refund_booking(conn, booking, amount=None, reason="Cancelled by the château
         # It went unrecorded: the only refund in the house with no line in
         # the audit trail was the one made automatically on a decline.
         log_audit(conn, "refund_issued", target=f"room booking {booking['reference_code']}",
-                  details=f"€{by_card:.2f} — declined, back to the card")
+                  details=f"{money(by_card)} — declined, back to the card")
     if ok and other > 0.005:
-        return False, (f"€{by_card:.2f} went back to the card; €{other:.2f} was paid "
+        return False, (f"{money(by_card)} went back to the card; {money(other)} was paid "
                        "another way and needs giving back by hand.")
     return ok, error
 
@@ -28137,7 +28136,7 @@ def reverse_refund(conn, original, why):
     log_audit(conn, "refund_failed",
               target=f"{REFUND_AUDIT_WORDS.get(original['category'], '')} "
                      f"{original['reference_code']}".strip(),
-              details=f"€{amount:.2f} — {why}")
+              details=f"{money(amount)} — {why}")
     conn.commit()
 
 
@@ -28176,7 +28175,7 @@ def record_refund_from_stripe(conn, refund_obj):
     booking = _booking_row(conn, place[0], place[1]) if place else None
     if not booking:
         _payment_task(conn, f"A refund in Stripe that matches no booking ({rid})",
-                      f"€{amount:.2f} was refunded in Stripe on payment {intent or 'unknown'}, "
+                      f"{money(amount)} was refunded in Stripe on payment {intent or 'unknown'}, "
                       "and no booking here carries that payment. Find it in Stripe, then "
                       "record it on the booking's refund page as 'Other' so the books match.")
         conn.commit()
@@ -28201,7 +28200,7 @@ def record_refund_from_stripe(conn, refund_obj):
     _mark_refunded_if_whole(conn, category, booking_id)
     log_audit(conn, "refund_recorded_from_stripe",
               target=f"{REFUND_AUDIT_WORDS[category]} {_booking_field(booking, 'reference_code')}",
-              details=f"€{amount:.2f} — made in Stripe's dashboard")
+              details=f"{money(amount)} — made in Stripe's dashboard")
     conn.commit()
     return "recorded"
 
@@ -28269,7 +28268,7 @@ def record_dispute(conn, dispute):
                                      "Refund — lost a card dispute", amount, method="stripe")
         _mark_refunded_if_whole(conn, row["category"], row["booking_id"])
     log_audit(conn, "card_dispute", target=row["reference_code"] or did,
-              details=f"{status} — €{amount:.2f}, {reason}")
+              details=f"{status} — {money(amount)}, {reason}")
     conn.commit()
     return status
 
@@ -28382,7 +28381,7 @@ def refund_everything(conn, category, booking, reason, reason_code, user_id=None
         if p["refundable"] <= 0.005:
             continue
         if not p["card"]:
-            by_hand.append(f"€{p['refundable']:.2f} paid {p['method_label'].lower()}")
+            by_hand.append(f"{money(p['refundable'])} paid {p['method_label'].lower()}")
             continue
         ok, err, ids = make_refund(conn, category, booking, p["refundable"], reason,
                                    method="stripe", user_id=user_id, payment_key=p["key"],
@@ -31022,7 +31021,7 @@ def owner_home_figures(conn, today):
          "delta": "nobody clocked in" if not on_shift else f"{on_shift} clocked in now",
          "delta_tone": "neutral"},
         {"label": "Your decisions", "value": decisions,
-         "unit": (f"· €{decisions_value:,.0f}" if decisions_value else ""),
+         "unit": (f"· {euro(decisions_value)}" if decisions_value else ""),
          "trend": _spark(decision_series),
          "delta": (f"{stale} older than 5 days" if stale else "none waiting long"),
          "delta_tone": "bad" if stale else "neutral"},
@@ -31067,7 +31066,7 @@ def owner_home_queue(conn):
             "who": e["who"] or e["vendor_name"] or "—",
             "title": e["vendor_name"] or e["who"] or e["description"] or "Expense",
             "detail": e["description"] or "",
-            "amount": f"€{(e['amount'] or 0):,.2f}",
+            "amount": f"{money((e['amount'] or 0))}",
             "age": house_date_iso(e["submitted_at"]),
             "tone": "money", "ok_label": "Approve", "no_label": "Reject",
             "bulk_eligible": (e["amount"] or 0) < 100,
@@ -31737,14 +31736,14 @@ def owner_home_warnings(conn, today):
     if failed:
         n = len(failed)
         add("blocker", f"{n} refund{'s' if n != 1 else ''} did not reach the guest",
-            "; ".join(f"{r['name']} €{r['amount']:,.2f}" for r in failed[:3])
+            "; ".join(f"{r['name']} {money(r['amount'])}" for r in failed[:3])
             + ". The money is still theirs.", n, "admin_refunds")
     owed_back = money_to_give_back(conn)
     if owed_back:
         n = len(owed_back)
         add("warn",
-            f"€{sum(r['amount'] for r in owed_back):,.2f} still to give back",
-            "; ".join(f"{r['name']} €{r['amount']:,.2f}" for r in owed_back[:3])
+            f"{money(sum(r['amount'] for r in owed_back))} still to give back",
+            "; ".join(f"{r['name']} {money(r['amount'])}" for r in owed_back[:3])
             + " — held on bookings the house said no to or called off.", n,
             "admin_refunds")
     left = refunds_left_owing(conn)
@@ -32136,7 +32135,7 @@ def staff_dashboard():
                    "SELECT * FROM insurance_policies WHERE expiry_date IS NOT NULL AND expiry_date <= ? ORDER BY expiry_date",
                    (soon,),
                ).fetchall()]
-            + [{"title": f"{c['label']} — €{c['amount']:.0f}", "kind": "Recurring cost",
+            + [{"title": f"{c['label']} — {euro(c['amount'])}", "kind": "Recurring cost",
                 "employee_name": None, "expiry_date": c["next_due_date"]}
                for c in conn.execute(
                    """SELECT * FROM recurring_costs WHERE active = 1 AND next_due_date IS NOT NULL
@@ -35073,7 +35072,7 @@ def pos_open_tab():
     conn.commit()
     conn.close()
     if deposit:
-        flash(f"Table open. €{deposit:.2f} deposit already paid has been credited.", "success")
+        flash(f"Table open. {money(deposit)} deposit already paid has been credited.", "success")
     return redirect(url_for("pos_order", order_id=order_id))
 
 
@@ -35251,7 +35250,7 @@ def pos_set_package(order_id):
                        order_id=order_id, user_id=session.get("user_id"))
     conn.commit()
     conn.close()
-    flash(f"Package applied — €{credit:.2f} covered." if package_id
+    flash(f"Package applied — {money(credit)} covered." if package_id
           else "Package removed.", "success")
     return redirect(url_for("pos_order", order_id=order_id))
 
@@ -35493,7 +35492,7 @@ def pos_void_item(line_id):
         "WHERE id = ?", (reason, session.get("user_id"),
                          datetime.now(timezone.utc).isoformat(), line_id))
     log_audit(conn, "pos_line_voided", target=line["name"],
-              details=f"€{(line['unit_price'] or 0) * line['quantity']:.2f} — {reason}"
+              details=f"{money((line['unit_price'] or 0) * line['quantity'])} — {reason}"
                       + (" (already sent to the kitchen)" if was_sent else ""))
     # A void is a further entry, not an erasure: the original line_added row
     # stays in the journal and this one references it.
@@ -35552,7 +35551,7 @@ def pos_adjust(order_id):
                      (amount, reason or None, order_id))
         if amount:
             log_audit(conn, "pos_discount", target=order["table_label"],
-                      details=f"€{amount:.2f} — {reason}")
+                      details=f"{money(amount)} — {reason}")
         pos_journal_append(conn, "discount_set",
                            {"amount": amount, "reason": reason or None,
                             "was": round(order["discount_amount"] or 0, 2)},
@@ -35676,7 +35675,7 @@ def pos_take_payment_route(order_id):
         return redirect(url_for("pos_order", order_id=order_id))
     if amount > bill["outstanding"] + 0.01:
         conn.close()
-        flash(f"That's more than the €{bill['outstanding']:.2f} outstanding.", "error")
+        flash(f"That's more than the {money(bill['outstanding'])} outstanding.", "error")
         return redirect(url_for("pos_order", order_id=order_id))
 
     # Cash: what was handed over, and what goes back. The till recorded that
@@ -35695,7 +35694,7 @@ def pos_take_payment_route(order_id):
             return redirect(url_for("pos_order", order_id=order_id))
         if received + 0.01 < amount:
             conn.close()
-            flash(f"That is €{amount - received:.2f} short of the €{amount:.2f} due.", "error")
+            flash(f"That is {money(amount - received)} short of the {money(amount)} due.", "error")
             return redirect(url_for("pos_order", order_id=order_id))
         change_due = round(received - amount, 2)
 
@@ -35720,7 +35719,7 @@ def pos_take_payment_route(order_id):
         # what was tendered rather than only what the bill came to.
         tendered = round(amount + change_due, 2)
         reference = " · ".join(x for x in (
-            reference, f"tendered €{tendered:.2f}, change €{change_due:.2f}") if x)
+            reference, f"tendered {money(tendered)}, change {money(change_due)}") if x)
     pos_take_payment(conn, order_id, amount, method,
                      reference=reference,
                      seats=seats, room_booking_id=room_booking_id,
@@ -35741,13 +35740,13 @@ def pos_take_payment_route(order_id):
     # The change goes first and on its own. It is the one number somebody is
     # waiting on with their hand out.
     if change_due:
-        flash(f"Change €{change_due:.2f}", "success")
+        flash(f"Change {money(change_due)}", "success")
     if auto_sent:
         flash(f"Receipt sent to {auto_sent}.", "success")
     if after["outstanding"] > 0.01:
-        flash(f"€{amount:.2f} taken. €{after['outstanding']:.2f} still to pay.", "success")
+        flash(f"{money(amount)} taken. {money(after['outstanding'])} still to pay.", "success")
         return redirect(url_for("pos_order", order_id=order_id))
-    flash(f"Settled — €{after['total']:.2f}.", "success")
+    flash(f"Settled — {money(after['total'])}.", "success")
     return redirect(url_for("pos_home"))
 
 
@@ -36197,7 +36196,7 @@ def pos_close_day():
     closure, created = pos_close_period(conn, "day", on.isoformat(), session.get("user_id"),
                                         opening_float=opening_float, counted_cash=counted)
     log_audit(conn, "pos_day_closed", target=on.isoformat(),
-              details=f"€{closure['taken_total']:.2f} taken"
+              details=f"{money(closure['taken_total'])} taken"
                       + ("" if closure["cash_variance"] is None
                          else f", drawer {closure['cash_variance']:+.2f}"))
     conn.commit()
@@ -36205,7 +36204,7 @@ def pos_close_day():
     if not created:
         flash(f"{on.isoformat()} was already closed.", "error")
         return redirect(url_for("pos_day", date=on.isoformat()))
-    flash(f"{on.isoformat()} closed — €{closure['taken_total']:.2f} taken.", "success")
+    flash(f"{on.isoformat()} closed — {money(closure['taken_total'])} taken.", "success")
     # The difference gets its own message, and says which way it went. "Short"
     # and "over" are the words used at the end of a service; a signed number on
     # its own gets read as either.
@@ -36214,7 +36213,7 @@ def pos_close_day():
         if abs(v) < 0.01:
             flash("The drawer counts exactly.", "success")
         else:
-            flash(f"The drawer is €{abs(v):.2f} {'over' if v > 0 else 'short'}.", "error")
+            flash(f"The drawer is {money(abs(v))} {'over' if v > 0 else 'short'}.", "error")
     return redirect(url_for("pos_day", date=on.isoformat()))
 
 
@@ -36492,8 +36491,8 @@ def pos_card_status(order_id):
         after = pos_close_if_settled(conn, order_id, "card_terminal", user_id=user)
         conn.commit()
         settled = after["outstanding"] <= 0.01
-        message = (f"€{taken:.2f} taken on the reader."
-                   if not settled else f"Settled — €{after['total']:.2f}.")
+        message = (f"{money(taken)} taken on the reader."
+                   if not settled else f"Settled — {money(after['total'])}.")
     elif state == "failed":
         # Clear the reference so the next attempt starts a fresh payment rather
         # than polling a dead one forever.
@@ -40590,7 +40589,7 @@ def charge_city_tax_upcoming():
               "success")
     else:
         flash(f"Taxe de séjour added to {done} stay"
-              f"{'' if done == 1 else 's'}, €{total:.2f} in total.", "success")
+              f"{'' if done == 1 else 's'}, {money(total)} in total.", "success")
     return redirect(url_for("admin_city_tax"))
 
 
@@ -41926,13 +41925,13 @@ def apply_expense_decision(conn, expense_id, status, note=None, reference=None,
             submitter["email"],
             f"Your expense has been {status}",
             f"Hi {submitter['name'].split(' ')[0]},\n\n"
-            f"Your {row['kind'].replace('_', ' ')} — {row['description']} (€{row['amount']:.2f}) — has been {status}."
+            f"Your {row['kind'].replace('_', ' ')} — {row['description']} ({money(row['amount'])}) — has been {status}."
             + (f"\n\nNote: {note}" if note else "")
             + f"\n\n— Château de Gudanes",
         )
         send_notification(
             conn, submitter["id"], "expense_decided", f"Your expense has been {status}",
-            body=f"{row['description']} — €{row['amount']:.2f}" + (f" · {note}" if note else ""),
+            body=f"{row['description']} — {money(row['amount'])}" + (f" · {note}" if note else ""),
             link="/my-expenses",
         )
     return True, "Updated.", row
@@ -43454,7 +43453,7 @@ def settle_pos_from_stripe_session(conn, stripe_session, meta):
             (bill["total"], datetime.now(timezone.utc).isoformat(),
              datetime.now(timezone.utc).isoformat(), bill["total"], order_id))
         log_audit(conn, "pos_tab_settled", target=bill["order"]["table_label"],
-                  details=f"€{bill['total']:.2f} by card link")
+                  details=f"{money(bill['total'])} by card link")
         pos_journal_append(conn, "tab_settled", {
             "table": bill["order"]["table_label"], "total": bill["total"],
             "gross": bill["gross"], "discount": bill["discount"],
@@ -44379,7 +44378,7 @@ def manage_booking(manage_token):
                 # More nights is more taxe de sejour and a bigger balance.
                 restamp_stay(conn, booking["id"])
                 log_audit(conn, "guest_extended_stay", target=booking["reference_code"],
-                          details=f"+{nights} night(s), +€{added:.2f}")
+                          details=f"+{nights} night(s), +{money(added)}")
                 owner_to = owner_email(conn)
                 conn.commit()      # before send_email, which needs its own write lock
                 if owner_to:
@@ -44466,7 +44465,7 @@ def manage_booking(manage_token):
                     send_email(
                         owner_to, f"Guest added an extra — {booking['reference_code']}",
                         f"{booking['guest_name']} added {quantity} x {extra['name']} "
-                        f"(€{(extra['price'] or 0) * quantity:.2f}) to their "
+                        f"({money((extra['price'] or 0) * quantity)}) to their "
                         f"{booking['room_name']} stay, {booking['arrival_date']} to "
                         f"{booking['departure_date']}."
                         + (f" They would like it on {format_date_human(when_on)}"
@@ -45105,7 +45104,7 @@ def event_manage(manage_token):
                 changes.append("their notes have changed")
             quote_note = ""
             if inquiry["quoted_price"] and guest_count != was_count:
-                quote_note = (f"\n\nThey have a quote of €{inquiry['quoted_price']:.2f} "
+                quote_note = (f"\n\nThey have a quote of {money(inquiry['quoted_price'])} "
                               "against the old head count. It has NOT been changed — "
                               "requote from the events page if it needs to move.")
             send_email(
@@ -45536,7 +45535,7 @@ def record_event_payment_route(inquiry_id):
         return redirect(url_for("admin_events"))
     if amount > bill["owed"] + 0.01:
         conn.close()
-        flash(f"That is more than the €{bill['owed']:.2f} outstanding on this event.",
+        flash(f"That is more than the {money(bill['owed'])} outstanding on this event.",
               "error")
         return redirect(url_for("admin_events"))
     method = (request.form.get("method", "") or "bank_transfer").strip()
@@ -45547,12 +45546,12 @@ def record_event_payment_route(inquiry_id):
                                  reference=reference, user_id=session.get("user_id"))
     log_audit(conn, "event_payment_recorded",
               target=bill["event"]["reference_code"] or str(inquiry_id),
-              details=f"€{amount:.2f}" + (f" ({reference})" if reference else ""))
+              details=f"{money(amount)}" + (f" ({reference})" if reference else ""))
     conn.commit()
     conn.close()
     left = after["owed"] if after else 0
-    flash(f"€{amount:.2f} recorded."
-          + (f" €{left:.2f} still to pay." if left > 0.005 else " Settled."),
+    flash(f"{money(amount)} recorded."
+          + (f" {money(left)} still to pay." if left > 0.005 else " Settled."),
           "success")
     return redirect(url_for("admin_events"))
 
@@ -46863,9 +46862,9 @@ def add_event_instalment(conn, event_id, label, amount, due_date):
     if amount <= 0:
         return None, "An instalment has to be more than nothing."
     if amount > state["unplanned"] + 0.005:
-        return None, ("Only EUR %.2f of this quote is unscheduled, so an "
-                      "instalment of EUR %.2f would take the plan over what "
-                      "was agreed." % (state["unplanned"], amount))
+        return None, (f"Only {money(state['unplanned'])} of this quote is unscheduled, so an "
+                      f"instalment of {money(amount)} would take the plan over what "
+                      "was agreed.")
     due = parse_date((due_date or "").strip())
     if not due:
         return None, "An instalment needs a date it falls due."
@@ -47610,7 +47609,7 @@ def restaurant_manage(manage_token):
                              "admin page if that is the right call.")
             if not rate and party_size != was_party:
                 paid_note += ("\n\nNo per-person price is set for that date, so the "
-                              f"total is still €{new_total:.2f} against the OLD party "
+                              f"total is still {money(new_total)} against the OLD party "
                               "size. Set a price, or correct the total by hand.")
             send_email(
                 owner_to,
@@ -47618,7 +47617,7 @@ def restaurant_manage(manage_token):
                 f"{booking['guest_name']} changed their reservation for "
                 f"{format_date_human(booking['dinner_date'])}:\n\n"
                 + "\n".join(f"- {c}" for c in changes)
-                + f"\n\nTotal now €{new_total:.2f}." + paid_note,
+                + f"\n\nTotal now {money(new_total)}." + paid_note,
             )
         conn.close()
         flash("Your reservation has been updated. We have let the château know.",
@@ -52603,7 +52602,7 @@ def build_owner_digest(conn):
     if due_costs:
         lines.append("Recurring costs due in the next 30 days:")
         for c in due_costs:
-            lines.append(f"  - {c['label']}: €{c['amount']:.0f} due {c['next_due_date']}")
+            lines.append(f"  - {c['label']}: {euro(c['amount'])} due {c['next_due_date']}")
     if expiring_policies:
         lines.append("Insurance renewals due in the next 30 days:")
         for p in expiring_policies:
@@ -52684,7 +52683,7 @@ def build_owner_digest(conn):
         for s in sessions_this_week:
             lines.append(f"  - {s['title']}: starts {s['start_date']}, {s['covers']} confirmed")
         for b in balances_due_soon:
-            lines.append(f"  - Balance due: {b['guest_name']} ({b['title']}) — €{b['balance_amount']:.2f} due {b['balance_due_date']}")
+            lines.append(f"  - Balance due: {b['guest_name']} ({b['title']}) — {money(b['balance_amount'])} due {b['balance_due_date']}")
     return "\n".join(lines)
 
 
@@ -55362,10 +55361,10 @@ def mark_booking_no_show(booking_id):
     conn.close()
     msg = f"{booking['reference_code']} marked as not arrived."
     if tax_dropped > 0:
-        msg += (f" The EUR {tax_dropped:,.2f} taxe de sejour is off the bill: no "
+        msg += (f" The {money(tax_dropped)} taxe de sejour is off the bill: no "
                 "night was spent, so none is owed to the commune.")
     if owed > 0:
-        msg += (f" EUR {owed:,.2f} of it is unpaid — decide whether to chase it "
+        msg += (f" {money(owed)} of it is unpaid — decide whether to chase it "
                 "or write it off; nothing has been charged or refunded.")
     else:
         msg += (" It was paid in full. Refunds are a judgement call, so nothing "
@@ -55825,7 +55824,7 @@ def add_bill_share(booking_id):
               else f"The share is saved, but {problem[0].lower()}{problem[1:]}",
               "success" if sent else "error")
     else:
-        flash(f"EUR {share['amount']:.2f} is now "
+        flash(f"{money(share['amount'])} is now "
               f"{share['name'] or share['email']}'s share.", "success")
     conn.close()
     return redirect(url_for("split_bill", booking_id=booking_id))
@@ -55957,7 +55956,7 @@ def cancel_bill_share(share_id):
            closed_reason = 'cancelled by the house' WHERE id = ?""", (share_id,))
     conn.commit()
     conn.close()
-    flash(f"EUR {share['amount']:.2f} is unclaimed again. The link no longer "
+    flash(f"{money(share['amount'])} is unclaimed again. The link no longer "
           "works.", "success")
     return redirect(url_for("split_bill", booking_id=share["booking_id"]))
 
@@ -56660,7 +56659,7 @@ def decline_booking(booking_id):
         remaining = matching_waitlist_entries(conn, booking["arrival_date"], booking["departure_date"])
         waitlist_note = f" {len(remaining)} waitlist entr{'y wants' if len(remaining) == 1 else 'ies want'} overlapping dates — check the waitlist." if remaining else ""
     conn.close()
-    waiting = (f" The €{held:.2f} they paid is on the owner's list to give back."
+    waiting = (f" The {money(held)} they paid is on the owner's list to give back."
                if held > 0.005 and not may_refund else "")
     flash("Booking declined." + (" Payment refunded." if refunded else (f" Refund failed: {refund_error}" if refund_error else "")) + waiting + waitlist_note, "success")
     return redirect(url_for("admin_bookings"))
@@ -56766,10 +56765,10 @@ def cancel_booking_admin(booking_id):
             current_user()["id"])
         if back > 0.005:
             log_audit(conn, "refund_issued", target=f"room booking {booking['reference_code']}",
-                      details=f"€{back:.2f} — the house called it off")
+                      details=f"{money(back)} — the house called it off")
             conn.commit()
             send_refund_letter(conn, "room", booking_id, back, "stripe")
-            refund_note += f" €{back:.2f} refunded to the card."
+            refund_note += f" {money(back)} refunded to the card."
         if by_hand:
             refund_note += " Paid another way, to give back by hand: " + ", ".join(by_hand) + "."
         if errors:
@@ -56795,7 +56794,7 @@ def cancel_booking_admin(booking_id):
         remaining = matching_waitlist_entries(conn, booking["arrival_date"], booking["departure_date"])
         waitlist_note = f" {len(remaining)} waitlist entr{'y wants' if len(remaining) == 1 else 'ies want'} overlapping dates — check the waitlist." if remaining else ""
     conn.close()
-    money_note = (f" €{still_held:.2f} is still held — issue a refund from the booking if you want to give any of it back."
+    money_note = (f" {money(still_held)} is still held — issue a refund from the booking if you want to give any of it back."
                   if still_held > 0 else "")
     flash("Booking cancelled." + refund_note + money_note + waitlist_note, "success")
     return redirect(url_for("admin_bookings"))
@@ -57086,7 +57085,7 @@ def refund_desk_submit(conn, category, booking, form, user_id):
                 bill_effect=bill_effect)
             ids += new
             if not ok:
-                errors.append(f"{p['method_label']} €{p['refundable']:.2f}: {err}")
+                errors.append(f"{p['method_label']} {money(p['refundable'])}: {err}")
     else:
         chosen = next((p for p in payments if p["key"] == choice), None) if choice else None
         if choice and not chosen:
@@ -57113,8 +57112,8 @@ def refund_desk_submit(conn, category, booking, form, user_id):
     off = round(sum(r["reduces_bill"] or 0 for r in rows), 2)
     ref = _booking_field(booking, "reference_code") or f"#{booking['id']}"
     log_audit(conn, "refund_issued", target=f"{REFUND_AUDIT_WORDS[category]} {ref}",
-              details=f"€{total:.2f} — {reason}"
-                      + (f"; €{off:.2f} taken off the bill" if off > 0.005 else ""))
+              details=f"{money(total)} — {reason}"
+                      + (f"; {money(off)} taken off the bill" if off > 0.005 else ""))
     conn.commit()
     told = ""
     if form.get("tell_guest") == "1" and _booking_field(booking, "guest_email", "contact_email"):
@@ -57126,8 +57125,8 @@ def refund_desk_submit(conn, category, booking, form, user_id):
                          [datetime.now(timezone.utc).isoformat()] + ids)
             told = " They have been told."
         conn.commit()
-    msg = (f"Refund of €{total:.2f} recorded."
-           + (f" €{off:.2f} came off the bill." if off > 0.005 else "") + told)
+    msg = (f"Refund of {money(total)} recorded."
+           + (f" {money(off)} came off the bill." if off > 0.005 else "") + told)
     if errors:
         return msg + " Not all of it went: " + "; ".join(errors), "error"
     return msg, "success"
@@ -57170,10 +57169,10 @@ def refund_off_the_bill(category, booking_id, refund_id):
                                  user_id=current_user()["id"])
     log_audit(conn, "refund_taken_off_bill",
               target=f"{REFUND_AUDIT_WORDS[category]} {_booking_field(booking, 'reference_code')}",
-              details=f"€{take:.2f}")
+              details=f"{money(take)}")
     conn.commit()
     conn.close()
-    flash(f"€{take:.2f} taken off the bill.", "success")
+    flash(f"{money(take)} taken off the bill.", "success")
     return redirect(back)
 
 
@@ -57451,7 +57450,7 @@ def booking_edit_changes(before, after):
             out.append(f"{label} changed")
             continue
         show = {"date": lambda v: format_date_human(v) if v else "—",
-                "euro": lambda v: f"€{v:,.2f}"}.get(kind, lambda v: "—" if v is None else str(v))
+                "euro": lambda v: f"{money(v)}"}.get(kind, lambda v: "—" if v is None else str(v))
         out.append(f"{label} {show(old)} → {show(new)}")
     return out
 
@@ -57639,10 +57638,10 @@ def refund_booking_admin(booking_id):
                              user_id=current_user()["id"])
     if ok:
         log_audit(conn, "refund_issued", target=f"room booking {booking['reference_code']}",
-                  details=f"€{float(amount):.2f} — {reason}")
+                  details=f"{money(float(amount))} — {reason}")
         conn.commit()
     conn.close()
-    flash(f"Refund of €{float(amount):.2f} recorded." if ok else f"Refund failed: {error}",
+    flash(f"Refund of {money(float(amount))} recorded." if ok else f"Refund failed: {error}",
           "success" if ok else "error")
     return redirect(request.referrer or url_for("admin_bookings"))
 
@@ -57664,10 +57663,10 @@ def refund_workshop_admin(registration_id):
                              user_id=current_user()["id"])
     if ok:
         log_audit(conn, "refund_issued", target=f"workshop booking {booking['reference_code']}",
-                  details=f"€{float(amount):.2f} — {reason}")
+                  details=f"{money(float(amount))} — {reason}")
         conn.commit()
     conn.close()
-    flash(f"Refund of €{float(amount):.2f} recorded." if ok else f"Refund failed: {error}",
+    flash(f"Refund of {money(float(amount))} recorded." if ok else f"Refund failed: {error}",
           "success" if ok else "error")
     return redirect(request.referrer or url_for("admin_workshop_registrations"))
 
@@ -58173,9 +58172,9 @@ def refund_restaurant_booking_admin(reservation_id):
                              user_id=current_user()["id"])
     if ok:
         log_audit(conn, "refund_issued", target=f"dinner {booking['reference_code']}",
-                  details=f"€{float(amount):.2f} — {reason}")
+                  details=f"{money(float(amount))} — {reason}")
         conn.commit()
-        flash(f"Refund of €{float(amount):.2f} recorded.", "success")
+        flash(f"Refund of {money(float(amount))} recorded.", "success")
     else:
         flash(f"Refund failed: {error}", "error")
     conn.close()
@@ -60669,14 +60668,14 @@ def call_off_workshop_session(session_id):
         extra.append(f"{result['waitlist']} on the waiting list told it is not "
                      "running")
     if result.get("refunded"):
-        extra.append(f"EUR {sum(b for _n, b in result['refunded']):.2f} refunded to the cards "
+        extra.append(f"{money(sum(b for _n, b in result['refunded']))} refunded to the cards "
                      "it came from: " + ", ".join(n for n, _b in result["refunded"]))
     if result["refunds"]:
         owed = sum(r["amount"] for r in result["refunds"])
         # NAMED AND NOT MOVED. Refunds in this house are a deliberate
         # case-by-case decision, so this says who is owed what and leaves the
         # money where it is.
-        extra.append(f"EUR {owed:.2f} owed back across "
+        extra.append(f"{money(owed)} owed back across "
                      f"{len(result['refunds'])} registration(s): "
                      + ", ".join(r["name"] for r in result["refunds"])
                      + " — refund each from their registration")
@@ -61611,7 +61610,7 @@ def set_workshop_occupancy(registration_id):
     reprice_workshop_registration(conn, registration_id, total_price=total_price,
                                   start_date=reg["start_date"])
     log_audit(conn, "workshop_occupancy_set", target=reg["reference_code"],
-              details=f"{occupancy}, supplement €{supplement:.2f}")
+              details=f"{occupancy}, supplement {money(supplement)}")
     conn.commit()
     conn.close()
 
@@ -61914,7 +61913,7 @@ def call_off_session(conn, session_id, reason=None, user_id=None, refund=False):
             if back > 0.005:
                 log_audit(conn, "refund_issued",
                           target=f"workshop booking {person['reference_code']}",
-                          details=f"€{back:.2f} — the house called it off")
+                          details=f"{money(back)} — the house called it off")
                 conn.commit()
                 send_refund_letter(conn, "workshop", person["id"], back, "stripe")
             refund_due = round(refund_due - back, 2)
@@ -62141,10 +62140,10 @@ def mark_workshop_balance_paid(registration_id):
     add_workshop_transaction(conn, registration_id, "payment", "Balance", due,
                              method=method, user_id=current_user()["id"])
     log_audit(conn, "workshop_balance_marked_paid",
-              target=booking["reference_code"], details=f"€{due:.2f} by {method}")
+              target=booking["reference_code"], details=f"{money(due)} by {method}")
     conn.commit()
     conn.close()
-    flash(f"€{due:.2f} recorded as received. Nothing is owed now.", "success")
+    flash(f"{money(due)} recorded as received. Nothing is owed now.", "success")
     return redirect(url_for("admin_workshop_registrations"))
 
 
@@ -62189,15 +62188,15 @@ def add_workshop_transaction_route(registration_id):
             user_id=current_user()["id"], reason_code="other", bill_effect=BILL_STANDS)
         if ok:
             log_audit(conn, "refund_issued", target=f"workshop booking {booking['reference_code']}",
-                      details=f"€{amount:.2f} — {description}")
+                      details=f"{money(amount)} — {description}")
             conn.commit()
         conn.close()
-        flash(f"Refund of €{amount:.2f} recorded." if ok else f"Refund failed: {error}",
+        flash(f"Refund of {money(amount)} recorded." if ok else f"Refund failed: {error}",
               "success" if ok else "error")
         return redirect(url_for("admin_workshop_registrations"))
     add_workshop_transaction(conn, registration_id, kind, description, round(amount, 2), method=method,
                               user_id=current_user()["id"])
-    log_audit(conn, "workshop_transaction_added", target=f"{kind} €{amount:.2f}")
+    log_audit(conn, "workshop_transaction_added", target=f"{kind} {money(amount)}")
     conn.commit()
     conn.close()
     flash("Transaction recorded.", "success")
@@ -62571,7 +62570,7 @@ def _save_money_setting(key, raw, *, cleared_msg, saved_msg, audit):
            ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
         (key, f"{value:.2f}"))
     conn.commit()
-    log_audit(conn, audit, details=f"€{value:.2f}")
+    log_audit(conn, audit, details=f"{money(value)}")
     conn.commit()
     conn.close()
     flash(saved_msg, "success")
@@ -63048,7 +63047,7 @@ def send_booking_to_pennylane(conn, booking, user_id=None):
            amount, sent_at, sent_by_user_id) VALUES ('booking', ?, ?, ?, ?, ?)""",
         (booking["id"], str((payload or {}).get("id") or ""), total,
          datetime.now(timezone.utc).isoformat(), user_id))
-    return True, f"Sent €{total:.2f} for {booking['reference_code']}."
+    return True, f"Sent {money(total)} for {booking['reference_code']}."
 
 
 def pos_day_pennylane_lines(conn, closure):
@@ -63139,7 +63138,7 @@ def send_workshop_to_pennylane(conn, booking, user_id=None):
            amount, sent_at, sent_by_user_id) VALUES ('workshop', ?, ?, ?, ?, ?)""",
         (booking["id"], str((payload or {}).get("id") or ""), total,
          datetime.now(timezone.utc).isoformat(), user_id))
-    return True, f"Sent €{total:.2f} for {booking['reference_code']}."
+    return True, f"Sent {money(total)} for {booking['reference_code']}."
 
 
 @app.route("/management/revenue-to-send/workshop/<int:booking_id>", methods=["POST"])
@@ -63219,7 +63218,7 @@ def send_event_to_pennylane(conn, event, user_id=None):
            amount, sent_at, sent_by_user_id) VALUES ('event', ?, ?, ?, ?, ?)""",
         (event["id"], str((payload or {}).get("id") or ""), total,
          datetime.now(timezone.utc).isoformat(), user_id))
-    return True, f"Sent €{total:.2f} for {event['reference_code'] or event['event_type']}."
+    return True, f"Sent {money(total)} for {event['reference_code'] or event['event_type']}."
 
 
 @app.route("/management/revenue-to-send/event/<int:event_id>", methods=["POST"])
@@ -63285,7 +63284,7 @@ def send_pos_day_to_pennylane(conn, closure, user_id=None):
            amount, sent_at, sent_by_user_id) VALUES ('pos_day', ?, ?, ?, ?, ?)""",
         (closure["id"], str((payload or {}).get("id") or ""), total,
          datetime.now(timezone.utc).isoformat(), user_id))
-    return True, f"Sent €{total:.2f} of takings for {closure['period']}."
+    return True, f"Sent {money(total)} of takings for {closure['period']}."
 
 
 @app.route("/management/revenue-to-send/day/<int:closure_id>", methods=["POST"])
@@ -63616,12 +63615,12 @@ def walk_in_booking():
 
         log_audit(conn, "walk_in_booking", target=reference_code,
                   details=f"{room['name']}, {arrival} to {departure}"
-                          + (f", €{taken:.2f} taken" if taken else ""))
+                          + (f", {money(taken)} taken" if taken else ""))
         conn.commit()
 
         conn.close()
         flash(f"{name} is in — {reference_code}."
-              + (f" €{taken:.2f} taken." if taken else ""), "success")
+              + (f" {money(taken)} taken." if taken else ""), "success")
         return redirect(url_for("management_outstanding")
                         if not taken else url_for("admin_bookings"))
 
@@ -64635,7 +64634,7 @@ def new_event_quote(inquiry_id):
         flash(error, "error")
         return redirect(url_for("event_agreement", inquiry_id=inquiry_id))
     log_audit(conn, "event_quote_raised", target=str(inquiry_id),
-              details=f"v{quote['version']} at €{quote['quoted_price']:.2f}")
+              details=f"v{quote['version']} at {money(quote['quoted_price'])}")
     conn.commit()
     conn.close()
     flash(f"Quote {quote['version']} raised. Send them the link when you are "
@@ -64738,7 +64737,7 @@ def new_event_instalment(inquiry_id):
         request.form.get("amount", ""), request.form.get("due_date", ""))
     conn.close()
     flash(error if error else
-          f"EUR {row['amount']:.2f} falls due {row['due_date']}.",
+          f"{money(row['amount'])} falls due {row['due_date']}.",
           "error" if error else "success")
     return redirect(url_for("event_agreement", inquiry_id=inquiry_id))
 
@@ -64828,7 +64827,7 @@ def event_quote(token):
                     f"Quote accepted \u2014 {event['event_type']} ({event['reference_code']})",
                     f"{who} has accepted quote {quote['version']} for "
                     f"{event['event_type']} on {event['preferred_date']}, at "
-                    f"EUR {float(quote['quoted_price'] or 0):.2f}.\n\n"
+                    f"{money(float(quote['quoted_price'] or 0))}.\n\n"
                     "The date is NOT blocked yet \u2014 confirming the event is "
                     "what does that, and it is worth looking at the calendar "
                     "first.\n\n\u2014 Ch\u00e2teau de Gudanes")
@@ -65620,7 +65619,7 @@ def record_cash_banking():
     log_audit(conn, "cash_banked", target=banked_on, details=f"{amount:.2f}")
     conn.commit()
     conn.close()
-    flash(f"Recorded €{amount:.2f} paid in on {banked_on}.", "success")
+    flash(f"Recorded {money(amount)} paid in on {banked_on}.", "success")
     return redirect(url_for("management_cash_banking"))
 
 
@@ -65974,7 +65973,7 @@ def record_manual_booking_payment(booking_id):
         return redirect(url_for("management_outstanding"))
     if bill and amount > bill["owed"] + 0.01:
         conn.close()
-        flash(f"That is more than the €{bill['owed']:.2f} outstanding on this stay.",
+        flash(f"That is more than the {money(bill['owed'])} outstanding on this stay.",
               "error")
         return redirect(url_for("management_outstanding"))
     reference = (request.form.get("reference", "") or "").strip() or None
@@ -65995,13 +65994,13 @@ def record_manual_booking_payment(booking_id):
     # wrong one for "cash at the desk".
     record_booking_payment(conn, booking_id, amount)
     log_audit(conn, "booking_payment_recorded", target=booking["reference_code"],
-              details=f"€{amount:.2f}" + (f" ({reference})" if reference else ""))
+              details=f"{money(amount)}" + (f" ({reference})" if reference else ""))
     conn.commit()
     left = booking_bill(conn, booking_id)
     conn.close()
     remaining = left["owed"] if left else 0
-    flash(f"€{amount:.2f} recorded against {booking['guest_name']}."
-          + (f" €{remaining:.2f} still to pay." if remaining > 0.005 else " Settled."),
+    flash(f"{money(amount)} recorded against {booking['guest_name']}."
+          + (f" {money(remaining)} still to pay." if remaining > 0.005 else " Settled."),
           "success")
     return redirect(url_for("management_outstanding"))
 
@@ -73748,9 +73747,9 @@ def guest_timeline(conn, guest_id):
                 f"{b['kind']} {(row['status'] or '').lower()}: {b['what']}", ref=b["ref"])
     for x in (statement["lines"] if statement else []):
         if x["paid"]:
-            add(x["at"], "Money", f"{x['what']}: €{x['paid']:,.2f}", ref=x["ref"])
+            add(x["at"], "Money", f"{x['what']}: {money(x['paid'])}", ref=x["ref"])
         elif x["back"]:
-            add(x["at"], "Money", f"{x['what']}: €{x['back']:,.2f} back to them", ref=x["ref"])
+            add(x["at"], "Money", f"{x['what']}: {money(x['back'])} back to them", ref=x["ref"])
     stays = [b["id"] for b in (statement["bookings"] if statement else [])
              if b["category"] == "room"]
     if stays:
@@ -75124,14 +75123,14 @@ def watch_task_findings(conn, today=None):
     # which is rewritten in place.
     waiting = [r for r in workshop_balances_due(conn, today=today) if r["state"] != "coming"]
     if waiting:
-        names = "; ".join(f"{r['who']} €{r['owed']:,.2f} ({r['state_label'].lower()})"
+        names = "; ".join(f"{r['who']} {money(r['owed'])} ({r['state_label'].lower()})"
                           for r in waiting[:8])
         if len(waiting) > 8:
             names += f"; and {len(waiting) - 8} more"
         found.append((
             "balances",
             "Workshop balances to collect",
-            f"{len(waiting)} due, €{sum(r['owed'] for r in waiting):,.2f} in all: {names}."
+            f"{len(waiting)} due, {money(sum(r['owed'] for r in waiting))} in all: {names}."
             "\n\nManagement → Balances to collect takes them from the cards kept "
             "with the deposits, and sends a link to pay to the rest.",
             min(r["due_date"] for r in waiting), "high"))
@@ -75141,19 +75140,19 @@ def watch_task_findings(conn, today=None):
     for r in money_to_give_back(conn):
         owed_back.append((
             "refund", f"Money to give back to {r['name']} ({r['ref']})",
-            f"€{r['amount']:,.2f} is still held on {r['what']} {r['why']}. "
+            f"{money(r['amount'])} is still held on {r['what']} {r['why']}. "
             "Financial → Refunds has its refund page, which sends it back.",
             today.isoformat(), "high"))
     for r in failed_refunds_to_redo(conn):
         owed_back.append((
             "refund", f"A refund to {r['name']} did not go through ({r['ref']})",
-            f"€{r['amount']:,.2f}. {r['why']}. It is still theirs: make it again from "
+            f"{money(r['amount'])}. {r['why']}. It is still theirs: make it again from "
             "its refund page.", today.isoformat(), "high"))
     for r in refunds_left_owing(conn):
         owed_back.append((
             "refund", f"A refund made in Stripe left {r['name']} owing ({r['ref']})",
-            f"€{r['amount']:,.2f} was refunded in Stripe's dashboard, and the booking now "
-            f"asks for €{r['owed']:,.2f} again. If it was a gesture, take it off the bill on "
+            f"{money(r['amount'])} was refunded in Stripe's dashboard, and the booking now "
+            f"asks for {money(r['owed'])} again. If it was a gesture, take it off the bill on "
             "its refund page; if they are paying it again, leave it.",
             today.isoformat(), "normal"))
     found.extend(take("refund", owed_back))
@@ -75165,7 +75164,7 @@ def watch_task_findings(conn, today=None):
             "dispute",
             f"A card payment is being disputed: {d['guest_name'] or 'unknown guest'} "
             f"({d['reference_code'] or d['payment_intent'] or d['stripe_dispute_id']})",
-            f"€{d['amount']:,.2f} — {DISPUTE_REASON_WORDS.get(d['reason'], d['reason'])}. "
+            f"{money(d['amount'])} — {DISPUTE_REASON_WORDS.get(d['reason'], d['reason'])}. "
             "Answer it in Stripe with what the house has: the booking, the "
             "correspondence, the terms they agreed to.",
             d["evidence_due_by"] or today.isoformat(), "high"))
@@ -75668,7 +75667,7 @@ def spend_by_vendor_page():
         overview_cell("Paid out", money(data['total'])),
         overview_cell("Suppliers", data["vendors"]),
         overview_cell("Biggest", biggest["vendor_name"] if biggest else "—",
-                      sub=f"EUR {biggest['total']:,.2f}" if biggest else None),
+                      sub=f"{money(biggest['total'])}" if biggest else None),
         overview_cell("Not on the vendor list", len(data["unmatched"]),
                       alert=bool(data["unmatched"]),
                       hint="paid, but no record of who they are"),
@@ -82972,7 +82971,7 @@ def guess_email_conflict(conn, from_address, subject, body_text, received_at_iso
     if computed_price is not None and extracted_price is not None:
         if abs(computed_price - extracted_price) > max(1.0, computed_price * 0.02):
             price_conflict = True
-            note = note or f"Email mentions €{extracted_price:.2f}; actual price is €{computed_price:.2f}."
+            note = note or f"Email mentions {money(extracted_price)}; actual price is {money(computed_price)}."
 
     if not category and extracted_price is None:
         return None
@@ -83778,7 +83777,7 @@ def run_balance_due_notice_job(conn):
         raise JobFailed("there is no owner account to tell")
     total = sum(r["owed"] for r in due)
     ready = [r for r in due if r["state"] == "ready"]
-    lines = [f"{r['who']} — €{r['owed']:,.2f}, {r['what']} ({r['reference']})"
+    lines = [f"{r['who']} — {money(r['owed'])}, {r['what']} ({r['reference']})"
              + ("" if r["state"] == "ready" else f": {r['state_label'].lower()}")
              for r in due[:12]]
     if len(due) > 12:
@@ -83789,14 +83788,14 @@ def run_balance_due_notice_job(conn):
     send_notification(
         conn, owner["id"], "balance_due",
         f"{len(due)} workshop balance{'' if len(due) == 1 else 's'} due — "
-        f"€{total:,.2f} to collect",
+        f"{money(total)} to collect",
         body="\n".join(lines), link=url_for("balances_to_collect"))
     now = datetime.now(timezone.utc).isoformat()
     conn.executemany(
         "UPDATE workshop_bookings SET balance_due_noticed_at = ? WHERE id = ?",
         [(now, r["id"]) for r in due])
     conn.commit()
-    return f"told the owner about {len(due)} balance(s), €{total:,.2f}"
+    return f"told the owner about {len(due)} balance(s), {money(total)}"
 
 
 def _balances_back():
@@ -83898,12 +83897,12 @@ def collect_balances():
         expected = parse_money(request.form.get(f"expect_{rid}"))
         if expected is None or abs(owed - expected) > 0.005:
             skipped.append((label, f"what is owed changed after the page was drawn "
-                                   f"(it is €{owed:,.2f} now), so nothing was taken"))
+                                   f"(it is {money(owed)} now), so nothing was taken"))
             continue
         outcome, amount, detail = charge_workshop_balance(conn, row)
         if outcome in CHARGE_ATTEMPTED:
             log_audit(conn, "workshop_balance_collect", target=row["reference_code"],
-                      details=f"{outcome}: €{amount:.2f}" + (f" — {detail}" if detail else ""))
+                      details=f"{outcome}: {money(amount)}" + (f" — {detail}" if detail else ""))
             conn.commit()
         if outcome == "taken":
             done += 1
@@ -83915,7 +83914,7 @@ def collect_balances():
             skipped.append((label, COLLECT_SKIP_REASONS.get(outcome, detail)))
     conn.close()
     flash(*bulk_message("Collected", "balance", done, skipped,
-                        detail=f"€{taken:,.2f}" if done else ""))
+                        detail=f"{money(taken)}" if done else ""))
     return redirect(_balances_back())
 
 
@@ -83950,7 +83949,7 @@ def send_balance_links():
         result, left = send_workshop_balance_request(conn, row)
         if result == "sent":
             log_audit(conn, "workshop_balance_link_sent", target=row["reference_code"],
-                      details=f"€{left:.2f}")
+                      details=f"{money(left)}")
             conn.commit()
             done += 1
         elif result == "do_not_email":
@@ -84017,7 +84016,7 @@ def retry_balance_card(registration_id):
     expected = parse_money(request.form.get("expect"))
     if expected is None or abs(owed - expected) > 0.005:
         conn.close()
-        flash(f"What is owed changed after the page was drawn (it is €{owed:,.2f} now), "
+        flash(f"What is owed changed after the page was drawn (it is {money(owed)} now), "
               f"so nothing was taken.", "error")
         return redirect(_balances_back())
     conn.execute("UPDATE workshop_bookings SET autocharge_failed_at = NULL WHERE id = ?",
@@ -84026,11 +84025,11 @@ def retry_balance_card(registration_id):
     row = _registration_for_collect(conn, registration_id)
     outcome, amount, detail = charge_workshop_balance(conn, row)
     log_audit(conn, "workshop_balance_collect", target=row["reference_code"],
-              details=f"retried — {outcome}: €{amount:.2f}" + (f" — {detail}" if detail else ""))
+              details=f"retried — {outcome}: {money(amount)}" + (f" — {detail}" if detail else ""))
     conn.commit()
     conn.close()
     if outcome == "taken":
-        flash(f"€{amount:,.2f} taken from {row['guest_name']}'s card.", "success")
+        flash(f"{money(amount)} taken from {row['guest_name']}'s card.", "success")
     elif outcome == "refused":
         flash(f"The card was refused again ({detail}). They have been sent a link "
               f"to pay it themselves.", "error")
@@ -84089,7 +84088,7 @@ def send_autocharge_failed_email(conn, booking, amount, reason):
         send_email(
             owner_to,
             f"Balance not taken — {booking['reference_code']}",
-            f"{booking['guest_name']} — €{amount:.2f} for {booking['title']}.\n"
+            f"{booking['guest_name']} — {money(amount)} for {booking['title']}.\n"
             f"Stripe said: {reason}\n\n"
             f"They have been emailed a link to pay it themselves. The card will "
             f"not be tried again unless you try it from the balances page.\n",
@@ -88156,8 +88155,8 @@ def redeem_voucher(conn, voucher_id, amount, *, kind="other", reference=None,
     if amount <= 0:
         return False, "Enter an amount to take from the voucher.", 0.0
     if amount > ledger["balance"] + 0.005:
-        return False, (f"That voucher has €{ledger['balance']:.2f} left, "
-                       f"which is less than €{amount:.2f}."), 0.0
+        return False, (f"That voucher has {money(ledger['balance'])} left, "
+                       f"which is less than {money(amount)}."), 0.0
     if kind not in VOUCHER_KINDS:
         kind = "other"
     conn.execute(
@@ -88165,7 +88164,7 @@ def redeem_voucher(conn, voucher_id, amount, *, kind="other", reference=None,
            taken_by_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)""",
         (voucher_id, amount, kind, reference or None, taken_by_user_id,
          datetime.now(timezone.utc).isoformat()))
-    return True, f"€{amount:.2f} taken from the voucher.", amount
+    return True, f"{money(amount)} taken from the voucher.", amount
 
 
 def redeem_voucher_against_booking(conn, voucher_id, booking_id, amount, *,
@@ -88189,8 +88188,8 @@ def redeem_voucher_against_booking(conn, voucher_id, booking_id, amount, *,
     except (TypeError, ValueError):
         return False, "Enter an amount.", 0.0
     if wanted > bill["owed"] + 0.005:
-        return False, (f"That stay owes €{bill['owed']:.2f}, "
-                       f"less than €{wanted:.2f}."), 0.0
+        return False, (f"That stay owes {money(bill['owed'])}, "
+                       f"less than {money(wanted)}."), 0.0
     ok, message, taken = redeem_voucher(
         conn, voucher_id, wanted, kind="room",
         reference=booking["reference_code"], taken_by_user_id=taken_by_user_id)
@@ -88542,9 +88541,9 @@ def charge_city_tax_now(conn, booking_id):
     conn.execute("UPDATE bookings SET city_tax = ? WHERE id = ?", (amount, booking_id))
     log_audit(conn, "city_tax_charged", target=booking["reference_code"],
               details=f"{amount:.2f} ({adults} adults x {nights} nights x {rate})")
-    return True, (f"€{amount:.2f} added to {booking['guest_name']} "
+    return True, (f"{money(amount)} added to {booking['guest_name']} "
                   f"({adults} adult{'' if adults == 1 else 's'} x {nights} "
-                  f"night{'' if nights == 1 else 's'} at €{rate:.2f}).")
+                  f"night{'' if nights == 1 else 's'} at {money(rate)}).")
 
 
 def city_tax_working(conn, start, end):
@@ -90686,7 +90685,7 @@ def assistant_read_tool(conn, user, name, args):
         out = []
         for b in rows:
             bill = booking_bill(conn, b["id"])
-            owed = f", owes €{bill['owed']:.2f}" if bill and bill["owed"] > 0.005 else ""
+            owed = f", owes {money(bill['owed'])}" if bill and bill["owed"] > 0.005 else ""
             out.append(f"#{b['id']} {b['reference_code']} · {b['guest_name']} · "
                        f"{b['room_name']} · {b['arrival_date']} to "
                        f"{b['departure_date']} · {b['status']}{owed}")
@@ -90710,7 +90709,7 @@ def assistant_describe_action(conn, name, args):
             return "No expense with that number."
         verb = "Approve" if name == "approve_expense" else "Reject"
         who = row["vendor_name"] or row["description"] or "an expense"
-        return (f"{verb} €{float(row['amount'] or 0):,.2f} — {who}"
+        return (f"{verb} {money(float(row['amount'] or 0))} — {who}"
                 + (f" ({args['note']})" if args.get("note") else ""))
 
     if name in ("approve_leave", "decline_leave"):

@@ -26,6 +26,51 @@ m = _harness.m
 TAG = "ZZMONEY"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Where app.py still writes money by hand, and why each may. Everything a
+# member of staff reads -- a flash, a tile, an audit line, a task, a letter
+# to the house, the assistant -- goes through money() or euro(). What a GUEST
+# reads is left in the wording and spelling it was written in: the letters,
+# their statement, the page they book on and the names Stripe shows them.
+# Checked both ways: a hand-written amount anywhere else is a red, and so is
+# a name here that no longer writes one.
+GUEST_FACING = {
+    "create_booking": "the booking's lines in the confirmation letter",
+    "book_room": "what a guest sees while booking, and the names sent to Stripe",
+    "restaurant_book": "the same, for a table",
+    "manage_booking": "the guest's own page, telling them what changed",
+    "workshop_pay_balance": "the guest paying an atelier balance",
+    "validate_promo_code": "a promo code refused at the guest's checkout",
+    "api_validate_promo_code": "the same, as the form asks",
+    "statement_text": "the guest's statement, as text",
+    "statement_text_lines": "the same, line by line",
+    "statement_balance_line": "the line that ends it",
+    "email_booking_statement": "the statement emailed to the guest",
+    "mark_booking_payment_paid": "the guest's payment letter",
+    "event_payment_context": "the same, for an event",
+    "workshop_payment_context": "the same, for an atelier",
+    "event_email_context": "an event letter's price lines",
+    "restaurant_email_context": "a table letter's price lines",
+    "workshop_email_context": "an atelier letter's price lines",
+    "send_share_request": "the letter asking a guest for their share",
+    "send_refund_letter": "the refund letter",
+    "_refund_balance_line": "its balance line",
+    "send_autocharge_taken_email": "the guest told their balance was taken",
+    "send_autocharge_failed_email": "the guest told it was not",
+}
+HAND_MONEY_PY = re.compile(r"(?:€|EUR\s?)\{[^{}]*:[^{}]*f\}|(?:€|EUR\s?)%(?:\.\d)?f")
+
+
+def hand_money_in_app(src):
+    """{function: [line]} for every hand-written amount in app.py."""
+    found, fn = {}, None
+    for i, line in enumerate(src.splitlines(), 1):
+        m_ = re.match(r"def (\w+)\(", line)
+        if m_:
+            fn = m_.group(1)
+        if HAND_MONEY_PY.search(line):
+            found.setdefault(fn, []).append(i)
+    return found
+
 # The euro sign, however a template spells it. The character alone let 125
 # amounts on 27 pages through: they wrote it &euro;, and a rendered page
 # carries the entity, not the character, so the sweep below was blind to
@@ -100,6 +145,19 @@ def run():
     s.check("no f-string writes one with the minus inside", not hits, detail="; ".join(hits[:3]))
     s.check("the scan can see one",
             bool(signed.search('''"financial": f"€{fin['summary']['net']:,.0f} net",''')))
+
+    s.section("Money app.py builds for the staff is written by money(), too")
+    found = hand_money_in_app(open(os.path.join(ROOT, "app.py"), encoding="utf-8").read())
+    staff = {fn: lines for fn, lines in found.items() if fn not in GUEST_FACING}
+    s.check("nowhere a member of staff reads", not staff,
+            detail="; ".join(f"{fn} (line {lines[0]})" for fn, lines in sorted(staff.items())[:4]))
+    stale = sorted(fn for fn in GUEST_FACING if fn not in found)
+    s.check("and every guest-facing exception still writes one", not stale,
+            detail=", ".join(stale))
+    s.check("the scan can see one",
+            hand_money_in_app('def x():\n    flash(f"€{amount:.2f} taken")\n') == {"x": [2]}
+            and hand_money_in_app('def y():\n    flash(f"EUR {amount:,.2f}")\n') == {"y": [2]}
+            and not hand_money_in_app('def z():\n    flash(f"{money(amount)} taken")\n'))
 
     s.section("No staff page prints the minus after the euro sign")
     conn = db()
