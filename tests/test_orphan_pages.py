@@ -79,7 +79,11 @@ NOT_LINKED_ON_PURPOSE = {
     "newsletter_confirm": "link in an email",
     "newsletter_unsubscribe": "link in an email",
     "campaign_unsubscribe": "link in an email",
-    "reset_password": "link in an email",
+    # reset_password was here, "link in an email", from the day the reset
+    # became a CODE on 30 August -- after which no email linked to it and
+    # nothing else did either. This entry is what let a page nobody could
+    # reach pass as one reached by email, until the owner was locked out on
+    # 10 October. The asking page links to it now.
     "room_ics_feed": "subscribed to in a calendar app",
     # Fetched by software, not clicked by anybody.
     "robots": "fetched by crawlers", "sitemap": "fetched by crawlers",
