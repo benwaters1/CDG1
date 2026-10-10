@@ -753,7 +753,9 @@ body.staff-shell .week-day-head{ color:var(--ivory); font-family:'Inter',sans-se
 .task-card:active{ cursor:grabbing; }
 .task-card.task-done{ opacity:0.55; }
 .task-card.task-done .task-card-title{ text-decoration:line-through; }
-.task-card-head{ display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+/* Wraps: on a touch screen each control here is 38px, five of them do not fit a
+   140px day, and the × ran on into the next day's card, over its title. */
+.task-card-head{ display:flex; align-items:center; gap:6px; margin-bottom:4px; flex-wrap:wrap; }
 .task-card-title{ font-weight:600; margin-bottom:2px; }
 .task-card-meta{ color:var(--ink-soft); font-size:11px; }
 

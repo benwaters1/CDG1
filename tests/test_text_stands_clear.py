@@ -39,7 +39,9 @@ put back in a <style> of their own, and must then be caught. No browser is a
 failure, not a skip; set GUDANES_CHROME.
 """
 import json
+from datetime import timedelta
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -181,12 +183,33 @@ def _queue_row(conn):
         """INSERT INTO expenses (kind, vendor_name, description, amount, status, submitted_at)
            VALUES ('supplier_invoice', ?, 'Roofing materials, north tower', 3400, 'pending', ?)""",
         (TAG + " Domaine Fournitures SARL", _harness.datetime_now()))
+    # And departures' turnover tasks, made the way the app makes them --
+    # five per room, high priority, a long note -- on two days side by side, so
+    # the Tasks week grid lays out a busy day beside another. "Strip beds &
+    # collect linen" printed over a button there on a run that happened to
+    # have departures, and nothing else put that grid in front of the probe.
+    # On this week's Monday and Tuesday, not today and tomorrow: the grid
+    # scrolls sideways, and on a Saturday "tomorrow" is a column out of view,
+    # which the probe rightly ignores -- the fault showed on a Friday's run
+    # and could not be found again on the Saturday.
+    monday = _harness.house_today() - timedelta(days=_harness.house_today().weekday())
+    for k, day in enumerate((monday, monday + timedelta(days=1))):
+        for room in ("The King Room", "The Queen Room")[:k + 1]:
+            for title in m.CHECKOUT_CHECKLIST:
+                conn.execute(
+                    """INSERT INTO tasks (title, room_note, priority, due_date, created_at,
+                                          repeat_weekly, origin)
+                       VALUES (?, ?, 'high', ?, ?, 0, 'checklist')""",
+                    (f"{TAG} {room}: {title}",
+                     "Guest leaving today, booked through Booking.com, party of 2.",
+                     day.isoformat(), _harness.datetime_now()))
     conn.commit()
 
 
 def _cleanup(conn):
     conn.execute("DELETE FROM expenses WHERE vendor_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM stock_items WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM tasks WHERE title LIKE ?", (TAG + "%",))
     conn.commit()
 
 
@@ -226,7 +249,7 @@ def run():
     _cleanup(conn)
     try:
         _queue_row(conn)
-        fresh = {"dashboard": "/", "admin_workshops": "/admin/workshops"}
+        fresh = {"dashboard": "/", "admin_workshops": "/admin/workshops", "admin_tasks": "/admin/tasks"}
         pages = [(ep, url, html) for ep, url, html in sweep.owner_pages(oc)
                  if ep not in fresh]
         home = oc.get("/")
@@ -238,6 +261,10 @@ def run():
                 ateliers.status_code == 200 and TAG + " Aprons" in ateliers.get_data(as_text=True),
                 ateliers)
         pages.append(("admin_workshops", "/admin/workshops", ateliers.get_data(as_text=True)))
+        tasks = oc.get("/admin/tasks")
+        s.check("the Tasks page renders with a week of long titles on it",
+                tasks.status_code == 200 and tasks.get_data(as_text=True).count(TAG) >= 2, tasks)
+        pages.append(("admin_tasks", "/admin/tasks", tasks.get_data(as_text=True)))
     finally:
         _cleanup(conn)
         conn.close()
@@ -303,6 +330,15 @@ def run():
     s.check("the owner home's queue is reported overprinted on a phone",
             ctl.get(("/", 390), {}).get("onText"),
             detail=json.dumps(ctl.get(("/", 390), {}).get("onText", [])[:2]))
+    # The task card's row of controls wraps. On a touch screen each is 38px
+    # and five do not fit a 140px day; a Friday's full run found a title
+    # printed over a ×. The probe could not be made to find it again on the
+    # Saturday -- the busy day was then a column scrolled out of view -- so
+    # the rule is asked of the stylesheet as well as measured on the page.
+    css = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "static", "style.css"), encoding="utf-8").read()
+    s.check("a task card's controls wrap rather than run into the next day",
+            bool(re.search(r"\.task-card-head\s*\{[^}]*flex-wrap:\s*wrap", css)))
     s.check("the breakfast checklist is reported wider than a phone",
             ctl.get(("/breakfast", 390), {}).get("docW", 0) > 390,
             detail=f"{ctl.get(('/breakfast', 390), {}).get('docW')}px")

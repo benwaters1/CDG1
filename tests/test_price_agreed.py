@@ -233,7 +233,11 @@ def run():
 
         s.section("A guest who moves to other nights pays for those nights")
         # The reason the recompute was there, and it was a good one.
-        moved_arrival = arrival + timedelta(days=120)
+        # Three free nights, not two: the stay is moved here and then a night
+        # is added on the end, so the night after it has to be free as well.
+        # A fixed 120 days on was free until the extra night landed on
+        # something already held, and "add a night" was refused.
+        moved_arrival = _free(arrival + timedelta(days=120), nights=3)
         moved_departure = moved_arrival + timedelta(days=2)
         conn = db()
         _override(conn, room["id"], moved_arrival, moved_departure, 350)

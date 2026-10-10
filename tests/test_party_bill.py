@@ -108,9 +108,11 @@ def run():
             f"{TAG}-A" in page and f"{TAG}-B" in page,
             detail="a total with no lines under it is a total somebody re-adds "
                    "by hand, which is what this replaces")
-    s.check("with what the whole party owes",
-            "%.2f" % detail["total"] in page or "1000" in page.replace(",", ""),
-            detail=f"{detail['total']}")
+    # Asked of money() rather than typed: the statement writes €1,520.00 now,
+    # and "1520.00" stopped matching -- it only passed while the total
+    # happened to be 1000, which the fallback below it used to find.
+    s.check("with what the whole party owes", m.money(detail["total"]) in page,
+            detail=f"looked for {m.money(detail['total'])}")
     s.check("and it is reachable from the bookings list",
             f"/admin/parties/{pid}" in oc.get("/admin/bookings").get_data(as_text=True),
             detail="a page nobody can get to is a page nobody uses")
@@ -119,7 +121,12 @@ def run():
     s.check("an unknown party", oc.get("/admin/parties/999999").status_code == 404)
 
     s.section("A stay somebody else booked")
-    c = _stay("AGENT", room_id=room["id"], arrival=arrival + timedelta(days=10))
+    # Nights that are genuinely free, asked rather than counted: today+55
+    # was free until the day it landed on Noël at Gudanes, which holds the
+    # whole house, and the edit below was refused for the workshop -- so the
+    # booker was never saved, and two checks went red with nothing changed.
+    c = _stay("AGENT", room_id=room["id"],
+              arrival=_harness.free_window(room["id"], 2, after_days=55))
     oc.post(f"/admin/bookings/{c['id']}/edit", data={
         "arrival_date": c["arrival_date"], "departure_date": c["departure_date"],
         "party_size": "2", "guest_phone": "", "special_requests": "",
