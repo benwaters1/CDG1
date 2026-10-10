@@ -28981,7 +28981,8 @@ def forgot_password():
             conn.commit()
             conn.close()
             flash("If that email has an account, a code is on its way.", "success")
-            return redirect(url_for("login"))
+            # The same page as a code that went out, so a throttle says nothing.
+            return redirect(url_for("reset_password"))
         person = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         if person:
             # A code, not a link.
@@ -29025,7 +29026,13 @@ def forgot_password():
         conn.close()
         # Same message whether or not the email matched — don't reveal who has an account.
         flash("If that email has an account, a code is on its way.", "success")
-        return redirect(url_for("login"))
+        # To the page the code is typed on. This sent people to the sign-in
+        # page from 30 August, when the emailed link became a code: right for a
+        # link, which brings its own page, and a dead end for a code, which
+        # needs somewhere to be typed. The email says "type it on the page you
+        # asked from", and for six weeks that page was gone by the time it
+        # arrived -- the owner found it on 10 October, locked out.
+        return redirect(url_for("reset_password"))
     return render_template("forgot_password.html", email_enabled=email_enabled())
 
 

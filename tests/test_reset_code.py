@@ -152,6 +152,48 @@ def run():
             < datetime.now(timezone.utc) + timedelta(minutes=m.RESET_CODE_MINUTES + 1),
             detail=str(after["reset_token_expires_at"]))
 
+    s.section("Asking for one takes you to where it is typed")
+    # Every check below posts straight to /reset-password, so for six weeks
+    # none of them noticed that a person asking for a code was sent to the
+    # sign-in page instead -- the code arrived with nowhere to type it. The
+    # owner found it on 10 October. This walks the path a person walks.
+    real_send, real_enabled = m.send_email, m.email_enabled
+    m.send_email, m.email_enabled = (lambda *a, **kw: True), (lambda: True)
+    try:
+        walker = m.app.test_client()
+        for label, address in (("an address with an account", renee["email"]),
+                               ("an address with none", TAG + "nobody@example.invalid")):
+            _clear_limits()
+            r = walker.post("/forgot-password", data={"email": address})
+            s.check(f"for {label}, the next page is the code page",
+                    r.status_code in (302, 303)
+                    and r.headers.get("Location", "").rstrip("/").endswith("/reset-password"),
+                    detail=f"{r.status_code} -> {r.headers.get('Location')}")
+            page = walker.get("/reset-password").get_data(as_text=True)
+            s.check(f"and it has the box for the code, with {label} filled in",
+                    'name="code"' in page and address in page,
+                    detail="the address is carried so it does not have to be retyped")
+        # Throttled, it must look exactly like a code that went out.
+        # The limiter counts per address, so fill it as the test client.
+        conn = db()
+        with m.app.test_request_context(environ_base={"REMOTE_ADDR": "127.0.0.1"}):
+            for _ in range(m.PASSWORD_RESET_LIMIT_PER_HOUR + 1):
+                m.rate_limited(conn, "forgot_password", m.PASSWORD_RESET_LIMIT_PER_HOUR)
+        conn.commit()
+        conn.close()
+        r = walker.post("/forgot-password", data={"email": renee["email"]})
+        s.check("throttled, it goes to the same page, so a limit says nothing",
+                r.headers.get("Location", "").rstrip("/").endswith("/reset-password"),
+                detail=f"{r.status_code} -> {r.headers.get('Location')}")
+        s.check("and the asking page links to the code page for a closed tab",
+                "/reset-password" in walker.get("/forgot-password").get_data(as_text=True),
+                detail="otherwise the only way back asks for a new code, which "
+                       "kills the one they are holding")
+    finally:
+        m.send_email, m.email_enabled = real_send, real_enabled
+    # The walk above issued Renee a fresh code; ask again for one this suite holds.
+    code = _ask(anon, renee)
+
     s.section("Using it")
     _clear_limits()
     r = anon.post("/reset-password", data={
