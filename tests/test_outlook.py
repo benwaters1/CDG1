@@ -1,24 +1,24 @@
-"""Committed out against expected in — and the four ways it could lie.
+"""What Money ahead counts as coming in and going out -- and the ways it could lie.
 
-The page is deliberately not a forecast and not a bank balance. It only counts
-things somebody has already agreed to. That makes it useful, and it also makes
-it easy to get quietly wrong in ways that all point the same direction:
-flattering.
+This was the Outlook page's suite. Outlook counted the same money promised in
+and out as Money ahead, but priced wages from the rota, which was the only
+reason it was a page of its own. On 10 October 2026 the owner settled it --
+their monthly figure first, the rota's estimate when there is none -- and the
+two became one page. Every rule this suite held still holds, asked of Money
+ahead and of rostered_labour_cost, which prices the rota:
 
-  1. Counting money already in the bank as money coming in. A guest who paid in
-     full is not future income. Getting this wrong double-counts every deposit.
-  2. Counting maybes. An unconfirmed enquiry is not money, and an outlook that
-     includes them is a wish.
-  3. Costing a salaried person per rostered shift. Putting the chef on one more
-     Saturday costs the house nothing extra, and a forecast that says otherwise
-     argues for the wrong roster. Conversely a salaried person with NO shifts
-     rostered still has to be paid.
-  4. Silently dropping somebody off the rota because their wage is unknown.
-     That understates the cost, so this checks they are named instead.
+  1. Money already in the bank is not money coming in. A guest who paid in
+     full is not future income; getting this wrong double-counts deposits.
+  2. A maybe is not money. An unconfirmed booking is left out.
+  3. A salaried person is not bought by the shift -- putting the chef on one
+     more Saturday costs nothing extra -- and a salaried person with no shifts
+     is still paid.
+  4. Somebody on the rota with no wage on file is named, not counted as free.
+  5. A monthly cost lands in every month, an annual one once -- and a monthly
+     one with no due date still lands, which Money ahead used to drop.
 
-Every check works on DELTAS rather than absolute figures: the scratch database
-is shared with every other suite, several of which create bookings inside the
-same window, so an absolute total here would be measuring their fixtures.
+Every check works on DELTAS: the scratch database is shared with every other
+suite, several of which create bookings inside the same window.
 """
 from datetime import date, datetime, timedelta, timezone
 
@@ -51,16 +51,47 @@ def _next_month_window():
     return date(first.year + y, mth + 1, 15)      # the 15th, safely mid-month
 
 
-def _outlook(months=6):
+def _ahead(days=120):
     conn = db()
     try:
-        return m.cash_outlook(conn, months=months)
+        return m.money_ahead(conn, days=days)
     finally:
         conn.close()
 
 
-def _month_row(outlook, day):
-    return next((r for r in outlook["rows"] if r["start"] <= day < r["end"]), None)
+def _in_for(ahead, ref):
+    return round(sum(i["amount"] for i in ahead["incoming"] if i.get("ref") == f"{TAG}-{ref}"), 2)
+
+
+def _month(day):
+    """The first of day's month and of the next, as rostered_labour_cost wants them."""
+    first = day.replace(day=1)
+    nxt = date(first.year + 1, 1, 1) if first.month == 12 else date(first.year, first.month + 1, 1)
+    return first.isoformat(), nxt.isoformat()
+
+
+def _labour(day):
+    conn = db()
+    try:
+        return m.rostered_labour_cost(conn, *_month(day))
+    finally:
+        conn.close()
+
+
+def _staff_figure(value):
+    """Set or clear the owner's monthly wage figure; returns what was there."""
+    conn = db()
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (m.MONTHLY_STAFF_COST_SETTING,)).fetchone()
+    if value is None:
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (m.MONTHLY_STAFF_COST_SETTING,))
+    else:
+        conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                     (m.MONTHLY_STAFF_COST_SETTING, str(value)))
+    conn.commit()
+    conn.close()
+    return row["value"] if row else None
 
 
 def _person(name):
@@ -120,46 +151,39 @@ def _booking(ref, arrival, total, paid, status="confirmed"):
 
 
 def run():
-    s = Suite("Outlook")
+    s = Suite("Money ahead: what is coming in and going out")
     _cleanup()
     oc, ec, owner, emp = clients()
     day = _next_month_window()
+    kept_figure = _staff_figure(None)        # the rota's estimate is what is tested first
+    try:
+        _checks(s, oc, ec, day)
+    finally:
+        _staff_figure(kept_figure)
+        _cleanup()
+    return s
 
+
+def _checks(s, oc, ec, day):
     s.section("Only the balance still owed counts as coming in")
-    before = _month_row(_outlook(), day)
     _booking("A", day, total=1000.0, paid=300.0)
-    after = _month_row(_outlook(), day)
-    s.check("the outstanding 700 appears",
-            abs((after["in_rooms"] - before["in_rooms"]) - 700.0) < 0.01,
-            detail=f"{before['in_rooms']} -> {after['in_rooms']}")
-    s.check("and it is in the month of arrival",
-            abs((after["money_in"] - before["money_in"]) - 700.0) < 0.01)
+    s.check("the outstanding 700 appears", abs(_in_for(_ahead(), "A") - 700.0) < 0.01,
+            detail=f"{_in_for(_ahead(), 'A')}")
 
     s.section("Money already in the bank is not money coming in")
-    before = _month_row(_outlook(), day)
     _booking("B", day, total=800.0, paid=800.0)
-    after = _month_row(_outlook(), day)
-    s.check("a booking paid in full adds nothing",
-            abs(after["in_rooms"] - before["in_rooms"]) < 0.01,
-            detail=f"{before['in_rooms']} -> {after['in_rooms']} — deposits are "
-                   "being counted twice")
+    s.check("a booking paid in full adds nothing", _in_for(_ahead(), "B") == 0,
+            detail=f"{_in_for(_ahead(), 'B')} -- deposits are being counted twice")
 
     s.section("An overpayment is not negative income")
-    before = _month_row(_outlook(), day)
     _booking("C", day, total=500.0, paid=650.0)
-    after = _month_row(_outlook(), day)
-    s.check("it contributes nothing rather than −150",
-            abs(after["in_rooms"] - before["in_rooms"]) < 0.01,
-            detail=f"{before['in_rooms']} -> {after['in_rooms']} — an overpaid "
-                   "booking is reducing expected income")
+    s.check("it contributes nothing rather than -150", _in_for(_ahead(), "C") == 0,
+            detail=f"{_in_for(_ahead(), 'C')}")
 
     s.section("A maybe is not money")
-    before = _month_row(_outlook(), day)
     _booking("D", day, total=2000.0, paid=0.0, status="pending")
-    after = _month_row(_outlook(), day)
-    s.check("an unconfirmed booking is left out",
-            abs(after["in_rooms"] - before["in_rooms"]) < 0.01,
-            detail=f"{before['in_rooms']} -> {after['in_rooms']}")
+    s.check("an unconfirmed booking is left out", _in_for(_ahead(), "D") == 0,
+            detail=f"{_in_for(_ahead(), 'D')}")
 
     s.section("A monthly cost lands in every month, an annual one lands once")
     conn = db()
@@ -171,117 +195,130 @@ def run():
         """INSERT INTO recurring_costs (label, amount, frequency, next_due_date, active, created_at)
            VALUES (?, 1200, 'annual', ?, 1, ?)""",
         (TAG + " licence", day.isoformat(), now))
+    conn.execute(
+        """INSERT INTO recurring_costs (label, amount, frequency, active, created_at)
+           VALUES (?, 900, 'annual', 1, ?)""", (TAG + " dated nowhere", now))
     conn.commit()
     conn.close()
-    out = _outlook()
-    with_annual = _month_row(out, day)
-    others = [r for r in out["rows"] if r is not with_annual]
-    s.check("the monthly cost is in every month",
-            all(r["out_recurring"] >= 400 for r in out["rows"]),
-            detail=f"{[r['out_recurring'] for r in out['rows']]}")
-    s.check("the annual bill is flagged on its month", with_annual["out_annual"] == 1200,
-            detail=f"{with_annual['out_annual']}")
-    s.check("and is not in the others",
-            all(r["out_annual"] == 0 for r in others),
-            detail=f"{[r['out_annual'] for r in others]}")
+    ahead = _ahead()
+    months = [mo["start"][:7] for mo in ahead["months"]]
+    monthly = [o["date"][:7] for o in ahead["outgoing"] if o["label"] == TAG + " insurance"]
+    s.check("a monthly cost with no due date still lands, in every month",
+            sorted(monthly) == sorted(months),
+            detail=f"{monthly} against {months} -- it was dropped altogether when it had no date")
+    annual = [o for o in ahead["outgoing"] if o["label"] == TAG + " licence"]
+    s.check("the annual bill lands once, on its day",
+            [o["date"] for o in annual] == [day.isoformat()], detail=str(annual))
+    s.check("and an annual one with no date is named, not counted as nothing",
+            TAG + " dated nowhere" in ahead["undated_costs"]
+            and not any(o["label"] == TAG + " dated nowhere" for o in ahead["outgoing"]),
+            detail=str(ahead["undated_costs"]))
 
     s.section("The rota is costed from the wage in force")
     hourly = _person("Hourly")
     _wage(hourly["id"], "hourly", 15.00)
-    before = _month_row(_outlook(), day)
+    before = _labour(day)
     _shift(hourly["id"], day, "09:00", "17:00")          # 8h
     _shift(hourly["id"], day + timedelta(days=1), "09:00", "14:00")   # 5h
-    after = _month_row(_outlook(), day)
+    after = _labour(day)
     s.check("13 rostered hours at 15.00 is 195",
-            abs((after["out_labour"] - before["out_labour"]) - 195.0) < 0.01,
-            detail=f"{before['out_labour']} -> {after['out_labour']}")
-    s.check("and the hours are shown",
-            abs((after["labour"]["hours"] - before["labour"]["hours"]) - 13.0) < 0.05,
-            detail=f"{after['labour']['hours']}")
+            abs((after["gross"] - before["gross"]) - 195.0) < 0.01,
+            detail=f"{before['gross']} -> {after['gross']}")
+    s.check("and the hours are shown", abs((after["hours"] - before["hours"]) - 13.0) < 0.05,
+            detail=f"{after['hours']}")
 
     s.section("A shift that runs past midnight is not negative")
-    before = _month_row(_outlook(), day)
+    before = _labour(day)
     _shift(hourly["id"], day + timedelta(days=2), "20:00", "02:00")   # 6h
-    after = _month_row(_outlook(), day)
+    after = _labour(day)
     s.check("20:00 to 02:00 is six hours, not minus eighteen",
-            abs((after["out_labour"] - before["out_labour"]) - 90.0) < 0.01,
-            detail=f"{before['out_labour']} -> {after['out_labour']}")
-    s.check("_shift_hours agrees on its own", abs(m._shift_hours("20:00", "02:00") - 6.0) < 0.01,
-            detail=f"{m._shift_hours('20:00', '02:00')}")
+            abs((after["gross"] - before["gross"]) - 90.0) < 0.01,
+            detail=f"{before['gross']} -> {after['gross']}")
+    s.check("_shift_hours agrees on its own", abs(m._shift_hours("20:00", "02:00") - 6.0) < 0.01)
 
     s.section("A salary is not bought by the shift")
-    # Putting the chef on one more Saturday costs nothing extra. A forecast that
-    # says it does argues for the wrong roster.
     chef = _person("Chef")
     _wage(chef["id"], "monthly", 3000.00)
-    with_salary = _month_row(_outlook(), day)
-    _shift(chef["id"], day, "17:00", "23:00")
-    _shift(chef["id"], day + timedelta(days=1), "17:00", "23:00")
-    _shift(chef["id"], day + timedelta(days=2), "17:00", "23:00")
-    after = _month_row(_outlook(), day)
-    s.check("three more shifts change nothing",
-            abs(after["out_labour"] - with_salary["out_labour"]) < 0.01,
-            detail=f"{with_salary['out_labour']} -> {after['out_labour']}")
+    with_salary = _labour(day)
+    for k in range(3):
+        _shift(chef["id"], day + timedelta(days=k), "17:00", "23:00")
+    after = _labour(day)
+    s.check("three more shifts change nothing", abs(after["total"] - with_salary["total"]) < 0.01,
+            detail=f"{with_salary['total']} -> {after['total']}")
     s.check("and their hours are not added to the rota total",
-            abs(after["labour"]["hours"] - with_salary["labour"]["hours"]) < 0.05,
-            detail="salaried hours were counted as costed rota hours")
+            abs(after["hours"] - with_salary["hours"]) < 0.05)
 
     s.section("But a salaried person with no shifts is still paid")
     quiet = _person("Quiet")
-    before = _month_row(_outlook(), day)
+    before = _labour(day)
     _wage(quiet["id"], "monthly", 2000.00)
-    after = _month_row(_outlook(), day)
+    after = _labour(day)
     s.check("the whole month's salary appears with nothing rostered",
-            abs((after["out_labour"] - before["out_labour"]) - 2000.0) < 0.01,
-            detail=f"{before['out_labour']} -> {after['out_labour']} — a "
-                   "salaried person vanished because they had no shifts")
+            abs((after["gross"] - before["gross"]) - 2000.0) < 0.01,
+            detail=f"{before['gross']} -> {after['gross']} -- a salaried person vanished "
+                   "because they had no shifts")
 
     s.section("Somebody unpriced is named, not dropped")
     ghost = _person("Ghost")
     _shift(ghost["id"], day, "09:00", "18:00")
-    out = _outlook()
-    s.check("they are named",
-            any(TAG + " Ghost" in n for n in out["unpriced"]), detail=f"{out['unpriced']}")
+    s.check("they are named", any(TAG + " Ghost" in n for n in _labour(day)["unpriced"]),
+            detail=f"{_labour(day)['unpriced']}")
+
+    s.section("With no monthly figure, the wages are the rota's, said to be an estimate")
+    ahead = _ahead()
+    payday = date(day.year, day.month, m.monthrange(day.year, day.month)[1]).isoformat()
+    est = [o for o in ahead["outgoing"] if o["kind"] == "Wages, estimated" and o["date"] == payday]
+    s.check("the month's wages are on its last day, at what the rota costs",
+            len(est) == 1 and abs(est[0]["amount"] - _labour(day)["total"]) < 0.01,
+            detail=f"{est} against {_labour(day)['total']}")
+    s.check("the page knows it is an estimate", ahead["wages_basis"] == "rota",
+            detail=str(ahead["wages_basis"]))
+    s.check("and names who it could not price",
+            any(TAG + " Ghost" in n for n in ahead["wages_unpriced"]))
+    html = oc.get("/management/money-ahead?days=180").get_data(as_text=True)
+    s.check("the page says so, and names them",
+            "estimated from the rota" in html and "no wage on" in html
+            and TAG + " Ghost" in html,
+            detail="the wages box must say the figure is the rota's and who it left out")
+
+    s.section("A monthly figure, once set, replaces the estimate")
+    _staff_figure(6500)
+    ahead = _ahead()
+    s.check("the month's wages are the figure",
+            any(o["kind"] == "Wages" and o["date"] == payday and abs(o["amount"] - 6500) < 0.01
+                for o in ahead["outgoing"]))
+    s.check("and nothing is estimated",
+            not any(o["kind"] == "Wages, estimated" for o in ahead["outgoing"])
+            and ahead["wages_basis"] == "set")
+    _staff_figure(None)
 
     s.section("The arithmetic holds")
-    out = _outlook()
+    ahead = _ahead()
     s.check("in minus out is the difference, every month",
-            all(abs((r["money_in"] - r["money_out"]) - r["net"]) < 0.02 for r in out["rows"]),
-            detail=f"{[(r['money_in'], r['money_out'], r['net']) for r in out['rows'][:2]]}")
-    s.check("the income columns add to expected in",
-            all(abs((r["in_rooms"] + r["in_ateliers"] + r["in_events"]) - r["money_in"]) < 0.02
-                for r in out["rows"]))
-    s.check("the cost columns add to committed out",
-            all(abs((r["out_recurring"] + r["out_labour"]) - r["money_out"]) < 0.02
-                for r in out["rows"]))
+            all(abs((mo["in"] - mo["out"]) - mo["net"]) < 0.02 for mo in ahead["months"]))
     s.check("and the months add to the totals",
-            abs(sum(r["net"] for r in out["rows"]) - out["net"]) < 0.02)
+            abs(sum(mo["in"] for mo in ahead["months"]) - ahead["total_in"]) < 0.02
+            and abs(sum(mo["out"] for mo in ahead["months"]) - ahead["total_out"]) < 0.02,
+            detail=f"{sum(mo['in'] for mo in ahead['months'])} / {ahead['total_in']}, "
+                   f"{sum(mo['out'] for mo in ahead['months'])} / {ahead['total_out']}")
 
-    s.section("The window is bounded")
-    s.check("three months means three rows", len(_outlook(3)["rows"]) == 3)
-    s.check("and it starts with this month", _outlook(3)["rows"][0]["is_current"])
-    conn = db()
-    s.check("asking for none still gives one", len(m.cash_outlook(conn, months=0)["rows"]) == 1)
-    conn.close()
-
-    s.section("The page")
-    page = oc.get("/management/outlook")
-    html = page.get_data(as_text=True)
-    s.check("it loads", page.status_code == 200, page)
-    s.check("and says plainly it is not a bank balance",
-            "not a bank balance" in html.lower(),
-            detail="a page of money figures that reads as a balance is worse "
-                   "than no page")
-    s.check("it names who is not costed", TAG + " Ghost" in html)
-    s.check("a junk months value does not break it",
-            oc.get("/management/outlook?months=nonsense").status_code == 200)
-    s.check("and an absurd one is clamped",
-            len(_outlook(99)["rows"]) <= 12 or
-            oc.get("/management/outlook?months=99").status_code == 200)
+    s.section("The window is bounded, and the old page lands on it")
+    s.check("asking for none still looks a day ahead", _ahead(0)["days"] >= 1)
+    s.check("and an absurd one is clamped", _ahead(99999)["days"] <= 730)
+    s.check("a junk window does not break the page",
+            oc.get("/management/money-ahead?days=nonsense").status_code == 200)
+    for months, days in (("3", 90), ("6", 180), ("12", 365), ("nonsense", 180)):
+        r = oc.get(f"/management/outlook?months={months}")
+        s.check(f"/management/outlook?months={months} lands on {days} days of Money ahead",
+                r.status_code == 302
+                and r.headers.get("Location", "").endswith(f"/management/money-ahead?days={days}"),
+                detail=f"{r.status_code} {r.headers.get('Location')}")
 
     s.section("Guards")
-    s.check("an employee cannot see the outlook",
-            ec.get("/management/outlook").status_code in (302, 403))
+    s.check("an employee cannot see Money ahead",
+            ec.get("/management/money-ahead").status_code in (302, 403))
+    s.check("nor the old address", ec.get("/management/outlook").status_code in (302, 403))
 
-    _cleanup()
-    return s
+
+if __name__ == "__main__":
+    print(run().report())

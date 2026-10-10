@@ -48,10 +48,15 @@
   <h3 style="margin-top:0;">What do wages cost in a normal month?</h3>
   <p class="field-hint" style="margin-top:0;">
     {% if ahead.monthly_staff is none %}
-      Left out until you say, because it is the one big number this app cannot work out
-      honestly — pay rates here are free text and most people on the books have none, so
-      anything derived would be a guess sitting on a page that promises only committed
-      money. Yours goes in at the end of each month.
+      Until you set it, wages are <strong>estimated from the rota</strong>: every shift
+      already on it, priced from the wage on file for whoever works it, with a salary
+      counted once a month however many shifts.
+      {% if ahead.wages_unpriced %}{{ ahead.wages_unpriced|join(', ') }}
+        {{ 'has' if ahead.wages_unpriced|length == 1 else 'have' }} shifts but no wage on
+        file, so {{ 'is' if ahead.wages_unpriced|length == 1 else 'are' }} not counted.{% endif %}
+      {% if ahead.wages_basis is none %}Nothing is on the rota in this window yet, so no
+        wages are counted.{% endif %}
+      Your figure replaces the estimate, at the end of each month.
     {% else %}
       Your figure, not one worked out from hours. It goes in at the end of each month.
       Clear the box and save to take it out again.
@@ -189,7 +194,11 @@
 
 <p class="pay-disclaimer" style="margin-top:20px;">
   What is <em>not</em> in here, so it is not mistaken for a full picture:
-  {% if ahead.monthly_staff is none %}wages, until you set a monthly figure above;{% endif %}
+  {% if ahead.wages_basis is none %}wages, until you set a monthly figure above or the rota
+  has shifts on it;{% elif ahead.wages_basis == 'rota' %}any wages beyond the shifts already on
+  the rota;{% endif %}
+  {% if ahead.undated_costs %}{{ ahead.undated_costs|join(', ') }}, a yearly cost with no due
+  date to place it on;{% endif %}
   restaurant covers nobody has booked yet; and anything bought on the day. Supplier invoices
   still waiting on your decision sit on today, because that is when they are owed.
 </p>

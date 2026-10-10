@@ -9353,79 +9353,6 @@ def expected_money_in(conn, today=None):
     return [x for x in out if x["date"]]
 
 
-def cash_outlook(conn, months=6, today=None):
-    """What is already committed out, against what is already expected in.
-
-    NOT a forecast and NOT a bank balance. The app does not know what is in the
-    account, so nothing here is a running total — inventing an opening balance
-    would turn a useful list of commitments into a figure the owner might
-    actually plan against. Every line is something already agreed by somebody:
-    a booking taken, a cost on a contract, a shift on the rota.
-
-    What is deliberately left out, and why it matters that this is stated:
-      - walk-in restaurant and till trade, which is most of a quiet month's
-        income and cannot be known in advance
-      - enquiries that are not confirmed, because a maybe is not money
-      - anything a guest has already paid, which is in the bank, not coming in
-    """
-    today = today or house_today()
-    first = today.replace(day=1)
-    rows = []
-    expected = expected_money_in(conn, today)
-    for i in range(max(1, months)):
-        year, month = divmod(first.month - 1 + i, 12)
-        start = date(first.year + year, month + 1, 1)
-        end = (date(start.year + 1, 1, 1) if start.month == 12
-               else date(start.year, start.month + 1, 1))
-        s_iso, e_iso = start.isoformat(), end.isoformat()
-
-        # From the one list of what is agreed and not yet in. This worked out
-        # a stay as total less discount less paid -- the discount a second
-        # time, since total is already net of it, and no extras or tax --
-        # and an event as its whole quote whatever had been paid.
-        def month_in(kind):
-            return sum(x["amount"] for x in expected
-                       if x["kind"] == kind and s_iso <= x["date"] < e_iso)
-        rooms = month_in("Room")
-        ateliers = month_in("Workshop")
-        events = month_in("Event")
-
-        monthly_costs = conn.execute(
-            """SELECT COALESCE(SUM(amount), 0) AS out FROM recurring_costs
-               WHERE active = 1 AND frequency = 'monthly'""").fetchone()["out"]
-        annual_costs = conn.execute(
-            """SELECT COALESCE(SUM(amount), 0) AS out FROM recurring_costs
-               WHERE active = 1 AND frequency = 'annual'
-                 AND next_due_date >= ? AND next_due_date < ?""",
-            (s_iso, e_iso)).fetchone()["out"]
-        labour = rostered_labour_cost(conn, s_iso, e_iso)
-
-        money_in = round(rooms + ateliers + events, 2)
-        money_out = round(monthly_costs + annual_costs + labour["total"], 2)
-        rows.append({
-            "start": start, "end": end, "label": start.strftime("%B %Y"),
-            "is_current": start <= today < end,
-            "in_rooms": round(rooms, 2), "in_ateliers": round(ateliers, 2),
-            "in_events": round(events, 2), "money_in": money_in,
-            "out_recurring": round(monthly_costs + annual_costs, 2),
-            "out_annual": round(annual_costs, 2),
-            "out_labour": labour["total"], "labour": labour,
-            "money_out": money_out,
-            "net": round(money_in - money_out, 2),
-        })
-
-    unpriced = sorted({n for r in rows for n in r["labour"]["unpriced"]})
-    return {
-        "rows": rows,
-        "money_in": round(sum(r["money_in"] for r in rows), 2),
-        "money_out": round(sum(r["money_out"] for r in rows), 2),
-        "net": round(sum(r["net"] for r in rows), 2),
-        "worst": min(rows, key=lambda r: r["net"]) if rows else None,
-        "unpriced": unpriced,
-        "employer_rate": wage_setting(conn, "payroll_employer_contribution_percent"),
-    }
-
-
 def estimated_hourly_cost(hours, pay_rate, pay_type):
     """Best-effort hours x rate estimate from the free-text pay reference
     fields — returns None whenever the type isn't hourly or the rate text
@@ -36939,9 +36866,7 @@ PALETTE_PAGES = [
      "markets events local nearby whats on things to do village"),
     ("Money ahead", "money_ahead_page",
      "cash flow forecast expected incoming coming in runway money due to arrive "
-     "balances arriving weeks"),
-    ("Management outlook", "management_outlook",
-     "outlook forecast ahead labour cost rostered"),
+     "balances arriving weeks outlook labour cost rostered wages"),
     ("Today sheet", "today_sheet",
      "today print run sheet arrivals departures handover"),
     ("Maintenance", "maintenance_page",
@@ -62774,10 +62699,23 @@ def money_ahead(conn, *, days=90, today=None):
                              "kind": "Restaurant", "ref": r["reference_code"]})
 
     # Standing costs, expanded across the window on their own dates.
+    # The next-due date is optional on the form. A monthly cost without one
+    # was dropped from here altogether -- the outlook counted it every month,
+    # this page never -- so it falls on the first of each month now, and this
+    # month's today. An annual cost with no date cannot be placed at all, and
+    # is named rather than counted as nothing.
+    undated_costs = []
     for c in conn.execute(
             "SELECT * FROM recurring_costs WHERE active = 1").fetchall():
-        for when in _recurring_dates(parse_date(c["next_due_date"] or ""),
-                                     c["frequency"], today, last):
+        due = parse_date(c["next_due_date"] or "")
+        if due:
+            dates = _recurring_dates(due, c["frequency"], today, last)
+        elif c["frequency"] != "annual":
+            dates = [max(start, today) for start in _month_starts(today, last)]
+        else:
+            undated_costs.append(c["label"])
+            dates = []
+        for when in dates:
             outgoing.append({"date": when.isoformat(), "amount": round(c["amount"] or 0, 2),
                              "label": c["label"], "kind": "Standing cost", "ref": None})
 
@@ -62839,13 +62777,32 @@ def money_ahead(conn, *, days=90, today=None):
         staff = round(float(staff["value"]), 2) if staff and staff["value"] else None
     except (TypeError, ValueError):
         staff = None
-    if staff:
-        for start in _month_starts(today, last):
-            payday = date(start.year, start.month, monthrange(start.year, start.month)[1])
-            if today <= payday <= last:
-                outgoing.append({"date": payday.isoformat(), "amount": staff,
-                                 "label": "Wages — the monthly figure you set",
-                                 "kind": "Wages", "ref": None})
+    #
+    # And with no figure set, the rota: every shift already on it, priced from
+    # the wage on file for whoever works it, salaries once a month however
+    # many shifts. Labelled as an estimate, with anybody who has no wage on
+    # file named rather than counted as free. The owner's call, 10 October
+    # 2026: their figure first, the estimate when there is none. (This was the
+    # Outlook page's way of counting wages, and the reason it was a separate
+    # page; it is this page's fallback now, and Outlook is gone.)
+    wages_unpriced, wages_basis = set(), ("set" if staff else None)
+    for start in _month_starts(today, last):
+        payday = date(start.year, start.month, monthrange(start.year, start.month)[1])
+        if not (today <= payday <= last):
+            continue
+        if staff:
+            outgoing.append({"date": payday.isoformat(), "amount": staff,
+                             "label": "Wages — the monthly figure you set",
+                             "kind": "Wages", "ref": None})
+            continue
+        labour = rostered_labour_cost(conn, start.isoformat(),
+                                      (payday + timedelta(days=1)).isoformat())
+        wages_unpriced |= set(labour["unpriced"])
+        if labour["total"] > 0.005:
+            wages_basis = "rota"
+            outgoing.append({"date": payday.isoformat(), "amount": round(labour["total"], 2),
+                             "label": "Wages — estimated from the rota and the wages on file",
+                             "kind": "Wages, estimated", "ref": None})
 
     incoming.sort(key=lambda x: (x["date"], -x["amount"]))
     outgoing.sort(key=lambda x: (x["date"], -x["amount"]))
@@ -62925,6 +62882,8 @@ def money_ahead(conn, *, days=90, today=None):
         "total_in": total_in, "total_out": total_out,
         "net": round(total_in - total_out, 2),
         "opening": opening, "monthly_staff": staff,
+        "wages_basis": wages_basis, "wages_unpriced": sorted(wages_unpriced),
+        "undated_costs": undated_costs,
         "closing": round((opening or 0) + total_in - total_out, 2) if opening is not None else None,
     }
 
@@ -62932,36 +62891,16 @@ def money_ahead(conn, *, days=90, today=None):
 @app.route("/management/outlook")
 @owner_required
 def management_outlook():
-    """Committed out against expected in, by month.
-
-    Sits beside the financials rather than inside them because it answers a
-    different question: not what the house made, but what it has already
-    promised and been promised.
-    """
+    """Where Outlook was. It counted the same money promised in and out as
+    Money ahead, with the rota's wages; Money ahead counts the rota's wages
+    itself now, when no monthly figure is set, and there is one page. A
+    bookmark lands there, on the window nearest the months it asked for."""
     try:
         months = max(1, min(12, int(request.args.get("months", "6"))))
     except ValueError:
         months = 6
-    conn = get_db()
-    outlook = cash_outlook(conn, months=months)
-    costs = conn.execute(
-        """SELECT * FROM recurring_costs WHERE active = 1
-           ORDER BY frequency, amount DESC""").fetchall()
-    conn.close()
-    negative = [r for r in outlook["rows"] if r["net"] < 0]
-    overview = [
-        overview_cell("Expected in", euro(outlook["money_in"]),
-                      sub=f"over {months} month{'s' if months != 1 else ''}",
-                      hint="already booked, not a forecast"),
-        overview_cell("Committed out", euro(outlook["money_out"]),
-                      hint="contracts and the rota"),
-        overview_cell("Difference", euro(outlook["net"]),
-                      alert=outlook["net"] < 0),
-        overview_cell("Months in the red", len(negative), alert=len(negative),
-                      hint="on committed figures alone"),
-    ]
-    return render_template("management_outlook.html", outlook=outlook,
-                           overview=overview, months=months, costs=costs)
+    days = next((d for d in MONEY_AHEAD_WINDOWS if d >= months * 30), MONEY_AHEAD_WINDOWS[-1])
+    return redirect(url_for("money_ahead_page", days=days))
 
 
 def walk_in_options(conn, rooms, arrival, departure):

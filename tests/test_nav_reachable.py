@@ -108,6 +108,8 @@ NOT_BROWSED = (
     "management_debtors",
     # And where Money due to arrive was: its weeks are Money ahead's money in.
     "management_money_due",
+    # And where Outlook was: Money ahead counts the rota's wages itself now.
+    "management_outlook",
 )
 
 

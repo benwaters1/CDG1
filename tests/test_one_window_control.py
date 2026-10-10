@@ -32,7 +32,6 @@ PAGES = {
     "kitchen_service_times": ("days", 30, False),
     "kitchen_waste": ("days", 90, False),
     "management_night_cost": ("months", 3, False),
-    "management_outlook": ("months", 6, True),
     "money_ahead_page": ("days", 90, True),
     "overtime_page": ("weeks", 12, False),
     "demand_report": ("days", 90, False),

@@ -62,6 +62,7 @@ NOT_LINKED_ON_PURPOSE = {
     # the section it became. Nothing should link here any more.
     "management_debtors": "old address, merged into What we are owed",
     "management_money_due": "old address, merged into Money ahead",
+    "management_outlook": "old address, merged into Money ahead",
 
     # Stripe sends the guest back to these.
     "booking_stripe_success": "Stripe returns here",

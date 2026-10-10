@@ -211,23 +211,25 @@ def run():
             f"{TAG}-Real" in in_ahead and f"{TAG}Ws" in in_ahead, detail=str(sorted(in_ahead)))
     # Measured as a difference, so whatever else the database holds does not
     # move the answer: one more event, quoted 5000 with 1500 paid, must add
-    # 3500 to what the outlook expects in, not 5000.
-    conn = db()
-    before = sum(r["in_events"] for r in m.cash_outlook(conn, months=4)["rows"])
-    conn.close()
+    # 3500 to what Money ahead expects in, not 5000. (The cash outlook asked
+    # this until it was merged into Money ahead on 10 October 2026.)
+    def _money_in(kind):
+        conn = db()
+        try:
+            return sum(i["amount"] for i in m.money_ahead(conn, days=120)["incoming"]
+                       if i["kind"] == kind)
+        finally:
+            conn.close()
+    before = _money_in("Event")
     _event("Quote", quote=5000.0, paid=1500.0, due_in=40)
-    conn = db()
-    after = sum(r["in_events"] for r in m.cash_outlook(conn, months=4)["rows"])
-    conn.close()
-    s.check("the cash outlook counts what is left of an event, not its quote",
+    after = _money_in("Event")
+    s.check("Money ahead counts what is left of an event, not its quote",
             abs((after - before) - 3500.0) < 0.01,
             detail=f"added {after - before} -- the whole quote was counted however much was paid")
 
     # And a stay with a discount: total_price is already net of it, and the
     # outlook took it off again. 1000 net of 100 off, 300 paid, is 700 owed.
-    conn = db()
-    before = sum(r["in_rooms"] for r in m.cash_outlook(conn, months=4)["rows"])
-    conn.close()
+    before = _money_in("Room")
     _stay("Disc", arrive_in=35, total=1000, paid=300)
     conn = db()
     # As create_booking leaves a discounted stay: the room stamped at its price
@@ -235,8 +237,8 @@ def run():
     conn.execute("UPDATE bookings SET discount_amount = 100, room_total_quoted = 1100 "
                  "WHERE reference_code = ?", (f"{TAG}-Disc",))
     conn.commit()
-    after = sum(r["in_rooms"] for r in m.cash_outlook(conn, months=4)["rows"])
     conn.close()
+    after = _money_in("Room")
     s.check("and a discounted stay adds what its bill says, not the discount off twice",
             abs((after - before) - 700.0) < 0.01, detail=f"added {after - before}")
 

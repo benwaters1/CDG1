@@ -203,37 +203,25 @@ def run():
             detail=f"{sent} — bookings with no deposit schedule stopped being "
                    "chased at all")
 
-    s.section("The outlook expects the money when it falls due")
+    s.section("Money ahead expects the money when it falls due")
+    # Asked of Money ahead, which lists each payment on its own date -- the
+    # Outlook page this used to ask was merged into it on 10 October 2026,
+    # and a date is a sharper answer than a month.
     _cleanup()
     _set("room_deposit_percent", 30)
     _set("room_balance_due_days_before", 60)
-    conn = db()
-    before = m.cash_outlook(conn, months=6)
-    conn.close()
     b3, arrival3 = _book(1000.0, days_out=100)   # due 60 days before arrival
     conn = db()
-    after = m.cash_outlook(conn, months=6)
+    ahead = m.money_ahead(conn, days=120)
     conn.close()
-    due_month = (arrival3 - timedelta(days=60)).replace(day=1)
-    arr_month = arrival3.replace(day=1)
-    def row_for(o, first):
-        return next((r for r in o["rows"] if r["start"] == first), None)
-    if due_month != arr_month:
-        a_before, a_after = row_for(before, due_month), row_for(after, due_month)
-        if a_before and a_after:
-            s.check("the income lands in the month the balance is due",
-                    a_after["in_rooms"] > a_before["in_rooms"],
-                    detail=f"{a_before['in_rooms']} -> {a_after['in_rooms']} "
-                           f"for {due_month}")
-        b_before, b_after = row_for(before, arr_month), row_for(after, arr_month)
-        if b_before and b_after:
-            s.check("and not in the month they arrive",
-                    abs(b_after["in_rooms"] - b_before["in_rooms"]) < 0.01,
-                    detail=f"{b_before['in_rooms']} -> {b_after['in_rooms']} "
-                           f"for {arr_month}")
-    else:
-        s.check("the two months differ enough to tell apart", False,
-                detail="fixture dates collapsed into one month")
+    line = next((i for i in ahead["incoming"] if i.get("ref") == b3["reference_code"]), None)
+    due = arrival3 - timedelta(days=60)
+    s.check("the income lands on the day the balance is due",
+            line is not None and line["date"] == due.isoformat(),
+            detail=f"{line['date'] if line else 'no line'} against {due.isoformat()}")
+    s.check("and not on the day they arrive",
+            line is not None and line["date"] != arrival3.isoformat(),
+            detail=f"arrival {arrival3.isoformat()}")
 
     s.section("A rule can override the house percentage")
     # deposit_rules already scopes by date and party size for the other two
