@@ -950,11 +950,10 @@ paid us.
   and we cannot guarantee the absence of any ingredient.
 
 6. Arrival, departure and the house
-- Arrival is from 4pm and departure by 11am, unless your confirmation says
+- Arrival is from 2pm and departure by 11am, unless your confirmation says
   otherwise. Tell us if you expect to arrive late so that someone can be
   there to meet you.
-- Guests must be eight or older: the staircases are eighteenth-century,
-  with no handrails in places.
+- Guests must be eight or older.
 - Please treat the house as the historic building it is. Smoking is not
   permitted indoors. Additional guests only by prior agreement.
 - We cannot accommodate pets, as the restoration areas make it unsafe for

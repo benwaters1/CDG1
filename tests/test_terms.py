@@ -195,6 +195,14 @@ def run():
     # Its own connection: the one above is closed as soon as the document
     # has been read, and readiness_checks does its own queries.
     rconn = db()
+    # The two made the same here, as the owner's textarea would save them --
+    # CRLF -- rather than relying on the copied database happening to match
+    # the code. It stopped matching the day the shipped terms moved arrival
+    # to 2pm, which is the readiness check doing its job on the live site
+    # and no reason for this one to go red.
+    rconn.execute("UPDATE app_settings SET value = ? WHERE key = 'terms_and_conditions'",
+                  (m.DEFAULT_TERMS.replace("\n", "\r\n"),))
+    rconn.commit()
     rows = [r for r in m.readiness_checks(rconn, include_slow=False)
             if r["label"] == "Terms, in the code and on the site"]
     s.check("the readiness page carries the comparison", len(rows) == 1,
@@ -211,7 +219,8 @@ def run():
     # the throwaway copy, never on anything the house serves.
     rconn.execute("UPDATE app_settings SET value = ? "
                   "WHERE key = 'terms_and_conditions'",
-                  (doc + "\n\nA clause nobody put in the code.",))
+                  (m.DEFAULT_TERMS.replace("\n", "\r\n")
+                   + "\r\n\r\nA clause nobody put in the code.",))
     rconn.commit()
     moved = [r for r in m.readiness_checks(rconn, include_slow=False)
              if r["label"] == "Terms, in the code and on the site"]
