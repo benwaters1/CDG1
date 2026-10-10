@@ -11004,3 +11004,12 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-how__d{ margin: 0; font-family: var(--serif); font-size: 17px; line-height: 1.65; color: var(--ink-2); }
 @media (max-width: 600px){ .g .g-how__i{ grid-template-columns: 52px 1fr; gap: var(--s3); } .g .g-how__ill{ width: 52px; } .g .g-how__d{ font-size: 16px; } }
 .g .g-how__lead{ margin-top: var(--s4); font-style: italic; color: var(--ink-2); }
+
+/* 10 Oct - HOMEPAGE: the restoration band (a before/now of the dining room, on navy), aligned like every other section */
+.g .g-homeresto__pair{ display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); margin-top: var(--s6); }
+.g .g-homeresto__pair figure{ margin: 0; position: relative; overflow: hidden; }
+.g .g-homeresto__pair img{ width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+.g .g-homeresto__cap{ margin: var(--s3) 0 0; font-family: var(--serif); font-style: italic; font-size: 17px; opacity: .85; }
+.g .g-homeresto__p{ max-width: 40rem; margin-top: var(--s5); }
+.g .g-homeresto__cta{ margin-top: var(--s5); }
+@media (max-width: 600px){ .g .g-homeresto__pair{ gap: 6px; } }

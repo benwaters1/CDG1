@@ -252,6 +252,20 @@
     <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--line">See the rooms</a></p>
   </div>
 </div></section>
+{#- 10 Oct (owner: "I really want the restoration to be a highlight") - a before/now of the dining room (the owner's
+    horse photograph), a line, and the way in. Facts: classified as a ruin when bought, 2013 (Karina's Captain's Log);
+    privately funded, no grants (owner). -#}
+<section class="g-sec g-sec--dark g-homeresto"><div class="g-wrap">
+  <p class="g-fr">La restauration <span class="g-fr__en">The restoration</span></p>
+  <h2 class="g-place">From Ruin, Room by Room</h2>
+  <div class="g-homeresto__pair">
+    <figure><img src="{{ url_for('static', filename='img/history/horse-dining-room-a.jpg') }}" alt="A horse in an empty room of the château, before the work" loading="lazy" style="object-position: 97% center"><span class="g-tn__tag">Before</span></figure>
+    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba275193-d2de-4cb7-86a8-07825dbaf1d5/Screenshot+2026-07-30+at+7.56.05+pm.png?format=1500w" alt="The dining room now, laid for dinner under the chandeliers" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
+  </div>
+  <p class="g-homeresto__cap">The dining room: once empty enough for a horse.</p>
+  <p class="g-p g-homeresto__p">Bought as a ruin in 2013, the château has been brought back room by room, privately funded, with no grants.</p>
+  <p class="g-homeresto__cta"><a href="{{ url_for('restoration_page') }}" class="g-btn g-btn--solid">See the restoration</a></p>
+</div></section>
 {# A night, or the full experience - the shared comparison (owner, 28 Sept). #}
 {% from '_stay_or_workshop.html' import stay_or_workshop %}
 {{ stay_or_workshop(rooms_from=(shown_rooms|selectattr('price_per_night')|map(attribute='price_per_night')|min) if shown_rooms else None, ws_from=(workshops|selectattr('price_per_person')|map(attribute='price_per_person')|min) if workshops else None, dm=_dm) }}
