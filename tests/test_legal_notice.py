@@ -29,6 +29,9 @@ import _harness
 m = _harness.m
 
 NAME = "Legal Notice Test SASU"
+OTHERS = (("ZZ Torrents Test SCI", "SCI", "FR"),
+          ("ZZ Andorra Test SL", "SL", "AD"),
+          ("ZZ Australia Test Pty Ltd", "Pty Ltd", "AU"))
 
 
 def run():
@@ -109,6 +112,28 @@ def run():
         s.check("and the mediator, once there is one",
                 "Test Mediator, 1 rue Test, Paris" in page)
 
+        s.section("The other companies stay on the back end")
+        # The owner, 10 October: the SCI that owns the building, and the
+        # Andorran and Australian companies, "must only be on the back end".
+        # Every public reader asks for the one company marked as issuing guest
+        # documents; this proves no public page lists the rest, active or not.
+        conn = db()
+        for name, form, country in OTHERS:
+            conn.execute(
+                """INSERT INTO companies (legal_name, legal_form, country,
+                       issues_guest_documents, active) VALUES (?, ?, ?, 0, 1)""",
+                (name, form, country))
+        conn.commit()
+        conn.close()
+        for path in ("/legal", "/terms", "/privacy", "/", "/contact", "/book", "/press"):
+            body = anon.get(path).get_data(as_text=True)
+            shown = [n for n, _f, _c in OTHERS if n in body]
+            s.check(f"{path} names none of them", not shown, detail=str(shown))
+        s.check("while the owner's company page lists them all",
+                all(n in oc.get("/management/company-info").get_data(as_text=True)
+                    for n, _f, _c in OTHERS),
+                detail="they are kept, just not shown to guests")
+
         s.section("The host is named in full")
         s.check("Railway, by its legal name", "Railway Corporation" in page)
         s.check("with its postal address",
@@ -118,6 +143,8 @@ def run():
     finally:
         conn = db()
         conn.execute("DELETE FROM companies WHERE legal_name = ?", (NAME,))
+        for name, _f, _c in OTHERS:
+            conn.execute("DELETE FROM companies WHERE legal_name = ?", (name,))
         if before:
             conn.execute("UPDATE companies SET issues_guest_documents = 1 WHERE id = ?",
                          (before["id"],))
