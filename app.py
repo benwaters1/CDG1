@@ -9229,7 +9229,7 @@ def _shift_hours(start_time, end_time):
     return round(span / 60.0, 2)
 
 
-def rostered_labour_cost(conn, start_iso, end_iso):
+def rostered_labour_cost(conn, start_iso, end_iso, typed_only=False):
     """What the shifts already on the rota will cost, before anybody works them.
 
     labour_cost_breakdown answers the same question backwards, from hours
@@ -9241,6 +9241,12 @@ def rostered_labour_cost(conn, start_iso, end_iso):
     retrospective costing, and deliberately NOT by rostered hours: putting a
     salaried chef on one more shift does not cost the house anything extra, and
     a forecast that says it does would argue for the wrong roster.
+
+    `typed_only` prices nobody from the free-text pay note on their record --
+    estimated_hourly_cost is never a pay figure; a wage is the number the
+    owner sets -- so anybody without a wage record is named as unpriced
+    rather than costed from a guess. Money ahead asks it this way, because
+    a page that says what is going out has to be one the owner can plan on.
     """
     start, end = parse_date(start_iso[:10]), parse_date(end_iso[:10])
     if not (start and end) or start >= end:
@@ -9265,7 +9271,7 @@ def rostered_labour_cost(conn, start_iso, end_iso):
             gross = hours * (wage["gross_amount"] or 0)
             rate = wage["employer_rate"] if wage["employer_rate"] is not None else employer_pct
         else:
-            gross = estimated_hourly_cost(hours, r["pay_rate"], r["pay_type"])
+            gross = None if typed_only else estimated_hourly_cost(hours, r["pay_rate"], r["pay_type"])
             rate = employer_pct
             if gross is None:
                 unpriced.add(r["name"])
@@ -62796,12 +62802,14 @@ def money_ahead(conn, *, days=90, today=None):
                              "kind": "Wages", "ref": None})
             continue
         labour = rostered_labour_cost(conn, start.isoformat(),
-                                      (payday + timedelta(days=1)).isoformat())
+                                      (payday + timedelta(days=1)).isoformat(), typed_only=True)
         wages_unpriced |= set(labour["unpriced"])
         if labour["total"] > 0.005:
             wages_basis = "rota"
             outgoing.append({"date": payday.isoformat(), "amount": round(labour["total"], 2),
-                             "label": "Wages — estimated from the rota and the wages on file",
+                             "label": "Staff on the rota — an estimate: gross pay at the wage "
+                                      "set on each person's record, plus employer contributions "
+                                      "where set",
                              "kind": "Wages, estimated", "ref": None})
 
     incoming.sort(key=lambda x: (x["date"], -x["amount"]))

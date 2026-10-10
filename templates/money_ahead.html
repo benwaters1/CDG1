@@ -49,8 +49,9 @@
   <p class="field-hint" style="margin-top:0;">
     {% if ahead.monthly_staff is none %}
       Until you set it, wages are <strong>estimated from the rota</strong>: every shift
-      already on it, priced from the wage on file for whoever works it, with a salary
-      counted once a month however many shifts.
+      already on it, at the wage set on that person's record on the Wages page (never the
+      pay note), gross, plus employer contributions where a rate is set; a salary counts
+      once a month however many shifts.
       {% if ahead.wages_unpriced %}{{ ahead.wages_unpriced|join(', ') }}
         {{ 'has' if ahead.wages_unpriced|length == 1 else 'have' }} shifts but no wage on
         file, so {{ 'is' if ahead.wages_unpriced|length == 1 else 'are' }} not counted.{% endif %}

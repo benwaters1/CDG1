@@ -70,10 +70,10 @@ def _month(day):
     return first.isoformat(), nxt.isoformat()
 
 
-def _labour(day):
+def _labour(day, typed_only=False):
     conn = db()
     try:
-        return m.rostered_labour_cost(conn, *_month(day))
+        return m.rostered_labour_cost(conn, *_month(day), typed_only=typed_only)
     finally:
         conn.close()
 
@@ -264,13 +264,40 @@ def _checks(s, oc, ec, day):
     s.check("they are named", any(TAG + " Ghost" in n for n in _labour(day)["unpriced"]),
             detail=f"{_labour(day)['unpriced']}")
 
+    s.section("A pay note is never a wage")
+    # Somebody with "15 an hour" typed into the free-text pay note and no wage
+    # set on their record. The rota costing can guess from the note; Money
+    # ahead must not -- estimated_hourly_cost is never a pay figure, and a
+    # page somebody plans on cannot carry a guess as money going out.
+    noted = _person("Noted")
+    conn = db()
+    conn.execute("UPDATE users SET pay_rate = '15 per hour', pay_type = 'hourly' WHERE id = ?",
+                 (noted["id"],))
+    conn.commit()
+    conn.close()
+    _shift(noted["id"], day, "09:00", "17:00")
+    conn = db()
+    guessed = m.rostered_labour_cost(conn, *_month(day))
+    typed = m.rostered_labour_cost(conn, *_month(day), typed_only=True)
+    conn.close()
+    s.check("the guess exists, so there is something to refuse",
+            TAG + " Noted" not in guessed["unpriced"],
+            detail="without a guessable note the next check proves nothing")
+    s.check("asked for typed wages only, they are named, not priced from the note",
+            TAG + " Noted" in typed["unpriced"]
+            and abs(guessed["gross"] - typed["gross"] - 120.0) < 0.01,
+            detail=f"guessed {guessed['gross']}, typed {typed['gross']}")
+    s.check("and Money ahead names them too",
+            any(TAG + " Noted" in n for n in _ahead()["wages_unpriced"]))
+
     s.section("With no monthly figure, the wages are the rota's, said to be an estimate")
     ahead = _ahead()
     payday = date(day.year, day.month, m.monthrange(day.year, day.month)[1]).isoformat()
     est = [o for o in ahead["outgoing"] if o["kind"] == "Wages, estimated" and o["date"] == payday]
-    s.check("the month's wages are on its last day, at what the rota costs",
-            len(est) == 1 and abs(est[0]["amount"] - _labour(day)["total"]) < 0.01,
-            detail=f"{est} against {_labour(day)['total']}")
+    typed = _labour(day, typed_only=True)
+    s.check("the month's wages are on its last day, at what the rota costs from typed wages",
+            len(est) == 1 and abs(est[0]["amount"] - typed["total"]) < 0.01,
+            detail=f"{est} against {typed['total']}")
     s.check("the page knows it is an estimate", ahead["wages_basis"] == "rota",
             detail=str(ahead["wages_basis"]))
     s.check("and names who it could not price",
