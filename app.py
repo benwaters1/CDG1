@@ -1110,6 +1110,14 @@ WHATSAPP_FROM_NUMBER = (os.environ.get("WHATSAPP_FROM_NUMBER") or "").strip()
 
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY")
+
+
+def stripe_key_mode(key):
+    """'test', 'live', or None -- from the key's prefix, which Stripe puts there
+    to be read. Secret (sk_), restricted (rk_) and publishable (pk_) keys all
+    carry it. Nothing else of the key is looked at, and nothing is returned."""
+    match = re.match(r"(?:sk|rk|pk)_(test|live)_", (key or "").strip())
+    return match.group(1) if match else None
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 if STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
@@ -79676,6 +79684,31 @@ def readiness_checks(conn, *, include_slow=True):
             "Set." if STRIPE_WEBHOOK_SECRET else
             "MISSING while Stripe is live. Payments will be taken and the booking "
             "never confirmed, because the confirmation arrives by webhook.")
+        # Test or live. Nothing on any page said which, and it is the one
+        # question that matters on launch day: test keys take a test card and
+        # move no money, so a live site on them takes bookings nobody pays
+        # for. Read from the key's prefix alone -- the key is never shown.
+        secret_mode = stripe_key_mode(STRIPE_SECRET_KEY)
+        public_mode = stripe_key_mode(STRIPE_PUBLISHABLE_KEY)
+        if public_mode and secret_mode and public_mode != secret_mode:
+            add("blocker", "Payments", "Stripe keys", False,
+                f"The secret key is a {secret_mode} key and the publishable key is "
+                f"a {public_mode} key. Checkout fails until both are the same kind.")
+        elif secret_mode == "live":
+            add("info", "Payments", "Stripe keys", True,
+                "Live keys: real cards are charged. The webhook secret has to be "
+                "the one from the LIVE endpoint in Stripe; test and live each have "
+                "their own.")
+        elif secret_mode == "test":
+            add("blocker" if SITE_IS_LIVE else "info", "Payments", "Stripe keys",
+                not SITE_IS_LIVE,
+                "Test keys: checkout works with Stripe's test card and no real "
+                "money moves. "
+                + ("The site is live, so guests are booking and nobody is paying. "
+                   "Swap in the live keys and the live webhook secret."
+                   if SITE_IS_LIVE else
+                   "Right until launch: do one test booking end to end, then swap "
+                   "in the live keys and the live webhook secret."))
 
     add("warn", "Security", "Vault encryption key", vault_enabled(),
         "Set." if vault_enabled() else

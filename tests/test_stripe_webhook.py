@@ -346,6 +346,44 @@ def run():
     conn.execute("DELETE FROM payment_disputes WHERE stripe_dispute_id = ?", (did,))
     conn.commit()
 
+    s.section("The go-live checklist says whether the keys are test or live")
+    # Nothing on any page said which, and on launch day it is the question:
+    # test keys move no money, so a live site on them takes bookings nobody
+    # pays for. Made-up strings with the right prefixes; nothing calls Stripe.
+    kept = (m.stripe_enabled, m.STRIPE_SECRET_KEY, m.STRIPE_PUBLISHABLE_KEY,
+            m.STRIPE_WEBHOOK_SECRET, m.SITE_IS_LIVE)
+
+    def keys_row(secret, public, live_site):
+        m.stripe_enabled = lambda: True
+        m.STRIPE_SECRET_KEY, m.STRIPE_PUBLISHABLE_KEY = secret, public
+        m.STRIPE_WEBHOOK_SECRET = "whsec_made_up_for_this_check"
+        m.SITE_IS_LIVE = live_site
+        return next((r for r in m.readiness_checks(conn, include_slow=False)
+                     if r["label"] == "Stripe keys"), None)
+    try:
+        row = keys_row("sk_test_" + "x" * 20, "pk_test_" + "x" * 20, False)
+        s.check("test keys before launch are named, and are no fault yet",
+                row and row["ok"] and "Test keys" in row["detail"], detail=str(row))
+        row = keys_row("sk_test_" + "x" * 20, "pk_test_" + "x" * 20, True)
+        s.check("test keys on a live site are a blocker",
+                row and not row["ok"] and row["severity"] == "blocker"
+                and "nobody is paying" in row["detail"], detail=str(row))
+        row = keys_row("sk_live_" + "x" * 20, "pk_live_" + "x" * 20, True)
+        s.check("live keys say real cards are charged",
+                row and row["ok"] and "real cards are charged" in row["detail"],
+                detail=str(row))
+        row = keys_row("sk_live_" + "x" * 20, "pk_test_" + "x" * 20, True)
+        s.check("a live secret with a test publishable key is caught",
+                row and not row["ok"] and "same kind" in row["detail"], detail=str(row))
+        s.check("and no part of a key is ever printed",
+                "xxxx" not in str(row), detail=str(row))
+        s.check("the mode comes from the prefix alone",
+                (m.stripe_key_mode("rk_live_abc"), m.stripe_key_mode("whsec_abc"),
+                 m.stripe_key_mode(None)) == ("live", None, None))
+    finally:
+        (m.stripe_enabled, m.STRIPE_SECRET_KEY, m.STRIPE_PUBLISHABLE_KEY,
+         m.STRIPE_WEBHOOK_SECRET, m.SITE_IS_LIVE) = kept
+
     _cleanup(conn)
     conn.close()
     return s
