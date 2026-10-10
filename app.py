@@ -27116,6 +27116,16 @@ def create_booking_from_stripe_session(conn, session):
             pass
         record_booking_payment(conn, paid_row["id"], received,
                                reference=sval(session, "payment_intent"))
+    # SAVED HERE, not left for the caller. create_booking commits the booking
+    # itself, part way through; everything after it -- the guest's address and
+    # arrival time, the payment row, the amount received -- sat in an open
+    # transaction, and neither caller commits: the webhook and the success
+    # page both just close the connection, which throws it away. So every
+    # paid online booking was confirmed and marked paid with nothing received
+    # against it, the address gone, and the bill saying the whole stay was
+    # still owed -- which the balance reminder would have chased. Found by the
+    # owner's test booking on 10 October; the 7 October one had it too.
+    conn.commit()
     if not available:
         # Money has already changed hands, so the booking is still recorded —
         # but the room may now be double-booked (another booking was confirmed
@@ -43401,6 +43411,11 @@ def settle_pos_from_stripe_session(conn, stripe_session, meta):
             "covers": bill["covers"], "method": "card_link",
             "receipt_number": pos_allocate_receipt_number(conn, order_id),
         }, order_id=order_id)
+    # Saved here. The webhook is the only caller -- the guest's phone returns
+    # to the staff tab page, which records nothing -- and it closes without
+    # committing, so the payment, the settled tab and the journal line were
+    # all thrown away: the tab stayed open with the money taken.
+    conn.commit()
     return True
 
 
@@ -43460,6 +43475,12 @@ def stripe_webhook():
                 ).fetchone()
                 if not existing and sval(session, "payment_status") == "paid":
                     create_booking_from_stripe_session(conn, session)
+            # And saved here as well, whatever kind it was. Each of the
+            # functions above is meant to commit its own writes; two did not
+            # -- the new booking's payment and the till's card link -- and the
+            # close below threw the money away without a sound. A payment that
+            # reached this line has been handled, so it is kept.
+            conn.commit()
         except sqlite3.IntegrityError:
             # The guest's success redirect got there first. Nothing to do —
             # the booking exists, and this is the outcome we want.

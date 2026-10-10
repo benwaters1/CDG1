@@ -52,6 +52,11 @@ def _session(sid, *, paid, room_id, guest, arrival, departure):
             "departure_date": departure,
             "party_size": "2",
             "special_requests": "",
+            "guest_address": "1 Hook Lane",
+            "guest_city": "Foix",
+            "guest_postcode": "09000",
+            "guest_country": "France",
+            "estimated_arrival_time": "4pm-5pm",
             "extra_ids": "",
             "promo_code": "",
             "total_price": "450.00",
@@ -102,6 +107,35 @@ def run():
     s.check("the webhook accepts it", r.status_code == 200, detail=str(r.status_code))
     s.check("and the booking exists", bool(_booking(conn, sid)),
             detail="no booking created from a paid session")
+    # READ BACK ON A FRESH CONNECTION, after the request has closed its own.
+    # Everything after the booking itself -- the payment, the address -- was
+    # written and never committed, so the request's close threw it away. A
+    # check that only asked whether the booking existed passed throughout,
+    # while every paid booking said the whole stay was still owed. Found by
+    # the owner's test booking on 10 October.
+    fresh = db()
+    try:
+        saved = _booking(fresh, sid)
+        pays = fresh.execute(
+            """SELECT amount, method FROM booking_payments
+                WHERE booking_id = ?""", (saved["id"],)).fetchall() if saved else []
+        s.check("what was paid is saved against it",
+                saved and abs((saved["amount_paid"] or 0) - 450.0) < 0.005,
+                detail="amount_paid=%r" % (saved["amount_paid"] if saved else None))
+        s.check("with a payment row saying it came by card online",
+                [(round(p["amount"], 2), p["method"]) for p in pays] == [(450.0, "stripe")],
+                detail=str([dict(p) for p in pays]))
+        s.check("and the address and arrival time the guest typed are kept",
+                saved and saved["guest_address"] == "1 Hook Lane"
+                and saved["estimated_arrival_time"] == "4pm-5pm",
+                detail="%r / %r" % ((saved["guest_address"], saved["estimated_arrival_time"])
+                                    if saved else (None, None)))
+        bill = m.booking_bill(fresh, saved["id"]) if saved else None
+        s.check("so the bill counts it as received",
+                bill and abs(bill["paid"] - 450.0) < 0.005,
+                detail="paid=%r owed=%r" % ((bill["paid"], bill["owed"]) if bill else (None, None)))
+    finally:
+        fresh.close()
 
     s.section("Sending it twice does not book twice")
     # Stripe retries. The guest's success redirect can also get there first.

@@ -342,8 +342,13 @@ def run():
     # POST, and log_audit reads the session off it.
     with m.app.test_request_context():
         m.settle_pos_from_stripe_session(conn, fake_session, {"pos_order_id": str(v["id"])})
-    conn.commit()
-    after_pay = m.pos_bill(conn, v["id"])
+    # NO commit here, and read back on a FRESH connection. This used to commit
+    # on the function's behalf, and the webhook -- its only caller -- never
+    # did, so the check passed while every phone payment was thrown away when
+    # the webhook closed its connection. The function has to keep it itself.
+    fresh = db()
+    after_pay = m.pos_bill(fresh, v["id"])
+    fresh.close()
     s.check("the payment is recorded against the tab", after_pay["paid"] == 200.0,
             detail=str(after_pay["paid"]))
     s.check("and the tab closes", after_pay["order"]["status"] == "paid",
