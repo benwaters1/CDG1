@@ -70754,11 +70754,10 @@ def read_receipt(image_bytes, media_type="image/jpeg"):
         return None
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     try:
-        response = client.messages.parse(
-            model="claude-opus-5", max_tokens=1024,
+        parsed, why = claude_structured(
+            client, schema=RECEIPT_SCHEMA,
+            model="claude-opus-5", max_tokens=16000,
             system=RECEIPT_SYSTEM,
-            output_config={"format": {"type": "json_schema",
-                                      "schema": RECEIPT_SCHEMA}},
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {
                     "type": "base64", "media_type": media_type,
@@ -70769,10 +70768,10 @@ def read_receipt(image_bytes, media_type="image/jpeg"):
     except Exception as e:
         print(f"[claude] receipt reading failed: {e}")
         return None
-    if getattr(response, "stop_reason", None) == "refusal":
+    if why:
+        print(f"[claude] receipt reading failed: {why}")
         return None
-    parsed = getattr(response, "parsed_output", None)
-    if not parsed or parsed.get("unreadable"):
+    if parsed.get("unreadable"):
         return None
     return parsed
 
@@ -70788,11 +70787,10 @@ def suggest_photo_caption(image_bytes):
         return None
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     try:
-        response = client.messages.parse(
-            model="claude-opus-5", max_tokens=1024,
+        parsed, why = claude_structured(
+            client, schema=PHOTO_CAPTION_SCHEMA,
+            model="claude-opus-5", max_tokens=16000,
             system=PHOTO_CAPTION_SYSTEM,
-            output_config={"format": {"type": "json_schema",
-                                      "schema": PHOTO_CAPTION_SCHEMA}},
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {
                     "type": "base64", "media_type": "image/jpeg",
@@ -70804,10 +70802,10 @@ def suggest_photo_caption(image_bytes):
     except Exception as e:
         print(f"[claude] caption suggestion failed: {e}")
         return None
-    if getattr(response, "stop_reason", None) == "refusal":
+    if why:
+        print(f"[claude] caption suggestion failed: {why}")
         return None
-    parsed = getattr(response, "parsed_output", None)
-    if not parsed or not parsed.get("captions"):
+    if not parsed.get("captions"):
         return None
     return parsed
 
@@ -78761,11 +78759,10 @@ def assess_media_with_claude(image_bytes, media_type="image/jpeg"):
         return None
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     try:
-        response = client.messages.parse(
-            model="claude-opus-5", max_tokens=1024,
+        parsed, why = claude_structured(
+            client, schema=MEDIA_ASSESS_SCHEMA,
+            model="claude-opus-5", max_tokens=16000,
             system=MEDIA_ASSESS_SYSTEM,
-            output_config={"format": {"type": "json_schema",
-                                      "schema": MEDIA_ASSESS_SCHEMA}},
             messages=[{"role": "user", "content": [
                 {"type": "image",
                  "source": {"type": "base64", "media_type": media_type,
@@ -78775,9 +78772,13 @@ def assess_media_with_claude(image_bytes, media_type="image/jpeg"):
                  "Judge this frame for the chateau's work-in-progress page."},
             ]}],
         )
-        return response.parsed_output
-    except Exception:
+    except Exception as e:
+        print(f"[claude] media check failed: {e}")
         return None
+    if why:
+        print(f"[claude] media check failed: {why}")
+        return None
+    return parsed
 
 
 def _assess_source_bytes(row):
@@ -79284,11 +79285,10 @@ def meeting_minutes_with_claude(meeting, notes, attendee_names):
         "5. Write in plain English, no jargon, no filler."
     )
     try:
-        response = client.messages.parse(
-            model="claude-opus-5", max_tokens=2048, system=system,
+        parsed, why = claude_structured(
+            client, schema=MEETING_MINUTES_SCHEMA,
+            model="claude-opus-5", max_tokens=16000, system=system,
             thinking={"type": "adaptive"},
-            output_config={"format": {"type": "json_schema",
-                                      "schema": MEETING_MINUTES_SCHEMA}},
             messages=[{"role": "user", "content": (
                 f"Meeting: {meeting['title']}\n"
                 f"Date: {meeting['meeting_date']}\n"
@@ -79299,11 +79299,10 @@ def meeting_minutes_with_claude(meeting, notes, attendee_names):
     except Exception as e:                     # pragma: no cover - network
         print(f"[claude] minutes failed: {e}")
         return None
-    if getattr(response, "stop_reason", None) == "refusal":
+    if why:
+        print(f"[claude] minutes failed: {why}")
         return None
-    parsed = getattr(response, "parsed_output", None) or getattr(
-        response, "parsed", None)
-    if not isinstance(parsed, dict) or "summary" not in parsed:
+    if "summary" not in parsed:
         return None
     return parsed
 
@@ -83118,24 +83117,18 @@ def translate_batch_with_claude(lines, lang):
     # leaving the rows wanted for the next run.
     try:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        response = client.messages.parse(
-            model="claude-opus-5", max_tokens=8192,
+        # Read through claude_structured, which takes the answer from the
+        # text. This read parsed_output (then "parsed_output or parsed"),
+        # which messages.parse leaves None for a raw schema -- so every
+        # batch came back as an empty reply and the job said it had worked.
+        parsed, why = claude_structured(
+            client, schema=TRANSLATION_SCHEMA,
+            model="claude-opus-5", max_tokens=16000,
             system=TRANSLATION_SYSTEM,
-            output_config={"format": {"type": "json_schema",
-                                      "schema": TRANSLATION_SCHEMA}},
             messages=[{"role": "user", "content":
                        "Translate each line into %s.\n\n%s"
                        % (wanted, json.dumps(lines, ensure_ascii=False))}],
         )
-        # parsed_output OR parsed. The SDK has answered under both names
-        # and meeting_minutes already reads it this way -- a bare
-        # attribute access raises AttributeError, which the handler
-        # below then swallows, and the rows sit "wanted" for ever with
-        # nobody any the wiser.
-        parsed = (getattr(response, "parsed_output", None)
-                  or getattr(response, "parsed", None) or {})
-        if not isinstance(parsed, dict):
-            return {}, {}, "the provider answered in a shape we do not read"
     except Exception as e:
         # REPORTED, not just printed. A job that can fail silently for
         # ever is worse than one that fails loudly once: the pages stay
@@ -83143,6 +83136,8 @@ def translate_batch_with_claude(lines, lang):
         # percentage that never moves.
         print("[translation call failed] %s" % e)
         return {}, {}, "%s: %s" % (type(e).__name__, e)
+    if why:
+        return {}, {}, why
     done, leave = {}, {}
     known = set(lines)
     for item in parsed.get("lines", []):
@@ -87486,6 +87481,46 @@ def claude_configured():
     return bool(ANTHROPIC_API_KEY)
 
 
+def claude_structured(client, *, schema, **request):
+    """One call that answers in JSON. (dict, None), or (None, why it did not).
+
+    THE ANSWER IS IN THE TEXT. messages.parse() fills `parsed_output` only
+    when it is handed a pydantic TYPE; handed a raw JSON schema in
+    output_config -- which is how every caller here asks -- it sends the
+    schema, gets valid JSON back, and sets parsed_output to None every time
+    (the SDK's parse_text returns None when no type was given). So every one
+    of these calls succeeded at Anthropic, was billed, and was read here as an
+    empty answer. Nothing said so: the translation job reported "translated 0,
+    330 still waiting" as a job that had worked, and the receipt, invoice and
+    menu readers, the photo captions and checks and the meeting minutes all
+    came back with nothing. The owner found it on 10 October, the day he
+    topped the account up and the backlog did not move.
+
+    With a raw schema, output_config.format guarantees the text block is valid
+    JSON when the model finished -- so a refusal or a cut-off answer is named
+    as one rather than read as an empty reply.
+    """
+    response = client.messages.create(
+        output_config={"format": {"type": "json_schema", "schema": schema}},
+        **request)
+    stop = getattr(response, "stop_reason", None)
+    if stop == "refusal":
+        return None, "the model declined"
+    if stop == "max_tokens":
+        return None, "the answer was cut off at the length limit"
+    text = next((block.text for block in (getattr(response, "content", None) or [])
+                 if getattr(block, "type", None) == "text"), None)
+    if not text:
+        return None, "no answer came back"
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None, "the answer was not readable JSON"
+    if not isinstance(data, dict):
+        return None, "the provider answered in a shape we do not read"
+    return data, None
+
+
 def current_offerings_snapshot(conn):
     """A short, current snapshot of what's actually on offer right now --
     the same kind of ground truth guess_email_conflict cross-references,
@@ -89843,9 +89878,9 @@ def read_invoice_with_claude(pdf_bytes, filename, stock_items):
         "4. Ignore delivery charges, deposits and tax lines — they are not stock."
     )
     try:
-        response = client.messages.parse(
-            model="claude-opus-5", max_tokens=4096, system=system,
-            output_config={"format": {"type": "json_schema", "schema": INVOICE_LINES_SCHEMA}},
+        parsed, why = claude_structured(
+            client, schema=INVOICE_LINES_SCHEMA,
+            model="claude-opus-5", max_tokens=16000, system=system,
             messages=[{"role": "user", "content": [
                 {"type": "document",
                  "source": {"type": "base64", "media_type": "application/pdf",
@@ -89860,10 +89895,10 @@ def read_invoice_with_claude(pdf_bytes, filename, stock_items):
     except Exception as e:
         print(f"[claude] invoice read failed: {e}")
         return None
-    if getattr(response, "stop_reason", None) == "refusal":
+    if why:
+        print(f"[claude] invoice read failed: {why}")
         return None
-    parsed = getattr(response, "parsed_output", None)
-    if not parsed or not parsed.get("lines"):
+    if not parsed.get("lines"):
         return None
     return parsed
 
@@ -89962,18 +89997,18 @@ def read_menu_card(*, pdf_bytes=None, filename=None, text=None):
                     "Extract every dish on this card, with its course, any price, "
                     "any supplement, and only the allergens actually stated."})
     try:
-        response = client.messages.parse(
-            model="claude-opus-5", max_tokens=8192, system=MENU_READ_SYSTEM,
-            output_config={"format": {"type": "json_schema", "schema": MENU_CARD_SCHEMA}},
+        parsed, why = claude_structured(
+            client, schema=MENU_CARD_SCHEMA,
+            model="claude-opus-5", max_tokens=16000, system=MENU_READ_SYSTEM,
             messages=[{"role": "user", "content": content}],
         )
     except Exception as e:
         print(f"[claude] menu read failed: {e}")
         return None
-    if getattr(response, "stop_reason", None) == "refusal":
+    if why:
+        print(f"[claude] menu read failed: {why}")
         return None
-    parsed = getattr(response, "parsed_output", None)
-    if not parsed or not parsed.get("dishes"):
+    if not parsed.get("dishes"):
         return None
     return parsed
 

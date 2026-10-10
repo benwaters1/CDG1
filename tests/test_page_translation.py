@@ -37,6 +37,13 @@ m = _harness.m
 PAGE = "/restoration"
 
 
+def _api_answer(text, stop="end_turn"):
+    """A Messages API reply as it really arrives: content blocks and a stop
+    reason. With a JSON schema the answer is the TEXT of the text block."""
+    block = type("Block", (), {"type": "text", "text": text})()
+    return type("Reply", (), {"content": [block], "stop_reason": stop})()
+
+
 def run():
     s = Suite("The site in three languages")
     anon = m.app.test_client()
@@ -405,13 +412,21 @@ def run():
     asked = ["Lime, not cement", "Approved, then done", "The building breathes"]
 
     class _FakeMessages:
+        """What the API really answers: the JSON as TEXT, and a stop reason.
+
+        It used to hand back `parsed_output` filled in, which the real SDK
+        never does for a raw schema -- so this passed while the live job
+        translated nothing for weeks. Only `create` exists here, as on the
+        real client for this request: code that reaches for parse() and its
+        empty parsed_output gets nothing back and fails these checks.
+        """
         def __init__(self, payload):
             self.payload = payload
             self.seen = []
 
-        def parse(self, **kw):
+        def create(self, **kw):
             self.seen.append(kw)
-            return type("R", (), {"parsed_output": self.payload})()
+            return _api_answer(m.json.dumps(self.payload))
 
     class _FakeClient:
         def __init__(self, payload):
@@ -520,35 +535,59 @@ def run():
     # Left OPEN: the section below still uses it. Closing it here
     # crashed the suite on "Cannot operate on a closed database".
 
-    s.section("The answer is read under either name the SDK uses")
-    # meeting_minutes already reads `parsed_output or parsed`, because the
-    # SDK has answered under both. This read parsed_output directly, and a
-    # bare attribute access raises AttributeError -- which the handler around
-    # it then swallowed, so every call came back empty and the rows sat
-    # "wanted" for ever with nothing said about it anywhere.
+    s.section("The answer is read from the text, where the API puts it")
+    # 10 October: the owner topped up the account and the backlog did not
+    # move. The job read `parsed_output or parsed`, and messages.parse leaves
+    # parsed_output None whenever it is given a raw JSON schema rather than a
+    # pydantic type -- so every call was billed, came back with valid JSON in
+    # its text, and was read as an empty answer, reported as a run that
+    # worked. This stands in for the real SDK exactly: parse() exists and
+    # behaves as the SDK does (parsed_output None, the JSON in the text), and
+    # so does create().
     was_conf, was_anth = m.claude_configured, m.anthropic.Anthropic
     m.claude_configured = lambda: True
+    answer = {"lines": [{"source": "Lime, not cement",
+                         "translated": "De la chaux, pas du ciment",
+                         "leave_alone": False}]}
 
-    class _OldName:
-        """A response carrying `parsed` and no `parsed_output` at all."""
+    class _LikeTheSdk:
         def __init__(self, **kw):
             self.messages = self
+        def create(self, **kw):
+            return _api_answer(m.json.dumps(answer))
         def parse(self, **kw):
-            class R:
-                parsed = {"lines": [{"source": "Lime, not cement",
-                                     "translated": "De la chaux, pas du ciment",
-                                     "leave_alone": False}]}
-            return R()
-    m.anthropic.Anthropic = _OldName
+            reply = _api_answer(m.json.dumps(answer))
+            reply.parsed_output = None      # what the SDK sets for a raw schema
+            return reply
+    m.anthropic.Anthropic = _LikeTheSdk
     try:
         done, leave, why = m.translate_batch_with_claude(["Lime, not cement"], "fr")
-        s.check("a response with only `parsed` is still read",
+        s.check("the JSON in the reply's text is read",
                 done.get("Lime, not cement") == "De la chaux, pas du ciment",
                 detail="done=%r why=%r" % (done, why))
         s.check("and it is not reported as a failure", why is None, detail=str(why))
     finally:
         m.anthropic.Anthropic = was_anth
         m.claude_configured = was_conf
+
+    s.section("An answer that was cut off or declined is named, not read as empty")
+    m.claude_configured = lambda: True
+    for stop, words in (("max_tokens", "cut off"), ("refusal", "declined")):
+        class _Stopped:
+            def __init__(self, **kw):
+                self.messages = self
+            def create(self, _stop=stop, **kw):
+                return _api_answer('{"lines": [', stop=_stop)
+        m.anthropic.Anthropic = _Stopped
+        try:
+            done, leave, why = m.translate_batch_with_claude(["Lime, not cement"], "fr")
+            s.check(f"stopped on {stop}, it says it was {words}",
+                    not done and why and words in why, detail=str(why))
+        finally:
+            m.anthropic.Anthropic = was_anth
+            m.claude_configured = was_conf
+            m.claude_configured = lambda: True
+    m.claude_configured = was_conf
 
     s.section("A run that gets nowhere says so, rather than saying nothing")
     # THE FAULT THIS WAS WRITTEN FOR. The job reported "translated 0, left 0"
@@ -593,8 +632,8 @@ def run():
     class _Odd:
         def __init__(self, **kw):
             self.messages = self
-        def parse(self, **kw):
-            return type("R", (), {"parsed_output": "not a dict"})()
+        def create(self, **kw):
+            return _api_answer('"not a dict"')
     m.claude_configured = lambda: True
     m.anthropic.Anthropic = _Odd
     try:
