@@ -35,7 +35,7 @@
   <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2d44af9c-cd2c-472d-ae18-ac16cebd285f/Screen+Shot+2019-04-16+at+8.35.01+am.png?format=2500w" alt="Work at a window, the restoration under way">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
-    <p class="g-hero__eyebrow">Class I Historic Monument · Since 2013</p>
+    <p class="g-hero__eyebrow">Monument Historique Classé · Built 1741</p>
     <h1 class="g-hero__title">Under restoration since 2013</h1>
     <p>A Class I Historic Monument that was very nearly lost.</p>
   
@@ -54,6 +54,16 @@
     </ul>
   </div>
 </section>
+{#- 9 Oct (owner): early images of the château -#}
+<section class="g-sec g-sec--sand" id="as-it-was"><div class="g-wrap">
+  <p class="g-fr">Autrefois <span class="g-fr__en">As it was</span></p>
+  <h2 class="g-place">As It Was</h2>
+  <div class="g-old g-old--3">
+    <figure><img src="{{ url_for('static', filename='img/history/postcard-chateau-de-gudannes.jpg') }}" alt="An early postcard of the château, with figures and a bicycle on the drive" loading="lazy"><figcaption>An early postcard: &ldquo;Château de Gudannes&rdquo;</figcaption></figure>
+    <figure><img src="{{ url_for('static', filename='img/history/old-photograph-terraces.jpg') }}" alt="The château above its terraced gardens, in an early photograph" loading="lazy"><figcaption>The château above its terraced gardens, in an early photograph</figcaption></figure>
+    <figure><img src="{{ url_for('static', filename='img/history/postcard-valley.jpg') }}" alt="The château in its valley below the mountain, on an early postcard" loading="lazy"><figcaption>The château in its valley, on an early postcard</figcaption></figure>
+  </div>
+</div></section>
 <section class="g-sec"><div class="g-wrap">
   <div class="g-vignette" aria-hidden="true">{{ illus('chateau') }}</div>
   <p class="g-fr">Restaurer, pas rénover <span class="g-fr__en">Restore, not renovate</span></p>
@@ -67,19 +77,21 @@
     different views - side by side is the honest comparison. -#}
 <section class="g-sec g-before-sec" id="before"><div class="g-wrap">
   <p class="g-fr">Avant, après <span class="g-fr__en">Before and now</span></p>
-  <p class="g-eyebrow">How It Was</p>
   <h2 class="g-place">Then and Now</h2>
-  <p class="g-p g-intro">When the family came in 2013, the château had stood empty for years. Floors, walls and ceilings came first, then the slow work of bringing each room back. Room by room, as it was and as it is now.</p>
+  <p class="g-p g-intro">When the family came in 2013, the château had stood empty for years. Floors, walls and ceilings came first, then the slow work of bringing each room back.</p>
 <div class="g-tn">
+  {#- 9 Oct (owner): "these are now both the dining rooms next to each other" - the two horse photographs (the owner's), the
+      dining rooms as they are now. -#}
+  <div class="g-tn__trio">
+    <figure><img src="{{ url_for('static', filename='img/history/horse-dining-room-a.jpg') }}" alt="A horse in an empty room of the château, before the work" loading="lazy" style="object-position: 97% center"><span class="g-tn__tag">Before</span></figure>
+    <figure><img src="{{ url_for('static', filename='img/history/horse-dining-room-b.jpg') }}" alt="A horse before a painted panel and a marble fireplace, before the work" loading="lazy"><span class="g-tn__tag">Before</span></figure>
+    <figure class="g-tn__now"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba275193-d2de-4cb7-86a8-07825dbaf1d5/Screenshot+2026-07-30+at+7.56.05+pm.png?format=2500w" alt="The dining room now, laid for dinner under the chandeliers" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
+    <p class="g-tn__cap">The dining rooms, side by side: once empty enough for a horse, now laid for dinner.</p>
+  </div>
   <div class="g-tn__pair">
     <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2b9c1192-bf9a-40a9-8913-4bc98c8a43c7/Screenshot+2026-07-20+at+3.41.43+pm.png?format=1500w" alt="The kitchen before the work, the floor gone" loading="lazy"><span class="g-tn__tag">Before</span></figure>
     <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/92af7109-0e28-4b75-bdf0-4b1a6fe7cc9a/Screenshot+2026-07-20+at+2.33.25+pm.png?format=1500w" alt="The kitchen now" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
     <p class="g-tn__cap">The kitchen</p>
-  </div>
-  <div class="g-tn__pair">
-    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e7e008f3-afc8-440d-8974-abb6b7bbce80/Dining+Room+-+During+Work+1.jpg?format=1500w" alt="The dining room floor during the work" loading="lazy"><span class="g-tn__tag">During</span></figure>
-    <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba275193-d2de-4cb7-86a8-07825dbaf1d5/Screenshot+2026-07-30+at+7.56.05+pm.png?format=1500w" alt="The dining room now" loading="lazy"><span class="g-tn__tag g-tn__tag--now">Now</span></figure>
-    <p class="g-tn__cap">The dining room</p>
   </div>
   <div class="g-tn__pair">
     <figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/598861b7-9f24-4244-8420-468734c135e5/Before+The+Work+-+Vestibule+Ceiling.JPG?format=1500w" alt="The vestibule ceiling before the work" loading="lazy"><span class="g-tn__tag">Before</span></figure>
@@ -116,6 +128,9 @@
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fcd0c757-5913-4e42-a648-d131642818ad/Dining+Room+-+During+Work+4.jpg?format=1000w" alt="The dining room under scaffolding" loading="lazy"><figcaption>The dining room, under scaffolding</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1b864cf7-45ea-4b82-9a42-7a7f06f8bd93/Dining+Room+-+During+Work+2.png?format=1000w" alt="The dining room during the work" loading="lazy"><figcaption>The dining room, mid-work</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1429617974662-OIFU6BKPH1U85GTO9A7V/workshop.jpg?format=1000w" alt="Gilt and old paint over a doorway, mid-restoration" loading="lazy"><figcaption>Gilt over a doorway, mid-restoration</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1000w" alt="An artisan on a ladder restoring a painted medallion" loading="lazy"><figcaption>A painted medallion, by hand</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e7e008f3-afc8-440d-8974-abb6b7bbce80/Dining+Room+-+During+Work+1.jpg?format=1000w" alt="The dining room floor during the work" loading="lazy"><figcaption>The dining room floor, mid-work</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/87a84b73-e4df-4f54-9d30-f84035a5985c/Bathrooms+-+During+Work+2.JPG?format=1000w" alt="A bathroom during the work" loading="lazy"><figcaption>A bathroom, during the work</figcaption></figure></li>
   </ul>
 </div></section>
 <section class="g-sec g-gallery-sec" id="wallpaper"><div class="g-wrap">
@@ -126,7 +141,7 @@
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8d75088d-53ce-4cfb-811e-ed67bf1ae159/Bathrooms+-+During+Work+3.jpg?format=1000w" alt="Blue floral paper during the work, a ladder against it" loading="lazy"><figcaption>Blue floral paper, during the work</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e8217555-28d9-487f-9956-eb6ab8aebcdd/Screenshot+2026-08-13+at+9.31.45+pm.png?format=1000w" alt="Old wallpaper over bare plaster" loading="lazy"><figcaption>Old paper over bare plaster</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1000w" alt="The floral bedroom of the Family Suite" loading="lazy"><figcaption>The floral bedroom</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c90f49a0-5f8f-489f-8d51-2f3ea727c57a/Screenshot+2026-07-30+at+7.54.08+pm.png?format=1000w" alt="Floral paper by a tall window" loading="lazy"><figcaption>Floral paper by the window</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/4c39047d-68dd-40fa-a441-b98e10d9c96f/Screenshot+2026-08-03+213938.png?format=1000w" alt="A bathroom papered in blue, a claw-foot bath beneath the window" loading="lazy"><figcaption>A bathroom papered in blue</figcaption></figure></li>
     <li><figure><img src="https://cf.bstatic.com/xdata/images/hotel/max2048x2048/790004185.jpg?k=c368a1bd82adf70e3d26e3629c4646c5781ef052ced007424000f7c7cd375c9f&o=" alt="A bed against floral paper in the Family Suite" loading="lazy"><figcaption>The Family Suite</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dedda173-4be1-4989-a43b-79662a5deb95/Bathrooms+-+After+Work+Dressing+Room+2.jpg?format=1000w" alt="The patterned paper of a bathroom dressing room" loading="lazy"><figcaption>A dressing room, papered again</figcaption></figure></li>
   </ul>
@@ -146,7 +161,7 @@
       <p class="g-key__v">For buildings of enough interest to be worth preserving. Around 31,000 buildings are inscrit. Work on them must be declared, and the rules are lighter.</p>
     </div>
   </div>
-  <p class="g-p" style="margin-top:var(--s6)">Château de Gudanes is classé, and has been a Historic Monument since 1994. It is why every intervention is applied for and approved before work begins, why original stone and timber are kept rather than replaced, and why the walls stay as they are. It is also why a night here is an experience unlike a night anywhere else.</p>
+  <p class="g-p" style="margin-top:var(--s6)">Château de Gudanes is classé, and has been a Historic Monument since 1994. In practice, that means:</p>
   {#- 9 Oct (owner: "detail that artisans were used and strict conditions for historic monument") -#}
   <ul class="g-extras g-rules">
     {%- for kind, fr, en, line in [
@@ -168,7 +183,7 @@
   <p class="g-fr">À l’intérieur <span class="g-fr__en">Inside</span></p>
   <p class="g-eyebrow">Inside</p>
   <h2 class="g-place">What You Will See</h2>
-  <p class="g-p g-lede-first">Rooms in every state: some brought back and lived in, some opened up and left as they were found, some still waiting behind closed doors. Plaster as the centuries left it, painted surfaces coming back to the light, and the work itself, slow and deliberate.</p>
+  <p class="g-p g-lede-first">Rooms in every state: some brought back and lived in, some opened up and left as they were found, some still waiting behind closed doors. Old plaster, painted surfaces coming back to the light, and the work itself, slow and deliberate.</p>
   <p class="g-p">A night here is your room, breakfast and the lounge. The rest of the house, the rooms brought back and the rooms still waiting, is opened to the workshops.</p>
 </div></section>
 {#- 9 Oct (owner: "some parts seem duplicated"): the press list is the Press page's - a line and a link here. -#}

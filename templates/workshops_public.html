@@ -227,7 +227,8 @@
       {% elif r.remaining <= 4 %}
         <span class="g-sit__flag g-sit__flag--few">{{ r.remaining }} place{{ '' if r.remaining == 1 else 's' }} left</span>
       {% endif %}
-      <img class="g-sit__img" src="{{ pic.u or WS_PIC['Cooking'] }}" alt="{{ w['title'] }}" loading="lazy">
+      {%- set _su = pic.u or WS_PIC['Cooking'] %}
+      <img class="g-sit__img" src="{{ _su ~ ('' if '?' in _su else '?format=1000w') }}" alt="{{ w['title'] }}" loading="lazy">
       <div class="g-sit__b">
         <p class="g-sit__name">{{ w['title'] }}</p>
         <h3 class="g-sit__when">{{ date_range(r.session['start_date'], r.session['end_date']) }}</h3>

@@ -4720,66 +4720,6 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 }
 .g-addons__f > .g-btn{ margin-top: var(--s3); }
 
-/* ==========================================================================
-   THE FLOOR PLAN
-   Drawn, not photographed — a plan in the same line register as the marks.
-   Three states, distinguished by fill weight rather than colour alone, so it
-   survives being printed or read by someone who cannot separate the hues.
-   ========================================================================== */
-.g-plan2{ margin-top: var(--s6); }
-.g-plan2__key{ display: flex; flex-wrap: wrap; gap: var(--s5); margin-bottom: var(--s5); }
-.g-plan2__kk{
-  display: flex; align-items: center; gap: var(--s2);
-  font-family: var(--ui); font-size: 13px; letter-spacing: .04em; color: var(--ink-soft);
-}
-.g-plan2__kk::before{
-  content: ""; width: 16px; height: 16px; border: 1px solid var(--gilt);
-}
-.g-plan2__kk.is-done::before{ background: rgba(196,160,106,.42); }
-.g-plan2__kk.is-work::before{
-  background: repeating-linear-gradient(45deg, rgba(196,160,106,.42) 0 3px, transparent 3px 6px);
-}
-.g-plan2__kk.is-raw::before{ background: transparent; }
-
-.g-plan2__grid{ display: grid; gap: var(--s6); align-items: start; }
-@media (min-width: 62rem){ .g-plan2__grid{ grid-template-columns: 1.6fr 1fr; } }
-
-.g-plan2__svg{ width: 100%; height: auto; display: block; }
-.g-plan2__wall{ fill: none; stroke: var(--blue-deep); stroke-width: 2.5; }
-
-.g-plan2__r rect{ fill: none; stroke: var(--gilt); stroke-width: 1.2; cursor: pointer; }
-.g-plan2__r text{
-  fill: var(--blue-deep); font-family: var(--display); font-size: 16px;
-  text-anchor: middle; pointer-events: none;
-}
-.g-plan2__r .g-plan2__sub{
-  font-family: var(--ui); font-size: 12px; letter-spacing: .08em;
-  text-transform: uppercase; fill: var(--gilt);
-}
-.g-plan2__r.is-done rect{ fill: rgba(196,160,106,.42); }
-.g-plan2__r.is-work rect{
-  fill: rgba(196,160,106,.18);
-  stroke-dasharray: 5 4;
-}
-.g-plan2__r.is-raw rect{ fill: transparent; stroke-dasharray: 2 4; }
-.g-plan2__r:hover rect,
-.g-plan2__r.is-on rect{ stroke: var(--blue-deep); stroke-width: 2.5; }
-.g-plan2__r:focus{ outline: none; }
-.g-plan2__r:focus-visible rect{ stroke: var(--blue-deep); stroke-width: 3; }
-.g-plan2__stair{ fill: none; stroke: var(--gilt); stroke-width: 1; pointer-events: none; }
-
-.g-plan2__panel{
-  padding: var(--s5); border-left: 2px solid var(--gilt); min-height: 12rem;
-}
-.g-plan2__state{
-  margin: 0 0 var(--s2); font-family: var(--ui); font-size: 12px; font-weight: 600;
-  letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
-}
-.g-plan2__name{
-  margin: 0 0 var(--s3); font-family: var(--display); font-weight: 300;
-  font-size: var(--t-h2); color: var(--blue-deep);
-}
-.g-plan2__d{ margin: 0 0 var(--s4); font-size: 16px; line-height: 1.6; max-width: var(--m-read); }
 
 /* ==========================================================================
    BEFORE AND AFTER
@@ -5064,7 +5004,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
    site read as small print. Hints and notes belong at the small step.
    ========================================================================== */
 .g-hint, .g-foot-note, .g-journal__note, .g-qbook__n, .g-book-bar__note,
-.g-pay__note, .g-nextf__n, .g-plan2__sub, .g-ba__n{
+.g-pay__note, .g-nextf__n, .g-ba__n{
   font-size: var(--t-small);
   line-height: 1.55;
 }
@@ -5364,8 +5304,7 @@ main img{ height: auto; }
    ========================================================================== */
 @media print{
   .g-top, .g-navwrap, .g-bookbar, .g-foot, .g-mark__wrap, .g-monogram,
-  .g-hero__wash, video, .g-backtotop, .g-skip, .g-bloom, .g-season,
-  .g-plan2, .g-ba, .g-years, .g-steps{ display: none !important; }
+  .g-hero__wash, video, .g-backtotop, .g-skip, .g-bloom, .g-season, .g-ba, .g-years, .g-steps{ display: none !important; }
   body{ background: #fff; color: #000; font-size: 11pt; }
   main{ padding: 0; }
   .g-wrap{ max-width: none; padding: 0; }
@@ -5922,23 +5861,6 @@ body.has-hero .g-cred{ background: var(--blue-deep); }
 }
 
 .g-presskit .g-h3{ margin-top: var(--s6); }
-
-
-
-/* ==========================================================================
-   FOCUS ON THE FLOOR PLAN
-   The rooms are focusable SVG groups, and `outline` does not paint reliably
-   on an SVG <g> in every browser. Someone tabbing through the plan had no
-   idea where they were. Drawn as a stroke on the shape instead, which is the
-   thing actually rendered.
-   ========================================================================== */
-.g-plan2__r{ outline: none; }
-.g-plan2__r:focus-visible rect,
-.g-plan2__r:focus-visible path,
-.g-plan2__r:focus-visible polygon{
-  stroke: var(--gilt); stroke-width: 3px; paint-order: stroke;
-}
-.g-plan2__r:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
 
 /* The same for any other focusable group added later. */
 svg [tabindex]:focus-visible rect,
@@ -11051,3 +10973,24 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 
 /* 9 Oct - the monument's rules as four tiles, inside its section */
 .g .g-rules{ margin-top: var(--s6); }
+
+/* 9 Oct - THE DINING ROOMS (two before, one now) and AS IT WAS (two early images) on the restoration page */
+.g .g-tn__trio{ display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+.g .g-tn__trio figure{ margin: 0; position: relative; overflow: hidden; background: var(--sand, #EDE4D3); }
+.g .g-tn__trio img{ width: 100%; aspect-ratio: 1 / 1; object-fit: cover; display: block; }
+.g .g-tn__trio .g-tn__now{ grid-column: 1 / -1; }
+.g .g-tn__trio .g-tn__now img{ aspect-ratio: 3 / 2; }
+.g .g-tn__trio .g-tn__cap{ grid-column: 1 / -1; }
+.g .g-old{ display: grid; grid-template-columns: 1fr 1fr; gap: var(--s5); margin-top: var(--s5); align-items: start; }
+.g .g-old figure{ margin: 0; }
+.g .g-old img{ width: 100%; height: auto; display: block; border: 1px solid var(--line); box-shadow: 0 18px 34px -26px rgba(20,48,95,.5); }
+.g .g-old figcaption{ margin-top: var(--s2); font-family: var(--serif); font-style: italic; font-size: 16px; color: var(--ink-2); }
+@media (max-width: 600px){ .g .g-tn__trio{ gap: 6px; } .g .g-old{ grid-template-columns: 1fr; gap: var(--s4); } }
+@media (min-width: 900px){ .g .g-old--3{ grid-template-columns: repeat(3, 1fr); gap: var(--s4); } }
+
+/* 9 Oct audit (owner: "some of the text is too small"): the notes beside Book (13.5px) and the line on each workshop card
+   (13px) were the smallest running text left on a phone - 15px and 14px. */
+.g .g-terms-line, .g .g-foot-note, .g-terms-line, .g-foot-note{ font-size: 15px; line-height: 1.55; }
+.g .g-wscard__inc{ font-size: 14px; }
+.g .g-dossier .g-terms-line, .g .g-dossier .g-foot-note{ font-size: 15px; }
+.g .g-dossier #quote_note, .g .g-dossier .g-quote__l dt .g-opt{ font-size: 14px; }
