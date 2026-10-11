@@ -47,6 +47,14 @@
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px;
 }
 
+/* HIDDEN MEANS HIDDEN. The browser hides [hidden] with its own lowest-priority
+   rule, so any class here that sets display -- .pin-backdrop{display:flex} --
+   beats it and the element never hides. The clock-in keypad sat open on page
+   load with nobody's name on it, and Cancel did nothing (owner, 11 October);
+   the photo intake's edit panel showed with no photograph in it. One rule,
+   rather than a [hidden] override per class that the next one forgets. */
+[hidden]{ display:none !important; }
+
 /*
   Staff/owner portal (base.html) gets its own re-theme here, scoped to
   body.staff-shell — reusing the same variable names the whole stylesheet

@@ -59,6 +59,24 @@ def run():
     s.check("the new person is listed", f"{TAG} Amélie" in body)
     s.check("and is flagged as having no PIN", "no PIN set" in body)
 
+    s.section("The keypad stays shut until a name is tapped, and Cancel shuts it")
+    # 11 October (owner): the keypad sat open on page load with no name on it,
+    # and Cancel did nothing. Both were the stylesheet: .pin-backdrop sets
+    # display:flex, which beats the browser's own [hidden]{display:none}, so
+    # the hidden attribute the script flips never hid anything.
+    import os as _os
+    import re as _re
+    s.check("the keypad is written hidden",
+            _re.search(r'id="pin-backdrop"[^>]*\bhidden\b', body) is not None)
+    s.check("and Cancel flips that same switch",
+            "closePin()" in body and "pin-backdrop').hidden = true" in body)
+    sheet = open(_os.path.join(_os.path.dirname(m.__file__), "static", "style.css"),
+                 encoding="utf-8").read()
+    s.check("and the stylesheet lets hidden win over a class's own display",
+            _re.search(r"(^|\})\s*\[hidden\]\s*\{\s*display\s*:\s*none\s*!important",
+                       _re.sub(r"/\*.*?\*/", "", sheet, flags=_re.S)) is not None,
+            detail="without it any class that sets display keeps a hidden element on screen")
+
     s.section("Only the owner sets PINs")
     # If staff could set their own they could set someone else's, and clock in
     # as them.
