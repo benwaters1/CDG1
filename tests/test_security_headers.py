@@ -122,4 +122,57 @@ def run():
             action and "*.stripe.com" not in action[0],
             detail=action[0] if action else "absent")
 
+    s.section("Behind Railway's proxy: who is asking, and over what")
+    # Without ProxyFix every request came from the proxy's one address over
+    # http: every per-visitor limit was shared by the whole site, and every
+    # full link the app wrote began http://. Asked as Railway delivers a
+    # request: the visitor's address and the scheme in forwarded headers.
+    # Read off real pages: a failed sign-in records the address it came from,
+    # and the owner's rooms page prints each room's full calendar link.
+    from _harness import db
+    host = "cdg1-production-9186.up.railway.app"
+    test_addrs = ("203.0.113.5", "203.0.113.9", "1.2.3.4")
+
+    def throttled_addresses():
+        c = db()
+        try:
+            return {r["ip_address"] for r in c.execute(
+                "SELECT ip_address FROM login_throttle WHERE ip_address IN (?, ?, ?)",
+                test_addrs)}
+        finally:
+            c.close()
+
+    def clear_test_addresses():
+        c = db()
+        c.execute("DELETE FROM login_throttle WHERE ip_address IN (?, ?, ?)", test_addrs)
+        c.commit()
+        c.close()
+
+    clear_test_addresses()
+    try:
+        visitor = m.app.test_client()
+        bad = {"email": "nobody-zz@example.invalid", "password": "wrong"}
+        visitor.post("/login", data=bad, headers={"X-Forwarded-For": "203.0.113.5",
+                                                  "X-Forwarded-Proto": "https"})
+        s.check("a failed sign-in is counted against the visitor's own address",
+                "203.0.113.5" in throttled_addresses(),
+                detail="counted against %s" % (throttled_addresses() or "the proxy"))
+        visitor.post("/login", data=bad, headers={"X-Forwarded-For": "1.2.3.4, 203.0.113.9"})
+        got = throttled_addresses()
+        s.check("a visitor cannot pick their address by sending the header themselves",
+                "203.0.113.9" in got and "1.2.3.4" not in got,
+                detail="only the address Railway's proxy adds, the rightmost, is "
+                       "trusted; got %s" % sorted(got))
+    finally:
+        clear_test_addresses()
+
+    rooms_page = oc.get("/admin/rooms", headers={"X-Forwarded-Proto": "https",
+                                                 "X-Forwarded-Host": host}).get_data(as_text=True)
+    s.check("a room's calendar link for Booking.com starts https://",
+            f"https://{host}/ics/" in rooms_page and f"http://{host}/ics/" not in rooms_page,
+            detail="a channel may refuse a calendar served over plain http")
+    plain = oc.get("/admin/rooms").get_data(as_text=True)
+    s.check("and with no proxy in front, nothing changes",
+            "http://localhost/ics/" in plain, detail="local links stay as they were")
+
     return s

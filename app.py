@@ -1373,6 +1373,21 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(ROOM_PHOTO_DIR, exist_ok=True)
 
 app = Flask(__name__)
+# WHO IS ASKING, AND HOW THEY ARRIVED. Railway answers the guest over HTTPS and
+# hands the request on as plain HTTP from its own proxy, so without this every
+# request looked like it came from one address over http. Two things followed,
+# neither of which errored:
+#   - every limit keyed on the visitor's address was one limit shared by
+#     everybody: five booking attempts an hour for the whole site, five reset
+#     codes an hour for every member of staff, and five mistyped passwords
+#     from anyone locking out the sign-in page for all of them;
+#   - every full link the app wrote began http:// -- the booking card handed
+#     to a guest, and the calendar link each room gives Booking.com.
+# x_for=1 trusts only the address Railway's own proxy adds (the rightmost), so
+# a visitor cannot choose their address by sending the header themselves.
+# Locally and in tests nothing sends these headers, and nothing changes.
+from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 # IMPORTANT: this secret key is regenerated every time the app starts unless
 # you set a real one via the FLASK_SECRET_KEY environment variable. Set that
 # in your real deployment so logged-in sessions survive restarts. See
