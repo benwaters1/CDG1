@@ -98,7 +98,21 @@ def run():
     s = Suite("House capacity")
     clients()
     _cleanup()
-    start = house_today() + timedelta(days=200)  # clear of the real ateliers
+    # A stretch the copied database really has empty, found rather than
+    # assumed. "200 days out" was clear of everything until 11 October 2026,
+    # when the window slid a day and met a real stay of two in May 2027 --
+    # and "a night nobody is booked shows nobody" failed on a night somebody
+    # was booked. Every check below reads nights from start-5 to start+52.
+    start = house_today() + timedelta(days=200)
+    probe = db()
+    try:
+        for _ in range(60):
+            if m.peak_guests_in_house(probe, start - timedelta(days=6),
+                                      start + timedelta(days=60)) == 0:
+                break
+            start += timedelta(days=7)
+    finally:
+        probe.close()
 
     s.section("Room bookings alone")
     _make_room_booking(f"{TAG}A", start, start + timedelta(days=3), 10)
