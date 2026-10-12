@@ -19418,6 +19418,7 @@ def pos_day_report(conn, on_date):
     orders = [o for o in orders
               if service_day_iso(o["closed_at"] or o["opened_at"]) == day]
     by_method, gross, vat, covers, service, discounts = {}, 0.0, 0.0, 0, 0.0, 0.0
+    owed = 0.0
     for o in orders:
         bill = pos_bill(conn, o["id"])
         gross += bill["gross"]
@@ -19425,6 +19426,7 @@ def pos_day_report(conn, on_date):
         service += bill["service"]
         discounts += bill["discount"]
         covers += bill["covers"]
+        owed += bill["total"]
         payments = conn.execute(
             "SELECT method, COALESCE(SUM(amount), 0) AS t FROM pos_payments "
             "WHERE order_id = ? GROUP BY method", (o["id"],)).fetchall()
@@ -19437,14 +19439,36 @@ def pos_day_report(conn, on_date):
             # order itself; counting only pos_payments would lose the day.
             by_method[o["payment_method"]] = round(
                 by_method.get(o["payment_method"], 0) + (o["settled_total"] or 0), 2)
-    taken = round(sum(by_method.values()), 2)
-    return {
+    return pos_day_takings({
         "date": day, "orders": orders, "tabs": len(orders), "covers": covers,
         "gross": round(gross, 2), "vat": round(vat, 2), "service": round(service, 2),
-        "discounts": round(discounts, 2), "by_method": by_method, "taken": taken,
-        "average_per_cover": round(gross / covers, 2) if covers else 0,
-        "average_per_tab": round(gross / len(orders), 2) if orders else 0,
-    }
+        "discounts": round(discounts, 2), "by_method": by_method,
+        "owed": round(owed, 2),
+    })
+
+
+def pos_day_takings(report):
+    """What the cash-up says was taken, and the averages, from its own figures.
+
+    A tab settled "On the house" is recorded as a payment, because the law wants
+    every ticket on the record at its value -- but it is not money, and the page
+    counted it as money: €25 of comped dinner sat inside "Total taken". It is
+    kept apart here and shown as its own line.
+
+    The averages divide what the page shows. They used to divide the menu-price
+    total before discounts, deposits and packages, so "7 tabs, averaging €29.50"
+    sat under a total of €134.50, which is €19.21 a tab, and nobody could get
+    from one figure to the other. Shared with the frozen closure, whose stored
+    takings still include comps (the closure is hashed; it is read, not altered).
+    """
+    by_method = report["by_method"]
+    comped = round(by_method.get("comp", 0) or 0, 2)
+    taken = round(sum(by_method.values()) - comped, 2)
+    tabs, covers = report["tabs"], report["covers"]
+    return dict(report, taken=taken, comped=comped,
+                settled=round(taken + comped, 2),
+                average_per_cover=round(taken / covers, 2) if covers else 0,
+                average_per_tab=round(taken / tabs, 2) if tabs else 0)
 
 
 def pos_add_line(conn, order_id, extra, quantity=1, *, unit_price=None,
@@ -36445,13 +36469,12 @@ def pos_day():
     if closure:
         # The frozen figures win. The live list of tabs is still shown beneath,
         # and any disagreement between the two is reported rather than hidden.
-        report = dict(report, taken=closure["taken_total"], gross=closure["gross_total"],
-                      discounts=closure["discount_total"], service=closure["service_total"],
-                      covers=closure["covers"], tabs=closure["ticket_count"],
-                      by_method=closure["by_method"],
-                      vat=round(sum(v["vat"] for v in closure["vat"].values()), 2),
-                      average_per_cover=round(closure["gross_total"] / closure["covers"], 2)
-                      if closure["covers"] else 0)
+        report = pos_day_takings(dict(
+            report, gross=closure["gross_total"],
+            discounts=closure["discount_total"], service=closure["service_total"],
+            covers=closure["covers"], tabs=closure["ticket_count"],
+            by_method=closure["by_method"],
+            vat=round(sum(v["vat"] for v in closure["vat"].values()), 2)))
     chain = pos_journal_verify(conn)
     # The window, not date(occurred_at) — the figures above run to five in the
     # morning, so a list that stopped at UTC midnight left the last hour of
@@ -36461,12 +36484,15 @@ def pos_day():
         """SELECT * FROM pos_journal WHERE occurred_at >= ? AND occurred_at < ?
            ORDER BY sequence DESC LIMIT 60""", (win_from, win_to)).fetchall()
     conn.close()
+    # To the cent. Every other summary strip rounds to whole euros, but this is
+    # a cash-up, and a tile saying €135 above a total of €134.50 is the
+    # difference somebody counting a drawer goes looking for.
     overview = [
-        overview_cell("Taken", euro(report["taken"])),
+        overview_cell("Taken", money(report["taken"])),
         overview_cell("Covers", report["covers"]),
-        overview_cell("Average per cover", euro(report["average_per_cover"])),
-        overview_cell("VAT within that", euro(report["vat"])),
-        overview_cell("Discounts given", euro(report["discounts"]),
+        overview_cell("Average per cover", money(report["average_per_cover"])),
+        overview_cell("VAT within the day", money(report["vat"])),
+        overview_cell("Discounts given", money(report["discounts"]),
                       alert=report["discounts"] > 0),
     ]
     return render_template("pos_day.html", report=report, overview=overview, on=on,
@@ -36510,8 +36536,12 @@ def pos_close_day():
 
     closure, created = pos_close_period(conn, "day", on.isoformat(), session.get("user_id"),
                                         opening_float=opening_float, counted_cash=counted)
+    # Money taken, as the cash-up page says it: the stored total includes
+    # tabs settled on the house.
+    taken = pos_day_takings({"by_method": json.loads(closure["by_method_json"] or "{}"),
+                             "tabs": 0, "covers": 0})["taken"]
     log_audit(conn, "pos_day_closed", target=on.isoformat(),
-              details=f"{money(closure['taken_total'])} taken"
+              details=f"{money(taken)} taken"
                       + ("" if closure["cash_variance"] is None
                          else f", drawer {closure['cash_variance']:+.2f}"))
     conn.commit()
@@ -36519,7 +36549,7 @@ def pos_close_day():
     if not created:
         flash(f"{on.isoformat()} was already closed.", "error")
         return redirect(url_for("pos_day", date=on.isoformat()))
-    flash(f"{on.isoformat()} closed — {money(closure['taken_total'])} taken.", "success")
+    flash(f"{on.isoformat()} closed — {money(taken)} taken.", "success")
     # The difference gets its own message, and says which way it went. "Short"
     # and "over" are the words used at the end of a service; a signed number on
     # its own gets read as either.
@@ -66670,7 +66700,10 @@ def management_payment_cost():
     """What the house pays to be paid."""
     conn = get_db()
     period = period_from_request()
-    data = cost_of_taking_money(conn, parse_date(period["start_iso"]), parse_date(period["end_iso"]))
+    # The period's end is the day AFTER it (half-open); this function takes
+    # the last day. Passed straight through, every month counted the 1st of
+    # the next one, and a single day counted two.
+    data = cost_of_taking_money(conn, period["start"], period["end"] - timedelta(days=1))
     conn.close()
     return render_template("management_payment_cost.html", data=data, period=period)
 
@@ -66702,7 +66735,8 @@ def management_cash_banking():
     """Counted out of the drawer, paid into the bank, and the difference."""
     conn = get_db()
     period = period_from_request()
-    position = cash_position(conn, parse_date(period["start_iso"]), parse_date(period["end_iso"]))
+    # Last day, not the day after: see management_payment_cost.
+    position = cash_position(conn, period["start"], period["end"] - timedelta(days=1))
     conn.close()
     return render_template("management_cash_banking.html", position=position, period=period)
 
@@ -90440,6 +90474,9 @@ def cost_of_taking_money(conn, start, end):
 
     Returns configured=False rather than a number when the rate has not been
     typed. An invented fee is worse than no page: it would be quoted.
+
+    `end` is the LAST day counted, not the day after it as resolve_period
+    hands over; callers with a period take a day off it.
     """
     if isinstance(start, str):
         start = parse_date(start)
@@ -90460,9 +90497,17 @@ def cost_of_taking_money(conn, start, end):
             "SELECT method, amount FROM booking_payments WHERE created_at >= ? AND created_at < ?",
             (lo, hi)).fetchall():
         _take(r["method"], r["amount"])
+    # A tab settled "On the house" is recorded as a payment so the ticket is on
+    # the record, but nothing was paid: counting it put comped dinners inside
+    # "Taken" and inside the base the processor's share is quoted against.
+    comped = {"amount": 0.0, "count": 0}
     for r in conn.execute(
             "SELECT method, amount FROM pos_payments WHERE created_at >= ? AND created_at < ?",
             (lo, hi)).fetchall():
+        if r["method"] == "comp":
+            comped["amount"] = round(comped["amount"] + float(r["amount"] or 0), 2)
+            comped["count"] += 1
+            continue
         _take(r["method"], r["amount"])
 
     rows = []
@@ -90481,6 +90526,7 @@ def cost_of_taking_money(conn, start, end):
     return {
         "configured": pct is not None, "percent": pct, "fixed": fixed,
         "rows": rows, "taken": taken, "on_card": on_card, "fee": total_fee,
+        "comped": comped,
         # The figure worth knowing: what fraction of everything taken the
         # processor keeps. Quoted against ALL money taken, not just the card
         # part, because that is what it costs the business to get paid.
@@ -90665,7 +90711,7 @@ def cash_position(conn, start=None, end=None):
     quietly for a month.
 
     Everything is bounded by service day, not calendar date, so a Tuesday
-    that ended at 01:30 banks as Tuesday.
+    that ended at 01:30 banks as Tuesday. `end` is the last day counted.
     """
     end = end or service_day()
     if isinstance(end, str):

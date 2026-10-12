@@ -71,9 +71,11 @@
         <td>{{ r.label }}</td>
         <td class="num">{{ r.count }}</td>
         <td class="num">{{ r.amount|money }}</td>
+        {# A money column holds money: taking cash costs €0.00. A card fee
+           with no rate set is a dash, for the reason in the box above. #}
         <td class="num">
-          {%- if not r.charged %}<span class="upload-hint">nothing</span>
-          {%- elif r.fee is none %}<span class="upload-hint">rate not set</span>
+          {%- if not r.charged %}{{ 0|money }}
+          {%- elif r.fee is none %}&mdash;
           {%- else %}{{ r.fee|money }}{% endif -%}
         </td>
       </tr>
@@ -87,6 +89,13 @@
     </tr></tfoot>
   </table>
 </div>
+{% endif %}
+{% if data.comped.count %}
+<p class="upload-hint">
+  Not counted above: {{ data.comped.count }} tab{{ '' if data.comped.count == 1 else 's' }}
+  settled on the house, worth {{ data.comped.amount|money }}. Nothing was paid,
+  so nothing was taken and nothing was charged.
+</p>
 {% endif %}
 
 {% endblock %}

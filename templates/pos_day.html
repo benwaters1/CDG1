@@ -24,7 +24,7 @@
 {# Frozen. This is why the number is the same today as it was last night. #}
 <div class="closure-band">
   <strong>Closed off {{ local_datetime_str(closure.closed_at) }}.</strong>
-  These figures are fixed — €{{ '%.2f'|format(closure.taken_total) }} taken,
+  These figures are fixed — {{ report.taken|money }} taken,
   {{ closure.ticket_count }} ticket{{ '' if closure.ticket_count == 1 else 's' }},
   {{ closure.covers }} cover{{ '' if closure.covers == 1 else 's' }}.
   Anything found afterwards belongs to today with a note pointing back here.
@@ -100,34 +100,44 @@
   <table class="data-table">
     <thead><tr><th>Method</th><th class="num">Amount</th></tr></thead>
     <tbody>
-      {% for method, amount in report.by_method.items() %}
+      {# "On the house" is recorded as a payment, so the ticket is on the
+         record at its value, but it is not money: it sits below the total. #}
+      {% for method, amount in report.by_method.items() if method != 'comp' %}
       <tr>
         <td>{{ payment_methods.get(method, method) }}</td>
-        <td class="num">€{{ '%.2f'|format(amount) }}</td>
+        <td class="num">{{ amount|money }}</td>
       </tr>
       {% endfor %}
       <tr>
-        <td><strong>Total taken</strong></td>
-        <td class="num"><strong>€{{ '%.2f'|format(report.taken) }}</strong></td>
-        {# The average was already worked out and never shown. It is the
-           figure that says whether a quiet night was fewer tables or
-           smaller ones, which the total on its own cannot. #}
+        <th scope="row"><strong>Total taken</strong></th>
+        <td class="num"><strong>{{ report.taken|money }}</strong></td>
       </tr>
+      {% if report.comped %}
+      <tr>
+        <th scope="row">{{ payment_methods.comp }} — given, not taken</th>
+        <td class="num">{{ report.comped|money }}</td>
+      </tr>
+      {% endif %}
     </tbody>
   </table>
 </div>
-{% if report.average_per_tab %}
+{# The average was already worked out and never shown. It is the figure that
+   says whether a quiet night was fewer tables or smaller ones, which the
+   total on its own cannot. It divides the total above, so the two agree. #}
+{% if report.tabs %}
 <p class="upload-hint">{{ report.tabs }} tab{{ '' if report.tabs == 1 else 's' }},
-  averaging €{{ '%.2f'|format(report.average_per_tab) }} each — a quiet night is
+  averaging {{ report.average_per_tab|money }} taken each — a quiet night is
   either fewer tables or smaller ones, and the total alone does not say which.</p>
 {% endif %}
 
-{% if (report.taken - report.gross + report.discounts - report.service)|abs > 0.01 %}
+{% if report.owed is defined and (report.settled - report.owed)|abs > 0.01 %}
 {# Takings and the till's own figure must agree. If they do not, say so
-   rather than showing two numbers and letting somebody notice later. #}
+   rather than showing two numbers and letting somebody notice later. What the
+   tabs came to is after discounts, deposits already paid and drinks packages,
+   which is what was left to settle at the table. #}
 <div class="alert-band">
-  Takings (€{{ '%.2f'|format(report.taken) }}) do not match the tabs
-  (€{{ '%.2f'|format(report.gross - report.discounts + report.service) }}).
+  The tabs came to {{ report.owed|money }}, and {{ report.settled|money }} was
+  settled against them{% if report.comped %} (including {{ report.comped|money }} on the house){% endif %}.
   A tab was probably settled without a payment recorded against it.
 </div>
 {% endif %}
