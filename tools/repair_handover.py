@@ -1831,6 +1831,33 @@ def repair_room_count_lines():
     return n
 
 
+# 12 October (the owner): nothing to ariege@. Anything general goes to
+# reservations@, anything about money to accounts@, workshops and events to
+# experience@. Every address a public page printed was a general one -- the
+# footer, contact, the legal and privacy notices, press, the error page and
+# the table lookup -- so each becomes reservations@. The design side has been
+# asked to carry it, but every zip built on an older copy would bring ariege@
+# straight back; test_confirmed_facts names any that get past.
+RETIRED_ADDRESSES = (("ariege@chateaugudanes.com", "reservations@chateaugudanes.com"),)
+
+
+def repair_retired_addresses():
+    """Addresses the owner retired, swapped for the one that replaced them."""
+    n = 0
+    for name in sorted(os.listdir(TEMPLATE_DIR)):
+        if not name.endswith(".html"):
+            continue
+        rel = "templates/" + name
+        src = _read(rel)
+        fixed = src
+        for old, new in RETIRED_ADDRESSES:
+            fixed = fixed.replace(old, new)
+        if fixed != src:
+            n += sum(src.count(old) for old, _new in RETIRED_ADDRESSES)
+            _write(rel, fixed)
+    return n
+
+
 def main():
     steps = [
         ("the robots block in public_base", repair_parent_robots_block),
@@ -1882,6 +1909,7 @@ def main():
         ("the tour, which is an extra for a nightly stay", repair_tour_is_an_extra),
         ("the Gold Suite, shown as the kitchen", repair_gold_suite_photograph),
         ("the rest-to-come lines the owner ruled out", repair_room_count_lines),
+        ("the address the owner retired, ariege@", repair_retired_addresses),
     ]
     total, failed = 0, []
     for label, fn in steps:

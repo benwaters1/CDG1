@@ -47,6 +47,9 @@ TAG = "ZZFACT"
 # Retired claims. Each is something the site said that the owner has said is
 # not so. Lower-case, matched on words.
 RETIRED = {
+    "ariege@chateaugudanes.com": "nothing to ariege@ (owner, 12 October 2026): reservations@ for "
+                                 "anything general, accounts@ for money, experience@ for "
+                                 "workshops and events",
     "six acres": "ten acres, about four hectares",
     "2.4 hectares": "about four hectares",
     "six hectares": "about four hectares",

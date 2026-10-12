@@ -363,7 +363,7 @@ window.houseDay = (function () {
         <p class="g-navwrap__group" style="margin-top:var(--s6)">Château de Gudanes</p>
         <p class="g-navwrap__addr">2 Route de Beille, Château-Verdun, Ariège 09310, France</p>
         <p><a href="tel:+33628069776">+33 6 28 06 97 76</a></p>
-        <p><a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></p>
+        <p><a href="mailto:reservations@chateaugudanes.com">reservations@chateaugudanes.com</a></p>
 
         {# The switcher is hidden until the prose is translated (TRANSLATION_GAP
            option 1). Without the guard on the box itself, hiding the switcher left an
@@ -546,7 +546,7 @@ window.houseDay = (function () {
              contact page splits them; the footer now says so too. #}
           <a href="mailto:reservations@chateaugudanes.com">reservations@chateaugudanes.com</a> <span class="g-footer__k">{{ t('stays') }}</span><br>
           <a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a> <span class="g-footer__k">{{ t('workshops &amp; events') }}</span><br>
-          <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a> <span class="g-footer__k">{{ t('general enquiries') }}</span>
+          <a href="mailto:reservations@chateaugudanes.com">reservations@chateaugudanes.com</a> <span class="g-footer__k">{{ t('general enquiries') }}</span>
           {%- if _dm == 'open' %}{% set _fw = when_text()|trim %}{% if _fw %}<br>
           <a href="{{ url_for('restaurant_info') }}">La Table</a> <span class="g-footer__k">{{ _fw }}</span>{% endif %}{% endif %}
         </p>

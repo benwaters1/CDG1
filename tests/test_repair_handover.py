@@ -452,6 +452,34 @@ def run():
     finally:
         shutil.rmtree(cwd, ignore_errors=True)
 
+    s.section("The address the owner retired is swapped for the one that replaced it")
+    # 12 October: nothing to ariege@ -- reservations@ for anything general.
+    # Every zip built on an older copy prints ariege@ in the footer again.
+    cwd = tempfile.mkdtemp(prefix="ztest-repair-address-")
+    try:
+        _git(cwd, "init", "-q")
+        _write(cwd, "templates/footer.html",
+               '<a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a>\n'
+               '<a href="mailto:accounts@chateaugudanes.com">accounts@chateaugudanes.com</a>\n')
+        _git(cwd, "add", "-A")
+        _git(cwd, "commit", "-q", "-m", "a footer from an older copy")
+        code, out = _run(cwd, src)
+        fixed = _read(cwd, "templates/footer.html")
+        s.check("the link and the words both become reservations@",
+                'href="mailto:reservations@chateaugudanes.com">reservations@chateaugudanes.com<' in fixed
+                and "ariege@" not in fixed, detail=fixed)
+        s.check("and other addresses are left alone",
+                "accounts@chateaugudanes.com" in fixed, detail=fixed)
+        s.check("it reports what it changed",
+                re.search(r"restored\s+2\s+the address the owner retired", out) is not None,
+                detail=out[-300:])
+        code2, out2 = _run(cwd, src)
+        s.check("a second run leaves it alone",
+                re.search(r"already fine\s+the address the owner retired", out2) is not None
+                and _read(cwd, "templates/footer.html") == fixed, detail=out2[-300:])
+    finally:
+        shutil.rmtree(cwd, ignore_errors=True)
+
     s.section("It says where the tool is documented")
     s.check("the docstring points at check_handover first",
             "check_handover" in src[:2000], detail="ordering advice is missing")
