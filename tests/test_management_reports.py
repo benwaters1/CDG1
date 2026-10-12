@@ -196,6 +196,24 @@ def run():
     s.check("a cancellation with no reason is called Not recorded",
             all(r["reason"] for r in canc["reasons"]),
             detail=str([r["reason"] for r in canc["reasons"]][:4]))
+    # A booking the house declined is not one the guest cancelled. Counted as
+    # lost, it put "6 of 17 stays" beside "2 cancellations" on one band.
+    before = canc["lost"]
+    _book(conn, "DECLINED", today + timedelta(days=40), today + timedelta(days=42),
+          price=800.0, status="declined", decided=today)
+    with m.app.test_request_context():
+        again = m.cancellation_analysis(conn, today - timedelta(days=365),
+                                        today + timedelta(days=365))
+    s.check("a declined booking is not counted as cancelled",
+            again["lost"] == before, detail=f"{before} -> {again['lost']}")
+    page = oc.get("/management/why-they-cancel").get_data(as_text=True)
+    import re as _re
+    tile = _re.search(r'([\d,]+)\s*</div>\s*<div class="overview-label">Cancellations<', page)
+    of_those = _re.search(r"(\d+) of (\d+) of those stays", page)
+    s.check("the band's cancellations and its 'N of M' count the same stays",
+            tile and of_those and tile.group(1) == of_those.group(1),
+            detail=f"tile {tile.group(1) if tile else None}, "
+                   f"rate {of_those.group(0) if of_those else None}")
 
     # -------------------------------------------------------- year on year
     s.section("This year against last")

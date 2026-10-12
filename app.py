@@ -20936,7 +20936,10 @@ def cancellation_analysis(conn, start=None, end=None):
         (start.isoformat(), end.isoformat())).fetchall()
 
     kept = [r for r in rows if r["status"] == "confirmed"]
-    lost = [r for r in rows if r["status"] in ("cancelled", "declined")]
+    # Cancelled only. A declined booking is one the house turned away, not one
+    # the guest let go -- it has its own section -- and counting it here put
+    # "6 of 17 stays" beside "2 cancellations" on the same band.
+    lost = [r for r in rows if r["status"] == "cancelled"]
     notice, late, reasons = [], [], {}
     lost_value = 0.0
     for r in lost:
@@ -29760,7 +29763,7 @@ def mileage_rate(conn):
         return MILEAGE_RATE_DEFAULT
 
 
-def cancellation_reasons(conn, *, months=12, today=None):
+def cancellation_reasons(conn, *, months=12, today=None, start=None, end=None):
     """Why stays were cancelled, commonest first.
 
     Cancellations with nothing against them are counted as their own line
@@ -29769,14 +29772,24 @@ def cancellation_reasons(conn, *, months=12, today=None):
     picture.
     """
     today = today or house_today()
-    since = (today - timedelta(days=30 * months)).isoformat()
-    rows = conn.execute(
-        """SELECT COALESCE(cancel_reason, '') AS reason, COUNT(*) AS n
-             FROM bookings
-            WHERE status = 'cancelled'
-              AND COALESCE(decided_at, created_at) >= ?
-            GROUP BY COALESCE(cancel_reason, '')
-            ORDER BY n DESC""", (since,)).fetchall()
+    if start and end:
+        # The same stays the rate is counted over -- by when they were to
+        # arrive -- so the page's figures are about one set of bookings.
+        rows = conn.execute(
+            """SELECT COALESCE(cancel_reason, '') AS reason, COUNT(*) AS n
+                 FROM bookings
+                WHERE status = 'cancelled' AND arrival_date >= ? AND arrival_date < ?
+                GROUP BY COALESCE(cancel_reason, '')
+                ORDER BY n DESC""", (start.isoformat(), end.isoformat())).fetchall()
+    else:
+        since = (today - timedelta(days=30 * months)).isoformat()
+        rows = conn.execute(
+            """SELECT COALESCE(cancel_reason, '') AS reason, COUNT(*) AS n
+                 FROM bookings
+                WHERE status = 'cancelled'
+                  AND COALESCE(decided_at, created_at) >= ?
+                GROUP BY COALESCE(cancel_reason, '')
+                ORDER BY n DESC""", (since,)).fetchall()
     total = sum(r["n"] for r in rows)
     out = []
     for r in rows:
@@ -30173,6 +30186,11 @@ def agreement_state(row, today):
         "deadline": deadline,
         "renews": renews,
         "days_left": (deadline - today).days,
+        # Once notice is too late, the next chance is a term later: the page
+        # said "the next chance is" and gave the very date just missed.
+        # Terms are taken as a year, which is how these renew.
+        "next_deadline": (add_months(renews, 12) - timedelta(days=max(row["notice_days"] or 0, 0))
+                          if state == "too_late" else None),
     }
 
 
@@ -67302,7 +67320,11 @@ def management_cancellations():
     """Why stays were cancelled, and how many event enquiries came to anything."""
     conn = get_db()
     today = house_today()
-    reasons = cancellation_reasons(conn, today=today)
+    # Every figure on the page about cancellations counts the same stays:
+    # those due to arrive within a year either side of today.
+    analysis = cancellation_analysis(conn)
+    reasons = cancellation_reasons(conn, today=today, start=analysis["start"],
+                                   end=analysis["end"])
     # What the house TURNED AWAY, which is a different question from what fell
     # away: it is the only record of demand that was there and could not be
     # taken.
@@ -67312,7 +67334,6 @@ def management_cancellations():
     # worth -- a booking that falls away four months out costs a diary entry,
     # one that goes two days out is a room that will not sell again, and this
     # page had them as the same line.
-    analysis = cancellation_analysis(conn)
     recent = conn.execute(
         """SELECT id, guest_name, arrival_date, cancel_reason, cancel_note,
                   decided_at
@@ -67321,9 +67342,10 @@ def management_cancellations():
             ORDER BY COALESCE(decided_at, created_at) DESC LIMIT 40""").fetchall()
     conn.close()
     overview = [
-        overview_cell("Cancellations", reasons["total"], hint="in the last year"),
+        overview_cell("Cancellations", reasons["total"],
+                      hint="stays due within a year either side of today"),
         overview_cell("Of everything booked", f"{analysis['rate']}%",
-                      hint=f"{analysis['lost']} of {analysis['total']} stays"),
+                      hint=f"{analysis['lost']} of {analysis['total']} of those stays"),
         overview_cell("Typical notice",
                       f"{analysis['median_notice']} days"
                       if analysis["median_notice"] is not None else "—",

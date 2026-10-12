@@ -138,16 +138,31 @@ here. Links to pay can still be sent.</p>
     </table>
   </div>
 
+  {#
+    A button is drawn only when something on screen can be ticked for it. A
+    balance not yet due has no tick box, so a page of them showed both buttons
+    with nothing they could act on -- the main action of the page, unusable.
+  #}
+  {% set can_take = lv['rows']|selectattr('state', 'equalto', 'ready')|list %}
+  {% set can_link = lv['rows']|selectattr('state', 'in', ['no_card', 'opted_out', 'refused'])|list %}
+  {% if (stripe_on and can_take) or can_link %}
   <div class="collect-actions">
-    {% if stripe_on %}
+    {% if stripe_on and can_take %}
     <button type="submit" class="btn-primary" id="collect-take-btn">Take <span id="collect-take-sum">the ticked balances</span> from the cards</button>
     {% endif %}
+    {% if can_link %}
     <button type="submit" class="btn-mini" formaction="{{ url_for('send_balance_links') }}"
             onclick="return confirm('Email a link to pay to everyone ticked for one?');">Send a link to pay to those ticked for one</button>
+    {% endif %}
   </div>
+  {% else %}
+  <p class="upload-hint">Nothing here can be collected yet: these fall due within the next {{ ahead_days }} days, and each gets its tick box on the day it is due.</p>
+  {% endif %}
+  {% if stripe_on and can_take %}
   <p class="upload-hint">Each balance is taken from the card the guest paid the deposit with,
     for the amount shown, and the guest is sent a receipt. Anything not taken is named,
     with the reason, and a card that is refused is not tried again unless you try it.</p>
+  {% endif %}
 </form>
 
 {% for r in lv['rows'] if r['state'] == 'held' %}

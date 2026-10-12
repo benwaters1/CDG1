@@ -189,6 +189,16 @@ def run():
     s.check("one coming up can be seen and not taken",
             f"{TAG} Soon" in page and f'value="{ids["Soon"]}"' not in page)
     s.check("a held one says why", "Look for ZZBCHeld" in page)
+    # Narrowed to one not yet due, nothing on screen has a tick box -- and the
+    # buttons were drawn anyway, the page's main action with nothing to act on.
+    with _Stood():
+        soon_only = oc.get(f"/management/balances?q={TAG}+Soon").get_data(as_text=True)
+    s.check("with only a balance not yet due on screen, no button is offered",
+            f"{TAG} Soon" in soon_only and "Send a link to pay to those ticked" not in soon_only
+            and 'id="collect-take-btn"' not in soon_only
+            and "Nothing here can be collected yet" in soon_only)
+    s.check("and the buttons are there when something can be ticked",
+            "Send a link to pay to those ticked" in page)
     # The counted chips are the point of the toolbar: one that says 4 and
     # gives 3 is worse than none.
     import html as _html

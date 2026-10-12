@@ -141,8 +141,10 @@ def run():
 
     s.section("It reaches a page")
     body = oc.get("/expenses").get_data(as_text=True)
-    s.check("the expenses list offers the mark", "On the house" in body
-            or "Not the house" in body,
+    # "On the house" until 12 October, which reads as free: it files the cost
+    # as capital, so the button says that.
+    s.check("the expenses list offers the mark", "Count as lasting (capital)" in body
+            or "Count as a running cost" in body,
             detail="tagged where somebody knows — six months later a line "
                    "reading 'Maison Roux 14,200' cannot be classified by "
                    "anybody who was not there")

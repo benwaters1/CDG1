@@ -204,9 +204,19 @@ def run():
     # the counted chips at the top of the page, so a bare "Too late" was
     # satisfied by the chip and would not have noticed the ROW going quiet.
     s.check("it says plainly when it is too late",
-            "It has rolled on for another term" in body,
+            "It runs on for another term" in body,
             detail="a row that only says 'rolls over soon' about something "
                    "already renewed reads as a job somebody can still do")
+    # And the next chance is a term later. It gave the very date just missed.
+    waste = rows[TAG + " Waste collection"]
+    nxt = waste.get("next_deadline")
+    import re as _re
+    said = _re.search(r"next chance to give\s+notice is\s+([^.<]+)\.", body)
+    s.check("the next chance to give notice is next year's date, not the one just missed",
+            nxt is not None and nxt > m.house_today() and said is not None
+            and said.group(1).strip() == m.format_date_short(nxt.isoformat()),
+            detail=f"next {nxt}, missed {waste['deadline']}, page said "
+                   f"{said.group(1).strip() if said else None!r}")
     s.check("and what a rolled-on agreement needs",
             "these dates need rewriting" in body)
     r = ec.get("/management/agreements", follow_redirects=False)

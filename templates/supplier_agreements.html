@@ -42,20 +42,20 @@
             {% endif %}
           </th>
           <td>
-            {% if a.deadline %}{{ a.deadline.isoformat() }}
+            {% if a.deadline %}{{ a.deadline.isoformat()|date_short }}
               {% if a.state == 'open' %}<div class="upload-hint">{{ a.days_left }} day{{ '' if a.days_left == 1 else 's' }} left</div>{% endif %}
             {% else %}&mdash;{% endif %}
           </td>
-          <td>{{ a.renews.isoformat() if a.renews else '&mdash;'|safe }}</td>
+          <td>{{ a.renews.isoformat()|date_short if a.renews else '&mdash;'|safe }}</td>
           <td class="num">{% if a.row['annual_value'] %}{{ a.row['annual_value']|money(0) }}{% else %}&mdash;{% endif %}</td>
           <td>
             {% if a.state == 'open' %}
               Notice can still be given.
             {% elif a.state == 'too_late' %}
-              <strong>Too late.</strong> It has rolled on for another term; the next chance is
-              {{ a.deadline.isoformat() }} next time round.
+              <strong>Too late.</strong> It runs on for another term; the next chance to give
+              notice is {{ a.next_deadline.isoformat()|date_short }}.
             {% elif a.state == 'running_out' %}
-              Ends on {{ a.renews.isoformat() }} and does not roll on.
+              Ends on {{ a.renews.isoformat()|date_short }} and does not roll on.
             {% elif a.state == 'rolled_on' %}
               The renewal date has passed. It is running on and these dates need rewriting.
             {% elif a.state == 'ended' %}
