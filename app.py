@@ -50548,7 +50548,7 @@ def email_health(conn):
     week_from = (today - timedelta(days=6)).isoformat()
     lines = [dict(r) for r in conn.execute(
         "SELECT status, delivery, created_at FROM mail_log WHERE created_at >= ?",
-        ((today - timedelta(days=8)).isoformat(),)).fetchall()]
+        (house_moment(today - timedelta(days=8)),)).fetchall()]
     week = [r for r in lines if (house_date_iso(r["created_at"]) or "") >= week_from]
     last_report = conn.execute("SELECT MAX(delivery_at) AS at FROM mail_log").fetchone()["at"]
     waiting = conn.execute(
