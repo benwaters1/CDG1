@@ -298,6 +298,10 @@ def _checks(s, oc, ec, day):
     s.check("the month's wages are on its last day, at what the rota costs from typed wages",
             len(est) == 1 and abs(est[0]["amount"] - typed["total"]) < 0.01,
             detail=f"{est} against {typed['total']}")
+    s.check("and the row says what it is in a few words, every month",
+            bool(est) and len(est[0]["label"]) <= 30,
+            detail=f"{est[0]['label'] if est else None!r} -- the explanation belongs once, "
+                   "in the wages box, not repeated as the title of every month's row")
     s.check("the page knows it is an estimate", ahead["wages_basis"] == "rota",
             detail=str(ahead["wages_basis"]))
     s.check("and names who it could not price",

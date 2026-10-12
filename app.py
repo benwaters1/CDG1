@@ -62862,9 +62862,10 @@ def money_ahead(conn, *, days=90, today=None):
         if labour["total"] > 0.005:
             wages_basis = "rota"
             outgoing.append({"date": payday.isoformat(), "amount": round(labour["total"], 2),
-                             "label": "Staff on the rota — an estimate: gross pay at the wage "
-                                      "set on each person's record, plus employer contributions "
-                                      "where set",
+                             # Short, because it is a row title repeated every
+                             # month; the box above the list says once how it is
+                             # worked out, and the tag says it is an estimate.
+                             "label": "Staff on the rota",
                              "kind": "Wages, estimated", "ref": None})
 
     incoming.sort(key=lambda x: (x["date"], -x["amount"]))
