@@ -213,6 +213,29 @@ def run():
     s.check("and so does the French description",
             str(facts["from_price"]) in french)
 
+    s.section("Every page with the stay panel prices its workshop card")
+    # The panel says "From €… per person" when it is handed the workshops and
+    # only "Per person" when it is not -- and the Estate page was never handed
+    # them, which the design side noticed and the page did not say. The price
+    # is the cheapest workshop on offer, by the workshops page's own rule.
+    conn = db()
+    offer = m.workshops_on_offer(conn, m.house_today())
+    conn.close()
+    prices = [w["price_per_person"] for w, _s in offer if w["price_per_person"]]
+    s.check("there are workshops on offer to price", bool(prices),
+            detail="nothing to price, so the next check would prove nothing")
+    if prices:
+        figure = "{:,.0f}".format(min(prices))
+        unpriced = []
+        for url in ("/facilities", "/gallery", "/press", "/story", "/"):
+            body = m.app.test_client().get(url).get_data(as_text=True)
+            if "all meals and drinks" not in body or "g-three" not in body:
+                continue
+            if f"&euro;{figure}" not in body and f"€{figure}" not in body:
+                unpriced.append(url)
+        s.check(f"each shows the cheapest workshop, €{figure} a person", not unpriced,
+                detail=f"only 'Per person' on {unpriced}")
+
     s.section("Every public page agrees about how many rooms there are")
     # Named rather than counted. "Three pages disagree" sends somebody
     # hunting; a list of file and line is a job that can be finished.

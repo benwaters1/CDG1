@@ -950,12 +950,12 @@ paid us.
   do our best, but a château kitchen is not an allergen-free environment
   and we cannot guarantee the absence of any ingredient.
 
-6. Arrival, departure and the house
+6. Arrival, departure and the château
 - Arrival is from 2pm and departure by 11am, unless your confirmation says
   otherwise. Tell us if you expect to arrive late so that someone can be
   there to meet you.
 - Guests must be eight or older.
-- Please treat the house as the historic building it is. Smoking is not
+- Please treat the château as the historic building it is. Smoking is not
   permitted indoors. Additional guests only by prior agreement.
 - We cannot accommodate pets, as the restoration areas make it unsafe for
   them. Assistance and guide dogs are welcome; please tell us before you
@@ -39481,11 +39481,15 @@ def import_catalogue():
 
 @app.route("/facilities")
 def facilities_page():
-    """What the house has. 9 Oct (owner): with the reading the house keeps of the weather at the château, as on Stay."""
+    """What the house has. 9 Oct (owner): with the reading the house keeps of the weather at the château, as on Stay.
+
+    With the workshops on offer, so the panel's workshop card can say what one
+    costs -- by the same rule the workshops page uses, so the two cannot differ.
+    """
     conn = get_db()
     weather = weather_now(conn)
     conn.close()
-    return render_template("facilities.html", weather=weather)
+    return render_template("facilities.html", weather=weather, workshops=offered_workshops())
 
 
 # The days of the week, written out. Not strftime('%A'), which follows the
@@ -39730,7 +39734,7 @@ def gallery_page():
             for p in by_section.get(s["id"], [])
         ],
     } for s in sections]
-    return render_template("gallery.html", galleries=galleries)
+    return render_template("gallery.html", galleries=galleries, workshops=offered_workshops())
 
 
 def terms_blocks(text):
@@ -45182,7 +45186,7 @@ def social_page():
 # to is the one piece of proof on the site that cannot be cited.
 @app.route("/press")
 def press():
-    return render_template("press.html")
+    return render_template("press.html", workshops=offered_workshops())
 
 
 # The family behind the house, which the footer has been linking to since the
@@ -45191,7 +45195,7 @@ def press():
 # so there is nothing to get wrong here except leaving it unbuilt.
 @app.route("/story")
 def story():
-    return render_template("story.html")
+    return render_template("story.html", workshops=offered_workshops())
 
 
 @app.route("/events/weddings")
@@ -51153,34 +51157,57 @@ def public_sittings(conn, workshop_id, today):
         (workshop_id, today.isoformat())).fetchall()
 
 
+def workshops_on_offer(conn, today):
+    """[(workshop, its public sittings)] the public pages offer.
+
+    Workshops are not a fixed catalogue — they are added in the admin, run,
+    and finish. A finished one must come off the public page rather than sit
+    there forever saying "dates to be announced", which is what happens if
+    only the SESSIONS are filtered by date and the workshop itself is not.
+
+    "Finished" and "announced but not yet dated" both look like zero upcoming
+    sessions, so they are told apart by whether any session ever existed:
+
+      upcoming > 0            -> show, with its dates
+      none upcoming, some past -> it is over, hide it
+      every date called off    -> not running, hide it
+      never had any            -> coming soon, show without dates
+
+    One rule for every page that names a workshop or its price.
+    """
+    out = []
+    for w in conn.execute(
+            "SELECT * FROM workshops WHERE active = 1 ORDER BY sort_order, title").fetchall():
+        sessions = public_sittings(conn, w["id"], today)
+        if not sessions and conn.execute(
+                "SELECT 1 FROM workshop_sessions WHERE workshop_id = ? LIMIT 1",
+                (w["id"],)).fetchone():
+            continue          # it has run and is over
+        out.append((w, sessions))
+    return out
+
+
+def offered_workshops():
+    """The workshops on offer, for a page whose stay panel prices them.
+
+    Five pages show the panel; four were never handed the workshops, so its
+    workshop card said "Per person" with no figure on the Estate, Gallery,
+    Press and Story pages. The design side noticed one of the four.
+    """
+    conn = get_db()
+    try:
+        return [w for w, _sittings in workshops_on_offer(conn, house_today())]
+    finally:
+        conn.close()
+
+
 @app.route("/workshops")
 def workshops_public():
     conn = get_db()
     today = house_today()
-    # Workshops are not a fixed catalogue — they are added in the admin, run,
-    # and finish. A finished one must come off the public page rather than sit
-    # there forever saying "dates to be announced", which is what happens if
-    # only the SESSIONS are filtered by date and the workshop itself is not.
-    #
-    # "Finished" and "announced but not yet dated" both look like zero upcoming
-    # sessions, so they are told apart by whether any session ever existed:
-    #
-    #   upcoming > 0            -> show, with its dates
-    #   none upcoming, some past -> it is over, hide it
-    #   every date called off    -> not running, hide it
-    #   never had any            -> coming soon, show without dates
-    all_active = conn.execute(
-        "SELECT * FROM workshops WHERE active = 1 ORDER BY sort_order, title").fetchall()
     workshops = []
     sessions_by_workshop = {}
-    for w in all_active:
-        sessions = public_sittings(conn, w["id"], today)
-        if not sessions:
-            ever = conn.execute(
-                "SELECT 1 FROM workshop_sessions WHERE workshop_id = ? LIMIT 1",
-                (w["id"],)).fetchone()
-            if ever:
-                continue          # it has run and is over
+    for w, sessions in workshops_on_offer(conn, today):
         workshops.append(w)
         sessions_by_workshop[w["id"]] = [
             {"session": s, "remaining": workshop_session_remaining_capacity(conn, s["id"])} for s in sessions
@@ -87328,10 +87355,11 @@ def door_access(conn, *, booking=None, stay=None, now=None):
     out["opens"], out["closes"] = door_window(conn, row["arrival_date"], row["departure_date"])
     if not door_ready(conn):
         out.update(state="not_set_up",
-                   message="The front door cannot be opened from this page yet. Please ring the house.")
+                   message="The front door cannot be opened from this page yet. If you find it locked, use the remote we gave you, or telephone us.")
     elif not door_guest_access_on(conn):
         out.update(state="off", message="Opening the door from this page is switched off at the "
-                                        "moment. Please ring the house, or use your remote.")
+                                        "moment. If you find it locked, use the remote we gave "
+                                        "you, or telephone us.")
     elif row["status"] != "confirmed":
         out.update(state="not_confirmed", message="This stay is not confirmed, so the door "
                                                   "cannot be opened from here.")
@@ -87340,7 +87368,7 @@ def door_access(conn, *, booking=None, stay=None, now=None):
                                                 "be opened from here.")
     elif row["door_access_off_at"]:
         out.update(state="stay_off", message="Opening the door from this page has been switched off "
-                                             "for this stay. Please ring the house.")
+                                             "for this stay. If you find it locked, telephone us.")
     elif not out["opens"]:
         out.update(state="undated", message="This stay has no dates, so the door cannot be opened "
                                             "from here.")
@@ -87386,7 +87414,7 @@ def open_the_door(conn, *, via, booking=None, stay=None, user=None, guest_name=N
         if recent >= DOOR_RATE_LIMIT:
             return False, (f"The door has been asked to open {recent} times in the last "
                            f"{DOOR_RATE_MINUTES} minutes from this page, so it is resting. "
-                           "Please ring the house, or use your remote.")
+                           "Use the remote we gave you, or telephone us.")
         earlier = conn.execute(
             f"SELECT COUNT(*) FROM door_openings WHERE {column} AND ok = 1", (value,)).fetchone()[0]
     else:
@@ -87409,7 +87437,7 @@ def open_the_door(conn, *, via, booking=None, stay=None, user=None, guest_name=N
         for owner_id in door_owner_ids(conn):
             send_notification(conn, owner_id, "door", f"The front door did not open for {who}",
                               body=detail, link=link)
-        return False, ("The door did not open. Please ring the house, or use your remote. "
+        return False, ("The door did not open. Use the remote we gave you, or telephone us. "
                        "We have been told.")
     if via in ("guest", "booking_com_guest") and not earlier:
         for owner_id in door_owner_ids(conn):

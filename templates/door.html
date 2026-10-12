@@ -1,6 +1,6 @@
 {% extends "public_base.html" %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
-{% block title %}{{ t('The front door') }}{% endblock %}
+{% block title %}{{ t('The Front Door') }}{% endblock %}
 {% set sticky_bar = 'none' %}
 {% block content %}
 
@@ -11,7 +11,7 @@
 
 <section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
   <p class="g-eyebrow">Château de Gudanes</p>
-  <h1 class="g-display">{{ t('The front door') }}</h1>
+  <h1 class="g-display">{{ t('The Front Door') }}</h1>
   <p class="g-p">{{ guest_name or t('Your stay') }}{% if room %} · {{ room }}{% endif %}
     {%- if arrival_date and departure_date %} · {{ date_range(arrival_date, departure_date) }}{% endif %}</p>
 
@@ -30,7 +30,7 @@
   {% endif %}
 
   <p class="g-hint" style="margin-top:var(--s6);">
-    {{ t('This link is the key to the house while you are here — please keep it to your party. If the door does not open, use the remote we gave you, or ring the house.') }}
+    {{ t('The front door is usually open. If you find it locked, this link opens it — please keep it to your party. If it still does not open, use the remote we gave you, or telephone us.') }}
   </p>
 </div></section>
 
