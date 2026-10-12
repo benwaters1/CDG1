@@ -159,6 +159,37 @@ def run():
             m.letter_label("group:workshop") == "To everyone on a session")
     s.check("one written by hand", m.letter_label(None, sent_by=1) == "Written by hand")
 
+    s.section("A letter about money answers to accounts; nothing answers to ariege@")
+    # The owner, 12 October: money to accounts, the general address
+    # reservations, as little as possible to ariege@. Asked of the code with
+    # no mailbox connected, which is how the fallbacks decide.
+    s.check("money letters reply to accounts@",
+            m.reply_to_header_for("accounts") == "accounts@chateaugudanes.com",
+            detail=str(m.reply_to_header_for("accounts")))
+    s.check("a room's letters to reservations@",
+            m.reply_to_header_for("rooms") == "reservations@chateaugudanes.com")
+    replies = {a: m.reply_to_header_for(a) for a in list(m.REPLY_TO_AREAS) + [None]}
+    s.check("and no kind of letter replies to ariege@",
+            not any("ariege@" in (v or "") for v in replies.values()), detail=str(replies))
+    with _Capture() as filed:
+        with m.app.test_request_context():
+            conn = db()
+            for key in ("room_statement", "refund_issued", "workshop_deposit_receipt"):
+                subject, body, _p = m.email_template_text(conn, key, {"guest_name": "M"})
+                m.send_email(f"{TAG.lower()}m@example.invalid", subject, body, area="rooms")
+            conn.close()
+        s.check("a statement, a refund and a deposit receipt all answer to accounts, "
+                "whatever kind of booking sent them",
+                [x.get("area") for x in filed.rows[-3:]] == ["accounts"] * 3,
+                detail=str([(x.get("template_key"), x.get("area")) for x in filed.rows[-3:]]))
+        with m.app.test_request_context():
+            conn = db()
+            subject, body, _p = m.email_template_text(conn, "room_confirmed", {"guest_name": "M"})
+            conn.close()
+            m.send_email(f"{TAG.lower()}n@example.invalid", subject, body, area="rooms")
+        s.check("and a booking confirmation still answers to the bookings inbox",
+                filed.rows[-1].get("area") == "rooms")
+
     s.section("The mail log and the held list show the names")
     conn = db()
     now = _harness.datetime_now()

@@ -1000,14 +1000,14 @@ us what we hold about you, and ask us to correct or delete it.
 12. Complaints, and the law that applies
 Please tell us at the time if something is wrong — almost everything is
 fixable while you are still here. If it is not, write to us at
-ariege@chateaugudanes.com. These terms are governed by French law, and the
+reservations@chateaugudanes.com. These terms are governed by French law, and the
 French courts have jurisdiction. Under French law you are entitled to take
 a dispute to a consumer mediator, free of charge, once you have tried to
 resolve it with us in writing.
 
 13. Contact
 Château de Gudanes SASU, 2 Route de Beille, 09310 Château-Verdun, France.
-+33 6 28 06 97 76 · ariege@chateaugudanes.com
++33 6 28 06 97 76 · reservations@chateaugudanes.com
 
 Last updated: 10 October 2026"""
 
@@ -25673,15 +25673,35 @@ REPLY_TO_AREAS = {
 }
 
 
-# The address each kind of guest is told to write to, as printed on the
-# contact page. Used only when no mailbox for that area is configured -- once
-# MS_GRAPH_MAILBOXES names one, reply_to_for wins and this is not read.
+# The address each kind of guest is told to write to. Used only when no
+# mailbox for that area is configured -- once MS_GRAPH_MAILBOXES names one,
+# reply_to_for wins and this is not read.
+#
+# The owner, 12 October 2026: money goes to accounts, the general address is
+# reservations, and as little as possible to ariege@.
+# Rooms and the restaurant used ariege@, and so did anything with no area of
+# its own -- statements included -- because this fell back to the rooms line.
 PUBLIC_CONTACT = {
-    "rooms": "ariege@chateaugudanes.com",
-    "restaurant": "ariege@chateaugudanes.com",
+    "rooms": "reservations@chateaugudanes.com",
+    "restaurant": "reservations@chateaugudanes.com",
     "workshops": "experience@chateaugudanes.com",
     "events": "experience@chateaugudanes.com",
+    "accounts": "accounts@chateaugudanes.com",
 }
+
+# THE LETTERS ABOUT MONEY, which answer to accounts whatever kind of booking
+# they are about: a receipt, a statement, a balance asked for, a share of a
+# bill, a refund, a card charge that did or did not go through. A guest who
+# replies "can you resend the invoice?" or "where is my refund?" writes to the
+# inbox that deals with money, not to the one that took the booking.
+MONEY_LETTERS = frozenset({
+    "room_payment_received", "room_statement", "room_balance_before",
+    "room_balance_after", "room_share_request", "guest_account_statement",
+    "refund_issued", "workshop_payment_received", "workshop_deposit_receipt",
+    "workshop_balance_reminder", "workshop_statement", "event_payment_received",
+    "event_balance_reminder", "pos_receipt",
+    "code:send_autocharge_taken_email", "code:send_autocharge_failed_email",
+})
 
 
 def contact_address(area):
@@ -26751,6 +26771,9 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     # wrote it in code. Asked before a test redirect rewrites the subject.
     if not template_key:
         template_key = rendered_letter_keys().get(subject) or letter_in_code_key()
+    # A letter about money answers to accounts, whoever sent it (MONEY_LETTERS).
+    if template_key in MONEY_LETTERS:
+        area = "accounts"
     if MAIL_REDIRECT_TO and to_address:
         # Named in the subject, so a test inbox with forty letters in it is
         # still readable -- "which of these was the one to the Dutch couple"
@@ -50545,7 +50568,9 @@ def email_health(conn):
                 "the mail server" if email_enabled() else None)
     replies = [(label, reply_to_header_for(area)) for label, area in (
         ("Rooms", "rooms"), ("Restaurant", "restaurant"), ("Workshops", "workshops"),
-        ("Events", "events"), ("Accounts", "accounts"), ("Anything else", None))]
+        ("Events", "events"),
+        ("Money: receipts, statements, balances, refunds", "accounts"),
+        ("Anything else", None))]
     return {
         "provider": provider,
         "sender": (RESEND_FROM if resend_enabled() else SMTP_FROM if email_enabled() else None),
