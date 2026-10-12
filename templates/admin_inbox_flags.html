@@ -12,7 +12,11 @@
 {% if not graph_enabled %}
 <div class="detail-card" style="max-width:680px; border-left:3px solid var(--gold);">
   <strong>Not connected yet.</strong>
-  <p class="upload-hint" style="margin-top:6px;">This needs a Microsoft Graph app registration (Azure AD) with read access to the mailbox — see "Microsoft Graph inbox monitoring" in DEPLOY.md for the exact steps, then set <code>MS_GRAPH_TENANT_ID</code>, <code>MS_GRAPH_CLIENT_ID</code>, <code>MS_GRAPH_CLIENT_SECRET</code>, and <code>MS_GRAPH_MAILBOXES</code> (comma-separated — any number of inboxes). Nothing here scans until those are set.</p>
+  <p class="upload-hint" style="margin-top:6px;">The house's inboxes are not linked to the app yet, so nothing is read here. Linking them is a one-off job for whoever set up the site.</p>
+  <details>
+    <summary class="small-link">For whoever set the site up</summary>
+    <p class="upload-hint">A Microsoft Graph app registration (Azure AD) with read access to the mailboxes &mdash; "Microsoft Graph inbox monitoring" in DEPLOY.md &mdash; then <code>MS_GRAPH_TENANT_ID</code>, <code>MS_GRAPH_CLIENT_ID</code>, <code>MS_GRAPH_CLIENT_SECRET</code> and <code>MS_GRAPH_MAILBOXES</code> (comma-separated, any number of inboxes).</p>
+  </details>
 </div>
 {% endif %}
 

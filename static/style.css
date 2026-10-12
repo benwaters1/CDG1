@@ -564,6 +564,10 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
 .group-mail__template{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px; margin:0 0 14px; }
 .group-mail__buttons{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 0; }
 .group-mail__sample{ margin-top:18px; }
+/* Guest email: is mail going out, line by line. */
+.mail-health{ margin:0 0 18px; }
+.mail-health__row{ display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; margin:8px 0; }
+.mail-health__setup{ margin-top:10px; }
 .group-mail__compose{ max-width:760px; }
 .group-mail__send{ margin:0; }
 .register-add, .register-edit, .register-move{ margin-top:8px; }

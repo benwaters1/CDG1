@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}A send · {{ first['template_name'] or 'Campaign' }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ first['template_name'] or 'A campaign' }}</h1>
+  <a href="{{ url_for('admin_emails') }}" class="btn-mini">Back to Guest email</a>
+</div>
+<p class="page-intro">“{{ first['subject'] }}”, sent {{ local_datetime_str(first['created_at']) }} to {{ people|length }} {{ 'address' if people|length == 1 else 'addresses' }}.</p>
+
+<div class="overview-band">
+  {% for words, n in counts %}
+  <div class="overview-cell">
+    <div class="overview-value">{{ n }}</div>
+    <div class="overview-label">{{ words }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">To</th><th scope="col">What happened</th><th scope="col">Why</th></tr></thead>
+    <tbody>
+      {% for p in people %}
+      <tr>
+        <td>{{ p.name or p.email }}{% if p.name %}<br><span class="cell-note">{{ p.email }}</span>{% endif %}</td>
+        <td><span class="mini-status status-{{ 'confirmed' if p.outcome in ('sent', 'test') else 'pending' if p.outcome == 'held' else 'overdue' }}">{{ p.words }}</span></td>
+        <td>{{ p.detail or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="upload-hint">Each letter's own line, and whether it arrived once delivery reports are connected, is in the <a href="{{ url_for('mail_log') }}">mail log</a>.</p>
+
+{% endblock %}

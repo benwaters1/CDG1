@@ -415,6 +415,24 @@ to the login page.
 
 ---
 
+## Resend delivery reports (bounces and spam complaints)
+
+Without this, "Sent" in the mail log means only that Resend accepted a letter.
+With it, each letter's line says Delivered, Bounced, Marked as spam or Delayed,
+and an address that bounces for good (or whose owner marks a letter as spam) is
+put on the stop list on Guest email, so the house stops writing to it until
+somebody chooses "Write to them again".
+
+1. In Resend: **Webhooks → Add endpoint**. URL:
+   `https://<your site>/webhooks/resend`. Events: `email.delivered`,
+   `email.bounced`, `email.complained`, `email.delivery_delayed`.
+2. Copy the endpoint's **signing secret** (it starts `whsec_`).
+3. Set it on Railway as `RESEND_WEBHOOK_SECRET`, and redeploy.
+4. Guest email → "Is mail going out?" says **Reporting**, and shows when the
+   last report arrived once a letter has gone.
+
+Calls without a valid signature, or more than five minutes old, are refused.
+
 ## Microsoft Graph inbox monitoring (Inbox Flags)
 
 Management → Inbox Flags scans one real mailbox and flags two things: emails

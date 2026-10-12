@@ -64,7 +64,9 @@ def run():
     s.check("outbox page renders", r.status_code == 200, detail=f"HTTP {r.status_code}")
     s.check("the held message is listed", MAIL in body)
     s.check("it says why nothing can be sent yet",
-            "isn't connected" in body or "no email provider" in body.lower())
+            "not connected" in body or "no email provider" in body.lower())
+    s.check("in words the owner can act on, not the server's setting names",
+            "RESEND_API_KEY" not in body and "DEPLOY.md" not in body)
 
     s.section("Retrying with no provider changes nothing")
     before = len(_held())

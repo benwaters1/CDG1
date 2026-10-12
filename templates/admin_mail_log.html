@@ -36,7 +36,7 @@
           <td>{{ r.subject or '' }}</td>
           <td>{{ r.type }}{% if r.sent_by_name %}<br><span class="cell-note">by {{ r.sent_by_name }}</span>{% endif %}</td>
           <td>{{ r.about_words }}</td>
-          <td><span class="mini-status status-{{ r.status }}">{{ r.status_words }}</span>
+          <td><span class="mini-status status-{{ r.status_class }}">{{ r.status_words }}</span>{% if r.delivery_detail %}<br><span class="cell-note">{{ r.delivery_detail }}</span>{% endif %}
               {% if r.failure %}<br><span class="cell-note">{{ r.failure }}</span>{% endif %}</td>
           <td><a href="{{ url_for('mail_log_letter', line_id=r.id) }}" class="small-link">View</a></td>
         </tr>

@@ -27,9 +27,8 @@
 {% endif %}
 {% if not can_send %}
 <div class="flash flash-error" style="margin-bottom:12px;">
-  <strong>Email isn't connected yet.</strong> Nothing here can be sent until
-  <code>RESEND_API_KEY</code> or the <code>SMTP_*</code> settings are configured &mdash;
-  see DEPLOY.md. Until then these are being kept, not dropped.
+  <strong>Mail is not connected yet,</strong> so nothing here can go out. These letters are
+  kept, not dropped, and go once it is. <a href="{{ url_for('admin_emails') }}">Is mail going out?</a>
 </div>
 {% endif %}
 {% if stale_total %}

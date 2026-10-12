@@ -320,7 +320,13 @@ def run():
                 bool(rows) and all(row["status"] == "failed" for row in rows),
                 detail=f"{[row['status'] for row in rows]}")
         said = " ".join(flashes(r)).lower()
-        s.check("and the owner is told, not shown a success", "fail" in said,
+        # A letter send_email did not deliver is kept to go later (or refused
+        # outright); either way nobody has it yet, and the page must say so
+        # in an error, not a green "sent".
+        page = r.get_data(as_text=True)
+        s.check("and the owner is told, not shown a success",
+                ("kept" in said or "did not go" in said) and "Sent to 0 of 2" in " ".join(flashes(r))
+                and '<div class="flash flash-success">' not in page,
                 detail=f"{flashes(r)[:1]} - a blast nobody received was reported as sent")
         m.send_email = capture
 

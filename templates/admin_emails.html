@@ -1,47 +1,110 @@
 {% extends "base.html" %}
-{% block title %}Emails{% endblock %}
+{% block title %}Guest email{% endblock %}
 {% block content %}
 
 <div class="page-head">
-  <h1>Emails</h1>
+  <h1>Guest email</h1>
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
     <a href="{{ url_for('admin_email_outbox') }}" class="btn-ghost">Held email{% if held %} ({{ held }}){% endif %}</a>
-    <a href="{{ url_for('admin_automation') }}" class="btn-ghost">Automation settings</a>
+    <a href="{{ url_for('mail_log') }}" class="btn-ghost">Mail log</a>
+    <a href="{{ url_for('management_email_templates') }}" class="btn-ghost">Email wording</a>
   </div>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Reusable templates for guest emails — announcements, offers, pre-arrival notes. Send to a chosen audience, or set one to go out automatically around a guest's stay.</p>
+<p class="page-intro">Whether the house's mail is going out, what it sent this week, where replies land,
+  the campaigns, and everybody it does not write to.</p>
 
-{# One box. It was two, and the second said "once email is connected"
-   whatever had held the letters -- on the live site email IS connected, and
-   what holds them is Write to guests being off. #}
-{% if not email_configured or held %}
-<div class="flash flash-error" style="margin-bottom:16px;">
-  {% if not email_configured %}
-  <strong>Email isn't connected yet.</strong> Templates can be written and previewed, but nothing can actually be sent until <code>RESEND_API_KEY</code> or the <code>SMTP_*</code> settings are configured — see DEPLOY.md.
+{#
+  IS MAIL GOING OUT? Four things decide it, and they were on four pages or on
+  none: whether a provider is connected, whether Write to guests is on, whether
+  this is a test deployment sending everything to one inbox, and whether the
+  provider reports back what happened to a letter. Said here in words; the
+  settings themselves are for whoever set the site up, folded away.
+#}
+<div class="detail-card mail-health">
+  <h2 class="section-heading">Is mail going out?</h2>
+  <div class="mail-health__row">
+    <span class="mini-status status-{{ 'confirmed' if health.provider else 'overdue' }}">{{ 'Connected' if health.provider else 'Not connected' }}</span>
+    <span>{% if health.provider %}Letters go through {{ health.provider }}{% if health.sender %}, from {{ health.sender }}{% endif %}.
+      {% else %}Nothing can go out yet. Every letter is kept in Held email and goes once mail is connected.{% endif %}</span>
+  </div>
+  <div class="mail-health__row">
+    <span class="mini-status status-{{ 'confirmed' if health.guests_on else 'pending' }}">{{ 'On' if health.guests_on else 'Off' }}</span>
+    <span>Writing to guests {{ 'is on.' if health.guests_on else 'is switched off: letters to guests are held until it is on.' }}
+      <a href="{{ url_for('admin_automation') }}">Change it</a></span>
+  </div>
+  {% if health.redirect %}
+  <div class="mail-health__row">
+    <span class="mini-status status-pending">Test</span>
+    <span>This is a test copy of the site: every letter goes to {{ health.redirect }} instead of to whoever it was for.</span>
+  </div>
   {% endif %}
-  {% if held %}
-  <strong>{{ held }} letter{{ '' if held == 1 else 's' }} waiting</strong> —
-  {% for n, why in held_by %}{{ n }} {{ why }}{{ '; ' if not loop.last else '.' }}{% endfor %}
-  Kept, not dropped. <a href="{{ url_for('admin_email_outbox') }}">See what's waiting</a>
+  <div class="mail-health__row">
+    <span class="mini-status status-{{ 'confirmed' if health.reports_on else 'pending' }}">{{ 'Reporting' if health.reports_on else 'No reports' }}</span>
+    <span>{% if health.reports_on %}The provider reports what happens to each letter: delivered, bounced or marked as spam.
+        {% if health.last_report %}The last report came {{ local_datetime_str(health.last_report) }}.{% else %}None has arrived yet.{% endif %}
+      {% else %}“Sent” means only that the provider accepted a letter, not that it arrived. Connect delivery reports to know which bounced.{% endif %}</span>
+  </div>
+  {% if health.waiting %}
+  <div class="mail-health__row">
+    <span class="mini-status status-pending">{{ health.waiting }} waiting</span>
+    <span>{% for n, why in held_by %}{{ n }} {{ why }}{{ '; ' if not loop.last else '.' }}{% endfor %}
+      <a href="{{ url_for('admin_email_outbox') }}">See what is waiting</a></span>
+  </div>
   {% endif %}
+  <details class="mail-health__setup">
+    <summary class="small-link">For whoever set the site up</summary>
+    <p class="upload-hint">Sending: <code>RESEND_API_KEY</code> and <code>RESEND_FROM</code>, or the <code>SMTP_*</code> settings.
+      Delivery reports: in Resend, add a webhook to <code>{{ health.webhook_url }}</code> for the delivered, bounced,
+      complained and delayed events, and set its signing secret as <code>RESEND_WEBHOOK_SECRET</code>.</p>
+  </details>
 </div>
-{% endif %}
 
+<h2 class="section-heading">The last seven days</h2>
 <div class="overview-band">
   <div class="overview-cell">
-    <div class="overview-value">{{ templates|length }}</div>
-    <div class="overview-label">Templates</div>
+    <div class="overview-value">{{ health.week.sent }}</div>
+    <div class="overview-label">Sent</div>
   </div>
+  {% if health.reports_on %}
   <div class="overview-cell">
-    <div class="overview-value">{{ templates|selectattr('trigger_active')|list|length }}</div>
-    <div class="overview-label">Sending automatically</div>
+    <div class="overview-value">{{ health.week.delivered }}</div>
+    <div class="overview-label">Delivered</div>
   </div>
-  <div class="overview-cell {{ 'overview-cell-alert' if optouts }}">
-    <div class="overview-value">{{ optouts }}</div>
-    <div class="overview-label">Opted out</div>
+  {% endif %}
+  <div class="overview-cell {{ 'overview-cell-alert' if health.waiting }}">
+    <div class="overview-value"><a href="{{ url_for('admin_email_outbox') }}">{{ health.waiting }}</a></div>
+    <div class="overview-label">Waiting to go</div>
+  </div>
+  <div class="overview-cell {{ 'overview-cell-alert' if health.week.failed }}">
+    <div class="overview-value"><a href="{{ url_for('mail_log', status='Did not go') }}">{{ health.week.failed }}</a></div>
+    <div class="overview-label">Did not go</div>
+  </div>
+  <div class="overview-cell {{ 'overview-cell-alert' if health.week.bounced }}">
+    <div class="overview-value">{{ health.week.bounced }}</div>
+    <div class="overview-label">Bounced</div>
+  </div>
+  <div class="overview-cell {{ 'overview-cell-alert' if health.week.complained }}">
+    <div class="overview-value">{{ health.week.complained }}</div>
+    <div class="overview-label">Marked as spam</div>
   </div>
 </div>
 
+<h2 class="section-heading">Where replies go</h2>
+<p class="upload-hint">A guest who presses Reply writes to the inbox that looks after that kind of letter.</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">A letter about</th><th scope="col">Replies reach</th></tr></thead>
+    <tbody>
+      {% for label, address in health.replies %}
+      <tr><th scope="row">{{ label }}</th><td>{{ address or '—' }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 class="section-heading">Campaigns</h2>
+<p class="upload-hint">Reusable letters for announcements, offers and pre-arrival notes: sent to a chosen audience,
+  or set to go out by themselves around a guest's stay. Each carries an unsubscribe line.</p>
 <details class="refund-box" style="margin-bottom:20px;">
   <summary>New template</summary>
   <form method="post" action="{{ url_for('new_campaign_template') }}">
@@ -105,19 +168,21 @@
 
 <h2 class="section-heading">Recent sends</h2>
 {% if not recent %}
-  <div class="empty-state">Nothing sent yet.</div>
+  <div class="empty-state">No campaign sent yet.</div>
 {% else %}
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th>When</th><th>Template</th><th>Subject</th><th class="num">Recipients</th><th class="num">Failed</th></tr></thead>
+    <thead><tr><th scope="col">When</th><th scope="col">Campaign</th><th scope="col">Subject</th>
+      <th scope="col" class="num">Sent</th><th scope="col" class="num">Waiting</th><th scope="col" class="num">Not sent</th></tr></thead>
     <tbody>
       {% for r in recent %}
       <tr>
-        <td>{{ local_datetime_str(r['at']) }}</td>
+        <td>{% if r['send_id'] %}<a href="{{ url_for('campaign_send_detail', send_id=r['send_id']) }}">{{ local_datetime_str(r['at']) }}</a>{% else %}{{ local_datetime_str(r['at']) }}{% endif %}</td>
         <td>{{ r['template_name'] or '—' }}</td>
         <td>{{ r['subject'] }}</td>
         <td class="num">{{ r['sent'] }}</td>
-        <td class="num">{% if r['failed'] %}<span class="mini-status status-pending">{{ r['failed'] }}</span>{% else %}0{% endif %}</td>
+        <td class="num">{{ r['held'] or '—' }}</td>
+        <td class="num">{% if r['failed'] or r['withheld'] %}<span class="mini-status status-pending">{{ (r['failed'] or 0) + (r['withheld'] or 0) }}</span>{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -125,17 +190,67 @@
 </div>
 {% endif %}
 
-<h2 class="section-heading">Opt-outs</h2>
-<p class="upload-hint" style="margin-top:-6px;">
-  Anyone here is excluded from every campaign and automated send. Their own booking confirmations still reach them.
-  Every campaign email carries its own unsubscribe link, so guests land here by themselves —
-  add an address by hand only when someone asks you directly.
-</p>
-<form method="post" action="{{ url_for('add_email_optout') }}" class="search-bar">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div><label class="field-label" for="admin_emails-email">Email</label><input id="admin_emails-email" type="email" name="email" required autocomplete="email"></div>
-  <div style="flex:2 1 200px;"><label class="field-label" for="admin_emails-reason">Reason (optional)</label><input id="admin_emails-reason" type="text" name="reason"></div>
-  <button type="submit" class="btn-mini">Add</button>
-</form>
+<h2 class="section-heading">Not written to</h2>
+<p class="upload-hint">Unsubscribing stops campaigns only: their own bookings still write to them.
+  A bounce or a spam complaint stops every letter, because writing on to a dead address, or to somebody
+  who complained, puts every guest's mail at risk of the spam folder. Each has its own way back.</p>
+{% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
+{% if not lv['rows'] %}
+  <div class="empty-state">{% if lv['total'] %}Nothing matches that.{% else %}Nobody: the house writes to everyone it has an address for.{% endif %}</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Address</th><th scope="col">Why</th><th scope="col">Stops</th><th scope="col">Since</th><th scope="col" aria-label="What you can do"></th></tr></thead>
+    <tbody>
+      {% for r in lv['rows'] %}
+      <tr>
+        <td>{{ r.email }}</td>
+        <td>{{ r.kind_words }}{% if r.why %}<br><span class="cell-note">{{ r.why }}</span>{% endif %}</td>
+        <td>{{ r.stops }}</td>
+        <td>{{ r.since_words }}</td>
+        <td>
+          {% if r.kind == 'optout' %}
+          <form method="post" action="{{ url_for('remove_email_optout', optout_id=r.id) }}"
+                onsubmit="return confirm('Send campaigns to this address again? Only if they asked.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">They asked to hear again</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('allow_email_again', suppression_id=r.id) }}"
+                onsubmit="return confirm('Write to this address again?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Write to them again</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% with lv = lv %}{% include "_list_pager.html" %}{% endwith %}
+{% endif %}
+
+{% if health.allowed_again %}
+<h3 class="group-mail__left">Allowed again lately</h3>
+<p class="upload-hint">Taken off the stop list by somebody choosing to: who, and when.</p>
+<ul class="group-mail__list">
+  {% for a in health.allowed_again %}
+  <li>{{ a.email }}: {{ 'bounced' if a.reason == 'bounced' else 'marked a letter as spam' }}, allowed again
+    {{ a.cleared_at|house_when }}{% if a.cleared_by %} by {{ a.cleared_by }}{% endif %}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<details class="refund-box">
+  <summary>Unsubscribe somebody who asked you directly</summary>
+  <p class="upload-hint">Every campaign carries its own unsubscribe link, so guests land on this list by themselves.</p>
+  <form method="post" action="{{ url_for('add_email_optout') }}" class="search-bar">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div><label class="field-label" for="admin_emails-email">Email</label><input id="admin_emails-email" type="email" name="email" required autocomplete="email"></div>
+    <div style="flex:2 1 200px;"><label class="field-label" for="admin_emails-reason">Reason (optional)</label><input id="admin_emails-reason" type="text" name="reason"></div>
+    <button type="submit" class="btn-mini">Unsubscribe them</button>
+  </form>
+</details>
 
 {% endblock %}

@@ -16,7 +16,8 @@
       {% if line.about_words %}<tr><th scope="row">About</th><td>{{ line.about_words }}</td></tr>{% endif %}
       {% if line.area %}<tr><th scope="row">From the inbox for</th><td>{{ line.area }}</td></tr>{% endif %}
       <tr><th scope="row">Status</th><td>{{ line.status_words }}{% if line.delivered_at %}, {{ local_datetime_str(line.delivered_at) }}{% endif %}
-          {% if line.failure %}<br><span class="cell-note">{{ line.failure }}</span>{% endif %}</td></tr>
+          {% if line.failure %}<br><span class="cell-note">{{ line.failure }}</span>{% endif %}
+          {% if line.delivery_at %}<br><span class="cell-note">Reported {{ local_datetime_str(line.delivery_at) }}{% if line.delivery_detail %}: {{ line.delivery_detail }}{% endif %}</span>{% endif %}</td></tr>
     </tbody>
   </table>
 </div>

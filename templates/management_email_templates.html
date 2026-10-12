@@ -3,7 +3,7 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>Email templates</h1>
+  <h1>Email wording</h1>
   <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
@@ -64,6 +64,12 @@
     <p class="tpl-when"><span class="tpl-when__k">Goes</span> {{ info[key][0] }}
       <span class="tpl-when__k">To</span> {{ info[key][1] }}</p>
     {% endif %}
+    {# Whether it is actually going out, from the mail log. #}
+    {% set u = usage.get(key) %}
+    <p class="tpl-when"><span class="tpl-when__k">Lately</span>
+      {% if u and (u.sent or u.held or u.failed) %}sent {{ u.sent }} in the last {{ windows.email_usage_days }} days{% if u.held %}, {{ u.held }} waiting{% endif %}{% if u.failed %}, {{ u.failed }} did not go{% endif %}{% if u.last %} · last went {{ u.last|house_when }}{% endif %}
+        · <a href="{{ url_for('mail_log', type=letter_labels[key]) }}">see them</a>
+      {% else %}not sent in the last {{ windows.email_usage_days }} days{% endif %}</p>
 
     {# What the guest actually sees, without opening the editor. #}
     <p class="tpl-subject">{{ t['subject'] }}</p>

@@ -136,6 +136,7 @@ import smtplib
 import ssl
 import base64
 import binascii
+import sys
 import threading
 import time
 import shutil        # which(): whether ffmpeg is on this box
@@ -1022,6 +1023,10 @@ RESEND_FROM = os.environ.get("RESEND_FROM")
 # RESEND_FROM is a send-only subdomain and receives nothing, so without
 # this a reply goes nowhere rather than to the wrong inbox.
 RESEND_REPLY_TO = os.environ.get("RESEND_REPLY_TO", "reservations@chateaugudanes.com")
+# Resend's signing secret for delivery reports (it starts whsec_). Without it
+# the webhook refuses every call, and "Sent" in the mail log means only that
+# Resend accepted the letter -- not that it arrived, bounced or went to spam.
+RESEND_WEBHOOK_SECRET = (os.environ.get("RESEND_WEBHOOK_SECRET") or "").strip()
 # Cloudflare refuses urllib's default agent in front of Resend (error 1010).
 RESEND_USER_AGENT = os.environ.get("RESEND_USER_AGENT", "ChateauDeGudanes/1.0")
 SMTP_HOST = os.environ.get("SMTP_HOST")
@@ -2276,6 +2281,8 @@ for _key, _label, _subject, _body in DEFAULT_EMAIL_TEMPLATES:
     _fixed.append((_key, _label, _ns, _nb))
 DEFAULT_EMAIL_TEMPLATES = _fixed
 del _fixed
+# What each template is called, for anything that names a letter.
+EMAIL_TEMPLATE_LABELS = {k: label for k, label, _s, _b in DEFAULT_EMAIL_TEMPLATES}
 
 
 def init_db():
@@ -6641,6 +6648,33 @@ def init_db():
         ("ota_reservations_door_token_once",
          "CREATE UNIQUE INDEX IF NOT EXISTS ota_reservations_door_token_once "
          "ON ota_reservations(door_token) WHERE door_token IS NOT NULL"),
+        # What happened to a letter after the provider took it: Resend's own
+        # id for it, so a delivery report can find its line, and the report.
+        ("mail_log_provider_id", "ALTER TABLE mail_log ADD COLUMN provider_id TEXT"),
+        ("mail_log_delivery", "ALTER TABLE mail_log ADD COLUMN delivery TEXT"),
+        ("mail_log_delivery_at", "ALTER TABLE mail_log ADD COLUMN delivery_at TEXT"),
+        ("mail_log_delivery_detail", "ALTER TABLE mail_log ADD COLUMN delivery_detail TEXT"),
+        ("mail_log_provider_index",
+         "CREATE INDEX IF NOT EXISTS mail_log_provider ON mail_log(provider_id)"),
+        # Addresses the house has stopped writing to because writing to them
+        # does harm: a mailbox that does not exist, or somebody who marked a
+        # letter as spam. Kept, not deleted, when allowed again -- who allowed
+        # it and when is the answer to "why did they get that?".
+        ("email_suppressions_table",
+         """CREATE TABLE IF NOT EXISTS email_suppressions (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              email TEXT NOT NULL UNIQUE,
+              reason TEXT NOT NULL CHECK(reason IN ('bounced', 'complained')),
+              detail TEXT,
+              mail_log_id INTEGER,
+              created_at TEXT NOT NULL,
+              cleared_at TEXT,
+              cleared_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+            )"""),
+        # What became of each letter in a campaign -- held is not failed -- and
+        # which send it belonged to, so one send is one line on the page.
+        ("campaign_sends_outcome", "ALTER TABLE campaign_sends ADD COLUMN outcome TEXT"),
+        ("campaign_sends_send_id", "ALTER TABLE campaign_sends ADD COLUMN send_id TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -8053,6 +8087,7 @@ NAV_AREAS = {
     "comms": [
         "website_analytics",
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
+        "campaign_send_detail", "allow_email_again", "remove_email_optout",
         "admin_images", "admin_image_upload",
         "admin_inbox_flags_status", "announcements", "delete_announcement",
         "delete_campaign_template", "discard_email_outbox", "held_email_ticked",
@@ -24406,20 +24441,15 @@ CAMPAIGN_SEGMENTS = {
 @app.route("/admin/emails")
 @owner_required
 def admin_emails():
-    """Campaigns and templates for writing to guests in numbers."""
+    """The house's email in one place: whether it is going out, what the week
+    has sent, where replies go, the campaigns and their sends, and everybody
+    the house has stopped writing to."""
     conn = get_db()
     templates = conn.execute(
         "SELECT * FROM campaign_templates ORDER BY area, name").fetchall()
-    recent = conn.execute(
-        """SELECT template_name, subject, COUNT(*) AS recipients,
-                  SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) AS sent,
-                  SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
-                  MAX(created_at) AS at
-           FROM campaign_sends WHERE status != 'test'
-           GROUP BY template_name, subject, substr(created_at, 1, 16)
-           ORDER BY at DESC LIMIT 25"""
-    ).fetchall()
-    optouts = conn.execute("SELECT COUNT(*) AS c FROM email_optouts").fetchone()["c"]
+    recent = campaign_sends_summary(conn)
+    health = email_health(conn)
+    stop_list = list_page(not_written_to_view(conn, request.args), request.args)
     waiting = [held_reason_words(r["reason"]) for r in conn.execute(
         "SELECT reason FROM email_outbox WHERE sent_at IS NULL").fetchall()]
     held = len(waiting)
@@ -24429,8 +24459,8 @@ def admin_emails():
                if words in waiting]
     conn.close()
     return render_template("admin_emails.html", templates=templates, recent=recent,
-                           areas=CAMPAIGN_AREAS, optouts=optouts, held=held, held_by=held_by,
-                           email_configured=bool(RESEND_API_KEY or SMTP_HOST))
+                           health=health, lv=stop_list,
+                           areas=CAMPAIGN_AREAS, held=held, held_by=held_by)
 
 
 @app.route("/admin/emails/new", methods=["POST"])
@@ -24592,15 +24622,13 @@ def send_campaign_template(template_id):
         return redirect(url_for("edit_campaign_template", template_id=template_id))
 
     result = send_campaign(conn, template, audience, user["id"])
-    held = campaign_held_back_note(result["withheld"])
-    log_audit(conn, "campaign_sent", target=template["name"],
-              details=f"{result['sent']} sent, {result['failed']} failed{held}")
+    message, category = campaign_result_message(result)
+    log_audit(conn, "campaign_sent", target=template["name"], details=message)
     conn.commit()
     conn.close()
-    flash(f"Sent to {result['sent']} recipient(s)"
-          + (f", {result['failed']} failed" if result["failed"] else "") + held + ".",
-          "success" if not result["failed"] else "error")
-    return redirect(url_for("edit_campaign_template", template_id=template_id))
+    flash(message, category)
+    # To the send itself: who it reached, who it is waiting for, who not and why.
+    return redirect(url_for("campaign_send_detail", send_id=result["send_id"]))
 
 
 @app.route("/unsubscribe/<token>", methods=["GET", "POST"])
@@ -25070,15 +25098,13 @@ def held_mail_list_view(conn, args):
                      WHERE outbox_id IN ({','.join('?' * len(chunk))})
                      ORDER BY id""", chunk).fetchall():
             logged.setdefault(line["outbox_id"], line)
-    labels = {key: label for key, label, _s, _b in DEFAULT_EMAIL_TEMPLATES}
     audience = mail_audience_reader(conn)
     week_ago = 7
     for r in rows:
         line = logged.get(r["id"])
         r["audience"] = audience(r["to_address"], line["kept"] if line else None,
                                  line["about_category"] if line else None)
-        r["letter"] = (labels.get(line["template_key"]) if line and line["template_key"]
-                       else "A letter of the house's own" if line
+        r["letter"] = (letter_label(line["template_key"]) if line
                        else "From before the mail log")
         r["why"] = held_reason_words(r["reason"])
         r["age"] = held_mail_age_days(r)
@@ -25169,8 +25195,9 @@ def send_held_letter(conn, row):
                 WHERE outbox_id = ?""", (now, row["id"]))
         # And its line in the mail log: held that morning, sent now.
         conn.execute(
-            """UPDATE mail_log SET status = 'sent', delivered_at = ?, failure = NULL
-                WHERE outbox_id = ?""", (now, row["id"]))
+            """UPDATE mail_log SET status = 'sent', delivered_at = ?, failure = NULL,
+                      provider_id = COALESCE(?, provider_id)
+                WHERE outbox_id = ?""", (now, why.get("provider_id"), row["id"]))
     else:
         # WHY, not "retry failed": that overwrote the reason the provider
         # gave with a phrase that says only that it happened again.
@@ -25998,6 +26025,12 @@ def resend_refusal(exc):
     return "Could not reach Resend: %s" % (exc,)
 
 
+# Resend's id for the letter just sent, left with the thread for send_email to
+# file. Not a return value: twelve test stand-ins and every caller read this
+# function's two-item answer, and a third item would break every one of them.
+_RESEND_RECEIPT = threading.local()
+
+
 def send_email_via_resend(to_address, subject, body, ics_content=None,
                           ics_filename=None, html=None, reply_to=None):
     """Resend's HTTP API — plain urllib, no extra dependency (matches how
@@ -26027,7 +26060,12 @@ def send_email_via_resend(to_address, subject, body, ics_content=None,
             method="POST",
         )
         with urlopen(req, timeout=10) as resp:
-            resp.read()
+            answer = resp.read()
+        # Resend's id for the letter, kept so its delivery report can find it.
+        try:
+            _RESEND_RECEIPT.id = (json.loads(answer or b"{}") or {}).get("id")
+        except (ValueError, AttributeError):
+            _RESEND_RECEIPT.id = None
         return True, None
     except Exception as e:
         why = resend_refusal(e)
@@ -26044,6 +26082,149 @@ def send_email_via_resend(to_address, subject, body, ics_content=None,
 # waitlist notice spells out: a stale one is worse than none. Those messages
 # are never kept at all. These are kept, and until now nothing looked at how
 # old they had got.
+# ---------------------------------------------------------------------------
+# DELIVERY REPORTS
+#
+# "Sent" in the mail log meant Resend had accepted the letter, and nothing ever
+# came back: a confirmation to a mistyped address looked exactly like one the
+# guest read. Resend reports what happens next -- delivered, bounced, marked as
+# spam, delayed -- to /webhooks/resend, signed with RESEND_WEBHOOK_SECRET in
+# Svix's scheme. Each report lands on the letter's own line in the mail log, by
+# the id Resend gave it when it was sent. A bounce that will not recover, and
+# every spam complaint, put the address on the stop list, which send_email
+# refuses at the one door until somebody allows it again.
+# ---------------------------------------------------------------------------
+
+RESEND_EVENT_DELIVERY = {"email.delivered": "delivered", "email.bounced": "bounced",
+                         "email.complained": "complained",
+                         "email.delivery_delayed": "delayed"}
+DELIVERY_WORDS = {"delivered": "Delivered", "bounced": "Bounced",
+                  "complained": "Marked as spam", "delayed": "Delayed"}
+SUPPRESSION_WORDS = {"bounced": "this address bounced",
+                     "complained": "they marked a letter from the house as spam"}
+# How old a signed report may be before it is refused as a replay.
+RESEND_SIGNATURE_TOLERANCE_SECONDS = 300
+
+
+def verify_resend_signature(secret, headers, body, now=None):
+    """Whether a webhook call is really Resend's, in Svix's scheme.
+
+    The signature is base64(HMAC-SHA256(key, "<id>.<timestamp>.<body>")), the
+    key being the secret's base64 after "whsec_"; the header may carry several,
+    space-separated as "v1,<sig>". Refused when the timestamp is more than five
+    minutes out, so a captured call cannot be played again later.
+    """
+    msg_id = headers.get("svix-id") or headers.get("webhook-id") or ""
+    stamp = headers.get("svix-timestamp") or headers.get("webhook-timestamp") or ""
+    sigs = headers.get("svix-signature") or headers.get("webhook-signature") or ""
+    if not (secret and msg_id and stamp and sigs):
+        return False
+    try:
+        if abs((now or time.time()) - int(stamp)) > RESEND_SIGNATURE_TOLERANCE_SECONDS:
+            return False
+        key = base64.b64decode(secret.split("_", 1)[1] if secret.startswith("whsec_") else secret)
+    except (ValueError, binascii.Error):
+        return False
+    signed = f"{msg_id}.{stamp}.".encode("utf-8") + (body or b"")
+    expected = base64.b64encode(hmac.new(key, signed, hashlib.sha256).digest()).decode("ascii")
+    for part in sigs.split():
+        version, _, sig = part.partition(",")
+        if version == "v1" and hmac.compare_digest(sig, expected):
+            return True
+    return False
+
+
+def record_delivery_report(conn, event):
+    """Put one delivery report on its letter's line, and stop writing to an
+    address that will never take a letter. Returns what was recorded, or None.
+
+    A late "delayed" never overwrites a report that settles the matter -- the
+    providers do send them out of order.
+    """
+    kind = RESEND_EVENT_DELIVERY.get((event or {}).get("type"))
+    data = (event or {}).get("data") or {}
+    provider_id = data.get("email_id")
+    if not kind or not provider_id:
+        return None
+    now = datetime.now(timezone.utc).isoformat()
+    detail, stop = None, kind == "complained"
+    if kind == "bounced":
+        bounce = data.get("bounce") or {}
+        detail = (bounce.get("message") or bounce.get("subType") or "").strip() or None
+        if (bounce.get("type") or "Permanent").lower() == "transient":
+            # A full mailbox or a server that is down: it may yet arrive.
+            kind = "delayed"
+            detail = "a temporary bounce" + (f": {detail}" if detail else "")
+        else:
+            stop = True
+    line = conn.execute("SELECT * FROM mail_log WHERE provider_id = ? ORDER BY id DESC LIMIT 1",
+                        (provider_id,)).fetchone()
+    if line and not (kind == "delayed" and line["delivery"] in ("delivered", "bounced",
+                                                                "complained")):
+        conn.execute("UPDATE mail_log SET delivery = ?, delivery_at = ?, delivery_detail = ? "
+                     "WHERE id = ?", (kind, now, detail, line["id"]))
+    address = ((line["to_address"] if line else None)
+               or next(iter(data.get("to") or []), "") or "").strip().lower()
+    if stop and address:
+        held = conn.execute("SELECT id, cleared_at FROM email_suppressions WHERE email = ?",
+                            (address,)).fetchone()
+        if not held:
+            conn.execute(
+                """INSERT INTO email_suppressions (email, reason, detail, mail_log_id, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (address, kind, detail, line["id"] if line else None, now))
+        elif held["cleared_at"]:
+            # Allowed again, and it has done it again.
+            conn.execute(
+                """UPDATE email_suppressions SET reason = ?, detail = ?, mail_log_id = ?,
+                          created_at = ?, cleared_at = NULL, cleared_by_user_id = NULL
+                    WHERE id = ?""", (kind, detail, line["id"] if line else None, now, held["id"]))
+    return kind
+
+
+def address_suppressed(address):
+    """Why the house no longer writes to this address, in words, or None."""
+    address = (address or "").strip().lower()
+    if not address:
+        return None
+    try:
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT reason, created_at FROM email_suppressions "
+                "WHERE email = ? AND cleared_at IS NULL", (address,)).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+    if not row:
+        return None
+    return (f"{SUPPRESSION_WORDS.get(row['reason'], 'it is on the stop list')} "
+            f"on {format_date_short(house_date_iso(row['created_at']))}")
+
+
+@app.route("/webhooks/resend", methods=["POST"])
+@csrf.exempt
+def resend_webhook():
+    """Resend's reports of what happened to a letter after it took it."""
+    if not RESEND_WEBHOOK_SECRET:
+        abort(404)
+    body = request.get_data()
+    if not verify_resend_signature(RESEND_WEBHOOK_SECRET, request.headers, body):
+        abort(400)
+    try:
+        event = json.loads(body or b"{}")
+    except ValueError:
+        abort(400)
+    conn = get_db()
+    try:
+        record_delivery_report(conn, event)
+        conn.commit()
+    finally:
+        conn.close()
+    return ("", 204)
+
+
 EMAIL_OUTBOX_STALE_DAYS = 14
 
 
@@ -26315,6 +26496,8 @@ MAIL_KEPT_WORDS = {
 }
 MAIL_STATUS_WORDS = {"sent": "Sent", "held": "Held", "failed": "Did not go",
                      "discarded": "Thrown away"}
+MAIL_STATUS_CLASS = {"sent": "confirmed", "held": "pending", "failed": "overdue",
+                     "discarded": "inactive"}
 
 
 def is_colleague(conn, address):
@@ -26335,13 +26518,14 @@ def mail_log_line(conn, row, about, kept, guest_message_id=None):
     conn.execute(
         """INSERT INTO mail_log (to_address, subject, status, failure, template_key,
                about_category, about_id, area, sent_by_user_id, body, kept,
-               guest_message_id, outbox_id, created_at, delivered_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               guest_message_id, outbox_id, created_at, delivered_at, provider_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (row["to_address"], without_private_links(row.get("subject")), status,
          None if delivered else row.get("failure"), row.get("template_key"),
          about[0], about[1], row.get("area"), row.get("sent_by"),
          without_private_links(row.get("body") or "") if kept == "here" else None,
-         kept, guest_message_id, row.get("outbox_id"), now, now if delivered else None))
+         kept, guest_message_id, row.get("outbox_id"), now, now if delivered else None,
+         row.get("provider_id")))
 
 
 def write_guest_messages(rows):
@@ -26450,6 +26634,87 @@ def keep_guest_message(to_address, subject, body, channel="email", delivered=Fal
     write_guest_messages([row])
 
 
+# THE LETTERS THE OWNER CANNOT EDIT, named. They are written in code -- the
+# house's own notices, the staff's, a credential -- and the mail log and the
+# held list called every one of them "a letter of the house's own": 58 of 87
+# held letters and two thirds of the log, with nothing to tell a booking that
+# came in from a password reset. Keyed by the function that writes it, which
+# send_email finds up the stack, so no call site has to pass anything.
+# test_letters_named holds this against the functions that actually write one.
+LETTERS_IN_CODE = {
+    "create_booking": "To the house: a stay booked, or waiting on you",
+    "create_booking_from_stripe_session": "To the house: a paid stay that clashes",
+    "create_restaurant_booking_from_stripe_session": "To the house: a paid dinner over capacity",
+    "manage_booking": "To the house: a guest changed their stay",
+    "restaurant_manage": "To the house: a guest changed their dinner",
+    "workshop_manage": "To the house: a guest changed their atelier place",
+    "event_manage": "To the house: an event enquiry changed",
+    "event_quote": "To the house: a quote accepted",
+    "submit_event_inquiry": "To the house: an event enquiry",
+    "lapse_event_holds": "To the house: held dates back on sale",
+    "join_waitlist": "To the house: a room waitlist request",
+    "join_restaurant_waitlist": "To the house: a dinner waitlist request",
+    "join_workshop_waitlist": "To the house: an atelier waitlist request",
+    "guest_account_message": "To the house: a guest wrote in",
+    "tell_the_house_about_a_review": "To the house: a review came in",
+    "contact_page": "To the house: an enquiry from the contact page",
+    "run_morning_digest_job": "To the house: the morning summary",
+    "run_daily_digest_job": "To the house: the daily summary",
+    "api_owner_digest": "To the house: the daily summary",
+    "pass_message": "Kitchen: a call from the pass",
+    "send_autocharge_taken_email": "Workshop: a balance taken from the card",
+    "send_autocharge_failed_email": "Workshop: a balance the card refused",
+    "apply_expense_decision": "Staff: an expense decided",
+    "decide_shift_swap": "Staff: a shift swap decided",
+    "apply_leave_decision": "Staff: time off decided",
+    "bulk_approve_queue": "Staff: time off decided",
+    "forgot_password": "Account: a password reset code",
+    "change_email": "Account: the sign-in address changed",
+    "guest_account_request": "Guests: a link to their bookings",
+    "reply_to_feedback": "Guests: a reply to their feedback",
+    "reply_booking_com_message": "Guests: a reply to a Booking.com message",
+    "test_email_provider": "A test that mail goes out",
+    "test_email_template": "A test of a letter's wording",
+}
+
+# Letters to everybody on one session, party or night, by kind.
+GROUP_LETTER_LABELS = {"workshop": "To everyone on a session",
+                       "room": "To everyone in a party",
+                       "restaurant": "To everyone dining one night"}
+
+
+def letter_in_code_key():
+    """'code:<function>' for the nearest caller that writes a letter in code."""
+    frame = sys._getframe(2)
+    while frame is not None:
+        if frame.f_code.co_name in LETTERS_IN_CODE:
+            return "code:" + frame.f_code.co_name
+        frame = frame.f_back
+    return None
+
+
+def letter_label(template_key, sent_by=None):
+    """What a letter was, in words, from the key it was filed under.
+
+    The one answer for the mail log, the held list and anything else that
+    names a letter, so two pages cannot call one letter two things.
+    """
+    key = template_key or ""
+    if key.startswith("code:"):
+        label = LETTERS_IN_CODE.get(key[5:])
+        if label:
+            return label
+    elif key.startswith("campaign:"):
+        return "Campaign: " + (key[9:] or "untitled")
+    elif key.startswith("group:"):
+        return GROUP_LETTER_LABELS.get(key[6:], "To everyone in a group")
+    elif key:
+        label = EMAIL_TEMPLATE_LABELS.get(key)
+        if label:
+            return label
+    return "Written by hand" if sent_by else "A letter of the house's own"
+
+
 def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
                keep=True, html=None, report=None, area=None, about=None,
                template_key=None, sent_by=None, log=True, despite_switch=None):
@@ -26482,6 +26747,10 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     a rule applied in one of them is a rule that does not apply when the other
     is configured. This is the one door every letter goes through.
     """
+    # Which letter this is: the template that made it, else the function that
+    # wrote it in code. Asked before a test redirect rewrites the subject.
+    if not template_key:
+        template_key = rendered_letter_keys().get(subject) or letter_in_code_key()
     if MAIL_REDIRECT_TO and to_address:
         # Named in the subject, so a test inbox with forty letters in it is
         # still readable -- "which of these was the one to the Dutch couple"
@@ -26503,11 +26772,23 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
         despite_switch = despite_switch or "a test deployment sends it to the test inbox"
     if not to_address:
         return False
-    # Which letter this is, when a template made it: render_email_template
-    # leaves the key by the subject, so nothing that sends has to pass it.
-    if not template_key and has_request_context():
-        template_key = (g.get("_rendered_keys") or {}).get(subject)
     filed = {"about": about, "template_key": template_key, "sent_by": sent_by, "area": area}
+    # NOT TO AN ADDRESS THAT BOUNCED, or to somebody who marked a letter as
+    # spam. Writing again to a mailbox that does not exist teaches the
+    # providers that this house sends to dead addresses, and every guest's
+    # confirmation pays for it in the spam folder. Not queued: it will not go
+    # later either. Allowed again from Guest Email, by somebody choosing to.
+    # A test deployment sends everything to its own inbox, which is not this.
+    stopped = None if MAIL_REDIRECT_TO else address_suppressed(to_address)
+    if stopped:
+        print(f"[email not sent — {stopped}] To: {to_address} | Subject: {subject}")
+        if report is not None:
+            report["why"] = f"Not sent: {stopped}."
+            report["stopped"] = True
+        if log:
+            keep_guest_message(to_address, subject, None, not_kept=True,
+                               failure=f"not sent: {stopped}", **filed)
+        return False
     # Filed whether it goes or not, and marked with which. "We wrote to them
     # and it bounced" is a different fact from "we never wrote", and the whole
     # point of keeping this is being able to tell somebody which happened.
@@ -26546,10 +26827,15 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
     if resend_enabled():
         # UNPACKED, never truth-tested: a bare `if` on a 2-tuple is true even
         # when the first item is False, so every refusal would report success.
+        _RESEND_RECEIPT.id = None
         went, why = send_email_via_resend(to_address, subject, body, ics_content,
                                           ics_filename, html=html,
                                           reply_to=reply_to_header_for(area))
         if went:
+            provider_id = getattr(_RESEND_RECEIPT, "id", None)
+            filed["provider_id"] = provider_id
+            if report is not None:
+                report["provider_id"] = provider_id
             if keep:
                 keep_guest_message(to_address, subject, body, delivered=True, **filed)
             elif log:
@@ -28524,6 +28810,7 @@ def house_windows():
         "workshop_balance_days": WORKSHOP_BALANCE_DAYS,
         "workshop_deposit_percent": WORKSHOP_DEPOSIT_PERCENT,
         "refunds_recent_days": REFUNDS_RECENT_DAYS,
+        "email_usage_days": EMAIL_USAGE_DAYS,
     }
 
 
@@ -49885,6 +50172,29 @@ def preview_email_template(template_key, subject_src, body_src):
     }
 
 
+# Which template made a letter, left by its subject for send_email to find.
+# In a request it lives in g, which the request throws away; outside one -- the
+# automation thread sending balance reminders, review invitations, feedback
+# requests -- it lives with the thread. It used to live only in g, so every
+# letter a job sent reached the mail log as "a letter of the house's own".
+_LETTER_KEYS = threading.local()
+
+
+def rendered_letter_keys():
+    """{subject: template_key} for the letters made on this request or thread."""
+    if has_request_context():
+        keys = g.get("_rendered_keys")
+        if keys is None:
+            keys = g._rendered_keys = {}
+        return keys
+    keys = getattr(_LETTER_KEYS, "keys", None)
+    if keys is None or len(keys) > 500:
+        # A thread runs for weeks; what it remembers is only ever needed for
+        # the letter it is about to send.
+        keys = _LETTER_KEYS.keys = {}
+    return keys
+
+
 def render_email_template(conn, template_key, context):
     """Merge-tag substitution against an admin-editable template. Falls back
     to the raw template text (tags left unreplaced) if the context is
@@ -49903,14 +50213,6 @@ def render_email_template(conn, template_key, context):
         # row did not skip the letter the way every caller expects -- it raised
         # at the unpacking, in the middle of whatever was sending it.
         return None, None, None
-    # Which letter, left where send_email can find it by the subject -- so the
-    # record of every letter says which template it was without two hundred
-    # call sites having to pass the key along.
-    if has_request_context():
-        keys = g.get("_rendered_keys")
-        if keys is None:
-            keys = g._rendered_keys = {}
-        keys[subject] = template_key
     return subject, body, letter_html(subject, body)
 
 
@@ -49924,8 +50226,14 @@ def email_template_text(conn, template_key, context):
     subject_src, body_src, problems = email_template_source(conn, template_key)
     if subject_src is None:
         return None, None, problems
-    return (merge_email_text(subject_src, context).strip(),
-            merge_email_text(body_src, context), problems)
+    subject = merge_email_text(subject_src, context).strip()
+    # Which letter, left where send_email can find it by the subject -- so the
+    # record of every letter says which template it was without two hundred
+    # call sites having to pass the key along. Here rather than only in
+    # render_email_template: the booking confirmation is made here, and was
+    # the commonest letter the log could not name.
+    rendered_letter_keys()[subject] = template_key
+    return subject, merge_email_text(body_src, context), problems
 
 
 def email_template_source(conn, template_key):
@@ -50102,13 +50410,24 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None,
     """
     area = area or campaign_reply_area(template)
     now_iso = datetime.now(timezone.utc).isoformat()
-    sent = failed = skipped = withheld = 0
+    sent = failed = skipped = withheld = held = 0
+    # One send, one id: the page lists a send as a line, and grouping by the
+    # minute it happened split any send that ran past the top of a minute.
+    send_id = secrets.token_hex(6)
     # Not to anybody who asked us to stop using their details. Here, where every
     # campaign goes, so no audience anybody builds can send round it.
     held_back = restricted_addresses(conn)
     for email, name in recipients.items():
         if not as_test and (email or "").strip().lower() in held_back:
             withheld += 1
+            # Recorded, so the send's own page can say who was left out.
+            conn.execute(
+                """INSERT INTO campaign_sends (template_id, template_name, recipient_email,
+                   recipient_name, subject, status, detail, sent_by_user_id, created_at,
+                   outcome, send_id) VALUES (?, ?, ?, ?, ?, 'skipped', ?, ?, ?, 'withheld', ?)""",
+                (template["id"], template["name"], email, name, template["subject"],
+                 "asked us to stop using their details", user_id, now_iso, send_id))
+            conn.commit()
             continue
         key = f"{dedupe_key}:{email}" if dedupe_key else None
         if key and conn.execute(
@@ -50126,19 +50445,26 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None,
         # quick off the mark.
         unsub_token = secrets.token_urlsafe(24)
         body = body + campaign_unsubscribe_footer(conn, unsub_token)
+        report = {}
         try:
-            ok = send_email(email, subject, body, area=area)
+            ok = send_email(email, subject, body, area=area, report=report,
+                            template_key="campaign:" + (template["name"] or ""))
             status = ("test" if as_test else "sent") if ok is not False else "failed"
-            detail = None if status != "failed" else "send_email reported a failure"
+            # NOT SENT IS NOT FAILED. With no provider, or Write to guests off,
+            # the letter is kept and goes when it can -- and the page said
+            # "3 failed" about three letters waiting perfectly safely.
+            outcome = (status if ok is not False
+                       else "stopped" if report.get("stopped") else "held")
+            detail = None if ok is not False else (report.get("why") or "kept, and goes when mail can")
         except Exception as e:
-            status, detail = "failed", str(e)[:200]
+            status, outcome, detail = "failed", "failed", str(e)[:200]
         conn.execute(
             """INSERT INTO campaign_sends (template_id, template_name, recipient_email,
                recipient_name, subject, status, detail, dedupe_key, sent_by_user_id,
-               created_at, unsubscribe_token)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               created_at, unsubscribe_token, outcome, send_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (template["id"], template["name"], email, name, subject, status, detail,
-             key, user_id, now_iso, unsub_token),
+             key, user_id, now_iso, unsub_token, outcome, send_id),
         )
         # Committed per recipient, not after the loop. Held open, this row's
         # INSERT blocks the NEXT recipient's send from queueing its undelivered
@@ -50150,10 +50476,216 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None,
         conn.commit()
         if status in ("sent", "test"):
             sent += 1
-        elif status == "failed":
+        elif outcome == "held":
+            held += 1
+        else:
             failed += 1
     return {"sent": sent, "failed": failed, "skipped": skipped, "withheld": withheld,
-            "total": len(recipients)}
+            "held": held, "total": len(recipients), "send_id": send_id}
+
+
+# What became of one letter in a campaign, in words. Rows from before outcomes
+# were kept say only sent or failed, and "failed" then also meant "waiting".
+CAMPAIGN_OUTCOME_WORDS = {
+    "sent": "Sent", "test": "A test", "held": "Kept, goes when mail can",
+    "failed": "Did not go", "withheld": "Held back: asked us to stop using their details",
+    "stopped": "Not sent: on the stop list", "skipped": "Already sent before",
+}
+
+
+def campaign_sends_summary(conn, limit=25):
+    """The latest sends, one line each, with what became of their letters."""
+    rows = conn.execute(
+        f"""SELECT COALESCE(send_id, '') AS send_id, template_name, subject,
+                  MAX(created_at) AS at, COUNT(*) AS total,
+                  SUM(CASE WHEN COALESCE(outcome, status) = 'sent' THEN 1 ELSE 0 END) AS sent,
+                  SUM(CASE WHEN outcome = 'held' THEN 1 ELSE 0 END) AS held,
+                  SUM(CASE WHEN COALESCE(outcome, status) IN ('failed', 'stopped')
+                           AND COALESCE(outcome, '') != 'held' THEN 1 ELSE 0 END) AS failed,
+                  SUM(CASE WHEN outcome = 'withheld' THEN 1 ELSE 0 END) AS withheld
+             FROM campaign_sends WHERE status != 'test'
+            GROUP BY COALESCE(send_id, template_name || '|' || subject || '|' ||
+                              substr(created_at, 1, 16))
+            ORDER BY at DESC LIMIT {int(limit)}""").fetchall()
+    return [dict(r) for r in rows]
+
+
+def email_health(conn):
+    """Whether the house's mail is going out, and everything that decides it.
+
+    The answers that were scattered: a red box on two pages naming server
+    settings, Write to guests on another page, a test redirect nowhere at all,
+    and nothing anywhere about where a guest's reply lands.
+    """
+    today = house_today()
+    week_from = (today - timedelta(days=6)).isoformat()
+    lines = [dict(r) for r in conn.execute(
+        "SELECT status, delivery, created_at FROM mail_log WHERE created_at >= ?",
+        ((today - timedelta(days=8)).isoformat(),)).fetchall()]
+    week = [r for r in lines if (house_date_iso(r["created_at"]) or "") >= week_from]
+    last_report = conn.execute("SELECT MAX(delivery_at) AS at FROM mail_log").fetchone()["at"]
+    waiting = conn.execute(
+        "SELECT COUNT(*) AS c FROM email_outbox WHERE sent_at IS NULL").fetchone()["c"]
+    stopped = conn.execute(
+        "SELECT COUNT(*) AS c FROM email_suppressions WHERE cleared_at IS NULL").fetchone()["c"]
+    # Who let an address back on, and when: the answer to "why did they get
+    # that?" the week after somebody chose to write to a bounced address again.
+    allowed_again = [dict(r) for r in conn.execute(
+        """SELECT email_suppressions.email, email_suppressions.reason,
+                  email_suppressions.cleared_at, users.name AS cleared_by
+             FROM email_suppressions
+             LEFT JOIN users ON users.id = email_suppressions.cleared_by_user_id
+            WHERE email_suppressions.cleared_at IS NOT NULL
+            ORDER BY email_suppressions.cleared_at DESC LIMIT 10""").fetchall()]
+    provider = ("Resend" if resend_enabled() else
+                "the mail server" if email_enabled() else None)
+    replies = [(label, reply_to_header_for(area)) for label, area in (
+        ("Rooms", "rooms"), ("Restaurant", "restaurant"), ("Workshops", "workshops"),
+        ("Events", "events"), ("Accounts", "accounts"), ("Anything else", None))]
+    return {
+        "provider": provider,
+        "sender": (RESEND_FROM if resend_enabled() else SMTP_FROM if email_enabled() else None),
+        "guests_on": guest_mail_live(),
+        "redirect": MAIL_REDIRECT_TO,
+        "reports_on": bool(RESEND_WEBHOOK_SECRET),
+        "last_report": last_report,
+        "webhook_url": external_url("resend_webhook"),
+        "replies": replies,
+        "waiting": waiting,
+        "stopped": stopped,
+        "allowed_again": allowed_again,
+        "week": {
+            "sent": sum(1 for r in week if r["status"] == "sent"),
+            "delivered": sum(1 for r in week if r["delivery"] == "delivered"),
+            "failed": sum(1 for r in week if r["status"] == "failed"),
+            "bounced": sum(1 for r in week if r["delivery"] == "bounced"),
+            "complained": sum(1 for r in week if r["delivery"] == "complained"),
+        },
+    }
+
+
+NOT_WRITTEN_TO_KINDS = {"optout": "Unsubscribed from campaigns", "bounced": "Bounced",
+                        "complained": "Marked a letter as spam"}
+
+
+def not_written_to_view(conn, args):
+    """Everybody the house does not write to, and why: one list.
+
+    An unsubscribe stops campaigns and nothing else -- their own bookings still
+    write to them. A bounce or a spam complaint stops everything, because both
+    harm every other letter the house sends. Each says so, and each has its own
+    way back.
+    """
+    rows = []
+    for r in conn.execute("SELECT * FROM email_optouts ORDER BY created_at DESC").fetchall():
+        rows.append({"id": r["id"], "kind": "optout", "email": r["email"],
+                     "why": r["reason"] or "", "since": r["created_at"],
+                     "stops": "Campaigns only"})
+    for r in conn.execute("SELECT * FROM email_suppressions WHERE cleared_at IS NULL "
+                          "ORDER BY created_at DESC").fetchall():
+        rows.append({"id": r["id"], "kind": r["reason"], "email": r["email"],
+                     "why": r["detail"] or "", "since": r["created_at"],
+                     "stops": "Every letter"})
+    for r in rows:
+        r["kind_words"] = NOT_WRITTEN_TO_KINDS.get(r["kind"], r["kind"])
+        r["since_words"] = format_date_short(house_date_iso(r["since"])) if r["since"] else ""
+    return list_view(
+        rows, args,
+        search=["email", "why"],
+        search_hint="Search an address or a reason",
+        facets=[facet("kind", "Why", lambda r: r["kind_words"],
+                      order=list(NOT_WRITTEN_TO_KINDS.values()))],
+        sorts=[sort_option("recent", "Newest first", lambda r: r["since"] or "", reverse=True),
+               sort_option("email", "By address", lambda r: r["email"])],
+        default_sort="recent",
+    )
+
+
+@app.route("/admin/emails/sends/<send_id>")
+@owner_required
+def campaign_send_detail(send_id):
+    """One send: who it reached, who it is waiting for, who not, and why."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM campaign_sends WHERE send_id = ? ORDER BY recipient_email",
+        (send_id,)).fetchall()
+    conn.close()
+    if not rows:
+        abort(404)
+    people = []
+    for r in rows:
+        outcome = r["outcome"] or r["status"]
+        people.append({"email": r["recipient_email"], "name": r["recipient_name"],
+                       "outcome": outcome,
+                       "words": CAMPAIGN_OUTCOME_WORDS.get(outcome, outcome),
+                       "detail": r["detail"] if outcome not in ("sent", "test") else ""})
+    counts = {}
+    for p in people:
+        counts[p["words"]] = counts.get(p["words"], 0) + 1
+    return render_template("campaign_send.html", first=rows[0], people=people,
+                           counts=sorted(counts.items(), key=lambda kv: -kv[1]))
+
+
+@app.route("/admin/emails/stopped/<int:suppression_id>/allow", methods=["POST"])
+@owner_required
+def allow_email_again(suppression_id):
+    """Write to an address on the stop list again -- when somebody chooses to,
+    because the guest has fixed their mailbox or asked."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM email_suppressions WHERE id = ? AND cleared_at IS NULL",
+                       (suppression_id,)).fetchone()
+    if not row:
+        conn.close()
+        flash("That address is not on the stop list any more.", "error")
+        return redirect(url_for("admin_emails"))
+    user = current_user()
+    conn.execute("UPDATE email_suppressions SET cleared_at = ?, cleared_by_user_id = ? "
+                 "WHERE id = ?", (datetime.now(timezone.utc).isoformat(),
+                                  user["id"] if user else None, suppression_id))
+    # The kind of entry, not the address: the audit trail outlives an erasure.
+    log_audit(conn, "email_allowed_again", target="an address on the stop list",
+              details=NOT_WRITTEN_TO_KINDS.get(row["reason"], row["reason"]))
+    conn.commit()
+    conn.close()
+    flash(f"{row['email']} will be written to again. If it bounces again it goes back on "
+          "the stop list by itself.", "success")
+    return redirect(url_for("admin_emails"))
+
+
+@app.route("/admin/emails/optout/<int:optout_id>/remove", methods=["POST"])
+@owner_required
+def remove_email_optout(optout_id):
+    """Take somebody off the unsubscribe list -- only because they asked."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM email_optouts WHERE id = ?", (optout_id,)).fetchone()
+    if not row:
+        conn.close()
+        flash("That address is not on the list any more.", "error")
+        return redirect(url_for("admin_emails"))
+    conn.execute("DELETE FROM email_optouts WHERE id = ?", (optout_id,))
+    log_audit(conn, "email_optout_removed", target="an address",
+              details="taken off the unsubscribe list at their request")
+    conn.commit()
+    conn.close()
+    flash(f"{row['email']} will receive campaigns again.", "success")
+    return redirect(url_for("admin_emails"))
+
+
+def campaign_result_message(result):
+    """What a campaign send says it did: sent, kept to go later, did not go,
+    held back -- each in its own words, because "3 failed" about three letters
+    waiting safely for the mail to be connected sent the owner looking for a
+    fault that was not there. (message, flash category)."""
+    parts = [f"Sent to {result['sent']} of {result['total']}"]
+    if result.get("held"):
+        parts.append(f"{result['held']} kept, to go when mail can")
+    if result["failed"]:
+        parts.append(f"{result['failed']} did not go")
+    message = ", ".join(parts) + campaign_held_back_note(result["withheld"]) + "."
+    # Green only when every letter went just now. Kept is not failed, but a
+    # send that reached nobody yet is not a success either.
+    went_now = result["sent"] and not (result["failed"] or result.get("held"))
+    return message, ("success" if went_now else "error")
 
 
 def campaign_held_back_note(withheld):
@@ -59780,14 +60312,11 @@ def send_promo_code_blast(code_id):
         extra_context={"promo_code": promo["code"]},
         area=PROMO_REPLY_AREAS.get(promo["applies_to"]),
     )
-    held = campaign_held_back_note(result["withheld"])
-    log_audit(conn, "promo_blast_sent", target=promo["code"],
-              details=f"{result['sent']} sent, {result['failed']} failed{held}")
+    message, category = campaign_result_message(result)
+    log_audit(conn, "promo_blast_sent", target=promo["code"], details=message)
     conn.commit()
     conn.close()
-    flash(f"Sent to {result['sent']} of {result['total']} guest(s)"
-          + (f", {result['failed']} failed" if result["failed"] else "") + held + ".",
-          "error" if result["failed"] else "success")
+    flash(message, category)
     return redirect(url_for("admin_promo_codes"))
 
 
@@ -61450,7 +61979,8 @@ def send_group_note(conn, member, subject, body, *, area, user_id=None, held_bac
     subject_out, body_out = render_campaign(subject, body, group_note_context(conn, member))
     report = {}
     sent = send_email(member["email"].strip(), subject_out, body_out, area=area,
-                      about=member["about"], sent_by=user_id, report=report)
+                      about=member["about"], sent_by=user_id, report=report,
+                      template_key="group:" + member["category"])
     if member["category"] == "workshop":
         log_workshop_message(conn, member["id"], subject_out, member["email"].strip(),
                              "sent" if sent else "held")
@@ -77206,6 +77736,33 @@ def management_email_templates():
     return email_templates_page()
 
 
+EMAIL_USAGE_DAYS = 90
+
+
+def email_template_usage(conn, days=EMAIL_USAGE_DAYS):
+    """{template_key: {"sent", "held", "failed", "last"}} over the last `days`.
+
+    THE QUESTION THE WORDING PAGE COULD NOT ANSWER: is this letter going out at
+    all? Forty-two letters, each with its wording and the moment it goes, and
+    nothing to say that the balance reminder had not been sent in three months
+    because its job was off, or that a confirmation was going and being held.
+    Read from the mail log, which every letter writes to.
+    """
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    usage = {}
+    for r in conn.execute(
+            """SELECT template_key, status, COUNT(*) AS n, MAX(created_at) AS last
+                 FROM mail_log WHERE template_key IS NOT NULL AND created_at >= ?
+                GROUP BY template_key, status""", (since,)).fetchall():
+        u = usage.setdefault(r["template_key"], {"sent": 0, "held": 0, "failed": 0,
+                                                 "last": None})
+        if r["status"] in u:
+            u[r["status"]] += r["n"]
+        if r["status"] == "sent" and (not u["last"] or r["last"] > u["last"]):
+            u["last"] = r["last"]
+    return usage
+
+
 def email_templates_page(draft=None):
     """The editor page, holding a refused draft when there is one.
 
@@ -77219,6 +77776,7 @@ def email_templates_page(draft=None):
     templates = conn.execute("SELECT * FROM email_templates ORDER BY label").fetchall()
     revisions = conn.execute(
         "SELECT * FROM email_template_revisions ORDER BY id DESC").fetchall()
+    usage = email_template_usage(conn)
     conn.close()
     defaults = {key: (subject, body) for key, _label, subject, body in DEFAULT_EMAIL_TEMPLATES}
     # Which ones have been changed from the original wording, so the editor can
@@ -77271,6 +77829,10 @@ def email_templates_page(draft=None):
                   + ["Other"]),
             facet("state", "Wording", lambda t: states[t["template_key"]],
                   order=["Needs fixing", "Edited", "Original wording"]),
+            facet("use", "Last 90 days",
+                  lambda t: "Went out" if usage.get(t["template_key"], {}).get("sent")
+                  else "Did not go out",
+                  order=["Went out", "Did not go out"]),
         ],
         sorts=[
             sort_option("area", "Part of the house",
@@ -77294,6 +77856,7 @@ def email_templates_page(draft=None):
         info={k: EMAIL_TEMPLATE_INFO.get(k) for k in current},
         required={k: REQUIRED_MERGE_TAGS.get(k, {}) for k in current},
         fixed=FIXED_GUEST_EMAILS, draft=draft, total=len(templates),
+        usage=usage, letter_labels={k: letter_label(k) for k in current},
         my_address=(me["email"] if me and me["email"] else ""))
 
 
@@ -78220,15 +78783,21 @@ def mail_audience_reader(conn):
 MAIL_AUDIENCES = ["A guest", "The house", "A colleague", "Somebody else"]
 
 
-def mail_log_list_view(conn, args):
-    """The mail log as the page and its export both see it."""
+def mail_log_rows(conn, line_id=None):
+    """The mail log's lines, worded for a person: all of them, or one.
+
+    One line is asked for by its id rather than by building the whole log and
+    picking it out, which is what opening a single letter used to do -- two
+    years of letters, worded, to show one.
+    """
+    where, params = ("WHERE mail_log.id = ?", (line_id,)) if line_id else ("", ())
     rows = [dict(r) for r in conn.execute(
-        """SELECT mail_log.*, users.name AS sent_by_name, email_outbox.sent_at AS resent_at
+        f"""SELECT mail_log.*, users.name AS sent_by_name, email_outbox.sent_at AS resent_at
              FROM mail_log
              LEFT JOIN users ON users.id = mail_log.sent_by_user_id
              LEFT JOIN email_outbox ON email_outbox.id = mail_log.outbox_id
-            ORDER BY mail_log.created_at DESC, mail_log.id DESC""").fetchall()]
-    labels = {key: label for key, label, _s, _b in DEFAULT_EMAIL_TEMPLATES}
+             {where}
+            ORDER BY mail_log.created_at DESC, mail_log.id DESC""", params).fetchall()]
     audience = mail_audience_reader(conn)
     profiles = audience.profiles
     refs = {}
@@ -78243,8 +78812,7 @@ def mail_log_list_view(conn, args):
     today = house_today()
     for r in rows:
         address = (r["to_address"] or "").strip().lower()
-        r["type"] = (labels.get(r["template_key"]) or
-                     ("Written by hand" if r["sent_by_user_id"] else "A letter of the house's own"))
+        r["type"] = letter_label(r["template_key"], r["sent_by_user_id"])
         # Filed against a booking, or an address the house holds a guest
         # profile for: a guest letter whatever address it went to, so a test
         # booking made with one of the house's own inboxes is still one.
@@ -78259,26 +78827,45 @@ def mail_log_list_view(conn, args):
         if r["status"] == "held" and r["resent_at"]:
             r["status"], r["delivered_at"] = "sent", r["resent_at"]
         r["status_words"] = MAIL_STATUS_WORDS[r["status"]]
+        # Drawn in the stylesheet's own colours: the status-sent, -held and
+        # -failed this used to ask for were never drawn by anything.
+        r["status_class"] = MAIL_STATUS_CLASS[r["status"]]
+        # What the provider said happened next, once it has said.
+        if r["status"] == "sent" and r.get("delivery") in DELIVERY_WORDS:
+            r["status_words"] = DELIVERY_WORDS[r["delivery"]]
+            r["status_class"] = ("confirmed" if r["delivery"] == "delivered" else
+                                 "pending" if r["delivery"] == "delayed" else "overdue")
         r["when"] = local_datetime_str(r["created_at"])
-        r["about_words"] = (f"{STATEMENT_KINDS.get(r['about_category'], r['about_category'])} "
-                            f"{refs.get((r['about_category'], r['about_id'])) or '#' + str(r['about_id'])}"
+        kind = STATEMENT_KINDS.get(r["about_category"], r["about_category"])
+        ref = refs.get((r["about_category"], r["about_id"]))
+        # Never a bare number: a booking deleted since is said to be.
+        r["about_words"] = ((f"{kind} {ref}" if ref else f"A {(kind or '').lower()} since deleted")
                             if r["about_category"] else "")
+        # The buckets do not overlap, so they are named as stretches of time
+        # rather than "the last 7 days", which read as if it included today.
         day = house_date_iso(r["created_at"]) or ""
         r["period"] = ("Today" if day == today.isoformat() else
-                       "Last 7 days" if day >= (today - timedelta(days=7)).isoformat() else
-                       "Last 30 days" if day >= (today - timedelta(days=30)).isoformat() else
+                       "Earlier this week" if day >= (today - timedelta(days=7)).isoformat() else
+                       "Earlier this month" if day >= (today - timedelta(days=30)).isoformat() else
                        "Older")
+    return rows
+
+
+def mail_log_list_view(conn, args):
+    """The mail log as the page and its export both see it."""
+    rows = mail_log_rows(conn)
     return list_view(
         rows, args,
         search=["to_address", "subject", "type", "failure", "about_words", "sent_by_name"],
         search_hint="Search who it went to, the subject, what it was about",
         facets=[
             facet("status", "Status", lambda r: r["status_words"],
-                  order=["Sent", "Held", "Did not go", "Thrown away"]),
+                  order=["Delivered", "Sent", "Delayed", "Bounced", "Marked as spam",
+                         "Held", "Did not go", "Thrown away"]),
             facet("to", "To", lambda r: r["audience"], order=MAIL_AUDIENCES),
             facet("type", "Letter", lambda r: r["type"], limit=12),
             facet("when", "When", lambda r: r["period"],
-                  order=["Today", "Last 7 days", "Last 30 days", "Older"]),
+                  order=["Today", "Earlier this week", "Earlier this month", "Older"]),
         ],
         sorts=[
             sort_option("recent", "Most recent first",
@@ -78306,8 +78893,7 @@ def mail_log_letter(line_id):
     """One letter: what it was, where it went, whether it arrived, and -- where
     the house may keep them -- its words."""
     conn = get_db()
-    lv = mail_log_list_view(conn, {})
-    line = next((r for r in lv["rows"] if r["id"] == line_id), None)
+    line = next(iter(mail_log_rows(conn, line_id)), None)
     if not line:
         conn.close()
         abort(404)
@@ -80094,6 +80680,16 @@ def readiness_checks(conn, *, include_slow=True):
             email_detail += (f" {held} message{'' if held == 1 else 's'} "
                              f"{'is' if held == 1 else 'are'} being held until this is set up.")
     add("blocker", "Email", "Outbound email", email_ok, email_detail)
+    # Whether the provider tells the house what became of a letter. Without it
+    # "Sent" means accepted, and a confirmation to a mistyped address looks
+    # the same as one the guest read. Not a blocker: mail goes either way.
+    if resend_enabled():
+        add("warn", "Email", "Delivery reports", bool(RESEND_WEBHOOK_SECRET),
+            "Connected: bounces and spam complaints reach the mail log, and an address "
+            "that bounces is not written to again until somebody allows it."
+            if RESEND_WEBHOOK_SECRET else
+            "Not connected. Add a webhook in Resend to /webhooks/resend and set "
+            "RESEND_WEBHOOK_SECRET, so the house knows which letters bounced.")
 
     # The terms, read from both places at once. This is the only process in
     # which that is possible: the live wording is a row in app_settings on
