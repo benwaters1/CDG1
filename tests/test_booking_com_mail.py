@@ -1015,7 +1015,26 @@ def _run(s, oc, ec, owner, emp, conn, room):
     with _StandIns(graph_enabled=lambda: True, get_graph_token=lambda: "tok",
                    graph_get=lambda *a, **k: None):
         s.check("a mailbox that cannot be read says so",
-                m.run_booking_com_mail_job(conn) == f"could not read {MAILBOX}")
+                m.run_booking_com_mail_job(conn).startswith(f"could not read {MAILBOX}"))
+
+    # AND SAYS WHY, in Microsoft's words. 12 October: registered, consented,
+    # locked to the mailbox, and the page said only "could not read" -- the
+    # reason was in a server log nobody can open. The real graph_get, with the
+    # network standing in to refuse the way Microsoft does.
+    import io as _io
+
+    def _refused(req, timeout=None):
+        raise m.HTTPError(req.full_url, 403, "Forbidden", {}, _io.BytesIO(
+            b'{"error":{"code":"ErrorAccessDenied","message":"Access is denied. Check credentials and try again."}}'))
+    with _StandIns(graph_enabled=lambda: True, get_graph_token=lambda: "tok-must-not-show",
+                   urlopen=_refused):
+        said = m.run_booking_com_mail_job(conn)
+    s.check("and says why, in Microsoft's own words",
+            "403" in said and "ErrorAccessDenied" in said and "Access is denied" in said,
+            detail=said)
+    s.check("without the token or the address it asked",
+            "tok-must-not-show" not in said and "graph.microsoft.com" not in said,
+            detail=said)
 
     scanned = []
 
@@ -1034,6 +1053,26 @@ def _run(s, oc, ec, owner, emp, conn, room):
             "zzbc-front@test.invalid" in scanned, detail=str(scanned))
     s.check("but leaves Booking.com's to its own job -- a notice is not an email awaiting a reply",
             MAILBOX not in scanned, detail=str(scanned))
+
+    # And says so, counting only what it opened. It counted every configured
+    # mailbox, so a scan that skipped the only one said "across 1 mailbox".
+    # A mailbox it cannot read is named and skipped -- never read as empty,
+    # which for the sent items would flag every email as unanswered.
+    def _half_refused(token, folder, since_iso, top=100, mailbox=None):
+        m._GRAPH_ANSWER.error = ("Microsoft answered 404 (ErrorInvalidUser)"
+                                 if mailbox == "zzbc-front@test.invalid" else None)
+        return []
+    with _StandIns(graph_enabled=lambda: True, get_graph_token=lambda: "tok",
+                   fetch_graph_messages=_half_refused, MS_GRAPH_MAILBOXES=[]):
+        report = m.run_email_inbox_scan_job(conn)
+    s.check("the scan counts the mailboxes it actually read",
+            "across 0 mailbox(es)" in report, detail=report)
+    s.check("says Booking.com's is left to its own job",
+            f"{MAILBOX} is read by the Booking.com job" in report, detail=report)
+    s.check("and names one it could not read, with Microsoft's reason",
+            "could not read zzbc-front@test.invalid (Microsoft answered 404" in report,
+            detail=report)
+    m._GRAPH_ANSWER.error = None
 
     s.check("the job runs by itself, every ten minutes",
             any(j[0] == "booking_com_mail" and j[3] == 600 and j[4] is m.run_booking_com_mail_job

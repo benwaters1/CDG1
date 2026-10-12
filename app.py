@@ -83110,10 +83110,44 @@ def graph_get(path, token, params=None):
     try:
         req = Request(url, headers={"Authorization": f"Bearer {token}"}, method="GET")
         with urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            body = json.loads(resp.read().decode("utf-8"))
+        _GRAPH_ANSWER.error = None
+        return body
     except Exception as e:
-        print(f"[graph] GET {path} failed: {e}")
+        _GRAPH_ANSWER.error = graph_failure_words(e)
+        print(f"[graph] GET {path} failed: {_GRAPH_ANSWER.error}")
         return None
+
+
+# WHAT MICROSOFT SAID, kept for the job that asked. A failed read used to be
+# printed to the server log and returned as None, so the automation page said
+# only "could not read bookingcom@" -- on 12 October, with the app registered,
+# consent granted and the mailbox locked to it, the one fact that mattered
+# (refused? not found? not yet?) was in a log the owner cannot open. Per
+# thread, because the jobs and the web pages call Graph side by side.
+_GRAPH_ANSWER = threading.local()
+
+
+def graph_failure_words(e):
+    """A Graph failure as a short sentence: the status, Microsoft's own error
+    code and message. Never the URL or the token."""
+    if isinstance(e, HTTPError):
+        code = message = ""
+        try:
+            err = (json.loads(e.read().decode("utf-8", "replace")) or {}).get("error") or {}
+            code, message = err.get("code") or "", err.get("message") or ""
+        except Exception:
+            pass
+        words = f"Microsoft answered {e.code}"
+        if code or message:
+            words += f" ({code}{': ' if code and message else ''}{message})"
+        return redact_secrets(words)[:240]
+    return redact_secrets(f"{type(e).__name__}: {getattr(e, 'reason', e)}")[:240]
+
+
+def graph_last_error():
+    """Why the last Graph read on this thread failed, or None if it worked."""
+    return getattr(_GRAPH_ANSWER, "error", None)
 
 
 def fetch_graph_messages(token, folder, since_iso, top=100, mailbox=None):
@@ -83127,6 +83161,7 @@ def fetch_graph_messages(token, folder, since_iso, top=100, mailbox=None):
     single-mailbox callers keep working; the scan passes it explicitly.
     """
     mailbox = mailbox or MS_GRAPH_MAILBOX
+    _GRAPH_ANSWER.error = None      # this call's answer, not the last one's
     if not mailbox:
         return []
     date_field = "sentDateTime" if folder == "sentitems" else "receivedDateTime"
@@ -84905,11 +84940,13 @@ def run_email_inbox_scan_job(conn):
     # bookings@, so the sent-items reply map must not be shared between them
     # or a reply in one inbox would silently mark another's email answered.
     booking_com_box = booking_com_mailbox(conn)
+    unread, read_boxes, left_to_booking_com = [], 0, False
     for mb in mailboxes:
         mailbox = mb["mailbox"]
         # Booking.com's mailbox is read by its own job, into its own page:
         # an automated notice is not an email waiting on somebody's reply.
         if booking_com_box and mailbox.lower() == booking_com_box:
+            left_to_booking_com = True
             continue
         # Resolved per scan, not per config: for an inbox set to follow the
         # rota this is whoever is clocked in right now, skipping anyone on
@@ -84921,12 +84958,24 @@ def run_email_inbox_scan_job(conn):
         # the guest's own message never mentioned one).
         reply_map = {}
         reply_by_conversation = {}
-        for sent in fetch_graph_messages(token, "sentitems", since_iso, top=200, mailbox=mailbox):
+        # A folder that could not be read is SKIPPED AND NAMED, never read as
+        # empty. Unread sent items read as "no replies", which would flag every
+        # email in the inbox as unanswered; an unread inbox read as nothing to
+        # do, and the job said it had scanned the mailbox.
+        sent_items = fetch_graph_messages(token, "sentitems", since_iso, top=200, mailbox=mailbox)
+        if graph_last_error():
+            unread.append(f"{mailbox} ({graph_last_error()})")
+            continue
+        for sent in sent_items:
             conv_id, sent_at = sent.get("conversationId"), sent.get("sentDateTime")
             if conv_id and sent_at and (conv_id not in reply_map or sent_at > reply_map[conv_id]):
                 reply_map[conv_id] = sent_at
                 reply_by_conversation[conv_id] = sent
         inbox_messages = fetch_graph_messages(token, "inbox", since_iso, top=200, mailbox=mailbox)
+        if graph_last_error():
+            unread.append(f"{mailbox} ({graph_last_error()})")
+            continue
+        read_boxes += 1
         for msg in inbox_messages:
             message_id = msg.get("id")
             received_at = msg.get("receivedDateTime")
@@ -85050,7 +85099,14 @@ def run_email_inbox_scan_job(conn):
     conn.commit()
     escalated = escalate_stale_flags(conn)
     tail = f", {escalated} escalated" if escalated else ""
-    return f"scanned {seen} message(s) across {len(mailboxes)} mailbox(es), {flagged} flagged{tail}"
+    # Counted from the mailboxes actually read. It counted every configured
+    # one, so "scanned 0 messages across 1 mailbox" on 12 October was a
+    # mailbox it had skipped (Booking.com's has its own job) and never opened.
+    if left_to_booking_com:
+        tail += f" ({booking_com_box} is read by the Booking.com job)"
+    if unread:
+        tail += " — could not read " + "; ".join(unread)
+    return f"scanned {seen} message(s) across {read_boxes} mailbox(es), {flagged} flagged{tail}"
 
 
 def run_stale_shift_cleanup_job(conn, hours_threshold):
@@ -85820,7 +85876,7 @@ def run_booking_com_mail_job(conn):
                 "$filter": f"receivedDateTime ge {since}",
                 "$orderby": "receivedDateTime asc", "$top": "100"})
     if page is None:
-        return f"could not read {mailbox}"
+        return f"could not read {mailbox} — {graph_last_error() or 'no reason given'}"
     new = {}
     for msg in page.get("value", []):
         sender = (msg.get("from") or {}).get("emailAddress") or {}
