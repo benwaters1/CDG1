@@ -36,10 +36,10 @@
       <h3 class="g-sow__t">Room and breakfast</h3>
       <ul class="g-sow__list">
         <li>Your room, and breakfast each morning</li>
-        <li>The pool, tennis and pickleball, table tennis, the lounge and board games, the terraces and a barbecue area</li>
-        <li>{% if dm == 'open' %}Dinner on the nights the table is open, and an airport transfer, added when you book{% else %}An airport transfer from Toulouse, added when you book{% endif %}</li>
+        <li>The pool, the tennis court and the gardens, table tennis, the lounge and board games, the terraces and a barbecue area</li>
+        <li>{% if dm == 'open' %}At extra cost, if you wish: dinner on the nights the table is open, and an airport transfer from Toulouse{% else %}At extra cost, if you wish: an airport transfer from Toulouse{% endif %}</li>
       </ul>
-      <p class="g-sow__foot">From one night{% if rooms_from %}, from &euro;{{ '{:,.0f}'.format(rooms_from) }} a night{% endif %}</p>
+      <p class="g-sow__foot">One night or more{% if rooms_from %}, from &euro;{{ '{:,.0f}'.format(rooms_from) }} a night{% endif %}</p>
       {% if here != 'stay' %}<p class="g-sow__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn">See the rooms</a></p>{% endif %}
     </article>
     <article class="g-sow__col g-sow__col--full{% if here == 'workshop' %} is-here{% endif %}">
@@ -48,9 +48,9 @@
       <ul class="g-sow__list">
         <li>Every meal, with drinks throughout</li>
         <li>The activities: cooking classes, the brocantes, yoga, kayaking and hiking</li>
-        <li>The house opened to you, and a formal dinner in the Salon de Musique</li>
+        <li>The château opened to you, and a formal dinner in the Salon de Musique</li>
       </ul>
-      <p class="g-sow__foot">Three to seven nights, per person, everything included</p>
+      <p class="g-sow__foot">Three to seven nights, per person, all meals and drinks included</p>
       {% if here != 'workshop' %}<p class="g-sow__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>{% endif %}
     </article>
   </div>
@@ -66,7 +66,7 @@
 <section class="g-sec g-sow g-vs-sec" id="compare" aria-labelledby="g-vs-h"><div class="g-wrap">
   <p class="g-eyebrow">Side by side</p>
   <h2 class="g-place" id="g-vs-h">A Night, or the Full Experience</h2>
-  <p class="g-p">A night's stay gives you a room in the house. A workshop gives you the house: the table, the fairs, the restoration and the valley.</p>
+  <p class="g-p">A night's stay gives you a room in the château. A workshop gives you the château: the table, the fairs, the restoration and the valley.</p>
   <div class="g-vs__wrap">
   <table class="g-vs">
     <caption class="g-vh">What a night's stay and a workshop each include</caption>
@@ -85,12 +85,12 @@
       <tr><th scope="row">A formal dinner in the Salon de Musique, by candlelight</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">Excursions</th><td>Booked separately</td><td class="g-vs__full">{% if ex == 'all' %}{{ Y|safe }}{% elif ex == 'some' %}On the three-, five- and seven-night workshops{% else %}{{ N|safe }}{% endif %}</td></tr>
       <tr><th scope="row">Transfers from Toulouse</th><td>Booked separately</td><td class="g-vs__full">{% if tx == 'all' %}{{ Y|safe }}{% elif tx == 'some' %}On the three-, five- and seven-night workshops{% else %}{{ N|safe }}{% endif %}</td></tr>
-      <tr><th scope="row">The pool, tennis and pickleball, table tennis</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
+      <tr><th scope="row">The pool, the tennis court, the gardens</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">The lounge, board games, the terraces, the barbecue area and the grounds</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
       <tr><th scope="row">Wi-Fi, in a common area of the château</th><td>{{ Y|safe }}</td><td class="g-vs__full">{{ Y|safe }}</td></tr>
-      <tr><th scope="row">The house to yourselves</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }} No other guests while it runs</td></tr>
+      <tr><th scope="row">Only the group in residence</th><td>{{ N|safe }}</td><td class="g-vs__full">{{ Y|safe }} No other guests while it runs</td></tr>
       <tr class="g-vs__sum"><th scope="row">Length</th><td>From one night</td><td class="g-vs__full">Three to seven nights</td></tr>
-      <tr class="g-vs__sum"><th scope="row">Price</th><td>{% if rooms_from %}From &euro;{{ '{:,.0f}'.format(rooms_from) }} a night, the room{% else %}Per room, per night{% endif %}</td><td class="g-vs__full">Per person, everything included</td></tr>
+      <tr class="g-vs__sum"><th scope="row">Price</th><td>{% if rooms_from %}From &euro;{{ '{:,.0f}'.format(rooms_from) }} a night, the room{% else %}Per room, per night{% endif %}</td><td class="g-vs__full">Per person, all meals and drinks</td></tr>
     </tbody>
     <tfoot><tr><td></td>
       <td><a href="{{ url_for('book_rooms') }}" class="g-btn">See the rooms</a></td>
@@ -108,7 +108,7 @@
   <p class="g-night__k">Before you book a night</p>
   <p class="g-night__t">A night here is a room and breakfast.</p>
   {% if bath %}<p class="g-night__p g-night__bath">Every room has a private bathroom of its own, on the ground floor &mdash; not in the room itself.</p>{% endif %}
-  <p class="g-night__p">Lunch, dinner and drinks are not included &mdash; they come with the workshops, the full experience, along with the rest of the house{% if dm == 'open' %}. Dinner can be booked on the nights the table is open{% endif %}.</p>
+  <p class="g-night__p">Lunch, dinner and drinks are not included &mdash; they come with the workshops, the full experience, along with the rest of the château{% if dm == 'open' %}. Dinner can be booked on the nights the table is open{% endif %}.</p>
   <p class="g-night__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>
 </aside>
 {% endmacro %}
@@ -118,7 +118,7 @@
 <aside class="g-night g-night--next" aria-label="The workshops">
   <p class="g-night__k">Next time</p>
   <p class="g-night__t">The full experience</p>
-  <p class="g-night__p">The workshops are small retreats of three to seven nights, with all meals and drinks, the activities, and the rest of the house.</p>
+  <p class="g-night__p">The workshops are small retreats of three to seven nights, with all meals and drinks, the activities, and the rest of the château.</p>
   <p class="g-night__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn">See the workshops</a></p>
 </aside>
 {% endmacro %}

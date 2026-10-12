@@ -75,7 +75,7 @@
     <div><dt>Evenings</dt><dd>Dinner together, and a film night with the projector if you would like one</dd></div>
     <div><dt>Laundry</dt><dd>Laundry and ironing facilities for guests</dd></div>
     <div><dt>Transfers</dt><dd>{% if _tx %}From Toulouse on the first day, and back on the last{% else %}Not included on these dates. The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station{% endif %}</dd></div>
-    {% if not _ex %}<div><dt>The days</dt><dd>Spent at the château itself, with no outings to plan around: the making, the meals and the house</dd></div>{% endif %}
+    {% if not _ex %}<div><dt>The days</dt><dd>Spent at the château itself, with no outings to plan around: the making, the meals and the rooms</dd></div>{% endif %}
     <div><dt>To hold a place</dt><dd>A deposit. The balance is taken closer to the date</dd></div>
     <div><dt>Not included</dt><dd>{% if _ex %}Flights, and anything you buy at the brocantes{% else %}Flights, and the journey to the château{% endif %}</dd></div>
   </dl>
@@ -145,7 +145,7 @@
   <p class="g-eyebrow">Who Comes</p>
   <h2 class="g-place">Is It for You?</h2>
   <p class="g-p g-lede-first">If you love old houses, good food and the French way of taking time over things, yes. Nobody needs to know how; the experience is made for curiosity, not expertise.</p>
-  <p class="g-p">Couples, friends travelling together and those who come alone are all equally at home. The group is small, the days are unhurried, and the house is yours.</p>
+  <p class="g-p">Couples, friends travelling together and those who come alone are all equally at home. The group is small, the days are unhurried, and the château is yours.</p>
 </div></section>
 
 <div class="g-band">
@@ -176,14 +176,14 @@
     {% if _inc and not _basis %}{% for item in _inc.split(',') if item.strip() %}{% set _x = item.strip() %}<li>{{ _x[:1]|upper }}{{ _x[1:] }}</li>{% endfor %}
     {% else %}
     <li>Every meal, cooked in the château kitchen, with drinks throughout, alcoholic and non-alcoholic, mostly local</li>
-    <li>Your room in the château, with a private bathroom on the ground floor</li>
+    <li>Your room in the château, with three bathrooms on the ground floor shared between the group</li>
     {% if _ex %}<li>The activities: cooking classes, bargaining at the brocantes, morning yoga, kayaking or hiking, and a barbecue in the grounds, all optional</li>
-    <li>The excursions, and everything on the itinerary, materials included</li>{% else %}<li>The activities: the workshop's sessions at the house, a cooking class and morning yoga, all optional</li>
+    <li>The excursions, and everything on the itinerary, materials included</li>{% else %}<li>The activities: the workshop's sessions at the château, a cooking class and morning yoga, all optional</li>
     <li>Everything on the itinerary, materials included</li>{% endif %}
     <li>A formal dinner in the Salon de Musique, by candlelight</li>
     <li>A tour of the château and its restoration</li>
     {% if _tx %}<li>The transfers from central Toulouse, there and back</li>{% endif %}
-    <li>Free time with the pool, tennis and pickleball, table tennis, the lounge and the terraces</li>
+    <li>Free time with the pool, the tennis court, the gardens, table tennis, the lounge and the terraces</li>
     {% endif %}
   </ul>
   {% if _basis %}<p class="g-hint">Prices are {{ _basis[:1]|lower }}{{ _basis[1:] }}</p>{% endif %}
@@ -196,7 +196,7 @@
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">Guest Quarters</p>
   <h2 class="g-place">Les Chambres</h2>
-  <p class="g-p g-lede-first">Each room has a private bathroom on the ground floor, and lamps and power points. Prices are per person, sharing a room; coming alone, write to us.</p>
+  <p class="g-p g-lede-first">The three bathrooms on the ground floor are shared between the workshop guests; each room has lamps and power points. Prices are per person, sharing a room; coming alone, write to us.</p>
 </div></section>
 
 <!-- ============ LES SALLES DE BAINS ============ -->

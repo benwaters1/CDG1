@@ -24,7 +24,7 @@
         ('film', 'La soirée cinéma', 'Film night', 'A projector, set up on request'),
         ('wifi', 'Le Wi-Fi', 'Wi-Fi', 'In a common area of the château'),
         ('pool', 'La piscine', 'The pool', 'Yours to use while you stay'),
-        ('tennis', 'Le tennis et le pickleball', 'Tennis and pickleball', 'A court for whoever is keen'),
+        ('tennis', 'Le court de tennis', 'The tennis court', 'Racquets for tennis and pickleball'),
         ('pingpong', 'Le ping-pong', 'Table tennis', 'For a friendly match'),
         ('garden', 'Les jardins', 'The gardens', 'Ten acres of gardens and grounds'),
         ('terrace', 'Les terrasses', 'The terraces and barbecue', 'A glass of local wine, and long summer evenings'),
@@ -37,7 +37,7 @@
       </li>
       {%- endfor %}
     </ul>
-    <p class="g-facil__note">Not included in a stay: lunch, dinner and drinks.{% if dm == 'open' %} {% set _w = when_text()|trim %}Dinner can be booked {% if _w %}{{ _w }}{% else %}on the nights the kitchen is open{% endif %}.{% endif %} In winter the heating is limited and the château is cold; every room has an electric blanket and a space heater.</p>
+    <p class="g-facil__note">Not included in a stay: lunch, dinner and drinks.{% if dm == 'open' %} {% set _w = when_text()|trim %}Dinner can be booked {% if _w %}{{ _w }}{% else %}on the nights the kitchen is open{% endif %}.{% endif %}</p>
   </div>
 </div></section>
 {% endmacro %}
@@ -47,9 +47,9 @@
 <section class="g-sec g-fstrip-sec"><div class="g-wrap">
   <p class="g-fr">Avec la chambre <span class="g-fr__en">Included</span></p>
   <h2 class="g-place">With the Room</h2>
-  <p class="g-p g-intro">Breakfast every morning, and the house and its grounds to enjoy.</p>
+  <p class="g-p g-intro">Breakfast every morning, and the château and its grounds to enjoy.</p>
   <ul class="g-fstrip">
-    {%- for kind, label in [('pool','The pool'),('tennis','Tennis and pickleball'),('pingpong','Table tennis'),('garden','The gardens'),('lounge','The lounge and board games'),('film','Film night, on request'),('terrace','The terraces'),('bbq','The barbecue'),('laundry','Laundry and ironing'),('wifi','Wi-Fi, in a common area')] %}
+    {%- for kind, label in [('pool','The pool'),('tennis','The tennis court'),('pingpong','Table tennis'),('garden','The gardens'),('lounge','The lounge and board games'),('film','Film night, on request'),('terrace','The terraces'),('bbq','The barbecue'),('laundry','Laundry and ironing'),('wifi','Wi-Fi, in a common area')] %}
     <li class="g-fstrip__i"><span class="g-fstrip__ill" aria-hidden="true">{{ illus(kind) }}</span><span class="g-fstrip__l">{{ label }}</span></li>
     {%- endfor %}
   </ul>

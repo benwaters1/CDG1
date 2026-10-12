@@ -11013,3 +11013,151 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-homeresto__p{ max-width: 40rem; margin-top: var(--s5); }
 .g .g-homeresto__cta{ margin-top: var(--s5); }
 @media (max-width: 600px){ .g .g-homeresto__pair{ gap: 6px; } }
+
+/* 10 Oct - BOOKING PAGE, ADD TO YOUR STAY: a gilt drawing beside each extra; rows with no quantity get proper columns */
+.g .g-mb-extra{ position: relative; padding-left: 84px; }
+.g .g-mb-extra__ill{ position: absolute; left: 0; top: 2px; width: 64px; color: var(--gilt); }
+.g .g-mb-extra__ill svg{ width: 100%; height: auto; display: block; }
+.g .g-mb-acts.g-mb-extra--noqty:has(> input[name="action"][value="add_extra"]){ grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) auto; }
+.g .g-mb-acts.g-mb-extra:has(> input[name="action"][value="add_extra"]) + .g-mb-acts.g-mb-extra:has(> input[name="action"][value="add_extra"]) .g-mb-extra__ill{ top: calc(var(--s3) + 2px); }
+@media (max-width: 600px){
+  .g .g-mb-extra{ padding-left: 56px; }
+  .g .g-mb-extra__ill{ width: 42px; }
+  .g .g-mb-acts.g-mb-extra--noqty:has(> input[name="action"][value="add_extra"]){ grid-template-columns: minmax(0, 1fr); }
+  .g .g-mb-acts.g-mb-extra--noqty:has(> input[name="action"][value="add_extra"]) > button{ grid-column: 1 / -1; }
+}
+
+/* 10 Oct - BOOKING PAGE, the end: cancelling (the advice once, the fold as a real link) and the bill with everything else */
+.g .g-mb-cancel{ margin-top: var(--s6); padding-top: var(--s4); border-top: 1px solid var(--line); }
+.g .g-mb-cancel .g-cancel-fold{ border-top: 0; padding-top: 0; }
+.g .g-cancel-fold > summary{ display: inline-flex; gap: .45rem; font-size: 16px; color: var(--blue-deep); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; min-height: 44px; }
+.g .g-cancel-fold > summary::after{ content: "›"; display: inline-block; color: var(--gilt); transition: transform .2s ease; }
+.g .g-cancel-fold[open] > summary::after{ content: "›"; transform: rotate(90deg); }
+.g .g-cancel-fold .btn-text-danger{ font-size: 15px; text-decoration: underline; text-underline-offset: 3px; }
+.g .g-mb-end{ display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s5); margin-top: var(--s6); }
+.g .g-mb-end .g-link{ font-size: 16px; }
+.g .g-mb-end{ margin-top: var(--s4); }
+.g .g-night--next{ max-width: none; width: 100%; box-sizing: border-box; }
+
+/* 10 Oct - HOME HERO, the second way in: the full sentence on wider screens, a shorter one on a phone, each on one line */
+.g .g-hero__alttext{ white-space: nowrap; }
+.g .g-hero__altshort{ display: none; }
+@media (max-width: 40rem){ .g .g-hero__altlong{ display: none; } .g .g-hero__altshort{ display: inline; } }
+
+/* 10 Oct - STAY, DINNER NEARBY (only when the château's dining is not open): restaurants with a drawing each */
+.g .g-eat{ list-style: none; margin: var(--s5) 0 0; padding: 0; display: grid; gap: var(--s5) var(--s7, 56px); }
+@media (min-width: 900px){ .g .g-eat{ grid-template-columns: 1fr 1fr; } }
+.g .g-eat__i{ display: grid; grid-template-columns: 72px 1fr; gap: var(--s4); align-items: start; }
+.g .g-eat__ill{ width: 72px; color: var(--gilt); }
+.g .g-eat__t{ margin: .2rem 0 0; font-family: var(--display); font-weight: 400; font-size: clamp(21px, .5vw + 17px, 25px); line-height: 1.2; color: var(--blue-deep); }
+.g .g-eat__where{ margin: var(--s1, 4px) 0 var(--s2); font-family: var(--ui); font-size: 14px; letter-spacing: .02em; color: var(--ink-2); }
+.g .g-eat__d{ margin: 0; font-family: var(--serif); font-size: 17px; line-height: 1.65; color: var(--ink-2); }
+@media (max-width: 600px){ .g .g-eat__i{ grid-template-columns: 52px 1fr; gap: var(--s3); } .g .g-eat__ill{ width: 52px; } .g .g-eat__d{ font-size: 16px; } }
+.g .g-eat__also{ margin-top: var(--s5); font-style: italic; color: var(--ink-2); }
+
+/* 10 Oct - DESIGN REVIEW: the booking form's "Add to your stay" (book_room.html, inside .g-step) shared the class .g-extras
+   with Stay's tile grid, whose later rule forced 2-4 narrow columns - cards ~155px wide, the text one word to a line. The
+   booking list gets its own columns; Stay's tiles (not in .g-step) are untouched. */
+.g .g-step .g-extras{ grid-template-columns: minmax(0, 1fr); gap: var(--s3); margin-top: var(--s4); }
+@media (min-width: 60rem){ .g .g-step .g-extras{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.g .g-step .g-extras > li > .g-check > .g-addons__notice{ grid-column: 2 / -1; margin-top: var(--s1, 4px); }
+.g .g-step .g-extras .g-check__t > span{ display: block; margin-top: 4px; font-size: 15px; line-height: 1.55; color: var(--ink-2); }
+.g .g-step .g-extras .g-check > .g-fig{ white-space: nowrap; }
+/* DESIGN REVIEW (10 Oct) - two more shared-class collisions, and narrow tiles on a phone:
+   1. the arrival card's "Save this page" note used .g-arrive__n, the class of the numbered circles - it was drawn in a
+      42px circle. Now .g-arrive__note, with the small-print style it was written for.
+   2. Privacy put whole paragraphs in .g-facts-list (two pairs across, an 8rem label column) - each explanation in a 136px
+      sliver. The prose version: one per row, the label above, the paragraph at full width.
+   3. Restoration's and the Estate page's tiles carry sentences; on a phone, one tile per row instead of two at 133px. */
+.g .g-arrive__note{ margin: var(--s5) 0 0; font-family: var(--ui); font-size: 15px; color: var(--ink-2); }
+.g .g-facts-list.g-facts-list--prose{ grid-template-columns: minmax(0, 1fr); gap: var(--s5); }
+.g .g-facts-list.g-facts-list--prose > div{ grid-template-columns: minmax(0, 1fr); gap: var(--s1, 4px); }
+.g .g-facts-list.g-facts-list--prose dd{ font-size: 16px; line-height: 1.65; }
+@media (max-width: 30rem){ .g .g-extras:has(.g-extras__d){ grid-template-columns: minmax(0, 1fr); } }
+/* DESIGN REVIEW (10 Oct) - the bills (guest, workshop), the event quote and the shared payment page sit in a bare
+   div.statement: centred at 760px on a desktop, but with no side margin below that - text and tables ran to the screen's
+   edges. And the charge/payment tables right-aligned every heading but the first, so "Description" and "Method" sat right
+   over left-aligned text. */
+@media (max-width: 50rem){ .g div.statement{ padding-left: var(--s4); padding-right: var(--s4); box-sizing: border-box; } }
+.g .statement .statement-lines thead th:not(:last-child){ text-align: left; }
+.g .statement .statement-lines thead th:last-child{ text-align: right; }
+.g .statement .table-wrap th:first-child, .g .statement .table-wrap td:first-child{ padding-left: var(--s3); }
+.g .statement .table-wrap th:last-child, .g .statement .table-wrap td:last-child{ padding-right: var(--s3); }
+@media (max-width: 40rem){ .g .statement-head > div:last-child{ text-align: left !important; margin-top: var(--s3); } }
+
+/* 10 Oct - ROOM PAGE: the chosen dates, under the price (they were 2,300px down the page) */
+.g .g-roomtop__dates{ margin: var(--s4) 0 var(--s5); padding: var(--s4) var(--s5); background: var(--paper, #fbf7ef); border: 1px solid rgba(115,86,45,.2); border-left: 3px solid var(--gilt); max-width: 44rem; }
+.g .g-roomtop__dk{ margin: 0; font-family: var(--ui); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
+.g .g-roomtop__dv{ margin: 4px 0 var(--s3); font-family: var(--display); font-size: clamp(22px, 1vw + 17px, 28px); line-height: 1.2; color: var(--blue-deep); }
+.g .g-roomtop__da{ margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s5); }
+.g .g-roomtop__da .g-link{ font-size: 16px; }
+
+/* 10 Oct - PRICES (owner: "the pricing design is not nice on the rooms and workshops"). One look everywhere a price is
+   quoted: FROM in small capitals, the figure in the display serif, the unit beneath. Homepage cards use .g-price; the
+   Stay cards (.g-card__rate), workshop cards (.g-wscard__price) and workshop dates (.g-sit__rate) take the same rules. */
+.g .g-price, .g .g-card__rate, .g .g-wscard__price, .g .g-sit__rate{
+  display: flex; flex-wrap: wrap; align-items: baseline; column-gap: .55rem; row-gap: 2px;
+  margin: var(--s3) 0 var(--s4); padding-top: var(--s3); border-top: 1px solid rgba(115,86,45,.18);
+}
+.g .g-price__k{ flex-basis: 100%; font-family: var(--ui); font-size: 12px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
+.g .g-price__n, .g .g-card__rate b, .g .g-wscard__price .g-fig, .g .g-sit__rate .g-fig{
+  font-family: var(--display); font-weight: 400; font-size: clamp(27px, .6vw + 22px, 32px); line-height: 1.1; color: var(--blue-deep); margin: 0;
+}
+.g .g-price__u, .g .g-card__rate span:not(.g-price__k), .g .g-wscard__price span:last-child, .g .g-sit__rate span:last-child{
+  font-family: var(--ui); font-size: 14.5px; line-height: 1.4; color: var(--ink-2);
+}
+.g .g-card__rate .g-card__per{ flex-basis: 100%; font-size: 14px; color: var(--ink-faint); }
+.g .g-homeroom__rate{ display: none; }
+/* Icon chips on room cards */
+.g .g-tags--icons li{ display: inline-flex; align-items: center; gap: 6px; }
+.g .g-tags--icons .g-ci{ flex: none; color: var(--gilt-deep, #73562d); }
+
+/* 10 Oct - WHAT YOU CAN DO HERE (owner: "needs formatting"): the cards had no inner padding, so the corner flourishes sat
+   under the headings and links; two cards (dining off) sat in two thirds of a three-column grid. */
+.g .g-three__i{ padding: var(--s5); background: var(--paper, #fbf7ef); border: 1px solid rgba(115,86,45,.16); border-top: 2px solid var(--gold); }
+@media (min-width: 62rem){ .g .g-three__l:not(:has(> li:nth-child(3))){ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5); } }
+.g .g-three__b > .g-price{ margin-top: auto; }
+.g .g-three__b > .g-price, .g .g-three__b > .g-three__a{ max-width: none; }
+.g .g-three__i{ align-items: stretch; }
+.g .g-three__b{ width: 100%; }
+
+/* 10 Oct - WEATHER (owner: "the weather where we have that is not designed properly at all"; "no average temperature when
+   selecting dates"). Typical weather (Stay page and the room page's dates strip): the month in small capitals, day and
+   night as two figures with a sun and a moon, then any note. The live reading (.g-wx, Code's markup) gets the same
+   treatment from here - its parts sat together as "13°Covercast". */
+.g .g-typwx{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; margin: var(--s4) 0 0; padding: 12px 16px;
+  background: #fff; border: 1px solid rgba(115,86,45,.2); border-left: 3px solid var(--gilt); width: fit-content; max-width: 100%;
+  font-family: var(--ui); font-size: 15px; line-height: 1.4; color: var(--ink-2); }
+.g .g-typwx[hidden]{ display: none; }
+.g .g-typwx__k{ flex-basis: 100%; font-size: 12px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
+.g .g-typwx__v{ display: inline-flex; align-items: center; gap: 8px; }
+.g .g-typwx__v svg{ flex: none; color: var(--gilt-deep, #73562d); }
+.g .g-typwx__v b{ font-family: var(--display); font-weight: 400; font-size: 21px; color: var(--blue-deep); }
+.g .g-typwx__n{ flex-basis: 100%; font-size: 14.5px; font-style: italic; color: var(--ink-2); }
+.g .g-roomtop__dates .g-typwx{ margin: 0 0 var(--s4); background: transparent; border: 0; padding: 0; }
+.g .g-wx__live{ display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0; font-family: var(--ui); font-size: 15px; color: var(--ink-2); }
+.g .g-wx__k{ font-size: 12px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
+.g .g-wx__t{ font-family: var(--display); font-size: 21px; color: var(--blue-deep); }
+.g .g-wx__n{ flex-basis: 100%; font-style: italic; }
+/* The room page's price, in the same voice as the cards */
+.g .g-room__meta{ font-family: var(--ui); font-size: 14.5px; color: var(--ink-2); }
+.g .g-room__meta .g-fig{ font-family: var(--display); font-weight: 400; font-size: clamp(27px, .6vw + 22px, 32px); color: var(--blue-deep); margin-right: .35rem; }
+/* The emblem at the foot of the page had no reserved size, so it could push the footer down as it loaded. */
+.g .g-close__mark{ width: 62px; height: 62px; object-fit: contain; }
+@media (min-width: 30.01rem) and (max-width: 62rem){ .g .g-extras:has(.g-extras__d){ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* 12 Oct - ROOM CARD SLIDESHOWS (owner: "not just one photo for each room - multiple") */
+.g .g-slides{ position: relative; }
+.g .g-slides__track{ display: flex; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.g .g-slides__track::-webkit-scrollbar{ display: none; }
+.g .g-slides__track > img{ flex: 0 0 100%; width: 100%; scroll-snap-align: start; user-select: none; }
+.g .g-slides__track:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2px; }
+.g .g-slides__btn{ position: absolute; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border-radius: 50%; border: 0;
+  background: rgba(251,247,239,.92); color: var(--blue-deep); font-size: 26px; line-height: 38px; text-align: center; cursor: pointer;
+  box-shadow: 0 1px 6px rgba(0,0,0,.18); opacity: 0; transition: opacity .2s ease; }
+.g .g-slides__prev{ left: 10px; } .g .g-slides__next{ right: 10px; }
+.g .g-slides:hover .g-slides__btn, .g .g-slides__btn:focus-visible{ opacity: 1; }
+@media (hover: none){ .g .g-slides__btn{ display: none; } }
+.g .g-slides__dots{ position: absolute; left: 0; right: 0; bottom: 10px; margin: 0; display: flex; justify-content: center; gap: 6px; pointer-events: none; }
+.g .g-slides__dots span{ width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.6); box-shadow: 0 0 2px rgba(0,0,0,.4); }
+.g .g-slides__dots span.is-on{ background: #fff; }

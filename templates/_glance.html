@@ -38,13 +38,13 @@
         <div class="g-gl2__fill" aria-hidden="true">{{ illus('chateau') }}</div>
         <p class="g-gl2__k">How long</p>
         <p class="g-gl2__v">Three to seven nights</p>
-        <p class="g-gl2__n">Three for the brocantes, five for the kitchen, seven for the restoration, and four at the house in autumn and at Noël.</p>
+        <p class="g-gl2__n">Three for the brocantes, five for the kitchen, seven for the restoration, and four at the château in autumn and at Noël.</p>
       </div>
       <div class="g-gl2__f">
         <div class="g-gl2__fill" aria-hidden="true">{{ illus('wine') }}</div>
-        <p class="g-gl2__k">Everything included</p>
+        <p class="g-gl2__k">Included</p>
         <p class="g-gl2__v">Every meal and drink</p>
-        <p class="g-gl2__n">Local wine and drinks, the activities and the house itself{% if tx == 'all' %}, with the transfers from Toulouse{% elif tx == 'none' %}{% else %}; the transfers from Toulouse and the excursions on the three-, five- and seven-night workshops{% endif %}.</p>
+        <p class="g-gl2__n">Local wine and drinks, the activities and the château itself{% if tx == 'all' %}, with the transfers from Toulouse{% elif tx == 'none' %}{% else %}; the transfers from Toulouse and the excursions on the three-, five- and seven-night workshops{% endif %}.</p>
       </div>
       <div class="g-gl2__f">
         <div class="g-gl2__fill" aria-hidden="true">{{ illus('key') }}</div>
@@ -65,18 +65,18 @@
           ('hike', 'Hiking in the mountains'),
           ('bbq', 'A barbecue in the grounds'),
           ('candelabra', 'A formal dinner in the Salon de Musique, by candlelight'),
-          ('tennis', 'Tennis, pickleball and the pool')] %}
+          ('tennis', 'The pool and the tennis court')] %}
         <li class="g-gl2__a1"><span class="g-gl2__ill" aria-hidden="true">{{ illus(kind) }}</span><span class="g-gl2__lbl">{{ label }}</span></li>
         {%- endfor %}
       </ul>
-      <p class="g-gl2__note">Every activity is optional. Outdoor activities follow the season and the weather, and the four-night workshops stay at the house.</p>
+      <p class="g-gl2__note">Every activity is optional. Outdoor activities follow the season and the weather, and the four-night workshops stay at the château.</p>
     </div>
 
     <div class="g-gl2__day">
       <p class="g-gl2__sub" lang="fr">Une journée <span lang="en">A day, from waking</span></p>
       <ol class="g-gl2__ol">
         <li><b>{{ micon('matin') }}Morning</b> <span>Yoga, then a class or an outing: the kitchen, the brocantes or the restoration</span></li>
-        <li><b>{{ micon('apresmidi') }}Afternoon</b> <span>Free time: a glass of local wine on the terraces, tennis or pickleball, the pool</span></li>
+        <li><b>{{ micon('apresmidi') }}Afternoon</b> <span>Free time: a glass of local wine on the terraces, the pool, a game of tennis</span></li>
         <li><b>{{ micon('soir') }}Evening</b> <span>Dinner together, and one night a formal dinner in the Salon de Musique, by candlelight</span></li>
       </ol>
     </div>

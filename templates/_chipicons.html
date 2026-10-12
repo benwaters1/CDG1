@@ -1,0 +1,14 @@
+{#- 10 Oct (owner: "the rooms on the home page need more feature icons"). Small line icons for the facts on a room card -
+    the bed, how many it sleeps, the bathroom, the view, breakfast, a minimum stay. Drawn at 24, shown at about 16; the
+    big drawings in _illus are too fine at that size. -#}
+{% macro ci(kind) -%}
+<svg class="g-ci" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{%- if kind == 'bed' %}<path d="M3 18v-6.5A1.5 1.5 0 0 1 4.5 10h15a1.5 1.5 0 0 1 1.5 1.5V18M3 15h18M6 10V7.5A1.5 1.5 0 0 1 7.5 6h9A1.5 1.5 0 0 1 18 7.5V10"/>
+{%- elif kind == 'guests' %}<circle cx="9" cy="8" r="3"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.3"/><path d="M15.5 14.2c2.6-.3 4.6 1.3 5 4.8"/>
+{%- elif kind == 'bath' %}<path d="M3 12h18v2a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5zM6 12V6a2 2 0 0 1 4 0M7 19l-1 2M17 19l1 2"/>
+{%- elif kind == 'view' %}<path d="M2 19l6-9 4 5 3-4 7 8z"/>
+{%- elif kind == 'cup' %}<path d="M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5zM16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5c0 1 1 1.5 1 2.5M11.5 3.5c0 1 1 1.5 1 2.5"/>
+{%- elif kind == 'size' %}<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 4v3M12 4v3M16 4v3M4 8h3M4 12h3M4 16h3"/>
+{%- elif kind == 'nights' %}<rect x="4" y="5" width="16" height="15" rx="1.5"/><path d="M4 9.5h16M8 3v4M16 3v4"/>
+{%- endif %}</svg>
+{%- endmacro %}

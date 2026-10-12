@@ -37,7 +37,7 @@
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">La Table</p>
   <h1 class="g-place">{% if _dm == 'closed' %}Closed for the Season{% else %}Not Serving at the Moment{% endif %}</h1>
-  <p class="g-p">{% if _dm == 'closed' %}La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}.{% else %}The château's table is not taking reservations at the moment.{% endif %} Breakfast is served every morning for guests staying in the house, and the workshops are full board as always.</p>
+  <p class="g-p">{% if _dm == 'closed' %}La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}.{% else %}The château's table is not taking reservations at the moment.{% endif %} Breakfast is served every morning for guests staying in the château, and the workshops are full board as always.</p>
   <p class="g-p" style="margin-top:var(--s5)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">See the workshops</a></p>
 </div></section>
 {% else %}
@@ -89,7 +89,7 @@
     <a href="{{ url_for('restaurant_find') }}">Manage an existing reservation</a>
   </p>
 </div></section>{% else %}
-<section class="g-sec"><div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Closed for the season</span> La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}. Breakfast is served every morning for guests staying in the house.</p></div></section>
+<section class="g-sec"><div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Closed for the season</span> La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}. Breakfast is served every morning for guests staying in the château.</p></div></section>
 {% endif %}
 
 <div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w" alt="The kitchen table in winter" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/0fba4375-e1f0-449b-ba58-d1a5d3a48069/Screenshot+2026-07-30+at+8.05.38+pm.png?format=1500w" alt="The table by candlelight" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1500w" alt="Copper pans in the château kitchen" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24dd7adf-2d85-46bd-8399-4a3fc96ce444/Gardens+-+Formal+Gardens+2.jpg?format=1500w" alt="The formal gardens in flower" loading="lazy"></div>

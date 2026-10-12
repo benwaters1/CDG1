@@ -32,7 +32,7 @@
         <div class="g-three__b">
           <h3 class="g-three__t">Stay the night</h3>
           <p class="g-three__d">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} bedrooms. Room and breakfast.</p>
-          {% if house_rooms and house_rooms.from_price %}<p class="g-three__p">From <b>&euro;{{ house_rooms.from_price }}</b> a night</p>{% endif %}
+          {% if house_rooms and house_rooms.from_price %}<p class="g-price"><span class="g-price__k">From</span><span class="g-price__n">&euro;{{ house_rooms.from_price }}</span><span class="g-price__u">a night · room and breakfast</span></p>{% endif %}
           <p class="g-three__a">
             <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check dates</a>
             <a href="{{ url_for('contact_page') }}">Write to us</a>
@@ -44,8 +44,8 @@
         <span class="g-three__n">02</span>
         <div class="g-three__b">
           <h3 class="g-three__t">The full experience</h3>
-          <p class="g-three__d">Retreats of three to seven nights, with all meals and drinks, cooking classes, the brocantes, yoga, kayaking and hiking: a small group, and the house to yourselves.</p>
-          <p class="g-three__p">Per person, everything included</p>
+          <p class="g-three__d">Retreats of three to seven nights, with all meals and drinks, cooking classes, the brocantes, yoga, kayaking and hiking: in a small group sharing the château.</p>
+          {% if _wsf %}<p class="g-price"><span class="g-price__k">From</span><span class="g-price__n">&euro;{{ '{:,.0f}'.format(_wsf) }}</span><span class="g-price__u">per person · all meals and drinks</span></p>{% else %}<p class="g-price"><span class="g-price__u">Per person · all meals and drinks</span></p>{% endif %}
           <p class="g-three__a">
             <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the dates</a>
             <a href="{{ url_for('contact_page') }}">Ask about a group</a>
@@ -58,7 +58,7 @@
         <div class="g-three__b">
           <h3 class="g-three__t">Eat at La Table</h3>
           <p class="g-three__d">{% set _w = when_text()|trim %}Dinner at the château, {% if _w %}{{ _w }}{% else %}on the nights the kitchen is open{% endif %}.</p>
-          {% if settings and settings['price_per_person'] %}<p class="g-three__p">From <b>&euro;{{ settings['price_per_person']|int }}</b> a head</p>{% endif %}
+          {% if settings and settings['price_per_person'] %}<p class="g-price"><span class="g-price__k">From</span><span class="g-price__n">&euro;{{ settings['price_per_person']|int }}</span><span class="g-price__u">a head</span></p>{% endif %}
           <p class="g-three__a">
             <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--solid">Reserve a table</a>
             <a href="{{ url_for('contact_page') }}">Ask about a private dinner</a>

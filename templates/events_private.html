@@ -1,7 +1,7 @@
 {% extends "public_base.html" %}
 {% from '_illus.html' import illus %}
 {% block title %}Private Hire &amp; Celebrations{% endblock %}
-{% block description %}Private dinners, birthdays, anniversaries and family gatherings at Château de Gudanes. One party at a time, and the house is yours.{% endblock %}
+{% block description %}Private dinners, birthdays, anniversaries and family gatherings at Château de Gudanes. One party at a time, and the château is yours.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/393b1bed-532a-41a0-8000-c964f7fec141/Screenshot+2023-08-23+at+2.28.37+pm.png?format=1200w{% endblock %}
 {% set crumbs = [('Events', url_for('events_info')), ('Private', None)] %}
 {# Without this the page falls through to the default and offers a guest
@@ -18,7 +18,7 @@
   <div class="g-hero__art" aria-hidden="true">{{ illus('wine') }}</div>
   <div class="g-wrap">
     <p class="g-hero__eyebrow">Ariège · Private Hire</p>
-    <h1 class="g-hero__title">A private house for a few days</h1>
+    <h1 class="g-hero__title">A Private Château for a Few Days</h1>
     <p class="g-hero__lede">Birthdays, anniversaries, milestone dinners, and reasons that need no name.</p>
     <p><a href="#enquire" class="g-btn g-btn--solid">Ask about private hire</a></p>
   </div>
@@ -35,14 +35,14 @@
       <p class="g-fr">Une fête privée <span class="g-fr__en">A private celebration</span></p>
   <p class="g-eyebrow">Private Events</p>
   <h2 class="g-place">Smaller Than a Wedding, Longer Than a Dinner</h2>
-  <p class="g-p g-intro">The whole house for a few days, for a birthday, an anniversary or a gathering of your own.</p>
+  <p class="g-p g-intro">The whole château for a few days, for a birthday, an anniversary or a gathering of your own.</p>
     </div>
     <div class="g-duo__i">
       <div class="g-duo__ill" aria-hidden="true">{{ illus('key') }}</div>
   <p class="g-fr">Entre soi <span class="g-fr__en">Among your own</span></p>
   <p class="g-eyebrow">Private Hire</p>
   <h2 class="g-place">A Few Days of Your Own</h2>
-  <p class="g-p g-lede-first">For the birthdays and anniversaries that deserve more than a restaurant: the whole house for a few days, the people you choose, and the evenings as long as you like.</p>
+  <p class="g-p g-lede-first">For the birthdays and anniversaries that deserve more than a restaurant: the whole château for a few days, the people you choose, and the evenings as long as you like.</p>
     </div>
   </div>
 </div></section>
@@ -76,9 +76,9 @@
 <section class="g-sec g-sec--sand" id="enquire"><div class="g-wrap">
   <p class="g-eyebrow">Tell Us</p>
   <h2 class="g-place">What Are You Marking?</h2>
-  <p class="g-p">Tell us the occasion, roughly when, and how many. We will come back with what the house can do and what it costs.</p>
+  <p class="g-p">Tell us the occasion, roughly when, and how many. We will come back with what the château can do and what it costs.</p>
   <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
-  <p class="g-p">If your party would rather spend its days learning something, ask us about <a href="{{ url_for('workshops_public') }}">the workshops</a>: all meals and drinks, the activities and the house itself.</p>
+  <p class="g-p">If your party would rather spend its days learning something, ask us about <a href="{{ url_for('workshops_public') }}">the workshops</a>: all meals and drinks, the activities and the château itself.</p>
   <p class="g-limit"><span class="g-limit__k">One at a time</span> Only one event runs at the château at once, and only a handful are taken each year.</p>
 </div></section>
 <div class="g-wrap">{{ proof(settings) }}</div>

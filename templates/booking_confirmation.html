@@ -32,7 +32,7 @@
     and paid in full. There is nothing further to do — we will write again a few days before
     you travel, with directions and arrival times.{% else %}Your request for <strong>{{ room_name(booking['room_name']) }}</strong> has been received.
     We will be in touch shortly.{%- endif %}</p>
-  {% if (booking['status']|lower) == 'confirmed' %}<p class="g-p">Every stay helps bring the house back to life. Thank you for being part of it.</p>{% endif %}
+  {% if (booking['status']|lower) == 'confirmed' %}<p class="g-p">Every stay helps bring the château back to life. Thank you for being part of it.</p>{% endif %}
 
   <div class="g-conf g-plate-edge">
     <dl class="g-facts-list">
@@ -109,7 +109,7 @@
     <div class="g-find">
       <p class="g-find__k">Next time</p>
       <h3 class="g-find__t">The full experience</h3>
-      <p class="g-find__d">A workshop: the brocantes, the kitchen and the restoration, with all meals and drinks, the activities and the rest of the house. <a href="{{ url_for('workshops_public') }}">See the workshops</a></p>
+      <p class="g-find__d">A workshop: the brocantes, the kitchen and the restoration, with all meals and drinks, the activities and the rest of the château. <a href="{{ url_for('workshops_public') }}">See the workshops</a></p>
     </div>
       <p style="margin-top:var(--s6)">
       <a href="{{ url_for('manage_booking', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid">{{ t('Add to your stay') }}</a>

@@ -1,0 +1,50 @@
+{#- 12 Oct (owner: "for the rooms not just one photo for each - there has to be multiple"). A small slideshow for a room
+    card: the card's own first photograph (an uploaded one still wins), then the room's other photographs - Booking.com's,
+    then the château's own of the same room (_room_photos). Native horizontal scrolling with snap points, so a phone
+    swipes it and a trackpad scrolls it; on a computer, arrows on hover and dots for where you are. One room, one photo:
+    a plain image, as before. -#}
+{% from '_room_photos.html' import ROOM_PHOTOS, ROOM_EXTRA %}
+{% macro room_slides(name, first_src, cls, alt) -%}
+{%- set _ph = [(first_src, alt)] -%}
+{%- set _key = first_src.split('?')[0].split('/')[-1] -%}
+{%- for src, a in (ROOM_PHOTOS.get(name, []) + ROOM_EXTRA.get(name, [])) -%}
+  {%- set _s = src|replace('max2048x2048', 'max1024x768') -%}
+  {%- if 'squarespace-cdn.com' in _s and 'format=' not in _s -%}{%- set _s = _s.split('?')[0] ~ '?format=1000w' -%}{%- endif -%}
+  {%- if _s.split('?')[0].split('/')[-1] != _key -%}{%- set _ = _ph.append((_s, a)) -%}{%- endif -%}
+{%- endfor -%}
+{%- if _ph|length == 1 -%}
+<img class="{{ cls }}" src="{{ first_src }}" alt="{{ alt }}" loading="lazy">
+{%- else -%}
+<div class="g-slides" data-slides>
+  <div class="g-slides__track" tabindex="0" aria-label="{{ name }}: {{ _ph|length }} photographs">
+    {%- for src, a in _ph %}
+    <img class="{{ cls }}" src="{{ src }}" alt="{{ a }}" loading="lazy" draggable="false">
+    {%- endfor %}
+  </div>
+  <button type="button" class="g-slides__btn g-slides__prev" aria-label="Previous photograph" hidden>&#8249;</button>
+  <button type="button" class="g-slides__btn g-slides__next" aria-label="Next photograph">&#8250;</button>
+  <p class="g-slides__dots" aria-hidden="true">{% for _ in _ph %}<span{% if loop.first %} class="is-on"{% endif %}></span>{% endfor %}</p>
+</div>
+<script>
+(function(){
+  if (window.__gSlides) return; window.__gSlides = true;
+  function wire(root){
+    var t = root.querySelector('.g-slides__track'), prev = root.querySelector('.g-slides__prev'),
+        next = root.querySelector('.g-slides__next'), dots = root.querySelectorAll('.g-slides__dots span');
+    function at(){ return Math.round(t.scrollLeft / Math.max(1, t.clientWidth)); }
+    function show(){ var i = at(); dots.forEach(function(d, k){ d.classList.toggle('is-on', k === i); });
+      prev.hidden = i <= 0; next.hidden = i >= dots.length - 1; }
+    function go(step, e){ if (e) { e.preventDefault(); e.stopPropagation(); }
+      t.scrollTo({ left: (at() + step) * t.clientWidth, behavior: 'smooth' }); }
+    prev.addEventListener('click', function(e){ go(-1, e); });
+    next.addEventListener('click', function(e){ go(1, e); });
+    t.addEventListener('scroll', function(){ window.requestAnimationFrame(show); }, { passive: true });
+    t.addEventListener('keydown', function(e){ if (e.key === 'ArrowRight') go(1, e); if (e.key === 'ArrowLeft') go(-1, e); });
+    show();
+  }
+  function all(){ document.querySelectorAll('[data-slides]').forEach(wire); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', all); else all();
+})();
+</script>
+{%- endif -%}
+{%- endmacro %}

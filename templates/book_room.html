@@ -47,6 +47,18 @@
     <h1 class="g-display" >{{ room_name(room['name']) }}</h1>
     <p class="g-room__meta">
       {% if room['price_per_night'] %}<span class="g-fig" data-eur="{{ room['price_per_night']|int }}">€{{ '{:,.0f}'.format(room['price_per_night']) }}</span> per night, room and breakfast{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{%- endif %}</p>
+    {#- 10 Oct (owner: "when you click dates and book a room it still has select dates at the top - you have to scroll to see
+        your entered dates"). The chosen dates, under the price, and the way on to the form that already holds them. -#}
+    {%- if arrival and departure %}
+    <div class="g-roomtop__dates">
+      <p class="g-roomtop__dk">{{ t('Your dates') }}</p>
+      <p class="g-roomtop__dv">{{ date_range(arrival, departure) }}</p>
+      {#- 10 Oct (owner: "no average temperature shows up when selecting dates"): the same ten-year averages as the Stay
+          page, for the month they arrive, following the form's fields if the dates are changed. -#}
+      {% from '_typical_weather.html' import typical_weather %}{{ typical_weather('#arrival_date', '#departure_date') }}
+      <p class="g-roomtop__da"><a href="#book" class="g-btn g-btn--solid">{{ t('Continue to book') }}</a><a href="#book" class="g-link">{{ t('Change dates') }}</a></p>
+    </div>
+    {%- endif %}
     {# The arithmetic a guest would otherwise do in their head, and the deposit
        split they would otherwise meet for the first time at the payment step.
        deposit_shown is None when the amount genuinely depends on the booking,
@@ -69,8 +81,8 @@
       <div><dt>Breakfast</dt><dd>Included</dd></div>
       <div><dt>Stairs</dt><dd>No lift; the bedrooms are on the top floor</dd></div>
     </dl>
-    <p class="g-room__note">Walls left as the centuries made them &mdash; under Class I protection, they stay that way. Everything within them is new.</p>
-    <p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Choose your dates</a></p>
+    <p class="g-room__note">Walls left as the centuries made them &mdash; under Class I protection, they stay that way. Within them, antiques from the brocantes sit beside what has to be new: the beds and the bathrooms.</p>
+    {% if not (arrival and departure) %}<p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Choose your dates</a></p>{% endif %}
   </div>
 
   {#- 6 Oct (owner: "make sure the bedroom ones are correct and they show them well"): every photograph of the room, not
@@ -129,7 +141,7 @@
     {% for w in overlapping_workshops %}
       A workshop runs {{ date_range(w['start_date'], w['end_date']) }}{% if w['title'] %} — {{ w['title'] }}{% endif %}.
     {% endfor %}
-    The house is busier then, and the dining room is given over to it. Some people come for exactly that; if you would rather have it quiet, tell us and we will find you other dates.
+    The château is busier then, and the dining room is given over to it. Some people come for exactly that; if you would rather have it quiet, tell us and we will find you other dates.
   </p>
 </div>
 {% endif %}
@@ -861,7 +873,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
-  <h2 class="g-close__h">Not This Room?</h2>
+  <h2 class="g-close__h">Not this room?</h2>
   <p class="g-close__p">There are five, and they are not alike. The comparison table is the quickest way to see which suits.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See every room</a>

@@ -1,4 +1,6 @@
 {% extends "public_base.html" %}
+{% from '_roomslides.html' import room_slides with context %}
+{% from '_chipicons.html' import ci %}
 {% from '_room_photos.html' import ROOM_PHOTOS, BATH_PHOTO %}
 {% from '_dining_hours.html' import days_text, when_text, hours_card with context %}
 {% from '_illus.html' import illus %}
@@ -46,8 +48,8 @@
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">A French Château Experience<span class="g-hero__eyeplace"><span aria-hidden="true"> · </span>Ariège · Pyrénées</span></p>
     <h1 class="g-hero__title">Château de Gudanes</h1>
-    <p class="g-hero__motto">Where History Becomes Home</p>
-    <p class="g-hero__lede">A restoration followed the world over, and an experience extended quietly.</p>
+    <p class="g-hero__motto">Where History Comes Back to Life</p>
+    <p class="g-hero__lede">A restoration followed the world over, and a few rooms opened to guests.</p>
   
     <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}">
       {# The two native date fields remain, as the values the form posts and as
@@ -75,7 +77,9 @@
       <button type="submit" class="g-herosearch__go">{{ t('Check availability') }}</button>
     </form>
     {# The second way in (owner, 1 Oct: push them towards the workshops) - the hero offered a room and nothing else. #}
-    <p class="g-hero__alt"><span>Or come for</span> <a class="g-hero__altbtn" href="{{ url_for('workshops_public') }}">The Full Experience</a></p>
+    {#- 10 Oct (Code, for the owner): "Or come for THE FULL EXPERIENCE" did not read - said plainly now. One line on a phone:
+        the full sentence from 640px up, a shorter one below (measured: fits a 360px phone). -#}
+    <p class="g-hero__alt"><span class="g-hero__alttext"><span class="g-hero__altlong">Or stay three to seven nights on a workshop, every meal and drink included</span><span class="g-hero__altshort">Or three to seven nights, every meal included</span></span> <a class="g-hero__altbtn" href="{{ url_for('workshops_public') }}">See the workshops</a></p>
 </div>
   <button type="button" class="g-hero__pause" id="g-hero-pause" aria-label="Pause video">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
@@ -87,10 +91,10 @@
   <div class="g-full__copy">
     <p class="g-full__fr" lang="fr">La pleine expérience <span class="g-full__fren" lang="en">The château in full</span></p>
     <h2 class="g-full__h" id="full-h">Experience the Château in Full</h2>
-    <p class="g-full__p">Built in 1741, very nearly lost, and brought back room by room. A workshop retreat lets you live inside it for three to seven nights: all meals and drinks, the brocantes, the kitchen, the valley, a candlelit dinner in the Salon de Musique, and the house to yourselves.</p>
+    <p class="g-full__p">Built in 1741, very nearly lost, and now coming back to life. A workshop retreat lets you live inside it for three to seven nights: all meals and drinks, the brocantes, the kitchen, the valley, a candlelit dinner in the Salon de Musique, and the run of the château with a small group.</p>
     <p class="g-full__btns">
-      <a class="g-full__cta" href="{{ url_for('workshops_public') }}">See the Experiences</a>
-      <a class="g-full__link" href="{{ url_for('restoration_page') }}#monument">The house and its history</a>
+      <a class="g-full__cta" href="{{ url_for('workshops_public') }}">See the Workshops</a>
+      <a class="g-full__link" href="{{ url_for('restoration_page') }}#monument">The château and its history</a>
     </p>
   </div>
   <div class="g-full__side">
@@ -101,7 +105,7 @@
       <li class="g-full__row"><a href="{{ url_for('workshop_detail', workshop_id=s['workshop_id']) }}">
         <span class="g-full__t">{{ s['title'] }}</span>
         <span class="g-full__d">{{ date_range(s['start_date'], s['end_date']) }}</span>
-        <span class="g-full__m">{{ s['nights_label'] or '' }}{% if s['nights_label'] and s['price_per_person'] %} · {% endif %}{% if s['price_per_person'] %}€{{ '{:,.0f}'.format(s['price_per_person']) }} per person, everything included{% endif %}</span>
+        <span class="g-full__m">{{ s['nights_label'] or '' }}{% if s['nights_label'] and s['price_per_person'] %} · {% endif %}{% if s['price_per_person'] %}€{{ '{:,.0f}'.format(s['price_per_person']) }} per person, all meals and drinks{% endif %}</span>
         <span class="g-full__go" aria-hidden="true">→</span>
       </a></li>
       {% endfor %}
@@ -111,7 +115,7 @@
     <ul class="g-full__threads">
       <li lang="fr">La Brocante <span lang="en">The antique fairs of the valley</span></li>
       <li lang="fr">La Cuisine <span lang="en">French cooking at the château</span></li>
-      <li lang="fr">La Restauration <span lang="en">The house up close</span></li>
+      <li lang="fr">La Restauration <span lang="en">The château up close</span></li>
     </ul>
     {% endif %}
   </div>
@@ -141,7 +145,7 @@
 
 <section class="g-sec g-sec--plate"><div class="g-wrap">
 <h2 class="g-h2 g-h2--lead">Bienvenue</h2>
-<p class="g-p g-lede-first">An eighteenth-century château in the French Pyrénées, brought back to life room by room since 2013 and followed the world over. In 2016 the restoration received the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco. Come for a night, or for the full experience.</p>
+<p class="g-p g-lede-first">An eighteenth-century château in the French Pyrénées, under restoration since 2013. In 2016 the restoration received the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco. Come for a night, or for the full experience.</p>
 </div></section>
 
 <section class="g-sec"><div class="g-wrap">
@@ -149,8 +153,8 @@
   <p class="g-fr">L’art de vivre <span class="g-fr__en">The art of living</span></p>
   <p class="g-eyebrow">The Gudanes Experience</p>
   <h2 class="g-place">La Vie de Château</h2>
-  <p class="g-p g-lede-first">There is a particular pleasure in waking in a house like this: light across old stone, the valley below, and breakfast waiting. The days are slow here by design, with the pool, the grounds and the mountains on every side.</p>
-  <p class="g-p">Nothing is staged. The house is lived in while it is brought back. A night here is your room, breakfast in the morning and the lounge to come back to; the workshops open up the rest of the house.</p>
+  <p class="g-p g-lede-first">There is a particular pleasure in waking in a château like this: light across old stone, the valley below, and breakfast waiting. The days are slow here by design, with the pool, the grounds and the mountains on every side.</p>
+  <p class="g-p">Nothing is staged. The château is lived in while it is brought back. A night here is your room, breakfast in the morning and the lounge to come back to; the workshops open up the rest of the château.</p>
 </div></section>
 
 
@@ -202,9 +206,8 @@
         'The Family Suite': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/cc7f6cb2-243c-47a9-ab7e-5200a66afca1/bedroom+3.jpg?format=1000w'
       } %}
       {%- for _n, _ph in ROOM_PHOTOS.items() %}{% set _ = HR_IMG.update({_n: (_ph[0][0]|replace('max2048x2048','max1024x768'))}) %}{% endfor %}
-      <img class="g-homeroom__img"
-           src="{% if r.get('img') %}{{ r['img'] }}{% elif r['photo_filename'] %}{{ url_for('room_photo', filename=r['photo_filename']) }}{% else %}{{ HR_IMG.get(room_name(r['name']), 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583507444802-ZWPKZA5RWBS7BHZ9LJ0V/IMG_2988.jpg?format=1000w') }}{% endif %}"
-           alt="{{ room_name(r['name']) }}" loading="lazy">
+      {%- set _first %}{% if r.get('img') %}{{ r['img'] }}{% elif r['photo_filename'] %}{{ url_for('room_photo', filename=r['photo_filename']) }}{% else %}{{ HR_IMG.get(room_name(r['name']), 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583507444802-ZWPKZA5RWBS7BHZ9LJ0V/IMG_2988.jpg?format=1000w') }}{% endif %}{% endset %}
+      {{ room_slides(room_name(r['name']), _first|trim, 'g-homeroom__img', room_name(r['name'])) }}
       <div class="g-homeroom__b">
         {{ emblem(r['name']) }}
         <h3 class="g-homeroom__name">{{ room_name(r['name']) }}</h3>
@@ -213,17 +216,17 @@
            "A dressing..." - clipping the one fact a guest was reading for. Each room's
            first sentence is complete on its own; show that. #}
         {% if _rc %}{% set _s1 = _rc.split('. ')[0].rstrip('.') ~ '.' %}<p class="g-p">{{ _s1 if _s1|length <= 200 else _rc|truncate(170) }}</p>{% endif %}
-        <p class="g-homeroom__rate">
-          {% set rate = r.get('rate') or r['price_per_night'] %}
-          {% if rate %}<span class="g-fig">from €{{ '{:,.0f}'.format(rate) }}</span> a night{%- endif %}</p>
+        {% set rate = r.get('rate') or r['price_per_night'] %}
+        {% if rate %}<p class="g-price"><span class="g-price__k">From</span><span class="g-price__n g-fig" data-eur="{{ rate|int }}">€{{ '{:,.0f}'.format(rate) }}</span><span class="g-price__u">a night · room and breakfast</span></p>{%- endif %}
         {# The homepage showed no facts and no price band — a guest could not
            tell whether this was in their range without clicking through. #}
-        <ul class="g-tags g-tags--sm">
+        <ul class="g-tags g-tags--sm g-tags--icons">
           {# Showed 2 whenever capacity was unset - including under a card saying "sleeping five". #}
-          {% if r['max_occupancy'] %}<li>Sleeps {{ r['max_occupancy'] }}</li>{% endif %}
-          {% if r['bathroom'] %}<li>{{ r['bathroom']|capitalize }} bathroom</li>{% endif %}
-          {% if r['outlook'] %}<li>{{ r['outlook']|capitalize }} view</li>{% endif %}
-          <li>Breakfast included</li>
+          {% if r['bed_setup'] %}<li>{{ ci('bed') }}{{ r['bed_setup'] }}</li>{% endif %}
+          {% if r['max_occupancy'] %}<li>{{ ci('guests') }}Sleeps {{ r['max_occupancy'] }}</li>{% endif %}
+          {% if r['bathroom'] %}<li>{{ ci('bath') }}{{ r['bathroom']|capitalize }} bathroom</li>{% endif %}
+          {% if r['outlook'] %}<li>{{ ci('view') }}{{ r['outlook']|capitalize }} view</li>{% endif %}
+          <li>{{ ci('cup') }}Breakfast included</li>
         </ul>
         <a href="{% if r.get('id') %}{{ url_for('book_room', room_id=r['id']) }}{% else %}{{ url_for('book_rooms') }}{% endif %}" class="g-btn g-btn--line">Check dates</a>
       </div>
@@ -247,8 +250,8 @@
     {# This block follows the room cards directly; its heading repeated their
        eyebrow and its first line was word for word their lede. It keeps the
        paragraph that matters - the walls and what is new within them. #}
-    <h2 class="g-place">Old Walls, New Beds</h2>
-    <p class="g-p">It is a restoration, not a renovation. The walls stay as the centuries left them, protected by law. Everything within them is new: the beds, the floors and the bathrooms, and nothing there has been compromised. Every stay helps bring the house back to life.</p>
+    <h2 class="g-place">Brocante Antiques and New Comforts</h2>
+    <p class="g-p">It is a restoration, not a renovation: the walls stay as the centuries left them, protected by law. Within them, each room mixes antiques found at the brocantes of the valley with what has to be new, the beds and the bathrooms, so the château feels lived in rather than furnished.</p>
     <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--line">See the rooms</a></p>
   </div>
 </div></section>
@@ -284,7 +287,7 @@
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/002bc94f-c8f0-4c5d-bbfd-36984cde7af4/Screenshot+2025-02-14+at+1.55.45+pm.png?format=1500w" alt="A long table laid for a celebration" loading="lazy">
   <div class="g-half__text">
     <h2 class="g-place">One Wedding at a Time</h2>
-    <p class="g-p"><em>The whole house, for a wedding or a gathering of your own.</em></p>
+    <p class="g-p"><em>The whole château, for a wedding or a gathering of your own.</em></p>
     <p style="margin-top:var(--s6)"><a href="{{ url_for('events_info') }}" class="g-btn g-btn--line">Tell us about your day</a></p>
   </div>
 </div></section>
@@ -371,8 +374,8 @@
 
 <div class="g-wrap">
   <p class="g-devise">
-    <span class="g-devise__fr">« On ne restaure pas une maison. On la laisse revenir. »</span>
-    <span class="g-devise__en">A house is not restored. It is allowed to come back.</span>
+    <span class="g-devise__fr">« On ne restaure pas un château. On le laisse revenir. »</span>
+    <span class="g-devise__en">A château is not restored. It is allowed to come back.</span>
   </p>
 </div>
 
@@ -384,7 +387,7 @@
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Come and see it</h2>
-  <p class="g-close__p">The rooms are few. If a date suits, take it, for a night or for the full experience.</p>
+  <p class="g-close__p">The rooms are few. If a date suits, take it, for a night or for a workshop.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
       <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">See the workshops</a>

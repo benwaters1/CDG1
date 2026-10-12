@@ -1,7 +1,7 @@
 {% extends "public_base.html" %}
 {% from '_illus.html' import illus %}
-{% set crumbs = [("In the Ariège", None)] %}
-{% block title %}In the Ariège{% endblock %}
+{% set crumbs = [("What’s On in the Ariège", None)] %}
+{% block title %}What’s On in the Ariège{% endblock %}
 {% block description %}Markets, brocantes, mountain days and the fairs of the Ariège — everything within an hour of Château de Gudanes, and when to catch it.{% endblock %}
 {% block og_desc %}Markets, brocantes, mountain days and the fairs of the Ariège — everything within an hour of Château de Gudanes, and when to catch it.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1200w{% endblock %}
@@ -19,7 +19,7 @@
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Pyrénées · Within an Hour</p>
     {# 5 Oct (owner): named for the Ariège - promoting the area, which the commune will welcome (was "In the Valley", 24 Sept; "What's On" is a contraction - house rule: none). The address stays /whats-on. #}
-    <h1 class="g-hero__title">{{ t("In the Ariège") }}</h1>
+    <h1 class="g-hero__title">{{ t("What’s On in the Ariège") }}</h1>
     <p class="g-hero__lede">Markets, fairs, festivals and mountain days across the Ariège, all within an hour of the château.</p>
   
     <p class="g-hero__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
@@ -252,7 +252,7 @@
 (function(){
   var host=document.querySelector('[data-months]'); if(!host) return;
   var M={
-   1:['January','Deep winter. Cross-country skiing on the Plateau de Beille, and the valley quiet as at no other time. The château is cold, and every room has an electric blanket and a space heater.','Come for the snow and the silence.'],
+   1:['January','Deep winter. Cross-country skiing on the Plateau de Beille, and the valley quiet as at no other time; every room has an electric blanket and a space heater.','Come for the snow and the silence.'],
    2:['February','Still skiing, and the light starts to come back. A thermal bath at Ax-les-Thermes is a different thing in winter.','One of the quietest months.'],
    3:['March','The thaw. The rivers run hard, and the valley turns green.','Quiet, and the place to yourselves.'],
    4:['April','Spring in the valley, fresh and changeable, with snow still on the high peaks.','Beautiful and unpredictable.'],

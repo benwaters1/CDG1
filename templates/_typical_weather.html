@@ -19,8 +19,17 @@
     "8b":[25.2,15.3,0,.32],"9a":[23.0,13.7,0,.17],"9b":[20.7,11.5,0,.01],"10a":[19.8,10.0,0,.02],"10b":[18.8,9.1,.01,.02],
     "11a":[14.9,5.8,.03,0],"11b":[12.4,3.1,.17,0],"12a":[10.9,1.7,.23,0],"12b":[13.2,2.4,.21,0]};
   var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  var a = document.querySelector(el.getAttribute('data-a')), d = document.querySelector(el.getAttribute('data-d'));
-  if (!a || !d) return;
+  /* 10 Oct: the room page shows this inside the "Your dates" strip, above the fields it reads - so wait for the page
+     when they are not there yet. */
+  var a, d;
+  function init(){
+    a = document.querySelector(el.getAttribute('data-a')); d = document.querySelector(el.getAttribute('data-d'));
+    if (!a || !d) return;
+    a.addEventListener('change', draw); d.addEventListener('change', draw);
+    a.addEventListener('input', draw); d.addEventListener('input', draw);
+    /* the date-range picker sets the fields without firing events, so look again now and then */
+    setInterval(draw, 700); draw();
+  }
   function parse(v){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); return m ? new Date(Date.UTC(+m[1], +m[2]-1, +m[3])) : null; }
   function label(x, y){
     var sameMonth = x.getUTCMonth() === y.getUTCMonth() && x.getUTCFullYear() === y.getUTCFullYear();
@@ -40,15 +49,15 @@
     if (fr >= 0.2) notes.push('Frosty nights are common.');
     if (mo === 12 || mo <= 3) notes.push('There is usually snow on the mountains.');
     if (hot >= 0.25) notes.push('Some days reach 28°C or more.');
-    el.innerHTML = '<span class="g-typwx__k">Typical in ' + MONTHS[mo - 1] + ':</span> days around ' + hi +
-      '°C, nights around ' + lo + '°C.' + (notes.length ? ' ' + notes.join(' ') : '');
+    /* 10 Oct (owner: "the weather info isn't designed well"): the month, then day and night as two figures, then the note. */
+    el.innerHTML = '<span class="g-typwx__k">Typical in ' + MONTHS[mo - 1] + '</span>' +
+      '<span class="g-typwx__v"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg><span>Days around <b>' + hi + '°C</b></span></span>' +
+      '<span class="g-typwx__v"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg><span>Nights around <b>' + lo + '°C</b></span></span>' +
+      (notes.length ? '<span class="g-typwx__n">' + notes.join(' ') + '</span>' : '');
     /* owner, 8 Oct: no source note - "Typical in" already says it is an average, not a forecast */
     el.hidden = false;
   }
-  a.addEventListener('change', draw); d.addEventListener('change', draw);
-  a.addEventListener('input', draw); d.addEventListener('input', draw);
-  /* the date-range picker sets the fields without firing events, so look again now and then */
-  setInterval(draw, 700); draw();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
 </script>
 {%- endmacro -%}

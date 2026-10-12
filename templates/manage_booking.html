@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% from '_illus.html' import illus %}
 {% from '_payment_safety.html' import payment_safety %}
 {% set sticky_bar = 'none' %}
 {% block title %}{{ t('Check In') }}{% endblock %}
@@ -358,7 +359,12 @@
   <h2 class="g-panel__h">{{ t('Add to your stay') }}</h2>
   <p class="g-hint">Added to your bill, settled with the rest.</p>
   {% for e in addable %}
-  <form method="post" class="g-mb-acts g-mb-extra" style="margin-bottom:var(--s2);">
+  {#- 10 Oct (owner: "put icons on these so it looks nicer"): a drawing for each extra, chosen from its name. Rows with no
+      quantity (one per booking) get their own columns, so the date menu is not squeezed into the quantity's slot. -#}
+  {%- set _xn = (e['name'] ~ ' ' ~ (e['description'] or ''))|lower %}
+  {%- set _xk = 'key' if 'tour' in _xn else 'wine' if ('crémant' in _xn or 'cremant' in _xn or 'wine' in _xn or 'champagne' in _xn or 'charcuterie' in _xn) else 'depart' if ('transfer' in _xn or 'airport' in _xn or 'taxi' in _xn or 'station' in _xn) else 'breakfast' if 'breakfast' in _xn else 'yoga' if 'yoga' in _xn else 'horse' if ('riding' in _xn or 'horse' in _xn) else 'hike' if ('hike' in _xn or 'hiking' in _xn) else 'ski' if ' ski' in (' ' ~ _xn) else 'film' if ('film' in _xn or 'cinema' in _xn) else 'laundry' if ('laundry' in _xn or 'ironing' in _xn) else 'candelabra' %}
+  <form method="post" class="g-mb-acts g-mb-extra{{ ' g-mb-extra--noqty' if e['max_qty'] == 1 }}" style="margin-bottom:var(--s2);">
+    <div class="g-mb-extra__ill" aria-hidden="true">{{ illus(_xk) }}</div>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="add_extra">
     <input type="hidden" name="extra_id" value="{{ e['id'] }}">
@@ -444,16 +450,12 @@
    It is still reachable, deliberately: a guest must be able to cancel. But
    the terms come first, it takes a deliberate second action to open, and the
    confirm says what actually happens rather than "cannot be undone". #}
-<div style="margin-top:var(--s5);">
+{#- 10 Oct (owner: "this isn't 100%"): the advice once (it was shown twice), then the fold as a proper link. -#}
+<div class="g-mb-cancel">
+  <p class="g-hint">{% if (booking['payment_status']|lower) == 'paid' %}Payments are not refunded on cancellation.{% else %}Bookings are non-refundable.{% endif %} Write to us first &mdash; we can sometimes move your dates instead.</p>
   <details class="g-cancel-fold">
     <summary>{{ t('I need to cancel') }}</summary>
-    <p class="g-hint" style="margin-top:var(--s3)">
-      Bookings are non-refundable.
-    </p>
-    <p class="g-hint">
-      Write to us before you cancel — we can sometimes move your dates instead.
-    </p>
-    <p class="g-hint">
+    <p class="g-hint" style="margin-top:var(--s2)">
       <a href="mailto:{{ contact_address('rooms') }}?subject=Booking%20{{ booking['reference_code'] }}">{{ t('Write to us first') }}</a>
     </p>
     <form method="post" onsubmit="return confirm('Cancel this booking? It is non-refundable and cannot be undone.');">
@@ -462,27 +464,21 @@
       <button type="submit" class="btn-text-danger">{{ t('Cancel this booking anyway') }}</button>
     </form>
   </details>
-  {% if (booking['payment_status']|lower) == 'paid' %}<p class="g-hint">Payments are not refunded on cancellation. Write to us first &mdash; we can sometimes move your dates instead.</p>{% endif %}
 </div>
 
 {% endif %}
 
-{% if portal_token %}
-<p class="g-hint" style="margin-top:var(--s4);">
-  <a href="{{ url_for('guest_portal', token=portal_token) }}" class="small-link">{{ t('See everything you have with us →') }}</a>
-</p>
-{% endif %}
 </div>
 
 
 {# The bill. A guest who paid deserves to see what for, and a business guest
    needs it to reclaim their VAT — it was previously reachable only if you
    guessed the URL. #}
-<p style="margin-top:var(--s3);">
-  <a href="{{ url_for('booking_statement', manage_token=booking['manage_token']) }}" class="g-btn g-btn--sm">
-    View your bill
-  </a>
-</p>
+{#- The bill and everything else, together on one line (10 Oct). -#}
+<div class="g-mb-end">
+  <a href="{{ url_for('booking_statement', manage_token=booking['manage_token']) }}" class="g-btn g-btn--sm">View your bill</a>
+  {% if portal_token %}<a href="{{ url_for('guest_portal', token=portal_token) }}" class="g-link">{{ t('See everything you have with us') }}</a>{% endif %}
+</div>
 {% from '_stay_or_workshop.html' import next_time %}{{ next_time() }}
 
 {% endblock %}
