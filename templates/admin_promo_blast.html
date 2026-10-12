@@ -10,17 +10,20 @@
 
 <div class="detail-card" style="max-width:640px; margin-bottom:20px;">
   <h3 style="margin-top:0;">1. Who should get it?</h3>
+  {# Every change recounts at once. The send form below carries the audience
+     from the last count, so a box unticked without recounting used to leave
+     "Send to 24" pointing at the old 24. #}
   <form method="get">
     <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none;">
-      <input type="checkbox" name="segment" value="room" {{ 'checked' if 'room' in segments }}>
+      <input type="checkbox" name="segment" value="room" onchange="this.form.submit()" {{ 'checked' if 'room' in segments }}>
       Room guests
     </label>
     <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none; margin-top:6px;">
-      <input type="checkbox" name="segment" value="restaurant" {{ 'checked' if 'restaurant' in segments }}>
+      <input type="checkbox" name="segment" value="restaurant" onchange="this.form.submit()" {{ 'checked' if 'restaurant' in segments }}>
       Dinner guests
     </label>
     <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none; margin-top:6px;">
-      <input type="checkbox" name="segment" value="workshop" {{ 'checked' if 'workshop' in segments }}>
+      <input type="checkbox" name="segment" value="workshop" onchange="this.form.submit()" {{ 'checked' if 'workshop' in segments }}>
       Workshop attendees
     </label>
     {% if alumni_workshops %}
@@ -44,7 +47,7 @@
        nothing else. Until now they were collected on the public site and
        there was no way to write to any of them. #}
     <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none; margin-top:6px;">
-      <input type="checkbox" name="segment" value="newsletter" {{ 'checked' if 'newsletter' in segments }}>
+      <input type="checkbox" name="segment" value="newsletter" onchange="this.form.submit()" {{ 'checked' if 'newsletter' in segments }}>
       Newsletter subscribers
     </label>
     <p class="upload-hint">They confirmed by email and can unsubscribe from any
@@ -52,7 +55,7 @@
       apply to them.</p>
     <div style="margin-top:10px; max-width:260px;">
       <label class="field-label">Only guests who visited in the last (months, optional)</label>
-      <input aria-label="Any time" type="number" name="since_months" min="1" value="{{ since_months }}" placeholder="Any time">
+      <input aria-label="Any time" type="number" name="since_months" min="1" value="{{ since_months }}" placeholder="Any time" onchange="this.form.submit()">
     </div>
     <button type="submit" class="btn-mini" style="margin-top:10px;">Update count</button>
   </form>

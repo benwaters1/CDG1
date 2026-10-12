@@ -14,6 +14,8 @@
   <h1>{{ party.party['name'] }}</h1>
   <div style="display:flex; gap:10px; align-items:center;">
     <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">All bookings</a>
+    {% if bills and can('party_email') %}<a href="{{ url_for('party_email', party_id=party.party['id']) }}" class="btn-ghost">Email everyone in this party</a>{% endif %}
+    {% if party.owed > 0.005 and can('party_statements') %}<a href="{{ url_for('party_statements', party_id=party.party['id']) }}" class="btn-ghost">Send statements to everyone</a>{% endif %}
   </div>
 </div>
 
@@ -80,6 +82,13 @@
   <p style="margin-top:8px;">
     <a class="small-link" href="{{ url_for('admin_bookings') }}?q={{ stay['reference_code'] }}">This booking</a>
   </p>
+  {% if bill.owed > 0.005 and stay['status'] in ('pending', 'confirmed') and can('send_stay_statement') %}
+  {# The same letter the party-wide send writes, through the same function. #}
+  <form method="post" action="{{ url_for('send_stay_statement', booking_id=stay['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini">Send this stay's statement</button>
+  </form>
+  {% endif %}
 </div>
 {% endfor %}
 

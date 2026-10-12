@@ -39,6 +39,8 @@ TAG = "ZZTPLED"
 MAY_WRITE_IN_CODE = {
     # written by hand, from the guest's record
     "write_to_guest": "the owner writes the letter, from the guest's record",
+    "send_group_note": "the owner writes it, or picks a campaign template, for everybody "
+                       "on one session, party or night",
     # the house's own notices, read by the owner and staff, not guests
     "create_booking": "the owner's 'booked' / 'needs you' notices (the guest's letter is a template)",
     "create_booking_from_stripe_session": "an urgent notice to the owner",

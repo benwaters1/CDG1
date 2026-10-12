@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% set heading = 'Send statements to everyone' if mode == 'statements' else spec.email_title %}
+{% block title %}{{ heading }} · {{ title }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ heading }}</h1>
+  <a href="{{ back }}" class="btn-mini">Back to {{ title }}</a>
+</div>
+<p class="page-intro">{{ title }}.
+  {% if mode == 'statements' %}Each {{ spec.noun }} that owes something is sent its own statement, the same letter as its own button sends.
+  {% else %}About what they booked, so it carries no unsubscribe line. Replies reach the {{ spec.area }} inbox.{% endif %}
+</p>
+
+{#
+  Who it goes to before anything else: the count is the thing to check, and
+  the send button carries it back so a list that has moved since is refused.
+#}
+<div class="detail-card group-mail__who">
+  <h2 class="group-mail__count">
+    {% if going %}{% if mode == 'statements' %}{{ going|length }} {{ 'statement' if going|length == 1 else 'statements' }} to send{% else %}Goes to {{ going|length }} {{ 'address' if going|length == 1 else 'addresses' }}{% endif %}
+    {% else %}Nobody here can be sent this{% endif %}
+  </h2>
+  {% if going %}
+  <ul class="group-mail__list">
+    {% for m in going %}
+    <li>{{ m.label }}{% if mode == 'statements' %} · owes {{ m.owed|money }}{% endif %}
+      {% if m.also %}<span class="cell-note">one letter also covers {{ m.also|join(', ') }}, at the same address</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if skipped %}
+  <h3 class="group-mail__left">Left out</h3>
+  <ul class="group-mail__list">
+    {% for label, why in skipped %}<li>{{ label }}: {{ why }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% if not members %}<p class="empty-state">Nobody is booked on this yet.</p>{% endif %}
+</div>
+
+{% if mode == 'statements' %}
+  {% if going %}
+  <form method="post" class="group-mail__send"
+        onsubmit="return confirm('Send {{ going|length }} {{ 'statement' if going|length == 1 else 'statements' }}? This cannot be undone.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="expect" value="{{ going|length }}">
+    <button type="submit" name="action" value="send" class="btn-primary">Send {{ going|length }} {{ 'statement' if going|length == 1 else 'statements' }}</button>
+  </form>
+  {% endif %}
+{% else %}
+  {% if templates %}
+  <form method="get" class="group-mail__template">
+    <label class="field-label" for="gm-template">Start from a template</label>
+    <select id="gm-template" name="template_id">
+      <option value="">Write it yourself</option>
+      {% for t in templates %}<option value="{{ t['id'] }}" {{ 'selected' if chosen == t['id']|string }}>{{ t['name'] }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn-mini">Use this wording</button>
+  </form>
+  {% endif %}
+
+  <form method="post" class="group-mail__compose">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="expect" value="{{ going|length }}">
+    <input type="hidden" name="template_id" value="{{ chosen }}">
+    <label class="field-label" for="gm-subject">Subject</label>
+    <input type="text" id="gm-subject" name="subject" value="{{ subject }}" maxlength="200" required>
+    <label class="field-label" for="gm-body">Message</label>
+    <textarea id="gm-body" name="body" rows="10" required>{{ body }}</textarea>
+    <p class="upload-hint">Filled in for each person:
+      {% for t in tags %}<code>{{ '{{' }}{{ t }}{{ '}}' }}</code>{{ ', ' if not loop.last }}{% endfor %}.
+      Anything else in double braces is left as it is, so a typo shows in the preview.</p>
+    <div class="group-mail__buttons">
+      <button type="submit" name="action" value="preview" class="btn-mini">Preview it</button>
+      {% if going %}
+      <button type="submit" name="action" value="send" class="btn-primary"
+              onclick="return confirm('Send this to {{ going|length }} {{ 'address' if going|length == 1 else 'addresses' }}? This cannot be undone.');">Send to {{ going|length }}</button>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if sample %}
+  <div class="detail-card group-mail__sample">
+    <h2 class="section-heading">As {{ going[0].label }} will read it</h2>
+    <p><strong>{{ sample[0] }}</strong></p>
+    <div class="manual-body">{{ sample[1] }}</div>
+  </div>
+  {% endif %}
+{% endif %}
+
+{% endblock %}

@@ -35,10 +35,14 @@
     <a href="{{ url_for('workshop_register_print', session_id=panel.session_id) }}" class="btn-mini">Print the register</a>
     <a href="{{ url_for('workshop_running_sheet', session_id=panel.session_id) }}" class="btn-mini">Running sheet</a>
     <a href="{{ url_for('workshop_rooming', session_id=panel.session_id) }}" class="btn-mini">Rooming</a>
-    {% if panel.emails %}
-    {# Written in Outlook, like every other reply: the addresses go in the
-       blind copy, so nobody on the session is handed everybody's email. #}
-    <a href="mailto:?bcc={{ panel.emails|join(',') }}&amp;subject={{ ('About ' ~ panel.title)|urlencode }}" class="btn-mini">Email everyone ({{ panel.emails|length }})</a>
+    {% if panel.emails and can('workshop_session_email') %}
+    {# Written from here, not Outlook: the app shows who it goes to first,
+       leaves out anybody who asked not to be written to, and files the
+       letter on each registration's history. #}
+    <a href="{{ url_for('workshop_session_email', session_id=panel.session_id) }}" class="btn-mini">Email everyone on this session</a>
+    {% endif %}
+    {% if panel.owed > 0.005 and can('workshop_session_statements') %}
+    <a href="{{ url_for('workshop_session_statements', session_id=panel.session_id) }}" class="btn-mini">Send statements to everyone</a>
     {% endif %}
   </div>
   {% if not panel.over and not panel.called_off %}
@@ -333,6 +337,11 @@
       <form method="post" action="{{ url_for('decline_workshop_registration', registration_id=r['id']) }}" onsubmit="return confirm('Decline this registration?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
       {% elif r['status'] == 'confirmed' %}
       <form method="post" action="{{ url_for('cancel_workshop_registration_admin', registration_id=r['id']) }}" onsubmit="return confirm('Cancel this confirmed registration?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Cancel</button></form>
+      {% endif %}
+      {% if r['status'] in ('pending', 'confirmed') and balance_by_booking.get(r['id'], (0,))[0] > 0.005 and can('send_workshop_registration_statement') %}
+      {# The same letter "Send statements" sends to the whole session, through
+         the same function, so the two cannot drift apart. #}
+      <form method="post" action="{{ url_for('send_workshop_registration_statement', booking_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Send their statement</button></form>
       {% endif %}
     </div>
   </div>

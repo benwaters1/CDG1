@@ -356,6 +356,19 @@ def run():
         m.promo_blast_recipients = real_audience
         m.send_email = real_send
 
+    s.section("The count on the page is the count that goes")
+    # The send form carries the audience from the last count. A box unticked
+    # without pressing "Update count" left "Send to 24" pointing at the old 24,
+    # so every choice that changes who it goes to recounts at once.
+    page = oc.get(f"/admin/promo-codes/{promo['id']}/blast").get_data(as_text=True)
+    boxes = re.findall(r'<input type="checkbox" name="segment"[^>]*>', page)
+    s.check("every audience box recounts the moment it changes",
+            boxes and all('onchange="this.form.submit()"' in b for b in boxes),
+            detail=f"{len(boxes)} boxes: {[b[:60] for b in boxes if 'onchange' not in b]}")
+    months = re.search(r'<input[^>]*name="since_months"[^>]*>', page)
+    s.check("and so does the months filter",
+            bool(months) and 'onchange="this.form.submit()"' in months.group(0))
+
     s.section("And the stand-ins are gone for whoever runs next")
     s.check("the real audience function is back",
             m.promo_blast_recipients is real_audience,

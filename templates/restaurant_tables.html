@@ -21,6 +21,9 @@
 
 <div class="detail-card">
   <h2 class="section-heading">Who is booked</h2>
+  {% if bookings and can('dinner_email') %}
+  <p><a href="{{ url_for('dinner_email', day=on.isoformat()) }}" class="btn-mini">Email everyone dining this night</a></p>
+  {% endif %}
   {% if not bookings %}
   <p class="empty-inline">Nobody booked for this night.</p>
   {% else %}

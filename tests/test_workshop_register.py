@@ -195,12 +195,12 @@ def run():
     s.check("what it is still owed", head_owed is not None and head_owed.group(1) == "6,300.00",
             detail=f"{head_owed.group(1) if head_owed else None}: Coming 1400 + Owing 900 + "
                    "Unpaid 2000 + Wait 2000, and the cancelled one is not")
-    mailto = re.search(r'href="mailto:\?bcc=([^"&]+)', page)
-    addresses = set(mailto.group(1).split(",")) if mailto else set()
-    s.check("everyone coming can be written to at once, in blind copy",
-            f"{TAG.lower()}coming@example.invalid" in addresses
-            and f"{TAG.lower()}cancelled@example.invalid" not in addresses,
-            detail=f"{sorted(addresses)}")
+    # Written from the app now, not an Outlook blind copy: the app shows who
+    # it goes to first and leaves out anybody who asked not to be written to.
+    # Who exactly it reaches is test_group_mail's to pin.
+    s.check("everyone coming can be written to at once, from the app",
+            "/email\"" in page and "Email everyone on this session" in page
+            and "mailto:?bcc=" not in page)
     s.check("it links to its printable register",
             f"/admin/workshops/sessions/{soon}/register" in page)
 

@@ -556,6 +556,16 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
 .register-panel{ margin:0 0 16px; }
 .register-panel__when{ margin:0 0 8px; font-weight:600; }
 .register-panel__actions{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 0; }
+/* Writing to a whole session, party or night: who first, then the words. */
+.group-mail__who{ margin:0 0 18px; }
+.group-mail__count{ margin:0 0 8px; font-size:20px; }
+.group-mail__left{ margin:14px 0 6px; font-size:15px; }
+.group-mail__list{ margin:0; padding-left:20px; }
+.group-mail__template{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px; margin:0 0 14px; }
+.group-mail__buttons{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 0; }
+.group-mail__sample{ margin-top:18px; }
+.group-mail__compose{ max-width:760px; }
+.group-mail__send{ margin:0; }
 .register-add, .register-edit, .register-move{ margin-top:8px; }
 .register-add>summary, .register-edit>summary, .register-move>summary{ cursor:pointer; color:var(--steel); }
 .register-form{ display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-top:8px; }

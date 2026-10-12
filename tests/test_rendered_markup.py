@@ -337,6 +337,8 @@ ENDPOINT_ARGS = {
     # The refund desk takes the KIND of booking before its id; a stay's desk
     # reads the same page every kind does.
     ("refund_desk", "category"): "room",
+    # A night's letter to everybody dining is keyed by the night itself.
+    ("dinner_email", "day"): ("restaurant_bookings", "dinner_date"),
     ("pay_statement_page", "year"): "2026",
     ("pay_statement_page", "month"): "1",
 }

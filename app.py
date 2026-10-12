@@ -1934,6 +1934,12 @@ DEFAULT_EMAIL_TEMPLATES = [
      "Hi {guest_name},\n\nThank you: we have received {amount} towards {workshop_title} "
      "({dates}).\n\n{balance_line}\n\nYour statement is below, and always here:\n"
      "{statement_url}\n\nReference code: {reference_code}\n\n— Château de Gudanes"),
+    ("workshop_statement", "Workshop: Statement",
+     "Your statement — {workshop_title}",
+     "Hi {guest_name},\n\nYour statement for {workshop_title} ({dates}) is below.\n\n"
+     "{balance_line}\n\nIt is always here, with a way to settle anything outstanding:\n"
+     "{statement_url}\n\nReference code: {reference_code}\n\n{company_block}\n\n"
+     "— Château de Gudanes"),
     ("event_payment_received", "Events: Payment received",
      "Payment received — {reference_code}",
      "Hi {contact_name},\n\nThank you: we have received {amount} towards your "
@@ -7901,7 +7907,7 @@ def purge_action_keys(conn, days=30):
 NAV_AREAS = {
     "guests": [
         "mark_booking_no_show", "undo_booking_no_show", "rebook_guest",
-        "party_statement",
+        "party_statement", "party_email", "party_statements", "send_stay_statement",
         "booking_correspondence", "save_review_link", "ask_for_a_review",
         "arrivals_sheet_page", "issue_access_code", "access_code_returned",
         "walk_in_booking", "arrival_card",
@@ -8132,7 +8138,7 @@ NAV_AREAS = {
         
     ],
     "restaurant": [
-        "chef_screen", "chef_shopping_page",
+        "chef_screen", "chef_shopping_page", "dinner_email",
         "admin_no_shows", "export_no_shows_csv",
         "admin_menu_engineering", "export_menu_engineering_csv",
         "admin_rate_advice", "export_rate_advice_csv", "apply_rate_advice",
@@ -8170,6 +8176,8 @@ NAV_AREAS = {
     ],
     "workshops": [
         "call_off_workshop_session", "workshop_instructor_link",
+        "workshop_session_email", "workshop_session_statements",
+        "send_workshop_registration_statement",
         "admin_workshop_feedback", "admin_workshop_registrations", "admin_workshop_waitlist",
         "admin_workshops", "cancel_workshop_registration_admin",
         "confirm_workshop_registration", "decline_workshop_registration", "delete_workshop",
@@ -40426,12 +40434,35 @@ def email_booking_statement(manage_token):
         flash("There is no email address on this booking.", "error")
         return redirect(url_for("manage_booking", manage_token=manage_token))
 
+    result = send_room_statement(conn, booking)
+    conn.close()
+    if result["delivered"]:
+        flash(f"Sent to {address}."
+              + (" Copied to " + ", ".join(result["copies"]) + "." if result["copies"] else ""),
+              "success")
+    else:
+        flash("No email provider is connected yet, so it is being held and will "
+              "go out once one is.", "error")
+    return redirect(url_for("booking_statement", manage_token=manage_token))
+
+
+def send_room_statement(conn, booking):
+    """Send one stay its statement: the letter the guest's own button sends,
+    the house's button on a stay sends, and the party-wide send repeats.
+
+    To whoever pays, with the second contact copied exactly as on everything
+    else about the stay. `booking` is a bookings row joined with its room's
+    name. Returns {"made", "delivered", "address", "copies"}.
+    """
+    address = bill_goes_to(booking)
+    copies = stay_recipients(booking, side="bill")[1:]
+    if not address:
+        return {"made": False, "delivered": False, "address": "", "copies": copies}
     statement = guest_statement(conn, booking)
     # The page's own statement, line for line -- every charge, every payment
     # with its card, every refund -- and then the VAT bands the invoice owes.
     view = booking_statement_view(conn, "room", booking["id"])
     company = operating_company(conn)
-    conn.close()
 
     lines = [statement_text(view)] if view else []
     if view and view["stands"]:
@@ -40446,32 +40477,21 @@ def email_booking_statement(manage_token):
             if value:
                 who.append(value)
 
-    conn = get_db()
-    try:
-        subject, body, letter = render_email_template(conn, "room_statement", {
-            "guest_name": booking["guest_name"],
-            "room_name": booking["room_name"],
-            "arrival_date": format_date_human(booking["arrival_date"]),
-            "departure_date": format_date_human(booking["departure_date"]),
-            "statement_lines": "\n".join(lines),
-            "reference_code": booking["reference_code"],
-            "statement_url": url_for("booking_statement", manage_token=manage_token,
-                                     _external=True),
-            "company_block": "\n".join(who),
-        })
-    finally:
-        conn.close()
-    # The bill side, so the payer is first -- and the second contact is
-    # copied on the statement exactly as on everything else.
-    copies = stay_recipients(booking, side="bill")[1:]
-    if subject and write_about_stay(booking, subject, body, side="bill", html=letter):
-        flash(f"Sent to {address}."
-              + (" Copied to " + ", ".join(copies) + "." if copies else ""),
-              "success")
-    else:
-        flash("No email provider is connected yet, so it is being held and will "
-              "go out once one is.", "error")
-    return redirect(url_for("booking_statement", manage_token=manage_token))
+    subject, body, letter = render_email_template(conn, "room_statement", {
+        "guest_name": booking["guest_name"],
+        "room_name": booking["room_name"],
+        "arrival_date": format_date_human(booking["arrival_date"]),
+        "departure_date": format_date_human(booking["departure_date"]),
+        "statement_lines": "\n".join(lines),
+        "reference_code": booking["reference_code"],
+        "statement_url": url_for("booking_statement", manage_token=booking["manage_token"],
+                                 _external=True),
+        "company_block": "\n".join(who),
+    })
+    delivered = bool(subject) and bool(
+        write_about_stay(booking, subject, body, side="bill", html=letter))
+    return {"made": bool(subject), "delivered": delivered, "address": address,
+            "copies": copies}
 
 
 @app.route("/booking/<manage_token>/statement")
@@ -49358,6 +49378,8 @@ EMAIL_TEMPLATE_TAGS = {
     "workshop_feedback_request": ("feedback_url", "guest_name", "workshop_title"),
     "workshop_payment_received": ("amount", "balance_line", "dates", "guest_name",
                                   "reference_code", "statement_url", "workshop_title"),
+    "workshop_statement": ("balance_line", "company_block", "dates", "guest_name",
+                           "reference_code", "statement_url", "workshop_title"),
     "event_payment_received": ("amount", "balance_line", "contact_name", "event_type",
                                "manage_url", "reference_code"),
     "house_payment_received": ("amount", "balance_line", "booking_url", "guest_email",
@@ -49429,6 +49451,8 @@ REQUIRED_MERGE_TAGS = {
     "room_balance_after": {"manage_url": "it is where they pay"},
     "refund_issued": {"amount": "it is the sum that went back"},
     "workshop_payment_received": {"amount": "it is the sum they paid"},
+    "workshop_statement": {"statement_url": "it is where they read the statement and "
+                                            "settle anything outstanding"},
     "event_payment_received": {"amount": "it is the sum they paid"},
     "house_payment_received": {"amount": "it is the sum that came in",
                                "booking_url": "it is the way to the booking's payments"},
@@ -50042,8 +50066,27 @@ def campaign_unsubscribe_footer(conn, token):
     )
 
 
+def campaign_reply_area(template):
+    """Which inbox replies to a campaign belong to, in REPLY_TO_AREAS' words.
+
+    A template carries the area it was written for. Every campaign went out
+    with no area, so a guest answering a workshop announcement wrote to the
+    house-wide reply address instead of the atelier inbox that sent it. A
+    general or marketing template has no inbox of its own and stays None.
+    """
+    try:
+        area = template["area"]
+    except (KeyError, IndexError, TypeError):
+        area = None
+    return area if area in REPLY_TO_AREAS else None
+
+
+# What a promo code applies to, as the inbox its replies belong to.
+PROMO_REPLY_AREAS = {"room": "rooms", "restaurant": "restaurant", "workshop": "workshops"}
+
+
 def send_campaign(conn, template, recipients, user_id, dedupe_key=None,
-                  as_test=False, extra_context=None):
+                  as_test=False, extra_context=None, area=None):
     """Send one campaign to a set of recipients, logging every one.
 
     `dedupe_key` makes an automated send idempotent — the same template for the
@@ -50054,7 +50097,10 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None,
     `as_test` still really sends (a test email that doesn't arrive proves
     nothing) but logs the row as a test, so trying a template on yourself
     doesn't show up in the send history as if guests had been mailed.
+
+    `area` is whose inbox the replies reach; left out, the template's own.
     """
+    area = area or campaign_reply_area(template)
     now_iso = datetime.now(timezone.utc).isoformat()
     sent = failed = skipped = withheld = 0
     # Not to anybody who asked us to stop using their details. Here, where every
@@ -50081,7 +50127,7 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None,
         unsub_token = secrets.token_urlsafe(24)
         body = body + campaign_unsubscribe_footer(conn, unsub_token)
         try:
-            ok = send_email(email, subject, body)
+            ok = send_email(email, subject, body, area=area)
             status = ("test" if as_test else "sent") if ok is not False else "failed"
             detail = None if status != "failed" else "send_email reported a failure"
         except Exception as e:
@@ -50176,26 +50222,32 @@ def log_workshop_message(conn, booking_id, subject, recipient, status):
     )
 
 
-def send_workshop_email(conn, booking, template_key, context, statement=False):
+def send_workshop_email(conn, booking, template_key, context, statement=False,
+                        sent_by=None):
     """Sends a lifecycle email built from the admin-editable template,
     honouring the guest's do-not-email opt-out and always leaving an
     auditable row in workshop_messages — sent, skipped, or failed — so the
     registration's message history is complete regardless of outcome.
 
     `statement` puts the registration's statement beneath the words: a receipt
-    is a statement too."""
+    is a statement too.
+
+    Returns whether it went: None when there was no letter to make, False when
+    it was left out or held. The lifecycle callers ignore it; the statement
+    send reports it."""
     subject, body, letter = render_email_template(conn, template_key, context)
     if not subject:
-        return
+        return None
     if booking["do_not_email"]:
         log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "skipped — opted out")
-        return
+        return False
     if statement:
         body, letter = letter_with_statement(conn, subject, body, "workshop", booking["id"])
     sent = send_email(booking["guest_email"], subject, body, html=letter,
                       area="workshops", about=("workshop", booking["id"]),
-                      template_key=template_key)
+                      template_key=template_key, sent_by=sent_by)
     log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "sent" if sent else "failed")
+    return bool(sent)
 
 
 def workshop_email_context(booking):
@@ -59726,6 +59778,7 @@ def send_promo_code_blast(code_id):
         recipients,
         user["id"] if user else None,
         extra_context={"promo_code": promo["code"]},
+        area=PROMO_REPLY_AREAS.get(promo["applies_to"]),
     )
     held = campaign_held_back_note(result["withheld"])
     log_audit(conn, "promo_blast_sent", target=promo["code"],
@@ -61198,6 +61251,459 @@ def workshop_session_panel(conn, items, label):
         "called_off": first["row"]["session_called_off"],
         "over": first["when"] == "History",
     }
+
+
+# ---------------------------------------------------------------------------
+# WRITING TO EVERYBODY ON ONE SESSION, PARTY OR NIGHT
+#
+# "Email everyone" on a session's register opened Outlook with everybody in
+# the blind copy, which nothing in the app could see afterwards: no line on
+# anybody's history, no way to tell who was left out, and an address that had
+# asked not to be written to went in with the rest. So the house writes from
+# here now, and the rule CLAUDE.md sets for every bulk action holds: the bulk
+# send is the single send done many times (send_group_note, send_statement),
+# and what it did NOT do is named through bulk_message.
+#
+# A message to a group is TRANSACTIONAL: it is about the session, the stay or
+# the dinner they booked, so it carries no unsubscribe line -- that belongs to
+# campaigns. It still leaves out anybody who asked not to be emailed, or asked
+# the house to stop using their details. Nothing goes without the count being
+# shown first, and a send whose list has moved since that count is refused.
+# ---------------------------------------------------------------------------
+
+# Which inbox a reply to each kind of group should reach, in REPLY_TO_AREAS'
+# words, and what one member is called.
+GROUP_KINDS = {
+    "session": {"area": "workshops", "noun": "registration", "category": "workshop",
+                "email_title": "Email everyone on this session"},
+    "party": {"area": "rooms", "noun": "stay", "category": "room",
+              "email_title": "Email everyone in this party"},
+    "dinner": {"area": "restaurant", "noun": "table", "category": "restaurant",
+               "email_title": "Email everyone dining this night"},
+}
+
+GROUP_NO_EMAIL = "no email address"
+GROUP_DO_NOT_EMAIL = "asked not to be emailed"
+GROUP_RESTRICTED = "asked us to stop using their details"
+GROUP_NOTHING_OWING = "nothing owing"
+
+
+def group_members(conn, kind, key):
+    """The people one group writes to: (title, back_url, members), or None.
+
+    A member is one registration, stay or table, live ones only -- somebody
+    cancelled or declined is no longer on the session. Each carries what the
+    letter needs to be about them and what the house knows about writing to
+    them.
+    """
+    members = []
+    if kind == "session":
+        rows = conn.execute(
+            """SELECT wb.*, ws.start_date, ws.end_date, w.title
+                 FROM workshop_bookings wb
+                 JOIN workshop_sessions ws ON ws.id = wb.session_id
+                 JOIN workshops w ON w.id = ws.workshop_id
+                WHERE wb.session_id = ? AND wb.status IN ('pending', 'confirmed')
+                ORDER BY wb.guest_name, wb.id""", (key,)).fetchall()
+        session = conn.execute(
+            """SELECT ws.*, w.title FROM workshop_sessions ws
+                 JOIN workshops w ON w.id = ws.workshop_id WHERE ws.id = ?""", (key,)).fetchone()
+        if not session:
+            return None
+        title = f"{session['title']}, {format_date_range(session['start_date'], session['end_date'])}"
+        back = url_for("admin_workshop_registrations", session_id=key)
+        for r in rows:
+            members.append({
+                "id": r["id"], "label": r["guest_name"], "email": r["guest_email"],
+                "do_not_email": bool(r["do_not_email"]), "about": ("workshop", r["id"]),
+                "category": "workshop", "row": r, "reference": r["reference_code"],
+                "owed": workshop_balance_due(conn, r["id"])[0],
+            })
+    elif kind == "party":
+        party = conn.execute("SELECT * FROM booking_parties WHERE id = ?", (key,)).fetchone()
+        if not party:
+            return None
+        title = party["name"] or "This party"
+        back = url_for("party_statement", party_id=key)
+        rows = conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                 JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.party_id = ? AND bookings.status IN ('pending', 'confirmed')
+                ORDER BY bookings.arrival_date, rooms.name""", (key,)).fetchall()
+        for r in rows:
+            bill = booking_bill(conn, r["id"])
+            members.append({
+                "id": r["id"], "label": f"{r['guest_name']} ({r['room_name']})",
+                "email": r["guest_email"], "do_not_email": False, "about": ("room", r["id"]),
+                "category": "room", "row": r, "reference": r["reference_code"],
+                "owed": bill["owed"] if bill else 0.0,
+            })
+    elif kind == "dinner":
+        day = parse_date(key)
+        if not day:
+            return None
+        title = f"Dinner, {format_date_short(day.isoformat())}"
+        back = url_for("restaurant_tables", date=day.isoformat())
+        rows = conn.execute(
+            """SELECT * FROM restaurant_bookings
+                WHERE dinner_date = ? AND status IN ('pending', 'confirmed')
+                ORDER BY guest_name, id""", (day.isoformat(),)).fetchall()
+        for r in rows:
+            members.append({
+                "id": r["id"], "label": f"{r['guest_name']}, {r['party_size'] or 1}",
+                "email": r["guest_email"], "do_not_email": False,
+                "about": ("restaurant", r["id"]), "category": "restaurant", "row": r,
+                "reference": r["reference_code"], "owed": 0.0,
+            })
+    else:
+        return None
+    return title, back, members
+
+
+def group_note_refusal(member, held_back):
+    """Why this person is not written to, or None. The same answer for the
+    preview, the send and the one-at-a-time letter."""
+    email = (member["email"] or "").strip()
+    if "@" not in email:
+        return GROUP_NO_EMAIL
+    if member["do_not_email"]:
+        return GROUP_DO_NOT_EMAIL
+    if email.lower() in held_back:
+        return GROUP_RESTRICTED
+    return None
+
+
+def group_note_plan(conn, members):
+    """Who a message to the group goes to, and who it leaves out and why.
+
+    One letter per address: a couple who registered separately from one inbox
+    are written to once, and the second registration is named against the
+    first rather than counted as a letter or as somebody left out.
+    """
+    held_back = restricted_addresses(conn)
+    going, skipped, by_address = [], [], {}
+    for m in members:
+        why = group_note_refusal(m, held_back)
+        if why:
+            skipped.append((m["label"], why))
+            continue
+        address = m["email"].strip().lower()
+        if address in by_address:
+            by_address[address]["also"].append(m["label"])
+            by_address[address]["also_ids"].append(m["id"])
+            continue
+        entry = dict(m, also=[], also_ids=[])
+        by_address[address] = entry
+        going.append(entry)
+    return going, skipped
+
+
+def group_note_context(conn, member):
+    """The merge tags a message to a group can use, filled for one member."""
+    r = member["row"]
+    context = campaign_context_for(r["guest_name"], (member["email"] or "").strip())
+    context["reference_code"] = member["reference"] or ""
+    if member["category"] == "workshop":
+        context.update({
+            "workshop_title": r["title"],
+            "dates": format_date_range(r["start_date"], r["end_date"]),
+            "manage_url": external_url("workshop_manage", manage_token=r["manage_token"]),
+        })
+    elif member["category"] == "room":
+        context.update({
+            "room_name": r["room_name"],
+            "dates": format_date_range(r["arrival_date"], r["departure_date"]),
+            "manage_url": external_url("manage_booking", manage_token=r["manage_token"]),
+        })
+    else:
+        context.update({
+            "dates": format_date_short(r["dinner_date"]),
+            "party_size": r["party_size"] or 1,
+        })
+    return context
+
+
+# What a message to a group may fill in, for the page to offer.
+GROUP_NOTE_TAGS = {
+    "session": ("first_name", "guest_name", "workshop_title", "dates", "reference_code",
+                "manage_url"),
+    "party": ("first_name", "guest_name", "room_name", "dates", "reference_code", "manage_url"),
+    "dinner": ("first_name", "guest_name", "dates", "party_size", "reference_code"),
+}
+
+
+def send_group_note(conn, member, subject, body, *, area, user_id=None, held_back=None):
+    """Write one message to one person on a session, party or night.
+
+    The one action the bulk send repeats. Returns (sent, why_not): why_not is
+    the reason when it did not go now -- left out, or held because the house
+    is not writing to guests yet or no provider is connected, in which case it
+    is kept and goes when it can.
+    """
+    held_back = restricted_addresses(conn) if held_back is None else held_back
+    why = group_note_refusal(member, held_back)
+    if why:
+        if member["category"] == "workshop":
+            log_workshop_message(conn, member["id"], subject, member["email"] or "",
+                                 f"skipped — {why}")
+        return False, why
+    subject_out, body_out = render_campaign(subject, body, group_note_context(conn, member))
+    report = {}
+    sent = send_email(member["email"].strip(), subject_out, body_out, area=area,
+                      about=member["about"], sent_by=user_id, report=report)
+    if member["category"] == "workshop":
+        log_workshop_message(conn, member["id"], subject_out, member["email"].strip(),
+                             "sent" if sent else "held")
+    if sent:
+        return True, None
+    return False, "kept, and goes when mail can: " + (
+        report.get("why") or "it could not be sent just now").rstrip(".")
+
+
+def workshop_statement_context(conn, booking):
+    """What the statement letter for one registration says above its statement."""
+    owed = workshop_balance_due(conn, booking["id"])[0]
+    return {
+        "guest_name": booking["guest_name"],
+        "workshop_title": booking["title"],
+        "dates": format_date_range(booking["start_date"], booking["end_date"]),
+        "reference_code": booking["reference_code"],
+        "balance_line": (f"Still to pay: {money(owed)}." if owed > 0.005
+                         else "It is paid in full."),
+        "statement_url": external_url("workshop_statement", manage_token=booking["manage_token"]),
+        "company_block": company_block_text(conn),
+    }
+
+
+def send_statement(conn, member, *, user_id=None):
+    """Send one registration or stay its statement: (sent, why_not).
+
+    The one action "send statements to everyone" repeats, and the one the
+    button on a single registration or stay presses. Only to somebody who owes
+    something: a statement saying nothing is owed, sent to a whole session, is
+    a letter that makes people check their bank for no reason.
+    """
+    email = (member["email"] or "").strip()
+    if member["category"] == "room":
+        email = bill_goes_to(member["row"])
+    if "@" not in email:
+        return False, GROUP_NO_EMAIL
+    if member["do_not_email"]:
+        if member["category"] == "workshop":
+            log_workshop_message(conn, member["id"], "Statement", email,
+                                 f"skipped — {GROUP_DO_NOT_EMAIL}")
+        return False, GROUP_DO_NOT_EMAIL
+    if member["owed"] <= 0.005:
+        return False, GROUP_NOTHING_OWING
+    if member["category"] == "workshop":
+        sent = send_workshop_email(conn, member["row"], "workshop_statement",
+                                   workshop_statement_context(conn, member["row"]),
+                                   statement=True, sent_by=user_id)
+    else:
+        sent = send_room_statement(conn, member["row"])["delivered"]
+    if sent:
+        return True, None
+    return False, "kept, and goes when mail can"
+
+
+def group_statement_plan(conn, members):
+    """Who "send statements to everyone" would write to, and who it leaves out."""
+    going, skipped = [], []
+    for m in members:
+        email = bill_goes_to(m["row"]) if m["category"] == "room" else (m["email"] or "").strip()
+        if "@" not in email:
+            skipped.append((m["label"], GROUP_NO_EMAIL))
+        elif m["do_not_email"]:
+            skipped.append((m["label"], GROUP_DO_NOT_EMAIL))
+        elif m["owed"] <= 0.005:
+            skipped.append((m["label"], GROUP_NOTHING_OWING))
+        else:
+            going.append(dict(m, address=email))
+    return going, skipped
+
+
+def _group_page(kind, key, mode):
+    """The preview, and then the send, for one group: a message or statements.
+
+    GET draws who it would go to and who it would leave out. POST with
+    action=preview fills in the wording for the first person; POST with
+    action=send sends, but only if the count typed back is still the count --
+    a registration that arrives or cancels between looking and pressing must
+    not be written to, or left out, on a promise the page made earlier.
+    """
+    conn = get_db()
+    found = group_members(conn, kind, key)
+    if not found:
+        conn.close()
+        abort(404)
+    title, back, members = found
+    spec = GROUP_KINDS[kind]
+    user = current_user()
+    if mode == "statements":
+        going, skipped = group_statement_plan(conn, members)
+    else:
+        going, skipped = group_note_plan(conn, members)
+
+    templates = conn.execute(
+        "SELECT id, name, subject, body FROM campaign_templates ORDER BY name").fetchall()
+    subject = request.values.get("subject", "").strip()
+    body = request.values.get("body", "").strip()
+    chosen = request.values.get("template_id", "")
+    if chosen.isdigit() and not subject and not body:
+        picked = next((t for t in templates if t["id"] == int(chosen)), None)
+        if picked:
+            subject, body = picked["subject"], picked["body"]
+
+    if request.method == "POST" and request.form.get("action") == "send":
+        expect = request.form.get("expect", "")
+        if mode == "email" and (not subject or not body):
+            flash("Write a subject and a message first.", "error")
+        elif not expect.isdigit() or int(expect) != len(going):
+            flash(f"The list has changed since you looked: it is {len(going)} now. "
+                  "Check who it goes to and send again.", "error")
+        else:
+            done, left_out = 0, []
+            held_back = restricted_addresses(conn)
+            # Everybody on it goes through the one-person function, the ones
+            # it will refuse included: that is where the refusal is decided
+            # and written on their history, so the bulk send cannot leave
+            # somebody out more quietly than the single letter would. A second
+            # registration at an address already written to is not sent twice.
+            covered = {i for m in going for i in m.get("also_ids", [])}
+            going_ids = {m["id"] for m in going}
+            for m in going + [x for x in members
+                              if x["id"] not in going_ids and x["id"] not in covered]:
+                if mode == "statements":
+                    sent, why = send_statement(conn, m, user_id=user["id"] if user else None)
+                else:
+                    sent, why = send_group_note(conn, m, subject, body, area=spec["area"],
+                                                user_id=user["id"] if user else None,
+                                                held_back=held_back)
+                conn.commit()
+                if sent:
+                    done += 1
+                else:
+                    left_out.append((m["label"], why))
+            what = "statement" if mode == "statements" else "letter"
+            log_audit(conn, f"group_{mode}_sent", target=title,
+                      details=f"{done} sent, {len(left_out)} not")
+            conn.commit()
+            conn.close()
+            message, category = bulk_message("Sent", what, done, left_out)
+            flash(message, category)
+            return redirect(back)
+
+    sample = None
+    if mode == "email" and going and (subject or body):
+        sample = render_campaign(subject, body, group_note_context(conn, going[0]))
+    conn.close()
+    return render_template(
+        "group_mail.html", kind=kind, key=key, mode=mode, title=title, back=back,
+        going=going, skipped=skipped, members=members, spec=spec, subject=subject,
+        body=body, templates=templates, chosen=chosen, sample=sample,
+        tags=GROUP_NOTE_TAGS[kind])
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/email", methods=["GET", "POST"])
+@owner_required
+def workshop_session_email(session_id):
+    """Write to everybody on one session."""
+    return _group_page("session", session_id, "email")
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/statements", methods=["GET", "POST"])
+@owner_required
+def workshop_session_statements(session_id):
+    """Send everybody on one session who owes something their statement."""
+    return _group_page("session", session_id, "statements")
+
+
+@app.route("/admin/parties/<int:party_id>/email", methods=["GET", "POST"])
+@owner_required
+def party_email(party_id):
+    """Write to everybody in one party of rooms."""
+    return _group_page("party", party_id, "email")
+
+
+@app.route("/admin/parties/<int:party_id>/statements", methods=["GET", "POST"])
+@owner_required
+def party_statements(party_id):
+    """Send every stay in one party that owes something its statement."""
+    return _group_page("party", party_id, "statements")
+
+
+@app.route("/admin/restaurant/night/<day>/email", methods=["GET", "POST"])
+@owner_required
+def dinner_email(day):
+    """Write to everybody booked to dine on one night."""
+    return _group_page("dinner", day, "email")
+
+
+def _one_member(conn, category, booking_id):
+    """One registration or stay as group_members describes it."""
+    if category == "workshop":
+        row = conn.execute(
+            """SELECT wb.session_id FROM workshop_bookings wb WHERE wb.id = ?""",
+            (booking_id,)).fetchone()
+        found = group_members(conn, "session", row["session_id"]) if row else None
+    else:
+        row = conn.execute("SELECT party_id FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+        found = None
+        if row and row["party_id"]:
+            found = group_members(conn, "party", row["party_id"])
+        if not found and row:
+            b = conn.execute(
+                """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                     JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
+                (booking_id,)).fetchone()
+            bill = booking_bill(conn, booking_id)
+            return {"id": b["id"], "label": b["guest_name"], "email": b["guest_email"],
+                    "do_not_email": False, "about": ("room", b["id"]), "category": "room",
+                    "row": b, "reference": b["reference_code"],
+                    "owed": bill["owed"] if bill else 0.0}
+    if not found:
+        return None
+    return next((m for m in found[2] if m["id"] == booking_id), None)
+
+
+@app.route("/admin/workshops/registrations/<int:booking_id>/statement", methods=["POST"])
+@owner_required
+def send_workshop_registration_statement(booking_id):
+    """Send one registration its statement: the same letter the session-wide
+    send writes, through the same function."""
+    conn = get_db()
+    member = _one_member(conn, "workshop", booking_id)
+    if not member:
+        conn.close()
+        abort(404)
+    user = current_user()
+    sent, why = send_statement(conn, member, user_id=user["id"] if user else None)
+    conn.commit()
+    session_id = member["row"]["session_id"]
+    conn.close()
+    flash(f"Statement sent to {member['label']}." if sent
+          else f"Not sent to {member['label']}: {why}.", "success" if sent else "error")
+    return redirect(url_for("admin_workshop_registrations", session_id=session_id))
+
+
+@app.route("/admin/bookings/<int:booking_id>/statement", methods=["POST"])
+@owner_required
+def send_stay_statement(booking_id):
+    """Send one stay its statement, as the party-wide send does."""
+    conn = get_db()
+    member = _one_member(conn, "room", booking_id)
+    if not member:
+        conn.close()
+        abort(404)
+    user = current_user()
+    sent, why = send_statement(conn, member, user_id=user["id"] if user else None)
+    conn.commit()
+    party_id = member["row"]["party_id"]
+    conn.close()
+    flash(f"Statement sent to {member['label']}." if sent
+          else f"Not sent to {member['label']}: {why}.", "success" if sent else "error")
+    return redirect(url_for("party_statement", party_id=party_id) if party_id
+                    else url_for("admin_bookings"))
 
 
 @app.route("/admin/workshops/registrations")
@@ -76617,6 +77123,8 @@ EMAIL_TEMPLATE_INFO = {
     "workshop_payment_received": ("When any payment towards an atelier comes through "
                                   "after the first deposit, with the statement beneath",
                                   "The guest"),
+    "workshop_statement": ("When you send a registration its statement, on its own or "
+                           "to everybody on a session who owes something", "The guest"),
     "event_payment_received": ("When a card payment towards an event comes through, "
                                "with the statement beneath", "The contact"),
     "house_payment_received": ("When a guest pays by card, for a stay, an atelier or an "
