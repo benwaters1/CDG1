@@ -85,18 +85,25 @@
 <div class="detail-card">
   <h2 class="section-heading">Checking a statement</h2>
   <p class="pay-disclaimer" style="margin-top:-6px;">
-    The app has never seen their statement, and inventing what they think is owed would be
-    inventing both halves. This puts <em>our</em> half in the shape theirs comes in, so a person
-    can run a finger down two lists.
+    Pick a supplier to see what we have recorded from them, laid out the way their statement
+    comes, so the two can be checked line by line.
   </p>
+  {% if vendors %}
   <form method="get" style="margin-bottom:12px;">
-    <select name="vendor" onchange="this.form.submit()">
+    <label class="field-label" for="buying-vendor">Supplier</label>
+    <select id="buying-vendor" name="vendor" onchange="this.form.submit()">
       <option value="">Choose a supplier&hellip;</option>
       {% for v in vendors %}
       <option value="{{ v }}" {{ 'selected' if v == vendor }}>{{ v }}</option>
       {% endfor %}
     </select>
   </form>
+  {% else %}
+  {# An empty list read as broken: it lists suppliers with bills on file,
+     because a statement is checked against bills. #}
+  <p class="empty-inline">No supplier bill is recorded yet, so there is nothing to check a statement against.
+    Bills are recorded under <a href="{{ url_for('expenses') }}">Expenses &amp; Invoices</a>.</p>
+  {% endif %}
 
   {% if statement %}
   <div class="table-wrap">

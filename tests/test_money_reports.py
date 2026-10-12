@@ -199,6 +199,96 @@ def run():
     s.check("it says plainly that this is not Money ahead's money",
             "not the same money" in page)
 
+    # ---- the annual summary's rooms add up -------------------------------------
+    # The rooms tile is after refunds and the per-room list was not: €14,370 of
+    # rows under a tile of €14,250. The list now carries the refunds and a total.
+    s.section("The annual summary's room rows add up to its rooms figure")
+    import re as _re
+    year = m.house_today().year
+    # A refund on a stay this year, so the list has refunds to account for.
+    any_booking = conn.execute("SELECT id FROM bookings LIMIT 1").fetchone()
+    if any_booking:
+        conn.execute(
+            """INSERT INTO refunds (category, booking_id, guest_name, amount, reason, method,
+               created_at) VALUES ('room', ?, ?, 120.0, 'test', 'stripe', ?)""",
+            (any_booking[0], TAG + "refund", datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+    summary = oc.get(f"/management/financials/annual-summary?year={year}").get_data(as_text=True)
+    with m.app.test_request_context():
+        fin = m.financial_month_summary(conn, m.date(year, 1, 1), m.date(year + 1, 1, 1))
+    rooms = conn.execute("SELECT COUNT(*) FROM rooms WHERE active = 1").fetchone()[0]
+    block = summary[summary.find("Revenue by Room"):summary.find("Spend by Category")]
+    figures = [int(x.replace(",", "").replace("−", "-"))
+               for x in _re.findall(r'class="mini-status status-pending">(?:<strong>)?(−?)€([\d,]+)',
+                                    block) for x in ["".join(x)]]
+    s.check("one figure a room, the refunds when there are any, and the total",
+            len(figures) == rooms + (1 if fin["room_refunds"] else 0) + 1,
+            detail=f"{len(figures)} figures for {rooms} rooms")
+    if figures:
+        s.check("and the rows come to the total, which is the rooms tile",
+                abs(sum(figures[:-1]) - figures[-1]) <= len(figures)
+                and abs(figures[-1] - round(fin["room_revenue"])) <= 1,
+                detail=f"rows {sum(figures[:-1])}, total {figures[-1]}, tile {fin['room_revenue']}")
+
+    # ---- the year's figure is never below the month's -------------------------
+    # It ran to today while the month's tile counted the whole month: October
+    # €20,840 beside a "year to date" of €7,385.
+    s.section("The year's figure stands on the month's footing")
+    # A large stay arriving on the last day of this month: in the month's own
+    # figure, and outside a "year to date" that stopped at today.
+    import calendar as _cal
+    _t = m.house_today()
+    last = m.date(_t.year, _t.month, _cal.monthrange(_t.year, _t.month)[1])
+    room_id = conn.execute("SELECT id FROM rooms WHERE active = 1 LIMIT 1").fetchone()[0]
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name, guest_email,
+           arrival_date, departure_date, party_size, status, total_price, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 2, 'confirmed', 90000, ?)""",
+        (room_id, TAG + "LASTDAY", TAG + "tokLASTDAY", TAG + "Last day",
+         TAG + "last@example.invalid", last.isoformat(),
+         (last + timedelta(days=1)).isoformat(), datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    fpage = oc.get("/management/financials").get_data(as_text=True)
+    month_fig = _re.search(r'stat-tile-value">(−?)€([\d,]+)</span><span class="stat-tile-label">\w+ \d{4} revenue<', fpage)
+    year_fig = _re.search(r'stat-tile-value">(−?)€([\d,]+)</span><span class="stat-tile-label">\d{4} revenue, January to', fpage)
+    if month_fig and year_fig:
+        mv = int((month_fig.group(1) + month_fig.group(2)).replace(",", "").replace("−", "-"))
+        yv = int((year_fig.group(1) + year_fig.group(2)).replace(",", "").replace("−", "-"))
+        s.check("January to this month is never less than this month", yv >= mv,
+                detail=f"year {yv}, month {mv}")
+    else:
+        s.check("both figures are on the page", False,
+                detail=f"month {bool(month_fig)}, year {bool(year_fig)}")
+
+    # ---- the Financial report's "What came off it" reconciles ----------------
+    # It listed what came off without what it came off, so €2,070 net beside
+    # €120 of refunds read as the refunds never taken away.
+    s.section("The Financial report's column adds up, this period and the one before")
+    rpage = oc.get("/admin/reports/financial").get_data(as_text=True)
+    table = rpage[rpage.find("What came off it"):]
+    table = table[:table.find("</table>")]
+    cells = _re.findall(r"<tr><td>(?:<strong>)?([^<]+?)(?:</strong>)?</td>"
+                        r"<td class=\"num\">(?:<strong>)?([^<]+?)(?:</strong>)?</td>"
+                        r"<td class=\"num\">([^<]+?)</td>",
+                        _re.sub(r"\s*\n\s*", "", table))
+
+    def _amt(t):
+        t = t.strip().replace("€", "").replace(",", "").replace("−", "-")
+        return float(t) if t not in ("", "—") else 0.0
+
+    rows = {label.strip(): (_amt(a), _amt(b)) for label, a, b in cells}
+    s.check("it starts from what was taken", "Taken, before refunds" in rows,
+            detail=str(list(rows)))
+    if "Taken, before refunds" in rows and "Net" in rows:
+        for col, name in ((0, "this period"), (1, "the period before")):
+            start = rows["Taken, before refunds"][col]
+            off = sum(v[col] for k, v in rows.items() if k not in ("Taken, before refunds", "Net"))
+            s.check(f"taken, less each line, is the net, for {name}",
+                    abs((start - off) - rows["Net"][col]) < 0.02,
+                    detail=f"{start} - {off} = {start - off}, net {rows['Net'][col]}")
+
+    conn.execute("DELETE FROM refunds WHERE guest_name = ?", (TAG + "refund",))
+    conn.commit()
     _cleanup(conn)
     return s
 

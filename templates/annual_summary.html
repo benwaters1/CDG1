@@ -100,6 +100,20 @@
       <span class="mini-status status-pending">{{ r['revenue']|money(0) }}</span>
     </div>
     {% endfor %}
+    {#- The rows add up to the rooms figure above. It is after refunds and the
+        rows were not, so the list came to €14,370 under a tile of €14,250. -#}
+    {% if financials.room_refunds %}
+    <div class="mini-row">
+      <span class="mini-name">Refunds on stays</span>
+      <span class="mini-role"></span>
+      <span class="mini-status status-pending">{{ (0 - financials.room_refunds)|money(0) }}</span>
+    </div>
+    {% endif %}
+    <div class="mini-row">
+      <span class="mini-name"><strong>Rooms, after refunds</strong></span>
+      <span class="mini-role"></span>
+      <span class="mini-status status-pending"><strong>{{ financials.room_revenue|money(0) }}</strong></span>
+    </div>
   </div>
 {% endif %}
 

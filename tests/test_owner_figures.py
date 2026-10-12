@@ -168,5 +168,27 @@ def run():
                    "hash back on every load of the owner home"
                    % sorted(set(m.FRONT_PAGE_READINESS) - cheap))
 
+    # ---- the month line on All settings adds up ------------------------------
+    # It read "€20,840 in, €0 out, €18,681 net": net also took off the staff
+    # cost, which the line never named.
+    s.section("All settings' month line adds up")
+    import re as _re
+    from _harness import clients as _clients
+    _oc = _clients()[0]
+    words = " ".join(_re.sub(r"<[^>]+>", " ", _oc.get("/management").get_data(as_text=True)).split())
+    line = _re.search(r"so far: (−?€[\d,]+) taken .*? less (−?€[\d,]+) spent and "
+                      r"(−?€[\d,]+) staff(?: \(estimated\))?: (−?€[\d,]+) left", words)
+
+    def _eur(t):
+        return int(t.replace("€", "").replace(",", "").replace("−", "-"))
+
+    s.check("it names every figure the result is made from", line is not None,
+            detail=words[words.find("so far"):words.find("so far") + 160] if "so far" in words else "")
+    if line:
+        taken, spent, staff, left = (_eur(g) for g in line.groups())
+        s.check("and taken, less spent, less staff, is what is left",
+                abs((taken - spent - staff) - left) <= 2,
+                detail=f"{taken} - {spent} - {staff} = {taken - spent - staff}, page says {left}")
+
     conn.close()
     return s

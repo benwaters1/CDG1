@@ -10474,6 +10474,8 @@ def financial_month_summary(conn, month_start, month_end):
         "supplier_expenses": round(supplier_expenses, 2), "expenses_total": expenses_total,
         "labour_cost": labour_cost, "net": net,
         "refunds_total": round(refunds_total, 2),
+        # So a per-room list can add up to the rooms figure, which is after them.
+        "room_refunds": round(room_refunds, 2),
     }
 
 
@@ -67171,7 +67173,12 @@ def management_financials():
     month_end_for_current = date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1)
     room_revenue = room_revenue_breakdown(conn, today.replace(day=1), month_end_for_current)
     expense_breakdown = expense_category_breakdown(conn, today.replace(day=1), month_end_for_current)
-    ytd = financial_month_summary(conn, date(today.year, 1, 1), today + timedelta(days=1))
+    # To the end of THIS month, the footing the month's own tile stands on:
+    # everything booked for those months. It stopped at today, so October's
+    # tile -- every stay booked for October -- read €20,840 beside a "year to
+    # date" of €7,385, and both were right about different things.
+    ytd = financial_month_summary(conn, date(today.year, 1, 1),
+                                  add_months(date(today.year, today.month, 1), 1))
 
     last_year_start = date(today.year - 1, today.month, 1)
     last_year_end = date(last_year_start.year + 1, 1, 1) if last_year_start.month == 12 else date(last_year_start.year, last_year_start.month + 1, 1)
@@ -67707,7 +67714,8 @@ def management_buying():
                       hint="charged for more than arrived"),
         overview_cell("Prices up", len(up), alert=bool(up),
                       hint="against the time before, same supplier"),
-        overview_cell("Suppliers", len(vendors)),
+        overview_cell("Suppliers with bills", len(vendors),
+                      hint="the ones a statement can be checked against"),
     ]
     return render_template("management_buying.html", shortfalls=shortfalls,
                            rises=rises, statement=statement, vendors=vendors,

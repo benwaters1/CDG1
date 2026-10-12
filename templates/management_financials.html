@@ -61,15 +61,15 @@
 <div class="stat-tiles" style="margin-bottom:22px;">
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ ytd.revenue|money(0) }}</span><span class="stat-tile-label">{{ today.year }} year-to-date revenue</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ ytd.revenue|money(0) }}</span><span class="stat-tile-label">{{ today.year }} revenue, January to {{ current.month.strftime('%B') }}</span></span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('receipt', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ ytd.expenses_total|money(0) }}</span><span class="stat-tile-label">YTD expenses</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ ytd.expenses_total|money(0) }}</span><span class="stat-tile-label">Expenses, January to {{ current.month.strftime('%B') }}</span></span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if ytd.net < 0 else 'stat-tile-icon-success' }}">{{ icon('financial', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value {{ 'stat-tile-value-danger' if ytd.net < 0 }}">{{ ytd.net|money(0) }}</span><span class="stat-tile-label">YTD net (estimate)</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value {{ 'stat-tile-value-danger' if ytd.net < 0 }}">{{ ytd.net|money(0) }}</span><span class="stat-tile-label">Net, January to {{ current.month.strftime('%B') }} (estimate)</span></span>
   </div>
 </div>
 
