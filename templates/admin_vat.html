@@ -37,6 +37,11 @@
   <strong>{{ working.days_not_closed }}
     {{ t('day(s) in this period were never closed off.') }}</strong>
   {{ t('Their takings are not in the till figures below. Close them on the Cash up page and this number will change.') }}
+  {# Each by name, straight to its cash-up: a count says something is
+     missing, the day says where to go. #}
+  <span class="pass-short-row">
+    {% for d in working.unclosed_days %}<a href="{{ url_for('pos_day', date=d) }}">{{ d|date_short }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+  </span>
 </div>
 {% endif %}
 
