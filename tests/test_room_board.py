@@ -159,6 +159,57 @@ def run():
             not _board()[turnover_room]["urgent"],
             detail="if everything were urgent the flag would mean nothing")
 
+    s.section("The prep made automatically is on the board too")
+    # The prep made by hand carried its booking; the prep made automatically,
+    # two days ahead, did not -- so the board, which finds a room's work
+    # through the stay, never saw it, and a room read Ready on the morning its
+    # guest arrived with all eight items open.
+    soon = _stay("PREPSOON", spare_room, 1, 3)
+    conn = db()
+    m.auto_prep_upcoming_arrivals(conn, today)
+    conn.commit()
+    prep = conn.execute("SELECT id, booking_id, title FROM tasks WHERE title LIKE ? "
+                        "AND origin = 'checklist' AND due_date = ?",
+                        (rooms[3]["name"] + ": %", (today + timedelta(days=1)).isoformat())
+                        ).fetchall()
+    conn.close()
+    mine = [t for t in prep if t["booking_id"] == soon["id"]]
+    s.check("the automatic prep is tied to the stay it is for",
+            len(mine) == len(m.ARRIVAL_PREP_CHECKLIST),
+            detail=f"{len(mine)} of {len(prep)} tied to the stay")
+    s.check("a guest due tomorrow does not make today's empty room unready",
+            _board()[spare_room]["state"] == "ready", detail=_board()[spare_room]["state"])
+    tomorrow = _board(today + timedelta(days=1))[spare_room]
+    s.check("on the morning they arrive the room is not ready until the prep is done",
+            tomorrow["state"] == "turnover" and tomorrow["urgent"]
+            and tomorrow["outstanding"] == len(m.ARRIVAL_PREP_CHECKLIST),
+            detail=f"{tomorrow['state']}, {tomorrow['outstanding']} outstanding")
+
+    s.section("And the prep made before it was tied is tied now")
+    conn = db()
+    conn.execute("UPDATE tasks SET booking_id = NULL WHERE booking_id = ?", (soon["id"],))
+    conn.execute(
+        """INSERT INTO tasks (title, priority, due_date, created_at, origin)
+           VALUES (?, 'high', ?, ?, 'checklist')""",
+        (rooms[3]["name"] + ": Final walkthrough", (today + timedelta(days=1)).isoformat(),
+         datetime.now(timezone.utc).isoformat()))
+    stray = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    conn.commit()
+    conn.close()
+    m.init_db()
+    conn = db()
+    tied = conn.execute("SELECT COUNT(*) AS c FROM tasks WHERE booking_id = ?",
+                        (soon["id"],)).fetchone()["c"]
+    left_alone = conn.execute("SELECT booking_id FROM tasks WHERE id = ?",
+                              (stray,)).fetchone()["booking_id"]
+    conn.execute("DELETE FROM tasks WHERE id = ?", (stray,))
+    conn.commit()
+    conn.close()
+    s.check("every open prep item finds its stay again",
+            tied == len(m.ARRIVAL_PREP_CHECKLIST), detail=f"{tied} tied")
+    s.check("and a checkout item on the same room and day is not taken for prep",
+            left_alone is None, detail=str(left_alone))
+
     s.section("It is on the page staff actually open")
     r = ec.get("/today")
     body = r.get_data(as_text=True)

@@ -158,10 +158,14 @@ def run():
 
     s.section("With no Stripe configured it does nothing at all")
     conn = db()
-    out = m.run_workshop_autocharge_job(conn)
+    try:
+        out = m.run_workshop_autocharge_job(conn)
+    except m.JobNotSetUp as e:
+        out = e
     conn.close()
-    s.check("it declines to run rather than erroring",
-            out.get("charged") == 0 and "skipped" in out, detail=f"got {out}")
+    # Not a run, and not a failure: the page says it couldn't run.
+    s.check("it declines to run, and says it could not, rather than erroring",
+            isinstance(out, m.JobNotSetUp) and "Stripe" in str(out), detail=f"got {out!r}")
 
     s.section("A balance due today is charged for exactly what is left")
     bid = _booking("Due", today)

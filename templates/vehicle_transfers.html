@@ -27,14 +27,22 @@
   <h3>Log a transfer</h3>
   <form method="post" action="{{ url_for('new_vehicle_transfer', vehicle_id=vehicle['id']) }}" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input aria-label="Guest name" type="text" name="guest_name" placeholder="Guest name" autocomplete="name" spellcheck="false" autocapitalize="words">
+    {% if prefill %}
+    {# Arranged from a guest's request: the run is tied to their stay, and the
+       stay comes off "asked for" on the transfers page. #}
+    <input type="hidden" name="booking_id" value="{{ prefill.booking_id }}">
+    <p class="upload-hint" style="margin-top:0;">For {{ prefill.guest_name }}'s stay, who asked to be collected.</p>
+    {% endif %}
+    <input aria-label="Guest name" type="text" name="guest_name" placeholder="Guest name" autocomplete="name" spellcheck="false" autocapitalize="words"
+           value="{{ prefill.guest_name if prefill else '' }}">
     <select name="direction" required>
       <option value="">Pickup or drop-off?</option>
-      <option value="pickup">Pickup</option>
+      <option value="pickup"{{ ' selected' if prefill }}>Pickup</option>
       <option value="dropoff">Drop-off</option>
     </select>
     <label class="field-label" for="vehicle_transfers-scheduled-at">Scheduled time</label>
-    <input id="vehicle_transfers-scheduled-at" type="datetime-local" name="scheduled_at" required>
+    <input id="vehicle_transfers-scheduled-at" type="datetime-local" name="scheduled_at" required
+           value="{{ prefill.scheduled_at if prefill else '' }}">
     <select name="driver_user_id">
       <option value="">Driver (optional)</option>
       {% for d in drivers %}
@@ -48,7 +56,8 @@
       <option value="{{ key }}">{{ label }}</option>
       {% endfor %}
     </select>
-    <input aria-label="Notes (optional)" type="text" name="notes" placeholder="Notes (optional)">
+    <input aria-label="Notes (optional)" type="text" name="notes" placeholder="Notes (optional)"
+           value="{{ prefill.notes if prefill else '' }}">
     <button type="submit" class="btn-mini">Log transfer</button>
   </form>
 </div>

@@ -81,6 +81,14 @@ def _working(start, end):
         conn.close()
 
 
+def _working_on(start, end, today):
+    conn = db()
+    try:
+        return m.vat_working(conn, start, end, today=today)
+    finally:
+        conn.close()
+
+
 def run():
     s = Suite("VAT working paper")
     _cleanup()
@@ -106,9 +114,35 @@ def run():
     s.section("A day nobody closed is reported, not quietly missing")
     s.check("31 days in March", w["days_in_period"] == 31, detail=f"{w['days_in_period']}")
     s.check("two of them closed", w["days_closed"] == 2)
-    s.check("and the other 29 are counted as not closed", w["days_not_closed"] == 29,
-            detail=f"{w['days_not_closed']} — a short figure that does not say "
+    # Never closed off means a day that is over, took money and was not
+    # closed -- not every other day in the month. It counted the days still to
+    # come and the nights the restaurant was shut: "30 days never closed off"
+    # in an October twelve days old.
+    conn = db()
+    for day in ("2031-03-12", "2031-03-20", "2031-03-25"):
+        conn.execute(
+            """INSERT INTO pos_orders (table_label, covers, status, service_state,
+               service_date, settled_total, payment_method, opened_at, closed_at)
+               VALUES (?, 2, 'paid', 'bill', ?, 40, 'cash', ?, ?)""",
+            (f"{TAG}-tab-{day}", day, f"{day}T19:00:00+00:00", f"{day}T20:00:00+00:00"))
+    conn.commit()
+    conn.close()
+    mid = _working_on(start, end, date(2031, 3, 20))
+    s.check("a past day that took money and was not closed is counted",
+            mid["unclosed_days"] == ["2031-03-12"],
+            detail=f"{mid['unclosed_days']} — a short figure that does not say "
                    "it is short is the worst kind")
+    s.check("a day still to come is not, nor today while service may still be on, "
+            "nor a night nothing was sold",
+            mid["days_not_closed"] == 1, detail=str(mid["unclosed_days"]))
+    after = _working_on(start, end, date(2031, 4, 2))
+    s.check("once the month is over the later one is counted too",
+            after["unclosed_days"] == ["2031-03-12", "2031-03-20", "2031-03-25"],
+            detail=str(after["unclosed_days"]))
+    conn = db()
+    conn.execute("DELETE FROM pos_orders WHERE table_label LIKE ?", (f"{TAG}-tab-%",))
+    conn.commit()
+    conn.close()
 
     s.section("The boundary day belongs to one period, not both")
     # An inclusive end put 1 April in March AND in April.

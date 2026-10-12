@@ -344,6 +344,15 @@ class _StandIns:
         return False
 
 
+def _why_not(job, conn):
+    """What a job that could not run gave as the reason; None if it ran."""
+    try:
+        job(conn)
+    except m.JobNotSetUp as e:
+        return str(e)
+    return None
+
+
 def run():
     s = Suite("Booking.com's email, read into the site")
     oc, ec, owner, emp = clients()
@@ -966,11 +975,11 @@ def _run(s, oc, ec, owner, emp, conn, room):
                 m.booking_com_mailbox(conn) == "bookingcom@x.invalid", detail=m.booking_com_mailbox(conn))
     with _StandIns(MS_GRAPH_MAILBOXES=["bookings@x.invalid"]):
         s.check("and with neither, the job does nothing and says why",
-                m.run_booking_com_mail_job(conn) == "no Booking.com mailbox set")
+                _why_not(m.run_booking_com_mail_job, conn) == "no Booking.com mailbox set")
     conn.execute("UPDATE app_settings SET value = ? WHERE key = 'booking_com_mailbox'", (MAILBOX,))
     conn.commit()
     s.check("without Microsoft 365 connected, it says that instead",
-            m.run_booking_com_mail_job(conn) == "Microsoft Graph not configured")
+            _why_not(m.run_booking_com_mail_job, conn) == "Microsoft Graph not configured")
 
     asked = []
     page_of_mail = {"value": [

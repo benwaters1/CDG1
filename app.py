@@ -4849,6 +4849,21 @@ def init_db():
         ("workshop_bookings_guest_country", "ALTER TABLE workshop_bookings ADD COLUMN guest_country TEXT"),
         ("workshop_bookings_bed_preference", "ALTER TABLE workshop_bookings ADD COLUMN bed_preference TEXT"),
         ("tasks_booking_id", "ALTER TABLE tasks ADD COLUMN booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL"),
+        # The automatic arrival prep wrote no booking_id, so the room board
+        # could not see it. What it already made is tied to its stay here:
+        # still open, titled as the prep titles them, on the room and the day
+        # that stay arrives. Re-running finds nothing left to tie.
+        ("tasks_arrival_prep_booking",
+         """UPDATE tasks SET booking_id = (
+                SELECT b.id FROM bookings b JOIN rooms r ON r.id = b.room_id
+                 WHERE b.arrival_date = tasks.due_date
+                   AND substr(tasks.title, 1, length(r.name) + 2) = r.name || ': '
+                 ORDER BY b.id DESC LIMIT 1)
+             WHERE origin = 'checklist' AND booking_id IS NULL
+               AND ota_reservation_id IS NULL AND status != 'done'
+               AND due_date IS NOT NULL AND ("""
+         + " OR ".join("tasks.title LIKE '%%: %s'" % item.replace("{n}", "%")
+                       for item in ARRIVAL_PREP_CHECKLIST) + ")"),
         ("expenses_restaurant_related", "ALTER TABLE expenses ADD COLUMN restaurant_related INTEGER NOT NULL DEFAULT 0"),
         # 10: the owner's figure (WORKSHOP_DEPOSIT_PERCENT). Only a fresh
         # database takes this; the one-off in init_db moves an existing one.
@@ -5035,6 +5050,10 @@ def init_db():
         # need different lead times and different cars; one undifferentiated
         # "transfer" hid that.
         ("vehicle_transfers_type", "ALTER TABLE vehicle_transfers ADD COLUMN transfer_type TEXT DEFAULT 'airport'"),
+        # Which stay a run is for. Without it a guest who booked a transfer and
+        # a run arranged for them could only be matched by name.
+        ("vehicle_transfers_booking_id",
+         "ALTER TABLE vehicle_transfers ADD COLUMN booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL"),
         ("rooms_max_adults", "ALTER TABLE rooms ADD COLUMN max_adults INTEGER"),
         ("rooms_max_children", "ALTER TABLE rooms ADD COLUMN max_children INTEGER NOT NULL DEFAULT 0"),
         ("rooms_size_sqm", "ALTER TABLE rooms ADD COLUMN size_sqm REAL"),
@@ -10085,10 +10104,16 @@ def auto_prep_upcoming_arrivals(conn, today, days_ahead=ARRIVAL_PREP_DAYS):
         party_size = booking["party_size"] or 1
         for item in ARRIVAL_PREP_CHECKLIST:
             title = item.format(n=party_size) if "{n}" in item else item
+            # booking_id, as the prep made by hand has carried for a while. Left
+            # off here, the room board -- which finds a room's work through the
+            # stay -- never saw the automatic prep, and called a room Ready on
+            # the morning its guest arrived with all eight items still open.
             conn.execute(
-                """INSERT INTO tasks (assigned_to_user_id, title, room_note, priority, due_date, created_at, origin)
-                   VALUES (?, ?, ?, 'high', ?, ?, 'checklist')""",
-                (assigned_to, f"{booking['room_name']}: {title}", room_note, booking["arrival_date"], now.isoformat()),
+                """INSERT INTO tasks (assigned_to_user_id, title, room_note, priority, due_date,
+                       created_at, origin, booking_id)
+                   VALUES (?, ?, ?, 'high', ?, ?, 'checklist', ?)""",
+                (assigned_to, f"{booking['room_name']}: {title}", room_note, booking["arrival_date"],
+                 now.isoformat(), booking["id"]),
             )
     if prepped_count:
         conn.commit()
@@ -23184,6 +23209,10 @@ def review_reply_times(conn, days=365):
                 "poor": (r["rating"] or 5) <= 3,
                 "answered_by": r["answered_by"]}
         answered_at = house_date(r["replied_at"]) or house_date(r["acknowledged_at"])
+        # Marking a review read with nothing written is allowed on purpose --
+        # some want a telephone call -- so it counts as answered. But the page
+        # is about hearing back, and it called both "answered" alike: say which.
+        item["wrote"] = bool(r["replied_at"])
         if answered_at:
             item["days"] = (answered_at - asked).days
             waits.append(item["days"])
@@ -23197,6 +23226,7 @@ def review_reply_times(conn, days=365):
         "days": days, "answered": answered[:25],
         "waiting": sorted(waiting, key=lambda w: -w["days"])[:25],
         "still_waiting": len(waiting), "poor_waiting": len(poor_waiting),
+        "marked_only": sum(1 for a in answered if not a["wrote"]),
         "median_wait": _median(waits),
         "longest_wait": max(waits) if waits else None,
         # The one that matters: somebody who said it was poor and has heard
@@ -30735,19 +30765,22 @@ def covers_ahead(conn, days=21, today=None):
     came is the mistake this is meant to prevent, not cause.
     """
     today = today or house_today()
+    # Tonight and the nights after it, `days` of them: the end is the first
+    # night NOT shown. Inclusive, "the next 21 days" listed 22 nights and the
+    # covers total took in a night beyond the window it named.
     end = today + timedelta(days=days)
     rows = conn.execute(
         """SELECT dinner_date, COALESCE(SUM(party_size), 0) AS covers,
                   COUNT(*) AS bookings
              FROM restaurant_bookings
             WHERE status = 'confirmed' AND no_show_at IS NULL
-              AND dinner_date >= ? AND dinner_date <= ?
+              AND dinner_date >= ? AND dinner_date < ?
             GROUP BY dinner_date ORDER BY dinner_date""",
         (today.isoformat(), end.isoformat())).fetchall()
     by_date = {r["dinner_date"]: r for r in rows}
 
     out = []
-    for i in range((end - today).days + 1):
+    for i in range((end - today).days):
         d = today + timedelta(days=i)
         row = by_date.get(d.isoformat())
         out.append({
@@ -58105,6 +58138,8 @@ BOOKING_EDIT_FIELDS = (
     ("total_price", "total", "euro"), ("source", "came through", "value"),
     ("heard_via", "heard of us", "value"),
     ("guest_phone", "phone", "person"), ("special_requests", "special requests", "person"),
+    ("guest_email", "guest's address", "person"),
+    ("estimated_arrival_time", "arrival time", "value"),
     ("booked_by_name", "payer's name", "person"), ("booked_by_email", "payer's address", "person"),
     ("second_contact_name", "second contact's name", "person"),
     ("second_contact_email", "second contact's address", "person"),
@@ -58158,6 +58193,18 @@ def edit_booking(booking_id):
         under_18_raw = request.form.get("guests_under_18", "").strip()
         guest_phone = phone_from_form("guest_phone")
         special_requests = request.form.get("special_requests", "").strip()
+        # The two things "Arrivals missing detail" sends people here to put
+        # right, and the page had no field for either: its Fix button opened a
+        # form that could not fix it. A form posted without them (an older
+        # page) leaves them as they were. An address can be corrected but not
+        # emptied -- a guest with no address is told nothing at all.
+        typed_email = request.form.get("guest_email")
+        guest_email = booking["guest_email"]
+        if typed_email is not None and typed_email.strip():
+            guest_email = typed_email.strip().lower()[:200]
+        typed_time = request.form.get("estimated_arrival_time")
+        arrival_time = (booking["estimated_arrival_time"] if typed_time is None
+                        else (typed_time.strip()[:60] or None))
         # Somebody who is not staying. Both empty means the guest is the payer,
         # which is almost every booking.
         second_name = request.form.get("second_contact_name", "").strip()[:120]
@@ -58179,7 +58226,9 @@ def edit_booking(booking_id):
         party_size = int(party_size_raw) if party_size_raw.isdigit() else None
 
         error = None
-        if not arrival or not departure:
+        if guest_email and "@" not in guest_email:
+            error = "That email address has no @ in it."
+        elif not arrival or not departure:
             error = "Choose valid arrival and departure dates."
         elif not party_size or party_size < 1:
             error = "Party size is required."
@@ -58237,6 +58286,7 @@ def edit_booking(booking_id):
             "party_size": party_size, "guests_under_18": under_18,
             "total_price": new_total, "source": source, "heard_via": heard_via,
             "guest_phone": guest_phone or None, "special_requests": special_requests or None,
+            "guest_email": guest_email or None, "estimated_arrival_time": arrival_time,
             "booked_by_name": booked_by_name or None, "booked_by_email": booked_by_email or None,
             "second_contact_name": second_name or None,
             "second_contact_email": second_email or None})
@@ -58244,11 +58294,15 @@ def edit_booking(booking_id):
             """UPDATE bookings SET arrival_date=?, departure_date=?, party_size=?, guest_phone=?,
                special_requests=?, total_price=?, guests_under_18=?,
                source=?, heard_via=?, booked_by_name=?, booked_by_email=?,
-               second_contact_name=?, second_contact_email=? WHERE id=?""",
+               second_contact_name=?, second_contact_email=?,
+               guest_email=?, estimated_arrival_time=? WHERE id=?""",
             (arrival.isoformat(), departure.isoformat(), party_size, guest_phone or None,
              special_requests or None, new_total, under_18, source, heard_via,
              booked_by_name or None, booked_by_email or None,
              second_name or None, second_email or None,
+             # Empty text, not NULL: the column will not hold a NULL, and a
+             # walk-in taken with no address carries ''.
+             guest_email or "", arrival_time,
              booking_id),
         )
         stamp_room_total(conn, booking_id, new_room_portion,
@@ -59992,8 +60046,12 @@ def admin_promo_codes():
         ],
         default_sort="used",
     )
+    # The badge on each code is the same answer as the chip: an expired code
+    # said "active" because it was still switched on.
+    usable_now = {c["id"]: usable(c) for c in codes}
     return render_template("admin_promo_codes.html", codes=lv["rows"], lv=lv,
-                           status=status, applies_to_options=PROMO_APPLIES_TO)
+                           status=status, applies_to_options=PROMO_APPLIES_TO,
+                           usable_now=usable_now)
 
 
 def _parse_promo_form():
@@ -75438,13 +75496,17 @@ def room_board(conn, today=None):
             (room["id"], iso)).fetchone()
         # The checklist belongs to a booking of the house's own or to a
         # Booking.com stay (prep_channel_departures); either way, to this room.
+        # Work that is due by today. The arrival prep is made two days ahead,
+        # and a room whose next guest comes on Thursday can still be walked
+        # into on Tuesday.
         open_work = conn.execute(
             """SELECT tasks.* FROM tasks
                  LEFT JOIN bookings ON bookings.id = tasks.booking_id
                  LEFT JOIN ota_reservations ON ota_reservations.id = tasks.ota_reservation_id
                 WHERE tasks.origin = 'checklist' AND tasks.status != 'done'
                   AND (bookings.room_id = ? OR ota_reservations.room_id = ?)
-                ORDER BY tasks.id""", (room["id"], room["id"])).fetchall()
+                  AND (tasks.due_date IS NULL OR tasks.due_date <= ?)
+                ORDER BY tasks.id""", (room["id"], room["id"], iso)).fetchall()
         for st in by_room.get(room["id"], []):
             if not here and st["arrival_date"] < iso < st["departure_date"]:
                 here = st
@@ -77520,11 +77582,43 @@ def all_transfers():
             past.append(r)
     past.reverse()  # most recent first
 
+    # Guests who asked to be collected and have no run arranged. The page read
+    # vehicle runs only, so it said "0 upcoming" while three stays had a
+    # transfer among their extras and a flight number given -- the runs most
+    # likely to be missed were the ones it could not see.
+    conn = get_db()
+    asked = transfers_asked_for(conn, today)
+    vehicles = conn.execute("SELECT id, name FROM vehicles ORDER BY name").fetchall()
+    conn.close()
+
     return render_template(
         "all_transfers.html", todays=todays, upcoming=upcoming, past=past[:20],
         today=today, unassigned=sum(1 for r in rows if not r["driver_user_id"]
                                     and house_date_iso(r["scheduled_at"]) >= today_iso),
+        asked=asked, vehicles=vehicles,
     )
+
+
+def transfers_asked_for(conn, today=None):
+    """Stays still to arrive that asked for a transfer and have no run arranged.
+
+    Asked for means a transfer among the extras chosen with the stay, or a
+    flight given on the guest's page -- the two places a guest says it. A run
+    arranged for the stay (vehicle_transfers.booking_id) takes it off.
+    """
+    day = (today or house_today()).isoformat()
+    return conn.execute(
+        """SELECT bookings.id, bookings.guest_name, bookings.arrival_date,
+                  bookings.party_size, bookings.extras_summary,
+                  bookings.transfer_flight_number, bookings.transfer_arrival_time,
+                  bookings.transfer_notes, rooms.name AS room_name
+             FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed' AND bookings.arrival_date >= ?
+              AND (LOWER(COALESCE(bookings.extras_summary, '')) LIKE '%transfer%'
+                   OR TRIM(COALESCE(bookings.transfer_flight_number, '')) != '')
+              AND NOT EXISTS (SELECT 1 FROM vehicle_transfers vt
+                               WHERE vt.booking_id = bookings.id)
+            ORDER BY bookings.arrival_date, bookings.guest_name""", (day,)).fetchall()
 
 
 @app.route("/management/vehicles/<int:vehicle_id>/transfers")
@@ -77542,8 +77636,26 @@ def vehicle_transfers_page(vehicle_id):
         (vehicle_id,),
     ).fetchall()
     drivers = conn.execute("SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+    # Arriving from "asked for" on the transfers page: the stay, its guest and
+    # its landing time are filled in, and the run is tied to the stay.
+    prefill = None
+    asked_id = request.args.get("booking_id", "")
+    if asked_id.isdigit():
+        b = conn.execute("SELECT * FROM bookings WHERE id = ?", (int(asked_id),)).fetchone()
+        if b:
+            landing = re.search(r"(\d{1,2})[:hH.](\d{2})", b["transfer_arrival_time"] or "")
+            prefill = {
+                "booking_id": b["id"], "guest_name": b["guest_name"],
+                "scheduled_at": (f"{b['arrival_date']}T{int(landing.group(1)):02d}:{landing.group(2)}"
+                                 if landing and int(landing.group(1)) < 24 else ""),
+                "notes": " ".join(x for x in (
+                    f"Flight {b['transfer_flight_number']}" if b["transfer_flight_number"] else "",
+                    f"landing {b['transfer_arrival_time']}" if b["transfer_arrival_time"] else "",
+                    b["transfer_notes"] or "") if x),
+            }
     conn.close()
-    return render_template("vehicle_transfers.html", vehicle=vehicle, transfers=transfers, drivers=drivers)
+    return render_template("vehicle_transfers.html", vehicle=vehicle, transfers=transfers,
+                           drivers=drivers, prefill=prefill)
 
 
 @app.route("/management/vehicles/<int:vehicle_id>/transfers/new", methods=["POST"])
@@ -77554,6 +77666,7 @@ def new_vehicle_transfer(vehicle_id):
     scheduled_at = request.form.get("scheduled_at", "").strip()
     driver_user_id = request.form.get("driver_user_id", "")
     notes = request.form.get("notes", "").strip()
+    booking_raw = request.form.get("booking_id", "")
     if direction not in ("pickup", "dropoff") or not scheduled_at:
         flash("A direction and scheduled time are required.", "error")
         return redirect(url_for("vehicle_transfers_page", vehicle_id=vehicle_id))
@@ -77563,10 +77676,16 @@ def new_vehicle_transfer(vehicle_id):
         flash("That scheduled time didn't look right — please try again.", "error")
         return redirect(url_for("vehicle_transfers_page", vehicle_id=vehicle_id))
     conn = get_db()
+    # The stay it is for, when it was arranged from a guest's request. A stay
+    # that does not exist is not tied to anything.
+    booking_id = None
+    if booking_raw.isdigit() and conn.execute(
+            "SELECT 1 FROM bookings WHERE id = ?", (int(booking_raw),)).fetchone():
+        booking_id = int(booking_raw)
     conn.execute(
         """INSERT INTO vehicle_transfers (vehicle_id, guest_name, direction,
-                   scheduled_at, driver_user_id, notes, transfer_type, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   scheduled_at, driver_user_id, notes, transfer_type, created_at, booking_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (vehicle_id, guest_name or None, direction, scheduled_at_utc,
          int(driver_user_id) if driver_user_id.isdigit() else None, notes or None,
          # Eight kinds of journey were defined and every row was filed as an
@@ -77576,7 +77695,7 @@ def new_vehicle_transfer(vehicle_id):
          (request.form.get("transfer_type", "") or "").strip()
          if (request.form.get("transfer_type", "") or "").strip()
          in TRANSFER_TYPES else "airport",
-         datetime.now(timezone.utc).isoformat()),
+         datetime.now(timezone.utc).isoformat(), booking_id),
     )
     conn.commit()
     conn.close()
@@ -84551,10 +84670,18 @@ def run_page_translation_job(conn, limit=None):
 def run_daily_digest_job(conn):
     to_address = owner_email(conn)
     if not to_address:
-        return "no owner email configured"
+        raise JobNotSetUp("no owner email address is set")
     body = build_owner_digest(conn)
-    sent = send_email(to_address, "Your daily summary", body)
-    return f"sent to {to_address}" if sent else "send failed or email not configured"
+    # Which of the two it was. "Send failed or email not configured" was
+    # recorded as a success either way.
+    report = {}
+    sent = send_email(to_address, "Your daily summary", body, report=report)
+    if sent:
+        return f"sent to {to_address}"
+    why = report.get("why") or "it was not sent"
+    if why == "No email provider is configured.":
+        raise JobNotSetUp("no way to send mail is set up; the summary is held")
+    raise JobFailed(why)
 
 
 def run_ical_sync_job(conn):
@@ -84811,7 +84938,7 @@ def run_workshop_autocharge_job(conn):
     asking them to pay in their own time, and the château sees the failure.
     """
     if not stripe_enabled():
-        return {"charged": 0, "failed": 0, "skipped": "stripe not configured"}
+        raise JobNotSetUp("Stripe is not set up")
     today = house_today_iso()
     rows = conn.execute(
         """SELECT workshop_bookings.*, workshops.title
@@ -85641,10 +85768,10 @@ def run_email_inbox_scan_job(conn):
     been replied to within the configured window, mention a price/date
     that conflicts with real pricing/availability data, or whose actual
     sent reply does — upserts each into email_flags for the Inbox Flags
-    admin page. A no-op (not an error) when Graph isn't configured, same
-    as every other optional integration here."""
+    admin page. Not an error when Graph isn't configured, but not a run
+    either: it says it could not run."""
     if not graph_enabled():
-        return "Microsoft Graph not configured"
+        raise JobNotSetUp("Microsoft Graph not configured")
     token = get_graph_token()
     if not token:
         return "could not get a Graph token"
@@ -85917,7 +86044,19 @@ class JobFailed(Exception):
     """
 
 
-def record_job_run(conn, job_name, ok, message):
+class JobNotSetUp(Exception):
+    """A job that could not run because something it needs is not set up.
+
+    Not a failure -- nothing went wrong, and a run of them is not the mail
+    server falling over, so it neither starts nor breaks a failure streak --
+    but not "Worked" either. A job that returned "Microsoft Graph not
+    configured" was shown as "Worked — Microsoft Graph not configured" under a
+    tile saying nothing had failed, which is two true statements adding up to
+    a false one. Recorded as its own state, 'idle', shown as "Couldn't run".
+    """
+
+
+def record_job_run(conn, job_name, ok, message, idle=False):
     """Store how a run went, not just that one happened.
 
     The failure streak is what separates "the mail server hiccupped once" from
@@ -85929,19 +86068,22 @@ def record_job_run(conn, job_name, ok, message):
     row = conn.execute(
         "SELECT consecutive_failures AS f FROM automation_runs WHERE job_name = ?",
         (job_name,)).fetchone()
-    streak = 0 if ok else ((row["f"] if row else 0) or 0) + 1
+    held = ((row["f"] if row else 0) or 0)
+    ok = bool(ok) and not idle
+    streak = held if idle else (0 if ok else held + 1)
+    status = "idle" if idle else ("ok" if ok else "failed")
     cur = conn.execute(
         """UPDATE automation_runs SET last_ran_at = ?, last_status = ?, last_message = ?,
              consecutive_failures = ?, last_ok_at = COALESCE(?, last_ok_at)
            WHERE job_name = ?""",
-        (now_iso, "ok" if ok else "failed", message, streak,
+        (now_iso, status, message, streak,
          now_iso if ok else None, job_name))
     if not cur.rowcount:
         conn.execute(
             """INSERT INTO automation_runs (job_name, last_ran_at, last_status,
                  last_message, consecutive_failures, last_ok_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (job_name, now_iso, "ok" if ok else "failed", message, streak,
+            (job_name, now_iso, status, message, streak,
              now_iso if ok else None))
     conn.commit()
 
@@ -86596,9 +86738,9 @@ def run_booking_com_mail_job(conn):
     """
     mailbox = booking_com_mailbox(conn)
     if not mailbox:
-        return "no Booking.com mailbox set"
+        raise JobNotSetUp("no Booking.com mailbox set")
     if not graph_enabled():
-        return "Microsoft Graph not configured"
+        raise JobNotSetUp("Microsoft Graph not configured")
     token = get_graph_token()
     if not token:
         return "could not get a Graph token"
@@ -88057,6 +88199,9 @@ def automation_tick():
                 result = job_fn(conn)
                 record_job_run(conn, job_name, True, str(result))
                 print(f"[automation] {job_name}: {result}")
+            except JobNotSetUp as e:
+                record_job_run(conn, job_name, False, str(e), idle=True)
+                print(f"[automation] {job_name} could not run: {e}")
             except Exception as e:
                 # Recorded, not just printed. A Railway log line scrolls away;
                 # this is the same fact somewhere the owner can still read it
@@ -88438,8 +88583,8 @@ def admin_automation():
                        "on": sum(1 for x in entries if x["on"]),
                        "anchor": title.lower().replace(" ", "-")})
     live = guest_mail_live()
-    failing = [x for x in everything
-               if x["run"] and x["run"]["last_status"] and x["run"]["last_status"] != "ok"]
+    failing = [x for x in everything if x["run"] and x["run"]["last_status"] == "failed"]
+    idle = [x for x in everything if x["run"] and x["run"]["last_status"] == "idle"]
     guest_writers = sum(1 for x in everything if "guests" in x["reaches"] and x["on"])
     overview = [
         overview_cell("Switched on", sum(1 for x in everything if x["on"]),
@@ -88449,6 +88594,9 @@ def admin_automation():
                             else "letters and texts are held")),
         overview_cell("Failed the last time", len(failing), alert=bool(failing),
                       hint=", ".join(x["label"] for x in failing[:2]) or None),
+        overview_cell("Couldn't run", len(idle),
+                      hint=(", ".join(x["label"] for x in idle[:2]) if idle
+                            else "something each needs is set up")),
         overview_cell("Not run here yet",
                       sum(1 for x in everything if x["job"] and not x["run"])),
     ]
@@ -88550,6 +88698,13 @@ def run_automation_job_now(job_name):
             result = run_stale_shift_cleanup_job(conn, stale_hours)
         else:
             result = registry[job_name](conn)
+    except JobNotSetUp as e:
+        record_job_run(conn, job_name, False, str(e), idle=True)
+        log_audit(conn, "automation_job_run_manually", target=job_name)
+        conn.commit()
+        conn.close()
+        flash(f"Couldn't run: {e}", "error")
+        return redirect(url_for("admin_automation"))
     except Exception as e:
         # Recorded before it is flashed. A message that only ever appeared on
         # the screen of whoever pressed the button is not a record of anything.
@@ -89160,7 +89315,7 @@ def room_fields_from_form():
     }
 
 
-def vat_working(conn, start, end):
+def vat_working(conn, start, end, today=None):
     """VAT collected in a period, per source, with the basis of each stated.
 
     Four streams charge VAT and the figures for a return had to be rebuilt by
@@ -89217,7 +89372,25 @@ def vat_working(conn, start, end):
         })
 
     span_days = (end - start).days
-    unclosed = span_days - len(closed_days)
+    # Never closed off, and so missing from the till figures: a day that is
+    # over, took money, and has no closure. It was every day in the period
+    # less the closed ones, which counted the rest of the month that had not
+    # happened yet, and every night the restaurant was shut -- 30 days "never
+    # closed off" in an October twelve days old. Today is not counted: it
+    # cannot be closed until service is over.
+    before = min(end, today or service_day())
+    traded = set()
+    for o in conn.execute(
+            """SELECT closed_at, opened_at FROM pos_orders
+                WHERE status = 'paid'
+                  AND date(COALESCE(closed_at, opened_at))
+                      BETWEEN date(?, '-1 day') AND date(?, '+1 day')""",
+            (s_iso, before.isoformat())).fetchall():
+        day = service_day_iso(o["closed_at"] or o["opened_at"])
+        if day and s_iso <= day < before.isoformat():
+            traded.add(day)
+    unclosed_days = sorted(traded - closed_days)
+    unclosed = len(unclosed_days)
 
     # ---- everything else: revenue by service date x configured rate -----
     def _estimate(label, gross, rate):
@@ -89327,7 +89500,7 @@ def vat_working(conn, start, end):
         "exact_vat": round(sum(l["vat"] for l in lines if l["exact"]), 2),
         "estimated_vat": round(sum(l["vat"] for l in lines if not l["exact"]), 2),
         "days_in_period": span_days, "days_closed": len(closed_days),
-        "days_not_closed": max(0, unclosed),
+        "days_not_closed": unclosed, "unclosed_days": unclosed_days,
     }
 
 

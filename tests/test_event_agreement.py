@@ -827,6 +827,12 @@ def run():
                 and "27500.00" in page.replace(",", ""))
 
         s.check("and the plan", "Second" in page)
+        # With no price agreed the plan's heading stood over nothing at all.
+        bare = _event("NOPRICE", _free_window(200), status="new", price=0)
+        empty = oc.get(f"/admin/events/{bare['id']}/agreement").get_data(as_text=True)
+        plan = empty[empty.find("How it will be paid for"):]
+        s.check("an event with no price says why there is no plan, under its heading",
+                "no price has been agreed" in plan[:600], detail=" ".join(plan[:400].split()))
 
         s.check("it is reachable from the enquiries list",
 

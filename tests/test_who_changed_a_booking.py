@@ -133,7 +133,9 @@ def _edit_form(bid, **changes):
             "second_contact_name": b["second_contact_name"] or "",
             "second_contact_email": b["second_contact_email"] or "",
             "booked_by_name": b["booked_by_name"] or "", "booked_by_email": b["booked_by_email"] or "",
-            "source": b["source"] or "", "heard_via": b["heard_via"] or ""}
+            "source": b["source"] or "", "heard_via": b["heard_via"] or "",
+            "guest_email": b["guest_email"] or "",
+            "estimated_arrival_time": b["estimated_arrival_time"] or ""}
     form.update(changes)
     return form
 
@@ -273,6 +275,34 @@ def _run(s, oc, ec, owner, emp, sent):
     s.check("a save that changed nothing writes nothing and sends nothing",
             len(_only("booking", bid, "booking_edited")) == 2 and not sent,
             detail=f"{flashes(r)} {sent}")
+
+    # "Arrivals missing detail" sent people here to fix an arrival time or an
+    # address, and the form had a field for neither.
+    fixed = f"{TAG.lower()}.fixed@example.invalid"
+    oc.post(f"/admin/bookings/{bid}/edit",
+            data=_edit_form(bid, estimated_arrival_time="About 4pm", guest_email=fixed))
+    after = _one("SELECT guest_email, estimated_arrival_time FROM bookings WHERE id = ?", bid)
+    moved = _only("booking", bid, "booking_edited")
+    newest = moved[0]["details"] if moved else ""
+    s.check("the arrival time and the address can be put right here",
+            after["estimated_arrival_time"] == "About 4pm" and after["guest_email"] == fixed,
+            detail=str(dict(after)))
+    s.check("and the history says so, the address by name only",
+            "arrival time" in newest and "guest's address changed" in newest
+            and fixed not in newest, detail=newest)
+    s.check("and neither is a letter to anybody", not sent, detail=str(sent))
+    r = oc.post(f"/admin/bookings/{bid}/edit", data=_edit_form(bid, guest_email="not-an-address"),
+                follow_redirects=True)
+    s.check("an address with no @ is refused, and nothing is saved",
+            _one("SELECT guest_email FROM bookings WHERE id = ?", bid)[0] == fixed
+            and any("@" in f for f in flashes(r)), detail=str(flashes(r)))
+    oc.post(f"/admin/bookings/{bid}/edit", data=_edit_form(bid, guest_email=""))
+    s.check("and an empty one leaves the address as it was",
+            _one("SELECT guest_email FROM bookings WHERE id = ?", bid)[0] == fixed)
+    conn = db()
+    conn.execute("UPDATE bookings SET guest_email = ? WHERE id = ?", (EMAIL, bid))
+    conn.commit()
+    conn.close()
 
     s.section("Checking out")
     oc.post(f"/admin/bookings/{bid}/checkout", data={"assigned_to_user_id": str(emp["id"])})

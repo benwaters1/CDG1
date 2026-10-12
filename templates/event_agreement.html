@@ -228,7 +228,7 @@
       <tr>
         <th scope="row">{{ i.row['label'] or 'Instalment' }}</th>
         <td class="num">{{ i.amount|money }}</td>
-        <td>{{ i.row['due_date'] }}</td>
+        <td>{{ i.row['due_date']|date_short }}</td>
         <td>
           {# Worked out from what has actually been received, oldest first.
              Nothing here records money, so the plan cannot disagree with the
@@ -254,6 +254,13 @@
     </tbody>
   </table>
 </div>
+{% endif %}
+
+{# The heading stood over nothing when no price had been agreed: no stages,
+   and nothing unplanned to offer a form for. Say why, under it. #}
+{% if not (schedule and (schedule.instalments or schedule.unplanned > 0.005)) %}
+<p class="upload-hint">Nothing to plan yet: no price has been agreed for this event. Once the
+  quoted figure is on it, it can be divided into stages here.</p>
 {% endif %}
 
 {% if schedule and schedule.unplanned > 0.005 %}

@@ -145,6 +145,12 @@ def run():
     conn.commit()
 
     ahead = {d["date"]: d for d in m.covers_ahead(conn, days=21, today=today)}
+    # "The next 21 days" listed 22 nights: the window ran to the 21st night
+    # after tonight inclusive.
+    s.check("the next 21 days are 21 nights, starting tonight",
+            len(ahead) == 21 and min(ahead) == today
+            and max(ahead) == today + timedelta(days=20),
+            detail=f"{len(ahead)} nights, {min(ahead)} to {max(ahead)}")
     s.check("confirmed parties are added up", ahead[friday]["covers"] == 6,
             detail=f"{ahead[friday]['covers']} — four and two")
     # Stated against what the fixture actually holds, so each check can

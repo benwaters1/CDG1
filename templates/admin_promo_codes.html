@@ -89,8 +89,12 @@
     <div class="expense-head">
       <div>
         <strong style="font-family:'IBM Plex Mono', monospace;">{{ c['code'] }}</strong>
-        <span class="mini-status {{ 'status-active' if c['active'] else 'status-inactive' }}" style="margin-left:8px;">{{ 'active' if c['active'] else 'inactive' }}</span>
-        <span class="mini-status status-pending" style="margin-left:4px;">{{ 'all bookings' if c['applies_to'] == 'all' else c['applies_to'] }}</span>
+        {# Whether a guest could use it now -- the same answer as the
+           "Usable now" chip. Switched on is not the same thing: an expired or
+           used-up code is still switched on, and it read "active". #}
+        {% set now_state = usable_now.get(c['id']) %}
+        <span class="mini-status {{ 'status-active' if now_state == 'Live' else 'status-inactive' }}" style="margin-left:8px;">{{ now_state|lower }}</span>
+        <span class="mini-status status-pending" style="margin-left:4px;">{{ {'all': 'anything', 'room': 'rooms', 'restaurant': 'restaurant', 'workshop': 'workshops'}.get(c['applies_to'], c['applies_to']) }}</span>
       </div>
       <span class="upload-hint">{{ c['redemption_count'] }} redemption{{ '' if c['redemption_count'] == 1 else 's' }}{% if c['max_redemptions'] %} / {{ c['max_redemptions'] }}{% endif %}</span>
     </div>

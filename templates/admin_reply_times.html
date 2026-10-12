@@ -27,6 +27,13 @@
     <span class="stat-tile-value">{% if data.longest_wait is not none %}{{ data.longest_wait }}{% else %}&mdash;{% endif %}</span>
     <span class="stat-tile-label">Longest anybody waited</span></span></div>
 </div>
+{% if data.marked_only %}
+<p class="upload-hint">
+  {{ data.marked_only }} of those answered {{ 'was' if data.marked_only == 1 else 'were' }}
+  marked read with nothing written back &mdash; a telephone call, perhaps. They count as
+  answered on the day they were marked, and the list below says which.
+</p>
+{% endif %}
 
 {% if data.worst %}
 <div class="detail-card" style="max-width:840px; border-left:3px solid #b8860b;">
@@ -72,7 +79,7 @@
   <table class="data-table">
     <thead><tr><th>Guest</th><th class="num">Rating</th>
     <th>Said</th><th class="num">Days to answer</th>
-    <th>Answered by</th></tr></thead>
+    <th>How</th><th>Answered by</th></tr></thead>
     <tbody>
       {% for a in data.answered %}
       <tr>
@@ -80,6 +87,7 @@
         <td class="num">{{ a.rating or '&mdash;'|safe }}</td>
         <td>{{ a.said }}</td>
         <td class="num">{{ a.days }}</td>
+        <td>{{ 'Wrote back' if a.wrote else 'Marked read, nothing written' }}</td>
         <td>{{ a.answered_by or 'nobody recorded' }}</td>
       </tr>
       {% endfor %}

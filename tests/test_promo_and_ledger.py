@@ -195,6 +195,19 @@ def run():
     conn.close()
     s.check("and it can be switched back on", back is not None)
 
+    # An expired code read "active" on the list because it was still switched
+    # on. The badge says whether a guest could use it.
+    conn = db()
+    conn.execute("UPDATE promo_codes SET valid_until = ? WHERE id = ?",
+                 ((house_today() - timedelta(days=1)).isoformat(), made["id"]))
+    conn.commit()
+    conn.close()
+    page = oc.get(f"/admin/promo-codes?q={TAG.lower()}welcome").get_data(as_text=True)
+    card = page[page.find(TAG + "WELCOME</strong>"):]
+    card = card[:card.find("</div>")]
+    s.check("a code that has expired does not say it is active",
+            "expired" in card and ">active<" not in card, detail=" ".join(card.split())[:200])
+
     s.section("Sending one out")
     kept = _stayed("Keeper")
     left = _stayed("Leaver")

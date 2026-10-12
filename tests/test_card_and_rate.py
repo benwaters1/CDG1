@@ -60,6 +60,17 @@ def run():
             detail=str(row["label"] if row else None))
     s.check("it is named in the uncosted list",
             TAG + " Uncosted" in card["uncosted"])
+    # Whole euros made a €4.50 apple juice read €5 on the page.
+    conn.execute(
+        """INSERT INTO menu_items (name, category, course, price, active, created_at)
+           VALUES (?, 'main', 'main', 4.5, 1, ?)""", (TAG + " Jus", _now()))
+    conn.commit()
+    page = oc.get("/admin/menu-engineering").get_data(as_text=True)
+    jus = page[page.find(TAG + " Jus"):]
+    jus = jus[:jus.find("</tr>")]
+    s.check("a price is shown to the cent, not to the euro",
+            m.money(4.5) in jus and m.euro(4.5) + "<" not in jus,
+            detail=" ".join(jus.split())[:200])
 
     s.section("A dish that sells and earns is a different thing from one that only sells")
     stock = {}

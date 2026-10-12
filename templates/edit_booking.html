@@ -106,12 +106,22 @@
     <label class="field-label" for="edit_booking-guest-phone">Phone</label>
     <input id="edit_booking-guest-phone" type="tel" name="guest_phone" value="{{ booking['guest_phone'] or '' }}" autocomplete="tel">
 
+    {# "Arrivals missing detail" sends people here to put these right, and the
+       form had no field for either. #}
+    <label class="field-label" for="edit_booking-guest-email">Email</label>
+    <input id="edit_booking-guest-email" type="email" name="guest_email" value="{{ booking['guest_email'] or '' }}" autocomplete="off">
+    <p class="field-hint">Where their letters go. It can be corrected here; it cannot be left empty.</p>
+
+    <label class="field-label" for="edit_booking-arrival-time">Arriving at</label>
+    <input id="edit_booking-arrival-time" type="text" name="estimated_arrival_time" maxlength="60"
+           value="{{ booking['estimated_arrival_time'] or '' }}" placeholder="About 4pm, or after dinner">
+
     <label class="field-label" for="edit_booking-special-requests">Notes</label>
     <textarea id="edit_booking-special-requests" name="special_requests">{{ booking['special_requests'] or '' }}</textarea>
 
     <button type="submit" class="btn-primary">Save changes</button>
   </form>
-  <p class="upload-hint" style="margin-top:10px;">Saving emails the guest with the updated details.</p>
+  <p class="upload-hint" style="margin-top:10px;">The guest is sent the new details when the dates or the party change. Correcting anything else sends nothing.</p>
 </div>
 
 {# One arrival, several rooms. A family taking three rooms makes three

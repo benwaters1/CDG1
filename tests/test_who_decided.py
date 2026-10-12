@@ -146,6 +146,13 @@ def run():
                    "people still waiting, so the average had nothing behind it")
     s.check("the answered complaint is on it", TAG + " Unhappy" in rt)
     s.check("with who answered it", TAG + "Decider" in rt)
+    # Marked read is allowed -- some want a telephone call -- but it is not
+    # writing back, and the page called both "answered" alike.
+    row = rt[rt.find(TAG + " Unhappy", rt.find('section-heading">Answered')):]
+    row = row[:row.find("</tr>")]
+    s.check("and that it was marked read, not written back to",
+            "Marked read, nothing written" in row and data["marked_only"] >= 1,
+            detail=" ".join(row.split())[:200])
 
     conn.execute("UPDATE guest_feedback SET acknowledged_by_user_id = NULL "
                  "WHERE guest_name = ?", (TAG + " Unhappy",))

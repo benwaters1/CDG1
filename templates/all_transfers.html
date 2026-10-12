@@ -46,7 +46,40 @@
     <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if unassigned else 'stat-tile-icon-success' }}">{{ icon('employee', 19) }}</span>
     <span class="stat-tile-body"><span class="stat-tile-value">{{ unassigned }}</span><span class="stat-tile-label">Without a driver</span></span>
   </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if asked else 'stat-tile-icon-success' }}">{{ icon('calendar', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ asked|length }}</span><span class="stat-tile-label">Asked for, nothing arranged</span></span>
+  </div>
 </div>
+
+{# Guests who booked a transfer or gave a flight, with no run arranged for
+   them. The page used to read vehicle runs only, and said "0 upcoming"
+   above stays that had asked to be collected. #}
+{% if asked %}
+<h2 class="section-heading" style="margin-top:0;">Asked for, nothing arranged yet</h2>
+<div class="mini-list" style="margin-bottom:22px;">
+  {% for b in asked %}
+  <div class="mini-row">
+    <span class="mini-status status-overdue">↓ to collect</span>
+    <span class="mini-name">{{ b['guest_name'] }}</span>
+    <span class="mini-role">
+      arriving {{ b['arrival_date']|date_short }} · {{ b['room_name'] }}
+      {%- if b['party_size'] %} · {{ b['party_size'] }} {{ 'person' if b['party_size'] == 1 else 'people' }}{% endif %}
+      {%- if b['transfer_flight_number'] %} · flight {{ b['transfer_flight_number'] }}{% endif %}
+      {%- if b['transfer_arrival_time'] %}, landing {{ b['transfer_arrival_time'] }}{% endif %}
+      {%- if not b['transfer_flight_number'] %} · no flight given yet{% endif %}
+    </span>
+    {% if user['role'] == 'owner' %}
+      {% for v in vehicles %}
+      <a href="{{ url_for('vehicle_transfers_page', vehicle_id=v['id'], booking_id=b['id']) }}" class="small-link" style="color:var(--steel);">Arrange in {{ v['name'] }}</a>
+      {% else %}
+      <a href="{{ url_for('management_vehicles') }}" class="small-link" style="color:var(--steel);">Add a vehicle to arrange it</a>
+      {% endfor %}
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 
 <h2 class="section-heading" style="margin-top:0;">Today — {{ today.strftime('%A %d %B') }}</h2>
 {% if not todays %}

@@ -10,6 +10,7 @@ The other half is the Run now button. It dispatched from a hand-written
 if/elif chain sitting next to the job registry, and the two had drifted: six
 jobs had a row in the table and a button that could never run them.
 """
+import html as _html
 from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, clients, db, flashes
@@ -83,6 +84,36 @@ def run():
     s.check("and is counted as failing from the first run",
             v is not None and v["consecutive_failures"] == 1,
             detail=None if v is None else str(v["consecutive_failures"]))
+
+    # Something not set up is neither: it was shown as "Worked — Microsoft
+    # Graph not configured" under a tile saying nothing had failed.
+    idle_job = TAG + "notsetup"
+    m.record_job_run(conn, idle_job, True, "worked once")
+    worked_at = _row(conn, idle_job)["last_ok_at"]
+    m.record_job_run(conn, idle_job, False, "Microsoft Graph not configured", idle=True)
+    i = _row(conn, idle_job)
+    s.check("a job that could not run is recorded as that, not as worked or failed",
+            i is not None and i["last_status"] == "idle" and i["consecutive_failures"] == 0,
+            detail=None if i is None else f"{i['last_status']} {i['consecutive_failures']}")
+    s.check("and it does not move when it last worked",
+            i is not None and i["last_ok_at"] == worked_at,
+            detail=None if i is None else f"{worked_at} -> {i['last_ok_at']}")
+    # Through the button, on a real job: the inbox scan, with no Microsoft 365.
+    real_graph = m.graph_enabled
+    m.graph_enabled = lambda: False
+    try:
+        resp = oc.post("/admin/automation/run/email_inbox_scan", follow_redirects=True)
+    finally:
+        m.graph_enabled = real_graph
+    said = _html.unescape(" ".join(flashes(resp)))
+    scan = _row(conn, "email_inbox_scan")
+    s.check("run by hand it says it couldn't run, and why",
+            "Couldn't run" in said and "Graph" in said, detail=said[:160])
+    s.check("and the row says so", scan is not None and scan["last_status"] == "idle",
+            detail=None if scan is None else scan["last_status"])
+    page = oc.get("/admin/automation").get_data(as_text=True)
+    s.check("the page says Couldn't run, not Worked",
+            "Couldn't run</strong> &mdash; Microsoft Graph not configured" in page)
 
     s.section("A streak is what separates a bad morning from nobody coming")
     s.check("failures in a row are counted", r is not None and r["consecutive_failures"] == 3,
