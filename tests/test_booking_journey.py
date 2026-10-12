@@ -510,8 +510,12 @@ def run():
     # The table went in the 1 October handover; each room card still carries
     # its bathroom as a line read from the column, so that is what is counted
     # now -- one line a room, the fourth way this has been drawn.
-    said_shared = len(re.findall(r"<li>\s*Shared bathroom\s*</li>", page))
-    said_private = len(re.findall(r"<li>\s*Private bathroom\s*</li>", page))
+    # Since handover z7 each line starts with its icon, so the line's WORDS are
+    # read, whatever drawing sits in front of them.
+    lines = [re.sub(r"<[^>]+>", "", li).strip()
+             for li in re.findall(r"<li>(.*?)</li>", page, re.S)]
+    said_shared = sum(1 for words in lines if words == "Shared bathroom")
+    said_private = sum(1 for words in lines if words == "Private bathroom")
     s.check("the page says shared for the room that shares, and only for it",
             said_shared == 1,
             detail="page says shared %d time(s) with one room sharing" % said_shared)

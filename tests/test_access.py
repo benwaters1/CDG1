@@ -340,8 +340,9 @@ def run():
     # heading torn out, because the sentence after it still happened to
     # contain one of the two phrases -- so it was checking that SOME words
     # survived rather than that the claim did.
+    # "the house" became "the château" with handover z7; the claim is the same.
     s.check("the notice has a heading for it",
-            "What you need from the house" in notice,
+            "What you need from the château" in notice,
             detail="we now keep health-adjacent information against a name, "
                    "and a retention list that does not mention it is a "
                    "notice that understates what the software does")

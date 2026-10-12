@@ -295,4 +295,4 @@ def _run(s):
     # page, and a notice that says it now would be the notice lying.
     s.check("and nowhere does it still say there is no analytics on the site",
             "There is no analytics on this site" not in words
-            and "The house counts its own visits" in words)
+            and "The château counts its own visits" in words)

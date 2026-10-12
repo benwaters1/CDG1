@@ -6,6 +6,7 @@ are here. So recurring entries are resolved against real dates, and the awkward
 parts are the ones worth testing: a season that wraps the new year, a one-off
 that has been and gone, and the two shapes a row can take.
 """
+import os
 from datetime import datetime, timezone, timedelta
 
 from _harness import Suite, clients, db
@@ -157,7 +158,17 @@ def run():
     # English source, so this follows the heading rather than pinning one
     # spelling of it -- but it still has to BE translated, which is the
     # thing that broke: the new heading arrived in English only.
-    s.check("the heading is translated", "En Ariège" in body)
+    # Read from the template, so it follows the heading the design side sends
+    # ("What's On in the Ariège" since z7) instead of pinning a translation.
+    import re as _re
+    import translations as _tr
+    src = open(os.path.join(_harness.ROOT, "templates", "whats_on.html"), encoding="utf-8").read()
+    found = _re.search(r'<h1[^>]*>\{\{\s*t\("([^"]+)"\)\s*\}\}</h1>', src)
+    heading = found.group(1) if found else None
+    french = _tr.FR.get(heading) if heading else None
+    s.check("the heading is translated",
+            bool(french) and french != heading and french in body,
+            detail=f"{heading!r} -> {french!r}")
     s.check("and the day names with it, not just the Today flag",
             any(d in body for d in ("Lundi", "Mardi", "Mercredi", "Jeudi",
                                     "Vendredi", "Samedi", "Dimanche",

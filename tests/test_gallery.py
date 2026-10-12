@@ -45,8 +45,14 @@ def run():
 
     s.section("Every menu link lands on a real anchor")
     anchors = _menu_anchors()
-    s.check("the header does link to gallery anchors at all", len(anchors) > 0,
-            detail=f"found {anchors}")
+    # The side menu linked each section of the gallery until handover z7
+    # rebuilt it; it now links the gallery itself. Whichever it does, the link
+    # has to be there, and any anchor it names has to exist (below).
+    with open(f"{ROOT}/templates/public_base.html", encoding="utf-8") as fh:
+        header = fh.read()
+    s.check("the header links the gallery",
+            'href="/gallery' in header or "url_for('gallery_page')" in header,
+            detail=f"anchors: {anchors}")
     page = pub.get("/gallery")
     html = page.get_data(as_text=True)
     s.check("the gallery page loads", page.status_code == 200, page)

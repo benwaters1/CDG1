@@ -725,6 +725,15 @@ FR = {
     "What to expect": "À quoi s'attendre",
     "At the château right now": "Au château en ce moment",
     "The valley at 900 metres, written from here rather than from an average. Not a forecast.": "La vallée à 900 mètres, écrite d'ici plutôt que d'après une moyenne. Ce n'est pas une prévision.",
+    # Handover z7 (12 Oct): the rebuilt side menu, the room page's own dates,
+    # the booking page's last line, and What's On's new heading.
+    "The Château": "Le Château",
+    "Plan Your Visit": "Préparer votre visite",
+    "Change dates": "Modifier les dates",
+    "Continue to book": "Continuer la réservation",
+    "See everything you have with us": "Voir tout ce que vous avez chez nous",
+    "Under restoration since 2013": "En restauration depuis 2013",
+    "What’s On in the Ariège": "Que faire en Ariège",
 }
 
 ES = {
@@ -1312,6 +1321,14 @@ ES = {
     "What to expect": "Qué esperar",
     "At the château right now": "En el château en este momento",
     "The valley at 900 metres, written from here rather than from an average. Not a forecast.": "El valle a 900 metros, escrito desde aquí y no a partir de una media. No es una previsión.",
+    # Handover z7 (12 Oct), as above.
+    "The Château": "El Château",
+    "Plan Your Visit": "Planifique su visita",
+    "Change dates": "Cambiar las fechas",
+    "Continue to book": "Continuar con la reserva",
+    "See everything you have with us": "Ver todo lo que tiene con nosotros",
+    "Under restoration since 2013": "En restauración desde 2013",
+    "What’s On in the Ariège": "Qué hacer en Ariège",
 }
 
 # The public pages' own prose, kept in its own file because it is 1,900
