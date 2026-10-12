@@ -36,6 +36,16 @@
         </tr>
         {% endfor %}
       </tbody>
+      {# Kept is totalled only when every dish has a recipe against it: a
+         total of the dishes that happen to be costed is not what the house
+         kept, and would read as if it were. #}
+      <tfoot><tr>
+        <th scope="row">All dishes</th>
+        <td class="num">{{ '%g'|format(totals.sold) }}</td>
+        <td class="num">{{ totals.took|money }}</td>
+        <td class="num"></td>
+        <td class="num">{% if totals.kept is not none %}{{ totals.kept|money }}{% else %}&mdash;{% endif %}</td>
+      </tr></tfoot>
     </table>
   </div>
   <p class="upload-hint">The best seller and the best earner are rarely the same dish, which is

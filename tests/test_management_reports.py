@@ -268,6 +268,17 @@ def run():
             detail="revpar equals ADR, which only happens at 100% occupancy")
     s.check("a year with nothing in it is called out, not shown as infinite growth",
             isinstance(cal["no_history"], bool), detail=str(cal["no_history"]))
+    # Growth from nothing has no percentage: the column said +100.0% under the
+    # box saying the comparison was not meaningful. A month far enough ahead
+    # that the year before it holds nothing.
+    ahead = m.resolve_period("month", "2099-06-01")
+    _book(conn, "NOHISTORY", date(2099, 6, 2), date(2099, 6, 4), price=900.0)
+    with m.app.test_request_context():
+        first = m.year_on_year(conn, ahead, "calendar")
+    from_zero = [x for x in first["metrics"] if not x["then"] and x["now"]]
+    s.check("a figure up from nothing shows no percentage at all",
+            first["no_history"] and from_zero and all(x["change"] is None for x in from_zero),
+            detail=str([(x["key"], x["then"], x["now"], x["change"]) for x in first["metrics"]]))
 
     s.section("Only the owner")
     for path in ("/management/year-on-year", "/management/booking-shape",

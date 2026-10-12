@@ -225,9 +225,16 @@
       <div class="detail-grid">
         <div><span class="detail-label">Total charged</span>{{ balance[1]|money }}</div>
         <div><span class="detail-label">Paid</span>{{ balance[2]|money }}</div>
+        {# A cancelled or declined place owes nothing, whatever its ledger
+           still charges: it showed "Balance due €3,200.00" in red on a
+           cancelled registration. The question there is a refund, below. #}
+        {% if reg['live'] %}
         <div><span class="detail-label">Balance due</span><span style="color:{{ 'var(--danger)' if balance[0] > 0 else 'inherit' }};">{{ balance[0]|money }}</span></div>
+        {% else %}
+        <div><span class="detail-label">Balance due</span>Nothing &mdash; {{ r['status'] }}</div>
+        {% endif %}
         {% if r['deposit_amount'] %}<div><span class="detail-label">Deposit</span>{{ r['deposit_amount']|money }} {{ 'paid' if r['deposit_paid_at'] else 'not paid yet' }}</div>{% endif %}
-        {% if r['balance_due_date'] and balance[0] > 0 %}<div><span class="detail-label">Balance falls due</span>{{ r['balance_due_date']|date_short }}</div>{% endif %}
+        {% if reg['live'] and r['balance_due_date'] and balance[0] > 0 %}<div><span class="detail-label">Balance falls due</span>{{ r['balance_due_date']|date_short }}</div>{% endif %}
         {# Whether the balance can be taken from a card, and if not, why not. #}
         <div><span class="detail-label">Card</span>{{ reg['card'] }}</div>
       </div>

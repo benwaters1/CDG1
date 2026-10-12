@@ -237,6 +237,16 @@ def run():
             _due("Endofmonth") in ("2026-02-28", "2026-02-29"),
             detail=str(_due("Endofmonth")))
 
+    # A cost with no supplier is named in the box that says so. It printed
+    # " ·  · " -- the template asked for a column called name, and the table's
+    # is label, so every name came out blank and nothing errored.
+    page = oc.get("/management/recurring-costs").get_data(as_text=True)
+    box = page[page.find("with no supplier attached"):]
+    box = box[:box.find("</div>")]
+    s.check("a cost with no supplier is named where the page says so",
+            TAG + "Electricity" in box and " ·  · " not in box,
+            detail=" ".join(box.split())[:200])
+
     guarded = _cost("Water", "monthly", "2026-03-10")
     ec.post(f"/management/recurring-costs/{guarded['id']}/mark-paid")
     s.check("an employee cannot mark a bill paid", _due("Water") == "2026-03-10",

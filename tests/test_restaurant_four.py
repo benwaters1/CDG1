@@ -195,6 +195,28 @@ def run():
                 sold.get(TAG + " Confit", {}).get("sold") == 3,
                 detail="counting a struck-off line would rank a dish by how "
                        "often it is keyed in by mistake")
+
+        # The tile said "4 dishes sold" over a Sold column adding to 9: it
+        # counted the rows. And it rounded Took to the euro under rows to the
+        # cent. The headline is the column's own total now.
+        rows = m.what_sells(conn, days=30, today=today)
+        plates = sum(r["sold"] for r in rows)
+        took = round(sum(r["took"] for r in rows), 2)
+        page = oc.get("/restaurant/what-sells?days=30").get_data(as_text=True)
+        tile = page[page.find("overview-band"):page.find("Most sold first")]
+        # The figure itself, read out of its cell: "3" alone is also in "30 days".
+        cell = tile[:tile.find("Plates sold")]
+        figure = cell[cell.rfind('overview-value">') + len('overview-value">'):]
+        figure = figure.split("<")[0].strip()
+        s.check("the headline counts plates, the Sold column's total",
+                figure == f"{plates:g}" and f"{len(rows)} different dish" in tile,
+                detail=f"tile says {figure!r}; {plates} plates over {len(rows)} dishes")
+        s.check("Took on the tile is the column's total to the cent",
+                m.money(took) in tile, detail=f"{m.money(took)}")
+        foot = page[page.find("<tfoot>"):page.find("</tfoot>")]
+        s.check("and the table ends on those totals",
+                f"{plates:g}" in foot and m.money(took) in foot,
+                detail=" ".join(foot.split())[:200])
     else:
         s.check("a till order exists to hang lines from", False,
                 detail="no pos_orders row, so the what-sells checks could "

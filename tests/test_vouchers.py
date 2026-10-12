@@ -235,6 +235,24 @@ def run():
                 data={"amount": "10", "kind": "pos"}, follow_redirects=True)
     s.check("and nothing more can be taken", len(_ledger(v3["id"])["redemptions"]) == 1,
             detail=f"{flashes(r)[:1]}")
+    # The list said "Left €1,000.00" beside "Cancelled", and counted the
+    # voucher as sold.
+    s.check("nothing is left on it", led3["balance"] == 0.0, detail=str(led3["balance"]))
+    page = oc.get(f"/management/vouchers?q={v3['code']}").get_data(as_text=True)
+    row = page[page.find(v3["code"], page.find("<tbody")):]
+    row = row[:row.find("</tr>")]
+    s.check("and the list says so", m.money(60) not in row and m.money(0) in row,
+            detail=" ".join(row.split())[:300])
+    sold = page[page.find("overview-band"):]
+    sold = sold[:sold.find("Sold, all time") + 120]
+    conn = db()
+    ledgers = [m.voucher_ledger(conn, v["id"])
+               for v in conn.execute("SELECT id FROM gift_vouchers").fetchall()]
+    conn.close()
+    really_sold = m.euro(round(sum(x["original"] for x in ledgers if x["state"] != "void"), 2))
+    s.check("and it is not counted as sold",
+            really_sold in sold and "cancelled, not counted" in sold,
+            detail=f"expected {really_sold}: " + " ".join(sold.split())[-200:])
     oc.post(f"/management/vouchers/{v3['id']}/void", follow_redirects=True)
     s.check("reinstating works, because cancelling by mistake happens",
             _ledger(v3["id"])["spendable"])

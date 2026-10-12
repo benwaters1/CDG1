@@ -19,7 +19,7 @@
 <div class="pass-short" style="margin-bottom:12px;">
   <strong>{{ unattached|length }} with no supplier attached</strong>
   <span class="pass-short-row">
-    {% for c in unattached %}{{ c['name'] }}{% if not loop.last %} · {% endif %}{% endfor %}
+    {% for c in unattached %}{{ c['label'] }}{% if not loop.last %} · {% endif %}{% endfor %}
   </span>
   <span class="upload-hint">Attaching one lets the cost be matched to an
     invoice, and the supplier to be asked about it.</span>

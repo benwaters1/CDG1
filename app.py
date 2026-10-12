@@ -11506,17 +11506,19 @@ def workshops_overview(conn, period, today):
     ).fetchall()
     session_ids = [s["id"] for s in sessions]
     capacity = sum(s["capacity"] or 0 for s in sessions)
-    seats, revenue = 0, 0.0
+    seats, held, revenue = 0, 0, 0.0
     if session_ids:
         marks = ",".join("?" * len(session_ids))
         row = conn.execute(
-            f"""SELECT COALESCE(SUM(party_size), 0) AS seats,
-                       COALESCE(SUM(total_price), 0) AS revenue
+            f"""SELECT COALESCE(SUM(CASE WHEN status = 'confirmed' THEN party_size END), 0) AS seats,
+                       COALESCE(SUM(CASE WHEN status = 'pending' THEN party_size END), 0) AS held,
+                       COALESCE(SUM(CASE WHEN status = 'confirmed' THEN total_price END), 0)
+                           AS revenue
                 FROM workshop_bookings
-                WHERE status = 'confirmed' AND session_id IN ({marks})""",
+                WHERE status IN ('confirmed', 'pending') AND session_id IN ({marks})""",
             session_ids,
         ).fetchone()
-        seats, revenue = row["seats"], row["revenue"] or 0.0
+        seats, held, revenue = row["seats"], row["held"], row["revenue"] or 0.0
     refunded = conn.execute(
         """SELECT COALESCE(SUM(amount), 0) AS t FROM refunds
            WHERE category = 'workshop' AND created_at >= ? AND created_at < ?""",
@@ -11529,7 +11531,11 @@ def workshops_overview(conn, period, today):
     return [
         overview_cell("Sessions running", len(sessions)),
         overview_cell("Seats sold", seats),
-        overview_cell("Seats free", max(0, capacity - seats)),
+        # A place awaiting a decision is held: the booking form, the public
+        # page and every session's "spots left" already count it as taken.
+        # Left out here, the band said 22 free above sessions that were full.
+        overview_cell("Seats free", max(0, capacity - seats - held),
+                      hint=(f"{held} more held, awaiting a decision" if held else None)),
         overview_cell("Full", fill, sub="%"),
         overview_cell("Revenue", euro(revenue - refunded), hint="net of refunds"),
         overview_cell("Awaiting a decision", pending, alert=pending),
@@ -20737,10 +20743,11 @@ def year_on_year(conn, period, alignment="calendar"):
         return round(r["revenue"] / r["capacity"], 2) if r["capacity"] else None
 
     def _delta(a, b):
-        if a is None or b is None:
+        # Growth from nothing has no percentage. This said +100.0% under a
+        # box saying the comparison was not meaningful yet; any rise from
+        # zero is infinitely large, and 100 is just a number that looks real.
+        if a is None or b is None or not b:
             return None
-        if not b:
-            return None if not a else 100.0
         return round((a - b) / abs(b) * 100, 1)
 
     metrics = [
@@ -66910,7 +66917,11 @@ def management_vouchers():
                       hint="money taken for something that has not happened yet"),
         overview_cell("Vouchers out",
                       sum(1 for r in rows if r["state"] == "active")),
-        overview_cell("Sold, all time", euro(round(sum(r["original"] for r in rows), 2))),
+        # A cancelled voucher was not sold, or was sold and handed back.
+        overview_cell("Sold, all time",
+                      euro(round(sum(r["original"] for r in rows if r["state"] != "void"), 2)),
+                      hint=(lambda n: f"{n} cancelled, not counted" if n else None)(
+                          sum(1 for r in rows if r["state"] == "void"))),
         overview_cell("Spent", euro(round(sum(r["spent"] for r in rows), 2))),
     ]
     return render_template("management_vouchers.html", lv=lv, overview=overview)
@@ -68599,11 +68610,22 @@ def restaurant_what_sells():
         r["kept"] = (round(r["took"] - (d["cost"] or 0) * r["sold"], 2)
                      if d and d["costed"] else None)
 
+    # Plates, not dishes. The tile said "4 dishes sold" above a Sold column
+    # adding to 9 -- it was counting the rows. Both are worth knowing, so the
+    # count of different dishes is the hint. Took is to the cent, as the
+    # table's total beneath is: the same figure cannot be €206 in one place
+    # and €206.50 in the other.
+    totals = {"sold": sum(r["sold"] for r in rows),
+              "took": round(sum(r["took"] for r in rows), 2),
+              "kept": (round(sum(r["kept"] for r in rows), 2)
+                       if rows and all(r["kept"] is not None for r in rows) else None)}
     overview = [
-        overview_cell("Dishes sold", len(rows), hint=f"over {days} days"),
-        overview_cell("Took", f"\u20ac{sum(r['took'] for r in rows):,.0f}"),
+        overview_cell("Plates sold", f"{totals['sold']:g}",
+                      hint=f"{len(rows)} different dish{'' if len(rows) == 1 else 'es'}, "
+                           f"over {days} days"),
+        overview_cell("Took", money(totals["took"])),
     ]
-    return render_template("restaurant_what_sells.html", rows=rows,
+    return render_template("restaurant_what_sells.html", rows=rows, totals=totals,
                            overview=overview, days=days)
 
 
@@ -89394,7 +89416,10 @@ def voucher_ledger(conn, voucher_id):
     today = house_today_iso()
     expired = bool(voucher["expires_on"]) and voucher["expires_on"] < today
     if voucher["status"] == "void":
-        state = "void"
+        # Nothing is left on a cancelled voucher: it cannot be spent, and the
+        # list showed "Left €1,000.00" beside "Cancelled". What it held when
+        # it was cancelled is still original less spent.
+        state, balance = "void", 0.0
     elif balance <= 0.005:
         state = "spent"
     elif expired:

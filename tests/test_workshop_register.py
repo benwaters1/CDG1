@@ -356,6 +356,14 @@ def run():
     s.check("the refund is a click away when money was paid",
             f"/admin/refunds/workshop/{ids['Cancelled']}" in page,
             detail="calling a session off tells the owner to refund each one from here")
+    # The card said "Balance due €3,200.00" in red on a cancelled place: the
+    # ledger still charges it, but nobody owes anything for a place that is off.
+    card = page[page.find(f"<strong>{TAG} Cancelled</strong>"):]
+    card = card[:card.find('<div class="expense-card">')] if '<div class="expense-card">' in card else card
+    due = card[card.find("Balance due"):card.find("Balance due") + 120]
+    s.check("and it owes nothing, rather than a balance in red",
+            "Nothing &mdash; cancelled" in due and "var(--danger)" not in due
+            and "Balance falls due" not in card, detail=" ".join(due.split()))
 
     s.section("None of it answers to staff")
     before = _row(ids["Unpaid"])
@@ -379,6 +387,24 @@ def run():
     page = oc.get("/admin/workshops").get_data(as_text=True)
     s.check("each session links to its register with how many are booked",
             re.search(r"Who is coming \(\d+\)", page) is not None)
+    # The band said "22 free" above sessions saying "4/10 spots left": it left
+    # out places held by registrations awaiting a decision, which every
+    # session's own count takes. The band's free seats are the sessions' own.
+    conn = db()
+    start = conn.execute("SELECT start_date FROM workshop_sessions WHERE id = ?",
+                         (soon,)).fetchone()["start_date"]
+    period = m.resolve_period("week", start)
+    in_window = [r["id"] for r in conn.execute(
+        f"""SELECT id FROM workshop_sessions WHERE start_date < ? AND end_date >= ?
+            AND {m.SESSION_IS_LIVE}""", (period["end_iso"], period["start_iso"])).fetchall()]
+    spots = sum(max(0, m.workshop_session_remaining_capacity(conn, sid)) for sid in in_window)
+    with m.app.test_request_context():
+        cells = {c["label"]: c for c in m.workshops_overview(conn, period, house_today())}
+    conn.close()
+    s.check("the band's free seats are what the sessions say is left, held places included",
+            cells["Seats free"]["value"] == spots and "more held" in (cells["Seats free"]["hint"] or ""),
+            detail=f"band {cells['Seats free']['value']} ({cells['Seats free']['hint']}), "
+                   f"sessions {spots}")
 
     s.section("A chip's default is where a list opens, not a filter somebody chose")
     rows = [{"n": 1, "when": "Current"}, {"n": 2, "when": "History"}, {"n": 3, "when": "Current"}]
