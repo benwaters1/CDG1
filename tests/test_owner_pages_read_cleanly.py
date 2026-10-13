@@ -408,10 +408,7 @@ def run():
             m.facet("k", "K", lambda r: r, order=["Rooms", "Events", "Rooms"])["order"]
             == ["Rooms", "Events"])
     rows = sum(len(p.facets) for _ep, _u, p in parsed)
-    # A row offering one choice that every row has is no longer drawn
-    # (list_view), so fewer rows reach the page; the floor is still the
-    # difference between reading pages and reading nothing.
-    s.check("there are chip rows to read", rows > 20, detail=f"{rows} rows")
+    s.check("there are chip rows to read", rows > 40, detail=f"{rows} rows")
     twice = []
     for _ep, url, p in parsed:
         for f in p.facets:

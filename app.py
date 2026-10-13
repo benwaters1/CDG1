@@ -11336,14 +11336,6 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
             keys = [k for k in keys if k in set(picked)]
         if f["hide_empty"] and not keys:
             continue
-        # A row of one choice that every row in the whole list already has --
-        # "All 12 · Pending 12" -- divides nothing, and reads as a control
-        # that does something. Only when nothing has narrowed the list: after
-        # a search the row is still the way to widen it again. Kept while it
-        # is chosen or holds a default, so a filter in force can be taken off.
-        if (len(keys) == 1 and counts[keys[0]] == len(pool) == len(rows) and not hidden
-                and not chosen.get(f["key"]) and not f.get("default")):
-            continue
         options = [{"value": k, "label": f["labels"].get(k, str(k).replace("_", " ")),
                     "count": counts[k], "selected": chosen.get(f["key"]) == k}
                    for k in keys]
