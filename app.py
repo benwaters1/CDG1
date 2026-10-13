@@ -49427,7 +49427,7 @@ def run_guest_text_job(conn, kind="checkin", days_before=None):
 
     if not arriving:
         verb = "arrives" if kind == "checkin" else "leaves"
-        return f"nobody {verb} in {days} day(s)"
+        return f"nobody {verb} {in_words(days)}"
     parts = [f"{sent} sent"] if sent else []
     if held:
         parts.append(f"{held} waiting for a provider")
@@ -49740,7 +49740,7 @@ def run_room_feedback_job(conn, days_after=None):
             asked += 1
 
     if not departed:
-        return f"nobody left {days} day(s) ago who has not been asked"
+        return f"nobody left {in_words(-days)} who has not been asked"
     return f"asked {asked} guest(s) how their stay was"
 
 
