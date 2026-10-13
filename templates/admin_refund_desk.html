@@ -64,8 +64,8 @@
         </td>
         <td>{{ p.payer or p.taken_by or '—' }}</td>
         <td class="num">{{ p.amount|money }}</td>
-        <td class="num">{{ '€%.2f'|format(p.refunded) if p.refunded else '—' }}</td>
-        <td class="num">{{ '€%.2f'|format(p.refundable) if p.refundable else '—' }}</td>
+        <td class="num">{{ p.refunded|money if p.refunded else '—' }}</td>
+        <td class="num">{{ p.refundable|money if p.refundable else '—' }}</td>
       </tr>
     {% endfor %}
     </tbody>

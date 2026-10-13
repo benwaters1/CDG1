@@ -105,7 +105,7 @@
           <div class="upload-hint">{{ row.audience }}</div>
         </td>
         <td>
-          {{ (row.subject|dates_in_words) or '(no subject)' }}
+          {{ (row.subject|house_words) or '(no subject)' }}
           <div class="upload-hint">{{ row.letter }} &middot; {{ row.why|lower }}
             {%- if row.last_error %} &mdash; {{ row.last_error }}{% endif %}</div>
         </td>
@@ -155,7 +155,7 @@
       {% for row in recovered %}
       <tr>
         <td>{{ row.to_address }}</td>
-        <td>{{ row.subject|dates_in_words }}</td>
+        <td>{{ row.subject|house_words }}</td>
         <td>{{ row.sent_at|house_day|date_short }}</td>
       </tr>
       {% endfor %}

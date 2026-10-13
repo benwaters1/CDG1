@@ -33,7 +33,7 @@
           <td>{{ r.when }}</td>
           <td>{% if r.guest_id %}<a href="{{ url_for('guest_detail', guest_id=r.guest_id) }}">{{ r.to_address }}</a>{% else %}{{ r.to_address }}{% endif %}
               <br><span class="cell-note">{{ r.audience }}</span></td>
-          <td>{{ r.subject|dates_in_words if r.subject else '' }}</td>
+          <td>{{ r.subject|house_words if r.subject else '' }}</td>
           <td>{{ r.type }}{% if r.sent_by_name %}<br><span class="cell-note">by {{ r.sent_by_name }}</span>{% endif %}</td>
           <td>{{ r.about_words }}</td>
           <td><span class="mini-status status-{{ r.status_class }}">{{ r.status_words }}</span>{% if r.delivery_detail %}<br><span class="cell-note">{{ r.delivery_detail }}</span>{% endif %}

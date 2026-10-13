@@ -70,6 +70,9 @@ TITLE_NOT_FIRST = {
 
 _PAGES = None
 
+# Money spelled by hand: four figures with no separator, or the minus inside.
+MONEY_BY_HAND = re.compile(r"€\s?\d{4,}(?![\d,])|€-\d")
+
 # A stamp in the page's words, not in an address or a file name.
 ISO_DATE = re.compile(r"(?<![\w/+.-])20\d\d-\d\d-\d\d(?![\w/+-])")
 MONTH_FIRST = re.compile(
@@ -125,6 +128,7 @@ class _Page(HTMLParser):
         self._last = ""
         self.iso_dates = []
         self.month_first = []
+        self.money_by_hand = []
 
     def _classes(self, a):
         return (a.get("class") or "").split()
@@ -206,6 +210,8 @@ class _Page(HTMLParser):
                 self.iso_dates.append(text[max(0, found.start() - 30):found.end()])
             for found in MONTH_FIRST.finditer(text):
                 self.month_first.append(text[max(0, found.start() - 30):found.end() + 6])
+            for found in MONEY_BY_HAND.finditer(text):
+                self.money_by_hand.append(text[max(0, found.start() - 30):found.end()])
         self._last = text
         if self.first is None:
             # The flashes and the (hidden) push prompt come from base.html,
@@ -363,6 +369,10 @@ def run():
             m.dates_in_words("Shift swap approved — 2026-08-22, for May 24, 2027")
             == "Shift swap approved — 22 August 2026, for 24 May 2027",
             detail=m.dates_in_words("Shift swap approved — 2026-08-22, for May 24, 2027"))
+    s.check("and its money in the one spelling, without touching what was stored",
+            m.house_words("Domaine Fournitures — €3400 — €12.50, 2026-08-22")
+            == "Domaine Fournitures — €3,400 — €12.50, 22 August 2026",
+            detail=m.house_words("Domaine Fournitures — €3400 — €12.50, 2026-08-22"))
     s.check("and a stamp with its time, or an address, is left alone",
             m.dates_in_words("2026-08-22T10:00 /files/2026-08-22.pdf")
             == "2026-08-22T10:00 /files/2026-08-22.pdf")
@@ -370,6 +380,11 @@ def run():
     s.check("no page writes a date the database's way", not iso, detail="; ".join(iso))
     us = [f"{url}: “{p.month_first[0]}”" for _ep, url, p in parsed if p.month_first]
     s.check("or month first", not us, detail="; ".join(us[:6]))
+    # €3400.00 on one page and €3,400.00 on the next, and "€-0.00" for
+    # nothing received: money has one spelling, the |money filter's.
+    by_hand = [f"{url}: “{p.money_by_hand[0]}”" for _ep, url, p in parsed if p.money_by_hand]
+    s.check("and money is written one way, with its separator", not by_hand,
+            detail="; ".join(by_hand))
 
     s.section("No chip twice in one row")
     s.check("a classification keeps the first place a name appears and drops the repeat",

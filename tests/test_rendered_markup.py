@@ -206,6 +206,8 @@ def _read(page, html, found):
             found["date written the database's way"].append("%s: %s" % (page, d))
         for d in words.month_first[:1]:
             found["date written month first"].append("%s: %s" % (page, d))
+        for d in words.money_by_hand[:1]:
+            found["money spelled by hand"].append("%s: %s" % (page, d))
 
     ids = re.findall(r'\bid="([^"]+)"', body)
     for i, n in collections.Counter(ids).items():
@@ -703,7 +705,8 @@ def run():
     for kind in ("control with no name", "_blank with no noopener",
                  "duplicate id", "image with no alt",
                  "table outside table-wrap",
-                 "date written the database's way", "date written month first"):
+                 "date written the database's way", "date written month first",
+                 "money spelled by hand"):
         rows = found[kind]
         s.check("no %s" % kind, not rows,
                 detail="%d — e.g. %s" % (len(rows), rows[:3]))

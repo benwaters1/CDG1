@@ -11,9 +11,9 @@
 <div class="refund-box">
   <a href="{{ refund_url }}" class="btn-mini">Refund…</a>
   {% if already_refunded > 0 %}
-  <span class="mini-status status-pending">€{{ '%.2f'|format(already_refunded) }} refunded{% if remaining > 0 %} · €{{ '%.2f'|format(remaining) }} left{% endif %}</span>
+  <span class="mini-status status-pending">{{ already_refunded|money }} refunded{% if remaining > 0 %} · {{ remaining|money }} left{% endif %}</span>
   {% elif remaining > 0 %}
-  <span class="upload-hint">€{{ '%.2f'|format(remaining) }} could go back</span>
+  <span class="upload-hint">{{ remaining|money }} could go back</span>
   {% endif %}
 </div>
 {% endif %}

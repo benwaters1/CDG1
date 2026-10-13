@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ menu['title'] or menu['service_date'] }}{% endblock %}
+{% block title %}{{ menu['title'] or menu['service_date']|date_fr }}{% endblock %}
 {% block content %}
 
 {#
@@ -15,7 +15,7 @@
   <div class="card-head">
     <p class="card-eyebrow">Château de Gudanes</p>
     <h1>{{ menu['formule_label'] or menu['title'] or 'La Table' }}</h1>
-    <p class="card-date">{{ menu['service_date'] }}</p>
+    <p class="card-date">{{ menu['service_date']|date_fr }}</p>
     {% if menu['formule_price'] %}
     <p class="card-price">{{ '%.2f'|format(menu['formule_price'])|replace('.', ',') }} €</p>
     {% endif %}

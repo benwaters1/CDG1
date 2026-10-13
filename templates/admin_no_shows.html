@@ -84,7 +84,7 @@
       <tr>
         <th scope="row">{{ r.guest or '&mdash;'|safe }}</th>
         <td>{{ r.reference }}</td>
-        <td>{{ r.date }}</td>
+        <td>{{ r.date|date_short }}</td>
         <td class="num">{{ r.party }}</td>
         <td class="num">{{ euro(r.value) }}</td>
       </tr>

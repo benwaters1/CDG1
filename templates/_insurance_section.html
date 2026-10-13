@@ -17,7 +17,7 @@
     </div>
     <p class="upload-hint">
       {% if p['policy_number'] %}Policy #{{ p['policy_number'] }}{% endif %}
-      {% if p['premium'] %} · €{{ '%.2f'|format(p['premium']) }} / {{ p['premium_frequency'] }}{% endif %}
+      {% if p['premium'] %} · {{ p['premium']|money }} / {{ p['premium_frequency'] }}{% endif %}
     </p>
     {% if p['notes'] %}<p class="manual-body">{{ p['notes'] }}</p>{% endif %}
     <div class="expense-actions">
