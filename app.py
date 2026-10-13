@@ -13246,6 +13246,31 @@ def build_overview(conn, view, anchor, fetch_window=None):
                       "held_until": house_date_iso(h["expires_at"])},
         })
 
+    # ROOMS THE OWNER HAS CLOSED, which were on no calendar: two suites shut
+    # for the winter showed on the Close rooms page and nowhere a person
+    # planning a week would look. One row, on the closure's first night inside
+    # the window, so every month it covers opens with it.
+    for c in conn.execute(
+            """SELECT room_blocks.*, rooms.name AS room_name FROM room_blocks
+                 JOIN rooms ON rooms.id = room_blocks.room_id
+                WHERE room_blocks.start_date < ? AND room_blocks.end_date > ?""",
+            (query_end.isoformat(), query_start.isoformat())).fetchall():
+        how = {"season": "closed for the season",
+               "hidden": "closed, and hidden from searches"}.get(c["display_mode"] or "", "closed")
+        rows.append({
+            "kind": "closure", "lane": "booking", "is_guest": True, "origin": "owner",
+            "scheduled": True, "status": "closed", "acknowledgment_status": None,
+            "priority": None, "repeat_weekly": 0,
+            "date": max(c["start_date"], query_start.isoformat()),
+            "title": f"{c['room_name']} {how}, back on sale {format_date_short(c['end_date'])}",
+            "short": f"Closed: {c['room_name']}",
+            "detail": c["reason"] or "",
+            "assignee_id": None, "assignee_name": None, "id": c["id"],
+            "link": url_for("close_rooms_page") + f"#closure-{c['id']}",
+            "facts": {"room": c["room_name"], "start": c["start_date"], "end": c["end_date"],
+                      "why": c["reason"] or "", "mode": c["display_mode"] or "booked"},
+        })
+
     # THE ROTA: who is working, when. On the calendar because a week with a
     # wedding on Saturday and two people rostered is one picture, and it was
     # in two places.
@@ -89472,6 +89497,16 @@ def house_calendar_items(conn, start, end, areas=None):
             s["places"] += 1
             s["people"] += f.get("party") or 1
             s["pending"] += 1 if r["status"] == "pending" else 0
+        elif kind == "closure" and "rooms" in areas and f.get("start") and f.get("end"):
+            # The whole closure as one all-day event: the first night closed to
+            # the morning the room is back on sale, which is its end_date.
+            key = f"closure:{r['id']}"
+            items[key] = {"key": key, "area": "rooms", "all_day": True,
+                          "subject": f"{marks['rooms']} Closed: {f['room']}",
+                          "start": f"{f['start']}T00:00:00", "end": f"{f['end']}T00:00:00",
+                          "location": "", "body": "\n".join(x for x in (
+                              f"Back on sale {format_date_short(f['end'])}", f.get("why") or "") if x)
+                          + link_line(full_link(r.get("link")))}
         elif kind == "event" and "events" in areas and f.get("start"):
             key = f"hold:{str(r['id'])[4:]}" if f.get("held") else f"event:{r['id']}"
             last = f.get("end") or f["start"]
