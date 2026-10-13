@@ -164,10 +164,17 @@ def run():
     # page and the reason on another.
     # Twice, so it clears JOB_FAILURE_STREAK. With only one failure the
     # duplicate check below could never fail, which would make it decoration.
+    # The task exists only while no backup is arriving, so say so here rather
+    # than inherit it: this read whatever the suites before it had left, and
+    # failed whenever the last of them had left a fresh backup on record.
+    put_back_backups = _harness.keep_rows(conn, "audit_log", _harness.BACKUP_RECORD)
+    conn.execute(f"DELETE FROM audit_log WHERE {_harness.BACKUP_RECORD}")
+    conn.commit()
     m.record_job_run(conn, "backup_email", False, "SMTP auth rejected")
     m.record_job_run(conn, "backup_email", False, "SMTP auth rejected")
     with m.app.test_request_context():
         found, _dropped = m.watch_task_findings(conn)
+    put_back_backups()
     backup_note = next((n for k, _t, n, _d, _p in found if k == "backup"), "")
     s.check("the backup task quotes the failure",
             "SMTP auth rejected" in backup_note, detail=backup_note[:160])

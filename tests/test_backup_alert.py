@@ -53,14 +53,33 @@ def _set_last_run(conn, status=None, message="", fails=0):
 def run():
     s = Suite("backup_alert")
     conn = m.get_db()
+    # Every suite after this one reads the same backup record, job row and
+    # schedule. Writing a fresh backup at the end is not leaving it as found:
+    # it hid the missing-backup task from test_job_outcomes on any run that
+    # did not happen to wipe the record in between.
+    put_back = [
+        _harness.keep_rows(conn, "audit_log", _harness.BACKUP_RECORD),
+        _harness.keep_rows(conn, "automation_runs", "job_name = 'backup_email'"),
+        _harness.keep_rows(conn, "app_settings",
+                           "key IN ('automation_backup_email_enabled', "
+                           "'automation_backup_interval_hours')"),
+    ]
+    try:
+        _checks(s, conn)
+    finally:
+        for restore in put_back:
+            restore()
+    return s
 
+
+def _checks(s, conn):
     # The check has to exist at all. A readiness page that never mentions
     # backups reads as "nothing wrong with them".
     _set_backup(conn, hours_ago=2)
     row = _readiness(conn)
     s.check("readiness has a backup check", row is not None)
     if row is None:
-        return s
+        return
 
     s.check("a backup 2h ago is fine", row["ok"] is True)
     s.check("the healthy line says when", "2h ago" in row["detail"] or "0h ago" in row["detail"])
@@ -122,10 +141,6 @@ def run():
     s.check("a weekly schedule tolerates 80h", _readiness(conn)["ok"] is True)
     _set_backup(conn, hours_ago=400, interval="168")
     s.check("a weekly schedule still catches 400h", _readiness(conn)["ok"] is False)
-
-    # Leave the copy as we found it.
-    _set_backup(conn, hours_ago=2)
-    return s
 
 
 if __name__ == "__main__":

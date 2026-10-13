@@ -46,6 +46,10 @@ def run():
     s = Suite("home warnings")
     oc, _ec, _owner, _emp = clients()
     conn = db()
+    # It writes a fresh backup to empty the panel and then wipes the record to
+    # fill it. Put back at the end: test_job_outcomes passed only because the
+    # wipe was still in place when it ran, and failed whenever it ran without.
+    put_back_backups = _harness.keep_rows(conn, "audit_log", _harness.BACKUP_RECORD)
     _cleanup(conn)
     now = datetime.now(timezone.utc).isoformat()
     today = datetime.now(m.LOCAL_TZ).date()
@@ -64,6 +68,7 @@ def run():
         return _run(s, oc, conn, now, today)
     finally:
         m.hotlinked_urls = real_hotlinked
+        put_back_backups()
 
 
 def _run(s, oc, conn, now, today):
@@ -211,8 +216,7 @@ def _run(s, oc, conn, now, today):
             detail="every suite after this one reads the same outbox")
 
     s.section("A missing backup is the loudest thing on it")
-    conn.execute("DELETE FROM audit_log WHERE action IN "
-                 "('backup_auto_sent', 'backup_downloaded')")
+    conn.execute(f"DELETE FROM audit_log WHERE {_harness.BACKUP_RECORD}")
     conn.commit()
     ws = _warnings(conn, today)
     s.check("no backup arriving is surfaced",

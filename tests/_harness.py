@@ -692,6 +692,32 @@ def db():
     return m.get_db()
 
 
+def keep_rows(conn, table, where, params=()):
+    """Copy the rows a suite is about to rewrite, and return what puts them back.
+
+    For state that is shared rather than tagged: the backup record is one row
+    of history that every suite reading the owner home or the watch tasks sees.
+    Three suites rewrote it and none put it back, and the fourth passed only
+    because one of the three happened to run before it -- on its own it failed.
+    Call the returned function in a `finally`, so an early return still
+    restores. Rows go back with their own ids: the tables this is for are
+    AUTOINCREMENT or keyed by name, so an id once deleted is never reissued.
+    """
+    rows = [dict(r) for r in conn.execute(f"SELECT * FROM {table} WHERE {where}", params)]
+
+    def put_back():
+        conn.execute(f"DELETE FROM {table} WHERE {where}", params)
+        for r in rows:
+            conn.execute(f"INSERT INTO {table} ({', '.join(r)}) "
+                         f"VALUES ({', '.join('?' * len(r))})", tuple(r.values()))
+        conn.commit()
+    return put_back
+
+
+# The rows that say a backup left the building, as backup_age_hours() reads them.
+BACKUP_RECORD = "action IN ('backup_downloaded', 'backup_auto_sent')"
+
+
 # ---------------------------------------------------------------------------
 # Reading a page the way a browser roughly would.
 #
