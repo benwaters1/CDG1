@@ -8,13 +8,14 @@
   <div style="display:flex; gap:10px;">
     <a href="{{ url_for('admin_bookings') }}" class="btn-mini">Requests</a>
     <a href="{{ url_for('admin_rooms') }}" class="btn-mini">Rooms</a>
+    <a href="{{ url_for('close_rooms_page') }}" class="btn-mini">Close rooms</a>
   </div>
 </div>
 
 <div class="stat-tiles">
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ occupancy_rate }}%</span><span class="stat-tile-label">{{ first_day.strftime('%B') }} occupancy</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ occupancy_rate }}%</span><span class="stat-tile-label">{{ first_day.strftime('%B') }} occupancy{% if closed_nights %}, of the nights on sale ({{ closed_nights }} closed){% endif %}</span></span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-success">{{ icon('bookings', 19) }}</span>
@@ -26,70 +27,6 @@
   </div>
 </div>
 
-<div class="cal-toolbar">
-  <a href="{{ url_for('admin_calendar', month=prev_month) }}" class="btn-mini">&larr; Prev</a>
-  <strong class="cal-month-label">{{ first_day.strftime('%B %Y') }}</strong>
-  <a href="{{ url_for('admin_calendar', month=next_month) }}" class="btn-mini">Next &rarr;</a>
-  {% if first_day.strftime('%Y-%m') != this_month %}
-  <a href="{{ url_for('admin_calendar') }}" class="small-link" style="color:var(--steel);">Jump to today</a>
-  {% endif %}
-  <form method="get" class="cal-month-jump">
-    <input type="month" name="month" value="{{ first_day.strftime('%Y-%m') }}" onchange="this.form.submit()" aria-label="Jump to month">
-  </form>
-</div>
-
-{% if not room_rows %}
-  <div class="empty-state">No rooms yet — <a href="{{ url_for('new_room') }}">add one</a> to see the calendar.</div>
-{% else %}
-<div style="overflow-x:auto;">
-  <div class="table-wrap">
-<table class="cal-table">
-    <thead>
-      <tr>
-        <th class="cal-room-col">Room</th>
-        {% for d in days %}
-        <th class="{{ 'cal-today' if d == today }} {{ 'cal-weekend' if d.weekday() >= 5 }}">
-          <span class="cal-dow">{{ d.strftime('%a')[0] }}</span>
-          <span class="cal-dom">{{ d.day }}</span>
-        </th>
-        {% endfor %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in room_rows %}
-      <tr>
-        <td class="cal-room-col"><a href="{{ url_for('edit_room', room_id=row.room['id']) }}">{{ row.room['name'] }}</a></td>
-        {% for seg in row.segments %}
-        <td class="cal-cell cal-cell-{{ seg.status }} {{ 'cal-today' if seg.has_today }} {{ 'cal-weekend' if seg.weekend }}"
-            colspan="{{ seg.span }}"
-            title="{{ seg.label }}{% if seg.status in ('pending','confirmed') %} ({{ seg.status }}){% endif %}">
-          {# Every occupied segment renders a bar — the colour now lives on the
-             bar, not the cell, so a one-night stay must still draw one or it
-             would vanish entirely. Free days deliberately render nothing. #}
-          {% if seg.status != 'free' %}
-            {% if seg.link %}
-            <a href="{{ seg.link }}" class="cal-bar" aria-label="{{ seg.label }}">{% if seg.span > 1 %}{{ seg.label }}{% endif %}</a>
-            {% else %}
-            <span class="cal-bar">{% if seg.span > 1 %}{{ seg.label }}{% endif %}</span>
-            {% endif %}
-          {% endif %}
-        </td>
-        {% endfor %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-</div>
-
-<div style="display:flex; gap:16px; margin-top:14px; font-size:12px; color:var(--ink-soft); flex-wrap:wrap;">
-  <span><span class="cal-legend cal-cell-confirmed"></span> Confirmed</span>
-  <span><span class="cal-legend cal-cell-pending"></span> Pending request</span>
-  <span><span class="cal-legend cal-cell-external"></span> Booked or closed on another platform — named where Booking.com's email said who</span>
-  <span><span class="cal-legend cal-cell-manual-block"></span> Blocked by you</span>
-  <span><span class="cal-legend cal-cell-free"></span> Free</span>
-  <span class="upload-hint" style="font-style:italic;">Click a booking to open it.</span>
-</div>
-{% endif %}
+{% with grid_endpoint = 'admin_calendar' %}{% include "_rooms_month_grid.html" %}{% endwith %}
 
 {% endblock %}

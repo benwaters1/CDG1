@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+{% block title %}Close rooms{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Close rooms</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_rooms') }}" class="btn-mini">Rooms</a>
+    <a href="{{ url_for('admin_calendar') }}" class="btn-mini">Booking calendar</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Close any rooms for any dates, all at once: the Gold Suite and the Family Suite over the winter,
+  while the others stay open. A closed room cannot be booked here for those dates, and the calendar
+  Booking.com and the other channels read from this site closes them there too. Below that, what a
+  room asks of a stay in a run of dates without closing: a longer minimum, on request, another price.
+</p>
+
+{# ---------------------------------------------------------------- close #}
+<div class="detail-card" style="max-width:840px;">
+  <h2 class="section-heading" style="margin-top:0;">Close rooms for dates</h2>
+  <form method="post" action="{{ url_for('close_rooms_submit') }}" id="close-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <fieldset class="close-rooms-pick">
+      <legend class="field-label">Which rooms</legend>
+      {% for r in rooms %}
+      <label class="close-rooms-room"><input type="checkbox" name="room_id" value="{{ r['id'] }}"> {{ r['name'] }}</label>
+      {% endfor %}
+      <div class="close-rooms-shortcuts">
+        {% if big_two|length == 2 %}
+        <button type="button" class="btn-mini" onclick="pickRooms('close-form', {{ big_two|tojson }})">The Gold Suite and the Family Suite</button>
+        {% endif %}
+        <button type="button" class="btn-mini" onclick="pickRooms('close-form', 'all')">Every room</button>
+        <button type="button" class="btn-ghost" onclick="pickRooms('close-form', [])">Clear</button>
+      </div>
+    </fieldset>
+
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="close-from">First night closed</label>
+        <input id="close-from" type="date" name="start_date" required min="{{ today.isoformat() }}">
+      </div>
+      <div>
+        <label class="field-label" for="close-to">Back on sale from</label>
+        <input id="close-to" type="date" name="end_date" required min="{{ today.isoformat() }}">
+      </div>
+    </div>
+
+    <fieldset class="close-rooms-modes">
+      <legend class="field-label">How it shows on the site for those dates</legend>
+      {% for key, label in modes.items() %}
+      <label class="close-rooms-mode"><input type="radio" name="display_mode" value="{{ key }}"{{ ' checked' if key == 'season' }}> {{ label }}</label>
+      {% endfor %}
+    </fieldset>
+
+    <label class="field-label" for="close-note">What it says to a guest, when closed for the season</label>
+    <input id="close-note" type="text" name="note" maxlength="160" placeholder="The Gold Suite reopens on 1 April.">
+    <p class="field-hint">Left empty, each room says when it reopens, in its own name.</p>
+
+    <label class="field-label" for="close-reason">Why (for the house only)</label>
+    <input id="close-reason" type="text" name="reason" maxlength="120" placeholder="Winter, heating off in the east wing">
+
+    <label class="close-rooms-season"><input type="checkbox" name="save_season" value="1"> Keep this as a season, to put on again next year in one click</label>
+    <label class="field-label" for="season-name">The season's name</label>
+    <input id="season-name" type="text" name="season_name" maxlength="80" placeholder="Winter">
+
+    <button type="submit" class="btn-primary">Close these rooms</button>
+  </form>
+</div>
+
+{# ---------------------------------------------------------------- seasons #}
+{% if seasons %}
+<h2 class="section-heading">Seasons kept</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Season</th><th>Rooms</th><th>How it shows</th><th>Next time</th><th></th></tr></thead>
+    <tbody>
+      {% for sn in seasons %}
+      <tr>
+        <th scope="row">{{ sn.row['name'] }}</th>
+        <td>{{ sn.rooms|join(', ') }}</td>
+        <td>{{ modes.get(sn.row['display_mode'], sn.row['display_mode'])|truncate(40) }}</td>
+        <td>{% if sn.next_start %}{{ sn.next_start|date_short }}, back on sale {{ sn.next_end|date_short }}{% else %}&mdash;{% endif %}</td>
+        <td style="white-space:nowrap;">
+          {% if sn.next_start %}
+          <form method="post" action="{{ url_for('apply_room_season', season_id=sn.row['id']) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Close for these dates</button>
+          </form>
+          {% endif %}
+          <form method="post" action="{{ url_for('delete_room_season', season_id=sn.row['id']) }}" style="display:inline;"
+                onsubmit="return confirm('Forget this season? Rooms it has already closed stay closed.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-ghost">Forget</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ---------------------------------------------------------------- closures #}
+<h2 class="section-heading">Closed now and to come</h2>
+{% if not closures %}
+  <div class="empty-state">No room is closed for any date still to come.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Room</th><th>Closed</th><th>How it shows</th><th>What a guest reads</th><th>Why</th><th></th></tr></thead>
+    <tbody>
+      {% for c in closures %}
+      <tr id="closure-{{ c['id'] }}">
+        <th scope="row">{{ c['room_name'] }}</th>
+        <td>{{ c['start_date']|date_short }}, back on sale {{ c['end_date']|date_short }}</td>
+        <td>{{ {'booked': 'As booked', 'hidden': 'Hidden', 'season': 'Closed for the season'}.get(c['display_mode'], c['display_mode']) }}</td>
+        <td>{% if c['display_mode'] == 'season' %}{{ c['note'] }}{% elif c['display_mode'] == 'hidden' %}<span class="upload-hint">not offered for these dates</span>{% else %}<span class="upload-hint">those dates taken</span>{% endif %}</td>
+        <td>{{ c['reason'] or '' }}{% if c['by_name'] %} <span class="upload-hint">· {{ c['by_name'] }}</span>{% endif %}</td>
+        <td>
+          <form method="post" action="{{ url_for('delete_room_block', block_id=c['id']) }}" style="display:inline;"
+                onsubmit="return confirm('Put {{ c['room_name'] }} back on sale for these dates?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="back" value="close">
+            <button type="submit" class="btn-mini">Reopen</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ---------------------------------------------------------------- calendar #}
+<h2 class="section-heading">Every room, by month</h2>
+{% with grid_endpoint = 'close_rooms_page' %}{% include "_rooms_month_grid.html" %}{% endwith %}
+
+{# ---------------------------------------------------------------- rules #}
+<h2 class="section-heading">What a room asks of a stay, between two dates</h2>
+<details class="refund-box" style="max-width:840px;">
+  <summary>+ A longer minimum, on request, or another price</summary>
+  <form method="post" action="{{ url_for('add_room_rules') }}" id="rules-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <fieldset class="close-rooms-pick">
+      <legend class="field-label">Which rooms</legend>
+      {% for r in rooms %}
+      <label class="close-rooms-room"><input type="checkbox" name="room_id" value="{{ r['id'] }}"> {{ r['name'] }}</label>
+      {% endfor %}
+      <div class="close-rooms-shortcuts">
+        {% if big_two|length == 2 %}
+        <button type="button" class="btn-mini" onclick="pickRooms('rules-form', {{ big_two|tojson }})">The Gold Suite and the Family Suite</button>
+        {% endif %}
+        <button type="button" class="btn-mini" onclick="pickRooms('rules-form', 'all')">Every room</button>
+      </div>
+    </fieldset>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="rule-from">First night</label>
+        <input id="rule-from" type="date" name="start_date" required>
+      </div>
+      <div>
+        <label class="field-label" for="rule-to">Last night</label>
+        <input id="rule-to" type="date" name="end_date" required>
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="rule-min">Minimum stay (nights)</label>
+        <input id="rule-min" type="number" name="min_nights" min="2" max="30" inputmode="numeric" placeholder="2">
+        <label class="close-rooms-season"><input type="checkbox" name="weekends_only" value="1"> Only when the stay has a Friday or Saturday night</label>
+      </div>
+      <div>
+        <label class="field-label" for="rule-price">Price a night (&euro;)</label>
+        <input id="rule-price" type="text" name="price" inputmode="decimal" placeholder="as usual">
+      </div>
+    </div>
+    <label class="close-rooms-season"><input type="checkbox" name="on_request" value="1"> On request: guests ask, and you confirm before anything is paid</label>
+    <label class="field-label" for="rule-label">What to call it</label>
+    <input id="rule-label" type="text" name="label" maxlength="80" placeholder="Summer weekends">
+    <button type="submit" class="btn-primary">Save for these dates</button>
+  </form>
+</details>
+
+{% if rules or prices %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Room</th><th>Nights</th><th>Asks</th><th>Called</th><th></th></tr></thead>
+    <tbody>
+      {% for r in rules %}
+      <tr>
+        <th scope="row">{{ r['room_name'] }}</th>
+        <td>{{ date_range(r['start_date'], r['last_night']) }}</td>
+        <td>
+          {%- if r['min_nights'] %}at least {{ r['min_nights'] }} nights{% if r['weekends_only'] %} with a Friday or Saturday{% endif %}{% endif -%}
+          {%- if r['min_nights'] and r['on_request'] %}, {% endif -%}
+          {%- if r['on_request'] %}on request{% endif -%}
+        </td>
+        <td>{{ r['label'] or '' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('delete_room_rule', rule_id=r['id']) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-ghost">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% for pr in prices %}
+      <tr>
+        <th scope="row">{{ pr['room_name'] }}</th>
+        <td>{{ date_range(pr['start_date'], pr['end_date']) }}</td>
+        <td>{{ pr['price_per_night']|money }} a night</td>
+        <td>{{ pr['label'] or '' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('delete_room_rate_override', room_id=pr['room_id'], rate_id=pr['id']) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="back" value="close">
+            <button type="submit" class="btn-ghost">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ---------------------------------------------------------------- channel nights #}
+<h2 class="section-heading" id="channel-nights">Nights another channel has blocked</h2>
+<p class="field-hint" style="max-width:760px;">
+  Booking.com's calendar is read every hour, and a stay cancelled there reopens here at the next
+  read &mdash; the waiting list is told, as it is for a cancellation on this site. Its calendar carries
+  dates and nothing else, so only you can know a stay there can be cancelled for free. You can keep
+  this site open for one: the channel is not told, and still sees the room as booked by its guest.
+</p>
+{% if not channel_nights %}
+  <div class="empty-state">No channel has blocked any night still to come.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Room</th><th>Nights</th><th>From</th><th>Here</th></tr></thead>
+    <tbody>
+      {% for n in channel_nights %}
+      {% set r = n.row %}
+      <tr>
+        <th scope="row">{{ r['room_name'] }}</th>
+        <td>{{ r['start_date']|date_short }}, leaving {{ r['end_date']|date_short }}</td>
+        <td>{{ r['source_label'] or 'Another channel' }}</td>
+        <td>
+          {% if n.kept %}
+          <span class="mini-status status-pending">kept open here</span>
+          <span class="upload-hint">{{ n.kept['by_name'] or 'somebody' }}, {{ n.kept['set_at']|house_day|date_short }}</span>
+          <form method="post" action="{{ url_for('keep_channel_nights_open') }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="room_id" value="{{ r['room_id'] }}">
+            <input type="hidden" name="start_date" value="{{ r['start_date'] }}">
+            <input type="hidden" name="end_date" value="{{ r['end_date'] }}">
+            <input type="hidden" name="keep" value="0">
+            <button type="submit" class="btn-mini">Close it again</button>
+          </form>
+          {% else %}
+          <details class="keep-open-box">
+            <summary>Keep our site open for these nights</summary>
+            <form method="post" action="{{ url_for('keep_channel_nights_open') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="room_id" value="{{ r['room_id'] }}">
+              <input type="hidden" name="start_date" value="{{ r['start_date'] }}">
+              <input type="hidden" name="end_date" value="{{ r['end_date'] }}">
+              <input type="hidden" name="keep" value="1">
+              <p class="upload-hint" style="color:var(--danger);">
+                If a guest books here and the {{ r['source_label'] or 'other channel' }} guest does not cancel,
+                two guests have one room &mdash; and Booking.com penalises a property that cancels its guest.
+              </p>
+              <label class="close-rooms-season"><input type="checkbox" name="understood" value="yes" required> I know this stay can be cancelled for free, and I understand the risk</label>
+              <button type="submit" class="btn-mini">Keep our site open</button>
+            </form>
+          </details>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<script>
+function pickRooms(formId, which) {
+  document.querySelectorAll('#' + formId + ' input[name="room_id"]').forEach(function (box) {
+    box.checked = which === 'all' || (Array.isArray(which) && which.indexOf(parseInt(box.value, 10)) !== -1);
+  });
+}
+</script>
+
+{% endblock %}

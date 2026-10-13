@@ -3251,3 +3251,16 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 .nav-subhead{ display:block; padding:10px 12px 3px; font-size:10.5px; font-weight:600;
   letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-faint, var(--ink-soft)); }
 .nav-dropdown-menu .nav-subhead:first-of-type{ padding-top:4px; }
+
+/* Close rooms: tick boxes for rooms and a choice of how a closed room shows.
+   A fieldset keeps the group's name with its boxes for a screen reader; the
+   browser's own border and padding are taken off so it reads as the form. */
+.close-rooms-pick, .close-rooms-modes{ border:0; padding:0; margin:0 0 14px; min-width:0; }
+.close-rooms-pick legend, .close-rooms-modes legend{ padding:0; }
+.close-rooms-room, .close-rooms-mode, .close-rooms-season{
+  display:flex; align-items:center; gap:8px; margin:6px 0; font-size:14px; line-height:1.4; }
+.close-rooms-pick{ display:flex; flex-wrap:wrap; gap:4px 18px; align-items:center; }
+.close-rooms-pick legend{ flex:1 1 100%; }
+.close-rooms-shortcuts{ flex:1 1 100%; display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; }
+.keep-open-box > summary{ cursor:pointer; font-size:13px; color:var(--steel); }
+.keep-open-box form{ margin-top:8px; }

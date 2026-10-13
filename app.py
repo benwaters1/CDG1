@@ -395,7 +395,7 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_card_details_enabled": "1",
     "automation_daily_digest_enabled": "1",
     "automation_ical_sync_enabled": "1",
-    "automation_ical_sync_interval_hours": "6",
+    "automation_ical_sync_interval_hours": "1",
     "automation_workshop_balance_reminder_enabled": "1",
     "automation_event_balance_reminder_enabled": "1",
     # Off by default. See AUTOMATION_JOBS for why.
@@ -4748,6 +4748,53 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        -- A closure kept to be put on again: "Winter, the Gold Suite and the
+        -- Family Suite, closed for the season". Month and day only, so the
+        -- same season applies to any year; end_md is the day the rooms are
+        -- back on sale, like a block's end_date.
+        CREATE TABLE IF NOT EXISTS room_seasons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            start_md TEXT NOT NULL,
+            end_md TEXT NOT NULL,
+            room_ids TEXT NOT NULL,
+            display_mode TEXT NOT NULL DEFAULT 'booked',
+            note TEXT,
+            reason TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        -- What a room asks of a stay inside a run of dates, short of closing:
+        -- a longer minimum, or taken on request rather than booked outright.
+        -- The price for those dates lives in room_rate_overrides, as it did.
+        -- end_date is the first day the rule no longer applies.
+        CREATE TABLE IF NOT EXISTS room_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            min_nights INTEGER,
+            weekends_only INTEGER NOT NULL DEFAULT 0,
+            on_request INTEGER NOT NULL DEFAULT 0,
+            label TEXT,
+            created_by_user_id INTEGER REFERENCES users(id),
+            created_at TEXT NOT NULL
+        );
+
+        -- Nights a channel's calendar has blocked that the owner has chosen
+        -- to keep selling here, knowing the stay there can be cancelled for
+        -- free. Keyed by the range rather than the row, because the calendar
+        -- sync deletes and rewrites its rows on every run.
+        CREATE TABLE IF NOT EXISTS ical_keep_open (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            set_by_user_id INTEGER REFERENCES users(id),
+            set_at TEXT NOT NULL,
+            UNIQUE(room_id, start_date, end_date)
+        );
+
         CREATE TABLE IF NOT EXISTS bookings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             room_id INTEGER NOT NULL REFERENCES rooms(id),
@@ -5019,6 +5066,20 @@ def init_db():
          "INTEGER NOT NULL DEFAULT 1"),
         ("workshops_sample_day", "ALTER TABLE workshops ADD COLUMN sample_day TEXT"),
         ("rooms_min_nights", "ALTER TABLE rooms ADD COLUMN min_nights INTEGER NOT NULL DEFAULT 1"),
+        # How a closed room shows to a guest (ROOM_CLOSE_MODES), what it says
+        # when it says anything, and the saved season it came from.
+        ("room_blocks_display_mode",
+         "ALTER TABLE room_blocks ADD COLUMN display_mode TEXT NOT NULL DEFAULT 'booked'"),
+        ("room_blocks_note", "ALTER TABLE room_blocks ADD COLUMN note TEXT"),
+        ("room_blocks_season_id", "ALTER TABLE room_blocks ADD COLUMN season_id INTEGER"),
+        ("room_blocks_created_by",
+         "ALTER TABLE room_blocks ADD COLUMN created_by_user_id INTEGER REFERENCES users(id)"),
+        # The channel calendars every hour rather than every six. Only a
+        # setting nobody changed from the old default moves; one the owner
+        # chose stays.
+        ("ical_sync_hourly",
+         "UPDATE app_settings SET value = '1' WHERE key = 'automation_ical_sync_interval_hours' "
+         "AND value = '6'"),
         ("bookings_promo_code_id", "ALTER TABLE bookings ADD COLUMN promo_code_id INTEGER REFERENCES promo_codes(id) ON DELETE SET NULL"),
         ("bookings_discount_amount", "ALTER TABLE bookings ADD COLUMN discount_amount REAL"),
         ("restaurant_bookings_promo_code_id", "ALTER TABLE restaurant_bookings ADD COLUMN promo_code_id INTEGER REFERENCES promo_codes(id) ON DELETE SET NULL"),
@@ -8074,6 +8135,8 @@ NAV_AREAS = {
         "edit_room", "move_room", "export_feedback_csv", "export_waitlist_csv", "guest_booking_history",
         "guests", "new_breakfast_item", "new_guest", "new_ical_source", "new_room",
         "new_room_block", "new_vehicle_transfer", "sync_ical_source_now",
+        "close_rooms_page", "close_rooms_submit", "apply_room_season", "delete_room_season",
+        "add_room_rules", "delete_room_rule", "keep_channel_nights_open",
         "toggle_breakfast_item", "toggle_breakfast_stock", "update_waitlist_status",
         
         # Pages that had no area at all until now, so they were
@@ -13922,6 +13985,21 @@ def sync_ical_source(conn, source):
         (source["id"], source["room_id"], now, added, removed, unchanged),
     )
     conn.commit()
+    # A stay that has gone from the channel frees its nights here, and the
+    # waiting list hears, as it does when a stay on this site is cancelled.
+    # Only for nights the room is actually free for now: the channel may have
+    # moved a stay rather than lost it, or something else may hold them.
+    freed = sorted(old_set - new_set)
+    if freed:
+        _availability_picture(conn, fresh=True)
+        for start_iso, end_iso in freed:
+            a, b = parse_date(start_iso), parse_date(end_iso)
+            if a and b and b > house_today() and is_range_available(
+                    conn, source["room_id"], a, b)[0]:
+                try:
+                    notify_room_waitlist_opening(conn, start_iso, end_iso)
+                except Exception as e:      # the sync has done its job either way
+                    print(f"[ical] waiting list not told about {start_iso}: {e}")
     return True
 
 
@@ -14206,14 +14284,23 @@ def _availability_picture(conn, *, fresh=False):
         picture["bookings"].setdefault(row["room_id"], []).append(
             (row["id"], row["status"], parse_date(row["arrival_date"]),
              parse_date(row["departure_date"])))
+    # A channel's night the owner has chosen to keep selling here does not
+    # close it here. The export to the channel is untouched.
+    kept_open = {(r["room_id"], r["start_date"], r["end_date"]) for r in conn.execute(
+        "SELECT room_id, start_date, end_date FROM ical_keep_open")}
     for row in conn.execute(
             "SELECT room_id, start_date, end_date FROM blocked_dates"):
+        if (row["room_id"], row["start_date"], row["end_date"]) in kept_open:
+            continue
         picture["blocked"].setdefault(row["room_id"], []).append(
             (parse_date(row["start_date"]), parse_date(row["end_date"])))
+    # The owner's closures carry how they show and what they say, so the gate,
+    # the room page and the search can each say the same thing about them.
     for row in conn.execute(
-            "SELECT room_id, start_date, end_date FROM room_blocks"):
+            "SELECT room_id, start_date, end_date, display_mode, note FROM room_blocks"):
         picture["manual"].setdefault(row["room_id"], []).append(
-            (parse_date(row["start_date"]), parse_date(row["end_date"])))
+            (parse_date(row["start_date"]), parse_date(row["end_date"]),
+             row["display_mode"] or "booked", row["note"]))
 
     # House-wide: a workshop, a confirmed event or a live hold takes the
     # whole château, so these apply to every room. Each carries the sentence
@@ -14314,8 +14401,10 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
         if b_start and b_end and arrival < b_end and b_start < departure:
             return False, "Those dates are blocked on another booking channel."
 
-    for b_start, b_end in picture["manual"].get(room_id, ()):
+    for b_start, b_end, mode, note in picture["manual"].get(room_id, ()):
         if b_start and b_end and arrival < b_end and b_start < departure:
+            if mode == "season":
+                return False, note or "The room is closed for the season on those dates."
             return False, "Those dates aren't available."
 
     # A workshop, a confirmed event or a live hold takes the whole château,
@@ -14326,6 +14415,242 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
             return False, why
 
     return True, None
+
+
+# How a closed room shows to a guest. All three close the dates: the room
+# cannot be booked for them here, and the calendar the channels read carries
+# them. What differs is what a guest searching those dates is shown.
+ROOM_CLOSE_MODES = {
+    "booked": "Shown as booked: listed, with those dates taken",
+    "hidden": "Hidden: not offered at all to a search for those dates",
+    "season": "Closed for the season: listed, with a note",
+}
+
+# What a guest is told about dates taken on request, by the quote the booking
+# page reads. The booking itself goes in as a request and nothing is charged.
+ON_REQUEST_NOTE = ("These dates are taken on request: send it, and the house "
+                   "will confirm by email before anything is paid.")
+
+
+def default_closure_note(room_name, back_on_sale):
+    """'The Gold Suite reopens on 1 April.' -- back_on_sale is the first day
+    the room can be had again, as a closure's end_date is."""
+    return f"{room_name} reopens on {format_date_short(back_on_sale)}."
+
+
+def room_closures(conn, arrival, departure, room_id=None):
+    """{room_id: [{'start', 'end', 'mode', 'note'}]} for the owner's closures
+    that touch the nights arrival..departure-1.
+
+    Read from the picture the booking check refuses from, so the search cannot
+    hide a room the gate would let through, or offer one it refuses.
+    """
+    picture = _availability_picture(conn)
+    out = {}
+    for rid, rows in picture["manual"].items():
+        if room_id is not None and rid != room_id:
+            continue
+        for a, b, mode, note in rows:
+            if a and b and arrival < b and a < departure:
+                out.setdefault(rid, []).append({"start": a, "end": b, "mode": mode, "note": note})
+    return out
+
+
+def season_note_for(conn, room_id, arrival, departure):
+    """What a room closed for the season says for these nights, or None.
+    The same words is_range_available refuses with."""
+    for c in room_closures(conn, arrival, departure, room_id).get(room_id, []):
+        if c["mode"] == "season":
+            return c["note"] or "The room is closed for the season on those dates."
+    return None
+
+
+def stay_rules(conn, room, arrival, departure):
+    """What this room asks of a stay on these nights: {'min_nights', 'on_request'}.
+
+    The room's own minimum, raised by any rule for dates the stay touches. A
+    rule marked weekends only applies when the stay has a Friday or a Saturday
+    night inside the rule's dates -- "two nights at weekends in summer" -- so
+    a Tuesday in July is still one night. On request if any night of the stay
+    falls in an on-request rule.
+    """
+    least = room["min_nights"] or 1
+    on_request = False
+    if arrival and departure and departure > arrival:
+        nights = [arrival + timedelta(days=i) for i in range((departure - arrival).days)]
+        for r in conn.execute(
+                """SELECT * FROM room_rules
+                    WHERE room_id = ? AND start_date < ? AND end_date > ?""",
+                (room["id"], departure.isoformat(), arrival.isoformat())).fetchall():
+            r_start, r_end = parse_date(r["start_date"]), parse_date(r["end_date"])
+            inside = [d for d in nights if r_start and r_end and r_start <= d < r_end]
+            if not inside:
+                continue
+            if r["min_nights"] and (not r["weekends_only"]
+                                    or any(d.weekday() in (4, 5) for d in inside)):
+                least = max(least, int(r["min_nights"]))
+            if r["on_request"]:
+                on_request = True
+    return {"min_nights": least, "on_request": on_request}
+
+
+def close_rooms(conn, room_ids, start, end, mode, note, reason, user_id, season_id=None):
+    """Close each room for start..end-1. Returns (closed names, [(name, why not)]).
+
+    A room with a stay already in those dates is not closed, and nor is one
+    already closed for part of them: closing over a guest is a conversation,
+    not a form, and two closures over the same night would leave the owner
+    removing one and finding the room still shut.
+    """
+    rooms = {r["id"]: r for r in conn.execute("SELECT id, name FROM rooms").fetchall()}
+    now = datetime.now(timezone.utc).isoformat()
+    done, skipped = [], []
+    for rid in room_ids:
+        room = rooms.get(rid)
+        if not room:
+            skipped.append((f"room {rid}", "it no longer exists"))
+            continue
+        clash = conn.execute(
+            """SELECT reference_code FROM bookings
+                WHERE room_id = ? AND status IN ('pending', 'confirmed')
+                  AND arrival_date < ? AND departure_date > ?""",
+            (rid, end.isoformat(), start.isoformat())).fetchone()
+        if clash:
+            skipped.append((room["name"], f"stay {clash['reference_code']} is in those dates"))
+            continue
+        if conn.execute("""SELECT 1 FROM room_blocks WHERE room_id = ?
+                            AND start_date < ? AND end_date > ?""",
+                        (rid, end.isoformat(), start.isoformat())).fetchone():
+            skipped.append((room["name"], "it is already closed for some of those dates"))
+            continue
+        shown = (note or "").strip() or (default_closure_note(room["name"], end.isoformat())
+                                         if mode == "season" else None)
+        conn.execute(
+            """INSERT INTO room_blocks (room_id, start_date, end_date, reason, created_at,
+                   display_mode, note, season_id, created_by_user_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (rid, start.isoformat(), end.isoformat(), (reason or "").strip() or None, now,
+             mode, shown, season_id, user_id))
+        done.append(room["name"])
+    return done, skipped
+
+
+def season_dates(season, today=None):
+    """The next time a saved season runs, as (first night, back on sale).
+
+    The one still to come or still running; a running one starts today,
+    because closing nights already gone changes nothing. A season that crosses
+    the new year (1 November to 1 April) ends the year after it starts.
+    """
+    today = today or house_today()
+    sm, sd = (int(x) for x in season["start_md"].split("-"))
+    em, ed = (int(x) for x in season["end_md"].split("-"))
+    for year in (today.year - 1, today.year, today.year + 1):
+        try:
+            start = date(year, sm, sd)
+            end = date(year + (1 if (em, ed) <= (sm, sd) else 0), em, ed)
+        except ValueError:          # 29 February in a short year
+            continue
+        if end > today:
+            return max(start, today), end
+    return None, None
+
+
+def room_month_rows(conn, first_day, today=None):
+    """Every room, every night of a month: who has it, or why it is shut.
+
+    The owner's calendar and the Close rooms page draw the same rows, so a
+    closure made on one is on the other. Consecutive nights of one stay or
+    one closure are a single segment, so a name can be read.
+    """
+    today = today or house_today()
+    next_month = (date(first_day.year + 1, 1, 1) if first_day.month == 12
+                  else date(first_day.year, first_day.month + 1, 1))
+    days = [first_day + timedelta(days=i) for i in range((next_month - first_day).days)]
+    rooms = conn.execute("SELECT * FROM rooms ORDER BY sort_order, name").fetchall()
+    # The calendar sync blocks a Booking.com stay's nights and knows nothing
+    # else; the emails know who it is. So the named stay is drawn first, and the
+    # anonymous block under it only where no email has said who is coming.
+    named_by_room = {}
+    for st in channel_stays(conn):
+        if st["room_id"]:
+            named_by_room.setdefault(st["room_id"], []).append(st)
+    kept_open = {(r["room_id"], r["start_date"], r["end_date"]) for r in conn.execute(
+        "SELECT room_id, start_date, end_date FROM ical_keep_open")}
+    room_rows = []
+    for room in rooms:
+        bookings = conn.execute(
+            """SELECT * FROM bookings WHERE room_id = ? AND status IN ('pending','confirmed')
+               AND arrival_date < ? AND departure_date > ?""",
+            (room["id"], next_month.isoformat(), first_day.isoformat()),
+        ).fetchall()
+        blocked = conn.execute(
+            """SELECT blocked_dates.*, ical_sources.label AS source_label
+               FROM blocked_dates LEFT JOIN ical_sources ON ical_sources.id = blocked_dates.ical_source_id
+               WHERE blocked_dates.room_id = ? AND blocked_dates.start_date < ? AND blocked_dates.end_date > ?""",
+            (room["id"], next_month.isoformat(), first_day.isoformat()),
+        ).fetchall()
+        manual_blocks = conn.execute(
+            "SELECT * FROM room_blocks WHERE room_id = ? AND start_date < ? AND end_date > ?",
+            (room["id"], next_month.isoformat(), first_day.isoformat()),
+        ).fetchall()
+
+        cells = []
+        for d in days:
+            status, label, key, link = "free", "", None, None
+            for b in bookings:
+                b_start, b_end = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+                if b_start <= d < b_end:
+                    status, label = b["status"], b["guest_name"]
+                    key, link = f"b{b['id']}", url_for("edit_booking", booking_id=b["id"])
+                    break
+            if status == "free":
+                for st in named_by_room.get(room["id"], []):
+                    if parse_date(st["arrival_date"]) <= d < parse_date(st["departure_date"]):
+                        status = "external"
+                        label = f"{st['guest_name']} · {st['channel']}"
+                        key = f"o{st['ota_reservation_id']}"
+                        link = url_for("management_booking_com", q=st["reference_code"])
+                        break
+            if status == "free":
+                for bl in blocked:
+                    bl_start, bl_end = parse_date(bl["start_date"]), parse_date(bl["end_date"])
+                    if bl_start <= d < bl_end:
+                        status = "external"
+                        label = bl["source_label"] or "Blocked on another platform"
+                        if (room["id"], bl["start_date"], bl["end_date"]) in kept_open:
+                            label += " (kept open here)"
+                        key = f"x{bl['id']}"
+                        break
+            if status == "free":
+                for rb in manual_blocks:
+                    rb_start, rb_end = parse_date(rb["start_date"]), parse_date(rb["end_date"])
+                    if rb_start <= d < rb_end:
+                        status = "manual-block"
+                        mode = rb["display_mode"] or "booked"
+                        label = {"season": "Closed for the season", "hidden": "Closed, hidden"}.get(
+                            mode, "Closed") + (f" — {rb['reason']}" if rb["reason"] else "")
+                        key = f"m{rb['id']}"
+                        link = url_for("close_rooms_page") + f"#closure-{rb['id']}"
+                        break
+            cells.append({"date": d, "status": status, "label": label, "key": key, "link": link})
+
+        segments = []
+        for cell in cells:
+            if segments and cell["key"] is not None and segments[-1]["key"] == cell["key"]:
+                segments[-1]["span"] += 1
+                segments[-1]["end_date"] = cell["date"]
+            else:
+                segments.append({
+                    "status": cell["status"], "label": cell["label"], "key": cell["key"],
+                    "link": cell["link"], "span": 1,
+                    "date": cell["date"], "end_date": cell["date"],
+                })
+        for seg in segments:
+            seg["has_today"] = seg["date"] <= today <= seg["end_date"]
+            seg["weekend"] = seg["span"] == 1 and seg["date"].weekday() >= 5
+        room_rows.append({"room": room, "cells": cells, "segments": segments})
+    return days, room_rows
 
 
 def house_guest_capacity(conn):
@@ -14451,11 +14776,15 @@ def unavailable_nights(conn, room_id, start, end):
         if b_start and b_end:
             hold(b_start, b_end - timedelta(days=1), "Already booked")
 
-    for kind, reason in (("blocked", "Booked on another channel"),
-                         ("manual", "Not available")):
-        for b_start, b_end in picture[kind].get(room_id, ()):
-            if b_start and b_end:
-                hold(b_start, b_end - timedelta(days=1), reason)
+    for b_start, b_end in picture["blocked"].get(room_id, ()):
+        if b_start and b_end:
+            hold(b_start, b_end - timedelta(days=1), "Booked on another channel")
+    # A closure says what its mode says: closed for the season, or not
+    # available. Never why -- the reason is the house's own.
+    for b_start, b_end, mode, _note in picture["manual"].get(room_id, ()):
+        if b_start and b_end:
+            hold(b_start, b_end - timedelta(days=1),
+                 "Closed for the season" if mode == "season" else "Not available")
 
     # Called-off sittings are already out: the picture asks
     # sessions_holding_the_house, like the gate.
@@ -25995,6 +26324,23 @@ def generate_room_ics(conn, room):
             f"DTSTART;VALUE=DATE:{arrival}",
             f"DTEND;VALUE=DATE:{departure}",
             f"SUMMARY:{ical_escape('Booked — ' + room['name'])}",
+            "END:VEVENT",
+        ]
+    # The owner's closures go out too. A room closed for the winter here was
+    # still for sale on every channel reading this calendar, which only ever
+    # carried the house's own bookings.
+    for c in conn.execute("SELECT * FROM room_blocks WHERE room_id = ? ORDER BY start_date",
+                          (room["id"],)).fetchall():
+        start, end = (c["start_date"] or "").replace("-", ""), (c["end_date"] or "").replace("-", "")
+        if not start or not end:
+            continue
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:closure-{c['id']}@gudanes-hr.local",
+            f"DTSTAMP:{now_stamp}",
+            f"DTSTART;VALUE=DATE:{start}",
+            f"DTEND;VALUE=DATE:{end}",
+            f"SUMMARY:{ical_escape('Closed — ' + room['name'])}",
             "END:VEVENT",
         ]
     lines.append("END:VCALENDAR")
@@ -37758,6 +38104,8 @@ PALETTE_PAGES = [
     ("Bookings", "admin_bookings", "reservations stays rooms"),
     ("Booking calendar", "admin_calendar", "availability"),
     ("Rooms", "admin_rooms", "bedrooms suites"),
+    ("Close rooms", "close_rooms_page",
+     "closed off sale winter season block shut minimum stay on request seasonal price"),
     ("What each room earns", "room_economics_page",
      "occupancy revenue per room nightly rate empty"),
     ("Room issues", "room_issues", "maintenance faults"),
@@ -43125,10 +43473,20 @@ def book_rooms():
     # positive number. So the one booking somebody plans a year ahead showed
     # no night count at all.
     stay_nights = (departure - arrival).days if searched else 0
+    on_request = {}
     if searched:
+        # A room closed and HIDDEN for any of these nights is not offered at
+        # all, as though it were not on the list; one closed for the season
+        # says so in the words the owner gave. room_closures reads the same
+        # picture the gate refuses from.
+        hidden = {rid for rid, cl in room_closures(conn, arrival, departure).items()
+                  if any(c["mode"] == "hidden" for c in cl)}
+        rooms = [r for r in rooms if r["id"] not in hidden]
         for room in rooms:
-            ok, _ = is_range_available(conn, room["id"], arrival, departure)
-            too_short = stay_nights < room["min_nights"]
+            ok, why = is_range_available(conn, room["id"], arrival, departure)
+            rules = stay_rules(conn, room, arrival, departure)
+            on_request[room["id"]] = rules["on_request"]
+            too_short = stay_nights < rules["min_nights"]
             # CAPACITY, WHICH THE SEARCH USED TO IGNORE ENTIRELY. The rooms
             # sleep two, two, two, three and five, so a family of four was
             # shown all five as available, chose one, filled in the whole
@@ -43144,7 +43502,13 @@ def book_rooms():
             if too_small:
                 unavailable_reason[room["id"]] = f"Sleeps up to {room['max_occupancy']}"
             elif too_short:
-                unavailable_reason[room["id"]] = f"Requires a {room['min_nights']}-night minimum stay"
+                unavailable_reason[room["id"]] = (
+                    f"Requires a {rules['min_nights']}-night minimum stay"
+                    + (" on these dates" if rules["min_nights"] > (room["min_nights"] or 1) else ""))
+            elif not ok and why and why == season_note_for(conn, room["id"], arrival, departure):
+                # Closed for the season: the owner's own line, "The Gold
+                # Suite reopens on 1 April."
+                unavailable_reason[room["id"]] = why
             elif not ok:
                 unavailable_reason[room["id"]] = "Not available these dates"
     nothing_available = searched and rooms and not any(availability.values())
@@ -43195,7 +43559,8 @@ def book_rooms():
            ORDER BY category, sort_order, name""").fetchall()
     conn.close()
     return render_template(
-        "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
+        "book_rooms.html", rooms=rooms, on_request=on_request,
+        arrival=arrival_raw, departure=departure_raw,
         returning_guest=welcome, extras=stay_extras,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
         stay_nights=stay_nights,
@@ -43431,18 +43796,26 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
     if nights < 1:
         quote.update(available=False, reason="Departure must be after arrival.")
         return quote
-    if room["min_nights"] and nights < room["min_nights"]:
+    rules = stay_rules(conn, room, arrival, departure)
+    if nights < rules["min_nights"]:
         quote.update(available=False,
-                     reason=f"This room has a {room['min_nights']}-night minimum, "
+                     reason=f"This room has a {rules['min_nights']}-night minimum"
+                            f"{' on these dates' if rules['min_nights'] > (room['min_nights'] or 1) else ''}, "
                             f"and you have chosen {nights}.")
         return quote
     if party_size and room["max_occupancy"] and party_size > room["max_occupancy"]:
         quote.update(available=False,
                      reason=f"This room sleeps up to {room['max_occupancy']}.")
         return quote
-    if not is_range_available(conn, room["id"], arrival, departure)[0]:
-        quote.update(available=False, reason="Those dates are no longer free.")
+    free, why = is_range_available(conn, room["id"], arrival, departure)
+    if not free:
+        quote.update(available=False,
+                     reason=(why if why and why == season_note_for(conn, room["id"], arrival, departure)
+                             else "Those dates are no longer free."))
         return quote
+    # On request: priced as ever, booked as a request the house answers.
+    quote["on_request"] = rules["on_request"]
+    quote["request_note"] = (ON_REQUEST_NOTE if rules["on_request"] else None)
 
     quote["room_total"] = compute_room_total(conn, room, arrival, departure)
     quote["per_night"] = round(quote["room_total"] / nights, 2) if nights else None
@@ -43813,8 +44186,9 @@ def book_room(room_id):
             # nights, still backwards, and get the same answer again.
             error = ("Your departure date needs to be after your arrival date — "
                      "it looks like they may be the wrong way round.")
-        elif (departure - arrival).days < room["min_nights"]:
-            error = f"This room requires a minimum stay of {room['min_nights']} night{'s' if room['min_nights'] != 1 else ''}."
+        elif (departure - arrival).days < stay_rules(conn, room, arrival, departure)["min_nights"]:
+            least = stay_rules(conn, room, arrival, departure)["min_nights"]
+            error = f"This room requires a minimum stay of {least} night{'s' if least != 1 else ''} on these dates."
         elif too_soon:
             error = notice_refusal(too_soon)
         elif when_error:
@@ -43867,7 +44241,10 @@ def book_room(room_id):
         deposit_now, balance_later, balance_due_iso = room_payment_schedule(
             conn, arrival, grand_total, party_size)
 
-        if stripe_enabled() and grand_total > 0:
+        # On request: written down as a request and nothing taken. The owner
+        # answers it as any other, and payment follows the confirmation.
+        asked_only = stay_rules(conn, room, arrival, departure)["on_request"]
+        if stripe_enabled() and grand_total > 0 and not asked_only:
             line_items = []
             if balance_later:
                 line_items.append({
@@ -44005,7 +44382,7 @@ def book_room(room_id):
         _ref, manage_token = create_booking(
             conn, room, guest_name, guest_email, guest_phone, arrival, departure,
             party_size, special_requests, chosen_extras, promo_code=promo_code or None,
-            guests_under_18=guests_under_18, confirm_now=True,
+            guests_under_18=guests_under_18, confirm_now=not asked_only,
             extra_details=extra_details,
         )
         store_booking_guest_details(conn, "bookings", "reference_code", _ref, guest_details)
@@ -45060,8 +45437,9 @@ def manage_booking(manage_token):
 
         if not new_arrival or not new_departure or new_departure <= new_arrival:
             flash("Choose valid new dates.", "error")
-        elif (new_departure - new_arrival).days < room["min_nights"]:
-            flash(f"This room requires a minimum stay of {room['min_nights']} night{'s' if room['min_nights'] != 1 else ''}.", "error")
+        elif (new_departure - new_arrival).days < stay_rules(conn, room, new_arrival, new_departure)["min_nights"]:
+            least = stay_rules(conn, room, new_arrival, new_departure)["min_nights"]
+            flash(f"This room requires a minimum stay of {least} night{'s' if least != 1 else ''} on those dates.", "error")
         else:
             ok, reason = claim_range(conn, booking["room_id"], new_arrival, new_departure, exclude_booking_id=booking["id"])
             if not ok:
@@ -53827,109 +54205,33 @@ def admin_calendar():
 
     next_month = date(first_day.year + 1, 1, 1) if first_day.month == 12 else date(first_day.year, first_day.month + 1, 1)
     prev_month = date(first_day.year - 1, 12, 1) if first_day.month == 1 else date(first_day.year, first_day.month - 1, 1)
-    days = [first_day + timedelta(days=i) for i in range((next_month - first_day).days)]
 
     conn = get_db()
-    rooms = conn.execute("SELECT * FROM rooms ORDER BY sort_order, name").fetchall()
-    # The calendar sync blocks a Booking.com stay's nights and knows nothing
-    # else; the emails know who it is. So the named stay is drawn first, and the
-    # anonymous block under it only where no email has said who is coming.
-    named_by_room = {}
-    for st in channel_stays(conn):
-        if st["room_id"]:
-            named_by_room.setdefault(st["room_id"], []).append(st)
-    room_rows = []
-    for room in rooms:
-        bookings = conn.execute(
-            """SELECT * FROM bookings WHERE room_id = ? AND status IN ('pending','confirmed')
-               AND arrival_date < ? AND departure_date > ?""",
-            (room["id"], next_month.isoformat(), first_day.isoformat()),
-        ).fetchall()
-        blocked = conn.execute(
-            """SELECT blocked_dates.*, ical_sources.label AS source_label
-               FROM blocked_dates LEFT JOIN ical_sources ON ical_sources.id = blocked_dates.ical_source_id
-               WHERE blocked_dates.room_id = ? AND blocked_dates.start_date < ? AND blocked_dates.end_date > ?""",
-            (room["id"], next_month.isoformat(), first_day.isoformat()),
-        ).fetchall()
-        manual_blocks = conn.execute(
-            "SELECT * FROM room_blocks WHERE room_id = ? AND start_date < ? AND end_date > ?",
-            (room["id"], next_month.isoformat(), first_day.isoformat()),
-        ).fetchall()
+    days, room_rows = room_month_rows(conn, first_day, today)
+    conn.close()
 
-        cells = []
-        for d in days:
-            status, label, key, link = "free", "", None, None
-            for b in bookings:
-                b_start, b_end = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
-                if b_start <= d < b_end:
-                    status, label = b["status"], b["guest_name"]
-                    key, link = f"b{b['id']}", url_for("edit_booking", booking_id=b["id"])
-                    break
-            if status == "free":
-                for st in named_by_room.get(room["id"], []):
-                    if parse_date(st["arrival_date"]) <= d < parse_date(st["departure_date"]):
-                        status = "external"
-                        label = f"{st['guest_name']} · {st['channel']}"
-                        key = f"o{st['ota_reservation_id']}"
-                        link = url_for("management_booking_com", q=st["reference_code"])
-                        break
-            if status == "free":
-                for bl in blocked:
-                    bl_start, bl_end = parse_date(bl["start_date"]), parse_date(bl["end_date"])
-                    if bl_start <= d < bl_end:
-                        status = "external"
-                        label = bl["source_label"] or "Blocked on another platform"
-                        key = f"x{bl['id']}"
-                        break
-            if status == "free":
-                for rb in manual_blocks:
-                    rb_start, rb_end = parse_date(rb["start_date"]), parse_date(rb["end_date"])
-                    if rb_start <= d < rb_end:
-                        status, label = "manual-block", rb["reason"] or "Blocked"
-                        key = f"m{rb['id']}"
-                        break
-            cells.append({"date": d, "status": status, "label": label, "key": key, "link": link})
-
-        # Collapse consecutive days of the same booking/block into one spanning
-        # cell so the guest's name can actually be READ on the grid. Previously
-        # every day was a separate blank square with the name only in a `title`
-        # tooltip -- invisible on touch devices, and unreadable at a glance even
-        # on desktop. Free days stay one-per-cell so each keeps its own
-        # today-outline and weekend shading.
-        segments = []
-        for cell in cells:
-            if segments and cell["key"] is not None and segments[-1]["key"] == cell["key"]:
-                segments[-1]["span"] += 1
-                segments[-1]["end_date"] = cell["date"]
-            else:
-                segments.append({
-                    "status": cell["status"], "label": cell["label"], "key": cell["key"],
-                    "link": cell["link"], "span": 1,
-                    "date": cell["date"], "end_date": cell["date"],
-                })
-        for seg in segments:
-            seg["has_today"] = seg["date"] <= today <= seg["end_date"]
-            seg["weekend"] = seg["span"] == 1 and seg["date"].weekday() >= 5
-        room_rows.append({"room": room, "cells": cells, "segments": segments})
-
-    # Occupancy for the month being viewed, so the page answers "how full are we?"
-    # without the owner counting coloured squares by eye.
-    total_slots = len(rooms) * len(days)
-    filled = sum(1 for row in room_rows for c in row["cells"] if c["status"] != "free")
-    occupancy_rate = round(filled / total_slots * 100) if total_slots else 0
+    # Occupancy for the month being viewed, so the page answers "how full are
+    # we?" without the owner counting coloured squares by eye. Over the nights
+    # the house was SELLING: a room closed for the winter is not a room that
+    # was full, and counting its nights as taken read a shut month as a busy one.
+    selling = sum(1 for row in room_rows for c in row["cells"] if c["status"] != "manual-block")
+    filled = sum(1 for row in room_rows for c in row["cells"]
+                 if c["status"] not in ("free", "manual-block"))
+    occupancy_rate = round(filled / selling * 100) if selling else 0
     confirmed_nights = sum(
         1 for row in room_rows for c in row["cells"] if c["status"] == "confirmed"
     )
     pending_nights = sum(
         1 for row in room_rows for c in row["cells"] if c["status"] == "pending"
     )
-    conn.close()
+    closed_nights = len(room_rows) * len(days) - selling
 
     return render_template(
         "admin_calendar.html", days=days, room_rows=room_rows, first_day=first_day, today=today,
         prev_month=prev_month.strftime("%Y-%m"), next_month=next_month.strftime("%Y-%m"),
         this_month=today.strftime("%Y-%m"), occupancy_rate=occupancy_rate,
         confirmed_nights=confirmed_nights, pending_nights=pending_nights,
+        closed_nights=closed_nights,
     )
 
 
@@ -54526,7 +54828,8 @@ def delete_room_rate_override(room_id, rate_id):
     conn.commit()
     conn.close()
     flash("Rate override removed.", "success")
-    return redirect(url_for("edit_room", room_id=room_id))
+    return redirect(url_for("close_rooms_page") if request.form.get("back") == "close"
+                    else url_for("edit_room", room_id=room_id))
 
 
 @app.route("/admin/rooms/<int:room_id>/photos/<int:photo_id>/delete", methods=["POST"])
@@ -54692,11 +54995,308 @@ def new_room_block(room_id):
 @owner_required
 def delete_room_block(block_id):
     conn = get_db()
+    row = conn.execute("""SELECT room_blocks.*, rooms.name AS room_name FROM room_blocks
+                          JOIN rooms ON rooms.id = room_blocks.room_id
+                          WHERE room_blocks.id = ?""", (block_id,)).fetchone()
     conn.execute("DELETE FROM room_blocks WHERE id = ?", (block_id,))
+    if row:
+        log_audit(conn, "room_closure_removed", target=row["room_name"],
+                  details=f"{row['start_date']} to {row['end_date']}")
     conn.commit()
     conn.close()
-    flash("Block removed.", "success")
-    return redirect(url_for("admin_rooms"))
+    flash(f"{row['room_name']} is back on sale for those dates." if row else "Block removed.",
+          "success")
+    return redirect(url_for("close_rooms_page") if request.form.get("back") == "close"
+                    else url_for("admin_rooms"))
+
+
+@app.route("/admin/rooms/close")
+@owner_required
+def close_rooms_page():
+    """Close rooms for dates, keep the closures as seasons, and set what a room
+    asks of a stay in a run of dates -- all rooms on one calendar beneath.
+
+    Asked for as "a really easy way": the Gold Suite and the Family Suite over
+    the winter while the other three stay open. A block was one room, one
+    form, on a page that drew five of them, with no way to say how a closed
+    room shows and nothing to put the same winter back next year.
+    """
+    today = house_today()
+    try:
+        year, month = map(int, request.args.get("month", "").split("-"))
+        first_day = date(year, month, 1)
+    except (ValueError, AttributeError):
+        first_day = today.replace(day=1)
+    next_month = date(first_day.year + 1, 1, 1) if first_day.month == 12 else date(first_day.year, first_day.month + 1, 1)
+    prev_month = date(first_day.year - 1, 12, 1) if first_day.month == 1 else date(first_day.year, first_day.month - 1, 1)
+    conn = get_db()
+    rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms").fetchall()}
+    # The owner's two big rooms, by name, for the one-tick shortcut.
+    big_two = [r["id"] for r in rooms
+               if any(n in (r["name"] or "").lower() for n in ("gold suite", "family suite"))]
+    closures = conn.execute(
+        """SELECT room_blocks.*, rooms.name AS room_name, users.name AS by_name
+             FROM room_blocks JOIN rooms ON rooms.id = room_blocks.room_id
+             LEFT JOIN users ON users.id = room_blocks.created_by_user_id
+            WHERE room_blocks.end_date > ?
+            ORDER BY room_blocks.start_date, rooms.sort_order""", (today.isoformat(),)).fetchall()
+    seasons = []
+    for row in conn.execute("SELECT * FROM room_seasons ORDER BY name").fetchall():
+        a, b = season_dates(row, today)
+        ids = [int(x) for x in (row["room_ids"] or "").split(",") if x.strip().isdigit()]
+        seasons.append({"row": row, "next_start": a, "next_end": b,
+                        "rooms": [names.get(i, "a room no longer here") for i in ids]})
+    # A rule is stored to the first day it no longer applies; it is read as
+    # its last night, as the form asked for it.
+    rules = [dict(r, last_night=(parse_date(r["end_date"]) - timedelta(days=1)).isoformat())
+             for r in conn.execute(
+                 """SELECT room_rules.*, rooms.name AS room_name FROM room_rules
+                      JOIN rooms ON rooms.id = room_rules.room_id
+                     WHERE room_rules.end_date > ? ORDER BY room_rules.start_date, rooms.sort_order""",
+                 (today.isoformat(),)).fetchall()]
+    prices = conn.execute(
+        """SELECT room_rate_overrides.*, rooms.name AS room_name FROM room_rate_overrides
+             JOIN rooms ON rooms.id = room_rate_overrides.room_id
+            WHERE room_rate_overrides.end_date >= ?
+            ORDER BY room_rate_overrides.start_date, rooms.sort_order""",
+        (today.isoformat(),)).fetchall()
+    kept = {(r["room_id"], r["start_date"], r["end_date"]): r for r in conn.execute(
+        """SELECT ical_keep_open.*, users.name AS by_name FROM ical_keep_open
+             LEFT JOIN users ON users.id = ical_keep_open.set_by_user_id""").fetchall()}
+    channel_nights = [
+        {"row": r, "kept": kept.get((r["room_id"], r["start_date"], r["end_date"]))}
+        for r in conn.execute(
+            """SELECT blocked_dates.*, rooms.name AS room_name, ical_sources.label AS source_label
+                 FROM blocked_dates JOIN rooms ON rooms.id = blocked_dates.room_id
+                 LEFT JOIN ical_sources ON ical_sources.id = blocked_dates.ical_source_id
+                WHERE blocked_dates.end_date > ?
+                ORDER BY blocked_dates.start_date, rooms.sort_order""",
+            (today.isoformat(),)).fetchall()]
+    days, room_rows = room_month_rows(conn, first_day, today)
+    conn.close()
+    return render_template(
+        "admin_close_rooms.html", rooms=rooms, big_two=big_two, closures=closures,
+        seasons=seasons, rules=rules, prices=prices, channel_nights=channel_nights,
+        modes=ROOM_CLOSE_MODES, days=days, room_rows=room_rows, first_day=first_day,
+        today=today, prev_month=prev_month.strftime("%Y-%m"),
+        next_month=next_month.strftime("%Y-%m"), this_month=today.strftime("%Y-%m"))
+
+
+def _room_ids_from_form():
+    return sorted({int(x) for x in request.form.getlist("room_id") if x.isdigit()})
+
+
+@app.route("/admin/rooms/close", methods=["POST"])
+@owner_required
+def close_rooms_submit():
+    room_ids = _room_ids_from_form()
+    start = parse_date(request.form.get("start_date", ""))
+    end = parse_date(request.form.get("end_date", ""))
+    mode = request.form.get("display_mode", "booked")
+    if mode not in ROOM_CLOSE_MODES:
+        mode = "booked"
+    if not room_ids:
+        flash("Tick at least one room to close.", "error")
+        return redirect(url_for("close_rooms_page"))
+    if not start or not end or end <= start:
+        flash("Choose the first night closed and the day the rooms are back on sale, "
+              "which comes after it.", "error")
+        return redirect(url_for("close_rooms_page"))
+    conn = get_db()
+    user = current_user()
+    season_id = None
+    if request.form.get("save_season") and (request.form.get("season_name") or "").strip():
+        cur = conn.execute(
+            """INSERT INTO room_seasons (name, start_md, end_md, room_ids, display_mode, note,
+                   reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (request.form["season_name"].strip()[:80], start.strftime("%m-%d"),
+             end.strftime("%m-%d"), ",".join(str(i) for i in room_ids), mode,
+             (request.form.get("note") or "").strip() or None,
+             (request.form.get("reason") or "").strip() or None,
+             datetime.now(timezone.utc).isoformat()))
+        season_id = cur.lastrowid
+    done, skipped = close_rooms(conn, room_ids, start, end, mode,
+                                request.form.get("note"), request.form.get("reason"),
+                                user["id"] if user else None, season_id)
+    if done:
+        log_audit(conn, "rooms_closed", target=", ".join(done),
+                  details=f"{start.isoformat()} to {end.isoformat()}, {mode}")
+    conn.commit()
+    conn.close()
+    message, category = bulk_message("Closed", "room", len(done), skipped)
+    if done:
+        message += (f" {', '.join(done)}: closed from {format_date_short(start.isoformat())}, "
+                    f"back on sale {format_date_short(end.isoformat())}.")
+    if season_id:
+        message += " Kept as a season, to put on again."
+    flash(message, category)
+    return redirect(url_for("close_rooms_page"))
+
+
+@app.route("/admin/rooms/seasons/<int:season_id>/apply", methods=["POST"])
+@owner_required
+def apply_room_season(season_id):
+    """Put a saved season on again: its rooms, its dates the next time they come."""
+    conn = get_db()
+    season = conn.execute("SELECT * FROM room_seasons WHERE id = ?", (season_id,)).fetchone()
+    if not season:
+        conn.close()
+        abort(404)
+    start, end = season_dates(season)
+    if not start:
+        conn.close()
+        flash("That season's dates could not be worked out.", "error")
+        return redirect(url_for("close_rooms_page"))
+    ids = [int(x) for x in (season["room_ids"] or "").split(",") if x.strip().isdigit()]
+    user = current_user()
+    done, skipped = close_rooms(conn, ids, start, end, season["display_mode"] or "booked",
+                                season["note"], season["reason"],
+                                user["id"] if user else None, season_id)
+    if done:
+        log_audit(conn, "room_season_applied", target=season["name"],
+                  details=f"{start.isoformat()} to {end.isoformat()}: {', '.join(done)}")
+    conn.commit()
+    conn.close()
+    message, category = bulk_message("Closed", "room", len(done), skipped)
+    flash(f"{season['name']}: {message}" + (
+        f" From {format_date_short(start.isoformat())}, back on sale "
+        f"{format_date_short(end.isoformat())}." if done else ""), category)
+    return redirect(url_for("close_rooms_page"))
+
+
+@app.route("/admin/rooms/seasons/<int:season_id>/delete", methods=["POST"])
+@owner_required
+def delete_room_season(season_id):
+    """Forget a saved season. Closures already made from it stay."""
+    conn = get_db()
+    conn.execute("DELETE FROM room_seasons WHERE id = ?", (season_id,))
+    conn.commit()
+    conn.close()
+    flash("Season forgotten. Rooms it has already closed stay closed until you reopen them.",
+          "success")
+    return redirect(url_for("close_rooms_page"))
+
+
+@app.route("/admin/rooms/rules", methods=["POST"])
+@owner_required
+def add_room_rules():
+    """What the ticked rooms ask of a stay between two dates: a longer minimum,
+    on request, a different price. Any or all; nothing is written for a box
+    left empty."""
+    room_ids = _room_ids_from_form()
+    first = parse_date(request.form.get("start_date", ""))
+    last = parse_date(request.form.get("end_date", ""))
+    least_raw = (request.form.get("min_nights") or "").strip()
+    least = int(least_raw) if least_raw.isdigit() and int(least_raw) > 1 else None
+    on_request = 1 if request.form.get("on_request") else 0
+    weekends = 1 if request.form.get("weekends_only") else 0
+    price = parse_money(request.form.get("price"))
+    label = (request.form.get("label") or "").strip()[:80] or None
+    if not room_ids:
+        flash("Tick at least one room.", "error")
+        return redirect(url_for("close_rooms_page"))
+    if not first or not last or last < first:
+        flash("Choose the first and the last night the rule is for.", "error")
+        return redirect(url_for("close_rooms_page"))
+    if not least and not on_request and not (price and price > 0):
+        flash("Set a minimum stay, on request or a price — there was nothing to save.", "error")
+        return redirect(url_for("close_rooms_page"))
+    conn = get_db()
+    user = current_user()
+    now = datetime.now(timezone.utc).isoformat()
+    names = []
+    for rid in room_ids:
+        room = conn.execute("SELECT id, name FROM rooms WHERE id = ?", (rid,)).fetchone()
+        if not room:
+            continue
+        if least or on_request:
+            conn.execute(
+                """INSERT INTO room_rules (room_id, start_date, end_date, min_nights,
+                       weekends_only, on_request, label, created_by_user_id, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (rid, first.isoformat(), (last + timedelta(days=1)).isoformat(), least,
+                 weekends if least else 0, on_request, label, user["id"] if user else None, now))
+        if price and price > 0:
+            # The price for dates lives where it always has, so every place that
+            # prices a stay already honours it.
+            conn.execute(
+                """INSERT INTO room_rate_overrides (room_id, start_date, end_date,
+                       price_per_night, label, created_at) VALUES (?, ?, ?, ?, ?, ?)""",
+                (rid, first.isoformat(), last.isoformat(), round(price, 2), label, now))
+        names.append(room["name"])
+    said = [x for x in (f"at least {least} nights" + (" with a Friday or Saturday" if weekends else "")
+                        if least else None,
+                        "on request" if on_request else None,
+                        f"{money(price)} a night" if price and price > 0 else None) if x]
+    log_audit(conn, "room_rules_set", target=", ".join(names),
+              details=f"{first.isoformat()} to {last.isoformat()}: {'; '.join(said)}")
+    conn.commit()
+    conn.close()
+    flash(f"{', '.join(names)}, {format_date_short(first.isoformat())} to "
+          f"{format_date_short(last.isoformat())}: {', '.join(said)}.", "success")
+    return redirect(url_for("close_rooms_page"))
+
+
+@app.route("/admin/rooms/rules/<int:rule_id>/delete", methods=["POST"])
+@owner_required
+def delete_room_rule(rule_id):
+    conn = get_db()
+    conn.execute("DELETE FROM room_rules WHERE id = ?", (rule_id,))
+    conn.commit()
+    conn.close()
+    flash("Rule removed.", "success")
+    return redirect(url_for("close_rooms_page"))
+
+
+@app.route("/admin/rooms/keep-open", methods=["POST"])
+@owner_required
+def keep_channel_nights_open():
+    """Keep selling nights here that a channel's calendar has blocked.
+
+    The owner's call, one stay at a time, for a booking they know can be
+    cancelled for free. The calendar carries dates and nothing else, so the
+    site cannot know that and does not guess. Turning it on asks for the
+    warning to be ticked: if the channel's guest does not cancel, two guests
+    have one room.
+    """
+    room_id = request.form.get("room_id", "")
+    start = parse_date(request.form.get("start_date", ""))
+    end = parse_date(request.form.get("end_date", ""))
+    keep = request.form.get("keep") == "1"
+    if not room_id.isdigit() or not start or not end:
+        abort(400)
+    conn = get_db()
+    room = conn.execute("SELECT id, name FROM rooms WHERE id = ?", (int(room_id),)).fetchone()
+    if not room:
+        conn.close()
+        abort(404)
+    if keep:
+        if request.form.get("understood") != "yes":
+            conn.close()
+            flash("Tick the box to say you understand the risk before keeping those nights open.",
+                  "error")
+            return redirect(url_for("close_rooms_page") + "#channel-nights")
+        user = current_user()
+        conn.execute(
+            """INSERT OR IGNORE INTO ical_keep_open (room_id, start_date, end_date,
+                   set_by_user_id, set_at) VALUES (?, ?, ?, ?, ?)""",
+            (room["id"], start.isoformat(), end.isoformat(), user["id"] if user else None,
+             datetime.now(timezone.utc).isoformat()))
+        log_audit(conn, "channel_nights_kept_open", target=room["name"],
+                  details=f"{start.isoformat()} to {end.isoformat()}")
+        flash(f"{room['name']} is on sale here again for {format_date_range(start.isoformat(), (end - timedelta(days=1)).isoformat())}. "
+              "If the other channel's guest does not cancel, close it again at once.", "success")
+    else:
+        conn.execute("DELETE FROM ical_keep_open WHERE room_id = ? AND start_date = ? AND end_date = ?",
+                     (room["id"], start.isoformat(), end.isoformat()))
+        log_audit(conn, "channel_nights_closed_again", target=room["name"],
+                  details=f"{start.isoformat()} to {end.isoformat()}")
+        flash(f"{room['name']} is closed here again for those nights, as the channel has them.",
+              "success")
+    conn.commit()
+    conn.close()
+    return redirect(url_for("close_rooms_page") + "#channel-nights")
 
 
 @app.route("/admin/feedback")

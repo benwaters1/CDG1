@@ -5,6 +5,7 @@
 <div class="page-head">
   <h1>Rooms</h1>
   <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <a href="{{ url_for('close_rooms_page') }}" class="btn-mini">Close rooms for dates</a>
     <a href="{{ url_for('admin_bookings') }}" class="btn-mini">Booking requests</a>
     <a href="{{ url_for('book_rooms') }}" class="btn-mini">View public page</a>
     <form method="post" action="{{ url_for('sync_all_ical_sources') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Sync all calendars</button></form>
@@ -117,6 +118,7 @@
         <div class="doc-row">
           <span style="flex:1;">
             Off sale from {{ b['start_date']|date_short }}, back on sale {{ b['end_date']|date_short }}{% if b['reason'] %} — {{ b['reason'] }}{% endif %}
+            {% if b['display_mode'] == 'season' %}<span class="upload-hint">· closed for the season: “{{ b['note'] }}”</span>{% elif b['display_mode'] == 'hidden' %}<span class="upload-hint">· hidden from searches</span>{% endif %}
             {% if b['end_date'] < today.isoformat() %}<span class="mini-status status-past" style="margin-left:6px;">past</span>{% endif %}
           </span>
           <form method="post" action="{{ url_for('delete_room_block', block_id=b['id']) }}" onsubmit="return confirm('Remove this block?');" style="display:inline;">
