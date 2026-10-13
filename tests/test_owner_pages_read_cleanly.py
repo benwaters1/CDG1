@@ -44,6 +44,7 @@ covered without anybody remembering to list it.
 import glob
 import os
 import re
+from datetime import timedelta
 from html.parser import HTMLParser
 
 from _harness import Suite, clients, db, forms_on
@@ -69,6 +70,12 @@ TITLE_NOT_FIRST = {
 }
 
 _PAGES = None
+
+# The lists the chip check fills for itself, so it has rows of chips to read
+# on any database. None of their tables is in the change log, so taking the
+# rows away again leaves nothing behind.
+CHIP_LISTS = ("/admin/audit-log", "/expenses", "/management/recurring-costs",
+              "/notifications", "/admin/stock")
 
 # Money spelled by hand: four figures with no separator, or the minus inside.
 MONEY_BY_HAND = re.compile(r"€\s?\d{4,}(?![\d,])|€-\d")
@@ -228,6 +235,46 @@ def read(html):
     return p
 
 
+def _chip_rows(conn, owner_id):
+    """One entry in each of CHIP_LISTS, filled in so that every way its list
+    classifies it has an answer: a stock item with a supplier and a shelf, a
+    standing cost with a category, an account code and a date. Leave one
+    blank and that classification draws no chips, so the check reads a row
+    fewer and does not say so."""
+    now = _harness.datetime_now()
+    soon = (_harness.house_today() + timedelta(days=10)).isoformat()
+    vendor = conn.execute("INSERT INTO vendors (name, created_at) VALUES (?, ?)",
+                          (TAG + " Fournitures", now)).lastrowid
+    conn.execute("""INSERT INTO audit_log (actor_user_id, action, target, created_at)
+                    VALUES (?, ?, ?, ?)""", (owner_id, TAG.lower() + "_chips", TAG, now))
+    conn.execute("""INSERT INTO expenses (kind, vendor_name, description, amount, status,
+                                          submitted_at)
+                    VALUES ('supplier_invoice', ?, 'Linen hire', 240, 'pending', ?)""",
+                 (TAG + " Fournitures", now))
+    conn.execute("""INSERT INTO recurring_costs (label, amount, frequency, category,
+                    next_due_date, active, created_at, ledger_code, vendor_id)
+                    VALUES (?, 60, 'monthly', 'Utilities', ?, 1, ?, '6262', ?)""",
+                 (TAG + " Internet", soon, now, vendor))
+    conn.execute("""INSERT INTO notifications (user_id, kind, title, created_at)
+                    VALUES (?, 'expense_decided', ?, ?)""",
+                 (owner_id, TAG + " An expense was approved", now))
+    conn.execute("""INSERT INTO stock_items (name, category, unit, vendor_id, location,
+                                             active, created_at)
+                    VALUES (?, 'linen', 'each', ?, 'Linen room', 1, ?)""",
+                 (TAG + " Pillowcases", vendor, now))
+    conn.commit()
+
+
+def _clear_chip_rows(conn):
+    conn.execute("DELETE FROM audit_log WHERE action = ?", (TAG.lower() + "_chips",))
+    conn.execute("DELETE FROM expenses WHERE vendor_name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM recurring_costs WHERE label LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM notifications WHERE title LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM stock_items WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM vendors WHERE name LIKE ?", (TAG + "%",))
+    conn.commit()
+
+
 def _template_sources():
     for path in sorted(glob.glob(os.path.join(ROOT, "templates", "*.html"))):
         with open(path, encoding="utf-8") as fh:
@@ -257,7 +304,7 @@ def _manual_bodies_spanning_lines(name, src):
 
 def run():
     s = Suite("owner pages read cleanly")
-    oc, _ec, _owner, _emp = clients()
+    oc, _ec, owner, _emp = clients()
 
     s.section("Nothing prints as the word None")
     s.check("an empty value renders as nothing",
@@ -407,10 +454,54 @@ def run():
     s.check("a classification keeps the first place a name appears and drops the repeat",
             m.facet("k", "K", lambda r: r, order=["Rooms", "Events", "Rooms"])["order"]
             == ["Rooms", "Events"])
-    rows = sum(len(p.facets) for _ep, _u, p in parsed)
-    s.check("there are chip rows to read", rows > 40, detail=f"{rows} rows")
+    # 13 October 2026. This used to count the chip rows across every page as
+    # the sweep found them and want more than 40, a number read off one
+    # database. A list draws a row of chips only for a classification with
+    # something in it, so a fresh database had 15 to 25, and the whole run
+    # passed only because test_list_view leaves rows behind it. So the rows to
+    # read are made here, one entry in each of CHIP_LISTS, and the guard asks
+    # each of those lists for every row it classifies by -- as the code
+    # declares them, not as a count -- with chips in it. Those pages are read
+    # again, because owner_pages() read every page once, before this existed.
+    declared, fresh = {}, {}
+    real_list_view = m.list_view
+
+    def declaring(*args, **kwargs):
+        declared.setdefault(m.request.path, []).extend(
+            f["label"] for f in kwargs.get("facets", ()))
+        return real_list_view(*args, **kwargs)
+
+    conn = db()
+    try:
+        _clear_chip_rows(conn)
+        _chip_rows(conn, owner["id"])
+        m.list_view = declaring
+        for url in CHIP_LISTS:
+            r = oc.get(url)
+            fresh[url] = read(r.get_data(as_text=True)) if r.status_code == 200 else None
+    finally:
+        m.list_view = real_list_view
+        _clear_chip_rows(conn)
+        conn.close()
+    unread = []
+    for url in CHIP_LISTS:
+        if fresh[url] is None:
+            unread.append(f"{url} did not open")
+            continue
+        drawn = {f["label"]: f["chips"] for f in fresh[url].facets}
+        if not declared.get(url):
+            unread.append(f"{url} classifies by nothing -- take it off CHIP_LISTS")
+        for label in declared.get(url, []):
+            if label not in drawn:
+                unread.append(f"{url}: no {label} row")
+            elif not [c for c in drawn[label] if c != "All"]:
+                unread.append(f"{url}: a {label} row with no chips in it")
+    chip_pages = [(url, p) for _ep, url, p in parsed if url not in fresh]
+    chip_pages += [(url, p) for url, p in fresh.items() if p is not None]
+    s.check("there are chip rows to read: every classification on the lists filled "
+            "here draws its row", not unread, detail="; ".join(unread))
     twice = []
-    for _ep, url, p in parsed:
+    for url, p in chip_pages:
         for f in p.facets:
             seen = set()
             for label in f["chips"]:
@@ -422,12 +513,12 @@ def run():
     # A chip is a word for a person. They showed the key a row is stored
     # under -- "hr escalation", "food", "monthly" -- beside forms that said
     # "Food & hampers".
-    raw = sorted({f"{url}: {f['label']} → {label}" for _ep, url, p in parsed for f in p.facets
+    raw = sorted({f"{url}: {f['label']} → {label}" for url, p in chip_pages for f in p.facets
                   for label in f["chips"]
                   if label and ("_" in label or label[0].islower())})
     s.check("every chip is a word for a person, not a stored key", not raw,
             detail="; ".join(raw[:10]))
-    wording = next((p for _ep, url, p in parsed if url == "/management/email-templates"), None)
+    wording = next((p for url, p in chip_pages if url == "/management/email-templates"), None)
     part = [f for f in (wording.facets if wording else []) if f["label"].lower().startswith("part")]
     s.check("Email Wording offers Rooms once",
             part and part[0]["chips"].count("Rooms") == 1,
