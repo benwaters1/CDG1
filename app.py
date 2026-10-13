@@ -10152,10 +10152,13 @@ def bookings_awaiting_answer(conn, now=None, hours=None):
     """Pending requests nobody has answered inside the house's own promise.
 
     Each row carries how long it has waited and how long is left before
-    expire_stale_pending_bookings answers for the house. A PAID request has
-    no deadline -- those are deliberately excluded from the auto-decline,
-    because a silent decline-and-refund because nobody checked the site is
-    not a decision anybody made. It still wants answering, and arguably more.
+    expire_stale_pending_bookings answers for the house. A request with money
+    on it -- a deposit as much as the whole price -- has no deadline: those
+    are deliberately excluded from the auto-decline, because a silent
+    decline-and-refund because nobody checked the site is not a decision
+    anybody made. It still wants answering, and arguably more. Asked of
+    amount_paid_for, as the expiry asks it, so the countdown shown is the one
+    that will actually happen.
 
     Oldest first: if only one thing gets done, it should be the guest who has
     been waiting longest.
@@ -10171,23 +10174,24 @@ def bookings_awaiting_answer(conn, now=None, hours=None):
             ORDER BY bookings.created_at""", (cutoff,)).fetchall()
     out = []
     for row in rows:
+        held = amount_paid_for(conn, "room", row)
+        paid = held > 0.005
         made = parse_datetime_iso(row["created_at"])
         if not made:
             # A request whose age cannot be read is still a request. It is
             # reported with no figures rather than dropped, because dropping
             # it is how one waits for ever.
             out.append({"booking": row, "waited": None, "left": None,
-                        "paid": row["payment_status"] == "paid"})
+                        "paid": paid, "held": held})
             continue
         if made.tzinfo is None:
             made = made.replace(tzinfo=timezone.utc)
         waited = (now - made).total_seconds() / 3600.0
-        paid = row["payment_status"] == "paid"
         left = None if paid else max(
             0.0, STALE_PENDING_BOOKING_HOURS - waited)
         out.append({"booking": row, "waited": round(waited, 1),
                     "left": round(left, 1) if left is not None else None,
-                    "paid": paid})
+                    "paid": paid, "held": held})
     return out
 
 
@@ -10214,7 +10218,8 @@ def notify_bookings_awaiting_answer(conn, now=None):
     for item in waiting:
         b = item["booking"]
         left = item["left"]
-        when = ("no deadline: it is paid, so the app will not answer for you"
+        when = (f"no deadline: {money(item['held'])} has been paid on it, "
+                "so the app will not answer for you"
                 if item["paid"] else
                 f"{int(left)}h before the app declines it for you"
                 if left is not None else "waiting")
@@ -10237,23 +10242,38 @@ def notify_bookings_awaiting_answer(conn, now=None):
 
 
 def expire_stale_pending_bookings(conn, hours=STALE_PENDING_BOOKING_HOURS):
-    """Auto-declines pending, unpaid booking requests the owner never acted
-    on within `hours` — otherwise a forgotten (or spammed) pending request
-    blocks those dates for every other guest indefinitely, since
-    is_range_available() treats pending as a blocker by design. Paid
-    bookings are deliberately excluded: those need a human, not a silent
-    auto-decline-and-refund just because nobody checked the site in time.
+    """Auto-declines pending booking requests with nothing paid on them that
+    the owner never acted on within `hours` — otherwise a forgotten (or
+    spammed) pending request blocks those dates for every other guest
+    indefinitely, since is_range_available() treats pending as a blocker by
+    design.
+
+    ANYTHING WITH MONEY ON IT IS LEFT FOR A PERSON -- a deposit or a part of
+    it as much as the whole price. This used to ask payment_status, which only
+    reads 'paid' once a stay is paid IN FULL, so a request holding a deposit
+    was declined on the timer and the deposit sent back to the card through
+    Stripe, from a background job, with nobody named behind it. Refunds are
+    the owner's call, and a decline the house did not choose is not one. The
+    test is amount_paid_for, the same one decline_booking_by_id asks before it
+    refunds, so this never declines anything that decline would refund.
+
+    refund=False as well, for the one gap that leaves: a payment landing
+    between the check here and the decline. Then the decline stands and the
+    money goes on the owner's list to give back, not to the card on a timer.
+
     Idempotent (only ever touches still-pending rows), safe to call on
     every dashboard load like auto_prep_upcoming_arrivals."""
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
     stale = conn.execute(
-        "SELECT id FROM bookings WHERE status = 'pending' AND payment_status != 'paid' AND created_at <= ?",
+        "SELECT * FROM bookings WHERE status = 'pending' AND created_at <= ?",
         (cutoff,),
     ).fetchall()
     count = 0
     for row in stale:
+        if amount_paid_for(conn, "room", row) > 0.005:
+            continue
         declined, _refunded, _refund_error = decline_booking_by_id(
-            conn, row["id"], via=f"no answer within {hours} hours")
+            conn, row["id"], refund=False, via=f"no answer within {hours} hours")
         if declined:
             count += 1
     if count:
@@ -90862,8 +90882,10 @@ AUTOMATION_SWITCHES = [
      "runs": ("run_housekeeping_job",), "group": "guests", "reaches": ("guests", "you"),
      "label": "Housekeeping",
      "what": "Every ten minutes: tells you about room requests still waiting for an "
-             "answer; declines any unpaid request nobody answered within "
-             "{decline_hours} hours, and the guest is emailed that it was declined; "
+             "answer; declines any request with nothing paid on it that nobody "
+             "answered within {decline_hours} hours, and the guest is emailed that "
+             "it was declined (one with any money on it, even a deposit, is left "
+             "for you, and this never refunds anything); "
              "and lays out the checklist for arrivals in the next {prep_days} days."},
     {"key": "automation_health_notes_purge_enabled", "job": "health_notes_purge",
      "runs": ("run_health_notes_purge_job",), "group": "guests",
