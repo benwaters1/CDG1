@@ -244,7 +244,7 @@
         {% for t in transactions_by_booking[r['id']] %}
         <div class="mini-row">
           <span class="mini-name">{{ t['kind']|capitalize }} — {{ t['description'] }}</span>
-          <span class="mini-role">{{ t['created_at']|house_day|date_short }}{% if t['method'] %} · {{ t['method'] }}{% endif %}</span>
+          <span class="mini-role">{{ t['created_at']|house_day|date_short }}{% if t['method'] %} · {{ t['method']|method_label }}{% endif %}</span>
           <span class="mini-status status-{{ 'onshift' if t['kind'] in ('payment',) else 'pending' if t['kind'] == 'charge' else 'inactive' }}">{{ t['amount']|money }}</span>
         </div>
         {% endfor %}

@@ -201,7 +201,7 @@ class _Page(HTMLParser):
                                   f" after “{self._last[-50:]}”")
         # A note somebody typed is shown as they typed it; everything else is
         # a date the house writes, and it writes them day first in words.
-        if not any("manual-body" in c for _t, c, _i in self.stack):
+        if not any("manual-body" in c or t in ("code", "pre") for t, c, _i in self.stack):
             for found in ISO_DATE.finditer(text):
                 self.iso_dates.append(text[max(0, found.start() - 30):found.end()])
             for found in MONTH_FIRST.finditer(text):
@@ -367,7 +367,7 @@ def run():
             m.dates_in_words("2026-08-22T10:00 /files/2026-08-22.pdf")
             == "2026-08-22T10:00 /files/2026-08-22.pdf")
     iso = [f"{url}: “{p.iso_dates[0]}”" for _ep, url, p in parsed if p.iso_dates]
-    s.check("no page writes a date the database's way", not iso, detail="; ".join(iso[:6]))
+    s.check("no page writes a date the database's way", not iso, detail="; ".join(iso))
     us = [f"{url}: “{p.month_first[0]}”" for _ep, url, p in parsed if p.month_first]
     s.check("or month first", not us, detail="; ".join(us[:6]))
 
@@ -387,6 +387,14 @@ def run():
                 seen.add(label)
     s.check("no row of chips offers the same choice twice", not twice,
             detail="; ".join(twice))
+    # A chip is a word for a person. They showed the key a row is stored
+    # under -- "hr escalation", "food", "monthly" -- beside forms that said
+    # "Food & hampers".
+    raw = sorted({f"{url}: {f['label']} → {label}" for _ep, url, p in parsed for f in p.facets
+                  for label in f["chips"]
+                  if label and ("_" in label or label[0].islower())})
+    s.check("every chip is a word for a person, not a stored key", not raw,
+            detail="; ".join(raw[:10]))
     wording = next((p for _ep, url, p in parsed if url == "/management/email-templates"), None)
     part = [f for f in (wording.facets if wording else []) if f["label"].lower().startswith("part")]
     s.check("Email Wording offers Rooms once",

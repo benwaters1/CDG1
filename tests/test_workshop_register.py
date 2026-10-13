@@ -361,6 +361,10 @@ def run():
     card = page[page.find(f"<strong>{TAG} Cancelled</strong>"):]
     card = card[:card.find('<div class="expense-card">')] if '<div class="expense-card">' in card else card
     due = card[card.find("Balance due"):card.find("Balance due") + 120]
+    # The ledger line said "· stripe", the key the payment is filed under.
+    s.check("a payment says how it was made, in words",
+            "Card, online" in card and "· stripe" not in card,
+            detail=" ".join(card[card.find("Deposit"):card.find("Deposit") + 160].split()))
     s.check("and it owes nothing, rather than a balance in red",
             "Nothing &mdash; cancelled" in due and "var(--danger)" not in due
             and "Balance falls due" not in card, detail=" ".join(due.split()))

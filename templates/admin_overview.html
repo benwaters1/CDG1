@@ -105,7 +105,7 @@
 {% for r in sheet.rows %}
   {% if r.date != ns.last_date %}
     {% set ns.last_date = r.date %}
-    <div class="upload-hint" style="margin-top:10px; margin-bottom:2px; font-weight:600;">{{ r.date if r.date else 'No due date' }}</div>
+    <div class="upload-hint" style="margin-top:10px; margin-bottom:2px; font-weight:600;">{{ r.date|date_short if r.date else 'No due date' }}</div>
   {% endif %}
   {% if r.kind == 'task' %}
   <div class="task-row {{ 'task-done' if r.status == 'done' }} {{ 'task-in-progress' if r.status == 'in_progress' }} {{ 'task-overdue' if r.status != 'done' and r.date and r.date < today.isoformat() }} {{ 'task-directed' if r.acknowledgment_status == 'pending' }}"

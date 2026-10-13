@@ -295,9 +295,10 @@ def run():
     at = body.find(TAG + " late notice")
     near = body[max(0, at - 900):at + 900] if at >= 0 else ""
     s.check("the announcement is on the page", at >= 0)
-    s.check("it is dated the day the house was in", "2026-09-04" in near,
+    s.check("it is dated the day the house was in", "4 September 2026" in near,
             detail=" ".join(near.split())[:130])
-    s.check("and not the day UTC was in", "2026-09-03" not in near,
+    s.check("and not the day UTC was in",
+            "3 September 2026" not in near and "2026-09-03" not in near,
             detail="half past eleven at night in London is half past one the "
                    "next morning here, and the house goes by the house")
     conn.execute("DELETE FROM announcements WHERE title LIKE ?", (TAG + "%",))

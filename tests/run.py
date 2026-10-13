@@ -181,6 +181,7 @@ SUITES = [
     "test_hr_records",
     "test_vehicles",
     "test_transfers_asked",
+    "test_names_for_people",
     "test_offline",
     "test_translations",
     "test_page_translation",

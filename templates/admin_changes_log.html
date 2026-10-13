@@ -50,7 +50,7 @@
                   <thead><tr><th>Field</th><th>Before</th><th>After</th></tr></thead>
                   <tbody>
                     {% for field, before, after in r.fields %}
-                    <tr><th scope="row">{{ field }}</th><td>{{ '' if before is none else before }}</td><td>{{ '' if after is none else after }}</td></tr>
+                    <tr><th scope="row">{{ field }}</th><td>{{ '' if before is none else before|dates_in_words }}</td><td>{{ '' if after is none else after|dates_in_words }}</td></tr>
                     {% endfor %}
                   </tbody>
                 </table>

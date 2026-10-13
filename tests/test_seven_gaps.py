@@ -312,16 +312,16 @@ def run():
         tile = re.search(r'stat-tile-value">([^<]*)</span>\s*'
                          r'<span class="stat-tile-label">Last here', page)
         s.check("the page's Last here is the stay they made",
-                tile and tile.group(1).strip() == iso(-300),
+                tile and tile.group(1).strip() == m.format_date_short(iso(-300)),
                 detail=tile.group(1) if tile else "no Last here tile")
         s.check("and the stay they are arriving for has its own tile",
-                re.search(re.escape(iso(6)) + r'</span>\s*<span class="stat-tile-label">'
+                re.search(re.escape(m.format_date_short(iso(6))) + r'</span>\s*<span class="stat-tile-label">'
                           r'Booked to arrive', page) is not None)
         s.check("and is marked booked in the list of stays",
-                re.search(r'<th scope="row">' + re.escape(iso(6))
+                re.search(r'<th scope="row">' + re.escape(m.format_date_short(iso(6)))
                           + r'\s*<span class="mini-status status-upcoming">booked',
                           page) is not None
-                and re.search(r'<th scope="row">' + re.escape(iso(-300))
+                and re.search(r'<th scope="row">' + re.escape(m.format_date_short(iso(-300)))
                               + r'\s*<span class="mini-status', page) is None)
 
     # ------------------------------------------------------------ linen

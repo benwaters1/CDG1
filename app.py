@@ -13750,9 +13750,9 @@ def promo_refusal_reason(conn, code, category, subtotal):
         return "The code is switched off."
     today_iso = house_today_iso()
     if promo["valid_from"] and today_iso < promo["valid_from"]:
-        return f"Not valid until {promo['valid_from']}."
+        return f"Not valid until {format_date_short(promo['valid_from'])}."
     if promo["valid_until"] and today_iso > promo["valid_until"]:
-        return f"Expired on {promo['valid_until']}."
+        return f"Expired on {format_date_short(promo['valid_until'])}."
     if promo["applies_to"] != "all" and promo["applies_to"] != category:
         return f"Only applies to {promo['applies_to']} bookings."
     if promo["max_redemptions"] is not None and promo["redemption_count"] >= promo["max_redemptions"]:
@@ -17901,6 +17901,19 @@ POS_PAYMENT_METHODS = {
     "comp": "On the house",
 }
 
+# How a payment was made, for a person to read. The ledgers store a key --
+# "stripe", "card_terminal" -- and the workshop register printed it as stored.
+PAYMENT_METHOD_LABELS = {**MANUAL_PAYMENT_METHODS, **POS_PAYMENT_METHODS,
+                         "stripe": "Card, online", "online": "Online", "card": "Card",
+                         "transfer": "Bank transfer", "voucher": "Gift voucher"}
+
+
+def payment_method_label(key):
+    return PAYMENT_METHOD_LABELS.get(key) or (key or "").replace("_", " ").capitalize()
+
+
+app.jinja_env.filters["method_label"] = payment_method_label
+
 
 # ---------------------------------------------------------------------------
 # The restaurant menu.
@@ -21097,6 +21110,15 @@ def cancellation_analysis(conn, start=None, end=None):
 
 CHANNEL_COMMISSION_PREFIX = "channel_commission_"
 KNOWN_CHANNELS = ["direct", "booking.com", "airbnb", "expedia", "agent", "other"]
+CHANNEL_LABELS = {"direct": "Direct", "booking.com": "Booking.com", "airbnb": "Airbnb",
+                  "expedia": "Expedia", "agent": "An agent", "other": "Something else"}
+
+
+def channel_label(source):
+    """A booking's channel for a person to read: the key it is stored under
+    is what the page printed."""
+    return (CHANNEL_LABELS.get(source) or BOOKING_SOURCES.get(source)
+            or (source or "").replace("_", " ").capitalize())
 
 
 def channel_commission(conn, source):
@@ -21145,9 +21167,9 @@ def channel_cost(conn, start=None, end=None):
         if cost is not None:
             total_cost += cost
         elif r["src"] != "Not recorded":
-            unpriced.append(r["src"])
+            unpriced.append(channel_label(r["src"]))
         out.append({
-            "source": r["src"], "bookings": r["bookings"],
+            "source": r["src"], "label": channel_label(r["src"]), "bookings": r["bookings"],
             "revenue": round(revenue, 2), "rate": rate, "cost": cost,
             "net": round(revenue - cost, 2) if cost is not None else None,
         })
@@ -27082,6 +27104,33 @@ def get_vapid_private_key(conn):
 
 def get_vapid_public_key(conn):
     return conn.execute("SELECT value FROM app_settings WHERE key = 'vapid_public_key'").fetchone()["value"]
+
+
+# What a notification is about, for the chips on the notifications page. They
+# showed the key with its underscores taken out -- "hr escalation", "inbox flag
+# escalated" -- and a kind each, so eleven sorts of shift and HR message were
+# eleven chips. test_notification_kinds holds every kind sent against this.
+NOTIFICATION_KIND_LABELS = {
+    "announcement": "Announcements", "chat": "Messages", "door": "The door",
+    "balance_due": "Money owed", "expense_decided": "Expenses",
+    "booking_com": "Booking.com", "booking_waiting": "Bookings", "guest_request": "Guest requests",
+    "event_inquiry": "Events", "restaurant": "Restaurant", "restaurant_booking": "Restaurant",
+    "menu": "The menu", "workshop_booking": "Workshops", "workshop_decision": "Workshops",
+    "hr_escalation": "HR", "hr_note": "HR", "hr_note_reply": "HR", "hr_reminder": "HR",
+    "performance_review": "HR", "leave_decided": "Time off",
+    "inbox_flag_assigned": "Inbox", "inbox_flag_escalated": "Inbox", "inbox_flag_new": "Inbox",
+    "room_issue": "Rooms", "vehicle": "Vehicles",
+    "shift_auto_closed": "Shifts", "shift_swap_decided": "Shifts",
+    "shift_swap_needs_approval": "Shifts", "shift_swap_offer": "Shifts",
+    "shift_swap_response": "Shifts", "timesheet": "Shifts",
+    "task_directive": "Tasks", "task_response": "Tasks",
+}
+
+
+def notification_kind_label(kind):
+    if not kind:
+        return None
+    return NOTIFICATION_KIND_LABELS.get(kind) or kind.replace("_", " ").capitalize()
 
 
 def send_notification(conn, user_id, kind, title, body=None, link=None, related_task_id=None):
@@ -39123,7 +39172,7 @@ def notifications_page():
         facets=[
             facet("new", "Seen", lambda n: "New to you" if n["id"] in unread else "Already read",
                   order=["New to you", "Already read"]),
-            facet("kind", "About", lambda n: (n["kind"] or "").replace("_", " ") or None,
+            facet("kind", "About", lambda n: notification_kind_label(n["kind"]),
                   limit=10),
             facet("when", "When",
                   # house_date_iso, not [:10]: a note left at 00:30 is stamped
@@ -41863,7 +41912,7 @@ def guest_detail(guest_id):
                            alert=record["owed"] > 0.005)),
             # Already the house's day: reading it again as a UTC moment only
             # came out right because the house is east of Greenwich.
-            overview_cell("Known since", record["first_seen"] or "\u2014"),
+            overview_cell("Known since", format_date_short(record["first_seen"]) or "\u2014"),
         ]
     # For the rebook box: the rooms it could be, and how long they usually
     # stay so the dates come pre-shaped rather than blank.
@@ -53834,7 +53883,9 @@ def admin_extras():
         facets=[
             facet("state", "Offered", lambda e: "On sale" if e["active"] else "Withdrawn",
                   order=["On sale", "Withdrawn"]),
-            facet("category", "Category", lambda e: (e["category"] or "").strip() or None,
+            facet("category", "Category",
+                  lambda e: EXTRA_CATEGORIES.get((e["category"] or "").strip())
+                  or (e["category"] or "").strip() or None,
                   limit=10),
             # Where a guest can actually get it. An extra nobody can order is
             # a price list entry, not a thing for sale — and until you can see
@@ -59252,8 +59303,10 @@ def admin_restaurant_menu():
             facet("till", "On the POS",
                   lambda i: "Sold on the POS" if i["sold_in_pos"] else "Not on the POS",
                   order=["Sold on the POS", "Not on the POS"]),
+            # Named as the menu names them, not by the key they are stored under.
             facet("allergen", "Contains",
-                  lambda i: (i["allergens"] or "").split(",")[0].strip() or None, limit=8),
+                  lambda i: (lambda k: ALLERGENS.get(k, k.capitalize()) if k else None)(
+                      (i["allergens"] or "").split(",")[0].strip()), limit=8),
         ],
         sorts=[
             sort_option("course", "Course order",
@@ -65078,7 +65131,7 @@ def management_channels():
     start, end = _window_from_request()
     data = channel_cost(conn, start, end)
     conn.close()
-    return render_template("management_channels.html", data=data)
+    return render_template("management_channels.html", data=data, channel_labels=CHANNEL_LABELS)
 
 
 @app.route("/management/channels/settings", methods=["POST"])
@@ -69582,7 +69635,10 @@ def management_recurring_costs():
                   order=["Overdue", "Due within 30 days", "Later", "No date set"]),
             facet("category", "Category", lambda c: (c["category"] or "").strip() or None,
                   limit=10),
-            facet("frequency", "How often", lambda c: (c["frequency"] or "").strip() or None),
+            facet("frequency", "How often",
+                  lambda c: {"monthly": "Every month", "annual": "Once a year"}.get(
+                      (c["frequency"] or "").strip()) or None,
+                  order=["Every month", "Once a year"]),
             facet("coded", "Account code",
                   lambda c: "Coded" if (c["ledger_code"] or "").strip() else "Not coded yet",
                   order=["Not coded yet", "Coded"]),
@@ -79035,7 +79091,10 @@ def audit_list_view(conn, args):
             facet("who", "Who", audit_who, limit=8),
             facet("when", "When", when,
                   order=["Today", "Last 7 days", "Last 30 days", "This year", "Older"]),
-            facet("action", "Action", lambda e: (e["action"] or "").replace("_", " "),
+            # Written as the Action column writes it: "Refund issued", not the
+            # key with its underscores taken out.
+            facet("action", "Action",
+                  lambda e: (e["action"] or "").replace("_", " ").capitalize() or None,
                   limit=10),
         ],
         sorts=[
@@ -81912,8 +81971,8 @@ def run_backup_email_job(conn):
 @login_required
 def ops_calendar():
     """The main working calendar — day/week/month, every item clickable and
-    filterable. Employees get it too (it's the "what's on" view), but the
-    server only ever hands them rows build_overview already scopes."""
+    filterable. Employees get it too (it's the "what's on" view), and see only
+    what is theirs to see."""
     view = request.args.get("view", "week")
     anchor = parse_date(request.args.get("date", "")) or house_today()
     user = current_user()

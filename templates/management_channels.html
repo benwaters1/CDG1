@@ -76,7 +76,7 @@
     <tbody>
       {% for r in data.rows %}
       <tr>
-        <th scope="row">{{ r.source }}</th>
+        <th scope="row">{{ r.label }}</th>
         <td class="num">{{ r.bookings }}</td>
         <td class="num">{{ euro(r.revenue) }}</td>
         <td class="num">{% if r.rate is not none %}{{ r.rate }}%{% else %}&mdash;{% endif %}</td>
@@ -109,7 +109,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% for channel in data.channels %}
   <div style="margin-bottom:12px;">
-    <label class="field-label" for="rate_{{ channel|replace('.', '_') }}">{{ channel|capitalize }}</label>
+    <label class="field-label" for="rate_{{ channel|replace('.', '_') }}">{{ channel_labels.get(channel, channel) }}</label>
     <input type="number" step="0.01" min="0" max="100" inputmode="decimal"
            id="rate_{{ channel|replace('.', '_') }}"
            name="rate_{{ channel|replace('.', '_') }}"

@@ -31,7 +31,7 @@
     {% for e in entries %}
     <div class="mini-row">
       <span class="mini-name">{{ e['action']|replace('_', ' ')|capitalize }}</span>
-      <span class="mini-role">{% if e['target'] %}{{ e['target'] }}{% endif %}{% if e['details'] %} — {{ e['details']|dates_in_words }}{% endif %}</span>
+      <span class="mini-role">{% if e['target'] %}{{ e['target']|dates_in_words }}{% endif %}{% if e['details'] %} — {{ e['details']|dates_in_words }}{% endif %}</span>
       <span class="upload-hint">{{ audit_who(e) }} · {{ local_datetime_str(e['created_at']) }}</span>
     </div>
     {% endfor %}
