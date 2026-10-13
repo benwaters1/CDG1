@@ -89186,6 +89186,13 @@ def house_calendar_problem(conn):
 @app.route("/admin/house-calendar")
 @owner_required
 def admin_house_calendar():
+    """The house calendar in everybody's Outlook: whether it is keeping up,
+    what Microsoft refused, what it carries, and the links for a phone.
+
+    Stays, dinners, ateliers, events, tasks and the rota, written into one
+    shared Microsoft 365 calendar within a minute of any change, with the
+    steps to set it up and the buttons to sync, check and share it.
+    """
     conn = get_db()
     st = house_calendar_status(conn)
     token = _hc_get(conn, "ics_token")
@@ -95782,6 +95789,14 @@ def _admin_addin_context(conn):
 @app.route("/admin/outlook-addin")
 @owner_required
 def admin_outlook_addin():
+    """The Outlook add-in: who can sign in to it, what works on which device,
+    how to put it in everybody's Outlook, and who signs each inbox's replies.
+
+    The guest panel, Draft with AI and the check before sending all start
+    here: linking each person's Microsoft 365 address, signing a lost phone
+    out, switching the shared key off, and telling the drafter what the
+    website does not say.
+    """
     conn = get_db()
     ctx = _admin_addin_context(conn)
     conn.close()

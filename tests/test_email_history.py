@@ -154,8 +154,9 @@ def run():
                 "Your statement" not in [x["subject"] for x in h_staff["messages"]])
 
         s.section("Held in memory for minutes, never written down")
+        m.guest_email_history(conn, addresses, owner=True)      # read once...
         fake.calls.clear()
-        m.guest_email_history(conn, addresses, owner=True)
+        m.guest_email_history(conn, addresses, owner=True)      # ...and again
         s.check("asked again within minutes, Microsoft is not asked again", not fake.calls)
         s.check("'a few minutes' is a few minutes", m.EMAIL_HISTORY_TTL <= 600 and m.EMAIL_BODY_TTL <= 600)
         bodies = m.email_bodies([x for x in h_owner["messages"] if x["subject"] == SECRET_SUBJECT])
