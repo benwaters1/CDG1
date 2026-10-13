@@ -145,7 +145,11 @@
 {% include "_list_toolbar.html" %}
 
 {% if not assets %}
-  <div class="empty-state">Nothing on the register yet — add the first item above.</div>
+  <div class="empty-state">
+    {% if everything %}Nothing on the register matches that.
+      <a href="{{ url_for('admin_assets', status='all') }}">Show all {{ everything }}</a>
+    {% else %}Nothing on the register yet — add the first item above.{% endif %}
+  </div>
 {% else %}
   {% for a in assets %}
   <div class="expense-card">

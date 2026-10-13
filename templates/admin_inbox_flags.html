@@ -7,7 +7,7 @@
   <h1>Inbox Flags</h1>
   <a href="{{ url_for('admin_automation') }}" class="btn-mini">Automation settings</a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Scans {{ mailboxes|length }} inbox{{ '' if mailboxes|length == 1 else 'es' }} for messages that haven't had a reply within the configured window, or that mention a price or date that doesn't match what's actually on file. This is a nudge to go look, not a guaranteed read of every email — always check the actual message before acting on a conflict shown here.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">{% if mailboxes %}Scans {{ mailboxes|length }} inbox{{ '' if mailboxes|length == 1 else 'es' }}{% else %}No inbox is being watched yet. Once one is, this scans it{% endif %} for messages that haven't had a reply within the configured window, or that mention a price or date that doesn't match what's actually on file. This is a nudge to go look, not a guaranteed read of every email — always check the actual message before acting on a conflict shown here.</p>
 
 {% if not graph_enabled %}
 <div class="detail-card" style="max-width:680px; border-left:3px solid var(--gold);">

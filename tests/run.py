@@ -185,6 +185,7 @@ SUITES = [
     "test_names_for_people",
     "test_close_rooms",
     "test_team_figures",
+    "test_team_pages",
     "test_offline",
     "test_translations",
     "test_page_translation",

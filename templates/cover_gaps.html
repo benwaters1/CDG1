@@ -68,13 +68,14 @@
         {% if r.arrivals %}{% set _ = bits.append(r.arrivals ~ ' arriving') %}{% endif %}
         {% if r.departures %}{% set _ = bits.append(r.departures ~ ' leaving') %}{% endif %}
         {% if r.in_house %}{% set _ = bits.append(r.in_house ~ ' in the house') %}{% endif %}
-        {% if r.dinners %}{% set _ = bits.append(r.covers ~ ' covers') %}{% endif %}
-        {{ bits|join(' · ') or '—' }}
+        {% if r.dinners %}{% set _ = bits.append(r.covers ~ (' cover' if r.covers == 1 else ' covers')) %}{% endif %}
+        {# A day with only an atelier on it read "— Pottery". #}
+        {{ bits|join(' · ') or ('' if r.workshops else '—') }}
         {% if r.workshops %}
           <span class="upload-hint">{{ r.workshops|join(', ') }}</span>
         {% endif %}
       </td>
-      <td class="num">{{ r.people_count or '—' }}</td>
+      <td class="num">{{ r.people_count }}</td>
       <td class="num">
         {{ r.effective if r.effective > 0 else '0' }}
         {% if r.blocked_count %}
@@ -92,7 +93,14 @@
               free that day: {{ r.could_cover|map(attribute='name')|join(', ') }}
             </span>
           {% elif r.could_cover is defined %}
-            <span class="upload-hint">nobody is free that day</span>
+            <span class="upload-hint">nobody who can work it is free that day</span>
+          {% endif %}
+          {# Free, and not able: a certificate their role needs is missing or
+             lapsed. Named, so nobody rings them to find out. #}
+          {% if r.not_qualified %}
+            <span class="upload-hint">
+              free but cannot work it: {% for p in r.not_qualified %}{{ p.name }} ({{ p.why }}){{ ', ' if not loop.last }}{% endfor %}
+            </span>
           {% endif %}
         {% endif %}
       </td>

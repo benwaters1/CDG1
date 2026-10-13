@@ -6876,6 +6876,7 @@ def init_db():
     backfill_consent_history(conn)
     redact_stored_links(conn)
     incident_times_to_utc(conn)
+    prep_notes_in_words(conn)
 
     # `guests` used to be a per-STAY register carrying arrival/departure/party_size,
     # duplicating what `bookings` already owns. The two could never be kept in
@@ -10392,7 +10393,7 @@ def auto_prep_upcoming_arrivals(conn, today, days_ahead=ARRIVAL_PREP_DAYS):
             (booking["arrival_date"],),
         ).fetchone()
         assigned_to = scheduled["user_id"] if scheduled else None
-        room_note = f"{booking['guest_name']} arriving {booking['arrival_date']}, party of {booking['party_size']}."
+        room_note = prep_note(booking)
         if booking["special_requests"]:
             room_note += f" Requests: {booking['special_requests']}"
         party_size = booking["party_size"] or 1
@@ -11376,6 +11377,15 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
                 if v is None or v == "":
                     continue
                 counts[str(v)] = counts.get(str(v), 0) + 1
+        # The chip a list is filtered by is drawn even when nothing is in it.
+        # Incidents open on "Open": with none open that chip vanished, the row
+        # read as unfiltered, and the page listed nothing under chips adding
+        # up to the whole register. Only a value the facet knows -- its
+        # default, its order or its labels -- so a mistyped link draws nothing.
+        here = chosen.get(f["key"])
+        if here and here not in counts and (here == (f.get("default") or "")
+                                            or here in f["order"] or here in f["labels"]):
+            counts[here] = 0
         keys = [k for k in f["order"] if k in counts] if f["order"] else []
         keys += sorted(k for k in counts if k not in keys)
         hidden = 0
@@ -11538,6 +11548,9 @@ def in_words(days):
 
 
 app.jinja_env.filters["in_words"] = in_words
+# "Jean Moreau" is JM, not JE: the cards took the first two letters of the
+# first name, so Demo Housekeeper and Demo Server were both DE.
+app.jinja_env.filters["initials"] = lambda name: initials_for(name)
 
 
 def committed_stock(conn, item_ids, within_days=14):
@@ -15398,6 +15411,40 @@ def incidents_awaiting_insurer(conn, *, now=None):
     }
 
 
+def prep_note(booking):
+    """The line an arrival's prep tasks carry: who, when, how many.
+
+    The date in words. It was the database's date, "arriving 2026-10-13", and
+    being stored rather than drawn it reached the task list, the Overview, the
+    today sheet and the owner's home that way.
+    """
+    return (f"{booking['guest_name']} arriving {format_date_short(booking['arrival_date'])}, "
+            f"party of {booking['party_size']}.")
+
+
+PREP_NOTE_ISO = re.compile(r" arriving (\d{4}-\d{2}-\d{2}), party of ")
+
+
+def prep_notes_in_words(conn):
+    """Rewrite the prep notes already stored with the database's date.
+
+    Runs at startup and finds nothing once they are through: prep_note writes
+    the date in words, and a note without an ISO date is left alone.
+    """
+    changed = 0
+    for row in conn.execute(
+            "SELECT id, room_note FROM tasks WHERE room_note LIKE '% arriving ____-__-__, party of %'"
+    ).fetchall():
+        note = PREP_NOTE_ISO.sub(
+            lambda mt: f" arriving {format_date_short(mt.group(1))}, party of ", row["room_note"])
+        if note != row["room_note"]:
+            conn.execute("UPDATE tasks SET room_note = ? WHERE id = ?", (note, row["id"]))
+            changed += 1
+    if changed:
+        conn.commit()
+    return changed
+
+
 def incident_times_to_utc(conn):
     """Store every incident's time as a moment in UTC, like every other time.
 
@@ -16690,7 +16737,7 @@ def skill_matrix(conn, *, include_inactive=False):
     }
 
 
-def who_could_cover(conn, day, *, skill=None):
+def who_could_cover(conn, day, *, skill=None, not_qualified=None):
     """Active employees with nothing on the rota that day, and free to work it.
 
     Not a recommendation — it does not know who is willing, who is nearby, or
@@ -16714,6 +16761,16 @@ def who_could_cover(conn, day, *, skill=None):
                 (iso, iso)).fetchall():
             busy.add(r["user_id"])
 
+    # Free is not able. Somebody whose role needs a certificate they do not
+    # hold, or that has lapsed by that day, cannot legally work it -- the rota
+    # clash page says so of a shift already -- and offering them as cover put
+    # the gap straight back. They are left off, and named in `not_qualified`
+    # when a list is passed, so a page can say who was free but could not.
+    unmet = {}
+    for row in role_compliance(conn, day):
+        if row["state"] in ("missing", "expired"):
+            unmet.setdefault(row["user_id"], []).append(row)
+
     want = (skill or "").strip().casefold() or None
     out = []
     for r in conn.execute(
@@ -16723,6 +16780,15 @@ def who_could_cover(conn, day, *, skill=None):
             continue
         theirs = parse_skills(r["skills"])
         if want and want not in {k for k, _d in theirs}:
+            continue
+        if r["id"] in unmet:
+            if not_qualified is not None:
+                not_qualified.append({
+                    "user_id": r["id"], "name": r["name"],
+                    "why": "; ".join(
+                        f"{u['requirement']} not on file" if u["state"] == "missing"
+                        else f"{u['requirement']} {house_words(u['detail'])}"
+                        for u in unmet[r["id"]])})
             continue
         out.append({"user_id": r["id"], "name": r["name"], "job_role": r["job_role"],
                     "skills": [d for _k, d in theirs]})
@@ -20641,9 +20707,18 @@ def payroll_period_rows(conn, period):
     # contract dates below are dates and keep start_iso/end_iso.
     start_at, end_at = period["start_at"], period["end_at"]
     rows = []
+    # Everybody who works here, and anybody who has left but clocked hours in
+    # the window: somebody who went on the 15th is still owed the first half
+    # of the month, and the pack dropped them -- hours and all -- the moment
+    # they were marked inactive.
     for p in conn.execute(
-        """SELECT id, name, job_role, pay_rate, pay_type, contract_type
-           FROM users WHERE role = 'employee' AND status = 'active' ORDER BY name"""
+        """SELECT id, name, job_role, pay_rate, pay_type, contract_type, status
+           FROM users WHERE role = 'employee'
+            AND (status = 'active' OR id IN (
+                 SELECT user_id FROM time_entries
+                  WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
+                    AND clock_in_at >= ? AND clock_in_at < ?))
+           ORDER BY name""", (start_at, end_at)
     ).fetchall():
         hours = conn.execute(
             """SELECT COALESCE(SUM(
@@ -20739,6 +20814,7 @@ def payroll_period_rows(conn, period):
             blockers.append("no wage on file and no usable hourly rate")
         rows.append({
             "user_id": p["id"], "name": p["name"], "job_role": p["job_role"],
+            "left": p["status"] != "active",
             "contract_type": CONTRACT_TYPES.get(p["contract_type"], p["contract_type"] or "—"),
             "hours": worked, "shifts": hours["shifts"],
             "absence_days": int(absence_days), "leave_days": int(leave_days),
@@ -31913,6 +31989,9 @@ def visitors_on_site(conn, now=None):
         hours = round((now - since).total_seconds() / 3600.0, 1) if since else None
         out.append({
             "visitor": r, "since": since, "hours": hours,
+            # Read by the page's "Expecting them" column, which printed a dash
+            # for every visitor because it was never handed over.
+            "host": r["host"],
             "signed_in_by": r["signed_in_by"],
             # A judgement, said as one. Somebody who forgot to sign out
             # looks exactly like somebody in the roof space.
@@ -38461,6 +38540,10 @@ def admin_assets():
              FROM assets LEFT JOIN insurance_policies
                ON insurance_policies.id = assets.insurance_policy_id
             ORDER BY assets.category, assets.name""").fetchall()
+    # How many there are before anything narrows them, so an empty list can
+    # tell "nothing matches" from "nothing yet". It said "add the first item"
+    # over a register of forty with a search that found none.
+    everything = len(rows)
     # The page has always opened on what the house still has, which is right:
     # a register that opens on everything ever owned buries the forty things
     # in the building under the four that were sold.
@@ -38520,7 +38603,7 @@ def admin_assets():
     ]
     return render_template("admin_assets.html", assets=assets, overview=overview,
                            summary=summary, by_location=by_location, policies=policies,
-                           lv=lv, show=show,
+                           lv=lv, show=show, everything=everything,
                            asset_categories=ASSET_CATEGORIES,
                            asset_value_sources=ASSET_VALUE_SOURCES,
                            asset_conditions=ASSET_CONDITIONS,
@@ -39616,8 +39699,12 @@ def announcement_readership(conn, announcement_ids):
     """
     if not announcement_ids:
         return {}
+    # The staff. The owner never marks a notice read -- opening their own
+    # board is not the team having seen it -- so they sat on every
+    # "not seen by" list, under the notice they had written.
     people = conn.execute(
-        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+        "SELECT id, name FROM users WHERE status = 'active' AND role = 'employee' ORDER BY name"
+    ).fetchall()
     marks = ",".join("?" * len(announcement_ids))
     seen = {}
     for r in conn.execute(
@@ -53685,7 +53772,9 @@ def room_issues():
            LEFT JOIN users ON users.id = room_issues.reported_by_user_id
            ORDER BY room_issues.created_at DESC""").fetchall()
     rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
-    employees = conn.execute("SELECT * FROM users WHERE role = 'employee' ORDER BY name").fetchall()
+    # People who still work here: a fault handed to a leaver is handed to nobody.
+    employees = conn.execute(
+        "SELECT * FROM users WHERE role = 'employee' AND status = 'active' ORDER BY name").fetchall()
     # Counted separately rather than off `issues`, which the status filter
     # above has usually already narrowed (this page defaults to open-only).
     counts = {
@@ -53725,7 +53814,10 @@ def room_issues():
         if not a:
             return None
         days = days_until(a["arrival_date"])
-        return "Guest arriving this week" if (days or 99) <= 7 else "Guest arriving soon"
+        # Today is this week: "days or 99" read an arrival today, 0 days
+        # away, as 99 and filed it under "soon".
+        return ("Guest arriving this week" if days is not None and days <= 7
+                else "Guest arriving soon")
 
     lv = list_view(
         issues, request.args,
@@ -58379,7 +58471,7 @@ def prepare_arrival(booking_id):
         conn.close()
         flash("This booking was already prepped.", "error")
         return redirect(url_for("admin_bookings"))
-    room_note = f"{booking['guest_name']} arriving {booking['arrival_date']}, party of {booking['party_size']}."
+    room_note = prep_note(booking)
     if booking["special_requests"]:
         room_note += f" Requests: {booking['special_requests']}"
     party_size = booking["party_size"] or 1
@@ -77908,7 +78000,9 @@ def cover_gaps_page():
     # rather than left as an exercise. Only the nearest few: a list of every
     # free person for every gap is a wall of names nobody reads.
     for g in gaps[:5]:
-        g["could_cover"] = who_could_cover(conn, g["date"])[:6]
+        g["not_qualified"] = []
+        g["could_cover"] = who_could_cover(conn, g["date"],
+                                           not_qualified=g["not_qualified"])[:6]
     # Somebody IS rostered, but every one of them is on leave, absent or not
     # currently qualified. Worth separating: it reads as staffed on the rota,
     # which is exactly why nobody catches it.
@@ -78039,7 +78133,8 @@ def skills_page():
     matrix = skill_matrix(conn)
     wanted = (request.args.get("skill", "") or "").strip()
     day = parse_date(request.args.get("day", "")) or today
-    free = who_could_cover(conn, day, skill=wanted or None)
+    unable = []
+    free = who_could_cover(conn, day, skill=wanted or None, not_qualified=unable)
     conn.close()
 
     typos = [sk for sk in matrix["skills"] if len(sk["spellings"]) > 1]
@@ -78053,7 +78148,7 @@ def skills_page():
         overview_cell("Spelt more than one way", len(typos), alert=bool(typos)),
     ]
     return render_template("skills.html", matrix=matrix, overview=overview,
-                           typos=typos, free=free, day=day, wanted=wanted,
+                           typos=typos, free=free, unable=unable, day=day, wanted=wanted,
                            today=today)
 
 

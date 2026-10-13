@@ -202,6 +202,17 @@ def run():
             and pay.get("People", ("", ""))[1] == "1 with hours",
             detail=f"{pay.get('People')} for {people} rows")
 
+    s.section("Somebody who has left is still paid for what they worked")
+    gone_before = {r["user_id"] for r in m.payroll_period_rows(conn, march)}
+    _clock(conn, left, date(y, 3, 6), 5)
+    rows = {r["user_id"]: r for r in m.payroll_period_rows(conn, march)}
+    s.check("a leaver with no hours in the window is not on the pack", left not in gone_before)
+    s.check("one who clocked hours in it is, with them, marked as gone",
+            rows.get(left, {}).get("hours") == 5.0 and rows.get(left, {}).get("left") is True,
+            detail=str(rows.get(left)))
+    page = oc.get(f"/admin/payroll?period=month&date={y}-03-01").get_data(as_text=True)
+    s.check("and the pack says so", re.search(r"Gone</a>\s*<span[^>]*>has left</span>", page) is not None)
+
     s.section("On leave today is people, not requests")
     before = {c["label"]: c for c in m.employee_overview(conn, march, today)}["On leave today"]["value"]
     cat = _person(conn, "Cat")
