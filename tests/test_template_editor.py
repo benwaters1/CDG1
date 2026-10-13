@@ -404,10 +404,16 @@ def run():
     arrival = _harness.free_window(room["id"], 3, after_days=330)
     sent, fake = _capture()
     was = m.send_email
+    # Whatever the letter opens with now, rather than a sentence copied into
+    # this test: the owner reworded it on 5 October, the copy here went stale,
+    # and the "edit" changed nothing -- which read as an edit that never
+    # reached the guest.
+    opening = conf_before["body"].split("\n", 1)[0]
+    edited = conf_before["body"].replace(opening, "ZZ the room is yours, {first_name}", 1)
+    s.check("the edit changes the letter", edited != conf_before["body"],
+            detail=f"opening line {opening!r}")
     try:
-        _put("room_confirmed", conf_before["subject"],
-             conf_before["body"].replace("Your room is held, {first_name}",
-                                         "ZZ the room is yours, {first_name}"))
+        _put("room_confirmed", conf_before["subject"], edited)
         m.send_email = fake
         with m.app.test_request_context("/"):
             ref, _token = m.create_booking(

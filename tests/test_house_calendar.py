@@ -392,6 +392,67 @@ def run():
         s.check("a second press says it already is",
                 "already shared" in r.get_data(as_text=True), response=r)
 
+        s.section("Sharing a calendar Microsoft lists no organisation entry for")
+        # A shared mailbox, as the house's is: Graph listed only the owner,
+        # and the button failed with nothing anybody could do about it.
+        import html as _html
+        owner_entry = {"id": "owner", "role": "write", "isRemovable": False,
+                       "isInsideOrganization": True,
+                       "emailAddress": {"name": "House", "address": MAILBOX}}
+        m._hc_set(conn, "shared", "")
+        m._hc_set(conn, "shared_by_hand", "")
+        conn.commit()
+        fake.permissions[cal_id] = [dict(owner_entry)]
+        # The message, not the page: the page carries the same line in its
+        # folded help, so reading the page would pass with the message bare.
+        said = _html.unescape(" ".join(_harness.flashes(
+            oc.post("/admin/house-calendar/share", follow_redirects=True))))
+        s.check("the button says what to run instead",
+                "Set-MailboxFolderPermission" in said
+                and "-User Default -AccessRights Reviewer" in said, detail=said[-600:])
+        s.check("naming this calendar in this mailbox",
+                f'"{MAILBOX}:' + chr(92) + "Calendar" + chr(92) + m.HOUSE_CALENDAR_NAME + '"' in said)
+        s.check("and the owner's own entry is not taken for the organisation's",
+                fake.permissions[cal_id][0]["role"] == "write")
+        r = oc.post("/admin/house-calendar/shared-by-hand", follow_redirects=True)
+        s.check("saying it was done by hand is recorded",
+                "shared with everybody, by hand" in r.get_data(as_text=True), response=r)
+        r = oc.post("/admin/house-calendar/share", follow_redirects=True)
+        told = " ".join(_harness.flashes(r))
+        s.check("and Share then says it is shared, rather than failing",
+                "shared by hand in Exchange" in told
+                and "lists no organisation-wide entry" not in told, detail=told)
+        s.check("the page's Shared row says by hand, and by whom",
+                f"by hand in Exchange (Default: Reviewer), recorded by {owner['name']}"
+                in _html.unescape(oc.get("/admin/house-calendar").get_data(as_text=True)))
+        # A mailbox set to French names the entry "Mon organisation".
+        m._hc_set(conn, "shared_by_hand", "")
+        conn.commit()
+        fake.permissions[cal_id] = [dict(owner_entry), {
+            "id": "orgfr", "role": "freeBusyRead", "isRemovable": False,
+            "isInsideOrganization": True, "emailAddress": {"name": "Mon organisation"}}]
+        oc.post("/admin/house-calendar/share")
+        s.check("an organisation entry named in another language is still found, and made read",
+                fake.permissions[cal_id][1]["role"] == "read"
+                and fake.permissions[cal_id][0]["role"] == "write",
+                detail=str(fake.permissions[cal_id]))
+
+        s.section("A sync says what the app had to give it")
+        s.check("nothing in range is said as that, not as 'nothing to change'",
+                "nothing in range" in m.house_calendar_counts_words({"in_range": 0}))
+        s.check("and everything already there is said as that",
+                m.house_calendar_counts_words({"in_range": 3, "unchanged": 3})
+                == "nothing to change (3 up to date)")
+        with m.app.test_request_context("/"):
+            had = len(m.house_calendar_items(conn, *m.house_calendar_window(),
+                                             m.house_calendar_areas(conn)))
+        m.sync_house_calendar(conn)
+        page = oc.get("/admin/house-calendar").get_data(as_text=True)
+        s.check("the count is kept on each pass", m._hc_get(conn, "in_range") == str(had),
+                detail=f"{m._hc_get(conn, 'in_range')} vs {had}")
+        s.check("and the page says it beside what is on the calendar",
+                had > 0 and f"The app had {had} events for it on the last pass" in page)
+
     s.section("Not set up, it says what is missing")
     r = oc.post("/admin/house-calendar/sync", follow_redirects=True)
     s.check("Sync now names the missing settings",

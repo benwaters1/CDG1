@@ -166,6 +166,23 @@ def run():
             "INSERT INTO room_issues (room_id, title, status, created_at) VALUES (?, ?, ?, ?)",
             [(room["id"], TAG + " dripping tap", "open", now),
              (room["id"], TAG + " fixed lamp", "resolved", now)])
+    # A shift and a request for time off before the toolbar is looked for. A
+    # list with no rows has nothing to classify, so it draws no chips, and the
+    # sections that make these come after the check: on a fresh database the
+    # two pages failed it, and passed only when an earlier suite left a shift
+    # or a request behind.
+    shift = (m.datetime.now(m.timezone.utc) - timedelta(days=2)).replace(
+        hour=9, minute=0, second=0, microsecond=0)
+    cur = conn.execute(
+        "INSERT INTO time_entries (user_id, clock_in_at, clock_out_at, auto_closed) "
+        "VALUES (?, ?, ?, 0)",
+        (emp["id"], shift.isoformat(), (shift + timedelta(hours=2)).isoformat()))
+    MADE_ENTRIES.append(cur.lastrowid)
+    conn.execute(
+        "INSERT INTO leave_requests (user_id, start_date, end_date, reason, leave_type, "
+        "status, requested_at) VALUES (?, ?, ?, ?, 'vacation', 'approved', ?)",
+        (emp["id"], (today + timedelta(days=20)).isoformat(),
+         (today + timedelta(days=21)).isoformat(), TAG + " a fixture", now))
     conn.commit()
 
     # ---------------------------------------------------------------- shape
