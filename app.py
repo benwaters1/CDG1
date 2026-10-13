@@ -10284,11 +10284,26 @@ def roster_vs_occupancy(conn, days):
     start = days[0]
     end = days[-1] + timedelta(days=1)
     occupancy = occupied_rooms_by_date(conn, start, end)
+    # People who can actually come: a leaver's leftover shift and somebody on
+    # approved leave counted as cover, so a short day read as staffed.
+    away = set()
+    for table, extra in (("leave_requests", "AND status = 'approved'"), ("absences", "")):
+        for r in conn.execute(
+                f"""SELECT user_id, start_date, end_date FROM {table}
+                     WHERE start_date < ? AND end_date >= ? {extra}""",
+                (end.isoformat(), start.isoformat())).fetchall():
+            for d in distinct_days([r], start, end - timedelta(days=1)):
+                away.add((r["user_id"], d.isoformat()))
     scheduled_counts = {}
     for row in conn.execute(
-        "SELECT DISTINCT shift_date, user_id FROM shifts WHERE shift_date >= ? AND shift_date < ?",
+        """SELECT DISTINCT shifts.shift_date, shifts.user_id FROM shifts
+             JOIN users ON users.id = shifts.user_id
+            WHERE shifts.shift_date >= ? AND shifts.shift_date < ?
+              AND users.status = 'active'""",
         (start.isoformat(), end.isoformat()),
     ).fetchall():
+        if (row["user_id"], row["shift_date"]) in away:
+            continue
         scheduled_counts[row["shift_date"]] = scheduled_counts.get(row["shift_date"], 0) + 1
     results = []
     for d in days:
@@ -10466,19 +10481,56 @@ def leave_days_taken(conn, user_id, start, end):
     so a request straddling the end of the leave year is split across the two it
     actually falls in instead of landing entirely in one.
     """
-    used = 0
-    for r in conn.execute(
+    # Each day once. Fifty-one copies of one approved three-day request read
+    # "taken 153 · -143 left": the requests were added up, not the days.
+    return len(distinct_days(conn.execute(
         """SELECT start_date, end_date FROM leave_requests
            WHERE user_id = ? AND status = 'approved' AND leave_type != 'sick'""",
         (user_id,),
-    ).fetchall():
+    ).fetchall(), start, end))
+
+
+def distinct_days(rows, first, last):
+    """The days from first to last, both included, that any of these rows
+    (start_date, end_date, both included) covers -- each day once.
+
+    THE way to count days off. The payroll pack and HR clipped a request to
+    the day AFTER their window and added one, so leave running past the end
+    of a month gained a day; and they summed requests, so two overlapping
+    requests counted their shared days twice -- 153 days of leave in a
+    thirty-day September. Those figures went into the payroll CSV.
+    """
+    out = set()
+    for r in rows:
         a, b = parse_date(r["start_date"]), parse_date(r["end_date"])
         if not a or not b:
             continue
-        a, b = max(a, start), min(b, end)
-        if a <= b:
-            used += (b - a).days + 1
-    return used
+        a, b = max(a, first), min(b, last)
+        while a <= b:
+            out.add(a)
+            a += timedelta(days=1)
+    return out
+
+
+TEAM_HOURS_SQL = """
+    SELECT COALESCE(SUM(
+               (julianday(time_entries.clock_out_at) - julianday(time_entries.clock_in_at)) * 24
+               - COALESCE((SELECT SUM((julianday(breaks.end_at) - julianday(breaks.start_at)) * 24)
+                             FROM breaks WHERE breaks.time_entry_id = time_entries.id
+                              AND breaks.end_at IS NOT NULL), 0)), 0) AS h
+      FROM time_entries JOIN users ON users.id = time_entries.user_id
+     WHERE users.role = 'employee'
+       AND time_entries.clock_out_at IS NOT NULL
+       AND time_entries.clock_out_at > time_entries.clock_in_at
+       AND time_entries.clock_in_at >= ? AND time_entries.clock_in_at < ?"""
+
+
+def team_hours(conn, start_at, end_at):
+    """Hours the team worked between two instants: employees' shifts, net of
+    breaks, as the payroll pack counts them. Team and HR counted gross time and
+    the owner's own clock-ins, so October read 45 hours there and 32 on the
+    payroll pack, from the same entries."""
+    return conn.execute(TEAM_HOURS_SQL, (start_at, end_at)).fetchone()["h"]
 
 
 def leave_year_window(conn, on_date):
@@ -11678,18 +11730,8 @@ def guests_overview(conn, period, today):
 def employee_overview(conn, period, today):
     """The team over the chosen window. Deliberately separate from the HR page,
     which answers the compliance questions; this answers "who is working"."""
-    hours = conn.execute(
-        """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
-           FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
-             AND clock_in_at >= ? AND clock_in_at < ?""",
-        (period["start_at"], period["end_at"]),
-    ).fetchone()["h"]
-    prev_hours = conn.execute(
-        """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
-           FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
-             AND clock_in_at >= ? AND clock_in_at < ?""",
-        (period["prev_start_at"], period["prev_end_at"]),
-    ).fetchone()["h"]
+    hours = team_hours(conn, period["start_at"], period["end_at"])
+    prev_hours = team_hours(conn, period["prev_start_at"], period["prev_end_at"])
     active = conn.execute(
         "SELECT COUNT(*) AS c FROM users WHERE role = 'employee' AND status = 'active'"
     ).fetchone()["c"]
@@ -11697,7 +11739,7 @@ def employee_overview(conn, period, today):
         "SELECT COUNT(*) AS c FROM time_entries WHERE clock_out_at IS NULL"
     ).fetchone()["c"]
     on_leave = conn.execute(
-        """SELECT COUNT(*) AS c FROM leave_requests
+        """SELECT COUNT(DISTINCT user_id) AS c FROM leave_requests
            WHERE status = 'approved' AND start_date <= ? AND end_date >= ?""",
         (today.isoformat(), today.isoformat()),
     ).fetchone()["c"]
@@ -16735,10 +16777,13 @@ def rota_vs_clock(conn, start, end, *, today=None):
     # Bucketed by the LOCAL day they started on, because a shift is planned in
     # local time and clock_in_at is stored in UTC.
     worked = {}
+    # The team's clock, not the owner's: 181 of 273 "hours paid and never
+    # planned" were the owner's own days.
     for r in conn.execute(
         """SELECT time_entries.*, users.name AS employee_name FROM time_entries
              JOIN users ON users.id = time_entries.user_id
-            WHERE time_entries.clock_in_at >= ? AND time_entries.clock_in_at < ?""",
+            WHERE time_entries.clock_in_at >= ? AND time_entries.clock_in_at < ?
+              AND users.role = 'employee'""",
         (fetch_from, fetch_to)).fetchall():
         started = parse_datetime_iso(r["clock_in_at"])
         if not started:
@@ -16781,14 +16826,21 @@ def rota_vs_clock(conn, start, end, *, today=None):
         if key in rostered:
             continue
         e = entries[0]
-        hours = sum(net_hours_for_entries(conn, entries).values())
+        # A clock-out the app guessed counts as no hours until somebody fixes
+        # it, as Timesheets says; counted in full it read "14.0h" for a shift
+        # nobody knows the length of.
+        hours = sum(net_hours_for_entries(
+            conn, [x for x in entries if not x["auto_closed"]]).values())
+        guessed = any(x["auto_closed"] for x in entries)
         out.append({
             "kind": "no_shift", "user_id": key[0], "date": key[1],
             "employee_name": e["employee_name"],
             "planned": None, "role_note": None,
             "hours": round(hours, 2),
             "detail": (f"Clocked {hours:.1f}h with nothing on the rota for that day."
-                       if hours else "Clocked in with nothing on the rota for that day."),
+                       if hours else "Clocked in with nothing on the rota for that day.")
+                      + (" The clock-out was guessed, so those hours count once somebody "
+                         "fixes it on Timesheets." if guessed else ""),
         })
 
     out.sort(key=lambda r: (r["date"], r["employee_name"] or ""), reverse=True)
@@ -20523,21 +20575,45 @@ def asset_summary(conn, today):
     that quietly totals uninsured items reads as more cover than exists.
     """
     rows = conn.execute(
-        "SELECT * FROM assets WHERE status IN ('held','on_loan')").fetchall()
+        """SELECT assets.*, insurance_policies.expiry_date AS policy_expiry
+             FROM assets LEFT JOIN insurance_policies
+               ON insurance_policies.id = assets.insurance_policy_id
+            WHERE assets.status IN ('held','on_loan')""").fetchall()
     total = sum(r["estimated_value"] or 0 for r in rows)
-    insured = sum(r["estimated_value"] or 0 for r in rows if r["insurance_policy_id"])
+    # Insured means a policy in force today. A €12,000 commode on a policy
+    # that lapsed last June counted as insured, and the renewal is exactly
+    # when somebody reads this figure.
+    covered = [r for r in rows if asset_is_covered(r, today)]
+    insured = sum(r["estimated_value"] or 0 for r in covered)
     unvalued = [r for r in rows if not r["estimated_value"]]
     stale_before = (today - timedelta(days=365 * VALUATION_STALE_YEARS)).isoformat()
     stale = [r for r in rows
              if r["value_source"] == "valuation" and (r["valued_on"] or "") < stale_before]
     uninsured_significant = [
-        r for r in rows if not r["insurance_policy_id"] and (r["estimated_value"] or 0) >= 1000]
+        r for r in rows if not asset_is_covered(r, today) and (r["estimated_value"] or 0) >= 1000]
     return {
         "count": len(rows), "total": total, "insured": insured,
         "uninsured": total - insured,
         "unvalued": unvalued, "stale": stale,
         "uninsured_significant": uninsured_significant,
     }
+
+
+def asset_is_covered(asset, today):
+    """A policy attached and not yet expired. `asset` carries policy_expiry."""
+    if not asset["insurance_policy_id"]:
+        return False
+    expiry = asset["policy_expiry"] if "policy_expiry" in asset.keys() else None
+    return not expiry or expiry >= (today.isoformat() if hasattr(today, "isoformat") else today)
+
+
+def asset_cover_word(asset, today):
+    """The register's chip for an asset's cover: nothing, lapsed, or None."""
+    if not asset["insurance_policy_id"]:
+        return "Not covered"
+    if not asset_is_covered(asset, today):
+        return "Cover lapsed"
+    return None
 
 
 def access_held_by(conn, user_id):
@@ -20616,17 +20692,17 @@ def payroll_period_rows(conn, period):
                  AND clock_in_at >= ? AND clock_in_at < ?""",
             (p["id"], start_at, end_at),
         ).fetchone()["c"]
-        absence_days = conn.execute(
-            """SELECT COALESCE(SUM(julianday(MIN(end_date, ?)) - julianday(MAX(start_date, ?)) + 1), 0) AS d
-               FROM absences WHERE user_id = ? AND start_date < ? AND end_date >= ?""",
-            (period["end_iso"], start_iso, p["id"], end_iso, start_iso),
-        ).fetchone()["d"]
-        leave_days = conn.execute(
-            """SELECT COALESCE(SUM(julianday(MIN(end_date, ?)) - julianday(MAX(start_date, ?)) + 1), 0) AS d
-               FROM leave_requests
+        # The window's last day is the one before end_iso, which is exclusive.
+        first_day = parse_date(start_iso)
+        last_day = parse_date(end_iso) - timedelta(days=1)
+        absence_days = len(distinct_days(conn.execute(
+            """SELECT start_date, end_date FROM absences
+               WHERE user_id = ? AND start_date < ? AND end_date >= ?""",
+            (p["id"], end_iso, start_iso)).fetchall(), first_day, last_day))
+        leave_days = len(distinct_days(conn.execute(
+            """SELECT start_date, end_date FROM leave_requests
                WHERE user_id = ? AND status = 'approved' AND start_date < ? AND end_date >= ?""",
-            (period["end_iso"], start_iso, p["id"], end_iso, start_iso),
-        ).fetchone()["d"]
+            (p["id"], end_iso, start_iso)).fetchall(), first_day, last_day))
 
         worked = round(hours["h"], 2)
         # A typed wage record beats the free-text note, and must be consulted
@@ -20796,14 +20872,24 @@ def collect_hr_actions(conn, today):
 
     year_ago = (today - timedelta(days=365)).isoformat()
     for r in conn.execute(
-        """SELECT users.id, users.name, users.start_date FROM users
+        """SELECT users.id, users.name, users.start_date, users.created_at,
+                  (SELECT MAX(review_date) FROM performance_reviews
+                    WHERE performance_reviews.user_id = users.id) AS last_review
+             FROM users
            WHERE users.role = 'employee' AND users.status = 'active'
              AND users.id NOT IN (SELECT user_id FROM performance_reviews WHERE review_date >= ?)""",
         (year_ago,),
     ).fetchall():
-        # Clock starts a year after they joined, not the day they joined.
-        started = parse_date(r["start_date"]) if r["start_date"] else None
-        since = ((started + timedelta(days=365)).isoformat() if started else year_ago)
+        # Due a year after the last review, or a year after they joined if
+        # there has never been one -- not a year after joining whatever
+        # happened since, which read "2112 days" for somebody reviewed last
+        # June, and not a year before today when the start date is missing,
+        # which read 365 days for ever.
+        last = parse_date((r["last_review"] or "")[:10]) if r["last_review"] else None
+        started = (parse_date(r["start_date"]) if r["start_date"]
+                   else house_date(r["created_at"]) if r["created_at"] else None)
+        anchor = last or started
+        since = (anchor + timedelta(days=365)).isoformat() if anchor else year_ago
         if since <= iso:
             add("review_overdue", r["id"], r["id"], r["name"], since, "/admin/hr")
 
@@ -20848,14 +20934,14 @@ def collect_hr_actions(conn, today):
             opened = d["on_date"] - timedelta(days=TRIAL_WARNING_DAYS)
             add("trial_period_ending", f"trial-{d['user_id']}", d["user_id"],
                 f"{d['name']} — trial period ends {d['on_date'].isoformat()}"
-                + (" (already passed)" if d["days_left"] < 0 else f" ({d['days_left']}d)"),
+                + (" (already passed)" if d["days_left"] < 0 else f" ({in_words(d['days_left'])})"),
                 max(opened, parse_date("2000-01-01")).isoformat(), f"/directory/{d['user_id']}")
         else:
             opened = d["on_date"] - timedelta(days=CONTRACT_WARNING_DAYS)
             add("contract_ending", f"contract-{d['user_id']}", d["user_id"],
                 f"{d['name']} — {CONTRACT_TYPES.get(d['contract_type'], 'contract')} ends "
                 f"{d['on_date'].isoformat()}"
-                + (" (already passed)" if d["days_left"] < 0 else f" ({d['days_left']}d)"),
+                + (" (already passed)" if d["days_left"] < 0 else f" ({in_words(d['days_left'])})"),
                 max(opened, parse_date("2000-01-01")).isoformat(), f"/directory/{d['user_id']}")
 
     return out
@@ -31959,11 +32045,19 @@ def breakage_summary(conn, *, months=12, today=None):
         "count": len(rows),
         "cost": cost,
         "recovered": recovered,
-        # Not netted into one number: what the house absorbs is a cost of
-        # trading, and what it recovered is a decision it made.
-        "absorbed": round(cost - recovered, 2),
+        # What the house lost on the ones it has decided: each breakage's cost
+        # less what was charged for it, never below nothing. It was all costs
+        # less all recoveries, so a vase charged €100 against €50 to replace
+        # paid for somebody else's broken glass, and the undecided ones were
+        # counted as absorbed before anybody had decided.
+        "absorbed": round(sum(
+            max(0.0, (r["replacement_cost"] or 0)
+                - ((r["charged_amount"] or 0) if r["charge_decision"] == "charged" else 0))
+            for r in rows if r["charge_decision"] != "undecided"), 2),
         "undecided": len([r for r in rows
                           if r["charge_decision"] == "undecided"]),
+        "undecided_cost": round(sum(r["replacement_cost"] or 0 for r in rows
+                                    if r["charge_decision"] == "undecided"), 2),
     }
 
 
@@ -34697,25 +34791,24 @@ def admin_hr():
 
     # Overview band: how the team looks over the chosen window, rather than
     # opening straight onto sub-sections.
-    hours_row = conn.execute(
-        """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
-           FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
-             AND clock_in_at >= ? AND clock_in_at < ?""",
-        (period["start_at"], period["end_at"]),
-    ).fetchone()
-    prev_hours_row = conn.execute(
-        """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
-           FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
-             AND clock_in_at >= ? AND clock_in_at < ?""",
-        (period["prev_start_at"], period["prev_end_at"]),
-    ).fetchone()
-    absence_days = conn.execute(
-        """SELECT COALESCE(SUM(julianday(MIN(end_date, ?)) - julianday(MAX(start_date, ?)) + 1), 0) AS d
-           FROM absences WHERE start_date < ? AND end_date >= ?""",
-        (period["end_iso"], period["start_iso"], period["end_iso"], period["start_iso"]),
-    ).fetchone()
+    hours_row = {"h": team_hours(conn, period["start_at"], period["end_at"])}
+    prev_hours_row = {"h": team_hours(conn, period["prev_start_at"], period["prev_end_at"])}
+    # Each person's days once, inside the window: a one-day window read
+    # "Absence 2".
+    hr_first = parse_date(period["start_iso"])
+    hr_last = parse_date(period["end_iso"]) - timedelta(days=1)
+    absences_by = {}
+    for r in conn.execute(
+            """SELECT user_id, start_date, end_date FROM absences
+               WHERE start_date < ? AND end_date >= ?""",
+            (period["end_iso"], period["start_iso"])).fetchall():
+        absences_by.setdefault(r["user_id"], []).append(r)
+    absence_days = {"d": sum(len(distinct_days(rs, hr_first, hr_last))
+                             for rs in absences_by.values())}
+    # People on leave, not requests: fifty-one requests read "On leave 51"
+    # for a team of four.
     leave_taken = conn.execute(
-        """SELECT COUNT(*) AS c FROM leave_requests
+        """SELECT COUNT(DISTINCT user_id) AS c FROM leave_requests
            WHERE status = 'approved' AND start_date < ? AND end_date >= ?""",
         (period["end_iso"], period["start_iso"]),
     ).fetchone()["c"]
@@ -38363,7 +38456,8 @@ def admin_assets():
     # chips are worth more than the query.
     show = request.args.get("status", "current")
     rows = conn.execute(
-        """SELECT assets.*, insurance_policies.provider AS insurer
+        """SELECT assets.*, insurance_policies.provider AS insurer,
+                  insurance_policies.expiry_date AS policy_expiry
              FROM assets LEFT JOIN insurance_policies
                ON insurance_policies.id = assets.insurance_policy_id
             ORDER BY assets.category, assets.name""").fetchall()
@@ -38389,9 +38483,8 @@ def admin_assets():
                   limit=12),
             # The question an insurance renewal is actually about: what is
             # on the register with no cover behind it.
-            facet("cover", "Insurance",
-                  lambda a: "Not covered" if not a["insurance_policy_id"]
-                  else None),
+            facet("cover", "Insurance", lambda a: asset_cover_word(a, today),
+                  order=["Not covered", "Cover lapsed"]),
         ],
         sorts=[
             sort_option("place", "By kind, then name",
@@ -38688,7 +38781,10 @@ def admin_payroll():
     total_hours = round(sum(r["hours"] for r in rows), 2)
     total_cost = round(sum(r["cost"] or 0 for r in rows), 2)
     overview = [
-        overview_cell("People", len([r for r in rows if r["hours"] > 0])),
+        # Everybody on the table, and how many of them worked: the tile counted
+        # only those with hours, above a table listing everybody.
+        overview_cell("People", len(rows),
+                      hint=f"{len([r for r in rows if r['hours'] > 0])} with hours"),
         overview_cell("Hours", total_hours, sub="h", hint="net of breaks"),
         overview_cell("Estimated pay", euro(total_cost)),
         overview_cell("Needs fixing first", len(blocked), alert=len(blocked)),
@@ -70258,10 +70354,11 @@ def management_breakages():
     overview = [
         overview_cell("Recorded", summary["count"], hint="in the last year"),
         overview_cell("Not decided", summary["undecided"],
-                      alert=bool(summary["undecided"])),
-        overview_cell("The house absorbed",
-                      f"\u20ac{summary['absorbed']:,.2f}",
-                      hint="replacement cost less anything recovered"),
+                      alert=bool(summary["undecided"]),
+                      hint=(f"{money(summary['undecided_cost'])} to replace"
+                            if summary["undecided"] else None)),
+        overview_cell("The house absorbed", money(summary["absorbed"]),
+                      hint="on the ones decided, less what each was charged"),
     ]
     return render_template("management_breakages.html", summary=summary,
                            rooms=rooms, recent=recent, overview=overview,
@@ -77998,14 +78095,17 @@ def room_faults_page():
         "SELECT COUNT(*) AS c FROM room_issues WHERE status = 'open'").fetchone()["c"]
     conn.close()
     imminent = [r for r in rows if r["days_away"] is not None and r["days_away"] <= 7]
+    # Stays, not stay-and-fault pairs: one guest in a room with two faults
+    # read "Guest already in the room 2".
     overview = [
         overview_cell("Faults open", open_issues),
         overview_cell("Rooms sold with one", len({r["room_id"] for r in rows}),
                       alert=bool(rows)),
         overview_cell("Guest already in the room",
-                      len([r for r in rows if r["in_house"]]),
+                      len({r["booking_id"] for r in rows if r["in_house"]}),
                       alert=any(r["in_house"] for r in rows)),
-        overview_cell("Arriving within a week", len(imminent), alert=bool(imminent)),
+        overview_cell("Arriving within a week", len({r["booking_id"] for r in imminent}),
+                      alert=bool(imminent)),
     ]
     return render_template("room_faults.html", rows=rows, overview=overview,
                            imminent=imminent, today=today)
@@ -84566,8 +84666,22 @@ def my_leave():
         if leave_type not in ("vacation", "sick", "personal", "other"):
             leave_type = "vacation"
         start, end = parse_date(start_date), parse_date(end_date)
+        # The same days asked for twice. Nothing stopped it, and every copy
+        # approved was counted again in the balance and the payroll pack.
+        overlap = (conn.execute(
+            """SELECT start_date, end_date, status FROM leave_requests
+                WHERE user_id = ? AND status IN ('pending', 'approved')
+                  AND start_date <= ? AND end_date >= ?""",
+            (user["id"], end.isoformat(), start.isoformat())).fetchone()
+                   if start and end and end >= start else None)
         if not start or not end or end < start:
             flash("Enter a valid date range.", "error")
+        elif overlap:
+            flash(f"You have already asked for time off from "
+                  f"{format_date_short(overlap['start_date'])} to "
+                  f"{format_date_short(overlap['end_date'])} "
+                  f"({'approved' if overlap['status'] == 'approved' else 'waiting for an answer'}). "
+                  "If the dates have changed, cancel that one and ask again.", "error")
         else:
             conn.execute(
                 """INSERT INTO leave_requests (user_id, start_date, end_date, reason, leave_type, status, requested_at)
