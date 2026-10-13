@@ -167,6 +167,23 @@ def run():
                 not [b for b in _blocks(rest[0]["id"]) if b["reason"] == TAG + " clash"]
                 and TAG + "STAY" in said, detail=said)
 
+    s.section("On the calendar, the Overview and the house calendar in Outlook")
+    # A winter closure showed on the Close rooms page and nowhere a person
+    # planning a week would look.
+    cal = oc.get(f"/calendar?view=month&date={winter}-12-01").get_data(as_text=True)
+    s.check("the month calendar shows the closure in a month it covers",
+            f"Closed: {big[0]['name']}" in cal or f"{big[0]['name']} closed for the season" in cal)
+    over = oc.get(f"/admin/overview?view=month&date={winter}-12-01").get_data(as_text=True)
+    s.check("and the Overview lists it as closed, not as a booking",
+            'data-kind="closure"' in over and f"{big[0]['name']} closed for the season" in over)
+    items = _ask(m.house_calendar_items, date(winter, 12, 1), date(winter + 1, 1, 1))
+    mine = [i for i in items if i["key"] == f"closure:{shut[0][0]['id']}"]
+    s.check("the house calendar carries it once, all day, over the whole closure",
+            len(mine) == 1 and mine[0]["all_day"]
+            and mine[0]["start"] == f"{first.isoformat()}T00:00:00"
+            and mine[0]["end"] == f"{back.isoformat()}T00:00:00",
+            detail=str(mine))
+
     s.section("The owner's calendar counts nights on sale, not closed ones")
     month = oc.get(f"/admin/calendar?month={winter}-12").get_data(as_text=True)
     s.check("a closed month's nights are said to be closed, not full", "closed)" in month)

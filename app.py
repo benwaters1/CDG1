@@ -13246,6 +13246,31 @@ def build_overview(conn, view, anchor, fetch_window=None):
                       "held_until": house_date_iso(h["expires_at"])},
         })
 
+    # ROOMS THE OWNER HAS CLOSED, which were on no calendar: two suites shut
+    # for the winter showed on the Close rooms page and nowhere a person
+    # planning a week would look. One row, on the closure's first night inside
+    # the window, so every month it covers opens with it.
+    for c in conn.execute(
+            """SELECT room_blocks.*, rooms.name AS room_name FROM room_blocks
+                 JOIN rooms ON rooms.id = room_blocks.room_id
+                WHERE room_blocks.start_date < ? AND room_blocks.end_date > ?""",
+            (query_end.isoformat(), query_start.isoformat())).fetchall():
+        how = {"season": "closed for the season",
+               "hidden": "closed, and hidden from searches"}.get(c["display_mode"] or "", "closed")
+        rows.append({
+            "kind": "closure", "lane": "booking", "is_guest": True, "origin": "owner",
+            "scheduled": True, "status": "closed", "acknowledgment_status": None,
+            "priority": None, "repeat_weekly": 0,
+            "date": max(c["start_date"], query_start.isoformat()),
+            "title": f"{c['room_name']} {how}, back on sale {format_date_short(c['end_date'])}",
+            "short": f"Closed: {c['room_name']}",
+            "detail": c["reason"] or "",
+            "assignee_id": None, "assignee_name": None, "id": c["id"],
+            "link": url_for("close_rooms_page") + f"#closure-{c['id']}",
+            "facts": {"room": c["room_name"], "start": c["start_date"], "end": c["end_date"],
+                      "why": c["reason"] or "", "mode": c["display_mode"] or "booked"},
+        })
+
     # THE ROTA: who is working, when. On the calendar because a week with a
     # wedding on Saturday and two people rostered is one picture, and it was
     # in two places.
@@ -73378,6 +73403,12 @@ def check_meta_token(conn):
                                           ("the app secret", secret)) if not value]
     if missing:
         return False, "Meta can only be asked with %s." % " and ".join(missing)
+    # Commit before asking. Meta has sixty seconds to answer, and anything
+    # left open here -- the connect form's save, the swap's new token, what
+    # the last answer wrote -- holds SQLite's one write lock the whole time,
+    # so the till, a clock-in or a booking waits five seconds and fails with
+    # "database is locked".
+    conn.commit()
     ok, payload = meta_request("debug_token", {
         "input_token": token, "access_token": "%s|%s" % (app_id, secret)},
         method="GET")
@@ -73439,6 +73470,11 @@ def make_meta_token_last(conn):
     if not (token and app_id and secret and (page_id or ig_user)):
         return False, ("Swapping to the Page's own token needs the token, the "
                        "app ID and secret, and the Page or Instagram ID.")
+    # Commit before asking, as check_meta_token does: what Meta's first answer
+    # wrote would otherwise hold the write lock through both calls below. The
+    # swap itself is written after them, so nothing is replaced unless
+    # every step worked.
+    conn.commit()
     ok, long_lived = meta_request("oauth/access_token", {
         "grant_type": "fb_exchange_token", "client_id": app_id,
         "client_secret": secret, "fb_exchange_token": token}, method="GET")
@@ -73560,6 +73596,13 @@ def publish_social_post(conn, post):
         return False, "the photograph is not on the volume any more"
     link = url_for("social_photo_public",
                    token=ensure_publish_token(conn, post["id"]), _external=True)
+    # Commit before Meta is asked, for two reasons. Meta fetches the photograph
+    # through that link while the call naming it is still open, and the link
+    # is served on another connection, which cannot see a token that has not
+    # been committed: the first publish of every post 404'd its own picture.
+    # And a write held open across a call that may take sixty seconds holds
+    # SQLite's one write lock for everybody else in the house.
+    conn.commit()
     caption = (post["caption"] or "").strip()
     wanted = (post["platform"] or "").strip().lower()
     ig_user, page_id = (meta_setting(conn, "meta_ig_user_id"),
@@ -73635,6 +73678,9 @@ def run_social_publish_job(conn):
                 and post["scheduled_time"] > clock):
             continue
         ok, _said = publish_social_post(conn, post)
+        # Written down post by post. A post Meta has put out that the house
+        # has not recorded is one the next run puts out again.
+        conn.commit()
         if ok:
             sent += 1
     return sent
@@ -73761,6 +73807,9 @@ def connect_social_accounts():
         asked = None
         if (set(changed) & {"the token", "the app secret", "app id"}
                 and meta_can_ask(conn)):
+            # This commits the save before Meta is asked anything:
+            # check_meta_token does, so that no caller can hold the database
+            # through Meta's answer.
             asked = settle_meta_token(conn)
         conn.commit()
         conn.close()
@@ -89497,6 +89546,16 @@ def house_calendar_items(conn, start, end, areas=None):
             s["places"] += 1
             s["people"] += f.get("party") or 1
             s["pending"] += 1 if r["status"] == "pending" else 0
+        elif kind == "closure" and "rooms" in areas and f.get("start") and f.get("end"):
+            # The whole closure as one all-day event: the first night closed to
+            # the morning the room is back on sale, which is its end_date.
+            key = f"closure:{r['id']}"
+            items[key] = {"key": key, "area": "rooms", "all_day": True,
+                          "subject": f"{marks['rooms']} Closed: {f['room']}",
+                          "start": f"{f['start']}T00:00:00", "end": f"{f['end']}T00:00:00",
+                          "location": "", "body": "\n".join(x for x in (
+                              f"Back on sale {format_date_short(f['end'])}", f.get("why") or "") if x)
+                          + link_line(full_link(r.get("link")))}
         elif kind == "event" and "events" in areas and f.get("start"):
             key = f"hold:{str(r['id'])[4:]}" if f.get("held") else f"event:{r['id']}"
             last = f.get("end") or f["start"]

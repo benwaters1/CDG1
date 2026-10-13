@@ -23,6 +23,14 @@ undo beyond deleting it afterwards and hoping nobody was looking.
   one evening a post does not go and nothing says so. The owner home warns
   first, and it closes itself when the token is renewed.
 
+  NOTHING IS HELD OPEN WHILE META IS ASKED. Meta fetches the photograph
+  through the public link while the call that names it is still open, on a
+  different connection, which cannot see a link that was never committed — so
+  the first publish of every post 404'd its own photograph. And SQLite lets one
+  connection write at a time: a write held across a call that may take sixty
+  seconds is the till, a clock-in and every booking in the house failing
+  "database is locked".
+
 The Graph call itself is stood down in the harness — `meta_request` raises, so
 a run that reached Meta would not merely cost money, it would PUBLISH to the
 real account. What is checked here is everything around it, with the call
@@ -31,6 +39,8 @@ stood in for.
 import io
 import json
 import os
+import sqlite3
+from urllib.parse import urlsplit
 
 from _harness import Suite, clients, db
 import _harness
@@ -101,6 +111,43 @@ def _row(pid):
                             (pid,)).fetchone()
     finally:
         conn.close()
+
+
+def _can_write():
+    """Whether anything else could write to the database this instant.
+
+    A second connection asks for the write lock with no patience at all. The
+    till would wait five seconds; this asks whether it would have had to wait.
+    """
+    other = sqlite3.connect(m.DB_PATH, timeout=0)
+    try:
+        other.execute("BEGIN IMMEDIATE")
+        other.execute("ROLLBACK")
+        return True
+    except sqlite3.OperationalError:
+        return False
+    finally:
+        other.close()
+
+
+def _status_elsewhere(pid):
+    """The post's status as any other connection would read it right now."""
+    other = sqlite3.connect(m.DB_PATH)
+    try:
+        row = other.execute("SELECT status FROM social_posts WHERE id = ?",
+                            (pid,)).fetchone()
+        return row[0] if row else None
+    finally:
+        other.close()
+
+
+def _approve(*pids):
+    conn = db()
+    for pid in pids:
+        conn.execute("UPDATE social_posts SET approved_at = ? WHERE id = ?",
+                     (m.datetime.now(m.timezone.utc).isoformat(), pid))
+    conn.commit()
+    conn.close()
 
 
 def _publish(pid):
@@ -354,6 +401,77 @@ def run():
             detail="a post nobody approved is never due, however long it waits")
     s.check("and neither did the one that is not due yet",
             _row(later)["status"] != "posted")
+
+    s.section("Nothing is held open while Meta is asked")
+    # A post never published before, bound for both places: three calls, two
+    # of which give Meta the link. At each call a second connection asks for
+    # the write lock with no wait, and a stranger -- which is all Meta is to
+    # this app -- fetches the photograph the call names, as Meta does before
+    # it answers.
+    stranger = m.app.test_client()
+    seen = []
+
+    def _meta_comes_for_it(path, params):
+        free = _can_write()
+        link = params.get("image_url") or params.get("url")
+        fetched = stranger.get(urlsplit(link).path).status_code if link else None
+        seen.append((path, free, fetched))
+        return True, {"id": "fake_%d" % len(seen)}
+
+    first_time = _post(TAG + " both places, first time out",
+                       platform="Instagram and Facebook")
+    _approve(first_time)
+    m.meta_request = _meta_comes_for_it
+    try:
+        ok, said = _publish(first_time)
+    finally:
+        m.meta_request = real
+    s.check("it goes out on both", ok and _row(first_time)["status"] == "posted",
+            detail=said)
+    s.check("the database is free at every call to Meta",
+            len(seen) == 3 and all(free for _p, free, _f in seen),
+            detail=f"{[(p, free) for p, free, _f in seen]}")
+    s.check("and Meta can fetch the photograph the first time it is asked to",
+            [f for _p, _free, f in seen if f is not None] == [200, 200],
+            detail=f"{[(p, f) for p, _free, f in seen]} — a 404 here is Meta "
+                   "refusing the post because the link it was handed did not "
+                   "exist yet for anybody else")
+
+    s.section("The scheduled run writes each post down as it goes")
+    # Two posts due, neither published before. Every call must find the
+    # database free and the photograph there, and the moment the run hands
+    # back both must already read as posted from anywhere else. A post Meta
+    # has put out and the house has not written down is one the next run puts
+    # out again.
+    one = _post(TAG + " due, first of two", scheduled_date=yesterday)
+    two = _post(TAG + " due, second of two", scheduled_date=yesterday)
+    _approve(one, two)
+    seen.clear()
+    left = None
+    m.meta_request = _meta_comes_for_it
+    conn = db()
+    try:
+        with m.app.test_request_context("/"):
+            m.run_social_publish_job(conn)
+        # Read before anything commits on the run's behalf, which is the next
+        # thing its caller does.
+        left = ([_status_elsewhere(one), _status_elsewhere(two)], _can_write())
+    finally:
+        m.meta_request = real
+        conn.commit()
+        conn.close()
+    s.check("the database is free at every call to Meta",
+            len(seen) >= 4 and all(free for _p, free, _f in seen),
+            detail=f"{[(p, free) for p, free, _f in seen]}")
+    s.check("Meta can fetch every photograph it is given",
+            all(f == 200 for _p, _free, f in seen if f is not None),
+            detail=f"{[(p, f) for p, _free, f in seen]}")
+    s.check("and both are written down as posted the moment the run is done",
+            left == (["posted", "posted"], True),
+            detail=f"read elsewhere: {left[0] if left else None}; "
+                   f"could write: {left[1] if left else None}")
+    s.check("the stand-in is put back after the run",
+            m.meta_request.__name__ == "_blocked")
 
     _cleanup()
     return s

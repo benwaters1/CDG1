@@ -170,6 +170,11 @@
     <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail }}</span>{% endif %}</span>
     <span class="mini-status status-{{ 'pending' if r.status == 'held' else r.status }}">{{ r.status }}</span>
   </div>
+  {% elif r.kind == 'closure' %}
+  <div class="task-row" data-kind="closure" data-lane="booking" data-guest="guest" data-scheduled="1" data-employee="" data-status="closed">
+    <span class="lane-badge lane-booking">Closed</span>
+    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail }}</span>{% endif %}</span>
+  </div>
   {% elif r.kind == 'shift' %}
   <div class="task-row" data-kind="shift" data-lane="shift" data-guest="employee" data-scheduled="1" data-employee="{{ r.assignee_id or '' }}" data-status="{{ r.status }}">
     <span class="lane-badge lane-shift">Rota</span>

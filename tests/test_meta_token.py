@@ -35,9 +35,16 @@ because the Graph API Explorer's token lasts about an hour; and daily after.
   AND "NO EXPIRY" IS SAID, NOT "NEVER". debug_token reports expires_at 0 for
   a token with no expiry date, and its reference page does not define 0.
 
+  NOTHING IS HELD OPEN WHILE META IS ASKED. Meta gets sixty seconds an
+  answer and the save asks it four times. SQLite lets one connection write at
+  a time, so a write left uncommitted across those calls is the till, a
+  clock-in and every booking in the house waiting five seconds and failing
+  "database is locked".
+
 Meta is stood in at meta_request -- the one door out, and the one the harness
 already blocks -- and the stand-in is checked put back.
 """
+import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
@@ -166,6 +173,39 @@ class FakeGraph:
                 pages.append({"id": PAGE, "access_token": PAGE_TOKEN})
             return True, {"data": pages}
         return False, "unexpected call to %s" % path
+
+
+def _can_write():
+    """Whether anything else could write to the database this instant.
+
+    A second connection asks for the write lock with no patience at all. The
+    till would wait five seconds; this asks whether it would have had to wait.
+    """
+    other = sqlite3.connect(m.DB_PATH, timeout=0)
+    try:
+        other.execute("BEGIN IMMEDIATE")
+        other.execute("ROLLBACK")
+        return True
+    except sqlite3.OperationalError:
+        return False
+    finally:
+        other.close()
+
+
+class ProbingGraph(FakeGraph):
+    """FakeGraph, noting at every call whether the database was free."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.free = []
+
+    def __call__(self, path, params, method="POST"):
+        self.free.append(_can_write())
+        return super().__call__(path, params, method)
+
+    def held(self):
+        """The calls made while something here was holding the write lock."""
+        return [path for path, free in zip(self.paths(), self.free) if not free]
 
 
 @contextmanager
@@ -507,6 +547,29 @@ def run():
     s.check("and when Meta does not say what was granted, nothing is said",
             not _get("meta_token_missing"),
             detail="a warning built on an answer that was never given is believed")
+
+    s.section("Nothing is held open while Meta is asked")
+    # The save, the button and the daily job each ask Meta four times when
+    # the token is the kind that lapses, with sixty seconds allowed for every
+    # answer. At each call a second connection asks for the write lock with no
+    # wait. The save used to hold its own writes through all four calls, and
+    # the button and the job held what the first answer wrote through the
+    # three after it.
+    asked = ["debug_token", "oauth/access_token", "me/accounts", "debug_token"]
+    for label, press in (
+            ("saving a new token", lambda: _save(oc, access_token=FRESH_TOKEN)),
+            ("pressing the button", lambda: oc.post(CONNECT + "/check")),
+            ("the daily job", _run_job)):
+        _set(meta_access_token=USER_TOKEN, **{key: "" for key in m.META_VERDICT_KEYS})
+        with standing_in(ProbingGraph()) as fake:
+            press()
+        s.check(f"{label}: the database is free at every call to Meta",
+                fake.paths() == asked and not fake.held(),
+                detail=f"asked {fake.paths()}; held open through {fake.held()}")
+        s.check("and the swap still lands, with Meta's answer on it",
+                _get("meta_access_token") == PAGE_TOKEN
+                and _state()["kind"] == "no_expiry",
+                detail=_state()["kind"])
 
     s.section("The daily job")
     names = [row[0] for row in m.AUTOMATION_JOBS]
