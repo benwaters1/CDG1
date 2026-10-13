@@ -21,6 +21,8 @@
 {# Until photographs are uploaded through the staff area, show the château's
    own library rather than an empty section. Real uploads take over the moment
    they exist — this only fills a section that has none. #}
+{#- 12 Oct (owner: "tidy the gallery, more before and afters"): the restoration section runs as it was, before, during,
+    now - and the bathrooms, from the old site's bathrooms page. -#}
 {% set FALLBACK = {
   'inside': [
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba4114a3-c057-4df8-8fd9-c080ebc6fff2/Chambre+Olympe+de+Gouges+2.jpg?format=1500w", 'caption': 'The Queen Room'},
@@ -40,7 +42,16 @@
     {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w", 'caption': 'A ground-floor bathroom'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/67145726-32e2-4832-bfce-a7fdb809b057/Screenshot+2026-07-30+at+7.53.46+pm.png?format=1500w", 'caption': 'The spiral staircase'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/dd096969-0a3d-4765-aa39-8223dd6a23b4/Screenshot+2024-06-02+at+10.58.42+am.png?format=1500w", 'caption': 'A tall window, the mountains beyond'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1691467283089-Z9QX59G01KY8N8VFBTZG/Chambre+Jeanne+d%27Arc.PNG?format=1500w", 'caption': 'The Twin Room'}
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1691467283089-Z9QX59G01KY8N8VFBTZG/Chambre+Jeanne+d%27Arc.PNG?format=1500w", 'caption': 'The Twin Room'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583218370419-WVVB8F7NVYWJC718Y18L/Grand+Vestibule+-+Detail.jpg?format=1500w", 'caption': 'Candles and flowers in the grand vestibule'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583219166576-2E8FM9LWIGBZ11W8GZDF/dining+room+3.jpg?format=1500w", 'caption': 'The dining room, laid by candlelight'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1622112808331-FQX1UYIUX0AR41AYZBPY/Salon+de+Rose.jpg?format=1500w", 'caption': 'The Salon de Rose'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1622112810920-MNUQCMGF6A9U55SRRD6J/Salon+de+Rose+2.jpg?format=1500w", 'caption': 'The Salon de Rose, by the window'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1618067965823-XPTFNTL83TQKUUMV1ENB/Screen+Shot+2021-04-10+at+11.08.51+pm.png?format=1500w", 'caption': 'Flowers and an old portrait'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1731560671148-2HACTI6LRTTC97OLK4VF/Cha%CC%82teau+de+Gudanes+-+Salon+de+Musique.jpg?format=1500w", 'caption': 'The Salon de Musique, door after door'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1731560532944-R701Y7K0CU332FM3C57T/Petit+Vestibule.JPG?format=1500w", 'caption': 'The petit vestibule'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1731560589811-RNZCMLV9246VBXK6781A/Kitchen+2.JPG?format=1500w", 'caption': 'Blossom at the kitchen window'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1731560627745-OAYXOK7F1XCM5B4HSRXM/Kitchen+1.JPG?format=1500w", 'caption': 'Fruit on the kitchen table'}
   ],
   'grounds': [
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fad6453b-f801-43fb-b3bc-6ed223ec09e0/Rebecca%26Ken_Preview_paulinaweddings.com-1_websize.jpg?format=1500w", 'caption': 'From above, with the pool'},
@@ -63,18 +74,35 @@
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7a36c33c-f53e-4ea3-976b-14191b0cbdc5/Screenshot%2B2026-08-15%2Bat%2B3.08.35%2Bpm.png?format=1500w", 'caption': 'Summer'}
   ],
   'restoration': [
+    {'url': url_for('static', filename='img/history/postcard-chateau-de-gudannes.jpg'), 'caption': 'An early postcard'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/b7a07599-6d24-4085-bb8d-b669d04c7bb1/unspecified-3+2.jpg?format=1500w", 'caption': 'The work begins'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d07f91bb-54cb-444c-9ae0-db4eab3d9b47/Gudanes-+the+work+begins+%2812+of+7%29.jpg?format=1500w", 'caption': 'The first workers'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2d44af9c-cd2c-472d-ae18-ac16cebd285f/Screen+Shot+2019-04-16+at+8.35.01+am.png?format=1500w", 'caption': 'At a window'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8e2d96ea-4524-4f3b-ae0d-88e6191e7b09/Before+The+Work+-+Bedroom.JPG?format=1500w", 'caption': 'A bedroom, before'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1582221428952-HLWFUM6ZUOM3ME12CKRN/shareImage_1582221359.jpg?format=1500w", 'caption': 'The châtelaine’s bedroom, before'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/598861b7-9f24-4244-8420-468734c135e5/Before+The+Work+-+Vestibule+Ceiling.JPG?format=1500w", 'caption': 'The vestibule ceiling, before'},
-    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1429617974662-OIFU6BKPH1U85GTO9A7V/workshop.jpg?format=1500w", 'caption': 'Gilt over a doorway, mid-restoration'},
-    {'url': url_for('static', filename='img/history/postcard-chateau-de-gudannes.jpg'), 'caption': 'An early postcard'},
-    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fcd0c757-5913-4e42-a648-d131642818ad/Dining+Room+-+During+Work+4.jpg?format=1500w", 'caption': 'The dining room under scaffolding'},
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/2b9c1192-bf9a-40a9-8913-4bc98c8a43c7/Screenshot+2026-07-20+at+3.41.43+pm.png?format=1500w", 'caption': 'The kitchen, before'},
-    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/92af7109-0e28-4b75-bdf0-4b1a6fe7cc9a/Screenshot+2026-07-20+at+2.33.25+pm.png?format=1500w", 'caption': 'The kitchen now'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583211414968-3QWE3HFYW4VVZKTPPN3P/30.JPG?format=1500w", 'caption': 'The kitchen floor, fallen through'},
     {'url': url_for('static', filename='img/history/horse-dining-room-b.jpg'), 'caption': 'The other dining room, before'},
-    {'url': url_for('static', filename='img/history/horse-dining-room-a.jpg'), 'caption': 'A horse, in what is now a dining room'}
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1582138660175-GSVHXPVLKYXB53ZHICCF/Chateaugudanes.com.?format=800w", 'caption': 'An eighteenth-century marble mantel, hanging by a thread'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1582139439828-1O5PECMEFIJZUK9SSIIN/Chateaugudanes.com.?format=1500w", 'caption': 'The dining room floor, open to its layers'},
+    {'url': url_for('static', filename='img/history/horse-dining-room-a.jpg'), 'caption': 'A horse, in what is now a dining room'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583425897142-1GIQ7UVNLLEXM34LO9PY/4ab2ef22-6c3b-46db-a617-0af2a7760c7f+2.JPG?format=1500w", 'caption': 'The bathrooms, before'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fcd0c757-5913-4e42-a648-d131642818ad/Dining+Room+-+During+Work+4.jpg?format=1500w", 'caption': 'The dining room under scaffolding'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1429617974662-OIFU6BKPH1U85GTO9A7V/workshop.jpg?format=1500w", 'caption': 'Gilt over a doorway, mid-restoration'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/92af7109-0e28-4b75-bdf0-4b1a6fe7cc9a/Screenshot+2026-07-20+at+2.33.25+pm.png?format=1500w", 'caption': 'The kitchen now'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583377878155-3YC2NGQRUE1QM6RNC96B/Screen+Shot+2020-02-18+at+9.52.21+pm.png?format=1500w", 'caption': 'Old china on the kitchen shelves'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1582144359440-WE1OH1JRJWJU1SN2B6XW/IMG_5835.jpg?format=1500w", 'caption': 'The dining room now'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/d309f7f7-ef8e-4090-adcc-cb8b8407112b/Medieval+Room.jpg?format=1500w", 'caption': 'The châtelaine’s bedroom now'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583503973363-BORNI4RB6JAHAQXXA46X/IMG_1144.JPG?format=1500w", 'caption': 'A bathroom window now'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583504973197-GYZ22GF1PB0L7P92T7RV/Screen+Shot+2020-03-06+at+10.23.55+pm.png?format=1500w", 'caption': 'The claw-foot bath'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583503062603-2KFI7H38VBDWSPTOMLIB/IMG_0977.jpg?format=1500w", 'caption': 'A hand-painted basin'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583502674284-ANPS71TX8OXD6LXQVRNE/IMG_0550.jpg?format=1500w", 'caption': 'A porcelain switch on the floral paper'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1618071566526-US9BN74CV2TTX06H15O0/IMG_8543+4.JPG?format=1500w", 'caption': 'Old letters, found in the château'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1590984417809-YLWIB8KV4V3HK7O9X6J8/Cha%CC%82teau+Discoveries+2.png?format=1500w", 'caption': 'Old glass, found in pieces'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1590984484266-88MVIL0E4KG0IKALG6R5/Cha%CC%82teau+Discoveries+3.png?format=1500w", 'caption': 'A carved mask, found in the château'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1590985172300-Y7YCFDH9UFXINYLUDV9N/Cha%CC%82teau+Discoveries+13.png?format=1500w", 'caption': 'Old pottery, found in the château'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1590986069796-39991EMK3UO1B0VQB4KI/Cha%CC%82teau+Discoveries+14.png?format=1500w", 'caption': 'A carved relief, found in the château'}
   ],
   'life': [
     {'url': "https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/64c3e06f-00b3-4c61-9f61-4b3476de1d30/Screenshot+2026-08-15+at+5.54.52+pm.png?format=1500w", 'caption': 'At the table together'},
@@ -134,6 +162,8 @@
       {# The id is what the site menu's #inside, #grounds … links land on.
          scroll-margin-top clears the fixed header, which would otherwise
          sit over the heading the reader just jumped to. #}
+      {%- set _gill = {'inside':'chateau','grounds':'garden','restoration':'restoration','life':'candelabra','views':'mountains'} -%}
+      {%- if _gill.get(gal['slug']) %}<span class="g-hill" aria-hidden="true">{{ illus(_gill[gal['slug']]) }}</span>{% endif %}
       <h2 class="g-h2 g-rule" id="{{ gal['slug'] }}" style="scroll-margin-top:var(--s9);">{{ gal['title'] }}</h2>
       {% if gal['blurb'] %}<p class="g-p" style="margin-bottom:var(--s5);">{{ gal['blurb'] }}</p>{% endif %}
       {% set shown = gal['images'] or FALLBACK.get(gal['slug'], []) %}
@@ -222,7 +252,7 @@
     <div class="g-panel">
       <h3 class="g-h3">For location scouts</h3>
       <p class="g-p">Tell us the condition you need and we will send what we have of it — bare stone, open plaster, part-restored, or fully restored. Usage is agreed in writing before a shoot, not after.</p>
-      <p class="g-p"><a href="{{ url_for('events_photoshoots') }}" class="g-btn">Location hire</a></p>
+      <p class="g-p"><a href="{{ url_for('events_photoshoots') }}" class="g-btn">Shoot here</a></p>
     </div>
   </div>
 
@@ -275,7 +305,7 @@
   <p class="g-eyebrow">Be here</p>
   <h2 class="g-place">See It for Yourself</h2>
   <p class="g-p">A night in one of the five bedrooms, or the full experience: a workshop, with all meals and drinks, the activities and a small group sharing the château.</p>
-  <p style="display:flex;flex-wrap:wrap;align-items:center;gap:var(--s3);margin-top:var(--s5)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a> <a href="{{ url_for('book_rooms') }}" class="g-btn">Stay the night</a></p>
+  <p style="display:flex;flex-wrap:wrap;align-items:center;gap:var(--s3);margin-top:var(--s5)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the full experience</a> <a href="{{ url_for('book_rooms') }}" class="g-btn">Stay the night</a></p>
 </div></section>
 <section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
   <div class="g-journal__in">

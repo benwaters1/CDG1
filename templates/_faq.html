@@ -1,8 +1,10 @@
+{% from '_illus.html' import illus %}
 {# Frequently asked questions, as a reusable block. Every answer here is
    checked against what the site and the app actually do — a FAQ that
    contradicts the booking flow is worse than no FAQ. #}
 {% macro faq(items, eyebrow='Before You Book', heading='Questions') %}
-<section class="g-sec"><div class="g-wrap">
+<section class="g-sec g-faq-sec"><div class="g-wrap">
+  <span class="g-hill" aria-hidden="true">{{ illus('key') }}</span>
   <p class="g-eyebrow">{{ eyebrow }}</p>
   <h2 class="g-place">{{ heading }}</h2>
   <div class="g-faq">

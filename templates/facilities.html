@@ -34,7 +34,7 @@
   <p class="g-p g-lede-first">The château stands above the valley with the Pyrénées all around it: ten acres of gardens and grounds to wander, a pool for long afternoons and a court for whoever is keen. In winter the slopes are about half an hour away, and Andorra about an hour.</p>
   {% from '_weather_live.html' import weather_now %}{{ weather_now(weather) }}
   <p class="g-p">On a workshop, the grounds are yours every afternoon, between the sessions and dinner.</p>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>
+  <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the full experience</a></p>
 </div></section>
 
 {{ facilities(_dm if _dm is defined else 'open', 'Yours While You Stay', 'The Facilities') }}
@@ -79,6 +79,7 @@
 
 {# 6 Oct (owner): "yes the grounds of course" - photographs from the original site #}
 <section class="g-sec g-gallery-sec"><div class="g-wrap">
+  <span class="g-hill" aria-hidden="true">{{ illus('garden') }}</span>
   <p class="g-fr">Les jardins <span class="g-fr__en">The gardens</span></p>
   <h2 class="g-place">The Grounds</h2>
   <p class="g-p g-intro">The formal gardens, the terraces, the pool and the parkland, with the mountains on every side.</p>
@@ -115,6 +116,7 @@
 
 {#- 6 Oct (owner: "photos of the house in snow") - the château's own winter photographs -#}
 <section class="g-sec g-sec--sand g-gallery-sec" id="winter"><div class="g-wrap">
+  <span class="g-hill" aria-hidden="true">{{ illus('tree') }}</span>
   <p class="g-fr">L&rsquo;hiver <span class="g-fr__en">In winter</span></p>
   <h2 class="g-place">Winter at Gudanes</h2>
   <p class="g-p g-intro">Snow on the mountains from late autumn, and some winters on the château itself, with the ski slopes half an hour away.</p>

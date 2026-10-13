@@ -79,7 +79,7 @@
     {# The second way in (owner, 1 Oct: push them towards the workshops) - the hero offered a room and nothing else. #}
     {#- 10 Oct (Code, for the owner): "Or come for THE FULL EXPERIENCE" did not read - said plainly now. One line on a phone:
         the full sentence from 640px up, a shorter one below (measured: fits a 360px phone). -#}
-    <p class="g-hero__alt"><span class="g-hero__alttext"><span class="g-hero__altlong">Or stay three to seven nights on a workshop, every meal and drink included</span><span class="g-hero__altshort">Or three to seven nights, every meal included</span></span> <a class="g-hero__altbtn" href="{{ url_for('workshops_public') }}">See the workshops</a></p>
+    <p class="g-hero__alt"><span class="g-hero__alttext"><span class="g-hero__altlong">Or the full experience: a retreat of three to seven nights, every meal and drink included</span><span class="g-hero__altshort">Or the full experience, three to seven nights</span></span> <a class="g-hero__altbtn" href="{{ url_for('workshops_public') }}">See the retreats</a></p>
 </div>
   <button type="button" class="g-hero__pause" id="g-hero-pause" aria-label="Pause video">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
@@ -93,11 +93,13 @@
     <h2 class="g-full__h" id="full-h">Experience the Château in Full</h2>
     <p class="g-full__p">Built in 1741, very nearly lost, and now coming back to life. A workshop retreat lets you live inside it for three to seven nights: all meals and drinks, the brocantes, the kitchen, the valley, a candlelit dinner in the Salon de Musique, and the run of the château with a small group.</p>
     <p class="g-full__btns">
-      <a class="g-full__cta" href="{{ url_for('workshops_public') }}">See the Workshops</a>
-      <a class="g-full__link" href="{{ url_for('restoration_page') }}#monument">The château and its history</a>
+      <a class="g-full__cta" href="{{ url_for('workshops_public') }}">Discover the Full Experience</a>
+      <a class="g-full__link" href="{{ url_for('restoration_page') }}#monument">The story of the château</a>
     </p>
   </div>
   <div class="g-full__side">
+    {#- 13 Oct: the full experience includes dinner - the dining room as it is laid for one (old site's After Photos). -#}
+    <figure class="g-full__fig"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583219166576-2E8FM9LWIGBZ11W8GZDF/dining+room+3.jpg?format=1500w" alt="The dining room, laid by candlelight" loading="lazy"><figcaption>The dining room, laid by candlelight</figcaption></figure>
     {% if upcoming %}
     <p class="g-full__k">The next dates</p>
     <ul class="g-full__list">
@@ -233,7 +235,7 @@
     </article>
     {% endfor %}
   </div>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See every room</a></p>
+  <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Meet all five rooms</a></p>
 </div></section>
 {% endif %}
 
@@ -267,7 +269,7 @@
   </div>
   <p class="g-homeresto__cap">The dining room: once empty enough for a horse.</p>
   <p class="g-p g-homeresto__p">Bought as a ruin in 2013, the château has been brought back room by room, privately funded, with no grants.</p>
-  <p class="g-homeresto__cta"><a href="{{ url_for('restoration_page') }}" class="g-btn g-btn--solid">See the restoration</a></p>
+  <p class="g-homeresto__cta"><a href="{{ url_for('restoration_page') }}" class="g-btn g-btn--solid">See how it came back</a></p>
 </div></section>
 {# A night, or the full experience - the shared comparison (owner, 28 Sept). #}
 {% from '_stay_or_workshop.html' import stay_or_workshop %}
@@ -283,6 +285,7 @@
     {% else %}<p class="g-hint" style="margin-top:var(--s5)">La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}.</p>{% endif %}
   </div>
 </div></section>{% endif %}
+{% include '_plaisirs.html' %}
 <section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/002bc94f-c8f0-4c5d-bbfd-36984cde7af4/Screenshot+2025-02-14+at+1.55.45+pm.png?format=1500w" alt="A long table laid for a celebration" loading="lazy">
   <div class="g-half__text">
@@ -390,8 +393,8 @@
   <p class="g-close__p">The rooms are few. If a date suits, take it, for a night or for a workshop.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">See the workshops</a>
-      <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us something</a>
+      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Discover the full experience</a>
+      <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us anything</a>
   </div>
 </div></section>
 

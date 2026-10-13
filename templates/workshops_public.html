@@ -67,6 +67,7 @@
 {{ atelier_glance(glance_workshop, settings, glance_from, tx=_tx) }}
 
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
+  <span class="g-hill" aria-hidden="true">{{ illus('atelier') }}</span>
   <h2 class="g-place">The Retreats</h2>
   <p class="g-p">The length sets the emphasis; the château and the table are the same on every one.</p>
   {# A static list of the five formats stood here ("The brocantes", "The kitchen", "The restoration"...), naming them
@@ -108,7 +109,7 @@
           <span>per person · all meals and drinks</span>
         </p>
         {% endif %}
-        <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" class="g-btn">See the workshop</a>
+        <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" class="g-btn">See this retreat</a>
       </div>
     </article>
     {% endfor %}
@@ -535,7 +536,7 @@
   <div class="g-close__acts">
       <a href="#dates" class="g-btn g-btn--solid">See every date</a>
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn">Stay the night instead</a>
-      <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us something</a>
+      <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us anything</a>
   </div>
 </div></section>
 

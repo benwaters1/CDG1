@@ -1,3 +1,4 @@
+{% from '_illus.html' import illus %}
 {# ==========================================================================
    BEFORE YOU BOOK  — items 7, 9, 11, 12 and 18
    Five things a guest currently discovers too late: whether it is for them,
@@ -10,7 +11,7 @@
 {# 7 — who this is not for. Said plainly, because the wrong guest is worse for
    you than an empty room, and because saying it makes the rest believable. #}
 {% macro honest() %}
-<section class="g-sec g-sec--sand"><div class="g-wrap">
+<section class="g-sec g-sec--sand g-wm-host"><div class="g-wrap"><span class="g-wm" aria-hidden="true">{{ illus('candelabra') }}</span>
   <p class="g-eyebrow">Worth Knowing</p>
   <h2 class="g-place">What to Expect</h2>
   <p class="g-p g-intro">A few things worth knowing before you come.</p>

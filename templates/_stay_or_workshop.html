@@ -51,7 +51,7 @@
         <li>The château opened to you, and a formal dinner in the Salon de Musique</li>
       </ul>
       <p class="g-sow__foot">Three to seven nights, per person, all meals and drinks included</p>
-      {% if here != 'workshop' %}<p class="g-sow__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>{% endif %}
+      {% if here != 'workshop' %}<p class="g-sow__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the full experience</a></p>{% endif %}
     </article>
   </div>
   {% if here != 'workshop' %}<p class="g-sow__more"><a href="{{ url_for('workshops_public') }}#compare">Compare everything, side by side</a></p>{% endif %}
@@ -109,7 +109,7 @@
   <p class="g-night__t">A night here is a room and breakfast.</p>
   {% if bath %}<p class="g-night__p g-night__bath">Every room has a private bathroom of its own, on the ground floor &mdash; not in the room itself.</p>{% endif %}
   <p class="g-night__p">Lunch, dinner and drinks are not included &mdash; they come with the workshops, the full experience, along with the rest of the château{% if dm == 'open' %}. Dinner can be booked on the nights the table is open{% endif %}.</p>
-  <p class="g-night__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the workshops</a></p>
+  <p class="g-night__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the full experience</a></p>
 </aside>
 {% endmacro %}
 
@@ -119,6 +119,6 @@
   <p class="g-night__k">Next time</p>
   <p class="g-night__t">The full experience</p>
   <p class="g-night__p">The workshops are small retreats of three to seven nights, with all meals and drinks, the activities, and the rest of the château.</p>
-  <p class="g-night__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn">See the workshops</a></p>
+  <p class="g-night__cta"><a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the full experience</a></p>
 </aside>
 {% endmacro %}

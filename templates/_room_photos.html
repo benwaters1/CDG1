@@ -49,3 +49,11 @@
 } -%}
 {#- A bathroom, for strips that need one (the bathrooms are downstairs; these are not room-specific). -#}
 {%- set BATH_PHOTO = (_BK ~ '799433081.jpg?k=10f484ed1a3138706d9d005e29e3187c577281eeff9cbfb7cf598085565fb638&o=', 'One of the ground-floor bathrooms') -%}
+{#- 12 Oct (owner: "more bathroom photos"): the bathrooms as finished in 2019, from the old site's bathrooms page
+    (vicente-yuste-2air, Before & After - The Château Bathrooms). The room page shows one to three of these. -#}
+{%- set BATH_PHOTOS = [
+  BATH_PHOTO,
+  ('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583504973197-GYZ22GF1PB0L7P92T7RV/Screen+Shot+2020-03-06+at+10.23.55+pm.png?format=1500w', 'A bathroom papered in blue, the claw-foot bath on the old terracotta'),
+  ('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583503062603-2KFI7H38VBDWSPTOMLIB/IMG_0977.jpg?format=1500w', 'A hand-painted basin on the reclaimed terracotta'),
+  ('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583503973363-BORNI4RB6JAHAQXXA46X/IMG_1144.JPG?format=1500w', 'A bathroom window open onto the mountains')
+] -%}

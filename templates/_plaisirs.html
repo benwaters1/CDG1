@@ -1,0 +1,45 @@
+{#- 13 Oct (owner: "more illustrations and a little more blue"; looking at The Pig for ideas, not to copy). The château's
+    pleasures in five tabs on deep blue, each with one of our drawings, a photograph, a sentence and an inviting link. Real
+    tabs (arrow keys, screen-reader roles); without the script all five show, one under another. -#}
+{% from '_illus.html' import illus %}
+{%- set PLAISIRS = [
+  ('sleep', 'fourposter', 'Sleep well', 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg?format=1500w', 'The Gold Suite', 'A new bed in an old room, breakfast in the morning, and the lounge to come back to in the evening.', 'Come and stay', url_for('book_rooms')),
+  ('table', 'candelabra', 'Pull up a chair', 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/0fba4375-e1f0-449b-ba58-d1a5d3a48069/Screenshot+2026-07-30+at+8.05.38+pm.png?format=1500w', 'Dinner by candlelight', 'On a workshop every meal and every drink is included, and one evening ends in the Salon de Musique, by candlelight.', 'Discover the full experience', url_for('workshops_public')),
+  ('restore', 'restoration', 'Watch it come back', 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1429617974662-OIFU6BKPH1U85GTO9A7V/workshop.jpg?format=1500w', 'Gilt over a doorway, mid-restoration', 'Since 2013 the château has been brought back room by room, privately funded: what has been done, and what is still waiting.', 'See the restoration', url_for('restoration_page')),
+  ('valley', 'mountains', 'Wander the valley', 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d1eac941-8c47-4513-8417-647b6cf77c16/Screenshot+2026-08-15+at+5.01.24+pm.png?format=1500w', 'Setting out into the valley', 'Markets, brocantes, castles and mountains, all within an hour, with the pool and the tennis court for the afternoons.', 'Go exploring', '/whats-on'),
+  ('celebrate', 'rings', 'Celebrate here', 'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/3b2cf0f8-69be-4487-a370-1ade9864bda8/Rebecca%26Ken_paulinaweddings.com-43_websize+%281%29+copy.jpg?format=1000w', 'A wedding table in the salon', 'One wedding or gathering at a time, with the whole château given over to it.', 'Tell us your plans', url_for('events_info'))
+] -%}
+<section class="g-plaisirs" aria-labelledby="plaisirs-h"><div class="g-wrap">
+  <p class="g-plaisirs__fr" lang="fr">Les plaisirs <span lang="en">The pleasures</span></p>
+  <h2 class="g-plaisirs__h" id="plaisirs-h">Ways to Spend the Days</h2>
+  <div class="g-plaisirs__tabs" role="tablist" aria-label="Ways to spend the days">
+    {%- for key, ill, label, img, alt, line, cta, href in PLAISIRS %}
+    <button type="button" class="g-plaisirs__tab" role="tab" id="pl-tab-{{ key }}" aria-controls="pl-{{ key }}" aria-selected="{{ 'true' if loop.first else 'false' }}" tabindex="{{ 0 if loop.first else -1 }}"><span class="g-plaisirs__ill" aria-hidden="true">{{ illus(ill) }}</span>{{ label }}</button>
+    {%- endfor %}
+  </div>
+  {%- for key, ill, label, img, alt, line, cta, href in PLAISIRS %}
+  <div class="g-plaisirs__panel" role="tabpanel" id="pl-{{ key }}" aria-labelledby="pl-tab-{{ key }}">
+    <img class="g-plaisirs__img" src="{{ img }}" alt="{{ alt }}" loading="lazy">
+    <div class="g-plaisirs__b">
+      <p class="g-plaisirs__k">{{ label }}</p>
+      <p class="g-plaisirs__p">{{ line }}</p>
+      <a class="g-plaisirs__cta" href="{{ href }}">{{ cta }} <span aria-hidden="true">&rarr;</span></a>
+    </div>
+  </div>
+  {%- endfor %}
+</div></section>
+<script>
+(function(){
+  var root = document.querySelector('.g-plaisirs'); if (!root) return;
+  var tabs = [].slice.call(root.querySelectorAll('[role=tab]')), panels = [].slice.call(root.querySelectorAll('[role=tabpanel]'));
+  function show(i, focus){ tabs.forEach(function(t, k){ var on = k === i; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; panels[k].hidden = !on; });
+    if (focus) tabs[i].focus(); }
+  tabs.forEach(function(t, i){
+    t.addEventListener('click', function(){ show(i); });
+    t.addEventListener('keydown', function(e){ var n = tabs.length;
+      if (e.key === 'ArrowRight') { e.preventDefault(); show((i + 1) % n, true); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); show((i - 1 + n) % n, true); } });
+  });
+  root.classList.add('is-tabbed'); show(0);
+})();
+</script>

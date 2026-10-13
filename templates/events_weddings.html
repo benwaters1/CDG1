@@ -53,7 +53,7 @@
   <p class="g-fr">Le grand jour <span class="g-fr__en">The day itself</span></p>
   <p class="g-eyebrow">The Day</p>
   <h2 class="g-place">A Wedding in a Château</h2>
-  <p class="g-p g-lede-first">Say your vows in a château the world has watched come back to life, with the Pyrénées all around and all of it yours for the days you take it.</p>
+  <p class="g-p g-lede-first">Say your vows in a château the world has watched come back to life, with the Pyrénées all around and no other event in the château.</p>
   <p class="g-p">The setting needs no decoration: old stone, new comfort, and the valley at the window. For your guests, it is an experience they will talk about for years.</p>
     </div>
   </div>
@@ -90,6 +90,7 @@
 <!-- ============ ENQUIRE ============ -->
 {# 6 Oct (owner: "more photo work ... the photos will make the website") - photographs from the original site #}
 <section class="g-sec g-sec--sand g-gallery-sec"><div class="g-wrap">
+  <span class="g-hill" aria-hidden="true">{{ illus('rings') }}</span>
   <p class="g-fr">En images <span class="g-fr__en">In pictures</span></p>
   <h2 class="g-place">Weddings at Gudanes</h2>
   <p class="g-p g-intro">Candlelight in the salons, long tables, music and the whole château for the day.</p>
@@ -114,7 +115,7 @@
   <h2 class="g-place">Tell Us the Shape of It</h2>
   <p class="g-p">Dates, a rough number, and anything you already know you want. You will get a figure rather than a brochure.</p>
   <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
-  <p class="g-limit"><span class="g-limit__k">One at a time</span> Only one event runs at the château at once, and only a handful are taken each year.</p>
+  <p class="g-limit"><span class="g-limit__k">One at a time</span> Only one event runs at the château at once.</p>
 </div></section>
 
 <div class="g-wrap">{{ proof(settings) }}</div>

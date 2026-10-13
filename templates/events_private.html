@@ -57,6 +57,7 @@
 <!-- ============ ENQUIRE ============ -->
 {# 6 Oct (owner: "more photo work ... the photos will make the website") - photographs from the original site #}
 <section class="g-sec g-sec--sand g-gallery-sec"><div class="g-wrap">
+  <span class="g-hill" aria-hidden="true">{{ illus('wine') }}</span>
   <p class="g-fr">En images <span class="g-fr__en">In pictures</span></p>
   <h2 class="g-place">A Gathering of Your Own</h2>
   <p class="g-p g-intro">The salons, the table and the grounds, for a birthday, an anniversary or a few days together.</p>
@@ -79,7 +80,7 @@
   <p class="g-p">Tell us the occasion, roughly when, and how many. We will come back with what the château can do and what it costs.</p>
   <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
   <p class="g-p">If your party would rather spend its days learning something, ask us about <a href="{{ url_for('workshops_public') }}">the workshops</a>: all meals and drinks, the activities and the château itself.</p>
-  <p class="g-limit"><span class="g-limit__k">One at a time</span> Only one event runs at the château at once, and only a handful are taken each year.</p>
+  <p class="g-limit"><span class="g-limit__k">One at a time</span> Only one event runs at the château at once.</p>
 </div></section>
 <div class="g-wrap">{{ proof(settings) }}</div>
 

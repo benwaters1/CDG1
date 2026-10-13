@@ -11161,3 +11161,123 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-slides__dots{ position: absolute; left: 0; right: 0; bottom: 10px; margin: 0; display: flex; justify-content: center; gap: 6px; pointer-events: none; }
 .g .g-slides__dots span{ width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.6); box-shadow: 0 0 2px rgba(0,0,0,.4); }
 .g .g-slides__dots span.is-on{ background: #fff; }
+
+/* 12 Oct - WORKSHOP ITINERARY (owner: "needs improving"): on a phone the numbered rail gave up a column, the morning /
+   afternoon / evening sat two to a row in a narrow card, and the drawing crowded the heading. */
+.g .g-journey__k{ display: none; }
+@media (max-width: 600px){
+  .g .g-journey__n{ display: none; }
+  .g .g-journey__d{ grid-template-columns: minmax(0, 1fr); padding-left: 0; }
+  .g .g-journey__k{ display: block; margin: 0 0 4px; font-family: var(--ui); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt-deep, #73562d); }
+  .g .g-journey__card{ position: relative; }
+  .g .g-journey__ill{ position: absolute; top: 14px; right: 14px; width: 40px; opacity: .9; }
+  .g .g-journey__t{ padding-right: 48px; }
+  .g .g-journey__m{ display: block; }
+  .g .g-journey__m li{ display: grid; grid-template-columns: 7.2rem minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 8px 0; border-top: 1px solid rgba(115,86,45,.15); }
+  .g .g-journey__m li b{ display: inline-flex; align-items: center; gap: 6px; }
+}
+@media (max-width: 600px){
+  .g .g-journey__card{ padding: 26px 22px 22px; }
+  .g .g-journey__m li{ grid-template-columns: 8.8rem minmax(0, 1fr); }
+  .g .g-journey__m li b{ white-space: nowrap; }
+}
+
+/* 12 Oct - THEN AND NOW as a drag slider (progressive: without the script the pairs stay side by side) */
+.g .g-tn__pair--slide{ display: block; }
+.g .g-tn__frame{ --pos: 50%; position: relative; overflow: hidden; aspect-ratio: 4 / 3; background: var(--sand, #EDE4D3); user-select: none; }
+.g .g-tn__pair--tall .g-tn__frame{ aspect-ratio: 3 / 4; max-width: 600px; margin-inline: auto; }
+.g .g-tn__frame figure{ position: absolute; inset: 0; margin: 0; }
+.g .g-tn__frame img{ width: 100%; height: 100%; aspect-ratio: auto; object-fit: cover; }
+.g .g-tn__a{ clip-path: inset(0 0 0 var(--pos)); }
+.g .g-tn__a .g-tn__tag{ left: auto; right: 14px; }
+.g .g-tn__range{ position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize;
+  -webkit-appearance: none; appearance: none; touch-action: pan-y; }
+.g .g-tn__handle{ position: absolute; top: 0; bottom: 0; left: var(--pos); z-index: 3; width: 2px; margin-left: -1px; background: #fff;
+  box-shadow: 0 0 6px rgba(0,0,0,.35); pointer-events: none; }
+.g .g-tn__handle::after{ content: "\2039\00a0\203A"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 46px; height: 46px; border-radius: 50%; background: rgba(251,247,239,.96); color: var(--blue-deep);
+  display: grid; place-items: center; font: 20px/1 var(--serif); box-shadow: 0 1px 8px rgba(0,0,0,.28); }
+.g .g-tn__range:focus-visible ~ .g-tn__handle::after{ outline: 3px solid var(--gilt); outline-offset: 2px; }
+.g .g-tn__pair--slide .g-tn__cap{ margin-top: var(--s3); }
+@media (max-width: 600px){ .g .g-tn__a .g-tn__tag{ right: 8px; } .g .g-tn__handle::after{ width: 40px; height: 40px; } }
+.g .g-tn__pair--slide:not(.g-tn__pair--tall) .g-tn__frame{ max-width: 900px; margin-inline: auto; }
+.g .g-tn__pair--slide .g-tn__cap{ max-width: 900px; margin-inline: auto; }
+/* 13 Oct - the homepage's full-experience band: a framed photograph of the dining room above the next dates */
+.g .g-full__fig{ margin: 0 0 var(--s5); }
+.g .g-full__fig img{ display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border: 1px solid var(--gilt-leaf, rgba(198,166,110,.5)); }
+.g .g-full__fig figcaption{ margin-top: 8px; font-family: var(--serif); font-style: italic; font-size: 15px; color: rgba(255,255,255,.82); }
+
+/* 13 Oct - WAYS TO SPEND THE DAYS (homepage): the château's pleasures in five tabs on deep blue, with our drawings */
+.g .g-plaisirs{ background: var(--blue-deep); color: #fff; padding: clamp(56px, 7vw, 104px) 0; border-top: 1px solid var(--gilt-leaf, rgba(198,166,110,.5)); border-bottom: 1px solid var(--gilt-leaf, rgba(198,166,110,.5)); }
+.g .g-plaisirs__fr{ margin: 0; font-family: var(--serif); font-style: italic; font-size: 18px; color: var(--gilt-on-dark, #C6A66E); }
+.g .g-plaisirs__fr span{ margin-left: .5rem; font-family: var(--ui); font-style: normal; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.7); }
+.g .g-plaisirs__h{ margin: 6px 0 var(--s6); font-family: var(--display); font-weight: 400; font-size: clamp(32px, 2.4vw + 18px, 48px); line-height: 1.1; color: #fff; }
+.g .g-plaisirs__tabs{ display: none; }
+.g .g-plaisirs.is-tabbed .g-plaisirs__tabs{ display: flex; gap: var(--s2); margin: 0 0 var(--s6); border-bottom: 1px solid rgba(198,166,110,.35);
+  overflow-x: auto; scrollbar-width: none; }
+.g .g-plaisirs__tabs::-webkit-scrollbar{ display: none; }
+.g .g-plaisirs__tab{ flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 16px 14px; margin-bottom: -1px;
+  background: none; border: 0; border-bottom: 2px solid transparent; color: rgba(255,255,255,.75); cursor: pointer;
+  font-family: var(--serif); font-size: 17px; white-space: nowrap; }
+.g .g-plaisirs__tab:hover{ color: #fff; }
+.g .g-plaisirs__tab[aria-selected="true"]{ color: #fff; border-bottom-color: var(--gilt-on-dark, #C6A66E); }
+.g .g-plaisirs__tab:focus-visible{ outline: 2px solid var(--gilt-on-dark, #C6A66E); outline-offset: 2px; }
+.g .g-plaisirs__ill{ width: 52px; height: 52px; color: var(--gilt-on-dark, #C6A66E); }
+.g .g-plaisirs__ill svg{ width: 100%; height: 100%; }
+.g .g-plaisirs__ill svg *{ stroke: currentColor; }
+.g .g-plaisirs__panel{ display: grid; gap: var(--s5); align-items: center; margin-bottom: var(--s6); }
+.g .g-plaisirs.is-tabbed .g-plaisirs__panel{ margin-bottom: 0; }
+.g .g-plaisirs__panel[hidden]{ display: none; }
+@media (min-width: 52rem){ .g .g-plaisirs__panel{ grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(32px, 5vw, 80px); } }
+.g .g-plaisirs__img{ width: 100%; aspect-ratio: 4 / 5; object-fit: cover; display: block; border: 1px solid rgba(198,166,110,.45); background: rgba(255,255,255,.06); }
+@media (max-width: 52rem){ .g .g-plaisirs__img{ aspect-ratio: 3 / 2; } }
+.g .g-plaisirs__k{ margin: 0 0 var(--s2); font-family: var(--ui); font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--gilt-on-dark, #C6A66E); }
+.g .g-plaisirs__p{ margin: 0 0 var(--s5); font-family: var(--display); font-size: clamp(22px, .8vw + 17px, 30px); line-height: 1.35; color: #fff; max-width: 32ch; }
+.g .g-plaisirs__cta{ font-family: var(--serif); font-style: italic; font-size: 19px; color: #fff; text-decoration: underline; text-decoration-color: var(--gilt-on-dark, #C6A66E); text-underline-offset: 5px; }
+.g .g-plaisirs__cta:hover{ color: var(--gilt-on-dark, #C6A66E); }
+@media (max-width: 600px){ .g .g-plaisirs__tab{ font-size: 15px; padding: 8px 12px 12px; } .g .g-plaisirs__ill{ width: 40px; height: 40px; } }
+
+/* 13 Oct - a little more blue, and more drawings (owner) */
+:root{ --sky: #E8EEF6; }
+.g .g-journal, .g .g-faq-sec{ background: var(--sky); }
+.g .g-journal__h{ position: relative; padding-left: 64px; }
+.g .g-journal__h::before{ content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 48px; height: 48px;
+  background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none' stroke='%237A5A30' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6' y='12' width='36' height='24' rx='1.5'/%3E%3Cpath d='M6 13l18 13 18-13M6 36l13-12M42 36L29 24'/%3E%3Ccircle cx='35' cy='29' r='4.5'/%3E%3Cpath d='M33.2 29h3.6M35 27.2v3.6'/%3E%3C/svg%3E"); }
+@media (max-width: 600px){ .g .g-journal__h{ padding-left: 52px; } .g .g-journal__h::before{ width: 40px; height: 40px; } }
+.g .g-three__ill{ display: block; width: 56px; height: 56px; margin: 0 0 var(--s3); color: var(--gilt-deep, #73562d); }
+.g .g-three__ill svg{ width: 100%; height: 100%; }
+.g .g-journal__h{ padding-left: 0; padding-top: 60px; }
+.g .g-journal__h::before{ left: 50%; top: 0; transform: translateX(-50%); }
+@media (max-width: 600px){ .g .g-journal__h{ padding-left: 0; padding-top: 52px; } }
+/* 13 Oct - more drawings: a small gilt drawing above key section headings (owner) */
+.g .g-hill{ display: block; width: 56px; height: 56px; margin: 0 0 var(--s2); color: var(--gilt-deep, #73562d); }
+.g .g-hill svg{ width: 100%; height: 100%; }
+.g .g-sec--dark .g-hill, .g .g-sec--blue .g-hill{ color: var(--gilt-on-dark, #C6A66E); }
+@media (max-width: 600px){ .g .g-hill{ width: 46px; height: 46px; } }
+/* 13 Oct - faint background drawings behind text-heavy sections (an idea from The Pig, in our own line drawings) */
+.g .g-wm-host{ position: relative; overflow: hidden; }
+.g .g-wm-host > .g-wrap{ position: relative; }
+.g .g-wm{ position: absolute; right: -2%; top: 50%; transform: translateY(-50%); width: clamp(220px, 28vw, 380px); height: clamp(220px, 28vw, 380px);
+  color: var(--gilt-deep, #73562d); opacity: .08; pointer-events: none; z-index: 0; }
+.g .g-wm svg{ width: 100%; height: 100%; }
+.g .g-wm-host > .g-wrap > :not(.g-wm){ position: relative; z-index: 1; }
+@media (max-width: 600px){ .g .g-wm{ width: 200px; height: 200px; right: -40px; top: 30%; opacity: .06; } }
+.g .g-wm--left{ right: auto; left: -60px; top: auto; bottom: -20px; transform: none; }
+
+/* 13 Oct - AS IT WAS as prints laid on a table (an idea from The Pig's scrapbook, kept to this one section) */
+.g #as-it-was .g-old figure{ position: relative; background: #fffdf8; padding: 12px 12px 14px; box-shadow: 0 14px 28px -16px rgba(20,48,95,.45), 0 1px 2px rgba(0,0,0,.08);
+  transform: rotate(var(--tilt, 0deg)); transition: transform .35s ease, box-shadow .35s ease; }
+.g #as-it-was .g-old img{ border: 0; box-shadow: none; }
+.g #as-it-was .g-old figcaption{ margin-top: 10px; font-size: 15px; line-height: 1.35; color: #5b4a33; }
+.g #as-it-was .g-old figure:nth-child(1){ --tilt: -2.2deg; }
+.g #as-it-was .g-old figure:nth-child(2){ --tilt: 1.6deg; }
+.g #as-it-was .g-old figure:nth-child(3){ --tilt: -1deg; }
+@media (min-width: 900px){
+  .g #as-it-was .g-old--3{ gap: 0; padding: 12px 8px; }
+  .g #as-it-was .g-old figure:nth-child(2){ margin: 34px -14px 0; z-index: 1; }
+  .g #as-it-was .g-old figure:hover{ transform: rotate(0deg) translateY(-4px); box-shadow: 0 22px 36px -18px rgba(20,48,95,.5); z-index: 2; }
+}
+@media (max-width: 899px){ .g #as-it-was .g-old figure:nth-child(n){ --tilt: 0deg; } .g #as-it-was .g-old figure:nth-child(odd){ --tilt: -1deg; } .g #as-it-was .g-old figure:nth-child(even){ --tilt: 1deg; } }
+@media (prefers-reduced-motion: reduce){ .g #as-it-was .g-old figure{ transition: none; } .g #as-it-was .g-old figure:hover{ transform: rotate(var(--tilt, 0deg)); } }
+.g .g-hill--dark{ color: var(--gilt-on-dark, #C6A66E); }
+.g .g-plaisirs__cta{ display: inline-flex; align-items: center; min-height: 44px; }

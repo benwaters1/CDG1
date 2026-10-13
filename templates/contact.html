@@ -39,11 +39,11 @@
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Château-Verdun · Ariège</p>
     <h1 class="g-hero__title">{{ t('Contact') }}</h1>
-    <p class="g-hero__cta"><a href="#write" class="g-btn g-btn--solid">How to reach us</a></p>
+    <p class="g-hero__cta"><a href="#write" class="g-btn g-btn--solid">Find your way here</a></p>
   </div>
 </section>
 
-<section class="g-sec" id="write"><div class="g-two">
+<section class="g-sec g-wm-host" id="write"><div class="g-two"><span class="g-wm g-wm--left" aria-hidden="true">{{ illus('letter') }}</span>
   <div>
     <p class="g-fr">Écrivez-nous <span class="g-fr__en">Write to us</span></p>
     <h2 class="g-h2">However You Would Rather Reach Us</h2>
@@ -81,6 +81,7 @@
    link for anyone who would rather open it in their own app.
    loading="lazy" so it costs nothing until scrolled to. #}
 <section class="g-sec"><div class="g-wrap">
+  <span class="g-hill" aria-hidden="true">{{ illus('depart') }}</span>
   <p class="g-eyebrow">The Journey</p>
   <h2 class="g-place">Getting Here</h2>
   <div class="g-key">
@@ -209,7 +210,7 @@
   <p class="g-close__p">Book online, and the directions come with your confirmation.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">See the workshops</a>
+      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Discover the full experience</a>
       {% if _dm == 'open' %}<a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Reserve a table</a>{% endif %}
   </div>
 </div></section>

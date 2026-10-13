@@ -40,7 +40,7 @@
     <p class="g-hero__eyebrow">Weddings · Celebrations · Film</p>
     <h1 class="g-hero__title">Marry in a Monument</h1>
     <p>The whole château, the valley, and rooms most people will never enter.</p>
-    <p class="g-hero__cta"><a href="#enquire" class="g-btn g-btn--solid">Make an enquiry</a></p>
+    <p class="g-hero__cta"><a href="#enquire" class="g-btn g-btn--solid">Tell us your plans</a></p>
   </div>
 </section>
 
@@ -62,6 +62,7 @@
   <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
+  <span class="g-hill" aria-hidden="true">{{ illus('chateau') }}</span>
     <p class="g-eyebrow">What We Host</p>
   <h2 class="g-place">Three Ways to Take the Château</h2>
   {# Was the positioning line "This is a restoration, not a renovation - fifteen years in",
@@ -89,8 +90,8 @@
   <p class="g-fr">Pourquoi ici <span class="g-fr__en">Why here</span></p>
   <p class="g-eyebrow">The Setting</p>
   <h2 class="g-place">Why Here</h2>
-  <p class="g-p g-lede-first">A château the world has followed, given over entirely to you; the Pyrénées all around; rooms in every state between ruin and restored; and a family château that welcomes you as guests, not as a booking. It is an experience no venue can offer.</p>
-  <p class="g-p">One event at a time, and the whole château is yours for it.</p>
+  <p class="g-p g-lede-first">A château the world has followed, given over entirely to you; the Pyrénées all around; rooms still being brought back; and a family château that welcomes you as guests, not as a booking. It is an experience no venue can offer.</p>
+  <p class="g-p">One event at a time, so nothing else shares the day.</p>
 </div></section>
 
 
@@ -98,6 +99,7 @@
   <div class="g-wrap">
     <div class="g-two">
       <div>
+        <span class="g-hill" aria-hidden="true">{{ illus('mountains') }}</span>
         <h2 class="g-h2">A Location That <em>Cannot Be Built</em></h2>
         <p class="g-p">An hour and three quarters from Toulouse, three minutes from the village of Les Cabannes, and surrounded by the mountains of the Ariège. None of it can be reproduced closer to home.</p>
         <p class="g-p">Tell us what you have in mind and we will come back with availability, what the château can hold, and what it costs.</p>
@@ -265,9 +267,9 @@
   <h2 class="g-close__h">Tell us what you have in mind</h2>
   <p class="g-close__p">A wedding, a birthday, a shoot. Describe it and we will come back with what it would involve and what it would cost.</p>
   <div class="g-close__acts">
-      <a href="{{ url_for('events_info') }}" class="g-btn g-btn--solid">Make an enquiry</a>
+      <a href="{{ url_for('events_info') }}" class="g-btn g-btn--solid">Tell us your plans</a>
       <a href="{{ url_for('event_find') }}" class="g-btn g-btn">Find an enquiry you have made</a>
-      <a href="{{ url_for('gallery_page') }}" class="g-btn g-btn">See the château</a>
+      <a href="{{ url_for('gallery_page') }}" class="g-btn g-btn">Come and see it</a>
   </div>
 </div></section>
 

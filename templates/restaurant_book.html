@@ -11,7 +11,7 @@
   <p class="g-eyebrow">La Table</p>
   <h1 class="g-place">{% if _dm == 'closed' %}Closed for the Season{% else %}Not Serving at the Moment{% endif %}</h1>
   <p class="g-p">{% if _dm == 'closed' %}La Table is closed for the season{% if _dr %} and reopens {{ _dr }}{% endif %}.{% else %}The château's table is not taking reservations at the moment.{% endif %} Breakfast is served every morning for guests staying in the château, and the workshops are full board as always.</p>
-  <p class="g-p" style="margin-top:var(--s5)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">See the workshops</a></p>
+  <p class="g-p" style="margin-top:var(--s5)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the full experience</a></p>
 </div></section>
 {% else %}
 {% from '_formkeep.html' import form_keep %}
