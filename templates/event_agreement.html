@@ -20,7 +20,7 @@
 <p class="page-intro">
   {{ event['event_type']|capitalize }} · {{ event['contact_name'] }} ·
   {{ event['preferred_date'] or 'no date yet' }}
-  {%- if event['end_date'] and event['end_date'] != event['preferred_date'] %} to {{ event['end_date'] }}{% endif %}
+  {%- if event['end_date'] and event['end_date'] != event['preferred_date'] %} to {{ event['end_date']|date_short }}{% endif %}
   · {{ event['reference_code'] }} ·
   <span class="mini-status status-{{ event['status'] }}">{{ event['status'] }}</span>
 </p>
@@ -48,7 +48,7 @@
      next and when. Worked out from what has been received, oldest stage
      first. #}
   <div class="stat-tile">
-    <span class="stat-tile-label">Next, {{ schedule.next_due.row['due_date'] }}</span>
+    <span class="stat-tile-label">Next, {{ schedule.next_due.row['due_date']|date_short }}</span>
     <span class="stat-tile-value">{{ schedule.next_due.outstanding|money }}</span>
   </div>
   {% endif %}
@@ -69,19 +69,19 @@
     <tbody>
       {% for q in quotes %}
       <tr>
-        <th scope="row">{{ q['version'] }}<br><span class="upload-hint">{{ q['created_at']|house_day }}</span></th>
+        <th scope="row">{{ q['version'] }}<br><span class="upload-hint">{{ q['created_at']|house_day|date_short }}</span></th>
         <td class="num">{{ ((q['quoted_price'] or 0) - (q['discount_amount'] or 0))|money }}
           {%- if q['deposit_amount'] %}<br><span class="upload-hint">{{ q['deposit_amount']|money }} deposit</span>{% endif %}
         </td>
         <td>
           {% if q['status'] == 'accepted' %}
-          <span class="mini-status status-onshift">accepted{% if q['accepted_name'] %} by {{ q['accepted_name'] }}{% endif %} {{ q['accepted_at']|house_day }}</span>
+          <span class="mini-status status-onshift">accepted{% if q['accepted_name'] %} by {{ q['accepted_name'] }}{% endif %} {{ q['accepted_at']|house_day|date_short }}</span>
           {% elif q['status'] == 'superseded' %}
           {# Kept, not deleted. The price somebody accepted in March is still
              readable in September when they ask why it changed. #}
-          <span class="mini-status status-declined">replaced {{ q['superseded_at']|house_day }}</span>
+          <span class="mini-status status-declined">replaced {{ q['superseded_at']|house_day|date_short }}</span>
           {% elif q['status'] == 'sent' %}
-          <span class="mini-status status-pending">sent {{ q['sent_at']|house_day }}</span>
+          <span class="mini-status status-pending">sent {{ q['sent_at']|house_day|date_short }}</span>
           {% else %}
           <span class="mini-status status-upcoming">not sent yet</span>
           {% endif %}
@@ -167,12 +167,12 @@
     <tbody>
       {% for h in holds %}
       <tr>
-        <th scope="row">{{ h['start_date'] }}{% if h['end_date'] != h['start_date'] %} to {{ h['end_date'] }}{% endif %}
+        <th scope="row">{{ h['start_date']|date_short }}{% if h['end_date'] != h['start_date'] %} to {{ h['end_date']|date_short }}{% endif %}
           {%- if h['note'] %}<br><span class="upload-hint">{{ h['note'] }}</span>{% endif %}</th>
-        <td>{{ h['expires_at']|house_day }}</td>
+        <td>{{ h['expires_at']|house_day|date_short }}</td>
         <td>
           {% if h['released_at'] %}
-          <span class="mini-status status-declined">{{ h['released_reason'] or 'let go' }} {{ h['released_at']|house_day }}</span>
+          <span class="mini-status status-declined">{{ h['released_reason'] or 'let go' }} {{ h['released_at']|house_day|date_short }}</span>
           {% else %}
           <span class="mini-status status-upcoming">no room can be sold on these dates</span>
           {% endif %}

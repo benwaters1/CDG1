@@ -27,7 +27,7 @@
       <tbody>
         {% for d in shortfalls %}
         <tr class="{{ 'row-alert' if d.short }}">
-          <td>{{ d.row['created_at']|house_day }}</td>
+          <td>{{ d.row['created_at']|house_day|date_short }}</td>
           <th scope="row">{{ d.row['name'] }}</th>
           <td>{{ d.row['vendor_name'] or '—' }}
             {% if d.row['invoice_number'] %}<span class="upload-hint">{{ d.row['invoice_number'] }}</span>{% endif %}</td>

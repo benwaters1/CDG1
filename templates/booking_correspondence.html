@@ -22,7 +22,7 @@
 
 <p class="page-intro">
   {{ booking['guest_name'] }} · {{ booking['room_name'] }} ·
-  {{ booking['arrival_date'] }} to {{ booking['departure_date'] }} ·
+  {{ date_range(booking['arrival_date'], booking['departure_date']) }} ·
   {{ booking['reference_code'] }}
 </p>
 
@@ -39,7 +39,7 @@
       <tbody>
         {% for row in waiting %}
         <tr>
-          <th scope="row">{{ row['created_at']|house_day }}</th>
+          <th scope="row">{{ row['created_at']|house_day|date_short }}</th>
           <td>{{ row['subject'] }}</td>
           <td>{{ row['reason'] }}{% if row['last_error'] %} — {{ row['last_error'] }}{% endif %}</td>
         </tr>
@@ -55,7 +55,7 @@
 <div class="detail-card">
   <div class="expense-head">
     <strong>{{ message['subject'] or ('Text message' if message['channel'] == 'sms' else 'No subject') }}</strong>
-    <span class="upload-hint">&nbsp;{{ message['created_at']|house_day }} · to {{ message['to_address'] }}</span>
+    <span class="upload-hint">&nbsp;{{ message['created_at']|house_day|date_short }} · to {{ message['to_address'] }}</span>
     {% if message['channel'] == 'sms' %}
     <span class="mini-status status-upcoming" style="margin-left:6px;">text</span>
     {% endif %}

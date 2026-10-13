@@ -103,10 +103,10 @@ def run():
 
     page = oc.get("/admin/incidents?status=open").get_data(as_text=True)
     s.check("the register shows it at 23:30 on 4 September",
-            _when_on_card(page, late) == "September 4, 2026 23:30",
+            _when_on_card(page, late) == "4 September 2026, 23:30",
             detail=f"shows {_when_on_card(page, late)!r}")
     s.check("and the winter one at 23:30 on 15 January",
-            _when_on_card(page, winter) == "January 15, 2026 23:30",
+            _when_on_card(page, winter) == "15 January 2026, 23:30",
             detail=f"shows {_when_on_card(page, winter)!r}")
     s.check("the insurer banner files it under 4 September, not the 5th",
             _banner_day(page, late) == "4 September 2026",

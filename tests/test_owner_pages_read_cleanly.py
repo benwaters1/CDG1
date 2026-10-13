@@ -70,6 +70,12 @@ TITLE_NOT_FIRST = {
 
 _PAGES = None
 
+# A stamp in the page's words, not in an address or a file name.
+ISO_DATE = re.compile(r"(?<![\w/+.-])20\d\d-\d\d-\d\d(?![\w/+-])")
+MONTH_FIRST = re.compile(
+    r"\b(?:January|February|March|April|May|June|July|August|September|October|"
+    r"November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec) \d{1,2}(?:,| –| -)")
+
 
 def owner_pages(oc):
     """(endpoint, url, html) for every staff page the owner opens with no arguments.
@@ -117,6 +123,8 @@ class _Page(HTMLParser):
         self._facet = None
         self._chip = None
         self._last = ""
+        self.iso_dates = []
+        self.month_first = []
 
     def _classes(self, a):
         return (a.get("class") or "").split()
@@ -191,6 +199,13 @@ class _Page(HTMLParser):
         if text == "None":
             self.none_text.append(f"a {self.stack[-1][0] if self.stack else '?'}"
                                   f" after “{self._last[-50:]}”")
+        # A note somebody typed is shown as they typed it; everything else is
+        # a date the house writes, and it writes them day first in words.
+        if not any("manual-body" in c for _t, c, _i in self.stack):
+            for found in ISO_DATE.finditer(text):
+                self.iso_dates.append(text[max(0, found.start() - 30):found.end()])
+            for found in MONTH_FIRST.finditer(text):
+                self.month_first.append(text[max(0, found.start() - 30):found.end() + 6])
         self._last = text
         if self.first is None:
             # The flashes and the (hidden) push prompt come from base.html,
@@ -331,6 +346,30 @@ def run():
                      (TAG.lower() + "_none", TAG.lower() + "_none_old"))
         conn.commit()
         conn.close()
+
+    s.section("Dates are written as the house writes them")
+    # 13 October 2026. The pages said "2026-08-17" -- the database's own
+    # spelling -- on twenty-one of them (two hundred times on Time off alone),
+    # and "October 13, 2026", the American order, on twelve more, beside pages
+    # that wrote "13 October 2026".
+    s.check("a date in words is day first",
+            m.format_date_human("2026-10-13") == "13 October 2026"
+            and m.local_datetime_str("2026-10-13T06:15:00+00:00") == "13 October 2026, 08:15",
+            detail=f"{m.format_date_human('2026-10-13')!r}, "
+                   f"{m.local_datetime_str('2026-10-13T06:15:00+00:00')!r}")
+    s.check("a missing date is nothing, not the word None",
+            m.format_date_short(None) == "" and m.format_date_human(None) == "")
+    s.check("a date the house wrote into a stored line before is read in words",
+            m.dates_in_words("Shift swap approved — 2026-08-22, for May 24, 2027")
+            == "Shift swap approved — 22 August 2026, for 24 May 2027",
+            detail=m.dates_in_words("Shift swap approved — 2026-08-22, for May 24, 2027"))
+    s.check("and a stamp with its time, or an address, is left alone",
+            m.dates_in_words("2026-08-22T10:00 /files/2026-08-22.pdf")
+            == "2026-08-22T10:00 /files/2026-08-22.pdf")
+    iso = [f"{url}: “{p.iso_dates[0]}”" for _ep, url, p in parsed if p.iso_dates]
+    s.check("no page writes a date the database's way", not iso, detail="; ".join(iso[:6]))
+    us = [f"{url}: “{p.month_first[0]}”" for _ep, url, p in parsed if p.month_first]
+    s.check("or month first", not us, detail="; ".join(us[:6]))
 
     s.section("No chip twice in one row")
     s.check("a classification keeps the first place a name appears and drops the repeat",

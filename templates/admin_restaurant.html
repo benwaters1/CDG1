@@ -69,7 +69,7 @@
     </p>
     {% endif %}
     {% if r['dietary_notes'] %}<p class="upload-hint">Notes: {{ r['dietary_notes'] }}</p>{% endif %}
-    <p class="upload-hint">Submitted {{ r['created_at']|house_day }}{% if r['decided_at'] %} · Decided {{ r['decided_at']|house_day }}{% endif %}</p>
+    <p class="upload-hint">Submitted {{ r['created_at']|house_day|date_short }}{% if r['decided_at'] %} · Decided {{ r['decided_at']|house_day|date_short }}{% endif %}</p>
 
     <div class="expense-actions">
       {% if r['status'] == 'pending' %}
@@ -128,7 +128,7 @@
   <p class="upload-hint">Pending + confirmed party sizes, for shopping and kitchen planning.</p>
   <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:10px;">
     {% for c in upcoming_covers %}
-    <span class="mini-status {{ 'status-onshift' if c['dinner_date'] == today.isoformat() else 'status-upcoming' }}">{{ c['dinner_date'] }} — {{ c['covers'] }}</span>
+    <span class="mini-status {{ 'status-onshift' if c['dinner_date'] == today.isoformat() else 'status-upcoming' }}">{{ c['dinner_date']|date_short }} — {{ c['covers'] }}</span>
     {% endfor %}
   </div>
   <form method="post" action="{{ url_for('new_shopping_item') }}" class="search-bar" style="margin-top:14px;">

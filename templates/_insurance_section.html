@@ -10,9 +10,9 @@
     <div class="expense-head">
       <div>
         <strong>{{ p['provider'] }}</strong>{% if p['coverage_type'] %} — {{ p['coverage_type'] }}{% endif %}
-        {% if exp == 'expired' %}<span class="mini-status status-inactive" style="margin-left:8px;">expired {{ p['expiry_date'] }}</span>
-        {% elif exp == 'soon' %}<span class="mini-status status-pending" style="margin-left:8px;">expires {{ p['expiry_date'] }}</span>
-        {% elif p['expiry_date'] %}<span class="upload-hint" style="margin-left:8px;">expires {{ p['expiry_date'] }}</span>{% endif %}
+        {% if exp == 'expired' %}<span class="mini-status status-inactive" style="margin-left:8px;">expired {{ p['expiry_date']|date_short }}</span>
+        {% elif exp == 'soon' %}<span class="mini-status status-pending" style="margin-left:8px;">expires {{ p['expiry_date']|date_short }}</span>
+        {% elif p['expiry_date'] %}<span class="upload-hint" style="margin-left:8px;">expires {{ p['expiry_date']|date_short }}</span>{% endif %}
       </div>
     </div>
     <p class="upload-hint">

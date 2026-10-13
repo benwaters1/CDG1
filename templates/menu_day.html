@@ -81,7 +81,7 @@ Tarte aux mirabelles | glace verveine | gluten, eggs, milk"></textarea>
     {% for r in recent %}
     <div class="doc-row">
       <span style="flex:1;">
-        <strong>{{ r['service_date'] }}</strong>
+        <strong>{{ r['service_date']|date_short }}</strong>
         {% if r['title'] %} — {{ r['title'] }}{% endif %}
         {% if r['formule_price'] %}<span class="upload-hint"> · {{ r['formule_price']|money }}</span>{% endif %}
       </span>

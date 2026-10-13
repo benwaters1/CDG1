@@ -72,8 +72,8 @@
     <tbody>
       {% for st in data.stays %}
       <tr>
-        <th scope="row">{{ st.arrival_date }}{% if st.ahead %} <span class="mini-status status-upcoming">booked</span>{% endif %}</th>
-        <td>{{ st.departure_date }}</td>
+        <th scope="row">{{ st.arrival_date|date_short }}{% if st.ahead %} <span class="mini-status status-upcoming">booked</span>{% endif %}</th>
+        <td>{{ st.departure_date|date_short }}</td>
         <td>{{ st.room_name or '&mdash;'|safe }}</td>
         <td class="num">{{ euro(st.total_price) }}</td>
       </tr>

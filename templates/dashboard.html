@@ -275,7 +275,7 @@ function toggleBreak() {
       <div class="mini-row" {% if g['notes'] %}style="align-items:flex-start; flex-direction:column; gap:2px;"{% endif %}>
         <div style="display:flex; width:100%; gap:8px;">
           <span class="mini-name">{{ g['name'] }}{% if g['vip'] %} ★{% endif %}</span>
-          <span class="mini-role">{{ g['room_name'] }} · {{ g['arrival_date'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
+          <span class="mini-role">{{ g['room_name'] }} · {{ date_range(g['arrival_date'], g['departure_date']) }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
         </div>
         {% if g['notes'] %}<span class="upload-hint">{{ g['notes'] }}</span>{% endif %}
       </div>
@@ -329,7 +329,7 @@ function toggleBreak() {
     {% if backup_stale %}
     <a href="{{ url_for('download_backup') }}" class="mini-row">
       <span class="mini-name">Backup</span>
-      <span class="mini-role">{% if last_backup_at %}last downloaded {{ last_backup_at|house_day }}{% else %}never downloaded{% endif %}</span>
+      <span class="mini-role">{% if last_backup_at %}last downloaded {{ last_backup_at|house_day|date_short }}{% else %}never downloaded{% endif %}</span>
       <span class="mini-status status-pending">download now</span>
     </a>
     {% endif %}
@@ -346,9 +346,9 @@ function toggleBreak() {
       <span class="mini-role">{{ d.kind }}</span>
       <span class="mini-status {{ 'status-inactive' if expiry_status(d.expiry_date) == 'expired' else 'status-pending' }}">
         {% if d.kind == 'Recurring cost' %}
-          {{ 'overdue' if expiry_status(d.expiry_date) == 'expired' else 'due' }} {{ d.expiry_date }}
+          {{ 'overdue' if expiry_status(d.expiry_date) == 'expired' else 'due' }} {{ d.expiry_date|date_short }}
         {% else %}
-          {{ 'expired' if expiry_status(d.expiry_date) == 'expired' else 'expires' }} {{ d.expiry_date }}
+          {{ 'expired' if expiry_status(d.expiry_date) == 'expired' else 'expires' }} {{ d.expiry_date|date_short }}
         {% endif %}
       </span>
     </a>
@@ -356,25 +356,25 @@ function toggleBreak() {
     {% for r in who_is_off_today %}
     <div class="mini-row">
       <span class="mini-name">{{ r['employee_name'] }}</span>
-      <span class="mini-role">off today · back {{ r['end_date'] }}{% if r['reason'] %} · {{ r['reason'] }}{% endif %}</span>
+      <span class="mini-role">off today · back {{ r['end_date']|date_short }}{% if r['reason'] %} · {{ r['reason'] }}{% endif %}</span>
     </div>
     {% endfor %}
     {% for a in anniversaries %}
     <div class="mini-row">
       <span class="mini-name">{{ a.employee['name'] }}</span>
-      <span class="mini-role">{{ a.years }} year{{ '' if a.years == 1 else 's' }} — {{ 'today' if a.days_away == 0 else (a.date.strftime('%B') ~ ' ' ~ a.date.day) }}</span>
+      <span class="mini-role">{{ a.years }} year{{ '' if a.years == 1 else 's' }} — {{ 'today' if a.days_away == 0 else (a.date.day ~ ' ' ~ a.date.strftime('%B')) }}</span>
     </div>
     {% endfor %}
     {% for p in probation_due %}
     <a href="{{ url_for('profile', user_id=p.employee['id']) }}" class="mini-row">
       <span class="mini-name">{{ p.employee['name'] }}</span>
-      <span class="mini-role">probation period {{ 'ended' if p.days_away < 0 else 'ends' }} {{ p.date.strftime('%B') }} {{ p.date.day }}</span>
+      <span class="mini-role">probation period {{ 'ended' if p.days_away < 0 else 'ends' }} {{ p.date.day }} {{ p.date.strftime('%B') }}</span>
       <span class="mini-status status-pending">review</span>
     </a>
     {% endfor %}
     {% for d in unstaffed_days %}
     <a href="{{ url_for('admin_shifts') }}" class="mini-row">
-      <span class="mini-name">{{ d.date.strftime('%A') }} {{ d.date.strftime('%B') }} {{ d.date.day }} — nobody scheduled</span>
+      <span class="mini-name">{{ d.date.strftime('%A') }} {{ d.date.day }} {{ d.date.strftime('%B') }} — nobody scheduled</span>
       <span class="mini-role">{{ d.arrivals }} arrival{{ '' if d.arrivals == 1 else 's' }} · {{ d.departures }} departure{{ '' if d.departures == 1 else 's' }}</span>
       <span class="mini-status status-inactive">unstaffed</span>
     </a>
@@ -436,7 +436,7 @@ function toggleBreak() {
     {% for d in my_expiring_docs %}
     <div class="announcement-banner">
       <strong>{{ d['title'] }}</strong>
-      <span>{{ 'expired' if expiry_status(d['expiry_date']) == 'expired' else 'expires' }} {{ d['expiry_date'] }} — check your <a href="{{ url_for('profile', user_id=user['id']) }}" style="color:inherit;">profile</a></span>
+      <span>{{ 'expired' if expiry_status(d['expiry_date']) == 'expired' else 'expires' }} {{ d['expiry_date']|date_short }} — check your <a href="{{ url_for('profile', user_id=user['id']) }}" style="color:inherit;">profile</a></span>
     </div>
     {% endfor %}
   </div>
@@ -485,7 +485,7 @@ function toggleBreak() {
       <span class="mini-name">{{ s['title'] }}</span>
       {# Said, not dropped: the person teaching it is the one who would
          otherwise turn up. "0/10 confirmed" on it would read as a quiet one. #}
-      <span class="mini-role">{{ s['start_date'] }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date'] }}{% endif %} · {% if s['cancelled_at'] %}<span class="mini-status status-declined">called off</span>{% else %}{{ s['covers'] }}/{{ s['capacity'] }} confirmed{% endif %}</span>
+      <span class="mini-role">{{ s['start_date']|date_short }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date']|date_short }}{% endif %} · {% if s['cancelled_at'] %}<span class="mini-status status-declined">called off</span>{% else %}{{ s['covers'] }}/{{ s['capacity'] }} confirmed{% endif %}</span>
     </div>
     {% endfor %}
   </div>
@@ -493,7 +493,7 @@ function toggleBreak() {
 
   {% if my_next_session %}
   <h2 class="section-heading" style="margin-top:0;">{{ my_next_session['title'] }} — Roster</h2>
-  <p class="upload-hint" style="margin-top:-10px;">{{ my_next_session['start_date'] }}{% if my_next_session['end_date'] != my_next_session['start_date'] %} → {{ my_next_session['end_date'] }}{% endif %}
+  <p class="upload-hint" style="margin-top:-10px;">{{ my_next_session['start_date']|date_short }}{% if my_next_session['end_date'] != my_next_session['start_date'] %} → {{ my_next_session['end_date']|date_short }}{% endif %}
     · <a href="{{ url_for('workshop_running_sheet', session_id=my_next_session['id']) }}" class="small-link">Full running sheet</a></p>
   {# The roster here is the short version: names, diet, medical, room. The sheet
      carries what they answered on the registration form too, which is the part
@@ -540,7 +540,7 @@ function toggleBreak() {
   <div class="mini-list">
     {% for s in my_restaurant_shifts %}
     <div class="mini-row">
-      <span class="mini-name">{{ s['dinner_date'] }}</span>
+      <span class="mini-name">{{ s['dinner_date']|date_short }}</span>
       <span class="mini-role">{{ s['role_note'] or 'Dinner service' }}{% if s['estimated_hours'] %} · {{ s['estimated_hours'] }}h{% endif %}</span>
     </div>
     {% endfor %}
@@ -556,7 +556,7 @@ function toggleBreak() {
       <div class="mini-row" {% if g['notes'] %}style="align-items:flex-start; flex-direction:column; gap:2px;"{% endif %}>
         <div style="display:flex; width:100%; gap:8px;">
           <span class="mini-name">{{ g['name'] }}{% if g['vip'] %} ★{% endif %}</span>
-          <span class="mini-role">{{ g['room_name'] }} · {{ g['arrival_date'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
+          <span class="mini-role">{{ g['room_name'] }} · {{ date_range(g['arrival_date'], g['departure_date']) }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
         </div>
         {% if g['notes'] %}<span class="upload-hint">{{ g['notes'] }}</span>{% endif %}
       </div>
@@ -576,7 +576,7 @@ function toggleBreak() {
     <div class="mini-list">
       {% for s in my_upcoming_shifts %}
       <div class="mini-row">
-        <span class="mini-name">{{ s['shift_date'] }}</span>
+        <span class="mini-name">{{ s['shift_date']|date_short }}</span>
         <span class="mini-role">
           {% if s['start_time'] or s['end_time'] %}{{ s['start_time'] or '?' }}–{{ s['end_time'] or '?' }}{% else %}Scheduled{% endif %}
           {% if s['role_note'] %} · {{ s['role_note'] }}{% endif %}

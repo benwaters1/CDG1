@@ -26,7 +26,7 @@
       <span class="mini-name">{{ p['caption'][:70] }}{{ '…' if p['caption']|length > 70 }}</span>
       <span class="mini-role">
         {{ p['platform'] }}{% if p['post_type'] %} · {{ p['post_type'] }}{% endif %}
-        {% if p['scheduled_date'] %} · {{ p['scheduled_date'] }}{% if p['scheduled_time'] %} {{ p['scheduled_time'] }}{% endif %}{% endif %}
+        {% if p['scheduled_date'] %} · {{ p['scheduled_date']|date_short }}{% if p['scheduled_time'] %} {{ p['scheduled_time'] }}{% endif %}{% endif %}
         {% if p['assignee_name'] %} · {{ p['assignee_name'] }}{% endif %}
       </span>
       <span class="mini-status status-{{ 'onshift' if p['status'] == 'posted' else 'pending' }}">{{ p['status'] }}</span>
@@ -35,7 +35,7 @@
       {# THE GATE. Publishing reads approved_at and nothing else, so this is
          the only thing between a scheduled post and Instagram. #}
       {% if p['approved_at'] %}
-      <span class="mini-status status-onshift" title="Approved {{ p['approved_at']|house_day }} by {{ p['approved_by_name'] or 'somebody' }}">approved{% if p['approved_by_name'] %} — {{ p['approved_by_name'] }}{% endif %}</span>
+      <span class="mini-status status-onshift" title="Approved {{ p['approved_at']|house_day|date_short }} by {{ p['approved_by_name'] or 'somebody' }}">approved{% if p['approved_by_name'] %} — {{ p['approved_by_name'] }}{% endif %}</span>
       <form method="post" action="{{ url_for('unapprove_social_post', post_id=p['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Withdraw</button></form>
       {% if p['image_filename'] %}
       <form method="post" action="{{ url_for('publish_social_post_now', post_id=p['id']) }}" onsubmit="return confirm('Put this out now, on {{ p['platform'] }}?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Publish now</button></form>

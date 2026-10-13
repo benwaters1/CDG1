@@ -112,7 +112,7 @@
 
     <button type="submit" class="btn-primary" style="margin-top:16px;">{{ 'Save' if company else 'Add company' }}</button>
   </form>
-  {% if company and company['updated_at'] %}<p class="upload-hint" style="margin-top:10px;">Last updated {{ company['updated_at']|house_day }}</p>{% endif %}
+  {% if company and company['updated_at'] %}<p class="upload-hint" style="margin-top:10px;">Last updated {{ company['updated_at']|house_day|date_short }}</p>{% endif %}
 </div>
 
 {% if company and not company['issues_guest_documents'] and not company['is_employer'] %}

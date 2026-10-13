@@ -28,7 +28,7 @@
     <select name="booking_id">
       <option value="">Whose stay, if known</option>
       {% for b in recent %}
-      <option value="{{ b['id'] }}">{{ b['guest_name'] }} — left {{ b['departure_date'] }}</option>
+      <option value="{{ b['id'] }}">{{ b['guest_name'] }} — left {{ b['departure_date']|date_short }}</option>
       {% endfor %}
     </select>
   </div>

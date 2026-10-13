@@ -12,7 +12,7 @@
 <div class="expense-card">
   <div class="expense-head">
     <div>
-      <strong>{{ s['requested_by_name'] }}</strong> wants to give you their shift on {{ s['shift_date'] }}
+      <strong>{{ s['requested_by_name'] }}</strong> wants to give you their shift on {{ s['shift_date']|date_short }}
       {% if s['start_time'] or s['end_time'] %}({{ s['start_time'] or '?' }}–{{ s['end_time'] or '?' }}){% endif %}
     </div>
   </div>
@@ -33,7 +33,7 @@
     {% for s in upcoming_shifts %}
     <div class="mini-row" style="align-items:flex-start; flex-direction:column; gap:6px;">
       <div style="display:flex; width:100%; gap:8px; align-items:center;">
-        <span class="mini-name">{{ s['shift_date'] }}</span>
+        <span class="mini-name">{{ s['shift_date']|date_short }}</span>
         <span class="mini-role">
           {% if s['start_time'] or s['end_time'] %}{{ s['start_time'] or '?' }}–{{ s['end_time'] or '?' }}{% else %}Scheduled{% endif %}
           {% if s['role_note'] %} · {{ s['role_note'] }}{% endif %}
@@ -63,7 +63,7 @@
 <div class="mini-list">
   {% for s in my_swap_requests %}
   <div class="mini-row">
-    <span class="mini-name">{{ s['shift_date'] }} → {{ s['offered_to_name'] }}</span>
+    <span class="mini-name">{{ s['shift_date']|date_short }} → {{ s['offered_to_name'] }}</span>
     <span class="mini-status status-{{ 'onshift' if s['status'] == 'approved' else ('inactive' if s['status'] in ['declined','rejected'] else 'pending') }}">{{ s['status'] }}</span>
   </div>
   {% endfor %}

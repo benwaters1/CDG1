@@ -67,7 +67,7 @@
 <div class="mini-list">
   {% for e in exceptions %}
   <div class="mini-row">
-    <span class="mini-name">{{ e['on_date'] }}</span>
+    <span class="mini-name">{{ e['on_date']|date_short }}</span>
     <span class="mini-role">{{ e['note'] or '' }}</span>
     <span class="mini-status {{ 'status-onshift' if e['available'] else 'status-pending' }}">
       {{ 'available' if e['available'] else 'not available' }}

@@ -22,7 +22,7 @@
       </div>
     </div>
     <p class="manual-body">{{ n['body'] }}</p>
-    <p class="upload-hint">Sent {{ n['created_at']|house_day }}{% if n['handled_at'] %} · Handled {{ n['handled_at']|house_day }}{% endif %}</p>
+    <p class="upload-hint">Sent {{ n['created_at']|house_day|date_short }}{% if n['handled_at'] %} · Handled {{ n['handled_at']|house_day|date_short }}{% endif %}</p>
     {% if n['response'] %}
     <div class="notes-block" style="margin-top:8px;">
       <span class="detail-label">Your reply</span>

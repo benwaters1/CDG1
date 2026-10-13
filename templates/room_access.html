@@ -29,7 +29,7 @@
       <tbody>
         {% for c in checks %}
         <tr class="row-alert">
-          <th scope="row">{{ c.booking['arrival_date'] }}</th>
+          <th scope="row">{{ c.booking['arrival_date']|date_short }}</th>
           <td>
             <a href="{{ url_for('edit_booking', booking_id=c.booking['id']) }}">{{ c.booking['guest_name'] }}</a>
             <div class="upload-hint">{{ c.booking['reference_code'] }}</div>

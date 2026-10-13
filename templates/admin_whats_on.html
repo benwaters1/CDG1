@@ -104,7 +104,7 @@
       </td>
       <td>
         {% if e['weekday'] is not none %}{{ DAYS[e['weekday']] }}
-        {% elif e['event_date'] %}{{ e['event_date'] }}
+        {% elif e['event_date'] %}{{ e['event_date']|date_short }}
         {% else %}—{% endif %}
         {% if e['start_time'] %}<br><span style="color:#777">{{ e['start_time'] }}{% if e['end_time'] %}–{{ e['end_time'] }}{% endif %}</span>{% endif %}
       </td>

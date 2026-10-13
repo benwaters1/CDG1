@@ -20,8 +20,8 @@
 </div>
 
 <p class="upload-hint" style="margin-bottom:18px;">
-  {% if sheet.view == 'day' %}{{ sheet.anchor.strftime('%A, %B') }} {{ sheet.anchor.day }}, {{ sheet.anchor.year }}
-  {% elif sheet.view == 'week' %}{{ sheet.range_start.strftime('%b') }} {{ sheet.range_start.day }} – {{ sheet.range_end.strftime('%b') }} {{ sheet.range_end.day }}, {{ sheet.range_end.year }}
+  {% if sheet.view == 'day' %}{{ sheet.anchor.strftime('%A') }} {{ sheet.anchor.day }} {{ sheet.anchor.strftime('%B') }} {{ sheet.anchor.year }}
+  {% elif sheet.view == 'week' %}{{ date_range(sheet.range_start.isoformat(), sheet.range_end.isoformat()) }}
   {% else %}{{ sheet.range_start.strftime('%B %Y') }}{% endif %}
 </p>
 

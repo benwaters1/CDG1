@@ -8,7 +8,7 @@
 </div>
 
 <p class="pay-disclaimer" style="margin-top:-10px;">
-  {{ booking['guest_name'] }} arrives {{ booking['arrival_date'] }} &mdash;
+  {{ booking['guest_name'] }} arrives {{ booking['arrival_date']|date_short }} &mdash;
   {{ booking['reference_code'] }}. Tick what is right. Anything left unticked is raised as a
   room issue, so somebody who can fix it sees it; say what is wrong in the box beside it and
   that becomes the description.

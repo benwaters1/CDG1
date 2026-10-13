@@ -214,7 +214,7 @@
     <span class="mini-role">
       {% if c['expired'] %}<strong>expired {{ -c['days_left'] }} day{{ '' if c['days_left'] == -1 else 's' }} ago</strong>
       {% else %}expires in {{ c['days_left'] }} day{{ '' if c['days_left'] == 1 else 's' }}{% endif %}
-      · {{ c['expiry_date'] }}
+      · {{ c['expiry_date']|date_short }}
     </span>
     {% if c['shifts_after'] %}
     <span class="mini-status status-declined">
@@ -286,7 +286,7 @@
 
 {# ---------------- Availability ---------------- #}
 <h2 class="section-heading">Availability clashes</h2>
-<p class="upload-hint" style="margin-top:-6px;">Shifts assigned to someone who's said they aren't free, to {{ week_ahead }}.</p>
+<p class="upload-hint" style="margin-top:-6px;">Shifts assigned to someone who's said they aren't free, to {{ week_ahead|date_short }}.</p>
 {% if not availability_clashes %}
   <div class="empty-state" style="margin-bottom:26px;">No clashes — everyone rostered is available.</div>
 {% else %}
@@ -294,7 +294,7 @@
   {% for c in availability_clashes %}
   <div class="mini-row">
     <span class="mini-name">{{ c['employee_name'] }}</span>
-    <span class="mini-role">{{ c['shift_date'] }}{% if c['role_note'] %} · {{ c['role_note'] }}{% endif %}</span>
+    <span class="mini-role">{{ c['shift_date']|date_short }}{% if c['role_note'] %} · {{ c['role_note'] }}{% endif %}</span>
     <span class="mini-status status-pending">unavailable{% if c['unavailable_note'] %} — {{ c['unavailable_note'] }}{% endif %}</span>
   </div>
   {% endfor %}
@@ -360,7 +360,7 @@
   <strong>Recorded as certified by a doctor, with no certificate attached</strong>
   {% for a in uncertified %}
   <span class="pass-short-row">
-    {{ a.employee_name }} — {{ a.kind }}, {{ a.start_date }}
+    {{ a.employee_name }} — {{ a.kind }}, {{ a.start_date|date_short }}
     {%- if a.days_ago %} ({{ a.days_ago }} days ago){% endif %}
   </span>
   {% endfor %}
@@ -378,7 +378,7 @@
       <tr>
         <td>{{ a['employee_name'] }}</td>
         <td><span class="mini-status status-{{ 'pending' if a['kind'] in ('unauthorised','sick') else 'upcoming' }}">{{ a['kind']|capitalize }}</span></td>
-        <td>{{ a['start_date'] }}{% if a['end_date'] != a['start_date'] %} → {{ a['end_date'] }}{% endif %}</td>
+        <td>{{ a['start_date']|date_short }}{% if a['end_date'] != a['start_date'] %} → {{ a['end_date']|date_short }}{% endif %}</td>
         <td>
           {{ a['reason'] or '—' }}
           {% if a['doctor_note_filename'] %}
@@ -430,7 +430,7 @@
   <div class="mini-row">
     <span class="mini-name">{{ v['employee_name'] }}</span>
     <span class="mini-role">{{ v['detail'] }}</span>
-    <span class="mini-status status-pending">{{ v['on_date'] }}</span>
+    <span class="mini-status status-pending">{{ v['on_date']|date_short }}</span>
   </div>
   {% endfor %}
   {% if violations|length > 30 %}
@@ -486,11 +486,11 @@
       {% for r in reviews %}
       <tr>
         <td>{{ r['employee_name'] }}</td>
-        <td>{{ r['review_date'] }}</td>
+        <td>{{ r['review_date']|date_short }}</td>
         <td>{{ r['overall_rating'] ~ '/5' if r['overall_rating'] else '—' }}</td>
         <td>
           <span class="mini-status status-{{ 'confirmed' if r['status'] == 'acknowledged' else ('onshift' if r['status'] == 'shared' else 'inactive') }}">{{ r['status'] }}</span>
-          {% if r['acknowledged_at'] %}<span class="upload-hint"> {{ r['acknowledged_at']|house_day }}</span>{% endif %}
+          {% if r['acknowledged_at'] %}<span class="upload-hint"> {{ r['acknowledged_at']|house_day|date_short }}</span>{% endif %}
         </td>
         <td>
           {% if r['status'] == 'draft' %}

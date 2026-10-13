@@ -16,7 +16,7 @@
   <h1>Today's Sheet</h1>
   <button type="button" class="btn-mini" onclick="window.print()">Print</button>
 </div>
-<h1 class="print-only" style="display:none;">Château de Gudanes — {{ today.strftime('%A') }}, {{ today.strftime('%B') }} {{ today.day }}, {{ today.year }}</h1>
+<h1 class="print-only" style="display:none;">Château de Gudanes — {{ today.strftime('%A') }} {{ today.day }} {{ today.strftime('%B') }} {{ today.year }}</h1>
 
 <h2 class="section-heading">On Shift Today</h2>
 {% if not todays_shifts %}
@@ -38,7 +38,7 @@
   {% for r in off_today %}
   <div class="mini-row">
     <span class="mini-name">{{ r['employee_name'] }}</span>
-    <span class="mini-role">Back {{ r['end_date'] }}</span>
+    <span class="mini-role">Back {{ r['end_date']|date_short }}</span>
   </div>
   {% endfor %}
 </div>
@@ -71,7 +71,7 @@
     {% for g in guests_here %}
     <div class="mini-row">
       <span class="mini-name">{{ g['name'] }}{% if g['vip'] %} ★{% endif %}</span>
-      <span class="mini-role">{{ g['room_name'] }} · {{ g['arrival_date'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
+      <span class="mini-role">{{ g['room_name'] }} · {{ date_range(g['arrival_date'], g['departure_date']) }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
       {% if g['notes'] %}<span class="upload-hint">{{ g['notes'] }}</span>{% endif %}
     </div>
     {% endfor %}

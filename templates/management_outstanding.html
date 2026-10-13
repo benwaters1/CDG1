@@ -114,7 +114,7 @@ held rather than sent. It goes out on its own once one is.</p>
         <td>
           {{ r['what'] }}
           {% if r['kind'] != 'stay' %}<span class="mini-status status-inactive">{{ r['kind'] }}</span>{% endif %}
-          <span class="cell-note">{{ r['when'] }}</span>
+          <span class="cell-note">{{ r['when_shown'] or r['when'] }}</span>
         </td>
         <td>
           {% if r['state'] == 'gone' %}

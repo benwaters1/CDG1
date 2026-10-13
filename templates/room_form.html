@@ -241,7 +241,7 @@
       <tbody>
         {% for r in rate_overrides %}
         <tr>
-          <td>{{ r['start_date'] }} → {{ r['end_date'] }}</td>
+          <td>{{ date_range(r['start_date'], r['end_date']) }}</td>
           <td><strong>{{ r['price_per_night']|money }}</strong> / night</td>
           <td class="upload-hint">{{ r['label'] or '—' }}</td>
           <td class="num">

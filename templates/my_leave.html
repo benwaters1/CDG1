@@ -44,13 +44,13 @@
   <div class="expense-card">
     <div class="expense-head">
       <div>
-        <strong>{{ r['start_date'] }} → {{ r['end_date'] }}</strong>
+        <strong>{{ date_range(r['start_date'], r['end_date']) }}</strong>
         <span class="mini-status status-{{ 'rejected' if r['status'] == 'declined' else ('inactive' if r['status'] == 'cancelled' else r['status']) }}" style="margin-left:8px;">{{ r['status'] }}</span>
         <span class="upload-hint" style="margin-left:6px;">{{ r['leave_type']|default('vacation', true)|capitalize }}</span>
       </div>
     </div>
     {% if r['reason'] %}<p class="manual-body">{{ r['reason'] }}</p>{% endif %}
-    <p class="upload-hint">Requested {{ r['requested_at']|house_day }}{% if r['decided_at'] %} · Decided {{ r['decided_at']|house_day }}{% endif %}</p>
+    <p class="upload-hint">Requested {{ r['requested_at']|house_day|date_short }}{% if r['decided_at'] %} · Decided {{ r['decided_at']|house_day|date_short }}{% endif %}</p>
     {% if r['owner_note'] %}<p class="upload-hint">Note: {{ r['owner_note'] }}</p>{% endif %}
     {% if r['status'] in ['pending', 'approved'] %}
     <div class="expense-actions">

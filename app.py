@@ -9546,17 +9546,29 @@ def _day_to_show(value):
 
     The day of a moment is the house's day, never the UTC one a slice reads:
     that stamp is half past midnight on the 5th in the Ariege.
+
+    A date object is a date already; a datetime is a moment. Both reach the
+    filters from code that worked one out, and a date handed to strptime
+    took the page down.
     """
+    if isinstance(value, datetime):
+        return house_date(value.isoformat())
+    if isinstance(value, date):
+        return value
     return parse_date(value) or house_date(value)
 
 
 def format_date_human(iso_str):
-    """'2026-12-01' -> 'December 1, 2026'. Avoids the %-d strftime flag,
+    """'2026-12-01' -> '1 December 2026'. Day first, as format_date_short
+    and as a French house writes a date: it said 'December 1, 2026', the
+    American order, in seventy-seven places -- every letter's dates among them
+    -- beside pages that said '1 December 2026'. Avoids the %-d strftime flag,
     which is Linux-only and crashes on Windows."""
     d = _day_to_show(iso_str)
     if not d:
-        return iso_str
-    return f"{d.strftime('%B')} {d.day}, {d.year}"
+        # A missing date prints nothing: Jinja would write None as the word.
+        return iso_str if iso_str else ""
+    return f"{d.day} {d.strftime('%B')} {d.year}"
 
 
 def format_date_short(iso_str):
@@ -9566,7 +9578,8 @@ def format_date_short(iso_str):
     day of it (see _day_to_show)."""
     d = _day_to_show(iso_str)
     if not d:
-        return iso_str
+        # A missing date prints nothing: Jinja would write None as the word.
+        return iso_str if iso_str else ""
     return f"{d.day} {d.strftime('%B')} {d.year}"
 
 
@@ -9594,6 +9607,48 @@ def format_date_range(start_iso, end_iso):
 app.jinja_env.filters["house_day"] = house_date_iso
 app.jinja_env.filters["date_short"] = format_date_short
 app.jinja_env.filters["date_human"] = format_date_human
+
+
+_ISO_IN_TEXT = re.compile(r"(?<![\d/-])(\d{4})-(\d{2})-(\d{2})(?![\dT:/-])")
+_MONTH_FIRST_IN_TEXT = re.compile(
+    r"\b(January|February|March|April|May|June|July|August|September|October|November|"
+    r"December) (\d{1,2}), (\d{4})\b")
+_MONTH_NUMBER = {name: i for i, name in enumerate(
+    ("January", "February", "March", "April", "May", "June", "July", "August",
+     "September", "October", "November", "December"), start=1)}
+
+
+def dates_in_words(text):
+    """The dates inside a sentence the house wrote, written day first.
+
+    Notifications, the audit trail and letter subjects are sentences stored as
+    they were written, and they were written with a stamp ("2026-08-22") or the
+    American order ("May 24, 2027") until both went from the code. A stored
+    line cannot be rewritten without rewriting history, so it is read in words
+    instead. For the house's own lines only: something a person typed is shown
+    as they typed it.
+    """
+    if not text:
+        return text
+
+    def _iso(m):
+        try:
+            return format_date_short(date(int(m.group(1)), int(m.group(2)),
+                                          int(m.group(3))).isoformat())
+        except ValueError:
+            return m.group(0)
+
+    def _us(m):
+        try:
+            return format_date_short(date(int(m.group(3)), _MONTH_NUMBER[m.group(1)],
+                                          int(m.group(2))).isoformat())
+        except ValueError:
+            return m.group(0)
+
+    return _MONTH_FIRST_IN_TEXT.sub(_us, _ISO_IN_TEXT.sub(_iso, str(text)))
+
+
+app.jinja_env.filters["dates_in_words"] = dates_in_words
 
 
 def house_when(stamp):
@@ -10642,7 +10697,7 @@ def local_time_str(iso_str, unknown="?"):
 
 
 def local_datetime_str(iso_str, unknown="?"):
-    """A stored UTC moment as the house reads it: 'September 29, 2026 14:20'.
+    """A stored UTC moment as the house reads it: '29 September 2026, 14:20'.
 
     Words, not a stamp, so a slice of what this returns cuts mid-word: [:10]
     printed "September " for the day a key was handed over. Show it whole, or
@@ -10656,7 +10711,7 @@ def local_datetime_str(iso_str, unknown="?"):
     if not dt:
         return unknown
     local = dt.astimezone(LOCAL_TZ)
-    return f"{format_date_human(local.date().isoformat())} {local.strftime('%H:%M')}"
+    return f"{format_date_human(local.date().isoformat())}, {local.strftime('%H:%M')}"
 
 
 def local_time_input_to_utc_iso(base_iso, hhmm):
@@ -16611,6 +16666,8 @@ def outstanding_balances(conn, *, today=None):
             "who": booking["guest_name"],
             "what": booking["room_name"] or "",
             "when": (f"{booking['arrival_date']} \u2192 {booking['departure_date']}"),
+            # "when" sorts the list, so it stays ISO; this is what is read.
+            "when_shown": format_date_range(booking["arrival_date"], booking["departure_date"]),
             "reference": booking["reference_code"],
             "email": booking["guest_email"],
             # Endpoint and arguments rather than a built URL: url_for needs an
@@ -16644,6 +16701,7 @@ def outstanding_balances(conn, *, today=None):
             "who": event["contact_name"],
             "what": event["event_type"] or "Event",
             "when": held or "date to confirm",
+            "when_shown": format_date_short(held) if held else "date to confirm",
             "reference": event["reference_code"] or f"EVT-{event['id']}",
             "email": event["contact_email"],
             # No manage page for an event, so the row points at the events
@@ -16690,6 +16748,8 @@ def outstanding_balances(conn, *, today=None):
             "who": reg["guest_name"],
             "what": reg["title"] or "Workshop",
             "when": reg["start_date"] or "date to confirm",
+            "when_shown": (format_date_short(reg["start_date"]) if reg["start_date"]
+                           else "date to confirm"),
             "reference": reg["reference_code"] or f"WS-{reg['id']}",
             "email": reg["guest_email"],
             "link_endpoint": "workshop_manage",
@@ -31975,7 +32035,7 @@ def owner_home_warnings(conn, today):
         with_guests = [g for g in gaps if g["in_house"] or g["arrivals"]]
         add("blocker" if with_guests else "warn", "Days with nobody on",
             (f"{with_guests[0]['date']} has guests and nobody rostered"
-             if with_guests else f"first is {gaps[0]['date']}"),
+             if with_guests else f"first is {format_date_short(gaps[0]['date'])}"),
             len(gaps), "cover_gaps_page")
 
     faults = rooms_sold_with_a_fault(conn, today=today, days=14)
@@ -83118,7 +83178,7 @@ def respond_shift_swap(swap_id):
     )
     conn.commit()
     shift = conn.execute("SELECT shift_date FROM shifts WHERE id = ?", (swap["shift_id"],)).fetchone()
-    shift_date = shift["shift_date"] if shift else "your shift"
+    shift_date = format_date_short(shift["shift_date"]) if shift else "your shift"
     send_notification(
         conn, swap["requested_by_user_id"], "shift_swap_response",
         f"{user['name']} {status} your shift swap request",
@@ -83170,7 +83230,7 @@ def decide_shift_swap(swap_id):
     requester = conn.execute("SELECT * FROM users WHERE id = ?", (swap["requested_by_user_id"],)).fetchone()
     covering = conn.execute("SELECT * FROM users WHERE id = ?", (swap["offered_to_user_id"],)).fetchone()
     conn.close()
-    shift_date = shift["shift_date"] if shift else "your shift"
+    shift_date = format_date_short(shift["shift_date"]) if shift else "your shift"
     conn = get_db()
     for person in (requester, covering):
         if person:

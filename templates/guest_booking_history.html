@@ -47,7 +47,7 @@
   {% for b in bookings %}
   <div class="mini-row">
     <span class="mini-name">{{ b['room_name'] }}</span>
-    <span class="mini-role">{{ b['arrival_date'] }} → {{ b['departure_date'] }}{% if b['party_size'] %} · Party of {{ b['party_size'] }}{% endif %}</span>
+    <span class="mini-role">{{ date_range(b['arrival_date'], b['departure_date']) }}{% if b['party_size'] %} · Party of {{ b['party_size'] }}{% endif %}</span>
     <span class="mini-status status-{{ b['status'] }}">{{ b['status'] }}</span>
     {% if b['total_price'] %}<span class="upload-hint">{{ b['total_price']|money }}</span>{% endif %}
   </div>
@@ -59,7 +59,7 @@
 <div class="mini-list">
   {% for d in dinners %}
   <div class="mini-row">
-    <span class="mini-name">Dinner — {{ d['dinner_date'] }}</span>
+    <span class="mini-name">Dinner — {{ d['dinner_date']|date_short }}</span>
     <span class="mini-role">Party of {{ d['party_size'] }}{% if d['dietary_notes'] %} · {{ d['dietary_notes'] }}{% endif %}</span>
     <span class="mini-status status-{{ d['status'] }}">{{ d['status'] }}</span>
     {% if d['total_price'] %}<span class="upload-hint">{{ d['total_price']|money }}</span>{% endif %}
@@ -73,7 +73,7 @@
 <div class="mini-list">
   {% for w in workshop_regs %}
   <div class="mini-row">
-    <span class="mini-name">{{ w['workshop_title'] }} — {{ w['start_date'] }}</span>
+    <span class="mini-name">{{ w['workshop_title'] }} — {{ w['start_date']|date_short }}</span>
     <span class="mini-role">Party of {{ w['party_size'] }}{% if w['notes'] %} · {{ w['notes'] }}{% endif %}</span>
     <span class="mini-status status-{{ w['status'] }}">{{ w['status'] }}</span>
     {% if w['total_price'] %}<span class="upload-hint">{{ w['total_price']|money }}</span>{% endif %}
@@ -87,7 +87,7 @@
 <div class="mini-list">
   {% for e in events %}
   <div class="mini-row">
-    <span class="mini-name">{{ e['event_type']|capitalize }}{% if e['preferred_date'] %} — {{ e['preferred_date'] }}{% endif %}</span>
+    <span class="mini-name">{{ e['event_type']|capitalize }}{% if e['preferred_date'] %} — {{ e['preferred_date']|date_short }}{% endif %}</span>
     <span class="mini-role">{{ e['reference_code'] }}{% if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %}</span>
     <span class="mini-status status-{{ e['status'] }}">{{ e['status'] }}</span>
     {% if e['quoted_price'] %}<span class="upload-hint">{{ e['quoted_price']|money }}</span>{% endif %}
@@ -102,7 +102,7 @@
   {% for p in promo_redemptions %}
   <div class="mini-row">
     <span class="mini-name">{{ p['code'] }}</span>
-    <span class="mini-role">{{ p['category']|capitalize }} · {{ p['redeemed_at']|house_day }}</span>
+    <span class="mini-role">{{ p['category']|capitalize }} · {{ p['redeemed_at']|house_day|date_short }}</span>
     <span class="upload-hint">−{{ p['discount_amount']|money }}</span>
   </div>
   {% endfor %}

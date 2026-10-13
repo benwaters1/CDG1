@@ -56,7 +56,7 @@
     <tbody>
     {% for p in payments %}
       <tr>
-        <td>{{ p.at|house_day if p.at else '—' }}</td>
+        <td>{{ p.at|house_day|date_short if p.at else '—' }}</td>
         <td>{{ p.method_label }}
           {% if p.label %}<span class="cell-note">{{ p.label }}</span>{% endif %}
           {% if p.card %}<span class="cell-note">can go back to the card</span>
@@ -82,7 +82,7 @@
     {% for p in payments if p.refundable > 0 %}
     <label class="checkbox-row refund-reason">
       <input type="radio" name="payment" value="{{ p.key }}" {{ 'checked' if loop.first }}>
-      <span>{{ p.method_label }}, {{ p.at|house_day if p.at else 'earlier' }}: {{ p.refundable|money }} can go back{% if p.payer %} ({{ p.payer }}'s share){% endif %}</span>
+      <span>{{ p.method_label }}, {{ p.at|house_day|date_short if p.at else 'earlier' }}: {{ p.refundable|money }} can go back{% if p.payer %} ({{ p.payer }}'s share){% endif %}</span>
     </label>
     {% endfor %}
     {% if refundable_count > 1 %}

@@ -66,7 +66,7 @@
         {# A person, the guest on their own booking, or a job -- never "the
            system", and never a job for what the guest did themselves. #}
         <td>{{ audit_who(e) }}</td>
-        <td>{{ e['details'] or '' }}</td>
+        <td>{{ e['details']|dates_in_words if e['details'] else '' }}</td>
       </tr>
       {% endfor %}
     </tbody>

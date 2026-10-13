@@ -23,7 +23,7 @@
 
 <p class="page-intro">
   {{ booking['guest_name'] }} · {{ booking['room_name'] }} ·
-  {{ booking['arrival_date'] }} to {{ booking['departure_date'] }} ·
+  {{ date_range(booking['arrival_date'], booking['departure_date']) }} ·
   {{ booking['reference_code'] }}
 </p>
 
@@ -80,14 +80,14 @@
         <td class="num">{{ share['amount']|money }}</td>
         <td>
           {% if share['status'] == 'paid' %}
-          <span class="mini-status status-onshift">paid {{ share['paid_at']|house_day }}</span>
+          <span class="mini-status status-onshift">paid {{ share['paid_at']|house_day|date_short }}</span>
           {% elif share['status'] == 'cancelled' %}
           {# Cancelled, not deleted: somebody was asked for this and may still
              put it in the bank, and a row that vanished cannot be reconciled
              against. The reason is kept for the same reason. #}
           <span class="mini-status status-declined">{{ share['closed_reason'] or 'cancelled' }}</span>
           {% elif share['sent_at'] %}
-          <span class="mini-status status-pending">asked {{ share['sent_at']|house_day }}</span>
+          <span class="mini-status status-pending">asked {{ share['sent_at']|house_day|date_short }}</span>
           {% else %}
           <span class="mini-status status-upcoming">not sent yet</span>
           {% endif %}

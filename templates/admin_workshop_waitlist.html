@@ -25,14 +25,14 @@
       </div>
     </div>
     <p class="upload-hint">
-      {{ e['start_date'] }}{% if e['party_size'] %} · Party of {{ e['party_size'] }}{% endif %}
+      {{ e['start_date']|date_short }}{% if e['party_size'] %} · Party of {{ e['party_size'] }}{% endif %}
     </p>
     <p class="upload-hint">
       <a href="mailto:{{ e['email'] }}" style="color:var(--steel);">{{ e['email'] }}</a>
       {% if e['phone'] %} · <a href="tel:{{ e['phone'] }}" style="color:var(--steel);">{{ e['phone'] }}</a>{% endif %}
     </p>
     {% if e['notes'] %}<p class="manual-body">{{ e['notes'] }}</p>{% endif %}
-    <p class="upload-hint">Joined {{ e['created_at']|house_day }}</p>
+    <p class="upload-hint">Joined {{ e['created_at']|house_day|date_short }}</p>
     <div class="expense-actions">
       {% if e['status'] in ('open', 'contacted') %}
       <a href="{{ url_for('workshop_register', session_id=e['session_id'], name=e['name'], email=e['email'], phone=e['phone'], party_size=e['party_size']) }}" class="btn-mini">Check availability &amp; register</a>

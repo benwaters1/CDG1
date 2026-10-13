@@ -122,7 +122,7 @@
               single cancellation, tells the waiting list it is not running,
               and says who is owed money back without moving any. -#}
           {% if s['cancelled_at'] %}
-          <span class="mini-status status-declined">called off {{ s['cancelled_at']|house_day }}{% if s['cancelled_reason'] %} — {{ s['cancelled_reason'] }}{% endif %}</span>
+          <span class="mini-status status-declined">called off {{ s['cancelled_at']|house_day|date_short }}{% if s['cancelled_reason'] %} — {{ s['cancelled_reason'] }}{% endif %}</span>
           {% else %}
           <form method="post" action="{{ url_for('call_off_workshop_session', session_id=s['id']) }}"
                 onsubmit="return confirm('Call this sitting off? Everybody registered is cancelled and written to, and the waiting list is told it is not running.');"

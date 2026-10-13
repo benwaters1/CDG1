@@ -57,7 +57,7 @@
     </div>
     <div>
       <span class="detail-label">Arriving this week ({{ arriving_this_week|length }})</span>
-      {% if arriving_this_week %}{% for b in arriving_this_week %}{{ b['guest_name'] }} — {{ b['arrival_date'] }}<br>{% endfor %}{% else %}—{% endif %}
+      {% if arriving_this_week %}{% for b in arriving_this_week %}{{ b['guest_name'] }} — {{ b['arrival_date']|date_short }}<br>{% endfor %}{% else %}—{% endif %}
     </div>
   </div>
 </div>
@@ -121,7 +121,7 @@
       </span>
     </div>
     <p class="manual-body wraps">
-      {{ b['arrival_date'] }} → {{ b['departure_date'] }} · Party of {{ b['party_size'] }}
+      {{ date_range(b['arrival_date'], b['departure_date']) }} · Party of {{ b['party_size'] }}
       {% if b['total_price'] %} · {{ b['total_price']|money }}{% endif %}
       {% if owed_by_booking.get(b['id']) %} · <strong class="owed-flag">{{ (owed_by_booking[b['id']])|money }} still owed</strong>{% endif %}
     </p>
@@ -135,7 +135,7 @@
     {% if b['transfer_flight_number'] or b['transfer_arrival_time'] or b['transfer_notes'] %}
     <p class="upload-hint">✈ Transfer: {{ b['transfer_flight_number'] or 'flight tbc' }}{% if b['transfer_arrival_time'] %}, arriving {{ b['transfer_arrival_time'] }}{% endif %}{% if b['transfer_notes'] %} — {{ b['transfer_notes'] }}{% endif %}</p>
     {% endif %}
-    <p class="upload-hint">Submitted {{ b['created_at']|house_day }}{% if b['decided_at'] %} · Decided {{ b['decided_at']|house_day }}{% endif %}</p>
+    <p class="upload-hint">Submitted {{ b['created_at']|house_day|date_short }}{% if b['decided_at'] %} · Decided {{ b['decided_at']|house_day|date_short }}{% endif %}</p>
 
     <div class="expense-actions">
       {# A tick box on confirmed stays too. "Tie together as a party" is for
@@ -205,7 +205,7 @@
 
     {% if b['status'] == 'confirmed' %}
       {% if b['arrival_prepped_at'] %}
-      <p class="upload-hint" style="margin-top:8px;">✓ Arrival prep assigned {{ b['arrival_prepped_at']|house_day }}.</p>
+      <p class="upload-hint" style="margin-top:8px;">✓ Arrival prep assigned {{ b['arrival_prepped_at']|house_day|date_short }}.</p>
       {% elif not b['checked_out_at'] %}
       <form method="post" action="{{ url_for('prepare_arrival', booking_id=b['id']) }}" class="expense-actions" style="margin-top:8px; padding-top:10px; border-top:1px dashed var(--parchment-line);">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -220,7 +220,7 @@
       </form>
       {% endif %}
       {% if b['checked_out_at'] %}
-      <p class="upload-hint" style="margin-top:8px;">✓ Checked out {{ b['checked_out_at']|house_day }} — turnover task assigned.</p>
+      <p class="upload-hint" style="margin-top:8px;">✓ Checked out {{ b['checked_out_at']|house_day|date_short }} — turnover task assigned.</p>
       {% else %}
       <form method="post" action="{{ url_for('checkout_booking', booking_id=b['id']) }}" class="expense-actions" style="margin-top:8px; padding-top:10px; border-top:1px dashed var(--parchment-line);">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
