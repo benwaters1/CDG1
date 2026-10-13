@@ -216,7 +216,7 @@
     <div class="expense-head">
       <div>
         <strong>{{ c['submitter_name'] or 'Former employee' }}</strong>{% if c['vendor_name'] %} — {{ c['vendor_name'] }}{% endif %} — {{ c['amount']|money }}
-        {%- if c['spent_on'] %} <span class="upload-hint">spent {{ c['spent_on'] }}</span>{% endif %}
+        {%- if c['spent_on'] %} <span class="upload-hint">spent {{ c['spent_on']|date_short }}</span>{% endif %}
         {%- if c['paid_at'] %} <span class="mini-status status-confirmed">paid back {{ c['paid_at']|house_day|date_short }}{% if c['paid_reference'] %} · {{ c['paid_reference'] }}{% endif %}</span>{% endif %}
         <span class="mini-status status-{{ c['status'] }}" style="margin-left:8px;">{{ c['status'] }}</span>
         {% if c['restaurant_related'] %}<span class="mini-status status-upcoming" style="margin-left:4px;">restaurant</span>{% endif %}

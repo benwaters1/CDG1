@@ -109,8 +109,43 @@ def _run(days_before=7, provider=True):
     return result, sent
 
 
+def _letter(subject, body):
+    """Put the reminder's wording in the database; hand back what was there.
+
+    The words are data -- the owner edits them -- and this suite runs on a copy
+    of whichever database the checkout holds. The local one still carries the
+    reminder from before the house rules changed, which offers to take the
+    money on arrival, and init_db leaves it alone because it no longer matches
+    any shipped wording word for word. A fresh one carries today's. The checks
+    on what the letter says passed on one and failed on the other, so the job
+    is run here on the wording the house ships, and whatever was stored is put
+    back after.
+    """
+    conn = db()
+    try:
+        was = conn.execute("SELECT subject, body FROM email_templates "
+                           "WHERE template_key = 'room_balance_before'").fetchone()
+        conn.execute("UPDATE email_templates SET subject = ?, body = ? "
+                     "WHERE template_key = 'room_balance_before'", (subject, body))
+        conn.commit()
+        return was
+    finally:
+        conn.close()
+
+
 def run():
     s = Suite("Room balance reminders")
+    shipped = {k: (subj, body) for k, _l, subj, body in m.DEFAULT_EMAIL_TEMPLATES}
+    stored = _letter(*shipped["room_balance_before"])
+    try:
+        _checks(s)
+    finally:
+        if stored:
+            _letter(stored["subject"], stored["body"])
+    return s
+
+
+def _checks(s):
     _cleanup()
     clients()
 
@@ -250,4 +285,3 @@ def run():
             detail="a job nobody can see is a job nobody can turn off")
 
     _cleanup()
-    return s
