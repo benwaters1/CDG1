@@ -42,6 +42,15 @@ PAGES = {
     "rota_clashes_page": ("days", 28, True),
     "rota_vs_clock_page": ("days", 30, False),
     "spend_by_vendor_page": ("months", 12, False),
+    "admin_arrivals_incomplete": ("days", 14, True),
+    "dinner_covers_page": ("days", 21, True),
+    "admin_linen": ("days", 14, True),
+    "admin_menu_engineering": ("days", 90, False),
+    "admin_rate_advice": ("days", 60, True),
+    "admin_turnarounds": ("days", 60, True),
+    "admin_wastage_rate": ("days", 180, False),
+    "management_pace": ("months", 4, True),
+    "management_supplier_prices": ("days", 365, False),
 }
 
 BAR = re.compile(r'<div class="window-bar">(.*?)</nav>\s*</div>', re.S)

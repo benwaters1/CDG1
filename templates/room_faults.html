@@ -68,8 +68,7 @@
         {% else %}
           {{ r.arrival_date|date_short }}
           <span class="upload-hint">
-            {% if r.days_away == 0 %}today{% elif r.days_away == 1 %}tomorrow{%
-              else %}in {{ r.days_away }} days{% endif %}
+            {{ r.days_away|in_words }}
           </span>
         {% endif %}
       </td>

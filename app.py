@@ -11336,6 +11336,14 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
             keys = [k for k in keys if k in set(picked)]
         if f["hide_empty"] and not keys:
             continue
+        # A row of one choice that every row in the whole list already has --
+        # "All 12 · Pending 12" -- divides nothing, and reads as a control
+        # that does something. Only when nothing has narrowed the list: after
+        # a search the row is still the way to widen it again. Kept while it
+        # is chosen or holds a default, so a filter in force can be taken off.
+        if (len(keys) == 1 and counts[keys[0]] == len(pool) == len(rows) and not hidden
+                and not chosen.get(f["key"]) and not f.get("default")):
+            continue
         options = [{"value": k, "label": f["labels"].get(k, str(k).replace("_", " ")),
                     "count": counts[k], "selected": chosen.get(f["key"]) == k}
                    for k in keys]
@@ -11481,8 +11489,11 @@ def in_words(days):
     if days is None:
         return ""
     if days < 0:
-        return f"{abs(days)} days ago"
+        return "yesterday" if days == -1 else f"{abs(days)} days ago"
     return {0: "today", 1: "tomorrow"}.get(days, f"in {days} days")
+
+
+app.jinja_env.filters["in_words"] = in_words
 
 
 def committed_stock(conn, item_ids, within_days=14):
@@ -13920,6 +13931,22 @@ def parse_ical_ranges(text):
     return ranges
 
 
+def read_ical_body(text):
+    """(ranges, None) from a calendar, or (None, why) from anything else.
+
+    A channel down for maintenance can answer its calendar address with an
+    error page and a 200. That parses to no stays at all, and the sync then
+    deletes every block the channel had made: the room reopens on nights that
+    are sold, and the waiting list is written to about them. Something that is
+    not a calendar is an error, and an error keeps the blocks as they were.
+    """
+    if "BEGIN:VCALENDAR" not in (text or "").upper():
+        first = " ".join((text or "").split())[:60]
+        return None, ("the address answered, but not with a calendar"
+                      + (f" (it began “{first}”)" if first else " (it was empty)"))
+    return parse_ical_ranges(text), None
+
+
 def fetch_ical_ranges(url, timeout=8):
     """Best-effort fetch — network/format problems are reported, never raised,
     so a broken external feed can't take down the booking page."""
@@ -13927,7 +13954,7 @@ def fetch_ical_ranges(url, timeout=8):
         req = Request(url, headers={"User-Agent": "GudanesHR-iCal-Sync/1.0"})
         with urlopen(req, timeout=timeout) as resp:
             raw = resp.read()
-        return parse_ical_ranges(raw.decode("utf-8", errors="replace")), None
+        return read_ical_body(raw.decode("utf-8", errors="replace"))
     except Exception as e:
         return None, str(e)
 
@@ -29549,7 +29576,7 @@ def nights_already_taken(conn, *, days=None):
     spans += [(room_id, start, end)
               for kind in ("blocked", "manual")
               for room_id, rows in picture[kind].items()
-              for start, end in rows]
+              for start, end, *_how in rows]
     gone = {}
     for room_id, start, end in spans:
         if room_id not in for_sale or not (start and end):
@@ -32564,7 +32591,7 @@ def owner_home_warnings(conn, today):
             f"{b['guest_name']} asked "
             + (f"{int(first['waited'])} hours ago" if first["waited"] is not None
                else "a while ago")
-            + f" for {b['room_name'] or 'a room'}, {b['arrival_date']}"
+            + f" for {b['room_name'] or 'a room'}, arriving {format_date_short(b['arrival_date'])}"
             + (f". The page told them the château answers within a day"
                if not worst else
                f". In {int(worst['left'])} hour"
@@ -32737,8 +32764,7 @@ def owner_home_warnings(conn, today):
     if incomplete["urgent"]:
         soonest = min(incomplete["urgent"], key=lambda r: r["days_away"])
         add("warn", "Arriving without the details to prepare",
-            f"{soonest['guest']} in {soonest['days_away']} day"
-            f"{'' if soonest['days_away'] == 1 else 's'} — "
+            f"{soonest['guest']}, {in_words(soonest['days_away'])} — "
             f"{', '.join(soonest['missing']).lower()}",
             len(incomplete["urgent"]), "admin_arrivals_incomplete")
 
@@ -43473,7 +43499,6 @@ def book_rooms():
     # positive number. So the one booking somebody plans a year ahead showed
     # no night count at all.
     stay_nights = (departure - arrival).days if searched else 0
-    on_request = {}
     if searched:
         # A room closed and HIDDEN for any of these nights is not offered at
         # all, as though it were not on the list; one closed for the season
@@ -43485,7 +43510,6 @@ def book_rooms():
         for room in rooms:
             ok, why = is_range_available(conn, room["id"], arrival, departure)
             rules = stay_rules(conn, room, arrival, departure)
-            on_request[room["id"]] = rules["on_request"]
             too_short = stay_nights < rules["min_nights"]
             # CAPACITY, WHICH THE SEARCH USED TO IGNORE ENTIRELY. The rooms
             # sleep two, two, two, three and five, so a family of four was
@@ -43559,8 +43583,7 @@ def book_rooms():
            ORDER BY category, sort_order, name""").fetchall()
     conn.close()
     return render_template(
-        "book_rooms.html", rooms=rooms, on_request=on_request,
-        arrival=arrival_raw, departure=departure_raw,
+        "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
         returning_guest=welcome, extras=stay_extras,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
         stay_nights=stay_nights,
@@ -54125,7 +54148,8 @@ def build_owner_digest(conn):
         opening = parse_date(restaurant_settings["opening_date"]) if restaurant_settings["opening_date"] else None
         if opening and opening > today:
             lines.append("")
-            lines.append(f"Restaurant opens in {(opening - today).days} day(s), on {opening.isoformat()}.")
+            lines.append(f"Restaurant opens {in_words((opening - today).days)}, "
+                         f"on {format_date_short(opening.isoformat())}.")
         tonight_covers = conn.execute(
             "SELECT COALESCE(SUM(party_size), 0) AS c FROM restaurant_bookings WHERE status = 'confirmed' AND dinner_date = ?",
             (today.isoformat(),),
@@ -55051,8 +55075,10 @@ def close_rooms_page():
     # its last night, as the form asked for it.
     rules = [dict(r, last_night=(parse_date(r["end_date"]) - timedelta(days=1)).isoformat())
              for r in conn.execute(
-                 """SELECT room_rules.*, rooms.name AS room_name FROM room_rules
+                 """SELECT room_rules.*, rooms.name AS room_name, users.name AS by_name
+                      FROM room_rules
                       JOIN rooms ON rooms.id = room_rules.room_id
+                      LEFT JOIN users ON users.id = room_rules.created_by_user_id
                      WHERE room_rules.end_date > ? ORDER BY room_rules.start_date, rooms.sort_order""",
                  (today.isoformat(),)).fetchall()]
     prices = conn.execute(
@@ -76379,7 +76405,7 @@ def empty_nights(conn, *, days=90, today=None):
     blocked = nights_of((room_id, start, end)
                         for kind in ("blocked", "manual")
                         for room_id, rows in picture[kind].items()
-                        for start, end in rows)
+                        for start, end, *_how in rows)
 
     # Held for the whole house: every room, first night to last inclusive,
     # read exactly as is_range_available reads it -- a span with a date that
@@ -77176,7 +77202,7 @@ def watch_task_findings(conn, today=None):
             ((f"{-f['days']} day{'' if f['days'] == -1 else 's'} late. "
               "A late return is penalties and interest, not a telling-off."
               if f["late"] else
-              f"Due in {f['days']} day{'' if f['days'] == 1 else 's'}.")
+              f"Due {in_words(f['days'])}.")
              + (f"\n\nTo: {ob['authority']}." if ob["authority"] else "")
              + (f"\n\n{ob['note']}" if ob["note"] else "")),
             f["due"].isoformat(),
@@ -90613,10 +90639,11 @@ AUTOMATION_SWITCHES = [
 
     # --- keeps things up to date ---------------------------------------------
     {"key": "automation_ical_sync_enabled", "job": "ical_sync",
-     "runs": ("run_ical_sync_job",), "group": "records", "reaches": (),
+     "runs": ("run_ical_sync_job",), "group": "guests", "reaches": ("guests",),
      "label": "Calendar sync with Airbnb, Booking.com and VRBO",
      "what": "Pulls in bookings from every connected calendar so nothing is sold "
-             "twice.",
+             "twice. When a stay there is cancelled, the next guest on the "
+             "waiting list for those nights is told they are free.",
      "fields": (("automation_ical_sync_interval_hours", "Every (hours)", "hours"),)},
     {"key": "automation_card_details_enabled", "job": "card_details",
      "runs": ("run_card_details_job",), "group": "records", "reaches": (),

@@ -196,7 +196,7 @@
           {%- if r['min_nights'] and r['on_request'] %}, {% endif -%}
           {%- if r['on_request'] %}on request{% endif -%}
         </td>
-        <td>{{ r['label'] or '' }}</td>
+        <td>{{ r['label'] or '' }}{% if r['by_name'] %} <span class="upload-hint">· {{ r['by_name'] }}</span>{% endif %}</td>
         <td>
           <form method="post" action="{{ url_for('delete_room_rule', rule_id=r['id']) }}" style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

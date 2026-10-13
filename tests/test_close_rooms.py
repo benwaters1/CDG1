@@ -272,6 +272,52 @@ def run():
     s.check("when it goes from the channel, the waiting list is told about those nights",
             told == [(c_a.isoformat(), (c_a + timedelta(days=3)).isoformat())], detail=str(told))
 
+    s.section("A channel's error page does not reopen the room")
+    # Down for maintenance, a channel can answer its calendar address with a
+    # web page and a 200. That parsed to no stays, the sync deleted every
+    # block, and the waiting list would have been written to about sold nights.
+    e_a = date(winter, 10, 10)
+    real_fetch = m.fetch_ical_ranges
+    m.fetch_ical_ranges = lambda url, timeout=8: ([(e_a, e_a + timedelta(days=2))], None)
+    try:
+        _ask(m.sync_ical_source, source)
+    finally:
+        m.fetch_ical_ranges = real_fetch
+
+    class _Page:
+        def __init__(self, body):
+            self.body = body
+
+        def read(self):
+            return self.body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+    real_urlopen = m.urlopen
+    m.urlopen = lambda req, timeout=8: _Page(b"<html><body>Down for maintenance</body></html>")
+    told.clear()
+    m.notify_room_waitlist_opening = lambda conn, a, b, **k: told.append((a, b)) or []
+    try:
+        ok = _ask(m.sync_ical_source, source)
+    finally:
+        m.urlopen = real_urlopen
+        m.notify_room_waitlist_opening = real_notify
+    conn = db()
+    kept = conn.execute("SELECT COUNT(*) FROM blocked_dates WHERE ical_source_id = ?",
+                        (source["id"],)).fetchone()[0]
+    err = conn.execute("SELECT last_sync_error FROM ical_sources WHERE id = ?",
+                       (source["id"],)).fetchone()[0]
+    conn.close()
+    s.check("the sync reports it as an error rather than an empty calendar",
+            ok is False and "not with a calendar" in (err or ""), detail=str(err))
+    s.check("so the channel's stay keeps its nights closed here", kept == 1, detail=str(kept))
+    s.check("and nobody on the waiting list is told about them", not told, detail=str(told))
+    s.check("a real calendar still reads",
+            m.read_ical_body("BEGIN:VCALENDAR\r\nEND:VCALENDAR")[1] is None)
+
     s.section("Keeping our site open for a stay that can be cancelled for free")
     k_a = date(winter, 10, 20)
     conn = db()

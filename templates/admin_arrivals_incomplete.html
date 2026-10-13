@@ -16,13 +16,9 @@
   Ari&egrave;ge is most of them.
 </p>
 
-<form method="get" class="search-bar" style="margin-bottom:16px;">
-  <div>
-    <label class="field-label" for="days">Days ahead</label>
-    <input type="number" id="days" name="days" min="1" max="90" step="1" value="{{ days }}">
-  </div>
-  <button type="submit" class="btn-mini">Show</button>
-</form>
+{# The one control for how far a page looks. It was a number box and a Show
+   button, which asked for a figure nobody has in mind. #}
+{% with endpoint='admin_arrivals_incomplete', param='days', choices=[3, 7, 14, 30], current=days, ahead=true %}{% include "_window_choice.html" %}{% endwith %}
 
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">

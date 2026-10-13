@@ -9,7 +9,8 @@
 <p class="pay-disclaimer" style="margin-top:-10px;">Guests enter a code on the room, dinner, or workshop booking form. Every discount is recomputed from the real price at the moment of booking — nothing here can be tricked into a bigger discount than what's configured. Events aren't included since those are always bespoke, owner-quoted prices.</p>
 
 <div class="detail-card" style="max-width:680px; margin-bottom:22px;">
-  <h3 style="margin-top:0;">New code</h3>
+  <details class="refund-box">
+    <summary>+ New code</summary>
   <form method="post" action="{{ url_for('new_promo_code') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field-row-2">
@@ -70,6 +71,7 @@
     </div>
     <button type="submit" class="btn-primary" style="margin-top:10px;">Create code</button>
   </form>
+  </details>
 </div>
 
 {% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}

@@ -17,13 +17,9 @@
   different kinds of certainty.
 </p>
 
-<form method="get" class="search-bar" style="margin-bottom:16px;">
-  <div>
-    <label class="field-label" for="days">Nights ahead</label>
-    <input type="number" id="days" name="days" min="7" max="60" step="1" value="{{ days }}">
-  </div>
-  <button type="submit" class="btn-mini">Show</button>
-</form>
+{# The one control for how far a page looks. It was a number box and a Show
+   button, which asked for a figure nobody has in mind. #}
+{% with endpoint='dinner_covers_page', param='days', choices=[7, 14, 21, 60], current=days, ahead=true %}{% include "_window_choice.html" %}{% endwith %}
 
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">

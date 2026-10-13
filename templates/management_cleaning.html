@@ -40,8 +40,7 @@
           </td>
           <td>
             {% if r.overdue %}<span style="color:var(--danger);">{{ -r.days }} days late</span>
-            {% elif r.days == 0 %}today
-            {% else %}in {{ r.days }} days{% endif %}
+            {% else %}{{ r.days|in_words }}{% endif %}
           </td>
           <td>
             <form method="post" action="{{ url_for('cleaning_round_done', round_id=r.round['id']) }}" style="display:inline;">

@@ -251,6 +251,8 @@
       </div>
       {% endif %}
       {% if r['status'] not in ('declined', 'cancelled') %}
+      <details class="refund-box">
+        <summary>+ Add a payment, a charge or a discount</summary>
       <form method="post" action="{{ url_for('add_workshop_transaction_route', registration_id=r['id']) }}" class="search-bar" style="margin-top:10px; margin-bottom:0;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <select name="kind" style="font-size:12px;">
@@ -268,6 +270,7 @@
         </select>
         <button type="submit" class="btn-mini">Add</button>
       </form>
+      </details>
 
       {% if not r['deposit_paid_at'] and r['deposit_amount'] %}
       <form method="post" action="{{ url_for('mark_workshop_deposit_paid', registration_id=r['id']) }}" style="display:inline-block; margin-top:6px;">

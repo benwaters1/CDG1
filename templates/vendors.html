@@ -106,7 +106,8 @@
 {% endif %}
 
 <div class="detail-card" style="max-width:640px;">
-  <h3>Add a vendor</h3>
+  <details class="refund-box">
+    <summary>+ Add a vendor</summary>
   <form method="post" action="{{ url_for('new_vendor') }}" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input aria-label="Name" type="text" name="name" placeholder="Name" required>
@@ -117,6 +118,7 @@
     <input aria-label="Notes (optional)" type="text" name="notes" placeholder="Notes (optional)">
     <button type="submit" class="btn-mini">Add vendor</button>
   </form>
+  </details>
 </div>
 
 <script>

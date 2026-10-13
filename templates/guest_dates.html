@@ -40,8 +40,7 @@
         <td>{{ 'Birthday' if r.kind == 'birthday' else 'Anniversary' }}</td>
         <td>
           {% if r.days == 0 %}<span class="mini-status status-confirmed">today</span>
-          {% elif r.days == 1 %}tomorrow
-          {% else %}in {{ r.days }} days{% endif %}
+          {% else %}{{ r.days|in_words }}{% endif %}
         </td>
       </tr>
       {% endfor %}

@@ -7,6 +7,8 @@
   <a href="{{ url_for('admin_bookings') }}" class="btn-mini">Booking requests</a>
 </div>
 
+<details class="refund-box">
+  <summary>+ Add an extra</summary>
 <form method="post" action="{{ url_for('new_extra') }}" class="search-bar">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div style="flex:1;">
@@ -90,6 +92,7 @@
   </div>
   <button type="submit" class="btn-mini">+ Add extra</button>
 </form>
+</details>
 
 {% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}
 
@@ -114,7 +117,7 @@
       </form>
       <form method="post" action="{{ url_for('delete_extra', extra_id=e['id']) }}" onsubmit="return confirm('Remove this extra?');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="doc-delete">×</button>
+        <button type="submit" class="doc-delete" aria-label="Remove {{ e['name'] }}" title="Remove this extra">×</button>
       </form>
     </div>
     <form method="post" action="{{ url_for('edit_extra', extra_id=e['id']) }}" id="edit-extra-{{ e['id'] }}" class="search-bar" style="display:none; margin-top:6px;">
@@ -123,11 +126,11 @@
         <input aria-label="Name" type="text" name="name" value="{{ e['name'] }}" placeholder="Name" required>
       </div>
       <div>
-        <input type="number" name="price" step="0.01" min="0" value="{{ e['price'] }}">
+        <input aria-label="Price (€)" type="number" name="price" step="0.01" min="0" value="{{ e['price'] }}">
       </div>
   <div>
     <label class="field-label">Category</label>
-    <select name="category">
+    <select name="category" aria-label="Category">
       {% for key, label in categories.items() %}
       <option value="{{ key }}"{{ ' selected' if key == (e['category'] if e is defined else 'other') }}>{{ label }}</option>
       {% endfor %}

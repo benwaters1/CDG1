@@ -63,6 +63,8 @@
 {% endif %}
 
 <h2 class="section-heading">Record a paying-in</h2>
+<details class="refund-box">
+  <summary>+ Record money paid into the bank</summary>
 <form method="post" action="{{ url_for('record_cash_banking') }}" class="search-bar" style="margin-bottom:16px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div>
@@ -83,6 +85,7 @@
   </div>
   <button type="submit" class="btn-primary">Record</button>
 </form>
+</details>
 
 <h2 class="section-heading">Paid in</h2>
 {% if not position.bankings %}

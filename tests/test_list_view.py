@@ -127,6 +127,16 @@ def run():
             sorted(o["value"] for o in team["options"]) == ["front", "kitchen"],
             detail=str([o["value"] for o in team["options"]]))
 
+    # A row offering one choice that every row has divides nothing: Extras
+    # drew three of them, "All 3 · Food 3". Not drawn -- unless a search has
+    # narrowed the list, when it is the way back.
+    same = [{"id": i, "kind": "food"} for i in range(3)]
+    one = m.list_view(same, {}, facets=[m.facet("kind", "Kind", lambda r: r["kind"])])
+    s.check("a row of one choice every row has is not drawn", not one["facets"],
+            detail=str(one["facets"]))
+    picked = m.list_view(same, {"kind": "food"}, facets=[m.facet("kind", "Kind", lambda r: r["kind"])])
+    s.check("unless it is the filter in force", len(picked["facets"]) == 1)
+
     s.section("Sort")
     s.check("named sort applies", ids(view(sort="cost")) == [4, 1, 3, 2],
             detail=str(ids(view(sort="cost"))))

@@ -20,13 +20,9 @@
   beside it &mdash; a rate you cannot argue with is a rate you will not use.
 </p>
 
-<form method="get" class="search-bar" style="margin-bottom:16px;">
-  <div>
-    <label class="field-label" for="days">Nights ahead</label>
-    <input type="number" id="days" name="days" min="7" max="180" step="1" value="{{ days }}">
-  </div>
-  <button type="submit" class="btn-mini">Show</button>
-</form>
+{# The one control for how far a page looks. It was a number box and a Show
+   button, which asked for a figure nobody has in mind. #}
+{% with endpoint='admin_rate_advice', param='days', choices=[14, 30, 60, 120], current=days, ahead=true %}{% include "_window_choice.html" %}{% endwith %}
 
 {% if data.thin_history %}
 <div class="detail-card" style="max-width:860px; border-left:3px solid #b8860b;">

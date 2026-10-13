@@ -16,14 +16,9 @@
   euros of herbs thrown out is nothing next to a thousand bought and a great deal next to sixty.
 </p>
 
-<form method="get" class="search-bar" style="margin-bottom:16px;">
-  <div>
-    <label class="field-label" for="days">Looking back</label>
-    <input type="number" id="days" name="days" min="7" max="730" step="1" value="{{ days }}">
-    <span class="field-hint">days</span>
-  </div>
-  <button type="submit" class="btn-mini">Show</button>
-</form>
+{# The one control for how far a page looks. It was a number box and a Show
+   button, which asked for a figure nobody has in mind. #}
+{% with endpoint='admin_wastage_rate', param='days', choices=[30, 90, 180, 365], current=days, ahead=false %}{% include "_window_choice.html" %}{% endwith %}
 
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">

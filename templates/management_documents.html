@@ -41,15 +41,18 @@
     <p class="empty-inline">No company documents uploaded yet.</p>
   {% endif %}
 
+  <details class="refund-box">
+    <summary>+ Upload a document</summary>
   <form method="post" action="{{ url_for('upload_company_document') }}" enctype="multipart/form-data" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input aria-label="Document title (e.g. Public liability insurance 2026)" type="text" name="title" placeholder="Document title (e.g. Public liability insurance 2026)" required>
-    <input type="file" name="document" required>
+    <input type="file" name="document" aria-label="The document" required>
     <label class="field-label" for="management_documents-expiry-date">Expiry date (optional)</label>
     <input id="management_documents-expiry-date" type="date" name="expiry_date">
     <button type="submit" class="btn-mini">Upload</button>
     <p class="upload-hint">PDF, image, or Word doc, up to 15MB.</p>
   </form>
+  </details>
 </div>
 
 <script>

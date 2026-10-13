@@ -13,13 +13,9 @@
   Running out is not an inconvenience: it is a guest arriving to a bed that cannot be made.
 </p>
 
-<form method="get" class="search-bar" style="margin-bottom:16px;">
-  <div>
-    <label class="field-label" for="days">Days ahead</label>
-    <input type="number" id="days" name="days" min="3" max="90" step="1" value="{{ days }}">
-  </div>
-  <button type="submit" class="btn-mini">Show</button>
-</form>
+{# The one control for how far a page looks. It was a number box and a Show
+   button, which asked for a figure nobody has in mind. #}
+{% with endpoint='admin_linen', param='days', choices=[7, 14, 30], current=days, ahead=true %}{% include "_window_choice.html" %}{% endwith %}
 
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">

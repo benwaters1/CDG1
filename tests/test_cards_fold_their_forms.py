@@ -40,6 +40,12 @@ PAGES = {
     "Shift Schedule": "/admin/shifts",
     "Card reader": "/admin/terminal",
     "Emails": "/admin/emails",
+    "Recurring costs": "/management/recurring-costs",
+    "Extras": "/admin/extras",
+    "Promo codes": "/admin/promo-codes",
+    "Cash banking": "/management/cash-banking",
+    "Vendors": "/management/vendors",
+    "Documents": "/management/documents",
 }
 
 
@@ -176,6 +182,13 @@ def run():
         "Workshops": (r"/sessions/new$", r"/custom-fields/new$", r"/materials$"),
         "Vehicles": (r"/checkout$", r"/maintenance/new$", r"/insurance/new$",
                      r"/vehicles/\d+/edit$", r"/vehicles/\d+/delete$"),
+        # The add forms the read-through found drawn open, 12 October.
+        "Recurring costs": (r"/recurring-costs/new$",),
+        "Extras": (r"/extras/new$",),
+        "Promo codes": (r"/promo-codes/new$",),
+        "Cash banking": (r"/cash-banking/new$",),
+        "Vendors": (r"/vendors/new$",),
+        "Documents": (r"/documents/upload$",),
     }
     for title, actions in folds.items():
         forms = read(pages[title]).forms

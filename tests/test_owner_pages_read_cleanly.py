@@ -386,12 +386,32 @@ def run():
     s.check("and money is written one way, with its separator", not by_hand,
             detail="; ".join(by_hand))
 
+    s.section("How far off a day is, as a person says it")
+    # "Marie Dubois in 0 days" on the owner home for a guest arriving today,
+    # "expires in 0 days" on a certificate's last day, "in 1 days" on the
+    # cleaning list. One way to say it: in_words.
+    s.check("today, tomorrow, yesterday",
+            (m.in_words(0), m.in_words(1), m.in_words(-1), m.in_words(5))
+            == ("today", "tomorrow", "yesterday", "in 5 days"))
+    clumsy = re.compile(r"\bin [01] days\b|\b1 days ago\b|\bin 0 day\b")
+    said = []
+    for _ep, url, html in pages:
+        text = re.sub(r"<script.*?</script>|<style.*?</style>", " ", html, flags=re.S)
+        text = re.sub(r"<[^>]+>", " ", text)
+        found = clumsy.search(text)
+        if found:
+            said.append(f"{url}: “{' '.join(text[max(0, found.start() - 30):found.end()].split())}”")
+    s.check("no page says in 0 days, in 1 days or 1 days ago", not said, detail="; ".join(said))
+
     s.section("No chip twice in one row")
     s.check("a classification keeps the first place a name appears and drops the repeat",
             m.facet("k", "K", lambda r: r, order=["Rooms", "Events", "Rooms"])["order"]
             == ["Rooms", "Events"])
     rows = sum(len(p.facets) for _ep, _u, p in parsed)
-    s.check("there are chip rows to read", rows > 40, detail=f"{rows} rows")
+    # A row offering one choice that every row has is no longer drawn
+    # (list_view), so fewer rows reach the page; the floor is still the
+    # difference between reading pages and reading nothing.
+    s.check("there are chip rows to read", rows > 20, detail=f"{rows} rows")
     twice = []
     for _ep, url, p in parsed:
         for f in p.facets:
