@@ -34,7 +34,10 @@
         <td>{{ local_datetime_str(st.last_reconcile, unknown='not yet — it runs each night') }}</td></tr>
     <tr><th scope="row">On the calendar</th>
         <td>{{ st.written }} event{{ 's' if st.written != 1 }}:
-            {% for key, label, mark, colour in areas %}{{ label }} {{ st.by_area.get(key, 0) }}{{ ' · ' if not loop.last }}{% endfor %}</td></tr>
+            {% for key, label, mark, colour in areas %}{{ label }} {{ st.by_area.get(key, 0) }}{{ ' · ' if not loop.last }}{% endfor %}
+            {# What the app had to give it, so "nothing written" says which:
+               nothing to write, or writing that has stopped. #}
+            {% if st.in_range != '' %}<div class="upload-hint">The app had {{ st.in_range }} event{{ '' if st.in_range == '1' else 's' }} for it on the last pass, from {{ window[0].isoformat()|date_short }} to {{ window[1].isoformat()|date_short }}.</div>{% endif %}</td></tr>
     {% if st.calendar_id %}<tr><th scope="row">Microsoft's id for it</th><td><code style="overflow-wrap:anywhere;">{{ st.calendar_id }}</code></td></tr>{% endif %}
     {% if st.shared_note %}<tr><th scope="row">Shared</th><td>{{ st.shared_note }}</td></tr>{% endif %}
     {% if st.categories_note %}<tr><th scope="row">Colours</th><td>{{ st.categories_note }}</td></tr>{% endif %}
@@ -85,6 +88,18 @@
     <button type="submit" class="btn-mini">Share with everybody, read only</button>
   </form>
 </div>
+{# On a shared mailbox Microsoft may list no organisation-wide entry, and
+   Graph cannot add one. The one Exchange line that does, and a way to say
+   it has been run. #}
+<details class="refund-box">
+  <summary>If Share says Microsoft lists no organisation-wide entry</summary>
+  <p class="manual-body wraps">That happens on a shared mailbox. The app cannot do it for you: it would need Exchange admin rights, which would let it change every mailbox's permissions. Run this once in Exchange Online PowerShell (<code>Connect-ExchangeOnline</code> first). On a mailbox set to French the folder is <em>Calendrier</em> rather than <em>Calendar</em>.</p>
+  <p><code style="overflow-wrap:anywhere;">{{ share_command }}</code></p>
+  <form method="post" action="{{ url_for('admin_house_calendar_shared_by_hand') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini">I have shared it by hand</button>
+  </form>
+</details>
 {% endif %}
 
 <h2 class="section-heading">What it carries</h2>

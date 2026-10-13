@@ -8479,6 +8479,7 @@ NAV_AREAS = {
         "admin_outlook_addin_people", "admin_outlook_addin_revoke",
         "admin_outlook_addin_mailboxes", "admin_outlook_addin_settings",
         "admin_house_calendar", "admin_house_calendar_sync", "admin_house_calendar_share",
+        "admin_house_calendar_shared_by_hand",
         "admin_house_calendar_feed_link", "admin_house_calendar_areas",
         "admin_readiness", "admin_photo_mirror", "fetch_photo_mirror",
         "photo_intake", "uploaded_file", "photo_at_size",
@@ -89644,6 +89645,11 @@ HOUSE_CALENDAR_SETTINGS = {
     "last_reconcile": "house_calendar_last_reconcile", "ics_token": "house_calendar_ics_token",
     "areas": "house_calendar_areas", "categories": "house_calendar_categories_note",
     "shared": "house_calendar_shared_note",
+    # How many events the app had for the window on the last pass. "Nothing
+    # written" read the same whether the app had nothing to write or the
+    # writing had stopped; this is what tells them apart.
+    "in_range": "house_calendar_in_range",
+    "shared_by_hand": "house_calendar_shared_by_hand",
 }
 # Windows' name for the house's zone, which every Graph create and update
 # accepts; Graph lists Europe/Paris as well, but warns that writes "might not
@@ -90053,7 +90059,7 @@ def sync_house_calendar(conn, *, full=False):
                                                         house_calendar_areas(conn))}
     stored = {r["key"]: r for r in conn.execute("SELECT * FROM house_calendar_events").fetchall()}
     counts = {"created": 0, "updated": 0, "removed": 0, "unchanged": 0, "failed": 0,
-              "waiting": 0, "strays": 0, "restored": 0}
+              "waiting": 0, "strays": 0, "restored": 0, "in_range": len(desired)}
     force = set()
     if full:
         remote = house_calendar_remote(token, cal_id)
@@ -90146,6 +90152,7 @@ def sync_house_calendar(conn, *, full=False):
         counts["removed"] += 1
     now_iso = datetime.now(timezone.utc).isoformat()
     _hc_set(conn, "last_check", now_iso)
+    _hc_set(conn, "in_range", str(len(desired)))
     if counts["created"] or counts["updated"] or counts["removed"] or counts["strays"]:
         _hc_set(conn, "last_change", now_iso)
     if not counts["failed"]:
@@ -90162,7 +90169,15 @@ def house_calendar_counts_words(counts):
         ("created", "added"), ("updated", "updated"), ("removed", "removed"),
         ("strays", "strays cleared"), ("restored", "put back"), ("failed", "refused"),
         ("waiting", "waiting for the next pass")) if counts.get(k)]
-    return ", ".join(said) or f"nothing to change ({counts.get('unchanged', 0)} up to date)"
+    if said:
+        return ", ".join(said)
+    # Nothing written and nothing refused has two causes, and only one is
+    # fine: the app had nothing for the window, or it had things and they
+    # were all already there.
+    if counts.get("in_range") == 0:
+        return ("nothing to write: the app has nothing in range for the areas the "
+                "calendar carries")
+    return f"nothing to change ({counts.get('unchanged', 0)} up to date)"
 
 
 def house_calendar_note_failure(conn, words):
@@ -90230,10 +90245,43 @@ def run_house_calendar_reconcile_job(conn):
     return house_calendar_counts_words(counts)
 
 
+def house_calendar_share_command():
+    """The one line of Exchange Online PowerShell that shares the calendar
+    with everybody, for when Graph cannot."""
+    return (f'Set-MailboxFolderPermission -Identity "{HOUSE_CALENDAR_MAILBOX}:\\Calendar\\'
+            f'{HOUSE_CALENDAR_NAME}" -User Default -AccessRights Reviewer')
+
+
+def house_calendar_org_entry(perms):
+    """The organisation-wide entry in a calendar's permissions, or None.
+
+    Named "My Organization" in English. A mailbox set to another language
+    names it in that language, so it is also known by what it is: inside the
+    organisation, not removable, and no address of its own -- the calendar's
+    owner is the other entry that cannot be removed, and it has one."""
+    for p in perms:
+        who = p.get("emailAddress") or {}
+        if (who.get("name") or "") == "My Organization":
+            return p
+    for p in perms:
+        who = p.get("emailAddress") or {}
+        if (p.get("isInsideOrganization") and p.get("isRemovable") is False
+                and not who.get("address")):
+            return p
+    return None
+
+
 def house_calendar_share(conn):
     """Everybody in the organisation may read the house calendar. Returns
-    (ok, words). Microsoft keeps a 'My Organization' entry on every calendar;
-    its role goes from free/busy to read."""
+    (ok, words). Microsoft keeps an organisation-wide entry on a calendar;
+    its role goes from free/busy to read.
+
+    On a calendar in a SHARED mailbox Microsoft may not list that entry at
+    all, and Graph has no way to add one. The app cannot run the Exchange
+    command that does it: that needs Exchange admin rights on the app, which
+    would let it change the permissions of every mailbox in the house -- the
+    opposite of the access policy that limits it to this one. So the owner
+    runs the line once, says so here, and the button stops failing."""
     token = get_calendar_graph_token()
     if not token:
         return False, "Microsoft 365 did not let the calendar app sign in."
@@ -90245,10 +90293,18 @@ def house_calendar_share(conn):
     perms = graph_get(f"/users/{mb}/calendars/{cal_id}/calendarPermissions", token)
     if perms is None:
         return False, graph_last_error() or "the calendar's sharing could not be read"
-    org = next((p for p in perms.get("value", [])
-                if ((p.get("emailAddress") or {}).get("name") or "") == "My Organization"), None)
+    org = house_calendar_org_entry(perms.get("value", []))
     if not org:
-        return False, "Microsoft did not list an organisation-wide entry for this calendar."
+        by_hand = _hc_get(conn, "shared_by_hand")
+        if by_hand:
+            return True, ("It was shared by hand in Exchange, recorded "
+                          f"{local_datetime_str(by_hand)}. Microsoft does not list the "
+                          "organisation-wide entry for this calendar, so the app cannot "
+                          "check it from here.")
+        return False, ("Microsoft lists no organisation-wide entry for this calendar, which "
+                       "happens on a shared mailbox, so the app cannot share it. Run this once "
+                       "in Exchange Online PowerShell, then press \"I have shared it by hand\": "
+                       + house_calendar_share_command())
     if org.get("role") in ("read", "write", "delegateWithoutPrivateEventAccess",
                            "delegateWithPrivateEventAccess"):
         _hc_set(conn, "shared", "Everybody in the organisation can read it.")
@@ -90353,6 +90409,7 @@ def house_calendar_status(conn):
         "last_error_at": _hc_get(conn, "last_error_at"),
         "last_reconcile": _hc_get(conn, "last_reconcile"),
         "categories_note": _hc_get(conn, "categories"), "shared_note": _hc_get(conn, "shared"),
+        "in_range": _hc_get(conn, "in_range"),
         "by_area": by_area, "written": sum(1 for r in rows if r["graph_id"]),
         "failures": failures[:40], "failure_count": len(failures),
     }
@@ -90404,6 +90461,7 @@ def admin_house_calendar():
     return render_template("admin_house_calendar.html", st=st, feeds=feeds,
                            areas=HOUSE_CALENDAR_AREAS, chosen=areas, preview=preview[:60],
                            window=(start, end), name=HOUSE_CALENDAR_NAME,
+                           share_command=house_calendar_share_command(),
                            poll=HOUSE_CALENDAR_POLL_SECONDS)
 
 
@@ -90449,6 +90507,24 @@ def admin_house_calendar_share():
         conn.commit()
     conn.close()
     flash(words, "success" if ok else "error")
+    return redirect(url_for("admin_house_calendar"))
+
+
+@app.route("/admin/house-calendar/shared-by-hand", methods=["POST"])
+@owner_required
+def admin_house_calendar_shared_by_hand():
+    """The owner shared the calendar in Exchange themselves, because Graph
+    could not. Recorded, with who and when, so Share stops failing."""
+    conn = get_db()
+    user = current_user()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    _hc_set(conn, "shared_by_hand", now_iso)
+    _hc_set(conn, "shared", "Everybody in the organisation can read it: shared by hand in "
+                            f"Exchange (Default: Reviewer), recorded by {user['name']}.")
+    log_audit(conn, "house_calendar_shared", details="read, whole organisation, by hand in Exchange")
+    conn.commit()
+    conn.close()
+    flash("Recorded: the house calendar is shared with everybody, by hand.", "success")
     return redirect(url_for("admin_house_calendar"))
 
 
