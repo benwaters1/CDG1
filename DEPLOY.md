@@ -59,6 +59,116 @@ Restart the app after editing it.
 
 ---
 
+## Rotating the keys (after a leak, or a computer that can't be trusted)
+
+Written after the 5 October 2026 incident, when a fake "verify you're human"
+command ran on the PC that holds this folder. Assume anything that PC could
+read was copied: the `.env` file, and any website the browser was signed into.
+
+**Nobody types a key into a chat, an email or a ticket.** Provider keys are
+copied from the provider's page straight into Railway. Keys the app makes up
+itself come from `python tools/new_keys.py`, which writes them into
+`.env.new-keys` (gitignored, never read by the app) and prints only their
+names. Delete that file once the values are in Railway.
+
+### 0. First, the accounts that can read the keys
+
+A new key is only as safe as the logins that can look at it. Change the
+password and sign out every session on: Microsoft 365, Railway, GitHub,
+Stripe, Resend, Pennylane and the Anthropic console. Then look for anything
+left behind that survives a password change:
+
+- **GitHub** — Settings → SSH keys, Personal access tokens, Applications,
+  Sessions; and the repository's Settings → Collaborators, Deploy keys,
+  Webhooks. A push to `main` deploys to production, so a stranger's key here
+  is a way into the live site.
+- **Railway** — Account → Tokens, and the project's Members.
+- **Stripe** — Developers → API keys: delete any restricted key you don't
+  recognise.
+
+### 1. Take out the variables that should not be there at all
+
+- `OWNER_TEMP_PASSWORD` — **every deploy resets the owner password to it.**
+  Rotating keys means deploying, so sign in, change your password, then
+  delete this variable before anything else.
+- `OWNER_RECOVERY_TOKEN` — meant to be set, used once, and deleted.
+
+### 2. New keys from each provider — make the new one, don't revoke the old yet
+
+| Railway variable | Where the new one comes from |
+|---|---|
+| `STRIPE_SECRET_KEY` | Stripe → Developers → API keys → Secret key → ⋯ → **Roll key**. Let the old one expire in 1 hour, so the site keeps working while you paste. Do it in test mode **and** live mode — the live key isn't used yet, so rolling it now costs nothing. |
+| `STRIPE_WEBHOOK_SECRET` | Stripe → Developers → Webhooks → the endpoint → **Roll secret**. |
+| `STRIPE_PUBLISHABLE_KEY` | Public by design (it is in every checkout page), so nothing to do. |
+| `RESEND_API_KEY` | Resend → API Keys → Create (sending access, domain `send.chateaugudanes.com`). |
+| `RESEND_WEBHOOK_SECRET` | Resend → Webhooks → the endpoint. If it offers no way to renew the secret, delete the endpoint and add it again (same URL, same four events). |
+| `PENNYLANE_API_TOKEN` | Pennylane → Settings → Developers (API tokens): a new token with the same permissions. **This one is live.** |
+| `ANTHROPIC_API_KEY` | console.anthropic.com → API keys → Create. Look at Usage since 5 October while you're there — spending you didn't do is the tell of a stolen key. |
+| `MS_GRAPH_CLIENT_SECRET` | entra.microsoft.com → App registrations → *Chateau de Gudanes - inbox reader* → Certificates & secrets → New client secret. Copy the **Value**, not the Secret ID. |
+| `SMTP_PASSWORD`, `SMS_PROVIDER_TOKEN`, `TUYA_ACCESS_SECRET` | Only if set. Each from its own provider. |
+
+### 3. New keys the app makes itself
+
+Run `python tools/new_keys.py` and paste from `.env.new-keys`. What each
+change does the moment it deploys:
+
+| Railway variable | What changing it does |
+|---|---|
+| `FLASK_SECRET_KEY` | Signs **everyone** out — staff phones, the till, the owner, guests' accounts. A form that is open at that moment fails once. Nothing stored is signed with it, so no link or booking breaks. Do it at a quiet hour and warn the staff. |
+| `GUDANES_INGEST_KEY` | Put the same value in `tools/receipts.ini` on the château PC and in the camera-roll uploader, or receipts and photos stop arriving. |
+| `ICAL_SYNC_TOKEN`, `DIGEST_TOKEN` | Only if set: update whatever calls `/api/sync-ical` or `/api/owner-digest`. |
+| `GUEST_LOOKUP_TOKEN` | Only if set: enter it again in the Outlook add-in. |
+| `OFFICE_DISPLAY_TOKEN` | Only if set: change the wallboard's address to the new token. |
+| `VAULT_ENCRYPTION_KEY` | **Not in this round.** See "Changing the vault key" below — done wrongly, every Vault password and bank detail becomes unreadable for good. |
+
+### 4. One deploy, then check, then revoke
+
+1. In Railway → Variables, paste every new value. Railway holds the edits
+   until you press **Deploy**, so all of them go out in one restart.
+2. After it deploys, open Admin → Readiness. Then prove each one works: the
+   test-send button on Admin → Email outbox (it mails only you), a Pennylane
+   scan, one Stripe test payment, and the mailbox line on Management →
+   Booking.com.
+3. Only now revoke the old keys on each provider's page, and delete the old
+   client secret in Entra (the one with the earlier date).
+4. Delete `.env.new-keys`.
+
+### 5. This PC's own `.env`
+
+It held `FLASK_SECRET_KEY`, `GUDANES_INGEST_KEY`, `PENNYLANE_API_TOKEN` and
+the two Stripe test keys. The test suite needs none of them — it switches
+Stripe and Pennylane off itself. Delete the Pennylane and Stripe lines, and
+put a Stripe test key back only on a day you are testing payments here.
+Never copy the production `FLASK_SECRET_KEY` into it: without one, the app
+makes its own local key in `.dev_secret_key`.
+
+### Changing the vault key
+
+`VAULT_ENCRYPTION_KEY` locks the Vault's passwords and the bank details. The
+app can open things locked with an older key while you change it:
+
+1. In Railway, add `VAULT_ENCRYPTION_KEY_PREVIOUS` holding the **current**
+   vault key, and set `VAULT_ENCRYPTION_KEY` to the new one from
+   `.env.new-keys`. Deploy once, with both changes.
+2. Management → Vault now says how many secrets are still locked with the
+   previous key and names them. Press **Lock them with the new key**. It says
+   which it moved, and names any it couldn't open.
+3. When the page says everything is on the new key, delete
+   `VAULT_ENCRYPTION_KEY_PREVIOUS` and deploy.
+4. Replace the copy of the key you keep outside Railway with the new one.
+
+If something shows as unreadable, it was locked with a key the app was never
+given — put that old key into `VAULT_ENCRYPTION_KEY_PREVIOUS` and it comes
+back. Until then, editing that entry with the password left blank is refused,
+because saving it would replace the password with nothing.
+
+A new key protects what is stored from now on. If the old key **and** a copy
+of the database could both have been taken — an emailed backup in a mailbox
+that was read, or a Railway login that was used — then the passwords inside
+the Vault are what was exposed. Change those at their own sites as well.
+
+---
+
 ## Testing Stripe locally (before going live)
 
 Use **test-mode** keys (`sk_test_…`) — no real money moves. With those set,

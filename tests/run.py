@@ -95,6 +95,7 @@ SUITES = [
     "test_packages",
     "test_insurance",
     "test_vault",
+    "test_vault_key_change",
     "test_contract_deadlines",
     "test_performance_reviews",
     "test_offboarding",
