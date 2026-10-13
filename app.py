@@ -87393,6 +87393,14 @@ def run_email_inbox_scan_job(conn):
         # the guest's own message never mentioned one).
         reply_map = {}
         reply_by_conversation = {}
+        # Saved before Microsoft is asked anything, not once after the last
+        # mailbox. The inbox before this one rewrote every flag it still holds
+        # and cleared the answered ones; left open, those writes held SQLite's
+        # one write lock through this inbox's two Graph reads -- up to fifteen
+        # seconds each, five inboxes -- and the till, a clock-in or a guest
+        # booking anywhere in the house waited five and failed "database is
+        # locked". The photo mirror was this same fault.
+        conn.commit()
         # A folder that could not be read is SKIPPED AND NAMED, never read as
         # empty. Unread sent items read as "no replies", which would flag every
         # email in the inbox as unanswered; an unread inbox read as nothing to
