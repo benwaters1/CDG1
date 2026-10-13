@@ -455,6 +455,13 @@ SUITES = [
     "test_one_window_control",
     "test_menu_groups",
     "test_settings_hub",
+    # The Outlook add-in and the house calendar, 13 October 2026.
+    "test_guest_dossier",
+    "test_addin_sign_in",
+    "test_email_history",
+    "test_reply_drafting",
+    "test_outlook_addin",
+    "test_house_calendar",
 ]
 
 

@@ -1,169 +1,446 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Gudanes Guest Lookup</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gudanes — Guest</title>
 <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-<style>
-  body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; margin: 0; padding: 14px; color: #2b241d; background: #fbf7ee; font-size: 13px; }
-  h2 { font-size: 15px; margin: 0 0 4px; color: #4a2f22; }
-  .hint { color: #7a6f60; margin: 0 0 12px; }
-  input[type=text] { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid #d8cdb8; border-radius: 6px; font-size: 13px; margin-bottom: 8px; }
-  button { background: #4a2f22; color: #fbf7ee; border: none; border-radius: 6px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
-  button.secondary { background: transparent; color: #7a6f60; text-decoration: underline; padding: 4px 0; }
-  .card { background: #fff; border: 1px solid #eadfc9; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
-  .card .title { font-weight: 600; margin-bottom: 2px; }
-  .card .meta { color: #7a6f60; font-size: 12px; }
-  .status { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; background: #eadfc9; margin-left: 4px; }
-  .section-label { text-transform: uppercase; letter-spacing: .04em; font-size: 11px; color: #a08f6c; margin: 14px 0 6px; }
-  .empty { color: #7a6f60; font-style: italic; }
-  #error { color: #a33; margin-top: 8px; }
-</style>
+<script src="{{ msal_url }}" integrity="{{ msal_sri }}" crossorigin="anonymous"></script>
+<script src="{{ url_for('outlook_addin_common_js') }}"></script>
+{% include "_outlook_addin_style.html" %}
 </head>
 <body>
 
-<div id="setup" style="display:none;">
-  <h2>Set up once</h2>
-  <p class="hint">Enter the lookup token from the château app's Outlook Add-in settings page (Admin → Outlook Add-in). Stored only in your own Outlook profile — never shared.</p>
-  <input type="text" id="tokenInput" placeholder="Lookup token">
-  <button onclick="saveToken()">Save</button>
+<div id="status" class="status" role="status">Opening…</div>
+
+<div id="setup" hidden>
+  <h1>Sign in</h1>
+  <p class="hint" id="setupWhy"></p>
+  <button type="button" class="primary" id="trySignIn">Sign in with Microsoft 365</button>
+  <details class="fallback">
+    <summary>Use the house's shared key instead</summary>
+    <p class="hint">Only if signing in will not work in this Outlook. The owner gives it out from the
+      Outlook add-in page in the app; it shows everything but money.</p>
+    <input type="password" id="tokenInput" placeholder="Shared key" autocomplete="off" aria-label="Shared key">
+    <button type="button" id="saveToken">Use this key</button>
+  </details>
 </div>
 
-<div id="results" style="display:none;">
-  <h2 id="guestEmail"></h2>
-  <button class="secondary" onclick="resetToken()">Change token</button>
-  <div id="body"></div>
-</div>
+<main id="guest" hidden>
+  <header class="guest-head">
+    <h1 id="guestName"></h1>
+    <p class="hint" id="guestLine"></p>
+    <div class="actions" id="headActions"></div>
+  </header>
+  <section id="warnings" class="warnings" aria-label="Before anything else"></section>
 
-<div id="error"></div>
+  <details class="block" id="draftBlock">
+    <summary>Draft a reply</summary>
+    <div id="draftArea"></div>
+  </details>
+
+  <details class="block" open id="bookingsBlock">
+    <summary>Bookings <span class="count" id="bookingsCount"></span></summary>
+    <div id="bookings"></div>
+  </details>
+
+  <details class="block" id="emailsBlock" open>
+    <summary>Emails <span class="count" id="emailsCount"></span></summary>
+    <div id="emails"><p class="hint">Reading the house's inboxes…</p></div>
+  </details>
+
+  <details class="block" id="profileBlock">
+    <summary>Who they are</summary>
+    <dl id="profile" class="facts"></dl>
+  </details>
+
+  <details class="block" id="moneyBlock" hidden>
+    <summary>Account</summary>
+    <div id="money"></div>
+  </details>
+
+  <details class="block" id="notesBlock">
+    <summary>Notes, calls and follow-ups <span class="count" id="notesCount"></span></summary>
+    <div id="notes"></div>
+  </details>
+
+  <details class="block" id="lettersBlock">
+    <summary>What the app has sent them <span class="count" id="lettersCount"></span></summary>
+    <div id="letters"></div>
+  </details>
+
+  <footer class="foot">
+    <span id="whoAmI"></span>
+    <button type="button" class="link" id="signOut">Sign out of the add-in</button>
+  </footer>
+</main>
 
 <script>
-var LOOKUP_URL = {{ lookup_url|tojson }};
+var h = Gudanes.h;
+var state = { context: null, dossier: null, history: null, draft: null };
 
-Office.onReady(function () {
-  var token = Office.context.roamingSettings.get("gudanesToken");
-  if (!token) {
-    document.getElementById("setup").style.display = "block";
-  } else {
-    runLookup(token);
-  }
-});
-
-function saveToken() {
-  var token = document.getElementById("tokenInput").value.trim();
-  if (!token) { return; }
-  Office.context.roamingSettings.set("gudanesToken", token);
-  Office.context.roamingSettings.saveAsync(function () {
-    document.getElementById("setup").style.display = "none";
-    runLookup(token);
-  });
+function show(id, on) { document.getElementById(id).hidden = !on; }
+function setStatus(text, kind) {
+  var el = document.getElementById("status");
+  el.textContent = text || "";
+  el.className = "status" + (kind ? " " + kind : "");
+  el.hidden = !text;
 }
 
-function resetToken() {
-  Office.context.roamingSettings.remove("gudanesToken");
-  Office.context.roamingSettings.saveAsync(function () {
-    document.getElementById("results").style.display = "none";
-    document.getElementById("setup").style.display = "block";
-  });
-}
+Office.onReady(function () { start(); });
 
-function runLookup(token) {
-  var item = Office.context.mailbox.item;
-  var email = (item && item.from && item.from.emailAddress) || (item && item.sender && item.sender.emailAddress);
-  if (!email) {
-    showError("Couldn't read the sender's email address from this message.");
+async function start() {
+  state.context = Gudanes.readContext();
+  if (!state.context.guest) {
+    setStatus("There is nobody outside the house on this message to look up.", "quiet");
     return;
   }
-  var body = new URLSearchParams({ email: email, token: token });
-  fetch(LOOKUP_URL, { method: "POST", body: body }).then(function (resp) {
-    if (!resp.ok) { throw new Error("Lookup failed (" + resp.status + ") — check the token in settings."); }
-    return resp.json();
-  }).then(function (data) {
-    renderResults(email, data);
-  }).catch(function (err) {
-    showError(err.message);
+  try {
+    setStatus("Looking them up…");
+    var data = await Gudanes.call(GUDANES.lookup_url, {
+      email: state.context.guest.email, name: state.context.guest.name });
+    state.dossier = data.dossier;
+    drawGuest(data);
+    setStatus("");
+    loadHistory();
+  } catch (e) {
+    if (e.needsSetup) { askToSignIn(e.message); }
+    else { setStatus(e.message, "error"); }
+  }
+}
+
+function askToSignIn(why) {
+  setStatus("");
+  show("guest", false);
+  show("setup", true);
+  document.getElementById("setupWhy").textContent = why || "";
+  document.getElementById("trySignIn").hidden = !Gudanes.canSignInHere();
+}
+
+document.getElementById("trySignIn").addEventListener("click", async function () {
+  var who = await Gudanes.signIn(true);
+  if (who && who.session) { show("setup", false); start(); }
+  else { document.getElementById("setupWhy").textContent = Gudanes.problem(); }
+});
+document.getElementById("saveToken").addEventListener("click", async function () {
+  var key = document.getElementById("tokenInput").value.trim();
+  if (!key) { return; }
+  await Gudanes.useSharedKey(key);
+  show("setup", false);
+  start();
+});
+document.getElementById("signOut").addEventListener("click", async function () {
+  await Gudanes.forgetSession();
+  await Gudanes.forgetSharedKey();
+  askToSignIn("Signed out of the add-in on this device. Microsoft 365 itself is not signed out.");
+});
+
+var LEVEL_WORDS = { stop: "Stop", care: "Care", money: "Money", note: "Note" };
+
+function drawGuest(data) {
+  var d = data.dossier, p = d.profile;
+  show("setup", false);
+  show("guest", true);
+  document.getElementById("guestName").textContent = p.name || data.email;
+  var line = [data.email];
+  if (p.pronunciation) { line.push("say “" + p.pronunciation + "”"); }
+  if (p.vip) { line.push("VIP"); }
+  if (p.language_name) { line.push(p.language_name); }
+  if (d.has_profile && p.stays) { line.push(p.stays + " stay" + (p.stays === 1 ? "" : "s") + (p.last_here ? ", last " + Gudanes.day(p.last_here) : "")); }
+  if (!d.has_profile) { line.push(d.known ? "no profile yet" : "not known to the house"); }
+  document.getElementById("guestLine").textContent = line.join(" · ");
+  document.getElementById("whoAmI").textContent =
+    "Signed in as " + data.who.name + " (" + data.who.how + ") — sees " + data.who.sees + ".";
+
+  var actions = Gudanes.clear(document.getElementById("headActions"));
+  if (p.link) { actions.appendChild(h("button", { type: "button", onclick: function () { Gudanes.openLink(p.link); } }, "Open in the app")); }
+  if (data.can_create_profile) { actions.appendChild(h("button", { type: "button", onclick: createProfile }, "Create a profile")); }
+
+  var warnings = Gudanes.clear(document.getElementById("warnings"));
+  (d.warnings || []).forEach(function (w) {
+    warnings.appendChild(h("div", { class: "warning " + w.level },
+      h("span", { class: "badge" }, LEVEL_WORDS[w.level] || w.level),
+      h("strong", null, w.title), w.text ? h("span", { class: "detail" }, w.text) : null,
+      w.link ? h("button", { type: "button", class: "link", onclick: function () { Gudanes.openLink(w.link); } }, "open") : null));
+  });
+
+  drawBookings(d.items || []);
+  drawProfile(d);
+  drawMoney(d.account);
+  drawNotes(d);
+  drawLetters(d.letters || []);
+  drawDraftArea();
+}
+
+function drawBookings(items) {
+  var box = Gudanes.clear(document.getElementById("bookings"));
+  document.getElementById("bookingsCount").textContent = items.length ? "(" + items.length + ")" : "";
+  if (!items.length) { box.appendChild(h("p", { class: "hint" }, "Nothing booked under any address they are known by.")); return; }
+  var upcomingShown = false, pastShown = false;
+  items.forEach(function (i) {
+    if (i.upcoming && !upcomingShown) { box.appendChild(h("h2", null, "Coming up")); upcomingShown = true; }
+    if (!i.upcoming && !pastShown) { box.appendChild(h("h2", null, "Before")); pastShown = true; }
+    var when = Gudanes.day(i.when) + (i.until && i.until !== i.when ? " → " + Gudanes.day(i.until) : "");
+    var meta = [when];
+    if (i.party) { meta.push(i.party + (i.kind === "Event" ? " guests" : " people")); }
+    if (i.ref) { meta.push(i.ref); }
+    if (i.amount !== null && i.amount !== undefined) { meta.push(Gudanes.euros(i.amount) + (i.owed > 0.005 ? ", " + Gudanes.euros(i.owed) + " owed" : "")); }
+    box.appendChild(h("div", { class: "card" },
+      h("div", { class: "card-title" }, h("span", { class: "kind" }, i.kind), " ", i.title,
+        i.status ? h("span", { class: "status-pill " + i.status }, i.status) : null),
+      h("div", { class: "meta" }, meta.filter(Boolean).join(" · ")),
+      i.detail ? h("div", { class: "meta" }, i.detail) : null,
+      i.requests ? h("div", { class: "requests" }, "Asked for: " + i.requests) : null,
+      i.link ? h("button", { type: "button", class: "link", onclick: function () { Gudanes.openLink(i.link); } }, "open") : null));
   });
 }
 
-function showError(message) {
-  document.getElementById("error").textContent = message;
+function drawProfile(d) {
+  var p = d.profile, box = Gudanes.clear(document.getElementById("profile"));
+  var rows = [
+    ["Email", [p.email].concat(p.other_emails || []).filter(Boolean).join(", ")],
+    ["Telephone", p.phone], ["Language", p.language_name], ["Birthday", p.birthday],
+    ["Anniversary", p.anniversary], ["Eats", p.dietary], ["Getting around", p.access_needs],
+    ["Prefers", p.preferences], ["Usually arrives", p.usual_arrival_time],
+    ["Photographs", p.photo_consent], ["Tags", (p.tags || []).join(", ")],
+    ["Known since", Gudanes.day(p.known_since)], ["Newsletter", p.marketing], ["Texts", p.texting],
+    ["Note", p.note]
+  ];
+  rows.forEach(function (r) {
+    if (!r[1]) { return; }
+    box.appendChild(h("dt", null, r[0]));
+    box.appendChild(h("dd", null, r[1]));
+  });
+  if (!box.firstChild) { box.appendChild(h("dd", null, "Nothing on file.")); }
 }
 
-function renderResults(email, data) {
-  document.getElementById("guestEmail").textContent = email;
-  var body = document.getElementById("body");
-  body.innerHTML = "";
-
-  body.appendChild(section("Room bookings", data.rooms, function (r) {
-    return card(
-      r.room_name + " — " + r.arrival_date + " to " + r.departure_date,
-      "Party of " + r.party_size + (r.total_price ? " · €" + r.total_price.toFixed(2) : ""),
-      r.status, r.payment_status
-    );
-  }));
-  body.appendChild(section("Dinner reservations", data.restaurant, function (r) {
-    return card(
-      "Dinner — " + r.dinner_date,
-      "Party of " + r.party_size + (r.dietary_notes ? " · " + r.dietary_notes : ""),
-      r.status, r.payment_status
-    );
-  }));
-  body.appendChild(section("Workshop registrations", data.workshops, function (r) {
-    return card(
-      r.title + " — " + r.start_date + (r.end_date !== r.start_date ? " to " + r.end_date : ""),
-      "Party of " + r.party_size,
-      r.status, null
-    );
-  }));
-
-  document.getElementById("results").style.display = "block";
-  document.getElementById("setup").style.display = "none";
-  document.getElementById("error").textContent = "";
+function drawMoney(account) {
+  show("moneyBlock", !!account);
+  if (!account) { return; }
+  var box = Gudanes.clear(document.getElementById("money"));
+  box.appendChild(h("dl", { class: "facts" },
+    h("dt", null, "Charged"), h("dd", null, Gudanes.euros(account.charged)),
+    h("dt", null, "Paid"), h("dd", null, Gudanes.euros(account.paid)),
+    h("dt", null, account.balance < -0.005 ? "In credit" : "Owed"),
+    h("dd", null, Gudanes.euros(Math.abs(account.balance)))));
+  (account.lines || []).slice().reverse().forEach(function (l) {
+    box.appendChild(h("div", { class: "line" }, Gudanes.day(l.day) + " · " + l.what +
+      (l.charge ? " · charged " + Gudanes.euros(l.charge) : "") +
+      (l.paid ? " · paid " + Gudanes.euros(l.paid) : "") +
+      (l.back ? " · refunded " + Gudanes.euros(l.back) : "")));
+  });
+  if (account.statement_link) {
+    box.appendChild(h("button", { type: "button", class: "link", onclick: function () { Gudanes.openLink(account.statement_link); } }, "The full statement"));
+  }
 }
 
-function section(label, items, renderItem) {
-  var wrap = document.createElement("div");
-  var h = document.createElement("div");
-  h.className = "section-label";
-  h.textContent = label;
-  wrap.appendChild(h);
-  if (!items || items.length === 0) {
-    var empty = document.createElement("div");
-    empty.className = "empty";
-    empty.textContent = "Nothing on file.";
-    wrap.appendChild(empty);
-  } else {
-    items.forEach(function (item) { wrap.appendChild(renderItem(item)); });
+function drawNotes(d) {
+  var box = Gudanes.clear(document.getElementById("notes"));
+  var n = (d.follow_ups || []).length + (d.notes || []).length + (d.contacts || []).length + (d.feedback || []).length;
+  document.getElementById("notesCount").textContent = n ? "(" + n + ")" : "";
+  if (d.follow_ups && d.follow_ups.length) {
+    box.appendChild(h("h2", null, "Still to do"));
+    d.follow_ups.forEach(function (f) {
+      box.appendChild(h("div", { class: "line" + (f.overdue ? " overdue" : "") },
+        (f.due ? Gudanes.day(f.due) + " · " : "") + f.what + (f.by ? " — " + f.by : "")));
+    });
   }
-  return wrap;
+  if (d.notes && d.notes.length) {
+    box.appendChild(h("h2", null, "Staff notes"));
+    d.notes.forEach(function (x) { box.appendChild(h("div", { class: "line" }, Gudanes.day(x.at) + " · " + x.body + (x.by ? " — " + x.by : ""))); });
+  }
+  if (d.contacts && d.contacts.length) {
+    box.appendChild(h("h2", null, "Calls and conversations"));
+    d.contacts.forEach(function (c) {
+      box.appendChild(h("div", { class: "line" }, Gudanes.day(c.at) + " · " + c.channel + ", " + c.direction + ": " + c.summary + (c.by ? " — " + c.by : "")));
+    });
+  }
+  if (d.feedback && d.feedback.length) {
+    box.appendChild(h("h2", null, "What they said"));
+    d.feedback.forEach(function (f) {
+      box.appendChild(h("div", { class: "line" }, Gudanes.day(f.at) + " · " + (f.rating ? f.rating + "/5 " : "") + (f.comment || "") + (f.answered ? "" : " (not answered)")));
+    });
+  }
+  if (!n) { box.appendChild(h("p", { class: "hint" }, "Nothing written down about them.")); }
 }
 
-function card(title, meta, status, paymentStatus) {
-  var div = document.createElement("div");
-  div.className = "card";
-  var t = document.createElement("div");
-  t.className = "title";
-  t.textContent = title;
-  if (status) {
-    var s = document.createElement("span");
-    s.className = "status";
-    s.textContent = status;
-    t.appendChild(s);
+function drawLetters(letters) {
+  var box = Gudanes.clear(document.getElementById("letters"));
+  document.getElementById("lettersCount").textContent = letters.length ? "(" + letters.length + ")" : "";
+  if (!letters.length) { box.appendChild(h("p", { class: "hint" }, "The app has sent them nothing.")); return; }
+  letters.forEach(function (l) {
+    box.appendChild(h("div", { class: "line" }, Gudanes.day(l.day) + " · " + l.kind + (l.incoming ? " from them" : "") + ": " + l.subject + (l.sent ? "" : " (held, not sent)")));
+  });
+}
+
+async function loadHistory() {
+  var box = document.getElementById("emails");
+  try {
+    var hist = await Gudanes.call(GUDANES.history_url, { email: state.context.guest.email });
+    state.history = hist;
+    drawHistory(hist);
+  } catch (e) {
+    Gudanes.clear(box).appendChild(h("p", { class: "hint error" }, e.message));
   }
-  if (paymentStatus && paymentStatus !== "unpaid") {
-    var p = document.createElement("span");
-    p.className = "status";
-    p.textContent = paymentStatus;
-    t.appendChild(p);
+}
+
+function drawHistory(hist) {
+  var box = Gudanes.clear(document.getElementById("emails"));
+  if (!hist.available) { box.appendChild(h("p", { class: "hint" }, hist.why)); return; }
+  var total = (hist.summary && hist.summary.messages) || 0;
+  document.getElementById("emailsCount").textContent = total ? "(" + total + ")" : "";
+  if (hist.summary) { box.appendChild(h("p", { class: "summary" }, hist.summary.words)); }
+  (hist.failed || []).forEach(function (f) { box.appendChild(h("p", { class: "hint error" }, f.mailbox + " could not be read: " + f.why)); });
+  if ((hist.summary && hist.summary.threads) > 4) {
+    var out = h("div", { class: "ai-summary" });
+    box.appendChild(h("button", { type: "button", onclick: function () { summarise(out, this); } }, "Summarise the whole history"));
+    box.appendChild(out);
   }
-  div.appendChild(t);
-  var m = document.createElement("div");
-  m.className = "meta";
-  m.textContent = meta;
-  div.appendChild(m);
-  return div;
+  (hist.threads || []).forEach(function (t, n) {
+    var thread = h("details", { class: "thread" + (t.waiting ? " waiting" : "") });
+    if (n === 0) { thread.open = true; }
+    thread.appendChild(h("summary", null,
+      h("span", { class: "thread-subject" }, t.subject),
+      h("span", { class: "meta" }, Gudanes.day(t.last) + " · " + t.count + " · " + t.mailboxes.join(", ") + (t.waiting ? " · waiting for our reply" : ""))));
+    t.messages.forEach(function (m) {
+      var who = m.direction === "in" ? "They wrote" : (m.direction === "out" ? (m.signed_as || m.from_name) + " wrote" : m.from_name);
+      thread.appendChild(h("div", { class: "message " + m.direction },
+        h("div", { class: "meta" }, Gudanes.day(m.when) + " · " + who + " · " + m.mailboxes.join(", ")),
+        h("div", null, m.preview),
+        m.web_link ? h("button", { type: "button", class: "link", onclick: function () { Gudanes.openLink(m.web_link); } }, "open the email") : null));
+    });
+    box.appendChild(thread);
+  });
+  if (hist.more_threads) { box.appendChild(h("p", { class: "hint" }, "And " + hist.more_threads + " older conversation(s).")); }
+}
+
+async function summarise(out, button) {
+  button.disabled = true;
+  Gudanes.clear(out).appendChild(h("p", { class: "hint" }, "Summarising…"));
+  try {
+    var r = await Gudanes.call(GUDANES.summarise_url, { email: state.context.guest.email });
+    Gudanes.clear(out).appendChild(h("p", null, r.summary));
+    if (r.open_points && r.open_points.length) {
+      out.appendChild(h("h2", null, "Still open"));
+      r.open_points.forEach(function (x) { out.appendChild(h("div", { class: "line" }, x)); });
+    }
+  } catch (e) {
+    Gudanes.clear(out).appendChild(h("p", { class: "hint error" }, e.message));
+  }
+  button.disabled = false;
+}
+
+async function createProfile() {
+  var name = (state.context.guest.name || "").trim() || window.prompt("Their name?");
+  if (!name) { return; }
+  var params = { email: state.context.guest.email, name: name };
+  try {
+    var r = await Gudanes.call(GUDANES.create_url, params);
+    if (!r.created && r.possible) {
+      var list = r.possible.map(function (p) { return p.name + " (" + p.why + ")"; }).join("\n");
+      if (!window.confirm("They might already be:\n" + list + "\n\nMake a new profile anyway?")) { return; }
+      params.confirm = "1";
+      r = await Gudanes.call(GUDANES.create_url, params);
+    }
+    setStatus("Profile made.", "ok");
+    start();
+  } catch (e) { setStatus(e.message, "error"); }
+}
+
+// ---- drafting from the read panel (and the only way, on a phone) -----------
+
+var MODES = [["reply", "Reply"], ["shorter", "Shorter"], ["warmer", "Warmer"], ["formal", "More formal"]];
+
+function drawDraftArea() {
+  var box = Gudanes.clear(document.getElementById("draftArea"));
+  if (state.dossier && state.dossier.restricted) {
+    box.appendChild(h("p", { class: "hint" }, "They asked us to stop using their details: a draft is written from this email and today's prices only."));
+  }
+  if (Gudanes.onPhone()) {
+    box.appendChild(h("p", { class: "hint" }, "On a phone Outlook does not open add-ins while you write, so draft here, copy, then tap Reply and paste."));
+  }
+  var modes = h("div", { class: "modes" });
+  MODES.forEach(function (m) {
+    modes.appendChild(h("button", { type: "button", "data-mode": m[0], onclick: function () { draft(m[0]); }, disabled: m[0] !== "reply" }, m[1]));
+  });
+  var lang = h("select", { id: "translateTo", "aria-label": "Translate into" },
+    ["French", "English", "Spanish", "German", "Italian", "Dutch", "Catalan"].map(function (l) { return h("option", null, l); }));
+  modes.appendChild(h("span", { class: "translate" }, h("button", { type: "button", "data-mode": "translate", disabled: true, onclick: function () { draft("translate", lang.value); } }, "Translate into"), lang));
+  box.appendChild(modes);
+  box.appendChild(h("textarea", { id: "draftText", rows: 12, "aria-label": "The draft", placeholder: "Press Reply to draft one from everything the house knows." }));
+  box.appendChild(h("div", { class: "actions" },
+    h("button", { type: "button", class: "primary", id: "useDraft", onclick: useDraft, disabled: true }, Gudanes.onPhone() ? "Copy" : "Reply with this"),
+    Gudanes.onPhone() ? null : h("button", { type: "button", id: "copyDraft", onclick: copyDraft, disabled: true }, "Copy"),
+    h("button", { type: "button", id: "checkDraft", onclick: checkDraft, disabled: true }, "Check this reply")));
+  box.appendChild(h("div", { id: "draftNote", class: "hint", role: "status" }));
+  box.appendChild(h("div", { id: "draftFacts" }));
+}
+
+async function draft(mode, language) {
+  var note = document.getElementById("draftNote");
+  var text = document.getElementById("draftText");
+  document.querySelectorAll("#draftArea button").forEach(function (b) { b.disabled = true; });
+  note.textContent = mode === "reply" ? "Drafting from their bookings, their emails and today's prices…" : "Rewriting…";
+  try {
+    var body = await Gudanes.readBodyText();
+    var r = await Gudanes.call(GUDANES.draft_url, {
+      recipient_email: state.context.guest.email, subject: state.context.subject,
+      body: body, conversation_id: state.context.conversationId, mailbox: state.context.mailbox,
+      mode: mode, language: language || "", previous_draft: mode === "reply" ? "" : text.value });
+    text.value = r.draft;
+    state.draft = r;
+    note.textContent = "Signed as " + r.signed_as + (r.language ? " · written in " + r.language : "") + ". Read it before it goes.";
+    drawFacts(r);
+  } catch (e) {
+    note.textContent = e.message;
+  }
+  document.querySelectorAll("#draftArea button").forEach(function (b) { b.disabled = !text.value && b.dataset.mode !== "reply"; });
+}
+
+function drawFacts(r) {
+  var box = Gudanes.clear(document.getElementById("draftFacts"));
+  if (r.unsure && r.unsure.length) {
+    box.appendChild(h("h2", null, "Not sure — check these"));
+    r.unsure.forEach(function (u) { box.appendChild(h("div", { class: "line unsure" }, u)); });
+  }
+  if (r.facts_used && r.facts_used.length) {
+    box.appendChild(h("h2", null, "Facts the draft relies on"));
+    r.facts_used.forEach(function (f) { box.appendChild(h("div", { class: "line" }, f.fact + " — " + f.source)); });
+  }
+  (r.notes || []).forEach(function (n) { box.appendChild(h("p", { class: "hint" }, n)); });
+}
+
+function useDraft() {
+  var text = document.getElementById("draftText").value;
+  if (Gudanes.onPhone()) { return copyDraft(); }
+  try {
+    var html = text.split(/\n{2,}/).map(function (para) {
+      var p = document.createElement("p");
+      p.textContent = para;
+      return p.outerHTML.replace(/\n/g, "<br>");
+    }).join("");
+    Office.context.mailbox.item.displayReplyForm({ htmlBody: html });
+  } catch (e) { copyDraft(); }
+}
+
+function copyDraft() {
+  var area = document.getElementById("draftText");
+  Gudanes.copy(area.value, area).then(function (ok) {
+    document.getElementById("draftNote").textContent = ok ? "Copied. Tap Reply and paste it in." : "Select the text above and copy it.";
+  });
+}
+
+async function checkDraft() {
+  var note = document.getElementById("draftNote");
+  note.textContent = "Checking against the booking system…";
+  try {
+    var r = await Gudanes.call(GUDANES.check_url, {
+      recipient_email: state.context.guest.email, subject: state.context.subject,
+      body: document.getElementById("draftText").value });
+    note.textContent = r.conflict ? "Before sending: " + r.note : r.checked;
+    note.className = "hint " + (r.conflict ? "error" : "ok");
+  } catch (e) { note.textContent = e.message; }
 }
 </script>
-
 </body>
 </html>

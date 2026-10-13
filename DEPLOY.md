@@ -374,20 +374,125 @@ for this — it's a summary, not a live feed.
 
 ---
 
-## Outlook add-in (guest lookup, send-time price check, AI reply drafts)
+## Outlook add-in (the whole guest beside their email, replies drafted from it)
 
-Set `GUEST_LOOKUP_TOKEN` (generate it the same way as `ICAL_SYNC_TOKEN`
-above) — this one token gates all three add-in features (guest lookup,
-the send-time pricing/availability check, and reply drafting), entered
-once into the add-in itself rather than into a scheduler. Then log in as
-the owner and go to Management → Outlook Add-in for the manifest link and
-sideloading steps. Without `GUEST_LOOKUP_TOKEN` set, none of the add-in's
-API calls work — they all 404 the same way `/api/guest-lookup` does.
+Owner page: Settings → Outlook add-in (`/admin/outlook-addin`). It shows what
+is set up, what works on which device, who is signed in, and the steps below
+with this deployment's own addresses filled in.
 
-Reply drafting additionally needs `ANTHROPIC_API_KEY` (your own Anthropic
-account's key — https://console.anthropic.com). Without it, the "Draft
-with AI" button shows an error instead of a draft; guest lookup and the
-send-time check work regardless, since neither one calls Claude.
+**What it does.** A panel beside a guest's email — on Windows, Mac, the web,
+iPhone and Android — with everything about them: warnings first (a caution,
+a request to stop using their details, a review nobody answered, an email
+waiting, money owed), every booking under any address they are known by,
+their profile, notes and follow-ups, every email with them across all the
+inboxes the mail reader can see, and for the owner their account. "Draft with
+AI" writes a reply from all of it plus today's real prices; the check on Send
+(and a "Check before sending" button) catches a wrong price or date.
+
+**On phones**, Outlook opens add-ins only while *reading*: no compose panel,
+and Microsoft does not run send checks there. So on a phone the reply is
+drafted from the read panel and copied in, "Check this reply" is a button
+there, and a note about the guest appears at the top of a reply as soon as
+they are in To. The Sent Items scan (Inbox Flags) checks every reply sent
+from a phone within fifteen minutes with the same engine.
+
+### 1. Sign-in with Microsoft 365 (`ADDIN_CLIENT_ID`)
+
+Nobody pastes a shared key any more. In the Entra admin centre:
+
+1. App registrations → New registration → "Gudanes Outlook add-in", this
+   organisation only.
+2. Authentication → Add a platform → **Single-page application**, redirect
+   URI `brk-multihub://<the site's host>` (e.g.
+   `brk-multihub://web-production-xxxx.up.railway.app`; add the real domain
+   too at switchover).
+3. Expose an API → set the Application ID URI to `api://<client id>` → add a
+   scope `access_as_user` (admins and users can consent).
+4. API permissions → Add → My APIs → this app → `access_as_user` → **Grant
+   admin consent**.
+5. Railway: `ADDIN_CLIENT_ID=<the client id>`. The tenant is
+   `MS_GRAPH_TENANT_ID` (set `ADDIN_TENANT_ID` only if it differs). No secret.
+
+Then on the add-in page, link anybody whose Microsoft 365 address is not the
+one they log in to the dashboard with (the owner signs in to Outlook as
+benw@). The owner sees money; everybody else does not. Each Outlook a person
+signs in from is listed and can be signed out.
+
+`GUEST_LOOKUP_TOKEN` still works as a fallback for an Outlook too old to sign
+in this way — as staff, never with money — until the owner unticks it on the
+add-in page.
+
+### 2. Put it in everybody's Outlook
+
+Microsoft 365 admin centre → Settings → **Integrated apps** → Upload custom
+apps → Office Add-in → "Provide link to manifest file" →
+`https://<host>/outlook-addin/manifest.xml` → assign (everyone, or the people
+who answer guests) → Fixed → Deploy. It appears within hours (Microsoft says
+up to 24). When the add-in page shows a new manifest version, choose
+**Update** on it in Integrated apps.
+
+### 3. Email history and drafting
+
+- Email history uses the mail reader already set up (`MS_GRAPH_*`,
+  "Microsoft Graph inbox monitoring" below) — every mailbox in
+  `MS_GRAPH_MAILBOXES`. Nothing more to set. accounts@ is the owner's alone
+  by default; the add-in page changes that per inbox.
+- Drafting needs `ANTHROPIC_API_KEY`. It uses Claude Opus 5.5, with
+  Anthropic's server-side refusal fallback on.
+- Who signs a draft from each inbox (reservations@ = The Château Team,
+  experience@ = Jasmine, ariege@ = Karina, accounts@ = Accounts) and what the
+  drafter should know that the website does not say are on the add-in page.
+
+What is sent to Anthropic, and what is not, is in the privacy notice
+(`templates/privacy.html`, "Who Else Is Involved"), and `test_privacy`
+checks the code against it.
+
+---
+
+## The house calendar (Microsoft 365)
+
+Owner page: Settings → House calendar (`/admin/house-calendar`).
+
+One Microsoft 365 calendar, "Château de Gudanes — House", that the app writes
+every thirty seconds — stays, dinners, ateliers, events, tasks and the rota,
+exactly as `/calendar` shows them — and everybody reads in Outlook on their
+computer and phone. Names, rooms and dates only. Checked against Microsoft's
+copy each night between 02:00 and 06:00. Failures show on the owner home and
+become a task.
+
+It is written by its **own** app registration, because an Exchange
+application access policy limits an app to a set of mailboxes for every
+permission it holds: giving the mail reader `Calendars.ReadWrite` would let
+it write into every inbox it reads.
+
+1. A mailbox for it: a shared mailbox such as `house@chateaugudanes.com`
+   (no licence needed).
+2. Entra → App registrations → New → "Gudanes House Calendar". API
+   permissions → Microsoft Graph → **Application** → `Calendars.ReadWrite`,
+   and `MailboxSettings.ReadWrite` for the area colours. Grant admin consent.
+   Certificates & secrets → new client secret.
+3. Limit it to that one mailbox (Exchange Online PowerShell):
+
+   ```powershell
+   Connect-ExchangeOnline
+   New-DistributionGroup -Name "GudanesHouseCalendar" -Type Security -Members house@chateaugudanes.com
+   New-ApplicationAccessPolicy -AppId <calendar app client id> -PolicyScopeGroupId GudanesHouseCalendar@chateaugudanes.com -AccessRight RestrictAccess -Description "House calendar app: the house mailbox only"
+   Test-ApplicationAccessPolicy -Identity house@chateaugudanes.com -AppId <client id>     # Granted
+   Test-ApplicationAccessPolicy -Identity accounts@chateaugudanes.com -AppId <client id>  # Denied
+   ```
+
+   It can take up to an hour to apply; until then Graph answers 403.
+4. Railway: `MS_CALENDAR_CLIENT_ID`, `MS_CALENDAR_CLIENT_SECRET`,
+   `HOUSE_CALENDAR_MAILBOX`. Redeploy.
+5. On the house calendar page, press **Share with everybody, read only**.
+   Each person adds it once: Outlook → Calendar → Add calendar → From
+   directory → House → "Château de Gudanes — House". It then appears in
+   Outlook on their phone too.
+
+The same page makes a token-protected `.ics` link (`/calendar/house.ics`,
+and one per area) for a phone without Microsoft 365, and can replace the
+token, which stops every old link. The per-room feeds Booking.com reads are
+unchanged and carry no guest names.
 
 ---
 

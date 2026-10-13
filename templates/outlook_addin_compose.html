@@ -1,129 +1,214 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Draft a reply</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gudanes — Draft with AI</title>
 <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-<style>
-  body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; margin: 0; padding: 14px; color: #2b241d; background: #fbf7ee; font-size: 13px; }
-  h2 { font-size: 15px; margin: 0 0 4px; color: #4a2f22; }
-  .hint { color: #7a6f60; margin: 0 0 12px; }
-  input[type=text] { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid #d8cdb8; border-radius: 6px; font-size: 13px; margin-bottom: 8px; }
-  textarea { width: 100%; box-sizing: border-box; padding: 8px 9px; border: 1px solid #d8cdb8; border-radius: 6px; font-size: 13px; font-family: inherit; margin: 8px 0; resize: vertical; }
-  button { background: #4a2f22; color: #fbf7ee; border: none; border-radius: 6px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
-  button:disabled { opacity: 0.5; cursor: default; }
-  button.secondary { background: transparent; color: #7a6f60; text-decoration: underline; padding: 4px 0; }
-  #status { color: #7a6f60; margin-top: 6px; min-height: 16px; }
-  #status.error { color: #a33; }
-</style>
+<script src="{{ msal_url }}" integrity="{{ msal_sri }}" crossorigin="anonymous"></script>
+<script src="{{ url_for('outlook_addin_common_js') }}"></script>
+{% include "_outlook_addin_style.html" %}
 </head>
 <body>
 
-<div id="setup" style="display:none;">
-  <h2>Set up once</h2>
-  <p class="hint">Enter the lookup token from the château app's Outlook Add-in settings page (Admin → Outlook Add-in). Same token used by Guest Lookup — stored only in your own Outlook profile.</p>
-  <input type="text" id="tokenInput" placeholder="Lookup token">
-  <button onclick="saveToken()">Save</button>
+<div id="status" class="status" role="status" hidden></div>
+
+<div id="setup" hidden>
+  <h1>Sign in</h1>
+  <p class="hint" id="setupWhy"></p>
+  <button type="button" class="primary" id="trySignIn">Sign in with Microsoft 365</button>
+  <details class="fallback">
+    <summary>Use the house's shared key instead</summary>
+    <p class="hint">Only if signing in will not work in this Outlook. It shows everything but money.</p>
+    <input type="password" id="tokenInput" placeholder="Shared key" autocomplete="off" aria-label="Shared key">
+    <button type="button" id="saveToken">Use this key</button>
+  </details>
 </div>
 
-<div id="ready" style="display:none;">
-  <h2>Draft with AI</h2>
-  <p class="hint">Uses this guest's real booking history and today's real pricing, availability, and terms — always review before sending.</p>
-  <button id="draftBtn" onclick="requestDraft()">Draft a reply</button>
-  <div id="draftArea" style="display:none;">
-    <textarea id="draftText" rows="12"></textarea>
-    <button onclick="insertDraft()">Insert into email</button>
-    <button class="secondary" onclick="requestDraft()">Regenerate</button>
+<main id="ready" hidden>
+  <header class="guest-head">
+    <h1 id="guestName">Draft with AI</h1>
+    <p class="hint" id="guestLine">Uses everything the house knows about them, every email with them, and today's real prices. Nothing is sent; you read it, change it and send it.</p>
+  </header>
+  <section id="warnings" class="warnings" aria-label="Before anything else"></section>
+
+  <div class="modes" id="modes">
+    <button type="button" class="primary" data-mode="reply">Draft a reply</button>
+    <button type="button" data-mode="shorter" disabled>Shorter</button>
+    <button type="button" data-mode="warmer" disabled>Warmer</button>
+    <button type="button" data-mode="formal" disabled>More formal</button>
+    <span class="translate">
+      <button type="button" data-mode="translate" disabled>Translate into</button>
+      <select id="translateTo" aria-label="Translate into">
+        <option>French</option><option>English</option><option>Spanish</option>
+        <option>German</option><option>Italian</option><option>Dutch</option><option>Catalan</option>
+      </select>
+    </span>
   </div>
-  <div id="status"></div>
-</div>
+  <textarea id="draftText" rows="14" aria-label="The draft" placeholder="The draft appears here. You can change it before putting it in."></textarea>
+  <div class="actions">
+    <button type="button" class="primary" id="insertDraft" disabled>Put it in the email</button>
+    <button type="button" id="checkSend">Check before sending</button>
+  </div>
+  <div id="note" class="hint" role="status"></div>
+  <div id="facts"></div>
+
+  <footer class="foot">
+    <span id="whoAmI"></span>
+    <button type="button" class="link" id="signOut">Sign out of the add-in</button>
+  </footer>
+</main>
 
 <script>
-var DRAFT_URL = {{ draft_url|tojson }};
+var h = Gudanes.h;
+var ctx = null;
 
-Office.onReady(function () {
-  var token = Office.context.roamingSettings.get("gudanesToken");
-  if (!token) {
-    document.getElementById("setup").style.display = "block";
-  } else {
-    document.getElementById("ready").style.display = "block";
+function show(id, on) { document.getElementById(id).hidden = !on; }
+function note(text, kind) {
+  var el = document.getElementById("note");
+  el.textContent = text || "";
+  el.className = "hint" + (kind ? " " + kind : "");
+}
+
+Office.onReady(function () { start(); });
+
+async function start() {
+  ctx = await Gudanes.composeContext();
+  show("setup", false);
+  show("ready", true);
+  if (!ctx.guest) {
+    note("Put the guest in To, then draft: the draft is written for whoever it is going to.");
+    lookup();
+    return;
   }
+  lookup();
+}
+
+async function lookup() {
+  if (!ctx.guest) {
+    try { await Gudanes.call(GUDANES.check_url, { recipient_email: "", subject: "", body: "" }); }
+    catch (e) { if (e.needsSetup) { askToSignIn(e.message); } }
+    return;
+  }
+  try {
+    var data = await Gudanes.call(GUDANES.lookup_url, { email: ctx.guest.email, name: ctx.guest.name });
+    var d = data.dossier, p = d.profile;
+    document.getElementById("guestName").textContent = p.name || ctx.guest.email;
+    var line = [ctx.guest.email];
+    if (p.vip) { line.push("VIP"); }
+    if (p.language_name) { line.push(p.language_name); }
+    if (!d.known) { line.push("not known to the house"); }
+    document.getElementById("guestLine").textContent = line.join(" · ");
+    var box = Gudanes.clear(document.getElementById("warnings"));
+    (d.warnings || []).forEach(function (w) {
+      box.appendChild(h("div", { class: "warning " + w.level }, h("strong", null, w.title),
+        w.text ? h("span", { class: "detail" }, w.text) : null));
+    });
+    document.getElementById("whoAmI").textContent =
+      "Signed in as " + data.who.name + " (" + data.who.how + ") — sees " + data.who.sees + ".";
+  } catch (e) {
+    if (e.needsSetup) { askToSignIn(e.message); } else { note(e.message, "error"); }
+  }
+}
+
+function askToSignIn(why) {
+  show("ready", false);
+  show("setup", true);
+  document.getElementById("setupWhy").textContent = why || "";
+  document.getElementById("trySignIn").hidden = !Gudanes.canSignInHere();
+}
+
+document.getElementById("trySignIn").addEventListener("click", async function () {
+  var who = await Gudanes.signIn(true);
+  if (who && who.session) { start(); }
+  else { document.getElementById("setupWhy").textContent = Gudanes.problem(); }
+});
+document.getElementById("saveToken").addEventListener("click", async function () {
+  var key = document.getElementById("tokenInput").value.trim();
+  if (!key) { return; }
+  await Gudanes.useSharedKey(key);
+  start();
+});
+document.getElementById("signOut").addEventListener("click", async function () {
+  await Gudanes.forgetSession();
+  await Gudanes.forgetSharedKey();
+  askToSignIn("Signed out of the add-in on this device. Microsoft 365 itself is not signed out.");
 });
 
-function saveToken() {
-  var token = document.getElementById("tokenInput").value.trim();
-  if (!token) { return; }
-  Office.context.roamingSettings.set("gudanesToken", token);
-  Office.context.roamingSettings.saveAsync(function () {
-    document.getElementById("setup").style.display = "none";
-    document.getElementById("ready").style.display = "block";
+document.querySelectorAll("#modes [data-mode]").forEach(function (b) {
+  b.addEventListener("click", function () {
+    draft(b.dataset.mode, b.dataset.mode === "translate" ? document.getElementById("translateTo").value : "");
   });
-}
+});
 
-function setStatus(message, isError) {
-  var el = document.getElementById("status");
-  el.textContent = message || "";
-  el.className = isError ? "error" : "";
-}
-
-function requestDraft() {
-  var token = Office.context.roamingSettings.get("gudanesToken");
-  var item = Office.context.mailbox.item;
-  var draftBtn = document.getElementById("draftBtn");
-  draftBtn.disabled = true;
-  setStatus("Drafting…", false);
-
-  item.to.getAsync(function (toResult) {
-    var recipientEmail = "";
-    if (toResult.status === Office.AsyncResultStatus.Succeeded && toResult.value && toResult.value.length) {
-      recipientEmail = toResult.value[0].emailAddress || "";
-    }
-    item.subject.getAsync(function (subjectResult) {
-      var subject = subjectResult.status === Office.AsyncResultStatus.Succeeded ? (subjectResult.value || "") : "";
-      item.body.getAsync("text", function (bodyResult) {
-        var body = bodyResult.status === Office.AsyncResultStatus.Succeeded ? (bodyResult.value || "") : "";
-        var params = new URLSearchParams({ token: token, recipient_email: recipientEmail, subject: subject, body: body });
-
-        fetch(DRAFT_URL, { method: "POST", body: params })
-          .then(function (resp) {
-            if (!resp.ok) {
-              return resp.json().catch(function () { return {}; }).then(function (data) {
-                throw new Error(data.error || ("Request failed (" + resp.status + ")"));
-              });
-            }
-            return resp.json();
-          })
-          .then(function (data) {
-            document.getElementById("draftText").value = data.draft;
-            document.getElementById("draftArea").style.display = "block";
-            setStatus("", false);
-          })
-          .catch(function (err) {
-            setStatus(err.message || "Could not draft a reply — check the token or try again.", true);
-          })
-          .finally(function () {
-            draftBtn.disabled = false;
-          });
-      });
-    });
-  });
-}
-
-function insertDraft() {
+function setBusy(busy) {
   var text = document.getElementById("draftText").value;
-  Office.context.mailbox.item.body.setSelectedDataAsync(
-    text,
-    { coercionType: Office.CoercionType.Text },
+  document.querySelectorAll("#modes [data-mode]").forEach(function (b) {
+    b.disabled = busy || (b.dataset.mode !== "reply" && !text);
+  });
+  document.getElementById("insertDraft").disabled = busy || !text;
+  document.getElementById("checkSend").disabled = busy;
+}
+
+async function draft(mode, language) {
+  ctx = await Gudanes.composeContext();
+  if (!ctx.guest) { note("Put the guest in To first.", "error"); return; }
+  setBusy(true);
+  note(mode === "reply" ? "Drafting from their bookings, their emails and today's prices…" : "Rewriting…");
+  var text = document.getElementById("draftText");
+  try {
+    var r = await Gudanes.call(GUDANES.draft_url, {
+      recipient_email: ctx.guest.email, subject: ctx.subject, body: ctx.body,
+      conversation_id: ctx.conversationId, mailbox: ctx.mailbox, mode: mode,
+      language: language || "", previous_draft: mode === "reply" ? "" : text.value });
+    text.value = r.draft;
+    note("Signed as " + r.signed_as + (r.language ? " · written in " + r.language : "") + ". Read it before it goes.");
+    drawFacts(r);
+  } catch (e) {
+    note(e.message, "error");
+  }
+  setBusy(false);
+}
+
+function drawFacts(r) {
+  var box = Gudanes.clear(document.getElementById("facts"));
+  if (r.unsure && r.unsure.length) {
+    box.appendChild(h("h2", null, "Not sure — check these"));
+    r.unsure.forEach(function (u) { box.appendChild(h("div", { class: "line unsure" }, u)); });
+  }
+  if (r.facts_used && r.facts_used.length) {
+    box.appendChild(h("h2", null, "Facts the draft relies on"));
+    r.facts_used.forEach(function (f) { box.appendChild(h("div", { class: "line" }, f.fact + " — " + f.source)); });
+  }
+  (r.notes || []).forEach(function (n) { box.appendChild(h("p", { class: "hint" }, n)); });
+}
+
+document.getElementById("insertDraft").addEventListener("click", function () {
+  var text = document.getElementById("draftText").value;
+  Office.context.mailbox.item.body.setSelectedDataAsync(text, { coercionType: Office.CoercionType.Text },
     function (result) {
       if (result.status !== Office.AsyncResultStatus.Succeeded) {
-        setStatus("Could not insert automatically — copy and paste the text above instead.", true);
+        note("It could not be put in automatically: copy the text above and paste it.", "error");
       } else {
-        setStatus("Inserted. Review it before sending.", false);
+        note("In the email. Read it, and check it before sending.", "ok");
       }
-    }
-  );
-}
-</script>
+    });
+});
 
+// The same check Outlook runs on Send, on demand -- and the only one where
+// Outlook does not run Smart Alerts.
+document.getElementById("checkSend").addEventListener("click", async function () {
+  ctx = await Gudanes.composeContext();
+  note("Checking the email against the booking system…");
+  try {
+    var r = await Gudanes.call(GUDANES.check_url, {
+      recipient_email: ctx.guest ? ctx.guest.email : "", subject: ctx.subject, body: ctx.body });
+    if (r.conflict) { note("Before sending: " + r.note, "error"); }
+    else { note(r.checked, "ok"); }
+  } catch (e) {
+    if (e.needsSetup) { askToSignIn(e.message); } else { note(e.message, "error"); }
+  }
+});
+</script>
 </body>
 </html>

@@ -1,0 +1,104 @@
+{# The add-in's look, shared by both panels. Phone first: on Outlook for iPhone
+   and Android the panel is the whole screen, so every tap target is at least
+   44px and nothing is wider than the screen; on a desktop the same rules read
+   as a narrow side panel. Colours are the house's parchment and ink, with a
+   dark set for Outlook in dark mode. #}
+<style>
+  :root {
+    --ink: #2b241d; --ink-soft: #6b5f50; --paper: #fbf7ee; --card: #ffffff;
+    --line: #eadfc9; --accent: #4a2f22; --accent-ink: #fbf7ee;
+    --stop: #9c2b23; --stop-bg: #f6e1de; --care: #7b5a12; --care-bg: #f6ecd2;
+    --money: #1f5c80; --money-bg: #dfeaf2; --note: #3d6b3d; --note-bg: #e1efe5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #efe7da; --ink-soft: #b9ad9b; --paper: #1f1b17; --card: #2a251f;
+      --line: #3d362d; --accent: #d9b77e; --accent-ink: #1f1b17;
+      --stop: #f1a097; --stop-bg: #3d2420; --care: #e9cd8a; --care-bg: #3a3020;
+      --money: #9cc7e4; --money-bg: #1d2f3b; --note: #a8d4a8; --note-bg: #20321f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { max-width: 100%; overflow-x: hidden; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; margin: 0;
+         padding: 12px; color: var(--ink); background: var(--paper); font-size: 15px;
+         line-height: 1.4; -webkit-text-size-adjust: 100%; }
+  h1 { font-size: 18px; margin: 0 0 2px; overflow-wrap: anywhere; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft);
+       margin: 12px 0 6px; }
+  p { margin: 6px 0; }
+  .hint { color: var(--ink-soft); font-size: 13px; }
+  .hint.error, .error { color: var(--stop); }
+  .hint.ok, .ok { color: var(--note); }
+  .status { padding: 10px 12px; border-radius: 8px; background: var(--card);
+            border: 1px solid var(--line); margin-bottom: 10px; }
+  .status.error { color: var(--stop); background: var(--stop-bg); }
+  .status.quiet { color: var(--ink-soft); }
+  .status[hidden] { display: none; }
+  button { font: inherit; min-height: 44px; padding: 8px 14px; border-radius: 8px;
+           border: 1px solid var(--line); background: var(--card); color: var(--ink);
+           cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.link { background: none; border: none; color: var(--money); padding: 4px 0;
+                min-height: 44px; text-decoration: underline; }
+  button:disabled { opacity: .5; cursor: default; }
+  input, select, textarea { font: inherit; width: 100%; min-height: 44px; padding: 8px 10px;
+         border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); }
+  textarea { min-height: 220px; resize: vertical; line-height: 1.45; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  .actions button { flex: 1 1 auto; }
+  .guest-head { margin-bottom: 8px; }
+  .warnings { margin: 6px 0; }
+  .warnings .warning { border-radius: 8px; padding: 8px 10px; margin: 6px 0; font-size: 14px;
+                       overflow-wrap: anywhere; }
+  .warning .badge { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+                    letter-spacing: .04em; margin-right: 6px; }
+  .warning .detail { display: block; font-size: 13px; margin-top: 2px; }
+  .warning.stop { background: var(--stop-bg); color: var(--stop); }
+  .warning.care { background: var(--care-bg); color: var(--care); }
+  .warning.money { background: var(--money-bg); color: var(--money); }
+  .warning.note { background: var(--note-bg); color: var(--note); }
+  details.block { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+                  margin: 8px 0; padding: 0 12px; }
+  details.block > summary { min-height: 44px; display: flex; align-items: center; gap: 6px;
+                            font-weight: 600; cursor: pointer; list-style: none; }
+  details.block > summary::-webkit-details-marker { display: none; }
+  details.block > summary::before { content: "▸"; color: var(--ink-soft); }
+  details.block[open] > summary::before { content: "▾"; }
+  details.block[open] { padding-bottom: 10px; }
+  .count { color: var(--ink-soft); font-weight: 400; }
+  .card { border-top: 1px solid var(--line); padding: 8px 0; overflow-wrap: anywhere; }
+  .card-title { font-weight: 600; }
+  .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft);
+          font-weight: 700; }
+  .status-pill { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px;
+                 background: var(--line); margin-left: 6px; font-weight: 400; }
+  .status-pill.cancelled, .status-pill.declined, .status-pill.void { background: var(--stop-bg); color: var(--stop); }
+  .status-pill.pending, .status-pill.held { background: var(--care-bg); color: var(--care); }
+  .meta { color: var(--ink-soft); font-size: 13px; }
+  .requests { font-size: 13px; margin-top: 2px; }
+  .line { border-top: 1px solid var(--line); padding: 6px 0; font-size: 14px; overflow-wrap: anywhere; }
+  .line.overdue, .line.unsure { color: var(--stop); }
+  dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 6px 0; }
+  dl.facts dt { color: var(--ink-soft); font-size: 13px; }
+  dl.facts dd { margin: 0; overflow-wrap: anywhere; }
+  @media (max-width: 360px) { dl.facts { grid-template-columns: 1fr; } dl.facts dd { margin-bottom: 6px; } }
+  .summary { font-size: 14px; }
+  .thread { border-top: 1px solid var(--line); padding: 4px 0; }
+  .thread > summary { min-height: 44px; cursor: pointer; padding: 6px 0; }
+  .thread-subject { display: block; font-weight: 600; overflow-wrap: anywhere; }
+  .thread.waiting .thread-subject::after { content: " ●"; color: var(--care); }
+  .message { border-left: 3px solid var(--line); padding: 4px 0 4px 10px; margin: 6px 0;
+             font-size: 14px; overflow-wrap: anywhere; }
+  .message.in { border-left-color: var(--care); }
+  .message.out { border-left-color: var(--money); }
+  .modes { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .modes .translate { display: flex; gap: 6px; flex: 1 1 100%; }
+  .modes .translate select { flex: 1; }
+  .ai-summary { margin: 6px 0; }
+  .fallback { margin-top: 16px; }
+  .fallback summary { min-height: 44px; cursor: pointer; color: var(--ink-soft); }
+  .foot { margin-top: 18px; font-size: 12px; color: var(--ink-soft); display: flex;
+          flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; }
+  [hidden] { display: none !important; }
+</style>

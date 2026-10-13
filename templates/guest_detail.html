@@ -124,6 +124,60 @@
 
 {% if overview %}{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}{% endif %}
 
+{# BEFORE ANYTHING ELSE: the same warnings the Outlook panel opens with, from
+   the same dossier -- a caution, a request to stop using their details, a poor
+   review nobody has answered, an email waiting, money owed. Each closes itself
+   when it stops being true. #}
+{% if dossier.warnings %}
+<div class="detail-card">
+  <h2 class="section-heading">Before anything else</h2>
+  <ul class="plain-list">
+    {% for w in dossier.warnings %}
+    <li style="margin-bottom:6px;">
+      <span class="mini-status {{ {'stop': 'status-declined', 'care': 'status-pending', 'money': 'status-pending'}.get(w.level, 'status-active') }}">{{ {'stop': 'stop', 'care': 'care', 'money': 'money', 'note': 'note'}[w.level] }}</span>
+      <strong>{{ w.title }}</strong>{% if w.text %} — {{ w.text }}{% endif %}
+      {% if w.link %}<a class="small-link" href="{{ w.link }}">open</a>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if dossier.follow_ups %}
+<div class="detail-card">
+  <h2 class="section-heading">Still to do for them</h2>
+  <ul class="plain-list">
+    {% for f in dossier.follow_ups %}
+    <li style="margin-bottom:4px;">
+      {% if f.due %}<span class="mini-status {{ 'status-declined' if f.overdue else 'status-pending' }}">{{ f.due|date_short }}</span>{% endif %}
+      {{ f.what }}{% if f.by %} <span class="upload-hint">— {{ f.by }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% set other_items = dossier['items'] | selectattr('kind', 'in', ['Extra', 'Gift voucher', 'At the till']) | list %}
+{% if other_items %}
+<h2 class="section-heading">Extras, vouchers and the till ({{ other_items|length }})</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>When</th><th>What</th><th>Reference</th><th>Status</th>{% if is_owner %}<th class="num">Amount</th>{% endif %}</tr></thead>
+  <tbody>
+    {% for i in other_items %}
+    <tr>
+      <th scope="row">{{ i.when|date_short if i.when else '—' }}</th>
+      <td>{{ i.kind }}: {{ i.title }}{% if i.detail %}<span class="cell-note">{{ i.detail }}</span>{% endif %}</td>
+      <td>{% if i.link %}<a href="{{ i.link }}">{{ i.ref }}</a>{% else %}{{ i.ref }}{% endif %}</td>
+      <td>{{ i.status }}</td>
+      {% if is_owner %}<td class="num">{{ i.amount|money if i.amount is not none else '—' }}</td>{% endif %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
 <!-- ------------------------------------------------------------------ -->
 {# BOOK THEM AGAIN. The page already knows their telephone, what they cannot
    eat and when they usually arrive; booking them in still meant the whole
@@ -356,6 +410,27 @@
 </table>
 </div>
 {% endif %}
+{% endif %}
+
+{# THE EMAILS, from every house inbox, read from Microsoft 365 after the page
+   has drawn so a slow inbox never holds it up -- the same history the Outlook
+   panel shows. Not copied into this system: read, shown, forgotten. #}
+{% if emails_url %}
+<h2 class="section-heading" style="margin-top:28px;">Emails with them</h2>
+<div id="guest-emails" data-src="{{ emails_url }}">
+  <p class="upload-hint">Reading the house's inboxes…</p>
+</div>
+<script>
+(function () {
+  var box = document.getElementById('guest-emails');
+  fetch(box.dataset.src, {credentials: 'same-origin'})
+    .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
+    .then(function (html) { box.innerHTML = html; })
+    .catch(function () {
+      box.innerHTML = '<p class="upload-hint">The inboxes could not be read just now. Reload the page to try again.</p>';
+    });
+})();
+</script>
 {% endif %}
 
 {# ---- everything that has passed between us ---------------------------

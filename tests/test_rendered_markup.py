@@ -146,6 +146,9 @@ UNREADABLE = {
     # Answers 404 without an address; with one it is a redirect to the person,
     # never a page of its own.
     "guest_by_email": "needs an address",
+    # The house calendar's .ics link is a 404 without the key the owner makes
+    # on its page, by design; test_house_calendar reads it with one.
+    "house_calendar_ics": "needs the feed key",
 }
 
 # The pages somebody who does not work here has to get through on their own.

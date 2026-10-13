@@ -1,17 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The Gudanes add-in for Outlook. Served by the app at /outlook-addin/manifest.xml
+  with this site's own addresses filled in.
+
+  Two layers, as Microsoft's schema has them. VersionOverrides 1.0 is for an old
+  Outlook that knows nothing newer: the two desktop buttons. VersionOverrides 1.1
+  is what every current Outlook reads INSTEAD, so it repeats those buttons and
+  adds what only it can carry: the phone (MobileFormFactor, read mode) and the
+  events — a note when a guest is put in To, and the check on Send.
+
+  Outlook caches a manifest by its Version. Change anything here, bump
+  OUTLOOK_ADDIN_VERSION in app.py, or nobody who has it already sees the change.
+-->
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
            xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
            xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
            xsi:type="MailApp">
   <Id>{{ guid }}</Id>
-  <Version>1.0.0.0</Version>
+  <Version>{{ version }}</Version>
   <ProviderName>Chateau de Gudanes</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="Gudanes Guest Lookup"/>
-  <Description DefaultValue="Shows this guest's room, dinner, and workshop bookings when reading their email."/>
-  <IconUrl DefaultValue="{{ icon_url }}"/>
-  <HighResolutionIconUrl DefaultValue="{{ icon_url }}"/>
+  <DisplayName DefaultValue="Gudanes"/>
+  <Description DefaultValue="The whole guest beside their email: what they have booked, what to watch for, every email with them across the house's inboxes, and replies drafted from it."/>
+  <IconUrl DefaultValue="{{ icons[64] }}"/>
+  <HighResolutionIconUrl DefaultValue="{{ icons[128] }}"/>
   <SupportUrl DefaultValue="{{ support_url }}"/>
   <AppDomains>
     <AppDomain>{{ app_domain }}</AppDomain>
@@ -28,13 +41,12 @@
     <Form xsi:type="ItemRead">
       <DesktopSettings>
         <SourceLocation DefaultValue="{{ taskpane_url }}"/>
-        <RequestedHeight>300</RequestedHeight>
+        <RequestedHeight>450</RequestedHeight>
       </DesktopSettings>
     </Form>
     <Form xsi:type="ItemEdit">
       <DesktopSettings>
         <SourceLocation DefaultValue="{{ compose_taskpane_url }}"/>
-        <RequestedHeight>360</RequestedHeight>
       </DesktopSettings>
     </Form>
   </FormSettings>
@@ -44,7 +56,8 @@
     <Rule xsi:type="ItemIs" ItemType="Message" FormType="Edit"/>
   </Rule>
   <DisableEntityHighlighting>false</DisableEntityHighlighting>
-  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.0" xsi:type="VersionOverridesV1_0">
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
     <Requirements>
       <bt:Sets DefaultMinVersion="1.3">
         <bt:Set Name="Mailbox"/>
@@ -103,57 +116,163 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="{{ icon_url }}"/>
-        <bt:Image id="Icon.32x32" DefaultValue="{{ icon_url }}"/>
-        <bt:Image id="Icon.80x80" DefaultValue="{{ icon_url }}"/>
+        <bt:Image id="Icon.16x16" DefaultValue="{{ icons[16] }}"/>
+        <bt:Image id="Icon.32x32" DefaultValue="{{ icons[32] }}"/>
+        <bt:Image id="Icon.80x80" DefaultValue="{{ icons[80] }}"/>
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="Commands.Url" DefaultValue="{{ taskpane_url }}"/>
+        <bt:Url id="Commands.Url" DefaultValue="{{ launchevent_html_url }}"/>
         <bt:Url id="Taskpane.Url" DefaultValue="{{ taskpane_url }}"/>
         <bt:Url id="ComposeTaskpane.Url" DefaultValue="{{ compose_taskpane_url }}"/>
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="GroupLabel" DefaultValue="Gudanes"/>
-        <bt:String id="PaneButtonLabel" DefaultValue="Guest Lookup"/>
+        <bt:String id="PaneButtonLabel" DefaultValue="Guest"/>
         <bt:String id="ComposePaneButtonLabel" DefaultValue="Draft with AI"/>
       </bt:ShortStrings>
       <bt:LongStrings>
-        <bt:String id="PaneButtonTooltip" DefaultValue="Show this guest's bookings"/>
-        <bt:String id="ComposePaneButtonTooltip" DefaultValue="Draft a reply using real guest history and current pricing"/>
+        <bt:String id="PaneButtonTooltip" DefaultValue="Everything about this guest: bookings, warnings and every email with them"/>
+        <bt:String id="ComposePaneButtonTooltip" DefaultValue="Draft a reply from the guest's history and today's real prices, and check it before sending"/>
       </bt:LongStrings>
     </Resources>
+
     <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1" xsi:type="VersionOverridesV1_1">
       <Requirements>
-        <bt:Sets DefaultMinVersion="1.12">
+        <bt:Sets DefaultMinVersion="1.5">
           <bt:Set Name="Mailbox"/>
         </bt:Sets>
       </Requirements>
       <Hosts>
         <Host xsi:type="MailHost">
           <Runtimes>
+            <!-- The HTML page runs the event handlers in a browser runtime; the
+                 JavaScript override is what classic Outlook on Windows loads
+                 instead, with no page at all. -->
             <Runtime resid="WebViewRuntime.Url">
               <Override type="javascript" resid="JSRuntime.Url"/>
             </Runtime>
           </Runtimes>
           <DesktopFormFactor>
             <FunctionFile resid="Commands.Url"/>
-            <!-- SoftBlock: if this add-in can't be reached when someone hits Send,
-                 the message still sends rather than staff being locked out of email
-                 by an outage on our side. See DEPLOY.md before tightening this. -->
+            <ExtensionPoint xsi:type="MessageReadCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="msgReadGroup">
+                  <Label resid="GroupLabel"/>
+                  <Control xsi:type="Button" id="msgReadOpenPaneButton">
+                    <Label resid="PaneButtonLabel"/>
+                    <Supertip>
+                      <Title resid="PaneButtonLabel"/>
+                      <Description resid="PaneButtonTooltip"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16x16"/>
+                      <bt:Image size="32" resid="Icon.32x32"/>
+                      <bt:Image size="80" resid="Icon.80x80"/>
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="Taskpane.Url"/>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+            <ExtensionPoint xsi:type="MessageComposeCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="msgComposeGroup">
+                  <Label resid="GroupLabel"/>
+                  <Control xsi:type="Button" id="msgComposeOpenPaneButton">
+                    <Label resid="ComposePaneButtonLabel"/>
+                    <Supertip>
+                      <Title resid="ComposePaneButtonLabel"/>
+                      <Description resid="ComposePaneButtonTooltip"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16x16"/>
+                      <bt:Image size="32" resid="Icon.32x32"/>
+                      <bt:Image size="80" resid="Icon.80x80"/>
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="ComposeTaskpane.Url"/>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+            <!-- SoftBlock on Send: if the add-in cannot be reached, the message
+                 still goes rather than staff being locked out of email by an
+                 outage on our side. See DEPLOY.md before tightening it. -->
             <ExtensionPoint xsi:type="LaunchEvent">
               <LaunchEvents>
+                <LaunchEvent Type="OnNewMessageCompose" FunctionName="onNewMessageComposeHandler"/>
+                <LaunchEvent Type="OnMessageRecipientsChanged" FunctionName="onMessageRecipientsChangedHandler"/>
                 <LaunchEvent Type="OnMessageSend" FunctionName="onMessageSendHandler" SendMode="SoftBlock"/>
               </LaunchEvents>
               <SourceLocation resid="WebViewRuntime.Url"/>
             </ExtensionPoint>
           </DesktopFormFactor>
+          <!-- THE PHONE. Outlook on iOS and Android open an add-in's panel while
+               READING only; there is no compose panel on a phone, and Smart
+               Alerts (OnMessageSend) do not run there. The read panel carries
+               the guest, the drafting and the check; the two compose events
+               put a note about the guest at the top of a reply. -->
+          <MobileFormFactor>
+            <FunctionFile resid="Commands.Url"/>
+            <ExtensionPoint xsi:type="MobileMessageReadCommandSurface">
+              <Group id="mobileMsgRead">
+                <Label resid="GroupLabel"/>
+                <Control xsi:type="MobileButton" id="mobileReadOpenPaneButton">
+                  <Label resid="PaneButtonLabel"/>
+                  <Icon xsi:type="bt:MobileIconList">
+                    <bt:Image size="25" scale="1" resid="Icon.25x25"/>
+                    <bt:Image size="25" scale="2" resid="Icon.25x25"/>
+                    <bt:Image size="25" scale="3" resid="Icon.25x25"/>
+                    <bt:Image size="32" scale="1" resid="Icon.32x32"/>
+                    <bt:Image size="32" scale="2" resid="Icon.32x32"/>
+                    <bt:Image size="32" scale="3" resid="Icon.32x32"/>
+                    <bt:Image size="48" scale="1" resid="Icon.48x48"/>
+                    <bt:Image size="48" scale="2" resid="Icon.48x48"/>
+                    <bt:Image size="48" scale="3" resid="Icon.48x48"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="Taskpane.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </ExtensionPoint>
+            <ExtensionPoint xsi:type="LaunchEvent">
+              <LaunchEvents>
+                <LaunchEvent Type="OnNewMessageCompose" FunctionName="onNewMessageComposeHandler"/>
+                <LaunchEvent Type="OnMessageRecipientsChanged" FunctionName="onMessageRecipientsChangedHandler"/>
+              </LaunchEvents>
+              <SourceLocation resid="WebViewRuntime.Url"/>
+            </ExtensionPoint>
+          </MobileFormFactor>
         </Host>
       </Hosts>
       <Resources>
+        <bt:Images>
+          <bt:Image id="Icon.16x16" DefaultValue="{{ icons[16] }}"/>
+          <bt:Image id="Icon.25x25" DefaultValue="{{ icons[25] }}"/>
+          <bt:Image id="Icon.32x32" DefaultValue="{{ icons[32] }}"/>
+          <bt:Image id="Icon.48x48" DefaultValue="{{ icons[48] }}"/>
+          <bt:Image id="Icon.80x80" DefaultValue="{{ icons[80] }}"/>
+        </bt:Images>
         <bt:Urls>
+          <bt:Url id="Commands.Url" DefaultValue="{{ launchevent_html_url }}"/>
+          <bt:Url id="Taskpane.Url" DefaultValue="{{ taskpane_url }}"/>
+          <bt:Url id="ComposeTaskpane.Url" DefaultValue="{{ compose_taskpane_url }}"/>
           <bt:Url id="WebViewRuntime.Url" DefaultValue="{{ launchevent_html_url }}"/>
           <bt:Url id="JSRuntime.Url" DefaultValue="{{ launchevent_js_url }}"/>
         </bt:Urls>
+        <bt:ShortStrings>
+          <bt:String id="GroupLabel" DefaultValue="Gudanes"/>
+          <bt:String id="PaneButtonLabel" DefaultValue="Guest"/>
+          <bt:String id="ComposePaneButtonLabel" DefaultValue="Draft with AI"/>
+        </bt:ShortStrings>
+        <bt:LongStrings>
+          <bt:String id="PaneButtonTooltip" DefaultValue="Everything about this guest: bookings, warnings and every email with them"/>
+          <bt:String id="ComposePaneButtonTooltip" DefaultValue="Draft a reply from the guest's history and today's real prices, and check it before sending"/>
+        </bt:LongStrings>
       </Resources>
     </VersionOverrides>
   </VersionOverrides>

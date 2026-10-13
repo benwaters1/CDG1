@@ -1,0 +1,41 @@
+{# The guest's emails across every house inbox, fetched by guest_detail after
+   the page has drawn. Read from Microsoft 365 for this view and not kept. #}
+{% if not history.available %}
+  <p class="upload-hint">{{ history.why }}</p>
+{% else %}
+  {% if history.summary %}<p class="manual-body">{{ history.summary.words }}</p>{% endif %}
+  {% for f in history.failed %}
+  <p class="flash flash-error">{{ f.mailbox }} could not be read: {{ f.why }}</p>
+  {% endfor %}
+  {% if not history.threads %}
+  <div class="empty-state">No emails with them in the inboxes the app reads.</div>
+  {% else %}
+  <div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Last</th><th>Conversation</th><th>Inbox</th><th class="num">Emails</th></tr></thead>
+    <tbody>
+      {% for t in history.threads %}
+      <tr>
+        <th scope="row">{{ t['last']|date_short }}</th>
+        <td>
+          <strong>{{ t.subject }}</strong>
+          {% if t.waiting %}<span class="mini-status status-pending">waiting for our reply</span>{% endif %}
+          {% for m in t.messages[-3:] %}
+          <span class="cell-note">
+            {{ m.day|date_short }} ·
+            {% if m.direction == 'in' %}they wrote{% elif m.direction == 'out' %}{{ m.signed_as or m.from_name }} wrote{% else %}{{ m.from_name }}{% endif %}:
+            {{ m.preview[:140] }}{% if m.preview|length > 140 %}…{% endif %}
+            {% if m.web_link %}<a href="{{ m.web_link }}" target="_blank" rel="noopener">open in Outlook</a>{% endif %}
+          </span>
+          {% endfor %}
+        </td>
+        <td>{{ t.mailboxes|join(', ') }}</td>
+        <td class="num">{{ t.count }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if history.more_threads %}<p class="upload-hint">And {{ history.more_threads }} older conversation{{ '' if history.more_threads == 1 else 's' }}.</p>{% endif %}
+  {% endif %}
+{% endif %}

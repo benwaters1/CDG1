@@ -1,36 +1,206 @@
 {% extends "base.html" %}
-{% block title %}Outlook Add-in{% endblock %}
+{% block title %}Outlook add-in{% endblock %}
 {% block content %}
 
 <div class="page-head">
-  <h1>Outlook Add-in</h1>
+  <h1>Outlook add-in</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_house_calendar') }}" class="btn-mini">House calendar</a>
+  </div>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">A small panel that shows a guest's room, dinner, and workshop bookings right inside Outlook when you open their email — works in Outlook desktop, Outlook on the web, and Outlook on the web in Safari (there's no separate Safari build; "Outlook on the web" covers it). It also quietly checks every outgoing email for a price or date that doesn't match what's actually on file, and warns before it sends — if the add-in can't be reached for any reason, the email still sends rather than getting stuck. When replying, a "Draft with AI" button can write a first draft grounded in that guest's real history and today's real pricing — always review it before sending.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  A panel beside a guest's email in Outlook — on a computer, in a browser, on a phone — with
+  the whole of that guest in it: what they have booked, what to watch for, every email with
+  them across the house's inboxes, and, for you, what they owe. A reply drafted from all of it
+  and today's real prices. And a check, before a reply goes, that its prices and dates are
+  still true. Everybody signs in with their own Microsoft 365 account; colleagues see
+  everything but money.
+</p>
 
-{% if not token_configured %}
-<div class="flash flash-error" style="margin-bottom:16px;">
-  Set the <code>GUEST_LOOKUP_TOKEN</code> environment variable before installing this — without it, the add-in can't fetch any guest data. Generate one with:
-  <code>python3 -c "import secrets; print(secrets.token_urlsafe(32))"</code>
+<h2 class="section-heading" id="status">Where it stands</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <tbody>
+    <tr><th scope="row">The add-in Outlook installs</th>
+        <td>Version {{ manifest_version }} · <a href="{{ manifest_url }}">{{ manifest_url }}</a></td></tr>
+    <tr><th scope="row">Signing in with Microsoft 365</th>
+        <td>{% if sso_configured %}<span class="mini-status status-confirmed">on</span> app {{ sso_client_id }}, scope <code>{{ sso_scope }}</code>
+            {% else %}<span class="mini-status status-declined">not set up</span> Set <code>ADDIN_CLIENT_ID</code> (steps below). Until then only the shared key works.{% endif %}</td></tr>
+    <tr><th scope="row">The shared key</th>
+        <td>{% if not token_configured %}not set (<code>GUEST_LOOKUP_TOKEN</code>), so nobody can use it
+            {% elif shared_key_allowed %}<span class="mini-status status-pending">still works</span> — as staff, no money
+            {% else %}<span class="mini-status status-confirmed">switched off</span>{% endif %}</td></tr>
+    <tr><th scope="row">Email history</th>
+        <td>{% if graph_on %}<span class="mini-status status-confirmed">on</span> {{ graph_mailboxes|length }} inbox{{ 'es' if graph_mailboxes|length != 1 }}: {{ graph_mailboxes|join(', ') }}
+            {% else %}<span class="mini-status status-declined">not set up</span> The mail reader (Microsoft Graph) is not configured, so the panel cannot show earlier emails.{% endif %}</td></tr>
+    <tr><th scope="row">Draft with AI</th>
+        <td>{% if claude_on %}<span class="mini-status status-confirmed">on</span> Claude Opus 5.5
+            {% else %}<span class="mini-status status-declined">not set up</span> Set <code>ANTHROPIC_API_KEY</code>. Everything else works without it.{% endif %}</td></tr>
+    <tr><th scope="row">Signed in now</th>
+        <td>{{ sessions|length }} Outlook{{ 's' if sessions|length != 1 }} <a href="#signed-in">see who</a></td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 class="section-heading" id="where">What works where</h2>
+<p class="upload-hint" style="margin-top:-6px;">From Microsoft's own support tables. Where Outlook cannot do something, this says what covers it rather than leaving it to be found missing.</p>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>What</th><th>Windows and Mac</th><th>Outlook on the web</th><th>iPhone and Android</th><th>Where it does not run</th></tr></thead>
+  <tbody>
+    {% for row in support %}
+    <tr>
+      <th scope="row">{{ row.feature }}</th>
+      {% for col in ('desktop', 'web', 'phone') %}
+      <td>{% if row[col] == 'yes' %}<span class="mini-status status-confirmed">yes</span>{% else %}<span class="mini-status status-declined">no</span>{% endif %}</td>
+      {% endfor %}
+      <td>{{ row.fallback }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2 class="section-heading" id="deploy">Putting it in everybody's Outlook</h2>
+<div class="detail-card">
+  <p class="manual-body wraps"><strong>Once, for everybody, from Microsoft 365 admin</strong> (the way to do it):</p>
+  <ol class="manual-body wraps">
+    <li>Microsoft 365 admin centre → Settings → Integrated apps → Upload custom apps.</li>
+    <li>App type: <em>Office Add-in</em>. Choose "Provide link to manifest file" and paste
+      <code>{{ manifest_url }}</code>. Validate.</li>
+    <li>Assign it to everybody who answers guests (or the whole organisation), and choose
+      <em>Fixed</em> so nobody has to switch it on. Deploy.</li>
+    <li>It reaches Outlook within a few hours (Microsoft says up to 24). It then appears as
+      <em>Gudanes</em> on every message, on desktops, the web and phones.</li>
+  </ol>
+  <p class="upload-hint">When this page shows a new version number, open the add-in in Integrated apps and choose "Update" so Microsoft fetches the new manifest; Outlook keeps the old one until then.</p>
+  <p class="manual-body wraps"><strong>One person, to try it first:</strong> Outlook on the web → Settings → Mail → Customise actions → Get add-ins → My add-ins → Add a custom add-in → From URL, and paste the address above.</p>
+</div>
+
+<h2 class="section-heading" id="sso">Signing in with Microsoft 365</h2>
+<div class="detail-card">
+  {% if sso_configured %}
+  <p class="manual-body wraps">On. The app accepts a sign-in only if Microsoft signed it, for organisation <code>{{ sso_tenant }}</code>, for app <code>{{ sso_client_id }}</code>, asked for by that app, in date, with the <code>access_as_user</code> permission — and only for somebody linked to a person below.</p>
+  {% endif %}
+  <p class="manual-body wraps"><strong>Setting it up</strong> (Entra admin centre, signed in as an administrator):</p>
+  <ol class="manual-body wraps">
+    <li>App registrations → New registration. Name <em>Gudanes Outlook add-in</em>. Accounts in this organisational directory only. Register.</li>
+    <li>Authentication → Add a platform → <em>Single-page application</em>, redirect URI
+      <code>brk-multihub://{{ addin_origin|replace('https://', '')|replace('http://', '') }}</code>. Save.</li>
+    <li>Expose an API → Application ID URI: accept <code>api://&lt;the client id&gt;</code>. Add a scope:
+      <code>access_as_user</code>, who can consent "Admins and users", display name "Use the Gudanes add-in as you". Save.</li>
+    <li>API permissions → Add a permission → My APIs → this app → <code>access_as_user</code>. Then Grant admin consent for the organisation, so nobody is asked.</li>
+    <li>Copy the Application (client) ID into Railway as <code>ADDIN_CLIENT_ID</code> and redeploy. The tenant is the one the mail reader already uses.</li>
+  </ol>
+  <p class="upload-hint">No secret is needed for this one: the add-in signs in as the person, through Outlook. When the site moves to its own domain, add a second redirect URI with the new address.</p>
+</div>
+
+<h2 class="section-heading" id="people">Who is who in Microsoft 365</h2>
+<p class="upload-hint" style="margin-top:-6px;">Somebody can use the add-in only if their Microsoft 365 address is linked here. Blank means the same address they log in to this app with. The owner sees money; everybody else does not.</p>
+{% if unmatched %}
+<div class="flash flash-error">
+  Tried to sign in and were not recognised:
+  {% for u in unmatched %}<strong>{{ u.who }}</strong>{% if u.name %} ({{ u.name }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}.
+  Put the address against the right person below.
+</div>
+{% endif %}
+<form method="post" action="{{ url_for('admin_outlook_addin_people') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Person</th><th>Logs in here as</th><th>Microsoft 365 address</th><th>Sees</th></tr></thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <th scope="row">{{ u['name'] }}</th>
+        <td>{{ u['email'] }}</td>
+        <td><input type="email" name="m365_{{ u['id'] }}" value="{{ u['m365_upn'] or '' }}" placeholder="{{ u['email'] }}" aria-label="Microsoft 365 address for {{ u['name'] }}"></td>
+        <td>{{ 'everything' if u['role'] == 'owner' else 'everything but money' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <button type="submit" class="btn-mini">Save the addresses</button>
+</form>
+
+<h2 class="section-heading" id="signed-in">Signed in</h2>
+{% if not sessions %}
+<div class="empty-state">Nobody has signed in to the add-in yet.</div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Who</th><th>Where</th><th>Since</th><th>Last used</th><th>Until</th><th></th></tr></thead>
+  <tbody>
+    {% for s in sessions %}
+    <tr>
+      <th scope="row">{{ s['user_name'] }}</th>
+      <td>{{ s['label'] or s['how'] }}</td>
+      <td>{{ s['created_at']|house_day|date_short }}</td>
+      <td>{{ s['last_used_at']|house_day|date_short if s['last_used_at'] else '—' }}</td>
+      <td>{{ s['expires_at']|house_day|date_short }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin_outlook_addin_revoke', session_id=s['id']) }}"
+              onsubmit="return confirm('Sign this Outlook out of the add-in?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-mini btn-mini-danger">Sign out</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
 </div>
 {% endif %}
 
-<div class="detail-card" style="max-width:640px;">
-  <h3 style="margin-top:0;">1. Download the manifest</h3>
-  <p class="manual-body">Right-click and save, or open in a new tab and save the page:</p>
-  <p class="share-link-box">{{ manifest_url }}</p>
+{% if signed_out %}
+<p class="upload-hint" style="margin-top:10px;">Signed out in the last ninety days:
+  {% for o in signed_out %}{{ o['user_name'] }} ({{ o['label'] or 'Outlook' }}), {{ o['revoked_at']|house_day|date_short }}{% if o['revoked_by'] %} by {{ o['revoked_by'] }}{% endif %}{{ '; ' if not loop.last else '.' }}{% endfor %}
+</p>
+{% endif %}
 
-  <h3>2. Sideload it into Outlook</h3>
-  <p class="manual-body wraps">
-    <strong>Outlook on the web:</strong> Settings (gear icon) → Mail → Customize actions → search "Get Add-ins" → My add-ins → Custom addins → Add a custom addin → Add from file, and choose the manifest you downloaded.<br><br>
-    <strong>Outlook desktop (Windows/Mac):</strong> Home ribbon → Get Add-ins → My add-ins → Custom addins → Add a custom addin → Add from file.
+<h2 class="section-heading" id="inboxes">Each inbox</h2>
+<p class="upload-hint" style="margin-top:-6px;">Who signs a reply drafted from each inbox, and which inboxes only you can see in a guest's history.</p>
+{% if not mailboxes %}
+<div class="empty-state">No inboxes are being read yet. They appear here once the mail reader is set up.</div>
+{% else %}
+<form method="post" action="{{ url_for('admin_outlook_addin_mailboxes') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Inbox</th><th>Replies are signed</th><th>Only the owner sees its emails</th></tr></thead>
+    <tbody>
+      {% for mb in mailboxes %}
+      <tr>
+        <th scope="row">{{ mb.mailbox }}</th>
+        <td><input type="text" name="signature_{{ mb.id }}" value="{{ mb.signature if mb.signature_set else '' }}" placeholder="{{ mb.signature }}" maxlength="80" aria-label="Signature for {{ mb.mailbox }}"></td>
+        <td><label class="checkbox-row"><input type="checkbox" name="owner_only_{{ mb.id }}" value="1"{{ ' checked' if mb.owner_only }}> <span>owner only</span></label></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <button type="submit" class="btn-mini">Save the inboxes</button>
+</form>
+{% endif %}
+
+<h2 class="section-heading" id="settings">Settings</h2>
+<form method="post" action="{{ url_for('admin_outlook_addin_settings') }}" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="checkbox-row"><input type="checkbox" name="shared_key_allowed" value="1"{{ ' checked' if shared_key_allowed }}>
+    <span>The shared key still works, as staff, for an Outlook that cannot sign in. Untick once everybody signs in with Microsoft 365.</span></label>
+  <p style="margin-top:12px;">
+    <label class="field-label" for="house_notes">What the drafter should know that the site does not say</label>
+    <textarea id="house_notes" name="house_notes" rows="8" maxlength="6000"
+              placeholder="Parking is in the courtyard. Dogs are welcome in the Tour room only. The nearest station is Tarascon-sur-Ariège.">{{ house_notes }}</textarea>
   </p>
-  <p class="upload-hint">Sideloaded add-ins are per-mailbox — anyone else who wants this (like a family member checking guest emails) repeats this step for their own account. If you'd already installed an earlier version, remove and re-add it — this version asks for read/write access to the open item (needed so "Insert into email" can write the draft in), not just read access.</p>
+  <p class="field-hint">Answers to questions guests ask that are not on the website: parking, pets, the Wi-Fi, the road in winter. Every draft is given this, alongside the rooms, the table, the ateliers and the terms the site already holds.</p>
+  <button type="submit" class="btn-mini">Save the settings</button>
+</form>
 
-  <h3>3. Set the lookup token in the panel</h3>
-  <p class="manual-body">Open any email, click the "Guest Lookup" button in the ribbon, and paste in the same value you set as <code>GUEST_LOOKUP_TOKEN</code>. It's saved to that Outlook profile only — you won't need to re-enter it. The same token also unlocks "Draft with AI" when composing a reply.</p>
-
-  <h3>4. Reply drafting needs one more key</h3>
-  <p class="manual-body">Set <code>ANTHROPIC_API_KEY</code> (your own Anthropic account's key) as an environment variable. Without it, "Draft with AI" will show an error rather than a draft — everything else on this page works regardless.</p>
+<h2 class="section-heading">What is sent where</h2>
+<div class="detail-card">
+  <p class="manual-body wraps">The panel reads the house's mailboxes through Microsoft 365 when it is opened; emails are held in memory for a few minutes and never copied into this app. A draft sends Anthropic the guest's bookings, the emails in the conversation and the ones before it, the staff notes, and the house's own facts — not their telephone, not anything about their health, and, for anybody who asked us to stop using their details, nothing but the email being answered. The privacy notice says so.</p>
 </div>
 
 {% endblock %}

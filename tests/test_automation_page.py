@@ -47,15 +47,18 @@ GUEST_DOORS = {"render_email_template", "write_about_stay", "send_workshop_email
                "send_campaign", "send_sms", "send_autocharge_failed_email"}
 CHANNELS = {"send_email": "email", "send_backup_email": "email",
             "sms_provider_send": "text", "send_notification": "notification",
-            "publish_social_post": "post"}
+            "publish_social_post": "post",
+            # The house calendar: what it writes, everybody who works here reads.
+            "graph_send": "calendar"}
 # What each thing the code can do needs the entry to admit to...
 NEEDS = {"guest letter": {"guests"}, "text": {"guests"}, "post": {"public"},
          "charge": {"money"}, "email": {"guests", "you", "team"},
-         "notification": {"you", "team"}, "task": {"you", "team"}}
+         "notification": {"you", "team"}, "task": {"you", "team"},
+         "calendar": {"team"}}
 # ...and what each claim needs the code to be able to do.
 SUPPORTS = {"guests": {"guest letter", "text"}, "money": {"charge"}, "public": {"post"},
             "you": {"email", "notification", "task"},
-            "team": {"email", "notification", "task"}}
+            "team": {"email", "notification", "task", "calendar"}}
 
 
 def _code():

@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}House calendar{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>House calendar</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('ops_calendar') }}" class="btn-mini">The app's calendar</a>
+    <a href="{{ url_for('admin_outlook_addin') }}" class="btn-mini">Outlook add-in</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  One Microsoft 365 calendar, <strong>{{ name }}</strong>, that the app writes and everybody reads —
+  in Outlook on a computer, on the web and on a phone. The stays, the dinners, the ateliers,
+  the events, the tasks and the rota, exactly as the app's own calendar has them, kept up to
+  date every {{ poll }} seconds and checked against Microsoft's copy every night. Names, rooms
+  and dates only: no contact details, no money, nothing about anybody's health.
+</p>
+
+<h2 class="section-heading">Where it stands</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <tbody>
+    <tr><th scope="row">Set up</th>
+        <td>{% if st.configured %}<span class="mini-status status-confirmed">yes</span> writing into <strong>{{ st.mailbox }}</strong>
+            {% else %}<span class="mini-status status-declined">not yet</span> Still to set: {{ st.missing|join(', ') }}. The steps are below.{% endif %}</td></tr>
+    <tr><th scope="row">Switched on</th>
+        <td>{% if st.switched_on %}yes{% else %}<span class="mini-status status-pending">off</span> under <a href="{{ url_for('admin_automation') }}">Automation</a>{% endif %}</td></tr>
+    <tr><th scope="row">Last checked</th>
+        <td>{{ local_datetime_str(st.last_check, unknown='never') }}</td></tr>
+    <tr><th scope="row">Last change written</th>
+        <td>{{ local_datetime_str(st.last_change, unknown='nothing written yet') }}</td></tr>
+    <tr><th scope="row">Last checked against Microsoft's copy</th>
+        <td>{{ local_datetime_str(st.last_reconcile, unknown='not yet — it runs each night') }}</td></tr>
+    <tr><th scope="row">On the calendar</th>
+        <td>{{ st.written }} event{{ 's' if st.written != 1 }}:
+            {% for key, label, mark, colour in areas %}{{ label }} {{ st.by_area.get(key, 0) }}{{ ' · ' if not loop.last }}{% endfor %}</td></tr>
+    {% if st.calendar_id %}<tr><th scope="row">Microsoft's id for it</th><td><code style="overflow-wrap:anywhere;">{{ st.calendar_id }}</code></td></tr>{% endif %}
+    {% if st.shared_note %}<tr><th scope="row">Shared</th><td>{{ st.shared_note }}</td></tr>{% endif %}
+    {% if st.categories_note %}<tr><th scope="row">Colours</th><td>{{ st.categories_note }}</td></tr>{% endif %}
+  </tbody>
+</table>
+</div>
+
+{% if st.last_error %}
+<div class="flash flash-error">
+  <strong>The last attempt failed</strong> ({{ local_datetime_str(st.last_error_at, unknown='time not recorded') }}): {{ st.last_error }}
+</div>
+{% endif %}
+
+{% if st.failures %}
+<h2 class="section-heading">Not on the calendar ({{ st.failure_count }})</h2>
+<p class="upload-hint" style="margin-top:-6px;">Microsoft refused these. Each is tried again on the next pass; the reason is Microsoft's own.</p>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>What</th><th>When</th><th>Microsoft said</th><th class="num">Tries</th></tr></thead>
+  <tbody>
+    {% for f in st.failures %}
+    <tr>
+      <th scope="row">{{ f.subject }}</th>
+      <td>{{ f.day|date_short }}</td>
+      <td>{{ f.last_error }}</td>
+      <td class="num">{{ f.attempts }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% if st.configured %}
+<div style="display:flex; gap:10px; flex-wrap:wrap; margin:14px 0;">
+  <form method="post" action="{{ url_for('admin_house_calendar_sync') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini">Sync now</button>
+  </form>
+  <form method="post" action="{{ url_for('admin_house_calendar_sync') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="full" value="1">
+    <button type="submit" class="btn-mini">Check against Microsoft's copy now</button>
+  </form>
+  <form method="post" action="{{ url_for('admin_house_calendar_share') }}"
+        onsubmit="return confirm('Let everybody in the organisation read the house calendar?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini">Share with everybody, read only</button>
+  </form>
+</div>
+{% endif %}
+
+<h2 class="section-heading">What it carries</h2>
+<form method="post" action="{{ url_for('admin_house_calendar_areas') }}" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% for key, label, mark, colour in areas %}
+  <label class="checkbox-row"><input type="checkbox" name="areas" value="{{ key }}"{{ ' checked' if key in chosen }}> <span>{{ mark }} {{ label }}</span></label>
+  {% endfor %}
+  <p class="field-hint">Everybody the calendar is shared with sees every area ticked here — the rota and the tasks included. Take an area out and its events leave the calendar within a minute.</p>
+  <button type="submit" class="btn-mini">Save</button>
+</form>
+
+<h2 class="section-heading">The next fortnight, as the calendar shows it</h2>
+{% if not preview %}
+<div class="empty-state">Nothing in the next fortnight.</div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>From</th><th>To</th><th>Event</th></tr></thead>
+  <tbody>
+    {% for i in preview %}
+    <tr>
+      <th scope="row">{{ i.start_day|date_short }}{% if not i.all_day %} {{ i.start_clock }}{% endif %}</th>
+      <td>{% if i.all_day %}{{ i.end_day|date_short }} (morning){% else %}{{ i.end_day|date_short }} {{ i.end_clock }}{% endif %}</td>
+      <td>{{ i.subject }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<h2 class="section-heading" id="feeds">A link for a phone without Microsoft 365</h2>
+<div class="detail-card">
+  <p class="manual-body wraps">The same calendar as an .ics link, for a phone or a calendar app that is not on the house's Microsoft 365 — and as a spare. Apple and Google calendars refresh a link like this every hour or so; the Microsoft 365 calendar above is the one that is up to date within a minute.</p>
+  {% if feeds %}
+  <div class="table-wrap">
+  <table class="data-table">
+    <tbody>
+      {% for label, url in feeds %}
+      <tr><th scope="row">{{ label }}</th><td><input type="text" readonly value="{{ url }}" aria-label="Link for {{ label }}"></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="field-hint">Anybody with a link can read it. Give them only to people who work here.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('admin_house_calendar_feed_link') }}"
+        {% if feeds %}onsubmit="return confirm('Make new links? Every old one stops working.');"{% endif %}>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini">{{ 'Make new links (the old ones stop)' if feeds else 'Make the links' }}</button>
+  </form>
+</div>
+
+<h2 class="section-heading">Setting it up in Microsoft 365</h2>
+<div class="detail-card">
+  <p class="manual-body wraps">The calendar is written by its <strong>own</strong> app registration, not the mail reader's. An Exchange application access policy limits an app to a set of mailboxes for every permission it holds, so giving the mail reader calendar access would let it write into all the inboxes it reads. A second app, limited to one mailbox, can write the house calendar and nothing else.</p>
+  <ol class="manual-body wraps">
+    <li><strong>The mailbox.</strong> Microsoft 365 admin → Teams &amp; groups → Shared mailboxes → Add a shared mailbox, e.g. <em>House</em>, <code>house@chateaugudanes.com</code>. A shared mailbox needs no licence. (An existing one such as reservations@ also works.)</li>
+    <li><strong>The app.</strong> Entra admin centre → App registrations → New registration, <em>Gudanes House Calendar</em>, this organisation only. API permissions → Microsoft Graph → Application permissions → <code>Calendars.ReadWrite</code>, and <code>MailboxSettings.ReadWrite</code> for the area colours. Grant admin consent.</li>
+    <li><strong>Its secret.</strong> Certificates &amp; secrets → New client secret. Copy the value once, straight into Railway.</li>
+    <li><strong>Limit it to that one mailbox</strong> (Exchange Online PowerShell, <code>Connect-ExchangeOnline</code>):
+      <br><code>New-DistributionGroup -Name "GudanesHouseCalendar" -Type Security -Members house@chateaugudanes.com</code>
+      <br><code>New-ApplicationAccessPolicy -AppId &lt;the calendar app's client id&gt; -PolicyScopeGroupId GudanesHouseCalendar@chateaugudanes.com -AccessRight RestrictAccess -Description "House calendar app: the house mailbox only"</code>
+      <br><code>Test-ApplicationAccessPolicy -Identity house@chateaugudanes.com -AppId &lt;client id&gt;</code> should say <em>Granted</em>, and the same for accounts@ should say <em>Denied</em>. It can take up to an hour to apply.</li>
+    <li><strong>Railway variables:</strong> <code>MS_CALENDAR_CLIENT_ID</code>, <code>MS_CALENDAR_CLIENT_SECRET</code>, <code>HOUSE_CALENDAR_MAILBOX</code> (e.g. house@chateaugudanes.com). The tenant is the mail reader's <code>MS_GRAPH_TENANT_ID</code>. Redeploy.</li>
+    <li><strong>Share it.</strong> Come back here and press <em>Share with everybody, read only</em>. Each person then adds it once: Outlook → Calendar → Add calendar → From directory → <em>House</em> → {{ name }}. It then shows in Outlook on their phone as well.</li>
+  </ol>
+</div>
+
+{% endblock %}

@@ -52,6 +52,14 @@ SERIALISED_WHOLE = {
     "guest_data_erase": "reported back to the requester whole",
     # Handed to the reply drafter as context about what the house sells.
     "current_offerings_snapshot": "passed whole as model context",
+    # The reply drafter's material, the same way: the guest as the model is
+    # told about them, and the house as the site describes it.
+    "dossier_for_prompt": "passed whole as model context",
+    "house_reference": "passed whole as model context",
+    # Sent whole to Microsoft Graph as the event it creates or updates.
+    "graph_event_body": "passed entire to Microsoft Graph as the event",
+    # Sent whole to the add-in's panel as the history's summary.
+    "email_history_summary": "sent whole to the add-in as JSON",
     # Handed straight to urllib as the request's headers. Nothing reads
     # "Authorization" by name because nothing is meant to -- the library
     # sends the map as it stands.

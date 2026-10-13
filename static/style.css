@@ -550,6 +550,9 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
 .collect-actions{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0 6px; }
 /* A note under a figure in a table cell: its own line, and quieter. */
 .cell-note{ display:block; font-size:11px; color:var(--ink-soft); margin-top:2px; }
+/* A list of short lines with their own badges: the guest page's warnings and
+   follow-ups. The badge is the bullet. */
+.plain-list{ list-style:none; margin:0; padding:0; }
 /* The workshop register: one session's head, and the forms that take, move
    and correct a registration. */
 .register-head-actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
@@ -755,6 +758,8 @@ body.staff-shell a.mini-row:hover{
 .lane-badge.lane-owner{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .lane-badge.lane-restaurant{ background:var(--status-success-bg); color:var(--success); }
 .lane-badge.lane-workshop{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
+.lane-badge.lane-event{ background:var(--status-danger-bg); color:var(--danger); }
+.lane-badge.lane-shift{ background:var(--status-neutral-bg); color:var(--steel-deep); }
 .origin-badge{ font-size:10.5px; color:var(--ink-soft); }
 .overview-filters{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
 .overview-filters select, .overview-filters input[type="text"]{ font-size:12.5px; padding:5px 8px; }
@@ -1486,6 +1491,10 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
 .cal-ev-task .cal-ev-dot, .cal-ev-dot.cal-ev-task{ background:var(--ink-soft); }
 .cal-ev-owner{ background:var(--status-warn-bg); }
 .cal-ev-owner .cal-ev-dot, .cal-ev-dot.cal-ev-owner{ background:var(--gold-on-warn); }
+.cal-ev-event{ background:var(--status-danger-bg); }
+.cal-ev-event .cal-ev-dot, .cal-ev-dot.cal-ev-event{ background:var(--danger); }
+.cal-ev-shift{ background:var(--status-neutral-bg); }
+.cal-ev-shift .cal-ev-dot, .cal-ev-dot.cal-ev-shift{ background:var(--steel-deep); }
 
 .cal-more{ font-size:10.5px; color:var(--steel); text-decoration:none; padding-left:6px; }
 .cal-more:hover{ text-decoration:underline; }

@@ -359,8 +359,67 @@ def run():
                 detail="reported rather than skipped: every check above would "
                        "pass on nothing")
 
+    _microsoft_and_anthropic(s, conn)
     _cleanup(conn)
     return s
+
+
+def _microsoft_and_anthropic(s, conn):
+    """The two companies the notice names for the Outlook add-in and the house
+    calendar, and each sentence it says about them, checked against the code
+    rather than trusted."""
+    import inspect
+    import json as _json
+
+    s.section("Microsoft and Anthropic, and what each is given")
+    page = m.app.test_client().get("/privacy").get_data(as_text=True)
+    s.check("the notice names Microsoft", "<dt>Microsoft</dt>" in page)
+    s.check("and Anthropic", "<dt>Anthropic</dt>" in page)
+    now = datetime.now(timezone.utc).isoformat()
+    room = conn.execute("SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+    gid = conn.execute(
+        """INSERT INTO guests (name, email, phone, dietary_notes, access_needs, created_at)
+           VALUES (?, ?, '+33 6 10 20 30 40', 'ZZPRIV shellfish', 'ZZPRIV wheelchair', ?)""",
+        (TAG + "Claimed", TAG + "claims@example.invalid", now)).lastrowid
+    bid = conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name, guest_email,
+             guest_phone, arrival_date, departure_date, party_size, status, special_requests,
+             total_price, created_at)
+           VALUES (?, ?, ?, ?, ?, '+33 6 10 20 30 40', ?, ?, 2, 'confirmed', 'ZZPRIV pillow',
+                   777, ?)""",
+        (room["id"] if room else 0, TAG + "CLAIM", TAG + "claimtok", TAG + "Claimed",
+         TAG + "claims@example.invalid", _iso(10), _iso(12), now)).lastrowid
+    conn.commit()
+    with m.app.test_request_context("/"):
+        dossier = m.guest_dossier(conn, gid, money=True, letters=True)
+        sent = _json.dumps(m.dossier_for_prompt(dossier), default=str)
+        s.check("the drafter is never sent a dietary note", "ZZPRIV shellfish" not in sent)
+        s.check("nor an access need", "ZZPRIV wheelchair" not in sent)
+        s.check("nor a telephone", "10 20 30 40" not in sent)
+        conn.execute("UPDATE guests SET restricted_at = ? WHERE id = ?", (now, gid))
+        conn.commit()
+        ctx = m.gather_reply_context(conn, TAG + "claims@example.invalid",
+                                     caller={"owner": True, "user_id": None, "name": "x",
+                                             "how": "test"}, compose_text="Hello")
+        s.check("and for somebody who asked us to stop, nothing but the email",
+                ctx["guest"] is None and not ctx["correspondence"]["current_thread"]
+                and TAG + "CLAIM" not in _json.dumps(ctx, default=str))
+        items = [i for i in m.house_calendar_items(conn, m.house_today(),
+                                                   m.house_today() + timedelta(days=30))
+                 if i["key"] == f"stay:{bid}"]
+        text = _json.dumps(items, ensure_ascii=False)
+        s.check("the staff calendar has the guest's name", items and TAG + "Claimed" in text)
+        s.check("and not their email, telephone, money or requests",
+                "claims@example.invalid" not in text and "10 20 30 40" not in text
+                and "777" not in text and "ZZPRIV pillow" not in text, detail=text[:200])
+    reads = "".join(inspect.getsource(f) for f in (
+        m.guest_email_history, m.email_bodies, m.mailbox_voice_samples, m.reply_correspondence))
+    s.check("emails are read and held in memory, never written to the database",
+            "conn.execute" not in reads and "INSERT" not in reads.upper().replace("INSERT_", ""))
+    s.check("for a few minutes", m.EMAIL_HISTORY_TTL <= 600 and m.EMAIL_BODY_TTL <= 600)
+    conn.execute("DELETE FROM bookings WHERE id = ?", (bid,))
+    conn.execute("DELETE FROM guests WHERE id = ?", (gid,))
+    conn.commit()
 
 
 if __name__ == "__main__":
