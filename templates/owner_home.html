@@ -170,7 +170,8 @@
           <span class="oh-dwho">
             {% if r['assignee'] %}
             <span class="oh-av{{ ' oh-av--mine' if r['assignee'] == 'Mine' }}">
-              {{ 'BW' if r['assignee'] == 'Mine' else r['assignee'][:2]|upper }}
+              {# The owner's own initials, not two letters typed into the page. #}
+              {{ user['name']|initials if r['assignee'] == 'Mine' else r['assignee']|initials }}
             </span>
             {% endif %}
           </span>

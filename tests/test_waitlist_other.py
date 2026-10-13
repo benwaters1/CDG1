@@ -14,7 +14,14 @@ Both also send with keep=False, for the reason set out in test_waitlist — with
 no email provider configured, keeping them queues one stale "a table has come
 free" notice per cancellation, all delivered together whenever a provider is
 finally switched on.
+
+And neither may hold the database while a letter is in the post. Each entry
+told was marked 'contacted' and the lot committed after the loop, so from the
+second letter on, SQLite's one write lock was held through a call to the mail
+provider -- up to ten seconds -- and the till, a clock-in or a guest booking
+anywhere else in the house waited five and failed "database is locked".
 """
+import sqlite3
 from datetime import date, datetime, timedelta, timezone
 
 from _harness import Suite, clients, db, flashes
@@ -82,16 +89,19 @@ def run():
         sent.append((to, subject, keep))
         return True
 
-    def _notify(fn, arg):
-        original = m.send_email
-        m.send_email = provider
+    def _no_text(*_a, **_k):                           # pragma: no cover
+        return False, "no texts from the test suite"
+
+    def _notify(fn, arg, stub=provider):
+        original, original_sms = m.send_email, m.send_sms
+        m.send_email, m.send_sms = stub, _no_text
         conn = db()
         try:
             with m.app.test_request_context("/"):
                 return fn(conn, arg)
         finally:
             conn.close()
-            m.send_email = original
+            m.send_email, m.send_sms = original, original_sms
 
     s.section("A table freeing up on one date tells only that date")
     wants14 = _rest_entry("Agnes", "2034-02-14")
@@ -146,6 +156,55 @@ def run():
     # cancellation — see test_waitlist for the whole story.
     s.check("keep is off", all(k is False for _, _, k in sent) if sent else True,
             detail=f"{sent}")
+
+    s.section("Nothing is held open while a letter is in the post")
+    # Two people waiting on the same night, and on the same atelier. At each
+    # send a second connection asks for the write lock with no patience at
+    # all: the answer has to be "go ahead" both times. Before the fix the
+    # first send found it free and the second found the first one's
+    # 'contacted' still uncommitted.
+    probes = []
+
+    def _probing(to, subject, body, ics_content=None, ics_filename=None,
+                 keep=True, **rest):                    # pragma: no cover
+        other = sqlite3.connect(m.DB_PATH, timeout=0)
+        try:
+            other.execute("BEGIN IMMEDIATE")
+            other.execute("ROLLBACK")
+            probes.append(True)
+        except sqlite3.OperationalError:
+            probes.append(False)
+        finally:
+            other.close()
+        return True
+
+    first, second = _rest_entry("Eloise", "2034-03-07"), _rest_entry("Fabien", "2034-03-07")
+    got = _notify(m.notify_restaurant_waitlist_opening, "2034-03-07", stub=_probing)
+    s.check("a table: the database is free at every letter", probes == [True, True],
+            detail=f"could write at each send: {probes}")
+    s.check("and both are told and marked",
+            len(got) == 2
+            and _status("restaurant_waitlist", first["id"]) == "contacted"
+            and _status("restaurant_waitlist", second["id"]) == "contacted",
+            detail=f"told {[e['name'] for e in got]}")
+
+    if not sessions:
+        s.check("an atelier session exists to wait on", False,
+                detail="seeded data has no sessions")
+    else:
+        # The first session's list was worked above, so only these two are
+        # still open on it.
+        sitting = sessions[0]["id"]
+        first, second = _shop_entry("Gaspard", sitting), _shop_entry("Helene", sitting)
+        probes.clear()
+        got = _notify(m.notify_workshop_waitlist_opening, sitting, stub=_probing)
+        s.check("an atelier: the database is free at every letter", probes == [True, True],
+                detail=f"could write at each send: {probes}")
+        s.check("and both are told and marked",
+                len(got) == 2
+                and _status("workshop_waitlist", first["id"]) == "contacted"
+                and _status("workshop_waitlist", second["id"]) == "contacted",
+                detail=f"told {[e['name'] for e in got]}")
 
     s.section("Working the lists by hand")
     for table, url, entry in (

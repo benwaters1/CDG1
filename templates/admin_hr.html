@@ -147,8 +147,11 @@
       {% for a in hr_actions %}
       <tr>
         <td><a href="{{ a['link'] }}">{{ a['label'] }}</a></td>
-        <td>{{ a['summary'] }}</td>
-        <td class="num">{{ a['age_days'] }}d{% if a['sla_days'] %} <span class="upload-hint">/ {{ a['sla_days']|int }}</span>{% endif %}</td>
+        {# Dates in the summaries are stored ISO; said the house's way. #}
+        <td>{{ a['summary']|house_words }}</td>
+        {# Something still to come -- a certificate expiring next week -- is
+           due in so many days, not waiting minus seven. #}
+        <td class="num">{% if a['age_days'] < 0 %}due {{ (-a['age_days'])|in_words }}{% else %}{{ a['age_days'] }}d{% endif %}{% if a['sla_days'] %} <span class="upload-hint">/ {{ a['sla_days']|int }}</span>{% endif %}</td>
         <td>{{ 'the employee' if a['actor'] == 'subject' else 'you' }}</td>
         <td>
           {% if a['escalated'] %}<span class="mini-status status-declined">escalated</span>
