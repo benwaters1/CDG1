@@ -38,6 +38,7 @@ they are, so a stand-in that missed a path fails loudly instead of going out.
 import io
 import json
 import re
+import sqlite3
 import struct
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -311,6 +312,7 @@ def _cleanup(conn):
                     (SELECT id FROM ical_sources WHERE label LIKE ?)""", (TAG + "%",))
     conn.execute("DELETE FROM ical_sources WHERE label LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM mailbox_routing WHERE mailbox LIKE '%@test.invalid'")
+    conn.execute("DELETE FROM email_flags WHERE graph_message_id LIKE ?", (f"{TAG}-scan-%",))
     for user in conn.execute("SELECT id FROM users WHERE email LIKE ?",
                              (f"{TAG}.%@example.invalid",)).fetchall():
         conn.execute("DELETE FROM notifications WHERE user_id = ?", (user["id"],))
@@ -1088,6 +1090,116 @@ def _run(s, oc, ec, owner, emp, conn, room):
                 for j in m.AUTOMATION_JOBS))
     s.check("switched on by default, since it does nothing until it is set up",
             m.AUTOMATION_SETTING_DEFAULTS.get("automation_booking_com_mail_enabled") == "1")
+
+    # ------------------------------------------------------------------
+    s.section("The inbox scan lets go of the database between mailboxes")
+    # Every tick, each inbox's pass rewrites the flags it still holds and
+    # clears the ones answered since -- and the scan saved all of it once,
+    # after the last inbox. So from the second inbox on, every Graph read
+    # went out with the first one's writes still open, and SQLite's one write
+    # lock was held through it: up to fifteen seconds a read, two reads an
+    # inbox, five inboxes. The till, a clock-in or a guest booking waited five
+    # and failed "database is locked". At every read here a second connection
+    # asks for the write lock with no patience at all; the answer has to be
+    # "go ahead" every time.
+    FIRST, SECOND = "zzbc-a@test.invalid", "zzbc-b@test.invalid"
+    try:
+        wait_hours = float(m.get_automation_settings(conn)["automation_email_unanswered_hours"])
+    except (TypeError, ValueError):
+        wait_hours = 24
+    arrived = datetime.now(timezone.utc) - timedelta(hours=wait_hours + 2)
+
+    def _graph_time(when):
+        return when.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    before = _ago(days=5)
+    for key in ("waiting", "answered"):
+        # Escalated already, so this section raises nothing for the owner:
+        # what it is about is the rewrite, not the nudge.
+        conn.execute(
+            """INSERT INTO email_flags (graph_message_id, conversation_id, from_address, subject,
+                   received_at, unanswered, status, mailbox, escalated_at, created_at, updated_at)
+               VALUES (?, ?, 'zzbc.guest@example.invalid', ?, ?, 1, 'open', ?, ?, ?, ?)""",
+            (f"{TAG}-scan-{key}", f"{TAG}-conv-{key}", f"ZZBC scan {key}",
+             _graph_time(arrived), FIRST, before, before, before))
+    conn.execute("""INSERT INTO mailbox_routing (mailbox, label, active, created_at)
+                    VALUES (?, 'ZZBC first', 1, ?), (?, 'ZZBC second', 1, ?)""",
+                 (FIRST, before, SECOND, before))
+    conn.commit()
+
+    def _message(key, when):
+        return {"id": f"{TAG}-scan-{key}", "conversationId": f"{TAG}-conv-{key}",
+                "receivedDateTime": _graph_time(when),
+                "from": {"emailAddress": {"name": "ZZBC Guest", "address": "zzbc.guest@example.invalid"}},
+                "subject": f"ZZBC scan {key}", "bodyPreview": "A question about our stay.",
+                "webLink": "https://outlook.invalid/zzbc"}
+
+    first_inbox = [_message("waiting", arrived), _message("answered", arrived)]
+    first_sent = [{"id": f"{TAG}-sent-answered", "conversationId": f"{TAG}-conv-answered",
+                   "sentDateTime": _graph_time(arrived + timedelta(hours=1)),
+                   "subject": "Re: ZZBC scan answered", "bodyPreview": "Yes, of course."}]
+
+    def _other():
+        return sqlite3.connect(m.DB_PATH, timeout=0)
+
+    def _free_to_write():
+        other = _other()
+        try:
+            other.execute("BEGIN IMMEDIATE")
+            other.execute("ROLLBACK")
+            return True
+        except sqlite3.OperationalError:
+            return False
+        finally:
+            other.close()
+
+    def _first_pass_saved():
+        other = _other()
+        try:
+            stamps = [r[0] for r in other.execute(
+                "SELECT updated_at FROM email_flags WHERE graph_message_id LIKE ?",
+                (f"{TAG}-scan-%",))]
+        finally:
+            other.close()
+        return len(stamps) == 2 and before not in stamps
+
+    reads, saved_by_then = [], []
+
+    def _probing(token, folder, since_iso, top=100, mailbox=None):
+        m._GRAPH_ANSWER.error = None
+        reads.append((mailbox, folder, _free_to_write()))
+        if mailbox == SECOND and folder == "sentitems":
+            saved_by_then.append(_first_pass_saved())
+        if mailbox == FIRST:
+            return first_sent if folder == "sentitems" else first_inbox
+        return []
+
+    with _StandIns(graph_enabled=lambda: True, get_graph_token=lambda: "tok",
+                   fetch_graph_messages=_probing, MS_GRAPH_MAILBOXES=[]):
+        report = m.run_email_inbox_scan_job(conn)
+    ours = [r for r in reads if r[0] in (FIRST, SECOND)]
+    s.check("both inboxes are read, the first before the second",
+            [(mb, f) for mb, f, _ in ours] == [(FIRST, "sentitems"), (FIRST, "inbox"),
+                                               (SECOND, "sentitems"), (SECOND, "inbox")],
+            detail=str(ours))
+    s.check("the database is free at the reads after an inbox that changed its flags",
+            [w for mb, _, w in ours if mb == SECOND] == [True, True],
+            detail=f"could write at each read: {ours}")
+    s.check("and at every other Graph read in the scan",
+            all(w for _, _, w in reads),
+            detail=str([r for r in reads if not r[2]]))
+    s.check("because the first inbox's pass is saved before the second is asked for",
+            saved_by_then == [True], detail=str(saved_by_then))
+    flags = {r["graph_message_id"]: r for r in conn.execute(
+        "SELECT * FROM email_flags WHERE graph_message_id LIKE ?", (f"{TAG}-scan-%",))}
+    waiting, answered = flags.get(f"{TAG}-scan-waiting"), flags.get(f"{TAG}-scan-answered")
+    s.check("the first inbox really did write: the one still waiting is rewritten",
+            waiting is not None and waiting["updated_at"] != before and waiting["unanswered"] == 1,
+            detail=f"{dict(waiting) if waiting else None}; {report}")
+    s.check("and the one answered since is cleared",
+            answered is not None and answered["unanswered"] == 0
+            and answered["first_reply_at"] == first_sent[0]["sentDateTime"],
+            detail=str(dict(answered)) if answered else "")
 
     # ------------------------------------------------------------------
     s.section("And it goes when the privacy notice says")

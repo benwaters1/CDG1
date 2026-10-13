@@ -210,10 +210,18 @@ def run():
     s.check("no hours and no rate raises nothing",
             i["hours"] == 0 and not i["blockers"], detail=f"{i['blockers']}")
 
-    s.section("Somebody who has left is not in the pack")
+    # Somebody who has left is in the pack for what they worked, and only
+    # then. This check used to say a leaver was left out whatever they had
+    # worked, which pinned the query as it stood: somebody who went on the
+    # 15th lost the first half of the month from the hand-off to payroll.
+    s.section("Somebody who has left is in the pack only for what they worked")
     gone = _employee("Thierry", status="inactive")
+    s.check("an inactive employee with no hours in the window is left out",
+            gone["name"] not in _pack())
     _shift(gone["id"], day, day + timedelta(hours=8))
-    s.check("an inactive employee is left out", gone["name"] not in _pack())
+    t = _pack().get(gone["name"])
+    s.check("one who worked in it is there, with the hours, marked as gone",
+            t is not None and t["hours"] == 8.0 and t["left"] is True, detail=str(t))
 
     s.section("The export refuses while anything is unsafe")
     r = oc.get("/admin/payroll/export.csv", follow_redirects=True)

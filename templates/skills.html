@@ -107,7 +107,8 @@
 {% if not free %}
   <div class="empty-state">
     Nobody is free on {{ day.isoformat()|date_short }}{% if wanted %} with "{{ wanted }}"{% endif %} —
-    everyone is either already rostered, on approved leave, or recorded absent.
+    everyone is either already rostered, on approved leave, recorded absent, or without
+    something their role requires.
   </div>
 {% else %}
 <div class="doc-list" style="max-width:900px;">
@@ -122,10 +123,16 @@
   {% endfor %}
 </div>
 {% endif %}
+{% if unable %}
+<p class="upload-hint" style="max-width:900px;">
+  <strong>Free, but cannot work it:</strong>
+  {% for p in unable %}<a href="{{ url_for('profile', user_id=p.user_id) }}">{{ p.name }}</a> ({{ p.why }}){{ ', ' if not loop.last }}{% endfor %}.
+</p>
+{% endif %}
 
 <p class="pay-disclaimer" style="margin-top:20px;">
   "Free" means only that the app has nothing else against them: no shift, no approved leave, no
-  recorded absence. It does not know whose day off is an arrangement rather than a record, who
+  recorded absence, and nothing missing or lapsed that their role requires. It does not know whose day off is an arrangement rather than a record, who
   lives near enough, or who is willing. This narrows the list; it does not make the decision.
 </p>
 

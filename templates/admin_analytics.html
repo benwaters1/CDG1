@@ -88,6 +88,12 @@
     </tbody>
   </table>
 </div>
+{# The list stops at forty; it said nothing about stopping, so the table
+   read as every page anybody read. #}
+{% if s.pages|length > 40 %}
+{% set rest = namespace(views=0) %}{% for _path, p in s.pages[40:] %}{% set rest.views = rest.views + p.views %}{% endfor %}
+<p class="upload-hint">And {{ s.pages|length - 40 }} more page{{ '' if s.pages|length - 40 == 1 else 's' }}, read {{ rest.views }} time{{ '' if rest.views == 1 else 's' }} between them.</p>
+{% endif %}
 {% else %}<p class="empty-state">Nobody visited in {{ period.label }}.</p>{% endif %}
 
 <h2 class="section-heading">Where a visit began</h2>
@@ -102,6 +108,10 @@
     </tbody>
   </table>
 </div>
+{% if s.entries|length > 25 %}
+{% set rest = namespace(visits=0) %}{% for _path, e in s.entries[25:] %}{% set rest.visits = rest.visits + e.visits %}{% endfor %}
+<p class="upload-hint">And {{ s.entries|length - 25 }} more first page{{ '' if s.entries|length - 25 == 1 else 's' }}, {{ rest.visits }} visit{{ '' if rest.visits == 1 else 's' }} between them.</p>
+{% endif %}
 {% endif %}
 
 <h2 class="section-heading">Pages that were not there</h2>

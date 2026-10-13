@@ -22,10 +22,11 @@
   <span class="pass-short-row">
     {{ i.occurred_at|house_day|date_short }} — {{ i.summary|truncate(70) }}
     {%- if i.overdue %}
-      · <strong>{{ i.age_days|round|int }} days ago, window was {{ i.allowed_days }}</strong>
+      · <strong>{{ (-(i.age_days|round|int))|in_words }}, the window was {{ i.allowed_days }} day{{ '' if i.allowed_days == 1 else 's' }}</strong>
       {%- if i.statutory %} · 48h is statutory for a workplace accident{% endif %}
     {%- else %}
-      · {{ i.days_left|round|int }} day{{ '' if i.days_left|round|int == 1 else 's' }} left
+      {%- set left = i.days_left|round|int %}
+      · {% if left < 1 %}less than a day left{% else %}{{ left }} day{{ '' if left == 1 else 's' }} left{% endif %}
     {%- endif %}
     {%- if not i.has_policy %} · <strong>no policy chosen</strong>{% endif %}
   </span>

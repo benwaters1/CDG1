@@ -6876,6 +6876,7 @@ def init_db():
     backfill_consent_history(conn)
     redact_stored_links(conn)
     incident_times_to_utc(conn)
+    prep_notes_in_words(conn)
 
     # `guests` used to be a per-STAY register carrying arrival/departure/party_size,
     # duplicating what `bookings` already owns. The two could never be kept in
@@ -10284,11 +10285,26 @@ def roster_vs_occupancy(conn, days):
     start = days[0]
     end = days[-1] + timedelta(days=1)
     occupancy = occupied_rooms_by_date(conn, start, end)
+    # People who can actually come: a leaver's leftover shift and somebody on
+    # approved leave counted as cover, so a short day read as staffed.
+    away = set()
+    for table, extra in (("leave_requests", "AND status = 'approved'"), ("absences", "")):
+        for r in conn.execute(
+                f"""SELECT user_id, start_date, end_date FROM {table}
+                     WHERE start_date < ? AND end_date >= ? {extra}""",
+                (end.isoformat(), start.isoformat())).fetchall():
+            for d in distinct_days([r], start, end - timedelta(days=1)):
+                away.add((r["user_id"], d.isoformat()))
     scheduled_counts = {}
     for row in conn.execute(
-        "SELECT DISTINCT shift_date, user_id FROM shifts WHERE shift_date >= ? AND shift_date < ?",
+        """SELECT DISTINCT shifts.shift_date, shifts.user_id FROM shifts
+             JOIN users ON users.id = shifts.user_id
+            WHERE shifts.shift_date >= ? AND shifts.shift_date < ?
+              AND users.status = 'active'""",
         (start.isoformat(), end.isoformat()),
     ).fetchall():
+        if (row["user_id"], row["shift_date"]) in away:
+            continue
         scheduled_counts[row["shift_date"]] = scheduled_counts.get(row["shift_date"], 0) + 1
     results = []
     for d in days:
@@ -10377,7 +10393,7 @@ def auto_prep_upcoming_arrivals(conn, today, days_ahead=ARRIVAL_PREP_DAYS):
             (booking["arrival_date"],),
         ).fetchone()
         assigned_to = scheduled["user_id"] if scheduled else None
-        room_note = f"{booking['guest_name']} arriving {booking['arrival_date']}, party of {booking['party_size']}."
+        room_note = prep_note(booking)
         if booking["special_requests"]:
             room_note += f" Requests: {booking['special_requests']}"
         party_size = booking["party_size"] or 1
@@ -10466,19 +10482,56 @@ def leave_days_taken(conn, user_id, start, end):
     so a request straddling the end of the leave year is split across the two it
     actually falls in instead of landing entirely in one.
     """
-    used = 0
-    for r in conn.execute(
+    # Each day once. Fifty-one copies of one approved three-day request read
+    # "taken 153 · -143 left": the requests were added up, not the days.
+    return len(distinct_days(conn.execute(
         """SELECT start_date, end_date FROM leave_requests
            WHERE user_id = ? AND status = 'approved' AND leave_type != 'sick'""",
         (user_id,),
-    ).fetchall():
+    ).fetchall(), start, end))
+
+
+def distinct_days(rows, first, last):
+    """The days from first to last, both included, that any of these rows
+    (start_date, end_date, both included) covers -- each day once.
+
+    THE way to count days off. The payroll pack and HR clipped a request to
+    the day AFTER their window and added one, so leave running past the end
+    of a month gained a day; and they summed requests, so two overlapping
+    requests counted their shared days twice -- 153 days of leave in a
+    thirty-day September. Those figures went into the payroll CSV.
+    """
+    out = set()
+    for r in rows:
         a, b = parse_date(r["start_date"]), parse_date(r["end_date"])
         if not a or not b:
             continue
-        a, b = max(a, start), min(b, end)
-        if a <= b:
-            used += (b - a).days + 1
-    return used
+        a, b = max(a, first), min(b, last)
+        while a <= b:
+            out.add(a)
+            a += timedelta(days=1)
+    return out
+
+
+TEAM_HOURS_SQL = """
+    SELECT COALESCE(SUM(
+               (julianday(time_entries.clock_out_at) - julianday(time_entries.clock_in_at)) * 24
+               - COALESCE((SELECT SUM((julianday(breaks.end_at) - julianday(breaks.start_at)) * 24)
+                             FROM breaks WHERE breaks.time_entry_id = time_entries.id
+                              AND breaks.end_at IS NOT NULL), 0)), 0) AS h
+      FROM time_entries JOIN users ON users.id = time_entries.user_id
+     WHERE users.role = 'employee'
+       AND time_entries.clock_out_at IS NOT NULL
+       AND time_entries.clock_out_at > time_entries.clock_in_at
+       AND time_entries.clock_in_at >= ? AND time_entries.clock_in_at < ?"""
+
+
+def team_hours(conn, start_at, end_at):
+    """Hours the team worked between two instants: employees' shifts, net of
+    breaks, as the payroll pack counts them. Team and HR counted gross time and
+    the owner's own clock-ins, so October read 45 hours there and 32 on the
+    payroll pack, from the same entries."""
+    return conn.execute(TEAM_HOURS_SQL, (start_at, end_at)).fetchone()["h"]
 
 
 def leave_year_window(conn, on_date):
@@ -11324,6 +11377,15 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
                 if v is None or v == "":
                     continue
                 counts[str(v)] = counts.get(str(v), 0) + 1
+        # The chip a list is filtered by is drawn even when nothing is in it.
+        # Incidents open on "Open": with none open that chip vanished, the row
+        # read as unfiltered, and the page listed nothing under chips adding
+        # up to the whole register. Only a value the facet knows -- its
+        # default, its order or its labels -- so a mistyped link draws nothing.
+        here = chosen.get(f["key"])
+        if here and here not in counts and (here == (f.get("default") or "")
+                                            or here in f["order"] or here in f["labels"]):
+            counts[here] = 0
         keys = [k for k in f["order"] if k in counts] if f["order"] else []
         keys += sorted(k for k in counts if k not in keys)
         hidden = 0
@@ -11486,6 +11548,9 @@ def in_words(days):
 
 
 app.jinja_env.filters["in_words"] = in_words
+# "Jean Moreau" is JM, not JE: the cards took the first two letters of the
+# first name, so Demo Housekeeper and Demo Server were both DE.
+app.jinja_env.filters["initials"] = lambda name: initials_for(name)
 
 
 def committed_stock(conn, item_ids, within_days=14):
@@ -11678,18 +11743,8 @@ def guests_overview(conn, period, today):
 def employee_overview(conn, period, today):
     """The team over the chosen window. Deliberately separate from the HR page,
     which answers the compliance questions; this answers "who is working"."""
-    hours = conn.execute(
-        """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
-           FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
-             AND clock_in_at >= ? AND clock_in_at < ?""",
-        (period["start_at"], period["end_at"]),
-    ).fetchone()["h"]
-    prev_hours = conn.execute(
-        """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
-           FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
-             AND clock_in_at >= ? AND clock_in_at < ?""",
-        (period["prev_start_at"], period["prev_end_at"]),
-    ).fetchone()["h"]
+    hours = team_hours(conn, period["start_at"], period["end_at"])
+    prev_hours = team_hours(conn, period["prev_start_at"], period["prev_end_at"])
     active = conn.execute(
         "SELECT COUNT(*) AS c FROM users WHERE role = 'employee' AND status = 'active'"
     ).fetchone()["c"]
@@ -11697,7 +11752,7 @@ def employee_overview(conn, period, today):
         "SELECT COUNT(*) AS c FROM time_entries WHERE clock_out_at IS NULL"
     ).fetchone()["c"]
     on_leave = conn.execute(
-        """SELECT COUNT(*) AS c FROM leave_requests
+        """SELECT COUNT(DISTINCT user_id) AS c FROM leave_requests
            WHERE status = 'approved' AND start_date <= ? AND end_date >= ?""",
         (today.isoformat(), today.isoformat()),
     ).fetchone()["c"]
@@ -15356,6 +15411,40 @@ def incidents_awaiting_insurer(conn, *, now=None):
     }
 
 
+def prep_note(booking):
+    """The line an arrival's prep tasks carry: who, when, how many.
+
+    The date in words. It was the database's date, "arriving 2026-10-13", and
+    being stored rather than drawn it reached the task list, the Overview, the
+    today sheet and the owner's home that way.
+    """
+    return (f"{booking['guest_name']} arriving {format_date_short(booking['arrival_date'])}, "
+            f"party of {booking['party_size']}.")
+
+
+PREP_NOTE_ISO = re.compile(r" arriving (\d{4}-\d{2}-\d{2}), party of ")
+
+
+def prep_notes_in_words(conn):
+    """Rewrite the prep notes already stored with the database's date.
+
+    Runs at startup and finds nothing once they are through: prep_note writes
+    the date in words, and a note without an ISO date is left alone.
+    """
+    changed = 0
+    for row in conn.execute(
+            "SELECT id, room_note FROM tasks WHERE room_note LIKE '% arriving ____-__-__, party of %'"
+    ).fetchall():
+        note = PREP_NOTE_ISO.sub(
+            lambda mt: f" arriving {format_date_short(mt.group(1))}, party of ", row["room_note"])
+        if note != row["room_note"]:
+            conn.execute("UPDATE tasks SET room_note = ? WHERE id = ?", (note, row["id"]))
+            changed += 1
+    if changed:
+        conn.commit()
+    return changed
+
+
 def incident_times_to_utc(conn):
     """Store every incident's time as a moment in UTC, like every other time.
 
@@ -16648,7 +16737,7 @@ def skill_matrix(conn, *, include_inactive=False):
     }
 
 
-def who_could_cover(conn, day, *, skill=None):
+def who_could_cover(conn, day, *, skill=None, not_qualified=None):
     """Active employees with nothing on the rota that day, and free to work it.
 
     Not a recommendation — it does not know who is willing, who is nearby, or
@@ -16672,6 +16761,16 @@ def who_could_cover(conn, day, *, skill=None):
                 (iso, iso)).fetchall():
             busy.add(r["user_id"])
 
+    # Free is not able. Somebody whose role needs a certificate they do not
+    # hold, or that has lapsed by that day, cannot legally work it -- the rota
+    # clash page says so of a shift already -- and offering them as cover put
+    # the gap straight back. They are left off, and named in `not_qualified`
+    # when a list is passed, so a page can say who was free but could not.
+    unmet = {}
+    for row in role_compliance(conn, day):
+        if row["state"] in ("missing", "expired"):
+            unmet.setdefault(row["user_id"], []).append(row)
+
     want = (skill or "").strip().casefold() or None
     out = []
     for r in conn.execute(
@@ -16681,6 +16780,15 @@ def who_could_cover(conn, day, *, skill=None):
             continue
         theirs = parse_skills(r["skills"])
         if want and want not in {k for k, _d in theirs}:
+            continue
+        if r["id"] in unmet:
+            if not_qualified is not None:
+                not_qualified.append({
+                    "user_id": r["id"], "name": r["name"],
+                    "why": "; ".join(
+                        f"{u['requirement']} not on file" if u["state"] == "missing"
+                        else f"{u['requirement']} {house_words(u['detail'])}"
+                        for u in unmet[r["id"]])})
             continue
         out.append({"user_id": r["id"], "name": r["name"], "job_role": r["job_role"],
                     "skills": [d for _k, d in theirs]})
@@ -16735,10 +16843,13 @@ def rota_vs_clock(conn, start, end, *, today=None):
     # Bucketed by the LOCAL day they started on, because a shift is planned in
     # local time and clock_in_at is stored in UTC.
     worked = {}
+    # The team's clock, not the owner's: 181 of 273 "hours paid and never
+    # planned" were the owner's own days.
     for r in conn.execute(
         """SELECT time_entries.*, users.name AS employee_name FROM time_entries
              JOIN users ON users.id = time_entries.user_id
-            WHERE time_entries.clock_in_at >= ? AND time_entries.clock_in_at < ?""",
+            WHERE time_entries.clock_in_at >= ? AND time_entries.clock_in_at < ?
+              AND users.role = 'employee'""",
         (fetch_from, fetch_to)).fetchall():
         started = parse_datetime_iso(r["clock_in_at"])
         if not started:
@@ -16781,14 +16892,21 @@ def rota_vs_clock(conn, start, end, *, today=None):
         if key in rostered:
             continue
         e = entries[0]
-        hours = sum(net_hours_for_entries(conn, entries).values())
+        # A clock-out the app guessed counts as no hours until somebody fixes
+        # it, as Timesheets says; counted in full it read "14.0h" for a shift
+        # nobody knows the length of.
+        hours = sum(net_hours_for_entries(
+            conn, [x for x in entries if not x["auto_closed"]]).values())
+        guessed = any(x["auto_closed"] for x in entries)
         out.append({
             "kind": "no_shift", "user_id": key[0], "date": key[1],
             "employee_name": e["employee_name"],
             "planned": None, "role_note": None,
             "hours": round(hours, 2),
             "detail": (f"Clocked {hours:.1f}h with nothing on the rota for that day."
-                       if hours else "Clocked in with nothing on the rota for that day."),
+                       if hours else "Clocked in with nothing on the rota for that day.")
+                      + (" The clock-out was guessed, so those hours count once somebody "
+                         "fixes it on Timesheets." if guessed else ""),
         })
 
     out.sort(key=lambda r: (r["date"], r["employee_name"] or ""), reverse=True)
@@ -20523,21 +20641,45 @@ def asset_summary(conn, today):
     that quietly totals uninsured items reads as more cover than exists.
     """
     rows = conn.execute(
-        "SELECT * FROM assets WHERE status IN ('held','on_loan')").fetchall()
+        """SELECT assets.*, insurance_policies.expiry_date AS policy_expiry
+             FROM assets LEFT JOIN insurance_policies
+               ON insurance_policies.id = assets.insurance_policy_id
+            WHERE assets.status IN ('held','on_loan')""").fetchall()
     total = sum(r["estimated_value"] or 0 for r in rows)
-    insured = sum(r["estimated_value"] or 0 for r in rows if r["insurance_policy_id"])
+    # Insured means a policy in force today. A €12,000 commode on a policy
+    # that lapsed last June counted as insured, and the renewal is exactly
+    # when somebody reads this figure.
+    covered = [r for r in rows if asset_is_covered(r, today)]
+    insured = sum(r["estimated_value"] or 0 for r in covered)
     unvalued = [r for r in rows if not r["estimated_value"]]
     stale_before = (today - timedelta(days=365 * VALUATION_STALE_YEARS)).isoformat()
     stale = [r for r in rows
              if r["value_source"] == "valuation" and (r["valued_on"] or "") < stale_before]
     uninsured_significant = [
-        r for r in rows if not r["insurance_policy_id"] and (r["estimated_value"] or 0) >= 1000]
+        r for r in rows if not asset_is_covered(r, today) and (r["estimated_value"] or 0) >= 1000]
     return {
         "count": len(rows), "total": total, "insured": insured,
         "uninsured": total - insured,
         "unvalued": unvalued, "stale": stale,
         "uninsured_significant": uninsured_significant,
     }
+
+
+def asset_is_covered(asset, today):
+    """A policy attached and not yet expired. `asset` carries policy_expiry."""
+    if not asset["insurance_policy_id"]:
+        return False
+    expiry = asset["policy_expiry"] if "policy_expiry" in asset.keys() else None
+    return not expiry or expiry >= (today.isoformat() if hasattr(today, "isoformat") else today)
+
+
+def asset_cover_word(asset, today):
+    """The register's chip for an asset's cover: nothing, lapsed, or None."""
+    if not asset["insurance_policy_id"]:
+        return "Not covered"
+    if not asset_is_covered(asset, today):
+        return "Cover lapsed"
+    return None
 
 
 def access_held_by(conn, user_id):
@@ -20565,9 +20707,18 @@ def payroll_period_rows(conn, period):
     # contract dates below are dates and keep start_iso/end_iso.
     start_at, end_at = period["start_at"], period["end_at"]
     rows = []
+    # Everybody who works here, and anybody who has left but clocked hours in
+    # the window: somebody who went on the 15th is still owed the first half
+    # of the month, and the pack dropped them -- hours and all -- the moment
+    # they were marked inactive.
     for p in conn.execute(
-        """SELECT id, name, job_role, pay_rate, pay_type, contract_type
-           FROM users WHERE role = 'employee' AND status = 'active' ORDER BY name"""
+        """SELECT id, name, job_role, pay_rate, pay_type, contract_type, status
+           FROM users WHERE role = 'employee'
+            AND (status = 'active' OR id IN (
+                 SELECT user_id FROM time_entries
+                  WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
+                    AND clock_in_at >= ? AND clock_in_at < ?))
+           ORDER BY name""", (start_at, end_at)
     ).fetchall():
         hours = conn.execute(
             """SELECT COALESCE(SUM(
@@ -20616,17 +20767,17 @@ def payroll_period_rows(conn, period):
                  AND clock_in_at >= ? AND clock_in_at < ?""",
             (p["id"], start_at, end_at),
         ).fetchone()["c"]
-        absence_days = conn.execute(
-            """SELECT COALESCE(SUM(julianday(MIN(end_date, ?)) - julianday(MAX(start_date, ?)) + 1), 0) AS d
-               FROM absences WHERE user_id = ? AND start_date < ? AND end_date >= ?""",
-            (period["end_iso"], start_iso, p["id"], end_iso, start_iso),
-        ).fetchone()["d"]
-        leave_days = conn.execute(
-            """SELECT COALESCE(SUM(julianday(MIN(end_date, ?)) - julianday(MAX(start_date, ?)) + 1), 0) AS d
-               FROM leave_requests
+        # The window's last day is the one before end_iso, which is exclusive.
+        first_day = parse_date(start_iso)
+        last_day = parse_date(end_iso) - timedelta(days=1)
+        absence_days = len(distinct_days(conn.execute(
+            """SELECT start_date, end_date FROM absences
+               WHERE user_id = ? AND start_date < ? AND end_date >= ?""",
+            (p["id"], end_iso, start_iso)).fetchall(), first_day, last_day))
+        leave_days = len(distinct_days(conn.execute(
+            """SELECT start_date, end_date FROM leave_requests
                WHERE user_id = ? AND status = 'approved' AND start_date < ? AND end_date >= ?""",
-            (period["end_iso"], start_iso, p["id"], end_iso, start_iso),
-        ).fetchone()["d"]
+            (p["id"], end_iso, start_iso)).fetchall(), first_day, last_day))
 
         worked = round(hours["h"], 2)
         # A typed wage record beats the free-text note, and must be consulted
@@ -20663,6 +20814,7 @@ def payroll_period_rows(conn, period):
             blockers.append("no wage on file and no usable hourly rate")
         rows.append({
             "user_id": p["id"], "name": p["name"], "job_role": p["job_role"],
+            "left": p["status"] != "active",
             "contract_type": CONTRACT_TYPES.get(p["contract_type"], p["contract_type"] or "—"),
             "hours": worked, "shifts": hours["shifts"],
             "absence_days": int(absence_days), "leave_days": int(leave_days),
@@ -20796,14 +20948,24 @@ def collect_hr_actions(conn, today):
 
     year_ago = (today - timedelta(days=365)).isoformat()
     for r in conn.execute(
-        """SELECT users.id, users.name, users.start_date FROM users
+        """SELECT users.id, users.name, users.start_date, users.created_at,
+                  (SELECT MAX(review_date) FROM performance_reviews
+                    WHERE performance_reviews.user_id = users.id) AS last_review
+             FROM users
            WHERE users.role = 'employee' AND users.status = 'active'
              AND users.id NOT IN (SELECT user_id FROM performance_reviews WHERE review_date >= ?)""",
         (year_ago,),
     ).fetchall():
-        # Clock starts a year after they joined, not the day they joined.
-        started = parse_date(r["start_date"]) if r["start_date"] else None
-        since = ((started + timedelta(days=365)).isoformat() if started else year_ago)
+        # Due a year after the last review, or a year after they joined if
+        # there has never been one -- not a year after joining whatever
+        # happened since, which read "2112 days" for somebody reviewed last
+        # June, and not a year before today when the start date is missing,
+        # which read 365 days for ever.
+        last = parse_date((r["last_review"] or "")[:10]) if r["last_review"] else None
+        started = (parse_date(r["start_date"]) if r["start_date"]
+                   else house_date(r["created_at"]) if r["created_at"] else None)
+        anchor = last or started
+        since = (anchor + timedelta(days=365)).isoformat() if anchor else year_ago
         if since <= iso:
             add("review_overdue", r["id"], r["id"], r["name"], since, "/admin/hr")
 
@@ -20848,14 +21010,14 @@ def collect_hr_actions(conn, today):
             opened = d["on_date"] - timedelta(days=TRIAL_WARNING_DAYS)
             add("trial_period_ending", f"trial-{d['user_id']}", d["user_id"],
                 f"{d['name']} — trial period ends {d['on_date'].isoformat()}"
-                + (" (already passed)" if d["days_left"] < 0 else f" ({d['days_left']}d)"),
+                + (" (already passed)" if d["days_left"] < 0 else f" ({in_words(d['days_left'])})"),
                 max(opened, parse_date("2000-01-01")).isoformat(), f"/directory/{d['user_id']}")
         else:
             opened = d["on_date"] - timedelta(days=CONTRACT_WARNING_DAYS)
             add("contract_ending", f"contract-{d['user_id']}", d["user_id"],
                 f"{d['name']} — {CONTRACT_TYPES.get(d['contract_type'], 'contract')} ends "
                 f"{d['on_date'].isoformat()}"
-                + (" (already passed)" if d["days_left"] < 0 else f" ({d['days_left']}d)"),
+                + (" (already passed)" if d["days_left"] < 0 else f" ({in_words(d['days_left'])})"),
                 max(opened, parse_date("2000-01-01")).isoformat(), f"/directory/{d['user_id']}")
 
     return out
@@ -28879,6 +29041,12 @@ def _refund_target(conn, payment):
             and payment.get("row_id"):
         conn.execute(f"UPDATE {payment['table']} SET stripe_payment_intent_id = ? "
                      "WHERE id = ?", (intent, payment["row_id"]))
+        # Committed here, because the refund itself is asked for next and can
+        # take Stripe up to 80 seconds. Left open, this one line held SQLite's
+        # only write lock for all of it, and every other save in the house
+        # waited five seconds and failed "database is locked". What Stripe
+        # said about the session is true whether the refund then goes or not.
+        conn.commit()
     return intent
 
 
@@ -29026,6 +29194,18 @@ def make_refund(conn, category, booking, amount, reason, method="stripe", user_i
                 add_workshop_transaction(conn, booking["id"], "discount",
                                          f"Taken off the bill — {reason.strip()}",
                                          reduce_here, user_id=user_id)
+        # EACH PART SAVED BEFORE THE NEXT CARD IS ASKED. There was one commit,
+        # after the loop, so on a stay paid in two goes the second card's
+        # refund went to Stripe with the first one's row still open: SQLite's
+        # one write lock held for as long as Stripe took (up to 80 seconds),
+        # and the till, a clock-in or a guest's booking failed "database is
+        # locked" after five. And if the worker died in that wait, the record
+        # of money that had already gone back went with it.
+        # The idempotency key does not move: refunded_so_far reads this
+        # connection, which sees its own rows committed or not, and a retry
+        # after a crash finds the parts already saved, so the part that had
+        # not finished is asked for under the key it was asked for before.
+        conn.commit()
     if not ids:
         return False, error or "Nothing was refunded.", []
 
@@ -31827,6 +32007,9 @@ def visitors_on_site(conn, now=None):
         hours = round((now - since).total_seconds() / 3600.0, 1) if since else None
         out.append({
             "visitor": r, "since": since, "hours": hours,
+            # Read by the page's "Expecting them" column, which printed a dash
+            # for every visitor because it was never handed over.
+            "host": r["host"],
             "signed_in_by": r["signed_in_by"],
             # A judgement, said as one. Somebody who forgot to sign out
             # looks exactly like somebody in the roof space.
@@ -31959,11 +32142,19 @@ def breakage_summary(conn, *, months=12, today=None):
         "count": len(rows),
         "cost": cost,
         "recovered": recovered,
-        # Not netted into one number: what the house absorbs is a cost of
-        # trading, and what it recovered is a decision it made.
-        "absorbed": round(cost - recovered, 2),
+        # What the house lost on the ones it has decided: each breakage's cost
+        # less what was charged for it, never below nothing. It was all costs
+        # less all recoveries, so a vase charged €100 against €50 to replace
+        # paid for somebody else's broken glass, and the undecided ones were
+        # counted as absorbed before anybody had decided.
+        "absorbed": round(sum(
+            max(0.0, (r["replacement_cost"] or 0)
+                - ((r["charged_amount"] or 0) if r["charge_decision"] == "charged" else 0))
+            for r in rows if r["charge_decision"] != "undecided"), 2),
         "undecided": len([r for r in rows
                           if r["charge_decision"] == "undecided"]),
+        "undecided_cost": round(sum(r["replacement_cost"] or 0 for r in rows
+                                    if r["charge_decision"] == "undecided"), 2),
     }
 
 
@@ -34697,25 +34888,24 @@ def admin_hr():
 
     # Overview band: how the team looks over the chosen window, rather than
     # opening straight onto sub-sections.
-    hours_row = conn.execute(
-        """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
-           FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
-             AND clock_in_at >= ? AND clock_in_at < ?""",
-        (period["start_at"], period["end_at"]),
-    ).fetchone()
-    prev_hours_row = conn.execute(
-        """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
-           FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
-             AND clock_in_at >= ? AND clock_in_at < ?""",
-        (period["prev_start_at"], period["prev_end_at"]),
-    ).fetchone()
-    absence_days = conn.execute(
-        """SELECT COALESCE(SUM(julianday(MIN(end_date, ?)) - julianday(MAX(start_date, ?)) + 1), 0) AS d
-           FROM absences WHERE start_date < ? AND end_date >= ?""",
-        (period["end_iso"], period["start_iso"], period["end_iso"], period["start_iso"]),
-    ).fetchone()
+    hours_row = {"h": team_hours(conn, period["start_at"], period["end_at"])}
+    prev_hours_row = {"h": team_hours(conn, period["prev_start_at"], period["prev_end_at"])}
+    # Each person's days once, inside the window: a one-day window read
+    # "Absence 2".
+    hr_first = parse_date(period["start_iso"])
+    hr_last = parse_date(period["end_iso"]) - timedelta(days=1)
+    absences_by = {}
+    for r in conn.execute(
+            """SELECT user_id, start_date, end_date FROM absences
+               WHERE start_date < ? AND end_date >= ?""",
+            (period["end_iso"], period["start_iso"])).fetchall():
+        absences_by.setdefault(r["user_id"], []).append(r)
+    absence_days = {"d": sum(len(distinct_days(rs, hr_first, hr_last))
+                             for rs in absences_by.values())}
+    # People on leave, not requests: fifty-one requests read "On leave 51"
+    # for a team of four.
     leave_taken = conn.execute(
-        """SELECT COUNT(*) AS c FROM leave_requests
+        """SELECT COUNT(DISTINCT user_id) AS c FROM leave_requests
            WHERE status = 'approved' AND start_date < ? AND end_date >= ?""",
         (period["end_iso"], period["start_iso"]),
     ).fetchone()["c"]
@@ -38363,10 +38553,15 @@ def admin_assets():
     # chips are worth more than the query.
     show = request.args.get("status", "current")
     rows = conn.execute(
-        """SELECT assets.*, insurance_policies.provider AS insurer
+        """SELECT assets.*, insurance_policies.provider AS insurer,
+                  insurance_policies.expiry_date AS policy_expiry
              FROM assets LEFT JOIN insurance_policies
                ON insurance_policies.id = assets.insurance_policy_id
             ORDER BY assets.category, assets.name""").fetchall()
+    # How many there are before anything narrows them, so an empty list can
+    # tell "nothing matches" from "nothing yet". It said "add the first item"
+    # over a register of forty with a search that found none.
+    everything = len(rows)
     # The page has always opened on what the house still has, which is right:
     # a register that opens on everything ever owned buries the forty things
     # in the building under the four that were sold.
@@ -38389,9 +38584,8 @@ def admin_assets():
                   limit=12),
             # The question an insurance renewal is actually about: what is
             # on the register with no cover behind it.
-            facet("cover", "Insurance",
-                  lambda a: "Not covered" if not a["insurance_policy_id"]
-                  else None),
+            facet("cover", "Insurance", lambda a: asset_cover_word(a, today),
+                  order=["Not covered", "Cover lapsed"]),
         ],
         sorts=[
             sort_option("place", "By kind, then name",
@@ -38427,7 +38621,7 @@ def admin_assets():
     ]
     return render_template("admin_assets.html", assets=assets, overview=overview,
                            summary=summary, by_location=by_location, policies=policies,
-                           lv=lv, show=show,
+                           lv=lv, show=show, everything=everything,
                            asset_categories=ASSET_CATEGORIES,
                            asset_value_sources=ASSET_VALUE_SOURCES,
                            asset_conditions=ASSET_CONDITIONS,
@@ -38688,7 +38882,10 @@ def admin_payroll():
     total_hours = round(sum(r["hours"] for r in rows), 2)
     total_cost = round(sum(r["cost"] or 0 for r in rows), 2)
     overview = [
-        overview_cell("People", len([r for r in rows if r["hours"] > 0])),
+        # Everybody on the table, and how many of them worked: the tile counted
+        # only those with hours, above a table listing everybody.
+        overview_cell("People", len(rows),
+                      hint=f"{len([r for r in rows if r['hours'] > 0])} with hours"),
         overview_cell("Hours", total_hours, sub="h", hint="net of breaks"),
         overview_cell("Estimated pay", euro(total_cost)),
         overview_cell("Needs fixing first", len(blocked), alert=len(blocked)),
@@ -39520,8 +39717,12 @@ def announcement_readership(conn, announcement_ids):
     """
     if not announcement_ids:
         return {}
+    # The staff. The owner never marks a notice read -- opening their own
+    # board is not the team having seen it -- so they sat on every
+    # "not seen by" list, under the notice they had written.
     people = conn.execute(
-        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+        "SELECT id, name FROM users WHERE status = 'active' AND role = 'employee' ORDER BY name"
+    ).fetchall()
     marks = ",".join("?" * len(announcement_ids))
     seen = {}
     for r in conn.execute(
@@ -53589,7 +53790,9 @@ def room_issues():
            LEFT JOIN users ON users.id = room_issues.reported_by_user_id
            ORDER BY room_issues.created_at DESC""").fetchall()
     rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
-    employees = conn.execute("SELECT * FROM users WHERE role = 'employee' ORDER BY name").fetchall()
+    # People who still work here: a fault handed to a leaver is handed to nobody.
+    employees = conn.execute(
+        "SELECT * FROM users WHERE role = 'employee' AND status = 'active' ORDER BY name").fetchall()
     # Counted separately rather than off `issues`, which the status filter
     # above has usually already narrowed (this page defaults to open-only).
     counts = {
@@ -53629,7 +53832,10 @@ def room_issues():
         if not a:
             return None
         days = days_until(a["arrival_date"])
-        return "Guest arriving this week" if (days or 99) <= 7 else "Guest arriving soon"
+        # Today is this week: "days or 99" read an arrival today, 0 days
+        # away, as 99 and filed it under "soon".
+        return ("Guest arriving this week" if days is not None and days <= 7
+                else "Guest arriving soon")
 
     lv = list_view(
         issues, request.args,
@@ -58283,7 +58489,7 @@ def prepare_arrival(booking_id):
         conn.close()
         flash("This booking was already prepped.", "error")
         return redirect(url_for("admin_bookings"))
-    room_note = f"{booking['guest_name']} arriving {booking['arrival_date']}, party of {booking['party_size']}."
+    room_note = prep_note(booking)
     if booking["special_requests"]:
         room_note += f" Requests: {booking['special_requests']}"
     party_size = booking["party_size"] or 1
@@ -58306,8 +58512,9 @@ def decline_booking_by_id(conn, booking_id, *, refund=True, user_id=None, via=No
     """Core decline logic shared by the single-booking and bulk-decline
     routes. Only acts on a still-pending booking, mirroring
     confirm_booking_by_id's guard against re-processing. Returns a
-    (declined, refunded, refund_error) tuple; leaves commit/close to the
-    caller.
+    (declined, refunded, refund_error) tuple. Commits as it goes -- the
+    decline before its refund goes to Stripe, the lot before the guest's
+    letter -- and leaves close to the caller.
 
     `refund` is whether the person declining may give money back. Refunds are
     the owner's call, and a decline by anybody else moved it all the same --
@@ -58337,6 +58544,12 @@ def decline_booking_by_id(conn, booking_id, *, refund=True, user_id=None, via=No
            if "decline_reason" in booking.keys() else None)
     log_audit(conn, "booking_declined", target=booking["reference_code"], details=why,
               via=via, actor=user_id)
+    # Committed before the refund, which goes to Stripe and can take up to 80
+    # seconds. The decline and its audit line were held open across that
+    # call, so nothing else in the house could save until the card answered.
+    # The decline stands whatever the card says -- this function always
+    # committed it, refund or not -- so it is no less true for being saved first.
+    conn.commit()
 
     # Paid anything at all, not paid in full: a deposit taken on a request that
     # is then declined is owed back as surely as the whole price.
@@ -70258,10 +70471,11 @@ def management_breakages():
     overview = [
         overview_cell("Recorded", summary["count"], hint="in the last year"),
         overview_cell("Not decided", summary["undecided"],
-                      alert=bool(summary["undecided"])),
-        overview_cell("The house absorbed",
-                      f"\u20ac{summary['absorbed']:,.2f}",
-                      hint="replacement cost less anything recovered"),
+                      alert=bool(summary["undecided"]),
+                      hint=(f"{money(summary['undecided_cost'])} to replace"
+                            if summary["undecided"] else None)),
+        overview_cell("The house absorbed", money(summary["absorbed"]),
+                      hint="on the ones decided, less what each was charged"),
     ]
     return render_template("management_breakages.html", summary=summary,
                            rooms=rooms, recent=recent, overview=overview,
@@ -77811,7 +78025,9 @@ def cover_gaps_page():
     # rather than left as an exercise. Only the nearest few: a list of every
     # free person for every gap is a wall of names nobody reads.
     for g in gaps[:5]:
-        g["could_cover"] = who_could_cover(conn, g["date"])[:6]
+        g["not_qualified"] = []
+        g["could_cover"] = who_could_cover(conn, g["date"],
+                                           not_qualified=g["not_qualified"])[:6]
     # Somebody IS rostered, but every one of them is on leave, absent or not
     # currently qualified. Worth separating: it reads as staffed on the rota,
     # which is exactly why nobody catches it.
@@ -77942,7 +78158,8 @@ def skills_page():
     matrix = skill_matrix(conn)
     wanted = (request.args.get("skill", "") or "").strip()
     day = parse_date(request.args.get("day", "")) or today
-    free = who_could_cover(conn, day, skill=wanted or None)
+    unable = []
+    free = who_could_cover(conn, day, skill=wanted or None, not_qualified=unable)
     conn.close()
 
     typos = [sk for sk in matrix["skills"] if len(sk["spellings"]) > 1]
@@ -77956,7 +78173,7 @@ def skills_page():
         overview_cell("Spelt more than one way", len(typos), alert=bool(typos)),
     ]
     return render_template("skills.html", matrix=matrix, overview=overview,
-                           typos=typos, free=free, day=day, wanted=wanted,
+                           typos=typos, free=free, unable=unable, day=day, wanted=wanted,
                            today=today)
 
 
@@ -77998,14 +78215,17 @@ def room_faults_page():
         "SELECT COUNT(*) AS c FROM room_issues WHERE status = 'open'").fetchone()["c"]
     conn.close()
     imminent = [r for r in rows if r["days_away"] is not None and r["days_away"] <= 7]
+    # Stays, not stay-and-fault pairs: one guest in a room with two faults
+    # read "Guest already in the room 2".
     overview = [
         overview_cell("Faults open", open_issues),
         overview_cell("Rooms sold with one", len({r["room_id"] for r in rows}),
                       alert=bool(rows)),
         overview_cell("Guest already in the room",
-                      len([r for r in rows if r["in_house"]]),
+                      len({r["booking_id"] for r in rows if r["in_house"]}),
                       alert=any(r["in_house"] for r in rows)),
-        overview_cell("Arriving within a week", len(imminent), alert=bool(imminent)),
+        overview_cell("Arriving within a week", len({r["booking_id"] for r in imminent}),
+                      alert=bool(imminent)),
     ]
     return render_template("room_faults.html", rows=rows, overview=overview,
                            imminent=imminent, today=today)
@@ -84566,8 +84786,22 @@ def my_leave():
         if leave_type not in ("vacation", "sick", "personal", "other"):
             leave_type = "vacation"
         start, end = parse_date(start_date), parse_date(end_date)
+        # The same days asked for twice. Nothing stopped it, and every copy
+        # approved was counted again in the balance and the payroll pack.
+        overlap = (conn.execute(
+            """SELECT start_date, end_date, status FROM leave_requests
+                WHERE user_id = ? AND status IN ('pending', 'approved')
+                  AND start_date <= ? AND end_date >= ?""",
+            (user["id"], end.isoformat(), start.isoformat())).fetchone()
+                   if start and end and end >= start else None)
         if not start or not end or end < start:
             flash("Enter a valid date range.", "error")
+        elif overlap:
+            flash(f"You have already asked for time off from "
+                  f"{format_date_short(overlap['start_date'])} to "
+                  f"{format_date_short(overlap['end_date'])} "
+                  f"({'approved' if overlap['status'] == 'approved' else 'waiting for an answer'}). "
+                  "If the dates have changed, cancel that one and ask again.", "error")
         else:
             conn.execute(
                 """INSERT INTO leave_requests (user_id, start_date, end_date, reason, leave_type, status, requested_at)
@@ -87139,6 +87373,14 @@ def run_email_inbox_scan_job(conn):
         # the guest's own message never mentioned one).
         reply_map = {}
         reply_by_conversation = {}
+        # Saved before Microsoft is asked anything, not once after the last
+        # mailbox. The inbox before this one rewrote every flag it still holds
+        # and cleared the answered ones; left open, those writes held SQLite's
+        # one write lock through this inbox's two Graph reads -- up to fifteen
+        # seconds each, five inboxes -- and the till, a clock-in or a guest
+        # booking anywhere in the house waited five and failed "database is
+        # locked". The photo mirror was this same fault.
+        conn.commit()
         # A folder that could not be read is SKIPPED AND NAMED, never read as
         # empty. Unread sent items read as "no replies", which would flag every
         # email in the inbox as unanswered; an unread inbox read as nothing to

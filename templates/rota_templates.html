@@ -34,7 +34,7 @@
           <td>
             {{ t.row['note'] or '' }}
             {% if t.gone %}
-            <div class="upload-hint">{{ t.gone }} line{{ '' if t.gone == 1 else 's' }} name
+            <div class="upload-hint">{{ t.gone }} {{ 'line names' if t.gone == 1 else 'lines name' }}
               somebody who no longer works here. Stamping it will skip them and say so.</div>
             {% endif %}
           </td>

@@ -16,9 +16,16 @@ What this holds, each of which was wrong before it:
     ceiling, instead of around it.
   - A deposit taken on a request that is then declined goes back.
   - The guest is told, in a letter the owner can edit.
+  - Nothing is held open while Stripe is out. A refund over two cards asked
+    for the second with the first one's row uncommitted, and a decline asked
+    for its refund with the decline uncommitted -- SQLite's one write lock
+    held for as long as Stripe took, so every other save in the house failed
+    "database is locked". And a worker killed in that wait took the record of
+    money already gone back with it.
 
 Stripe is stood in for throughout and put back in a `finally`; mail is caught.
 """
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, clients, db, flashes, house_today
@@ -49,18 +56,50 @@ def _cleanup():
     conn.close()
 
 
+class _Died(BaseException):
+    """The worker killed mid-call -- not an answer from Stripe, so no
+    `except Exception` in the app sees it, and nothing after it runs."""
+
+
+def _writable():
+    """Could anybody else in the house save right now? Asked from a second
+    connection with no patience at all, the way the till would be."""
+    other = sqlite3.connect(m.DB_PATH, timeout=0)
+    try:
+        other.execute("BEGIN IMMEDIATE")
+        other.execute("ROLLBACK")
+        return True
+    except sqlite3.OperationalError:
+        return False
+    finally:
+        other.close()
+
+
 class _FakeStripe:
     """Stands in for the module. Records every refund asked for, answers a
-    Checkout Session with the intent behind it, and can be told to refuse."""
+    Checkout Session with the intent behind it, and can be told to refuse.
 
-    def __init__(self, sessions=None, refuse=()):
-        self.refunds, self.retrieved = [], []
+    `probe` is called as each call goes out and its answer kept in
+    `writable`, against the intent or session asked about. `die_on` names
+    intents whose refund never comes back at all."""
+
+    def __init__(self, sessions=None, refuse=(), probe=None, die_on=()):
+        self.refunds, self.retrieved, self.asked, self.writable = [], [], [], []
         self.sessions, self.refuse = dict(sessions or {}), set(refuse)
+        self.die_on = set(die_on)
         outer = self
+
+        def _look(what):
+            if probe:
+                outer.writable.append((what, probe()))
 
         class Refund:
             @staticmethod
             def create(**kw):
+                _look(kw.get("payment_intent"))
+                outer.asked.append(kw)
+                if kw.get("payment_intent") in outer.die_on:
+                    raise _Died()
                 if kw.get("payment_intent") in outer.refuse:
                     raise RuntimeError("Stripe refused this refund")
                 outer.refunds.append(kw)
@@ -71,6 +110,7 @@ class _FakeStripe:
         class Session:
             @staticmethod
             def retrieve(sid):
+                _look(sid)
                 outer.retrieved.append(sid)
                 return {"id": sid, "payment_intent": outer.sessions.get(sid)}
 
@@ -502,6 +542,98 @@ def _run(s, oc, ec, sent):
     declined = [x for x in sent if x[0] == pend["guest_email"]]
     s.check("and the guest's letter says so", declined and "refunded" in declined[-1][2],
             detail=str([x[1] for x in sent]))
+
+    s.section("Nothing is held open while Stripe is out")
+    # A refund can take Stripe up to 80 seconds, and SQLite takes one writer
+    # at a time. At each call out, a second connection asks for the write lock
+    # with no wait: the answer has to be "go ahead" every time.
+    two = _stay("LOCK2", payments=[(250.0, "stripe", "pi_lk1", "cs_lk1", None),
+                                   (150.0, "stripe", "pi_lk2", "cs_lk2", None)])
+    fake = _FakeStripe(probe=_writable)
+    ok, err, _ids = _with_stripe(fake, lambda: _call(
+        m.make_refund, "room", two, 400, "The house called it off", method="stripe",
+        reason_code="house_cancelled"))
+    s.check("a stay paid on two cards: the second is asked with the first refund already saved",
+            ok and fake.writable == [("pi_lk2", True), ("pi_lk1", True)],
+            detail=f"{err} could write at each call: {fake.writable}")
+    rows = _refunds("room", two["id"])
+    s.check("and both refunds are on record, each with Stripe's reference",
+            sorted(r["amount"] for r in rows) == [150.0, 250.0]
+            and all(r["stripe_refund_id"] for r in rows),
+            detail=str([(r["amount"], r["stripe_refund_id"]) for r in rows]))
+
+    atelier = _workshop_reg("LOCKW", total=1000.0, paid=300.0, stripe_ref="pi_lkw_deposit")
+    conn = db()
+    m.add_workshop_transaction(conn, atelier["id"], "payment", "Balance", 700.0,
+                               method="stripe", stripe_ref="pi_lkw_balance")
+    conn.commit()
+    conn.close()
+    fake = _FakeStripe(probe=_writable)
+    ok, err, _ids = _with_stripe(fake, lambda: _call(
+        m.make_refund, "workshop", atelier, 1000, "The house called it off", method="stripe",
+        reason_code="house_cancelled"))
+    conn = db()
+    lines = sorted(r["amount"] for r in conn.execute(
+        "SELECT amount FROM workshop_transactions WHERE workshop_booking_id = ? AND kind = 'refund'",
+        (atelier["id"],)).fetchall())
+    conn.close()
+    s.check("an atelier paid in deposit and balance: the same, its ledger lines included",
+            ok and fake.writable == [("pi_lkw_balance", True), ("pi_lkw_deposit", True)]
+            and lines == [300.0, 700.0],
+            detail=f"{err} could write at each call: {fake.writable}; ledger {lines}")
+
+    by_session = _stay("LOCKS", payments=[(400.0, "stripe", None, "cs_lks", None)])
+    fake = _FakeStripe(sessions={"cs_lks": "pi_lks"}, probe=_writable)
+    ok, err, _ids = _with_stripe(fake, lambda: _call(
+        m.make_refund, "room", by_session, 40, "Goodwill", method="stripe",
+        reason_code="goodwill"))
+    s.check("a payment known only by its session: the intent learned is saved before the "
+            "refund is asked for",
+            ok and fake.writable == [("cs_lks", True), ("pi_lks", True)],
+            detail=f"{err} could write at each call: {fake.writable}")
+
+    asked = _stay("LOCKD", status="pending",
+                  payments=[(120.0, "stripe", "pi_lkd", "cs_lkd", None)])
+    fake = _FakeStripe(probe=_writable)
+    _with_stripe(fake, lambda: oc.post(f"/admin/bookings/{asked['id']}/decline",
+                                       follow_redirects=True))
+    s.check("a request declined with a deposit on it: the decline is saved before the card is asked",
+            fake.writable == [("pi_lkd", True)]
+            and _row("bookings", asked["id"])["status"] == "declined"
+            and [x["amount"] for x in _refunds("room", asked["id"])] == [120.0],
+            detail=f"could write at each call: {fake.writable}")
+
+    s.section("A refund that dies between two cards keeps the first on record")
+    gone = _stay("LOCKX", payments=[(250.0, "stripe", "pi_lx1", "cs_lx1", None),
+                                    (150.0, "stripe", "pi_lx2", "cs_lx2", None)])
+    fake = _FakeStripe(die_on={"pi_lx1"})
+
+    def _dies():
+        conn = db()
+        try:
+            m.make_refund(conn, "room", gone, 400, "The house called it off", method="stripe",
+                          reason_code="house_cancelled")
+        except _Died:
+            pass
+        finally:
+            conn.close()  # no commit: what was not saved is lost, as it would be
+
+    _with_stripe(fake, _dies)
+    rows = _refunds("room", gone["id"])
+    s.check("the worker killed while the second card is asked: the first, already gone back, "
+            "is on record",
+            [(r["amount"], r["stripe_refund_id"]) for r in rows] == [(150.0, "re_desk_1")],
+            detail=str([(r["amount"], r["stripe_refund_id"]) for r in rows]))
+    died_key = fake.asked[-1]["idempotency_key"] if fake.asked else None
+    retry = _FakeStripe()
+    ok, err, _ids = _with_stripe(retry, lambda: _call(
+        m.make_refund, "room", gone, 250, "The house called it off", method="stripe",
+        reason_code="house_cancelled"))
+    s.check("and the rest, asked for again, goes under the same key, so a refund Stripe made "
+            "before the worker died is not made twice",
+            ok and died_key and [k["idempotency_key"] for k in retry.refunds] == [died_key],
+            detail=f"{err} died under {died_key}, retried under "
+                   f"{[k['idempotency_key'] for k in retry.refunds]}")
 
     s.section("The letter is the owner's to word")
     conn = db()

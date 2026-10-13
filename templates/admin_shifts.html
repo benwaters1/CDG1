@@ -83,7 +83,7 @@
     {% for s in staffing %}
     <div class="detail-card" style="min-width:110px; padding:10px; {{ 'border-color:var(--danger);' if s.understaffed }}">
       <div class="detail-label">{{ s.date.strftime('%a') }} {{ s.date.day }}</div>
-      <div class="room-price" style="font-size:18px;">{{ s.occupied_rooms }} <span style="font-size:11px; color:var(--ink-soft); font-weight:normal;">rooms</span></div>
+      <div class="room-price" style="font-size:18px;">{{ s.occupied_rooms }} <span style="font-size:11px; color:var(--ink-soft); font-weight:normal;">{{ 'room' if s.occupied_rooms == 1 else 'rooms' }}</span></div>
       <div class="upload-hint">{{ s.scheduled }} scheduled{% if s.suggested %} · suggest {{ s.suggested }}{% endif %}</div>
       {% if s.understaffed %}<span class="mini-status status-inactive" style="margin-top:4px; display:inline-block;">understaffed</span>{% endif %}
     </div>

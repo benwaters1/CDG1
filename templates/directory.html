@@ -37,7 +37,7 @@
     <div class="profile-card {{ 'inactive' if person['status']=='inactive' }}">
       {% set can_open_profile = user['role'] == 'owner' or person['id'] == user['id'] %}
       {% if can_open_profile %}<a href="{{ url_for('profile', user_id=person['id']) }}" style="display:flex; flex-direction:column; align-items:flex-start; gap:6px; text-decoration:none; color:inherit; width:100%;">{% else %}<div style="display:flex; flex-direction:column; align-items:flex-start; gap:6px; width:100%;">{% endif %}
-        <div class="profile-avatar">{{ person['name'][:2]|upper }}</div>
+        <div class="profile-avatar">{{ person['name']|initials }}</div>
         <div class="profile-card-name">{{ person['name'] }}</div>
         <div class="profile-card-role">{{ person['job_role'] or 'No role set' }}</div>
         {% if user['role'] != 'owner' and person['phone'] %}<div class="upload-hint">{{ person['phone'] }}</div>{% endif %}
