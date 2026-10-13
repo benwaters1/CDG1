@@ -145,7 +145,7 @@ def run():
     _promo("BIGSPEND", min_spend=1000)
     _promo2, _d, err = _validate(TAG + "BIGSPEND", subtotal=500.0)
     s.check("a minimum spend is told to the guest, because they can act on it",
-            err and "1000" in err, detail=str(err))
+            err and "1,000" in err, detail=str(err))
 
     s.section("The owner is told the real reason")
     for label, code, needle in (("no such code", TAG + "NOTHINGHERE", "no such"),
