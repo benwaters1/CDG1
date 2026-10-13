@@ -20,10 +20,11 @@ raiser at import, and a section below proves it is still the raiser -- a suite
 that quietly started downloading would pass, take a minute longer, and pull
 ninety-three photographs down as a side effect of testing a percentage.
 """
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, flashes
 
 import io
 import os
+import sqlite3
 
 import _harness
 
@@ -668,6 +669,73 @@ def run():
                 not cover["errors"],
                 detail="the page would keep reporting a photograph it now holds")
         s.check("and it says so", "no longer depends" in r.get_data(as_text=True))
+
+        # A second press while the first is still running. It used to wait on
+        # the first one's write, give up, fail again writing down that it had
+        # failed, and show the owner the error page -- 13 October, the day a
+        # handover added fifty photographs.
+        m._MIRROR_RUN_LOCK.acquire()
+        try:
+            r = oc.post("/admin/photo-mirror/fetch", follow_redirects=True)
+        finally:
+            m._MIRROR_RUN_LOCK.release()
+        s.check("a second press while one is running is turned away, not a 500",
+                r.status_code == 200
+                and any("Already copying" in x for x in flashes(r)), r)
+
+        # The run held one write open across every download, so for up to
+        # twenty seconds nothing else on the site could save -- a booking
+        # included. Asked from a second connection mid-download, with no
+        # patience at all: the answer has to be "go ahead" every time.
+        for name in made:
+            _drop_stub(name)
+        _clean(conn)
+        probes = []
+
+        def _probing(url, timeout=20):                 # pragma: no cover
+            other = sqlite3.connect(m.DB_PATH, timeout=0)
+            try:
+                other.execute("BEGIN IMMEDIATE")
+                other.execute("ROLLBACK")
+                probes.append(True)
+            except sqlite3.OperationalError:
+                probes.append(False)
+            finally:
+                other.close()
+            return _pretend(url, timeout)
+
+        m.fetch_one_image = _probing
+        oc.post("/admin/photo-mirror/fetch", follow_redirects=True)
+        s.check("nothing else on the site is locked out while a photograph downloads",
+                probes == [True, True], detail=f"could write: {probes}")
+
+        # A database that will not take the record. Said on the page, with the
+        # reason, rather than the error page that hides it.
+        for name in made:
+            _drop_stub(name)
+        _clean(conn)
+        real_record = m.record_mirror
+
+        def _refusing(why):
+            def _record(*_a, **_k):                    # pragma: no cover
+                raise sqlite3.OperationalError(why)
+            return _record
+
+        try:
+            m.record_mirror = _refusing("database is locked")
+            r = oc.post("/admin/photo-mirror/fetch", follow_redirects=True)
+            s.check("a write the database refuses is reported, not a 500",
+                    r.status_code == 200
+                    and any("would not save" in x and "locked" in x for x in flashes(r)),
+                    r)
+            m.record_mirror = _refusing("database or disk is full")
+            r = oc.post("/admin/photo-mirror/fetch", follow_redirects=True)
+            s.check("and a full disk is named as that, bookings and all",
+                    r.status_code == 200
+                    and any("disk is full" in x and "booking" in x for x in flashes(r)),
+                    r)
+        finally:
+            m.record_mirror = real_record
     finally:
         m.hotlinked_urls = real_scan
         m.fetch_one_image = real_fetch

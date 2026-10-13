@@ -52918,6 +52918,14 @@ def admin_photo_mirror():
     return render_template("admin_photo_mirror.html", data=data)
 
 
+# One copy run at a time. A second press while the first was still fetching
+# waited on the first one's write, gave up after busy_timeout, failed again
+# writing down that it had failed, and showed the owner the error page -- on
+# 13 October, the day a handover added fifty photographs. One worker process
+# (see Procfile), so a lock in memory is the whole answer.
+_MIRROR_RUN_LOCK = threading.Lock()
+
+
 @app.route("/admin/photo-mirror/fetch", methods=["POST"])
 @owner_required
 def fetch_photo_mirror():
@@ -52929,23 +52937,48 @@ def fetch_photo_mirror():
     many are left, and the button can be pressed again. `tools/mirror_images.py`
     does the whole lot in one go without a browser waiting on it.
     """
+    if not _MIRROR_RUN_LOCK.acquire(blocking=False):
+        flash("Already copying: the last press is still running. Give it half a "
+              "minute, then look again.", "error")
+        return redirect(url_for("admin_photo_mirror"))
+    try:
+        return _fetch_photo_mirror()
+    finally:
+        _MIRROR_RUN_LOCK.release()
+
+
+def _fetch_photo_mirror():
     conn = get_db()
     missing = mirror_coverage(conn)["missing"]
     started = time.monotonic()
     done = failed = 0
-    first_error = ""
+    first_error = refused = ""
     for url in missing:
         if time.monotonic() - started > 20:
             break
+        # Downloaded with no write open, and each result committed the moment
+        # it is known. This used to hold one write open across every download,
+        # up to twenty seconds in which no booking, clock-in or job anywhere on
+        # the site could save anything -- SQLite takes one writer at a time.
         try:
-            filename, size, ctype = fetch_one_image(url, timeout=8)
-            record_mirror(conn, url, filename, size, ctype)
-            done += 1
+            got, error = fetch_one_image(url, timeout=8), ""
         except Exception as exc:          # noqa: BLE001 - any failure is one image
-            record_mirror(conn, url, error=str(exc)[:200])
+            got, error = None, str(exc)[:200]
+        try:
+            record_mirror(conn, url, *got) if got else record_mirror(conn, url, error=error)
+            conn.commit()
+        except sqlite3.Error as exc:
+            # The database will not take a write. The next photograph will not
+            # change that, so stop and say why rather than raise: the reason is
+            # the one thing the owner needs, and the error page hides it.
+            conn.rollback()
+            refused = str(exc)[:120]
+            break
+        if got:
+            done += 1
+        else:
             failed += 1
-            first_error = first_error or str(exc)[:120]
-    conn.commit()
+            first_error = first_error or error[:120]
     left = len(mirror_coverage(conn)["missing"])
     conn.close()
     mirror_cache_clear()
@@ -52959,6 +52992,14 @@ def fetch_photo_mirror():
         flash(f"Copied {done}, {left} still to do — press it again.", "success")
     if failed:
         flash(f"{failed} could not be fetched. First: {first_error}", "error")
+    if refused and "full" in refused.lower():
+        flash("Stopped: the server's disk is full, so nothing more can be saved "
+              "on it — not these copies, and not a booking either. Railway shows "
+              "how much of the volume is used.", "error")
+    elif refused:
+        flash(f"Stopped: the database would not save the copy ({refused}). "
+              "Something else was writing to it; press it again in a minute.",
+              "error")
     return redirect(url_for("admin_photo_mirror"))
 
 
