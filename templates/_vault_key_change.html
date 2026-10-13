@@ -1,0 +1,37 @@
+{# Changing the vault key: what is still on the old one, and what no key the
+   app holds can open. Says nothing when there is nothing to say. Shared by
+   the Vault and Bank details, because one key locks both. #}
+{% set kc = key_change %}
+{% if kc and (not kc.key_ok or kc.previous or kc.unreadable or kc.previous_set or kc.previous_not_keys) %}
+<div class="detail-card" id="vault-key-change" style="max-width:640px;">
+  <h3>Changing the vault key</h3>
+  {% if not kc.key_ok %}
+    <p class="manual-body wraps"><code>VAULT_ENCRYPTION_KEY</code> is set, but it is not a
+      vault key, so nothing can be locked or opened. Check it was copied whole.</p>
+  {% endif %}
+  {% if kc.previous %}
+    <p class="manual-body wraps">{{ kc.previous|length }} still locked with the previous key:
+      {{ kc.previous|join(', ') }}. They open as normal for now; lock them with the new key
+      before deleting <code>VAULT_ENCRYPTION_KEY_PREVIOUS</code>.</p>
+    <form method="post" action="{{ url_for('relock_vault') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-mini">Lock them with the new key</button>
+    </form>
+  {% elif kc.previous_set and not kc.unreadable %}
+    <p class="manual-body wraps">Everything is locked with the current key. Delete
+      <code>VAULT_ENCRYPTION_KEY_PREVIOUS</code> in Railway and deploy — it opens nothing here
+      now, and it is one more copy of an old key to keep safe.</p>
+  {% endif %}
+  {% if kc.previous_not_keys %}
+    <p class="manual-body wraps"><code>VAULT_ENCRYPTION_KEY_PREVIOUS</code> holds
+      {{ kc.previous_not_keys }} value(s) that are not vault keys. Check each was copied
+      whole.</p>
+  {% endif %}
+  {% if kc.unreadable %}
+    <p class="manual-body wraps">No key the app holds opens {{ kc.unreadable|join(', ') }}.
+      They were locked with a key it was never given: put that key in
+      <code>VAULT_ENCRYPTION_KEY_PREVIOUS</code> and they come back. Until then, saving one
+      with a box left blank is refused, because it would be saved as nothing.</p>
+  {% endif %}
+</div>
+{% endif %}

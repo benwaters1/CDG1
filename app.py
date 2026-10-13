@@ -173,7 +173,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import stripe
 import anthropic
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from py_vapid import Vapid
 
@@ -1237,6 +1237,14 @@ SITE_IS_LIVE = os.environ.get("SITE_IS_LIVE", "0").strip().lower() in (
 # Losing this key permanently loses everything stored in the vault — back it
 # up somewhere separate from the database itself. See DEPLOY.md.
 VAULT_ENCRYPTION_KEY = os.environ.get("VAULT_ENCRYPTION_KEY", "")
+
+# The key being retired, set only while the vault key is being changed and
+# deleted once Management > Vault says nothing is left on it. Without it a
+# new key simply fails to open what the old one locked: no error anywhere,
+# and every password and bank detail unreadable for good. Comma-separated,
+# so a second change begun before the first was finished orphans nothing.
+# See "Changing the vault key" in DEPLOY.md.
+VAULT_ENCRYPTION_KEY_PREVIOUS = os.environ.get("VAULT_ENCRYPTION_KEY_PREVIOUS", "")
 
 
 def stripe_enabled():
@@ -8543,6 +8551,7 @@ OWNER_ONLY_AREAS = {
     "new_vault_entry": "management",
     "edit_vault_entry": "management",
     "delete_vault_entry": "management",
+    "relock_vault": "management",
     "admin_pennylane": "financial",
     "admin_tax": "financial",
     "apply_invoice": "financial",
@@ -9573,14 +9582,33 @@ def vault_enabled():
     return bool(VAULT_ENCRYPTION_KEY)
 
 
+def _vault_previous_keys():
+    """The keys being retired, as Fernets, and how many listed are not keys."""
+    keys, not_keys = [], 0
+    for raw in (VAULT_ENCRYPTION_KEY_PREVIOUS or "").split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            keys.append(Fernet(raw.encode()))
+        except (ValueError, TypeError):
+            not_keys += 1
+    return keys, not_keys
+
+
+def _vault_fernet():
+    """Locks with today's key; opens with today's or any key being retired."""
+    return MultiFernet([Fernet(VAULT_ENCRYPTION_KEY.encode())] + _vault_previous_keys()[0])
+
+
 def vault_encrypt(password, notes):
     payload = json.dumps({"password": password or "", "notes": notes or ""}).encode()
-    return Fernet(VAULT_ENCRYPTION_KEY.encode()).encrypt(payload).decode()
+    return _vault_fernet().encrypt(payload).decode()
 
 
 def vault_decrypt(token):
     try:
-        payload = Fernet(VAULT_ENCRYPTION_KEY.encode()).decrypt(token.encode())
+        payload = _vault_fernet().decrypt(token.encode())
         return json.loads(payload.decode())
     except (InvalidToken, ValueError):
         return {"password": None, "notes": None, "error": True}
@@ -9591,12 +9619,12 @@ def fernet_encrypt_json(data):
     used for bank account numbers/IBANs, which need the same at-rest
     protection as vault passwords but don't fit the password/notes shape."""
     payload = json.dumps(data).encode()
-    return Fernet(VAULT_ENCRYPTION_KEY.encode()).encrypt(payload).decode()
+    return _vault_fernet().encrypt(payload).decode()
 
 
 def fernet_decrypt_json(token):
     try:
-        payload = Fernet(VAULT_ENCRYPTION_KEY.encode()).decrypt(token.encode())
+        payload = _vault_fernet().decrypt(token.encode())
         return json.loads(payload.decode())
     except (InvalidToken, ValueError):
         return None
@@ -78926,8 +78954,10 @@ def management_bank_details():
     """The accounts the house is paid into and pays from."""
     conn = get_db()
     entries = conn.execute("SELECT * FROM bank_details ORDER BY label").fetchall() if vault_enabled() else None
+    key_change = vault_key_change(conn) if vault_enabled() else None
     conn.close()
-    return render_template("management_bank_details.html", entries=entries)
+    return render_template("management_bank_details.html", entries=entries,
+                           key_change=key_change)
 
 
 @app.route("/management/bank-details/new", methods=["POST"])
@@ -78988,10 +79018,26 @@ def edit_bank_details(entry_id):
         flash("A label is required.", "error")
         return redirect(url_for("management_bank_details"))
 
-    # Blank sensitive fields on the edit form means "leave unchanged" — same
-    # convention as the Vault's edit form.
-    if account_number or iban or swift_bic:
+    # Blank sensitive fields on the edit form means "leave unchanged" — each
+    # box on its own, as the form says. Typing just a new IBAN used to blank
+    # the account number and SWIFT beside it, because the old values were kept
+    # only when all three boxes were left empty.
+    if account_number and iban and swift_bic:
         sensitive = fernet_encrypt_json({"account_number": account_number, "iban": iban, "swift_bic": swift_bic})
+    elif account_number or iban or swift_bic:
+        current = fernet_decrypt_json(entry["sensitive_encrypted"])
+        if current is None:
+            # Nothing to keep, so a blank box would mean "replace with nothing".
+            conn.close()
+            flash(f'"{entry["label"]}" can\'t be opened with the vault\'s key, so a blank '
+                  "box can't mean \"keep what is there\" — it would be saved as nothing. "
+                  "Fill in all three to save over it, or see \"Changing the vault key\" "
+                  "on this page.", "error")
+            return redirect(url_for("management_bank_details"))
+        sensitive = fernet_encrypt_json({
+            "account_number": account_number or current.get("account_number") or "",
+            "iban": iban or current.get("iban") or "",
+            "swift_bic": swift_bic or current.get("swift_bic") or ""})
     else:
         sensitive = entry["sensitive_encrypted"]
 
@@ -79035,7 +79081,11 @@ def reveal_bank_details(entry_id):
     log_audit(conn, "bank_details_revealed", target=entry["label"])
     conn.commit()
     conn.close()
-    decrypted = fernet_decrypt_json(entry["sensitive_encrypted"]) or {}
+    decrypted = fernet_decrypt_json(entry["sensitive_encrypted"])
+    if decrypted is None:
+        # Not three blanks: that reads as "nothing was ever saved", which is
+        # the opposite of what happened.
+        return {"error": VAULT_UNREADABLE}
     return {
         "account_number": decrypted.get("account_number") or "",
         "iban": decrypted.get("iban") or "",
@@ -79057,8 +79107,29 @@ def management_vault():
              FROM vault_entries
              LEFT JOIN users ON users.id = vault_entries.updated_by_user_id
             ORDER BY vault_entries.title""").fetchall()
+    key_change = vault_key_change(conn)
     conn.close()
-    return render_template("management_vault.html", entries=entries)
+    return render_template("management_vault.html", entries=entries, key_change=key_change)
+
+
+@app.route("/management/vault/relock", methods=["POST"])
+@owner_required
+def relock_vault():
+    """Move every secret off the key being retired and onto today's."""
+    if not vault_enabled():
+        abort(404)
+    conn = get_db()
+    moved, skipped = vault_relock(conn)
+    if moved:
+        log_audit(conn, "vault_relocked", target=f"{len(moved)} secret(s)",
+                  details=", ".join(_vault_label(i) for i in moved))
+        conn.commit()
+    conn.close()
+    if not moved and not skipped:
+        flash("Everything is already locked with the current key.", "success")
+    else:
+        flash(*bulk_message("Re-locked", "secret", len(moved), skipped))
+    return redirect(url_for("management_vault"))
 
 
 @app.route("/management/vault/new", methods=["POST"])
@@ -79113,10 +79184,21 @@ def edit_vault_entry(entry_id):
         flash("A title is required.", "error")
         return redirect(url_for("management_vault"))
 
-    # Blank password/notes on the edit form means "leave unchanged" — decrypt
-    # the existing secret and keep whichever fields were left blank.
-    if not password and not notes:
+    # Blank password/notes on the edit form means "leave unchanged" — each box
+    # on its own, as the form says. A new password used to wipe the notes,
+    # because the old ones were kept only when BOTH boxes were left blank.
+    if not password or not notes:
         current = vault_decrypt(entry["secret_encrypted"])
+        if current.get("error"):
+            # The case that matters: after a change of key without the old one
+            # kept, decrypting gives back nothing, and "keep what is there"
+            # silently saved the password as blank.
+            conn.close()
+            flash(f'"{entry["title"]}" can\'t be opened with the vault\'s key, so a blank '
+                  "box can't mean \"keep what is there\" — it would be saved as nothing. "
+                  "Fill in both the password and the notes to save over it, or see "
+                  "\"Changing the vault key\" on this page.", "error")
+            return redirect(url_for("management_vault"))
         password = password or current.get("password") or ""
         notes = notes or current.get("notes") or ""
 
@@ -79161,7 +79243,108 @@ def reveal_vault_entry(entry_id):
     conn.commit()
     conn.close()
     decrypted = vault_decrypt(entry["secret_encrypted"])
+    if decrypted.get("error"):
+        # Not a blank: the page would draw "(no password set)", which is the
+        # opposite of what happened.
+        return {"error": VAULT_UNREADABLE}
     return {"password": decrypted.get("password") or "", "notes": decrypted.get("notes") or ""}
+
+
+# ---------------------------------------------------------------------------
+# Changing the vault key. A Fernet token does not say which key locked it, so
+# the only way to know is to try them: today's, then any being retired. What
+# opens only with a retiring key is locked again with today's -- the content
+# untouched, "last changed" untouched -- and once nothing is left on the old
+# key it can be deleted. See "Changing the vault key" in DEPLOY.md.
+# ---------------------------------------------------------------------------
+
+# Everything the vault key locks: (table, column, what it is called, page).
+VAULT_LOCKED = (
+    ("vault_entries", "secret_encrypted", "title", "Vault"),
+    ("bank_details", "sensitive_encrypted", "label", "Bank details"),
+)
+
+VAULT_UNREADABLE = ("This can't be opened with any key the app holds. "
+                    "See \"Changing the vault key\" on this page.")
+
+
+def _vault_opens(fernet, token):
+    try:
+        fernet.decrypt(token.encode())
+        return True
+    except (InvalidToken, ValueError, TypeError):
+        return False
+
+
+def _vault_label(item):
+    return f"{item['name']} ({item['page']})"
+
+
+def vault_key_census(conn):
+    """Which key each stored secret is locked with.
+
+    "current" opens with today's key; "previous" only with one being retired,
+    so it has to be locked again before that key is deleted; "unreadable" with
+    no key the app holds. Items carry their token, so this is for the code;
+    pages get vault_key_change(), which carries names only.
+    """
+    try:
+        current = Fernet(VAULT_ENCRYPTION_KEY.encode())
+    except (ValueError, TypeError, AttributeError):
+        current = None
+    previous, not_keys = _vault_previous_keys()
+    census = {"current": [], "previous": [], "unreadable": [],
+              "key_ok": current is not None,
+              "previous_set": bool((VAULT_ENCRYPTION_KEY_PREVIOUS or "").strip()),
+              "previous_not_keys": not_keys}
+    for table, column, name, page in VAULT_LOCKED:
+        for r in conn.execute(
+                f"SELECT id, {name} AS name, {column} AS token FROM {table} "
+                f"WHERE COALESCE({column}, '') != '' ORDER BY {name}, id"):
+            item = {"table": table, "column": column, "id": r["id"],
+                    "name": r["name"], "page": page, "token": r["token"]}
+            if current is not None and _vault_opens(current, r["token"]):
+                census["current"].append(item)
+            elif any(_vault_opens(f, r["token"]) for f in previous):
+                census["previous"].append(item)
+            else:
+                census["unreadable"].append(item)
+    return census
+
+
+def vault_key_change(conn):
+    """vault_key_census() for a page: names, never tokens."""
+    census = vault_key_census(conn)
+    return dict(census,
+                current=len(census["current"]),
+                previous=[_vault_label(i) for i in census["previous"]],
+                unreadable=[_vault_label(i) for i in census["unreadable"]])
+
+
+def vault_relock(conn):
+    """Lock again with today's key everything still locked with a retiring one.
+
+    Returns (moved, skipped), skipped as (label, reason) for bulk_message. The
+    UPDATE matches the old token as well as the id, so an entry saved while
+    this ran -- and so already on the new key -- is left as it was saved.
+    """
+    census = vault_key_census(conn)
+    fernet = _vault_fernet()
+    moved, skipped = [], []
+    for item in census["previous"]:
+        token = fernet.rotate(item["token"].encode()).decode()
+        cur = conn.execute(
+            f"UPDATE {item['table']} SET {item['column']} = ? "
+            f"WHERE id = ? AND {item['column']} = ?",
+            (token, item["id"], item["token"]))
+        if cur.rowcount:
+            moved.append(item)
+        else:
+            skipped.append((_vault_label(item), "changed or removed while this ran"))
+    for item in census["unreadable"]:
+        skipped.append((_vault_label(item), "no key the app holds opens it"))
+    conn.commit()
+    return moved, skipped
 
 
 # ---------------------------------------------------------------------------
@@ -81509,10 +81692,35 @@ def readiness_checks(conn, *, include_slow=True):
                    "Right until launch: do one test booking end to end, then swap "
                    "in the live keys and the live webhook secret."))
 
-    add("warn", "Security", "Vault encryption key", vault_enabled(),
-        "Set." if vault_enabled() else
-        "Not set. The Vault can't store anything, so codes and passwords have "
-        "nowhere safe to live.")
+    # "Set" was the whole of it, and set is not the same as working: a key
+    # copied short opens nothing, and a key changed without the old one kept
+    # leaves every password unreadable while this line still read "Set."
+    if not vault_enabled():
+        add("warn", "Security", "Vault encryption key", False,
+            "Not set. The Vault can't store anything, so codes and passwords have "
+            "nowhere safe to live.")
+    else:
+        vk = vault_key_change(conn)
+        if not vk["key_ok"]:
+            add("blocker", "Security", "Vault encryption key", False,
+                "Set, but it is not a vault key, so nothing can be locked or opened. "
+                "Check it was copied whole.")
+        elif vk["unreadable"]:
+            add("warn", "Security", "Vault encryption key", False,
+                f"{len(vk['unreadable'])} secret(s) can't be opened with any key the "
+                f"app holds: {', '.join(vk['unreadable'])}. Put the key they were "
+                "locked with in VAULT_ENCRYPTION_KEY_PREVIOUS and they come back.")
+        elif vk["previous"]:
+            add("warn", "Security", "Vault encryption key", False,
+                f"Being changed: {len(vk['previous'])} secret(s) still locked with the "
+                "previous key. Management → Vault → Lock them with the new key.")
+        elif vk["previous_set"] or vk["previous_not_keys"]:
+            add("warn", "Security", "Vault encryption key", False,
+                "Everything is on the current key. Delete "
+                "VAULT_ENCRYPTION_KEY_PREVIOUS in Railway — it opens nothing here "
+                "now, and it is one more copy of an old key to keep safe.")
+        else:
+            add("warn", "Security", "Vault encryption key", True, "Set.")
 
     # Costs 74ms, all of it inside scrypt, which is what a password hash is
     # for. Fine on a page somebody opened to read this list; not fine on the
