@@ -28854,6 +28854,12 @@ def _refund_target(conn, payment):
             and payment.get("row_id"):
         conn.execute(f"UPDATE {payment['table']} SET stripe_payment_intent_id = ? "
                      "WHERE id = ?", (intent, payment["row_id"]))
+        # Committed here, because the refund itself is asked for next and can
+        # take Stripe up to 80 seconds. Left open, this one line held SQLite's
+        # only write lock for all of it, and every other save in the house
+        # waited five seconds and failed "database is locked". What Stripe
+        # said about the session is true whether the refund then goes or not.
+        conn.commit()
     return intent
 
 
@@ -29001,6 +29007,18 @@ def make_refund(conn, category, booking, amount, reason, method="stripe", user_i
                 add_workshop_transaction(conn, booking["id"], "discount",
                                          f"Taken off the bill — {reason.strip()}",
                                          reduce_here, user_id=user_id)
+        # EACH PART SAVED BEFORE THE NEXT CARD IS ASKED. There was one commit,
+        # after the loop, so on a stay paid in two goes the second card's
+        # refund went to Stripe with the first one's row still open: SQLite's
+        # one write lock held for as long as Stripe took (up to 80 seconds),
+        # and the till, a clock-in or a guest's booking failed "database is
+        # locked" after five. And if the worker died in that wait, the record
+        # of money that had already gone back went with it.
+        # The idempotency key does not move: refunded_so_far reads this
+        # connection, which sees its own rows committed or not, and a retry
+        # after a crash finds the parts already saved, so the part that had
+        # not finished is asked for under the key it was asked for before.
+        conn.commit()
     if not ids:
         return False, error or "Nothing was refunded.", []
 
@@ -58281,8 +58299,9 @@ def decline_booking_by_id(conn, booking_id, *, refund=True, user_id=None, via=No
     """Core decline logic shared by the single-booking and bulk-decline
     routes. Only acts on a still-pending booking, mirroring
     confirm_booking_by_id's guard against re-processing. Returns a
-    (declined, refunded, refund_error) tuple; leaves commit/close to the
-    caller.
+    (declined, refunded, refund_error) tuple. Commits as it goes -- the
+    decline before its refund goes to Stripe, the lot before the guest's
+    letter -- and leaves close to the caller.
 
     `refund` is whether the person declining may give money back. Refunds are
     the owner's call, and a decline by anybody else moved it all the same --
@@ -58312,6 +58331,12 @@ def decline_booking_by_id(conn, booking_id, *, refund=True, user_id=None, via=No
            if "decline_reason" in booking.keys() else None)
     log_audit(conn, "booking_declined", target=booking["reference_code"], details=why,
               via=via, actor=user_id)
+    # Committed before the refund, which goes to Stripe and can take up to 80
+    # seconds. The decline and its audit line were held open across that
+    # call, so nothing else in the house could save until the card answered.
+    # The decline stands whatever the card says -- this function always
+    # committed it, refund or not -- so it is no less true for being saved first.
+    conn.commit()
 
     # Paid anything at all, not paid in full: a deposit taken on a request that
     # is then declined is owed back as surely as the whole price.
