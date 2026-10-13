@@ -87027,9 +87027,15 @@ def notify_restaurant_waitlist_opening(conn, dinner_date_iso):
         if subject and send_email(entry["email"], subject, body, keep=False,
                                   html=letter):
             conn.execute("UPDATE restaurant_waitlist SET status = 'contacted' WHERE id = ?", (entry["id"],))
+            # Committed HERE, before the next letter, never once after the
+            # loop. Left open, that UPDATE held SQLite's one write lock through
+            # every send that followed it -- up to ten seconds each at the mail
+            # provider -- and every other writer in the house (the till, a
+            # clock-in, a guest booking) waited five and failed "database is
+            # locked". The photo mirror and the lost booking confirmation were
+            # this same fault.
+            conn.commit()
             notified.append(entry)
-    if notified:
-        conn.commit()
     return notified
 
 
@@ -87070,9 +87076,10 @@ def notify_workshop_waitlist_opening(conn, session_id):
         if subject and send_email(entry["email"], subject, body, keep=False,
                                   html=letter):
             conn.execute("UPDATE workshop_waitlist SET status = 'contacted' WHERE id = ?", (entry["id"],))
+            # Committed before the next letter: an open write here holds the
+            # lock through the next send. See notify_restaurant_waitlist_opening.
+            conn.commit()
             notified.append(entry)
-    if notified:
-        conn.commit()
     return notified
 
 
