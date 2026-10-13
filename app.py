@@ -73353,6 +73353,12 @@ def check_meta_token(conn):
                                           ("the app secret", secret)) if not value]
     if missing:
         return False, "Meta can only be asked with %s." % " and ".join(missing)
+    # Commit before asking. Meta has sixty seconds to answer, and anything
+    # left open here -- the connect form's save, the swap's new token, what
+    # the last answer wrote -- holds SQLite's one write lock the whole time,
+    # so the till, a clock-in or a booking waits five seconds and fails with
+    # "database is locked".
+    conn.commit()
     ok, payload = meta_request("debug_token", {
         "input_token": token, "access_token": "%s|%s" % (app_id, secret)},
         method="GET")
@@ -73414,6 +73420,11 @@ def make_meta_token_last(conn):
     if not (token and app_id and secret and (page_id or ig_user)):
         return False, ("Swapping to the Page's own token needs the token, the "
                        "app ID and secret, and the Page or Instagram ID.")
+    # Commit before asking, as check_meta_token does: what Meta's first answer
+    # wrote would otherwise hold the write lock through both calls below. The
+    # swap itself is written after them, so nothing is replaced unless
+    # every step worked.
+    conn.commit()
     ok, long_lived = meta_request("oauth/access_token", {
         "grant_type": "fb_exchange_token", "client_id": app_id,
         "client_secret": secret, "fb_exchange_token": token}, method="GET")
@@ -73535,6 +73546,13 @@ def publish_social_post(conn, post):
         return False, "the photograph is not on the volume any more"
     link = url_for("social_photo_public",
                    token=ensure_publish_token(conn, post["id"]), _external=True)
+    # Commit before Meta is asked, for two reasons. Meta fetches the photograph
+    # through that link while the call naming it is still open, and the link
+    # is served on another connection, which cannot see a token that has not
+    # been committed: the first publish of every post 404'd its own picture.
+    # And a write held open across a call that may take sixty seconds holds
+    # SQLite's one write lock for everybody else in the house.
+    conn.commit()
     caption = (post["caption"] or "").strip()
     wanted = (post["platform"] or "").strip().lower()
     ig_user, page_id = (meta_setting(conn, "meta_ig_user_id"),
@@ -73610,6 +73628,9 @@ def run_social_publish_job(conn):
                 and post["scheduled_time"] > clock):
             continue
         ok, _said = publish_social_post(conn, post)
+        # Written down post by post. A post Meta has put out that the house
+        # has not recorded is one the next run puts out again.
+        conn.commit()
         if ok:
             sent += 1
     return sent
@@ -73736,6 +73757,9 @@ def connect_social_accounts():
         asked = None
         if (set(changed) & {"the token", "the app secret", "app id"}
                 and meta_can_ask(conn)):
+            # This commits the save before Meta is asked anything:
+            # check_meta_token does, so that no caller can hold the database
+            # through Meta's answer.
             asked = settle_meta_token(conn)
         conn.commit()
         conn.close()
