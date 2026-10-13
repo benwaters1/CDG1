@@ -58,8 +58,12 @@
   <DisableEntityHighlighting>false</DisableEntityHighlighting>
 
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <!-- Never lower than the base Requirements above (Mailbox 1.5): Microsoft
+         rejects a manifest whose override asks for less than the base. This
+         said 1.3 from August, sideloading let it through, and the Microsoft
+         365 admin centre refused the upload on 13 October 2026. -->
     <Requirements>
-      <bt:Sets DefaultMinVersion="1.3">
+      <bt:Sets DefaultMinVersion="1.5">
         <bt:Set Name="Mailbox"/>
       </bt:Sets>
     </Requirements>

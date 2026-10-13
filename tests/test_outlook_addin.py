@@ -101,6 +101,23 @@ def run():
     desk1 = v1.find("v1:Hosts/v1:Host/v1:DesktopFormFactor", NS)
     mob = v1.find("v1:Hosts/v1:Host/v1:MobileFormFactor", NS)
 
+    s.section("Microsoft's own rule on requirement sets")
+    # The Microsoft 365 admin centre refused the upload on 13 October 2026 for
+    # this alone: an override may not ask for less than the base manifest.
+    # Sideloading had let it through since August. And 1.1 must stay at 1.5,
+    # not climb to what its newest event needs: Outlook on a phone reads no
+    # override above 1.5, and the phone panel lives in 1.1.
+    # Compared part by part: 1.12 is later than 1.5, not smaller.
+    def ver(text):
+        return tuple(int(p) for p in text.split("."))
+    base = ver(root.find("o:Requirements/o:Sets/o:Set", NS).get("MinVersion"))
+    floors = {label: ver(o.find(f"{ns}:Requirements/bt:Sets", NS).get("DefaultMinVersion"))
+              for label, o, ns in (("1.0", v0, "v0"), ("1.1", v1, "v1"))}
+    s.check("no override asks for less than the base manifest",
+            all(f >= base for f in floors.values()), detail=f"base {base}, overrides {floors}")
+    s.check("and the one carrying the phone asks for no more than a phone has",
+            floors["1.1"] <= (1, 5), detail=f"1.1 asks for {floors['1.1']}")
+
     s.section("Microsoft's layering is kept")
     s.check("an old Outlook gets the read and compose buttons",
             {"MessageReadCommandSurface", "MessageComposeCommandSurface"} <= set(_types(desk0, "v0")))

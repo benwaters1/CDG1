@@ -90465,7 +90465,7 @@ OUTLOOK_ADDIN_GUID = "31db9023-97b7-4519-8829-c0b1e3bed58e"
 # Outlook caches a manifest by its version. Bump it with anything that changes
 # what Outlook reads from the manifest -- a button, an event, a form factor --
 # or the change never reaches anybody who already has the add-in.
-OUTLOOK_ADDIN_VERSION = "2.0.0.0"
+OUTLOOK_ADDIN_VERSION = "2.0.0.1"
 # Microsoft's sign-in library: the only file the panels take from a CDN, so
 # pinned to one release and fingerprinted, and the browser refuses any other
 # bytes under that name.
