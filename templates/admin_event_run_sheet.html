@@ -275,7 +275,7 @@
       <tbody>
         {% for sh in data.staffing.assigned %}
         <tr>
-          <th scope="row">{{ sh.shift_date }}</th>
+          <th scope="row">{{ sh.shift_date|date_short }}</th>
           <td>{{ sh.who }}</td>
           <td>{{ sh.start_time or '&mdash;'|safe }}</td>
           <td>{{ sh.end_time or '&mdash;'|safe }}</td>
@@ -314,7 +314,7 @@
     <label style="margin:0;">Put somebody on it
       <select name="shift_id">
         {% for sh in data.staffing.elsewhere %}
-        <option value="{{ sh.id }}">{{ sh.shift_date }} &mdash; {{ sh.who }}{% if sh.start_time %}, {{ sh.start_time }}{% endif %}</option>
+        <option value="{{ sh.id }}">{{ sh.shift_date|date_short }} &mdash; {{ sh.who }}{% if sh.start_time %}, {{ sh.start_time }}{% endif %}</option>
         {% endfor %}
       </select>
     </label>

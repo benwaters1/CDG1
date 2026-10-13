@@ -9638,17 +9638,29 @@ def _day_to_show(value):
 
     The day of a moment is the house's day, never the UTC one a slice reads:
     that stamp is half past midnight on the 5th in the Ariege.
+
+    A date object is a date already; a datetime is a moment. Both reach the
+    filters from code that worked one out, and a date handed to strptime
+    took the page down.
     """
+    if isinstance(value, datetime):
+        return house_date(value.isoformat())
+    if isinstance(value, date):
+        return value
     return parse_date(value) or house_date(value)
 
 
 def format_date_human(iso_str):
-    """'2026-12-01' -> 'December 1, 2026'. Avoids the %-d strftime flag,
+    """'2026-12-01' -> '1 December 2026'. Day first, as format_date_short
+    and as a French house writes a date: it said 'December 1, 2026', the
+    American order, in seventy-seven places -- every letter's dates among them
+    -- beside pages that said '1 December 2026'. Avoids the %-d strftime flag,
     which is Linux-only and crashes on Windows."""
     d = _day_to_show(iso_str)
     if not d:
-        return iso_str
-    return f"{d.strftime('%B')} {d.day}, {d.year}"
+        # A missing date prints nothing: Jinja would write None as the word.
+        return iso_str if iso_str else ""
+    return f"{d.day} {d.strftime('%B')} {d.year}"
 
 
 def format_date_short(iso_str):
@@ -9658,7 +9670,8 @@ def format_date_short(iso_str):
     day of it (see _day_to_show)."""
     d = _day_to_show(iso_str)
     if not d:
-        return iso_str
+        # A missing date prints nothing: Jinja would write None as the word.
+        return iso_str if iso_str else ""
     return f"{d.day} {d.strftime('%B')} {d.year}"
 
 
@@ -9686,6 +9699,89 @@ def format_date_range(start_iso, end_iso):
 app.jinja_env.filters["house_day"] = house_date_iso
 app.jinja_env.filters["date_short"] = format_date_short
 app.jinja_env.filters["date_human"] = format_date_human
+
+
+_ISO_IN_TEXT = re.compile(r"(?<![\d/-])(\d{4})-(\d{2})-(\d{2})(?![\dT/-])")
+_MONTH_FIRST_IN_TEXT = re.compile(
+    r"\b(January|February|March|April|May|June|July|August|September|October|November|"
+    r"December) (\d{1,2}), (\d{4})\b")
+_MONTH_NUMBER = {name: i for i, name in enumerate(
+    ("January", "February", "March", "April", "May", "June", "July", "August",
+     "September", "October", "November", "December"), start=1)}
+
+
+def dates_in_words(text):
+    """The dates inside a sentence the house wrote, written day first.
+
+    Notifications, the audit trail and letter subjects are sentences stored as
+    they were written, and they were written with a stamp ("2026-08-22") or the
+    American order ("May 24, 2027") until both went from the code. A stored
+    line cannot be rewritten without rewriting history, so it is read in words
+    instead. For the house's own lines only: something a person typed is shown
+    as they typed it.
+    """
+    if not text:
+        return text
+
+    def _iso(m):
+        try:
+            return format_date_short(date(int(m.group(1)), int(m.group(2)),
+                                          int(m.group(3))).isoformat())
+        except ValueError:
+            return m.group(0)
+
+    def _us(m):
+        try:
+            return format_date_short(date(int(m.group(3)), _MONTH_NUMBER[m.group(1)],
+                                          int(m.group(2))).isoformat())
+        except ValueError:
+            return m.group(0)
+
+    return _MONTH_FIRST_IN_TEXT.sub(_us, _ISO_IN_TEXT.sub(_iso, str(text)))
+
+
+app.jinja_env.filters["dates_in_words"] = dates_in_words
+
+
+_MONEY_BY_HAND_IN_TEXT = re.compile(r"(-?)€\s?(-?)(\d{4,}(?:\.\d{1,2})?)(?![\d,])")
+
+
+def house_words(text):
+    """A line the house wrote and stored, read in the house's words today.
+
+    Its dates in words (dates_in_words), and its money in the one spelling:
+    a notification stored before money had one way of being written says
+    "€3400", and is read as "€3,400". The stored line is not touched.
+    """
+    if not text:
+        return text
+
+    def _money(m):
+        places = len(m.group(3).split(".")[1]) if "." in m.group(3) else 0
+        amount = float(m.group(3)) * (-1 if (m.group(1) or m.group(2)) else 1)
+        return money(amount, 2 if places else 0)
+
+    return _MONEY_BY_HAND_IN_TEXT.sub(_money, dates_in_words(text))
+
+
+app.jinja_env.filters["house_words"] = house_words
+
+
+_FR_DAYS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
+_FR_MONTHS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+              "août", "septembre", "octobre", "novembre", "décembre")
+
+
+def date_fr(value):
+    """A day in French, for the printed menu: 'mardi 13 octobre 2026'. The
+    card is French on purpose, and it carried the date as '2026-10-13'."""
+    d = _day_to_show(value)
+    if not d:
+        return value if value else ""
+    return f"{_FR_DAYS[d.weekday()]} {d.day} {_FR_MONTHS[d.month - 1]} {d.year}"
+
+
+app.jinja_env.filters["date_fr"] = date_fr
 
 
 def house_when(stamp):
@@ -10034,11 +10130,11 @@ def notify_bookings_awaiting_answer(conn, now=None):
             conn, owner["id"], "booking_waiting",
             f"{b['guest_name']} has been waiting for an answer",
             body=(f"{b['room_name'] or 'a room'}, "
-                  f"{b['arrival_date']} to {b['departure_date']} \u2014 "
+                  f"{format_date_short(b['arrival_date'])} to {format_date_short(b['departure_date'])} \u2014 "
                   f"asked {int(item['waited'])}h ago. {when}."
                   if item["waited"] is not None else
                   f"{b['room_name'] or 'a room'}, "
-                  f"{b['arrival_date']} to {b['departure_date']}."),
+                  f"{format_date_short(b['arrival_date'])} to {format_date_short(b['departure_date'])}."),
             link=url_for("admin_bookings") if has_request_context() else "/admin/bookings")
         conn.execute(
             "UPDATE bookings SET waiting_notified_at = ? WHERE id = ?",
@@ -10734,7 +10830,7 @@ def local_time_str(iso_str, unknown="?"):
 
 
 def local_datetime_str(iso_str, unknown="?"):
-    """A stored UTC moment as the house reads it: 'September 29, 2026 14:20'.
+    """A stored UTC moment as the house reads it: '29 September 2026, 14:20'.
 
     Words, not a stamp, so a slice of what this returns cuts mid-word: [:10]
     printed "September " for the day a key was handed over. Show it whole, or
@@ -10748,7 +10844,7 @@ def local_datetime_str(iso_str, unknown="?"):
     if not dt:
         return unknown
     local = dt.astimezone(LOCAL_TZ)
-    return f"{format_date_human(local.date().isoformat())} {local.strftime('%H:%M')}"
+    return f"{format_date_human(local.date().isoformat())}, {local.strftime('%H:%M')}"
 
 
 def local_time_input_to_utc_iso(base_iso, hhmm):
@@ -13874,7 +13970,7 @@ def validate_promo_code(conn, code, category, subtotal):
     if promo["max_redemptions"] is not None and promo["redemption_count"] >= promo["max_redemptions"]:
         return None, 0.0, PROMO_REFUSED
     if promo["min_spend"] and subtotal < promo["min_spend"]:
-        return None, 0.0, f"That code needs a minimum of €{promo['min_spend']:.2f}."
+        return None, 0.0, f"That code needs a minimum of €{promo['min_spend']:,.2f}."
     return promo, compute_promo_discount(subtotal, promo), None
 
 
@@ -13891,9 +13987,9 @@ def promo_refusal_reason(conn, code, category, subtotal):
         return "The code is switched off."
     today_iso = house_today_iso()
     if promo["valid_from"] and today_iso < promo["valid_from"]:
-        return f"Not valid until {promo['valid_from']}."
+        return f"Not valid until {format_date_short(promo['valid_from'])}."
     if promo["valid_until"] and today_iso > promo["valid_until"]:
-        return f"Expired on {promo['valid_until']}."
+        return f"Expired on {format_date_short(promo['valid_until'])}."
     if promo["applies_to"] != "all" and promo["applies_to"] != category:
         return f"Only applies to {promo['applies_to']} bookings."
     if promo["max_redemptions"] is not None and promo["redemption_count"] >= promo["max_redemptions"]:
@@ -14613,7 +14709,7 @@ def build_office_display_queues(conn, today):
     queues.append({
         "key": "balances", "label": "Balances due (7d)", "link": url_for("admin_workshop_registrations"),
         "count": len(balances_due),
-        "preview": [f"{r['guest_name']} — {money(r['balance_amount'])} by {r['balance_due_date']}" for r in balances_due[:4]],
+        "preview": [f"{r['guest_name']} — {money(r['balance_amount'])} by {format_date_short(r['balance_due_date'])}" for r in balances_due[:4]],
     })
 
     low_feedback = conn.execute(
@@ -16807,6 +16903,8 @@ def outstanding_balances(conn, *, today=None):
             "who": booking["guest_name"],
             "what": booking["room_name"] or "",
             "when": (f"{booking['arrival_date']} \u2192 {booking['departure_date']}"),
+            # "when" sorts the list, so it stays ISO; this is what is read.
+            "when_shown": format_date_range(booking["arrival_date"], booking["departure_date"]),
             "reference": booking["reference_code"],
             "email": booking["guest_email"],
             # Endpoint and arguments rather than a built URL: url_for needs an
@@ -16840,6 +16938,7 @@ def outstanding_balances(conn, *, today=None):
             "who": event["contact_name"],
             "what": event["event_type"] or "Event",
             "when": held or "date to confirm",
+            "when_shown": format_date_short(held) if held else "date to confirm",
             "reference": event["reference_code"] or f"EVT-{event['id']}",
             "email": event["contact_email"],
             # No manage page for an event, so the row points at the events
@@ -16886,6 +16985,8 @@ def outstanding_balances(conn, *, today=None):
             "who": reg["guest_name"],
             "what": reg["title"] or "Workshop",
             "when": reg["start_date"] or "date to confirm",
+            "when_shown": (format_date_short(reg["start_date"]) if reg["start_date"]
+                           else "date to confirm"),
             "reference": reg["reference_code"] or f"WS-{reg['id']}",
             "email": reg["guest_email"],
             "link_endpoint": "workshop_manage",
@@ -16940,7 +17041,7 @@ def balance_request_email(booking, bill, *, departed, conn=None):
         "guest_name": booking["guest_name"],
         "room_name": booking["room_name"],
         "arrival_date": format_date_human(booking["arrival_date"]),
-        "balance_amount": f"\u20ac{bill['owed']:.2f}",
+        "balance_amount": f"\u20ac{bill['owed']:,.2f}",
         "manage_url": manage_url,
         "reference_code": booking["reference_code"],
     }
@@ -17813,7 +17914,7 @@ def send_share_request(conn, share, booking):
         "reference_code": booking["reference_code"],
         "arrival_date": format_date_human(booking["arrival_date"]),
         "departure_date": format_date_human(booking["departure_date"]),
-        "amount": f"€{share['amount']:.2f}",
+        "amount": f"€{share['amount']:,.2f}",
         "pay_url": share_payment_link(share),
         "note_block": share["note"] or "",
     })
@@ -18004,9 +18105,9 @@ def mark_booking_payment_paid(conn, session):
         subject, body, letter = render_email_template(conn, "room_payment_received", {
             "guest_name": booking["guest_name"],
             "room_name": booking["room_name"],
-            "amount": f"€{amount:.2f}",
+            "amount": f"€{amount:,.2f}",
             "reference_code": booking["reference_code"],
-            "balance_line": (f"Still to pay: €{bill['owed']:.2f}."
+            "balance_line": (f"Still to pay: €{bill['owed']:,.2f}."
                              if bill and bill["owed"] > 0
                              else "Your stay is now paid in full."),
             "account_block": ("Your bookings and balances:\n"
@@ -18036,6 +18137,19 @@ POS_PAYMENT_METHODS = {
     "card_terminal": "Card — taken on the terminal",
     "comp": "On the house",
 }
+
+# How a payment was made, for a person to read. The ledgers store a key --
+# "stripe", "card_terminal" -- and the workshop register printed it as stored.
+PAYMENT_METHOD_LABELS = {**MANUAL_PAYMENT_METHODS, **POS_PAYMENT_METHODS,
+                         "stripe": "Card, online", "online": "Online", "card": "Card",
+                         "transfer": "Bank transfer", "voucher": "Gift voucher"}
+
+
+def payment_method_label(key):
+    return PAYMENT_METHOD_LABELS.get(key) or (key or "").replace("_", " ").capitalize()
+
+
+app.jinja_env.filters["method_label"] = payment_method_label
 
 
 # ---------------------------------------------------------------------------
@@ -21233,6 +21347,15 @@ def cancellation_analysis(conn, start=None, end=None):
 
 CHANNEL_COMMISSION_PREFIX = "channel_commission_"
 KNOWN_CHANNELS = ["direct", "booking.com", "airbnb", "expedia", "agent", "other"]
+CHANNEL_LABELS = {"direct": "Direct", "booking.com": "Booking.com", "airbnb": "Airbnb",
+                  "expedia": "Expedia", "agent": "An agent", "other": "Something else"}
+
+
+def channel_label(source):
+    """A booking's channel for a person to read: the key it is stored under
+    is what the page printed."""
+    return (CHANNEL_LABELS.get(source) or BOOKING_SOURCES.get(source)
+            or (source or "").replace("_", " ").capitalize())
 
 
 def channel_commission(conn, source):
@@ -21281,9 +21404,9 @@ def channel_cost(conn, start=None, end=None):
         if cost is not None:
             total_cost += cost
         elif r["src"] != "Not recorded":
-            unpriced.append(r["src"])
+            unpriced.append(channel_label(r["src"]))
         out.append({
-            "source": r["src"], "bookings": r["bookings"],
+            "source": r["src"], "label": channel_label(r["src"]), "bookings": r["bookings"],
             "revenue": round(revenue, 2), "rate": rate, "cost": cost,
             "net": round(revenue - cost, 2) if cost is not None else None,
         })
@@ -27220,6 +27343,33 @@ def get_vapid_public_key(conn):
     return conn.execute("SELECT value FROM app_settings WHERE key = 'vapid_public_key'").fetchone()["value"]
 
 
+# What a notification is about, for the chips on the notifications page. They
+# showed the key with its underscores taken out -- "hr escalation", "inbox flag
+# escalated" -- and a kind each, so eleven sorts of shift and HR message were
+# eleven chips. test_notification_kinds holds every kind sent against this.
+NOTIFICATION_KIND_LABELS = {
+    "announcement": "Announcements", "chat": "Messages", "door": "The door",
+    "balance_due": "Money owed", "expense_decided": "Expenses",
+    "booking_com": "Booking.com", "booking_waiting": "Bookings", "guest_request": "Guest requests",
+    "event_inquiry": "Events", "restaurant": "Restaurant", "restaurant_booking": "Restaurant",
+    "menu": "The menu", "workshop_booking": "Workshops", "workshop_decision": "Workshops",
+    "hr_escalation": "HR", "hr_note": "HR", "hr_note_reply": "HR", "hr_reminder": "HR",
+    "performance_review": "HR", "leave_decided": "Time off",
+    "inbox_flag_assigned": "Inbox", "inbox_flag_escalated": "Inbox", "inbox_flag_new": "Inbox",
+    "room_issue": "Rooms", "vehicle": "Vehicles",
+    "shift_auto_closed": "Shifts", "shift_swap_decided": "Shifts",
+    "shift_swap_needs_approval": "Shifts", "shift_swap_offer": "Shifts",
+    "shift_swap_response": "Shifts", "timesheet": "Shifts",
+    "task_directive": "Tasks", "task_response": "Tasks",
+}
+
+
+def notification_kind_label(kind):
+    if not kind:
+        return None
+    return NOTIFICATION_KIND_LABELS.get(kind) or kind.replace("_", " ").capitalize()
+
+
 def send_notification(conn, user_id, kind, title, body=None, link=None, related_task_id=None):
     """Writes the in-app notification (what /notifications and the nav
     badge read) and best-effort pushes it to every browser that user has
@@ -27469,7 +27619,7 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
         if promo_code:
             promo, discount_amount, _ = validate_promo_code(conn, promo_code, "room", room_total)
         total_price = (round(room_total - discount_amount, 2) + extras_total) or None
-    extras_summary = ", ".join(f"{e['name']} (€{e['price']:.2f})" for e in chosen_extras) or None
+    extras_summary = ", ".join(f"{e['name']} (€{e['price']:,.2f})" for e in chosen_extras) or None
 
     # The room portion, kept. Both branches above have just worked it out --
     # from the rate card, or backed out of the price actually charged at
@@ -27569,15 +27719,15 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
     ]
     if city_tax:
         detail_lines.append(
-            f"Taxe de séjour: €{city_tax:.2f} ({tax_adults} adult"
+            f"Taxe de séjour: €{city_tax:,.2f} ({tax_adults} adult"
             f"{'' if tax_adults == 1 else 's'} x {nights} night"
-            f"{'' if nights == 1 else 's'} x €{tax_rate_used:.2f})")
+            f"{'' if nights == 1 else 's'} x €{tax_rate_used:,.2f})")
     if extras_summary:
         detail_lines.append(f"Add-ons: {extras_summary}")
     if promo and discount_amount:
-        detail_lines.append(f"Discount applied ({promo['code']}): -€{discount_amount:.2f}")
+        detail_lines.append(f"Discount applied ({promo['code']}): -€{discount_amount:,.2f}")
     if total_price:
-        detail_lines.append(f"Total: €{total_price:.2f}" + (" (paid)" if payment_status == "paid" else ""))
+        detail_lines.append(f"Total: €{total_price:,.2f}" + (" (paid)" if payment_status == "paid" else ""))
     # Somebody who has just paid by card must not be told their booking is
     # "awaiting confirmation" under a subject reading "Booking request
     # received" — with a line further down saying "(paid)". That is what this
@@ -27598,7 +27748,7 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
             subject, body, letter = render_email_template(conn, "room_paid_awaiting", {
                 "guest_name": guest_name,
                 "room_name": room["name"],
-                "total_price": f"€{(total_price or 0):.2f}",
+                "total_price": f"€{(total_price or 0):,.2f}",
                 "stay_lines": "\n".join(detail_lines),
                 "reference_code": reference_code,
                 "checkin_url": checkin_url,
@@ -27623,8 +27773,8 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
             send_email(
                 owner_to,
                 f"Booked — {room['name']} ({reference_code})",
-                f"{guest_name} booked {room['name']}, {arrival.isoformat()} to "
-                f"{departure.isoformat()}, party of {party_size}.\n"
+                f"{guest_name} booked {room['name']}, {format_date_short(arrival.isoformat())} to "
+                f"{format_date_short(departure.isoformat())}, party of {party_size}.\n"
                 f"{'Paid in full.' if paid else 'No payment taken.'}\n\n"
                 f"Nothing to do — they have their confirmation.\n"
                 f"{url_for('admin_bookings', _external=True)}",
@@ -27633,7 +27783,7 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
             send_email(
                 owner_to,
                 f"Needs you — {room['name']} ({reference_code})",
-                f"{guest_name} requested {room['name']}, {arrival.isoformat()} to {departure.isoformat()}, "
+                f"{guest_name} requested {room['name']}, {format_date_short(arrival.isoformat())} to {format_date_short(departure.isoformat())}, "
                 f"party of {party_size}.\n"
                 f"{'Payment already received.' if payment_status == 'paid' else 'No payment taken.'}\n\n"
                 f"This one did not confirm itself — either there is a standing "
@@ -27742,7 +27892,7 @@ def create_booking_from_stripe_session(conn, session):
             owner_email(conn),
             f"URGENT: paid booking conflict — {room['name']}",
             f"A paid Stripe booking was just created for {room['name']} "
-            f"({arrival.isoformat()} to {departure.isoformat()}) that conflicts with an existing booking: "
+            f"({format_date_short(arrival.isoformat())} to {format_date_short(departure.isoformat())}) that conflicts with an existing booking: "
             f"{conflict_reason}\n\n"
             f"Guest: {meta['guest_name']} ({meta['guest_email']})\n"
             f"The guest has already paid — this needs manual review (contact the guest, move the "
@@ -32171,7 +32321,7 @@ def owner_home_warnings(conn, today):
         with_guests = [g for g in gaps if g["in_house"] or g["arrivals"]]
         add("blocker" if with_guests else "warn", "Days with nobody on",
             (f"{with_guests[0]['date']} has guests and nobody rostered"
-             if with_guests else f"first is {gaps[0]['date']}"),
+             if with_guests else f"first is {format_date_short(gaps[0]['date'])}"),
             len(gaps), "cover_gaps_page")
 
     faults = rooms_sold_with_a_fault(conn, today=today, days=14)
@@ -33164,7 +33314,7 @@ def _search_sources():
             "fields": ["vendor_name", "description", "invoice_number", "doc_type"],
             "order": "submitted_at DESC",
             "name": lambda r: r["vendor_name"] or r["description"] or "(no name)",
-            "line": lambda r: (f"\u20ac{float(r['amount'] or 0):.2f} \u00b7 "
+            "line": lambda r: (f"\u20ac{float(r['amount'] or 0):,.2f} \u00b7 "
                                + (r["description"] or "")
                                + (f" \u00b7 due {r['due_date']}" if r["due_date"] else "")),
             "status": lambda r: (r["status"], r["status"]),
@@ -33213,7 +33363,7 @@ def _search_sources():
             "fields": ["name", "description"],
             "order": "sort_order",
             "name": lambda r: r["name"],
-            "line": lambda r: f"\u20ac{float(r['price_per_night'] or 0):.0f}/night",
+            "line": lambda r: f"\u20ac{float(r['price_per_night'] or 0):,.0f}/night",
             "href": lambda r: url_for("edit_room", room_id=r["id"]),
         },
         {
@@ -33238,7 +33388,7 @@ def _search_sources():
             "fields": ["label", "category", "notes"],
             "order": "label",
             "name": lambda r: r["label"],
-            "line": lambda r: f"\u20ac{float(r['amount'] or 0):.2f} / {r['frequency']}",
+            "line": lambda r: f"\u20ac{float(r['amount'] or 0):,.2f} / {r['frequency']}",
             "status": lambda r: ("active" if r["active"] else "paused",
                                  "onshift" if r["active"] else "inactive"),
             "href": lambda r: url_for("management_recurring_costs"),
@@ -35205,7 +35355,7 @@ def stock_basket():
                                         if g["vendor"]]),
                       hint="to ring"),
         overview_cell("At the prices on file",
-                      f"\u20ac{basket['total']:.2f}",
+                      f"\u20ac{basket['total']:,.2f}",
                       hint="what stock says each costs"),
     ]
     return render_template("stock_basket.html", basket=basket,
@@ -36444,23 +36594,23 @@ def pos_receipt_email_context(conn, bill):
         # column on it, and reading one 500'd the send.
         qty = line["quantity"] or 1
         amount = (line["unit_price"] or 0) * (line["quantity"] or 0)
-        rows.append(f"  {qty} x {line['name']}   \u20ac{amount:.2f}")
+        rows.append(f"  {qty} x {line['name']}   \u20ac{amount:,.2f}")
     items = "\n".join(rows) or "  (nothing on this tab)"
 
     totals = []
     if bill["discount"]:
-        totals.append(f"  Discount   -\u20ac{bill['discount']:.2f}")
+        totals.append(f"  Discount   -\u20ac{bill['discount']:,.2f}")
     if bill["service"]:
-        totals.append(f"  Service    \u20ac{bill['service']:.2f}")
+        totals.append(f"  Service    \u20ac{bill['service']:,.2f}")
     if bill["deposit"]:
-        totals.append(f"  Deposit already paid   -\u20ac{bill['deposit']:.2f}")
+        totals.append(f"  Deposit already paid   -\u20ac{bill['deposit']:,.2f}")
     for rate, band in (bill["vat_by_rate"] or {}).items():
-        totals.append(f"  VAT at {rate}%   \u20ac{band['vat']:.2f}")
-    totals.append(f"  TOTAL   \u20ac{bill['total']:.2f}")
+        totals.append(f"  VAT at {rate}%   \u20ac{band['vat']:,.2f}")
+    totals.append(f"  TOTAL   \u20ac{bill['total']:,.2f}")
 
     outstanding = bill["outstanding"]
     if outstanding > 0.005:
-        status = f"Still to pay: \u20ac{outstanding:.2f}"
+        status = f"Still to pay: \u20ac{outstanding:,.2f}"
     else:
         methods = conn.execute(
             "SELECT DISTINCT method FROM pos_payments WHERE order_id = ?",
@@ -36791,9 +36941,9 @@ def pos_close_day():
     conn.commit()
     conn.close()
     if not created:
-        flash(f"{on.isoformat()} was already closed.", "error")
+        flash(f"{format_date_short(on.isoformat())} was already closed.", "error")
         return redirect(url_for("pos_day", date=on.isoformat()))
-    flash(f"{on.isoformat()} closed — {money(taken)} taken.", "success")
+    flash(f"{format_date_short(on.isoformat())} closed — {money(taken)} taken.", "success")
     # The difference gets its own message, and says which way it went. "Short"
     # and "over" are the words used at the end of a service; a signed number on
     # its own gets read as either.
@@ -36952,7 +37102,7 @@ def pos_journal_page():
         search=["event_type", "payload", "who"],
         search_hint="Search event, table, amount or who",
         facets=[
-            facet("event", "Event", lambda e: e["event_type"].replace("_", " "), limit=10),
+            facet("event", "Event", lambda e: e["event_type"].replace("_", " ").capitalize(), limit=10),
             facet("who", "Who", lambda e: e["who"] or "System", limit=8),
         ],
         sorts=[
@@ -39273,7 +39423,7 @@ def notifications_page():
         facets=[
             facet("new", "Seen", lambda n: "New to you" if n["id"] in unread else "Already read",
                   order=["New to you", "Already read"]),
-            facet("kind", "About", lambda n: (n["kind"] or "").replace("_", " ") or None,
+            facet("kind", "About", lambda n: notification_kind_label(n["kind"]),
                   limit=10),
             facet("when", "When",
                   # house_date_iso, not [:10]: a note left at 00:30 is stamped
@@ -41081,7 +41231,7 @@ def send_room_statement(conn, booking):
     lines = [statement_text(view)] if view else []
     if view and view["stands"]:
         for band in statement["vat"]:
-            lines.append(f"  of which VAT at {band['rate']}%   €{band['vat']:.2f}")
+            lines.append(f"  of which VAT at {band['rate']}%   €{band['vat']:,.2f}")
 
     who = []
     if company:
@@ -42017,7 +42167,7 @@ def guest_detail(guest_id):
                            alert=record["owed"] > 0.005)),
             # Already the house's day: reading it again as a UTC moment only
             # came out right because the house is east of Greenwich.
-            overview_cell("Known since", record["first_seen"] or "\u2014"),
+            overview_cell("Known since", format_date_short(record["first_seen"]) or "\u2014"),
         ]
     # For the rebook box: the rooms it could be, and how long they usually
     # stay so the dates come pre-shaped rather than blank.
@@ -43218,7 +43368,7 @@ def api_validate_promo_code():
     if not promo:
         return jsonify({"valid": False, "message": error})
     return jsonify({
-        "valid": True, "message": f"Code applied — €{discount_amount:.2f} off.",
+        "valid": True, "message": f"Code applied — €{discount_amount:,.2f} off.",
         "subtotal": round(subtotal, 2), "discount_amount": discount_amount,
         "total": round(subtotal - discount_amount, 2),
     })
@@ -43698,7 +43848,7 @@ def book_room(room_id):
                         "product_data": {"name": (
                             f"{room['name']} — deposit for "
                             f"{nights} night{'s' if nights != 1 else ''} "
-                            f"(€{balance_later:.2f} due by "
+                            f"(€{balance_later:,.2f} due by "
                             f"{format_date_human(balance_due_iso)})")},
                         "unit_amount": int(round(deposit_now * 100)),
                     },
@@ -43711,7 +43861,7 @@ def book_room(room_id):
                 # there's no single per-night unit price left to itemize.
                 room_line_name = f"{room['name']} — {nights} night{'s' if nights != 1 else ''}"
                 if discount_amount:
-                    room_line_name += f" (promo code applied, -€{discount_amount:.2f})"
+                    room_line_name += f" (promo code applied, -€{discount_amount:,.2f})"
                 line_items.append({
                     "price_data": {
                         "currency": "eur",
@@ -44748,7 +44898,7 @@ def manage_booking(manage_token):
                     owner_to,
                     f"Guest cancelled — {booking['room_name']} ({booking['reference_code']})",
                     f"{booking['guest_name']} cancelled their own booking for {booking['room_name']}, "
-                    f"{booking['arrival_date']} to {booking['departure_date']}.{paid_note}",
+                    f"{format_date_short(booking['arrival_date'])} to {format_date_short(booking['departure_date'])}.{paid_note}",
                 )
             flash("Your booking has been cancelled.", "success")
         conn.close()
@@ -44925,8 +45075,8 @@ def manage_booking(manage_token):
                     send_email(
                         owner_to, f"Guest changed dates — {booking['reference_code']}",
                         f"{booking['guest_name']} changed their {booking['room_name']} booking to "
-                        f"{new_arrival.isoformat()} → {new_departure.isoformat()} "
-                        f"(was {booking['arrival_date']} → {booking['departure_date']}).",
+                        f"{format_date_short(new_arrival.isoformat())} → {format_date_short(new_departure.isoformat())} "
+                        f"(was {format_date_short(booking['arrival_date'])} → {format_date_short(booking['departure_date'])}).",
                     )
                 flash("Your dates have been updated.", "success")
             else:
@@ -45012,11 +45162,11 @@ def manage_booking(manage_token):
                         owner_to, f"Guest extended their stay — {booking['reference_code']}",
                         f"{booking['guest_name']} added {nights} night"
                         f"{'s' if nights != 1 else ''} to their {booking['room_name']} "
-                        f"stay. It now runs {booking['arrival_date']} to "
-                        f"{new_departure.isoformat()}, and €{added:.2f} has been added "
+                        f"stay. It now runs {format_date_short(booking['arrival_date'])} to "
+                        f"{format_date_short(new_departure.isoformat())}, and €{added:,.2f} has been added "
                         f"to their bill.\n\n— Château de Gudanes")
                 flash(f"{nights} more night{'s' if nights != 1 else ''} added — "
-                      f"€{added:.2f} on your bill.", "success")
+                      f"€{added:,.2f} on your bill.", "success")
         conn.commit()
         conn.close()
         return redirect(url_for("manage_booking", manage_token=manage_token))
@@ -45092,8 +45242,8 @@ def manage_booking(manage_token):
                         owner_to, f"Guest added an extra — {booking['reference_code']}",
                         f"{booking['guest_name']} added {quantity} x {extra['name']} "
                         f"({money((extra['price'] or 0) * quantity)}) to their "
-                        f"{booking['room_name']} stay, {booking['arrival_date']} to "
-                        f"{booking['departure_date']}."
+                        f"{booking['room_name']} stay, {format_date_short(booking['arrival_date'])} to "
+                        f"{format_date_short(booking['departure_date'])}."
                         + (f" They would like it on {format_date_human(when_on)}"
                            + (f": {when_notes}" if when_notes else "") + "."
                            if when_on else "")
@@ -45452,7 +45602,7 @@ def make_event_reference_code():
 def event_email_context(inquiry):
     price_lines = []
     if inquiry["quoted_price"]:
-        price_lines.append(f"Quoted price: €{inquiry['quoted_price']:.2f}")
+        price_lines.append(f"Quoted price: €{inquiry['quoted_price']:,.2f}")
     return {
         "contact_name": inquiry["contact_name"],
         "event_type": inquiry["event_type"],
@@ -45939,7 +46089,7 @@ def event_stripe_success(manage_token):
     conn.close()
     left = bill["owed"] if bill else 0
     flash("Thank you — your payment has been received."
-          + (f" \u20ac{left:.2f} remains on the event." if left > 0.005 else ""),
+          + (f" \u20ac{left:,.2f} remains on the event." if left > 0.005 else ""),
           "success")
     return redirect(url_for("event_manage", manage_token=manage_token))
 
@@ -46244,7 +46394,7 @@ def update_event_inquiry(inquiry_id):
                 conn, promo, "event", inquiry["reference_code"],
                 inquiry["contact_email"], float(quoted_price), discount_amount)
             promo_note = (f"Code {promo['code']} applied: "
-                          f"\u2212\u20ac{discount_amount:.2f}")
+                          f"\u2212\u20ac{discount_amount:,.2f}")
         else:
             promo_note = f"Code not applied: {promo_error or 'not valid for events'}"
 
@@ -47725,10 +47875,10 @@ def restaurant_email_context(booking, refund_note=""):
     price_lines = []
     if booking["total_price"]:
         paid_suffix = " (paid)" if booking["payment_status"] == "paid" else ""
-        price_lines.append(f"Estimated total: €{booking['total_price']:.2f}{paid_suffix}")
+        price_lines.append(f"Estimated total: €{booking['total_price']:,.2f}{paid_suffix}")
         if booking["deposit_amount"] and booking["deposit_amount"] < booking["total_price"]:
-            price_lines.append(f"Deposit paid: €{booking['deposit_amount']:.2f}")
-            price_lines.append(f"Balance due at the restaurant: €{booking['total_price'] - booking['deposit_amount']:.2f}")
+            price_lines.append(f"Deposit paid: €{booking['deposit_amount']:,.2f}")
+            price_lines.append(f"Balance due at the restaurant: €{booking['total_price'] - booking['deposit_amount']:,.2f}")
     return {
         "guest_name": booking["guest_name"],
         "dinner_date": format_date_human(booking["dinner_date"]),
@@ -47977,9 +48127,9 @@ def restaurant_book():
         if stripe_enabled() and charge_amount > 0:
             line_name = f"Dinner reservation for {party_size} — {format_date_human(dinner_date.isoformat())}"
             if balance_due_onsite:
-                line_name += f" — deposit (€{balance_due_onsite:.2f} due at the restaurant)"
+                line_name += f" — deposit (€{balance_due_onsite:,.2f} due at the restaurant)"
             if discount_amount:
-                line_name += f" (promo code applied, -€{discount_amount:.2f})"
+                line_name += f" (promo code applied, -€{discount_amount:,.2f})"
             try:
                 checkout_session = stripe.checkout.Session.create(
                     mode="payment",
@@ -49821,7 +49971,7 @@ def hold_legacy_balance_stamps(conn):
         conn.execute(
             "UPDATE workshop_bookings SET balance_paid_at = NULL, "
             "collect_hold = COALESCE(collect_hold, ?) WHERE id = ?",
-            (f"The balance was marked paid with \u20ac{due:.2f} still owing on the ledger. "
+            (f"The balance was marked paid with \u20ac{due:,.2f} still owing on the ledger. "
              f"Before September 2026 a second online payment towards a balance was taken "
              f"by Stripe without being recorded, so look for {row['reference_code']} in "
              f"Stripe before collecting anything.", row["id"]))
@@ -51127,11 +51277,11 @@ def workshop_email_context(booking):
         date_line += f" to {format_date_human(booking['end_date'])}"
     price_lines = []
     if booking["total_price"]:
-        price_lines.append(f"Estimated total: €{booking['total_price']:.2f}")
+        price_lines.append(f"Estimated total: €{booking['total_price']:,.2f}")
     if booking["deposit_amount"]:
-        price_lines.append(f"Deposit due now: €{booking['deposit_amount']:.2f}")
+        price_lines.append(f"Deposit due now: €{booking['deposit_amount']:,.2f}")
         if booking["balance_amount"]:
-            price_lines.append(f"Balance of €{booking['balance_amount']:.2f} due {booking['balance_due_date'] or 'at check-in'}")
+            price_lines.append(f"Balance of €{booking['balance_amount']:,.2f} due {booking['balance_due_date'] or 'at check-in'}")
     # What this workshop actually carries. Built here rather than written
     # into the template, because it differs per workshop and a template is
     # flat text the owner edits -- there is no "if" to write it with. The
@@ -51166,7 +51316,7 @@ def workshop_email_context(booking):
         "deposit_amount": f"{booking['deposit_amount']:.2f}" if booking["deposit_amount"] else "0.00",
         "balance_amount": f"{booking['balance_amount']:.2f}" if booking["balance_amount"] else "0.00",
         "balance_due_date": booking["balance_due_date"] or "at check-in",
-        "balance_line": (f"Balance of €{booking['balance_amount']:.2f} due {booking['balance_due_date'] or 'at check-in'}."
+        "balance_line": (f"Balance of €{booking['balance_amount']:,.2f} due {booking['balance_due_date'] or 'at check-in'}."
                           if booking["balance_amount"] else "Paid in full."),
         "price_block": ("\n" + "\n".join(price_lines)) if price_lines else "",
         "manage_url": url_for("workshop_manage", manage_token=booking["manage_token"], _external=True),
@@ -51462,7 +51612,7 @@ def workshop_pay_balance(manage_token):
         # card fee eats most of it.
         if part < PART_PAYMENT_MINIMUM or part > due:
             conn.close()
-            flash(f"Enter an amount between €{PART_PAYMENT_MINIMUM:.0f} and €{due:.2f}.", "error")
+            flash(f"Enter an amount between €{PART_PAYMENT_MINIMUM:,.0f} and €{due:,.2f}.", "error")
             return redirect(url_for("workshop_manage", manage_token=manage_token))
     checkout_url = start_workshop_stripe_payment(conn, booking["id"], "balance", amount_override=part)
     conn.close()
@@ -51899,7 +52049,7 @@ def workshop_manage(manage_token):
                     owner_to,
                     f"Workshop registration cancelled — {booking['reference_code']}",
                     f"{booking['guest_name']} cancelled their registration for {booking['title']} "
-                    f"({booking['start_date']}), party of {booking['party_size']}.",
+                    f"({format_date_short(booking['start_date'])}), party of {booking['party_size']}.",
                 )
             flash("Your registration has been cancelled.", "success")
         conn.close()
@@ -51980,7 +52130,7 @@ def workshop_manage(manage_token):
                 send_email(
                     owner_to, f"Guest moved dates — {booking['reference_code']}",
                     f"{booking['guest_name']} moved their {booking['title']} registration from "
-                    f"{booking['start_date']} to {new_session['start_date']}.",
+                    f"{format_date_short(booking['start_date'])} to {format_date_short(new_session['start_date'])}.",
                 )
             flash("You've been moved to the new dates.", "success")
         else:
@@ -53990,7 +54140,9 @@ def admin_extras():
         facets=[
             facet("state", "Offered", lambda e: "On sale" if e["active"] else "Withdrawn",
                   order=["On sale", "Withdrawn"]),
-            facet("category", "Category", lambda e: (e["category"] or "").strip() or None,
+            facet("category", "Category",
+                  lambda e: EXTRA_CATEGORIES.get((e["category"] or "").strip())
+                  or (e["category"] or "").strip() or None,
                   limit=10),
             # Where a guest can actually get it. An extra nobody can order is
             # a price list entry, not a thing for sale — and until you can see
@@ -56453,7 +56605,7 @@ def cancel_booking_extra_line(line_id):
         return redirect(request.referrer or url_for("admin_bookings"))
     log_audit(conn, "booking_extra_cancelled", target=line["reference_code"],
               details=f"{line['name']} \u00d7 {line['quantity'] or 1}, "
-                      f"\u20ac{(line['unit_price'] or 0) * (line['quantity'] or 1):.2f}")
+                      f"\u20ac{(line['unit_price'] or 0) * (line['quantity'] or 1):,.2f}")
     conn.commit()
     conn.close()
     flash(f"{line['name']} taken off the bill, and anything it used put back "
@@ -57835,7 +57987,7 @@ def _refund_balance_line(category, booking, owed):
     if not booking_stands(category, booking):
         return ""
     if owed > 0.005:
-        return f"There is €{owed:.2f} still to pay on it."
+        return f"There is €{owed:,.2f} still to pay on it."
     return "Nothing more is owed on it."
 
 
@@ -57848,7 +58000,7 @@ def send_refund_letter(conn, category, booking_id, amount, method):
     silence, which reads as a mistake to anybody checking a statement.
     Returns whether a letter went.
     """
-    base = {"amount": f"€{amount:.2f}", "refund_how": REFUND_HOW_LINES.get(method, "")}
+    base = {"amount": f"€{amount:,.2f}", "refund_how": REFUND_HOW_LINES.get(method, "")}
     if category == "room":
         b = conn.execute(
             """SELECT bookings.*, rooms.name AS room_name FROM bookings
@@ -59408,8 +59560,10 @@ def admin_restaurant_menu():
             facet("till", "On the POS",
                   lambda i: "Sold on the POS" if i["sold_in_pos"] else "Not on the POS",
                   order=["Sold on the POS", "Not on the POS"]),
+            # Named as the menu names them, not by the key they are stored under.
             facet("allergen", "Contains",
-                  lambda i: (i["allergens"] or "").split(",")[0].strip() or None, limit=8),
+                  lambda i: (lambda k: ALLERGENS.get(k, k.capitalize()) if k else None)(
+                      (i["allergens"] or "").split(",")[0].strip()), limit=8),
         ],
         sorts=[
             sort_option("course", "Course order",
@@ -59945,7 +60099,7 @@ def copy_menu_day(menu_id):
     service = conn.execute("SELECT service FROM menus WHERE id = ?", (new_id,)).fetchone()["service"]
     conn.commit()
     conn.close()
-    flash(f"Copied to {to.isoformat()} as a draft — change what's different and publish.",
+    flash(f"Copied to {format_date_short(to.isoformat())} as a draft — change what's different and publish.",
           "success")
     return redirect(url_for("menu_day", date=to.isoformat(), service=service))
 
@@ -65237,7 +65391,7 @@ def management_channels():
     start, end = _window_from_request()
     data = channel_cost(conn, start, end)
     conn.close()
-    return render_template("management_channels.html", data=data)
+    return render_template("management_channels.html", data=data, channel_labels=CHANNEL_LABELS)
 
 
 @app.route("/management/channels/settings", methods=["POST"])
@@ -66125,7 +66279,7 @@ def new_event_hold(inquiry_id):
               details=f"{hold['start_date']} to {hold['end_date']} until {hold['expires_at'][:10]}")
     conn.commit()
     conn.close()
-    flash(f"Held {hold['start_date']} to {hold['end_date']}. No room can be "
+    flash(f"Held {format_date_short(hold['start_date'])} to {format_date_short(hold['end_date'])}. No room can be "
           f"sold on those dates until it runs out on {hold['expires_at'][:10]}.",
           "success")
     return redirect(url_for("event_agreement", inquiry_id=inquiry_id))
@@ -66148,7 +66302,7 @@ def release_event_hold(hold_id):
             WHERE id = ?""", (datetime.now(timezone.utc).isoformat(), hold_id))
     conn.commit()
     conn.close()
-    flash(f"{hold['start_date']} to {hold['end_date']} is back on the market.",
+    flash(f"{format_date_short(hold['start_date'])} to {format_date_short(hold['end_date'])} is back on the market.",
           "success")
     return redirect(url_for("event_agreement", inquiry_id=hold["event_id"]))
 
@@ -66162,7 +66316,7 @@ def new_event_instalment(inquiry_id):
         request.form.get("amount", ""), request.form.get("due_date", ""))
     conn.close()
     flash(error if error else
-          f"{money(row['amount'])} falls due {row['due_date']}.",
+          f"{money(row['amount'])} falls due {format_date_short(row['due_date'])}.",
           "error" if error else "success")
     return redirect(url_for("event_agreement", inquiry_id=inquiry_id))
 
@@ -66251,7 +66405,7 @@ def event_quote(token):
                     to_address,
                     f"Quote accepted \u2014 {event['event_type']} ({event['reference_code']})",
                     f"{who} has accepted quote {quote['version']} for "
-                    f"{event['event_type']} on {event['preferred_date']}, at "
+                    f"{event['event_type']} on {format_date_short(event['preferred_date'])}, at "
                     f"{money(float(quote['quoted_price'] or 0))}.\n\n"
                     "The date is NOT blocked yet \u2014 confirming the event is "
                     "what does that, and it is worth looking at the calendar "
@@ -66843,7 +66997,7 @@ def apply_rate_advice():
               f"{euro(rack)} to {euro(price)}")
     conn.commit()
     conn.close()
-    flash(f"{room['name']} set to {euro(price)} for {day.isoformat()}.", "success")
+    flash(f"{room['name']} set to {euro(price)} for {format_date_short(day.isoformat())}.", "success")
     return redirect(url_for("admin_rate_advice"))
 
 
@@ -67469,7 +67623,7 @@ def chase_outstanding_balance(booking_id):
     conn.close()
     if subject and write_about_stay(booking, subject, body, side="bill",
                                     html=letter_html(subject, body)):
-        flash(f"Asked {booking['guest_name']} for \u20ac{bill['owed']:.2f}.", "success")
+        flash(f"Asked {booking['guest_name']} for \u20ac{bill['owed']:,.2f}.", "success")
     else:
         flash("No email provider is connected yet, so that is being held and "
               "will go out once one is.", "error")
@@ -67773,10 +67927,10 @@ def return_deposit(booking_id):
         (datetime.now(timezone.utc).isoformat(), amount, note or None,
          booking_id))
     log_audit(conn, "deposit_returned", target=row["guest_name"],
-              details=f"\u20ac{amount:.2f}" + (f" \u2014 {note}" if note else ""))
+              details=f"\u20ac{amount:,.2f}" + (f" \u2014 {note}" if note else ""))
     conn.commit()
     conn.close()
-    flash(f"Recorded: \u20ac{amount:.2f} back to {row['guest_name']}. "
+    flash(f"Recorded: \u20ac{amount:,.2f} back to {row['guest_name']}. "
           "Nothing has been sent \u2014 do that from the bank or from Stripe.",
           "success")
     return redirect(request.referrer or url_for("admin_bookings"))
@@ -67897,7 +68051,7 @@ def mileage():
     overview = [
         overview_cell("Claims", len(claims)),
         overview_cell("Waiting", len(waiting), alert=bool(waiting)),
-        overview_cell("A kilometre is worth", f"\u20ac{rate:.2f}",
+        overview_cell("A kilometre is worth", f"\u20ac{rate:,.2f}",
                       hint="copied onto each claim as it is made"),
     ]
     return render_template("mileage.html", claims=claims, overview=overview,
@@ -69216,7 +69370,7 @@ def management_meters():
                  datetime.now(timezone.utc).isoformat()))
         except sqlite3.IntegrityError:
             conn.close()
-            flash(f"{meter} already has a reading for {when.isoformat()}.",
+            flash(f"{meter} already has a reading for {format_date_short(when.isoformat())}.",
                   "error")
             return redirect(url_for("management_meters"))
         conn.commit()
@@ -69444,7 +69598,7 @@ def decide_breakage(breakage_id):
          datetime.now(timezone.utc).isoformat(), breakage_id))
     log_audit(conn, "breakage_decided", target=row["what"],
               details=f"{decision}"
-                      + (f" \u20ac{amount:.2f}" if amount else ""))
+                      + (f" \u20ac{amount:,.2f}" if amount else ""))
     conn.commit()
     conn.close()
     # Nothing is charged to a card from here. Taking the money is a
@@ -69601,11 +69755,11 @@ def management_night_cost():
         overview_cell("Nights sold", cost["nights"],
                       hint=f"over {months} month{'' if months == 1 else 's'}"),
         overview_cell("A night cost",
-                      f"\u20ac{cost['per_night']:.2f}" if cost["per_night"] is not None
+                      f"\u20ac{cost['per_night']:,.2f}" if cost["per_night"] is not None
                       else "\u2014",
                       hint="everything, spread over the nights sold"),
         overview_cell("Of that, avoidable",
-                      f"\u20ac{cost['avoidable_per_night']:.2f}"
+                      f"\u20ac{cost['avoidable_per_night']:,.2f}"
                       if cost["avoidable_per_night"] is not None else "\u2014",
                       hint="what not selling the room would actually save"),
     ]
@@ -69741,7 +69895,10 @@ def management_recurring_costs():
                   order=["Overdue", "Due within 30 days", "Later", "No date set"]),
             facet("category", "Category", lambda c: (c["category"] or "").strip() or None,
                   limit=10),
-            facet("frequency", "How often", lambda c: (c["frequency"] or "").strip() or None),
+            facet("frequency", "How often",
+                  lambda c: {"monthly": "Every month", "annual": "Once a year"}.get(
+                      (c["frequency"] or "").strip()) or None,
+                  order=["Every month", "Once a year"]),
             facet("coded", "Account code",
                   lambda c: "Coded" if (c["ledger_code"] or "").strip() else "Not coded yet",
                   order=["Not coded yet", "Coded"]),
@@ -69887,7 +70044,7 @@ def mark_recurring_cost_paid(cost_id):
     log_audit(conn, "recurring_cost_paid", target=cost["label"], details=f"next due {new_due.isoformat()}")
     conn.commit()
     conn.close()
-    flash(f"Marked paid — next due {new_due.isoformat()}.", "success")
+    flash(f"Marked paid — next due {format_date_short(new_due.isoformat())}.", "success")
     return redirect(url_for("management_recurring_costs"))
 
 
@@ -70004,7 +70161,7 @@ def renew_insurance_policy(policy_id):
     log_audit(conn, "insurance_policy_renewed", target=policy["provider"], details=f"new expiry {new_expiry.isoformat()}")
     conn.commit()
     conn.close()
-    flash(f"Renewed — new expiry {new_expiry.isoformat()}.", "success")
+    flash(f"Renewed — new expiry {format_date_short(new_expiry.isoformat())}.", "success")
     return redirect(url_for("management_company_info") + "#insurance")
 
 
@@ -74784,23 +74941,23 @@ def statement_text_lines(statement):
     """The account as plain lines, for the letter and nothing else."""
     out = []
     if statement["period_from"]:
-        out.append(f"  Brought forward   €{statement['opening']:.2f}")
+        out.append(f"  Brought forward   €{statement['opening']:,.2f}")
     for x in statement["lines"]:
         if x["charge"]:
-            money = f"€{x['charge']:.2f}"
+            money = f"€{x['charge']:,.2f}"
         elif x["paid"]:
-            money = f"-€{x['paid']:.2f} paid"
+            money = f"-€{x['paid']:,.2f} paid"
         else:
-            money = f"+€{x['back']:.2f} back to you"
+            money = f"+€{x['back']:,.2f} back to you"
         out.append(f"  {format_date_human(x['day'])}  {x['what']} ({x['ref']})   {money}")
     return "\n".join(out) or "  Nothing in this period."
 
 
 def statement_balance_line(amount):
     if amount > 0.005:
-        return f"There is €{amount:.2f} outstanding."
+        return f"There is €{amount:,.2f} outstanding."
     if amount < -0.005:
-        return f"You are €{-amount:.2f} in credit with us."
+        return f"You are €{-amount:,.2f} in credit with us."
     return "Nothing is owed."
 
 
@@ -76434,8 +76591,8 @@ def watch_task_findings(conn, today=None):
              + (f"\n\nThe date for deciding passed on {w['decide_by'].isoformat()}."
                 if w["overdue"] else
                 f"\n\nDecide by {w['decide_by'].isoformat()}.")
-             + f"\n\nRunning it as it stands takes \u20ac{w['taken']:.2f} against "
-               f"\u20ac{w['at_minimum']:.2f} at the minimum."),
+             + f"\n\nRunning it as it stands takes \u20ac{w['taken']:,.2f} against "
+               f"\u20ac{w['at_minimum']:,.2f} at the minimum."),
             w["decide_by"].isoformat(),
             "normal" if ring else "high" if w["overdue"] else "normal"))
 
@@ -79205,7 +79362,10 @@ def audit_list_view(conn, args):
             facet("who", "Who", audit_who, limit=8),
             facet("when", "When", when,
                   order=["Today", "Last 7 days", "Last 30 days", "This year", "Older"]),
-            facet("action", "Action", lambda e: (e["action"] or "").replace("_", " "),
+            # Written as the Action column writes it: "Refund issued", not the
+            # key with its underscores taken out.
+            facet("action", "Action",
+                  lambda e: (e["action"] or "").replace("_", " ").capitalize() or None,
                   limit=10),
         ],
         sorts=[
@@ -82082,8 +82242,8 @@ def run_backup_email_job(conn):
 @login_required
 def ops_calendar():
     """The main working calendar — day/week/month, every item clickable and
-    filterable. Employees get it too (it's the "what's on" view), but the
-    server only ever hands them rows build_overview already scopes."""
+    filterable. Employees get it too (it's the "what's on" view), and see only
+    what is theirs to see."""
     view = request.args.get("view", "week")
     anchor = parse_date(request.args.get("date", "")) or house_today()
     user = current_user()
@@ -83288,7 +83448,7 @@ def my_shifts():
             send_notification(
                 conn, int(offered_to), "shift_swap_offer",
                 f"{user['name']} wants to swap a shift with you",
-                body=f"{shift['shift_date']} {shift['start_time'] or ''}-{shift['end_time'] or ''}".strip(),
+                body=f"{format_date_short(shift['shift_date'])} {shift['start_time'] or ''}-{shift['end_time'] or ''}".strip(),
                 link="/shifts/mine",
             )
             flash("Swap offered — waiting on your colleague to respond.", "success")
@@ -83348,7 +83508,7 @@ def respond_shift_swap(swap_id):
     )
     conn.commit()
     shift = conn.execute("SELECT shift_date FROM shifts WHERE id = ?", (swap["shift_id"],)).fetchone()
-    shift_date = shift["shift_date"] if shift else "your shift"
+    shift_date = format_date_short(shift["shift_date"]) if shift else "your shift"
     send_notification(
         conn, swap["requested_by_user_id"], "shift_swap_response",
         f"{user['name']} {status} your shift swap request",
@@ -83400,7 +83560,7 @@ def decide_shift_swap(swap_id):
     requester = conn.execute("SELECT * FROM users WHERE id = ?", (swap["requested_by_user_id"],)).fetchone()
     covering = conn.execute("SELECT * FROM users WHERE id = ?", (swap["offered_to_user_id"],)).fetchone()
     conn.close()
-    shift_date = shift["shift_date"] if shift else "your shift"
+    shift_date = format_date_short(shift["shift_date"]) if shift else "your shift"
     conn = get_db()
     for person in (requester, covering):
         if person:
@@ -83830,12 +83990,12 @@ def apply_leave_decision(conn, request_id, status, via=None):
             employee["email"],
             f"Your time off request has been {status}",
             f"Hi {employee['name'].split(' ')[0]},\n\n"
-            f"Your time off request for {req['start_date']} to {req['end_date']} has been {status}.\n\n"
+            f"Your time off request for {format_date_short(req['start_date'])} to {format_date_short(req['end_date'])} has been {status}.\n\n"
             f"— Château de Gudanes",
         )
         send_notification(
             conn, employee["id"], "leave_decided", f"Your time off request has been {status}",
-            body=f"{req['start_date']} to {req['end_date']}", link="/leave",
+            body=f"{format_date_short(req['start_date'])} to {format_date_short(req['end_date'])}", link="/leave",
         )
     return True, f"Request {status}.", req
 
@@ -85295,7 +85455,7 @@ def charge_workshop_balance(conn, row):
             return "config", due, "Stripe refused the app's keys, so nothing was attempted"
         hold_workshop_collection(
             conn, row,
-            f"Stripe gave no clear answer when \u20ac{due:.2f} was charged on "
+            f"Stripe gave no clear answer when \u20ac{due:,.2f} was charged on "
             f"{format_date_human(today)} ({type(e).__name__}). It may have gone through: "
             f"look for {row['reference_code']} in Stripe before trying again.")
         return "unknown", due, "Stripe gave no clear answer"
@@ -85303,7 +85463,7 @@ def charge_workshop_balance(conn, row):
     if status == "processing":
         hold_workshop_collection(
             conn, row,
-            f"Stripe was still processing the \u20ac{due:.2f} charged on "
+            f"Stripe was still processing the \u20ac{due:,.2f} charged on "
             f"{format_date_human(today)}. Check it arrived before recording or charging anything.")
         return "unknown", due, "Stripe is still processing it"
     if status != "succeeded":
@@ -85728,7 +85888,7 @@ def send_autocharge_taken_email(conn, booking, amount):
         booking["guest_email"],
         f"Balance paid — {booking['title']}",
         f"Hi {booking['guest_name']},\n\n"
-        f"As arranged, we have taken the remaining €{amount:.2f} for "
+        f"As arranged, we have taken the remaining €{amount:,.2f} for "
         f"{booking['title']} ({booking['reference_code']}) from the card you "
         f"registered with. Nothing further is owed.\n\n"
         f"{url_for('workshop_manage', manage_token=booking['manage_token'], _external=True)}\n\n"
@@ -85743,7 +85903,7 @@ def send_autocharge_failed_email(conn, booking, amount, reason):
         booking["guest_email"],
         f"Payment did not go through — {booking['title']}",
         f"Hi {booking['guest_name']},\n\n"
-        f"We tried to take the remaining €{amount:.2f} for {booking['title']} "
+        f"We tried to take the remaining €{amount:,.2f} for {booking['title']} "
         f"({booking['reference_code']}) from the card you registered with, and it "
         f"did not go through. Nothing has been taken.\n\n"
         f"You can pay it here whenever suits you:\n"

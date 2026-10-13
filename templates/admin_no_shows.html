@@ -58,7 +58,7 @@
     <tbody>
       {% for d in data.by_day %}
       <tr{% if d.rate and d.rate >= 15 %} class="row-alert"{% endif %}>
-        <th scope="row">{{ d.day }}</th>
+        <th scope="row">{{ d.day|date_short }}</th>
         <td class="num">{{ d.booked }}</td>
         <td class="num">{{ d.no_shows }}</td>
         <td class="num">{% if d.rate is not none %}{{ d.rate }}%{% else %}&mdash;{% endif %}</td>
@@ -84,7 +84,7 @@
       <tr>
         <th scope="row">{{ r.guest or '&mdash;'|safe }}</th>
         <td>{{ r.reference }}</td>
-        <td>{{ r.date }}</td>
+        <td>{{ r.date|date_short }}</td>
         <td class="num">{{ r.party }}</td>
         <td class="num">{{ euro(r.value) }}</td>
       </tr>

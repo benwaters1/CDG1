@@ -129,11 +129,11 @@ def run():
 
     s.section("And the register is in the château's own clock")
     s.check("a visitor signed in at half past midnight is on that day",
-            "June 12, 2027" in row,
+            "12 June 2027" in row,
             detail=f"{row[:220]} — stored as {stored.isoformat()[:16]} in "
                    "UTC, which is the 11th")
     s.check("and not on the day before",
-            "June 11, 2027" not in row and "2027-06-11" not in row,
+            "11 June 2027" not in row and "2027-06-11" not in row,
             detail=f"{row[:220]} — never slice a stamp to get a day; that "
                    "reads UTC, and this page exists to answer when somebody "
                    "was in the building")

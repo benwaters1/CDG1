@@ -3,8 +3,10 @@
 {% block content %}
 
 {% set g = st.guest %}
+{# The house's money, through its one filter. This page kept a spelling of
+   its own: no thousands separator, and "€-0.00" for nothing received. #}
 {% macro money(v) -%}
-{{ '−€%.2f'|format(-v) if v < -0.005 else '€%.2f'|format(v) }}
+{{ v|money }}
 {%- endmacro %}
 
 <div class="page-head">

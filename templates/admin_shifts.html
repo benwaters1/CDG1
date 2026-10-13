@@ -98,7 +98,7 @@
   {% for o in outliers %}
   <div class="mini-row">
     <span class="mini-name">{{ o.employee_name }}</span>
-    <span class="mini-role">{{ o.date.strftime('%b') }} {{ o.date.day }} · {{ o.clock_in }}–{{ o.clock_out }} · {{ o.hours }}h</span>
+    <span class="mini-role">{{ o.date.day }} {{ o.date.strftime('%b') }} · {{ o.clock_in }}–{{ o.clock_out }} · {{ o.hours }}h</span>
     <span class="upload-hint">{{ o.reasons|join(', ') }}</span>
   </div>
   {% endfor %}

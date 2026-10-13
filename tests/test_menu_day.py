@@ -210,6 +210,10 @@ def run():
     s.check("with the mentions French law requires",
             "service compris" in page and "Boisson" in page)
     s.check("a dish taken off is not printed", TAG + "Tarte" not in page)
+    # The card is French on purpose, and it carried its date as "2026-10-13".
+    s.check("and its date is written in French",
+            m.date_fr(menu["service_date"]) in page and menu["service_date"] not in page,
+            detail=m.date_fr(menu["service_date"]))
     s.check("an employee cannot build the card",
             ec.get(f"/admin/restaurant/menu/day?date={_iso(0)}").status_code in (302, 403))
 

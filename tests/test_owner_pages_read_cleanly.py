@@ -70,6 +70,15 @@ TITLE_NOT_FIRST = {
 
 _PAGES = None
 
+# Money spelled by hand: four figures with no separator, or the minus inside.
+MONEY_BY_HAND = re.compile(r"€\s?\d{4,}(?![\d,])|€-\d")
+
+# A stamp in the page's words, not in an address or a file name.
+ISO_DATE = re.compile(r"(?<![\w/+.-])20\d\d-\d\d-\d\d(?![\w/+-])")
+MONTH_FIRST = re.compile(
+    r"\b(?:January|February|March|April|May|June|July|August|September|October|"
+    r"November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec) \d{1,2}(?:,| –| -)")
+
 
 def owner_pages(oc):
     """(endpoint, url, html) for every staff page the owner opens with no arguments.
@@ -117,6 +126,9 @@ class _Page(HTMLParser):
         self._facet = None
         self._chip = None
         self._last = ""
+        self.iso_dates = []
+        self.month_first = []
+        self.money_by_hand = []
 
     def _classes(self, a):
         return (a.get("class") or "").split()
@@ -191,6 +203,15 @@ class _Page(HTMLParser):
         if text == "None":
             self.none_text.append(f"a {self.stack[-1][0] if self.stack else '?'}"
                                   f" after “{self._last[-50:]}”")
+        # A note somebody typed is shown as they typed it; everything else is
+        # a date the house writes, and it writes them day first in words.
+        if not any("manual-body" in c or t in ("code", "pre") for t, c, _i in self.stack):
+            for found in ISO_DATE.finditer(text):
+                self.iso_dates.append(text[max(0, found.start() - 30):found.end()])
+            for found in MONTH_FIRST.finditer(text):
+                self.month_first.append(text[max(0, found.start() - 30):found.end() + 6])
+            for found in MONEY_BY_HAND.finditer(text):
+                self.money_by_hand.append(text[max(0, found.start() - 30):found.end()])
         self._last = text
         if self.first is None:
             # The flashes and the (hidden) push prompt come from base.html,
@@ -332,6 +353,39 @@ def run():
         conn.commit()
         conn.close()
 
+    s.section("Dates are written as the house writes them")
+    # 13 October 2026. The pages said "2026-08-17" -- the database's own
+    # spelling -- on twenty-one of them (two hundred times on Time off alone),
+    # and "October 13, 2026", the American order, on twelve more, beside pages
+    # that wrote "13 October 2026".
+    s.check("a date in words is day first",
+            m.format_date_human("2026-10-13") == "13 October 2026"
+            and m.local_datetime_str("2026-10-13T06:15:00+00:00") == "13 October 2026, 08:15",
+            detail=f"{m.format_date_human('2026-10-13')!r}, "
+                   f"{m.local_datetime_str('2026-10-13T06:15:00+00:00')!r}")
+    s.check("a missing date is nothing, not the word None",
+            m.format_date_short(None) == "" and m.format_date_human(None) == "")
+    s.check("a date the house wrote into a stored line before is read in words",
+            m.dates_in_words("Shift swap approved — 2026-08-22, for May 24, 2027")
+            == "Shift swap approved — 22 August 2026, for 24 May 2027",
+            detail=m.dates_in_words("Shift swap approved — 2026-08-22, for May 24, 2027"))
+    s.check("and its money in the one spelling, without touching what was stored",
+            m.house_words("Domaine Fournitures — €3400 — €12.50, 2026-08-22")
+            == "Domaine Fournitures — €3,400 — €12.50, 22 August 2026",
+            detail=m.house_words("Domaine Fournitures — €3400 — €12.50, 2026-08-22"))
+    s.check("and a stamp with its time, or an address, is left alone",
+            m.dates_in_words("2026-08-22T10:00 /files/2026-08-22.pdf")
+            == "2026-08-22T10:00 /files/2026-08-22.pdf")
+    iso = [f"{url}: “{p.iso_dates[0]}”" for _ep, url, p in parsed if p.iso_dates]
+    s.check("no page writes a date the database's way", not iso, detail="; ".join(iso))
+    us = [f"{url}: “{p.month_first[0]}”" for _ep, url, p in parsed if p.month_first]
+    s.check("or month first", not us, detail="; ".join(us[:6]))
+    # €3400.00 on one page and €3,400.00 on the next, and "€-0.00" for
+    # nothing received: money has one spelling, the |money filter's.
+    by_hand = [f"{url}: “{p.money_by_hand[0]}”" for _ep, url, p in parsed if p.money_by_hand]
+    s.check("and money is written one way, with its separator", not by_hand,
+            detail="; ".join(by_hand))
+
     s.section("No chip twice in one row")
     s.check("a classification keeps the first place a name appears and drops the repeat",
             m.facet("k", "K", lambda r: r, order=["Rooms", "Events", "Rooms"])["order"]
@@ -348,6 +402,14 @@ def run():
                 seen.add(label)
     s.check("no row of chips offers the same choice twice", not twice,
             detail="; ".join(twice))
+    # A chip is a word for a person. They showed the key a row is stored
+    # under -- "hr escalation", "food", "monthly" -- beside forms that said
+    # "Food & hampers".
+    raw = sorted({f"{url}: {f['label']} → {label}" for _ep, url, p in parsed for f in p.facets
+                  for label in f["chips"]
+                  if label and ("_" in label or label[0].islower())})
+    s.check("every chip is a word for a person, not a stored key", not raw,
+            detail="; ".join(raw[:10]))
     wording = next((p for _ep, url, p in parsed if url == "/management/email-templates"), None)
     part = [f for f in (wording.facets if wording else []) if f["label"].lower().startswith("part")]
     s.check("Email Wording offers Rooms once",

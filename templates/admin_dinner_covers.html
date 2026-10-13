@@ -70,7 +70,7 @@
     <tbody>
       {% for r in data.rows %}
       <tr{% if r.weekday in ('Sat', 'Fri') %} class="row-alert"{% endif %}>
-        <td>{{ r.weekday }} {{ r.iso }}</td>
+        <td>{{ r.weekday }} {{ r.iso|date_short }}</td>
         <td class="num">{{ r.booked or '&mdash;'|safe }}</td>
         <td class="num">{{ r.atelier or '&mdash;'|safe }}</td>
         <td class="num"><strong>{{ r.certain or '&mdash;'|safe }}</strong></td>

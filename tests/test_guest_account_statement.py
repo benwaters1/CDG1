@@ -267,8 +267,8 @@ def _run(s, oc, ec, sent):
     text = visible_text(page.get_data(as_text=True))
     s.check("it opens, with the account and every booking", page.status_code == 200
             and "The account" in text and f"{TAG}B" in text and f"{TAG}V" in text, page)
-    s.check("with what is outstanding in one figure", f"€{st['balance']:.2f}" in text,
-            detail=f"€{st['balance']:.2f}")
+    s.check("with what is outstanding in one figure", m.money(st['balance']) in text,
+            detail=m.money(st['balance']))
     ranged = visible_text(oc.get(f"/guests/{gid}/statement?from={cut.isoformat()}").get_data(as_text=True))
     s.check("a period shows what it brought forward", "Brought forward" in ranged)
     csv_text = oc.get(f"/guests/{gid}/statement.csv").get_data(as_text=True)
@@ -279,7 +279,7 @@ def _run(s, oc, ec, sent):
     r = oc.post(f"/guests/{gid}/statement/email", data={"from": "", "to": ""}, follow_redirects=True)
     mine = [x for x in sent if x[0] == email]
     s.check("sending it writes to them once, with the lines and what is owed",
-            len(mine) == 1 and f"{TAG}V" in mine[0][2] and f"€{st['balance']:.2f}" in mine[0][2],
+            len(mine) == 1 and f"{TAG}V" in mine[0][2] and m.money(st['balance']) in mine[0][2],
             detail=str([x[1] for x in sent]) + str(flashes(r)))
     token = _call(lambda c: c.execute("SELECT portal_token FROM guests WHERE id = ?", (gid,)).fetchone()[0])
     s.check("with the link to their own copy", mine and f"/my/{token}/statement" in mine[0][2])

@@ -11,7 +11,7 @@
   <div class="detail-card" style="margin-bottom:18px;">
     <div class="page-head" style="margin:0;">
       <h3 style="margin:0;">
-        Review — {{ r['review_date'] }}
+        Review — {{ r['review_date']|date_short }}
         {% if r['status'] == 'acknowledged' %}
         <span class="mini-status status-confirmed" style="margin-left:8px;">{{ t('acknowledged') }}</span>
         {% else %}
@@ -33,7 +33,7 @@
       {% if r['employee_comments'] %}
       <p class="manual-body"><strong>{{ t('Your comments:') }}</strong> {{ r['employee_comments'] }}</p>
       {% endif %}
-      <p class="upload-hint">You confirmed you'd seen this on {{ r['acknowledged_at']|house_day }}.</p>
+      <p class="upload-hint">You confirmed you'd seen this on {{ r['acknowledged_at']|house_day|date_short }}.</p>
     {% else %}
     <form method="post" action="{{ url_for('acknowledge_review', review_id=r['id']) }}" style="margin-top:12px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

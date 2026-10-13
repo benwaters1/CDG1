@@ -431,7 +431,8 @@ def _run(s, oc, ec, owner, conn):
                                 f"&to={iso}").get_data(as_text=True))
     s.check("the register lists them with their room and dates, beside the house's own",
             "Hart, Zoe" in table and a["name"] in table
-            and (today - timedelta(days=1)).isoformat() in table, detail=table[-400:])
+            and m.format_date_short((today - timedelta(days=1)).isoformat()) in table,
+            detail=table[-400:])
     first = _fiches()[0]["id"]
     r = oc.post(f"/admin/register/channel/{first}/delete", follow_redirects=True)
     s.check("a mistyped one can be taken off", len(_fiches()) == 1

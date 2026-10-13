@@ -10,7 +10,7 @@
 </div>
 
 <p class="pay-disclaimer" style="margin-top:-10px;">
-  {{ cost['from'] }} to {{ cost['to'] }}. Split by how each cost <em>behaves</em>, because they
+  {{ date_range(cost['from'], cost['to']) }}. Split by how each cost <em>behaves</em>, because they
   behave completely differently when the house fills up &mdash; and that difference is the whole
   answer to whether a cheap booking is worth taking.
 </p>

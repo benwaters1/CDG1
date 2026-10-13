@@ -681,10 +681,12 @@ def run():
                 detail=f"{rows}")
         s.check("saying it is called off", called and all("called off" in w for w in called),
                 detail=f"{rows}")
-        gone_line = [w for n, w in rows if n == LIVE and w.startswith(off_start.isoformat())]
+        gone_line = [w for n, w in rows
+                     if n == LIVE and w.startswith(m.format_date_short(off_start.isoformat()))]
         s.check("including the running atelier's called-off date",
                 gone_line and "called off" in gone_line[0], detail=f"{rows}")
-        running = [w for n, w in rows if n == LIVE and not w.startswith(off_start.isoformat())]
+        running = [w for n, w in rows
+                   if n == LIVE and not w.startswith(m.format_date_short(off_start.isoformat()))]
         s.check("the running ones read as running",
                 len(running) == 2 and all("confirmed" in w and "called off" not in w
                                           for w in running), detail=f"{rows}")

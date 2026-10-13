@@ -92,7 +92,7 @@ def run():
     page = oc.get("/admin/promo-codes")
     html = page.get_data(as_text=True)
     s.check("the admin page loads", page.status_code == 200, page)
-    s.check("it names the expiry", f"Expired on {yesterday}" in html)
+    s.check("it names the expiry", f"Expired on {m.format_date_short(yesterday)}" in html)
     s.check("it says a code is switched off", "switched off" in html)
     s.check("it says a code is fully redeemed", "Fully redeemed" in html)
     s.check("a usable code is not flagged as a problem",

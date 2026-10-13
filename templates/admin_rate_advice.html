@@ -81,7 +81,7 @@
       {% for r in data.suggestions %}
       <tr>
         <th scope="row">
-          <span style="font-variant-numeric:tabular-nums;">{{ r.weekday }} {{ r.date }}</span>
+          <span style="font-variant-numeric:tabular-nums;">{{ r.weekday }} {{ r.date|date_short }}</span>
           <span class="field-hint" style="display:block; font-weight:400;">{{ r.sold }} of {{ r.sold + r.free }} sold &middot; {{ r.lead }} days out</span>
         </th>
         <td>{{ r.room }}</td>

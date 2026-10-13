@@ -320,7 +320,7 @@ def run():
             detail=f"{soon['first_seen']} against today {today}")
     r = oc.get(f"/guests/{soon_id}")
     band, facts = _known_since_on_page(r.get_data(as_text=True))
-    s.check("the owner's band says so", band == _ago(0)[:10],
+    s.check("the owner's band says so", band == m.format_date_short(_ago(0)[:10]),
             detail=f"band reads {band!r}")
     s.check("and so does the list everybody sees",
             facts == m.format_date_short(_ago(0)[:10]),
@@ -344,7 +344,7 @@ def run():
             detail="a declined request's arrival is a day they never spent here")
     r = oc.get(f"/guests/{old_id}")
     band, _facts = _known_since_on_page(r.get_data(as_text=True))
-    s.check("and the page reads the day they wrote", band == wrote[:10],
+    s.check("and the page reads the day they wrote", band == m.format_date_short(wrote[:10]),
             detail=f"band reads {band!r}")
 
     # Written after midnight in the Ariège, before midnight in Greenwich.

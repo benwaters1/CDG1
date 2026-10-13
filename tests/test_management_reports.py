@@ -132,7 +132,7 @@ def run():
     s.check("a channel with no rate set shows no commission",
             rows["booking.com"]["cost"] is None, detail=str(rows["booking.com"]))
     s.check("and it is named as unpriced rather than passed off as nil",
-            "booking.com" in chan["unpriced"], detail=str(chan["unpriced"]))
+            "Booking.com" in chan["unpriced"], detail=str(chan["unpriced"]))
     s.check("so it is not counted in the commission total", chan["cost"] == 0,
             detail=str(chan["cost"]))
 

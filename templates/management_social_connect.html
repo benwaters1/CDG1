@@ -17,7 +17,7 @@
         {{ ts.problem }}. Nothing is going out until a new one is pasted in
         below.
       {% elif ts.kind == 'no_expiry' %}
-        Meta was asked on {{ ts.checked_at|house_day }} and reports no expiry
+        Meta was asked on {{ ts.checked_at|house_day|date_short }} and reports no expiry
         date for this token{% if ts.type %}, which is a
         {{ ts.type|lower|replace('_', ' ') }} token{% endif %}. The app asks
         again every day, so a token that stops working is found by the app
@@ -34,7 +34,7 @@
       {% else %}
         The token has {{ state.days_left }}
         day{{ '' if state.days_left == 1 else 's' }} left{% if ts.checked_at %},
-        by Meta's own answer on {{ ts.checked_at|house_day }}{% endif %}.
+        by Meta's own answer on {{ ts.checked_at|house_day|date_short }}{% endif %}.
       {% endif %}
     </p>
     {% if ts.missing and ts.kind != 'invalid' %}
@@ -45,7 +45,7 @@
     {% if ts.data_access_until and state.ig_user_id and ts.kind != 'invalid' %}
     <p class="muted">
       Meta's access for Instagram runs until
-      <strong>{{ ts.data_access_until }}</strong>. Instagram's permissions are
+      <strong>{{ ts.data_access_until|date_short }}</strong>. Instagram's permissions are
       not among the ones Meta keeps past that date — the Page's are — so a new
       token has to be made before then. The owner home says so two weeks ahead.
     </p>

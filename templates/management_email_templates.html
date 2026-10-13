@@ -49,7 +49,7 @@
       <div>
         <strong>{{ t['label'] }}</strong>
         {% if state == 'Needs fixing' %}<span class="mini-status status-declined">needs fixing</span>
-        {% elif state == 'Edited' %}<span class="mini-status status-upcoming">edited{% if t['updated_at'] %} {{ t['updated_at']|house_day }}{% endif %}</span>
+        {% elif state == 'Edited' %}<span class="mini-status status-upcoming">edited{% if t['updated_at'] %} {{ t['updated_at']|house_day|date_short }}{% endif %}</span>
         {% endif %}
         {% if is_draft %}<span class="mini-status status-declined">not saved</span>{% endif %}
       </div>

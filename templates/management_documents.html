@@ -16,8 +16,8 @@
       <div class="doc-row">
         <a href="{{ url_for('download_company_document', doc_id=d['id']) }}">{{ d['title'] }}</a>
         {% set exp = expiry_status(d['expiry_date']) %}
-        {% if exp == 'expired' %}<span class="mini-status status-inactive">expired {{ d['expiry_date'] }}</span>
-        {% elif exp == 'soon' %}<span class="mini-status status-pending">expires {{ d['expiry_date'] }}</span>{% endif %}
+        {% if exp == 'expired' %}<span class="mini-status status-inactive">expired {{ d['expiry_date']|date_short }}</span>
+        {% elif exp == 'soon' %}<span class="mini-status status-pending">expires {{ d['expiry_date']|date_short }}</span>{% endif %}
         {% if is_viewable(d['filename']) %}<button type="button" class="view-link" onclick="openViewer('{{ url_for('view_company_document', doc_id=d['id']) }}', '{{ d['title']|e }}')">View</button>{% endif %}
         <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleDocEdit({{ d['id'] }})">Edit</span>
         <form method="post" action="{{ url_for('delete_company_document', doc_id=d['id']) }}" onsubmit="return confirm('Delete this document?');">

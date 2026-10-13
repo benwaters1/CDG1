@@ -44,7 +44,7 @@
             title="{{ r['source_url']|replace('https://', '') }}">
           {{ r['source_url'].rsplit('/', 1)[-1] }}
         </td>
-        <td>{{ r['set_at']|house_day }}</td>
+        <td>{{ r['set_at']|house_day|date_short }}</td>
         <td>{{ r['set_by_name'] or '—' }}</td>
         <td>
           <form method="post"

@@ -40,8 +40,8 @@
       {% for r in gaps.runs %}
       <tr>
         <th scope="row">{{ r.room['name'] if r.room else '—' }}</th>
-        <td>{{ r['from'] }}</td>
-        <td>{{ r['to'] }}</td>
+        <td>{{ r['from']|date_short }}</td>
+        <td>{{ r['to']|date_short }}</td>
         <td class="num">{{ r.nights }}</td>
         <td class="num">{{ (r.value or 0)|money(0) }}</td>
         <td>
@@ -59,7 +59,7 @@
 
 {% if chosen %}
 <h2 class="section-heading">
-  Who for &mdash; {{ chosen.nights }} night{{ '' if chosen.nights == 1 else 's' }} from {{ start }}
+  Who for &mdash; {{ chosen.nights }} night{{ '' if chosen.nights == 1 else 's' }} from {{ start|date_short }}
 </h2>
 
 {% if chosen.candidates %}

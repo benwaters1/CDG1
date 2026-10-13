@@ -35,7 +35,7 @@
     {% for n in notes %}
     <div class="doc-row" style="align-items:flex-start;">
       <span style="flex:1;">
-        <b>{{ n.note['for_date'] }}</b>
+        <b>{{ n.note['for_date']|date_short }}</b>
         <span class="upload-hint">{{ n.note['written_by'] or 'somebody' }}
           &middot; read by {{ n.note['read_count'] }}</span>
         <div style="margin-top:4px; white-space:pre-wrap;">{{ n.note['body'] }}</div>

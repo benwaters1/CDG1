@@ -113,7 +113,7 @@
       <span class="upload-hint">{{ r['reference_code'] }}{% if can('record_history_page') %} · <a href="{{ url_for('record_history_page', kind='workshop_booking', record_id=r['id']) }}" class="small-link">What changed</a>{% endif %}</span>
     </div>
     <p class="manual-body wraps">
-      {{ r['start_date'] }}{% if r['end_date'] != r['start_date'] %} → {{ r['end_date'] }}{% endif %}
+      {{ r['start_date']|date_short }}{% if r['end_date'] != r['start_date'] %} → {{ r['end_date']|date_short }}{% endif %}
       · Party of {{ r['party_size'] }} · {{ r['occupancy_type']|capitalize }}{% if r['single_supplement'] %} (+{{ r['single_supplement']|money(0) }} pp single){% endif %}{% if r['total_price'] %} · {{ r['total_price']|money }}{% endif %}
     </p>
     {# Links, not text: an address you can click is one you write to. #}
@@ -217,7 +217,7 @@
     {% if guests_by_booking.get(r['id']) %}
     <p class="upload-hint">Party: {% for g in guests_by_booking[r['id']] %}{{ g['guest_name'] }}{{ ' (lead)' if g['is_lead'] }}{{ ', ' if not loop.last }}{% endfor %}</p>
     {% endif %}
-    <p class="upload-hint">Submitted {{ r['created_at']|house_day }}{% if r['decided_at'] %} · Decided {{ r['decided_at']|house_day }}{% endif %}</p>
+    <p class="upload-hint">Submitted {{ r['created_at']|house_day|date_short }}{% if r['decided_at'] %} · Decided {{ r['decided_at']|house_day|date_short }}{% endif %}</p>
 
     {% set balance = balance_by_booking.get(r['id']) %}
     {% if r['total_price'] or (transactions_by_booking.get(r['id'])) %}
@@ -244,7 +244,7 @@
         {% for t in transactions_by_booking[r['id']] %}
         <div class="mini-row">
           <span class="mini-name">{{ t['kind']|capitalize }} — {{ t['description'] }}</span>
-          <span class="mini-role">{{ t['created_at']|house_day }}{% if t['method'] %} · {{ t['method'] }}{% endif %}</span>
+          <span class="mini-role">{{ t['created_at']|house_day|date_short }}{% if t['method'] %} · {{ t['method']|method_label }}{% endif %}</span>
           <span class="mini-status status-{{ 'onshift' if t['kind'] in ('payment',) else 'pending' if t['kind'] == 'charge' else 'inactive' }}">{{ t['amount']|money }}</span>
         </div>
         {% endfor %}
@@ -322,7 +322,7 @@
         {% for m in messages_by_booking[r['id']] %}
         <div class="mini-row">
           <span class="mini-name">{{ m['subject'] }}</span>
-          <span class="mini-role">{{ m['created_at']|house_day }} · {{ m['recipient'] }}</span>
+          <span class="mini-role">{{ m['created_at']|house_day|date_short }} · {{ m['recipient'] }}</span>
           <span class="mini-status status-{{ 'onshift' if m['status'] == 'sent' else 'inactive' }}">{{ m['status'] }}</span>
         </div>
         {% endfor %}

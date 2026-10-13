@@ -54,6 +54,7 @@ from datetime import timedelta
 
 from _harness import Suite, clients, db
 import _harness
+import test_owner_pages_read_cleanly as owner_sweep
 
 m = _harness.m
 
@@ -197,6 +198,19 @@ def _attrs(raw):
 
 def _read(page, html, found):
     body = SCRIPTY.sub(" ", html)
+
+    # Dates, on the staff side: the owner sweep reads the pages that take no
+    # argument, and the guest recall page -- which needs an address -- went on
+    # printing "2026-10-19" under Booked to arrive after every page it could
+    # see had been mended. The guest pages are the design side's.
+    if 'class="topbar-search"' in html:
+        words = owner_sweep.read(html)
+        for d in words.iso_dates[:1]:
+            found["date written the database's way"].append("%s: %s" % (page, d))
+        for d in words.month_first[:1]:
+            found["date written month first"].append("%s: %s" % (page, d))
+        for d in words.money_by_hand[:1]:
+            found["money spelled by hand"].append("%s: %s" % (page, d))
 
     ids = re.findall(r'\bid="([^"]+)"', body)
     for i, n in collections.Counter(ids).items():
@@ -693,7 +707,9 @@ def run():
 
     for kind in ("control with no name", "_blank with no noopener",
                  "duplicate id", "image with no alt",
-                 "table outside table-wrap"):
+                 "table outside table-wrap",
+                 "date written the database's way", "date written month first",
+                 "money spelled by hand"):
         rows = found[kind]
         s.check("no %s" % kind, not rows,
                 detail="%d — e.g. %s" % (len(rows), rows[:3]))

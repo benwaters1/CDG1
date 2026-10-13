@@ -84,7 +84,7 @@
       </div>
     </div>
     <p class="manual-body wraps">
-      {{ s['room_name'] }} · {{ s['arrival_date'] }} → {{ s['departure_date'] }}
+      {{ s['room_name'] }} · {{ date_range(s['arrival_date'], s['departure_date']) }}
       {%- if s['channel'] %} · booked through {{ s['channel'] }}{% endif %}
       {%- if s['party_size'] %} · Party of {{ s['party_size'] }}{% endif -%}
     </p>
@@ -109,7 +109,7 @@
       </div>
     </div>
     <p class="manual-body wraps">
-      {{ s['room_name'] }} · {{ s['arrival_date'] }} → {{ s['departure_date'] }}
+      {{ s['room_name'] }} · {{ date_range(s['arrival_date'], s['departure_date']) }}
       {%- if s['channel'] %} · booked through {{ s['channel'] }}{% endif %}
       {%- if s['party_size'] %} · Party of {{ s['party_size'] }}{% endif -%}
     </p>

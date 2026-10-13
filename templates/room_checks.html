@@ -29,7 +29,7 @@
       <tbody>
         {% for a in arrivals %}
         <tr class="{{ 'row-alert' if a.state in ['unchecked', 'failed'] }}">
-          <th scope="row">{{ a.booking['arrival_date'] }}</th>
+          <th scope="row">{{ a.booking['arrival_date']|date_short }}</th>
           <td>{{ a.booking['room_name'] }}</td>
           <td>
             {{ a.booking['guest_name'] }}

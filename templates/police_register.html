@@ -30,7 +30,7 @@
     <div>
       <strong>{{ st.booking['guest_name'] }}</strong>
       <span class="upload-hint">{{ st.booking['reference_code'] }} ·
-        {{ st.booking['arrival_date'] }} → {{ st.booking['departure_date'] }}
+        {{ date_range(st.booking['arrival_date'], st.booking['departure_date']) }}
         {%- if st.channel %} · booked through {{ st.channel }}{% endif %}</span>
       <span class="mini-status status-pending" style="margin-left:8px;">
         {% if st.channel and not st.party_known %}{{ st.recorded }} recorded — the booking did not say how many are staying
@@ -179,8 +179,8 @@
          missing entirely until 7 October. #}
       <td><span class="upload-hint">{{ r['phone'] or '—' }}{% if r['email'] %}<br>{{ r['email'] }}{% endif %}</span></td>
       <td>{{ r['room_name'] or '—' }}</td>
-      <td>{{ r['arrival_date'] }}</td>
-      <td>{{ r['departure_date'] }}</td>
+      <td>{{ r['arrival_date']|date_short }}</td>
+      <td>{{ r['departure_date']|date_short }}</td>
     </tr>
     {% endfor %}
   </tbody>

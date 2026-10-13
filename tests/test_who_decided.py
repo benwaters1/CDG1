@@ -66,7 +66,7 @@ def run():
         (who, now.isoformat()))
     conn.commit()
     body = oc.get("/admin/pos/journal").get_data(as_text=True)
-    s.check("the closure is on the page", "2098-01-01" in body)
+    s.check("the closure is on the page", "1 January 2098" in body)
     s.check("with the name of whoever counted it", TAG + "Decider" in body,
             detail="the question an accountant asks first, and it had no "
                    "answer on the page that shows the closure")

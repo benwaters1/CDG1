@@ -7,7 +7,7 @@
   <a href="{{ url_for('expenses') }}" class="small-link" style="color:var(--steel); align-self:center;">&larr; Invoices</a>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
-  Read from <strong>{{ expense['filename'] }}</strong>{% if result.supplier %} — {{ result.supplier }}{% endif %}{% if result.invoice_date %}, {{ result.invoice_date }}{% endif %}.
+  Read from <strong>{{ expense['filename'] }}</strong>{% if result.supplier %} — {{ result.supplier }}{% endif %}{% if result.invoice_date %}, {{ result.invoice_date|date_short }}{% endif %}.
   Check it against the paper before you tick anything: this was read automatically, and a misread
   decimal would go straight into your stock figures.
 </p>

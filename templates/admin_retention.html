@@ -24,7 +24,7 @@
     <span class="stat-tile-value">{{ data.waiting }}</span>
     <span class="stat-tile-label">Records still holding what should be gone</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">{{ data.job_ran_at or 'never' }}</span>
+    <span class="stat-tile-value">{{ data.job_ran_at|date_short or 'never' }}</span>
     <span class="stat-tile-label">Purge last ran &mdash; {{ data.job_status }}</span></span></div>
 </div>
 

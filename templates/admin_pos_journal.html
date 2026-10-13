@@ -41,7 +41,7 @@
     <tbody>
       {% for c in closures %}
       <tr>
-        <td>{{ c['period'] }} <span class="upload-hint">{{ c['kind'] }}</span></td>
+        <td>{{ c['period']|date_short }} <span class="upload-hint">{{ c['kind'] }}</span></td>
         <td class="num">{{ c['taken_total']|money }}</td>
         <td class="num">{{ c['gross_total']|money }}</td>
         <td class="num">{{ c['ticket_count'] }}</td>
@@ -113,7 +113,7 @@
         <td class="num">{{ e['sequence'] }}</td>
         <td class="upload-hint">{{ local_datetime_str(e['occurred_at']) }}</td>
         <td>{{ e['event_type']|replace('_', ' ')|capitalize }}</td>
-        <td class="journal-payload">{{ e['payload'] }}</td>
+        <td class="journal-payload"><code>{{ e['payload'] }}</code></td>
         <td class="upload-hint">{{ e['who'] or '—' }}</td>
       </tr>
       {% endfor %}

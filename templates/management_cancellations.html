@@ -108,7 +108,7 @@
         {% for b in recent %}
         <tr>
           <th scope="row">{{ b['guest_name'] }}</th>
-          <td>{{ b['arrival_date'] }}</td>
+          <td>{{ b['arrival_date']|date_short }}</td>
           <td>
             <form method="post" action="{{ url_for('set_cancel_reason', booking_id=b['id']) }}"
                   style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">

@@ -61,7 +61,7 @@
 
     <p class="field-label">Party</p>
     <p>{{ b['party_size'] }}{% if b['guests_under_18'] %}, {{ b['guests_under_18'] }} under 18{% endif %}
-      · {{ b['arrival_date'] }} to {{ b['departure_date'] }}
+      · {{ date_range(b['arrival_date'], b['departure_date']) }}
       · <span class="upload-hint">{{ b['reference_code'] }}</span></p>
 
     {% if r.dietary %}

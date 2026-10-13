@@ -143,7 +143,7 @@
           <th scope="row">{{ g['room_name'] }}</th>
           <td>{{ g['guest_name'] }}{% if g['id'] == booking['id'] %} &middot; this one{% endif %}</td>
           <td>{{ g['reference_code'] }}</td>
-          <td>{{ g['arrival_date'] }} to {{ g['departure_date'] }}</td>
+          <td>{{ date_range(g['arrival_date'], g['departure_date']) }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -176,7 +176,7 @@
   <h2 class="section-heading">The deposit</h2>
   {% if booking['deposit_returned_at'] %}
   <p class="manual-body wraps">{{ (booking['deposit_returned_amount'] or 0)|money }}
-    recorded as returned on {{ booking['deposit_returned_at']|house_day }}.
+    recorded as returned on {{ booking['deposit_returned_at']|house_day|date_short }}.
     {% if booking['deposit_returned_note'] %}{{ booking['deposit_returned_note'] }}{% endif %}</p>
   {% else %}
   <form method="post" action="{{ url_for('return_deposit', booking_id=booking['id']) }}">

@@ -13,7 +13,7 @@
 </div>
 
 <p class="pay-disclaimer" style="margin-top:-10px;">
-  <strong>Service for {{ day }}</strong> &mdash; the restaurant&rsquo;s day, which
+  <strong>Service for {{ day|date_short }}</strong> &mdash; the restaurant&rsquo;s day, which
   ends at five in the morning. A table that paid at half past one belongs to the
   night before, and to the people who worked it.
 </p>
@@ -78,7 +78,7 @@
     <tbody>
       {% for n in week %}
       <tr{{ ' class="row-alert"'|safe if n.nobody_clocked_in }}>
-        <td><a href="{{ url_for('tronc_page', day=n.day) }}">{{ n.day }}</a></td>
+        <td><a href="{{ url_for('tronc_page', day=n.day) }}">{{ n.day|date_short }}</a></td>
         <td class="num">{{ n.orders }}</td>
         <td class="num">{{ n.pot|money }}</td>
         <td class="num">{{ n.shares|length }}</td>

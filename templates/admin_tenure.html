@@ -39,7 +39,7 @@
       <tr{% if p.months < 12 %} class="row-alert"{% endif %}>
         <th scope="row">{{ p.name }}</th>
         <td>{{ p.role or '&mdash;'|safe }}</td>
-        <td>{{ p.started }}</td>
+        <td>{{ p.started|date_short }}</td>
         <td class="num">{{ p.months }}</td>
       </tr>
       {% else %}
@@ -60,7 +60,7 @@
       <tr>
         <th scope="row">{{ p.name }}</th>
         <td>{{ p.role or '&mdash;'|safe }}</td>
-        <td>{{ p.started }}</td>
+        <td>{{ p.started|date_short }}</td>
         <td class="num">{{ p.months }}</td>
       </tr>
       {% endfor %}

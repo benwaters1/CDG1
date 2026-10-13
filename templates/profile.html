@@ -163,11 +163,11 @@
         <div><span class="detail-label">{{ t('Contract') }}</span>{{ contract_types.get(person['contract_type'], '—') }}</div>
         <div>
           <span class="detail-label">{{ t('Trial period ends') }}</span>
-          {% if person['trial_end_date'] %}{{ person['trial_end_date'] }}{% else %}—{% endif %}
+          {% if person['trial_end_date'] %}{{ person['trial_end_date']|date_short }}{% else %}—{% endif %}
         </div>
         <div>
           <span class="detail-label">{{ t('Fixed term ends') }}</span>
-          {% if person['contract_end_date'] %}{{ person['contract_end_date'] }}{% else %}—{% endif %}
+          {% if person['contract_end_date'] %}{{ person['contract_end_date']|date_short }}{% else %}—{% endif %}
         </div>
         <div>
           <span class="detail-label">{{ t('Notice period') }}</span>
@@ -208,7 +208,7 @@
               {% if item['notes'] %}<span class="upload-hint">({{ item['notes'] }})</span>{% endif %}
             </span>
             <span class="mini-status status-{{ 'inactive' if item['returned_at'] else 'onshift' }}">
-              {{ 'returned ' + item['returned_at']|house_day if item['returned_at'] else 'issued ' + item['issued_at']|house_day }}
+              {{ 'returned ' ~ (item['returned_at']|house_day|date_short) if item['returned_at'] else 'issued ' ~ (item['issued_at']|house_day|date_short) }}
             </span>
             {% if user['role'] == 'owner' %}
             <form method="post" action="{{ url_for('toggle_equipment_returned', user_id=person['id'], item_id=item['id']) }}">
@@ -249,7 +249,7 @@
         <div><span class="detail-label">{{ t('Email') }}</span>{{ person['email'] }}{% if person['id'] == user['id'] %}
           <a href="{{ url_for('change_email') }}" class="small-link" style="margin-left:8px;">{{ t('Change sign-in address') }}</a>{% endif %}</div>
         <div><span class="detail-label">{{ t('Start date') }}</span>{{ person['start_date'] or '—' }}</div>
-        <div><span class="detail-label">{{ t('On the team since') }}</span>{{ person['created_at']|house_day }}</div>
+        <div><span class="detail-label">{{ t('On the team since') }}</span>{{ person['created_at']|house_day|date_short }}</div>
         <div><span class="detail-label">{{ t('Tasks completed (7d / 30d)') }}</span>{{ task_stats.week }} / {{ task_stats.month }}</div>
         <div><span class="detail-label">{{ t('Open tasks now') }}</span>{{ task_stats.open }}</div>
         {% if leave %}
@@ -307,7 +307,7 @@
           {% for h in pay_rate_history %}
           <div class="mini-row">
             <span class="mini-name">{{ h['old_pay_rate'] or '(unset)' }}{% if h['old_pay_type'] %} ({{ h['old_pay_type'] }}){% endif %} → {{ h['new_pay_rate'] or '(unset)' }}{% if h['new_pay_type'] %} ({{ h['new_pay_type'] }}){% endif %}</span>
-            <span class="upload-hint">{{ h['changed_by_name'] or 'Unknown' }} · {{ h['changed_at']|house_day }}</span>
+            <span class="upload-hint">{{ h['changed_by_name'] or 'Unknown' }} · {{ h['changed_at']|house_day|date_short }}</span>
           </div>
           {% endfor %}
         </div>
@@ -333,7 +333,7 @@
                 <button type="submit" class="doc-delete">×</button>
               </form>
             </div>
-            <span class="upload-hint">{{ n['created_at']|house_day }}</span>
+            <span class="upload-hint">{{ n['created_at']|house_day|date_short }}</span>
           </div>
           {% endfor %}
         </div>
@@ -388,8 +388,8 @@
           <div class="doc-row">
             <a href="{{ url_for('download_document', doc_id=d['id']) }}">{{ d['title'] }}</a>
             {% set exp = expiry_status(d['expiry_date']) %}
-            {% if exp == 'expired' %}<span class="mini-status status-inactive">expired {{ d['expiry_date'] }}</span>
-            {% elif exp == 'soon' %}<span class="mini-status status-pending">expires {{ d['expiry_date'] }}</span>{% endif %}
+            {% if exp == 'expired' %}<span class="mini-status status-inactive">expired {{ d['expiry_date']|date_short }}</span>
+            {% elif exp == 'soon' %}<span class="mini-status status-pending">expires {{ d['expiry_date']|date_short }}</span>{% endif %}
             {% if is_viewable(d['filename']) %}<button type="button" class="view-link" onclick="openViewer('{{ url_for('view_document', doc_id=d['id']) }}', '{{ d['title']|e }}')">{{ t('View') }}</button>{% endif %}
             <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleDocEdit({{ d['id'] }})">{{ t('Edit') }}</span>
             <form method="post" action="{{ url_for('delete_document', doc_id=d['id']) }}" onsubmit="return confirm('Delete this document?');">
@@ -440,7 +440,7 @@
               <strong style="flex:1;">{% if c['vendor_name'] %}{{ c['vendor_name'] }} — {% endif %}{{ c['amount']|money }}</strong>
               <span class="mini-status status-{{ c['status'] }}">{{ c['status'] }}</span>
             </div>
-            <span class="upload-hint">{{ c['description'] }} · {{ c['submitted_at']|house_day }}</span>
+            <span class="upload-hint">{{ c['description'] }} · {{ c['submitted_at']|house_day|date_short }}</span>
           </div>
           {% endfor %}
         </div>
