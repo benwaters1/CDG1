@@ -150,10 +150,18 @@ def run():
         s.check("and a link to settle it", "/book/manage/" in mail["body"],
                 detail="no way to pay from the reminder")
         s.check("and the reference code", f"{TAG}-OWES" in mail["body"])
-        s.check("it does not demand payment before arrival",
-                "on arrival" in mail["body"].lower(),
-                detail="a chase with no option to pay on the day reads badly "
-                       "for a stay somebody has already committed to")
+        # The other way round since 8 October: a stay is paid online, in
+        # advance, and nothing is taken at the door (the owner's house rules).
+        # A reminder offering to settle on arrival would promise a payment the
+        # house does not take, four lines above the sentence saying it only
+        # takes card, on its own site.
+        s.check("it does not offer to take the money on arrival",
+                "on arrival" not in mail["body"].lower(),
+                detail="the house takes no payment at the door")
+        s.check("and it says how the house does take payment",
+                m.PAYMENT_SAFETY_LINE in mail["body"],
+                detail="a guest who knows that can recognise a message asking "
+                       "them to pay somewhere else")
 
     s.section("Once, not every night")
     s.check("the first run stamped them", _stamped("OWES"))
