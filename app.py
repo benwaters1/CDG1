@@ -6953,6 +6953,28 @@ def init_db():
               failed_at TEXT,
               attempts INTEGER NOT NULL DEFAULT 0
             )"""),
+        # THE CHECK ON SEND, one row per email it looked at and one per email it
+        # could not. How long the server took and how long the person had
+        # already waited, so "is it fast" is a figure rather than a feeling, and
+        # every time it could not run, so that is a watch rather than a mystery.
+        # Never the email itself, nor who it was to: who sent it, what the
+        # check found, and how long it took.
+        ("addin_send_checks_table",
+         """CREATE TABLE IF NOT EXISTS addin_send_checks (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              at TEXT NOT NULL,
+              user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+              mailbox TEXT,
+              platform TEXT,
+              source TEXT NOT NULL,
+              outcome TEXT NOT NULL,
+              reason TEXT,
+              detail TEXT,
+              server_ms INTEGER,
+              client_ms INTEGER
+            )"""),
+        ("addin_send_checks_at",
+         "CREATE INDEX IF NOT EXISTS addin_send_checks_at ON addin_send_checks(at)"),
     ):
         try:
             conn.execute(ddl)
@@ -33238,6 +33260,31 @@ def owner_home_warnings(conn, today):
         level, title, detail = problem
         add("blocker" if level == "blocker" else "warn", title, detail, 1,
             "admin_house_calendar")
+
+    # THE CHECK ON SEND, where it cannot run. A check that cannot run lets the
+    # email go, which from the outside looks exactly like a check that found
+    # nothing wrong -- so without this line nobody would ever know. It closes
+    # itself: the next email that Outlook gets checked takes the entry away.
+    trouble = send_check_trouble(conn)
+    if trouble:
+        first = trouble[0]
+        n = len(trouble)
+        add("warn",
+            f"The check on Send is not running in {n} Outlook{'' if n == 1 else 's'}",
+            f"{first['who']}, {first['where']}: {first['why']}; "
+            f"{first['failed']} email{'' if first['failed'] == 1 else 's'} since "
+            f"{format_date_short(house_date_iso(first['since']))} went unchecked"
+            + (f". Also {', '.join(t['who'] + ' (' + t['where'] + ')' for t in trouble[1:3])}"
+               if n > 1 else "") + ".",
+            n, "admin_outlook_addin", _anchor="send-checks")
+    speed = send_check_speed(conn)
+    if speed["count"] >= 10 and speed["median"] > ADDIN_SEND_SLOW_MS:
+        add("warn", "The check on Send is slow",
+            f"Half of this week's checks took the server longer than "
+            f"{speed['median'] / 1000:.1f} seconds; the slowest {speed['slowest'] / 1000:.1f}. "
+            "Outlook gives the whole check five, and past three the add-in gives up and "
+            "asks the person to check by eye.",
+            speed["count"], "admin_outlook_addin", _anchor="send-checks")
 
     order = {"blocker": 0, "warn": 1}
     out.sort(key=lambda w: (order.get(w["severity"], 9), -w["count"]))
@@ -74711,6 +74758,7 @@ WATCH_TASK_KINDS = {
     "booking_com": "A Booking.com guest waiting for an answer",
     "door": "The front door lock needs attention",
     "letters": "A guest letter out of step with the house rules on payment",
+    "sendcheck": "An Outlook the check on Send cannot run in",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -77930,6 +77978,19 @@ def watch_task_findings(conn, today=None):
             "wording, or edit it and keep your own.",
             today.isoformat(), "high" if d["untrue"] else "normal"))
     found.extend(take("letters", letters))
+
+    # An Outlook the check on Send cannot run in. One task per person and
+    # kind of Outlook, titled by those and nothing that moves, so it closes
+    # itself the first time that Outlook's next email is checked.
+    unchecked = []
+    for t in send_check_trouble(conn):
+        unchecked.append((
+            "sendcheck", f"Get the check on Send working for {t['who']} in {t['where']}",
+            f"Why: {t['why']}. {t['failed']} email{'' if t['failed'] == 1 else 's'} since "
+            f"{format_date_short(house_date_iso(t['since']))} went out unchecked."
+            + (f"\n\n{t['remedy']}" if t["remedy"] else ""),
+            today.isoformat(), "high"))
+    found.extend(take("sendcheck", unchecked))
 
     return found, dropped
 
@@ -86074,21 +86135,71 @@ def _anchor_year(day, month, received_date):
     return candidate
 
 
+# Where the conversation being answered starts, in a reply or a forward, as
+# Outlook, Apple Mail and Gmail write it in English and in French. Above it is
+# what the person sending wrote; below it is the guest's own message, and the
+# "Sent: 13 October 2026" line over every message in the thread. Read whole,
+# the check took that line for an arrival date and the guest's own figures for
+# a quote, and could stop a right reply as a wrong one.
+#
+# A bare "From:" is NOT a quote header -- "From: 12 August" is how a stay is
+# written in a quote -- so it counts only with a Sent or Date line under it.
+_QUOTED_FROM_HERE = re.compile(
+    r"^[ \t>]*(?:"
+    r"_{20,}[ \t]*$"
+    r"|-{3,}[ \t]*(?:original message|message d'origine|forwarded message"
+    r"|message transf[ée]r[ée])[ \t]*-{3,}"
+    r"|(?:from|de)[ \t]*:[^\n]*\n(?:[^\n]*\n){0,3}?[ \t>]*(?:sent|date|envoy[ée])[ \t]*:"
+    r"|on\b[^\n]{4,200}(?:\n[^\n]{0,120})?\bwrote:[ \t]*$"
+    r"|le\b[^\n]{4,200}(?:\n[^\n]{0,120})?\ba [ée]crit[ \t]*:[ \t]*$"
+    r")", re.IGNORECASE | re.MULTILINE)
+
+
+def own_words(body_text):
+    """What the person writing wrote: the body down to the quoted conversation."""
+    text = (body_text or "").replace("\r\n", "\n").replace("\r", "\n")
+    found = _QUOTED_FROM_HERE.search(text)
+    return text[:found.start()] if found else text
+
+
+def _nights(n):
+    return f"{n} night{'' if n == 1 else 's'}"
+
+
 def guess_email_conflict(conn, from_address, subject, body_text, received_at_iso):
     """Best-effort cross-reference of a price/date mentioned in an email
     against this app's real pricing and availability data. Only returns a
     result when there's something concrete to show a human — a category
     match with no price or conflict returns None rather than flagging
-    every email that happens to name a room or workshop."""
+    every email that happens to name a room or workshop.
+
+    THE NOTE IS WHAT A PERSON IS STOPPED WITH on Send, so it says what is
+    wrong AND what is right: the figure the email quotes and the figure the
+    booking system has, the stay it names and why it is not free, and which
+    rooms are. "Email mentions €999; actual price is €2,997" sent people back
+    to the booking system to find out what "actual" was the price of.
+
+    from_address may be one address or several: a reply often goes to a
+    couple, and the quote on file may be under either of them.
+    """
+    if isinstance(from_address, str) or from_address is None:
+        addresses = [from_address or ""]
+    else:
+        addresses = list(from_address)
+    addresses = [a.strip().lower() for a in addresses if a and a.strip()]
     text = f"{subject or ''}\n{body_text or ''}"
     lowered = text.lower()
     amounts = extract_money_amounts(text)
     dates = extract_dates(text, received_at_iso)
+    extracted_price = amounts[0] if amounts else None
 
     category = None
     computed_price = None
     availability_conflict = False
-    note = None
+    availability_note = None
+    # (what the quoted figure was for, how the sentence giving the right one
+    # begins, and whether that figure is per person).
+    priced_as = None
 
     room = next((r for r in conn.execute("SELECT * FROM rooms WHERE active = 1").fetchall() if r["name"].lower() in lowered), None)
     if room:
@@ -86096,50 +86207,78 @@ def guess_email_conflict(conn, from_address, subject, body_text, received_at_iso
         if len(dates) >= 2:
             arrival, departure = sorted(dates)[0], sorted(dates)[-1]
             if departure > arrival:
+                stay = (f"{room['name']}, "
+                        f"{format_date_range(arrival.isoformat(), departure.isoformat())} "
+                        f"({_nights((departure - arrival).days)})")
                 computed_price = compute_room_total(conn, room, arrival, departure)
-                available, _ = is_range_available(conn, room["id"], arrival, departure)
+                priced_as = (f"for {stay}", "The room's price for those nights is", False)
+                available, why = is_range_available(conn, room["id"], arrival, departure)
                 if not available:
                     availability_conflict = True
-                    note = f"{arrival.isoformat()} to {departure.isoformat()} is no longer available for {room['name']}."
+                    free = rooms_free_for(conn, arrival, departure, exclude_room_ids=(room["id"],))
+                    availability_note = (
+                        f"{stay} is not free. " + (f"{why} " if why else "")
+                        + ("Free for those nights: " + ", ".join(
+                            f"{r['name']} ({money(compute_room_total(conn, r, arrival, departure))})"
+                            for r in free[:3]) + "."
+                           if free else "No other room is free for those nights."))
 
     if not category:
         workshop = next((w for w in conn.execute("SELECT * FROM workshops WHERE active = 1").fetchall() if w["title"].lower() in lowered), None)
         if workshop:
             category = f"Workshop: {workshop['title']}"
             computed_price = workshop["price_per_person"] or None
+            priced_as = (f"for {workshop['title']}", "The workshop's price is", True)
 
     if not category and any(k in lowered for k in ("dinner", "restaurant reservation", "table for", "book a table")):
         settings = get_restaurant_settings(conn)
         if settings and settings["price_per_person"]:
             category = "Restaurant"
-            computed_price = settings["price_per_person"]
             if dates:
+                evening = format_date_short(dates[0].isoformat())
+                # The evening's own rate: New Year's Eve is not the ordinary
+                # menu, and the flat price said it was.
+                computed_price = restaurant_night_rate(conn, dates[0].isoformat())
+                priced_as = (f"for dinner on {evening}", "Dinner that evening is", True)
                 remaining = restaurant_remaining_capacity(conn, dates[0].isoformat())
                 if remaining is not None and remaining <= 0:
                     availability_conflict = True
-                    note = f"{dates[0].isoformat()} is fully booked for dinner."
+                    availability_note = f"Dinner on {evening} is fully booked: every place is taken."
+            else:
+                computed_price = settings["price_per_person"]
+                priced_as = ("for dinner", "Dinner is", True)
 
     if not category and any(k in lowered for k in EVENT_INQUIRY_KEYWORDS):
         category = "Event"
-        inquiry = conn.execute(
-            "SELECT quoted_price FROM event_inquiries WHERE contact_email = ? AND quoted_price IS NOT NULL "
-            "ORDER BY created_at DESC LIMIT 1", (from_address,),
-        ).fetchone()
+        inquiry = None
+        if addresses:
+            inquiry = conn.execute(
+                "SELECT quoted_price FROM event_inquiries "
+                "WHERE LOWER(contact_email) IN (%s) AND quoted_price IS NOT NULL "
+                "ORDER BY created_at DESC LIMIT 1" % ",".join("?" * len(addresses)),
+                addresses,
+            ).fetchone()
         if inquiry:
             computed_price = inquiry["quoted_price"]
+            priced_as = ("", "The quote on file for this enquiry is", False)
 
-    extracted_price = amounts[0] if amounts else None
     price_conflict = False
+    price_note = None
     if computed_price is not None and extracted_price is not None:
         if abs(computed_price - extracted_price) > max(1.0, computed_price * 0.02):
             price_conflict = True
-            note = note or f"Email mentions {money(extracted_price)}; actual price is {money(computed_price)}."
+            what, right, each = priced_as or ("", "The booking system's price is", False)
+            price_note = (f"This email quotes {money(extracted_price)}"
+                          + (f" {what}" if what else "") + ". "
+                          + f"{right} {money(computed_price)}"
+                          + (" a person" if each else "") + ".")
 
     if not category and extracted_price is None:
         return None
     if not (price_conflict or availability_conflict or extracted_price is not None):
         return None
 
+    note = " ".join(n for n in (availability_note, price_note) if n) or None
     return {
         "category": category, "extracted_price": extracted_price, "computed_price": computed_price,
         "extracted_dates": ", ".join(d.isoformat() for d in dates) if dates else None,
@@ -91701,13 +91840,53 @@ OUTLOOK_ADDIN_GUID = "31db9023-97b7-4519-8829-c0b1e3bed58e"
 # Outlook caches a manifest by its version. Bump it with anything that changes
 # what Outlook reads from the manifest -- a button, an event, a form factor --
 # or the change never reaches anybody who already has the add-in.
-OUTLOOK_ADDIN_VERSION = "2.0.0.1"
+#
+# 2.1.0.0, 14 October 2026: the check on Send is PromptUser, not SoftBlock. It
+# had never run in Outlook on the web: the event page did not tell office.js
+# it was ready, so office.js never started, Outlook waited, and under SoftBlock
+# the only button on "taking longer than expected" was Don't send. Nothing
+# could be sent, internal mail included.
+OUTLOOK_ADDIN_VERSION = "2.1.0.0"
 # Microsoft's sign-in library: the only file the panels take from a CDN, so
 # pinned to one release and fingerprinted, and the browser refuses any other
 # bytes under that name.
 MSAL_BROWSER_URL = ("https://cdn.jsdelivr.net/npm/@azure/msal-browser@4.30.0/"
                     "lib/msal-browser.min.js")
 MSAL_BROWSER_SRI = "sha384-RGxxfG5yRS8DLU7ZJ8OoLhbV/BsJFHyPuMVHrTLbpj3t5Z15LnviJmaznKY/a7LZ"
+# The same release, kept here, for the send check. Classic Outlook on Windows
+# runs the event handlers as ONE JavaScript file with nothing loaded beside
+# it, so the library has to travel inside that file. Held to the fingerprint
+# above by test_send_check: a copy that drifted from the pinned release would
+# be a library nobody pinned.
+MSAL_VENDORED_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "static", "addin", "msal-browser-4.30.0.min.js")
+
+# THE CHECK ON SEND HAS THREE SECONDS. Outlook puts up "taking longer than
+# expected" five seconds after Send, and those five include Outlook starting
+# the add-in, which on a 2017 Mac is not nothing. So the handler stops itself
+# at three, counted from its own first line, and says it could not check rather
+# than leave anybody looking at Outlook's dialog. Typical is a third of a
+# second: reading the email, one request, an answer.
+ADDIN_SEND_BUDGET_MS = 3000
+# Slower than this on the server is a check worth a line on the owner's home.
+ADDIN_SEND_SLOW_MS = 1500
+# Long enough to see a pattern over a season's quiet weeks; the rows say who
+# sent and what was found, never to whom or what the email said.
+ADDIN_SEND_CHECK_KEEP_DAYS = 90
+# Why a check could not run, in the owner's words. The add-in sends the code;
+# only these are kept, so nobody can write a sentence onto the owner's home
+# page by posting one.
+ADDIN_CHECK_FAILURES = {
+    "no_identity": "not signed in to the add-in",
+    "signed_out": "the add-in's sign-in was refused",
+    "sign_in_failed": "Microsoft 365 sign-in did not work in the background",
+    "timeout": "the check did not answer in time",
+    "unreachable": "the app could not be reached",
+    "server_error": "the app answered with an error",
+    "rate_limited": "too many checks in an hour",
+    "unreadable": "Outlook would not hand over the email",
+    "script_error": "the add-in itself failed",
+}
 ADDIN_SCOPE_NAME = "access_as_user"
 # A month, renewed silently every time the panel opens. Long enough that the
 # send check (which cannot sign anybody in) always has one; short enough that a
@@ -91920,13 +92099,16 @@ def addin_issue_session(conn, user_id, how, label=""):
     return raw, expires
 
 
-def addin_caller(conn):
+def addin_caller(conn, stamp=True):
     """Who is asking, as a dict, or None.
 
     A POST only. A person's key travels in the Authorization header; the
     shared key in the body. Never in a URL, where it would be written into
     every access log line for good -- the reason the GET these routes accept
     exists only to be answered 404.
+
+    stamp=False leaves the last-used write to the caller (stamp_due says
+    whether one is owed): the send check answers first and writes after.
     """
     if request.method != "POST":
         return None
@@ -91945,20 +92127,21 @@ def addin_caller(conn):
             return None
         # Stamped at most every ten minutes: the send check fires on every
         # outgoing email, and a write per send is a write nobody reads.
-        if (row["last_used_at"] or "") < (now - timedelta(minutes=10)).isoformat():
+        due = (row["last_used_at"] or "") < (now - timedelta(minutes=10)).isoformat()
+        if due and stamp:
             conn.execute("UPDATE addin_sessions SET last_used_at = ? WHERE id = ?",
                          (now.isoformat(), row["session_id"]))
             conn.commit()
         return {"user_id": row["user_id"], "name": row["name"],
                 "owner": row["role"] == "owner", "how": "signed in",
-                "session_id": row["session_id"]}
+                "session_id": row["session_id"], "stamp_due": due and not stamp}
     supplied = request.form.get("token", "")
     if (GUEST_LOOKUP_TOKEN and supplied
             and hmac.compare_digest(supplied.encode("utf-8"),
                                     GUEST_LOOKUP_TOKEN.encode("utf-8"))
             and addin_shared_key_allowed(conn)):
         return {"user_id": None, "name": "the shared key", "owner": False,
-                "how": "shared key", "session_id": None}
+                "how": "shared key", "session_id": None, "stamp_due": False}
     return None
 
 
@@ -96878,38 +97061,333 @@ def api_addin_summarise():
     return jsonify(summary=data["summary"], open_points=data.get("open_points") or [])
 
 
+def _addin_platform(raw):
+    """Outlook's own name for where it is running, kept to its letters."""
+    return re.sub(r"[^A-Za-z0-9 ._-]", "", raw or "")[:40]
+
+
+def _addin_mailbox(raw):
+    """The address an Outlook says it is, if it is an address at all."""
+    address = (raw or "").strip().lower()[:160]
+    return address if EMAIL_RE.match(address) else ""
+
+
+def _addin_requests_this_hour(conn, action):
+    """rate_limited's count, without its write. The write is made after the
+    answer has gone (addin_after_answer), with the same row it would have
+    written, so the limit counts exactly what it counted before."""
+    since = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    return conn.execute(
+        "SELECT COUNT(*) AS c FROM submission_log WHERE ip_address = ? AND action = ? "
+        "AND created_at >= ?", (request.remote_addr or "unknown", action, since)).fetchone()["c"]
+
+
+def addin_after_answer(response, write):
+    """write(conn), on a connection of its own, once the answer has gone.
+
+    THE CHECK ON SEND WRITES NOTHING BEFORE IT ANSWERS. SQLite has one write
+    lock, and a write waits up to five seconds (busy_timeout) for whoever
+    holds it -- a mailbox scan, a nightly job, a busy till. Five seconds is
+    all of Outlook's patience. So the request reads, answers, and only then
+    writes what it owes: the rate limit's row, the key's last-used stamp and
+    the line in the check log. Swallowed on failure: recording a check must
+    never cost the check.
+    """
+    def run():
+        try:
+            conn = get_db()
+            try:
+                write(conn)
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as e:                  # pragma: no cover - last resort
+            print(f"[send check] not recorded: {type(e).__name__}: {e}")
+    response.call_on_close(run)
+    return response
+
+
+def record_send_check(conn, *, user_id=None, mailbox="", platform="", source="send",
+                      outcome, reason=None, detail=None, server_ms=None, client_ms=None):
+    """One line in the check log, and the log kept to its season."""
+    now = datetime.now(timezone.utc)
+    conn.execute(
+        """INSERT INTO addin_send_checks (at, user_id, mailbox, platform, source, outcome,
+             reason, detail, server_ms, client_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (now.isoformat(), user_id, mailbox or None, platform or None, source, outcome,
+         reason, (detail or "")[:300] or None, server_ms, client_ms))
+    conn.execute("DELETE FROM addin_send_checks WHERE at < ?",
+                 ((now - timedelta(days=ADDIN_SEND_CHECK_KEEP_DAYS)).isoformat(),))
+
+
+def _client_ms(raw):
+    try:
+        return max(0, min(int(float(raw)), 600000))
+    except (TypeError, ValueError):
+        return None
+
+
+ADDIN_PLATFORM_WORDS = {
+    "OfficeOnline": "Outlook on the web or the new Outlook",
+    "PC": "classic Outlook for Windows",
+    "Mac": "Outlook for Mac",
+    "iOS": "Outlook on an iPhone",
+    "Android": "Outlook on Android",
+}
+
+# What puts each one right, for the task it raises.
+ADDIN_CHECK_REMEDY = {
+    "no_identity": "Open the Gudanes panel once in that Outlook (Guest, or Draft with AI) and "
+                   "sign in. If it says the account is not linked, link it on the Outlook add-in "
+                   "page.",
+    "signed_out": "Its sign-in was signed out on the add-in page or ran out. Opening the "
+                  "Gudanes panel once in that Outlook signs it in again.",
+    "sign_in_failed": "Microsoft 365 wanted an answer it could not ask for in the background "
+                      "-- usually consent or a password change. Opening the Gudanes panel once "
+                      "in that Outlook lets the person answer it.",
+    "timeout": "The app did not answer within the three seconds the check has. If this keeps "
+               "happening, look at the app on Railway.",
+    "unreachable": "The app could not be reached from that Outlook. If this keeps happening, "
+                   "look at the app on Railway.",
+    "server_error": "The check failed on the server. The app's log has the reason.",
+    "rate_limited": "More than the hourly allowance of checks came from one place. Look at "
+                    "who is sending so many.",
+    "unreadable": "Outlook would not hand the email over to the add-in. Updating that Outlook "
+                  "is the first thing to try.",
+    "script_error": "The add-in itself failed in that Outlook. Updating that Outlook is the "
+                    "first thing to try.",
+}
+
+
+def addin_platform_words(code):
+    return ADDIN_PLATFORM_WORDS.get(code or "", code or "an Outlook")
+
+
+def send_check_trouble(conn, now=None, days=14):
+    """Who the check on Send is not working for, now.
+
+    One entry per address and kind of Outlook whose LATEST check in the last
+    fortnight could not run. So it closes itself: the next email that same
+    Outlook gets checked takes the entry away, and a person whose desktop is
+    fine is still named for the Mac that is not. Karina's 2017 Mac never had a
+    key, and nothing anywhere said so -- the check simply let every email
+    through, which looks exactly like a check that found nothing wrong.
+    """
+    now = now or datetime.now(timezone.utc)
+    rows = conn.execute(
+        """SELECT addin_send_checks.*, users.name AS user_name
+             FROM addin_send_checks
+             LEFT JOIN users ON users.id = addin_send_checks.user_id
+            WHERE addin_send_checks.at >= ? AND addin_send_checks.source = 'send'
+            ORDER BY addin_send_checks.at, addin_send_checks.id""",
+        ((now - timedelta(days=days)).isoformat(),)).fetchall()
+    seen = {}
+    for r in rows:
+        who = (r["mailbox"] or (f"user {r['user_id']}" if r["user_id"] else "")).lower()
+        entry = seen.setdefault((who, r["platform"] or ""),
+                                {"failed": 0, "since": None, "latest": None, "name": None})
+        entry["name"] = r["user_name"] or entry["name"]
+        # Late is neither: the server answered, but nobody saw it.
+        if r["outcome"] == "too_late":
+            continue
+        entry["latest"] = r
+        if r["outcome"] == "could_not_check":
+            entry["failed"] += 1
+            entry["since"] = entry["since"] or r["at"]
+        else:
+            entry["failed"], entry["since"] = 0, None
+    out = []
+    for (who, platform), e in seen.items():
+        last = e["latest"]
+        if not last or last["outcome"] != "could_not_check":
+            continue
+        name = e["name"]
+        if not name and last["mailbox"]:
+            person = addin_user_for_identity(conn, last["mailbox"])
+            name = person["name"] if person else None
+        out.append({
+            "who": name or last["mailbox"] or "somebody",
+            "mailbox": last["mailbox"] or "",
+            "platform": platform, "where": addin_platform_words(platform),
+            "reason": last["reason"] or "",
+            "why": ADDIN_CHECK_FAILURES.get(last["reason"] or "", "the check could not run"),
+            "remedy": ADDIN_CHECK_REMEDY.get(last["reason"] or "", ""),
+            "failed": e["failed"], "since": e["since"], "last": last["at"],
+        })
+    out.sort(key=lambda t: (-t["failed"], t["who"]))
+    return out
+
+
+def send_check_speed(conn, now=None, days=7):
+    """How long the server takes over a check on Send, from the log: the
+    median, the slowest, and how many took longer than ADDIN_SEND_SLOW_MS."""
+    now = now or datetime.now(timezone.utc)
+    times = sorted(r["server_ms"] for r in conn.execute(
+        """SELECT server_ms FROM addin_send_checks
+            WHERE at >= ? AND source = 'send' AND server_ms IS NOT NULL
+              AND outcome != 'could_not_check'""",
+        ((now - timedelta(days=days)).isoformat(),)).fetchall())
+    if not times:
+        return {"count": 0, "median": None, "slowest": None, "slow": 0}
+    return {"count": len(times), "median": times[len(times) // 2], "slowest": times[-1],
+            "slow": sum(1 for t in times if t > ADDIN_SEND_SLOW_MS)}
+
+
 @app.route("/api/check-send-conflict", methods=["GET", "POST"])
 @csrf.exempt
 def api_check_send_conflict():
     """The check on a reply before it goes: from Smart Alerts on Send where
     Outlook runs it, and from the "Check before sending" button everywhere
     else. Runs the same price/date guesser the inbox scan uses on incoming
-    mail, against the draft. Any failure here must never be the reason a
-    legitimate email cannot send -- the add-in treats an error as 'no conflict
-    found', never as 'block'. Generous limit: this fires on every send."""
+    mail, against the draft.
+
+    It reads only what the person wrote (own_words): the guest's message
+    quoted underneath has the guest's dates and figures in it, and the
+    "Sent:" line of every message in the thread.
+
+    Fast by construction: every write waits until the answer has gone (see
+    addin_after_answer), and each one is timed into the check log so "is it
+    fast" is a figure. Generous limit: this fires on every send.
+    """
+    started = time.perf_counter()
     conn = get_db()
-    caller, refused = _addin_door(conn, "check_send_conflict", 1200, shared=300)
-    if refused:
+    caller = addin_caller(conn, stamp=False)
+    if not caller:
         conn.close()
-        return refused
-    recipient = request.form.get("recipient_email", "").strip().lower()
+        return jsonify(error="not found"), 404
+    limit_key = (f"check_send_conflict:u{caller['user_id']}" if caller["user_id"]
+                 else "check_send_conflict")
+    limit = 1200 if caller["user_id"] else 300
+    ip = request.remote_addr or "unknown"
+    source = "send" if request.form.get("source") == "send" else "button"
+    mailbox = _addin_mailbox(request.form.get("mailbox"))
+    platform = _addin_platform(request.form.get("platform"))
+    waited = _client_ms(request.form.get("waited_ms"))
     subject = request.form.get("subject", "")
     body_text = request.form.get("body", "")
-    conflict = guess_email_conflict(conn, recipient, subject, body_text,
-                                    datetime.now(timezone.utc).isoformat())
+
+    def owed(outcome, reason=None, detail=None):
+        """The writes this request owes, made after it has answered."""
+        server_ms = int((time.perf_counter() - started) * 1000)
+        # An answer that arrives after the add-in has given up is not a check
+        # anybody saw. Logged as late, so it is counted as slow and does not
+        # read as the Outlook working again.
+        if (source == "send" and waited is not None and outcome != "could_not_check"
+                and waited + server_ms >= ADDIN_SEND_BUDGET_MS):
+            outcome, reason = "too_late", None
+
+        def write(c):
+            c.execute("INSERT INTO submission_log (ip_address, action, created_at) "
+                      "VALUES (?, ?, ?)", (ip, limit_key, datetime.now(timezone.utc).isoformat()))
+            if caller.get("stamp_due"):
+                c.execute("UPDATE addin_sessions SET last_used_at = ? WHERE id = ?",
+                          (datetime.now(timezone.utc).isoformat(), caller["session_id"]))
+            # The panel's sign-in check asks with an empty draft; that is not a
+            # check of anything, and a log full of them hides the real ones.
+            if outcome and (subject.strip() or body_text.strip()):
+                record_send_check(c, user_id=caller["user_id"], mailbox=mailbox,
+                                  platform=platform, source=source, outcome=outcome,
+                                  reason=reason, detail=detail, server_ms=server_ms,
+                                  client_ms=waited)
+        return write, server_ms
+
+    if _addin_requests_this_hour(conn, limit_key) >= limit:
+        conn.close()
+        write, _ms = owed("could_not_check", "rate_limited")
+        return addin_after_answer(
+            jsonify(error="too many requests — give it a few minutes", recorded=True), write), 429
+
+    recipients = [a.strip().lower() for a in
+                  (request.form.get("recipients") or request.form.get("recipient_email") or "").split(",")
+                  if EMAIL_RE.match(a.strip().lower())]
+    house, domains = house_addresses(), set(addin_house_domains())
+    outside = [a for a in recipients if a not in house and a.rsplit("@", 1)[-1] not in domains]
+    try:
+        if recipients and not outside:
+            conflict, internal = None, True
+        else:
+            conflict, internal = guess_email_conflict(
+                conn, outside, subject, own_words(body_text),
+                datetime.now(timezone.utc).isoformat()), False
+    except Exception as e:
+        conn.close()
+        write, _ms = owed("could_not_check", "server_error", type(e).__name__)
+        print(f"[send check] failed: {type(e).__name__}: {e}")
+        return addin_after_answer(jsonify(error="The check failed on the server.",
+                                          recorded=True), write), 500
     conn.close()
+
     if not conflict or not (conflict["price_conflict"] or conflict["availability_conflict"]):
-        return jsonify(conflict=False,
-                       checked=(f"Checked against {conflict['category']}: nothing disagrees."
-                                if conflict and conflict.get("category") else
-                                "Nothing in this reply names a price or dates the booking "
-                                "system can check."))
-    return jsonify(
-        conflict=True,
-        note=conflict["note"] or "This message may not match current pricing or availability.",
+        if internal:
+            checked, outcome = "Only the house's own addresses: nothing to check.", "internal"
+        elif conflict and conflict.get("category"):
+            checked, outcome = f"Checked against {conflict['category']}: nothing disagrees.", "clear"
+        else:
+            checked, outcome = ("Nothing in this reply names a price or dates the booking "
+                                "system can check.", "nothing")
+        write, server_ms = owed(outcome, detail=(conflict or {}).get("category"))
+        return addin_after_answer(jsonify(conflict=False, checked=checked, ms=server_ms), write)
+    note = conflict["note"] or "This message may not match current pricing or availability."
+    write, server_ms = owed("conflict", detail=note)
+    return addin_after_answer(jsonify(
+        conflict=True, note=note,
         category=conflict["category"], extracted_price=conflict["extracted_price"],
-        computed_price=conflict["computed_price"],
-    )
+        computed_price=conflict["computed_price"], ms=server_ms,
+    ), write)
+
+
+@app.route("/api/addin/send-check-failed", methods=["GET", "POST"])
+@csrf.exempt
+def api_addin_send_check_failed():
+    """The add-in saying a check on Send could not run, and why.
+
+    The one add-in endpoint that takes somebody it cannot name: a check
+    usually fails BECAUSE the Outlook has no key -- nobody ever signed in on
+    it -- and that is the failure the owner most needs to hear about. So it
+    accepts a key if there is one and an Outlook's own address if not, keeps
+    only a reason from a fixed list (ADDIN_CHECK_FAILURES) and an address that
+    is the house's own, and answers the same empty 204 to everything, so it
+    tells a prober nothing.
+    """
+    if request.method != "POST":
+        return jsonify(error="not found"), 404
+    reason = request.form.get("reason", "")
+    if reason not in ADDIN_CHECK_FAILURES:
+        return "", 204
+    conn = get_db()
+    if rate_limited(conn, "send_check_failed", 120):
+        conn.close()
+        return "", 204
+    caller = addin_caller(conn, stamp=False)
+    mailbox = _addin_mailbox(request.form.get("mailbox"))
+    if mailbox and mailbox not in house_addresses() and \
+            mailbox.rsplit("@", 1)[-1] not in addin_house_domains():
+        mailbox = ""
+    if not caller and not mailbox:
+        conn.close()
+        return "", 204
+    detail = request.form.get("detail") or ""
+    detail = detail if re.fullmatch(r"[A-Za-z0-9_ .:/()-]{0,120}", detail) else ""
+    record_send_check(conn, user_id=caller["user_id"] if caller else None, mailbox=mailbox,
+                      platform=_addin_platform(request.form.get("platform")), source="send",
+                      outcome="could_not_check", reason=reason, detail=detail or None,
+                      client_ms=_client_ms(request.form.get("client_ms")))
+    conn.commit()
+    conn.close()
+    return "", 204
+
+
+@app.route("/.well-known/microsoft-officeaddins-allowed.json")
+def office_addins_allowed():
+    """The add-in's event script, named as allowed to ask this site for things.
+
+    Classic Outlook on Windows runs the event handlers as a bare script with
+    no page around it, and gives it no web origin to ask from unless the
+    origin it came from lists it here. Without this file every request the
+    send check made from classic Outlook was refused before it left the
+    machine, and the check let the email through unchecked.
+    """
+    return jsonify(allowed=[url_for("outlook_addin_launchevent_js", _external=True)])
 
 
 @app.route("/api/draft-reply", methods=["GET", "POST"])
@@ -97084,6 +97562,24 @@ def api_addin_create_profile():
                    link=_dossier_link("guest_detail", True, guest_id=cur.lastrowid))
 
 
+# Domains anybody can have an address at. An inbox added to MS_GRAPH_MAILBOXES
+# at one of these would otherwise make its whole domain "the house", and every
+# guest writing from it would be waved through the check on Send as internal.
+PUBLIC_MAIL_DOMAINS = frozenset({
+    "gmail.com", "googlemail.com", "outlook.com", "outlook.fr", "hotmail.com",
+    "hotmail.fr", "hotmail.co.uk", "live.com", "live.fr", "msn.com", "yahoo.com",
+    "yahoo.fr", "yahoo.co.uk", "icloud.com", "me.com", "mac.com", "aol.com",
+    "orange.fr", "wanadoo.fr", "free.fr", "sfr.fr", "laposte.net", "gmx.com",
+    "gmx.fr", "gmx.de", "web.de", "proton.me", "protonmail.com",
+})
+
+
+def addin_house_domains():
+    """The domains whose every address is the house's own: what the check on
+    Send treats as internal, and finishes at once without asking anybody."""
+    return sorted(d for d in house_domains() if d not in PUBLIC_MAIL_DOMAINS)
+
+
 def addin_page_config():
     """What every add-in page and script is told: where to ask, and how to sign in."""
     return {
@@ -97092,12 +97588,18 @@ def addin_page_config():
         "summarise_url": url_for("api_addin_summarise", _external=True),
         "draft_url": url_for("api_draft_reply", _external=True),
         "check_url": url_for("api_check_send_conflict", _external=True),
+        "failed_url": url_for("api_addin_send_check_failed", _external=True),
         "session_url": url_for("api_addin_session", _external=True),
         "note_url": url_for("api_addin_recipient_note", _external=True),
         "create_url": url_for("api_addin_create_profile", _external=True),
         "sso_client_id": ADDIN_CLIENT_ID if addin_sso_configured() else "",
         "sso_tenant": addin_tenant_id() if addin_sso_configured() else "",
         "sso_scope": addin_scope() if addin_sso_configured() else "",
+        "house_domains": addin_house_domains(),
+        "house_addresses": sorted(house_addresses()),
+        "send_budget_ms": ADDIN_SEND_BUDGET_MS,
+        "failure_words": ADDIN_CHECK_FAILURES,
+        "version": OUTLOOK_ADDIN_VERSION,
     }
 
 
@@ -97138,18 +97640,65 @@ def outlook_addin_common_js():
     return app.response_class(js, mimetype="application/javascript")
 
 
+_MSAL_SOURCE_JS = []
+
+
+def addin_msal_source_js():
+    """The pinned sign-in library as one JavaScript string literal, for the
+    event script to start only when it needs to sign somebody in: a third of
+    a megabyte is parsed as a string in a millisecond, and as code only on
+    the rare Send with no key. An empty string if the copy is missing, which
+    the script reads as "cannot sign in here" rather than failing to load."""
+    if not _MSAL_SOURCE_JS:
+        from markupsafe import Markup
+        try:
+            with open(MSAL_VENDORED_PATH, encoding="utf-8") as fh:
+                source = fh.read()
+        except OSError:
+            source = ""
+        # Safe inside any script: no "<", ">", "&" or "'" survives as itself.
+        literal = (json.dumps(source).replace("<", "\\u003c").replace(">", "\\u003e")
+                   .replace("&", "\\u0026").replace("'", "\\u0027"))
+        _MSAL_SOURCE_JS.append(Markup(literal))
+    return _MSAL_SOURCE_JS[0]
+
+
+def addin_event_script():
+    """The event handlers as served, and a fingerprint of exactly those bytes."""
+    js = render_template("outlook_addin_launchevent.js", config=addin_page_config(),
+                         msal_source=addin_msal_source_js())
+    return js, hashlib.sha256(js.encode("utf-8")).hexdigest()[:20]
+
+
 @app.route("/outlook-addin/launchevent.html")
 def outlook_addin_launchevent_html():
-    return render_template(
+    """The page Outlook on the web, new Outlook and the Mac run the handlers
+    in. Never cached, and it names the script by its fingerprint: so the
+    script can be cached for a day, and a deploy still reaches everybody on
+    the next email they open."""
+    _js, tag = addin_event_script()
+    resp = app.response_class(render_template(
         "outlook_addin_launchevent.html",
-        launchevent_js_url=url_for("outlook_addin_launchevent_js", _external=True),
-    )
+        launchevent_js_url=url_for("outlook_addin_launchevent_js", v=tag, _external=True),
+    ), mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 @app.route("/outlook-addin/launchevent.js")
 def outlook_addin_launchevent_js():
-    js = render_template("outlook_addin_launchevent.js", config=addin_page_config())
-    return app.response_class(js, mimetype="application/javascript")
+    """The event handlers. Asked for by fingerprint (from the page above) it is
+    kept for a day; asked for by its plain address -- classic Outlook on
+    Windows, which fetches it when Outlook starts -- it is checked each time,
+    and a 304 when nothing has changed."""
+    js, tag = addin_event_script()
+    resp = app.response_class(js, mimetype="application/javascript")
+    resp.set_etag(tag)
+    if request.args.get("v") == tag:
+        resp.headers["Cache-Control"] = "public, max-age=86400"
+    else:
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp.make_conditional(request)
 
 
 # What works where, as the add-in page states it. Each line is a claim about
@@ -97227,6 +97776,15 @@ def _admin_addin_context(conn):
         "signed_out": signed_out,
         "mailboxes": mailboxes, "house_notes": (notes["value"] if notes else ""),
         "support": ADDIN_SUPPORT,
+        "send_trouble": send_check_trouble(conn), "send_speed": send_check_speed(conn),
+        "send_slow_ms": ADDIN_SEND_SLOW_MS,
+        "send_stopped": conn.execute(
+            """SELECT addin_send_checks.at, addin_send_checks.mailbox, addin_send_checks.detail,
+                      users.name AS user_name
+                 FROM addin_send_checks LEFT JOIN users ON users.id = addin_send_checks.user_id
+                WHERE addin_send_checks.outcome = 'conflict' AND addin_send_checks.at >= ?
+                ORDER BY addin_send_checks.at DESC LIMIT 12""",
+            ((datetime.now(timezone.utc) - timedelta(days=14)).isoformat(),)).fetchall(),
     }
 
 

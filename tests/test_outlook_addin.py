@@ -132,9 +132,12 @@ def run():
     s.section("The desktop and the web")
     desk_events = _events(desk1, "v1")
     s.check("the check on Send", "OnMessageSend" in desk_events)
+    # PromptUser, not SoftBlock: under SoftBlock Outlook's own "taking longer
+    # than expected" dialog offers only Don't Send, and on 14 October 2026 that
+    # stopped every email in Outlook on the web. test_send_check runs it.
     s.check("which never locks anybody out of email",
             desk_events.get("OnMessageSend") is not None
-            and desk_events["OnMessageSend"].get("SendMode") == "SoftBlock")
+            and desk_events["OnMessageSend"].get("SendMode") == "PromptUser")
     s.check("and the note when a guest is put in To",
             {"OnMessageRecipientsChanged", "OnNewMessageCompose"} <= set(desk_events))
 
@@ -174,8 +177,9 @@ def run():
     named = {ev.get("FunctionName") for evs in (desk_events, mob_events) for ev in evs.values()}
     for fn in sorted(named):
         s.check(f"{fn}", f'Office.actions.associate("{fn}", {fn})' in js,
-                detail="an event handler Outlook cannot find blocks every send under SoftBlock")
-    s.check("the send check fails open", js.count("allowEvent: true") >= 4)
+                detail="an event handler Outlook cannot find is an add-in that never answers")
+    s.check("and the page tells office.js it is ready, or none of them runs in a browser",
+            "Office.onReady(" in js)
 
     s.section("What the add-in page says works where, is what the manifest does")
     table = {row["feature"]: row for row in m.ADDIN_SUPPORT}

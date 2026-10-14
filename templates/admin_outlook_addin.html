@@ -159,6 +159,43 @@
 </p>
 {% endif %}
 
+<h2 class="section-heading" id="send-checks">Checks on Send</h2>
+<p class="upload-hint" style="margin-top:-6px;">Every email going outside the house is checked when Send is pressed: its prices and dates against the booking system. A wrong one is stopped with the right one named, and the person chooses whether to send it anyway. The check has three seconds. When it cannot run, the person is told and decides, and the Outlook is listed here until its next email is checked.</p>
+{% if send_speed.count %}
+<p class="manual-body wraps">In the last seven days: {{ send_speed.count }} email{{ 's' if send_speed.count != 1 }} checked. The server took {{ send_speed.median }} ms or less for half of them and {{ send_speed.slowest }} ms at the slowest{% if send_speed.slow %}; {{ send_speed.slow }} took over {{ send_slow_ms }} ms{% endif %}.</p>
+{% else %}
+<div class="empty-state">No email has been checked on Send in the last seven days.</div>
+{% endif %}
+{% if send_trouble %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Who</th><th>Outlook</th><th>Why it could not check</th><th>Unchecked</th><th>Since</th><th>What puts it right</th></tr></thead>
+  <tbody>
+    {% for t in send_trouble %}
+    <tr>
+      <th scope="row">{{ t.who }}{% if t.mailbox and t.mailbox != t.who %}<br><span class="upload-hint">{{ t.mailbox }}</span>{% endif %}</th>
+      <td>{{ t.where }}</td>
+      <td>{{ t.why }}</td>
+      <td>{{ t.failed }}</td>
+      <td>{{ t.since|house_day|date_short }}</td>
+      <td>{{ t.remedy }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="upload-hint">Every Outlook that sent outside the house in the last fortnight was checked.</p>
+{% endif %}
+{% if send_stopped %}
+<p class="manual-body wraps"><strong>Stopped in the last fortnight</strong>, and what each was told:</p>
+<ul class="manual-body wraps">
+  {% for s in send_stopped %}
+  <li>{{ s['at']|house_day|date_short }}, {{ s['user_name'] or s['mailbox'] or 'the shared key' }}: {{ s['detail'] }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
 <h2 class="section-heading" id="inboxes">Each inbox</h2>
 <p class="upload-hint" style="margin-top:-6px;">Who signs a reply drafted from each inbox, and which inboxes only you can see in a guest's history.</p>
 {% if not mailboxes %}

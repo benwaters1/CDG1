@@ -553,6 +553,36 @@ up to 24). When the add-in page shows a new manifest version, choose
   experience@ = Jasmine, ariege@ = Karina, accounts@ = Accounts) and what the
   drafter should know that the website does not say are on the add-in page.
 
+### 4. The check on Send
+
+Every email going outside the house is checked when Send is pressed, on
+Windows, Mac and the web (Microsoft runs no send checks on phones; the Sent
+Items scan covers those). Mail only to @chateaugudanes.com goes at once.
+
+- **PromptUser, never SoftBlock or Block.** Under SoftBlock, Outlook's own
+  "taking longer than expected" dialog offers only Don't Send. On 14 October
+  2026 that stopped every email in Outlook on the web: the event page never
+  called `Office.onReady()`, so office.js never started and no handler ran.
+  With PromptUser, Send Anyway is on every one of Outlook's dialogs, whatever
+  the add-in does. A wrong price still stops the email, with the right one
+  named, and the person has to choose to send it anyway.
+- **Three seconds** (`ADDIN_SEND_BUDGET_MS`), counted from the handler's first
+  line. If it cannot check in time, it says so and the person decides.
+- **It signs itself in** through Microsoft 365 (nested app authentication),
+  using `ADDIN_CLIENT_ID`. It does this when an email is opened, so Send
+  rarely has to wait. It no longer needs a panel to have been opened first.
+  Microsoft's sign-in library travels inside the event script, because
+  classic Outlook on Windows loads that one file and nothing beside it. It is
+  kept at `static/addin/`, held to the pinned fingerprint.
+- **Classic Outlook on Windows** may only call the app because
+  `/.well-known/microsoft-officeaddins-allowed.json` names the event script.
+  Without that file every request it made was refused before it left the
+  machine.
+- **Every check is logged** with its time. Any check that could not run is
+  listed on the owner home and becomes a task. Both go away once that
+  Outlook's next email is checked. The add-in page's "Checks on Send"
+  section has the details.
+
 What is sent to Anthropic, and what is not, is in the privacy notice
 (`templates/privacy.html`, "Who Else Is Involved"), and `test_privacy`
 checks the code against it.

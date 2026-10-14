@@ -202,14 +202,19 @@
                 </Group>
               </OfficeTab>
             </ExtensionPoint>
-            <!-- SoftBlock on Send: if the add-in cannot be reached, the message
-                 still goes rather than staff being locked out of email by an
-                 outage on our side. See DEPLOY.md before tightening it. -->
+            <!-- PromptUser on Send, never SoftBlock or Block. Under SoftBlock,
+                 Outlook's own "taking longer than expected" and "timed out"
+                 dialogs offer only Don't Send, so an add-in that does not
+                 answer stops every email; on 14 October 2026 that is what
+                 happened in Outlook on the web. PromptUser keeps Send Anyway on
+                 every one of Outlook's dialogs, whatever the add-in does. A
+                 wrong price still stops the email, with the right one named;
+                 the person has to choose to send it anyway. -->
             <ExtensionPoint xsi:type="LaunchEvent">
               <LaunchEvents>
                 <LaunchEvent Type="OnNewMessageCompose" FunctionName="onNewMessageComposeHandler"/>
                 <LaunchEvent Type="OnMessageRecipientsChanged" FunctionName="onMessageRecipientsChangedHandler"/>
-                <LaunchEvent Type="OnMessageSend" FunctionName="onMessageSendHandler" SendMode="SoftBlock"/>
+                <LaunchEvent Type="OnMessageSend" FunctionName="onMessageSendHandler" SendMode="PromptUser"/>
               </LaunchEvents>
               <SourceLocation resid="WebViewRuntime.Url"/>
             </ExtensionPoint>

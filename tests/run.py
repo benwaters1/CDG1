@@ -468,6 +468,7 @@ SUITES = [
     "test_email_history",
     "test_reply_drafting",
     "test_outlook_addin",
+    "test_send_check",
     "test_house_calendar",
 ]
 

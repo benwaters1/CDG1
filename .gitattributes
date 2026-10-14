@@ -1,0 +1,4 @@
+# Microsoft's sign-in library, kept byte for byte: test_send_check holds it to
+# the fingerprint of the pinned release, and a Windows checkout that turned
+# its line endings into CRLF would be a different file under the same name.
+static/addin/msal-browser-*.min.js -text

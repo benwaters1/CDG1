@@ -100,6 +100,8 @@ NOT_LINKED_ON_PURPOSE = {
     "api_addin_session": "fetched by the add-in when it signs in",
     "api_addin_recipient_note": "fetched by the add-in's compose events",
     "api_addin_create_profile": "fetched by the add-in",
+    "api_addin_send_check_failed": "fetched by the add-in when a check on Send cannot run",
+    "office_addins_allowed": "read by classic Outlook on Windows before the send check may ask anything",
     "house_calendar_ics": "subscribed to in a calendar app",
     "notifications_unread_count": "polled by the page",
     "admin_overview_status": "polled by the overview",
