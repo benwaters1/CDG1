@@ -41,18 +41,12 @@ m = _harness.m
 # A dictionary rather than a list so the reason travels with the name: an
 # unexplained allow-list is where a genuine orphan hides.
 NOT_LINKED_ON_PURPOSE = {
-    # Old addresses from the site the house published for a decade. Reached
-    # by an inbound link or a bookmark; linking them would be circular.
-    "legacy_about": "old address", "legacy_accommodation": "old address",
-    "legacy_ateliers": "old address", "legacy_bedrooms": "old address",
-    "legacy_blog": "old address", "legacy_contact_us": "old address",
-    "legacy_courses": "old address", "legacy_dining": "old address",
-    "legacy_food": "old address", "legacy_history": "old address",
-    "legacy_journal": "old address", "legacy_la_table": "old address",
-    "legacy_news": "old address", "legacy_retreats": "old address",
-    "legacy_rooms": "old address", "legacy_stay": "old address",
-    "legacy_the_chateau": "old address", "legacy_visit": "old address",
-    "legacy_weddings": "old address",
+    # Old addresses from the site the house published for a decade are not
+    # listed here: they are every path register_legacy_paths wired, read
+    # from m.LEGACY_WIRED in run(), so the list cannot go stale when the next
+    # one is added. Reached by an inbound link or a bookmark; linking them
+    # would be circular. test_old_addresses checks each lands on a page.
+    #
     # Typed on purpose, and the reason is the whole point of the page: it is
     # for when nobody can log in, so a link from inside the app would be
     # behind the very door that is shut. Reached by typing /status, which is
@@ -166,6 +160,11 @@ def run():
         if rule.startswith("/static") or r.endpoint in ("logout", "login"):
             continue
         if r.endpoint in NOT_LINKED_ON_PURPOSE:
+            continue
+        # An address from the old site, which is reached from outside it.
+        # Only the ones the app actually wired: a real page that happens to
+        # share a name with an old address is still owed a link.
+        if rule in m.LEGACY_WIRED and r.endpoint.startswith("legacy"):
             continue
         # A page behind an id is reached from the list that owns it; only the
         # addresses with no arguments can be compared literally.

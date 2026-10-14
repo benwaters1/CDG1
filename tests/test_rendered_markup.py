@@ -316,6 +316,13 @@ ENDPOINT_ARGS = {
     # A callable is asked for the value: the newest row is not always one the
     # page will open. See _registrable_session.
     ("workshop_register", "session_id"): lambda conn: _registrable_session(conn),
+    # The old Squarespace addresses that carry a name. Each is a redirect, so
+    # the sweep reaches it and reads where it lands, not a page of its own.
+    ("legacy_atelier_product", "slug"): "seven-starry-nights-2027",
+    ("legacy_celebrations_portfolio_any", "_rest"): "dan-and-carl",
+    ("legacy_chateau_ateliers_any", "_rest"): "category/2024",
+    ("legacy_letter_club_subscription_any", "_rest"):
+        "p/seasonal-letter-subscription-from-chteau-de-gudanes",
     ("campaign_unsubscribe", "token"): ("campaign_sends", "unsubscribe_token"),
     ("event_quote", "token"): ("event_quotes", "token"),
     ("guest_account", "token"): ("guest_sessions", "token"),

@@ -43,6 +43,56 @@ Management before the URL goes anywhere public.
 
 ---
 
+## Moving chateaugudanes.com over from Squarespace
+
+Two DNS records change and nothing else. Email is untouched as long as the
+rest are left exactly as they are.
+
+**The day before:** lower the TTL on the two records below to 300 seconds, so
+the change takes minutes rather than hours. Have the readiness page
+(`/admin/readiness`) showing nothing red.
+
+1. **In Railway**, *Settings → Networking → Custom domain*: add
+   `www.chateaugudanes.com` and `chateaugudanes.com`. Railway shows a CNAME
+   target for each (and may ask for a TXT record to prove the domain is yours).
+2. **At the DNS host (Syrahost)**, change only these:
+   - `www` — the CNAME `ext.squarespace.com` becomes the target Railway gave.
+   - `chateaugudanes.com` itself — the four Squarespace `A` records
+     (`198.49.23.144/.145`, `198.185.159.144/.145`) go. A bare domain cannot
+     hold a CNAME, so this needs an ALIAS/ANAME record (or "CNAME flattening")
+     pointing at Railway's target. If Syrahost has no such thing, forward the
+     bare domain to `https://www.chateaugudanes.com` instead.
+   - In the SPF record, take out `+a`. Once the bare domain points at Railway,
+     `+a` would let any server behind Railway's addresses send mail as the
+     house.
+   - **Leave alone:** the MX record (Outlook), the two `MS=` records, the rest
+     of the SPF, and everything on `send.` and `resend._domainkey.send`
+     (Resend). Those are the email.
+3. **Wait until Railway shows both domains with a certificate** and
+   `https://www.chateaugudanes.com` opens the new site.
+4. **Only then, in Railway's variables:** `PUBLIC_BASE_URL` =
+   `https://www.chateaugudanes.com` (the address the house uses — www or the
+   bare domain, whichever was chosen above) and `SITE_IS_LIVE` = `1`.
+   The order matters. From that moment every public page asked for on any
+   other address — the Railway one, or the bare domain — is sent permanently
+   to that one, so search engines see one site rather than three copies of
+   it. Set it before the DNS has moved and the Railway address sends people
+   to Squarespace. The app refuses to treat a Railway address as the house's,
+   and the readiness page goes red if `SITE_IS_LIVE` is on without a proper
+   one.
+5. **Then:** in Stripe and Resend, point the webhooks at the house's address
+   (the Railway ones keep working, but it is the address to keep); add the
+   real domain to the Outlook add-in's sign-in redirect (see the add-in
+   section); tick *Write to guests*; submit `/sitemap.xml` in Google Search
+   Console.
+
+The old Squarespace addresses (`/chateau-ateliers`, `/nightly-reservation`,
+the celebrations portfolio, the terms pages and the rest) are redirected by
+`LEGACY_PATHS` in app.py, checked against Squarespace's own sitemap by
+`tests/test_old_addresses.py`.
+
+---
+
 ## Local secrets: the `.env` file
 
 Every secret (Stripe, email, Microsoft Graph, Anthropic, the vault key) can go

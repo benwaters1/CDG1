@@ -82665,6 +82665,18 @@ def readiness_checks(conn, *, include_slow=True):
         f"{PUBLIC_BASE_URL}" if PUBLIC_BASE_URL else
         "Not set. Links in automated email (balance reminders, campaigns) will "
         "point at localhost and be useless to the recipient.")
+    # Only once the site says it is live, because before then the Railway
+    # address is the right value and this would be a false alarm every day.
+    if SITE_IS_LIVE:
+        add("blocker", "Core", "The house's own address", house_address() is not None,
+            f"Every public page is sent to {house_address()[1]}, whichever address "
+            "it was asked on." if house_address() else
+            "SITE_IS_LIVE is on, but PUBLIC_BASE_URL is "
+            + (f"{PUBLIC_BASE_URL}, the platform's address rather than the house's"
+               if PUBLIC_BASE_URL else "not set")
+            + ". The site answers on every address it has, each one claiming to "
+              "be the original. Set PUBLIC_BASE_URL to https://www.chateaugudanes.com "
+              "(or the bare domain, whichever the house uses).")
 
     email_ok = email_enabled()
     held = conn.execute(
@@ -98139,6 +98151,31 @@ def preview_home():
 # a redirect would either be refused or shadow them. register_legacy_paths
 # checks that rather than trusting this list to stay right.
 LEGACY_PATHS = [
+    # The Squarespace site's own sitemap, read on 14 October 2026. The guesses
+    # below this block were written first and none of them was on it, so 27 of
+    # the 32 addresses Google actually holds for the house answered 404.
+    ("/home", "dashboard", True),
+    ("/nightly-reservation", "book_rooms", True),
+    ("/private-events", "events_private", True),
+    ("/commercial", "events_photoshoots", True),
+    ("/chateau-ateliers", "workshops_public", True),
+    ("/celebrations-portfolio", "events_weddings", True),
+    # The one portfolio story that was a birthday, not a wedding.
+    ("/celebrations-portfolio/dace-birthday", "events_private", True),
+    # The Letter Club is being given up (owner, 14 Oct 2026). Its readers
+    # land where the newsletter sign-up is.
+    ("/chateau-letter-club", "dashboard", True),
+    ("/letter-club-subscription", "dashboard", True),
+    # The house may yet want a team page, and separate terms for weddings or
+    # productions; a 301 cached in a browser would be in the way of either.
+    # Neither carries search ranking worth handing over.
+    ("/team", "story", False),
+    ("/terms-and-conditions-ateliers", "terms_page", False),
+    ("/terms-and-conditions-overnight-stays", "terms_page", False),
+    ("/terms-and-conditions-private-events", "terms_page", False),
+    ("/terms-and-conditions-productions", "terms_page", False),
+    ("/terms-and-conditions-wedding-reservation", "terms_page", False),
+    ("/terms-and-conditions-weddings-for-guests", "terms_page", False),
     ("/rooms", "book_rooms", True),
     ("/accommodation", "book_rooms", True),
     ("/bedrooms", "book_rooms", True),
@@ -98162,6 +98199,111 @@ LEGACY_PATHS = [
     ("/visit", "facilities_page", True),
 ]
 
+# Whole sections of the old site, for the pages under them that no sitemap
+# listed: a portfolio story added after the sitemap was read, a newsletter
+# link to an atelier from 2024. Each sends everything beneath it where its
+# own address goes. A section is only ever an old address's prefix, never a
+# catch-all, so a mistyped address anywhere else still says it is not there.
+LEGACY_SECTIONS = [
+    ("/celebrations-portfolio", "events_weddings", True),
+    ("/chateau-ateliers", "workshops_public", True),
+    ("/letter-club-subscription", "dashboard", True),
+]
+
+
+def house_address():
+    """(scheme, host) of the site's one public address, or None before then.
+
+    PUBLIC_BASE_URL names it, so www or the bare domain is decided by setting
+    that one variable and nothing else. SITE_IS_LIVE says the domain really
+    does point here. Both, or nothing: before switchover the Railway address
+    IS the site being reviewed, and sending it to chateaugudanes.com would
+    send the owner to Squarespace.
+
+    Never a platform's address. If SITE_IS_LIVE goes on while PUBLIC_BASE_URL
+    is still the Railway one, honouring it would send every visitor to
+    chateaugudanes.com away to Railway with a 301, which a browser keeps more
+    or less for ever. Refused here, and a blocker on the readiness page.
+    """
+    if not (SITE_IS_LIVE and PUBLIC_BASE_URL):
+        return None
+    parsed = urlparse(PUBLIC_BASE_URL)
+    host = (parsed.hostname or "").lower()
+    if not host or host == "localhost" or host.endswith(".railway.app"):
+        return None
+    return (parsed.scheme or "https"), host
+
+
+def _asked_host():
+    return (request.host or "").split(":")[0].lower()
+
+
+def at_house_address(path):
+    """`path` on the house's own address, if this request came in elsewhere.
+
+    So an old link followed on the Railway address goes to the house in one
+    hop rather than two.
+    """
+    home = house_address()
+    if home and _asked_host() != home[1]:
+        return f"{home[0]}://{home[1]}{path}"
+    return path
+
+
+def _with_query(target):
+    if request.query_string:
+        target += "?" + request.query_string.decode("utf-8", "ignore")
+    return target
+
+
+# What is left of an old atelier's address once the parts that are not its
+# name are taken off: the year, the month and the season of that edition, and
+# the word "atelier", which Squarespace put in some slugs and the new titles
+# do not carry.
+_SLUG_NOISE = {
+    "atelier", "ateliers", "a", "an", "and", "at", "de", "du", "in", "of", "the",
+    "early", "mid", "late", "spring", "summer", "autumn", "fall", "winter",
+    "january", "february", "march", "april", "may", "june", "july", "august",
+    "september", "october", "november", "december",
+}
+
+
+def _name_words(text):
+    """The words of a title or a slug, without accents, case or punctuation."""
+    plain = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode()
+    return {w for w in re.split(r"[^a-z0-9]+", plain.lower())
+            if w and not w.isdigit() and w not in _SLUG_NOISE}
+
+
+@app.route("/chateau-ateliers/p/<slug>")
+def legacy_atelier_product(slug):
+    """An atelier's Squarespace product page, sent to that atelier here.
+
+    Matched on its name, because the workshop ids live in the deployment's
+    own database and no list written in this file could know them: every
+    word left in the old address must be in the title of exactly one
+    workshop on sale. Two candidates, or none, and the guest gets the list
+    rather than a guess, since landing on the wrong atelier is worse than
+    choosing from all of them.
+
+    Temporary, because the answer is read from data that changes: a 301 to
+    a workshop later taken off sale would sit in browsers pointing at a page
+    that no longer answers.
+    """
+    wanted = _name_words(slug)
+    target = url_for("workshops_public")
+    if wanted:
+        conn = get_db()
+        try:
+            rows = conn.execute(
+                "SELECT id, title FROM workshops WHERE active = 1").fetchall()
+        finally:
+            conn.close()
+        found = [r["id"] for r in rows if wanted <= _name_words(r["title"])]
+        if len(found) == 1:
+            target = url_for("workshop_detail", workshop_id=found[0])
+    return redirect(_with_query(at_house_address(target)), code=302)
+
 
 def register_legacy_paths():
     """Wire up LEGACY_PATHS, refusing to shadow anything that already exists.
@@ -98177,23 +98319,62 @@ def register_legacy_paths():
     """
     taken = {str(rule.rule) for rule in app.url_map.iter_rules()}
     wired = []
-    for path, endpoint, permanent in LEGACY_PATHS:
+    sections = [(path + "/<path:_rest>", endpoint, permanent)
+                for path, endpoint, permanent in LEGACY_SECTIONS]
+    for path, endpoint, permanent in LEGACY_PATHS + sections:
         if path in taken:
             continue
 
-        def view(_endpoint=endpoint, _permanent=permanent):
-            target = url_for(_endpoint)
-            if request.query_string:
-                target += "?" + request.query_string.decode("utf-8", "ignore")
+        def view(_endpoint=endpoint, _permanent=permanent, **_rest):
+            target = _with_query(at_house_address(url_for(_endpoint)))
             return redirect(target, code=301 if _permanent else 302)
 
-        app.add_url_rule(path, "legacy_" + path.strip("/").replace("-", "_"),
-                         view)
+        name = re.sub(r"[^a-z0-9]+", "_", path.replace("<path:_rest>", "any").lower())
+        app.add_url_rule(path, "legacy" + name.rstrip("_"), view)
         wired.append(path)
     return wired
 
 
 LEGACY_WIRED = register_legacy_paths()
+
+
+@app.after_request
+def send_to_the_house_address(response):
+    """One address for the public site, so a search engine sees one site.
+
+    Once the domain points here, the same pages answer on three addresses:
+    chateaugudanes.com, www.chateaugudanes.com and the Railway one. Every
+    public page names the address it was asked on as its canonical copy, so
+    without this each would put itself forward as the original, with the
+    house's own words and photographs, and split what the house ranks for.
+
+    A PUBLIC PAGE only, known by the page itself -- `<body class="g...">`,
+    the same test translate_public_page uses -- rather than by a list of
+    routes that would go stale with the next handover. And only GET or HEAD,
+    and only a page that answered. Everything a machine calls is left where
+    it was configured: the Stripe and Resend webhooks, the calendar feeds
+    Booking.com reads, the Outlook add-in, the card reader's door. A redirect
+    is something a browser follows; a scheduled job may not, and would fail
+    without saying so. Staff pages stay too: whoever signed in on one
+    address keeps their session there.
+
+    The sitemap is moved as well, because it is the list of addresses the
+    search engine is told to use, and on the wrong host it lists them all on
+    the wrong host.
+    """
+    home = house_address()
+    if home is None or request.method not in ("GET", "HEAD"):
+        return response
+    if _asked_host() == home[1]:
+        return response
+    if request.endpoint != "sitemap":
+        if response.status_code != 200 or response.direct_passthrough:
+            return response
+        if not (response.content_type or "").startswith("text/html"):
+            return response
+        if _PUBLIC_BODY not in response.get_data():
+            return response
+    return redirect(_with_query(f"{home[0]}://{home[1]}{request.path}"), code=301)
 
 
 @app.errorhandler(404)
@@ -98238,6 +98419,12 @@ def robots():
     domain points here, nothing is offered at all.
     """
     if not SITE_IS_LIVE:
+        return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
+    # Live, but asked on an address that is not the house's -- the Railway
+    # one, say. The public pages there already redirect; this keeps a crawler
+    # off everything else on that copy too.
+    home = house_address()
+    if home and _asked_host() != home[1]:
         return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
     body = "\n".join([
         "User-agent: *",
