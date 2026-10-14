@@ -54,6 +54,7 @@ def _cleanup(conn):
     conn.executemany("DELETE FROM time_entries WHERE id = ?", [(i,) for i in MADE_ENTRIES])
     MADE_ENTRIES.clear()
     conn.execute("DELETE FROM audit_log WHERE action LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM mail_log WHERE to_address LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM pos_order_lines WHERE name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM pos_orders WHERE table_label LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM menu_item_ingredients WHERE note LIKE ?", (TAG + "%",))
@@ -183,6 +184,16 @@ def run():
         "status, requested_at) VALUES (?, ?, ?, ?, 'vacation', 'approved', ?)",
         (emp["id"], (today + timedelta(days=20)).isoformat(),
          (today + timedelta(days=21)).isoformat(), TAG + " a fixture", now))
+    # And a line in each log, for the same reason. On a fresh database run
+    # alone, the audit log and the mail log are empty too; in a full run they
+    # are filled by whatever earlier suites wrote, which is not this suite's
+    # to count on.
+    conn.execute(
+        "INSERT INTO audit_log (actor_user_id, action, target, details, created_at) "
+        "VALUES (?, ?, ?, ?, ?)", (owner["id"], TAG + "_toolbar", "a line", None, now))
+    m.mail_log_line(conn, {"to_address": TAG + "@example.invalid",
+                           "subject": TAG + " a letter", "delivered": True},
+                    (None, None), "not")
     conn.commit()
 
     # ---------------------------------------------------------------- shape

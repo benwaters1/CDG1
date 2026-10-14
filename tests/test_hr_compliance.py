@@ -270,6 +270,8 @@ def run():
     # Export is DELIBERATELY refused when a row has blockers — an impossible
     # shift or a missing pay rate. A payroll file that silently prices someone
     # at zero is worse than no file, so a refusal here is a pass; a 500 is not.
+    # Which answer comes depends on this month's shifts, so the file itself is
+    # checked in test_payroll_blockers, on a month that suite chooses.
     r = oc.get(f"/admin/payroll/export.csv?period={period}", follow_redirects=True)
     refused = "Fix these before exporting" in r.get_data(as_text=True)
     s.check("payroll CSV exports, or refuses with a reason",

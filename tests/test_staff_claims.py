@@ -22,7 +22,7 @@ somebody away with their own money still spent.
 import io
 from datetime import datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, visible_text
 import _harness
 
 m = _harness.m
@@ -76,6 +76,15 @@ def run():
     s.check("and the date on the paper is what the books use",
             claim and m.expense_document_date(claim) == spent,
             detail=str(m.expense_document_date(claim)) if claim else "")
+    # The claims list wrote the stored value as it was -- "spent 2026-09-22" --
+    # under every claim with a date. The two sweeps that look for a date
+    # written the database's way read whatever claims the database held, and
+    # held none with a date until a suite crashed before it could tidy up.
+    page = visible_text(oc.get("/expenses").get_data(as_text=True))
+    s.check("and the claims list writes it the way the house writes a date",
+            f"spent {m.format_date_short(spent)}" in page and f"spent {spent}" not in page,
+            detail=page[page.find("spent "):page.find("spent ") + 30] if "spent " in page
+            else "no claim on the page says when it was spent")
 
     r = _claim(ec, description=TAG + " from next month",
                spent_on=(today + timedelta(days=30)).isoformat())

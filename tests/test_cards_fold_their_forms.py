@@ -126,6 +126,10 @@ def _cleanup(conn):
     conn.execute("DELETE FROM restaurant_bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM email_outbox WHERE subject LIKE ?", (TAG.upper() + "%",))
     conn.execute("DELETE FROM stock_items WHERE name LIKE ?", (TAG + "%",))
+    for table in ("vehicle_transfers", "vehicle_maintenance", "vehicle_usage"):
+        conn.execute(f"DELETE FROM {table} WHERE vehicle_id IN "
+                     "(SELECT id FROM vehicles WHERE name LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM vehicles WHERE name LIKE ?", (TAG + "%",))
     conn.commit()
 
 
@@ -142,6 +146,12 @@ def run():
     # Something in stock, so each workshop draws its materials form.
     conn.execute("INSERT INTO stock_items (name, category, unit, active, created_at) "
                  "VALUES (?, 'food', 'kg', 1, ?)", (TAG + " flour", now))
+    # A vehicle, so the Vehicles page has a card whose forms can be folded or
+    # not. The checks below had one only because test_closing_loops used to
+    # leave its van behind; once it cleaned up, a fresh database had no
+    # vehicle, no card, and every Vehicles fold check had nothing to read.
+    conn.execute("INSERT INTO vehicles (name, vehicle_type, created_at) VALUES (?, 'car', ?)",
+                 (TAG + " Van", now))
     # More dinners than a page holds.
     conn.executemany(
         "INSERT INTO restaurant_bookings (reference_code, manage_token, guest_name, "
