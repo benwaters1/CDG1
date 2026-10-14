@@ -61,6 +61,7 @@ def _cleanup(conn):
     conn.execute("DELETE FROM vehicle_transfers WHERE guest_name LIKE ?",
                  (TAG + "%",))
     conn.execute("DELETE FROM vehicles WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM guest_feedback WHERE guest_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM room_issues WHERE title LIKE ?", (TAG + "%",))
     conn.commit()
@@ -152,6 +153,27 @@ def run():
 
     # ------------------------------------------------------------- sweep
     s.section("Nothing slices a UTC timestamp any more")
+    # A review for the sweep to read, left the way a guest leaves one, so the
+    # stamp it reads is the one the app wrote. A fresh database has none, and
+    # the check below skips a column with nothing in it -- it ran in a full
+    # run only because test_list_view used to leave reviews behind, stamped
+    # by that test rather than by the app.
+    room = _harness.ensure_room()
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+           guest_email, arrival_date, departure_date, party_size, status,
+           total_price, created_at)
+           VALUES (?, ?, ?, ?, 'g@example.invalid', ?, ?, 2, 'confirmed', 600, ?)""",
+        (room["id"], TAG + "REVIEW", TAG + "reviewtok", TAG + " Reviewer",
+         (today - timedelta(days=3)).isoformat(), (today - timedelta(days=1)).isoformat(),
+         now))
+    conn.commit()
+    m.app.test_client().post(f"/feedback/{TAG}reviewtok", data={"rating": "5"})
+    s.check("a guest's review is there for the sweep to read",
+            conn.execute("SELECT 1 FROM guest_feedback WHERE guest_name = ?",
+                         (TAG + " Reviewer",)).fetchone() is not None,
+            detail="the feedback form wrote nothing, so guest_feedback.submitted_at "
+                   "goes unchecked on a fresh database")
     # The list below is PROVED, not asserted: every column named as holding a
     # UTC timestamp is checked against the database to still hold one, so it
     # cannot rot into a list of date columns that would be harmless anyway.

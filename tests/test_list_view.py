@@ -37,6 +37,27 @@ TOOLBAR_PAGES = [
     "/admin/mail-log",
 ]
 
+# What the chip check writes so it has something to read, and takes away
+# again before the suites after it see the database.
+TAG = "ZZLISTVIEW"
+
+# Every table the seed writes to and how its rows are found again, in the
+# order they are deleted: a stock movement before its item, and the change log
+# after the promo codes, because deleting a code writes a line of its own.
+TAGGED = [
+    ("contacts", "name LIKE ?"),
+    ("stock_movements", "note LIKE ?"),
+    ("stock_items", "name LIKE ?"),
+    ("recurring_costs", "label LIKE ?"),
+    ("promo_codes", "code LIKE ?"),
+    ("change_log", "table_name = 'promo_codes' "
+                   "AND json_extract(COALESCE(new_values, old_values), '$.code') LIKE ?"),
+    ("room_issues", "title LIKE ?"),
+    ("extras", "name LIKE ?"),
+    ("guest_feedback", "guest_name LIKE ?"),
+]
+SEEDED_TABLES = [table for table, _where in TAGGED]
+
 
 ROWS = [
     {"id": 1, "name": "Alice",  "status": "pending",   "team": "kitchen", "cost": 30, "due": "2026-01-02"},
@@ -164,36 +185,48 @@ def run():
             '<input type="hidden" name="area" value="Restaurant">' in page)
 
     s.section("Every chip on every converted page keeps its promise")
-    _seed_for_toolbar_pages()
     broken, vacuous = [], []
-    for url in TOOLBAR_PAGES:
-        # Fetched twice on purpose. Looking at Notifications marks things read,
-        # so its first render describes a state that no longer exists by the
-        # time a chip is clicked. Every other page renders identically twice.
-        oc.get(url)
-        r = oc.get(url)
-        if r.status_code != 200:
-            broken.append(f"{url} → HTTP {r.status_code}")
-            continue
-        page = r.get_data(as_text=True)
-        # A chip that is already on -- a facet's default, the open ones a
-        # page opens on -- is the page as it stands. Clicking it changes
-        # nothing, so it proves nothing about the wiring.
-        chips = re.findall(r'<a href="([^"]+)"\s*\n?\s*class="chip([^"]*)">'
-                           r'([^<]*)<span class="chip-n">(\d+)</span>', page)
-        chips = [(html.unescape(h), lbl.strip(), int(n)) for h, cls, lbl, n in chips
-                 if lbl.strip() != "All" and "is-on" not in cls]
-        if not chips:
-            vacuous.append(url)
-            continue
-        # One chip per page is enough to prove the wiring; checking every chip
-        # on every page turns a fast suite into a slow one for no more signal.
-        href, label, count = chips[0]
-        got = oc.get(href).get_data(as_text=True)
-        shown = re.search(r"Showing (\d+) of (\d+)", got)
-        actual = int(shown.group(1)) if shown else None
-        if actual != count:
-            broken.append(f"{url}: chip {label!r} says {count}, clicking gives {actual}")
+    try:
+        _seed_for_toolbar_pages()
+        # The search the cleanup is judged by, shown able to find what it is
+        # looking for. A search that cannot see the seeded rows would report
+        # a clean database whatever the cleanup did.
+        seen = {table for table, _what in _leftovers()}
+        s.check("the leftover search finds the rows in every table the seed writes to",
+                seen == set(SEEDED_TABLES),
+                detail=f"not found in: {', '.join(sorted(set(SEEDED_TABLES) - seen))}")
+        for url in TOOLBAR_PAGES:
+            # Fetched twice on purpose. Looking at Notifications marks things
+            # read, so its first render describes a state that no longer exists
+            # by the time a chip is clicked. Every other page renders
+            # identically twice.
+            oc.get(url)
+            r = oc.get(url)
+            if r.status_code != 200:
+                broken.append(f"{url} → HTTP {r.status_code}")
+                continue
+            page = r.get_data(as_text=True)
+            # A chip that is already on -- a facet's default, the open ones a
+            # page opens on -- is the page as it stands. Clicking it changes
+            # nothing, so it proves nothing about the wiring.
+            chips = re.findall(r'<a href="([^"]+)"\s*\n?\s*class="chip([^"]*)">'
+                               r'([^<]*)<span class="chip-n">(\d+)</span>', page)
+            chips = [(html.unescape(h), lbl.strip(), int(n)) for h, cls, lbl, n in chips
+                     if lbl.strip() != "All" and "is-on" not in cls]
+            if not chips:
+                vacuous.append(url)
+                continue
+            # One chip per page is enough to prove the wiring; checking every
+            # chip on every page turns a fast suite into a slow one for no
+            # more signal.
+            href, label, count = chips[0]
+            got = oc.get(href).get_data(as_text=True)
+            shown = re.search(r"Showing (\d+) of (\d+)", got)
+            actual = int(shown.group(1)) if shown else None
+            if actual != count:
+                broken.append(f"{url}: chip {label!r} says {count}, clicking gives {actual}")
+    finally:
+        _clear_toolbar_rows()
 
     s.check("a chip's count is what clicking it gives", not broken,
             detail=" | ".join(broken[:3]))
@@ -205,6 +238,16 @@ def run():
             len(vacuous) < len(TOOLBAR_PAGES),
             detail=f"{len(vacuous)}/{len(TOOLBAR_PAGES)} empty")
 
+    # 13 October 2026. Until now these rows were left behind, untagged, and
+    # this suite runs early, so every suite after it read them as though the
+    # house had them. One guard passed in a full run and failed on its own
+    # because of it. A later suite that needs a contact or a promo code makes
+    # its own; do not put these back for it.
+    s.section("The rows made for the chip check go again")
+    left = _leftovers()
+    s.check("nothing the seed wrote is left for the suites after this one", not left,
+            detail="; ".join(f"{table}: {what}" for table, what in left[:8]))
+
     return s
 
 
@@ -213,84 +256,107 @@ def _seed_for_toolbar_pages():
 
     The suite runs against a copy of whatever database is to hand, and on a
     fresh clone half these tables are empty — so the check would pass by
-    finding nothing to check.
+    finding nothing to check. Every row carries TAG and is written whatever
+    the table already holds, so the check reads the same rows on any
+    database and _clear_toolbar_rows can find every one of them again.
     """
     conn = db()
     now = datetime_now()
     try:
-        if not conn.execute("SELECT 1 FROM contacts LIMIT 1").fetchone():
-            for n, role in [("Test Plumber", "Plumber"), ("Test Sparks", "Electrician"),
-                            ("Test Plumber Two", "Plumber")]:
-                conn.execute("""INSERT INTO contacts (name, role, phone, sort_order, created_at)
-                                VALUES (?, ?, '+33000000000', 0, ?)""", (n, role, now))
-        if not conn.execute("SELECT 1 FROM stock_items WHERE active=1 LIMIT 1").fetchone():
-            for name, cat, reorder, qty in [("Test champagne", "drinks", 6, 2),
-                                            ("Test coffee", "food", 4, 12),
-                                            ("Test towels", "linen", 20, 0)]:
-                cur = conn.execute(
-                    """INSERT INTO stock_items (name, category, unit, reorder_level,
-                       unit_cost, location, active, created_at)
-                       VALUES (?, ?, 'each', ?, 10.0, 'Cellar', 1, ?)""",
-                    (name, cat, reorder, now))
-                if qty:
-                    conn.execute(
-                        """INSERT INTO stock_movements (stock_item_id, delta, reason, created_at)
-                           VALUES (?, ?, 'opening', ?)""", (cur.lastrowid, qty, now))
-        if not conn.execute("SELECT 1 FROM recurring_costs LIMIT 1").fetchone():
-            for label, amount, freq, cat, due, code in [
-                    ("Test electricity", 480, "monthly", "Utilities", "2020-01-01", "6061"),
-                    ("Test insurance", 5200, "annual", "Insurance", "2030-11-01", ""),
-                    ("Test internet", 60, "monthly", "Utilities", "2030-09-05", "6262")]:
+        for n, role in [("Plumber", "Plumber"), ("Sparks", "Electrician"),
+                        ("Plumber Two", "Plumber")]:
+            conn.execute("""INSERT INTO contacts (name, role, phone, sort_order, created_at)
+                            VALUES (?, ?, '+33000000000', 0, ?)""", (f"{TAG} {n}", role, now))
+        for name, cat, reorder, qty in [("champagne", "drinks", 6, 2),
+                                        ("coffee", "food", 4, 12),
+                                        ("towels", "linen", 20, 0)]:
+            cur = conn.execute(
+                """INSERT INTO stock_items (name, category, unit, reorder_level,
+                   unit_cost, location, active, created_at)
+                   VALUES (?, ?, 'each', ?, 10.0, 'Cellar', 1, ?)""",
+                (f"{TAG} {name}", cat, reorder, now))
+            if qty:
                 conn.execute(
-                    """INSERT INTO recurring_costs (label, amount, frequency, category,
-                       next_due_date, active, created_at, ledger_code)
-                       VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
-                    (label, amount, freq, cat, due, now, code))
+                    """INSERT INTO stock_movements (stock_item_id, delta, reason, note,
+                       created_at) VALUES (?, ?, 'opening', ?, ?)""",
+                    (cur.lastrowid, qty, TAG, now))
+        for label, amount, freq, cat, due, code in [
+                ("electricity", 480, "monthly", "Utilities", "2020-01-01", "6061"),
+                ("insurance", 5200, "annual", "Insurance", "2030-11-01", ""),
+                ("internet", 60, "monthly", "Utilities", "2030-09-05", "6262")]:
+            conn.execute(
+                """INSERT INTO recurring_costs (label, amount, frequency, category,
+                   next_due_date, active, created_at, ledger_code)
+                   VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
+                (f"{TAG} {label}", amount, freq, cat, due, now, code))
         # Deliberately one of each state: active-but-expired, used up, and off.
         # A promo list where all four look alike proves nothing about the
         # classification that separates them.
-        if not conn.execute("SELECT 1 FROM promo_codes LIMIT 1").fetchone():
-            for code, active, until, used, cap in [
-                    ("TESTLIVE", 1, "2099-12-31", 4, None),
-                    ("TESTGONE", 1, "2020-01-31", 9, None),
-                    ("TESTFULL", 1, None, 5, 5),
-                    ("TESTOFF", 0, None, 0, None)]:
+        for code, active, until, used, cap in [
+                ("LIVE", 1, "2099-12-31", 4, None),
+                ("GONE", 1, "2020-01-31", 9, None),
+                ("FULL", 1, None, 5, 5),
+                ("OFF", 0, None, 0, None)]:
+            conn.execute(
+                """INSERT INTO promo_codes (code, discount_type, discount_value, applies_to,
+                   active, valid_until, redemption_count, max_redemptions, created_at)
+                   VALUES (?, 'percent', 10, 'all', ?, ?, ?, ?, ?)""",
+                (TAG + code, active, until, used, cap, now))
+        room = conn.execute("SELECT id FROM rooms LIMIT 1").fetchone()
+        who = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
+        if room:
+            # Three ages on purpose: a tap that has dripped for a month is
+            # a different conversation from one reported this morning.
+            for title, days_ago in [("dripping tap", 30),
+                                    ("cracked tile", 5),
+                                    ("bulb gone", 0)]:
                 conn.execute(
-                    """INSERT INTO promo_codes (code, discount_type, discount_value, applies_to,
-                       active, valid_until, redemption_count, max_redemptions, created_at)
-                       VALUES (?, 'percent', 10, 'all', ?, ?, ?, ?, ?)""",
-                    (code, active, until, used, cap, now))
-        if not conn.execute("SELECT 1 FROM room_issues LIMIT 1").fetchone():
-            room = conn.execute("SELECT id FROM rooms LIMIT 1").fetchone()
-            who = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
-            if room:
-                # Three ages on purpose: a tap that has dripped for a month is
-                # a different conversation from one reported this morning.
-                for title, days_ago in [("Test dripping tap", 30),
-                                        ("Test cracked tile", 5),
-                                        ("Test bulb gone", 0)]:
-                    conn.execute(
-                        """INSERT INTO room_issues (room_id, reported_by_user_id, title,
-                           status, created_at) VALUES (?, ?, ?, 'open', datetime('now', ?))""",
-                        (room["id"], who["id"] if who else None, title, f"-{days_ago} days"))
-        if not conn.execute("SELECT 1 FROM extras LIMIT 1").fetchone():
-            for name, price, cat, bookable, pos, lead in [
-                    ("Test champagne on arrival", 90, "drinks", 1, 1, 1),
-                    ("Test ski transfer", 120, "transfer", 1, 0, 2),
-                    ("Test late checkout", 50, "stay", 0, 0, 0)]:
-                conn.execute(
-                    """INSERT INTO extras (name, price, active, sort_order, category,
-                       guest_bookable, sold_in_pos, lead_time_days)
-                       VALUES (?, ?, 1, 0, ?, ?, ?, ?)""",
-                    (name, price, cat, bookable, pos, lead))
-        if not conn.execute("SELECT 1 FROM guest_feedback LIMIT 1").fetchone():
-            for name, rating, comment in [("Test unhappy guest", 2, "The heating never worked"),
-                                          ("Test happy guest", 5, "Perfect"),
-                                          ("Test quiet guest", 3, "")]:
-                conn.execute(
-                    """INSERT INTO guest_feedback (guest_name, rating, comment,
-                       submitted_at, featured) VALUES (?, ?, ?, ?, 0)""",
-                    (name, rating, comment, now))
+                    """INSERT INTO room_issues (room_id, reported_by_user_id, title,
+                       status, created_at) VALUES (?, ?, ?, 'open', datetime('now', ?))""",
+                    (room["id"], who["id"] if who else None, f"{TAG} {title}",
+                     f"-{days_ago} days"))
+        for name, price, cat, bookable, pos, lead in [
+                ("champagne on arrival", 90, "drinks", 1, 1, 1),
+                ("ski transfer", 120, "transfer", 1, 0, 2),
+                ("late checkout", 50, "stay", 0, 0, 0)]:
+            conn.execute(
+                """INSERT INTO extras (name, price, active, sort_order, category,
+                   guest_bookable, sold_in_pos, lead_time_days)
+                   VALUES (?, ?, 1, 0, ?, ?, ?, ?)""",
+                (f"{TAG} {name}", price, cat, bookable, pos, lead))
+        for name, rating, comment in [("unhappy guest", 2, "The heating never worked"),
+                                      ("happy guest", 5, "Perfect"),
+                                      ("quiet guest", 3, "")]:
+            conn.execute(
+                """INSERT INTO guest_feedback (guest_name, rating, comment,
+                   submitted_at, featured) VALUES (?, ?, ?, ?, 0)""",
+                (f"{TAG} {name}", rating, comment, now))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _leftovers():
+    """[(table, rows)] for every table still holding something the seed wrote."""
+    conn = db()
+    try:
+        found = []
+        for table, where in TAGGED:
+            n = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE {where}",
+                             (TAG + "%",)).fetchone()[0]
+            if n:
+                found.append((table, f"{n} row{'s' if n != 1 else ''}"))
+        return found
+    finally:
+        conn.close()
+
+
+def _clear_toolbar_rows():
+    """Take away everything _seed_for_toolbar_pages wrote, in TAGGED's order."""
+    conn = db()
+    try:
+        for table, where in TAGGED:
+            conn.execute(f"DELETE FROM {table} WHERE {where}", (TAG + "%",))
         conn.commit()
     finally:
         conn.close()

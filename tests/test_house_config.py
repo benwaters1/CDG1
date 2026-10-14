@@ -57,6 +57,7 @@ def _cleanup():
         ("DELETE FROM availability_exceptions WHERE note LIKE ?", (TAG + "%",)),
         ("DELETE FROM tasks WHERE title LIKE ?", (TAG + "%",)),
         ("DELETE FROM workshop_custom_fields WHERE label LIKE ?", (TAG + "%",)),
+        ("DELETE FROM guest_feedback WHERE guest_name LIKE ?", (TAG + "%",)),
     ):
         try:
             conn.execute(sql, p)
@@ -308,17 +309,21 @@ def run():
 
     # -------------------------------------------------------- feedback
     s.section("Putting a review on the front page")
-    fb = _one("SELECT id, featured FROM guest_feedback LIMIT 1")
-    if fb:
-        was = fb["featured"]
-        oc.post(f"/admin/feedback/{fb['id']}/toggle-featured", follow_redirects=True)
-        mid = _one("SELECT featured FROM guest_feedback WHERE id = ?", (fb["id"],))["featured"]
-        s.check("featuring a review changes it", mid != was, detail=f"{was} -> {mid}")
-        oc.post(f"/admin/feedback/{fb['id']}/toggle-featured", follow_redirects=True)
-        s.check("and taking it down changes it back",
-                _one("SELECT featured FROM guest_feedback WHERE id = ?", (fb["id"],))["featured"] == was,
-                detail="a review that can be put up and not taken down is a "
-                       "review the house cannot withdraw")
+    # Its own review. This borrowed whichever came first and skipped both
+    # checks when there was none -- and on a fresh database the only one was
+    # a row test_list_view used to leave behind, so they ran in a full run
+    # and quietly vanished on their own.
+    fb_id = _exec("""INSERT INTO guest_feedback (guest_name, rating, comment, submitted_at,
+                     featured) VALUES (?, 5, 'Perfect', ?, 0)""",
+                  (TAG + " guest", _harness.datetime_now()))
+    oc.post(f"/admin/feedback/{fb_id}/toggle-featured", follow_redirects=True)
+    mid = _one("SELECT featured FROM guest_feedback WHERE id = ?", (fb_id,))["featured"]
+    s.check("featuring a review changes it", mid == 1, detail=f"0 -> {mid}")
+    oc.post(f"/admin/feedback/{fb_id}/toggle-featured", follow_redirects=True)
+    s.check("and taking it down changes it back",
+            _one("SELECT featured FROM guest_feedback WHERE id = ?", (fb_id,))["featured"] == 0,
+            detail="a review that can be put up and not taken down is a "
+                   "review the house cannot withdraw")
     r = oc.post("/admin/feedback/99999999/toggle-featured", follow_redirects=False)
     s.check("a review that does not exist is a 404", r.status_code == 404,
             detail=f"HTTP {r.status_code}")
