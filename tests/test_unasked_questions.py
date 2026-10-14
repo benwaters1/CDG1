@@ -37,6 +37,9 @@ TAG = "unasked-"
 def _cleanup(conn):
     conn.execute("DELETE FROM expenses WHERE description LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM vehicle_transfers WHERE guest_name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM vehicle_transfers WHERE vehicle_id IN "
+                 "(SELECT id FROM vehicles WHERE license_plate = ?)", (TAG + "REG",))
+    conn.execute("DELETE FROM vehicles WHERE license_plate = ?", (TAG + "REG",))
     conn.commit()
 
 
@@ -157,13 +160,17 @@ def run():
                    "off the figure on the day this shipped")
 
     s.section("The journey type is asked for and kept")
-    vehicle = conn.execute("SELECT id FROM vehicles LIMIT 1").fetchone()
-    if not vehicle:
-        conn.execute("INSERT INTO vehicles (name, license_plate) VALUES (?, ?)",
-                     (TAG + " Van", TAG + "REG"))
-        conn.commit()
-        vehicle = conn.execute("SELECT id FROM vehicles WHERE license_plate = ?",
-                               (TAG + "REG",)).fetchone()
+    # A van of its own, every time. This borrowed whichever vehicle came first
+    # and made one only when there was none -- with an insert the table
+    # refuses, for want of created_at. Nothing noticed, because
+    # test_closing_loops left a van behind in every run. Once that suite
+    # cleaned up after itself this crashed with its write still open, and the
+    # eleven suites after it found the database locked.
+    conn.execute("INSERT INTO vehicles (name, license_plate, created_at) VALUES (?, ?, ?)",
+                 (TAG + " Van", TAG + "REG", now.isoformat()))
+    conn.commit()
+    vehicle = conn.execute("SELECT id FROM vehicles WHERE license_plate = ?",
+                           (TAG + "REG",)).fetchone()
     page = oc.get(f"/management/vehicles/{vehicle['id']}/transfers")
     s.check("the transfers page offers the journey types",
             'name="transfer_type"' in page.get_data(as_text=True),

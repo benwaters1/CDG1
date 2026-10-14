@@ -109,8 +109,43 @@ def _run(days_before=7, provider=True):
     return result, sent
 
 
+def _letter(subject, body):
+    """Put the reminder's wording in the database; hand back what was there.
+
+    The words are data -- the owner edits them -- and this suite runs on a copy
+    of whichever database the checkout holds. The local one still carries the
+    reminder from before the house rules changed, which offers to take the
+    money on arrival, and init_db leaves it alone because it no longer matches
+    any shipped wording word for word. A fresh one carries today's. The checks
+    on what the letter says passed on one and failed on the other, so the job
+    is run here on the wording the house ships, and whatever was stored is put
+    back after.
+    """
+    conn = db()
+    try:
+        was = conn.execute("SELECT subject, body FROM email_templates "
+                           "WHERE template_key = 'room_balance_before'").fetchone()
+        conn.execute("UPDATE email_templates SET subject = ?, body = ? "
+                     "WHERE template_key = 'room_balance_before'", (subject, body))
+        conn.commit()
+        return was
+    finally:
+        conn.close()
+
+
 def run():
     s = Suite("Room balance reminders")
+    shipped = {k: (subj, body) for k, _l, subj, body in m.DEFAULT_EMAIL_TEMPLATES}
+    stored = _letter(*shipped["room_balance_before"])
+    try:
+        _checks(s)
+    finally:
+        if stored:
+            _letter(stored["subject"], stored["body"])
+    return s
+
+
+def _checks(s):
     _cleanup()
     clients()
 
@@ -150,10 +185,18 @@ def run():
         s.check("and a link to settle it", "/book/manage/" in mail["body"],
                 detail="no way to pay from the reminder")
         s.check("and the reference code", f"{TAG}-OWES" in mail["body"])
-        s.check("it does not demand payment before arrival",
-                "on arrival" in mail["body"].lower(),
-                detail="a chase with no option to pay on the day reads badly "
-                       "for a stay somebody has already committed to")
+        # The other way round since 8 October: a stay is paid online, in
+        # advance, and nothing is taken at the door (the owner's house rules).
+        # A reminder offering to settle on arrival would promise a payment the
+        # house does not take, four lines above the sentence saying it only
+        # takes card, on its own site.
+        s.check("it does not offer to take the money on arrival",
+                "on arrival" not in mail["body"].lower(),
+                detail="the house takes no payment at the door")
+        s.check("and it says how the house does take payment",
+                m.PAYMENT_SAFETY_LINE in mail["body"],
+                detail="a guest who knows that can recognise a message asking "
+                       "them to pay somewhere else")
 
     s.section("Once, not every night")
     s.check("the first run stamped them", _stamped("OWES"))
@@ -242,4 +285,3 @@ def run():
             detail="a job nobody can see is a job nobody can turn off")
 
     _cleanup()
-    return s

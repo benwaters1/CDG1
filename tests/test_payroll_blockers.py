@@ -26,6 +26,8 @@ form would have produced the "alert pointing at a page with no way to act"
 problem that route's own docstring says it was written to fix. The form is
 offered for all three now.
 """
+import csv
+import io
 from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, clients, db, flashes
@@ -359,6 +361,33 @@ def run():
     # the one field that must not be used as a payroll figure.
     s.check("the fix offered is to put a real wage on file",
             "put a wage on file" in html)
+
+    s.section("With nothing unsafe in the month, the file comes")
+    # The refusal is checked above; this is the other half, which nothing
+    # checked. Whether the export ever produced a file depended on whether
+    # some earlier suite had left a broken shift in the current month, so the
+    # coverage count said it worked on one run and not on the next. A month
+    # from before the house kept hours here, with one clean shift in it,
+    # cannot be blocked by anything another suite left behind.
+    clean = _employee("Octave")
+    clean_day = datetime(2021, 3, 10, 9, 0, tzinfo=timezone.utc)
+    _shift(clean["id"], clean_day, clean_day + timedelta(hours=6))
+    r = oc.get("/admin/payroll/export.csv?period=month&date=2021-03-10")
+    s.check("the file is produced", r.status_code == 200
+            and "text/csv" in r.headers.get("Content-Type", ""),
+            detail=f"HTTP {r.status_code}, {r.headers.get('Content-Type')!r}, "
+                   f"{flashes(r)}")
+    s.check("named for the month it covers",
+            "payroll-2021-03-01.csv" in r.headers.get("Content-Disposition", ""),
+            detail=r.headers.get("Content-Disposition"))
+    lines = csv.DictReader(io.StringIO(r.get_data(as_text=True).lstrip("﻿")))
+    theirs = next((row for row in lines if row.get("name") == clean["name"]), None)
+    s.check("with their six hours and their one shift on it",
+            theirs is not None and float(theirs["hours"] or 0) == 6.0
+            and theirs["shifts"] == "1", detail=str(theirs))
+    s.check("priced at the rate on file",
+            theirs is not None and float(theirs["estimated_cost"] or 0) == 72.0,
+            detail=f"{theirs['estimated_cost'] if theirs else None} for 6h at 12.00")
 
     s.section("Guards")
     s.check("an employee cannot open the payroll pack",

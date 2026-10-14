@@ -183,6 +183,13 @@ def _queue_row(conn):
         """INSERT INTO expenses (kind, vendor_name, description, amount, status, submitted_at)
            VALUES ('supplier_invoice', ?, 'Roofing materials, north tower', 3400, 'pending', ?)""",
         (TAG + " Domaine Fournitures SARL", _harness.datetime_now()))
+    # And a breakfast item running low, so the checklist draws a row with every
+    # control the owner gets beside its name -- the row that ran off a phone.
+    # With no items the page is an empty state, so the control could not
+    # catch the old rule coming back: a fresh database has none.
+    conn.execute("""INSERT INTO breakfast_items (name, category, active, low_stock, created_at)
+                    VALUES (?, 'Bakery', 1, 1, ?)""",
+                 (TAG + " Croissants from Aulus", _harness.datetime_now()))
     # And departures' turnover tasks, made the way the app makes them --
     # five per room, high priority, a long note -- on two days side by side, so
     # the Tasks week grid lays out a busy day beside another. "Strip beds &
@@ -209,6 +216,7 @@ def _queue_row(conn):
 def _cleanup(conn):
     conn.execute("DELETE FROM expenses WHERE vendor_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM stock_items WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM breakfast_items WHERE name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM tasks WHERE title LIKE ?", (TAG + "%",))
     conn.commit()
 
@@ -249,7 +257,11 @@ def run():
     _cleanup(conn)
     try:
         _queue_row(conn)
-        fresh = {"dashboard": "/", "admin_workshops": "/admin/workshops", "admin_tasks": "/admin/tasks"}
+        # Read again here rather than taken from the sweep, which reads every
+        # page once per run and shares them: in a full run it has already
+        # read these before the rows above existed.
+        fresh = {"dashboard": "/", "admin_workshops": "/admin/workshops",
+                 "admin_tasks": "/admin/tasks", "breakfast": "/breakfast"}
         pages = [(ep, url, html) for ep, url, html in sweep.owner_pages(oc)
                  if ep not in fresh]
         home = oc.get("/")
@@ -265,6 +277,11 @@ def run():
         s.check("the Tasks page renders with a week of long titles on it",
                 tasks.status_code == 200 and tasks.get_data(as_text=True).count(TAG) >= 2, tasks)
         pages.append(("admin_tasks", "/admin/tasks", tasks.get_data(as_text=True)))
+        breakfast = oc.get("/breakfast")
+        s.check("the breakfast checklist renders with an item running low on it",
+                breakfast.status_code == 200
+                and TAG + " Croissants" in breakfast.get_data(as_text=True), breakfast)
+        pages.append(("breakfast", "/breakfast", breakfast.get_data(as_text=True)))
     finally:
         _cleanup(conn)
         conn.close()

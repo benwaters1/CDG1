@@ -18,6 +18,38 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+def _cleanup(conn):
+    """Everything this suite makes, before it starts and after it ends.
+
+    It used to leave all of it, and the suites share one database for the
+    whole run. The one that cost something was the shift: seven hours this
+    month for whichever employee ensure_employee() lends. On the local copy
+    that is a real person with an hourly rate, so the hours priced and nothing
+    showed. On a fresh database it is "Test Employee", who has no rate -- so
+    the payroll pack carried a blocker for the rest of the run, every request
+    for this month's export after this suite was refused, and the export's
+    working branch dropped out of coverage without any check going red.
+
+    The shift carries no tag of its own; its corrections do, so it is found
+    through them.
+    """
+    entries = [r["time_entry_id"] for r in conn.execute(
+        "SELECT DISTINCT time_entry_id FROM timesheet_corrections WHERE note LIKE ?",
+        (TAG + "%",)).fetchall()]
+    conn.execute("DELETE FROM timesheet_corrections WHERE note LIKE ?", (TAG + "%",))
+    conn.executemany("DELETE FROM breaks WHERE time_entry_id = ?", [(e,) for e in entries])
+    conn.executemany("DELETE FROM time_entries WHERE id = ?", [(e,) for e in entries])
+    conn.execute("DELETE FROM tasks WHERE title LIKE ?", (TAG + "%",))
+    vans = [r["id"] for r in conn.execute("SELECT id FROM vehicles WHERE name LIKE ?",
+                                          (TAG + "%",)).fetchall()]
+    for table in ("vehicle_transfers", "vehicle_maintenance", "vehicle_usage"):
+        conn.executemany(f"DELETE FROM {table} WHERE vehicle_id = ?", [(v,) for v in vans])
+    conn.execute("DELETE FROM vehicles WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM room_issues WHERE title LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM restaurant_bookings WHERE reference_code LIKE ?", (TAG + "%",))
+    conn.commit()
+
+
 def _notes_since(conn, user_id, since):
     return conn.execute(
         "SELECT * FROM notifications WHERE user_id = ? AND created_at >= ? ORDER BY id DESC",
@@ -26,11 +58,21 @@ def _notes_since(conn, user_id, since):
 
 def run():
     s = Suite("Closing the loop")
+    conn = db()
+    _cleanup(conn)
+    try:
+        _checks(s, conn)
+    finally:
+        _cleanup(conn)
+        conn.close()
+    return s
+
+
+def _checks(s, conn):
     oc, _ec, owner, _emp = clients()
     staff = ensure_employee()
     room = ensure_room()
     now = _now()
-    conn = db()
 
     # ---------------------------------------------------------------- vehicles
     s.section("A car marked dirty or low becomes somebody's job")
@@ -196,6 +238,3 @@ def run():
     # next to Confirm — not on a history page nobody opens mid-service.
     s.check("the reservations list warns before you confirm the table",
             "previous no-show" in page)
-
-    conn.close()
-    return s

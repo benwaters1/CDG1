@@ -39,6 +39,18 @@ WHAT IS HELD HERE
   from the auto-decline by design -- a silent decline-and-refund because
   nobody checked the site is not a decision anybody made. It still wants
   answering.
+
+  AND A DEPOSIT IS PAID, FOR THIS PURPOSE. The expiry asked payment_status,
+  which reads 'paid' only once a stay is paid in full, so a request holding a
+  deposit or a part-payment was declined at 48 hours and the money sent back
+  to the card through Stripe -- by a background job, with nobody named behind
+  it, when refunds are the owner's call. Anything with money on it is now left
+  for a person, and the panel stops showing a countdown that the expiry will
+  not keep.
+
+  AND THE EXPIRY NEVER REFUNDS, even when a payment lands between its check
+  and the decline. The decline stands, and the money goes on the owner's list
+  to give back rather than to the card on a timer.
 """
 from datetime import timedelta
 
@@ -72,18 +84,18 @@ def run():
         conn.close()
         return s
 
-    def ask(ref, hours_ago, paid=False, arrival_offset=600):
+    def ask(ref, hours_ago, paid=False, arrival_offset=600, amount_paid=0):
         arrival = today + timedelta(days=arrival_offset)
         conn.execute(
             """INSERT INTO bookings (room_id, reference_code, manage_token,
                        guest_name, guest_email, arrival_date, departure_date,
                        party_size, status, total_price, payment_status,
-                       created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 2, 'pending', 400, ?, ?)""",
+                       amount_paid, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 2, 'pending', 400, ?, ?, ?)""",
             (room["id"], TAG + ref, (TAG + ref).lower(), TAG + " " + ref,
              f"{TAG}.{ref}@example.invalid".lower(), arrival.isoformat(),
              (arrival + timedelta(days=2)).isoformat(),
-             "paid" if paid else "unpaid",
+             "paid" if paid else "unpaid", amount_paid,
              (now - timedelta(hours=hours_ago)).isoformat()))
         return conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
 
@@ -213,6 +225,112 @@ def run():
             conn.execute("SELECT status FROM bookings WHERE id = ?",
                          (late,)).fetchone()["status"] == "declined",
             detail="the expiry still has to happen; the point is the order")
+
+    s.section("A deposit is money on it, as much as the whole price")
+    # Past the deadline, so the expiry below would decline it if it could.
+    deposit = ask("DEPOSIT", 49, amount_paid=120, arrival_offset=650)
+    conn.commit()
+    s.check("the fixture is the case that slipped through: it reads unpaid",
+            conn.execute("SELECT payment_status FROM bookings WHERE id = ?",
+                         (deposit,)).fetchone()["payment_status"] == "unpaid",
+            detail="payment_status says 'paid' only once a stay is paid in "
+                   "full, which is why it was the wrong question")
+    w = waiting_ids()
+    s.check("it is waiting", deposit in w)
+    s.check("with no countdown against it",
+            deposit in w and w[deposit]["left"] is None,
+            detail=f"{w.get(deposit, {}).get('left')} — a countdown here is a "
+                   "decline the expiry will not make")
+    s.check("and counted as paid, with what is held",
+            deposit in w and w[deposit]["paid"] is True
+            and abs(w[deposit]["held"] - 120) < 0.01,
+            detail=str({k: w.get(deposit, {}).get(k) for k in ("paid", "held")}))
+    m.notify_bookings_awaiting_answer(conn, now)
+    body = conn.execute(
+        "SELECT body FROM notifications WHERE user_id = ? AND kind = 'booking_waiting' "
+        "AND title LIKE ? ORDER BY id DESC LIMIT 1",
+        (owner["id"], "%" + TAG + " DEPOSIT%")).fetchone()
+    body = body["body"] if body else ""
+    s.check("the owner is told it has no deadline",
+            "no deadline" in body and "declines it for you" not in body,
+            detail=body[:200])
+
+    s.section("And the expiry leaves it for a person, and sends nothing back")
+    # Both doors to the card stood down and watched: refund_booking is what
+    # decline_booking_by_id calls, and stripe.Refund.create is under it. The
+    # harness has Stripe off already; these say whether anything TRIED.
+    unpaid = ask("UNPAID", 49, arrival_offset=660)
+    racer = ask("RACE", 49, arrival_offset=670)
+    conn.commit()
+    refunds_tried, stripe_tried = [], []
+
+    def no_refund(_conn, booking, *a, **kw):
+        refunds_tried.append(booking["reference_code"])
+        return False, "stood down by the test"
+
+    def no_stripe(*a, **kw):
+        stripe_tried.append(kw)
+        raise RuntimeError("test: a Stripe refund was attempted")
+
+    real_refund_booking = m.refund_booking
+    real_stripe_refund = m.stripe.Refund.create
+    real_decline = m.decline_booking_by_id
+
+    # The one gap a check can leave: money landing between the expiry
+    # reading the request and declining it -- the webhook for a part-payment,
+    # say. Stood in by paying the request just before the real decline runs.
+    def paid_mid_pass(_conn, booking_id, **kw):
+        if booking_id == racer:
+            m.record_booking_payment(_conn, booking_id, 80)
+            _conn.commit()
+        return real_decline(_conn, booking_id, **kw)
+
+    m.refund_booking = no_refund
+    m.stripe.Refund.create = no_stripe
+    m.decline_booking_by_id = paid_mid_pass
+    try:
+        # Inside a request, as automation_tick runs it, so the guest's letter
+        # is built the way it is in production.
+        with m.app.test_request_context("/"):
+            m.expire_stale_pending_bookings(conn)
+    finally:
+        m.refund_booking = real_refund_booking
+        m.stripe.Refund.create = real_stripe_refund
+        m.decline_booking_by_id = real_decline
+
+    def status(bid):
+        return conn.execute("SELECT status FROM bookings WHERE id = ?",
+                            (bid,)).fetchone()["status"]
+
+    s.check("an unpaid request at forty-nine hours is still declined",
+            status(unpaid) == "declined",
+            detail="without this the next check proves nothing: an expiry "
+                   "that declines nobody also leaves the deposit alone")
+    s.check("the one holding a deposit is not",
+            status(deposit) == "pending",
+            detail=f"{status(deposit)} — declined on a timer is not an answer "
+                   "anybody chose")
+    s.check("and no refund was attempted, for anybody",
+            not refunds_tried and not stripe_tried,
+            detail=f"refund_booking for {refunds_tried}, Stripe {len(stripe_tried)}"
+                   " time(s) — refunds are the owner's call, not a timer's")
+    s.check("and none written down",
+            conn.execute("SELECT COUNT(*) AS c FROM refunds WHERE category = 'room' "
+                         "AND booking_id IN (?, ?, ?)",
+                         (deposit, unpaid, racer)).fetchone()["c"] == 0)
+
+    s.section("Money arriving mid-pass goes on the list, not to the card")
+    s.check("the decline stands", status(racer) == "declined",
+            detail="it was unpaid when the expiry read it")
+    owed = {r["id"]: r for r in m.money_to_give_back(conn)
+            if r["category"] == "room"}
+    s.check("and the money is on the owner's list to give back",
+            racer in owed and abs(owed[racer]["amount"] - 80) < 0.01,
+            detail=str(owed.get(racer)) + " — left unrefunded, it has to be "
+                   "somewhere a person will see it")
+    s.check("while the request still pending is not on it",
+            deposit not in owed,
+            detail="nothing was declined, so nothing is owed back yet")
 
     s.section("Answering it takes it off the list")
     conn.execute("UPDATE bookings SET status = 'confirmed' WHERE id = ?",

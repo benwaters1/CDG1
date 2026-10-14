@@ -54,6 +54,7 @@ def _cleanup(conn):
     conn.executemany("DELETE FROM time_entries WHERE id = ?", [(i,) for i in MADE_ENTRIES])
     MADE_ENTRIES.clear()
     conn.execute("DELETE FROM audit_log WHERE action LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM mail_log WHERE to_address LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM pos_order_lines WHERE name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM pos_orders WHERE table_label LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM menu_item_ingredients WHERE note LIKE ?", (TAG + "%",))
@@ -166,6 +167,33 @@ def run():
             "INSERT INTO room_issues (room_id, title, status, created_at) VALUES (?, ?, ?, ?)",
             [(room["id"], TAG + " dripping tap", "open", now),
              (room["id"], TAG + " fixed lamp", "resolved", now)])
+    # A shift and a request for time off before the toolbar is looked for. A
+    # list with no rows has nothing to classify, so it draws no chips, and the
+    # sections that make these come after the check: on a fresh database the
+    # two pages failed it, and passed only when an earlier suite left a shift
+    # or a request behind.
+    shift = (m.datetime.now(m.timezone.utc) - timedelta(days=2)).replace(
+        hour=9, minute=0, second=0, microsecond=0)
+    cur = conn.execute(
+        "INSERT INTO time_entries (user_id, clock_in_at, clock_out_at, auto_closed) "
+        "VALUES (?, ?, ?, 0)",
+        (emp["id"], shift.isoformat(), (shift + timedelta(hours=2)).isoformat()))
+    MADE_ENTRIES.append(cur.lastrowid)
+    conn.execute(
+        "INSERT INTO leave_requests (user_id, start_date, end_date, reason, leave_type, "
+        "status, requested_at) VALUES (?, ?, ?, ?, 'vacation', 'approved', ?)",
+        (emp["id"], (today + timedelta(days=20)).isoformat(),
+         (today + timedelta(days=21)).isoformat(), TAG + " a fixture", now))
+    # And a line in each log, for the same reason. On a fresh database run
+    # alone, the audit log and the mail log are empty too; in a full run they
+    # are filled by whatever earlier suites wrote, which is not this suite's
+    # to count on.
+    conn.execute(
+        "INSERT INTO audit_log (actor_user_id, action, target, details, created_at) "
+        "VALUES (?, ?, ?, ?, ?)", (owner["id"], TAG + "_toolbar", "a line", None, now))
+    m.mail_log_line(conn, {"to_address": TAG + "@example.invalid",
+                           "subject": TAG + " a letter", "delivered": True},
+                    (None, None), "not")
     conn.commit()
 
     # ---------------------------------------------------------------- shape
