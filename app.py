@@ -6975,6 +6975,25 @@ def init_db():
             )"""),
         ("addin_send_checks_at",
          "CREATE INDEX IF NOT EXISTS addin_send_checks_at ON addin_send_checks(at)"),
+        # THE CHECK ON SEND FOR SOMEBODY THE DASHBOARD DOES NOT KNOW. Microsoft
+        # 365 vouches that they hold one of the house's own accounts. That is
+        # enough to check their prices before a guest reads them, and not enough
+        # to read a guest's whole record. So the key lives in a table of its
+        # own, which only the check on Send and the note in To consult -- a
+        # panel endpoint cannot accept one by mistake, because it never looks
+        # here. Only the hash is kept, as with addin_sessions.
+        ("addin_check_keys_table",
+         """CREATE TABLE IF NOT EXISTS addin_check_keys (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              identity TEXT NOT NULL,
+              token_hash TEXT NOT NULL UNIQUE,
+              label TEXT,
+              created_at TEXT NOT NULL,
+              last_used_at TEXT,
+              expires_at TEXT NOT NULL,
+              revoked_at TEXT,
+              revoked_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+            )"""),
     ):
         try:
             conn.execute(ddl)
@@ -8604,6 +8623,7 @@ NAV_AREAS = {
         # Who signs in to the add-in, and as whom; the shared key; the house
         # calendar. The owner's: each decides who can read guests from Outlook.
         "admin_outlook_addin_people", "admin_outlook_addin_revoke",
+        "admin_outlook_addin_revoke_check",
         "admin_outlook_addin_mailboxes", "admin_outlook_addin_settings",
         "admin_house_calendar", "admin_house_calendar_sync", "admin_house_calendar_share",
         "admin_house_calendar_shared_by_hand",
@@ -91892,6 +91912,7 @@ ADDIN_CHECK_FAILURES = {
     "no_identity": "not signed in to the add-in",
     "signed_out": "the add-in's sign-in was refused",
     "sign_in_failed": "Microsoft 365 sign-in did not work in the background",
+    "not_linked": "this Microsoft 365 account is not one of the house's own",
     "timeout": "the check did not answer in time",
     "unreachable": "the app could not be reached",
     "server_error": "the app answered with an error",
@@ -92111,7 +92132,34 @@ def addin_issue_session(conn, user_id, how, label=""):
     return raw, expires
 
 
-def addin_caller(conn, stamp=True):
+def addin_issue_check_key(conn, identity, label=""):
+    """A key that does one thing: lets the check on Send (and the note in To)
+    run for a Microsoft 365 account of the house's that nobody has linked to a
+    person in the dashboard yet. Returns (key, expires_at), like a session."""
+    raw = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    expires = (now + timedelta(days=ADDIN_SESSION_DAYS)).isoformat()
+    conn.execute(
+        """INSERT INTO addin_check_keys (identity, token_hash, label, created_at,
+                                         last_used_at, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (identity, _addin_key_hash(raw), (label or "")[:120], now.isoformat(),
+         now.isoformat(), expires))
+    return raw, expires
+
+
+def addin_stamp(conn, caller):
+    """The last-used stamp a caller is owed, on whichever table its key is in."""
+    now = datetime.now(timezone.utc).isoformat()
+    if caller.get("session_id"):
+        conn.execute("UPDATE addin_sessions SET last_used_at = ? WHERE id = ?",
+                     (now, caller["session_id"]))
+    elif caller.get("check_key_id"):
+        conn.execute("UPDATE addin_check_keys SET last_used_at = ? WHERE id = ?",
+                     (now, caller["check_key_id"]))
+
+
+def addin_caller(conn, stamp=True, check_only_ok=False):
     """Who is asking, as a dict, or None.
 
     A POST only. A person's key travels in the Authorization header; the
@@ -92121,6 +92169,12 @@ def addin_caller(conn, stamp=True):
 
     stamp=False leaves the last-used write to the caller (stamp_due says
     whether one is owed): the send check answers first and writes after.
+
+    check_only_ok=True also accepts a check-only key (addin_check_keys): an
+    account of the house's that nobody has linked yet. Only the check on Send,
+    its failure report and the note in To pass it. Everything that shows a
+    guest's record leaves it False, so a check-only key is simply not found
+    there -- the same 404 as no key at all.
     """
     if request.method != "POST":
         return None
@@ -92135,6 +92189,21 @@ def addin_caller(conn, stamp=True):
                 WHERE addin_sessions.token_hash = ? AND addin_sessions.revoked_at IS NULL
                   AND addin_sessions.expires_at > ? AND users.status = 'active'""",
             (_addin_key_hash(key), now.isoformat())).fetchone()
+        if not row and check_only_ok:
+            checker = conn.execute(
+                """SELECT id, identity, last_used_at FROM addin_check_keys
+                    WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?""",
+                (_addin_key_hash(key), now.isoformat())).fetchone()
+            if checker:
+                due = (checker["last_used_at"] or "") < (now - timedelta(minutes=10)).isoformat()
+                if due and stamp:
+                    conn.execute("UPDATE addin_check_keys SET last_used_at = ? WHERE id = ?",
+                                 (now.isoformat(), checker["id"]))
+                    conn.commit()
+                return {"user_id": None, "name": checker["identity"], "owner": False,
+                        "how": "Microsoft 365, checking only", "session_id": None,
+                        "check_key_id": checker["id"], "identity": checker["identity"],
+                        "stamp_due": due and not stamp}
         if not row:
             return None
         # Stamped at most every ten minutes: the send check fires on every
@@ -96956,19 +97025,32 @@ def assistant_confirm(conn, user, message_id, agreed):
     return ok, message
 
 
-def _addin_door(conn, action, per_person, shared=60):
+def addin_limit_key(action, caller):
+    """Whose allowance a request comes out of: a person's, a check-only key's,
+    or -- for the shared key -- the internet address's."""
+    if caller.get("user_id"):
+        return f"{action}:u{caller['user_id']}", True
+    if caller.get("check_key_id"):
+        return f"{action}:k{caller['check_key_id']}", True
+    return action, False
+
+
+def _addin_door(conn, action, per_person, shared=60, check_only_ok=False):
     """The one door every add-in endpoint goes through: somebody the house
     knows, or a 404 that says nothing about whether there was a door; then
     the rate limit, per person for a person (the whole house is often one
     internet address) and per address for the shared key.
 
+    check_only_ok lets a check-only key through (see addin_caller). Left
+    False everywhere a guest's record is shown.
+
     Returns (caller, refusal) -- exactly one of them set.
     """
-    caller = addin_caller(conn)
+    caller = addin_caller(conn, check_only_ok=check_only_ok)
     if not caller:
         return None, (jsonify(error="not found"), 404)
-    limit_key = f"{action}:u{caller['user_id']}" if caller["user_id"] else action
-    if rate_limited(conn, limit_key, per_person if caller["user_id"] else shared):
+    limit_key, personal = addin_limit_key(action, caller)
+    if rate_limited(conn, limit_key, per_person if personal else shared):
         conn.commit()
         return None, (jsonify(error="too many requests — give it a few minutes"), 429)
     conn.commit()
@@ -97157,6 +97239,8 @@ ADDIN_CHECK_REMEDY = {
     "sign_in_failed": "Microsoft 365 wanted an answer it could not ask for in the background "
                       "-- usually consent or a password change. Opening the Gudanes panel once "
                       "in that Outlook lets the person answer it.",
+    "not_linked": "Only @chateaugudanes.com accounts are checked without a dashboard login. "
+                  "Give the person one and link this address to them on the add-in page.",
     "timeout": "The app did not answer within the three seconds the check has. If this keeps "
                "happening, look at the app on Railway.",
     "unreachable": "The app could not be reached from that Outlook. If this keeps happening, "
@@ -97263,16 +97347,15 @@ def api_check_send_conflict():
     """
     started = time.perf_counter()
     conn = get_db()
-    caller = addin_caller(conn, stamp=False)
+    caller = addin_caller(conn, stamp=False, check_only_ok=True)
     if not caller:
         conn.close()
         return jsonify(error="not found"), 404
-    limit_key = (f"check_send_conflict:u{caller['user_id']}" if caller["user_id"]
-                 else "check_send_conflict")
-    limit = 1200 if caller["user_id"] else 300
+    limit_key, personal = addin_limit_key("check_send_conflict", caller)
+    limit = 1200 if personal else 300
     ip = request.remote_addr or "unknown"
     source = "send" if request.form.get("source") == "send" else "button"
-    mailbox = _addin_mailbox(request.form.get("mailbox"))
+    mailbox = _addin_mailbox(request.form.get("mailbox")) or caller.get("identity") or ""
     platform = _addin_platform(request.form.get("platform"))
     waited = _client_ms(request.form.get("waited_ms"))
     subject = request.form.get("subject", "")
@@ -97292,8 +97375,7 @@ def api_check_send_conflict():
             c.execute("INSERT INTO submission_log (ip_address, action, created_at) "
                       "VALUES (?, ?, ?)", (ip, limit_key, datetime.now(timezone.utc).isoformat()))
             if caller.get("stamp_due"):
-                c.execute("UPDATE addin_sessions SET last_used_at = ? WHERE id = ?",
-                          (datetime.now(timezone.utc).isoformat(), caller["session_id"]))
+                addin_stamp(c, caller)
             # The panel's sign-in check asks with an empty draft; that is not a
             # check of anything, and a log full of them hides the real ones.
             if outcome and (subject.strip() or body_text.strip()):
@@ -97370,11 +97452,12 @@ def api_addin_send_check_failed():
     if rate_limited(conn, "send_check_failed", 120):
         conn.close()
         return "", 204
-    caller = addin_caller(conn, stamp=False)
+    caller = addin_caller(conn, stamp=False, check_only_ok=True)
     mailbox = _addin_mailbox(request.form.get("mailbox"))
     if mailbox and mailbox not in house_addresses() and \
             mailbox.rsplit("@", 1)[-1] not in addin_house_domains():
         mailbox = ""
+    mailbox = mailbox or (caller or {}).get("identity") or ""
     if not caller and not mailbox:
         conn.close()
         return "", 204
@@ -97455,6 +97538,14 @@ def api_addin_session():
     it (verify_microsoft_token), finds the person among the dashboard's users,
     and answers with a key for that person's Outlook. Nobody the dashboard
     does not know gets one -- they are noted for the owner to link instead.
+
+    EXCEPT FOR THE CHECK ON SEND. The event script asks with purpose=check,
+    and an account of the house's own (@chateaugudanes.com, vouched for by
+    Microsoft) that nobody has linked yet gets a check-only key: the check on
+    Send and the note in To accept it, and nothing that shows a guest's record
+    does. Karina and Jasmine had no dashboard login, so without this their
+    emails could never be checked at all. They are still noted for linking,
+    which is what the guest panel needs.
     """
     if request.method != "POST" or not addin_sso_configured():
         abort(404)
@@ -97471,14 +97562,25 @@ def api_addin_session():
         return jsonify(error=f"Microsoft's sign-in was not accepted: {e}."), 401
     who = addin_identity(claims)
     user = addin_user_for_identity(conn, who)
+    platform = (request.form.get("platform") or "")[:40]
     if not user:
         addin_note_unmatched(conn, who, claims.get("name") or "")
+        # The house's own domain only: a guest account added to the house's
+        # Microsoft 365 has a token from the same organisation and an address
+        # somewhere else entirely.
+        house_account = bool(who) and who.rsplit("@", 1)[-1] in addin_house_domains()
+        if request.form.get("purpose") == "check" and house_account:
+            key, expires = addin_issue_check_key(conn, who, label=(
+                f"{who} on {platform}" if platform else who))
+            log_audit(conn, "addin_check_key", target=who, details=platform or "Outlook")
+            conn.commit()
+            conn.close()
+            return jsonify(session=key, expires_at=expires, name=who, level="check")
         conn.commit()
         conn.close()
         return jsonify(error=f"{who or 'This account'} is not linked to anybody in the "
                              "dashboard yet. The owner can link it on the Outlook add-in page.",
                        who=who), 403
-    platform = (request.form.get("platform") or "")[:40]
     key, expires = addin_issue_session(conn, user["id"], "microsoft", label=(
         f"{who} on {platform}" if platform else who))
     log_audit(conn, "addin_signed_in", target=user["name"], details=platform or "Outlook")
@@ -97518,7 +97620,7 @@ def api_addin_recipient_note():
     on a phone too, where nothing else of the add-in runs while writing --
     one line saying what the person writing must not miss."""
     conn = get_db()
-    caller, refused = _addin_door(conn, "recipient_note", 1200, shared=300)
+    caller, refused = _addin_door(conn, "recipient_note", 1200, shared=300, check_only_ok=True)
     if refused:
         conn.close()
         return refused
@@ -97756,6 +97858,9 @@ def _admin_addin_context(conn):
         (datetime.now(timezone.utc).isoformat(),)).fetchall()
     # And who signed which Outlook out, lately: a lost phone, somebody who
     # left. Kept with the name of whoever did it, so it can be asked about.
+    # Check-only keys too, by the account Microsoft named, so signing one out
+    # is as answerable as signing out a person.
+    since = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
     signed_out = conn.execute(
         """SELECT addin_sessions.label, addin_sessions.revoked_at, users.name AS user_name,
                   revoker.name AS revoked_by
@@ -97763,8 +97868,14 @@ def _admin_addin_context(conn):
              JOIN users ON users.id = addin_sessions.user_id
              LEFT JOIN users AS revoker ON revoker.id = addin_sessions.revoked_by_user_id
             WHERE addin_sessions.revoked_at >= ?
-            ORDER BY addin_sessions.revoked_at DESC LIMIT 20""",
-        ((datetime.now(timezone.utc) - timedelta(days=90)).isoformat(),)).fetchall()
+           UNION ALL
+           SELECT addin_check_keys.label, addin_check_keys.revoked_at,
+                  addin_check_keys.identity AS user_name, checker.name AS revoked_by
+             FROM addin_check_keys
+             LEFT JOIN users AS checker ON checker.id = addin_check_keys.revoked_by_user_id
+            WHERE addin_check_keys.revoked_at >= ?
+            ORDER BY revoked_at DESC LIMIT 20""",
+        (since, since)).fetchall()
     mailboxes = []
     for r in (monitored_mailboxes(conn) if MS_GRAPH_MAILBOXES else conn.execute(
             "SELECT * FROM mailbox_routing WHERE active = 1 ORDER BY mailbox").fetchall()):
@@ -97790,6 +97901,14 @@ def _admin_addin_context(conn):
         "support": ADDIN_SUPPORT,
         "send_trouble": send_check_trouble(conn), "send_speed": send_check_speed(conn),
         "send_slow_ms": ADDIN_SEND_SLOW_MS,
+        # Accounts of the house's that the check on Send runs for, without a
+        # dashboard login: each is somebody to link, for the guest panel.
+        "check_keys": [dict(r, linked=bool(addin_user_for_identity(conn, r["identity"])))
+                       for r in conn.execute(
+            """SELECT * FROM addin_check_keys
+                WHERE revoked_at IS NULL AND expires_at > ?
+                ORDER BY last_used_at DESC""",
+            (datetime.now(timezone.utc).isoformat(),)).fetchall()],
         "send_stopped": conn.execute(
             """SELECT addin_send_checks.at, addin_send_checks.mailbox, addin_send_checks.detail,
                       users.name AS user_name
@@ -97877,6 +97996,33 @@ def admin_outlook_addin_revoke(session_id):
     conn.close()
     flash(f"Signed out: {row['name']}, {row['label'] or 'Outlook'}. It asks Microsoft again "
           "next time, and gets in only if they are still linked.", "success")
+    return redirect(url_for("admin_outlook_addin") + "#signed-in")
+
+
+@app.route("/admin/outlook-addin/check-keys/<int:key_id>/revoke", methods=["POST"])
+@owner_required
+def admin_outlook_addin_revoke_check(key_id):
+    """Sign one Outlook out of the check on Send. As with a person's key, it
+    asks Microsoft again on the next email: an account of the house's that is
+    still in Microsoft 365 is checked again. Taking the account out of
+    Microsoft 365 is what ends it."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM addin_check_keys WHERE id = ?", (key_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    if row["revoked_at"]:
+        conn.close()
+        flash(f"That Outlook of {row['identity']}'s was already signed out.", "error")
+        return redirect(url_for("admin_outlook_addin") + "#signed-in")
+    conn.execute("UPDATE addin_check_keys SET revoked_at = ?, revoked_by_user_id = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat(), current_user()["id"], key_id))
+    log_audit(conn, "addin_check_key_signed_out", target=row["identity"],
+              details=row["label"] or "")
+    conn.commit()
+    conn.close()
+    flash(f"Signed out of the check on Send: {row['label'] or row['identity']}. It asks "
+          "Microsoft again on the next email.", "success")
     return redirect(url_for("admin_outlook_addin") + "#signed-in")
 
 

@@ -78,6 +78,8 @@ GIF = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7
 
 def _cleanup(conn):
     conn.execute("DELETE FROM addin_send_checks")
+    conn.execute("DELETE FROM addin_check_keys WHERE identity LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM app_settings WHERE key = ?", (m.ADDIN_UNMATCHED_SETTING,))
     conn.execute("DELETE FROM addin_sessions WHERE label LIKE ? OR user_id IN "
                  "(SELECT id FROM users WHERE name LIKE ?)", (TAG + "%", TAG + "%"))
     conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG.upper() + "%",))
@@ -361,6 +363,7 @@ def run():
                                         "MS_GRAPH_MAILBOXES")}
     try:
         _server_side(s, anon, oc, conn)
+        _checking_only(s, anon, oc, conn)
         _in_a_browser(s, conn)
     finally:
         for n, v in saved.items():
@@ -747,6 +750,95 @@ def _server_side(s, anon, oc, conn):
     conn.commit()
 
 
+def _checking_only(s, anon, oc, conn):
+    """An account of the house's that nobody has linked to a person in the
+    dashboard: Karina and Jasmine, on 14 October 2026. Checked on Send; never
+    shown a guest's record."""
+    s.section("An account of the house's nobody has linked: checked, and nothing more")
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO users (email, password_hash, role, name, job_role, status, created_at,
+             m365_upn) VALUES ('zzsc.linked@example.invalid', 'x', 'employee', 'zzsc Linked',
+             'Reservations', 'active', ?, 'zzsc.linked@chateaugudanes.com')""", (now,))
+    conn.commit()
+    room = conn.execute("SELECT * FROM rooms WHERE active = 1 AND price_per_night > 0 "
+                        "ORDER BY id LIMIT 1").fetchone()
+    a, b = _free_stay(conn, room)
+    real = m.compute_room_total(conn, room, a, b)
+    wrong = (f"The {room['name']} from {a.strftime('%d/%m/%Y')} to {b.strftime('%d/%m/%Y')} "
+             f"is €{real + 300:.2f}.")
+
+    def sign_in(address, purpose=None):
+        data = {"platform": "zzsc-checkonly"}
+        if purpose:
+            data["purpose"] = purpose
+        return _post(anon, "/api/addin/session", data,
+                     token(claims(preferred_username=address)))
+
+    with _SignInOn():
+        status, got = sign_in("zzsc.unlinked.ariege@chateaugudanes.com")
+        s.check("the panel's sign-in still turns somebody unlinked away", status == 403,
+                detail=f"{status} {got}")
+        status, got = sign_in("zzsc.unlinked.ariege@chateaugudanes.com", "check")
+        key = (got or {}).get("session")
+        s.check("asked for the check, an @chateaugudanes.com account gets a key for it",
+                status == 200 and key and got.get("level") == "check", detail=f"{status} {got}")
+        s.check("and is still named for the owner to link",
+                "zzsc.unlinked.ariege@chateaugudanes.com" in [u["who"] for u in m.addin_unmatched(conn)])
+        status, got = sign_in("zzsc.outsider@example.invalid", "check")
+        s.check("an account at another domain, in the house's Microsoft 365 as a guest, does not",
+                status == 403, detail=f"{status} {got}")
+        status, got = sign_in("zzsc.linked@chateaugudanes.com", "check")
+        s.check("somebody linked gets their own full key, not a check-only one",
+                status == 200 and got and got.get("level") == "staff", detail=f"{status} {got}")
+        full = (got or {}).get("session")
+
+    status, got = _post(anon, "/api/check-send-conflict", {
+        "recipients": GUEST, "subject": "Your quote", "body": wrong, "source": "send",
+        "platform": "zzsc-checkonly"}, key)
+    s.check("the check on Send runs with it, and stops a wrong price",
+            status == 200 and got and got.get("conflict") is True and m.money(real) in got["note"],
+            detail=f"{status} {got}")
+    row = conn.execute("SELECT * FROM addin_send_checks WHERE platform = 'zzsc-checkonly'").fetchone()
+    s.check("logged under the account Microsoft named",
+            row and row["mailbox"] == "zzsc.unlinked.ariege@chateaugudanes.com" and row["user_id"] is None,
+            detail=str(dict(row)) if row else "none")
+    status, _ = _post(anon, "/api/addin/recipient-note", {"recipients": GUEST}, key)
+    s.check("so does the note in To", status == 200, detail=str(status))
+    for path, data in (("/api/guest-lookup", {"email": GUEST}),
+                       ("/api/addin/history", {"email": GUEST}),
+                       ("/api/addin/summarise", {"email": GUEST}),
+                       ("/api/draft-reply", {"recipient_email": GUEST, "body": "x"}),
+                       ("/api/addin/create-profile", {"email": GUEST, "name": "zzsc X"})):
+        status, _ = _post(anon, path, data, key)
+        s.check(f"{path} does not know it: a guest's record needs a dashboard login",
+                status == 404, detail=str(status))
+    status, _ = _post(anon, "/api/guest-lookup", {"email": GUEST}, full)
+    s.check("(positive control: the same lookup answers a full key)", status == 200,
+            detail=str(status))
+
+    page = oc.get("/admin/outlook-addin").get_data(as_text=True)
+    s.check("the add-in page lists it, to link and to sign out",
+            "Checked on Send, without a dashboard login" in page
+            and "zzsc.unlinked.ariege@chateaugudanes.com" in page)
+    kid = conn.execute("SELECT id FROM addin_check_keys WHERE identity = ?",
+                       ("zzsc.unlinked.ariege@chateaugudanes.com",)).fetchone()["id"]
+    r = oc.post(f"/admin/outlook-addin/check-keys/{kid}/revoke")
+    s.check("the owner signs it out", r.status_code == 302 and conn.execute(
+        "SELECT revoked_at FROM addin_check_keys WHERE id = ?", (kid,)).fetchone()["revoked_at"])
+    status, _ = _post(anon, "/api/check-send-conflict", {"recipients": GUEST, "body": wrong}, key)
+    s.check("and then it is not found", status == 404, detail=str(status))
+    page = oc.get("/admin/outlook-addin").get_data(as_text=True)
+    signed_out_line = page[page.find("Signed out in the last ninety days"):][:600]
+    s.check("and the page says who signed it out, as for a person",
+            "zzsc.unlinked.ariege@chateaugudanes.com" in signed_out_line
+            and " by " in signed_out_line, detail=signed_out_line[:300])
+    conn.execute("DELETE FROM addin_send_checks")
+    conn.execute("DELETE FROM submission_log WHERE action LIKE 'addin_session%' "
+                 "OR action LIKE 'check_send%' OR action LIKE 'recipient_note%'")
+    conn.commit()
+
+
 # ---- the real handler, in a real browser -----------------------------------
 
 def _scenarios(conn, room, wrong, right, keys, ms_token):
@@ -786,6 +878,15 @@ def _scenarios(conn, room, wrong, right, keys, ms_token):
            settle_ms=700, sets={}),
         sc("compose", handler="onNewMessageComposeHandler", to=[NOTED_GUEST], roaming={},
            ms_token=ms_token, sets={"Mailbox": "1.14", "NestedAppAuth": "1.1"}),
+        # Karina, as she was on 14 October 2026: a house account, no dashboard
+        # login. Checked all the same.
+        sc("unlinked", body=wrong, roaming={}, ms_token=keys["unlinked_token"],
+           sets={"Mailbox": "1.14", "NestedAppAuth": "1.1"}),
+        sc("neg-unlinked", script="no_purpose", body=wrong, roaming={},
+           ms_token=keys["unlinked_token"], sets={"Mailbox": "1.14", "NestedAppAuth": "1.1"},
+           settle_ms=700),
+        sc("outsider", body=wrong, roaming={}, ms_token=keys["outsider_token"],
+           sets={"Mailbox": "1.14", "NestedAppAuth": "1.1"}, settle_ms=700),
     ]
 
 
@@ -801,6 +902,7 @@ BREAKS = {
     "no_way_out": ("if (!identity) { cannotCheck(failure); return; }", "if (!identity) { return; }"),
     "never_signs_in": ('if (budgetMs < 600) { done(null, "no_identity"); return; }',
                        'done(null, "no_identity"); return;'),
+    "no_purpose": ('{ platform: platform(), purpose: "check" }', "{ platform: platform() }"),
 }
 
 
@@ -833,7 +935,10 @@ def _in_a_browser(s, conn):
     conn.commit()
     ms_token = token(claims(aud=_SIGN_IN_CLIENT, azp=_SIGN_IN_CLIENT,
                             preferred_username="zzsc.jasmine@chateaugudanes.com"))
-    scenarios = _scenarios(conn, room, wrong, right, {"good": good, "revoked": revoked}, ms_token)
+    keys = {"good": good, "revoked": revoked,
+            "unlinked_token": token(claims(preferred_username="zzsc.unlinked@chateaugudanes.com")),
+            "outsider_token": token(claims(preferred_username="zzsc.outsider@example.invalid"))}
+    scenarios = _scenarios(conn, room, wrong, right, keys, ms_token)
 
     real_guess = m.guess_email_conflict
 
@@ -991,6 +1096,26 @@ def _in_a_browser(s, conn):
             and any("zzsc Noted Guest" in (n or "") for n in result("compose").get("notes") or [])
             and (result("compose").get("roaming") or {}).get("gudanesSession"),
             detail=str(result("compose"))[:400])
+    s.check("somebody linked gets their own key, never a check-only one",
+            "gudanesCheckKey" not in (result("signin").get("roaming") or {"gudanesCheckKey": 1}),
+            detail=str(result("signin").get("roaming")))
+
+    s.section("An account of the house's nobody has linked yet: checked all the same")
+    held = result("unlinked").get("roaming") or {}
+    s.check("signed in for the check, and a wrong price stopped with the right one named",
+            conflict_ok("unlinked"), detail=str(result("unlinked"))[:400])
+    s.check("its key kept apart from a person's, where the panel will not trip over it",
+            held.get("gudanesCheckKey") and "gudanesSession" not in held, detail=str(held))
+    s.check("(negative control: asking as the panel asks, it is turned away and nothing is checked)",
+            not conflict_ok("neg-unlinked") and not checked("neg-unlinked"),
+            detail=str(result("neg-unlinked"))[:300])
+    msg = opts("outsider").get("errorMessage") or ""
+    s.check("an account that is not the house's: told so, with no Sign in that cannot help",
+            result("outsider").get("completed") and opts("outsider").get("allowEvent") is False
+            and "not one of the house's own" in msg and "cancelLabel" not in opts("outsider"),
+            detail=str(result("outsider"))[:400])
+    s.check("and reported as such, for the owner",
+            "not_linked" in [r["reason"] for r in rows("outsider")], detail=str(rows("outsider")))
 
     s.section("Microsoft's own library, where nothing can sign in")
     s.check("it loads from its string and is started",

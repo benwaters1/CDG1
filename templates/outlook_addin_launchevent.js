@@ -19,6 +19,8 @@
  *   - It signs itself in. It used to check only if a panel had once been
  *     opened in that Outlook and left a key behind, so the people who most
  *     needed checking -- who never opened the panel -- were never checked.
+ *     An @chateaugudanes.com account nobody has linked to a dashboard login
+ *     gets a key for the check alone (kept apart, under CHECK_KEY).
  *   - A real problem stops the email and says what is wrong and what is
  *     right.
  *   - When it cannot check, it says so and the person decides. The manifest
@@ -42,6 +44,8 @@ var NOTE_KEY = "gudanesGuest";
 var SESSION_KEY = "gudanesSession";
 var EXPIRES_KEY = "gudanesSessionExpires";
 var TOKEN_KEY = "gudanesToken";
+var CHECK_KEY = "gudanesCheckKey";
+var CHECK_EXPIRES_KEY = "gudanesCheckKeyExpires";
 // The key lasts a month. With three days or less left, the next email opened
 // renews it, so the check on Send finds a good one waiting.
 var RENEW_MS = 3 * 24 * 3600 * 1000;
@@ -212,33 +216,53 @@ function reportFailure(reason, detail, elapsed, who) {
 function roaming() { return Office.context.roamingSettings; }
 
 // The key in this Outlook's roaming settings: a person's own while it is in
-// date, or the house's shared key, or null.
+// date; else a check-only key (an account of the house's nobody has linked to
+// a person yet, which the check on Send accepts and the panel does not); else
+// the house's shared key; else null.
 function heldKey() {
   try {
     var rs = roaming();
     var session = rs.get(SESSION_KEY) || "";
     var expires = Date.parse(rs.get(EXPIRES_KEY) || "") || 0;
     if (session && expires > now()) { return { session: session, expires: expires }; }
+    var checker = rs.get(CHECK_KEY) || "";
+    var checkUntil = Date.parse(rs.get(CHECK_EXPIRES_KEY) || "") || 0;
+    if (checker && checkUntil > now()) {
+      return { session: checker, expires: checkUntil, checkOnly: true };
+    }
     var token = rs.get(TOKEN_KEY) || "";
     if (token) { return { token: token }; }
   } catch (e) { /* no roaming settings here */ }
   return null;
 }
 
-function keepKey(session, expiresAt, done) {
+// A check-only key is kept under names of its own. The panel reads the
+// person's key; given this one it would be refused, forget it, and the two
+// would take turns undoing each other.
+function keepKey(session, expiresAt, checkOnly, done) {
   try {
     var rs = roaming();
-    rs.set(SESSION_KEY, session);
-    rs.set(EXPIRES_KEY, expiresAt);
+    if (checkOnly) {
+      rs.set(CHECK_KEY, session);
+      rs.set(CHECK_EXPIRES_KEY, expiresAt);
+    } else {
+      rs.set(SESSION_KEY, session);
+      rs.set(EXPIRES_KEY, expiresAt);
+    }
     rs.saveAsync(function () { if (done) { done(); } });
   } catch (e) { if (done) { done(); } }
 }
 
-function forgetKey() {
+function forgetKey(who) {
   try {
     var rs = roaming();
-    rs.remove(SESSION_KEY);
-    rs.remove(EXPIRES_KEY);
+    if (who && who.checkOnly) {
+      rs.remove(CHECK_KEY);
+      rs.remove(CHECK_EXPIRES_KEY);
+    } else {
+      rs.remove(SESSION_KEY);
+      rs.remove(EXPIRES_KEY);
+    }
     rs.saveAsync(function () { /* nothing waits on it */ });
   } catch (e) { /* nothing to forget */ }
 }
@@ -313,6 +337,10 @@ function microsoftToken(done) {
 
 // Microsoft's token exchanged for the add-in's own key, kept in roaming
 // settings for every later email. done(error, who).
+//
+// purpose=check: somebody linked to a person in the dashboard gets their own
+// key as before; an account of the house's nobody has linked yet gets a key
+// for the check on Send and nothing else. The panel never asks this way.
 function signIn(budgetMs, done) {
   var settled = false;
   var started = now();
@@ -325,16 +353,22 @@ function signIn(budgetMs, done) {
   microsoftToken(function (error, token) {
     if (settled) { return; }
     if (error || !token) { clearTimeout(timer); finish(error || new Error("no token")); return; }
-    post(CONFIG.session_url, { platform: platform() }, { bearer: token },
+    post(CONFIG.session_url, { platform: platform(), purpose: "check" }, { bearer: token },
          Math.max(1, budgetMs - (now() - started)), function (err, status, data) {
       clearTimeout(timer);
       if (!err && status === 200 && data && data.session) {
-        keepKey(data.session, data.expires_at, null);
-        finish(null, { session: data.session, expires: Date.parse(data.expires_at || "") || 0 });
+        var checkOnly = data.level === "check";
+        keepKey(data.session, data.expires_at, checkOnly, null);
+        finish(null, { session: data.session, expires: Date.parse(data.expires_at || "") || 0,
+                       checkOnly: checkOnly });
         return;
       }
+      var refused = new Error("sign-in answered " + status);
       if (!err) { signInDetail = "the app answered " + status; }
-      finish(err || new Error("sign-in answered " + status));
+      // Microsoft said who it is, and the app will not take them: not one of
+      // the house's own accounts. Signing in again changes nothing.
+      if (!err && status === 403) { refused.notLinked = true; }
+      finish(err || refused);
     });
   });
 }
@@ -347,6 +381,7 @@ function withIdentity(budgetMs, done) {
   if (budgetMs < 600) { done(null, "no_identity"); return; }
   signIn(budgetMs, function (error, who) {
     if (who) { done(who, ""); return; }
+    if (error && error.notLinked) { done(null, "not_linked"); return; }
     done(null, "sign_in_failed");
   });
 }
@@ -473,7 +508,7 @@ function onMessageSendHandler(event) {
       if (status === 404 && identity.session && !retried) {
         // Signed out on the add-in page, or run out: forgotten, and signed
         // in afresh once if there is time.
-        forgetKey();
+        forgetKey(identity);
         if (canSignIn() && left() > 1200) {
           signIn(left() - 400, function (err, fresh) {
             if (finished) { return; }
@@ -565,7 +600,7 @@ function whileWriting(event) {
         if (!outside.length) { showNote(item, "", finish); return; }
         post(CONFIG.note_url, { recipients: outside.join(",") }, who, 6000, function (error, status, data) {
           if (finished) { return; }
-          if (!error && status === 404 && who.session) { forgetKey(); }
+          if (!error && status === 404 && who.session) { forgetKey(who); }
           if (!error && status === 200 && data) { showNote(item, data.note, finish); return; }
           finish();
         });

@@ -624,6 +624,13 @@ Items scan covers those). Mail only to @chateaugudanes.com goes at once.
   Microsoft's sign-in library travels inside the event script, because
   classic Outlook on Windows loads that one file and nothing beside it. It is
   kept at `static/addin/`, held to the pinned fingerprint.
+- **No dashboard login needed for the check.** An @chateaugudanes.com account
+  that nobody has linked to a person gets a key for the check on Send and the
+  note in To, and nothing else. Microsoft 365 vouches for the account. The
+  guest panel still needs a dashboard login linked on the add-in page. These
+  keys are listed under "Checked on Send, without a dashboard login" there,
+  each with Sign out. An account at another domain, such as a guest account
+  in the house's Microsoft 365, is told it is not one of the house's own.
 - **Classic Outlook on Windows** may only call the app because
   `/.well-known/microsoft-officeaddins-allowed.json` names the event script.
   Without that file every request it made was refused before it left the

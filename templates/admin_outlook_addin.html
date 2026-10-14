@@ -37,7 +37,7 @@
         <td>{% if claude_on %}<span class="mini-status status-confirmed">on</span> Claude Opus 5.5
             {% else %}<span class="mini-status status-declined">not set up</span> Set <code>ANTHROPIC_API_KEY</code>. Everything else works without it.{% endif %}</td></tr>
     <tr><th scope="row">Signed in now</th>
-        <td>{{ sessions|length }} Outlook{{ 's' if sessions|length != 1 }} <a href="#signed-in">see who</a></td></tr>
+        <td>{{ sessions|length }} Outlook{{ 's' if sessions|length != 1 }}{% if check_keys %}, and {{ check_keys|length }} checked on Send without a dashboard login{% endif %} <a href="#signed-in">see who</a></td></tr>
   </tbody>
 </table>
 </div>
@@ -101,7 +101,8 @@
 <div class="flash flash-error">
   Tried to sign in and were not recognised:
   {% for u in unmatched %}<strong>{{ u.who }}</strong>{% if u.name %} ({{ u.name }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}.
-  Put the address against the right person below.
+  Put the address against the right person below. Until then, an @chateaugudanes.com
+  account still has its emails checked on Send; it is the guest panel that needs the link.
 </div>
 {% endif %}
 <form method="post" action="{{ url_for('admin_outlook_addin_people') }}">
@@ -142,6 +143,34 @@
       <td>
         <form method="post" action="{{ url_for('admin_outlook_addin_revoke', session_id=s['id']) }}"
               onsubmit="return confirm('Sign this Outlook out of the add-in?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-mini btn-mini-danger">Sign out</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% if check_keys %}
+<p class="manual-body wraps" style="margin-top:14px;"><strong>Checked on Send, without a dashboard login.</strong>
+  Microsoft 365 vouches these are the house's own accounts, so their emails are checked; they cannot open a guest's record. Link each to a person above and they get the guest panel too.</p>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Account</th><th>Where</th><th>Since</th><th>Last used</th><th>Until</th><th></th></tr></thead>
+  <tbody>
+    {% for k in check_keys %}
+    <tr>
+      <th scope="row">{{ k['identity'] }}{% if k['linked'] %}<br><span class="upload-hint">linked now: signs in fully next time</span>{% endif %}</th>
+      <td>{{ k['label'] or 'Outlook' }}</td>
+      <td>{{ k['created_at']|house_day|date_short }}</td>
+      <td>{{ k['last_used_at']|house_day|date_short if k['last_used_at'] else '—' }}</td>
+      <td>{{ k['expires_at']|house_day|date_short }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin_outlook_addin_revoke_check', key_id=k['id']) }}"
+              onsubmit="return confirm('Sign this Outlook out of the check on Send?');">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn-mini btn-mini-danger">Sign out</button>
         </form>
