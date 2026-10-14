@@ -2329,6 +2329,111 @@ del _fixed
 EMAIL_TEMPLATE_LABELS = {k: label for k, label, _s, _b in DEFAULT_EMAIL_TEMPLATES}
 
 
+# ---------------------------------------------------------------------------
+# STORED LETTERS, HELD TO THE RULES ABOVE. init_db brings a stored letter up to
+# new wording only while it still reads word for word as shipped, so a letter
+# that differs by anything at all keeps the old wording for ever, silently.
+# Found 13 Oct 2026 on a real copy: the stay confirmation had no payment
+# sentence and still said "ninety-four", and the balance reminder still offered
+# to take the money "on arrival if you would rather" -- both because a
+# paragraph added on 1 Oct had made them differ from the default by one
+# paragraph, so neither migration touched them.
+#
+# READ, NEVER REWRITTEN. A stored letter may hold the owner's own words, so the
+# owner decides: each one out of step is named on the home page, on the
+# readiness page and as a task, with a link to its editor, where "Restore
+# original wording" is one press away. Each closes itself the moment the
+# wording keeps to the rules, whether by restoring or by editing.
+# ---------------------------------------------------------------------------
+# The letters that ask for or acknowledge money for a stay or an atelier, and
+# so carry the sentence. test_confirmed_facts holds the shipped wording to the
+# same set.
+LETTERS_WITH_PAYMENT_LINE = frozenset(_EMAIL_PAYMENT_SAFETY_KEYS) | {"room_confirmed"}
+# Taking the money at the house. Read a sentence at a time and only beside a
+# word about money: "champagne on arrival" is an offer, not a payment.
+_PAY_AT_THE_HOUSE = re.compile(
+    r"\b(?:on|upon) arrival\b|\bat the door\b|\bwhen you arrive\b|\bat check[- ]?in\b"
+    r"|\b(?:in|by|with) cash\b", re.I)
+_MONEY_WORDS = re.compile(
+    r"\b(?:pay|pays|paid|paying|payment|settle[ds]?|settling|balance|owe[ds]?|owing|"
+    r"outstanding|charge[ds]?|cards?|cash|deposit|due)\b|€", re.I)
+# "Nothing is taken at the door" is the rule, said; it is not breaking it.
+_SAYS_NOT = re.compile(r"\b(?:no|not|nothing|never|none)\b|n[’']t\b", re.I)
+# The card-only claim however it is worded: the sentence of today, the one of
+# 5 October, or an owner's own version of either.
+_CARD_ONLY_CLAIM = re.compile(r"\bonly ever\b[^.]*\b(?:card|chateaugudanes\.com)\b", re.I)
+_RETIRED_ROOM_COUNT = re.compile(r"\bninety[- ]four\b", re.I)
+
+
+def _squash(text):
+    return re.sub(r"\s+", " ", text or "").strip()
+
+
+def _letter_sentences(text):
+    return [s.strip() for s in re.split(r"(?<=[.!?:])\s+|\n+", text or "") if s.strip()]
+
+
+def letter_rule_breaches(template_key, subject, body):
+    """Where this wording breaks the house's rules about payment. [] if nowhere.
+
+    Each is {"rule", "untrue", "said"}. `untrue` is a letter telling somebody
+    something false -- pay at the door, card only for an event -- rather than
+    leaving out something true, and it is what makes a finding a blocker.
+    `said` reads after the letter's name, the way wording_problems does.
+    """
+    text = _squash((subject or "") + " " + (body or ""))
+    area = template_area(template_key)
+    out = []
+    if template_key in LETTERS_WITH_PAYMENT_LINE and _squash(PAYMENT_SAFETY_LINE) not in text:
+        out.append({"rule": "payment_line", "untrue": False, "said": (
+            "it carries the payment sentence as it read on 5 October, not the one the "
+            "house uses now" if _squash(_PAYMENT_SAFETY_LINE_5OCT) in text else
+            "it does not say how the house takes payment, which is the sentence that "
+            "lets a guest recognise a request to pay somewhere else")})
+    if area in ("Rooms", "Workshops"):
+        for sentence in _letter_sentences((subject or "") + "\n" + (body or "")):
+            if (_PAY_AT_THE_HOUSE.search(sentence) and _MONEY_WORDS.search(sentence)
+                    and not _SAYS_NOT.search(sentence)):
+                quoted = sentence if len(sentence) <= 110 else sentence[:107].rstrip() + "…"
+                out.append({"rule": "pay_at_house", "untrue": True, "said": (
+                    f"it offers to take the money at the house — “{quoted}” "
+                    "— and a stay or an atelier is paid online, with nothing taken "
+                    "on arrival")})
+    if area == "Events" and _CARD_ONLY_CLAIM.search(text):
+        out.append({"rule": "event_card_only", "untrue": True, "said": (
+            "it tells an event client the house only ever takes payment by card, and "
+            "events are paid by bank transfer, so a client who believed it would "
+            "refuse a real invoice")})
+    if _RETIRED_ROOM_COUNT.search(text):
+        out.append({"rule": "room_count", "untrue": True, "said": (
+            "it still says “ninety-four”, which the owner retired on "
+            "5 October: the house has about fifty-five rooms")})
+    return out
+
+
+def stored_letter_drift(conn):
+    """Every stored guest letter out of step with those rules, the untrue first.
+
+    [{"key", "label", "breaches", "untrue"}], empty when every letter keeps to
+    them -- which is what lets the home page say nothing about letters at all.
+    """
+    out = []
+    for row in conn.execute(
+            "SELECT template_key, label, subject, body FROM email_templates").fetchall():
+        found = letter_rule_breaches(row["template_key"], row["subject"], row["body"])
+        if found:
+            out.append({"key": row["template_key"],
+                        "label": (EMAIL_TEMPLATE_LABELS.get(row["template_key"])
+                                  or row["label"] or row["template_key"]),
+                        "breaches": found, "untrue": any(b["untrue"] for b in found)})
+    out.sort(key=lambda d: (not d["untrue"], d["label"]))
+    return out
+
+
+# The chip on the wording page that lists them, and that the home page links to.
+LETTER_DRIFT_FACET, LETTER_DRIFT_CHIP = "rules", "Out of step"
+
+
 def init_db():
     fresh = not os.path.exists(DB_PATH)
     conn = get_db()
@@ -32590,9 +32695,9 @@ def owner_home_warnings(conn, today):
     out = []
     horizon = today + timedelta(days=14)
 
-    def add(severity, title, detail, count, endpoint):
+    def add(severity, title, detail, count, endpoint, **url_args):
         out.append({"severity": severity, "title": title, "detail": detail,
-                    "count": count, "href": url_for(endpoint)})
+                    "count": count, "href": url_for(endpoint, **url_args)})
 
     # A guest said the stay was poor and nobody has answered. It closes
     # itself: replying or marking it read takes it off this list, which is
@@ -33054,6 +33159,25 @@ def owner_home_warnings(conn, today):
         add("blocker" if check["severity"] == "blocker" else "warn",
             FRONT_PAGE_READINESS[check["label"]], check["detail"], 1,
             "admin_readiness")
+
+    # A stored guest letter that has fallen out of step with the house's
+    # rules on payment, because an edit kept it from being brought up to date.
+    # Data, not code, so no diff shows it and the letter goes on being sent.
+    # A blocker when a letter says something untrue -- pay at the door, card
+    # only for an event -- and a warning when it leaves the payment sentence
+    # out. Restoring or editing the letter takes the line away.
+    drift = stored_letter_drift(conn)
+    if drift:
+        first = drift[0]
+        add("blocker" if any(d["untrue"] for d in drift) else "warn",
+            f"{len(drift)} guest letter{'' if len(drift) == 1 else 's'} out of step "
+            "with the house rules on payment",
+            f"{first['label']}: {first['breaches'][0]['said']}"
+            + (f". Also {', '.join(d['label'] for d in drift[1:])}" if len(drift) > 1 else "")
+            + ". Each still goes out as it reads; the wording page has Restore original "
+              "wording beside it.",
+            len(drift), "management_email_templates",
+            **{LETTER_DRIFT_FACET: LETTER_DRIFT_CHIP, "_anchor": "tpl-" + first["key"]})
 
     # MONEY GOING BACK, and money being taken back. Each closes itself.
     disputes = open_disputes(conn)
@@ -74565,6 +74689,7 @@ WATCH_TASK_KINDS = {
     "dispute": "A card payment disputed with the guest's bank",
     "booking_com": "A Booking.com guest waiting for an answer",
     "door": "The front door lock needs attention",
+    "letters": "A guest letter out of step with the house rules on payment",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -77770,6 +77895,21 @@ def watch_task_findings(conn, today=None):
     if door:
         found.append(("door", "Look at the front door lock", door, today.isoformat(), "high"))
 
+    # A stored guest letter out of step with the house rules on payment. One
+    # per letter, titled by the letter, so putting one right closes that one
+    # and leaves the others. Never rewritten here: it may be the owner's own
+    # wording, so the task says what is wrong and where to decide.
+    letters = []
+    for d in stored_letter_drift(conn):
+        letters.append((
+            "letters", f"Guest letter out of step with the payment rules — {d['label']}",
+            "It " + "; and ".join(b["said"][3:] for b in d["breaches"]) + "."
+            "\n\nIt still goes out as it reads. Management → Email wording has "
+            "it, with Restore original wording beside it to take the house's current "
+            "wording, or edit it and keep your own.",
+            today.isoformat(), "high" if d["untrue"] else "normal"))
+    found.extend(take("letters", letters))
+
     return found, dropped
 
 
@@ -79377,6 +79517,9 @@ def email_templates_page(draft=None):
     revisions = conn.execute(
         "SELECT * FROM email_template_revisions ORDER BY id DESC").fetchall()
     usage = email_template_usage(conn)
+    # Letters out of step with the house rules on payment. Shown on the card,
+    # never fixed here: the owner decides whether to restore or keep them.
+    drift = {d["key"]: d for d in stored_letter_drift(conn)}
     conn.close()
     defaults = {key: (subject, body) for key, _label, subject, body in DEFAULT_EMAIL_TEMPLATES}
     # Which ones have been changed from the original wording, so the editor can
@@ -79433,6 +79576,10 @@ def email_templates_page(draft=None):
                   lambda t: "Went out" if usage.get(t["template_key"], {}).get("sent")
                   else "Did not go out",
                   order=["Went out", "Did not go out"]),
+            # Only the ones out of step get a bucket, so the chip is absent
+            # when there are none -- and it is where the home page links.
+            facet(LETTER_DRIFT_FACET, "House rules on payment",
+                  lambda t: LETTER_DRIFT_CHIP if t["template_key"] in drift else None),
         ],
         sorts=[
             sort_option("area", "Part of the house",
@@ -79456,6 +79603,7 @@ def email_templates_page(draft=None):
         info={k: EMAIL_TEMPLATE_INFO.get(k) for k in current},
         required={k: REQUIRED_MERGE_TAGS.get(k, {}) for k in current},
         fixed=FIXED_GUEST_EMAILS, draft=draft, total=len(templates),
+        drift=drift, drift_facet=LETTER_DRIFT_FACET, drift_chip=LETTER_DRIFT_CHIP,
         usage=usage, letter_labels={k: letter_label(k) for k in current},
         my_address=(me["email"] if me and me["email"] else ""))
 
@@ -79669,6 +79817,15 @@ def edit_email_template(template_key):
     conn.commit()
     conn.close()
     flash("Template updated. The next one sent uses this wording.", "success")
+    # Saved all the same -- the wording is the owner's to choose -- but said
+    # now, at the moment it was chosen, rather than first on tomorrow's home
+    # page. It stays there, and on its card, until the letter keeps the rules.
+    breaches = letter_rule_breaches(template_key, subject, body)
+    if breaches:
+        flash("This letter is now out of step with the house rules on payment: "
+              + "; ".join(b["said"] for b in breaches) + ". It goes out as you "
+              "wrote it; Restore original wording puts the house's wording back.",
+              "error")
     return redirect(url_for("management_email_templates"))
 
 
@@ -82576,6 +82733,19 @@ def readiness_checks(conn, *, include_slow=True):
         add("warn", "Email", "Email template missing a field", False,
             f"{', '.join(broken_templates)} has lost a placeholder like {{guest_name}}, "
             "so that detail arrives blank. Restore the original wording to fix it.")
+    # The same letters held to the house's rules on payment. Always listed, so
+    # the page shows it was checked and passed rather than saying nothing.
+    drift = stored_letter_drift(conn)
+    add("blocker" if any(d["untrue"] for d in drift) else "warn", "Email",
+        "Guest letters keep to the house rules on payment", not drift,
+        "Every stored letter about money for a stay or an atelier says how the "
+        "house takes payment, none offers to take it at the door, and no event "
+        "letter says card only." if not drift else
+        " ".join(f"{d['label']}: {'; '.join(b['said'] for b in d['breaches'])}."
+                 for d in drift)
+        + " Each still goes out as it reads, because it may be your own wording. "
+          "Management → Email wording shows them, with Restore original "
+          "wording beside each.")
 
     # Worth its own line: with a provider configured, anything still held is
     # mail that was actually rejected, which the email check above would

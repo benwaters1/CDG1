@@ -27,6 +27,17 @@
 </div>
 {% endif %}
 
+{% if drift %}
+{# Stored wording that an edit kept from being brought up to the house's
+   rules on payment. Nothing rewrites it: it may be the owner's own words. #}
+<div class="alert-band">
+  <strong>{{ drift|length }} letter{{ '' if drift|length == 1 else 's' }} out of step with the house rules on payment.</strong>
+  {{ 'It goes' if drift|length == 1 else 'They go' }} out as written — nothing here
+  rewrites a letter that may be your own words — and each says below what is wrong.
+  <a href="{{ url_for('management_email_templates', **{drift_facet: drift_chip}) }}">Show them</a>
+</div>
+{% endif %}
+
 {% include "_list_toolbar.html" %}
 
 {% if not templates %}
@@ -44,13 +55,14 @@
   {% set state = states[key] %}
   {% set is_draft = draft and draft.key == key %}
   {% set revs = history.get(key, []) %}
-  <div class="tpl-card {{ 'is-broken' if state == 'Needs fixing' }}" id="tpl-{{ key }}">
+  <div class="tpl-card {{ 'is-broken' if state == 'Needs fixing' }} {{ 'is-drift' if drift.get(key) }}" id="tpl-{{ key }}">
     <div class="tpl-head">
       <div>
         <strong>{{ t['label'] }}</strong>
         {% if state == 'Needs fixing' %}<span class="mini-status status-declined">needs fixing</span>
         {% elif state == 'Edited' %}<span class="mini-status status-upcoming">edited{% if t['updated_at'] %} {{ t['updated_at']|house_day|date_short }}{% endif %}</span>
         {% endif %}
+        {% if drift.get(key) %}<span class="mini-status status-pending">out of step</span>{% endif %}
         {% if is_draft %}<span class="mini-status status-declined">not saved</span>{% endif %}
       </div>
       {# A BUTTON, not a span with an onclick. The old one could not be reached
@@ -79,6 +91,18 @@
     <ul class="tpl-problems">
       {% for p in problems[key] %}<li>{{ p[:1]|upper }}{{ p[1:] }}.</li>{% endfor %}
     </ul>
+    {% endif %}
+
+    {% if drift.get(key) %}
+    <div class="tpl-drift">
+      <p class="tpl-readhead">Out of step with the house rules on payment</p>
+      <ul>
+        {% for b in drift[key].breaches %}<li>{{ b.said[:1]|upper }}{{ b.said[1:] }}.</li>{% endfor %}
+      </ul>
+      <p class="field-hint">It still goes out as it reads. Open it to compare it with the
+        original wording and restore that, or edit it and keep your own words — this
+        goes away once it keeps to the rules either way.</p>
+    </div>
     {% endif %}
 
     {% if tags[key] %}
@@ -231,6 +255,13 @@
   padding:13px 16px; margin-bottom:9px;
 }
 .tpl-card.is-broken{ border-color:var(--danger); }
+.tpl-card.is-drift:not(.is-broken){ border-color:var(--status-warn-fg, #9a6a00); }
+.tpl-drift{
+  margin:9px 0 0; padding:9px 12px; border-radius:8px;
+  background:var(--status-warn-bg, #fff4d6);
+}
+.tpl-drift ul{ margin:6px 0 0; padding-left:18px; font-size:12.5px; line-height:1.55; }
+.tpl-drift .field-hint{ margin:6px 0 0; }
 .tpl-head{ display:flex; justify-content:space-between; gap:14px; align-items:baseline; }
 .tpl-head .mini-status{ margin-left:8px; }
 .tpl-when{ margin:6px 0 0; font-size:12.5px; color:var(--steel); line-height:1.55; }

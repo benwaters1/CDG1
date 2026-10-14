@@ -117,6 +117,8 @@ SUITES = [
     "test_hr_compliance",
     "test_animals",
     "test_confirmed_facts",
+    # The same payment rules, held to the letters as STORED (14 October 2026).
+    "test_stored_letter_drift",
     "test_settings_readable",
     "test_pages_never_answered",
     "test_pages_behind_providers",

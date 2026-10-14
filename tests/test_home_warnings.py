@@ -195,6 +195,17 @@ def _run(s, oc, conn, now, today):
     # and restored straight after; test_readiness_on_home proves separately
     # that those lines DO clear when the setting arrives, which is the
     # property this check is really about.
+    # A stored guest letter out of step with the payment rules is on the panel
+    # too, and the copied database has real ones: on 13 October the stay
+    # confirmation, the balance reminder and the atelier confirmation had all
+    # kept old wording. Settled the way the house would settle it -- each put
+    # back to its shipped wording -- and the rows restored straight after the
+    # check. test_stored_letter_drift proves the line comes and goes.
+    put_back_letters = _harness.keep_rows(conn, "email_templates", "1 = 1")
+    for key, _label, subject, body in m.DEFAULT_EMAIL_TEMPLATES:
+        conn.execute("UPDATE email_templates SET subject = ?, body = ?, updated_at = NULL "
+                     "WHERE template_key = ?", (subject, body, key))
+    conn.commit()
     real_checks = m.readiness_checks
     # **kwargs: the caller passes include_slow=False now, and a stand-in
     # that cannot take it turns this into a crash rather than a check.
@@ -203,6 +214,7 @@ def _run(s, oc, conn, now, today):
         left = _titles(conn, today)
     finally:
         m.readiness_checks = real_checks
+        put_back_letters()
     for row in held_before:
         conn.execute("UPDATE email_outbox SET created_at = ? WHERE id = ?",
                      (row["created_at"], row["id"]))
