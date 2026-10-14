@@ -1,9 +1,11 @@
 {% extends "public_base.html" %}
 {% from '_illus.html' import illus %}
+{% from '_nearby_stays.html' import nearby_stays %}
+{% from '_room_photos.html' import ROOM_PHOTOS, ROOM_EXTRA %}
 {% block title_fr %}Mariages{% endblock %}
-{% block description_fr %}Se marier dans un Monument Historique classé des Pyrénées. Un mariage à la fois, le château entier, quarante convives à l'intérieur.{% endblock %}
+{% block description_fr %}Se marier dans un Monument Historique classé des Pyrénées : un mariage à la fois, quarante convives à l'intérieur, davantage sous un chapiteau, quinze pour la nuit.{% endblock %}
 {% block title %}Weddings{% endblock %}
-{% block description %}Weddings at a Class I Historic Monument in the French Pyrénées. One wedding at a time, and the whole château is yours.{% endblock %}
+{% block description %}Weddings at a Class I Historic Monument in the French Pyrénées: one at a time, up to forty guests inside, more under a marquee, fifteen staying the night.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/393b1bed-532a-41a0-8000-c964f7fec141/Screenshot+2023-08-23+at+2.28.37+pm.png?format=1200w{% endblock %}
 {% set crumbs = [('Events', url_for('events_info')), ('Weddings', None)] %}
 {# Without this the page falls through to the default and offers a guest
@@ -20,7 +22,7 @@
   <div class="g-hero__art" aria-hidden="true">{{ illus('rings') }}</div>
   <div class="g-wrap">
     <p class="g-hero__eyebrow">Ariège · One At A Time</p>
-    <h1 class="g-hero__title">Married in a Monument</h1>
+    <h1 class="g-hero__title">Marry in a Monument</h1>
     <p class="g-hero__lede">The château is given over to you entirely. Not a wing, not an afternoon.</p>
     <p><a href="#enquire" class="g-btn g-btn--solid">Ask about a date</a></p>
   </div>
@@ -29,9 +31,9 @@
 <div class="g-wrap">{{ event_tabs('weddings') }}</div>
 
 <div class="g-wrap">{{ fact_strip([
-  {'mark':'ring',  'n':'One',  'l':'Wedding at a time'},
-  {'mark':'key',   'n':'Five', 'l':'Bedrooms open to guests'},
-  {'mark':'table', 'n':'1741', 'l':'The château is built'}
+  {'mark':'ring',       'n':'One',     'l':'Wedding at a time'},
+  {'mark':'chandelier', 'n':'Forty',   'l':'Guests inside the château'},
+  {'mark':'key',        'n':'Fifteen', 'l':'Guests stay the night'}
 ]) }}</div>
 
 
@@ -44,23 +46,84 @@
       <p class="g-fr">Le château entier <span class="g-fr__en">The whole château</span></p>
   <p class="g-eyebrow">Weddings</p>
   <h2 class="g-place">The Whole Château, Not a Room In It</h2>
-  <p class="g-p g-lede-first">The whole château for your wedding: the rooms and the grounds are yours for the days you take it.</p>
-  <p class="g-p">It is a restoration, not a renovation: the walls stay as they are, by law, and that is the setting.</p>
-  <p class="g-p">Every wedding is priced on request. Write to us with your dates and the size of your party.</p>
+  <p class="g-p g-lede-first">For the days of your wedding, the château and its grounds are yours alone.</p>
+  <p class="g-p">Fifteen of you sleep under its roof; the rest of your guests are a few minutes away.</p>
+  <p class="g-p">It is a restoration, not a renovation. The walls stay as the centuries left them, by law, and they are the setting.</p>
+  <p class="g-p">Each wedding is priced on request: write to us with your dates and the size of your party.</p>
     </div>
     <div class="g-duo__i">
       <div class="g-duo__ill" aria-hidden="true">{{ illus('rings') }}</div>
   <p class="g-fr">Le grand jour <span class="g-fr__en">The day itself</span></p>
   <p class="g-eyebrow">The Day</p>
   <h2 class="g-place">A Wedding in a Château</h2>
-  <p class="g-p g-lede-first">Say your vows in a château the world has watched come back to life, with the Pyrénées all around and no other event in the château.</p>
-  <p class="g-p">The setting needs no decoration: old stone, new comfort, and the valley at the window. For your guests, it is an experience they will talk about for years.</p>
+  <p class="g-p g-lede-first">Say your vows in a château the world has watched come back to life, with the Pyrénées all around and no other celebration under its roof.</p>
+  <p class="g-p">The setting asks for little decoration: old stone, candlelight, and the valley at every window. It is a day your guests will remember long after it ends.</p>
     </div>
   </div>
 </div></section>
 
 
 
+
+{#- 13 Oct (owner): the château does the flowers, meals and drinks ONLY - photography, film and the rest are the couple's or
+    their wedding planner's; never claim "everything" or "no suppliers to manage".
+    13 Oct (owner): flowers come from the markets as well as the gardens - never say "stores"; no month-by-month flower guide.
+    13 Oct (owner: "15 guests can stay at the château", "up to 40 guests for the event times in the château", "outside can be
+    larger with marquees hired", "include flowers, meals, drinks - by us", "include the gold suite images"). -#}
+<section class="g-sec g-wed-numbers"><div class="g-wrap">
+  <p class="g-fr">Combien, et où <span class="g-fr__en">How many, and where</span></p>
+  <h2 class="g-place">How Many, and Where</h2>
+  <div class="g-wednum">
+    <div class="g-wednum__i">
+      <span class="g-wednum__ill" aria-hidden="true">{{ illus('candelabra') }}</span>
+      <p class="g-wednum__n">Up to forty</p>
+      <h3 class="g-wednum__t">Inside the château</h3>
+      <p class="g-p">The ceremony, the dinner and the evening, in the salons and the dining room, for up to forty guests.</p>
+    </div>
+    <div class="g-wednum__i">
+      <span class="g-wednum__ill" aria-hidden="true">{{ illus('marquee') }}</span>
+      <p class="g-wednum__n">Larger</p>
+      <h3 class="g-wednum__t">Outside, under a marquee</h3>
+      <p class="g-p">For a larger wedding, a marquee in the grounds makes room for many more.</p>
+    </div>
+    <div class="g-wednum__i">
+      <span class="g-wednum__ill" aria-hidden="true">{{ illus('fourposter') }}</span>
+      <p class="g-wednum__n">Fifteen</p>
+      <h3 class="g-wednum__t">To stay the night</h3>
+      <p class="g-p">Fifteen guests sleep in the château’s five bedrooms; everyone else stays close by.</p>
+    </div>
+  </div>
+</div></section>
+
+<section class="g-sec g-sec--sand g-wed-gold"><div class="g-wrap">
+  <span class="g-hill" aria-hidden="true">{{ illus('fourposter') }}</span>
+  <p class="g-fr">La Suite Dorée <span class="g-fr__en">The Gold Suite</span></p>
+  <h2 class="g-place">The Gold Suite</h2>
+  <p class="g-p g-intro">The grandest of the five bedrooms: a gilded four-poster with an emperor bed, and armchairs by the fireplace, within walls left as they were found.</p>
+  {%- set _gold = (ROOM_EXTRA.get('The Gold Suite', []) + ROOM_PHOTOS.get('The Gold Suite', []))[:3] %}
+  <ul class="g-befgrid g-gallery g-wed-gold__grid">
+    {%- for src, alt in _gold %}
+    <li><figure><img src="{{ src|replace('max2048x2048','max1024x768') }}" alt="{{ alt }}" loading="lazy"></figure></li>
+    {%- endfor %}
+  </ul>
+  <p class="g-p"><a class="g-btn" href="{{ url_for('book_rooms') }}#rooms">See all five rooms</a></p>
+</div></section>
+
+{{ nearby_stays(heading='Where Your Wedding Guests Stay', intro='Fifteen of your guests stay at the château itself. For the rest of your party, three lovely places close by, the nearest at the foot of the drive.', fr='Vos invités', fr_en='Your guests') }}
+<section class="g-sec g-wed-us"><div class="g-wrap">
+  <span class="g-hill" aria-hidden="true">{{ illus('wine') }}</span>
+  <p class="g-fr">Entre nos mains <span class="g-fr__en">In our hands</span></p>
+  <h2 class="g-place">What We Look After</h2>
+  <p class="g-p g-intro">We look after the flowers, the meals and the drinks. Photography, film and everything else are yours to choose, or your wedding planner’s, and we are glad to work alongside them.</p>
+  <div class="g-wedus">
+    <figure class="g-wedus__i"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1618067965823-XPTFNTL83TQKUUMV1ENB/Screen+Shot+2021-04-10+at+11.08.51+pm.png?format=1000w" alt="Flowers beside an old portrait" loading="lazy">
+      <figcaption><b>The flowers</b> Chosen at the markets and gathered from the gardens, then arranged by us for the tables, the rooms and the ceremony.</figcaption></figure>
+    <figure class="g-wedus__i"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583219166576-2E8FM9LWIGBZ11W8GZDF/dining+room+3.jpg?format=1000w" alt="The dining room, laid by candlelight" loading="lazy">
+      <figcaption><b>The meals</b> Cooked and served by us, at the château’s own tables, by candlelight.</figcaption></figure>
+    <figure class="g-wedus__i"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/075b6dc2-abff-45ee-99dc-241f6af1bf41/Screenshot+2023-04-25+at+2.42.47+pm.png?format=1000w" alt="Champagne, poured" loading="lazy">
+      <figcaption><b>The drinks</b> From the first glass of the day to the last, poured by us.</figcaption></figure>
+  </div>
+</div></section>
 
 {# 1 Oct: ">It Is Not Finished, and That Is the Point<" cut - approved facts only (CUT_SECTIONS.txt keeps it) #}
 
@@ -93,23 +156,39 @@
   <span class="g-hill" aria-hidden="true">{{ illus('rings') }}</span>
   <p class="g-fr">En images <span class="g-fr__en">In pictures</span></p>
   <h2 class="g-place">Weddings at Gudanes</h2>
-  <p class="g-p g-intro">Candlelight in the salons, long tables, music and the whole château for the day.</p>
+  <p class="g-p g-intro">Candlelight in the salons, long tables and music; and outside, the terraces and gardens where a marquee would stand.</p>
   <ul class="g-befgrid g-gallery">
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/780dfb7a-8e7f-443e-b255-68aa8817b5a8/Screenshot+2026-08-15+at+12.41.52+am.png?format=1000w" alt="A salon by candlelight" loading="lazy"><figcaption>A salon by candlelight</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/3b2cf0f8-69be-4487-a370-1ade9864bda8/Rebecca%26Ken_paulinaweddings.com-43_websize+%281%29+copy.jpg?format=1000w" alt="A wedding table in the salon" loading="lazy"><figcaption>A wedding table in the salon</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8770ace1-5dd0-4249-95e3-4a4cfee01e67/Concert+by+candlelight-8.jpg?format=1000w" alt="Cellists in the salon" loading="lazy"><figcaption>Cellists in the salon</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1605ccf2-6c39-484a-ae7b-2686a216b596/Rebecca%26Ken_paulinaweddings.com-45_websize.jpg?format=1000w" alt="Flowers on a wedding table" loading="lazy"><figcaption>Flowers on the table</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/0f471f9f-1dff-4203-9df8-c431b7411aa1/May+Weekender-5+2.jpg?format=1000w" alt="A place card, written by hand" loading="lazy"><figcaption>A place card</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/075b6dc2-abff-45ee-99dc-241f6af1bf41/Screenshot+2023-04-25+at+2.42.47+pm.png?format=1000w" alt="Champagne" loading="lazy"><figcaption>Champagne</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/138d3af8-e18c-4a42-9523-8f94afd47861/wedding_Erica+and+Edmund_Coralie+Monnet_1065.jpg?format=1000w" alt="A salon at night, the chandeliers lit" loading="lazy"><figcaption>The salon at night</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/d5f1446f-afda-4ee6-9ba2-115752d1087a/Screenshot+2026-07-30+at+8.07.15+pm.png?format=1000w" alt="Candles along the mantel" loading="lazy"><figcaption>Candles along the mantel</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/67145726-32e2-4832-bfce-a7fdb809b057/Screenshot+2026-07-30+at+7.53.46+pm.png?format=1000w" alt="The spiral staircase" loading="lazy"><figcaption>The spiral staircase</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/50681186-1638-4a0b-a9e2-553437fdb677/Screenshot+2026-08-15+at+12.42.20+am.png?format=1000w" alt="Candlelight in the salon" loading="lazy"><figcaption>Candlelight</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7a4f3f2b-9ae1-4f21-b468-6fea7ac0b2c9/P1050234+copy.JPG?format=1000w" alt="Plasterwork over a door" loading="lazy"><figcaption>Plasterwork over a door</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/002bc94f-c8f0-4c5d-bbfd-36984cde7af4/Screenshot+2025-02-14+at+1.55.45+pm.png?format=1000w" alt="A table laid for dinner" loading="lazy"><figcaption>A table laid</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1731560671148-2HACTI6LRTTC97OLK4VF/Cha%CC%82teau+de+Gudanes+-+Salon+de+Musique.jpg?format=1000w" alt="The Salon de Musique, door after door" loading="lazy"><figcaption>The Salon de Musique</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1622112808331-FQX1UYIUX0AR41AYZBPY/Salon+de+Rose.jpg?format=1000w" alt="The Salon de Rose" loading="lazy"><figcaption>The Salon de Rose</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583218370419-WVVB8F7NVYWJC718Y18L/Grand+Vestibule+-+Detail.jpg?format=1000w" alt="Candles and flowers in the grand vestibule" loading="lazy"><figcaption>The grand vestibule</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/03bb742f-839e-47c4-b4fc-7e4d2fd52e8f/Screenshot+2026-08-12+at+3.13.20+pm.png?format=1500w" alt="The terraces" loading="lazy"><figcaption>The terraces</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24dd7adf-2d85-46bd-8399-4a3fc96ce444/Gardens+-+Formal+Gardens+2.jpg?format=1500w" alt="The formal gardens" loading="lazy"><figcaption>The formal gardens</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fad6453b-f801-43fb-b3bc-6ed223ec09e0/Rebecca%26Ken_Preview_paulinaweddings.com-1_websize.jpg?format=1500w" alt="The château from above, with the pool and the grounds" loading="lazy"><figcaption>The grounds from above</figcaption></figure></li>
   </ul>
 </div></section>
 
+{#- 13 Oct: questions couples ask - every answer from the owner's facts (13 Oct) and the site's approved travel facts. -#}
+{% from '_faq.html' import faq %}
+{{ faq([
+  ('How many guests can we invite?', 'Up to forty inside the château, for the ceremony, the dinner and the evening. For a larger wedding, a marquee can be hired for the grounds.'),
+  ('Can our guests stay at the château?', 'Fifteen guests can stay the night in the château’s five bedrooms. For the rest of your party there are three places close by: Pays de Beille at the foot of the drive, Maison Beaucoup about a kilometre away, and Les Granges de Léo about two.'),
+  ('Do you do the catering?', 'We look after the flowers, the meals and the drinks. The flowers are chosen at the markets and gathered from the gardens, then arranged by us.'),
+  ('Can we bring our own photographer or wedding planner?', 'Of course. Photography, film and everything else are yours to choose, or your planner’s, and we are glad to work alongside them.'),
+  ('Is anyone else at the château on our day?', 'No. Only one event runs at the château at once, so nothing else shares your day.'),
+  ('How do our guests get here?', 'Toulouse-Blagnac airport is an hour and three quarters away by car, and the station at Les Cabannes is a few minutes from the château.'),
+  ('What does a wedding cost?', 'Every wedding is priced on request. Tell us your dates and the size of your party, and you will get a figure rather than a brochure.')
+], eyebrow='Weddings', heading='Questions Couples Ask') }}
 <section class="g-sec g-sec--sand" id="enquire"><div class="g-wrap">
   <p class="g-eyebrow">Tell Us</p>
   <h2 class="g-place">Tell Us the Shape of It</h2>

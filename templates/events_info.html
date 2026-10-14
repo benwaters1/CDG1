@@ -14,7 +14,8 @@
   "amenityFeature": [
     {"@type":"LocationFeatureSpecification","name":"Exclusive use","value":true},
     {"@type":"LocationFeatureSpecification","name":"On-site accommodation","value":true},
-    {"@type":"LocationFeatureSpecification","name":"Gardens and parkland","value":true}
+    {"@type":"LocationFeatureSpecification","name":"Gardens and parkland","value":true},
+    {"@type":"LocationFeatureSpecification","name":"Flowers, meals and drinks by the château","value":true}
   ]
 }
 </script>
@@ -38,7 +39,7 @@
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Weddings · Celebrations · Film</p>
-    <h1 class="g-hero__title">Marry in a Monument</h1>
+    <h1 class="g-hero__title">For the Days That Matter</h1>
     <p>The whole château, the valley, and rooms most people will never enter.</p>
     <p class="g-hero__cta"><a href="#enquire" class="g-btn g-btn--solid">Tell us your plans</a></p>
   </div>
@@ -69,17 +70,23 @@
      which does not introduce the three ways the heading promises. #}
   <p class="g-p">A wedding, a celebration, or a shoot. Whichever it is, the whole château is yours for it.</p>
     <div class="g-grid g-grid--3">
-      <div class="g-panel">
+      <div class="g-panel g-way">
+        <span class="g-way__ill" aria-hidden="true">{{ illus('rings') }}</span>
         <h3 class="g-h3" id="weddings">Weddings</h3>
-        <p class="g-p" >Ceremonies in the grounds or the historic interiors, dinner in the dining room, and the château given over to you and your party. Exclusive use by arrangement, with accommodation for the wedding party.</p>
+        <p class="g-p" >Up to forty guests inside the château and more under a marquee in the grounds, with fifteen staying the night. We look after the flowers, the meals and the drinks.</p>
+        <a class="g-way__cta" href="{{ url_for('events_weddings') }}">Marry in a Monument <span aria-hidden="true">&rarr;</span></a>
       </div>
-      <div class="g-panel">
+      <div class="g-panel g-way">
+        <span class="g-way__ill" aria-hidden="true">{{ illus('wine') }}</span>
         <h3 class="g-h3" id="celebrations">Celebrations</h3>
-        <p class="g-p" >Birthdays, anniversaries, family gatherings and milestone dinners. </p>
+        <p class="g-p" >Birthdays, anniversaries, family gatherings and milestone dinners, with up to fifteen guests staying. We look after the meals, the drinks and the flowers.</p>
+        <a class="g-way__cta" href="{{ url_for('events_private') }}">A celebration of your own <span aria-hidden="true">&rarr;</span></a>
       </div>
-      <div class="g-panel">
+      <div class="g-panel g-way">
+        <span class="g-way__ill" aria-hidden="true">{{ illus('camera') }}</span>
         <h3 class="g-h3" id="photography">Photoshoots &amp; film</h3>
-        <p class="g-p" >About fifty-five rooms, in every state between ruin and restored. </p>
+        <p class="g-p" >About fifty-five rooms, in every state between ruin and restored, and the crew can stay on site, or close by.</p>
+        <a class="g-way__cta" href="{{ url_for('events_photoshoots') }}">Shoot here <span aria-hidden="true">&rarr;</span></a>
       </div>
     </div>
   </div>
@@ -90,7 +97,7 @@
   <p class="g-fr">Pourquoi ici <span class="g-fr__en">Why here</span></p>
   <p class="g-eyebrow">The Setting</p>
   <h2 class="g-place">Why Here</h2>
-  <p class="g-p g-lede-first">A château the world has followed, given over entirely to you; the Pyrénées all around; rooms still being brought back; and a family château that welcomes you as guests, not as a booking. It is an experience no venue can offer.</p>
+  <p class="g-p g-lede-first">A château the world has followed, given over entirely to you, with the Pyrénées all around and rooms still being brought back to life. It is a family château, and you are welcomed as guests, not as a booking.</p>
   <p class="g-p">One event at a time, so nothing else shares the day.</p>
 </div></section>
 

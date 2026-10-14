@@ -1,0 +1,36 @@
+{#- 13 Oct (owner: "include local accommodation for the guests - Aston (Les Granges de Léo), Maison Beaucoup - include how far
+    they are"). Facts from the listings (Ariège Pyrénées Tourisme / Occitanie tourisme): Maison Beaucoup, chambres d'hôtes
+    in a renovated 19th-century presbytery, 73 rue Principale, Les Cabannes - three rooms of 46, 47 and 93 m2, up to six
+    guests, its own restaurant. Les Granges de Léo, 31 route de las Campagnos, Aston - six wooden chalets (two bedrooms each)
+    and three large stone-and-wood houses, 4-star, a pool in summer. Distances: driving routes from the château
+    (OpenStreetMap routing, 13 Oct): Maison Beaucoup 0.9 km, about 2 minutes; Les Granges de Léo 1.8 km, about 5 minutes.
+    Guests book them directly - no arrangement is claimed.
+    13 Oct (owner): add Camping du Pays de Beille - "next to us", "a walk up the private drive to the château", "it's not
+    actually camping, there are villas". Listing: Route du camping, 09310 Les Cabannes, by the river, open all year.
+    PHOTOS: each place's own photographs need its permission - set PLACE_PHOTOS[name] = (url, alt) once they send them. -#}
+{%- set PLACE_PHOTOS = {} -%}
+{% from '_illus.html' import illus %}
+{% macro nearby_stays(heading='Where Your Guests Stay', intro='', fr='À deux pas', fr_en='A few minutes away') -%}
+<section class="g-sec g-nearby"><div class="g-wrap">
+  <span class="g-hill" aria-hidden="true">{{ illus('key') }}</span>
+  <p class="g-fr">{{ fr }} <span class="g-fr__en">{{ fr_en }}</span></p>
+  <h2 class="g-place">{{ heading }}</h2>
+  {% if intro %}<p class="g-p g-intro">{{ intro }}</p>{% endif %}
+  <div class="g-nearby__grid">
+    {%- for name, far, how, where, text in [
+      ('Pays de Beille', 'Next door', 'a walk up the château’s private drive', 'Les Cabannes, by the river', 'Villas at the foot of the drive, so your guests can walk up to the château and home again at the end of the night.'),
+      ('Maison Beaucoup', 'About 1 km', 'two minutes by car', 'Les Cabannes, the village by the château', 'Three very large rooms in a fully restored nineteenth-century presbytery, with its own restaurant. Up to six guests.'),
+      ('Les Granges de Léo', 'About 2 km', 'five minutes by car', 'Aston, a neighbouring village', 'Six wooden chalets of two bedrooms each, and three large houses of stone and wood, with a pool in summer.')
+    ] %}
+    <article class="g-nearby__i">
+      {%- if PLACE_PHOTOS.get(name) %}<img class="g-nearby__img" src="{{ PLACE_PHOTOS[name][0] }}" alt="{{ PLACE_PHOTOS[name][1] }}" loading="lazy">{% endif %}
+      <p class="g-nearby__far"><span>{{ far }}</span> {{ how }}</p>
+      <h3 class="g-nearby__t">{{ name }}</h3>
+      <p class="g-nearby__where">{{ where }}</p>
+      <p class="g-p">{{ text }}</p>
+    </article>
+    {%- endfor %}
+  </div>
+  <p class="g-p g-nearby__note">Each is booked directly. Ask us, and we will gladly tell you which would suit your party.</p>
+</div></section>
+{%- endmacro %}

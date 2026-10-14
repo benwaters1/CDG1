@@ -289,9 +289,14 @@
 <section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/002bc94f-c8f0-4c5d-bbfd-36984cde7af4/Screenshot+2025-02-14+at+1.55.45+pm.png?format=1500w" alt="A long table laid for a celebration" loading="lazy">
   <div class="g-half__text">
+    {#- 13 Oct (owner: weddings work "anywhere it is on the homepage"): the owner's facts - 40 inside, a marquee, 15 to stay;
+        flowers, meals and drinks by us (nothing more). -#}
+    <span class="g-hill" aria-hidden="true">{{ illus('rings') }}</span>
+    <p class="g-fr">Mariages et fêtes <span class="g-fr__en">Weddings and celebrations</span></p>
     <h2 class="g-place">One Wedding at a Time</h2>
     <p class="g-p"><em>The whole château, for a wedding or a gathering of your own.</em></p>
-    <p style="margin-top:var(--s6)"><a href="{{ url_for('events_info') }}" class="g-btn g-btn--line">Tell us about your day</a></p>
+    <p class="g-p">Up to forty guests inside, more under a marquee in the grounds, and fifteen to stay the night. We look after the flowers, the meals and the drinks.</p>
+    <p class="g-homewed__cta"><a href="{{ url_for('events_weddings') }}" class="g-btn g-btn--line">Marry in a Monument</a> <a class="g-homewed__alt" href="{{ url_for('events_private') }}">Or a celebration of your own <span aria-hidden="true">&rarr;</span></a></p>
   </div>
 </div></section>
 {# 1 Oct: the figures block (Gabriel, Versailles, 500 tonnes) cut - fewer, safer statements #}
