@@ -11376,3 +11376,16 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
   .g .g-grid--3:has(.g-way) > :nth-child(3):last-child{ grid-column: auto; }
 }
 .g .g-way{ border-left: 0 !important; }
+/* 13 Oct design check: nothing below the site's 12px floor */
+.g .g-nearby__far{ font-size: 12px; letter-spacing: .14em; }
+.g .g-nearby__far span{ font-size: 13px; }
+@media (max-width: 600px){ .g .g-strip__l{ font-size: 12px; letter-spacing: .06em; } }
+
+/* 13 Oct - RESTORATION "As We Found It": the family's own photographs of the ruin, framed like prints */
+.g .g-found__lead{ margin: var(--s5) 0 var(--s5); }
+.g .g-found__lead img{ display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; padding: 10px; background: #fffdf8; border: 1px solid rgba(198,166,110,.7); box-shadow: 0 14px 30px -20px rgba(20,48,95,.5); }
+.g .g-found__lead figcaption{ margin-top: var(--s3); text-align: center; font-family: var(--serif); font-style: italic; color: var(--ink-2); }
+.g .g-found__grid img{ padding: 6px; background: #fffdf8; border: 1px solid rgba(198,166,110,.6); }
+.g .g-found__more{ margin-top: var(--s5); text-align: center; }
+.g .g-found__more a{ font-family: var(--serif); font-style: italic; font-size: 18px; color: var(--blue-deep); text-decoration: underline; text-decoration-color: var(--gilt, #C6A66E); text-underline-offset: 5px; }
+.g .g-found__lead figcaption{ border-left: 0 !important; padding-left: 0 !important; }
