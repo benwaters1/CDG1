@@ -155,35 +155,35 @@
   {% elif r.kind == 'dinner' %}
   <div class="task-row" data-kind="dinner" data-lane="restaurant" data-guest="guest" data-scheduled="1" data-employee="" data-status="{{ r.status }}">
     <span class="lane-badge lane-restaurant">Restaurant</span>
-    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail }}</span>{% endif %}</span>
+    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail|house_words }}</span>{% endif %}</span>
     <span class="mini-status status-{{ r.status }}">{{ r.status }}</span>
   </div>
   {% elif r.kind == 'workshop' %}
   <div class="task-row" data-kind="workshop" data-lane="workshop" data-guest="guest" data-scheduled="1" data-employee="" data-status="{{ r.status }}">
     <span class="lane-badge lane-workshop">Workshop</span>
-    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail }}</span>{% endif %}</span>
+    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail|house_words }}</span>{% endif %}</span>
     <span class="mini-status status-{{ r.status }}">{{ r.status }}</span>
   </div>
   {% elif r.kind == 'event' %}
   <div class="task-row" data-kind="event" data-lane="event" data-guest="guest" data-scheduled="{{ '1' if r.scheduled else '0' }}" data-employee="" data-status="{{ r.status }}">
     <span class="lane-badge lane-event">Event</span>
-    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail }}</span>{% endif %}</span>
+    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail|house_words }}</span>{% endif %}</span>
     <span class="mini-status status-{{ 'pending' if r.status == 'held' else r.status }}">{{ r.status }}</span>
   </div>
   {% elif r.kind == 'closure' %}
   <div class="task-row" data-kind="closure" data-lane="booking" data-guest="guest" data-scheduled="1" data-employee="" data-status="closed">
     <span class="lane-badge lane-booking">Closed</span>
-    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail }}</span>{% endif %}</span>
+    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail|house_words }}</span>{% endif %}</span>
   </div>
   {% elif r.kind == 'shift' %}
   <div class="task-row" data-kind="shift" data-lane="shift" data-guest="employee" data-scheduled="1" data-employee="{{ r.assignee_id or '' }}" data-status="{{ r.status }}">
     <span class="lane-badge lane-shift">Rota</span>
-    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail }}</span>{% endif %}</span>
+    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail|house_words }}</span>{% endif %}</span>
   </div>
   {% else %}
   <div class="task-row" data-kind="booking" data-lane="booking" data-guest="guest" data-scheduled="1" data-employee="" data-status="{{ r.status }}">
     <span class="lane-badge lane-booking">Booking</span>
-    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail }}</span>{% endif %}</span>
+    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail|house_words }}</span>{% endif %}</span>
     <span class="mini-status status-{{ r.status }}">{{ r.status }}</span>
   </div>
   {% endif %}

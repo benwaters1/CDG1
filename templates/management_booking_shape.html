@@ -31,10 +31,10 @@
 
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">{% if data.median_lead is not none %}{{ data.median_lead }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-value">{{ data.median_lead|qty(1) }}</span>
     <span class="stat-tile-label">Days ahead, typically</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">{% if data.median_stay is not none %}{{ data.median_stay }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-value">{{ data.median_stay|qty(1) }}</span>
     <span class="stat-tile-label">Nights, typically</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.one_nighter_share }}%</span>
@@ -108,8 +108,8 @@
       <tr>
         <th scope="row">{{ r.month|month_words }}</th>
         <td class="num">{{ r.bookings }}</td>
-        <td class="num">{% if r.median_lead is not none %}{{ r.median_lead }}{% else %}&mdash;{% endif %}</td>
-        <td class="num">{% if r.median_stay is not none %}{{ r.median_stay }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ r.median_lead|qty(1) }}</td>
+        <td class="num">{{ r.median_stay|qty(1) }}</td>
       </tr>
       {% endfor %}
     </tbody>

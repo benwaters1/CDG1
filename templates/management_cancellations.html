@@ -103,11 +103,14 @@
   <h2 class="section-heading">Recent cancellations</h2>
   <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>Guest</th><th>Was arriving</th><th>Reason</th></tr></thead>
+      {#- Latest cancelled first, whenever the stay was for: said in a column,
+          because above it every figure is counted by arrival. -#}
+      <thead><tr><th>Guest</th><th>Cancelled</th><th>Was arriving</th><th>Reason</th></tr></thead>
       <tbody>
         {% for b in recent %}
         <tr>
           <th scope="row">{{ b['guest_name'] }}</th>
+          <td>{{ b['decided_at']|house_day|date_short or '—' }}</td>
           <td>{{ b['arrival_date']|date_short }}</td>
           <td>
             <form method="post" action="{{ url_for('set_cancel_reason', booking_id=b['id']) }}"

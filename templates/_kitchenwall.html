@@ -41,8 +41,8 @@
     var stateEl = document.querySelector('[data-kw-state]');
     if (!timeEl || !stateEl) return;
     var mins = Math.round((Date.now() - loaded) / 60000);
-    timeEl.textContent = loaded.toLocaleTimeString(undefined,
-      {hour:'2-digit', minute:'2-digit'});
+    timeEl.textContent = loaded.toLocaleTimeString('en-GB',
+      {hour:'2-digit', minute:'2-digit', hourCycle:'h23', timeZone:{{ house_tz|tojson }}});
     if (mins > 12) {
       stateEl.textContent = mins + ' min old — check the connection';
       document.body.classList.add('kw-stale');

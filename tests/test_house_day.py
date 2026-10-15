@@ -254,8 +254,10 @@ def run():
                    % stragglers)
     # The same question asked for a year or a month. The annual summary opened
     # on last year from midnight to 02:00 on 1 January (14 October 2026).
-    year_month = len(re.findall(r"datetime\.now\(timezone\.utc\)\.(?:year|month)\b",
-                                app_src))
+    # Code only: a comment saying why not to (there is one) is not a call.
+    year_month = sum(
+        len(re.findall(r"datetime\.now\(timezone\.utc\)\.(?:year|month)\b", line))
+        for line in app_src.splitlines() if not line.lstrip().startswith("#"))
     s.check("nor a UTC year or month", year_month == 0,
             detail="%d site(s) -- house_today().year / .month" % year_month)
     # And the RIGHT answer spelled longhand, which is how this became two

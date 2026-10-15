@@ -22331,6 +22331,10 @@ def dietary_sheet(conn, on_day=None):
             WHERE bookings.status = 'confirmed'
               AND bookings.arrival_date <= ? AND bookings.departure_date > ?
             ORDER BY bookings.guest_name""", (iso, iso)).fetchall():
+        # The booking's requests stay in with the dietary notes, in red, on
+        # purpose: it is where a guest types "no shellfish" as often as "late
+        # arrival", and a sheet that showed the second in red is a smaller
+        # fault than one that let the first read as nothing about food.
         notes = [n for n in ((r["profile_notes"] or "").strip(),
                              (r["special_requests"] or "").strip()) if n]
         people.append({
@@ -23395,7 +23399,8 @@ def workload_balance(conn, period):
         p["share"] = round(p["shifts"] / total * 100, 1) if total else 0
         # Against the average of people who worked at all, so a whole team of
         # part-timers does not make one full-timer look like an outlier.
-        p["vs_average"] = round(p["shifts"] - average, 1) if worked else 0
+        # Nobody rostered is not 15.5 below an average they were left out of.
+        p["vs_average"] = round(p["shifts"] - average, 1) if (worked and p["shifts"]) else None
 
     weekends = conn.execute(
         """SELECT users.id, COUNT(shifts.id) AS n
@@ -30698,7 +30703,7 @@ def reset_password():
     """
     prefill = session.get("reset_email", "")
     if request.method != "POST":
-        return render_template("reset_password.html", prefill_email=prefill)
+        return render_template("reset_password.html", email_enabled=email_enabled(), prefill_email=prefill)
 
     email = (request.form.get("email", "") or "").strip().lower()
     code = (request.form.get("code", "") or "").strip()
@@ -30712,7 +30717,7 @@ def reset_password():
         conn.commit()
         conn.close()
         flash(RESET_CODE_REFUSED, "error")
-        return render_template("reset_password.html", prefill_email=email)
+        return render_template("reset_password.html", email_enabled=email_enabled(), prefill_email=email)
 
     person = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
     expired = (not person or not person["reset_code"]
@@ -30725,14 +30730,14 @@ def reset_password():
         conn.commit()
         conn.close()
         flash(RESET_CODE_REFUSED, "error")
-        return render_template("reset_password.html", prefill_email=email)
+        return render_template("reset_password.html", email_enabled=email_enabled(), prefill_email=email)
 
     if person["reset_code_attempts"] >= RESET_CODE_MAX_ATTEMPTS:
         _clear_reset(conn, person["id"])
         conn.commit()
         conn.close()
         flash(RESET_CODE_REFUSED, "error")
-        return render_template("reset_password.html", prefill_email=email)
+        return render_template("reset_password.html", email_enabled=email_enabled(), prefill_email=email)
 
     # check_password_hash compares in constant time, which is the reason the
     # code is hashed rather than merely stored — a plain == on a short secret
@@ -30748,7 +30753,7 @@ def reset_password():
         conn.commit()
         conn.close()
         flash(RESET_CODE_REFUSED, "error")
-        return render_template("reset_password.html", prefill_email=email)
+        return render_template("reset_password.html", email_enabled=email_enabled(), prefill_email=email)
 
     # The code is right. Only now does the password itself matter, and a bad
     # one must not spend the code — they have proved who they are.
@@ -30756,13 +30761,13 @@ def reset_password():
         conn.commit()
         conn.close()
         flash("Password must be at least 8 characters.", "error")
-        return render_template("reset_password.html", prefill_email=email,
+        return render_template("reset_password.html", email_enabled=email_enabled(), prefill_email=email,
                                code=code)
     if password != confirm:
         conn.commit()
         conn.close()
         flash("Passwords don't match.", "error")
-        return render_template("reset_password.html", prefill_email=email,
+        return render_template("reset_password.html", email_enabled=email_enabled(), prefill_email=email,
                                code=code)
 
     conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
@@ -62110,6 +62115,18 @@ def promo_blast_recipients(conn, segments, since_date_iso=None):
     return recipients
 
 
+def recipient_fingerprint(recipients):
+    """Which people a count was of, short enough to carry in a form.
+
+    The send works the list out again from the choices the page posts, and
+    those can differ from the screen: the months box only counts when you
+    leave it, a browser restores ticks on Back. The page carries this, the
+    send works it out again, and a mailing goes only to the list that was on
+    the screen when Send was pressed."""
+    joined = "\n".join(sorted((e or "").strip().lower() for e in recipients))
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:20]
+
+
 @app.route("/admin/promo-codes/<int:code_id>/blast")
 @owner_required
 def promo_code_blast(code_id):
@@ -62134,6 +62151,7 @@ def promo_code_blast(code_id):
         "admin_promo_blast.html", promo=promo, segments=segments, since_months=since_months_raw,
         recipient_count=len(recipients), alumni_workshops=alumni_workshops,
         alumni_selected=parse_alumni_segment(segments),
+        recipients_counted=recipient_fingerprint(recipients),
     )
 
 
@@ -62159,6 +62177,14 @@ def send_promo_code_blast(code_id):
         return redirect(url_for("promo_code_blast", code_id=code_id, segment=segments, since_months=since_months_raw))
 
     recipients = promo_blast_recipients(conn, segments, since_date_iso)
+    counted = request.form.get("recipients_counted", "")
+    if counted and counted != recipient_fingerprint(recipients):
+        conn.close()
+        flash(f"The list has changed since it was counted: {len(recipients)} "
+              f"{'person matches' if len(recipients) == 1 else 'people match'} now. "
+              "Nothing was sent. Check the count and send again.", "error")
+        return redirect(url_for("promo_code_blast", code_id=code_id, segment=segments,
+                                since_months=since_months_raw))
 
     # Sent through send_campaign rather than looping send_email here.
     #
@@ -69904,10 +69930,10 @@ def supplier_agreements_page():
                if a["state"] in ("open", "too_late", "decided"))
     overview = [
         overview_cell("Agreements", len(rows)),
-        overview_cell("Tied up a year", f"\u20ac{tied:,.0f}"),
+        overview_cell("Tied up a year", euro(tied)),
         overview_cell("Notice still possible", len(open_now)),
         overview_cell("Too late this time", len(late), alert=bool(late),
-                      hint="already rolled on for another term"),
+                      hint="past the notice date, so it renews"),
         overview_cell("Dates need rewriting", len(stale), alert=bool(stale)),
     ]
     return render_template("supplier_agreements.html", rows=rows,
@@ -77227,6 +77253,22 @@ def empty_nights(conn, *, days=90, today=None):
     }
 
 
+def _has_checked_out(stay):
+    """Whether a departing stay has been checked out. A Booking.com stay has
+    no check-out of its own: its turnover is written that morning by
+    prep_channel_departures, and the open work says the rest. (It carries a
+    checked_out_at of None all the same, so it is told apart by its channel.)"""
+    try:
+        if stay["channel"]:
+            return True
+    except (KeyError, IndexError):
+        pass
+    try:
+        return bool(stay["checked_out_at"])
+    except (KeyError, IndexError):
+        return True
+
+
 def room_board(conn, today=None):
     """Every room, and whether a guest can walk into it.
 
@@ -77238,6 +77280,7 @@ def room_board(conn, today=None):
     The states, in the order they matter on a changeover morning:
 
       occupied      somebody is in it tonight and is not leaving today
+      leaving       their last morning, not checked out yet
       turnover      they have gone and there is work outstanding
       arriving      empty, work done, and somebody is coming today
       ready         empty, work done, nobody due
@@ -77293,6 +77336,11 @@ def room_board(conn, today=None):
 
         if here:
             state = "occupied"
+        elif leaving and not _has_checked_out(leaving):
+            # Still in it this morning. The turnover checklist is written at
+            # check-out, so until then there was no open work and the board
+            # called a room with its guest still asleep in it "Ready".
+            state = "leaving"
         elif open_work:
             state = "turnover"
         elif arriving:
@@ -80903,6 +80951,24 @@ def history_for(conn, kind, record_id):
             "entries": record_history(conn, keys, about=about)}
 
 
+def audit_target_words(entry):
+    """What an audit line was about, by its name rather than its stored key:
+    "Automation job run manually — room_balance_reminder" read as code. The
+    jobs and the letters both have names the owner already sees elsewhere."""
+    target = entry["target"]
+    if not target:
+        return target
+    action = entry["action"] or ""
+    if action.startswith("automation_job"):
+        return AUTOMATION_JOB_LABELS.get(target, target)
+    if action.startswith("email_template"):
+        return EMAIL_TEMPLATE_LABELS.get(target, target)
+    return target
+
+
+app.jinja_env.globals["audit_target_words"] = lambda e: audit_target_words(e)
+
+
 def audit_kind(action):
     a = (action or "").lower()
     for label, tokens in AUDIT_KINDS:
@@ -81327,6 +81393,59 @@ def change_log_value(field, value, people):
 
 _MOMENT_TEXT_START = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")
 _ISO_DAY_TEXT = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+# The till journal's keys, as words. The record is the law's (NF525-style,
+# chained by hash) and stays exactly as stored; this is only its reading.
+_JOURNAL_MONEY = {"gross", "vat", "amount", "total", "service", "discount", "deposit",
+                  "net", "unit_price", "supplement", "variance", "taken", "price",
+                  "perpetual", "counted", "covered"}
+_JOURNAL_LABELS = {
+    "receipt_number": "Receipt", "unit_price": "Each", "vat_rate": "VAT rate",
+    "perpetual": "Running total", "counted": "Counted", "covers_moved": "Covers moved",
+    "from_table": "From table", "into_table": "Into table", "chain_ok": "Chain intact",
+    "already_sent": "Already sent to the kitchen", "chose": "Chose", "formule": "Formule",
+}
+_JOURNAL_SKIP = {"hash", "prev_hash", "line_id", "payment_id", "package_id",
+                 "menu_dish_id", "into_order_id", "order_id"}
+
+
+def journal_words(payload):
+    """A till journal record in words: "Receipt 2026-000011 · Method Cash ·
+    Amount €25.00", not {"amount":25.0,"method":"cash",...}. Anything it does
+    not recognise is still shown, by its own name, so nothing is hidden."""
+    try:
+        data = json.loads(payload or "{}")
+    except (TypeError, ValueError):
+        return payload
+    if not isinstance(data, dict):
+        return payload
+    parts = []
+    for key, value in data.items():
+        if key in _JOURNAL_SKIP or value in (None, "", [], {}):
+            continue
+        label = _JOURNAL_LABELS.get(key, key.replace("_", " ").capitalize())
+        if isinstance(value, bool):
+            shown = "yes" if value else "no"
+        elif isinstance(value, (list, dict)):
+            shown = counted(len(value), "item")
+        elif key in _JOURNAL_MONEY and isinstance(value, (int, float)):
+            shown = money(value)
+        elif key == "vat_rate" and isinstance(value, (int, float)):
+            shown = f"{quantity(value)}%"
+        elif key == "method":
+            shown = payment_method_label(value)
+        elif key == "period" and isinstance(value, str) and _ISO_DAY_TEXT.match(value):
+            shown = format_date_short(value)
+        elif isinstance(value, float):
+            shown = quantity(value)
+        else:
+            shown = value
+        parts.append(f"{label} {shown}")
+    return " · ".join(parts) or "—"
+
+
+app.jinja_env.filters["journal_words"] = journal_words
 
 
 def change_log_label(field):

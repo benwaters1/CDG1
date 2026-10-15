@@ -37,7 +37,7 @@
     <span class="stat-tile-label">{{ 'Commission on it' if data.every_rate else 'Commission, where a rate is set' }}</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ euro(data.net) if data.net is not none else '—' }}</span>
-    <span class="stat-tile-label">{{ 'What the house keeps' if data.every_rate else 'What the house keeps: not known until every channel has a rate' }}</span></span></div>
+    <span class="stat-tile-label">{% if data.every_rate %}What the house keeps{% else %}What the house keeps: not known until every channel has a rate ({{ euro(data.net_priced) }} on those that have one){% endif %}</span></span></div>
 </div>
 
 {% if data.unrecorded %}

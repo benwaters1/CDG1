@@ -448,6 +448,16 @@ def run():
             and m.house_words("nobody left 3 day(s) ago who has not been asked")
             == "nobody left 3 days ago who has not been asked",
             detail=m.house_words("nobody arrives in 0 day(s)"))
+    # And what an audit line was about, by name: "Automation job run manually
+    # — room_balance_reminder" read as code (14 October 2026).
+    job = next(iter(m.AUTOMATION_JOB_LABELS))
+    letter = next(iter(m.EMAIL_TEMPLATE_LABELS))
+    s.check("an audit line names the job and the letter it was about",
+            m.audit_target_words({"target": job, "action": "automation_job_run_manually"})
+            == m.AUTOMATION_JOB_LABELS[job] != job
+            and m.audit_target_words({"target": letter, "action": "email_template_edited"})
+            == m.EMAIL_TEMPLATE_LABELS[letter] != letter,
+            detail=f"{job} / {letter}")
     clumsy = re.compile(r"\bin [01] days\b|\b1 days ago\b|\bin 0 day\b")
     said = []
     for _ep, url, html in pages:
@@ -579,6 +589,24 @@ def run():
         conn.execute("DELETE FROM users WHERE name LIKE ?", (TAG + "%",))
         conn.commit()
         conn.close()
+
+    s.section("A script writes a time the house's way, not the device's")
+    # 14 October 2026: the shopping list's script rewrote "14 October 2026,
+    # 21:55" as "05:28 PM on 10/11/2026" on an English-set tablet, and the
+    # office clock ran on a twelve-hour clock. A locale of undefined or [] is
+    # whatever the device happens to be set to. The public pages are the
+    # design side's and arrive by handover, so they are not read here.
+    device = re.compile(r"toLocale(?:Date|Time)?String\(\s*(?:\)|undefined|\[\])")
+    loose = []
+    for name, src in list(_template_sources()) + [
+            ("outlook_addin_common.js",
+             open(os.path.join(ROOT, "templates", "outlook_addin_common.js"),
+                  encoding="utf-8").read())]:
+        if name == "public_base.html" or 'extends "public_base.html"' in src:
+            continue
+        loose += [f"{name}:{src.count(chr(10), 0, x.start()) + 1}" for x in device.finditer(src)]
+    s.check("no staff page or the add-in leaves the locale to the device", not loose,
+            detail=", ".join(loose))
 
     s.section("In the templates themselves")
     spans = [hit for name, src in _template_sources()

@@ -10,6 +10,7 @@ behind the app's back, as somebody with the file would — and checks the chain
 says so.
 """
 from datetime import datetime, timezone, timedelta
+from markupsafe import escape as html_escape
 
 from _harness import Suite, clients, db, datetime_now
 import _harness
@@ -167,6 +168,21 @@ def run():
     s.check("the journal page renders", journal.status_code == 200)
     s.check("an employee cannot read the journal",
             ec.get("/admin/pos/journal").status_code in (302, 403))
+    # 14 October 2026: the Detail column printed the raw JSON, hash and all.
+    words = m.journal_words('{"amount": 25.0, "method": "cash", "receipt_number": '
+                            '"2026-000011", "payment_id": 7, "hash": "ab12"}')
+    s.check("a record reads in words: money as money, the way it was paid by name",
+            "Amount €25.00" in words and "Receipt 2026-000011" in words
+            and m.payment_method_label("cash") in words,
+            detail=words)
+    s.check("without the ids and the hash, which are for the chain",
+            "payment" not in words.lower() and "ab12" not in words, detail=words)
+    first = conn.execute("SELECT payload FROM pos_journal ORDER BY sequence LIMIT 1").fetchone()
+    body = journal.get_data(as_text=True)
+    s.check("and the record exactly as stored is still on the page, behind 'Exact record'",
+            first is None or ("Exact record" in body
+                              and str(html_escape(first["payload"])) in body),
+            detail="the law's record is the stored one; the words are only its reading")
 
     # A broken chain has to be loud on the page, not only in a helper.
     bad = conn.execute("SELECT * FROM pos_journal ORDER BY sequence LIMIT 1").fetchone()

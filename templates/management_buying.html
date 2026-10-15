@@ -84,11 +84,11 @@
 
 <div class="detail-card">
   <h2 class="section-heading">Checking a statement</h2>
+  {% if vendors %}
   <p class="pay-disclaimer" style="margin-top:-6px;">
     Pick a supplier to see what we have recorded from them, laid out the way their statement
     comes, so the two can be checked line by line.
   </p>
-  {% if vendors %}
   <form method="get" style="margin-bottom:12px;">
     <label class="field-label" for="buying-vendor">Supplier</label>
     <select id="buying-vendor" name="vendor" onchange="this.form.submit()">

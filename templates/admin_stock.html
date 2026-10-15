@@ -23,7 +23,7 @@
 <div class="alert-band">
   <strong>Already promised more than we hold:</strong>
   {% for r in short %}{{ r.item['name'] }} — {{ r.level|qty(1) }} in stock,
-    {{ r.promised|round(1) }} promised{{ '; ' if not loop.last }}{% endfor %}.
+    {{ r.promised|qty(1) }} promised{{ '; ' if not loop.last }}{% endfor %}.
   <a href="{{ url_for('admin_stock', state="Short of what's promised") }}">Just these</a>
 </div>
 {% endif %}
@@ -96,10 +96,10 @@
           <strong>{{ r.level|qty(1) }}</strong> <span class="upload-hint">{{ r.item['unit'] }}</span>
           {% if r.promised %}
           {# A level on its own cannot say "is this enough". This can. #}
-          <div class="upload-hint">{{ r.promised|round(1) }} promised</div>
+          <div class="upload-hint">{{ r.promised|qty(1) }} promised</div>
           {% endif %}
           {% if r.after_promises < 0 %}
-          <div class="mini-status status-declined">{{ (-r.after_promises)|round(1) }} short</div>
+          <div class="mini-status status-declined">{{ (-r.after_promises)|qty(1) }} short</div>
           {% elif r.is_low %}<div class="mini-status status-pending">low</div>{% endif %}
         </td>
         <td class="num upload-hint">{{ r.item['reorder_level']|qty(1) }}</td>

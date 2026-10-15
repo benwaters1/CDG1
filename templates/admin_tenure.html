@@ -40,7 +40,7 @@
         <th scope="row">{{ p.name }}</th>
         <td>{{ p.role or '&mdash;'|safe }}</td>
         <td>{{ p.started|date_short }}</td>
-        <td class="num">{{ p.months }}</td>
+        <td class="num">{{ p.months|qty(1) }}</td>
       </tr>
       {% else %}
       <tr><td colspan="4"><div class="empty-state">Nobody has a start date recorded.</div></td></tr>

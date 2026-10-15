@@ -255,6 +255,34 @@ def run():
             s.check("and the guest who did not unsubscribe still is", ADDR_B in mailed,
                     detail=f"{sorted(mailed)} - one unsubscribe silenced the whole list")
 
+        s.section("It sends to the list that was counted, or not at all")
+        # 14 October 2026. The send works the list out again from what the
+        # page posts, which can differ from what the screen counted.
+        _clear_optouts()
+        page = oc.get(f"/admin/promo-codes/{promo['id']}/blast?segment=room").get_data(as_text=True)
+        found = re.search(r'name="recipients_counted" value="([0-9a-f]+)"', page)
+        s.check("the page carries what it counted", bool(found))
+        sent_mail.clear()
+        r = oc.post(send_url, data={"segment": "room", "subject": "Counted",
+                                    "body": "Hi {guest_name}.",
+                                    "recipients_counted": "0" * 20},
+                    follow_redirects=True)
+        s.check("a list that has changed since it was counted sends nothing",
+                not sent_mail and any("changed since it was counted" in f for f in flashes(r)),
+                detail=f"{len(sent_mail)} sent; {flashes(r)[:1]}")
+        if found:
+            oc.post(send_url, data={"segment": "room", "subject": "Counted",
+                                    "body": "Hi {guest_name}.",
+                                    "recipients_counted": found.group(1)},
+                    follow_redirects=True)
+            s.check("the list that was counted is sent",
+                    {ADDR_A, ADDR_B} <= {to for to, _s, _b in sent_mail},
+                    detail=str(sorted({to for to, _s, _b in sent_mail})))
+        # On the source: the choice is drawn only when a workshop has run.
+        src = open("templates/admin_promo_blast.html", encoding="utf-8").read()
+        s.check("and a workshop's alumni are said to be added, not the only ones",
+                "Also people who have done" in src and "Or only people" not in src)
+
         s.section("Bodies already typed into this form still work")
         _clear_optouts()
         sent_mail.clear()

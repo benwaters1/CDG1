@@ -99,18 +99,10 @@ document.querySelectorAll('.shop-row').forEach(function (row) {
   });
 });
 
-// The stamp in local time, once, on the device that is reading it. The server
-// writes the house's time and the day, which is right for a tablet in the
-// kitchen and is what the page says if this never runs. It used to write the
-// UTC time with no day, which told a kept copy's reader neither.
-(function () {
-  var el = document.querySelector('[data-asof]');
-  if (!el) return;
-  var when = new Date(el.getAttribute('data-asof'));
-  if (isNaN(when)) return;
-  el.textContent = when.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})
-    + ' on ' + when.toLocaleDateString();
-}());
+// The stamp is the server's: the house's time and the day, written the way
+// every staff page writes them. A script here used to rewrite it in the
+// device's own locale, which on an English-set tablet read "05:28 PM on
+// 10/11/2026" -- American order and a twelve-hour clock in a French kitchen.
 </script>
 
 {% endblock %}

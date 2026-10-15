@@ -416,7 +416,7 @@
     var facts = [bytes(f.size)];
     if (f.lastModified) {
       var d = new Date(f.lastModified);
-      facts.push(d.toLocaleDateString(undefined,
+      facts.push(d.toLocaleDateString('en-GB',
         {day:'numeric', month:'long', year:'numeric'}));
     }
     /* A RAW file cannot be previewed in a browser and most likely cannot be
