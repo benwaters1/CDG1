@@ -34419,7 +34419,10 @@ def owner_home_next_up(conn, today, day_rows):
             hh, mm = (int(x) for x in r["time"].split(":")[:2])
         except ValueError:
             continue
-        when = datetime.combine(today, dtime(hh, mm), tzinfo=timezone.utc)
+        # The time on a row is the house's clock -- "14:00" is two in the
+        # afternoon in the Ariege. Read as UTC, every countdown ran an hour or
+        # two out, and an event just ahead could be skipped as already past.
+        when = datetime.combine(today, dtime(hh, mm), tzinfo=LOCAL_TZ)
         if when < now:
             continue
         mins = int((when - now).total_seconds() // 60)
@@ -34434,11 +34437,16 @@ def owner_home_next_up(conn, today, day_rows):
            ORDER BY bookings.arrival_date LIMIT 1""", (today.isoformat(),)).fetchone()
     if not nxt:
         return None
+    # The next arrival is not always tomorrow's. It was labelled "Tomorrow"
+    # whatever its date, so on 15 October the home page said Tess Hoffman was
+    # arriving tomorrow, for a stay on 12 November (the owner spotted it).
+    # Tomorrow only when it is; otherwise the day itself.
+    arriving = parse_date(nxt["arrival_date"])
     return {"time": nxt["estimated_arrival_time"] or "—",
             "title": f"{nxt['guest_name']} arriving",
             "room": f"{nxt['room_name']} · party of {nxt['party_size']}",
             "note": "", "countdown": format_date_human(nxt["arrival_date"]),
-            "tomorrow": True}
+            "tomorrow": arriving == today + timedelta(days=1)}
 
 
 @app.route("/")
