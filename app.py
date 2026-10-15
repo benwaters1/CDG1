@@ -895,8 +895,10 @@ def rollover_hour_is_safe(hour=None, day=None):
 # letter that tells a guest, instead of "2pm" typed into each of them. It was
 # typed into seven: the room page, the booking form and its arrival times, the
 # shared stay, the arrival card, the stay timeline and the printed stay -- and
-# the booking terms, which guests AGREE to, said 4pm. 2pm is right (the owner,
-# 15 October 2026), and so does Booking.com.
+# the booking terms, which guests AGREE to, said 4pm. It was set at 2pm, which
+# Booking.com also said; the owner moved it to 3pm in and 10am out later on
+# 15 October 2026 (handover z15, confirmed in chat), so Booking.com and the
+# stored terms in Admin > Terms are his to bring into line.
 #
 # The terms are the owner's own words in the database, so they are not
 # rewritten from here: terms_time_mismatches reads them and the owner home
@@ -904,8 +906,8 @@ def rollover_hour_is_safe(hour=None, day=None):
 #
 # Not HOUSE_CALENDAR_CHECK_IN, which is when a stay is blocked out on the
 # staff's Outlook calendar and is never shown to a guest.
-CHECK_IN_TIME = "14:00"
-CHECK_OUT_TIME = "11:00"
+CHECK_IN_TIME = "15:00"
+CHECK_OUT_TIME = "10:00"
 
 
 def clock_words(value):
@@ -1069,7 +1071,7 @@ paid us.
   and we cannot guarantee the absence of any ingredient.
 
 6. Arrival, departure and the château
-- Arrival is from 2pm and departure by 11am, unless your confirmation says
+- Arrival is from 3pm and departure by 10am, unless your confirmation says
   otherwise. Tell us if you expect to arrive late so that someone can be
   there to meet you.
 - Guests must be eight or older.

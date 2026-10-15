@@ -2,7 +2,8 @@
 
 The booking pages, the printed stay and the guest timeline said check-in from
 2pm and check-out by 11am, and so does Booking.com. The booking terms -- the
-thing a guest actually agrees to -- said "Arrival is from 4pm". 2pm is right.
+thing a guest actually agrees to -- said "Arrival is from 4pm". 2pm was right
+then; on 15 October 2026 the owner moved it to 3pm in and 10am out (z15).
 Each page had "2pm" typed into it, seven times over, so nothing could notice
 one of them disagreeing.
 
@@ -94,9 +95,9 @@ def run():
 
 def _checks(s, oc, conn):
     s.section("One value, in code")
-    s.check("check-in is 2pm", m.CHECK_IN_TIME == "14:00" and m.CHECK_IN_WORDS == "2pm",
+    s.check("check-in is 3pm", m.CHECK_IN_TIME == "15:00" and m.CHECK_IN_WORDS == "3pm",
             detail=f"{m.CHECK_IN_TIME} / {m.CHECK_IN_WORDS}")
-    s.check("check-out is 11am", m.CHECK_OUT_TIME == "11:00" and m.CHECK_OUT_WORDS == "11am",
+    s.check("check-out is 10am", m.CHECK_OUT_TIME == "10:00" and m.CHECK_OUT_WORDS == "10am",
             detail=f"{m.CHECK_OUT_TIME} / {m.CHECK_OUT_WORDS}")
     s.check("written the way the house writes a time",
             [m.clock_words(x) for x in ("14:00", "11:00", "16:30", "12:00", "00:00", 21)]
@@ -126,31 +127,42 @@ def _checks(s, oc, conn):
     if room is not None:
         url = f"/book/{room['id']}"
         page = oc.get(url).get_data(as_text=True)
-        s.check("the room page says from 2pm, by 11am",
-                "From 2pm &middot; by 11am" in page or "From 2pm · by 11am" in page,
+        s.check("the room page says from 3pm, by 10am",
+                "From 3pm &middot; by 10am" in page or "From 3pm · by 10am" in page,
                 detail=url)
-        s.check("and offers early check-in before 2pm",
-                "Before 2pm (early check-in requested)" in page and 'value="2pm-3pm"' in page)
+        s.check("and offers early check-in before 3pm",
+                "Before 3pm (early check-in requested)" in page and 'value="3pm-4pm"' in page
+                and 'value="2pm-3pm"' not in page)
         was = (m.app.jinja_env.globals["check_in_at"], m.app.jinja_env.globals["check_in_hour"])
-        m.app.jinja_env.globals["check_in_at"], m.app.jinja_env.globals["check_in_hour"] = "3pm", 15
+        m.app.jinja_env.globals["check_in_at"], m.app.jinja_env.globals["check_in_hour"] = "4pm", 16
         try:
             moved = oc.get(url).get_data(as_text=True)
         finally:
             m.app.jinja_env.globals["check_in_at"], m.app.jinja_env.globals["check_in_hour"] = was
         s.check("change the value and the page follows",
-                ("From 3pm" in moved) and 'value="3pm-4pm"' in moved
-                and 'value="2pm-3pm"' not in moved and "Check-in from 3pm" in moved,
-                detail="a page that typed 2pm would still say 2pm")
+                ("From 4pm" in moved) and 'value="4pm-5pm"' in moved
+                and 'value="3pm-4pm"' not in moved and "Check-in from 4pm" in moved,
+                detail="a page that typed 3pm would still say 3pm")
+        # Check-in moved from 2pm to 3pm on 15 October, so a booking saved
+        # with "2pm-3pm" holds a time that is no longer one of the choices.
+        # Shown and selected, or re-saving the booking loses it without a word.
+        back = m.app.test_client().post(url, data={"estimated_arrival_time": "2pm-3pm"})
+        picker = re.search(r'<select id="estimated_arrival_time".*?</select>',
+                           back.get_data(as_text=True), re.S)
+        s.check("an arrival time from the old check-in is kept, selected",
+                picker is not None
+                and re.search(r'<option value="2pm-3pm"\s+selected', picker.group(0)),
+                detail=(picker.group(0)[:300] if picker else f"no picker ({back.status_code})"))
 
     s.section("Terms that say 4pm are named on the owner home")
-    four = m.DEFAULT_TERMS.replace("Arrival is from 2pm", "Arrival is from 4pm")
+    four = m.DEFAULT_TERMS.replace("Arrival is from 3pm", "Arrival is from 4pm")
     s.check("the test text really says 4pm", four != m.DEFAULT_TERMS)
     _set_terms(conn, four)
     home = _home(conn)
     s.check("one line", len(home) == 1, detail=str(home))
     s.check("naming both times",
             home and "arrival from 4pm" in home[0]["detail"]
-            and "arrival from 2pm" in home[0]["detail"], detail=str(home))
+            and "arrival from 3pm" in home[0]["detail"], detail=str(home))
     s.check("and not the departure, which agrees",
             home and "departure" not in home[0]["title"], detail=str(home))
     s.check("linking to the Terms page", home and home[0]["href"] == "/admin/terms",
@@ -163,13 +175,13 @@ def _checks(s, oc, conn):
     s.check("and nothing rewrote the terms", stored == four)
 
     s.section("Both wrong, both named")
-    _set_terms(conn, four.replace("departure by 11am", "departure by 10am"))
+    _set_terms(conn, four.replace("departure by 10am", "departure by 11am"))
     home = _home(conn)
     s.check("arrival and departure", home and home[0]["title"]
             == "The booking terms give a different arrival and departure times",
             detail=str(home))
 
-    s.section("Terms that say 2pm: the line goes, and so does the task")
+    s.section("Terms that say 3pm: the line goes, and so does the task")
     _set_terms(conn, m.DEFAULT_TERMS)
     s.check("no line on the owner home", _home(conn) == [], detail=str(_home(conn)))
     s.check("and the task has closed itself", _tasks(conn) == [], detail=str(_tasks(conn)))
@@ -178,12 +190,12 @@ def _checks(s, oc, conn):
 
     s.section("Reading the terms: what counts as a time")
     said = m.terms_time_mismatches
-    s.check("4 p.m., across a line break", said("Arrival is\nfrom 4 p.m.") == [("arrival", "4pm", "2pm")])
-    s.check("16:00 and 16h", said("Check-in from 16:00") == [("arrival", "4pm", "2pm")]
-            and said("Check-in from 16h") == [("arrival", "4pm", "2pm")])
+    s.check("4 p.m., across a line break", said("Arrival is\nfrom 4 p.m.") == [("arrival", "4pm", "3pm")])
+    s.check("16:00 and 16h", said("Check-in from 16:00") == [("arrival", "4pm", "3pm")]
+            and said("Check-in from 16h") == [("arrival", "4pm", "3pm")])
     s.check("a departure written 10.30am", said("departure by 10.30am")
-            == [("departure", "10.30am", "11am")])
+            == [("departure", "10.30am", "10am")])
     s.check("the right times in other spellings are not a clash",
-            said("Check-in from 14h00, check-out until 11:00") == [])
+            said("Check-in from 15h00, check-out until 10:00") == [])
     s.check("a bare number is not a time",
             said("If you leave before 3 nights are up, we charge for them.") == [])

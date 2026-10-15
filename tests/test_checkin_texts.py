@@ -191,7 +191,11 @@ def run():
     s.check("a guest leaving tomorrow is written to", len(out) == 1,
             detail=f"{len(out)} — {result}")
     body = out[0]["body"] if out else ""
-    s.check("and told when checkout is", "11am" in body, detail=body[:80])
+    # The house's checkout time, read from the one value (10am since 15 Oct
+    # 2026), not a time typed into the test: it said "11am" and went red the
+    # day the owner moved checkout, which is the letter getting it right.
+    s.check("and told when checkout is", m.CHECK_OUT_WORDS in body
+            and "checkout is" in body, detail=body[:80])
     s.check("with a link to their bill rather than to the manage page",
             "/statement" in body, detail=body[:100])
     s.check("no merge tag is left showing", "{" not in body, detail=body[:80])
