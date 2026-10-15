@@ -890,6 +890,113 @@ def rollover_hour_is_safe(hour=None, day=None):
             return False
     return True
 
+
+# WHEN A GUEST MAY ARRIVE AND MUST LEAVE. One value, read by every page and
+# letter that tells a guest, instead of "2pm" typed into each of them. It was
+# typed into seven: the room page, the booking form and its arrival times, the
+# shared stay, the arrival card, the stay timeline and the printed stay -- and
+# the booking terms, which guests AGREE to, said 4pm. 2pm is right (the owner,
+# 15 October 2026), and so does Booking.com.
+#
+# The terms are the owner's own words in the database, so they are not
+# rewritten from here: terms_time_mismatches reads them and the owner home
+# says when they disagree with this.
+#
+# Not HOUSE_CALENDAR_CHECK_IN, which is when a stay is blocked out on the
+# staff's Outlook calendar and is never shown to a guest.
+CHECK_IN_TIME = "14:00"
+CHECK_OUT_TIME = "11:00"
+
+
+def clock_words(value):
+    """A time as a guest reads it in English: "14:00" -> "2pm", 11 -> "11am".
+
+    Takes "HH:MM" or a whole hour. The house writes "2pm", not "14:00" and
+    not "2:00 PM", and every page already did; this keeps it that way.
+    """
+    if isinstance(value, int):
+        hour, minute = value, 0
+    else:
+        hour, _, minute = str(value).partition(":")
+        hour, minute = int(hour), int(minute or 0)
+    hour %= 24
+    suffix = "am" if hour < 12 else "pm"
+    shown = hour % 12 or 12
+    return f"{shown}.{minute:02d}{suffix}" if minute else f"{shown}{suffix}"
+
+
+CHECK_IN_WORDS = clock_words(CHECK_IN_TIME)
+CHECK_OUT_WORDS = clock_words(CHECK_OUT_TIME)
+
+# A time as the terms might write it: 4pm, 4 p.m., 16:00, 16h, 4.30pm.
+_TERMS_TIME = r"(\d{1,2})(?:\s*[:.h]\s*(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|h\b)?"
+_TERMS_ARRIVAL = re.compile(
+    r"\b(?:arrival|arrive|arriving|check-?in)\b[^.;]{0,40}?\bfrom\s+" + _TERMS_TIME, re.I)
+_TERMS_DEPARTURE = re.compile(
+    r"\b(?:departure|depart|departing|leave|check-?out)\b[^.;]{0,40}?"
+    r"\b(?:by|before|until)\s+" + _TERMS_TIME, re.I)
+
+
+def _terms_hhmm(hour, minute, suffix):
+    """The "HH:MM" a matched time means, or None if it is not a time.
+
+    A bare number is not a time: "leave before 3 nights" must not read as
+    3am. It needs am/pm, an h, or minutes.
+    """
+    if minute is None and not suffix:
+        return None
+    hour, minute = int(hour), int(minute or 0)
+    mark = (suffix or "").lower().replace(".", "")
+    if mark == "pm" and hour < 12:
+        hour += 12
+    elif mark == "am" and hour == 12:
+        hour = 0
+    if hour > 23 or minute > 59:
+        return None
+    return f"{hour:02d}:{minute:02d}"
+
+
+def terms_times_problem(conn):
+    """(title, detail) when the stored booking terms name an arrival or
+    departure time the booking pages contradict, else None. One sentence for
+    the owner home and the task it raises, so they cannot word it apart."""
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'terms_and_conditions'").fetchone()
+    found = terms_time_mismatches(row["value"] if row else "")
+    if not found:
+        return None
+    kinds = sorted({which for which, _said, _ours in found})
+    title = ("The booking terms give a different "
+             + " and ".join(kinds) + (" times" if len(kinds) > 1 else " time"))
+    said = "; ".join(f"{which} {'from' if which == 'arrival' else 'by'} {terms}"
+                     for which, terms, _ours in found)
+    ours = "; ".join(f"{which} {'from' if which == 'arrival' else 'by'} {pages}"
+                     for which, pages in dict.fromkeys((w, p) for w, _t, p in found))
+    return (title,
+            f"The terms say {said}. The booking pages, the confirmations and "
+            f"Booking.com say {ours}. Guests agree to the terms when they book, "
+            "so change the time in the terms on the Terms page.")
+
+
+def terms_time_mismatches(text):
+    """Where the booking terms name an arrival or departure time that is not
+    the house's. [(which, what the terms say, what the pages say)].
+
+    Read, not rewritten: the terms are the owner's words, and the owner
+    changes them on the Terms page. Every mention is checked, so a second
+    sentence that disagrees is found as well as the first.
+    """
+    flat = " ".join((text or "").split())
+    out = []
+    for which, pattern, ours in (("arrival", _TERMS_ARRIVAL, CHECK_IN_TIME),
+                                 ("departure", _TERMS_DEPARTURE, CHECK_OUT_TIME)):
+        for found in pattern.finditer(flat):
+            said = _terms_hhmm(*found.groups())
+            if said and said != ours:
+                out.append((which, clock_words(said), clock_words(ours)))
+    return out
+
+
 DEFAULT_TERMS = """BOOKING TERMS & CONDITIONS — CHÂTEAU DE GUDANES
 
 1. Who you are contracting with
@@ -8343,6 +8450,9 @@ NAV_AREAS = {
         "new_certification", "new_employee", "new_equipment_item",
         "new_incident", "new_offboarding_item", "new_onboarding_item",
         "new_performance_review", "new_role_requirement", "profile", "regenerate_invite",
+        # Refused upwards inside, as regenerate_invite is: an address change
+        # is a way to take an account.
+        "change_staff_email",
         "share_performance_review", "toggle_employee_status", "toggle_equipment_returned",
         "toggle_offboarding_item", "toggle_onboarding_item", "update_candidate_status",
         "update_incident",
@@ -10097,6 +10207,14 @@ app.jinja_env.globals["ref_prefix"] = REFERENCE_PREFIXES
 # Read a setting without caring what kind of object `settings` is on this page.
 app.jinja_env.globals["setting"] = lambda obj, key, default=None: read_setting(obj, key, default)
 app.jinja_env.globals["contact_address"] = lambda area: contact_address(area)
+# When a guest may arrive and must leave, as every page says it. Globals, not a
+# context processor, because the public templates arrive from the design side
+# as whole files: a name every page can read is the one a handover keeps.
+# test_check_in_times fails on a template that types the time instead.
+app.jinja_env.globals["check_in_at"] = CHECK_IN_WORDS
+app.jinja_env.globals["check_out_at"] = CHECK_OUT_WORDS
+app.jinja_env.globals["check_in_hour"] = int(CHECK_IN_TIME[:2])
+app.jinja_env.globals["clock_words"] = clock_words
 # Money on a page was formatted inline, template by template, with
 # '%.2f'|format and a euro sign typed next to it. One definition instead, so a
 # figure reads the same wherever it appears.
@@ -28039,6 +28157,8 @@ LETTERS_IN_CODE = {
     "bulk_approve_queue": "Staff: time off decided",
     "forgot_password": "Account: a password reset code",
     "change_email": "Account: the sign-in address changed",
+    "change_staff_email": "Account: the sign-in address changed",
+    "send_staff_sign_in_letter": "Account: an invitation, or a link to set a new password",
     "guest_account_request": "Guests: a link to their bookings",
     "reply_to_feedback": "Guests: a reply to their feedback",
     "reply_booking_com_message": "Guests: a reply to a Booking.com message",
@@ -33547,6 +33667,14 @@ def owner_home_warnings(conn, today):
             "Made in Stripe's dashboard, and the bill asks for the money again. "
             "Say whether it came off the price.", n, "admin_refunds")
 
+    # THE TERMS AND THE PAGES DISAGREE ABOUT WHEN A GUEST MAY ARRIVE OR MUST
+    # LEAVE. Guests agree to the terms, so a time there that the booking pages
+    # contradict is a promise made twice, differently. It closes itself: saving
+    # terms that agree takes the line away.
+    clash = terms_times_problem(conn)
+    if clash:
+        add("warn", clash[0], clash[1], 1, "admin_terms")
+
     # THE HOUSE CALENDAR, once it is set up and switched on. It closes itself:
     # the next pass that writes cleanly takes the line away.
     problem = house_calendar_problem(conn)
@@ -34703,6 +34831,86 @@ def export_pay_history_csv():
     return csv_response(fieldnames, rows, "pay_rate_history.csv")
 
 
+def reissue_staff_link(conn, user_id):
+    """A fresh link for somebody to set their own password. Returns the URL.
+
+    Whatever they signed in with stops working, and so does any earlier link
+    and any reset code in flight: the account is back to an invitation, and
+    the only way in is the link this returns. Not committed here.
+    """
+    token = secrets.token_urlsafe(24)
+    conn.execute(
+        "UPDATE users SET invite_token = ?, account_claimed = 0, password_hash = ? WHERE id = ?",
+        (token, generate_password_hash(secrets.token_hex(32)), user_id),
+    )
+    _clear_reset(conn, user_id)
+    return url_for("onboard", token=token, _external=True)
+
+
+def send_staff_sign_in_letter(to, person, link, kind="invite"):
+    """Email somebody their link to set a password. (sent, why not).
+
+    `kind` is "invite" for an account they have never set up, "reset" for one
+    whose password was just stopped. Plain text, like the reset code: it is
+    a letter from the house to one of its own people, not a guest letter, and
+    it has one job, which is the link.
+
+    keep=False and despite_switch, as every sign-in letter is (send_new_link,
+    forgot_password): the letter IS the key, so a queued copy would be a
+    working way in sitting in a table, and Write to guests being off must not
+    lock a new member of staff out. Send it with the connection closed.
+    """
+    if "@" not in (to or ""):
+        return False, "there is no address to send it to"
+    first = (person["name"] or "").split(" ")[0] or "there"
+    me = current_user()
+    who = (me["name"] if me and me["name"] else "") or "The château"
+    ask = who.split(" ")[0] if me and me["name"] else "whoever runs the house"
+    if kind == "reset":
+        subject = "Set a new password for the Château de Gudanes dashboard"
+        opening = (f"{who} has reset your sign-in to the Château de Gudanes "
+                   f"dashboard, so the password you used before no longer works.\n\n"
+                   f"Open this link to choose a new one:")
+        closing = (f"You still sign in with this address, {to}.\n\n"
+                   f"If you did not expect this, tell {ask} straight away.")
+    else:
+        subject = "Your sign-in for the Château de Gudanes dashboard"
+        opening = (f"{who} has set you up on the Château de Gudanes dashboard: "
+                   f"the house's own system for your shifts and tasks, who is in "
+                   f"today, and the calendar.\n\n"
+                   f"Open this link to choose your own password and sign in:")
+        closing = (f"You will sign in with this address, {to}. Nobody else knows "
+                   f"the password you choose, the house included.\n\n"
+                   f"If the link does not work, or you were not expecting this, "
+                   f"ask {ask}.")
+    body = (f"Hi {first},\n\n{opening}\n\n{link}\n\n"
+            f"The link is yours alone, so please do not forward it. It stops "
+            f"working once your password is set.\n\n{closing}\n\n"
+            f"— Château de Gudanes")
+    why = {}
+    if send_email(to, subject, body, keep=False, report=why,
+                  despite_switch="an invitation is the key to their account; "
+                                 "held, it locks them out"):
+        return True, None
+    return False, why.get("why") or (
+        "mail is not connected" if not email_enabled() else "it could not be sent")
+
+
+def sign_in_letter_flash(name, to, link, sent, why, kind="invite"):
+    """Say plainly whether the letter went, and show the link either way.
+
+    The link stays on screen because mail fails: a provider that refuses, a
+    typo in the address, a spam folder. The owner can always send it by hand.
+    """
+    what = "a link to set a new password" if kind == "reset" else "their invitation"
+    if sent:
+        flash(f"Emailed {what} to {to}. If it does not arrive, send {name} this "
+              f"link yourself: {link}", "success")
+    else:
+        flash(f"{what[0].upper() + what[1:]} was NOT emailed to {to} — {why}. "
+              f"Send {name} this link yourself: {link}", "error")
+
+
 @app.route("/directory/new", methods=["GET", "POST"])
 @owner_required
 def new_employee():
@@ -34722,6 +34930,13 @@ def new_employee():
         if not name or not email:
             flash("Name and email are required.", "error")
             return render_template("employee_form.html", employee=None)
+        # The invitation is emailed to it now, so an address that cannot
+        # receive one is refused here rather than discovered as a bounce.
+        if not EMAIL_RE.match(email):
+            flash(f"“{email}” doesn't look like an email address.", "error")
+            return render_template("employee_form.html", employee=None,
+                                   prefill_name=name, prefill_phone=phone,
+                                   prefill_job_role=job_role)
 
         invite_token = secrets.token_urlsafe(24)
         # Nobody knows this password — it's an unusable placeholder until the
@@ -34749,11 +34964,13 @@ def new_employee():
             conn.commit()
             conn.close()
             onboarding_url = url_for("onboard", token=invite_token, _external=True)
-            flash(
-                f"{name} added. Send them this onboarding link so they can set up "
-                f"their own login: {onboarding_url}",
-                "success",
-            )
+            flash(f"{name} added.", "success")
+            # EMAILED, not only flashed. The owner used to copy this link into
+            # a letter by hand, which was the only option while the house had
+            # no mail. It goes after the commit with the connection closed: a
+            # mail server's timeout has no business holding the write lock.
+            sent, why = send_staff_sign_in_letter(email, new_employee_row, onboarding_url)
+            sign_in_letter_flash(name, email, onboarding_url, sent, why)
             return redirect(url_for("profile", user_id=new_employee_row["id"]))
         except sqlite3.IntegrityError:
             conn.close()
@@ -34855,19 +35072,17 @@ def profile(user_id):
     ] if user["role"] == "owner" else []
     conn.close()
     onboarding_url = None
-    if user["role"] == "owner" and not person["account_claimed"]:
+    if user["role"] == "owner" and not person["account_claimed"] and person["invite_token"]:
         onboarding_url = url_for("onboard", token=person["invite_token"], _external=True)
-    # Whether to offer a sign-in reset. /forgot-password needs an email
-    # provider, and until one is configured it tells the employee to ask the
-    # owner to reset it directly -- so the owner needs a control for an account
-    # that is already claimed, not only for an invitation still pending.
-    # Otherwise somebody locked out has no route back in at all.
-    can_reset_signin = (user["role"] == "owner" and person["role"] == "employee"
-                        and bool(person["account_claimed"]))
+    # The sign-in controls -- one button at the top, "Reset their password" for
+    # a claimed account and "Send the invite again" for one that is not -- are
+    # drawn for an owner looking at an employee, claimed or not. /forgot-password
+    # needs an email provider, and until one is configured it tells the
+    # employee to ask the owner, so somebody locked out needs this to exist.
 
     return render_template(
         "profile.html", person=person, docs=docs, onboarding_url=onboarding_url,
-        can_reset_signin=can_reset_signin, email_enabled=email_enabled(),
+        email_enabled=email_enabled(),
         recent_shifts=recent_shifts, week_total_hours=round(week_total_hours, 2),
         expense_claims=expense_claims, onboarding_items=onboarding_items, check_in_notes=check_in_notes,
         task_stats=task_stats, leave=leave, offboarding_items=offboarding_items,
@@ -35014,11 +35229,7 @@ def regenerate_invite(user_id):
         # -- an unexplained refusal, which is the thing the message is for.
         return redirect(url_for("directory"))
     was_claimed = bool(person["account_claimed"])
-    new_token = secrets.token_urlsafe(24)
-    conn.execute(
-        "UPDATE users SET invite_token = ?, account_claimed = 0, password_hash = ? WHERE id = ?",
-        (new_token, generate_password_hash(secrets.token_hex(32)), user_id),
-    )
+    onboarding_url = reissue_staff_link(conn, user_id)
     # This overwrites a password hash with random bytes, which is the most
     # destructive thing on the page. Deactivating somebody was already audited;
     # taking their sign-in away was not.
@@ -35029,12 +35240,154 @@ def regenerate_invite(user_id):
     )
     conn.commit()
     conn.close()
-    onboarding_url = url_for("onboard", token=new_token, _external=True)
     if was_claimed:
-        flash(f"{person['name']}'s old password no longer works. Send them this "
-              f"link to set a new one: {onboarding_url}", "success")
+        flash(f"{person['name']}'s old password no longer works.", "success")
+    # EMAILED to them, with the link still shown in case it does not arrive.
+    # The owner used to be handed the link and left to send it, which with mail
+    # working is a step that only exists to be forgotten.
+    kind = "reset" if was_claimed else "invite"
+    sent, why = send_staff_sign_in_letter(person["email"], person, onboarding_url, kind)
+    sign_in_letter_flash(person["name"], person["email"], onboarding_url, sent, why, kind)
+    # Back to the Team page when pressed there. The profile is readable only by
+    # the owner or the person themselves (see the refusal above).
+    if request.form.get("back") == "directory":
+        return redirect(url_for("directory"))
+    return redirect(url_for("profile", user_id=user_id))
+
+
+@app.route("/directory/<int:user_id>/email", methods=["POST"])
+@owner_required
+def change_staff_email(user_id):
+    """Change the address a member of staff signs in with, for them.
+
+    Only /change-email could change it, and only for the person signed in,
+    with their password. So a typo made when the account was created was
+    permanent: the invitation went to an address that does not exist, and an
+    account nobody has claimed cannot sign in to fix itself. The owner found
+    that adding Karina and Jasmine on 15 October.
+
+    The same rules as /change-email -- normalised as login normalises, checked,
+    asked for twice, refused if somebody else holds it -- except the password,
+    which belongs to the person whose address it is and is not the owner's to
+    know. In its place: never an owner's row (theirs stays on /change-email,
+    behind their own password), and refused upwards as resetting a sign-in is,
+    because changing the address is a way to take the account.
+    """
+    conn = get_db()
+    person = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not person:
+        conn.close()
+        abort(404)
+    back = url_for("edit_employee", user_id=user_id) + "#sign-in"
+
+    def refuse(message, to=None):
+        conn.close()
+        flash(message, "error")
+        return redirect(to or back)
+
+    if person["role"] == "owner":
+        return refuse("An owner changes their own sign-in address, on Change "
+                      "email, with their password.")
+    if not access_covers(current_user(), person):
+        # To the Team page, as regenerate_invite does: a refused caller sent
+        # to somebody else's record would get a 403 instead of this sentence.
+        return refuse(f"{person['name']} can reach more of the app than you can, "
+                      "so changing their sign-in address is the owner's to do.",
+                      url_for("directory"))
+
+    # NORMALISED EXACTLY AS LOGIN NORMALISES (see change_email): stored any
+    # other way, it is an address that can never be typed back in.
+    new_email = (request.form.get("new_email", "") or "").strip().lower()
+    confirm = (request.form.get("confirm_email", "") or "").strip().lower()
+    old_email = (person["email"] or "").strip()
+    if not EMAIL_RE.match(new_email):
+        return refuse("That doesn't look like an email address. Nothing was changed.")
+    if new_email != confirm:
+        return refuse("The two addresses don't match. Nothing was changed.")
+    if new_email == old_email.lower():
+        return refuse(f"That is already {person['name']}'s sign-in address.")
+    # Whose, because it is the owner asking and the answer is something they
+    # can act on. Two ways to hold an address: signing in with it, and being
+    # linked to it in the Outlook add-in, which would otherwise answer for
+    # this person as somebody else.
+    taken = conn.execute(
+        "SELECT name FROM users WHERE email = ? COLLATE NOCASE AND id != ?",
+        (new_email, user_id)).fetchone()
+    if taken:
+        return refuse(f"{taken['name']} already signs in with {new_email}. "
+                      "Nothing was changed.")
+    linked = conn.execute(
+        "SELECT name FROM users WHERE id != ? AND LOWER(TRIM(COALESCE(m365_upn, ''))) = ?",
+        (user_id, new_email)).fetchone()
+    if linked:
+        return refuse(f"{new_email} is linked to {linked['name']} in the Outlook "
+                      "add-in. Nothing was changed.")
+
+    try:
+        conn.execute("UPDATE users SET email = ? WHERE id = ?", (new_email, user_id))
+    except sqlite3.IntegrityError:
+        return refuse("Another account already uses that address. Nothing was changed.")
+    # ANY RESET IN FLIGHT DIES: a code went to the old address, which is no
+    # longer what the account signs in with.
+    _clear_reset(conn, user_id)
+    # THE OUTLOOK ADD-IN FOLLOWS. A blank Microsoft 365 address there means
+    # "the one they log in with", so it moves by itself. One that merely
+    # repeated the old login is cleared to blank so it moves too; a different
+    # one was linked on purpose and is left alone.
+    m365_followed = (person["m365_upn"] or "").strip().lower() == old_email.lower()
+    if m365_followed:
+        conn.execute("UPDATE users SET m365_upn = NULL WHERE id = ?", (user_id,))
+    claimed = bool(person["account_claimed"])
+    link = None
+    if not claimed:
+        # The old invitation went to the old address -- perhaps to nobody,
+        # perhaps to a stranger with a similar name. It dies here, and a new
+        # one goes to the right place.
+        link = reissue_staff_link(conn, user_id)
+    log_audit(conn, "user_email_changed", target=person["name"],
+              details=f"{old_email or 'no address'} -> {new_email}, by the owner"
+                      + ("; the Outlook add-in link followed" if m365_followed else ""))
+    conn.commit()
+    conn.close()
+
+    flash(f"{person['name']} now signs in with {new_email}.", "success")
+    if claimed:
+        # The OLD address is told, as change_email tells it: it is the one
+        # losing the account, and if this was not wanted it is the address
+        # that can say so. Their password is untouched, so there is no link.
+        if old_email and email_enabled():
+            first = (person["name"] or "").split(" ")[0] or "there"
+            report = {}
+            told = send_email(
+                old_email, "The sign-in address on your account was changed",
+                f"Hi {first},\n\n"
+                f"The address you sign in to the Château de Gudanes dashboard "
+                f"with was changed from {old_email} to {new_email}.\n\n"
+                f"This message is going to the old address because it is the "
+                f"one that no longer works for signing in. Your password has "
+                f"not changed.\n\n"
+                f"If you did not expect this, say so straight away.\n\n"
+                f"— Château de Gudanes",
+                report=report)
+            if told:
+                flash(f"{old_email} has been told.", "success")
+            else:
+                flash(f"{old_email} was not told — "
+                      f"{report.get('why') or 'it could not be sent'}. "
+                      f"Tell {person['name']} yourself.", "error")
+        else:
+            flash(f"Mail is not connected, so {old_email} was not told. "
+                  f"Tell {person['name']} yourself.", "error")
     else:
-        flash(f"New onboarding link ready: {onboarding_url}", "success")
+        sent, why = send_staff_sign_in_letter(new_email, person, link)
+        sign_in_letter_flash(person["name"], new_email, link, sent, why)
+    if not m365_followed and (person["m365_upn"] or "").strip():
+        flash(f"Their Outlook add-in address, {person['m365_upn']}, was left as "
+              "it was: it was linked separately.", "success")
+    # The profile is the owner's or the person's own to read; anybody else who
+    # may change an address goes back to the Team page rather than to a 403.
+    if current_user()["role"] != "owner":
+        return redirect(url_for("directory"))
     return redirect(url_for("profile", user_id=user_id))
 
 
@@ -49993,8 +50346,8 @@ GUEST_TEXTS = {
         "label": "departure",
         # The statement url is longer again, so this is terser still.
         "default": (
-            "Bonjour {guest_name}, checkout is 11am. Keys in the bowl by the "
-            "door. Bill: {statement_url}"
+            "Bonjour {guest_name}, checkout is " + CHECK_OUT_WORDS + ". Keys in "
+            "the bowl by the door. Bill: {statement_url}"
         ),
     },
 }
@@ -75132,6 +75485,7 @@ WATCH_TASK_KINDS = {
     "door": "The front door lock needs attention",
     "letters": "A guest letter out of step with the house rules on payment",
     "sendcheck": "An Outlook the check on Send cannot run in",
+    "terms": "Booking terms that give a different arrival or departure time",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -78363,6 +78717,16 @@ def watch_task_findings(conn, today=None):
     door = door_lock_problem(conn)
     if door:
         found.append(("door", "Look at the front door lock", door, today.isoformat(), "high"))
+
+    # The booking terms naming an arrival or departure time the pages
+    # contradict. Titled by what is wrong and nothing that moves, so saving
+    # terms that agree closes it. Never rewritten here: they are the owner's
+    # words, and what guests have agreed to.
+    clash = terms_times_problem(conn)
+    if clash:
+        found.append(("terms", clash[0],
+                      clash[1] + "\n\nManagement → Terms and conditions, section 6.",
+                      today.isoformat(), "normal"))
 
     # A stored guest letter out of step with the house rules on payment. One
     # per letter, titled by the letter, so putting one right closes that one

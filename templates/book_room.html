@@ -78,7 +78,7 @@
       {% if _bl %}<div><dt>The bed</dt><dd>{{ _bl }}</dd></div>{% endif %}
       {% if _rn == 'The King Room' %}<div><dt>In the room</dt><dd>A bath and a basin of its own</dd></div>{% endif %}
       <div class="g-glance__wide"><dt>Your bathroom</dt><dd>{{ 'Private, and yours alone, ' if _private else '' }}on the ground floor<span class="g-glance__sub">A powder room, with a toilet and basin, in the upstairs vestibule</span></dd></div>
-      <div><dt>Check-in / out</dt><dd>From 2pm &middot; by 11am<span class="g-glance__sub">Early check-in on request</span></dd></div>
+      <div><dt>Check-in / out</dt><dd>From {{ check_in_at }} &middot; by {{ check_out_at }}<span class="g-glance__sub">Early check-in on request</span></dd></div>
       <div><dt>Breakfast</dt><dd>Included</dd></div>
       <div><dt>Stairs</dt><dd>No lift; the bedrooms are on the top floor</dd></div>
     </dl>
@@ -230,24 +230,23 @@
           </div>
           <div class="g-stack g-stack--arrive">
             {#- 5 Oct (owner): an estimated arrival time, with check-in and check-out stated and early check-in on request.
-                Check-in from 2pm, check-out by 11am. Saved in bookings.estimated_arrival_time. -#}
+                Saved in bookings.estimated_arrival_time. 15 Oct: the times are read from CHECK_IN_TIME and
+                CHECK_OUT_TIME in app.py, never typed -- the terms said 4pm while this page said 2pm. The hourly
+                choices start at check-in, so they move with it; at 2pm they are the same values as before. -#}
             <p class="g-field g-eta">
               <label for="estimated_arrival_time">Estimated arrival time<span class="g-req" aria-hidden="true">*</span></label>
               {%- set _eta = (prefill_guest or {}).get('estimated_arrival_time') or (request.form.get('estimated_arrival_time') if request.method == 'POST' else '') -%}
+              {%- set _early = 'Before ' ~ check_in_at ~ ' (early check-in requested)' %}
               <select id="estimated_arrival_time" name="estimated_arrival_time" required data-eta>
                 <option value="">Choose a time</option>
-                <option value="Before 2pm (early check-in requested)" {{ 'selected' if _eta == 'Before 2pm (early check-in requested)' }}>Before 2pm &mdash; early check-in, on request</option>
-                <option value="2pm-3pm" {{ 'selected' if _eta == '2pm-3pm' }}>2pm &ndash; 3pm</option>
-                <option value="3pm-4pm" {{ 'selected' if _eta == '3pm-4pm' }}>3pm &ndash; 4pm</option>
-                <option value="4pm-5pm" {{ 'selected' if _eta == '4pm-5pm' }}>4pm &ndash; 5pm</option>
-                <option value="5pm-6pm" {{ 'selected' if _eta == '5pm-6pm' }}>5pm &ndash; 6pm</option>
-                <option value="6pm-7pm" {{ 'selected' if _eta == '6pm-7pm' }}>6pm &ndash; 7pm</option>
-                <option value="7pm-8pm" {{ 'selected' if _eta == '7pm-8pm' }}>7pm &ndash; 8pm</option>
-                <option value="8pm-9pm" {{ 'selected' if _eta == '8pm-9pm' }}>8pm &ndash; 9pm</option>
-                <option value="9pm-10pm" {{ 'selected' if _eta == '9pm-10pm' }}>9pm &ndash; 10pm</option>
+                <option value="{{ _early }}" {{ 'selected' if _eta == _early }}>Before {{ check_in_at }} &mdash; early check-in, on request</option>
+                {%- for _h in range(check_in_hour, 22) %}
+                {%- set _slot = clock_words(_h) ~ '-' ~ clock_words(_h + 1) %}
+                <option value="{{ _slot }}" {{ 'selected' if _eta == _slot }}>{{ clock_words(_h) }} &ndash; {{ clock_words(_h + 1) }}</option>
+                {%- endfor %}
                 <option value="After 10pm" {{ 'selected' if _eta == 'After 10pm' }}>After 10pm</option>
               </select>
-              <span class="g-hint">Check-in from 2pm, check-out by 11am. Arriving earlier? Early check-in is on request &mdash; choose it above and we will do our best.</span>
+              <span class="g-hint">Check-in from {{ check_in_at }}, check-out by {{ check_out_at }}. Arriving earlier? Early check-in is on request &mdash; choose it above and we will do our best.</span>
             </p>
           </div>
         </section>

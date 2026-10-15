@@ -54,7 +54,7 @@
     <li class="g-timeline__i">
       <span class="g-timeline__k">Arrival</span>
       <span class="g-timeline__v">
-        {% if b['arrival_date'] %}{{ b['arrival_date'][:10]|date_short }}{% endif %}, from 2pm. Early check-in on request.
+        {% if b['arrival_date'] %}{{ b['arrival_date'][:10]|date_short }}{% endif %}, from {{ check_in_at }}. Early check-in on request.
         Someone will meet you at the gates.
       </span>
     </li>
@@ -62,7 +62,7 @@
     <li class="g-timeline__i">
       <span class="g-timeline__k">Departure</span>
       <span class="g-timeline__v">
-        {% if b['departure_date'] %}{{ b['departure_date'][:10]|date_short }}{% endif %}, by 11am.
+        {% if b['departure_date'] %}{{ b['departure_date'][:10]|date_short }}{% endif %}, by {{ check_out_at }}.
       </span>
     </li>
   </ol>
