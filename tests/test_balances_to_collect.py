@@ -316,8 +316,10 @@ def run():
         (f"{TAG.lower()}%",)).fetchall()}
     conn.close()
     said = " ".join(flashes(r))
+    # "€1,400.00", the thousands separated as money() writes every figure:
+    # the letter said "€1400.00" above a statement saying "€1,400.00".
     s.check("both are emailed, asking for what is owed",
-            "1400.00" in mail.get(f"{TAG.lower()}nocard@example.invalid", "")
+            "1,400.00" in mail.get(f"{TAG.lower()}nocard@example.invalid", "")
             and f"{TAG.lower()}opted@example.invalid" in mail,
             detail=f"{sorted(mail)}")
     s.check("the guest who asked not to be emailed is not",

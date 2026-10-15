@@ -265,6 +265,7 @@
         <select name="method" style="font-size:12px;">
           <option value="">Method (optional)</option>
           <option value="online">Online</option>
+          <option value="bank_transfer">Bank transfer</option>
           <option value="cash">Cash</option>
           <option value="other">Other</option>
         </select>
@@ -272,14 +273,20 @@
       </form>
       </details>
 
-      {% if not r['deposit_paid_at'] and r['deposit_amount'] %}
+      {# What is LEFT of the deposit, by the ledger, and never more than is
+         owed. It offered the deposit set at booking whatever had been paid --
+         for a guest moved from RetreatGuru with 30% paid there, "mark deposit
+         (€2,600.00) paid" on a booking inside a month of its session. One
+         offer when the deposit is all that is left: the rest is the deposit. #}
+      {% set deposit_left = [[(r['deposit_amount'] or 0) - balance[2], 0]|max, balance[0]]|min %}
+      {% if not r['deposit_paid_at'] and deposit_left > 0.005 and (balance[2] <= 0.005 or deposit_left < balance[0] - 0.005) %}
       <form method="post" action="{{ url_for('mark_workshop_deposit_paid', registration_id=r['id']) }}" style="display:inline-block; margin-top:6px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="method" value="other">
-        <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">Quick: mark deposit ({{ r['deposit_amount']|money }}) paid</button>
+        <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">Quick: mark deposit ({{ deposit_left|money }}) paid</button>
       </form>
       {% endif %}
-      {% if not r['balance_paid_at'] and balance[0] > 0 and r['deposit_paid_at'] %}
+      {% if not r['balance_paid_at'] and balance[0] > 0.005 and (r['deposit_paid_at'] or balance[2] > 0.005) %}
       <form method="post" action="{{ url_for('mark_workshop_balance_paid', registration_id=r['id']) }}" style="display:inline-block; margin-top:6px; margin-left:10px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="method" value="other">

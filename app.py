@@ -53311,7 +53311,9 @@ def workshop_email_context(booking):
     if booking["deposit_amount"]:
         price_lines.append(f"Deposit due now: €{booking['deposit_amount']:,.2f}")
         if booking["balance_amount"]:
-            price_lines.append(f"Balance of €{booking['balance_amount']:,.2f} due {booking['balance_due_date'] or 'at check-in'}")
+            price_lines.append(
+                f"Balance of €{booking['balance_amount']:,.2f} due "
+                f"{format_date_human(booking['balance_due_date']) if booking['balance_due_date'] else 'at check-in'}")
     # What this workshop actually carries. Built here rather than written
     # into the template, because it differs per workshop and a template is
     # flat text the owner edits -- there is no "if" to write it with. The
@@ -53342,11 +53344,20 @@ def workshop_email_context(booking):
         "dates": date_line,
         "party_size": booking["party_size"],
         "reference_code": booking["reference_code"],
-        "total_price": f"{booking['total_price']:.2f}" if booking["total_price"] else "0.00",
-        "deposit_amount": f"{booking['deposit_amount']:.2f}" if booking["deposit_amount"] else "0.00",
-        "balance_amount": f"{booking['balance_amount']:.2f}" if booking["balance_amount"] else "0.00",
-        "balance_due_date": booking["balance_due_date"] or "at check-in",
-        "balance_line": (f"Balance of €{booking['balance_amount']:,.2f} due {booking['balance_due_date'] or 'at check-in'}."
+        # Each amount carries its own euro sign, written as money() writes every
+        # figure the house shows. The wording of 8 October took "€" out of the
+        # templates ("€{deposit_amount}" became "{deposit_amount}") because the
+        # room letters' amounts already carry one -- and these did not, so every
+        # workshop letter said "the balance of 1638.00", in no currency at all.
+        "total_price": money(booking["total_price"] or 0),
+        "deposit_amount": money(booking["deposit_amount"] or 0),
+        "balance_amount": money(booking["balance_amount"] or 0),
+        # Day first, in words, as the house writes a date: it went out as
+        # "due by 2026-09-23".
+        "balance_due_date": (format_date_human(booking["balance_due_date"])
+                             if booking["balance_due_date"] else "at check-in"),
+        "balance_line": (f"Balance of €{booking['balance_amount']:,.2f} due "
+                         f"{format_date_human(booking['balance_due_date']) if booking['balance_due_date'] else 'at check-in'}."
                           if booking["balance_amount"] else "Paid in full."),
         "price_block": ("\n" + "\n".join(price_lines)) if price_lines else "",
         "manage_url": url_for("workshop_manage", manage_token=booking["manage_token"], _external=True),
@@ -65990,7 +66001,15 @@ def assign_workshop_room(registration_id):
 def mark_workshop_deposit_paid(registration_id):
     """Manual fallback for deposits taken outside Stripe — bank transfer,
     cash, a card reader at the château — same idea as marking an expense
-    paid by hand. Logs the payment to the ledger and sends a receipt."""
+    paid by hand. Logs the payment to the ledger and sends a receipt.
+
+    WHAT IS LEFT OF THE DEPOSIT, never more than is owed. It recorded
+    deposit_amount whatever had been paid already. A registration made inside
+    a month of its session has the whole price as its deposit, so for a guest
+    moved from RetreatGuru with 30% paid there -- already on the ledger -- one
+    press recorded the full price again: the 30% counted twice, the guest
+    shown as owing nothing, and a debt of most of the price wiped.
+    """
     method = request.form.get("method", "other").strip() or "other"
     conn = get_db()
     booking = conn.execute(
@@ -66004,12 +66023,20 @@ def mark_workshop_deposit_paid(registration_id):
     if not booking:
         conn.close()
         abort(404)
+    owed, _charged, paid = workshop_balance_due(conn, registration_id)
+    deposit_left = round(min(max((booking["deposit_amount"] or 0) - paid, 0), owed), 2)
     cur = conn.execute(
         "UPDATE workshop_bookings SET deposit_paid_at = ? WHERE id = ? AND deposit_paid_at IS NULL",
         (datetime.now(timezone.utc).isoformat(), registration_id),
     )
-    if cur.rowcount and booking["deposit_amount"]:
-        add_workshop_transaction(conn, registration_id, "payment", "Deposit", booking["deposit_amount"],
+    if cur.rowcount and deposit_left <= 0.005:
+        conn.commit()
+        conn.close()
+        flash(f"What has been paid ({money(paid)}) already covers the deposit, so nothing "
+              "more was recorded.", "success")
+        return redirect(url_for("admin_workshop_registrations"))
+    if cur.rowcount and deposit_left > 0.005:
+        add_workshop_transaction(conn, registration_id, "payment", "Deposit", deposit_left,
                                   method=method, user_id=current_user()["id"])
         # Commit the payment before the receipt goes out. With no email provider
         # configured send_email falls back to email_outbox on its own
@@ -66019,11 +66046,18 @@ def mark_workshop_deposit_paid(registration_id):
         # this route's Stripe twin and sends the identical template; this is the
         # bank-transfer and cash path, where a receipt is the guest's only proof.
         conn.commit()
-        send_workshop_email(conn, booking, "workshop_deposit_receipt", workshop_email_context(booking),
-                            statement=True)
+        # The receipt names what was received, and what is left by the
+        # ledger: the figures stamped at booking are not what this guest owes.
+        receipt = workshop_email_context(booking)
+        receipt["deposit_amount"] = money(deposit_left)
+        left_after = workshop_balance_due(conn, registration_id)[0]
+        receipt["balance_line"] = (f"Still to pay: {money(left_after)}." if left_after > 0.005
+                                   else "It is paid in full.")
+        send_workshop_email(conn, booking, "workshop_deposit_receipt", receipt, statement=True)
     conn.commit()
     conn.close()
-    flash("Deposit marked as paid.", "success")
+    flash(f"Deposit of {money(deposit_left)} marked as paid." if cur.rowcount
+          else "The deposit was already marked as paid.", "success")
     return redirect(url_for("admin_workshop_registrations"))
 
 
@@ -88088,17 +88122,26 @@ def run_room_balance_reminder_job(conn, days_before):
 
 
 def run_workshop_balance_reminder_job(conn, days_before):
+    """Remind each registration once, `days_before` its money is due.
+
+    Chosen by when the money is due (workshop_balance_due_on) and what the
+    LEDGER says is left (send_workshop_balance_request), not by the
+    balance_amount and balance_due_date stamped the day it was booked: a
+    registration made by hand inside a month of its session has neither, and
+    one with a deposit paid elsewhere and most of the price still owed was
+    never reminded at all.
+    """
     cutoff = (house_today() + timedelta(days=days_before)).isoformat()
-    due = conn.execute(
+    due = [r for r in conn.execute(
         """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date, workshops.title
            FROM workshop_bookings
            JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
            JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-           WHERE workshop_bookings.status = 'confirmed' AND workshop_bookings.balance_amount > 0
+           WHERE workshop_bookings.status = 'confirmed'
              AND workshop_bookings.balance_paid_at IS NULL AND workshop_bookings.balance_reminder_sent_at IS NULL
-             AND workshop_bookings.balance_due_date IS NOT NULL AND workshop_bookings.balance_due_date <= ?""",
+             AND (workshop_bookings.balance_due_date IS NULL OR workshop_bookings.balance_due_date <= ?)""",
         (cutoff,),
-    ).fetchall()
+    ).fetchall() if workshop_balance_due_on(r) <= cutoff]
     sent = settled = 0
     for booking in due:
         result, _left = send_workshop_balance_request(conn, booking)
@@ -88128,7 +88171,13 @@ def send_workshop_balance_request(conn, booking):
     if booking["do_not_email"]:
         return "do_not_email", left
     context = workshop_email_context(booking)
-    context["balance_amount"] = f"{left:.2f}"
+    context["balance_amount"] = money(left)
+    # When it is due, by the same rule the collection list uses. A day already
+    # gone reads as "today": "due by 15 October" in a letter sent on the 20th
+    # reads as a mistake.
+    due_on = workshop_balance_due_on(booking)
+    context["balance_due_date"] = (format_date_human(due_on) if due_on > house_today_iso()
+                                   else "today")
     send_workshop_email(conn, booking, "workshop_balance_reminder", context)
     conn.execute(
         "UPDATE workshop_bookings SET balance_reminder_sent_at = ? WHERE id = ?",
@@ -88210,7 +88259,9 @@ def run_event_balance_reminder_job(conn, days_before):
             "event_type": event["event_type"] or "event",
             "event_date": format_date_human(event["preferred_date"])
                           if event["preferred_date"] else "the agreed date",
-            "balance_amount": f"{chase_amount:.2f}",
+            # With its euro sign: the wording of 8 October took the "€" out of
+            # "There is €{balance_amount}", and this amount had none of its own.
+            "balance_amount": money(chase_amount),
             "balance_due_date": format_date_human(chase_date),
             "manage_url": manage_url,
             "reference_code": event["reference_code"] or "",
@@ -88440,6 +88491,20 @@ COLLECT_SKIP_REASONS = {
 }
 
 
+def workshop_balance_due_on(row):
+    """The day a registration's money was due: its balance due date, or, when
+    it has none, the day it was made.
+
+    A registration made within WORKSHOP_BALANCE_DAYS of its session has no
+    balance due date, because the whole price is the deposit and is due as it
+    is booked. Online that is paid there and then. Booked by hand -- by
+    telephone, or moved from RetreatGuru with a deposit paid there -- it can
+    still owe most of the price, and every list that looked for money due by
+    reading balance_due_date skipped it: owed on the ledger, chased by nothing.
+    """
+    return row["balance_due_date"] or house_date_iso(row["created_at"])
+
+
 def workshop_balances_due(conn, today=None, ahead_days=COLLECT_AHEAD_DAYS):
     """Confirmed registrations with a balance due by `ahead_days` from today,
     each with what it needs (COLLECT_STATES).
@@ -88448,6 +88513,9 @@ def workshop_balances_due(conn, today=None, ahead_days=COLLECT_AHEAD_DAYS):
     one grouped query rather than a lookup each. balance_amount is what they
     owed the day they booked; a guest who has part-paid since would be charged
     all of it again.
+
+    When it was due is workshop_balance_due_on: a registration with no balance
+    due date owed its money the day it was made, and is listed from then.
     """
     today = today or house_today()
     horizon = (today + timedelta(days=ahead_days)).isoformat()
@@ -88463,24 +88531,27 @@ def workshop_balances_due(conn, today=None, ahead_days=COLLECT_AHEAD_DAYS):
                                            ELSE 0 END), 0) AS paid
              FROM workshop_bookings wb
              LEFT JOIN workshop_transactions t ON t.workshop_booking_id = wb.id
-            WHERE wb.status = 'confirmed' AND wb.balance_due_date IS NOT NULL
-              AND wb.balance_due_date <= ?
+            WHERE wb.status = 'confirmed'
+              AND (wb.balance_due_date IS NULL OR wb.balance_due_date <= ?)
             GROUP BY wb.id""", (horizon,)).fetchall()}
     out = []
-    for row in conn.execute(
+    rows = [r for r in conn.execute(
             """SELECT wb.*, workshops.title, workshop_sessions.start_date,
                       workshop_sessions.end_date
                  FROM workshop_bookings wb
                  JOIN workshop_sessions ON workshop_sessions.id = wb.session_id
                  JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-                WHERE wb.status = 'confirmed' AND wb.balance_due_date IS NOT NULL
-                  AND wb.balance_due_date <= ?
-                ORDER BY wb.balance_due_date, wb.id""", (horizon,)).fetchall():
+                WHERE wb.status = 'confirmed'
+                  AND (wb.balance_due_date IS NULL OR wb.balance_due_date <= ?)""",
+            (horizon,)).fetchall()
+            if workshop_balance_due_on(r) <= horizon]
+    rows.sort(key=lambda r: (workshop_balance_due_on(r), r["id"]))
+    for row in rows:
         money = ledger.get(row["id"])
         owed = round(money["charged"] - money["paid"], 2) if money else 0.0
         if owed <= 0.005:
             continue
-        due_on = row["balance_due_date"]
+        due_on = workshop_balance_due_on(row)
         if due_on > today_iso:
             state = "coming"
         elif row["collect_hold"]:
