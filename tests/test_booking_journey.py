@@ -515,7 +515,9 @@ def run():
     lines = [re.sub(r"<[^>]+>", "", li).strip()
              for li in re.findall(r"<li>(.*?)</li>", page, re.S)]
     said_shared = sum(1 for words in lines if words == "Shared bathroom")
-    said_private = sum(1 for words in lines if words == "Private bathroom")
+    # Since z17 (owner, 15 October) a private one says where it is: "Private
+    # bathroom, on the ground floor", so the line STARTS with the words.
+    said_private = sum(1 for words in lines if words.startswith("Private bathroom"))
     s.check("the page says shared for the room that shares, and only for it",
             said_shared == 1,
             detail="page says shared %d time(s) with one room sharing" % said_shared)
@@ -565,6 +567,11 @@ def run():
         # either, anywhere on the page: the danger was always the sentence
         # "no staircase" said to the guest who needs it to be true.
         said = visible_text(picker)
+        # Where the BATHROOM is: "Private bathroom, on the ground floor" (z17,
+        # owner). True, and the warning described below rather than a promise,
+        # but it sits beside "Sleeps 4" and "Book this room", so it is taken
+        # out before the room-and-floor patterns read what is left.
+        said = re.sub(r"(?i)\bbathroom\b[^.]{0,40}?\bground[- ]floor\b", "bathroom", said)
         # An outright claim about stairs, in any wording.
         promises = re.findall(r"(?i)\b(no staircase|no stairs|step[- ]free|"
                               r"without (?:any )?stairs)\b", said)

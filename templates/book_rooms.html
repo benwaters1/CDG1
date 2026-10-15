@@ -216,7 +216,11 @@
                figure, so printing both says nothing twice. #}
             {% if _n > 1 %}<span class="g-card__per">€{{ '{:,.0f}'.format(room['price_per_night']) }} a night</span>{% endif %}
           {% else %}
-            <span class="g-price__k">From</span><b data-eur="{{ room['price_per_night']|int }}">€{{ '{:,.0f}'.format(room['price_per_night']) }}</b>
+            {#- 15 Oct (owner): with dates chosen, the price for THOSE dates. Needs room_quotes {room_id: {'per_night':..}} from
+                book_rooms() (see z16 README); without it the card keeps the standard 'From' price. -#}
+            {%- set _rq = (room_quotes.get(room['id']) if (room_quotes is defined and room_quotes) else none) %}
+            {%- if _rq and _rq.per_night %}<span class="g-price__k">For your dates</span><b data-eur="{{ _rq.per_night }}">€{{ ('{:,.0f}' if (_rq.per_night|float) == (_rq.per_night|int) else '{:,.2f}').format(_rq.per_night|float) }}</b>
+            {%- else %}<span class="g-price__k">From</span><b data-eur="{{ room['price_per_night']|int }}">€{{ '{:,.0f}'.format(room['price_per_night']) }}</b>{% endif %}
             <span>a night · room and breakfast</span>
           {%- endif %}</p>
         {% endif %}
@@ -235,7 +239,7 @@
                 card that costs an apology when it is wrong, and imported amenities on two rooms
                 still said "Shared bathroom" after every room became private. The column decides. -#}
             {% for tag in room['amenities'].split(',') if 'bathroom' not in tag|lower %}<li>{{ tag.strip() }}</li>{% endfor %}
-            {% if room['bathroom'] %}<li>{{ room['bathroom']|capitalize }} bathroom</li>{% endif %}
+            {% if room['bathroom'] %}<li>{{ 'Private bathroom, on the ground floor' if (room['bathroom']|lower) == 'private' else (room['bathroom']|capitalize ~ ' bathroom') }}</li>{% endif %}
           {% else %}
             {#- Read from the room's own columns. This used to sniff the
                 NAME for 'shared', 'king' and 'mountain', so renaming a room
@@ -243,11 +247,11 @@
                 one on the page a guest books from. Anything unset says
                 nothing rather than guessing: the wrong guess here is the one
                 that costs an apology. -#}
-            {% if room['max_occupancy'] %}<li>{{ ci('guests') }}Sleeps {{ room['max_occupancy'] }}</li>{% endif %}
+            {% if (room['max_children'] or 0)|int > 0 %}<li>{{ ci('guests') }}{{ room['max_adults'] }} adults, {{ room['max_children'] }} children</li>{% elif room['max_occupancy'] %}<li>{{ ci('guests') }}Sleeps {{ room['max_occupancy'] }}</li>{% endif %}{#- 15 Oct (owner): the Family Suite reads '2 adults, 3 children', not 'Sleeps 5' -#}
             {% if room['size_sqm'] %}<li>{{ ci('size') }}{{ room['size_sqm']|int }} m²</li>{% endif %}
             {% if room['bed_setup'] %}<li>{{ ci('bed') }}{{ room['bed_setup'] }}</li>
             {% else %}{# Was "Double bed" on every card, whatever the room. A room it does not recognise gets no bed line rather than a guess - set bed_setup. #}{%- set _rn = room_name(room['name']) %}{%- set _bl = 'Twin beds' if ('Twin' in _rn or 'Tilleul' in _rn) else ('Queen bed' if ('Queen' in _rn or 'Cerise' in _rn) else ('King bed' if ('King' in _rn or 'Levant' in _rn) else ('Emperor bed' if ('Gold' in _rn or 'Émeraude' in _rn) else ('Two bedrooms' if ('Family' in _rn or 'Deux' in _rn) else '')))) %}{% if _bl %}<li>{{ ci('bed') }}{{ _bl }}</li>{% endif %}{% endif %}
-            {% if room['bathroom'] %}<li>{{ ci('bath') }}{{ room['bathroom']|capitalize }} bathroom</li>{% endif %}
+            {% if room['bathroom'] %}<li>{{ ci('bath') }}{{ 'Private bathroom, on the ground floor' if (room['bathroom']|lower) == 'private' else (room['bathroom']|capitalize ~ ' bathroom') }}</li>{% endif %}{#- 15 Oct (owner): say it is not attached - the room page says each is on the ground floor -#}
             {% if room['outlook'] %}<li>{{ ci('view') }}{{ room['outlook']|capitalize }} view</li>{% endif %}
             <li>{{ ci('cup') }}Breakfast included</li>
             {% if (room['min_nights'] or 1) > 1 %}<li>{{ ci('nights') }}{{ room['min_nights'] }}-night minimum</li>{% endif %}

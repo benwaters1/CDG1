@@ -15454,6 +15454,26 @@ def atelier_holding_the_house(conn, arrival, departure):
     return None
 
 
+# What a guest is told when their dates are taken. The reasons below are
+# for the house -- which booking, which channel -- and a guest hears none of
+# it: not that another channel exists, and never "free", which reads as "no
+# charge" (owner, 15 October 2026).
+GUEST_DATES_TAKEN = "Those dates are already reserved. Please choose others."
+DATES_OVERLAP_BOOKING = "Those dates overlap an existing booking."
+DATES_BLOCKED_CHANNEL = "Those dates are blocked on another booking channel."
+
+
+def for_a_guest(reason):
+    """The reason an availability check gave, as a guest should read it.
+
+    The two that describe the house's own bookkeeping become the one plain
+    sentence; anything written for a guest already (a season closure's own
+    note, a departure before the arrival) is passed through unchanged."""
+    if reason in (DATES_OVERLAP_BOOKING, DATES_BLOCKED_CHANNEL):
+        return GUEST_DATES_TAKEN
+    return reason
+
+
 def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=None, include_pending=True):
     """arrival/departure are date objects; departure is the checkout day
     (exclusive), so a checkout and another guest's check-in on the same day
@@ -15477,11 +15497,11 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
         if exclude_booking_id and bid == exclude_booking_id:
             continue
         if b_start and b_end and arrival < b_end and b_start < departure:
-            return False, "Those dates overlap an existing booking."
+            return False, DATES_OVERLAP_BOOKING
 
     for b_start, b_end in picture["blocked"].get(room_id, ()):
         if b_start and b_end and arrival < b_end and b_start < departure:
-            return False, "Those dates are blocked on another booking channel."
+            return False, DATES_BLOCKED_CHANNEL
 
     for b_start, b_end, mode, note in picture["manual"].get(room_id, ()):
         if b_start and b_end and arrival < b_end and b_start < departure:
@@ -46407,7 +46427,7 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
     if not free:
         quote.update(available=False,
                      reason=(why if why and why == season_note_for(conn, room["id"], arrival, departure)
-                             else "Those dates are no longer free."))
+                             else GUEST_DATES_TAKEN))
         return quote
     # On request: priced as ever, booked as a request the house answers.
     quote["on_request"] = rules["on_request"]
@@ -46794,7 +46814,7 @@ def book_room(room_id):
         else:
             ok, reason = claim_range(conn, room_id, arrival, departure)
             if not ok:
-                error = reason
+                error = for_a_guest(reason)
             else:
                 error = house_capacity_error(conn, arrival, departure, party_size)
 
@@ -48039,7 +48059,8 @@ def manage_booking(manage_token):
         else:
             ok, reason = claim_range(conn, booking["room_id"], new_arrival, new_departure, exclude_booking_id=booking["id"])
             if not ok:
-                flash(f"Those dates aren't available: {reason}", "error")
+                flash(for_a_guest(reason) if for_a_guest(reason) == GUEST_DATES_TAKEN
+                      else f"Those dates aren't available: {reason}", "error")
             elif booking["status"] == "pending" and booking["payment_status"] != "paid":
                 # Nothing's been committed or charged yet, so it's safe to
                 # apply immediately rather than routing a still-pending
@@ -50519,7 +50540,7 @@ def place_event_hold(conn, event_id, start_iso, end_iso, *, days=None,
     if room:
         ok, why = is_range_available(conn, room["id"], start, end + timedelta(days=1))
         if not ok:
-            return None, f"Those dates are not free: {why}"
+            return None, f"Those dates are already reserved. {why}"
     try:
         days = int(days) if days else EVENT_HOLD_DAYS_DEFAULT
     except (TypeError, ValueError):
@@ -60698,7 +60719,7 @@ def rebook_guest(guest_id):
                                     include_pending=True)
     if not available:
         conn.close()
-        flash(f"Those nights are not free: {reason}", "error")
+        flash(f"Those nights are already reserved. {reason}", "error")
         return redirect(url_for("guest_detail", guest_id=guest_id))
 
     try:

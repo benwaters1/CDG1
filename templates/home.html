@@ -241,8 +241,8 @@
         <ul class="g-tags g-tags--sm g-tags--icons">
           {# Showed 2 whenever capacity was unset - including under a card saying "sleeping five". #}
           {% if r['bed_setup'] %}<li>{{ ci('bed') }}{{ r['bed_setup'] }}</li>{% endif %}
-          {% if r['max_occupancy'] %}<li>{{ ci('guests') }}Sleeps {{ r['max_occupancy'] }}</li>{% endif %}
-          {% if r['bathroom'] %}<li>{{ ci('bath') }}{{ r['bathroom']|capitalize }} bathroom</li>{% endif %}
+          {% if (r['max_children'] or 0)|int > 0 %}<li>{{ ci('guests') }}{{ r['max_adults'] }} adults, {{ r['max_children'] }} children</li>{% elif r['max_occupancy'] %}<li>{{ ci('guests') }}Sleeps {{ r['max_occupancy'] }}</li>{% endif %}
+          {% if r['bathroom'] %}<li>{{ ci('bath') }}{{ 'Private bathroom, on the ground floor' if (r['bathroom']|lower) == 'private' else (r['bathroom']|capitalize ~ ' bathroom') }}</li>{% endif %}
           {% if r['outlook'] %}<li>{{ ci('view') }}{{ r['outlook']|capitalize }} view</li>{% endif %}
           <li>{{ ci('cup') }}Breakfast included</li>
         </ul>

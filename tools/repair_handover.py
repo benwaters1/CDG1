@@ -1734,6 +1734,12 @@ PHRASE_CORRECTIONS = [
                 r'"name": "Pickleball court", "value": true\},(?=\s*\n)'), ""),
     (re.compile(r"\bthe tennis and pickleball courts\b"),
      "the tennis court (with racquets for tennis and pickleball)"),
+    # 15 October: never "free" for dates a guest can book -- it reads as "no
+    # charge" (owner). The calendar's heading, the cancellation terms, the
+    # linked-bookings note and the privacy notice each said it.
+    (re.compile(r"\bWhat Is Free\b"), "What Is Available"),
+    (re.compile(r"\bwhat else is free\b"), "what else is available"),
+    (re.compile(r"\bwhat is free\b"), "what is available"),
 ]
 _COMMENT_SPLIT = re.compile(r"(\{#.*?#\}|<!--.*?-->)", re.S)
 

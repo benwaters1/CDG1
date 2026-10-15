@@ -330,7 +330,7 @@ def run():
         "departure_date": (far + timedelta(days=2)).isoformat(),
         "party_size": "2"}, follow_redirects=True)
     s.check("the same nights twice is refused",
-            "not free" in " ".join(flashes(r2)),
+            "already reserved" in " ".join(flashes(r2)),
             detail=f"{flashes(r2)[:1]} — two cars in the drive is what this "
                    "stops")
     r3 = oc.post(f"/guests/{gid}/rebook", data={

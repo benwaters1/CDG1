@@ -333,7 +333,7 @@
     {% if (booking['status']|lower) == 'pending' and (booking['payment_status']|lower) != 'paid' %}
       Pick new dates and they'll update right away, as long as the room is free.
     {% else %}
-      The booking is non-refundable, but we can sometimes move your dates. Pick new ones and we will tell you whether we can.
+      The booking is non-refundable, but sometimes we can move your dates. Pick new ones and we will tell you whether we can.
     {% endif %}
     {% if room and room['min_nights'] and room['min_nights'] > 1 %} This room requires a {{ room['min_nights'] }}-night minimum stay.{% endif %}
   </p>
@@ -452,7 +452,7 @@
    confirm says what actually happens rather than "cannot be undone". #}
 {#- 10 Oct (owner: "this isn't 100%"): the advice once (it was shown twice), then the fold as a proper link. -#}
 <div class="g-mb-cancel">
-  <p class="g-hint">{% if (booking['payment_status']|lower) == 'paid' %}Payments are not refunded on cancellation.{% else %}Bookings are non-refundable.{% endif %} Write to us first &mdash; we can sometimes move your dates instead.</p>
+  <p class="g-hint">{% if (booking['payment_status']|lower) == 'paid' %}Payments are not refunded on cancellation.{% else %}Bookings are non-refundable.{% endif %} Write to us first: sometimes we can move your dates.</p>
   <details class="g-cancel-fold">
     <summary>{{ t('I need to cancel') }}</summary>
     <p class="g-hint" style="margin-top:var(--s2)">

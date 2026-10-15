@@ -397,6 +397,7 @@ SUITES = [
     "test_palette_search",
     "test_static_stamp",
     "test_next_up",
+    "test_availability_wording",
     "test_languages_page",
     "test_share_images",
     "test_stripe_webhook_tool",
