@@ -172,8 +172,11 @@
         <label class="field-label" for="admin_wages-user-id">Who</label>
         <select id="admin_wages-user-id" name="user_id" required>
           <option value="">— choose —</option>
-          {% for p in people %}<option value="{{ p['id'] }}">{{ p['name'] }}</option>{% endfor %}
+          {# Only the people new_wage_record will record a wage for: not your
+             own, and not anybody who can reach more of the app than you. #}
+          {% for p in people if not acts_on(p['id']) %}<option value="{{ p['id'] }}">{{ p['name'] }}</option>{% endfor %}
         </select>
+        {% if user['role'] != 'owner' %}<span class="upload-hint">Your own wage, and that of anybody who can reach more of the app than you, is the owner's to record.</span>{% endif %}
       </div>
       <div>
         <label class="field-label" for="admin_wages-basis">Paid by</label>
