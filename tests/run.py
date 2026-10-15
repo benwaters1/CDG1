@@ -492,6 +492,8 @@ SUITES = [
     "test_tech_email",
     "test_staff_accounts",
     "test_check_in_times",
+    # Ateliers and stays on every day they cover, 15 October 2026.
+    "test_calendar_every_day",
 ]
 
 

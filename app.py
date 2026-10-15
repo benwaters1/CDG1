@@ -14110,6 +14110,47 @@ def _overview_task_range(conn, range_start, range_end):
     ).fetchall()
 
 
+def _run_words(run, first_day, last_day):
+    """Where a stretch of days sits in a run: 'night 2 of 3', 'days 2–4 of 5',
+    or '3 days' when the stretch is the whole run."""
+    begins = parse_date(run["first"])
+    k = (parse_date(first_day) - begins).days + 1
+    j = (parse_date(last_day) - begins).days + 1
+    n, unit = run["count"], run["unit"]
+    if k == 1 and j == n:
+        return f"{n} {unit}s"
+    if k == j:
+        return f"{unit} {k} of {n}"
+    return f"{unit}s {k}–{j} of {n}"
+
+
+def _spanning_row(row, run, first_day, last_day, lo, hi):
+    """`row` as it covers [first_day, last_day] -- clipped to the window
+    [lo, hi) -- or None when none of those days is in the window.
+
+    THINGS THAT LAST MORE THAN A DAY. Every row used to carry one date, and the
+    calendar put it in that one cell: a four-day atelier showed on its first
+    day and nowhere after, a stay showed as an arrival and a departure with
+    empty nights between, and a wedding that began the day before the window
+    showed nowhere at all. Now a row says which days it covers: `date` is the
+    first of them inside the window (so a list still files it once, under a
+    day it is looking at) and `until` the last. build_calendar puts it in every
+    cell between, each copy saying which day of the run it is.
+
+    `run` is the whole run the row belongs to -- {"first", "count", "unit"} --
+    which can begin before the row does: a stay's nights after the first are
+    one row, counted from the night they arrived.
+    """
+    start = max(first_day, lo)
+    end = min(last_day, (parse_date(hi) - timedelta(days=1)).isoformat())
+    if start > end:
+        return None
+    run = dict(run, title=row["title"], short=row["short"])
+    words = _run_words(run, start, end)
+    return dict(row, date=start, until=end, run=run,
+                title=f"{row['title']} · {words}" if run["count"] > 1 else row["title"])
+
+
 def build_overview(conn, view, anchor, fetch_window=None):
     """The unified ops feed — bookings and staff tasks in one filterable
     list for the given date window. Lane/guest/origin/employee filters run
@@ -14121,6 +14162,11 @@ def build_overview(conn, view, anchor, fetch_window=None):
     prev/next anchors alone. The calendar page uses it so a month grid can
     also fill the leading/trailing days it borrows from the adjacent months —
     those cells would otherwise render deceptively empty rather than blank.
+
+    A row that lasts longer than a day — the nights of a stay, the days of an
+    atelier or a wedding — carries `until` and `run` (see _spanning_row), and
+    appears in a list once, on its first day in the window. Everything else is
+    on its one `date`.
     """
     if view == "day":
         range_start = anchor
@@ -14166,12 +14212,32 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "id": t["id"], "link": None,
         })
 
+    lo, hi = query_start.isoformat(), query_end.isoformat()
+
+    def staying(row, arrival, departure, guest, room):
+        """The nights after the first, as one row: the first night is the
+        arrival's, and the departure morning is not a night. A stay of 9 to 12
+        March is the arrival on the 9th, this on the 10th and 11th, and the
+        departure on the 12th -- the nights the room grid fills, with the
+        morning they leave shown as the departure it is."""
+        came, goes = parse_date(arrival), parse_date(departure)
+        if not (came and goes) or (goes - came).days < 2:
+            return None
+        nights = (goes - came).days
+        second = (came + timedelta(days=1)).isoformat()
+        last = (goes - timedelta(days=1)).isoformat()
+        here = dict(row, title=f"{guest} in residence — {room}", short=guest, staying=True)
+        return _spanning_row(here, {"first": arrival, "count": nights, "unit": "night"},
+                             second, last, lo, hi)
+
+    # Every stay with a day in the window: arriving in it, leaving in it, or
+    # in the house right through it.
     bookings = conn.execute(
         """SELECT bookings.*, rooms.name AS room_name FROM bookings
            JOIN rooms ON rooms.id = bookings.room_id
            WHERE status IN ('pending','confirmed')
-             AND ((arrival_date >= ? AND arrival_date < ?) OR (departure_date >= ? AND departure_date < ?))""",
-        (query_start.isoformat(), query_end.isoformat(), query_start.isoformat(), query_end.isoformat()),
+             AND arrival_date < ? AND departure_date >= ?""",
+        (hi, lo),
     ).fetchall()
     for b in bookings:
         booking_link = url_for("admin_bookings", q=b["reference_code"])
@@ -14202,33 +14268,36 @@ def build_overview(conn, view, anchor, fetch_window=None):
                 "assignee_id": None, "assignee_name": None, "id": b["id"], "link": booking_link,
                 "facts": stay,
             })
+        leaving = {
+            "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
+            "scheduled": True, "status": b["status"], "acknowledgment_status": None,
+            "priority": None, "repeat_weekly": 0, "date": b["departure_date"],
+            "title": f"{b['guest_name']} departs — {b['room_name']}",
+            "short": f"↑ {b['guest_name']}",
+            "detail": f"Party of {b['party_size']}",
+            "assignee_id": None, "assignee_name": None, "id": b["id"], "link": booking_link,
+            "facts": stay,
+        }
         if query_start.isoformat() <= b["departure_date"] < query_end.isoformat():
-            rows.append({
-                "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
-                "scheduled": True, "status": b["status"], "acknowledgment_status": None,
-                "priority": None, "repeat_weekly": 0, "date": b["departure_date"],
-                "title": f"{b['guest_name']} departs — {b['room_name']}",
-                "short": f"↑ {b['guest_name']}",
-                "detail": f"Party of {b['party_size']}",
-                "assignee_id": None, "assignee_name": None, "id": b["id"], "link": booking_link,
-                "facts": stay,
-            })
+            rows.append(leaving)
+        nights = staying(leaving, b["arrival_date"], b["departure_date"],
+                         b["guest_name"], b["room_name"])
+        if nights:
+            rows.append(nights)
 
     # Booking.com's guests arrive and leave on the same calendar. Their link is
     # the Booking.com page, where their emails are; there is no booking of the
     # house's own to open.
-    lo, hi = query_start.isoformat(), query_end.isoformat()
     for st in channel_stays(conn):
         link = url_for("management_booking_com", q=st["reference_code"]) if st["reference_code"] \
             else url_for("management_booking_com")
         room = st["room_name"] or "room not stated"
         party = (f"Party of {st['party_size']}" if st["party_size"]
                  else "Party size not stated")
+        made = None
         for day, verb, arrow in ((st["arrival_date"], "arrives", "↓"),
                                  (st["departure_date"], "departs", "↑")):
-            if not (lo <= day < hi):
-                continue
-            rows.append({
+            made = {
                 "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
                 "scheduled": True, "status": "confirmed", "acknowledgment_status": None,
                 "priority": None, "repeat_weekly": 0, "date": day,
@@ -14241,7 +14310,13 @@ def build_overview(conn, view, anchor, fetch_window=None):
                           "room": st["room_name"] or "", "guest": st["guest_name"],
                           "party": st["party_size"], "ref": st["reference_code"] or "",
                           "channel": st["channel"], "eta": "", "flight": ""},
-            })
+            }
+            if lo <= day < hi:
+                rows.append(made)
+        nights = staying(made, st["arrival_date"], st["departure_date"], st["guest_name"],
+                         f"{room} · {st['channel']}")
+        if nights:
+            rows.append(nights)
 
     dinners = conn.execute(
         """SELECT * FROM restaurant_bookings WHERE status IN ('pending', 'confirmed')
@@ -14287,6 +14362,51 @@ def build_overview(conn, view, anchor, fetch_window=None):
                       "ref": r["reference_code"]},
         })
 
+    # THE ATELIER'S OTHER DAYS. Each place is on the first day, where the
+    # guests begin; after that the sitting is one row, so a four-day atelier
+    # with ten places is ten names on the Monday and one line on each of the
+    # three days after rather than forty. A sitting that has been called off
+    # is not running, whoever is still on its list. Imported registrations
+    # (RetreatGuru, 15 Oct 2026) are places on a session like any other and
+    # come through here the same way.
+    for ses in conn.execute(
+            f"""SELECT workshop_sessions.id, workshop_sessions.start_date,
+                       workshop_sessions.end_date, workshops.title,
+                       COUNT(*) AS places, COALESCE(SUM(workshop_bookings.party_size), 0) AS people,
+                       SUM(workshop_bookings.status = 'pending') AS pending,
+                       GROUP_CONCAT(workshop_bookings.guest_name, ', ') AS names
+                  FROM workshop_bookings
+                  JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                  JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                 WHERE workshop_bookings.status IN ('pending', 'confirmed')
+                   AND {SESSION_IS_LIVE}
+                   AND workshop_sessions.start_date < ? AND workshop_sessions.end_date >= ?
+                   AND workshop_sessions.end_date > workshop_sessions.start_date
+                 GROUP BY workshop_sessions.id""", (hi, lo)).fetchall():
+        first, last = parse_date(ses["start_date"]), parse_date(ses["end_date"])
+        if not (first and last):
+            continue
+        places, people, pending = ses["places"], ses["people"], ses["pending"] or 0
+        running = _spanning_row({
+            "kind": "workshop", "lane": "workshop", "is_guest": True, "origin": "booking",
+            "scheduled": True, "status": "pending" if pending == places else "confirmed",
+            "acknowledgment_status": None, "priority": None, "repeat_weekly": 0,
+            "date": ses["start_date"],
+            "title": (f"{ses['title']} — {places} booking{'' if places == 1 else 's'}, "
+                      f"{people} {'person' if people == 1 else 'people'}"
+                      + (f" ({pending} to confirm)" if pending else "")),
+            "short": ses["title"],
+            "detail": ses["names"] or "",
+            "assignee_id": None, "assignee_name": None, "id": f"session{ses['id']}",
+            "link": url_for("admin_workshop_registrations"),
+            "facts": {"session": ses["id"], "workshop": ses["title"], "running": True,
+                      "start": ses["start_date"], "end": ses["end_date"],
+                      "places": places, "people": people, "pending": pending},
+        }, {"first": ses["start_date"], "count": (last - first).days + 1, "unit": "day"},
+            (first + timedelta(days=1)).isoformat(), ses["end_date"], lo, hi)
+        if running:
+            rows.append(running)
+
     # What the house has promised a guest for a particular day: a board on
     # arrival, a transfer on the Tuesday. Here because it is work on a date
     # like anything else, and a promise that lives only on its own page is one
@@ -14320,15 +14440,25 @@ def build_overview(conn, view, anchor, fetch_window=None):
 
     # EVENTS, WEDDINGS AND PARTIES, which were on no calendar at all: a
     # wedding confirmed for June showed on the events page and nowhere a
-    # person planning the week would look. A confirmed event on its first day;
-    # an enquiry somebody is holding dates for, on those dates, marked held.
+    # person planning the week would look. A confirmed event on each of its
+    # days; an enquiry somebody is holding dates for, on those dates, marked
+    # held. (Both used to sit on their first day only, so a wedding that began
+    # the day before the window was on no day of it.)
+    def over_days(row, first, last):
+        """`row` on every day from `first` to `last`, both included."""
+        a, b = parse_date(first), parse_date(last) or parse_date(first)
+        if not (a and b) or b < a:
+            return row if lo <= (first or "") < hi else None
+        return _spanning_row(row, {"first": first, "count": (b - a).days + 1, "unit": "day"},
+                             first, b.isoformat(), lo, hi)
+
     for e in conn.execute(
             """SELECT * FROM event_inquiries
                 WHERE status = 'confirmed' AND preferred_date IS NOT NULL
                   AND preferred_date < ? AND COALESCE(end_date, preferred_date) >= ?""",
             (query_end.isoformat(), query_start.isoformat())).fetchall():
         what = (e["event_type"] or "event").replace("_", " ")
-        rows.append({
+        rows.extend(r for r in [over_days({
             "kind": "event", "lane": "event", "is_guest": True, "origin": "booking",
             "scheduled": True, "status": e["status"], "acknowledgment_status": None,
             "priority": None, "repeat_weekly": 0, "date": e["preferred_date"],
@@ -14344,7 +14474,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
                       "start": e["preferred_date"], "end": e["end_date"] or e["preferred_date"],
                       "arrival_time": e["arrival_time"] or "", "ref": e["reference_code"],
                       "held": False, "held_until": ""},
-        })
+        }, e["preferred_date"], e["end_date"] or e["preferred_date"])] if r)
     now_iso = datetime.now(timezone.utc).isoformat()
     for h in conn.execute(
             """SELECT event_holds.*, event_inquiries.contact_name, event_inquiries.event_type,
@@ -14355,7 +14485,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
                   AND event_holds.start_date < ? AND event_holds.end_date >= ?""",
             (now_iso, query_end.isoformat(), query_start.isoformat())).fetchall():
         what = (h["event_type"] or "event").replace("_", " ")
-        rows.append({
+        rows.extend(r for r in [over_days({
             "kind": "event", "lane": "event", "is_guest": True, "origin": "booking",
             "scheduled": False, "status": "held", "acknowledgment_status": None,
             "priority": None, "repeat_weekly": 0, "date": h["start_date"],
@@ -14369,7 +14499,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
                       "start": h["start_date"], "end": h["end_date"], "arrival_time": "",
                       "ref": h["reference_code"], "held": True,
                       "held_until": house_date_iso(h["expires_at"])},
-        })
+        }, h["start_date"], h["end_date"])] if r)
 
     # ROOMS THE OWNER HAS CLOSED, which were on no calendar: two suites shut
     # for the winter showed on the Close rooms page and nowhere a person
@@ -14491,16 +14621,37 @@ def build_calendar(conn, view, anchor, viewer=None):
                               else url_for("my_shifts") if r["kind"] == "shift" else None))
                 for r in rows]
 
-    by_date = {}
+    # Each row in every cell it covers, not just the first: a row that lasts
+    # (see _spanning_row) is copied into each of its days, saying which day of
+    # the run that is. In a cell, what begins that day comes first and what is
+    # carried on from an earlier one after it, so a month cell that can show
+    # four things shows the day's arrivals before the guests already here.
+    begins, carried, source = {}, {}, {}
     for row in rows:
-        if row["date"]:
-            by_date.setdefault(row["date"], []).append(row)
+        if not row["date"]:
+            continue
+        first = parse_date(row["date"])
+        last = parse_date(row.get("until") or row["date"]) or first
+        run = row.get("run")
+        day = max(first, grid_start)
+        while day <= last and day < grid_end:
+            iso = day.isoformat()
+            copy = row
+            if run and run["count"] > 1:
+                k = (day - parse_date(run["first"])).days + 1
+                copy = dict(row, date=iso, until=iso,
+                            title=f"{run['title']} · {run['unit']} {k} of {run['count']}",
+                            short=f"{run['short']} · {run['unit']} {k}")
+            later = bool(run) and iso > run["first"]
+            (carried if later else begins).setdefault(iso, []).append(copy)
+            source[id(copy)] = id(row)
+            day += timedelta(days=1)
 
     today = house_today()
     cells = []
     d = grid_start
     while d < grid_end:
-        events = by_date.get(d.isoformat(), [])
+        events = begins.get(d.isoformat(), []) + carried.get(d.isoformat(), [])
         cells.append({
             "date": d,
             "iso": d.isoformat(),
@@ -14519,7 +14670,8 @@ def build_calendar(conn, view, anchor, viewer=None):
         "span_start": span_start, "span_end": span_end - timedelta(days=1),
         "prev_anchor": sheet["prev_anchor"], "next_anchor": sheet["next_anchor"],
         "employees": sheet["employees"], "owner_id": sheet["owner_id"],
-        "total_events": sum(len(c["events"]) for c in cells if c["in_span"]),
+        # Things, not cells: a four-day atelier is one item in the week.
+        "total_events": len({source[id(e)] for c in cells if c["in_span"] for e in c["events"]}),
     }
 
 
@@ -35387,6 +35539,9 @@ def office_display():
     who_is_here = guests_in_residence(conn, today)
 
     overview_today = build_overview(conn, "day", today)
+    # The screen's own panel lists who is in the house; its Today list is what
+    # happens today, so a guest on the third night of five is not on it twice.
+    overview_today["rows"] = [r for r in overview_today["rows"] if not r.get("staying")]
     dashboard_calendar = build_dashboard_calendar(conn, today)
     today_stats = build_office_display_stats(conn, today, who_is_here)
     queues = build_office_display_queues(conn, today)
@@ -93408,7 +93563,12 @@ def house_calendar_items(conn, start, end, areas=None):
             s = sessions.setdefault(f["session"], {"title": f.get("workshop") or "Atelier",
                                                    "start": f.get("start"), "end": f.get("end"),
                                                    "places": 0, "people": 0, "pending": 0,
-                                                   "link": r.get("link")})
+                                                   "link": r.get("link"), "running": None})
+            if f.get("running"):
+                # The sitting's own row for its later days: it carries the
+                # whole sitting's numbers, and is not another place on it.
+                s["running"] = f
+                continue
             s["places"] += 1
             s["people"] += f.get("party") or 1
             s["pending"] += 1 if r["status"] == "pending" else 0
@@ -93464,6 +93624,11 @@ def house_calendar_items(conn, start, end, areas=None):
     for session_id, s in sessions.items():
         if not s["start"]:
             continue
+        if not s["places"] and s["running"]:
+            # Begun before the window, so its places are not in it; the
+            # sitting's own row counts them.
+            s.update(places=s["running"]["places"], people=s["running"]["people"],
+                     pending=s["running"]["pending"])
         key = f"session:{session_id}"
         items[key] = {"key": key, "area": "ateliers", "all_day": True,
                       "subject": f"{marks['ateliers']} {s['title']} · {s['places']} booked, "
