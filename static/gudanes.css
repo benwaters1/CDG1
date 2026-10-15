@@ -11427,3 +11427,14 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 .g .g-nearby__shots .g-nearby__img{ margin-bottom: var(--s2); cursor: zoom-in; }
 .g .g-nearby__more{ display: block; margin: 0 auto; background: none; border: 0; padding: 4px 6px; font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--blue-deep); text-decoration: underline; text-decoration-color: var(--gilt, #C6A66E); text-underline-offset: 4px; cursor: pointer; }
 .g .g-nearby__more:focus-visible{ outline: 2px solid var(--blue-deep); outline-offset: 3px; }
+
+/* 15 Oct (owner) - PHOTO DESCRIPTIONS REMOVED: captions under photographs are hidden everywhere (the alt text stays for
+   screen readers and search). Kept: the labelled captions of "What We Look After" (The flowers / The meals / The drinks). */
+.g main figure figcaption{ display: none !important; }
+.g main .g-wed-us:not(.g-wed-church) .g-wedus__i figcaption{ display: block !important; }
+.g .g-lb__cap{ display: none !important; }
+/* Photoshoots: the thirteenth photograph closes the grid at full width */
+@media (min-width: 48rem){ .g .g-gallery > li.g-shot-wide{ grid-column: 1 / -1; } .g .g-gallery > li.g-shot-wide img{ aspect-ratio: 21 / 8 !important; height: auto !important; object-fit: cover; } }
+/* Family Suite: its photographs are upright - a taller header and portrait-shaped grid photographs on its room page */
+.g .g-room--family .g-roomhero{ height: clamp(22rem, 72vh, 46rem); object-position: center 40%; }
+.g .g-room--family .g-strip.g-roomgal img{ aspect-ratio: 4 / 5 !important; }

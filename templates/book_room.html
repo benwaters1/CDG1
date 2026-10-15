@@ -39,6 +39,8 @@
     'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c2998346-182b-476a-83cc-fefc2cad0bba/P1260363.jpeg?format=1500w',
     'https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7a36c33c-f53e-4ea3-976b-14191b0cbdc5/Screenshot%2B2026-08-15%2Bat%2B3.08.35%2Bpm.png?format=1500w'
   ] %}
+  {%- set _is_family = room_name(room['name']) == 'The Family Suite' %}
+  <div class="{{ 'g-room--family' if _is_family }}">
   <img loading="eager" fetchpriority="high" decoding="async" class="g-roomhero"{% if room_name(room['name']) == 'The King Room' %} style="object-position: 22% 70%"{% endif %}
        src="{% set _rp = ROOM_PHOTOS.get(room_name(room['name'])) %}{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% elif _rp %}{{ _rp[0][0] }}{% else %}{{ ROOM_FALLBACKS[room['id'] % 3] }}{% endif %}"
        alt="{{ room_name(room['name']) }}">
@@ -114,6 +116,7 @@
       <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/88924c05-3cda-4481-8a8f-5145405147c0/Screenshot+2026-08-15+at+5.12.55+pm.png?format=1000w" alt="The gardens, the mountains beyond" loading="lazy">
     {% endif %}
   </div>
+  </div>{#- /g-room--family wrapper (15 Oct: taller Family Suite photographs) -#}
 
   {# Gated on the database description, so the written copy - meant to replace that field - never showed when it was empty. #}
   {%- set _rcopy = room_copy(room['name'], room['description'] or '')|trim %}
@@ -230,19 +233,23 @@
           </div>
           <div class="g-stack g-stack--arrive">
             {#- 5 Oct (owner): an estimated arrival time, with check-in and check-out stated and early check-in on request.
-                Saved in bookings.estimated_arrival_time. 15 Oct: the times are read from CHECK_IN_TIME and
-                CHECK_OUT_TIME in app.py, never typed -- the terms said 4pm while this page said 2pm. The hourly
-                choices start at check-in, so they move with it; at 2pm they are the same values as before. -#}
+                Saved in bookings.estimated_arrival_time. The times are read from CHECK_IN_TIME and
+                CHECK_OUT_TIME in app.py, never typed (3pm and 10am, owner, 15 Oct); the hourly
+                choices start at check-in, so they move with it. -#}
             <p class="g-field g-eta">
               <label for="estimated_arrival_time">Estimated arrival time<span class="g-req" aria-hidden="true">*</span></label>
               {%- set _eta = (prefill_guest or {}).get('estimated_arrival_time') or (request.form.get('estimated_arrival_time') if request.method == 'POST' else '') -%}
               {%- set _early = 'Before ' ~ check_in_at ~ ' (early check-in requested)' %}
               <select id="estimated_arrival_time" name="estimated_arrival_time" required data-eta>
                 <option value="">Choose a time</option>
+                {#- A time saved under an earlier check-in (2pm-3pm, say, before it moved to
+                    3pm) is not one of today's choices; it is shown, selected, so re-saving
+                    the booking does not quietly lose it (z15, 15 Oct). -#}
+                {%- set _slots = [] %}{% for _h in range(check_in_hour, 22) %}{% set _ = _slots.append(clock_words(_h) ~ '-' ~ clock_words(_h + 1)) %}{% endfor %}
+                {%- if _eta and _eta not in [_early, 'After 10pm'] + _slots %}<option value="{{ _eta }}" selected>{{ _eta }}</option>{% endif %}
                 <option value="{{ _early }}" {{ 'selected' if _eta == _early }}>Before {{ check_in_at }} &mdash; early check-in, on request</option>
-                {%- for _h in range(check_in_hour, 22) %}
-                {%- set _slot = clock_words(_h) ~ '-' ~ clock_words(_h + 1) %}
-                <option value="{{ _slot }}" {{ 'selected' if _eta == _slot }}>{{ clock_words(_h) }} &ndash; {{ clock_words(_h + 1) }}</option>
+                {%- for _slot in _slots %}
+                <option value="{{ _slot }}" {{ 'selected' if _eta == _slot }}>{{ _slot.split('-')[0] }} &ndash; {{ _slot.split('-')[1] }}</option>
                 {%- endfor %}
                 <option value="After 10pm" {{ 'selected' if _eta == 'After 10pm' }}>After 10pm</option>
               </select>
