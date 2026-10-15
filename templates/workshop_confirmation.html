@@ -89,7 +89,7 @@
       <dl class="g-plate__l">
         {%- from '_stay_or_workshop.html' import tx_flag -%}{%- set _gtx = tx_flag(booking)|trim == 'yes' -%}
         {#- 5 Oct: the four-night workshops (at the house, no transfers) were told to meet in Toulouse -#}
-        <div><dt>Getting here</dt><dd>{% if _gtx %}We meet in central Toulouse at 11am on the first day and drive up together. Coming another way? Tell us and we will meet you{% else %}Make your own way to the château, 2 Route de Beille, Château-Verdun, arriving from 2pm on the first day. Tell us your time from your booking page{% endif %}</dd></div>
+        <div><dt>Getting here</dt><dd>{% if _gtx %}We meet in central Toulouse at 11am on the first day and drive up together. Coming another way? Tell us and we will meet you{% else %}Make your own way to the château, 2 Route de Beille, Château-Verdun, arriving from {{ check_in_at }} on the first day. Tell us your time from your booking page{% endif %}</dd></div>
         <div><dt>To bring</dt><dd>A small suitcase (the bedrooms are reached by the original staircase, and there is no lift), clothes you do not mind marking, and shoes for uneven floors</dd></div>
         <div><dt>The weather</dt><dd>Mountain weather. Warm days, cold evenings, whatever the season</dd></div>
         <div><dt>Dietary needs</dt><dd>Tell us from your booking link and the kitchen will work around them</dd></div>

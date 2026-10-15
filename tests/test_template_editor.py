@@ -73,6 +73,9 @@ MAY_WRITE_IN_CODE = {
     # keys to an account: an edit that dropped the code or link locks them out
     "forgot_password": "carries a one-time sign-in code",
     "change_email": "tells the OLD address its sign-in moved",
+    "change_staff_email": "tells the OLD address its sign-in moved, when the owner moved it",
+    "send_staff_sign_in_letter": "the link sets a member of staff's password; an edit "
+                                 "that dropped it would lock them out",
     "guest_account_request": "the link is the sign-in itself",
     # written by a person each time, or already rendered elsewhere
     "reply_to_feedback": "the owner writes the reply",

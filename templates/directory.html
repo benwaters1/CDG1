@@ -50,6 +50,18 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-mini" style="width:100%;">{{ 'Mark inactive' if person['status']=='active' else 'Mark active' }}</button>
       </form>
+      {# Where the owner went looking for it and it was not. The same route as
+         the profile's button, emailing them a fresh link either way; it asks
+         first when there is a working password to stop. Not for somebody who
+         has left: they cannot sign in, and a link to them is a loose key. #}
+      {% if person['status'] == 'active' %}
+      <form method="post" action="{{ url_for('regenerate_invite', user_id=person['id']) }}" style="margin-top:6px; width:100%;"
+            {% if person['account_claimed'] %}onsubmit="return confirm('This stops their current password working and emails them a link to choose a new one. Continue?')"{% endif %}>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="back" value="directory">
+        <button type="submit" class="btn-mini" style="width:100%;">{{ 'Reset password' if person['account_claimed'] else 'Send the invite again' }}</button>
+      </form>
+      {% endif %}
       {% endif %}
     </div>
     {% endfor %}

@@ -8,6 +8,32 @@
   {# Who changed this person's record, and when. Asked in earnest exactly
      once — after a change nobody will own up to. #}
   <p><a class="small-link" href="{{ url_for('record_history_page', kind='employee', record_id=employee['id']) }}">What changed on this record</a></p>
+
+  {# THE SIGN-IN ADDRESS, in a form of its own. It is a credential rather than
+     a profile field -- login finds the account by it -- so it is checked,
+     asked for twice and audited on its own, and a refusal here cannot lose
+     whatever else was being edited below. Before this, a typo made when the
+     account was created was permanent. #}
+  <div class="detail-card" id="sign-in" style="margin:14px 0 18px;">
+    <h3 class="sub-heading" style="margin-top:0;">Sign-in address</h3>
+    {% if employee['role'] == 'owner' %}
+    <p class="upload-hint">{{ employee['email'] }}. An owner changes their own sign-in address
+      {%- if employee['id'] == user['id'] %} on <a href="{{ url_for('change_email') }}">Change email</a>{% endif %},
+      with their password.</p>
+    {% else %}
+    <p class="upload-hint">They sign in with <strong>{{ employee['email'] }}</strong>.
+      {% if employee['account_claimed'] %}Changing it tells the old address. Their password stays the same.
+      {% else %}They haven't set a password yet, so changing it emails a fresh invitation to the new address, and the old link stops working.{% endif %}</p>
+    <form method="post" action="{{ url_for('change_staff_email', user_id=employee['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field-label" for="staff-new-email">New sign-in address</label>
+      <input id="staff-new-email" type="email" name="new_email" required autocomplete="off">
+      <label class="field-label" for="staff-confirm-email">The same address again</label>
+      <input id="staff-confirm-email" type="email" name="confirm_email" required autocomplete="off">
+      <button type="submit" class="btn-mini">Change the sign-in address</button>
+    </form>
+    {% endif %}
+  </div>
   {% endif %}
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -15,7 +41,7 @@
     <input id="employee_form-name" type="text" name="name" required value="{{ employee['name'] if employee else (prefill_name or '') }}">
 
     {% if not employee %}
-    <label class="field-label" for="employee_form-email">Email (they'll use this to log in)</label>
+    <label class="field-label" for="employee_form-email">Email (they sign in with it, and their invitation is emailed to it)</label>
     <input id="employee_form-email" type="email" name="email" required value="{{ prefill_email or '' }}" autocomplete="email">
     {% endif %}
 
