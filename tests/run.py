@@ -302,6 +302,7 @@ SUITES = [
     "test_private_urls",
     "test_optout_and_flags",
     "test_till_and_toggles",
+    "test_till_merge_money",
     "test_expense_files",
     "test_guest_bill_loop",
     "test_outstanding",

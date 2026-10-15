@@ -21188,13 +21188,16 @@ def minutes_since(iso_stamp):
 
 def pos_take_payment(conn, order_id, amount, method, *, reference=None, line_ids=None,
                      seats=None, room_booking_id=None, stripe_session_id=None,
-                     user_id=None):
+                     user_id=None, raised_on=None):
     """Record one payment against a tab. A tab may take several.
 
     That is what splitting a bill is: three cards and the rest on the room is
     three rows, and they add up. The old till took one payment and closed, so
     a split table had to be rung up as separate tabs and the covers count was
     wrong for the rest of time.
+
+    `raised_on` is the tab a payment link was shown for, when that is not the
+    tab the money lands on — a link paid after its table was merged away.
     """
     conn.execute(
         """INSERT INTO pos_payments (order_id, amount, method, reference, covers_line_ids,
@@ -21209,10 +21212,13 @@ def pos_take_payment(conn, order_id, amount, method, *, reference=None, line_ids
     # The receipt number is allocated here, at the first payment, so a table
     # that sits down and leaves does not eat a number and leave a hole.
     receipt = pos_allocate_receipt_number(conn, order_id)
-    pos_journal_append(conn, "payment_taken", {
+    entry = {
         "payment_id": payment_id, "amount": round(float(amount), 2), "method": method,
         "receipt_number": receipt, "seats": seats or None, "reference": reference,
-    }, order_id=order_id, user_id=user_id)
+    }
+    if raised_on and raised_on != order_id:
+        entry["raised_on_order_id"] = raised_on
+    pos_journal_append(conn, "payment_taken", entry, order_id=order_id, user_id=user_id)
     return payment_id
 
 
@@ -21257,6 +21263,169 @@ def pos_close_if_settled(conn, order_id, method, *, user_id=None):
         "receipt_number": pos_allocate_receipt_number(conn, order_id),
     }, order_id=order_id, user_id=user_id)
     return after
+
+
+# ---------------------------------------------------------------------------
+# Merging two tabs.
+#
+# A merge moves every line off one tab onto another and voids the one it
+# emptied. Payments do NOT move, and that is deliberate. Each one was
+# journalled against the tab it was taken on, under that tab's receipt number,
+# and the journal cannot be rewritten to say otherwise; nothing else in the app
+# ever changes a stored payment either. So a tab that has already taken money
+# is never the one that gets emptied. Before this, a table that had put EUR 5
+# in cash towards EUR 20 could be merged into the next table: the EUR 5 stayed
+# on the void tab, the merged bill asked for the full amount again, the
+# cash-up (which reads settled tabs only) lost the EUR 5 so the drawer came out
+# over, and a receipt number sat on a void tab with nothing on it.
+#
+# The way round is to merge the other direction: the tab with the money keeps
+# its bill and the other table's lines come onto it. The page offers that
+# instead, and the route says so if it is asked for the wrong way round.
+# ---------------------------------------------------------------------------
+
+def pos_money_held(conn, order_ids):
+    """What each tab already holds, for the tabs that hold anything.
+
+    {order_id: {"paid", "payments", "receipt_number", "card_waiting"}}. A tab
+    holds money if a payment has been taken on it, if it has been given a
+    receipt number (which happens at the first payment), or if a charge is
+    sitting on the card reader for it. Tabs holding nothing are left out, so
+    `order_id in held` is the question a merge asks.
+
+    One pair of queries for any number of tabs, because the till page asks it
+    for every open table at once.
+    """
+    ids = [int(i) for i in order_ids]
+    if not ids:
+        return {}
+    marks = ",".join("?" * len(ids))
+    tabs = conn.execute(
+        f"SELECT id, receipt_number, payment_intent_id FROM pos_orders WHERE id IN ({marks})",
+        ids).fetchall()
+    paid = {r["order_id"]: r for r in conn.execute(
+        f"""SELECT order_id, COUNT(*) AS n, COALESCE(SUM(amount), 0) AS t
+              FROM pos_payments WHERE order_id IN ({marks}) GROUP BY order_id""",
+        ids).fetchall()}
+    held = {}
+    for t in tabs:
+        receipt = (t["receipt_number"] or "").strip() or None
+        card = bool((t["payment_intent_id"] or "").strip())
+        p = paid.get(t["id"])
+        if receipt or card or p:
+            held[t["id"]] = {"paid": round(p["t"], 2) if p else 0.0,
+                             "payments": p["n"] if p else 0,
+                             "receipt_number": receipt, "card_waiting": card}
+    return held
+
+
+def pos_held_sentence(subject, h):
+    """'Table 4 has already taken EUR 5.00 on receipt 2026-000047', or the
+    nearest true thing when there is no money yet but a number was issued."""
+    if h["payments"] and abs(h["paid"]) >= 0.005:
+        said = f"{subject} has already taken {money(h['paid'])}"
+        return f"{said} on receipt {h['receipt_number']}" if h["receipt_number"] else said
+    if h["receipt_number"]:
+        return f"{subject} already has receipt {h['receipt_number']}"
+    return f"{subject} has a payment on it"
+
+
+def pos_merge_refusal(source, into, held):
+    """Why `source` cannot be merged into `into`, or None if it can.
+
+    Pure: `held` is pos_money_held() for both tabs. The till page asks this
+    for every pair it might offer and the route asks it for the one pair it
+    was sent, so the page cannot offer a merge the route will refuse.
+    """
+    for tab in (source, into):
+        h = held.get(tab["id"])
+        if h and h["card_waiting"]:
+            # On the tab being emptied, the charge would complete against a
+            # void tab, and the reader's status check answers "settled" for
+            # any tab that is not open -- so the money would be taken at
+            # Stripe and recorded nowhere. On the tab being merged into, the
+            # bill would change under a charge already on the reader.
+            return (f"A card payment is waiting on the reader for Table "
+                    f"{tab['table_label']}. Let it finish, or cancel it, before merging.")
+    h = held.get(source["id"])
+    if not h:
+        return None
+    took = pos_held_sentence(f"Table {source['table_label']}", h)
+    if into["id"] not in held:
+        return (f"{took}, and money stays on the bill it was paid against. "
+                f"Bring Table {into['table_label']} onto Table {source['table_label']} "
+                f"instead.")
+    return (f"{took}, and Table {into['table_label']} has taken money too, so each "
+            f"settles as its own bill.")
+
+
+def pos_merge_options(conn, order):
+    """What the till page offers for merging this tab, in both directions.
+
+    `into`: open tabs this one can be merged into. `bring`: open tabs that can
+    be brought onto this one -- offered only when this tab holds money, which
+    is when merging the other way is refused. `why`: the sentence saying so.
+    """
+    out = {"into": [], "bring": [], "why": None}
+    others = conn.execute(
+        "SELECT id, table_label FROM pos_orders WHERE status = 'open' AND id != ? "
+        "ORDER BY table_label", (order["id"],)).fetchall()
+    if not others:
+        return out
+    held = pos_money_held(conn, [order["id"]] + [t["id"] for t in others])
+    mine = held.get(order["id"])
+    if mine and mine["card_waiting"]:
+        out["why"] = ("A card payment is waiting on the reader for this table. "
+                      "Let it finish, or cancel it, before merging.")
+        return out
+    out["into"] = [t for t in others if pos_merge_refusal(order, t, held) is None]
+    if mine:
+        out["bring"] = [t for t in others if pos_merge_refusal(t, order, held) is None]
+        out["why"] = pos_held_sentence("This table", mine) + (
+            ", so it keeps its bill: bring the other table onto this one."
+            if out["bring"] else
+            ", so it keeps its bill. None of the other open tables can be brought "
+            "onto it: each has taken money too, or has a card payment waiting.")
+    return out
+
+
+def pos_merge_tabs(conn, source_id, into_id, *, user_id=None):
+    """Merge one open tab into another. Returns (surviving tab id, message);
+    the id is None when the merge was refused and nothing was written.
+
+    Decides and writes under the write lock, so a payment cannot land on the
+    source between being checked for and the source being voided -- a phone
+    payment arriving by webhook, or a second tablet taking cash.
+    """
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+    if source_id == into_id:
+        return None, "That is this table."
+    source = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (source_id,)).fetchone()
+    into = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (into_id,)).fetchone()
+    if not source or source["status"] != "open" or not into or into["status"] != "open":
+        return None, "That table isn't open."
+    refusal = pos_merge_refusal(source, into, pos_money_held(conn, [source_id, into_id]))
+    if refusal:
+        return None, refusal
+    moved = conn.execute("UPDATE pos_order_lines SET order_id = ? WHERE order_id = ?",
+                         (into_id, source_id)).rowcount
+    conn.execute(
+        # 'void' rather than a new status: the schema constrains this
+        # column, and a merged tab genuinely holds nothing — every line
+        # moved, and it never took any money. merged_into_order_id says
+        # where they went.
+        """UPDATE pos_orders SET status = 'void', merged_into_order_id = ?, closed_at = ?
+           WHERE id = ?""", (into_id, datetime.now(timezone.utc).isoformat(), source_id))
+    conn.execute("UPDATE pos_orders SET covers = covers + ?, deposit_credit = deposit_credit + ? "
+                 "WHERE id = ?", (source["covers"] or 0, source["deposit_credit"] or 0, into_id))
+    pos_journal_append(conn, "tab_merged",
+                       {"from_table": source["table_label"], "into_table": into["table_label"],
+                        "into_order_id": into_id, "covers_moved": source["covers"] or 0,
+                        "lines_moved": moved,
+                        "deposit_moved": round(source["deposit_credit"] or 0, 2)},
+                       order_id=source_id, user_id=user_id)
+    return into_id, f"Merged {source['table_label']} into {into['table_label']}."
 
 
 def pos_day_report(conn, on_date):
@@ -38046,9 +38215,10 @@ def pos_order(order_id):
         """SELECT pos_payments.*, users.name AS taken_by FROM pos_payments
            LEFT JOIN users ON users.id = pos_payments.taken_by_user_id
            WHERE order_id = ? ORDER BY id""", (order_id,)).fetchall()
-    other_tables = conn.execute(
-        "SELECT id, table_label FROM pos_orders WHERE status = 'open' AND id != ? ORDER BY table_label",
-        (order_id,)).fetchall()
+    # Worked out by the same rule the move route applies, so the page never
+    # offers a merge that would be refused -- and when this tab has taken
+    # money, it offers the direction that keeps it.
+    merge = pos_merge_options(conn, bill["order"]) if bill["order"]["status"] == "open" else None
     # The set menu for tonight, if there is one — the panel only shows when a
     # published card actually carries a price.
     card = menu_for_date(conn, bill["order"]["service_date"]) if bill["order"]["service_date"] else None
@@ -38075,7 +38245,7 @@ def pos_order(order_id):
         context=context, in_house=in_house, payments=payments,
         payment_methods=POS_PAYMENT_METHODS, void_reasons=POS_VOID_REASONS,
         line_states=POS_LINE_STATES, service_states=POS_SERVICE_STATES,
-        allergens=ALLERGENS, other_tables=other_tables,
+        allergens=ALLERGENS, merge=merge,
         formule_menu=formule_menu, formules=formules, formule_choices=formule_choices,
         packages=packages, diet=diet, reader_on=reader_on,
         receipt_email_default=receipt_email_default)
@@ -38523,10 +38693,14 @@ def pos_adjust(order_id):
 @app.route("/pos/<int:order_id>/move", methods=["POST"])
 @login_required
 def pos_move_table(order_id):
-    """Rename a table, or merge it into another.
+    """Rename a table, merge it into another, or bring another onto it.
 
     A party moving from the terrace to inside, or two tables becoming one, is
     ordinary. Without this it means re-ringing the whole order.
+
+    Two directions because a tab that has already taken money cannot be the
+    one emptied (see pos_merge_tabs): when it has, the other table is brought
+    onto it instead, so the money and the lines end up on one bill either way.
     """
     conn = get_db()
     order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
@@ -38534,43 +38708,24 @@ def pos_move_table(order_id):
         conn.close()
         abort(404)
     target = (request.form.get("merge_into", "") or "").strip()
-    if target.isdigit():
-        # A tab cannot be merged into itself. The page builds this list from
-        # `other_tables` so it never offers it, but the list is a convenience
-        # and not a boundary — the route takes whatever id the POST carries.
-        # Without this the lines move nowhere, the covers double, and the tab
-        # is voided with its order still sitting on it: a voided tab is never
-        # paid, so a table's whole bill quietly leaves the day's takings and
-        # has to be re-rung, which is the exact thing this route exists to
-        # avoid.
-        if int(target) == order_id:
+    bring = (request.form.get("merge_from", "") or "").strip()
+    if target.isdigit() or bring.isdigit():
+        # Whatever id the POST carries, not only what the page offered: the
+        # lists on the page are a convenience and not a boundary. A tab merged
+        # into itself would move its lines nowhere, double its covers and void
+        # itself with its order still on it; pos_merge_tabs refuses that, a
+        # tab that is not open, and a tab that has taken money being emptied.
+        source, into = ((order_id, int(target)) if target.isdigit()
+                        else (int(bring), order_id))
+        kept, message = pos_merge_tabs(conn, source, into, user_id=session.get("user_id"))
+        if kept is None:
             conn.close()
-            flash("That is this table.", "error")
+            flash(message, "error")
             return redirect(url_for("pos_order", order_id=order_id))
-        into = conn.execute("SELECT * FROM pos_orders WHERE id = ? AND status = 'open'",
-                            (target,)).fetchone()
-        if not into:
-            conn.close()
-            flash("That table isn't open.", "error")
-            return redirect(url_for("pos_order", order_id=order_id))
-        conn.execute("UPDATE pos_order_lines SET order_id = ? WHERE order_id = ?",
-                     (into["id"], order_id))
-        conn.execute(
-            # 'void' rather than a new status: the schema constrains this
-            # column, and a merged tab genuinely holds nothing — every line
-            # moved. merged_into_order_id says where they went.
-            """UPDATE pos_orders SET status = 'void', merged_into_order_id = ?, closed_at = ?
-               WHERE id = ?""", (into["id"], datetime.now(timezone.utc).isoformat(), order_id))
-        conn.execute("UPDATE pos_orders SET covers = covers + ?, deposit_credit = deposit_credit + ? "
-                     "WHERE id = ?", (order["covers"] or 0, order["deposit_credit"] or 0, into["id"]))
-        pos_journal_append(conn, "tab_merged",
-                           {"from_table": order["table_label"], "into_table": into["table_label"],
-                            "into_order_id": into["id"], "covers_moved": order["covers"] or 0},
-                           order_id=order_id, user_id=session.get("user_id"))
         conn.commit()
         conn.close()
-        flash(f"Merged into {into['table_label']}.", "success")
-        return redirect(url_for("pos_order", order_id=into["id"]))
+        flash(message, "success")
+        return redirect(url_for("pos_order", order_id=kept))
 
     label = (request.form.get("table_label", "") or "").strip()
     if label:
@@ -47232,15 +47387,35 @@ def settle_pos_from_stripe_session(conn, stripe_session, meta):
     if not order_id.isdigit():
         return False
     order_id = int(order_id)
-    if conn.execute("SELECT 1 FROM pos_payments WHERE stripe_session_id = ?",
-                    (stripe_session["id"],)).fetchone():
-        return False
     amount = (sval(stripe_session, "amount_total") or 0) / 100.0
     if amount <= 0:
         return False
+    # Under the write lock from here: the tab is looked up and paid in one
+    # step, so a merge on the till cannot void it in between, and two
+    # deliveries of the same webhook cannot both pass the check below.
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+    if conn.execute("SELECT 1 FROM pos_payments WHERE stripe_session_id = ?",
+                    (stripe_session["id"],)).fetchone():
+        return False
+    # The link is for the table it was shown on, and the guest may pay it an
+    # hour later. If that table has since been merged into another, its lines
+    # are on the other bill and it is void: paid there, the money would sit
+    # on a tab no bill and no cash-up ever reads. So it follows the lines.
+    # The session id on the payment and the tab_merged entry in the journal
+    # say how it got there, and the payment's own entry names the tab the
+    # link was raised on.
+    raised_on, seen = order_id, set()
+    while order_id not in seen:
+        seen.add(order_id)
+        tab = conn.execute("SELECT status, merged_into_order_id FROM pos_orders WHERE id = ?",
+                           (order_id,)).fetchone()
+        if not tab or tab["status"] != "void" or not tab["merged_into_order_id"]:
+            break
+        order_id = tab["merged_into_order_id"]
     pos_take_payment(conn, order_id, amount, "card_link",
                      reference=stripe_session["id"],
-                     stripe_session_id=stripe_session["id"])
+                     stripe_session_id=stripe_session["id"], raised_on=raised_on)
     bill = pos_bill(conn, order_id)
     if bill and bill["outstanding"] <= 0.01 and bill["order"]["status"] == "open":
         conn.execute(
