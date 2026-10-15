@@ -27868,7 +27868,15 @@ HOUSE_AREAS = {"room": "rooms", "workshop": "workshops", "event": "events",
 def house_address_for(conn, area):
     """Where the house reads about its own business in one area: the area's own
     mailbox when one is connected, the address the site gives guests for it
-    when not, and the owner when there is neither."""
+    when not, and the owner when there is neither.
+
+    EVERY BOOKING NOTICE ASKS THIS, not owner_email. They all went to the
+    owner's sign-in address, which is accounts@ -- the money inbox -- so every
+    stay booked, changed or cancelled landed among the invoices (the owner,
+    15 October 2026: "I don't want accounts to receive every booking"). Now a
+    stay or a dinner reaches reservations@ and an atelier or an event
+    experience@, the same inboxes a guest's reply reaches. Money that needs
+    the owner, and the daily summary, still go to owner_email."""
     return reply_to_for(area) or PUBLIC_CONTACT.get(area) or owner_email(conn)
 
 
@@ -29026,17 +29034,22 @@ def tech_email(conn):
     return tech_email_setting(conn) or owner_email(conn)
 
 
-# Every kind of mail the house sends to ITSELF, and which of the two helpers
-# decides where it goes, so the Guest email page can say "Backups ->
-# website@" without anybody reading code. test_tech_email holds each "tech"
-# line against the code that sends it.
+# Every kind of mail the house sends to ITSELF, and what decides where it
+# goes -- "tech" is tech_email, "owner" is owner_email, and an area is
+# house_address_for that area -- so the Guest email page can say "Backups ->
+# website@" and "Stays -> reservations@" without anybody reading code.
+# test_tech_email holds each line against the code that sends it.
 HOUSE_MAIL_ROUTES = (
     ("Backups by email", "tech"),
     ("The email provider's test message", "tech"),
-    ("The daily summary and the morning note", "owner"),
-    ("New bookings, changes, cancellations, enquiries and waitlist requests", "owner"),
+    ("Stays: booked, waiting on you, changed, cancelled, extras, the waitlist", "rooms"),
+    ("Guests writing in, and the contact page", "rooms"),
+    ("Dinners: changed, cancelled, the waitlist", "restaurant"),
+    ("Ateliers: cancelled, moved, the waitlist", "workshops"),
+    ("Events: enquiries, changes, quotes accepted, holds that lapsed", "events"),
     ("Money that needs you: a balance not taken, a paid booking that clashes", "owner"),
-    ("Reviews, guests writing in, the contact page", "owner"),
+    ("The daily summary and the morning note", "owner"),
+    ("A poor review", "owner"),
 )
 
 
@@ -29468,7 +29481,7 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
             })
         if subject:
             send_email(guest_email, subject, body, html=letter)
-    owner_to = owner_email(conn)
+    owner_to = house_address_for(conn, "rooms")
     if owner_to:
         # Two different things to read at breakfast. "Somebody booked" is news;
         # "somebody is waiting on you" is a job, and the subject line says
@@ -44035,7 +44048,7 @@ def guest_account_message(token):
         flash("Thank you — we have that.", "success")   # same answer either way
         return redirect(url_for("guest_account", token=token))
 
-    owner_to = owner_email(conn)
+    owner_to = house_address_for(conn, "rooms")
     # The audit line says they wrote, not what: what a guest writes is theirs,
     # and the audit trail is kept forever. What they wrote is kept with the
     # rest of their correspondence, on the same two-year rule.
@@ -46199,7 +46212,7 @@ def join_waitlist():
          party_size, notes or None, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
-    owner_to = owner_email(conn)
+    owner_to = house_address_for(conn, "rooms")
     if owner_to:
         send_email(
             owner_to, "New waitlist request",
@@ -47884,7 +47897,7 @@ def manage_booking(manage_token):
             log_audit(conn, "booking_cancelled_by_guest", target=booking["reference_code"])
         conn.commit()
         if cur.rowcount:
-            owner_to = owner_email(conn)
+            owner_to = house_address_for(conn, "rooms")
             if owner_to:
                 paid_note = " They had paid — refund it from the booking admin page if appropriate." if booking["payment_status"] == "paid" else ""
                 send_email(
@@ -48064,7 +48077,7 @@ def manage_booking(manage_token):
                                  if c not in ("arrival_date", "departure_date",
                                               "total_price")}})))
                 conn.commit()
-                owner_to = owner_email(conn)
+                owner_to = house_address_for(conn, "rooms")
                 if owner_to:
                     send_email(
                         owner_to, f"Guest changed dates — {booking['reference_code']}",
@@ -48153,7 +48166,7 @@ def manage_booking(manage_token):
                 restamp_stay(conn, booking["id"])
                 log_audit(conn, "guest_extended_stay", target=booking["reference_code"],
                           details=f"+{nights} night(s), +{money(added)}")
-                owner_to = owner_email(conn)
+                owner_to = house_address_for(conn, "rooms")
                 conn.commit()      # before send_email, which needs its own write lock
                 if owner_to:
                     send_email(
@@ -48229,7 +48242,7 @@ def manage_booking(manage_token):
                                   scheduled_for=when_on)
                 log_audit(conn, "guest_added_extra", target=booking["reference_code"],
                           details=f"{quantity} x {extra['name']}")
-                owner_to = owner_email(conn)
+                owner_to = house_address_for(conn, "rooms")
                 # Commit before sending. send_email falls back to writing the
                 # message into email_outbox on its own connection, which cannot
                 # take a write lock while this transaction is still open — the
@@ -48762,7 +48775,7 @@ def submit_event_inquiry():
     inquiry = conn.execute("SELECT * FROM event_inquiries WHERE manage_token = ?", (manage_token,)).fetchone()
     send_event_email(conn, inquiry, "event_inquiry_received", event_email_context(inquiry))
 
-    owner_to = owner_email(conn)
+    owner_to = house_address_for(conn, "events")
     if owner_to:
         send_email(
             owner_to, f"New event inquiry — {event_type} ({reference_code})",
@@ -48869,7 +48882,7 @@ def event_manage(manage_token):
             (guest_count, message or None, inquiry["id"]))
         conn.commit()
 
-        owner_to = owner_email(conn)
+        owner_to = house_address_for(conn, "events")
         if owner_to:
             changes = []
             if guest_count != was_count:
@@ -48899,7 +48912,7 @@ def event_manage(manage_token):
         )
         conn.commit()
         if cur.rowcount:
-            owner_to = owner_email(conn)
+            owner_to = house_address_for(conn, "events")
             if owner_to:
                 send_email(
                     owner_to, f"Event inquiry cancelled — {inquiry['reference_code']}",
@@ -50553,9 +50566,9 @@ def lapse_event_holds(conn, *, now=None):
             WHERE released_at IS NULL AND expires_at <= ?""",
         (now.isoformat(), now.isoformat()))
     conn.commit()
-    # The owner is TOLD. A date coming back on the market is news -- it is a
+    # The house is TOLD. A date coming back on the market is news -- it is a
     # weekend that can be sold again, and nobody would otherwise know.
-    to_address = owner_email(conn)
+    to_address = house_address_for(conn, "events")
     if to_address:
         lines = "\n".join(
             f"- {h['start_date']} to {h['end_date']} — {h['kind']} for "
@@ -51368,7 +51381,7 @@ def restaurant_manage(manage_token):
             (party_size, dietary or None, new_total, booking["id"]))
         conn.commit()
 
-        owner_to = owner_email(conn)
+        owner_to = house_address_for(conn, "restaurant")
         if owner_to:
             changes = []
             if party_size != was_party:
@@ -51405,7 +51418,7 @@ def restaurant_manage(manage_token):
         )
         conn.commit()
         if cur.rowcount:
-            owner_to = owner_email(conn)
+            owner_to = house_address_for(conn, "restaurant")
             if owner_to:
                 paid_note = " They had paid — refund it from the restaurant admin page if appropriate." if booking["payment_status"] == "paid" else ""
                 send_email(
@@ -54026,11 +54039,12 @@ def email_health(conn):
         ("Money: receipts, statements, balances, refunds", "accounts"),
         ("Anything else", None))]
     # The other direction: what the SITE sends to the house, and to which
-    # inbox. Worked out by the same two helpers the senders call, so the page
-    # cannot say website@ while the job sends to accounts@.
+    # inbox. Worked out by the same helpers the senders call, so the page
+    # cannot say reservations@ while the notice goes to accounts@.
     owner_to = owner_email(conn) or ""
     tech_to = tech_email(conn) or ""
-    house_mail = [(label, tech_to if kind == "tech" else owner_to)
+    house_mail = [(label, tech_to if kind == "tech" else owner_to if kind == "owner"
+                   else house_address_for(conn, kind) or "")
                   for label, kind in HOUSE_MAIL_ROUTES]
     return {
         "tech_email": tech_email_setting(conn),
@@ -55062,7 +55076,7 @@ def workshop_manage(manage_token):
         )
         conn.commit()
         if cur.rowcount:
-            owner_to = owner_email(conn)
+            owner_to = house_address_for(conn, "workshops")
             if owner_to:
                 send_email(
                     owner_to,
@@ -55144,7 +55158,7 @@ def workshop_manage(manage_token):
                 (new_session_id, deposit_amount, balance_amount, balance_due_date, booking["id"]),
             )
             conn.commit()
-            owner_to = owner_email(conn)
+            owner_to = house_address_for(conn, "workshops")
             if owner_to:
                 send_email(
                     owner_to, f"Guest moved dates — {booking['reference_code']}",
@@ -64458,7 +64472,7 @@ def join_restaurant_waitlist():
          datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
-    owner_to = owner_email(conn)
+    owner_to = house_address_for(conn, "restaurant")
     if owner_to:
         send_email(
             owner_to, "New dinner waitlist request",
@@ -67434,7 +67448,7 @@ def join_workshop_waitlist():
         (session_id, name, email, phone or None, party_size, notes or None, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
-    owner_to = owner_email(conn)
+    owner_to = house_address_for(conn, "workshops")
     if owner_to:
         send_email(
             owner_to, "New workshop waitlist request",
@@ -69976,7 +69990,7 @@ def event_quote(token):
             log_audit(conn, "event_quote_accepted", target=event["reference_code"],
                       details=f"v{quote['version']} by {who}")
             conn.commit()
-            to_address = owner_email(conn)
+            to_address = house_address_for(conn, "events")
             conn.close()
             if to_address:
                 send_email(
@@ -100949,7 +100963,7 @@ def contact_page():
         ("Answer an enquiry from %s" % ("%s (%s)" % (name, email) if name else email),
          notes, house_today_iso(), datetime.now(timezone.utc).isoformat()))
     conn.commit()
-    to = owner_email(conn)
+    to = house_address_for(conn, "rooms")
     conn.close()
     if to:
         send_email(to, "Someone asked about staying",

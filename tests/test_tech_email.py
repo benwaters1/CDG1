@@ -14,8 +14,12 @@ What this holds:
     owner can change it;
   - the Guest email page says where each kind of mail goes, worked out by the
     same helper the sender calls;
-  - business mail -- money, bookings, the daily summary -- stays with the
-    owner and never asks the technical address.
+  - money that needs the owner, and the daily summary, stay with the owner
+    and never ask the technical address;
+  - every notice about a booking goes to the inbox for that kind of booking
+    (reservations@ for stays and dinners, experience@ for ateliers and
+    events) and never to the owner's sign-in address, which is accounts@ --
+    the owner did not want accounts receiving every booking (15 Oct 2026).
 
 Every send is a stand-in. Nothing reaches a provider.
 """
@@ -203,6 +207,14 @@ def _checks(s, conn):
             rows.get("Backups by email") == TECH, detail=str(rows))
     s.check("the daily summary is shown staying with the owner",
             rows.get("The daily summary and the morning note") == owner_to, detail=str(rows))
+    stays = m.house_address_for(conn, "rooms")
+    s.check("stays are shown going to the rooms inbox, not the owner",
+            rows.get("Stays: booked, waiting on you, changed, cancelled, extras, the waitlist")
+            == stays and stays != owner_to, detail=str(rows))
+    s.check("ateliers and events to theirs",
+            rows.get("Ateliers: cancelled, moved, the waitlist") == m.house_address_for(conn, "workshops")
+            and rows.get("Events: enquiries, changes, quotes accepted, holds that lapsed")
+            == m.house_address_for(conn, "events"), detail=str(rows))
     s.check("the table is on the page", "Where the house's own mail goes" in html
             and TECH in html)
     form = next((f for f in _harness.forms_on(html)
@@ -216,17 +228,58 @@ def _checks(s, conn):
     # The page's table is a claim about the senders. Hold each "tech" line to
     # the function that sends it, and the business mail to the owner -- so a
     # sender moved without the table, or the table without the sender, is red.
-    s.section("Business mail stays with the owner")
+    s.section("Money and the summary stay with the owner")
     for fn in ("run_daily_digest_job", "run_morning_digest_job",
                "send_autocharge_failed_email", "create_booking_from_stripe_session",
-               "create_booking", "manage_booking"):
+               "create_restaurant_booking_from_stripe_session",
+               "tell_the_house_about_a_review"):
         src = inspect.getsource(getattr(m, fn))
         s.check(f"{fn} writes to the owner", "owner_email(conn)" in src
-                and "tech_email" not in src)
+                and "tech_email" not in src and "house_address_for" not in src)
+
+    # The owner, 15 Oct 2026: "I don't want accounts to receive every booking".
+    # Every notice about a booking goes to the inbox for that kind of booking --
+    # and NONE of these may still write to owner_email anywhere, because one
+    # branch left behind is one kind of booking still landing among invoices.
+    s.section("Every booking notice goes to its own inbox, none to the owner")
+    for fn, area in (("create_booking", "rooms"), ("manage_booking", "rooms"),
+                     ("join_waitlist", "rooms"), ("guest_account_message", "rooms"),
+                     ("contact_page", "rooms"),
+                     ("restaurant_manage", "restaurant"), ("join_restaurant_waitlist", "restaurant"),
+                     ("workshop_manage", "workshops"), ("join_workshop_waitlist", "workshops"),
+                     ("submit_event_inquiry", "events"), ("event_manage", "events"),
+                     ("event_quote", "events"), ("lapse_event_holds", "events")):
+        src = inspect.getsource(getattr(m, fn))
+        s.check(f"{fn} writes to the {area} inbox",
+                f'house_address_for(conn, "{area}")' in src and "owner_email(" not in src)
+
+    s.section("A stay's notice reaches the rooms inbox, not accounts")
+    sent = []
+    was_send = m.send_email
+    conn.execute("DELETE FROM submission_log WHERE action = 'join_waitlist'")
+    conn.commit()
+    try:
+        m.send_email = lambda to, subject, body, *a, **k: (sent.append((to, subject)), True)[1]
+        m.app.test_client().post("/waitlist/join", data={
+            "name": "ztech Waiter", "email": "ztech.waiter@example.invalid",
+            "desired_arrival": "2027-03-09", "desired_departure": "2027-03-10",
+            "party_size": "2"})
+    finally:
+        m.send_email = was_send
+        conn.execute("DELETE FROM waitlist_entries WHERE email = 'ztech.waiter@example.invalid'")
+        conn.execute("DELETE FROM submission_log WHERE action = 'join_waitlist'")
+        conn.commit()
+    notice = [to for to, subject in sent if subject == "New waitlist request"]
+    s.check("the house hears about it, once", len(notice) == 1, detail=str(sent))
+    s.check("at the rooms inbox", notice == [stays], detail=f"{notice} vs {stays!r}")
+    s.check("and not at the owner's sign-in address", owner_to not in notice,
+            detail=f"owner is {owner_to!r}")
+
     s.section("And the machine mail asks for the technical address")
     s.check("run_backup_email_job", "tech_email(conn)" in inspect.getsource(m.run_backup_email_job)
             and "owner_email(" not in inspect.getsource(m.run_backup_email_job))
     s.check("test_email_provider", "tech_email_setting(conn)"
             in inspect.getsource(m.test_email_provider))
-    s.check("every route on the page is one of the two helpers",
-            {kind for _label, kind in m.HOUSE_MAIL_ROUTES} == {"tech", "owner"})
+    s.check("every route on the page is a helper the senders call",
+            {kind for _label, kind in m.HOUSE_MAIL_ROUTES}
+            <= {"tech", "owner", "rooms", "restaurant", "workshops", "events"})
