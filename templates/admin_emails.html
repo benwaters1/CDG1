@@ -102,6 +102,38 @@
   </table>
 </div>
 
+{#
+  THE OTHER DIRECTION: what the site sends to the house. Backups and the
+  provider test are about the software, and they were landing in accounts@
+  among the invoices. Each row is worked out by the helper the sender itself
+  calls, so this cannot say one inbox while the mail goes to another.
+#}
+<h2 class="section-heading" id="house-mail">Where the house's own mail goes</h2>
+<p class="upload-hint">What the site sends to you rather than to guests. Mail about the software goes to the
+  technical address; mail about the business stays with you.</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Mail about</th><th scope="col">Goes to</th></tr></thead>
+    <tbody>
+      {% for label, address in health.house_mail %}
+      <tr><th scope="row">{{ label }}</th><td>{{ address or '—' }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{# The owner's alone: the backup is the whole database, so whoever can point
+   it somewhere receives every guest and every wage each night. #}
+{% if user['role'] == 'owner' %}
+<form method="post" action="{{ url_for('update_tech_email') }}" class="detail-card" style="margin:12px 0 24px;">
+  <label for="tech_email">Technical mail goes to</label>
+  <input type="email" id="tech_email" name="tech_email" value="{{ health.tech_email }}"
+         placeholder="{{ health.owner_email or 'website@…' }}" autocomplete="off">
+  <p class="upload-hint">Backups and the provider test. Leave it empty and they come to you
+    {%- if health.owner_email %} ({{ health.owner_email }}){% endif %}.</p>
+  <button type="submit" class="btn-primary">Save</button>
+</form>
+{% endif %}
+
 <h2 class="section-heading">Campaigns</h2>
 <p class="upload-hint">Reusable letters for announcements, offers and pre-arrival notes: sent to a chosen audience,
   or set to go out by themselves around a guest's stay. Each carries an unsubscribe line.</p>

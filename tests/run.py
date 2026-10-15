@@ -470,6 +470,8 @@ SUITES = [
     "test_outlook_addin",
     "test_send_check",
     "test_house_calendar",
+    # Brief of 15 October 2026.
+    "test_tech_email",
 ]
 
 
