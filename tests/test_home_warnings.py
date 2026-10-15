@@ -205,6 +205,14 @@ def _run(s, oc, conn, now, today):
     for key, _label, subject, body in m.DEFAULT_EMAIL_TEMPLATES:
         conn.execute("UPDATE email_templates SET subject = ?, body = ?, updated_at = NULL "
                      "WHERE template_key = ?", (subject, body, key))
+    # The booking terms naming a different arrival time are on the panel too,
+    # and the copied database has them: on 15 October its terms said "from
+    # 4pm" while every page said 2pm. Settled the way the house would settle
+    # it -- terms that agree -- and put back straight after the check.
+    # test_check_in_times proves the line comes and goes.
+    put_back_terms = _harness.keep_rows(conn, "app_settings", "key = 'terms_and_conditions'")
+    conn.execute("UPDATE app_settings SET value = ? WHERE key = 'terms_and_conditions'",
+                 (m.DEFAULT_TERMS,))
     conn.commit()
     real_checks = m.readiness_checks
     # **kwargs: the caller passes include_slow=False now, and a stand-in
@@ -215,6 +223,7 @@ def _run(s, oc, conn, now, today):
     finally:
         m.readiness_checks = real_checks
         put_back_letters()
+        put_back_terms()
     for row in held_before:
         conn.execute("UPDATE email_outbox SET created_at = ? WHERE id = ?",
                      (row["created_at"], row["id"]))

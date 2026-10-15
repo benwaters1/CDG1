@@ -890,6 +890,113 @@ def rollover_hour_is_safe(hour=None, day=None):
             return False
     return True
 
+
+# WHEN A GUEST MAY ARRIVE AND MUST LEAVE. One value, read by every page and
+# letter that tells a guest, instead of "2pm" typed into each of them. It was
+# typed into seven: the room page, the booking form and its arrival times, the
+# shared stay, the arrival card, the stay timeline and the printed stay -- and
+# the booking terms, which guests AGREE to, said 4pm. 2pm is right (the owner,
+# 15 October 2026), and so does Booking.com.
+#
+# The terms are the owner's own words in the database, so they are not
+# rewritten from here: terms_time_mismatches reads them and the owner home
+# says when they disagree with this.
+#
+# Not HOUSE_CALENDAR_CHECK_IN, which is when a stay is blocked out on the
+# staff's Outlook calendar and is never shown to a guest.
+CHECK_IN_TIME = "14:00"
+CHECK_OUT_TIME = "11:00"
+
+
+def clock_words(value):
+    """A time as a guest reads it in English: "14:00" -> "2pm", 11 -> "11am".
+
+    Takes "HH:MM" or a whole hour. The house writes "2pm", not "14:00" and
+    not "2:00 PM", and every page already did; this keeps it that way.
+    """
+    if isinstance(value, int):
+        hour, minute = value, 0
+    else:
+        hour, _, minute = str(value).partition(":")
+        hour, minute = int(hour), int(minute or 0)
+    hour %= 24
+    suffix = "am" if hour < 12 else "pm"
+    shown = hour % 12 or 12
+    return f"{shown}.{minute:02d}{suffix}" if minute else f"{shown}{suffix}"
+
+
+CHECK_IN_WORDS = clock_words(CHECK_IN_TIME)
+CHECK_OUT_WORDS = clock_words(CHECK_OUT_TIME)
+
+# A time as the terms might write it: 4pm, 4 p.m., 16:00, 16h, 4.30pm.
+_TERMS_TIME = r"(\d{1,2})(?:\s*[:.h]\s*(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|h\b)?"
+_TERMS_ARRIVAL = re.compile(
+    r"\b(?:arrival|arrive|arriving|check-?in)\b[^.;]{0,40}?\bfrom\s+" + _TERMS_TIME, re.I)
+_TERMS_DEPARTURE = re.compile(
+    r"\b(?:departure|depart|departing|leave|check-?out)\b[^.;]{0,40}?"
+    r"\b(?:by|before|until)\s+" + _TERMS_TIME, re.I)
+
+
+def _terms_hhmm(hour, minute, suffix):
+    """The "HH:MM" a matched time means, or None if it is not a time.
+
+    A bare number is not a time: "leave before 3 nights" must not read as
+    3am. It needs am/pm, an h, or minutes.
+    """
+    if minute is None and not suffix:
+        return None
+    hour, minute = int(hour), int(minute or 0)
+    mark = (suffix or "").lower().replace(".", "")
+    if mark == "pm" and hour < 12:
+        hour += 12
+    elif mark == "am" and hour == 12:
+        hour = 0
+    if hour > 23 or minute > 59:
+        return None
+    return f"{hour:02d}:{minute:02d}"
+
+
+def terms_times_problem(conn):
+    """(title, detail) when the stored booking terms name an arrival or
+    departure time the booking pages contradict, else None. One sentence for
+    the owner home and the task it raises, so they cannot word it apart."""
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'terms_and_conditions'").fetchone()
+    found = terms_time_mismatches(row["value"] if row else "")
+    if not found:
+        return None
+    kinds = sorted({which for which, _said, _ours in found})
+    title = ("The booking terms give a different "
+             + " and ".join(kinds) + (" times" if len(kinds) > 1 else " time"))
+    said = "; ".join(f"{which} {'from' if which == 'arrival' else 'by'} {terms}"
+                     for which, terms, _ours in found)
+    ours = "; ".join(f"{which} {'from' if which == 'arrival' else 'by'} {pages}"
+                     for which, pages in dict.fromkeys((w, p) for w, _t, p in found))
+    return (title,
+            f"The terms say {said}. The booking pages, the confirmations and "
+            f"Booking.com say {ours}. Guests agree to the terms when they book, "
+            "so change the time in the terms on the Terms page.")
+
+
+def terms_time_mismatches(text):
+    """Where the booking terms name an arrival or departure time that is not
+    the house's. [(which, what the terms say, what the pages say)].
+
+    Read, not rewritten: the terms are the owner's words, and the owner
+    changes them on the Terms page. Every mention is checked, so a second
+    sentence that disagrees is found as well as the first.
+    """
+    flat = " ".join((text or "").split())
+    out = []
+    for which, pattern, ours in (("arrival", _TERMS_ARRIVAL, CHECK_IN_TIME),
+                                 ("departure", _TERMS_DEPARTURE, CHECK_OUT_TIME)):
+        for found in pattern.finditer(flat):
+            said = _terms_hhmm(*found.groups())
+            if said and said != ours:
+                out.append((which, clock_words(said), clock_words(ours)))
+    return out
+
+
 DEFAULT_TERMS = """BOOKING TERMS & CONDITIONS — CHÂTEAU DE GUDANES
 
 1. Who you are contracting with
@@ -10060,6 +10167,14 @@ app.jinja_env.globals["ref_prefix"] = REFERENCE_PREFIXES
 # Read a setting without caring what kind of object `settings` is on this page.
 app.jinja_env.globals["setting"] = lambda obj, key, default=None: read_setting(obj, key, default)
 app.jinja_env.globals["contact_address"] = lambda area: contact_address(area)
+# When a guest may arrive and must leave, as every page says it. Globals, not a
+# context processor, because the public templates arrive from the design side
+# as whole files: a name every page can read is the one a handover keeps.
+# test_check_in_times fails on a template that types the time instead.
+app.jinja_env.globals["check_in_at"] = CHECK_IN_WORDS
+app.jinja_env.globals["check_out_at"] = CHECK_OUT_WORDS
+app.jinja_env.globals["check_in_hour"] = int(CHECK_IN_TIME[:2])
+app.jinja_env.globals["clock_words"] = clock_words
 # Money on a page was formatted inline, template by template, with
 # '%.2f'|format and a euro sign typed next to it. One definition instead, so a
 # figure reads the same wherever it appears.
@@ -33372,6 +33487,14 @@ def owner_home_warnings(conn, today):
             "Made in Stripe's dashboard, and the bill asks for the money again. "
             "Say whether it came off the price.", n, "admin_refunds")
 
+    # THE TERMS AND THE PAGES DISAGREE ABOUT WHEN A GUEST MAY ARRIVE OR MUST
+    # LEAVE. Guests agree to the terms, so a time there that the booking pages
+    # contradict is a promise made twice, differently. It closes itself: saving
+    # terms that agree takes the line away.
+    clash = terms_times_problem(conn)
+    if clash:
+        add("warn", clash[0], clash[1], 1, "admin_terms")
+
     # THE HOUSE CALENDAR, once it is set up and switched on. It closes itself:
     # the next pass that writes cleanly takes the line away.
     problem = house_calendar_problem(conn)
@@ -50035,8 +50158,8 @@ GUEST_TEXTS = {
         "label": "departure",
         # The statement url is longer again, so this is terser still.
         "default": (
-            "Bonjour {guest_name}, checkout is 11am. Keys in the bowl by the "
-            "door. Bill: {statement_url}"
+            "Bonjour {guest_name}, checkout is " + CHECK_OUT_WORDS + ". Keys in "
+            "the bowl by the door. Bill: {statement_url}"
         ),
     },
 }
@@ -75116,6 +75239,7 @@ WATCH_TASK_KINDS = {
     "door": "The front door lock needs attention",
     "letters": "A guest letter out of step with the house rules on payment",
     "sendcheck": "An Outlook the check on Send cannot run in",
+    "terms": "Booking terms that give a different arrival or departure time",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -78320,6 +78444,16 @@ def watch_task_findings(conn, today=None):
     door = door_lock_problem(conn)
     if door:
         found.append(("door", "Look at the front door lock", door, today.isoformat(), "high"))
+
+    # The booking terms naming an arrival or departure time the pages
+    # contradict. Titled by what is wrong and nothing that moves, so saving
+    # terms that agree closes it. Never rewritten here: they are the owner's
+    # words, and what guests have agreed to.
+    clash = terms_times_problem(conn)
+    if clash:
+        found.append(("terms", clash[0],
+                      clash[1] + "\n\nManagement → Terms and conditions, section 6.",
+                      today.isoformat(), "normal"))
 
     # A stored guest letter out of step with the house rules on payment. One
     # per letter, titled by the letter, so putting one right closes that one
