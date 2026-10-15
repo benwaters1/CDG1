@@ -5442,6 +5442,16 @@ def init_db():
         # /admin/rooms/<id>/edit, where this field already lives.
         ("rooms_floor_no_ground",
          "UPDATE rooms SET floor = NULL WHERE LOWER(COALESCE(floor, '')) = 'ground'"),
+        # The bathroom in the words the guest pages read. The old drop-down
+        # wrote "Shared" and "Private, not en-suite", which the comparison
+        # table and the Stay cards do not recognise (see BATHROOM_TYPES).
+        # "En-suite" is left alone: it says something else, and the form
+        # shows it as entered for the owner to choose.
+        ("rooms_bathroom_words",
+         "UPDATE rooms SET bathroom = CASE LOWER(TRIM(bathroom)) "
+         "WHEN 'shared' THEN 'shared' ELSE 'private' END "
+         "WHERE LOWER(TRIM(bathroom)) IN ('shared', 'private', 'private, not en-suite') "
+         "AND bathroom NOT IN ('shared', 'private')"),
         ("rooms_floor", "ALTER TABLE rooms ADD COLUMN floor TEXT"),
         # Employment terms. `start_date` alone couldn't express a fixed-term
         # contract or a trial period, and both carry hard deadlines in France:
@@ -19496,6 +19506,34 @@ def record_booking_payment(conn, booking_id, amount, reference=None):
     return bill
 
 
+def stripe_payment_label(what, start=None, end=None, *, reference=None, kind=None,
+                         part=None, **facts):
+    """What a card payment says about itself in Stripe: payment_intent_data.
+
+    The owner, 15 October 2026, after the first live payments: Stripe's list
+    of payments showed nothing but "pi_3UQrju...". Every checkout named its
+    line item, which reaches the card page and the receipt -- but the
+    dashboard, the payout report and a dispute show the PAYMENT, and nothing
+    was written on it. The old system wrote "Chateau de Gudanes - Stay
+    Overnight #248 (Nov 12 - 13, 2026)", so a payment could be matched to a
+    stay by reading down the list.
+
+    "The Twin Room · 9 – 10 March 2027 · Ref GUD-AB12CD · deposit": what,
+    when, the reference the guest quotes, and which part of the bill. The same
+    facts go in as metadata, all strings, within Stripe's limits (keys to 40
+    characters, values to 500). Every Checkout Session passes this;
+    test_stripe_labels fails on one that does not.
+    """
+    when = format_date_range(start, end or start) if start else ""
+    words = [what, when, f"Ref {reference}" if reference else "", part or ""]
+    meta = {"kind": kind, "reference": reference, "start": start, "end": end, **facts}
+    return {
+        "description": " · ".join(w for w in words if w)[:500],
+        "metadata": {str(k)[:40]: str(v)[:500] for k, v in meta.items()
+                     if v not in (None, "")},
+    }
+
+
 def start_booking_stripe_payment(conn, booking_id, amount=None):
     """Checkout URL for what is owed on a stay, or for part of it. None if not.
 
@@ -19557,6 +19595,10 @@ def start_booking_stripe_payment(conn, booking_id, amount=None):
                                 _external=True) + "&session_id={CHECKOUT_SESSION_ID}",
             cancel_url=url_for("manage_booking", manage_token=booking["manage_token"], _external=True),
             metadata={"booking_id": str(booking_id), "kind": "room_balance"},
+            payment_intent_data=stripe_payment_label(
+                booking["room_name"], booking["arrival_date"], booking["departure_date"],
+                reference=booking["reference_code"], kind="room_balance",
+                part="part payment" if part else "balance", booking_id=booking_id),
         )
     except Exception:
         return None
@@ -20611,7 +20653,20 @@ def pos_allocate_receipt_number(conn, order_id):
 
     Allocated at payment rather than at open, so a table that sits down and
     changes its mind does not eat a number and leave a hole nobody can explain.
+
+    Unique because it reads the last number and writes the next one while
+    holding SQLite's single write lock, so a second tablet settling at the
+    same moment waits and then reads the number this one wrote. Every caller
+    today has already written in this transaction (the payment row, the
+    settled tab), and that write is what was holding the lock. Nothing said
+    so, and a caller that numbered a bill BEFORE writing anything would have
+    let two tablets both read 41 and both write 42; the unique index on
+    receipt_number would then refuse the second, failing a payment that may
+    already have been taken at the card reader. So the lock is taken here
+    whenever the caller has not already got it.
     """
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
     order = conn.execute("SELECT receipt_number FROM pos_orders WHERE id = ?",
                          (order_id,)).fetchone()
     if order and order["receipt_number"]:
@@ -29477,7 +29532,7 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
                     stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
                     total_price_override=None, discount_amount_override=None,
                    guests_under_18=0, source="direct", confirm_now=False,
-                   extra_details=None):
+                   extra_details=None, reference_code=None):
     """Write a stay down. With confirm_now, it is booked rather than requested.
 
     THE HOUSE TAKES BOOKINGS, NOT REQUESTS FOR BOOKINGS. Every stay used to
@@ -29533,7 +29588,13 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
     # checkout -- and until this was stamped it was worked out again on every
     # read, from whatever the rate card said by then.
     quoted_room_portion = room_total
-    reference_code = make_reference_code()
+    # Handed in when the card page was opened with it, so the payment in
+    # Stripe already names it (stripe_payment_label). Kept only while no other
+    # stay holds it -- two bookings under one reference is the one outcome
+    # worse than a payment that does not quite match.
+    if not reference_code or conn.execute(
+            "SELECT 1 FROM bookings WHERE reference_code = ?", (reference_code,)).fetchone():
+        reference_code = make_reference_code()
     manage_token = secrets.token_urlsafe(24)
     # Taxe de sejour, STAMPED HERE rather than worked out later.
     #
@@ -29742,6 +29803,8 @@ def create_booking_from_stripe_session(conn, session):
         discount_amount_override=float(meta["discount_amount"]) if meta.get("discount_amount") else None,
         # When they want the things that ask, carried through the card page.
         extra_details=unpack_extra_details(meta.get("extra_when", "")),
+        # The reference the payment in Stripe was labelled with.
+        reference_code=(meta.get("reference_code") or "").strip() or None,
     )
     # The guest's address and arrival time, carried through the card page as metadata.
     store_booking_guest_details(conn, "bookings", "reference_code", reference_code, read_guest_details(meta, ROOM_GUEST_DETAILS))
@@ -39821,6 +39884,11 @@ def pos_pay_link(order_id):
             success_url=url_for("pos_order", order_id=order_id, paid=1, _external=True),
             cancel_url=url_for("pos_order", order_id=order_id, _external=True),
             metadata={"kind": "pos", "pos_order_id": str(order_id)},
+            payment_intent_data=stripe_payment_label(
+                f"Bill for table {bill['order']['table_label']}",
+                bill["order"]["service_date"] or None,
+                reference=bill["order"]["receipt_number"] or f"tab {order_id}",
+                kind="pos", pos_order_id=order_id),
         )
     except Exception as e:
         conn.close()
@@ -46250,6 +46318,13 @@ def book_rooms():
 
     availability = {}
     unavailable_reason = {}
+    # What THESE nights cost, room by room (owner, 15 October 2026, after the
+    # live one-euro test booking). The cards multiplied the standard rate by
+    # the nights, so a night the rate card sold at one euro read "265 for 1
+    # night" -- and, the case that matters with real guests, a stay running
+    # into a seasonal rate showed the wrong total on the page where somebody
+    # chooses. The room page already priced the dates; this is the list.
+    room_quotes = {}
     searched = bool(arrival and departure and departure > arrival
                     and not search_problem)
     # Computed HERE rather than in the template, which was doing its own date
@@ -46296,6 +46371,17 @@ def book_rooms():
                 unavailable_reason[room["id"]] = why
             elif not ok:
                 unavailable_reason[room["id"]] = "Not available these dates"
+            # compute_room_total is the one definition of a stay's room price;
+            # the nightly rates are read only to say whether they differ, so
+            # "a night" is not printed beside an average as though it were
+            # what every night costs.
+            total = compute_room_total(conn, room, arrival, departure)
+            if total:
+                nightly = {room_night_rate(conn, room, arrival + timedelta(days=i))
+                           for i in range(stay_nights)}
+                room_quotes[room["id"]] = {
+                    "total": total, "per_night": round(total / stay_nights, 2),
+                    "varies": len(nightly) > 1}
     nothing_available = searched and rooms and not any(availability.values())
     # A blind "no rooms free" sends somebody away from a house that is free the
     # day after the atelier ends. Only asked when every room said no.
@@ -46347,7 +46433,7 @@ def book_rooms():
         "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
         returning_guest=welcome, extras=stay_extras,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
-        stay_nights=stay_nights,
+        stay_nights=stay_nights, room_quotes=room_quotes,
         nothing_available=nothing_available, next_free=next_free,
         blocking_atelier=blocking_atelier,
         weather=weather,
@@ -47086,6 +47172,11 @@ def book_room(room_id):
                         },
                         "quantity": 1,
                     })
+            # The reference, made NOW rather than when the webhook writes the
+            # booking, so the payment in Stripe carries the code the guest will
+            # quote (stripe_payment_label). create_booking keeps it unless it
+            # has somehow been taken in between.
+            new_reference = make_reference_code()
             try:
                 checkout_session = stripe.checkout.Session.create(
                     mode="payment",
@@ -47094,7 +47185,12 @@ def book_room(room_id):
                     customer_email=guest_email,
                     success_url=url_for("stripe_success", _external=True) + "?session_id={CHECKOUT_SESSION_ID}",
                     cancel_url=url_for("stripe_cancel", room_id=room_id, _external=True),
+                    payment_intent_data=stripe_payment_label(
+                        room["name"], arrival.isoformat(), departure.isoformat(),
+                        reference=new_reference, kind="room",
+                        part="deposit" if balance_later else None, room_id=room_id),
                     metadata={
+                        "reference_code": new_reference,
                         "room_id": str(room_id),
                         "guest_name": guest_name,
                         "guest_email": guest_email,
@@ -47843,6 +47939,11 @@ def start_share_payment(conn, share, booking):
             cancel_url=url_for("pay_share", token=share["token"], _external=True),
             metadata={"booking_id": str(share["booking_id"]),
                       "kind": "room_balance", "share_id": str(share["id"])},
+            payment_intent_data=stripe_payment_label(
+                booking["room_name"], booking["arrival_date"], booking["departure_date"],
+                reference=booking["reference_code"], kind="room_balance",
+                part=f"{share['name'] or 'a guest'}'s share",
+                booking_id=share["booking_id"], share_id=share["id"]),
         )
     except Exception:
         return None
@@ -49190,6 +49291,11 @@ def start_event_stripe_payment(conn, event_id, amount=None):
             cancel_url=url_for("event_manage", manage_token=event["manage_token"],
                                _external=True),
             metadata={"event_id": str(event_id), "kind": "event_payment"},
+            payment_intent_data=stripe_payment_label(
+                event["event_type"] or "Event", event["preferred_date"] or None,
+                event["end_date"] or None,
+                reference=event["reference_code"] or f"#{event['id']}", kind="event_payment",
+                part="part payment" if part else "balance", event_id=event_id),
         )
     except Exception:
         return None
@@ -51139,9 +51245,15 @@ def refund_restaurant_booking(conn, booking, reason="Reservation cancelled by th
 def create_restaurant_booking(conn, guest_name, guest_email, guest_phone, dinner_date, party_size,
                                dietary_notes, booking_id=None, payment_status="unpaid",
                                stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
-                               deposit_amount=None, total_price_override=None, discount_amount_override=None):
+                               deposit_amount=None, total_price_override=None, discount_amount_override=None,
+                               reference_code=None):
     settings = get_restaurant_settings(conn)
-    reference_code = make_restaurant_reference_code()
+    # Handed in from the card page, which labelled the payment with it. Kept
+    # only while no other reservation holds it.
+    if not reference_code or conn.execute(
+            "SELECT 1 FROM restaurant_bookings WHERE reference_code = ?",
+            (reference_code,)).fetchone():
+        reference_code = make_restaurant_reference_code()
     manage_token = secrets.token_urlsafe(24)
 
     if total_price_override is not None:
@@ -51220,6 +51332,8 @@ def create_restaurant_booking_from_stripe_session(conn, session):
         total_price_override=float(meta["total_price"]) if meta.get("total_price") else None,
         discount_amount_override=float(meta["discount_amount"]) if meta.get("discount_amount") else None,
         promo_code=meta.get("promo_code") or None,
+        # The reference the payment in Stripe was labelled with.
+        reference_code=(meta.get("reference_code") or "").strip() or None,
         # The real amount Stripe actually charged, straight from the session
         # — more trustworthy than recomputing from deposit_percent at
         # webhook time, since that setting could have changed in between.
@@ -51345,10 +51459,17 @@ def restaurant_book():
                 line_name += f" — deposit (€{balance_due_onsite:,.2f} due at the restaurant)"
             if discount_amount:
                 line_name += f" (promo code applied, -€{discount_amount:,.2f})"
+            # Made now, so the payment in Stripe names the reservation it paid
+            # for; create_restaurant_booking keeps it (see the room checkout).
+            new_reference = make_restaurant_reference_code()
             try:
                 checkout_session = stripe.checkout.Session.create(
                     mode="payment",
                     payment_method_types=["card"],
+                    payment_intent_data=stripe_payment_label(
+                        f"Dinner for {party_size}", dinner_date.isoformat(),
+                        reference=new_reference, kind="restaurant",
+                        part="deposit" if balance_due_onsite else None),
                     line_items=[{
                         "price_data": {
                             "currency": "eur",
@@ -51369,6 +51490,7 @@ def restaurant_book():
                     cancel_url=url_for("restaurant_stripe_cancel", _external=True),
                     metadata={
                         "kind": "restaurant",
+                        "reference_code": new_reference,
                         "guest_name": guest_name,
                         "guest_email": guest_email,
                         "guest_phone": guest_phone,
@@ -54569,7 +54691,9 @@ def start_workshop_stripe_payment(conn, booking_id, kind, amount_override=None):
     if not stripe_enabled():
         return None
     booking = conn.execute(
-        """SELECT workshop_bookings.*, workshops.title FROM workshop_bookings
+        """SELECT workshop_bookings.*, workshops.title,
+                  workshop_sessions.start_date AS session_start,
+                  workshop_sessions.end_date AS session_end FROM workshop_bookings
            JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
            JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshop_bookings.id = ?""",
@@ -54611,7 +54735,13 @@ def start_workshop_stripe_payment(conn, booking_id, kind, amount_override=None):
         if customer_id:
             # Stripe takes one or the other; the Customer already has the email.
             payer = {"customer": customer_id}
-            keep_card = {"payment_intent_data": {"setup_future_usage": "off_session"}}
+            keep_card = {"setup_future_usage": "off_session"}
+    # One payment_intent_data, so the label and the card-keeping ride together.
+    # Passed as two, the second would replace the first.
+    intent = {**stripe_payment_label(
+        booking["title"], booking["session_start"], booking["session_end"],
+        reference=booking["reference_code"], kind=f"workshop_{kind}",
+        part=label.lower(), workshop_booking_id=booking_id), **keep_card}
     try:
         checkout_session = stripe.checkout.Session.create(
             mode="payment",
@@ -54627,7 +54757,8 @@ def start_workshop_stripe_payment(conn, booking_id, kind, amount_override=None):
             success_url=url_for("workshop_stripe_success", manage_token=booking["manage_token"], kind=kind, _external=True) + "&session_id={CHECKOUT_SESSION_ID}",
             cancel_url=url_for("workshop_stripe_cancel", manage_token=booking["manage_token"], _external=True),
             metadata={"workshop_booking_id": str(booking_id), "kind": f"workshop_{kind}"},
-            **payer, **keep_card,
+            payment_intent_data=intent,
+            **payer,
         )
     except Exception:
         return None
@@ -89816,6 +89947,14 @@ def charge_workshop_balance(conn, row):
         return "no_stripe", due, "card payments are not connected"
     cents = int(round(due * 100))
     today = house_today_iso()
+    # Labelled like every checkout (stripe_payment_label): the workshop, its
+    # dates and the reference, where this said only "Balance — WRK-...".
+    sitting = conn.execute("SELECT start_date, end_date FROM workshop_sessions WHERE id = ?",
+                           (row["session_id"],)).fetchone()
+    label = stripe_payment_label(
+        row["title"] or "Workshop", sitting["start_date"] if sitting else None,
+        sitting["end_date"] if sitting else None, reference=row["reference_code"],
+        kind="workshop_balance_charge", part="balance", workshop_booking_id=row["id"])
     try:
         intent = stripe.PaymentIntent.create(
             amount=cents,
@@ -89824,8 +89963,8 @@ def charge_workshop_balance(conn, row):
             payment_method=row["stripe_payment_method_id"],
             off_session=True,
             confirm=True,
-            description=f"Balance — {row['reference_code']}",
-            metadata={"workshop_booking_id": str(row["id"]), "kind": "workshop_balance_charge"},
+            description=label["description"],
+            metadata=label["metadata"],
             # Stripe answers a repeated key with the first charge instead of
             # making a second: a double click, a retry, the job and the button
             # on the same morning. The amount is part of it, so a balance that
@@ -96672,9 +96811,36 @@ ACCESS_BATHROOMS = {
 # who came back in March has not stopped needing it.
 ACCESS_NEEDS_RETENTION_MONTHS = 12
 
-BED_SETUPS = ["Emperor bed", "King bed", "Double bed", "Twin beds",
+BED_SETUPS = ["Emperor bed", "King bed", "Queen bed", "Double bed", "Twin beds",
               "Twin or double", "Two bedrooms", "Bunk room"]
-BATHROOM_TYPES = ["En-suite", "Private, not en-suite", "Shared"]
+# STORED AS THE WORD THE GUEST PAGES READ. The Stay cards, the room page and
+# the comparison table all test for "private" and "shared", and this used to
+# offer "En-suite / Private, not en-suite / Shared" -- none of which they
+# matched. A select with nothing matching sends its first option, the blank
+# one, so the first save after any edit at all quietly emptied the bathroom
+# (owner, 15 October 2026). And "Shared" with a capital S is not "shared" to
+# the comparison table, which would have called a shared bathroom private.
+# Every private bathroom here is on the ground floor and none is attached,
+# which is what the guest pages say about a "private" one.
+BATHROOM_TYPES = {
+    "private": "Private — the room's own, on the ground floor",
+    "shared": "Shared with another room",
+}
+
+
+def bathroom_from_form(raw):
+    """The bathroom as stored: one of BATHROOM_TYPES' keys, or kept as given.
+
+    Kept rather than refused, because the form offers a value it does not
+    list -- whatever the room already says -- precisely so that saving
+    something else does not change it.
+    """
+    raw = (raw or "").strip()
+    if raw.lower() in ("private", "private, not en-suite"):
+        return "private"
+    if raw.lower() == "shared":
+        return "shared"
+    return raw or None
 
 # What a transfer is FOR. The château runs airport runs, ski shuttles and the
 # occasional station or doctor trip — different lead times, different cars.
@@ -96742,8 +96908,10 @@ def room_fields_from_form():
         "min_nights": _i("min_nights", 1) or 1,
         "size_sqm": _f("size_sqm"),
         "bed_setup": (request.form.get("bed_setup", "") or "").strip() or None,
-        "bathroom": (request.form.get("bathroom", "") or "").strip() or None,
-        "outlook": (request.form.get("outlook", "") or "").strip() or None,
+        "bathroom": bathroom_from_form(request.form.get("bathroom", "")),
+        # The form had no field for this, so every save wrote it blank and
+        # the "Mountain view" line went off the Stay cards (owner, 15 October).
+        "outlook": (request.form.get("outlook", "") or "").strip()[:60] or None,
         "floor": (request.form.get("floor", "") or "").strip() or None,
         # Blank means UNKNOWN, not zero. A room nobody has counted the steps
         # to must not read as step-free, which is the one wrong answer here

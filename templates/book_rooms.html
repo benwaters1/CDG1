@@ -209,12 +209,19 @@
            guest is actually deciding on — and keep the nightly rate beneath. #}
         {% set _n = stay_nights | default(0) | int %}
         <p class="g-card__rate">{%- if _n > 0 %}
-            <b data-eur="{{ (room['price_per_night'] * _n)|int }}">€{{ '{:,.0f}'.format(room['price_per_night'] * _n) }}</b>
+            {#- 15 Oct (owner, z17 A): the rate card's price for THESE nights, from room_quotes (compute_room_total in
+                book_rooms), not the standard rate times the nights - a seasonal rate or a one-euro night showed the
+                standard figure. Falls back to the standard rate only if no quote was passed. -#}
+            {%- set _rq = (room_quotes.get(room['id']) if (room_quotes is defined and room_quotes) else none) %}
+            {%- set _tot = (_rq.total if _rq else room['price_per_night'] * _n)|float %}
+            {%- set _pn = (_rq.per_night if _rq else room['price_per_night'])|float %}
+            <b data-eur="{{ _tot }}">€{{ ('{:,.0f}' if _tot == (_tot|int) else '{:,.2f}').format(_tot) }}</b>
             {# "total" - but the taxe de séjour is added at payment, so it is the room for those nights. #}
             <span>for {{ _n }} night{{ '' if _n == 1 else 's' }}</span>
             {# On a single night the total and the nightly rate are the same
-               figure, so printing both says nothing twice. #}
-            {% if _n > 1 %}<span class="g-card__per">€{{ '{:,.0f}'.format(room['price_per_night']) }} a night</span>{% endif %}
+               figure, so printing both says nothing twice. Nights at different
+               rates say the figure is an average, not what each night costs. #}
+            {% if _n > 1 %}<span class="g-card__per">€{{ ('{:,.0f}' if _pn == (_pn|int) else '{:,.2f}').format(_pn) }} a night{{ ' on average' if _rq and _rq.varies }}</span>{% endif %}
           {% else %}
             {#- 15 Oct (owner): with dates chosen, the price for THOSE dates. Needs room_quotes {room_id: {'per_night':..}} from
                 book_rooms() (see z16 README); without it the card keeps the standard 'From' price. -#}

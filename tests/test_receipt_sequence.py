@@ -27,7 +27,10 @@ closed — on a bill dated this year. One receipt a year at most, on the one
 night of the year when the numbering matters most, which is exactly the shape
 of thing that is never noticed and impossible to explain afterwards.
 """
+import json
 import re as _re
+import sqlite3
+import threading
 from datetime import date, datetime, timedelta, timezone
 
 from _harness import Suite, clients, db
@@ -178,6 +181,155 @@ def run():
     s.check("and the clock is put back",
             m.house_today() != date(2031, 1, 1),
             detail="every suite after this one reads the same module")
+
+    s.section("ONE NUMBER, ONE BILL")
+    # Seen on the journal page of a test database on 14 October: receipt
+    # 2026-000008 against table 48 and again against 59-61, which reads like
+    # one number given to two bills. It was one bill. A tab settled, reopened,
+    # moved and settled again keeps the number it was given the first time,
+    # and the journal writes that number on every payment and settlement,
+    # under whichever table the tab was at by then.
+    #
+    # Numbered into a year nobody trades in, so deleting these afterwards
+    # leaves no hole in this year's sequence for another suite to find.
+    far = date(2097, 6, 15)
+    was_today = m.house_today
+
+    def tab(label):
+        conn.execute(
+            """INSERT INTO pos_orders (table_label, covers, status, service_date,
+                       opened_at) VALUES (?, 2, 'open', ?, ?)""",
+            (TAG + label, far.isoformat(), now.isoformat()))
+        oid = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        conn.commit()
+        return oid
+
+    def dish(oid):
+        conn.execute(
+            """INSERT INTO pos_order_lines (order_id, name, unit_price, quantity,
+                       vat_rate, created_at) VALUES (?, ?, 20.0, 1, 10.0, ?)""",
+            (oid, TAG + "plat", now.isoformat()))
+        conn.commit()
+
+    def settle(oid):
+        with m.app.test_request_context("/"):     # the audit line asks who
+            m.pos_take_payment(conn, oid, m.pos_bill(conn, oid)["outstanding"], "cash")
+            m.pos_close_if_settled(conn, oid, "cash")
+        conn.commit()
+
+    def number_of(oid):
+        return conn.execute("SELECT receipt_number FROM pos_orders WHERE id = ?",
+                            (oid,)).fetchone()["receipt_number"]
+
+    try:
+        m.house_today = lambda: far
+        oid = tab("48")
+        dish(oid)
+        settle(oid)
+        first = number_of(oid)
+        s.check("a settled tab is numbered", first == "2097-000001", detail=str(first))
+
+        oc.post(f"/pos/{oid}/reopen")
+        oc.post(f"/pos/{oid}/move", data={"table_label": TAG + "59-61"})
+        dish(oid)
+        settle(oid)
+        s.check("reopened, moved and settled again, it keeps its number",
+                number_of(oid) == first,
+                detail=f"{number_of(oid)} — a second number for the same bill "
+                       f"would leave {first} looking like a receipt that was "
+                       "cancelled without a trace")
+
+        carrying = conn.execute(
+            "SELECT order_id, payload FROM pos_journal "
+            "WHERE json_extract(payload, '$.receipt_number') = ?", (first,)).fetchall()
+        tables = {json.loads(r["payload"]).get("table") for r in carrying} - {None}
+        s.check("the journal shows that number against both tables",
+                {TAG + "48", TAG + "59-61"} <= tables, detail=str(tables))
+        s.check("and every entry carrying it is the same bill",
+                len(carrying) >= 4 and {r["order_id"] for r in carrying} == {oid},
+                detail=f"{len(carrying)} entries, orders "
+                       f"{sorted({r['order_id'] for r in carrying})} — what the "
+                       "14 October sighting was")
+
+        other = tab("next")
+        dish(other)
+        settle(other)
+        s.check("the next bill gets the next number",
+                number_of(other) == "2097-000002", detail=str(number_of(other)))
+
+        refused = None
+        try:
+            conn.execute("UPDATE pos_orders SET receipt_number = ? WHERE id = ?",
+                         (first, other))
+        except sqlite3.IntegrityError as exc:
+            refused = exc
+        conn.rollback()
+        s.check("the database refuses a number already given to another bill",
+                refused is not None,
+                detail="the unique index on pos_orders.receipt_number is the "
+                       "backstop under the allocation; without it nothing "
+                       "below the code would notice")
+    finally:
+        m.house_today = was_today
+        _cleanup(conn)
+
+    s.section("TWO TABLETS SETTLING AT THE SAME MOMENT")
+    # The allocator reads the last number and writes the next. Two tablets
+    # that both read before either writes would both write the same one, so
+    # the read and the write have to happen under SQLite's one write lock.
+    # Callers used to hold it by luck: each had already written something.
+    # This calls the allocator bare, the way a new caller might, with each
+    # tablet stopped just after reading the last number until the other has
+    # read it too -- the overlap held open on purpose, so the answer does not
+    # depend on how the threads happen to be scheduled.
+    both_read = threading.Barrier(2)
+
+    class _ReadsThenWaits(sqlite3.Connection):
+        def execute(self, sql, *args):
+            cur = super().execute(sql, *args)
+            if "ORDER BY receipt_number DESC" in sql:
+                try:
+                    # Long enough to be sure the other tablet is not coming:
+                    # it is waiting on the lock, which is the point.
+                    both_read.wait(timeout=1.5)
+                except threading.BrokenBarrierError:
+                    pass
+            return cur
+
+    tablets = {}
+
+    def tablet(oid):
+        k = sqlite3.connect(m.DB_PATH, factory=_ReadsThenWaits, timeout=10)
+        k.row_factory = sqlite3.Row
+        try:
+            tablets[oid] = m.pos_allocate_receipt_number(k, oid)
+            k.commit()
+        except Exception as exc:          # what a tablet would have shown
+            tablets[oid] = f"{type(exc).__name__}: {exc}"
+        finally:
+            k.close()
+
+    try:
+        m.house_today = lambda: date(2096, 6, 15)
+        pair = [tab("tablet-a"), tab("tablet-b")]
+        threads = [threading.Thread(target=tablet, args=(oid,)) for oid in pair]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+        got = [tablets.get(oid) for oid in pair]
+        s.check("neither tablet's bill is refused",
+                all(g and g.startswith("2096-") for g in got),
+                detail=f"{got} — refused by the unique index, after the card "
+                       "reader may already have taken the money")
+        s.check("and the two bills get two numbers, one after the other",
+                sorted(got) == ["2096-000001", "2096-000002"], detail=str(got))
+        s.check("each written on its own bill",
+                [number_of(oid) for oid in pair] == got,
+                detail=str([number_of(oid) for oid in pair]))
+    finally:
+        m.house_today = was_today
+        _cleanup(conn)
 
     s.section("It is the owner's")
     s.check("an employee cannot open the journal",
