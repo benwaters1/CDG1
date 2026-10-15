@@ -104,7 +104,7 @@ def _checks(s, conn):
     s.check("a recorded failure is quoted, not guessed at",
             "SMTP auth rejected" in failed["detail"], detail=failed["detail"][:150])
     s.check("with how long it has been failing",
-            "3 run(s) in a row" in failed["detail"], detail=failed["detail"][:150])
+            "3 runs in a row" in failed["detail"], detail=failed["detail"][:150])
 
     # The worst of the three, and the one a human would never guess: the job
     # believes it worked, so a copy is being made and is not arriving.

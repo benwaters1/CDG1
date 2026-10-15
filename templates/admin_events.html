@@ -16,7 +16,7 @@
 <div class="stat-tiles">
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('approvals', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ new_count }}</span><span class="stat-tile-label">New inquiries</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ new_count }}</span><span class="stat-tile-label">New {{ 'enquiry' if new_count == 1 else 'enquiries' }}</span></span>
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-success">{{ icon('megaphone', 19) }}</span>
@@ -195,6 +195,10 @@
     <span class="field-hint" style="margin-left:8px;">no final numbers yet</span>{% endif %}
   </p>
 
+  {#- Folded, like every card's forms: five events drew five six-box forms
+      under everything worth reading. -#}
+  <details class="refund-box" style="margin-top:10px;">
+    <summary>Change its status, price, deposit or note</summary>
   <form method="post" action="{{ url_for('update_event_inquiry', inquiry_id=e['id']) }}" class="search-bar" style="margin-top:10px; margin-bottom:0;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
@@ -207,7 +211,7 @@
     </div>
     <div>
       <label class="field-label" for="admin_events-quoted-price-2">Quoted price (€)</label>
-      <input id="admin_events-quoted-price-2" type="number" name="quoted_price" step="0.01" min="0" value="{{ e['quoted_price'] if e['quoted_price'] is not none else '' }}" style="width:110px;">
+      <input id="admin_events-quoted-price-2" type="number" name="quoted_price" step="0.01" min="0" value="{{ e['quoted_price']|box(2) }}" style="width:110px;">
     </div>
     <div>
       <label class="field-label" for="admin_events-promo-code">Promo code</label>
@@ -233,6 +237,7 @@
     </div>
     <button type="submit" class="btn-mini">Save</button>
   </form>
+  </details>
 </div>
 {% endmacro %}
 
@@ -260,7 +265,7 @@ function toggleAddEvent() {
   <h2 class="section-heading" style="margin-top:0;">The terms every quote carries</h2>
   <form method="post" action="{{ url_for('save_event_terms') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <textarea name="terms" rows="8">{{ event_terms_text }}</textarea>
+    <textarea name="terms" rows="8" aria-label="The terms every quote carries">{{ event_terms_text }}</textarea>
     <button type="submit" class="btn-mini" style="margin-top:8px;">Save the wording</button>
   </form>
 </div>

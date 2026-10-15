@@ -34,10 +34,10 @@
     <span class="stat-tile-label">Room revenue</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ euro(data.cost) }}</span>
-    <span class="stat-tile-label">Commission on it</span></span></div>
+    <span class="stat-tile-label">{{ 'Commission on it' if data.every_rate else 'Commission, where a rate is set' }}</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">{{ euro(data.net) }}</span>
-    <span class="stat-tile-label">What the house keeps</span></span></div>
+    <span class="stat-tile-value">{{ euro(data.net) if data.net is not none else '—' }}</span>
+    <span class="stat-tile-label">{% if data.every_rate %}What the house keeps{% else %}What the house keeps: not known until every channel has a rate ({{ euro(data.net_priced) }} on those that have one){% endif %}</span></span></div>
 </div>
 
 {% if data.unrecorded %}
@@ -93,8 +93,8 @@
         <th class="num">{{ data.rows|sum(attribute='bookings') }}</th>
         <th class="num">{{ euro(data.revenue) }}</th>
         <th class="num"></th>
-        <th class="num">{{ euro(data.cost) }}</th>
-        <th class="num">{{ euro(data.net) }}</th>
+        <th class="num">{{ euro(data.cost) }}{% if not data.every_rate %}<br><span class="upload-hint">where known</span>{% endif %}</th>
+        <th class="num">{{ euro(data.net) if data.net is not none else '—' }}</th>
       </tr>
     </tfoot>
   </table>

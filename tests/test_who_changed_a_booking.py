@@ -305,6 +305,14 @@ def _run(s, oc, ec, owner, emp, sent):
     conn.close()
 
     s.section("Checking out")
+    # Only a stay that has begun can be checked out of, so this one is moved
+    # to have started three days ago first.
+    conn = db()
+    conn.execute("UPDATE bookings SET arrival_date = ?, departure_date = ? WHERE id = ?",
+                 ((house_today() - timedelta(days=3)).isoformat(),
+                  (house_today() - timedelta(days=1)).isoformat(), bid))
+    conn.commit()
+    conn.close()
     oc.post(f"/admin/bookings/{bid}/checkout", data={"assigned_to_user_id": str(emp["id"])})
     s.check("is on the history, against who did it",
             [e["actor_user_id"] for e in _only("booking", bid, "booking_checked_out")]

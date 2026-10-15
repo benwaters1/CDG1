@@ -34,6 +34,7 @@ from _harness import Suite, clients, db, house_today
 import inspect
 import io
 import os
+import re
 
 import _harness
 
@@ -251,6 +252,14 @@ def run():
             detail="%d call site(s) -- a day is a date and belongs to the "
                    "house: house_today(), or service_day() if it is the till"
                    % stragglers)
+    # The same question asked for a year or a month. The annual summary opened
+    # on last year from midnight to 02:00 on 1 January (14 October 2026).
+    # Code only: a comment saying why not to (there is one) is not a call.
+    year_month = sum(
+        len(re.findall(r"datetime\.now\(timezone\.utc\)\.(?:year|month)\b", line))
+        for line in app_src.splitlines() if not line.lstrip().startswith("#"))
+    s.check("nor a UTC year or month", year_month == 0,
+            detail="%d site(s) -- house_today().year / .month" % year_month)
     # And the RIGHT answer spelled longhand, which is how this became two
     # conventions instead of one: 95 sites were already correct, so nothing
     # ever looked wrong, and the other 125 were just as easy to copy.

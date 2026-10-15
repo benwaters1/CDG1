@@ -20,7 +20,7 @@
 
 <p class="page-intro">
   {{ data.event['event_type']|capitalize }} · {{ data.event['contact_name'] }} ·
-  {{ data.event['preferred_date'] or 'no date yet' }} · {{ data.event['reference_code'] }}
+  {{ data.event['preferred_date']|date_short or 'no date yet' }} · {{ data.event['reference_code'] }}
 </p>
 
 <div class="stat-tiles">

@@ -69,7 +69,7 @@
           {{ serve_sizes.get(pr['serve_size'], pr['serve_size']) }}
           {%- if pr['serve_volume_ml'] %} · {{ pr['serve_volume_ml']|round(0)|int }}ml{% endif %}
           · {{ (pr['price'] or 0)|money }}
-          <small>takes {{ '%.3f'|format(pr['stock_qty_per_unit'] or 0) }} of a bottle</small>
+          <small>takes {{ pr['stock_qty_per_unit']|qty(3) }} of a bottle</small>
         </span>
         {% endfor %}
       </div>

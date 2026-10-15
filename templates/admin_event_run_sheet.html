@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Run sheet — {{ data.event.contact_name }}{% endblock %}
 {% block content %}
+{#- Every event is not a wedding: a sixtieth birthday was "the couple" and its
+    note suggested the bride's grandmother. -#}
+{% set hosts = 'the couple' if (data.event.event_type or '')|lower == 'wedding' else 'the hosts' %}
 
 <div class="page-head">
   <h1>{{ data.event.event_type|capitalize if data.event.event_type else 'Event' }} &mdash; {{ data.event.contact_name }}</h1>
@@ -21,13 +24,13 @@
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.day.strftime('%a %d %b') if data.day else '&mdash;'|safe }}</span>
-    <span class="stat-tile-label">{% if data.days_away is not none and data.days_away >= 0 %}In {{ data.days_away }} day{{ '' if data.days_away == 1 else 's' }}{% else %}Date{% endif %}</span></span></div>
+    <span class="stat-tile-label">{% if data.days_away is not none and data.days_away >= 0 %}{{ data.days_away|in_words|capitalize }}{% else %}Date{% endif %}</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.expected or '&mdash;'|safe }}</span>
     <span class="stat-tile-label">
       {% if data.numbers_confirmed %}Final numbers
-        {% if data.numbers_fixed_on %}<span class="stat-tile-sub">fixed {{ data.numbers_fixed_on.strftime('%d %b') }}</span>{% endif %}
-      {% else %}Quoted for &mdash; not yet final{% endif %}
+        {% if data.numbers_fixed_on %}<span class="stat-tile-sub">fixed {{ data.numbers_fixed_on.isoformat()|date_short }}</span>{% endif %}
+      {% else %}Expected guests, from the enquiry &mdash; not yet final{% endif %}
     </span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.suppliers|length }}</span>
@@ -80,7 +83,7 @@
   <h3 style="margin-top:0;">Nothing is written down for this day yet</h3>
   <p class="field-hint" style="margin-top:0;">
     Add the moments below and this becomes the sheet the kitchen, the front of house and the
-    couple all work from. Start with the two that bracket everything else &mdash; when guests
+    {{ hosts }} all work from. Start with the two that bracket everything else &mdash; when guests
     arrive and when the music stops.
   </p>
 </div>
@@ -356,7 +359,7 @@
       <label class="field-label" for="final_numbers">Final numbers</label>
       <input type="number" id="final_numbers" name="final_numbers" min="0" step="1"
              value="{{ data.event.final_numbers if data.event.final_numbers is not none else '' }}">
-      <span class="field-hint">Quoted for {{ data.quoted_for or '&mdash;'|safe }}. Leave blank until the couple have counted.</span>
+      <span class="field-hint">The enquiry said {{ data.quoted_for or '&mdash;'|safe }}. Leave blank until {{ hosts }} have counted.</span>
     </div>
     <div>
       <label class="field-label" for="arrival_time">Guests arrive</label>
@@ -377,7 +380,7 @@
   <div>
     <label class="field-label" for="run_sheet_note">Anything the day turns on</label>
     <textarea id="run_sheet_note" name="run_sheet_note" rows="3" maxlength="2000"
-              placeholder="Bride's grandmother cannot manage the stairs — ground floor only.">{{ data.event.run_sheet_note or '' }}</textarea>
+              placeholder="One guest cannot manage the stairs — ground floor only.">{{ data.event.run_sheet_note or '' }}</textarea>
   </div>
   <button type="submit" class="btn-primary">Save</button>
 </form>

@@ -76,6 +76,13 @@
   @keyframes odpulse{ 0%,100%{ opacity:1; } 50%{ opacity:0.35; } }
   .od-date{ font-size:1rem; color:var(--ivory-dim); }
   .od-clock{ font-family:'IBM Plex Mono', monospace; font-size:1.9rem; font-weight:600; color:var(--ivory); min-width:5.2ch; text-align:right; }
+  /* A wall display, but opened on a phone too: the title, the date and the
+     clock in one row that could not wrap ran off a 390px screen. */
+  @media (max-width: 600px){
+    .od-header, .od-header-right{ flex-wrap:wrap; gap:0.4rem 1rem; }
+    .od-header h1{ font-size:1.3rem; }
+    .od-clock{ font-size:1.4rem; min-width:0; }
+  }
 
   /* needs-attention tiles */
   .od-attention h2{ font-size:1.05rem; color:var(--gold); display:flex; align-items:center; gap:0.6rem; margin-bottom:0.55rem; }
@@ -366,7 +373,7 @@
 <script>
   function odTick() {
     var el = document.getElementById('od-clock');
-    if (el) el.textContent = new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+    if (el) el.textContent = new Date().toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZone: {{ house_tz|tojson }}});
   }
   odTick();
   setInterval(odTick, 1000);

@@ -176,14 +176,17 @@ def run():
     from _harness import clients as _clients
     _oc = _clients()[0]
     words = " ".join(_re.sub(r"<[^>]+>", " ", _oc.get("/management").get_data(as_text=True)).split())
-    line = _re.search(r"so far: (−?€[\d,]+) taken .*? less (−?€[\d,]+) spent and "
+    # "As booked", not "so far ... taken": the figure is every stay booked for
+    # the month, the guests still to come included (14 October 2026).
+    line = _re.search(r"as booked: (−?€[\d,]+) for the month .*? less (−?€[\d,]+) spent and "
                       r"(−?€[\d,]+) staff(?: \(estimated\))?: (−?€[\d,]+) left", words)
 
     def _eur(t):
         return int(t.replace("€", "").replace(",", "").replace("−", "-"))
 
     s.check("it names every figure the result is made from", line is not None,
-            detail=words[words.find("so far"):words.find("so far") + 160] if "so far" in words else "")
+            detail=words[words.find("as booked"):words.find("as booked") + 160]
+            if "as booked" in words else "")
     if line:
         taken, spent, staff, left = (_eur(g) for g in line.groups())
         s.check("and taken, less spent, less staff, is what is left",

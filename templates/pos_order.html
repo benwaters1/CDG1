@@ -189,7 +189,7 @@
             {% if not m['available'] %}
             <span class="till-item-flag">off{% if m['unavailable_note'] %} — {{ m['unavailable_note'] }}{% endif %}</span>
             {% elif level is not none %}
-            <span class="till-item-flag">{{ level|round(0)|int }} left</span>
+            <span class="till-item-flag">{{ level|qty }} left</span>
             {% endif %}
             {% if m.get('dietary_clash') %}
             <span class="till-item-allergen is-clash">{{ m['dietary_clash']|join(', ') }} — this table</span>

@@ -182,7 +182,9 @@ def run():
     s.check("it loads for an employee", page.status_code == 200, page)
     # 8 + 5 = 13, less a 30 minute break = 12.5
     s.check("each shift is a row, net of its break",
-            sorted(h for _s, _f, h in rows) == ["4.50", "8.00"],
+            # In the one spelling for hours (14 October 2026): the rows said
+            # 4.50 and 8.00 over a band and a foot that said 12.5.
+            sorted(h for _s, _f, h in rows) == ["4.5", "8"],
             detail=f"rows read {rows} -- a 30 minute break was not taken off")
     s.check("and the band has a cell for the hours", _band(html, "Hours") is not None,
             detail="no overview cell labelled Hours")
@@ -367,7 +369,7 @@ def run():
             "no rate on file" not in paid.lower() and "60.00" in paid,
             detail="the other's missing wage was announced on this page")
     s.check("and the one without is",
-            "no rate on file" in bare.lower() and _foot_total(bare) == "7.0",
+            "no rate on file" in bare.lower() and _foot_total(bare) == "7",
             detail=f"foot {_foot_total(bare)!r}")
 
     s.section("The owner's own clocked time adds up too")
@@ -385,13 +387,13 @@ def run():
         html = oc.get("/hours/mine").get_data(as_text=True)
         rows = _rows(html)
         foot = _foot_total(html)
-        s.check("their shift is on the page", any(h == "4.00" for _s, _f, h in rows),
+        s.check("their shift is on the page", any(h == "4" for _s, _f, h in rows),
                 detail=str(rows[:6]))
         # The sum, not a fixed figure: other suites clock the shared owner in
-        # and out, so the rows are whatever they are. Rows at two places and
-        # the total at one can differ by the rounding and no more.
+        # and out, so the rows are whatever they are. Rows and total are now
+        # to the same places, so they agree to the rounding of a sum.
         s.check("and the foot row is the sum of the rows, not 0.0",
-                foot is not None and abs(float(foot) - _summed(rows)) < 0.051,
+                foot is not None and abs(float(foot) - _summed(rows)) < 0.011,
                 detail=f"foot {foot!r} under rows summing to {_summed(rows)}")
     finally:
         conn = db()

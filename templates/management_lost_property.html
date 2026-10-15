@@ -50,7 +50,7 @@
       <tbody>
         {% for r in rows %}
         <tr class="{{ 'row-alert' if r['id'] in stale_ids }}">
-          <td>{{ r['found_on'] }}</td>
+          <td>{{ r['found_on']|date_short }}</td>
           <th scope="row">{{ r['what'] }}</th>
           <td>{{ r['found_where'] or '—' }}</td>
           <td>{{ r['booking_guest'] or r['guest_name'] or '—' }}

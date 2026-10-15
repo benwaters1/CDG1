@@ -35,7 +35,7 @@
 <div class="alert-band">
   {# A short figure that does not say it is short is the worst kind. #}
   <strong>{{ working.days_not_closed }}
-    {{ t('day(s) in this period were never closed off.') }}</strong>
+    {% if working.days_not_closed == 1 %}{{ t('day in this period was never closed off.') }}{% else %}{{ t('days in this period were never closed off.') }}{% endif %}</strong>
   {{ t('Their takings are not in the till figures below. Close them on the Cash up page and this number will change.') }}
   {# Each by name, straight to its cash-up: a count says something is
      missing, the day says where to go. #}

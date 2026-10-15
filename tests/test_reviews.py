@@ -18,6 +18,7 @@ the test written for it the day before checked that the FLAG changed rather
 than that anything happened. That is the whole reason the last section of
 this file loads the page and looks for the words.
 """
+import re
 from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, clients, db, flashes
@@ -45,6 +46,12 @@ def _cleanup():
     conn.execute("DELETE FROM audit_log WHERE action LIKE 'feedback_%'")
     conn.commit()
     conn.close()
+
+
+def _form_html(page, action):
+    """The markup of the form posting to `action`, buttons and all."""
+    found = re.search(r'<form[^>]*action="%s".*?</form>' % re.escape(action), page, re.S)
+    return found.group(0) if found else None
 
 
 def _stay(ref, name="Amelie Fontaine"):
@@ -205,6 +212,43 @@ def run():
             _one("SELECT COUNT(*) AS c FROM email_outbox WHERE to_address = ?",
                  (quiet["guest_email"],))["c"] == mail_before,
             detail="an empty reply must not email somebody a blank page")
+
+    s.section("Just mark it read sends nothing, whatever the box holds")
+    # 14 October 2026. The button was a second field called `reply`, empty,
+    # after the box -- and the route read the box. A review already answered
+    # has its reply in that box, so "Just mark it read" emailed it to the
+    # guest again. The check above posted reply="" and never saw it, because
+    # it posted what the test imagined rather than what the page sends.
+    page = oc.get("/admin/feedback").get_data(as_text=True)
+    s.check("the page has no empty second `reply` for a button to send",
+            'name="reply" value=""' not in page)
+    # The form's own markup: forms_on() reads boxes, not buttons.
+    answered_form = _form_html(page, f"/admin/feedback/{row['id']}/reply")
+    s.check("a review already answered offers no 'mark it read' at all",
+            answered_form is not None and 'name="mark_read"' not in answered_form,
+            detail="no form for it" if answered_form is None else answered_form[-300:])
+    second = _stay("SECOND", name=TAG + " Paul Girard")
+    anon.post(f"/feedback/{second['manage_token']}",
+              data={"rating": "2", "comment": "Noisy pipes."}, follow_redirects=True)
+    p = _one("SELECT * FROM guest_feedback WHERE booking_id = ?", (second["id"],))
+    page = oc.get("/admin/feedback").get_data(as_text=True)
+    waiting = _form_html(page, f"/admin/feedback/{p['id']}/reply")
+    s.check("one still waiting offers it, under a name of its own",
+            waiting is not None and 'name="mark_read"' in waiting
+            and waiting.count('name="reply"') == 1,
+            detail="no form" if waiting is None else waiting[-300:])
+    mail_before = _one("SELECT COUNT(*) AS c FROM email_outbox WHERE to_address = ?",
+                       (second["guest_email"],))["c"]
+    oc.post(f"/admin/feedback/{p['id']}/reply",
+            data={"reply": "Words typed and then thought better of", "mark_read": "1"},
+            follow_redirects=True)
+    p2 = _one("SELECT * FROM guest_feedback WHERE id = ?", (p["id"],))
+    s.check("pressed with words in the box, it is marked read",
+            bool(p2["acknowledged_at"]))
+    s.check("the words are not kept as a reply", not p2["reply"], detail=str(p2["reply"]))
+    s.check("and nothing goes to the guest",
+            _one("SELECT COUNT(*) AS c FROM email_outbox WHERE to_address = ?",
+                 (second["guest_email"],))["c"] == mail_before)
 
     s.section("Featuring one actually puts it on the booking page")
     # THE CHECK THAT WAS MISSING. The button said "Feature on booking page";

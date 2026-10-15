@@ -117,16 +117,16 @@
         <span class="auto-ran">Last ran: <span class="auto-when">{{ local_datetime_str(run['last_ran_at'], unknown='not recorded') if run else 'never' }}</span></span>
         <span class="auto-how">
           {% if not run or not run['last_status'] %}<span class="muted">how it went is not recorded</span>
-          {% elif run['last_status'] == 'ok' %}Worked{% if run['last_message'] %} &mdash; {{ run['last_message'] }}{% endif %}
+          {% elif run['last_status'] == 'ok' %}Worked{% if run['last_message'] %} &mdash; {{ run['last_message']|house_words }}{% endif %}
           {% elif run['last_status'] == 'idle' %}
             {# Something it needs is not set up. Not a failure, and not
                "Worked" either, which is what it used to say. #}
-            <strong style="color:var(--rust);">Couldn't run</strong>{% if run['last_message'] %} &mdash; {{ run['last_message'] }}{% endif %}
+            <strong style="color:var(--rust);">Couldn't run</strong>{% if run['last_message'] %} &mdash; {{ run['last_message']|house_words }}{% endif %}
           {% else %}
             <strong style="color:var(--danger);">Failed
               {%- if run['consecutive_failures'] and run['consecutive_failures'] > 1 %}
               {{ run['consecutive_failures'] }} times in a row{% endif %}</strong>
-            {% if run['last_message'] %}&mdash; {{ run['last_message'] }}{% endif %}
+            {% if run['last_message'] %}&mdash; {{ run['last_message']|house_words }}{% endif %}
             <span class="muted">Last worked: {{ local_datetime_str(run['last_ok_at'], unknown='not recorded') }}</span>
           {% endif %}
         </span>

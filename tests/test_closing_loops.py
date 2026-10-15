@@ -7,7 +7,7 @@ something actually happens, and that it reaches the right person.
 """
 from datetime import datetime, timezone, timedelta
 
-from _harness import Suite, clients, db, ensure_employee, ensure_room
+from _harness import Suite, clients, db, ensure_employee, ensure_room, flashes
 import _harness
 
 m = _harness.m
@@ -228,6 +228,24 @@ def _checks(s, conn):
     s.check("a third no-show is flagged to the owner",
             any("not turned up 3 times" in n["title"] for n in got),
             detail=f"got {[n['title'] for n in got]}")
+
+    # 14 October 2026: "Mark no-show" was drawn on next week's tables too, and
+    # the route took it, feeding the count above with dinners still to come.
+    dinner(TAG + "4", -3, False)
+    ahead = conn.execute("SELECT id FROM restaurant_bookings WHERE reference_code = ?",
+                         (TAG + "4",)).fetchone()
+    page = oc.get("/admin/restaurant").get_data(as_text=True)
+    # Its Cancel button proves the card is drawn, so the absence below is
+    # about the button and not about a list that left the dinner out.
+    s.check("a confirmed dinner still to come is on the list",
+            f"/admin/restaurant/{ahead['id']}/cancel" in page)
+    s.check("and is not offered 'Mark no-show'",
+            f"/admin/restaurant/{ahead['id']}/no-show" not in page)
+    r = oc.post(f"/admin/restaurant/{ahead['id']}/no-show", follow_redirects=True)
+    stamped = conn.execute("SELECT no_show_at FROM restaurant_bookings WHERE id = ?",
+                           (ahead["id"],)).fetchone()["no_show_at"]
+    s.check("and the route will not stamp one", stamped is None,
+            detail=f"{stamped!r} {flashes(r)[:1]}")
 
     conn.execute("""UPDATE restaurant_bookings SET no_show_at = NULL, status = 'pending',
                     dinner_date = ? WHERE id = ?""",

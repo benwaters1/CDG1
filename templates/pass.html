@@ -154,7 +154,7 @@
           data-cat="{{ s['category'] }}" data-low="{{ 1 if low else 0 }}">
         <span class="pass__s__n">{{ s['name'] }}</span>
         <span class="pass__s__q">
-          {{ s['on_hand'] if s['on_hand'] is not none else '—' }}
+          {{ s['on_hand']|qty }}
           <em>{{ s['unit'] }}</em>
         </span>
         {% if low %}<span class="pass__s__low">Order</span>{% endif %}

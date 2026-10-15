@@ -46,7 +46,7 @@
           </form>
           <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="doc-delete">×</button>
+            <button type="submit" class="doc-delete" aria-label="Remove this task" title="Remove this task">×</button>
           </form>
         </div>
         {% endfor %}
@@ -87,7 +87,7 @@
       </form>
       <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="doc-delete">×</button>
+        <button type="submit" class="doc-delete" aria-label="Remove this task" title="Remove this task">×</button>
       </form>
     </div>
     {% endfor %}
@@ -115,7 +115,7 @@
       <span class="task-title">{{ t['title'] }} <span class="upload-hint">— {{ t['employee_name'] }}</span></span>
       <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="doc-delete">×</button>
+        <button type="submit" class="doc-delete" aria-label="Remove this task" title="Remove this task">×</button>
       </form>
     </div>
     {% endfor %}

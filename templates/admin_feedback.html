@@ -154,7 +154,14 @@
 
     {# Marking it read without writing anything is deliberate. Some reviews
        want a telephone call, and forcing a written reply into the app to
-       clear a warning produces written replies nobody meant to send. #}
+       clear a warning produces written replies nobody meant to send.
+       The mark-read button has a name of its own. It used to be a second
+       `reply` with an empty value, after the box, so the route read the
+       box: on a review already answered, "Just mark it read" emailed the
+       old reply to the guest a second time. A review already read is
+       folded: the reply box is for the ones still waiting. #}
+    {% if f['acknowledged_at'] %}<details class="refund-box" style="margin-top:10px;">
+      <summary>{{ 'Change what we said' if f['reply'] else 'Write to them' }}</summary>{% endif %}
     <form method="post" action="{{ url_for('reply_to_feedback', feedback_id=f['id']) }}"
           style="margin-top:10px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -163,10 +170,13 @@
       <textarea id="reply_{{ f['id'] }}" name="reply" rows="3" style="width:100%;"
                 placeholder="Goes to them by email, and shows under their review if you feature it.">{{ f['reply'] or '' }}</textarea>
       <div style="display:flex; gap:8px; margin-top:6px;">
-        <button type="submit" class="btn-mini">Send reply</button>
-        <button type="submit" class="btn-ghost" name="reply" value="">Just mark it read</button>
+        <button type="submit" class="btn-mini">{{ 'Send the new reply' if f['reply'] else 'Send reply' }}</button>
+        {% if not f['acknowledged_at'] %}
+        <button type="submit" class="btn-ghost" name="mark_read" value="1">Just mark it read</button>
+        {% endif %}
       </div>
     </form>
+    {% if f['acknowledged_at'] %}</details>{% endif %}
   </div>
   {% endfor %}
 {% endif %}

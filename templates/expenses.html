@@ -41,7 +41,10 @@
 
 {# Getting a bill INTO the system from wherever you happen to be. The camera
    works anywhere; the scanner only when the app can reach the printer on its
-   own network, which means being at the château. #}
+   own network, which means being at the château. Folded, like every add
+   form, so what is owed and what waits for a decision come first. #}
+<details class="refund-box">
+  <summary>+ Add a bill</summary>
 <div class="search-bar" style="align-items:flex-end;">
   <form method="post" action="{{ url_for('submit_expense') }}" enctype="multipart/form-data"
         style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
@@ -69,6 +72,7 @@
   </form>
   {% endif %}
 </div>
+</details>
 {% if not pennylane_ready %}
 <p class="upload-hint" style="margin:-6px 0 14px;">
   Pennylane isn't connected, so bills stay here rather than reaching your accounts.
@@ -90,15 +94,15 @@
   </div>
 </div>
 
-<div class="detail-card">
-  <h3>Supplier invoice link</h3>
+<details class="refund-box">
+  <summary>The link suppliers send their bills to</summary>
   <p class="pay-disclaimer" style="margin-top:0;">Share this link with suppliers so they can submit invoices directly — no login needed. Nothing is final until you approve it below.</p>
   <p class="share-link-box">{{ supplier_upload_url }}</p>
   <form method="post" action="{{ url_for('regenerate_supplier_link') }}" style="margin-top:10px;" onsubmit="return confirm('Generate a new link? The old one will stop working.');">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn-mini">Generate a new link</button>
   </form>
-</div>
+</details>
 
 {# One toolbar over both lists below. The chips are the two questions
    this page is opened to answer and neither could be asked before:

@@ -101,7 +101,7 @@ def run():
     # fall into, so a broken guard does not produce a negative number -- it
     # quietly files a walk-in under "6 months or more" and the only visible
     # trace is that one more booking got a band than has a lead time.
-    expected = 0
+    expected = walk_ins = 0
     for row in conn.execute(
             """SELECT arrival_date, created_at FROM bookings
                  WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
@@ -111,11 +111,17 @@ def run():
             booked = m.house_date(row["created_at"])
         if arrival and booked and (arrival - booked).days >= 0:
             expected += 1
+        elif arrival and booked:
+            walk_ins += 1
     banded = sum(r["count"] for r in walk["lead_rows"])
     s.check("a booking entered after the guest arrived gets no lead time at all",
             banded == expected,
             detail=f"{banded} banded against {expected} with a real lead time — "
                    "a walk-in typed up later is not a booking made in advance")
+    # 14 October 2026: "5 stays counted" over lead-time rows that added to 1.
+    s.check("but it is counted on a row of its own, so the rows add up to the stays",
+            walk_ins >= 1 and walk["entered_after"] == walk_ins,
+            detail=f"{walk['entered_after']} on the row, {walk_ins} entered after arrival")
 
     # ------------------------------------------------------------- channels
     s.section("What a booking costs to get")
@@ -135,6 +141,14 @@ def run():
             "Booking.com" in chan["unpriced"], detail=str(chan["unpriced"]))
     s.check("so it is not counted in the commission total", chan["cost"] == 0,
             detail=str(chan["cost"]))
+    # 14 October 2026: "What the house keeps" was revenue less the commission
+    # that is known, so the unpriced channel was counted as free in it.
+    s.check("and what the house keeps is unknown, not everything",
+            chan["net"] is None and not chan["every_rate"], detail=str(chan["net"]))
+    page = oc.get(f"/management/channels?from={(today - timedelta(days=365)).isoformat()}"
+                  f"&to={today.isoformat()}").get_data(as_text=True)
+    s.check("and the page says so rather than printing a figure",
+            "not known until every channel has a rate" in page)
 
     oc.post("/management/channels/settings",
             data={"rate_booking_com": "15", "rate_direct": "0"}, follow_redirects=True)

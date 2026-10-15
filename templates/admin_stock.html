@@ -22,8 +22,8 @@
    been told yes, so this is a phone call, not a shopping list. #}
 <div class="alert-band">
   <strong>Already promised more than we hold:</strong>
-  {% for r in short %}{{ r.item['name'] }} — {{ r.level|round(1) }} in stock,
-    {{ r.promised|round(1) }} promised{{ '; ' if not loop.last }}{% endfor %}.
+  {% for r in short %}{{ r.item['name'] }} — {{ r.level|qty(1) }} in stock,
+    {{ r.promised|qty(1) }} promised{{ '; ' if not loop.last }}{% endfor %}.
   <a href="{{ url_for('admin_stock', state="Short of what's promised") }}">Just these</a>
 </div>
 {% endif %}
@@ -31,7 +31,7 @@
 {% if data.low %}
 <div class="flash flash-error" style="margin-bottom:16px;">
   <strong>Running low:</strong>
-  {% for r in data.low %}{{ r.item['name'] }} ({{ r.level|round(1) }} {{ r.item['unit'] }}){{ '; ' if not loop.last }}{% endfor %}
+  {% for r in data.low %}{{ r.item['name'] }} ({{ r.level|qty(1) }} {{ r.item['unit'] }}){{ '; ' if not loop.last }}{% endfor %}
 </div>
 {% endif %}
 
@@ -93,16 +93,16 @@
         </td>
         <td class="upload-hint">{{ r.item['location'] or '—' }}</td>
         <td class="num">
-          <strong>{{ r.level|round(1) }}</strong> <span class="upload-hint">{{ r.item['unit'] }}</span>
+          <strong>{{ r.level|qty(1) }}</strong> <span class="upload-hint">{{ r.item['unit'] }}</span>
           {% if r.promised %}
           {# A level on its own cannot say "is this enough". This can. #}
-          <div class="upload-hint">{{ r.promised|round(1) }} promised</div>
+          <div class="upload-hint">{{ r.promised|qty(1) }} promised</div>
           {% endif %}
           {% if r.after_promises < 0 %}
-          <div class="mini-status status-declined">{{ (-r.after_promises)|round(1) }} short</div>
+          <div class="mini-status status-declined">{{ (-r.after_promises)|qty(1) }} short</div>
           {% elif r.is_low %}<div class="mini-status status-pending">low</div>{% endif %}
         </td>
-        <td class="num upload-hint">{{ r.item['reorder_level']|round(0)|int }}</td>
+        <td class="num upload-hint">{{ r.item['reorder_level']|qty(1) }}</td>
         <td>
           <form method="post" action="{{ url_for('move_stock', item_id=r.item['id']) }}"
                 style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
@@ -141,7 +141,7 @@
         <td class="upload-hint">{{ local_datetime_str(m['created_at']) }}</td>
         <td>{{ m['item'] }}</td>
         <td class="num {{ 'row-alert' if m['delta'] < 0 }}">
-          {{ '+' if m['delta'] > 0 }}{{ m['delta']|round(1) }} {{ m['unit'] }}
+          {{ '+' if m['delta'] > 0 }}{{ m['delta']|qty(1) }} {{ m['unit'] }}
         </td>
         <td class="upload-hint">
           {{ stock_reasons.get(m['reason'], m['reason']) }}{% if m['note'] %} — {{ m['note'] }}{% endif %}

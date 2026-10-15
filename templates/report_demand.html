@@ -135,7 +135,7 @@
         {# Named rather than hidden: nine years of coming back and one long
            expensive stay are the same number and are not the same guest. #}
         <td class="num">{% if g.called_off %}{{ g.called_off }}{% else %}&mdash;{% endif %}</td>
-        <td>{{ g.last_seen or '—' }}</td>
+        <td>{{ g.last_seen|date_short or '—' }}</td>
       </tr>
       {% endfor %}
     </tbody>

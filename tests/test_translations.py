@@ -141,6 +141,11 @@ def run():
     s.check("a staff page is unaffected by the guest language choice",
             "Ateliers" not in staff or "staff-shell" in staff,
             detail="the staff app appears to have been translated")
+    # Back to English. The owner's client is shared by every suite in the run,
+    # and the run is shuffled: left in French, any later suite reading a
+    # staff page's t() words in English failed whenever this ran first
+    # (test_staff_accounts' "Reset their password", 15 October 2026).
+    oc.get("/language/en", follow_redirects=True)
 
     s.section("Every string the templates ask for exists to be asked for")
     # t() falls back, so a typo'd key is invisible on the page — it just stays

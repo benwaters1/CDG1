@@ -15,8 +15,9 @@
   <a href="{{ url_for('menu_day', date=on.isoformat()) }}" class="btn-ghost">Back to the card</a>
 </div>
 <p class="pay-disclaimer no-print" style="margin-top:-10px;">
-  Print this, write tonight's card on it, then photograph it and upload the photo on the
-  day builder — it reads back onto the till.
+  Print this, write tonight's card on it, then photograph it and upload the photo under
+  &ldquo;Or read it in&rdquo; on <a href="{{ url_for('menu_day', date=on.isoformat()) }}">tonight's card</a>
+  — it reads back onto the till. That box is there until the night has a card.
 </p>
 
 <div class="sheet">

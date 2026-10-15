@@ -31,10 +31,10 @@
 
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">{% if data.median_lead is not none %}{{ data.median_lead }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-value">{{ data.median_lead|qty(1) }}</span>
     <span class="stat-tile-label">Days ahead, typically</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">{% if data.median_stay is not none %}{{ data.median_stay }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-value">{{ data.median_stay|qty(1) }}</span>
     <span class="stat-tile-label">Nights, typically</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.one_nighter_share }}%</span>
@@ -66,6 +66,14 @@
         <td class="num">{{ r.share }}%</td>
       </tr>
       {% endfor %}
+      {#- So the rows add up to the stays counted above them. -#}
+      {% if data.entered_after %}
+      <tr class="muted">
+        <th scope="row">Entered after they arrived</th>
+        <td class="num">{{ data.entered_after }}</td>
+        <td class="num"><span class="upload-hint">not a lead time</span></td>
+      </tr>
+      {% endif %}
     </tbody>
   </table>
 </div>
@@ -98,10 +106,10 @@
     <tbody>
       {% for r in data.months %}
       <tr>
-        <th scope="row">{{ r.month }}</th>
+        <th scope="row">{{ r.month|month_words }}</th>
         <td class="num">{{ r.bookings }}</td>
-        <td class="num">{% if r.median_lead is not none %}{{ r.median_lead }}{% else %}&mdash;{% endif %}</td>
-        <td class="num">{% if r.median_stay is not none %}{{ r.median_stay }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ r.median_lead|qty(1) }}</td>
+        <td class="num">{{ r.median_stay|qty(1) }}</td>
       </tr>
       {% endfor %}
     </tbody>

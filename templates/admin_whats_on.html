@@ -13,6 +13,8 @@
   of the year, like skiing.
 </p>
 
+<details class="refund-box">
+  <summary>+ Add something to What's On</summary>
 <form method="post" action="{{ url_for('admin_whats_on_save') }}" class="detail-card" style="margin-bottom:2rem">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="id" value="">
@@ -85,8 +87,9 @@
     </div>
   </div>
 
-  <button type="submit" class="btn-mini" style="margin-top:1.25rem">+ Add entry</button>
+  <button type="submit" class="btn-mini" style="margin-top:1.25rem">Add it</button>
 </form>
+</details>
 
 {% if events %}
 <div class="table-wrap">
@@ -109,7 +112,7 @@
         {% if e['start_time'] %}<br><span style="color:#777">{{ e['start_time'] }}{% if e['end_time'] %}–{{ e['end_time'] }}{% endif %}</span>{% endif %}
       </td>
       <td>{{ e['location'] or '—' }}{% if e['distance'] %}<br><span style="color:#777">{{ e['distance'] }}</span>{% endif %}</td>
-      <td>{% if e['season_from'] %}{{ e['season_from'] }} → {{ e['season_to'] }}{% else %}All year{% endif %}</td>
+      <td>{% if e['season_from'] %}{{ e['season_from']|day_month }} → {{ e['season_to']|day_month }}{% else %}All year{% endif %}</td>
       <td>{{ 'Yes' if e['is_active'] else 'No' }}</td>
       <td>
         <form method="post" action="{{ url_for('admin_whats_on_delete', event_id=e['id']) }}"

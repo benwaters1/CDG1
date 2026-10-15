@@ -61,7 +61,7 @@
     <form method="post" action="{{ url_for('edit_recurring_cost', cost_id=c['id']) }}" id="edit-cost-{{ c['id'] }}" class="upload-form" style="display:none;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input aria-label="Label" type="text" name="label" value="{{ c['label'] }}" placeholder="Label" required>
-      <input aria-label="Amount" type="number" name="amount" step="0.01" min="0" value="{{ c['amount'] }}" placeholder="Amount" required>
+      <input aria-label="Amount" type="number" name="amount" step="0.01" min="0" value="{{ c['amount']|box(2) }}" placeholder="Amount" required>
       <select name="frequency" aria-label="How often">
         <option value="monthly" {{ 'selected' if c['frequency'] == 'monthly' }}>Monthly</option>
         <option value="annual" {{ 'selected' if c['frequency'] == 'annual' }}>Annual</option>

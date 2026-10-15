@@ -68,7 +68,9 @@
 <div class="table-wrap">
   <table class="data-table">
     <thead>
-      <tr><th>Name</th><th>Job</th><th>Login</th><th>Level</th><th></th></tr>
+      {#- One Level column: it printed the level's stored key beside a picker
+          that already showed the level by name. -#}
+      <tr><th>Name</th><th>Job</th><th>Login</th><th>Level</th></tr>
     </thead>
     <tbody>
       {% for person in people %}
@@ -79,13 +81,6 @@
         </td>
         <td>{{ person['job_role'] or '—' }}</td>
         <td><span class="upload-hint">{{ person['email'] }}</span></td>
-        <td>
-          {% if person['access_preset'] %}
-            {{ person['access_preset'] }}
-          {% else %}
-            <span class="upload-hint">default for {{ person['role'] }}</span>
-          {% endif %}
-        </td>
         <td>
           <form method="post" action="{{ url_for('assign_access_preset') }}" class="filter-bar">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -107,7 +102,8 @@
 
 <p class="upload-hint" style="margin-top:14px;">
   Changing someone's level takes effect the next time they load a page — they don't need to log out.
-  Nobody can be left as the only full-access account and then reduced; there's no email set up to send a password reset.
+  Nobody can be left as the only full-access account and then reduced: if that person
+  were locked out, nobody would be left who could let them back in.
 </p>
 
 {% endblock %}

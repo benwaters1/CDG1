@@ -53,7 +53,7 @@
 
 {% if position.uncounted_days %}
 <div class="detail-card" style="max-width:840px;">
-  <h3 style="margin-top:0;">{{ position.uncounted_days|length }} day(s) closed without counting the drawer</h3>
+  <h3 style="margin-top:0;">{{ counted(position.uncounted_days|length, "day") }} closed without counting the drawer</h3>
   <p class="field-hint" style="margin-top:0;">
     {{ position.uncounted_days[:6]|map('date_short')|join(', ') }}{% if position.uncounted_days|length > 6 %} and more{% endif %}.
     Those days add nothing to what the safe should hold, because nobody said what was in it.

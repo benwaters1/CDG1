@@ -90,6 +90,28 @@ def run():
 def _run(s):
     oc, ec, owner, _emp = clients()
     now = _harness.datetime_now()
+
+    s.section("A stored value is read in words, and kept as it was for the export")
+    # 14 October 2026: the page printed "Decided at 2026-10-14T19:55:40.501526
+    # +00:00", "Original amount 1000.0" and "Issued by user id 1".
+    stamp = "2026-10-14T19:55:40.501526+00:00"
+    s.check("a moment is the house's date and time",
+            m.change_log_value("decided_at", stamp, {}) == m.local_datetime_str(stamp),
+            detail=m.change_log_value("decided_at", stamp, {}))
+    s.check("money is money",
+            m.change_log_value("original_amount", 1000.0, {}) == "€1,000.00",
+            detail=m.change_log_value("original_amount", 1000.0, {}))
+    s.check("a person is their name, under a label without 'user id'",
+            m.change_log_value("issued_by_user_id", 7, {7: "Marie"}) == "Marie"
+            and m.change_log_label("issued_by_user_id") == "Issued by")
+    s.check("a day is a day in words",
+            m.change_log_value("arrival_date", "2026-10-16", {}) == "16 October 2026")
+    s.check("a way of paying is named as the till names it",
+            m.change_log_value("payment_method", "bank_transfer", {})
+            == m.payment_method_label("bank_transfer") != "bank_transfer",
+            detail=m.change_log_value("payment_method", "bank_transfer", {}))
+    s.check("and words stay words",
+            m.change_log_value("guest_name", "Marie Dubois", {}) == "Marie Dubois")
     room = _harness.ensure_room()
     conn = db()
     conn.execute("INSERT INTO guests (name, email, created_at) VALUES (?, ?, ?)",

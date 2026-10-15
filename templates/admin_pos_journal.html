@@ -113,7 +113,10 @@
         <td class="num">{{ e['sequence'] }}</td>
         <td class="upload-hint">{{ local_datetime_str(e['occurred_at']) }}</td>
         <td>{{ e['event_type']|replace('_', ' ')|capitalize }}</td>
-        <td class="journal-payload"><code>{{ e['payload'] }}</code></td>
+        {#- In words, with the record exactly as stored one click away: the
+            Detail column printed raw JSON, hash and all. -#}
+        <td class="journal-payload">{{ e['payload']|journal_words }}
+          <details><summary class="upload-hint">Exact record</summary><code>{{ e['payload'] }}</code></details></td>
         <td class="upload-hint">{{ e['who'] or '—' }}</td>
       </tr>
       {% endfor %}

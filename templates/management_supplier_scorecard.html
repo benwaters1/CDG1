@@ -64,19 +64,22 @@
           {% if r.papers.ok %}
           <span class="mini-status status-onshift">in order</span>
           {% else %}
-          <span class="mini-status status-declined">{{ r.papers.missing|map('replace', '_', ' ')|join(', ') or 'out of date' }}</span>
+          <span class="mini-status status-declined">{% if r.papers.missing %}missing: {% for k in r.papers.missing %}{{ document_kinds.get(k, k|replace('_', ' ')) }}{{ ', ' if not loop.last }}{% endfor %}{% else %}out of date{% endif %}</span>
           {% endif %}
           {% for kind, doc in r.papers.held.items() %}
-          <span class="field-hint" style="display:block;">{{ kind|replace('_', ' ') }}{% if doc['expires_on'] %} to {{ doc['expires_on'] }}{% endif %}
+          <span class="field-hint" style="display:block;">{{ document_kinds.get(kind, kind|replace('_', ' ')) }}{% if doc['expires_on'] %} to {{ doc['expires_on']|date_short }}{% endif %}
             <form method="post" action="{{ url_for('delete_vendor_document', document_id=doc['id']) }}" style="display:inline;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn-mini">Remove</button>
+              <button type="submit" class="btn-mini" aria-label="Remove this document">Remove</button>
             </form>
           </span>
           {% endfor %}
           {% for kind, doc in r.papers.expired.items() %}
-          <span class="field-hint" style="display:block;">{{ kind|replace('_', ' ') }} ran out {{ doc['expires_on'] }}</span>
+          <span class="field-hint" style="display:block;">{{ document_kinds.get(kind, kind|replace('_', ' ')) }} ran out {{ doc['expires_on']|date_short }}</span>
           {% endfor %}
+          {#- Folded: six suppliers drew six three-box forms down the table. -#}
+          <details class="refund-box" style="margin-top:6px;">
+            <summary>+ Record a document</summary>
           <form method="post" action="{{ url_for('new_vendor_document', vendor_id=r.id) }}"
                 style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:6px;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -88,8 +91,9 @@
                  aria-label="Reference for this delivery" style="max-width:120px;">
             <button type="submit" class="btn-mini">Record it</button>
           </form>
+          </details>
         </td>
-        <td>{{ r.last_seen or '&mdash;'|safe }}</td>
+        <td>{{ r.last_seen|date_short or '&mdash;'|safe }}</td>
       </tr>
       {% else %}
       <tr><td colspan="7"><div class="empty-state">No suppliers on the books.</div></td></tr>

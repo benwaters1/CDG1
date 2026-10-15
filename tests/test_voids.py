@@ -206,6 +206,32 @@ def run():
     s.check("their own sales exclude what they struck off",
             abs(people[TAG + "Big"]["sold"] - 300.0) < 0.01,
             detail=f"{people[TAG + 'Big']['sold']} — a voided line was not sold")
+    # 14 October 2026: "Of what was rung up" was voids over SOLD, so it could
+    # pass 100% -- 166.7% on a quiet night. Rung up is sold plus struck off.
+    s.check("the share is of everything rung up, sold and struck off, so it "
+            "cannot pass 100%",
+            d["share"] is not None and 0 < d["share"] <= 100
+            and abs(d["rung_up"] - (d["sold"] + d["value"])) < 0.01
+            and abs(d["share"] - round(d["value"] / d["rung_up"] * 100, 1)) < 0.05,
+            detail=f"{d['share']}% of {d['rung_up']} ({d['sold']} sold + {d['value']} voided)")
+    # Not so each person's: somebody who strikes off other people's lines can
+    # void more than they rang up themselves, and that is worth seeing. What
+    # was wrong was the row nobody is on: voided by nobody, set against what
+    # nobody added, which are two unrelated sets of people.
+    conn.execute(
+        """INSERT INTO pos_order_lines (order_id, name, unit_price, quantity, voided,
+                   added_by_user_id, voided_by_user_id, void_reason, voided_at,
+                   created_at, state)
+           VALUES (?, ?, 9.0, 1, 1, NULL, NULL, 'Rung in error', ?, ?, 'ordered')""",
+        (tonight, TAG + "unnamed", (now - timedelta(hours=1)).isoformat(), now.isoformat()))
+    conn.commit()
+    nobody = [p for p in m.void_report(conn, start=night, end=night)["people"]
+              if p["who"] == "nobody recorded"]
+    conn.execute("DELETE FROM pos_order_lines WHERE name = ?", (TAG + "unnamed",))
+    conn.commit()
+    s.check("the row for voids nobody put a name to carries no share",
+            nobody and all(p["share"] is None for p in nobody),
+            detail=str([(p["who"], p["share"]) for p in nobody]) or "no such row drawn")
 
     s.section("A share of nothing is not a share")
     ghost = person("Ghost")

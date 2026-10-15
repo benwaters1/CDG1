@@ -166,6 +166,25 @@ def run():
             TAG + "sent-quick" in page and "after it was spent" in page,
             detail="pennylane_synced_at, written since the column existed "
                    "and read by nothing")
+    # 14 October 2026: an unread scan arrives pending at €0 and was listed
+    # "Not sent" under a banner that, rightly, did not count it.
+    before = banner_total()
+    conn.execute(
+        """INSERT INTO expenses (kind, description, amount, status, spent_on,
+                   submitted_at, vendor_name)
+           VALUES ('supplier_invoice', ?, 75.0, 'pending', ?, ?, ?)""",
+        (TAG + "pending-one", (today - timedelta(days=3)).isoformat(),
+         now.isoformat(), TAG + " Supplier"))
+    conn.commit()
+    page = oc.get("/management/revenue-to-send").get_data(as_text=True)
+    row = _re.search(r"%spending-one.*?</tr>" % TAG, page, _re.S)
+    s.check("a cost nobody has approved says so, rather than 'Not sent'",
+            row is not None and "Not approved yet" in row.group(0)
+            and "Not sent" not in row.group(0),
+            detail=row.group(0)[-200:] if row else "not on the page")
+    s.check("and is not in the total of what the accountant is missing",
+            abs(banner_total() - before) < 0.01,
+            detail=f"{before} then {banner_total()}")
 
     s.section("The lag is a median, not an average")
     # Spent 20 days ago and sent 2 days later; spent 60 and sent 40 later.

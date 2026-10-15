@@ -174,9 +174,9 @@ def run():
             detail=f"headline {data['total_hours']}h over rows "
                    f"{[(n, p['hours']) for n, p in mine.items()]}")
     s.check("and the headline is the sum of the rows",
-            data["total_hours"] == round(sum(p["hours"] for p in data["people"]), 1),
+            data["total_hours"] == round(sum(p["hours"] for p in data["people"]), 2),
             detail=f"{data['total_hours']} against "
-                   f"{round(sum(p['hours'] for p in data['people']), 1)}")
+                   f"{round(sum(p['hours'] for p in data['people']), 2)}")
     typed_row = mine.get(TAG + " Typed", {}).get("cost")
     s.check("a typed wage is costed on its row, at the wage",
             typed_row is not None and typed_row == costed.get(TAG + " Typed"),
@@ -209,12 +209,35 @@ def run():
             shown.append(float(cells[2].strip()))
     headline = float(head.group(1)) if head else None
     s.check("the page's headline is the sum of the page's own rows",
-            headline is not None and shown and headline == round(sum(shown), 1)
+            headline is not None and shown and headline == round(sum(shown), 2)
             and headline >= 24.0,
             detail=f"headline reads {headline}, the rows below it {shown}")
     s.check("and the typed wage's row shows its cost",
             "€{:,.2f}".format(costed.get(TAG + " Typed") or 0) in body,
             detail="the row for somebody with a wage on file read '—'")
+
+    s.section("A long window is the sum of its months")
+    # 14 October 2026. Costed in one go, a window charged a salaried person
+    # their salary for every month in it if they clocked in at all; month by
+    # month, only for the months they clocked in. Financials printed €1,277
+    # net for January to October over monthly rows netting €18,549.
+    salaried = person("Salaried")
+    conn.execute(
+        """INSERT INTO wage_records (user_id, basis, gross_amount, employer_rate,
+                              effective_from, created_at)
+           VALUES (?, 'monthly', 2000, 0, ?, ?)""", (salaried, "2030-01-01", now))
+    worked(salaried, 5)            # one shift, in May 2036 only
+    conn.commit()
+    year_start = date(2036, 1, 1)
+    window = m.financial_month_summary(conn, year_start, end)["labour_cost"] or 0
+    months, cursor = 0.0, year_start
+    while cursor < end:
+        nxt = m.add_months(cursor, 1)
+        months += m.financial_month_summary(conn, cursor, nxt)["labour_cost"] or 0
+        cursor = nxt
+    s.check("January to May costs what January, February, March, April and May cost",
+            abs(window - months) < 0.01,
+            detail=f"window {window} against the months added up {round(months, 2)}")
 
     _cleanup(conn)
     conn.close()

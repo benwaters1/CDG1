@@ -33,7 +33,7 @@
        left out, because "come and do this" to somebody who has paid for it
        reads as nobody looking at their own records. #}
     <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none; margin-top:6px;">
-      <span>Or only people who have done:</span>
+      <span>Also people who have done:</span>
       <select name="segment" onchange="this.form.submit()">
         <option value="">—</option>
         {% for w in alumni_workshops %}
@@ -68,6 +68,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% for s in segments %}<input type="hidden" name="segment" value="{{ s }}">{% endfor %}
     <input type="hidden" name="since_months" value="{{ since_months }}">
+    <input type="hidden" name="recipients_counted" value="{{ recipients_counted }}">
     <label class="field-label" for="admin_promo_blast-subject">Subject</label>
     <input id="admin_promo_blast-subject" type="text" name="subject" value="A little something from Château de Gudanes" required>
     <label class="field-label" for="admin_promo_blast-body">Message</label>

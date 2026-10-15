@@ -104,8 +104,15 @@ def run():
             detail=b[spare_room]["state"])
     s.check("with nothing outstanding", b[spare_room]["outstanding"] == 0)
 
-    s.section("A room somebody has just left")
+    s.section("A room somebody leaves today, before they have")
     left = _stay("LEFT", turnover_room, -3, 0)
+    # 14 October 2026: with no checklist until check-out, a room with its
+    # guest still in it on their last morning read "Ready".
+    s.check("reads as still occupied for the morning, not Ready",
+            _board()[turnover_room]["state"] == "leaving",
+            detail=_board()[turnover_room]["state"])
+
+    s.section("A room somebody has just left")
     r = oc.post(f"/admin/bookings/{left['id']}/checkout",
                 data={"assigned_to_user_id": str(emp["id"])}, follow_redirects=True)
     b = _board()

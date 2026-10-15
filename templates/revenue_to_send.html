@@ -194,6 +194,13 @@
   {{ euro(costs_waiting|sum(attribute='total')) }} the accountant has not seen.
 </div>
 {% endif %}
+{% if costs_unapproved %}
+<p class="upload-hint" style="margin:-6px 0 14px;">
+  {{ costs_unapproved|length }} more {{ 'is' if costs_unapproved|length == 1 else 'are' }}
+  waiting for your approval on <a href="{{ url_for('expenses') }}">Expenses</a> before
+  {{ 'it' if costs_unapproved|length == 1 else 'they' }} can go.
+</p>
+{% endif %}
 
 {% if costs %}
 <div class="table-wrap">
@@ -202,7 +209,7 @@
                <th class="num">Amount</th><th>With the accountant</th></tr></thead>
     <tbody>
       {% for c in costs %}
-      <tr class="{{ 'row-alert' if not c.sent and c.total > 0 }}">
+      <tr class="{{ 'row-alert' if not c.sent and c.total > 0 and not c.pending }}">
         <td>{{ c.spent_on|date_short if c.spent_on else '&mdash;'|safe }}</td>
         <td>{{ c.what }}</td>
         <td>{{ c.vendor or '&mdash;'|safe }}</td>
@@ -213,6 +220,8 @@
             {% if c.lag_days is not none %}
               <span class="cell-note">{{ c.lag_days }} day{{ '' if c.lag_days == 1 else 's' }} after it was spent</span>
             {% endif %}
+          {% elif c.pending %}
+            <span class="upload-hint">Not approved yet</span>
           {% else %}
             <span class="mini-status status-pending">Not sent</span>
           {% endif %}

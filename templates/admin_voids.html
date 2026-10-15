@@ -76,7 +76,8 @@
         <td class="num">{{ euro(p.value) }}</td>
         <td class="num">
           {% if p.share is not none %}{{ p.share }}%
-          <span class="cell-note">of {{ euro(p.sold) }}</span>
+          <span class="cell-note">{% if p.share > 100 %}more than the {{ euro(p.rung_up) }} they rang up — other people's lines{% else %}of {{ euro(p.rung_up) }} rung up{% endif %}</span>
+          {% elif p.rung_up %}&mdash;
           {% else %}&mdash; <span class="muted">rang up nothing</span>{% endif %}
         </td>
         <td class="num">{% if p.after_sent %}<span class="mini-status status-pending">{{ p.after_sent }}</span>{% else %}0{% endif %}</td>
@@ -108,13 +109,13 @@
   <table class="data-table">
     <thead>
       <tr><th>Night</th><th>What</th><th class="num">Value</th><th>Why</th>
-          <th>Who</th><th></th></tr>
+          <th>Who</th><th>Flags</th></tr>
     </thead>
     <tbody>
       {% for r in data.rows %}
       <tr>
         <td>{{ r.service_date|date_short }}{% if r.table %}
-          <span class="cell-note">{{ r.table }}</span>{% endif %}</td>
+          <span class="cell-note">Table {{ r.table }}</span>{% endif %}</td>
         <td>{{ r.what }}</td>
         <td class="num">{{ euro(r.value) }}</td>
         <td>{{ r.reason }}</td>

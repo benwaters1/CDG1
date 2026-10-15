@@ -273,12 +273,12 @@ var Gudanes = (function () {
     if (!iso) { return ""; }
     var d = new Date(iso.length <= 10 ? iso + "T12:00:00" : iso);
     if (isNaN(d)) { return iso; }
-    return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
   }
 
   function euros(n) {
     if (n === null || n === undefined || n === "") { return ""; }
-    return Number(n).toLocaleString(undefined, { style: "currency", currency: "EUR" });
+    return Number(n).toLocaleString("en-GB", { style: "currency", currency: "EUR" });
   }
 
   function copy(text, fallbackTextarea) {
