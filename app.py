@@ -7890,6 +7890,8 @@ def init_db():
     # on: on a fresh database the rooms only have the names it looks for once
     # ROOM_IDENTITY has given them.
     apply_room_lineup(conn)
+    # And the owner's corrections of 15 October on top of it, once.
+    apply_room_facts_2026_10_15(conn)
 
     # WHERE THE GATES ARE.
     #
@@ -49569,9 +49571,13 @@ DINING_MODES = {
 # again, and the owner's own edits are left alone for good.
 #
 # old name, new name, price a night, sleeps, beds, place on the site (by price)
+#
+# The Twin Room's two beds are doubles and it sleeps two, and the Queen Room's
+# bed is a king (owner, 15 October 2026; see apply_room_facts_2026_10_15,
+# which puts the same on a database that already has the line-up).
 ROOM_LINEUP = [
-    ("Chambre Tilleul", "The Twin Room", 280, 3, "Twin beds", 1),
-    ("Chambre Cerise", "The Queen Room", 280, 2, "Queen bed", 2),
+    ("Chambre Tilleul", "The Twin Room", 280, 2, "Two double beds", 1),
+    ("Chambre Cerise", "The Queen Room", 280, 2, "King bed", 2),
     ("Chambre du Levant", "The King Room", 380, 2, "King bed", 3),
     ("Chambre \u00c9meraude", "The Gold Suite", 480, 2, "Emperor bed", 4),
     ("Les Deux Chambres", "The Family Suite", 580, 5, "Queen and doubles", 5),
@@ -49581,10 +49587,9 @@ ROOM_LINEUP = [
 # with one neighbouring room" for two rooms that no longer share, and a
 # fallback is exactly where an untrue sentence waits to be shown.
 ROOM_LINEUP_WORDS = {
-    "The Twin Room": "Two beds that can be made up as a twin or pushed together "
-                     "as a double, whichever suits, and a private bathroom on the "
-                     "first floor. The most straightforward room in the house.",
-    "The Queen Room": "A quiet room with a queen bed, floral papers and a marble "
+    "The Twin Room": "Two double beds and a private bathroom on the first floor. "
+                     "The most straightforward room in the house.",
+    "The Queen Room": "A quiet room with a king bed, floral papers and a marble "
                       "chimneypiece, and a private bathroom on the first floor. "
                       "Brass fittings and hexagonal terracotta underfoot, among "
                       "the most recently restored work in the building.",
@@ -49632,6 +49637,64 @@ def apply_room_lineup(conn):
     if changed:
         conn.commit()
         print(f"[rooms] the 24 September line-up: {changed} room(s) renamed and repriced")
+    return changed
+
+
+# The rooms as the owner described them on 15 October 2026, set once on top of
+# the 24 September line-up. By current name, and only while the row still has
+# it; the flag in app_settings means a later edit by hand is never undone.
+# Rooms are two to a room for stays; the Family Suite is two adults and three
+# children; the Twin Room's two beds are doubles; the Queen Room's bed is a
+# king (as _room_copy.html already says).
+ROOM_FACTS_2026_10_15 = {
+    "The Twin Room": {"bed_setup": "Two double beds", "max_adults": 2,
+                      "max_children": 0, "max_occupancy": 2},
+    "The Queen Room": {"bed_setup": "King bed"},
+    "The Family Suite": {"max_adults": 2, "max_children": 3, "max_occupancy": 5},
+}
+# The stock descriptions those beds made untrue (the 24 September wording),
+# replaced only while a room still carries it word for word.
+ROOM_WORDS_2026_10_15 = {
+    "The Twin Room": ("Two beds that can be made up as a twin or pushed together "
+                      "as a double, whichever suits, and a private bathroom on the "
+                      "first floor. The most straightforward room in the house.",
+                      ROOM_LINEUP_WORDS["The Twin Room"]),
+    "The Queen Room": (ROOM_LINEUP_WORDS["The Queen Room"].replace("a king bed", "a queen bed"),
+                       ROOM_LINEUP_WORDS["The Queen Room"]),
+}
+
+
+def apply_room_facts_2026_10_15(conn):
+    """Once: the beds, the sleeping numbers and the feature tags as the owner
+    gave them on 15 October 2026. Returns how many rooms changed.
+
+    The feature tags lose anything that states the beds or which bathroom --
+    the Twin and Queen pages showed "Shared bathroom" under "Private bathroom,
+    on the ground floor" -- and any feature stored as its key is written as
+    its words, because the guest pages print the column as it stands."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'room_facts_2026_10_15'").fetchone():
+        return 0
+    changed = 0
+    for room in conn.execute("SELECT * FROM rooms").fetchall():
+        sets = {}
+        cleaned = clean_room_amenities(room["amenities"])
+        if cleaned != (room["amenities"] or None):
+            sets["amenities"] = cleaned
+        for column, value in ROOM_FACTS_2026_10_15.get(room["name"], {}).items():
+            if room[column] != value:
+                sets[column] = value
+        old, new = ROOM_WORDS_2026_10_15.get(room["name"], (None, None))
+        if old and (room["description"] or "") == old:
+            sets["description"] = new
+        if sets:
+            conn.execute(f"UPDATE rooms SET {', '.join(c + ' = ?' for c in sets)} WHERE id = ?",
+                         (*sets.values(), room["id"]))
+            changed += 1
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('room_facts_2026_10_15', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        print(f"[rooms] the 15 October facts: {changed} room(s) corrected")
     return changed
 
 
@@ -96445,16 +96508,19 @@ EXPENSE_DOC_TYPES = {
 # it. Held as data so the form, the guest-facing page and any future filter
 # read from one list — the old free-text field meant "Private bathroom" and
 # "private bath" were different things and neither could be searched.
+#
+# The beds and which bathroom are NOT ticks: each is asked once, in its own
+# field (bed_setup, bathroom), because the guest pages read those fields. As
+# ticks as well they were asked twice and could disagree -- and did, on the
+# guest page: "Private bathroom, on the ground floor" from the field above a
+# "Shared bathroom" tag from the ticks (15 October 2026).
 ROOM_AMENITIES = {
     "Sleeping": [
-        ("emperor_bed", "Emperor bed"), ("king_bed", "King bed"),
-        ("double_bed", "Double bed"), ("twin_beds", "Twin beds"),
         ("sofa_bed", "Sofa bed"), ("cot_available", "Cot available"),
         ("extra_bed", "Extra bed possible"),
     ],
     "Bathroom": [
-        ("ensuite", "En-suite"), ("private_bathroom", "Private bathroom"),
-        ("shared_bathroom", "Shared bathroom"), ("bath", "Bathtub"),
+        ("bath", "Bathtub"),
         ("shower", "Shower"), ("robes", "Robes & slippers"),
         ("toiletries", "Toiletries"), ("hairdryer", "Hairdryer"),
     ],
@@ -96480,6 +96546,27 @@ ROOM_AMENITIES = {
     ],
 }
 AMENITY_LABELS = {k: v for group in ROOM_AMENITIES.values() for k, v in group}
+# The column holds the WORDS, because the guest pages print it as it stands:
+# a tick saved as its key put "mountain_view" on the booking page. The form
+# reads either, so a room saved under the old keys still shows its ticks.
+AMENITY_KEYS_BY_LABEL = {v.casefold(): k for k, v in AMENITY_LABELS.items()}
+
+
+def amenity_key(token):
+    """The amenity a stored word or key stands for, or None if it is free text."""
+    token = (token or "").strip()
+    if token in AMENITY_LABELS:
+        return token
+    return AMENITY_KEYS_BY_LABEL.get(token.casefold())
+
+
+def says_bed_or_bathroom(token):
+    """Whether a feature tag states the beds or which bathroom -- the two facts
+    that have fields of their own and that a tag must not contradict."""
+    t = (token or "").strip().casefold()
+    return bool(t) and ("bathroom" in t or "en-suite" in t or "ensuite" in t
+                        or t.endswith(" bed") or t.endswith(" beds")
+                        or "bedding" in t)
 
 # What the bathroom asks of you. Deliberately not a yes/no: "over-bath
 # shower" is the answer that catches most people out, and a tickbox marked
@@ -96497,9 +96584,21 @@ ACCESS_BATHROOMS = {
 # who came back in March has not stopped needing it.
 ACCESS_NEEDS_RETENTION_MONTHS = 12
 
-BED_SETUPS = ["Emperor bed", "King bed", "Double bed", "Twin beds",
-              "Twin or double", "Two bedrooms", "Bunk room"]
-BATHROOM_TYPES = ["En-suite", "Private, not en-suite", "Shared"]
+BED_SETUPS = ["Emperor bed", "King bed", "Queen bed", "Double bed", "Two double beds",
+              "Twin beds", "Twin or double", "Queen and doubles", "Two bedrooms",
+              "Bunk room"]
+# Keyed by what the guest pages read. They say "Private bathroom, on the
+# ground floor" for 'private' and "Shared with one other room" for 'shared';
+# the form offered "En-suite", "Private, not en-suite" and "Shared", none of
+# which they understood -- and none of which was the 'private' every room
+# held, so the form opened on "— choose —" and saving a room for any reason
+# wiped its bathroom off the booking cards. The house's bathrooms are on the
+# ground floor and not in the rooms; it sells no more than three rooms a
+# night, so each stay has its own (owner, 15 October 2026).
+BATHROOM_TYPES = {
+    "private": "Private, on the ground floor (not in the room)",
+    "shared": "Shared with one other room",
+}
 
 # What a transfer is FOR. The château runs airport runs, ski shuttles and the
 # occasional station or doctor trip — different lead times, different cars.
@@ -96520,15 +96619,33 @@ def room_amenity_keys(room):
     """The amenity keys a room has. Tolerates the old free-text column, so a
     room set up before this existed keeps working."""
     raw = (room["amenities"] or "") if room else ""
-    return {a.strip() for a in raw.split(",") if a.strip() and a.strip() in AMENITY_LABELS}
+    return {amenity_key(a) for a in raw.split(",") if amenity_key(a)}
 
 
 def room_amenity_freetext(room):
     """Anything in the old column that isn't a known amenity — preserved rather
-    than thrown away when a legacy room is edited."""
+    than thrown away when a legacy room is edited. Not the beds or which
+    bathroom: those have fields of their own, and a tag here contradicted them."""
     raw = (room["amenities"] or "") if room else ""
     return ", ".join(a.strip() for a in raw.split(",")
-                     if a.strip() and a.strip() not in AMENITY_LABELS)
+                     if a.strip() and not amenity_key(a) and not says_bed_or_bathroom(a))
+
+
+def clean_room_amenities(text):
+    """A stored feature list as the guest pages should read it: each known
+    feature in its words (a key becomes its label), and no tag that states
+    the beds or which bathroom. None for nothing."""
+    out = []
+    for token in (text or "").split(","):
+        token = token.strip()
+        key = amenity_key(token)
+        # A known feature first: "Sofa bed" is a feature, not the beds.
+        if not token or (not key and says_bed_or_bathroom(token)):
+            continue
+        word = AMENITY_LABELS[key] if key else token
+        if word not in out:
+            out.append(word)
+    return ", ".join(out) or None
 
 
 def room_fields_from_form():
@@ -96545,7 +96662,10 @@ def room_fields_from_form():
         except ValueError:
             return None
 
-    checked = [k for k in request.form.getlist("amenities") if k in AMENITY_LABELS]
+    # Saved as the words a guest reads; clean_room_amenities also keeps a bed
+    # or a bathroom typed into "anything else" out of the list.
+    checked = [AMENITY_LABELS[k] for k in request.form.getlist("amenities")
+               if k in AMENITY_LABELS]
     extra = (request.form.get("amenities_other", "") or "").strip()
     if extra:
         checked += [a.strip() for a in extra.split(",") if a.strip()]
@@ -96579,7 +96699,7 @@ def room_fields_from_form():
                             if (request.form.get("access_bathroom", "") or "").strip()
                             in ACCESS_BATHROOMS else None),
         "access_notes": (request.form.get("access_notes", "") or "").strip()[:400] or None,
-        "amenities": ", ".join(checked) or None,
+        "amenities": clean_room_amenities(", ".join(checked)),
     }
 
 

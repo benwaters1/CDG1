@@ -111,21 +111,32 @@
     <div class="field-row-2" style="margin-top:14px;">
       <div>
         <label class="field-label" for="bed_setup">Beds</label>
+        {#- What the room holds is always one of the choices. It was not, for
+            two of the five, so the box opened on "— choose —" and saving the
+            room for any reason cleared its beds off the booking cards. -#}
         <select id="bed_setup" name="bed_setup">
           <option value="">— choose —</option>
           {% for b in bed_setups %}
           <option value="{{ b }}" {{ 'selected' if room and room['bed_setup'] == b }}>{{ b }}</option>
           {% endfor %}
+          {% if room and room['bed_setup'] and room['bed_setup'] not in bed_setups %}
+          <option value="{{ room['bed_setup'] }}" selected>{{ room['bed_setup'] }}</option>
+          {% endif %}
         </select>
+        <span class="field-hint">The booking pages say this as the bed.</span>
       </div>
       <div>
         <label class="field-label" for="bathroom">Bathroom</label>
         <select id="bathroom" name="bathroom">
           <option value="">— choose —</option>
-          {% for b in bathroom_types %}
-          <option value="{{ b }}" {{ 'selected' if room and room['bathroom'] == b }}>{{ b }}</option>
+          {% for key, label in bathroom_types.items() %}
+          <option value="{{ key }}" {{ 'selected' if room and (room['bathroom'] or '')|lower == key }}>{{ label }}</option>
           {% endfor %}
+          {% if room and room['bathroom'] and (room['bathroom']|lower) not in bathroom_types %}
+          <option value="{{ room['bathroom'] }}" selected>{{ room['bathroom'] }}</option>
+          {% endif %}
         </select>
+        <span class="field-hint">The booking pages say this as the bathroom, so it is not a tick below.</span>
       </div>
     </div>
   </section>
@@ -152,7 +163,7 @@
     {% if leftover %}
     <label class="field-label" style="margin-top:12px;">Also listed (typed in before)</label>
     <input type="text" name="amenities_other" value="{{ leftover }}">
-    <span class="field-hint">From before there were tick boxes. Tick the equivalents above and clear this.</span>
+    <span class="field-hint">From before there were tick boxes. Tick the equivalents above and clear this. The beds and the bathroom belong in their own boxes above, so a bed or a bathroom typed here is left out.</span>
     {% else %}
     <input type="hidden" name="amenities_other" value="">
     {% endif %}
