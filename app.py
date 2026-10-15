@@ -8700,6 +8700,10 @@ AREA_TITLES = {
 # can see, which is how 181 of them accumulated unnoticed.
 OWNER_ONLY_AREAS = {
     "reports_index": "management",
+    # Where the backup goes. The page it sits on is comms, but the backup is
+    # the whole database -- every guest, every wage -- so whoever can point it
+    # somewhere receives all of that every night. The owner's alone.
+    "update_tech_email": "comms",
     # Listed here and NOT in NAV_AREAS, which is what actually shuts them.
     # can_reach() reads ENDPOINT_AREA, built from NAV_AREAS alone; this dict
     # feeds the menu. So these endpoints are UNMAPPED, and an unmapped
@@ -25935,6 +25939,40 @@ def admin_emails():
                            areas=CAMPAIGN_AREAS, held=held, held_by=held_by)
 
 
+@app.route("/admin/emails/tech-address", methods=["POST"])
+@owner_required
+def update_tech_email():
+    """Save where mail about the software goes. Blank means back to the owner.
+
+    Owner by ROLE as well as by area (it is in OWNER_ONLY_AREAS): the backup
+    is the whole database, so this decides who receives every guest and every
+    wage each night.
+    """
+    if current_user()["role"] != "owner":
+        abort(403)
+    raw = (request.form.get("tech_email") or "").strip().lower()
+    if raw and not EMAIL_RE.match(raw):
+        flash(f"“{raw}” is not an email address, so nothing was changed.", "error")
+        return redirect(url_for("admin_emails") + "#house-mail")
+    conn = get_db()
+    before = tech_email_setting(conn)
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (TECH_EMAIL_KEY, raw))
+    log_audit(conn, "tech_email_changed", None,
+              f"{before or '(the owner)'} -> {raw or '(the owner)'}")
+    fallback = owner_email(conn)
+    conn.commit()
+    conn.close()
+    if raw:
+        flash(f"Backups and the provider test now go to {raw}.", "success")
+    else:
+        flash("Cleared. Backups and the provider test go to you"
+              + (f" ({fallback})" if fallback else "") + " again.", "success")
+    return redirect(url_for("admin_emails") + "#house-mail")
+
+
 @app.route("/admin/emails/new", methods=["POST"])
 @owner_required
 def new_campaign_template():
@@ -26780,17 +26818,26 @@ def test_email_provider():
     house finds out when somebody rings up about a booking they were never
     told had been accepted.
 
-    IT GOES TO THE SIGNED-IN PERSON, AND NOWHERE ELSE. There is deliberately no
-    box to type an address into. A form on an admin page that sends arbitrary
-    text to an arbitrary address, from a freshly verified domain, is the exact
-    thing that gets a domain listed — and the reason to add one is always
-    "just to check", which sending to yourself already does.
+    IT GOES TO THE HOUSE'S TECHNICAL ADDRESS, OR TO THE SIGNED-IN PERSON, AND
+    NOWHERE ELSE. There is deliberately no box to type an address into. A form
+    on an admin page that sends arbitrary text to an arbitrary address, from a
+    freshly verified domain, is the exact thing that gets a domain listed —
+    and the reason to add one is always "just to check", which sending to a
+    house mailbox already does. The technical address is a setting the owner
+    saved, not a box, so it is not that form.
+
+    Technical first because this is mail about the software: sent to the
+    owner, it landed in accounts@ — the money inbox — among the invoices.
 
     Nothing is queued if it fails. A test that files itself in the outbox
     leaves the owner tidying up after checking something worked.
     """
     user = current_user()
-    to = (user["email"] or "").strip() if user else ""
+    conn = get_db()
+    to = tech_email_setting(conn)
+    conn.close()
+    if not to:
+        to = (user["email"] or "").strip() if user else ""
     if not to:
         flash("Your own account has no email address on it, so there is "
               "nowhere to send a test to.", "error")
@@ -26823,7 +26870,8 @@ def test_email_provider():
     sender = ("Resend, from %s" % RESEND_FROM) if resend_enabled() \
         else ("SMTP via %s" % SMTP_HOST)
     went = send_email(to, "Test — the email provider is working", body,
-                      keep=False, report=report, despite_switch="a test sent to yourself")
+                      keep=False, report=report,
+                      despite_switch="a test sent to the house's own mailbox")
     why = report.get("why")
     if MAIL_REDIRECT_TO:
         sender += ", redirected to %s" % MAIL_REDIRECT_TO
@@ -28437,6 +28485,52 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None,
 def owner_email(conn):
     row = conn.execute("SELECT email FROM users WHERE role = 'owner' LIMIT 1").fetchone()
     return row["email"] if row else None
+
+
+# WHERE THE SITE WRITES ABOUT ITSELF. The owner's address is accounts@, which is
+# the money inbox -- invoices, suppliers, Pennylane -- and the nightly backup zip
+# and every provider test landed in it too and buried the invoices. A mailbox
+# for the internet side (website@, 15 Oct 2026) takes the machine mail instead.
+# A setting rather than an address in code, because a mailbox can be renamed
+# and nobody should need a deploy for that.
+TECH_EMAIL_KEY = "tech_email"
+
+
+def tech_email_setting(conn):
+    """The address the owner chose for technical mail, or "" when none is set.
+
+    Read through EMAIL_RE as well as when it was saved: a row edited by hand,
+    or saved before validation existed, should fall back rather than become a
+    backup sent to a typo.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (TECH_EMAIL_KEY,)).fetchone()
+    value = ((row["value"] if row else "") or "").strip()
+    return value if EMAIL_RE.match(value) else ""
+
+
+def tech_email(conn):
+    """Where mail about the software goes: backups, the provider test.
+
+    Empty setting means the owner, so nothing goes silent if it is never
+    filled in. Mail about the BUSINESS -- guests, bookings, money, the daily
+    summary -- never asks this; it goes to owner_email.
+    """
+    return tech_email_setting(conn) or owner_email(conn)
+
+
+# Every kind of mail the house sends to ITSELF, and which of the two helpers
+# decides where it goes, so the Guest email page can say "Backups ->
+# website@" without anybody reading code. test_tech_email holds each "tech"
+# line against the code that sends it.
+HOUSE_MAIL_ROUTES = (
+    ("Backups by email", "tech"),
+    ("The email provider's test message", "tech"),
+    ("The daily summary and the morning note", "owner"),
+    ("New bookings, changes, cancellations, enquiries and waitlist requests", "owner"),
+    ("Money that needs you: a balance not taken, a paid booking that clashes", "owner"),
+    ("Reviews, guests writing in, the contact page", "owner"),
+)
 
 
 def get_vapid_private_key(conn):
@@ -52263,7 +52357,17 @@ def email_health(conn):
         ("Events", "events"),
         ("Money: receipts, statements, balances, refunds", "accounts"),
         ("Anything else", None))]
+    # The other direction: what the SITE sends to the house, and to which
+    # inbox. Worked out by the same two helpers the senders call, so the page
+    # cannot say website@ while the job sends to accounts@.
+    owner_to = owner_email(conn) or ""
+    tech_to = tech_email(conn) or ""
+    house_mail = [(label, tech_to if kind == "tech" else owner_to)
+                  for label, kind in HOUSE_MAIL_ROUTES]
     return {
+        "tech_email": tech_email_setting(conn),
+        "owner_email": owner_to,
+        "house_mail": house_mail,
         "provider": provider,
         "sender": (RESEND_FROM if resend_enabled() else SMTP_FROM if email_enabled() else None),
         "guests_on": guest_mail_live(),
@@ -65522,6 +65626,9 @@ SETTINGS_PLACES = [
         ("admin_automation", "Automation and Write to guests",
          "What runs by itself, and the one switch that holds every letter and text"),
         ("management_email_templates", "Email wording", "What every letter the house sends says"),
+        ("admin_emails", "Guest email and technical mail",
+         "Whether mail is going out, where replies land, and where backups and "
+         "other mail about the website go"),
         ("management_texting", "Texts", "The check-in text, and what texting costs"),
         ("admin_inbox_flags", "Inboxes", "Who answers each inbox, and when it is chased"),
         ("admin_feedback", "Review link", "Where a guest who enjoyed it is sent to say so"),
@@ -83477,7 +83584,8 @@ def readiness_checks(conn, *, include_slow=True):
             # is being made and is not arriving. That is an address problem or
             # a mailbox problem, not a job problem.
             why = ("The job reports success, so a copy is being made and is not "
-                   "arriving — check the address it goes to, and that mailbox.")
+                   f"arriving — check the address it goes to ({tech_email(conn)}), "
+                   "and that mailbox.")
         elif run:
             why = ("The job has run but recorded no outcome, which means it last ran "
                    "before outcomes were recorded. Admin - Automation has a Run now "
@@ -83649,7 +83757,7 @@ def send_backup_email(to_address, zip_bytes, filename, note=""):
     send just tries again next tick) and don't belong sharing a code path
     with a booking confirmation."""
     if not to_address:
-        return False, "no owner email configured"
+        return False, "no address to send it to"
     if resend_enabled():
         payload = {
             "from": RESEND_FROM, "to": [to_address],
@@ -83998,15 +84106,21 @@ def run_health_notes_purge_job(conn):
 
 
 def run_backup_email_job(conn):
-    """Emails a backup zip to the owner on a schedule, so a lost or
-    corrupted Railway volume isn't the only copy. Falls back to the
-    database alone if the full zip (with uploads and room photos) is too
-    big to email — a smaller backup that actually arrives beats a bigger
-    one that a mail provider silently drops."""
-    to_address = owner_email(conn)
+    """Emails a backup zip on a schedule, so a lost or corrupted Railway
+    volume isn't the only copy. Falls back to the database alone if the full
+    zip (with uploads and room photos) is too big to email — a smaller backup
+    that actually arrives beats a bigger one that a mail provider silently
+    drops.
+
+    To tech_email, not the owner: the owner's address is the money inbox, and
+    a zip a day in it buried the invoices."""
+    to_address = tech_email(conn)
     if not to_address:
-        raise JobFailed("no owner email configured, so there is nowhere to send a backup")
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        raise JobFailed("no technical or owner email configured, so there is "
+                        "nowhere to send a backup")
+    # The house's day, not UTC's: the file is named for the day somebody
+    # standing in the Ariège would say it was taken.
+    date_str = house_today_iso()
     skipped = []
     zip_bytes = build_backup_zip(include_media=True, skipped_out=skipped)
     note = ""
@@ -91728,9 +91842,10 @@ AUTOMATION_SWITCHES = [
     {"key": "automation_backup_email_enabled", "job": "backup_email",
      "runs": ("run_backup_email_job",), "group": "house", "reaches": ("you",),
      "label": "Backup by email",
-     "what": "Emails you a full backup — the database, documents and room photos -- "
+     "what": "Emails a full backup — the database, documents and room photos -- "
              "so a lost server is not the only copy. Just the database if the whole "
-             "thing is too big to email.",
+             "thing is too big to email. It goes to the address technical mail goes "
+             "to, set on the Guest email page, or to you if none is set.",
      "fields": (("automation_backup_interval_hours", "Every (hours)", "hours"),)},
     {"key": "automation_balance_due_notice_enabled", "job": "balance_due_notice",
      "runs": ("run_balance_due_notice_job",), "group": "house", "reaches": ("you",),
