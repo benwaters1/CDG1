@@ -50,7 +50,13 @@ def _linked_endpoints():
     for path in glob.glob("templates/**/*.html", recursive=True):
         raw = open(path, encoding="utf-8", errors="replace").read()
         text += re.sub(r"\{#(?:.|\n)*?#\}", " ", raw)
-    return set(re.findall(r"url_for\(\s*['\"](\w+)['\"]", text))
+    found = set(re.findall(r"url_for\(\s*['\"](\w+)['\"]", text))
+    # The sidebar is a template's links too, kept as data in app.py since the
+    # 15 October rebuild rather than as url_for literals in base.html.
+    for menu in (m.NAV_TOP, *[i for g in m.OWNER_MENU + m.STAFF_MENU
+                              for _h, items in g[5] for i in [items]]):
+        found.update(item["endpoint"] for item in menu)
+    return found
 
 
 def _describes_live():

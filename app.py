@@ -8804,36 +8804,390 @@ NAV_AREA_OF = dict(ENDPOINT_AREA)
 NAV_AREA_OF.update({e: a for e, a in OWNER_ONLY_AREAS.items() if a})
 
 
-def _menu_area_of():
-    """Which menu each page is linked from, read from the menu itself.
+# THE SIDEBAR, as data. Rebuilt on 15 October 2026, the day before launch,
+# because the owner could not find the photo mirror or where to add somebody
+# to the team, and "it'll be so hard to get Jasmine and Mum to use it".
+#
+# It was fifteen entries at the top in the order they were written, each
+# group a list in the order its pages were built: Booking.com messages under
+# Comms, Booking.com stays under Management, the photo mirror nowhere at all.
+# Now the groups follow the business -- the stays, the guests, the
+# restaurant, the weddings and ateliers, the day's work, the people, the
+# house, the website, the money, the settings -- in roughly the order a day
+# needs them, and each long group reads in headings.
+#
+# DATA RATHER THAN MARKUP, so that rearranging it is moving a line, and so
+# what the template used to get wrong by hand happens by itself: a link is
+# drawn only for somebody who can open it, a heading only if something is
+# under it, a group only if it holds anything, and the group's own label
+# points at the first page in it that person can open.
+#
+# A group: (key, label, icon, also_opens, badges, sections). `key` is what
+# current_area names for a page the group lists; `also_opens` are the access
+# areas whose pages, listed nowhere, still open this group. A section is
+# (heading or None, items). An item: (endpoint, label, icon, also, badge),
+# `also` being the other pages that light it up -- "area:x" for every page in
+# access area x.
+def _nav(endpoint, label, icon_name, also=(), badge=None):
+    return {"endpoint": endpoint, "label": label, "icon": icon_name,
+            "also": tuple(also), "badge": badge}
 
-    NAV_AREA_OF decides who may open a page, and the sidebar opened whichever
-    menu that area named -- so a page filed under one area and listed in
-    another menu lit up the wrong one. Held, not earned is listed under
-    Financial and filed under Management, and opened Management; the kitchen
-    pages are in the Restaurant menu and opened Estate. Sixteen pages, and
-    changing their area would change who may open them, which is a different
-    decision. So the menu answers "where am I" from base.html, read once
-    here, and the area answers only for pages no menu lists.
-    """
-    path = os.path.join(app.root_path, app.template_folder or "templates", "base.html")
-    try:
-        with open(path, encoding="utf-8") as fh:
-            src = fh.read()
-    except OSError:
-        return {}
+
+NAV_TOP = [
+    # Today first for everyone: who is in and what am I meant to be doing is
+    # the question a member of staff has when they open this on a phone.
+    _nav("staff_today", "Today", "home"),
+    _nav("dashboard", "Home", "home"),
+    _nav("ops_calendar", "Calendar", "calendar"),
+    # High, and for both roles: the one page here people are meant to open
+    # unprompted, and a message nobody sees is worse than none.
+    _nav("chat_home", "Chat", "contacts", ("chat_channel", "chat_with"),
+         "chat_unread_count"),
+]
+
+OWNER_MENU = [
+    ("stays", "Accommodation", "rooms", ("guests",), (), [
+        ("Bookings", [
+            _nav("admin_bookings", "Bookings", "bookings",
+                 ("confirm_booking", "decline_booking", "checkout_booking", "edit_booking")),
+            _nav("admin_calendar", "Booking Calendar", "calendar"),
+            _nav("arrivals_sheet_page", "Arrivals", "calendar"),
+            _nav("admin_rooms", "Rooms", "rooms", ("new_room", "edit_room")),
+            _nav("admin_waitlist", "Room Waitlist", "leave"),
+        ]),
+        ("While they are here", [
+            _nav("breakfast", "Breakfast", "coffee"),
+            _nav("extras_due_page", "Extras Due", "receipt"),
+            _nav("all_transfers", "Transfers", "truck",
+                 ("vehicle_transfers_page", "new_vehicle_transfer")),
+            _nav("door_lock_page", "Front Door", "lock"),
+        ]),
+        ("Booking.com", [
+            _nav("management_booking_com", "Booking.com Messages", "bell"),
+            _nav("channel_stays_page", "Booking.com Stays", "guests"),
+        ]),
+    ]),
+    ("guestbook", "Guests", "guests", (), (), [
+        (None, [
+            _nav("guests", "Guest List", "guests", ("new_guest", "edit_guest")),
+            _nav("admin_feedback", "Guest Feedback", "contacts"),
+            _nav("guest_dates", "Dates Worth Knowing", "calendar"),
+            _nav("import_guests", "Import Guests", "guests"),
+        ]),
+    ]),
+    ("restaurant", "Restaurant", "restaurant", ("till",), ("pending_restaurant_count",), [
+        ("Service", [
+            _nav("pos_home", "Till", "receipt", ("area:till",)),
+            _nav("admin_restaurant", "Reservations", "restaurant", (),
+                 "pending_restaurant_count"),
+            _nav("admin_restaurant_waitlist", "Waitlist", "leave"),
+            _nav("restaurant_tables", "Tables", "restaurant"),
+            _nav("restaurant_covers", "Covers Ahead", "restaurant"),
+        ]),
+        ("Kitchen", [
+            _nav("kitchen_prep", "Prep List", "restaurant"),
+            _nav("kitchen_fridges", "Fridge Temperatures", "wrench"),
+            _nav("admin_stock", "Stock", "shopping"),
+        ]),
+        ("Planning and set-up", [
+            _nav("dinner_covers_page", "Covers Forecast", "restaurant"),
+            _nav("admin_extras", "Extras & Menu", "receipt"),
+            _nav("admin_terminal", "Card Reader", "receipt"),
+            _nav("admin_restaurant_settings", "Restaurant Settings", "management"),
+        ]),
+    ]),
+    ("events", "Weddings & Workshops", "workshop", ("workshops",),
+     ("pending_events_count", "pending_workshop_count"), [
+        ("Weddings and events", [
+            _nav("admin_events", "Weddings & Events", "megaphone", ("area:events",),
+                 "pending_events_count"),
+        ]),
+        ("Workshops", [
+            _nav("admin_workshops", "Workshops & Sessions", "workshop"),
+            _nav("admin_workshop_registrations", "Registrations", "approvals", (),
+                 "pending_workshop_count"),
+            _nav("admin_workshop_waitlist", "Workshop Waitlist", "leave"),
+            _nav("balances_to_collect", "Balances To Collect", "financial"),
+            _nav("admin_workshop_feedback", "Workshop Feedback", "contacts"),
+        ]),
+    ]),
+    ("daily", "Day to Day", "tasks", (), (), [
+        (None, [
+            _nav("shift_handover", "Handover", "receipt"),
+            _nav("admin_tasks", "Tasks", "tasks"),
+            _nav("announcements", "Announcements", "receipt",
+                 ("new_announcement", "edit_announcement", "delete_announcement")),
+            _nav("shopping_list", "Shopping", "shopping"),
+            _nav("contacts", "Contacts", "contacts"),
+            _nav("manual", "Manual", "manual"),
+        ]),
+    ]),
+    ("team", "Employees", "employee", ("payroll", "rota"), (), [
+        ("People", [
+            _nav("directory", "Who Works Here", "employee", ("profile", "edit_employee")),
+            _nav("new_employee", "Add a Team Member", "employee"),
+            _nav("candidates", "Candidates", "guests"),
+            _nav("equipment_overview", "Equipment", "shopping", ("export_equipment_csv",)),
+        ]),
+        ("Rota", [
+            _nav("admin_shifts", "Shifts", "shifts"),
+            _nav("rota_templates_page", "Standard Weeks", "calendar"),
+            _nav("team_calendar", "Team Calendar", "calendar"),
+            _nav("admin_leave", "Time Off", "leave"),
+            _nav("cover_gaps_page", "Nobody On", "shifts"),
+            _nav("rota_clashes_page", "Rota Clashes", "shifts"),
+            _nav("skills_page", "Who Can Do What", "employee"),
+        ]),
+        ("Hours", [
+            _nav("admin_timesheets", "Timesheets", "shifts"),
+            _nav("rota_vs_clock_page", "Rota vs Clock", "shifts"),
+            _nav("overtime_page", "Long Weeks", "shifts"),
+        ]),
+        ("HR", [
+            _nav("admin_hr_notes", "Ask HR", "contacts", (), "open_hr_notes_count"),
+            _nav("admin_hr", "HR & Compliance", "approvals"),
+            _nav("admin_compliance", "Role Compliance", "shield"),
+            _nav("admin_incidents", "Incidents", "wrench"),
+            _nav("admin_payroll", "Payroll Pack", "financial"),
+        ]),
+    ]),
+    ("estate", "House & Upkeep", "wrench", (), (), [
+        ("Rooms", [
+            _nav("room_checks_page", "Room Checks", "wrench", ("walk_room",)),
+            _nav("management_cleaning", "Cleaning Rounds", "wrench"),
+            _nav("room_issues", "Room Issues", "wrench"),
+            _nav("room_faults_page", "Sold With a Fault", "wrench"),
+        ]),
+        ("What the house owns", [
+            _nav("admin_assets", "Asset Register", "building"),
+            _nav("management_vehicles", "Vehicles", "car"),
+            _nav("admin_access", "Keys & Access", "lock"),
+            _nav("management_meters", "Meter Readings", "building"),
+            _nav("room_access_page", "What The House Can Manage", "rooms"),
+        ]),
+        ("Comings and goings", [
+            _nav("management_visitors", "Visitors On Site", "guests"),
+            _nav("management_breakages", "Breakages", "wrench"),
+            _nav("management_lost_property", "Lost Property", "shopping"),
+        ]),
+    ]),
+    ("comms", "Website & Email", "megaphone", (), (), [
+        ("Email", [
+            _nav("admin_emails", "Guest Email", "contacts", ("edit_campaign_template",)),
+            _nav("management_email_templates", "Email Wording", "megaphone"),
+            _nav("admin_email_outbox", "Held Email", "bell"),
+            _nav("admin_inbox_flags", "Inbox Flags", "bell", (), "open_email_flags_count"),
+        ]),
+        ("The website", [
+            _nav("website_analytics", "Website Visitors", "eye"),
+            _nav("admin_gallery", "Public Gallery", "folder"),
+            _nav("admin_images", "Site Photographs", "folder"),
+            _nav("admin_photo_mirror", "Photo Mirror", "folder"),
+            _nav("admin_promo_codes", "Promo Codes", "receipt"),
+        ]),
+    ]),
+    # Grouped by what somebody opening Financial is asking. Unchanged in the
+    # rebuild: it was already in headings, and the owner reads it daily.
+    ("financial", "Financial", "financial", (), (), [
+        ("Waiting on you", [
+            _nav("admin_approvals", "Approvals", "approvals", (), "pending_approvals_count"),
+            _nav("expenses", "Expenses & Invoices", "receipt", ("decide_expense",)),
+            _nav("admin_refunds", "Refunds", "receipt"),
+        ]),
+        ("Owed to the house", [
+            _nav("management_outstanding", "What We're Owed", "financial"),
+            _nav("balances_to_collect", "Balances To Collect", "financial"),
+        ]),
+        ("Sold ahead", [
+            _nav("management_on_the_books", "On The Books", "financial"),
+            _nav("held_not_earned_page", "Held, Not Earned", "financial"),
+        ]),
+        ("Going out", [
+            _nav("management_recurring_costs", "Recurring Costs", "repeat"),
+            _nav("supplier_agreements_page", "What We Are Tied Into", "receipt"),
+            _nav("spend_by_vendor_page", "Spend by Supplier", "receipt"),
+            _nav("management_payment_cost", "Cost Of Taking Money", "financial"),
+            _nav("discount_cost_page", "What Discounts Cost", "financial"),
+        ]),
+        ("The books", [
+            _nav("management_financials", "Financials", "financial"),
+            _nav("admin_transactions", "Transactions", "receipt"),
+            _nav("management_cash_banking", "Cash Banking", "financial"),
+            _nav("admin_reports", "Reports", "financial", ("admin_report",)),
+            _nav("management_break_even", "Break-even", "financial"),
+            _nav("admin_tax", "Tax", "financial"),
+            _nav("management_bank_details", "Bank Details", "financial"),
+        ]),
+    ]),
+    # Settings and permanent records -- last, the group needed least often.
+    ("management", "Management", "management", (), (), [
+        ("Getting ready", [
+            _nav("admin_readiness", "Go-live Checklist", "shield"),
+            _nav("admin_overview", "Overview", "eye", ("admin_overview_status",)),
+        ]),
+        ("Settings", [
+            _nav("management", "All Settings", "management"),
+            _nav("admin_automation", "Automation", "repeat"),
+            _nav("admin_access_levels", "Access Levels", "lock",
+                 ("save_access_preset", "assign_access_preset")),
+            _nav("management_company_info", "Company & Insurance", "building"),
+            _nav("management_vault", "Vault", "lock"),
+        ]),
+        ("Records", [
+            _nav("reports_index", "All the Reports", "eye"),
+            _nav("management_documents", "Documents", "folder"),
+            _nav("meetings_page", "Meetings", "calendar", ("meeting_page",)),
+            _nav("restoration_record", "Restoration Record", "wrench",
+                 ("restoration_work_page",)),
+            _nav("camera_roll", "Camera Roll", "camera"),
+            _nav("vendors", "Vendors", "contacts"),
+        ]),
+        ("Bringing things in", [
+            _nav("import_catalogue", "Import Catalogue", "folder"),
+        ]),
+        ("What happened", [
+            _nav("audit_log", "Audit Log", "eye"),
+            _nav("mail_log", "Mail Log", "eye", ("mail_log_letter",)),
+            _nav("changes_log", "Changes Log", "eye"),
+        ]),
+    ]),
+]
+
+# For a member of staff with no admin areas: their day, in five groups, and
+# nothing that would refuse them. These pages are open to anybody signed in,
+# so nothing here is filtered; it is a set of shortcuts, not an area.
+STAFF_MENU = [
+    ("s_guests", "Guests", "guests", (), (), [
+        (None, [
+            _nav("guests", "Guest List", "guests"),
+            _nav("breakfast", "Breakfast", "coffee"),
+            _nav("all_transfers", "Transfers", "truck"),
+            _nav("extras_due_page", "Extras Due", "receipt"),
+            _nav("guest_dates", "Dates Worth Knowing", "calendar"),
+        ]),
+    ]),
+    ("s_restaurant", "Restaurant", "restaurant", (), (), [
+        (None, [
+            _nav("pos_home", "Till", "receipt", ("pos_order", "pos_kitchen")),
+            _nav("restaurant_covers", "Covers Ahead", "restaurant"),
+            _nav("restaurant_tables", "Tables", "restaurant"),
+            _nav("kitchen_prep", "Prep List", "restaurant", ("prep_item_done",)),
+            _nav("kitchen_fridges", "Fridge Temperatures", "wrench"),
+        ]),
+    ]),
+    ("house", "The House", "wrench", (), (), [
+        (None, [
+            _nav("shift_handover", "Handover", "receipt"),
+            _nav("room_checks_page", "Room Checks", "wrench", ("walk_room",)),
+            _nav("room_issues", "Room Issues", "wrench"),
+            _nav("management_cleaning", "Cleaning Rounds", "wrench", ("cleaning_round_done",)),
+            _nav("management_visitors", "Visitors On Site", "guests", ("sign_out_visitor",)),
+            _nav("management_breakages", "Breakages", "wrench"),
+            _nav("management_lost_property", "Lost Property", "shopping",
+                 ("resolve_lost_property",)),
+            _nav("management_meters", "Meter Readings", "building"),
+        ]),
+    ]),
+    ("me", "My Work", "shifts", (), (), [
+        (None, [
+            _nav("my_shifts", "My Shifts", "shifts"),
+            _nav("my_hours", "My Hours", "shifts"),
+            _nav("my_leave", "Time Off", "leave"),
+            _nav("my_availability", "My Availability", "calendar"),
+            _nav("my_expenses", "Expenses", "receipt", ("submit_expense",)),
+            _nav("mileage", "Mileage", "car"),
+            _nav("my_reviews", "My Reviews", "approvals"),
+            _nav("ask_hr", "Ask HR", "contacts"),
+            _nav("profile", "My Profile", "employee"),
+        ]),
+    ]),
+    ("team_info", "The Team", "employee", (), (), [
+        (None, [
+            _nav("directory", "Team Directory", "guests"),
+            _nav("team_calendar", "Team Calendar", "calendar"),
+            _nav("announcements", "Announcements", "receipt",
+                 ("new_announcement", "edit_announcement", "delete_announcement")),
+            _nav("manual", "Manual", "manual"),
+            _nav("contacts", "Contacts", "contacts"),
+            _nav("shopping_list", "Shopping", "shopping"),
+        ]),
+    ]),
+]
+
+
+def _menu_of(menu):
+    """Which group each page opens: the first group that lists it, or lists
+    it as one of an item's own pages."""
     found = {}
-    for block in re.finditer(
-            r"""<div class="nav-dropdown \{\{ 'open' if current_area """
-            r"""(?:== '(\w+)'|in \['(\w+)'[^\]]*\]) \}\}">(.*?)\n    </div>""", src, re.S):
-        area = block.group(1) or block.group(2)
-        for endpoint in re.findall(r"url_for\('(\w+)'", block.group(3)):
-            found.setdefault(endpoint, area)
+    for key, _label, _icon, _opens, _badges, sections in menu:
+        for _heading, items in sections:
+            for item in items:
+                found.setdefault(item["endpoint"], key)
+                for other in item["also"]:
+                    if not other.startswith("area:"):
+                        found.setdefault(other, key)
     return found
 
 
-# Read at import, from the template the sidebar is drawn from.
-MENU_AREA_OF = _menu_area_of()
+# Which menu a page is under, for the menu an admin sees. Who may open the
+# page is still NAV_AREA_OF's answer; this answers only "where am I".
+MENU_AREA_OF = _menu_of(OWNER_MENU)
+STAFF_MENU_OF = _menu_of(STAFF_MENU)
+
+
+def view_is_guarded(endpoint):
+    """Whether a page sits behind owner_required, and so behind an area."""
+    return bool(getattr(app.view_functions.get(endpoint), "is_guarded", False))
+
+
+def build_nav(user, endpoint, badges):
+    """The sidebar for this person on this page: {"top": [...], "groups": [...]}.
+
+    Admin areas get OWNER_MENU, filtered link by link; staff with none get
+    STAFF_MENU whole. A link to a guarded page needs can_reach; one open to
+    anybody signed in needs its area granted, as it did inside its old group,
+    so somebody with only the till is not handed the rota.
+    """
+    areas = user_access(user)
+    full = "*" in areas
+    staff = not areas
+    menu, menu_of = (STAFF_MENU, STAFF_MENU_OF) if staff else (OWNER_MENU, MENU_AREA_OF)
+    here = menu_of.get(endpoint) or NAV_AREA_OF.get(endpoint)
+
+    def shown(ep):
+        if staff or full:
+            return True
+        if view_is_guarded(ep):
+            return can_reach(user, ep)
+        area = NAV_AREA_OF.get(ep)
+        return area is None or area in areas
+
+    def drawn(item):
+        try:
+            url = (url_for(item["endpoint"], user_id=user["id"])
+                   if item["endpoint"] == "profile" else url_for(item["endpoint"]))
+        except Exception:
+            return None          # a renamed page costs its line, not the sidebar
+        lit = endpoint == item["endpoint"] or endpoint in item["also"] or any(
+            o == f"area:{NAV_AREA_OF.get(endpoint)}" for o in item["also"])
+        return {"url": url, "label": item["label"], "icon": item["icon"],
+                "active": lit, "badge": badges.get(item["badge"]) if item["badge"] else None}
+
+    top = [d for d in (drawn(i) for i in NAV_TOP) if d]
+    groups = []
+    for key, label, icon_name, opens, badge_keys, sections in menu:
+        out = []
+        for heading, items in sections:
+            links = [d for d in (drawn(i) for i in items if shown(i["endpoint"])) if d]
+            if links:
+                out.append((heading, links))
+        if not out:
+            continue
+        total = sum(badges.get(k) or 0 for k in badge_keys)
+        groups.append({"key": key, "label": label, "icon": icon_name,
+                       "url": out[0][1][0]["url"], "sections": out,
+                       "open": here == key or here in opens, "badge": total or None})
+    return {"top": top, "groups": groups}
 
 
 def user_access(user):
@@ -8913,6 +9267,8 @@ def owner_required(view):
         if not can_reach(user, request.endpoint):
             abort(403)
         return view(*args, **kwargs)
+    # So the sidebar can ask whether a link needs an area (view_is_guarded).
+    wrapped.is_guarded = True
     return wrapped
 
 
@@ -30288,6 +30644,17 @@ def inject_user():
         "open_email_flags_count": open_email_flags_count,
         "chat_unread_count": chat_unread_count,
         "may": may, "can": can, "user_areas": areas, "area_titles": AREA_TITLES,
+        # The sidebar, built only when base.html draws it -- the public pages
+        # and the letters render through here too and have no use for it.
+        "nav_menu": (lambda: build_nav(user, request.endpoint, {
+            "chat_unread_count": chat_unread_count,
+            "pending_approvals_count": pending_approvals_count,
+            "open_hr_notes_count": open_hr_notes_count,
+            "pending_restaurant_count": pending_restaurant_count,
+            "pending_workshop_count": pending_workshop_count,
+            "pending_events_count": pending_events_count,
+            "open_email_flags_count": open_email_flags_count,
+        })) if user else (lambda: {"top": [], "groups": []}),
         # Shared vocabularies, exposed here rather than passed by each route.
         # Passing them by hand meant finding every render of a form -- and the
         # guest form is rendered from four places, so three of them got the
@@ -34432,6 +34799,7 @@ def export_pay_history_csv():
 @app.route("/directory/new", methods=["GET", "POST"])
 @owner_required
 def new_employee():
+    """Add somebody to the team, and send them their invitation to sign in."""
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
@@ -38559,7 +38927,9 @@ PALETTE_PAGES = [
     ("Guest feedback", "admin_feedback", "reviews"),
     ("Waitlist", "admin_waitlist", ""),
     ("Breakfast", "breakfast", "orders"),
-    ("Team", "directory", "employees staff people"),
+    ("Team", "directory", "employees staff people who works here"),
+    ("Add a team member", "new_employee",
+     "add new employee staff person member hire invite login sign in account"),
     ("Candidates", "candidates", "recruitment hiring"),
     ("HR & compliance", "admin_hr", "certifications absence reviews working time"),
     ("Role compliance", "admin_compliance", "required certificates qualified"),
@@ -38672,9 +39042,12 @@ PALETTE_PAGES = [
      "worth referral heard about us demand"),
     ("Who is in the house right now", "roll_call",
      "roll call fire evacuation muster who is here safety emergency headcount"),
-    ("Photographs we do not own", "admin_photo_mirror",
-     "images photos squarespace cdn hotlink mirror logo pictures gallery "
-     "who hosts our pictures"),
+    # Named as the house talks about it. It was listed as "Photographs we do
+    # not own" and found by "mirror" under that name, which nobody looking
+    # for the photo mirror recognised as the answer.
+    ("Photo mirror: the site's photographs", "admin_photo_mirror",
+     "images photos squarespace cdn hotlink mirror copy copies logo pictures "
+     "gallery who hosts our pictures we do not own"),
     ("Audit log", "audit_log", "who did what history"),
     ("Changes log", "changes_log",
      "changes changed edited who changed field before after history log"),
@@ -38716,8 +39089,12 @@ def api_palette():
             "all_transfers",
         ):
             continue
+        # Every word typed, anywhere in the label or its keywords -- not the
+        # phrase as typed. "photo mirror" found nothing when it was matched
+        # whole, because no entry holds those two words side by side, and
+        # people type two words far more often than they type the label.
         hay = f"{label} {keywords}".lower()
-        if low in hay:
+        if all(word in hay for word in low.split()):
             try:
                 out.append({"kind": "Page", "label": label, "sub": "",
                             "url": url_for(endpoint),
@@ -78365,7 +78742,7 @@ def room_economics_page():
         overview_cell("With an open fault", len(faults), alert=bool(faults)),
     ]
     return render_template("room_economics.html", data=data, overview=overview,
-                           months=months, today=today, live=live)
+                           months=months, today=today)
 
 
 @app.route("/admin/guests/regulars")

@@ -134,6 +134,19 @@ def run():
                       re.findall(r'"(?:url|href|path)"\s*:\s*"([^"]+)"', palette))
     except Exception:
         pass
+    # And every page the sidebar offers. Since the 15 October rebuild the
+    # menus are data in app.py rather than url_for literals in base.html, and
+    # the staff menu (My Hours, Time Off, Ask HR...) is never drawn for the
+    # owner whose pages are read above.
+    for menu in (m.OWNER_MENU, m.STAFF_MENU):
+        for _k, _l, _i, _o, _b, sections in menu:
+            for _h, items in sections:
+                for item in items:
+                    try:
+                        with m.app.test_request_context("/"):
+                            served.add(m.url_for(item["endpoint"]))
+                    except Exception:
+                        pass
     # And every address a template writes as a literal. Both signals are
     # needed: the section pages build their links from a catalogue, so the
     # endpoint name never appears in the source, while a page linked only
