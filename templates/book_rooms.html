@@ -196,7 +196,7 @@
   'The Gold Suite': RM_IMG[5], 'The Family Suite': RM_IMG[4]
 } %}
 {#- 5 Oct: each room's own photograph (Booking.com) wins over the old mapping. -#}
-{%- for _n, _ph in ROOM_PHOTOS.items() %}{% set _ = RM_FOR.update({_n: (_ph[0][0]|replace('max2048x2048','max1024x768'))}) %}{% endfor %}
+{%- for _n, _ph in ROOM_PHOTOS.items() %}{% set _ = RM_FOR.update({_n: (_ph[0][0])}) %}{% endfor %}
 {# Written descriptions per room, used when the database field is thin.
    Anything entered in the admin overrides these. #}
       {%- set _first %}{% set _rp = ROOM_PHOTOS.get(room_name(room['name'])) %}{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% elif _rp %}{{ _rp[0][0] }}{% else %}{{ RM_FOR.get(room['name'], RM_IMG[loop.index0 % RM_IMG|length]) }}?format=1000w{% endif %}{% endset %}
@@ -329,6 +329,9 @@
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f48b527d-f987-44e5-b612-bd5cedb2ea5b/Screenshot+2026-07-31+at+2.15.48+pm.png?format=1000w" alt="The Twin Room by candlelight" loading="lazy"><figcaption>The Twin Room</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w" alt="The Gold Suite, the four-poster bed" loading="lazy"><figcaption>The Gold Suite</figcaption></figure></li>
     <li><figure><img src="https://cf.bstatic.com/xdata/images/hotel/max2048x2048/921671186.jpg?k=a5670a5a51ac1bf53f853d25ff405ae439028dc711265e0afa7b4bf116e3c9f6&o=" alt="The Family Suite" loading="lazy"><figcaption>The Family Suite</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/views/chair-flowers-window-800.jpg') }}" srcset="{{ url_for('static', filename='img/views/chair-flowers-window-800.jpg') }} 800w, {{ url_for('static', filename='img/views/chair-flowers-window.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="A chair by the window, the mountains beyond" loading="lazy"><figcaption>A chair by the window, the mountains beyond</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/views/mountains-open-window-800.jpg') }}" srcset="{{ url_for('static', filename='img/views/mountains-open-window-800.jpg') }} 800w, {{ url_for('static', filename='img/views/mountains-open-window.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The mountains, through an open window" loading="lazy"><figcaption>The mountains, through an open window</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/views/mountain-spring-sky-800.jpg') }}" srcset="{{ url_for('static', filename='img/views/mountain-spring-sky-800.jpg') }} 800w, {{ url_for('static', filename='img/views/mountain-spring-sky.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The mountain under a spring sky" loading="lazy"><figcaption>The mountain under a spring sky</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1000w" alt="One of the ground-floor bathrooms" loading="lazy"><figcaption>A bathroom of your own</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dedda173-4be1-4989-a43b-79662a5deb95/Bathrooms+-+After+Work+Dressing+Room+2.jpg?format=1000w" alt="A bathroom dressing room, roses by the window" loading="lazy"><figcaption>Its dressing room</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1583504973197-GYZ22GF1PB0L7P92T7RV/Screen+Shot+2020-03-06+at+10.23.55+pm.png?format=1000w" alt="A bathroom papered in blue, the claw-foot bath on the old terracotta" loading="lazy"><figcaption>The claw-foot bath</figcaption></figure></li>
@@ -338,6 +341,28 @@
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f1de700e-0871-4811-9769-4a3c5c5a3a51/Screenshot+2026-08-15+at+12.04.53+am.png?format=1000w" alt="The lounge" loading="lazy"><figcaption>The lounge</figcaption></figure></li>
   </ul>
 </div></section>
+
+{#- 14 Oct (owner: "more photos on the nightly page"): the grounds a night's stay includes - the pool, the gardens, the
+    lawns and the views (the Estate: "The pool, the tennis court, the terraces and the gardens"). Nightly shows only the five
+    guest rooms; no salons or other bedrooms here. -#}
+<section class="g-sec g-sec--sand g-gallery-sec"><div class="g-wrap">
+  <p class="g-fr">Le domaine <span class="g-fr__en">The grounds</span></p>
+  <h2 class="g-place">The Grounds Are Yours</h2>
+  <p class="g-p g-intro">A night here comes with the grounds: the pool, the formal garden and the lawns, and the mountains all around.</p>
+  <ul class="g-befgrid g-gallery">
+    <li><figure><img src="{{ url_for('static', filename='img/rk/from-the-air-pool-garden-800.jpg') }}" srcset="{{ url_for('static', filename='img/rk/from-the-air-pool-garden-800.jpg') }} 800w, {{ url_for('static', filename='img/rk/from-the-air-pool-garden.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The château, the formal garden and the pool" loading="lazy"><figcaption>The château, the formal garden and the pool</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/xx/garden-chateau-mountains-800.jpg') }}" srcset="{{ url_for('static', filename='img/xx/garden-chateau-mountains-800.jpg') }} 800w, {{ url_for('static', filename='img/xx/garden-chateau-mountains.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The château over its garden, the mountains beyond" loading="lazy"><figcaption>The château over its garden, the mountains beyond</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/grounds/late-summer-flowers-urn-800.jpg') }}" srcset="{{ url_for('static', filename='img/grounds/late-summer-flowers-urn-800.jpg') }} 800w, {{ url_for('static', filename='img/grounds/late-summer-flowers-urn.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="Late-summer flowers around an old urn" loading="lazy"><figcaption>Late-summer flowers around an old urn</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/xx/garden-sofas-mountains-800.jpg') }}" srcset="{{ url_for('static', filename='img/xx/garden-sofas-mountains-800.jpg') }} 800w, {{ url_for('static', filename='img/xx/garden-sofas-mountains.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="Sofas on the lawn, facing the mountains" loading="lazy"><figcaption>Sofas on the lawn, facing the mountains</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/rk/from-the-garden-800.jpg') }}" srcset="{{ url_for('static', filename='img/rk/from-the-garden-800.jpg') }} 800w, {{ url_for('static', filename='img/rk/from-the-garden.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The château from the garden" loading="lazy"><figcaption>The château from the garden</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/dining/chateau-above-roses-800.jpg') }}" srcset="{{ url_for('static', filename='img/dining/chateau-above-roses-800.jpg') }} 800w, {{ url_for('static', filename='img/dining/chateau-above-roses.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The château above the roses" loading="lazy"><figcaption>The château above the roses</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/rk/down-the-drive-800.jpg') }}" srcset="{{ url_for('static', filename='img/rk/down-the-drive-800.jpg') }} 800w, {{ url_for('static', filename='img/rk/down-the-drive.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="Down the drive to the château" loading="lazy"><figcaption>Down the drive to the château</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/rk/across-the-far-lawn-800.jpg') }}" srcset="{{ url_for('static', filename='img/rk/across-the-far-lawn-800.jpg') }} 800w, {{ url_for('static', filename='img/rk/across-the-far-lawn.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="Across the far lawn" loading="lazy"><figcaption>Across the far lawn</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/rk/park-to-the-mountains-800.jpg') }}" srcset="{{ url_for('static', filename='img/rk/park-to-the-mountains-800.jpg') }} 800w, {{ url_for('static', filename='img/rk/park-to-the-mountains.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The park, running to the mountains in the mist" loading="lazy"><figcaption>The park, running to the mountains in the mist</figcaption></figure></li>
+  </ul>
+  <p style="margin-top:var(--s5)"><a href="{{ url_for('facilities_page') }}" class="g-btn g-btn">Walk the grounds</a></p>
+</div></section>
+
 
 {% if _dm != 'hidden' %}<!-- ============ LA CUISINE ============ -->
 {# Matches the workshops page — same voice, same claims, adjusted for a

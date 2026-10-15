@@ -171,7 +171,23 @@
    here is gone. A fallback would advertise rates the owner cannot edit
    and rooms that may not be bookable — worse than showing nothing. #}
 {% set shown_rooms = rooms %}
+{#- 14 Oct (owner: "make sure the drone photos of the pool/garden/house are on the homepage"): Paulina Bruni's aerials
+    (Rebecca & Ken, no credits). -#}
+<section class="g-sec g-aerial"><div class="g-wrap">
+  <span class="g-hill" aria-hidden="true">{{ illus('chateau') }}</span>
+  <p class="g-fr">Vu d’en haut <span class="g-fr__en">From above</span></p>
+  <h2 class="g-place">The Estate from Above</h2>
+  <p class="g-p g-intro">The château above its terraces, the formal garden and the pool below, and the mountains all around.</p>
+  <div class="g-aerial__grid">
+    <figure class="g-aerial__main"><img src="{{ url_for('static', filename='img/rk/from-the-air-pool-garden.jpg') }}" srcset="{{ url_for('static', filename='img/rk/from-the-air-pool-garden-800.jpg') }} 800w, {{ url_for('static', filename='img/rk/from-the-air-pool-garden.jpg') }} 1600w" sizes="(min-width: 60rem) 760px, 100vw" alt="The château from the air, with the formal garden and the pool" loading="lazy"><figcaption>The château, the formal garden and the pool</figcaption></figure>
+    <figure><img src="{{ url_for('static', filename='img/rk/from-the-air-mountains-800.jpg') }}" srcset="{{ url_for('static', filename='img/rk/from-the-air-mountains-800.jpg') }} 800w, {{ url_for('static', filename='img/rk/from-the-air-mountains.jpg') }} 1600w" sizes="(min-width: 60rem) 380px, 100vw" alt="The château from the air, the mountains behind" loading="lazy"><figcaption>The mountains behind</figcaption></figure>
+    <figure><img src="{{ url_for('static', filename='img/rk/from-the-air-parterre-800.jpg') }}" srcset="{{ url_for('static', filename='img/rk/from-the-air-parterre-800.jpg') }} 800w, {{ url_for('static', filename='img/rk/from-the-air-parterre.jpg') }} 1600w" sizes="(min-width: 60rem) 380px, 100vw" alt="The parterre from above" loading="lazy" style="object-position: center 78%"><figcaption>The parterre from above</figcaption></figure>
+  </div>
+  <p class="g-aerial__more"><a href="{{ url_for('facilities_page') }}">Explore the Estate <span aria-hidden="true">&rarr;</span></a></p>
+</div></section>
+
 {% if shown_rooms %}
+
 <section class="g-sec"><div class="g-wrap">
   <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M0 13h38"/><path d="M82 13h38"/>
@@ -207,7 +223,7 @@
         'The Gold Suite': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w',
         'The Family Suite': 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/cc7f6cb2-243c-47a9-ab7e-5200a66afca1/bedroom+3.jpg?format=1000w'
       } %}
-      {%- for _n, _ph in ROOM_PHOTOS.items() %}{% set _ = HR_IMG.update({_n: (_ph[0][0]|replace('max2048x2048','max1024x768'))}) %}{% endfor %}
+      {%- for _n, _ph in ROOM_PHOTOS.items() %}{% set _ = HR_IMG.update({_n: (_ph[0][0])}) %}{% endfor %}
       {%- set _first %}{% if r.get('img') %}{{ r['img'] }}{% elif r['photo_filename'] %}{{ url_for('room_photo', filename=r['photo_filename']) }}{% else %}{{ HR_IMG.get(room_name(r['name']), 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583507444802-ZWPKZA5RWBS7BHZ9LJ0V/IMG_2988.jpg?format=1000w') }}{% endif %}{% endset %}
       {{ room_slides(room_name(r['name']), _first|trim, 'g-homeroom__img', room_name(r['name'])) }}
       <div class="g-homeroom__b">
@@ -287,7 +303,7 @@
 </div></section>{% endif %}
 {% include '_plaisirs.html' %}
 <section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
-  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/002bc94f-c8f0-4c5d-bbfd-36984cde7af4/Screenshot+2025-02-14+at+1.55.45+pm.png?format=1500w" alt="A long table laid for a celebration" loading="lazy">
+  <img class="g-half__img" src="{{ url_for('static', filename='img/rk/long-table-candlelight.jpg') }}" alt="The long table by candlelight, laid for a celebration" loading="lazy">
   <div class="g-half__text">
     {#- 13 Oct (owner: weddings work "anywhere it is on the homepage"): the owner's facts - 40 inside, a marquee, 15 to stay;
         flowers, meals and drinks by us (nothing more). -#}
