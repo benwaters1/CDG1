@@ -32,12 +32,15 @@ FINANCIAL = {
     "admin_transactions", "management_cash_banking", "admin_reports",
     "management_break_even", "admin_tax", "management_bank_details",
 }
+# The 15 October 2026 rebuild moved five out to where people look for them --
+# Booking.com stays to Accommodation, the gallery, site photographs and promo
+# codes to Website & Email, importing guests to Guests -- and brought Overview
+# in. test_menu_layout checks that none of them left the menu altogether.
 MANAGEMENT = {
     "management", "admin_automation", "admin_access_levels", "management_company_info",
-    "admin_promo_codes", "management_vault", "admin_readiness", "reports_index",
+    "management_vault", "admin_readiness", "admin_overview", "reports_index",
     "management_documents", "meetings_page", "restoration_record", "camera_roll",
-    "channel_stays_page", "vendors", "admin_gallery", "admin_images",
-    "import_catalogue", "import_guests", "audit_log", "mail_log", "changes_log",
+    "vendors", "import_catalogue", "audit_log", "mail_log", "changes_log",
 }
 
 

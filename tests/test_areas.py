@@ -119,15 +119,16 @@ def run():
 
     s.section("Only one list says what is in an area")
     base = open("templates/base.html", encoding="utf-8").read()
-    leftovers = [n for n in re.findall(r"\{%\s*set (\w+)_endpoints", base)
-                 if n != "house"]
+    leftovers = re.findall(r"\{%\s*set (\w+)_endpoints", base)
     s.check("the nav keeps no hand-typed copy", not leftovers,
             detail=f"{leftovers} — this is the drift that left 73 pages unable "
                    "to highlight their own menu")
-    # The House is a curated set of shortcuts ACROSS areas, not an area, so it
-    # has nothing to read and is allowed to keep its own list.
-    s.check("except The House, which is a shortcut menu and not an area",
-            "house_endpoints" in base)
+    # The House is a curated set of shortcuts ACROSS areas, not an area. Its
+    # list used to be typed into base.html; since the 15 October rebuild every
+    # menu is data in app.py, and The House is one of STAFF_MENU's groups.
+    s.check("The House is a group of the staff menu, kept as data",
+            "house" in [g[0] for g in m.STAFF_MENU] and "url_for(" not in
+            base[base.find('<nav class="nav">'):base.find("</nav>")])
 
     s.section("A page knows which menu it is under")
     for path, want in (("/admin/city-tax", "financial"),

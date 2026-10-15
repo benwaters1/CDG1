@@ -78,15 +78,12 @@ def run():
     # Recurring Costs all sat here AND under Financial; Email Templates and
     # Inbox Flags here AND under Comms. A hub that repeats the menu is what
     # makes an app feel like it has more places than it has.
-    nav_html = open(os.path.join(ROOT, "templates", "base.html"), encoding="utf-8").read()
-    menu_only = nav_html[nav_html.index("{% if user_areas %}"):]
     # The Management dropdown is meant to mirror this page — it is the same
     # group seen from the sidebar. What must not repeat is another group's
-    # menu, so that block is cut out before comparing.
-    mgmt_start = menu_only.index("{% if may('management') %}")
-    mgmt_end = menu_only.index("{% endif %}", menu_only.index("</div>", mgmt_start))
-    other_menus = menu_only[:mgmt_start] + menu_only[mgmt_end:]
-    in_other_menus = set(re.findall(r"""url_for\('([a-z_]+)'\)""", other_menus))
+    # menu, so that group is left out before comparing. The menus are data
+    # since the 15 October rebuild (OWNER_MENU), so they are read from there.
+    in_other_menus = {item["endpoint"] for key, _l, _i, _o, _b, sections in m.OWNER_MENU
+                      if key != "management" for _h, items in sections for item in items}
     repeated = sorted(set(targets) & in_other_menus)
     s.check("no card duplicates a link belonging to another group", not repeated,
             detail=", ".join(repeated))
@@ -113,9 +110,10 @@ def run():
     s.check("the Management page no longer duplicates Estate's vehicles",
             "management_vehicles" not in targets,
             detail="vehicles is offered from two menus again")
-    nav = open(os.path.join(ROOT, "templates", "base.html"), encoding="utf-8").read()
-    s.check("but it is still reachable from Estate",
-            "management_vehicles" in nav, detail="the vehicles link was lost entirely")
+    estate = [item["endpoint"] for key, _l, _i, _o, _b, sections in m.OWNER_MENU
+              if key == "estate" for _h, items in sections for item in items]
+    s.check("but it is still reachable from Estate (House & Upkeep)",
+            "management_vehicles" in estate, detail="the vehicles link was lost entirely")
 
     s.section("Folding a group in must not cost anyone the link")
     # Till now sits inside Restaurant, and Events inside Guests. Every current

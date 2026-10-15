@@ -98,7 +98,7 @@
       <span class="g-wednum__ill" aria-hidden="true">{{ illus('fourposter') }}</span>
       <p class="g-wednum__n">Fifteen</p>
       <h3 class="g-wednum__t">To stay the night</h3>
-      <p class="g-p">Fifteen guests sleep in the château’s five bedrooms; everyone else stays close by.</p>
+      <p class="g-p">Fifteen guests sleep in the château; everyone else stays close by.</p>
     </div>
   </div>
 </div></section>
@@ -123,9 +123,9 @@
   <span class="g-hill" aria-hidden="true">{{ illus('fourposter') }}</span>
   <p class="g-fr">La Suite Dorée <span class="g-fr__en">The Gold Suite</span></p>
   <h2 class="g-place">The Gold Suite</h2>
-  <p class="g-p g-intro">The grandest of the five bedrooms: a gilded four-poster with an emperor bed, and armchairs by the fireplace, within walls left as they were found.</p>
+  <p class="g-p g-intro">A gilded four-poster with an emperor bed, and armchairs by the fireplace, within walls left as they were found.</p>
   {%- set _gold = (ROOM_EXTRA.get('The Gold Suite', []) + ROOM_PHOTOS.get('The Gold Suite', []))[:3] %}
-  <ul class="g-befgrid g-gallery g-wed-gold__grid">
+  <ul class="g-befgrid g-gallery g-wed-gold__grid g-lb-scope">
     {%- for src, alt in _gold %}
     <li><figure><img src="{{ src }}" alt="{{ alt }}" loading="lazy"></figure></li>
     {%- endfor %}
@@ -181,7 +181,7 @@
   <p class="g-fr">En images <span class="g-fr__en">In pictures</span></p>
   <h2 class="g-place">Weddings at Gudanes</h2>
   <p class="g-p g-intro">Candlelight in the salons, long tables and music; and outside, the terraces and gardens where a marquee would stand.</p>
-  <ul class="g-befgrid g-gallery">
+  <ul class="g-befgrid g-gallery g-lb-scope">
     <li><figure><img src="{{ url_for('static', filename='img/weddings/long-table-candlelit-800.jpg') }}" srcset="{{ url_for('static', filename='img/weddings/long-table-candlelit-800.jpg') }} 800w, {{ url_for('static', filename='img/weddings/long-table-candlelit.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The long table, every candle lit" loading="lazy"><figcaption>The long table, every candle lit</figcaption></figure></li>
     <li><figure><img src="{{ url_for('static', filename='img/weddings/staircase-candlelit-800.jpg') }}" srcset="{{ url_for('static', filename='img/weddings/staircase-candlelit-800.jpg') }} 800w, {{ url_for('static', filename='img/weddings/staircase-candlelit.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The staircase, lit for the evening" loading="lazy"><figcaption>The staircase, lit for the evening</figcaption></figure></li>
     <li><figure><img src="{{ url_for('static', filename='img/weddings/bride-on-the-staircase-800.jpg') }}" srcset="{{ url_for('static', filename='img/weddings/bride-on-the-staircase-800.jpg') }} 800w, {{ url_for('static', filename='img/weddings/bride-on-the-staircase.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="A bride coming down the candlelit staircase" loading="lazy"><figcaption>Coming down the candlelit staircase</figcaption></figure></li>
@@ -234,7 +234,7 @@
 {% from '_faq.html' import faq %}
 {{ faq([
   ('How many guests can we invite?', 'Up to forty inside the château, for the ceremony, the dinner and the evening. For a larger wedding, a marquee can be hired for the grounds.'),
-  ('Can our guests stay at the château?', 'Fifteen guests can stay the night in the château’s five bedrooms. For the rest of your party there are three places close by: Pays de Beille at the foot of the drive, Maison Beaucoup about a kilometre away, and Les Granges de Léo about two.'),
+  ('Can our guests stay at the château?', 'Fifteen guests can stay the night in the château. For the rest of your party there are three places close by: Pays de Beille at the foot of the drive, Maison Beaucoup about a kilometre away, and Les Granges de Léo about two.'),
   ('Do you do the catering?', 'We look after the flowers, the meals and the drinks. The flowers are chosen at the markets and gathered from the gardens, then arranged by us.'),
   ('Can we bring our own photographer or wedding planner?', 'Of course. Photography, film and everything else are yours to choose, or your planner’s, and we are glad to work alongside them.'),
   ('Can we marry in a church?', 'Yes. A local church about five minutes away can be used for the ceremony, and everyone comes back to the château for the rest of the day.'),

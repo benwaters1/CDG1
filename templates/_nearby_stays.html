@@ -7,8 +7,20 @@
     Guests book them directly - no arrangement is claimed.
     13 Oct (owner): add Camping du Pays de Beille - "next to us", "a walk up the private drive to the château", "it's not
     actually camping, there are villas". Listing: Route du camping, 09310 Les Cabannes, by the river, open all year.
+    14 Oct (owner): Pays de Beille and Les Gîtes de Beille are the same place - named as guests will find it online.
+    All three have given permission for their photographs (owner, 14 Oct: "they are friends, they have said yes").
     PHOTOS: each place's own photographs need its permission - set PLACE_PHOTOS[name] = (url, alt) once they send them. -#}
-{%- set PLACE_PHOTOS = {} -%}
+{%- set PLACE_PHOTOS = {'Maison Beaucoup': (url_for('static', filename='img/nearby/maison-beaucoup-room-800.jpg'), 'A room at Maison Beaucoup, under the roof timbers'), 'Les Granges de Léo': (url_for('static', filename='img/nearby/granges-de-leo-chalet-800.jpg'), 'A wooden chalet at Les Granges de Léo, the mountains behind'), 'Les Gîtes de Beille': (url_for('static', filename='img/nearby/gites-de-beille-below-the-chateau-800.jpg'), 'Les Gîtes de Beille among the trees, the château just above')} -%}
+{#- 15 Oct: photographs show only once all three places have one, so the row stays even. Maison Beaucoup's is in
+    (from their website, with their permission); Les Granges de Léo's chalet is in (owner sent it, 15 Oct); Les Gîtes de Beille's (owner sent it, 15 Oct: the gîtes with the château just above) - all three in. -#}
+{#- 15 Oct: their own websites (promised in the owner's email); Les Gîtes de Beille has none of its own. -#}
+{#- 15 Oct: each card's photograph opens that place's own set in the lightbox (data-lb-group). -#}
+{%- set PLACE_MORE = {
+  'Les Gîtes de Beille': [(url_for('static', filename='img/nearby/gites-de-beille-under-the-cliff.jpg'), 'Les Gîtes de Beille under the cliff')],
+  'Maison Beaucoup': [(url_for('static', filename='img/nearby/maison-beaucoup-grauby.jpg'), 'Maison Beaucoup, the Grauby suite under the roof'), (url_for('static', filename='img/nearby/maison-beaucoup-attic-suite.jpg'), 'Maison Beaucoup, a suite under the beams'), (url_for('static', filename='img/nearby/maison-beaucoup-gold-linen.jpg'), 'Maison Beaucoup, a bedroom'), (url_for('static', filename='img/nearby/maison-beaucoup-sitting-room.jpg'), 'Maison Beaucoup, a sitting room in the evening light')],
+  'Les Granges de Léo': [(url_for('static', filename='img/nearby/granges-de-leo-reception.jpg'), 'Les Granges de Léo, the reception and a stone house'), (url_for('static', filename='img/nearby/granges-de-leo-gite-inside.jpg'), 'Les Granges de Léo, inside a gîte')]
+} -%}
+{%- set PLACE_SITES = {'Maison Beaucoup': 'https://www.maison-beaucoup.fr/', 'Les Granges de Léo': 'https://www.lesgrangesdeleo.fr/'} -%}
 {% from '_illus.html' import illus %}
 {% macro nearby_stays(heading='Where Your Guests Stay', intro='', fr='À deux pas', fr_en='A few minutes away') -%}
 <section class="g-sec g-nearby"><div class="g-wrap">
@@ -18,19 +30,28 @@
   {% if intro %}<p class="g-p g-intro">{{ intro }}</p>{% endif %}
   <div class="g-nearby__grid">
     {%- for name, far, how, where, text in [
-      ('Pays de Beille', 'Next door', 'a walk up the château’s private drive', 'Les Cabannes, by the river', 'Villas at the foot of the drive, so your guests can walk up to the château and home again at the end of the night.'),
+      ('Les Gîtes de Beille', 'Next door', 'a walk up the château’s private drive', 'Les Cabannes, by the river', 'Villas at the foot of the drive, so your guests can walk up to the château and home again at the end of the night.'),
       ('Maison Beaucoup', 'About 1 km', 'two minutes by car', 'Les Cabannes, the village by the château', 'Three very large rooms in a fully restored nineteenth-century presbytery, with its own restaurant. Up to six guests.'),
       ('Les Granges de Léo', 'About 2 km', 'five minutes by car', 'Aston, a neighbouring village', 'Six wooden chalets of two bedrooms each, and three large houses of stone and wood, with a pool in summer.')
     ] %}
     <article class="g-nearby__i">
-      {%- if PLACE_PHOTOS.get(name) %}<img class="g-nearby__img" src="{{ PLACE_PHOTOS[name][0] }}" alt="{{ PLACE_PHOTOS[name][1] }}" loading="lazy">{% endif %}
+      {%- if PLACE_PHOTOS|length >= 3 and PLACE_PHOTOS.get(name) %}
+      {%- set more = PLACE_MORE.get(name, []) %}
+      <div class="g-lb-scope g-nearby__shots" data-lb-group>
+        <img class="g-nearby__img" src="{{ PLACE_PHOTOS[name][0] }}" alt="{{ PLACE_PHOTOS[name][1] }}" loading="lazy">
+        {%- for u, a in more %}<img hidden src="{{ u }}" alt="{{ a }}" loading="lazy">{% endfor %}
+        {%- if more %}<button type="button" class="g-nearby__more" data-lb-open>See {{ more|length + 1 }} photographs</button>{% endif %}
+      </div>
+      {%- endif %}
       <p class="g-nearby__far"><span>{{ far }}</span> {{ how }}</p>
       <h3 class="g-nearby__t">{{ name }}</h3>
       <p class="g-nearby__where">{{ where }}</p>
       <p class="g-p">{{ text }}</p>
+      {%- if PLACE_SITES.get(name) %}<p class="g-nearby__site"><a href="{{ PLACE_SITES[name] }}" target="_blank" rel="noopener">Visit their site <span aria-hidden="true">&rarr;</span></a></p>{% endif %}
     </article>
     {%- endfor %}
   </div>
+  {%- if PLACE_PHOTOS|length >= 3 %}{% from '_lightbox.html' import lightbox %}{{ lightbox() }}{% endif %}
   <p class="g-p g-nearby__note">Each is booked directly. Ask us, and we will gladly tell you which would suit your party.</p>
 </div></section>
 {%- endmacro %}

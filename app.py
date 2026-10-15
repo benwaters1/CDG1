@@ -8459,7 +8459,8 @@ NAV_AREAS = {
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         "run_hr_escalation_now", "set_monthly_staff_cost",
-        "update_hr_escalation_rules", "upload_absence_note", "view_absence_note",
+        # view_absence_note is deliberately NOT here: see OWNER_ONLY_AREAS.
+        "update_hr_escalation_rules", "upload_absence_note",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         
@@ -8884,6 +8885,13 @@ OWNER_ONLY_AREAS = {
     "assign_access_preset": "management",
     "data_request_erase": "management",
     "delete_check_in_note": "team",
+    # A doctor's note. Its docstring said owner-only from the day it was
+    # written; the sweep that gave every unmapped page an area put it in
+    # `team` with the rest, so anybody with team -- three live presets --
+    # could open any colleague's medical certificate. Health data, and the
+    # employee holds their own copy. Attaching one stays in team: whoever
+    # is handed the paper can file it without being able to reopen it.
+    "view_absence_note": "team",
     "download_backup": "management",
     "new_check_in_note": "team",
     "pos_archive": "till",
@@ -8918,36 +8926,390 @@ NAV_AREA_OF = dict(ENDPOINT_AREA)
 NAV_AREA_OF.update({e: a for e, a in OWNER_ONLY_AREAS.items() if a})
 
 
-def _menu_area_of():
-    """Which menu each page is linked from, read from the menu itself.
+# THE SIDEBAR, as data. Rebuilt on 15 October 2026, the day before launch,
+# because the owner could not find the photo mirror or where to add somebody
+# to the team, and "it'll be so hard to get Jasmine and Mum to use it".
+#
+# It was fifteen entries at the top in the order they were written, each
+# group a list in the order its pages were built: Booking.com messages under
+# Comms, Booking.com stays under Management, the photo mirror nowhere at all.
+# Now the groups follow the business -- the stays, the guests, the
+# restaurant, the weddings and ateliers, the day's work, the people, the
+# house, the website, the money, the settings -- in roughly the order a day
+# needs them, and each long group reads in headings.
+#
+# DATA RATHER THAN MARKUP, so that rearranging it is moving a line, and so
+# what the template used to get wrong by hand happens by itself: a link is
+# drawn only for somebody who can open it, a heading only if something is
+# under it, a group only if it holds anything, and the group's own label
+# points at the first page in it that person can open.
+#
+# A group: (key, label, icon, also_opens, badges, sections). `key` is what
+# current_area names for a page the group lists; `also_opens` are the access
+# areas whose pages, listed nowhere, still open this group. A section is
+# (heading or None, items). An item: (endpoint, label, icon, also, badge),
+# `also` being the other pages that light it up -- "area:x" for every page in
+# access area x.
+def _nav(endpoint, label, icon_name, also=(), badge=None):
+    return {"endpoint": endpoint, "label": label, "icon": icon_name,
+            "also": tuple(also), "badge": badge}
 
-    NAV_AREA_OF decides who may open a page, and the sidebar opened whichever
-    menu that area named -- so a page filed under one area and listed in
-    another menu lit up the wrong one. Held, not earned is listed under
-    Financial and filed under Management, and opened Management; the kitchen
-    pages are in the Restaurant menu and opened Estate. Sixteen pages, and
-    changing their area would change who may open them, which is a different
-    decision. So the menu answers "where am I" from base.html, read once
-    here, and the area answers only for pages no menu lists.
-    """
-    path = os.path.join(app.root_path, app.template_folder or "templates", "base.html")
-    try:
-        with open(path, encoding="utf-8") as fh:
-            src = fh.read()
-    except OSError:
-        return {}
+
+NAV_TOP = [
+    # Today first for everyone: who is in and what am I meant to be doing is
+    # the question a member of staff has when they open this on a phone.
+    _nav("staff_today", "Today", "home"),
+    _nav("dashboard", "Home", "home"),
+    _nav("ops_calendar", "Calendar", "calendar"),
+    # High, and for both roles: the one page here people are meant to open
+    # unprompted, and a message nobody sees is worse than none.
+    _nav("chat_home", "Chat", "contacts", ("chat_channel", "chat_with"),
+         "chat_unread_count"),
+]
+
+OWNER_MENU = [
+    ("stays", "Accommodation", "rooms", ("guests",), (), [
+        ("Bookings", [
+            _nav("admin_bookings", "Bookings", "bookings",
+                 ("confirm_booking", "decline_booking", "checkout_booking", "edit_booking")),
+            _nav("admin_calendar", "Booking Calendar", "calendar"),
+            _nav("arrivals_sheet_page", "Arrivals", "calendar"),
+            _nav("admin_rooms", "Rooms", "rooms", ("new_room", "edit_room")),
+            _nav("admin_waitlist", "Room Waitlist", "leave"),
+        ]),
+        ("While they are here", [
+            _nav("breakfast", "Breakfast", "coffee"),
+            _nav("extras_due_page", "Extras Due", "receipt"),
+            _nav("all_transfers", "Transfers", "truck",
+                 ("vehicle_transfers_page", "new_vehicle_transfer")),
+            _nav("door_lock_page", "Front Door", "lock"),
+        ]),
+        ("Booking.com", [
+            _nav("management_booking_com", "Booking.com Messages", "bell"),
+            _nav("channel_stays_page", "Booking.com Stays", "guests"),
+        ]),
+    ]),
+    ("guestbook", "Guests", "guests", (), (), [
+        (None, [
+            _nav("guests", "Guest List", "guests", ("new_guest", "edit_guest")),
+            _nav("admin_feedback", "Guest Feedback", "contacts"),
+            _nav("guest_dates", "Dates Worth Knowing", "calendar"),
+            _nav("import_guests", "Import Guests", "guests"),
+        ]),
+    ]),
+    ("restaurant", "Restaurant", "restaurant", ("till",), ("pending_restaurant_count",), [
+        ("Service", [
+            _nav("pos_home", "Till", "receipt", ("area:till",)),
+            _nav("admin_restaurant", "Reservations", "restaurant", (),
+                 "pending_restaurant_count"),
+            _nav("admin_restaurant_waitlist", "Waitlist", "leave"),
+            _nav("restaurant_tables", "Tables", "restaurant"),
+            _nav("restaurant_covers", "Covers Ahead", "restaurant"),
+        ]),
+        ("Kitchen", [
+            _nav("kitchen_prep", "Prep List", "restaurant"),
+            _nav("kitchen_fridges", "Fridge Temperatures", "wrench"),
+            _nav("admin_stock", "Stock", "shopping"),
+        ]),
+        ("Planning and set-up", [
+            _nav("dinner_covers_page", "Covers Forecast", "restaurant"),
+            _nav("admin_extras", "Extras & Menu", "receipt"),
+            _nav("admin_terminal", "Card Reader", "receipt"),
+            _nav("admin_restaurant_settings", "Restaurant Settings", "management"),
+        ]),
+    ]),
+    ("events", "Weddings & Workshops", "workshop", ("workshops",),
+     ("pending_events_count", "pending_workshop_count"), [
+        ("Weddings and events", [
+            _nav("admin_events", "Weddings & Events", "megaphone", ("area:events",),
+                 "pending_events_count"),
+        ]),
+        ("Workshops", [
+            _nav("admin_workshops", "Workshops & Sessions", "workshop"),
+            _nav("admin_workshop_registrations", "Registrations", "approvals", (),
+                 "pending_workshop_count"),
+            _nav("admin_workshop_waitlist", "Workshop Waitlist", "leave"),
+            _nav("balances_to_collect", "Balances To Collect", "financial"),
+            _nav("admin_workshop_feedback", "Workshop Feedback", "contacts"),
+        ]),
+    ]),
+    ("daily", "Day to Day", "tasks", (), (), [
+        (None, [
+            _nav("shift_handover", "Handover", "receipt"),
+            _nav("admin_tasks", "Tasks", "tasks"),
+            _nav("announcements", "Announcements", "receipt",
+                 ("new_announcement", "edit_announcement", "delete_announcement")),
+            _nav("shopping_list", "Shopping", "shopping"),
+            _nav("contacts", "Contacts", "contacts"),
+            _nav("manual", "Manual", "manual"),
+        ]),
+    ]),
+    ("team", "Employees", "employee", ("payroll", "rota"), (), [
+        ("People", [
+            _nav("directory", "Who Works Here", "employee", ("profile", "edit_employee")),
+            _nav("new_employee", "Add a Team Member", "employee"),
+            _nav("candidates", "Candidates", "guests"),
+            _nav("equipment_overview", "Equipment", "shopping", ("export_equipment_csv",)),
+        ]),
+        ("Rota", [
+            _nav("admin_shifts", "Shifts", "shifts"),
+            _nav("rota_templates_page", "Standard Weeks", "calendar"),
+            _nav("team_calendar", "Team Calendar", "calendar"),
+            _nav("admin_leave", "Time Off", "leave"),
+            _nav("cover_gaps_page", "Nobody On", "shifts"),
+            _nav("rota_clashes_page", "Rota Clashes", "shifts"),
+            _nav("skills_page", "Who Can Do What", "employee"),
+        ]),
+        ("Hours", [
+            _nav("admin_timesheets", "Timesheets", "shifts"),
+            _nav("rota_vs_clock_page", "Rota vs Clock", "shifts"),
+            _nav("overtime_page", "Long Weeks", "shifts"),
+        ]),
+        ("HR", [
+            _nav("admin_hr_notes", "Ask HR", "contacts", (), "open_hr_notes_count"),
+            _nav("admin_hr", "HR & Compliance", "approvals"),
+            _nav("admin_compliance", "Role Compliance", "shield"),
+            _nav("admin_incidents", "Incidents", "wrench"),
+            _nav("admin_payroll", "Payroll Pack", "financial"),
+        ]),
+    ]),
+    ("estate", "House & Upkeep", "wrench", (), (), [
+        ("Rooms", [
+            _nav("room_checks_page", "Room Checks", "wrench", ("walk_room",)),
+            _nav("management_cleaning", "Cleaning Rounds", "wrench"),
+            _nav("room_issues", "Room Issues", "wrench"),
+            _nav("room_faults_page", "Sold With a Fault", "wrench"),
+        ]),
+        ("What the house owns", [
+            _nav("admin_assets", "Asset Register", "building"),
+            _nav("management_vehicles", "Vehicles", "car"),
+            _nav("admin_access", "Keys & Access", "lock"),
+            _nav("management_meters", "Meter Readings", "building"),
+            _nav("room_access_page", "What The House Can Manage", "rooms"),
+        ]),
+        ("Comings and goings", [
+            _nav("management_visitors", "Visitors On Site", "guests"),
+            _nav("management_breakages", "Breakages", "wrench"),
+            _nav("management_lost_property", "Lost Property", "shopping"),
+        ]),
+    ]),
+    ("comms", "Website & Email", "megaphone", (), (), [
+        ("Email", [
+            _nav("admin_emails", "Guest Email", "contacts", ("edit_campaign_template",)),
+            _nav("management_email_templates", "Email Wording", "megaphone"),
+            _nav("admin_email_outbox", "Held Email", "bell"),
+            _nav("admin_inbox_flags", "Inbox Flags", "bell", (), "open_email_flags_count"),
+        ]),
+        ("The website", [
+            _nav("website_analytics", "Website Visitors", "eye"),
+            _nav("admin_gallery", "Public Gallery", "folder"),
+            _nav("admin_images", "Site Photographs", "folder"),
+            _nav("admin_photo_mirror", "Photo Mirror", "folder"),
+            _nav("admin_promo_codes", "Promo Codes", "receipt"),
+        ]),
+    ]),
+    # Grouped by what somebody opening Financial is asking. Unchanged in the
+    # rebuild: it was already in headings, and the owner reads it daily.
+    ("financial", "Financial", "financial", (), (), [
+        ("Waiting on you", [
+            _nav("admin_approvals", "Approvals", "approvals", (), "pending_approvals_count"),
+            _nav("expenses", "Expenses & Invoices", "receipt", ("decide_expense",)),
+            _nav("admin_refunds", "Refunds", "receipt"),
+        ]),
+        ("Owed to the house", [
+            _nav("management_outstanding", "What We're Owed", "financial"),
+            _nav("balances_to_collect", "Balances To Collect", "financial"),
+        ]),
+        ("Sold ahead", [
+            _nav("management_on_the_books", "On The Books", "financial"),
+            _nav("held_not_earned_page", "Held, Not Earned", "financial"),
+        ]),
+        ("Going out", [
+            _nav("management_recurring_costs", "Recurring Costs", "repeat"),
+            _nav("supplier_agreements_page", "What We Are Tied Into", "receipt"),
+            _nav("spend_by_vendor_page", "Spend by Supplier", "receipt"),
+            _nav("management_payment_cost", "Cost Of Taking Money", "financial"),
+            _nav("discount_cost_page", "What Discounts Cost", "financial"),
+        ]),
+        ("The books", [
+            _nav("management_financials", "Financials", "financial"),
+            _nav("admin_transactions", "Transactions", "receipt"),
+            _nav("management_cash_banking", "Cash Banking", "financial"),
+            _nav("admin_reports", "Reports", "financial", ("admin_report",)),
+            _nav("management_break_even", "Break-even", "financial"),
+            _nav("admin_tax", "Tax", "financial"),
+            _nav("management_bank_details", "Bank Details", "financial"),
+        ]),
+    ]),
+    # Settings and permanent records -- last, the group needed least often.
+    ("management", "Management", "management", (), (), [
+        ("Getting ready", [
+            _nav("admin_readiness", "Go-live Checklist", "shield"),
+            _nav("admin_overview", "Overview", "eye", ("admin_overview_status",)),
+        ]),
+        ("Settings", [
+            _nav("management", "All Settings", "management"),
+            _nav("admin_automation", "Automation", "repeat"),
+            _nav("admin_access_levels", "Access Levels", "lock",
+                 ("save_access_preset", "assign_access_preset")),
+            _nav("management_company_info", "Company & Insurance", "building"),
+            _nav("management_vault", "Vault", "lock"),
+        ]),
+        ("Records", [
+            _nav("reports_index", "All the Reports", "eye"),
+            _nav("management_documents", "Documents", "folder"),
+            _nav("meetings_page", "Meetings", "calendar", ("meeting_page",)),
+            _nav("restoration_record", "Restoration Record", "wrench",
+                 ("restoration_work_page",)),
+            _nav("camera_roll", "Camera Roll", "camera"),
+            _nav("vendors", "Vendors", "contacts"),
+        ]),
+        ("Bringing things in", [
+            _nav("import_catalogue", "Import Catalogue", "folder"),
+        ]),
+        ("What happened", [
+            _nav("audit_log", "Audit Log", "eye"),
+            _nav("mail_log", "Mail Log", "eye", ("mail_log_letter",)),
+            _nav("changes_log", "Changes Log", "eye"),
+        ]),
+    ]),
+]
+
+# For a member of staff with no admin areas: their day, in five groups, and
+# nothing that would refuse them. These pages are open to anybody signed in,
+# so nothing here is filtered; it is a set of shortcuts, not an area.
+STAFF_MENU = [
+    ("s_guests", "Guests", "guests", (), (), [
+        (None, [
+            _nav("guests", "Guest List", "guests"),
+            _nav("breakfast", "Breakfast", "coffee"),
+            _nav("all_transfers", "Transfers", "truck"),
+            _nav("extras_due_page", "Extras Due", "receipt"),
+            _nav("guest_dates", "Dates Worth Knowing", "calendar"),
+        ]),
+    ]),
+    ("s_restaurant", "Restaurant", "restaurant", (), (), [
+        (None, [
+            _nav("pos_home", "Till", "receipt", ("pos_order", "pos_kitchen")),
+            _nav("restaurant_covers", "Covers Ahead", "restaurant"),
+            _nav("restaurant_tables", "Tables", "restaurant"),
+            _nav("kitchen_prep", "Prep List", "restaurant", ("prep_item_done",)),
+            _nav("kitchen_fridges", "Fridge Temperatures", "wrench"),
+        ]),
+    ]),
+    ("house", "The House", "wrench", (), (), [
+        (None, [
+            _nav("shift_handover", "Handover", "receipt"),
+            _nav("room_checks_page", "Room Checks", "wrench", ("walk_room",)),
+            _nav("room_issues", "Room Issues", "wrench"),
+            _nav("management_cleaning", "Cleaning Rounds", "wrench", ("cleaning_round_done",)),
+            _nav("management_visitors", "Visitors On Site", "guests", ("sign_out_visitor",)),
+            _nav("management_breakages", "Breakages", "wrench"),
+            _nav("management_lost_property", "Lost Property", "shopping",
+                 ("resolve_lost_property",)),
+            _nav("management_meters", "Meter Readings", "building"),
+        ]),
+    ]),
+    ("me", "My Work", "shifts", (), (), [
+        (None, [
+            _nav("my_shifts", "My Shifts", "shifts"),
+            _nav("my_hours", "My Hours", "shifts"),
+            _nav("my_leave", "Time Off", "leave"),
+            _nav("my_availability", "My Availability", "calendar"),
+            _nav("my_expenses", "Expenses", "receipt", ("submit_expense",)),
+            _nav("mileage", "Mileage", "car"),
+            _nav("my_reviews", "My Reviews", "approvals"),
+            _nav("ask_hr", "Ask HR", "contacts"),
+            _nav("profile", "My Profile", "employee"),
+        ]),
+    ]),
+    ("team_info", "The Team", "employee", (), (), [
+        (None, [
+            _nav("directory", "Team Directory", "guests"),
+            _nav("team_calendar", "Team Calendar", "calendar"),
+            _nav("announcements", "Announcements", "receipt",
+                 ("new_announcement", "edit_announcement", "delete_announcement")),
+            _nav("manual", "Manual", "manual"),
+            _nav("contacts", "Contacts", "contacts"),
+            _nav("shopping_list", "Shopping", "shopping"),
+        ]),
+    ]),
+]
+
+
+def _menu_of(menu):
+    """Which group each page opens: the first group that lists it, or lists
+    it as one of an item's own pages."""
     found = {}
-    for block in re.finditer(
-            r"""<div class="nav-dropdown \{\{ 'open' if current_area """
-            r"""(?:== '(\w+)'|in \['(\w+)'[^\]]*\]) \}\}">(.*?)\n    </div>""", src, re.S):
-        area = block.group(1) or block.group(2)
-        for endpoint in re.findall(r"url_for\('(\w+)'", block.group(3)):
-            found.setdefault(endpoint, area)
+    for key, _label, _icon, _opens, _badges, sections in menu:
+        for _heading, items in sections:
+            for item in items:
+                found.setdefault(item["endpoint"], key)
+                for other in item["also"]:
+                    if not other.startswith("area:"):
+                        found.setdefault(other, key)
     return found
 
 
-# Read at import, from the template the sidebar is drawn from.
-MENU_AREA_OF = _menu_area_of()
+# Which menu a page is under, for the menu an admin sees. Who may open the
+# page is still NAV_AREA_OF's answer; this answers only "where am I".
+MENU_AREA_OF = _menu_of(OWNER_MENU)
+STAFF_MENU_OF = _menu_of(STAFF_MENU)
+
+
+def view_is_guarded(endpoint):
+    """Whether a page sits behind owner_required, and so behind an area."""
+    return bool(getattr(app.view_functions.get(endpoint), "is_guarded", False))
+
+
+def build_nav(user, endpoint, badges):
+    """The sidebar for this person on this page: {"top": [...], "groups": [...]}.
+
+    Admin areas get OWNER_MENU, filtered link by link; staff with none get
+    STAFF_MENU whole. A link to a guarded page needs can_reach; one open to
+    anybody signed in needs its area granted, as it did inside its old group,
+    so somebody with only the till is not handed the rota.
+    """
+    areas = user_access(user)
+    full = "*" in areas
+    staff = not areas
+    menu, menu_of = (STAFF_MENU, STAFF_MENU_OF) if staff else (OWNER_MENU, MENU_AREA_OF)
+    here = menu_of.get(endpoint) or NAV_AREA_OF.get(endpoint)
+
+    def shown(ep):
+        if staff or full:
+            return True
+        if view_is_guarded(ep):
+            return can_reach(user, ep)
+        area = NAV_AREA_OF.get(ep)
+        return area is None or area in areas
+
+    def drawn(item):
+        try:
+            url = (url_for(item["endpoint"], user_id=user["id"])
+                   if item["endpoint"] == "profile" else url_for(item["endpoint"]))
+        except Exception:
+            return None          # a renamed page costs its line, not the sidebar
+        lit = endpoint == item["endpoint"] or endpoint in item["also"] or any(
+            o == f"area:{NAV_AREA_OF.get(endpoint)}" for o in item["also"])
+        return {"url": url, "label": item["label"], "icon": item["icon"],
+                "active": lit, "badge": badges.get(item["badge"]) if item["badge"] else None}
+
+    top = [d for d in (drawn(i) for i in NAV_TOP) if d]
+    groups = []
+    for key, label, icon_name, opens, badge_keys, sections in menu:
+        out = []
+        for heading, items in sections:
+            links = [d for d in (drawn(i) for i in items if shown(i["endpoint"])) if d]
+            if links:
+                out.append((heading, links))
+        if not out:
+            continue
+        total = sum(badges.get(k) or 0 for k in badge_keys)
+        groups.append({"key": key, "label": label, "icon": icon_name,
+                       "url": out[0][1][0]["url"], "sections": out,
+                       "open": here == key or here in opens, "badge": total or None})
+    return {"top": top, "groups": groups}
 
 
 def user_access(user):
@@ -9005,15 +9367,76 @@ def can_reach(user, endpoint):
 def access_covers(actor, target):
     """Whether `actor` has at least everything `target` has.
 
-    Used where an action hands somebody the keys to another account. A full
-    owner covers everybody; nobody covers a full owner but another one.
+    Used where an action hands somebody the keys to another account, or
+    changes somebody's record. A full owner covers everybody; nobody covers a
+    full owner but another one.
+
+    And nobody but an owner covers an OWNER, whatever their areas say. The
+    owner role carries more than its areas -- every profile, the 1:1 notes,
+    pay history are gated on role -- so an owner given a narrow preset would
+    otherwise be covered by anybody holding the same few areas, who could then
+    mark them inactive and lock them out of their own house. That holds for a
+    member of staff on the full-access preset too: reaching every page is not
+    the same as being the house.
     """
+    if target["role"] == "owner" and actor["role"] != "owner":
+        return False
     a, t = user_access(actor), user_access(target)
     if "*" in a:
         return True
     if "*" in t:
         return False
     return t.issubset(a)
+
+
+def refused_upwards(person, doing, back="directory"):
+    """The refusal for acting on somebody who can reach more than you can.
+
+    None when the signed-in person covers `person`. Otherwise flashes the
+    sentence and returns where to send them: the Team page unless told
+    otherwise, and never the person's profile -- a profile is readable only by
+    the owner or the person themselves, so a refused caller sent there gets a
+    403 and the explanation never renders.
+    """
+    if access_covers(current_user(), person):
+        return None
+    flash(f"{person['name']} can reach more of the app than you can, so "
+          f"{doing} is the owner's to do.", "error")
+    return redirect(url_for(back))
+
+
+def refused_upwards_for(conn, user_id, doing, back="admin_hr"):
+    """refused_upwards for somebody known only by id, as the HR page's forms
+    know them. Nobody by that id is not a refusal: the caller's own
+    not-found handling answers that."""
+    person = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return refused_upwards(person, doing, back) if person else None
+
+
+def refuses_upwards(doing):
+    """For a route under /directory/<user_id>/ that changes that person's
+    record: refuse it, before anything else runs, when they can reach more
+    of the app than the caller can.
+
+    Before the check, anybody with `team` could open the owner's record, mark
+    it inactive, and login then turned the owner away; and anybody with
+    `rota` could set the owner's arrival PIN and sign in as them at /arrive.
+    """
+    def decorate(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            conn = get_db()
+            person = conn.execute("SELECT * FROM users WHERE id = ?",
+                                  (kwargs["user_id"],)).fetchone()
+            conn.close()
+            if not person:
+                abort(404)
+            refused = refused_upwards(person, doing)
+            if refused:
+                return refused
+            return view(*args, **kwargs)
+        return wrapped
+    return decorate
 
 
 def owner_required(view):
@@ -9027,6 +9450,8 @@ def owner_required(view):
         if not can_reach(user, request.endpoint):
             abort(403)
         return view(*args, **kwargs)
+    # So the sidebar can ask whether a link needs an area (view_is_guarded).
+    wrapped.is_guarded = True
     return wrapped
 
 
@@ -30670,6 +31095,17 @@ def inject_user():
         "open_email_flags_count": open_email_flags_count,
         "chat_unread_count": chat_unread_count,
         "may": may, "can": can, "user_areas": areas, "area_titles": AREA_TITLES,
+        # The sidebar, built only when base.html draws it -- the public pages
+        # and the letters render through here too and have no use for it.
+        "nav_menu": (lambda: build_nav(user, request.endpoint, {
+            "chat_unread_count": chat_unread_count,
+            "pending_approvals_count": pending_approvals_count,
+            "open_hr_notes_count": open_hr_notes_count,
+            "pending_restaurant_count": pending_restaurant_count,
+            "pending_workshop_count": pending_workshop_count,
+            "pending_events_count": pending_events_count,
+            "open_email_flags_count": open_email_flags_count,
+        })) if user else (lambda: {"top": [], "groups": []}),
         # Shared vocabularies, exposed here rather than passed by each route.
         # Passing them by hand meant finding every render of a form -- and the
         # guest form is rendered from four places, so three of them got the
@@ -34914,6 +35350,7 @@ def sign_in_letter_flash(name, to, link, sent, why, kind="invite"):
 @app.route("/directory/new", methods=["GET", "POST"])
 @owner_required
 def new_employee():
+    """Add somebody to the team, and send them their invitation to sign in."""
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
@@ -35094,6 +35531,9 @@ def profile(user_id):
 
 @app.route("/directory/<int:user_id>/edit", methods=["GET", "POST"])
 @owner_required
+# On the form as well as the save: the form shows pay, notes and the contract,
+# and it is the owner's record of somebody senior, not the caller's to read.
+@refuses_upwards("changing their record")
 def edit_employee(user_id):
     conn = get_db()
     person = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -35107,6 +35547,21 @@ def edit_employee(user_id):
         phone = request.form.get("phone", "").strip()
         start_date = request.form.get("start_date", "").strip()
         status = request.form.get("status", "active")
+        if status not in ("active", "inactive"):
+            status = person["status"]
+        # THE LAST OWNER STAYS ACTIVE. login turns an inactive account away and
+        # nothing inside the app can bring it back, so an owner marking
+        # themselves inactive here -- one wrong option in a select -- would
+        # leave the house with nobody who can sign in to undo it. The rest of
+        # the form is saved, and the flash says which part was not.
+        status_kept = False
+        if (person["role"] == "owner" and person["status"] == "active"
+                and status != "active"
+                and not conn.execute(
+                    "SELECT 1 FROM users WHERE role = 'owner' AND status = 'active' "
+                    "AND id != ?", (user_id,)).fetchone()):
+            status = "active"
+            status_kept = True
         pay_rate = request.form.get("pay_rate", "").strip()
         pay_type = request.form.get("pay_type", "").strip()
         notes = request.form.get("notes", "").strip()
@@ -35146,7 +35601,16 @@ def edit_employee(user_id):
             )
         conn.commit()
         conn.close()
-        flash("Profile updated.", "success")
+        if status_kept:
+            flash(f"Saved, except the status: {person['name']} is the only active "
+                  "owner, and an inactive owner cannot sign in to undo it.", "error")
+        else:
+            flash("Profile updated.", "success")
+        # The profile is the owner's or the person's own to read; anybody else
+        # who may edit somebody goes back to the Team page rather than to a 403
+        # that hides whether the save happened.
+        if current_user()["role"] != "owner" and current_user()["id"] != user_id:
+            return redirect(url_for("directory"))
         return redirect(url_for("profile", user_id=user_id))
 
     conn.close()
@@ -35155,6 +35619,7 @@ def edit_employee(user_id):
 
 @app.route("/directory/<int:user_id>/toggle-status", methods=["POST"])
 @owner_required
+@refuses_upwards("marking them active or inactive")
 def toggle_employee_status(user_id):
     conn = get_db()
     person = conn.execute("SELECT * FROM users WHERE id = ? AND role = 'employee'", (user_id,)).fetchone()
@@ -35173,8 +35638,19 @@ def toggle_employee_status(user_id):
 
 @app.route("/directory/<int:user_id>/delete", methods=["POST"])
 @owner_required
+@refuses_upwards("removing them")
 def delete_employee(user_id):
     conn = get_db()
+    # An employee, and one who exists, BEFORE anything is removed. The delete
+    # below was scoped to role='employee' but the document files were taken
+    # off the disk first, for whoever the id named -- so pointed at an owner
+    # with no hours on record it kept the row, removed their files, and
+    # reported "Employee removed."
+    person = conn.execute("SELECT name FROM users WHERE id = ? AND role = 'employee'",
+                          (user_id,)).fetchone()
+    if not person:
+        conn.close()
+        abort(404)
     # Mirrors delete_room/delete_promo_code's own guard against destroying
     # real history — worked hours and pay-rate changes are payroll records,
     # not disposable app data, and PRAGMA foreign_keys=ON means a hard
@@ -35188,15 +35664,13 @@ def delete_employee(user_id):
         conn.close()
         flash("Can't delete an employee with timesheet or pay history — mark them inactive instead.", "error")
         return redirect(url_for("directory"))
-    person = conn.execute("SELECT name FROM users WHERE id = ?", (user_id,)).fetchone()
     docs = conn.execute("SELECT filename FROM documents WHERE user_id = ?", (user_id,)).fetchall()
     for d in docs:
         path = os.path.join(UPLOAD_DIR, d["filename"])
         if os.path.exists(path):
             os.remove(path)
     conn.execute("DELETE FROM users WHERE id = ? AND role = 'employee'", (user_id,))
-    if person:
-        log_audit(conn, "employee_deleted", target=person["name"])
+    log_audit(conn, "employee_deleted", target=person["name"])
     conn.commit()
     conn.close()
     flash("Employee removed.", "success")
@@ -35205,6 +35679,7 @@ def delete_employee(user_id):
 
 @app.route("/directory/<int:user_id>/regenerate-invite", methods=["POST"])
 @owner_required
+@refuses_upwards("resetting their sign-in")
 def regenerate_invite(user_id):
     conn = get_db()
     person = conn.execute("SELECT * FROM users WHERE id = ? AND role = 'employee'", (user_id,)).fetchone()
@@ -35218,16 +35693,8 @@ def regenerate_invite(user_id):
     # reset the manager's sign-in and claim the account.
     #
     # Not made owner-only, which would stop whoever runs the rota re-inviting
-    # a housekeeper who has lost their link. Refused only upwards.
-    if not access_covers(current_user(), person):
-        conn.close()
-        flash(f"{person['name']} can reach more of the app than you can, so "
-              "resetting their sign-in is the owner's to do.", "error")
-        # Back to the directory, NOT to their profile. A profile is readable
-        # only by the owner or the person themselves, so redirecting there
-        # sends the refused caller to a 403 and the explanation never renders
-        # -- an unexplained refusal, which is the thing the message is for.
-        return redirect(url_for("directory"))
+    # a housekeeper who has lost their link. Refused only upwards, by the
+    # decorator, before this runs.
     was_claimed = bool(person["account_claimed"])
     onboarding_url = reissue_staff_link(conn, user_id)
     # This overwrites a password hash with random bytes, which is the most
@@ -35257,6 +35724,10 @@ def regenerate_invite(user_id):
 
 @app.route("/directory/<int:user_id>/email", methods=["POST"])
 @owner_required
+# Refused upwards before anything else, to the Team page, as resetting a
+# sign-in is: a refused caller sent to somebody else's record would get a 403
+# instead of the sentence.
+@refuses_upwards("changing their sign-in address")
 def change_staff_email(user_id):
     """Change the address a member of staff signs in with, for them.
 
@@ -35288,12 +35759,6 @@ def change_staff_email(user_id):
     if person["role"] == "owner":
         return refuse("An owner changes their own sign-in address, on Change "
                       "email, with their password.")
-    if not access_covers(current_user(), person):
-        # To the Team page, as regenerate_invite does: a refused caller sent
-        # to somebody else's record would get a 403 instead of this sentence.
-        return refuse(f"{person['name']} can reach more of the app than you can, "
-                      "so changing their sign-in address is the owner's to do.",
-                      url_for("directory"))
 
     # NORMALISED EXACTLY AS LOGIN NORMALISES (see change_email): stored any
     # other way, it is an address that can never be typed back in.
@@ -35393,6 +35858,7 @@ def change_staff_email(user_id):
 
 @app.route("/directory/<int:user_id>/onboarding/<int:item_id>/toggle", methods=["POST"])
 @owner_required
+@refuses_upwards("changing their onboarding checklist")
 def toggle_onboarding_item(user_id, item_id):
     conn = get_db()
     item = conn.execute(
@@ -35409,6 +35875,7 @@ def toggle_onboarding_item(user_id, item_id):
 
 @app.route("/directory/<int:user_id>/onboarding/new", methods=["POST"])
 @owner_required
+@refuses_upwards("changing their onboarding checklist")
 def new_onboarding_item(user_id):
     label = request.form.get("label", "").strip()
     if label:
@@ -35427,6 +35894,7 @@ def new_onboarding_item(user_id):
 
 @app.route("/directory/<int:user_id>/onboarding/<int:item_id>/delete", methods=["POST"])
 @owner_required
+@refuses_upwards("changing their onboarding checklist")
 def delete_onboarding_item(user_id, item_id):
     conn = get_db()
     conn.execute("DELETE FROM onboarding_items WHERE id = ? AND user_id = ?", (item_id, user_id))
@@ -35437,6 +35905,7 @@ def delete_onboarding_item(user_id, item_id):
 
 @app.route("/directory/<int:user_id>/offboarding/<int:item_id>/toggle", methods=["POST"])
 @owner_required
+@refuses_upwards("changing their offboarding checklist")
 def toggle_offboarding_item(user_id, item_id):
     conn = get_db()
     item = conn.execute(
@@ -35453,6 +35922,7 @@ def toggle_offboarding_item(user_id, item_id):
 
 @app.route("/directory/<int:user_id>/offboarding/new", methods=["POST"])
 @owner_required
+@refuses_upwards("changing their offboarding checklist")
 def new_offboarding_item(user_id):
     label = request.form.get("label", "").strip()
     if label:
@@ -35471,6 +35941,7 @@ def new_offboarding_item(user_id):
 
 @app.route("/directory/<int:user_id>/offboarding/<int:item_id>/delete", methods=["POST"])
 @owner_required
+@refuses_upwards("changing their offboarding checklist")
 def delete_offboarding_item(user_id, item_id):
     conn = get_db()
     conn.execute("DELETE FROM offboarding_items WHERE id = ? AND user_id = ?", (item_id, user_id))
@@ -35481,6 +35952,7 @@ def delete_offboarding_item(user_id, item_id):
 
 @app.route("/directory/<int:user_id>/equipment/new", methods=["POST"])
 @owner_required
+@refuses_upwards("changing what they have been lent")
 def new_equipment_item(user_id):
     label = request.form.get("label", "").strip()
     notes = request.form.get("notes", "").strip()
@@ -35497,6 +35969,7 @@ def new_equipment_item(user_id):
 
 @app.route("/directory/<int:user_id>/equipment/<int:item_id>/toggle-returned", methods=["POST"])
 @owner_required
+@refuses_upwards("changing what they have been lent")
 def toggle_equipment_returned(user_id, item_id):
     conn = get_db()
     item = conn.execute(
@@ -35514,6 +35987,7 @@ def toggle_equipment_returned(user_id, item_id):
 
 @app.route("/directory/<int:user_id>/equipment/<int:item_id>/delete", methods=["POST"])
 @owner_required
+@refuses_upwards("changing what they have been lent")
 def delete_equipment_item(user_id, item_id):
     conn = get_db()
     conn.execute("DELETE FROM equipment_items WHERE id = ? AND user_id = ?", (item_id, user_id))
@@ -35685,6 +36159,9 @@ def delete_candidate(candidate_id):
 
 @app.route("/directory/<int:user_id>/notes/new", methods=["POST"])
 @owner_required
+# Unmapped, so only the full-access preset reaches these -- which a member of
+# staff can hold, and which must not reach the owner's own record.
+@refuses_upwards("writing their 1:1 notes")
 def new_check_in_note(user_id):
     body = request.form.get("body", "").strip()
     if body:
@@ -35700,6 +36177,7 @@ def new_check_in_note(user_id):
 
 @app.route("/directory/<int:user_id>/notes/<int:note_id>/delete", methods=["POST"])
 @owner_required
+@refuses_upwards("writing their 1:1 notes")
 def delete_check_in_note(user_id, note_id):
     conn = get_db()
     conn.execute("DELETE FROM check_in_notes WHERE id = ? AND user_id = ?", (note_id, user_id))
@@ -35905,6 +36383,10 @@ def new_certification():
         flash("That employee is no longer on the team — the list has changed "
               "since this page was opened.", "error")
         return redirect(url_for("admin_hr"))
+    refused = refused_upwards_for(conn, int(user_id), "recording their certifications")
+    if refused:
+        conn.close()
+        return refused
     conn.execute(
         """INSERT INTO certifications (user_id, name, issuer, reference, issued_date,
            expiry_date, required, notes, created_at)
@@ -35928,6 +36410,13 @@ def new_certification():
 @owner_required
 def delete_certification(cert_id):
     conn = get_db()
+    cert = conn.execute("SELECT user_id FROM certifications WHERE id = ?",
+                        (cert_id,)).fetchone()
+    refused = cert and refused_upwards_for(conn, cert["user_id"],
+                                           "removing their certifications")
+    if refused:
+        conn.close()
+        return refused
     conn.execute("DELETE FROM certifications WHERE id = ?", (cert_id,))
     conn.commit()
     conn.close()
@@ -35956,6 +36445,10 @@ def new_absence():
         flash("That employee is no longer on the team — the list has changed "
               "since this page was opened.", "error")
         return redirect(url_for("admin_hr"))
+    refused = refused_upwards_for(conn, int(user_id), "recording their absences")
+    if refused:
+        conn.close()
+        return refused
     conn.execute(
         """INSERT INTO absences (user_id, start_date, end_date, kind, reason,
            self_certified, recorded_by_user_id, created_at)
@@ -35976,6 +36469,13 @@ def new_absence():
 def absence_return_to_work(absence_id):
     note = request.form.get("return_to_work_note", "").strip()
     conn = get_db()
+    absence = conn.execute("SELECT user_id FROM absences WHERE id = ?",
+                           (absence_id,)).fetchone()
+    refused = absence and refused_upwards_for(conn, absence["user_id"],
+                                              "recording their return to work")
+    if refused:
+        conn.close()
+        return refused
     conn.execute(
         """UPDATE absences SET return_to_work_note = ?, return_to_work_done_at = ?
            WHERE id = ?""",
@@ -35997,6 +36497,12 @@ def new_performance_review():
         return redirect(url_for("admin_hr"))
     rating = request.form.get("overall_rating", "").strip()
     conn = get_db()
+    # Somebody who reaches more of the house than you is not yours to review:
+    # a shared review is what a promotion or a dismissal is argued from.
+    refused = refused_upwards_for(conn, int(user_id), "reviewing them")
+    if refused:
+        conn.close()
+        return refused
     conn.execute(
         """INSERT INTO performance_reviews (user_id, reviewer_user_id, review_date,
            period_start, period_end, overall_rating, strengths, improvements, goals,
@@ -36028,6 +36534,10 @@ def share_performance_review(review_id):
     if not review:
         conn.close()
         abort(404)
+    refused = refused_upwards_for(conn, review["user_id"], "sharing their review")
+    if refused:
+        conn.close()
+        return refused
     # Only a draft can be shared, and only the press that actually moves it
     # should tell the employee anything. Notifying regardless meant a second
     # press sent somebody back to re-read a review they had already signed,
@@ -38813,6 +39323,7 @@ def arrive_signin(user_id):
 
 @app.route("/directory/<int:user_id>/set-pin", methods=["POST"])
 @owner_required
+@refuses_upwards("setting their arrival PIN")
 def set_quick_pin(user_id):
     """Set or clear a staff member's arrival PIN."""
     pin = request.form.get("pin", "").strip()
@@ -39186,7 +39697,9 @@ PALETTE_PAGES = [
     ("Guest feedback", "admin_feedback", "reviews"),
     ("Waitlist", "admin_waitlist", ""),
     ("Breakfast", "breakfast", "orders"),
-    ("Team", "directory", "employees staff people"),
+    ("Team", "directory", "employees staff people who works here"),
+    ("Add a team member", "new_employee",
+     "add new employee staff person member hire invite login sign in account"),
     ("Candidates", "candidates", "recruitment hiring"),
     ("HR & compliance", "admin_hr", "certifications absence reviews working time"),
     ("Role compliance", "admin_compliance", "required certificates qualified"),
@@ -39299,9 +39812,12 @@ PALETTE_PAGES = [
      "worth referral heard about us demand"),
     ("Who is in the house right now", "roll_call",
      "roll call fire evacuation muster who is here safety emergency headcount"),
-    ("Photographs we do not own", "admin_photo_mirror",
-     "images photos squarespace cdn hotlink mirror logo pictures gallery "
-     "who hosts our pictures"),
+    # Named as the house talks about it. It was listed as "Photographs we do
+    # not own" and found by "mirror" under that name, which nobody looking
+    # for the photo mirror recognised as the answer.
+    ("Photo mirror: the site's photographs", "admin_photo_mirror",
+     "images photos squarespace cdn hotlink mirror copy copies logo pictures "
+     "gallery who hosts our pictures we do not own"),
     ("Audit log", "audit_log", "who did what history"),
     ("Changes log", "changes_log",
      "changes changed edited who changed field before after history log"),
@@ -39343,8 +39859,12 @@ def api_palette():
             "all_transfers",
         ):
             continue
+        # Every word typed, anywhere in the label or its keywords -- not the
+        # phrase as typed. "photo mirror" found nothing when it was matched
+        # whole, because no entry holds those two words side by side, and
+        # people type two words far more often than they type the label.
         hay = f"{label} {keywords}".lower()
-        if low in hay:
+        if all(word in hay for word in low.split()):
             try:
                 out.append({"kind": "Page", "label": label, "sub": "",
                             "url": url_for(endpoint),
@@ -40143,6 +40663,10 @@ def upload_absence_note(absence_id):
     if not absence:
         conn.close()
         abort(404)
+    refused = refused_upwards_for(conn, absence["user_id"], "attaching their doctor's note")
+    if refused:
+        conn.close()
+        return refused
 
     file = request.files.get("note")
     if not file or file.filename == "":
@@ -79109,7 +79633,7 @@ def room_economics_page():
         overview_cell("With an open fault", len(faults), alert=bool(faults)),
     ]
     return render_template("room_economics.html", data=data, overview=overview,
-                           months=months, today=today, live=live)
+                           months=months, today=today)
 
 
 @app.route("/admin/guests/regulars")

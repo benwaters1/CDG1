@@ -356,6 +356,7 @@ SUITES = [
     "test_utc_slices",
     "test_stamp_times",
     "test_read_write_parity",
+    "test_acting_upwards",
     "test_no_overbooking",
     "test_add_room",
     "test_cancel_and_reject",
@@ -391,6 +392,7 @@ SUITES = [
     "test_rendered_markup",
     "test_outbox_retention",
     "test_orphan_pages",
+    "test_palette_search",
     "test_readiness_on_home",
     "test_owner_figures",
     "test_meetings",
@@ -461,6 +463,7 @@ SUITES = [
     "test_one_money_spelling",
     "test_one_window_control",
     "test_menu_groups",
+    "test_menu_layout",
     "test_settings_hub",
     # The Outlook add-in and the house calendar, 13 October 2026.
     "test_guest_dossier",
