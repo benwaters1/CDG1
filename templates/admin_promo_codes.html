@@ -144,17 +144,17 @@
           </div>
           <div>
             <label class="field-label">Discount value</label>
-            <input aria-label="Discount value" type="number" name="discount_value" step="0.01" min="0.01" value="{{ c['discount_value'] }}" required>
+            <input aria-label="Discount value" type="number" name="discount_value" step="0.01" min="0.01" value="{{ c['discount_value']|box(2) }}" required>
           </div>
         </div>
         <div class="field-row-2">
           <div>
             <label class="field-label">Max discount (€, optional)</label>
-            <input aria-label="Max discount (€, optional)" type="number" name="max_discount_amount" step="0.01" min="0" value="{{ c['max_discount_amount'] if c['max_discount_amount'] is not none else '' }}">
+            <input aria-label="Max discount (€, optional)" type="number" name="max_discount_amount" step="0.01" min="0" value="{{ c['max_discount_amount']|box(2) }}">
           </div>
           <div>
             <label class="field-label">Minimum spend (€, optional)</label>
-            <input aria-label="Minimum spend (€, optional)" type="number" name="min_spend" step="0.01" min="0" value="{{ c['min_spend'] if c['min_spend'] is not none else '' }}">
+            <input aria-label="Minimum spend (€, optional)" type="number" name="min_spend" step="0.01" min="0" value="{{ c['min_spend']|box(2) }}">
           </div>
         </div>
         <div class="field-row-2">

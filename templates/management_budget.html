@@ -26,22 +26,28 @@
   <div class="table-wrap">
     <table class="data-table">
       <thead>
+        {#- Two groups of three, named, so "Target" and "Against" twice in a
+            row say whose target. -#}
         <tr>
-          <th>Month</th>
-          <th class="num">Revenue</th><th class="num">Target</th><th class="num">Against</th>
-          <th class="num">Cost</th><th class="num">Target</th><th class="num">Against</th>
+          <th rowspan="2">Month</th>
+          <th class="num" colspan="3" scope="colgroup">Revenue</th>
+          <th class="num" colspan="3" scope="colgroup">Cost</th>
+        </tr>
+        <tr>
+          <th class="num">Taken</th><th class="num">Target</th><th class="num">Against it</th>
+          <th class="num">Spent</th><th class="num">Target</th><th class="num">Against it</th>
         </tr>
       </thead>
       <tbody>
         {% for y in year %}
         <tr>
-          <th scope="row">{{ y.month.strftime('%b %Y') }}</th>
+          <th scope="row">{{ y.month.strftime('%B %Y') }}</th>
           <td class="num">{{ y.revenue|money(0) }}</td>
           <td class="num">{% if y.revenue_budget %}{{ y.revenue_budget|money(0) }}{% else %}&mdash;{% endif %}</td>
           <td class="num">
             {% if y.revenue_delta is not none %}
             <span style="color:{{ 'var(--danger)' if y.revenue_delta < 0 else 'inherit' }};">
-              {{ '+' if y.revenue_delta >= 0 }}{{ '{:,.0f}'.format(y.revenue_delta) }}
+              {{ '+' if y.revenue_delta >= 0 }}{{ y.revenue_delta|money(0) }}
             </span>
             {% else %}<span class="upload-hint">not set</span>{% endif %}
           </td>
@@ -51,7 +57,7 @@
             {% if y.cost_delta is not none %}
             {# Over on cost is the bad direction, which is the opposite of revenue. #}
             <span style="color:{{ 'var(--danger)' if y.cost_delta > 0 else 'inherit' }};">
-              {{ '+' if y.cost_delta >= 0 }}{{ '{:,.0f}'.format(y.cost_delta) }}
+              {{ '+' if y.cost_delta >= 0 }}{{ y.cost_delta|money(0) }}
             </span>
             {% else %}<span class="upload-hint">not set</span>{% endif %}
           </td>

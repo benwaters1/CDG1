@@ -17,7 +17,7 @@
     </div>
     <p class="upload-hint">
       {% if p['policy_number'] %}Policy #{{ p['policy_number'] }}{% endif %}
-      {% if p['premium'] %} · {{ p['premium']|money }} / {{ p['premium_frequency'] }}{% endif %}
+      {% if p['premium'] %} · {{ p['premium']|money }} {{ {'annual': 'a year', 'monthly': 'a month'}.get(p['premium_frequency'], p['premium_frequency']) }}{% endif %}
     </p>
     {% if p['notes'] %}<p class="manual-body">{{ p['notes'] }}</p>{% endif %}
     <div class="expense-actions">
@@ -40,8 +40,8 @@
         <input aria-label="Provider" type="text" name="provider" value="{{ p['provider'] }}" placeholder="Provider" required>
         <input aria-label="Policy number" type="text" name="policy_number" value="{{ p['policy_number'] or '' }}" placeholder="Policy number">
         <input aria-label="Coverage type" type="text" name="coverage_type" value="{{ p['coverage_type'] or '' }}" placeholder="Coverage type">
-        <input aria-label="Premium" type="number" name="premium" step="0.01" min="0" value="{{ p['premium'] or '' }}" placeholder="Premium">
-        <select name="premium_frequency">
+        <input aria-label="Premium" type="number" name="premium" step="0.01" min="0" value="{{ p['premium']|box(2) }}" placeholder="Premium">
+        <select name="premium_frequency" aria-label="How often it is paid">
           <option value="annual" {{ 'selected' if p['premium_frequency'] == 'annual' }}>Annual</option>
           <option value="monthly" {{ 'selected' if p['premium_frequency'] == 'monthly' }}>Monthly</option>
         </select>
@@ -65,7 +65,7 @@
     <input aria-label="Policy number" type="text" name="policy_number" placeholder="Policy number">
     <input aria-label="Coverage type (e.g. Property, Liability)" type="text" name="coverage_type" placeholder="Coverage type (e.g. Property, Liability)">
     <input aria-label="Premium" type="number" name="premium" step="0.01" min="0" placeholder="Premium">
-    <select name="premium_frequency">
+    <select name="premium_frequency" aria-label="How often it is paid">
       <option value="annual">Annual</option>
       <option value="monthly">Monthly</option>
     </select>

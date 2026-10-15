@@ -210,8 +210,10 @@ def run():
     src = io.open("templates/admin_city_tax.html", encoding="utf-8").read()
     s.check("the panel has an empty branch", "{% elif arrears %}" in src,
             detail="a panel that can never be empty becomes furniture")
+    # About the stays missing their tax, not about what is owed: "Nothing
+    # outstanding" sat under "€30.40 owed to the commune" (14 October 2026).
     s.check("and it says something rather than rendering blank",
-            "Nothing outstanding" in src,
+            "none is missing from a bill" in src and "Nothing outstanding" not in src,
             detail="an empty panel with no words in it reads as a broken page")
     conn = db()
     quiet = m.city_tax_arrears(conn)

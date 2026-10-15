@@ -26,7 +26,8 @@
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.nights }}</span>
-    <span class="stat-tile-label">Nights sold ahead</span></span></div>
+    {#- This month counts whole, its nights already past included. -#}
+    <span class="stat-tile-label">Nights sold, this month and ahead</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.last_nights }}</span>
     <span class="stat-tile-label">At this point last year</span></span></div>
@@ -56,9 +57,10 @@
       <tr{% if r.nights_change < 0 %} class="row-alert"{% endif %}>
         <th scope="row">
           {{ r.month.strftime('%B %Y') }}
-          <span class="field-hint" style="display:block; font-weight:400;">compared as at {{ r.as_at_last.strftime('%d %b %Y') }}</span>
+          <span class="field-hint" style="display:block; font-weight:400;">compared as at {{ r.as_at_last.isoformat()|date_short }}</span>
         </th>
-        <td class="num">{{ r.days_out }}</td>
+        {#- A month already begun is not "-13 days out". -#}
+        <td class="num">{% if r.days_out > 0 %}{{ r.days_out }}{% else %}<span class="upload-hint">under way</span>{% endif %}</td>
         <td class="num">{{ r.nights }}</td>
         <td class="num">{{ r.last_nights }}</td>
         <td class="num">{{ '+' if r.nights_change > 0 }}{{ r.nights_change }}</td>

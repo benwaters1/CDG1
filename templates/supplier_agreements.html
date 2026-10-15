@@ -36,7 +36,7 @@
                by nothing — and an agreement in its first year and one in its
                ninth are different conversations with the same supplier. #}
             {% if a.running_years is not none %}
-            <div class="upload-hint">running {{ a.running_years }} year{{ '' if a.running_years == 1 else 's' }}</div>
+            <div class="upload-hint">running {{ a.running_years|qty(1) }} year{{ '' if a.running_years == 1 else 's' }}</div>
             {% else %}
             <div class="upload-hint">no start date on it</div>
             {% endif %}

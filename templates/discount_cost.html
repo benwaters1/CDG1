@@ -105,6 +105,9 @@
   codes people actually use.
 </p>
 
+{#- Only when there is a table for it to talk about: with no code used it
+    said "So the column above is evidence" under no column at all. -#}
+{% if data.rows %}
 <div class="detail-card">
   <h2 class="section-heading">Did any of it work?</h2>
   <p class="manual-body wraps">
@@ -114,7 +117,7 @@
     because it gets repeated.
   </p>
   <p class="manual-body wraps">
-    So the column above is evidence, not a verdict. A code used when the house was
+    So the &ldquo;House was&rdquo; column above is evidence, not a verdict. A code used when the house was
     <strong>nearly full</strong> gave money away on rooms that were selling; one used when it was
     <strong>nearly empty</strong> at least put somebody in a room. Neither settles it, because a
     busy night may have been busy <em>because</em> of the code &mdash; which is exactly the thing
@@ -128,5 +131,6 @@
     still worth selling as long as it beats what that night actually consumes.
   </p>
 </div>
+{% endif %}
 
 {% endblock %}

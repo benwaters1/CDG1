@@ -39,7 +39,7 @@
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-success">{{ icon('bookings', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.confirmed }}</span><span class="stat-tile-label">Confirmed</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.confirmed }}</span><span class="stat-tile-label">Confirmed, here or to come</span></span>
   </div>
 </div>
 
@@ -79,7 +79,9 @@
       <div>
         <strong>{{ b['guest_name'] }}</strong> — {{ b['room_name'] }}
         <span class="mini-status status-{{ b['status'] }}" style="margin-left:8px;">{{ b['status'] }}</span>
-        {% if b['payment_status'] != 'unpaid' %}<span class="mini-status status-{{ b['payment_status'] }}" style="margin-left:4px;">{{ b['payment_status'] }}</span>{% endif %}
+        {#- "Paid" sat beside "€8.00 still owed": the room was paid, the
+            taxe de séjour was not. Said as what was paid when more is owed. -#}
+        {% if b['payment_status'] != 'unpaid' %}<span class="mini-status status-{{ b['payment_status'] }}" style="margin-left:4px;">{{ 'room paid' if b['payment_status'] == 'paid' and owed_by_booking.get(b['id']) else b['payment_status']|replace('_', ' ') }}</span>{% endif %}
         {#- Read on the row, not on a report nobody opens. A confirmed stay
             that nobody arrived for looks exactly like one that happened. #}
         {%- if b['no_show_at'] %}
@@ -221,7 +223,10 @@
       {% endif %}
       {% if b['checked_out_at'] %}
       <p class="upload-hint" style="margin-top:8px;">✓ Checked out {{ b['checked_out_at']|house_day|date_short }} — turnover task assigned.</p>
-      {% else %}
+      {# Only once they have arrived: a stay next week was offered "Guest
+         checked out", which wrote the turnover checklist for a room still
+         waiting for them and asked them for feedback on a stay not had. #}
+      {% elif b['arrival_date'] and b['arrival_date'] <= today_iso and not b['no_show_at'] %}
       <form method="post" action="{{ url_for('checkout_booking', booking_id=b['id']) }}" class="expense-actions" style="margin-top:8px; padding-top:10px; border-top:1px dashed var(--parchment-line);">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <select name="assigned_to_user_id" required style="width:auto;">

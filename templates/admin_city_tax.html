@@ -205,8 +205,10 @@ decision on its own.</p>
 </div>
 {% endif %}
 {% elif arrears %}
+{#- The empty state of the list of stays MISSING their tax, not of what is
+    owed: "Nothing outstanding" sat under "€30.40 owed to the commune". -#}
 <p class="upload-hint" style="margin-top:32px;">Every confirmed stay carries its
-taxe de séjour. Nothing outstanding.</p>
+taxe de séjour: none is missing from a bill.</p>
 {% endif %}
 
 {% endblock %}

@@ -79,7 +79,7 @@
       <form method="post" action="{{ url_for('cancel_restaurant_booking_admin', reservation_id=r['id']) }}" onsubmit="return confirm('Cancel this confirmed reservation?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Cancel</button></form>
       {% if r['no_show_at'] %}
       <form method="post" action="{{ url_for('undo_restaurant_no_show', reservation_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Undo no-show</button></form>
-      {% else %}
+      {% elif r['dinner_date'] <= service_today %}
       <form method="post" action="{{ url_for('mark_restaurant_no_show', reservation_id=r['id']) }}" onsubmit="return confirm('Mark this party as a no-show?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Mark no-show</button></form>
       {% endif %}
       {% endif %}

@@ -165,7 +165,7 @@
         <label class="field-label" for="price_per_night">Price per night (€)</label>
         <input type="number" id="price_per_night" name="price_per_night" min="0" step="1"
                value="{{ '%g'|format(room['price_per_night']) if room else '' }}" placeholder="400">
-        <span class="field-hint">Including VAT. Seasonal rates are set below.</span>
+        <span class="field-hint">Including VAT. {{ 'Seasonal rates are set below.' if room else 'Seasonal rates can be added once the room is saved.' }}</span>
       </div>
       <div>
         <label class="field-label" for="min_nights">Minimum stay (nights)</label>

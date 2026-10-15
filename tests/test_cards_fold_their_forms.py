@@ -46,6 +46,12 @@ PAGES = {
     "Cash banking": "/management/cash-banking",
     "Vendors": "/management/vendors",
     "Documents": "/management/documents",
+    # The third read-through, 14 October 2026.
+    "Events": "/admin/events",
+    "Tasks": "/admin/tasks",
+    "Overview": "/admin/overview",
+    "Expenses": "/expenses",
+    "What's On": "/admin/whats-on",
 }
 
 
@@ -130,6 +136,7 @@ def _cleanup(conn):
         conn.execute(f"DELETE FROM {table} WHERE vehicle_id IN "
                      "(SELECT id FROM vehicles WHERE name LIKE ?)", (TAG + "%",))
     conn.execute("DELETE FROM vehicles WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM event_inquiries WHERE contact_name LIKE ?", (TAG + "%",))
     conn.commit()
 
 
@@ -159,6 +166,12 @@ def run():
         "VALUES (?, ?, ?, ?, 2, ?, 'pending', ?, 'unpaid')",
         [(f"ZZF{i:03d}", f"{TAG}tok{i}", f"{TAG} Diner {i}", f"{TAG}{i}@example.invalid",
           f"2031-04-{1 + i % 28:02d}", now) for i in range(60)])
+    # An enquiry, so Events has a card whose edit form can be folded or not.
+    conn.execute("INSERT INTO event_inquiries (reference_code, manage_token, contact_name, "
+                 "contact_email, event_type, status, preferred_date, created_at) "
+                 "VALUES (?, ?, ?, ?, 'wedding', 'new', ?, ?)",
+                 ("ZZFEVT", TAG + "evtok", TAG + " Couple", f"{TAG}evt@example.invalid",
+                  FAR, now))
     # A letter held by the switch, the way the live site holds them.
     conn.execute("INSERT INTO email_outbox (to_address, subject, body, reason, attempts, "
                  "created_at) VALUES (?, ?, 'x', 'the house is not writing to guests yet', 0, ?)",
@@ -199,6 +212,14 @@ def run():
         "Cash banking": (r"/cash-banking/new$",),
         "Vendors": (r"/vendors/new$",),
         "Documents": (r"/documents/upload$",),
+        # The third read-through, 14 October: add forms above their lists,
+        # and an edit form drawn open on every event.
+        "Shift Schedule": (r"/shifts/new$",),
+        "Tasks": (r"/tasks/new$",),
+        "Overview": (r"/tasks/new$",),
+        "Expenses": (r"/expenses/submit$", r"/regenerate-supplier-link$"),
+        "What's On": (r"/whats-on/save$",),
+        "Events": (r"/events/\d+/update$",),
     }
     for title, actions in folds.items():
         forms = read(pages[title]).forms

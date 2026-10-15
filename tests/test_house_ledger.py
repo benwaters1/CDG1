@@ -320,14 +320,21 @@ def run():
                   if r["date"] == (today - timedelta(days=2)).isoformat()), None)
     s.check("the covers land on the night they were booked for",
             night and night["covers"] >= 6, detail=str(night["covers"] if night else None))
-    if util["seats"]:
-        s.check("fill is the covers over the seats in the room",
+    # Full is what the house takes a night: the covers on the restaurant's
+    # settings where there is a cap, the seats in the plan where there is not.
+    # Against 42 seats, a night closed as full at 20 read 47.6% (14 October).
+    settings = m.get_restaurant_settings(conn)
+    cap = (settings["capacity"] if settings and settings["capacity"] else 0) or util["seats"]
+    s.check("full means the covers the house takes, where it has said",
+            util["covers_a_night"] == cap, detail=f"{util['covers_a_night']} against {cap}")
+    if cap:
+        s.check("fill is the covers over that",
                 night and night["fill"] is not None
-                and abs(night["fill"] - night["covers"] / util["seats"] * 100) < 0.2,
-                detail=f"{night['fill'] if night else None}% of {util['seats']} seats")
+                and abs(night["fill"] - night["covers"] / cap * 100) < 0.2,
+                detail=f"{night['fill'] if night else None}% of {cap}")
     else:
         # A percentage of nothing is not a small number.
-        s.check("with no table plan it declines to give a percentage",
+        s.check("with no table plan and no cap it declines to give a percentage",
                 night and night["fill"] is None and util["no_seating"],
                 detail="a fill of nothing is not zero, it is unknown")
 

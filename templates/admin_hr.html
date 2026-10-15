@@ -215,14 +215,14 @@
   <div class="mini-row">
     <span class="mini-name">{{ c['employee_name'] }} — {{ c['name'] }}{% if c['required'] %} <span class="mini-status status-pending">required</span>{% endif %}</span>
     <span class="mini-role">
-      {% if c['expired'] %}<strong>expired {{ -c['days_left'] }} day{{ '' if c['days_left'] == -1 else 's' }} ago</strong>
+      {% if c['expired'] %}<strong>expired {{ c['days_left']|in_words }}</strong>
       {% else %}expires {{ c['days_left']|in_words }}{% endif %}
       · {{ c['expiry_date']|date_short }}
     </span>
     {% if c['shifts_after'] %}
     <span class="mini-status status-declined">
       {{ c['shifts_after'] }} shift{{ '' if c['shifts_after'] == 1 else 's' }} booked after it
-      {%- if c['first_shift_after'] %}, from {{ c['first_shift_after'] }}{% endif %}
+      {%- if c['first_shift_after'] %}, from {{ c['first_shift_after']|date_short }}{% endif %}
     </span>
     {% endif %}
   </div>
@@ -273,7 +273,7 @@
         <td>{{ c['employee_name'] }}</td>
         <td>{{ c['name'] }}{% if c['required'] %} <span class="mini-status status-pending">required</span>{% endif %}</td>
         <td>{{ c['issuer'] or '—' }}</td>
-        <td>{{ c['expiry_date'] or 'no expiry' }}</td>
+        <td>{{ c['expiry_date']|date_short or 'no expiry' }}</td>
         <td>
           <form method="post" action="{{ url_for('delete_certification', cert_id=c['id']) }}" onsubmit="return confirm('Remove this certification?');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

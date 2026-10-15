@@ -21,6 +21,10 @@
    not late, it has not happened. #}
 {% if missing %}
 <h2 class="section-heading">Waiting to be filled in</h2>
+{#- Said once. It was under every card's form, beside "Add to the register",
+    and read as an instruction not to press it. -#}
+<p class="upload-hint" style="margin-top:-6px;">French guests need no fiche of their
+  own: add them with their nationality as French and they count as done.</p>
 {% for st in missing %}
 {# A Booking.com stay has no booking of the house's own: its fiches go to their
    own register, through their own form, and are listed with the rest. #}
@@ -112,8 +116,6 @@
       </div>
     </div>
     <button type="submit" class="btn-mini" style="margin-top:8px;">Add to the register</button>
-    <p class="upload-hint">A French national does not go on the register — record
-      them with their nationality and the count settles.</p>
   </form>
 
   {% if st.fiches %}

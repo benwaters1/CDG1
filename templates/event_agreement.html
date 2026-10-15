@@ -19,13 +19,14 @@
 
 <p class="page-intro">
   {{ event['event_type']|capitalize }} · {{ event['contact_name'] }} ·
-  {{ event['preferred_date'] or 'no date yet' }}
+  {{ event['preferred_date']|date_short or 'no date yet' }}
   {%- if event['end_date'] and event['end_date'] != event['preferred_date'] %} to {{ event['end_date']|date_short }}{% endif %}
   · {{ event['reference_code'] }} ·
   <span class="mini-status status-{{ event['status'] }}">{{ event['status'] }}</span>
 </p>
 
-{% if schedule %}
+{#- Not four €0.00 tiles before anything is agreed. -#}
+{% if schedule and schedule.bill.quoted %}
 <div class="stat-tiles">
   <div class="stat-tile">
     <span class="stat-tile-label">Agreed</span>

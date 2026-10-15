@@ -24,7 +24,10 @@
   {% else %}{{ sheet.range_start.strftime('%B %Y') }}{% endif %}
 </p>
 
-{% include "_task_add_form.html" %}
+<details class="refund-box">
+  <summary>+ Add a task</summary>
+  {% include "_task_add_form.html" %}
+</details>
 
 {# Hidden until something is ticked. A row of buttons that do nothing yet is
    furniture, and this page is opened every morning by somebody who wants to

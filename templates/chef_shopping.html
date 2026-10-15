@@ -46,8 +46,8 @@
       {% for r in shopping.short %}
       <tr>
         <th scope="row">{{ r.name }}</th>
-        <td class="num">{{ r.on_hand }}{% if r.unit %} {{ r.unit }}{% endif %}</td>
-        <td class="num">{{ r.reorder_level }}{% if r.unit %} {{ r.unit }}{% endif %}</td>
+        <td class="num">{{ r.on_hand|qty }}{% if r.unit %} {{ r.unit }}{% endif %}</td>
+        <td class="num">{{ r.reorder_level|qty }}{% if r.unit %} {{ r.unit }}{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

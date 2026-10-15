@@ -23,8 +23,9 @@
   {% endfor %}
 </div>
 <p class="upload-hint" style="margin:-12px 0 20px;">
-  Revenue less refunds, expenses and estimated labour gives the net — the figures above read left to right.
-  Labour is an estimate from clocked hours × hourly rate; salaried staff and anyone without a clean rate aren't counted.
+  Revenue less refunds, expenses and labour gives the net — the figures above read left to right.
+  Labour is the wage typed in for each person where there is one (a monthly salary counts in each month they clocked in),
+  otherwise an estimate from their hours and pay note; anybody with neither is left out.
 </p>
 
 <h2 class="section-heading">Revenue by area</h2>
@@ -44,7 +45,11 @@
         <td><strong>Total revenue</strong></td>
         <td class="num"><strong>{{ money(data.summary.revenue) }}</strong></td>
         <td class="num">{{ money(data.previous.revenue) }}</td>
-        <td class="num">{{ change(data.totals[0].change) if data.totals[0].change is not none else '—' }}</td>
+        {#- From the two figures on this row, which are after refunds. It took
+            the tile's change, which is before them: +851.6% beside two
+            figures 906.8% apart. -#}
+        {% set was = data.previous.revenue %}
+        <td class="num">{{ change(((data.summary.revenue - was) / was * 100)|round(1)) if was and was > 0 else '—' }}</td>
       </tr>
     </tbody>
   </table>
@@ -73,6 +78,6 @@
     </tbody>
   </table>
 </div>
-<p class="upload-hint">Taken, less each line under it, is the net. Refunds are attributed to the period they were issued in, not the period of the original booking. Labour is a best-effort estimate from clocked hours × hourly rate — never a payroll figure.</p>
+<p class="upload-hint">Taken, less each line under it, is the net. Refunds are attributed to the period they were issued in, not the period of the original booking. Labour comes from each person's typed wage, or an estimate from their pay note where none is typed — never a payroll figure.</p>
 
 {% endblock %}

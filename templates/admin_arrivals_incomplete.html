@@ -47,7 +47,7 @@
       <tr{% if r.days_away is not none and r.days_away <= 3 %} class="row-alert"{% endif %}>
         <th scope="row">{{ r.guest }}</th>
         <td>{{ r.room }}</td>
-        <td>{{ r.arrival }}</td>
+        <td>{{ r.arrival|date_short }}</td>
         <td class="num">{% if r.days_away is not none %}{{ r.days_away }}{% else %}&mdash;{% endif %}</td>
         <td>{{ r.missing|join(', ') }}</td>
         <td><a href="{{ url_for('edit_booking', booking_id=r.id) }}" class="btn-mini">Fix</a></td>

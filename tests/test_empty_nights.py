@@ -261,6 +261,17 @@ def _run(s, mine):
     s.check("while a long one still is",
             any(r["nights"] >= 3 and r["room"]["id"] == room["id"]
                 for r in data["sellable"]))
+    # 14 October 2026: with every room at a minimum of one night, each stray
+    # night counted as a gap worth filling.
+    conn = db()
+    conn.execute("UPDATE rooms SET min_nights = 1 WHERE id = ?", (room["id"],))
+    conn.commit()
+    conn.close()
+    data = _empty(60, base)
+    s.check("and a single night is never a gap worth filling, whatever the minimum",
+            not any(r["nights"] < 2 for r in data["sellable"])
+            and any(r["nights"] == 1 and r["room"]["id"] == room["id"] for r in data["runs"]),
+            detail=str(sorted({r["nights"] for r in data["sellable"]})))
 
     s.section("A blocked night is not an empty one")
     conn = db()

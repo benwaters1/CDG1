@@ -68,7 +68,9 @@
     {% if g['phone'] %}<div><dt>Telephone</dt><dd><a href="tel:{{ g['phone'] }}">{{ g['phone'] }}</a></dd></div>{% endif %}
     {% if g['language'] %}<div><dt>Reads in</dt><dd>{{ languages.get(g['language'], g['language']) }}</dd></div>{% endif %}
     {% if g['usual_arrival_time'] %}<div><dt>Usually arrives</dt><dd>{{ g['usual_arrival_time'] }}</dd></div>{% endif %}
-    {% if record.first_seen %}
+    {#- The owner reads it in the band above; said twice it looked like two
+        facts. Everybody else has only this. -#}
+    {% if record.first_seen and not is_owner %}
     <div><dt>Known since</dt><dd>{{ record.first_seen|date_short }}</dd></div>
     {% endif %}
     {% if is_owner and record.marketing %}
@@ -188,8 +190,8 @@
    request until the house has looked at the dates, and confirm is the one
    place that re-checks availability and sends the confirmation. #}
 {% if is_owner and record.email %}
-<div class="detail-card">
-  <h2 class="section-heading">Book them again</h2>
+<details class="refund-box">
+  <summary>+ Book them again</summary>
   <form method="post" action="{{ url_for('rebook_guest', guest_id=record.id) }}"
         style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -219,7 +221,7 @@
     It is created as a request, not a confirmed booking &mdash; nothing is sent
     to them until you confirm it.
   </p>
-</div>
+</details>
 {% endif %}
 
 <h2 class="section-heading">Stays ({{ record.stays|length }})</h2>
@@ -341,7 +343,7 @@
     {% for e in record.events %}
     {% set em = record.event_money.get(e['id']) %}
     <tr>
-      <th scope="row">{{ e['preferred_date'] or '—' }}</th>
+      <th scope="row">{{ e['preferred_date']|date_short or '—' }}</th>
       <td>{{ e['event_type'] }}</td>
       <td><span class="mini-status status-{{ e['status'] }}">{{ e['status'] }}</span></td>
       {% if is_owner %}

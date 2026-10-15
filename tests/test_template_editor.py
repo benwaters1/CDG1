@@ -466,7 +466,11 @@ def run():
             arrival2, arrival2 + timedelta(days=2), 2, "", [], payment_status="unpaid")
     bid2 = conn.execute("SELECT id FROM bookings WHERE reference_code = ?",
                         (ref2,)).fetchone()["id"]
-    conn.execute("UPDATE bookings SET status = 'confirmed' WHERE id = ?", (bid2,))
+    # Made in a free window a year out, then moved to a stay that has just
+    # ended: nobody can be checked out of a stay that has not begun.
+    conn.execute("UPDATE bookings SET status = 'confirmed', arrival_date = ?, departure_date = ? "
+                 "WHERE id = ?", ((house_today() - timedelta(days=3)).isoformat(),
+                                  (house_today() - timedelta(days=1)).isoformat(), bid2))
     conn.commit()
     staff = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"]
     sent, fake = _capture()
@@ -489,6 +493,11 @@ def run():
                                                            "guest_name": "x"}).strip(),
             detail=str(asked[0]["subject"] if asked else None))
 
+    # The turnover checklist the check-out wrote goes with the stay. Left
+    # behind, its five urgent tasks hung on the room for every later suite,
+    # and the room board called a ready room not ready.
+    conn.execute("""DELETE FROM tasks WHERE booking_id IN
+                    (SELECT id FROM bookings WHERE guest_name LIKE ?)""", (TAG + "%",))
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.commit()
     conn.close()

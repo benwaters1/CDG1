@@ -340,7 +340,9 @@ def run():
               for c in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)] if row else [])
     s.check("the page shows the no-show under Called off and not under Stays",
             len(cells) == 9 and cells[3] == "1" and cells[4] == "3"
-            and cells[7] == "1" and cells[8] == made_on.isoformat(),
+            # Day first in words, as every staff page writes a date (the
+            # column printed the database's 2026-03-29 until 14 October).
+            and cells[7] == "1" and cells[8] == m.format_date_short(made_on.isoformat()),
             detail=str(cells) if cells else "no row for the absent guest")
     s.check("it says it does not agree with the occupancy report, and why",
             "not meant to agree" in body,

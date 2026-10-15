@@ -440,6 +440,14 @@ def run():
     s.check("today, tomorrow, yesterday",
             (m.in_words(0), m.in_words(1), m.in_words(-1), m.in_words(5))
             == ("today", "tomorrow", "yesterday", "in 5 days"))
+    # A job switched off keeps the last thing it said, in the words of the
+    # code that said it: Automation printed "nobody arrives in 0 day(s)" from
+    # a job last run before in_words existed (14 October 2026).
+    s.check("and a line stored before then is read the same way",
+            m.house_words("nobody arrives in 0 day(s)") == "nobody arrives today"
+            and m.house_words("nobody left 3 day(s) ago who has not been asked")
+            == "nobody left 3 days ago who has not been asked",
+            detail=m.house_words("nobody arrives in 0 day(s)"))
     clumsy = re.compile(r"\bin [01] days\b|\b1 days ago\b|\bin 0 day\b")
     said = []
     for _ep, url, html in pages:

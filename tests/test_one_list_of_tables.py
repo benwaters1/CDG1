@@ -130,7 +130,7 @@ def run():
             util = m.table_utilisation(conn)
         floor_seats = conn.execute("SELECT COALESCE(SUM(seats), 0) AS s FROM restaurant_tables "
                                    "WHERE active = 1").fetchone()["s"]
-        s.check("how full the room was is measured against the floor plan's seats",
+        s.check("the seats it reports are the floor plan's",
                 util["seats"] == floor_seats and floor_seats > 0,
                 detail=f"{util['seats']} against {floor_seats}")
 

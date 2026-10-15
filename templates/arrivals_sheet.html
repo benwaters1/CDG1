@@ -19,7 +19,12 @@
 </div>
 
 <p class="upload-hint" style="margin-bottom:18px;">
-  {{ day.strftime('%A, %e %B %Y') }}{% if day == today %} · today{% endif %}
+  {#- It opens on tomorrow on purpose, and now says so, with the way back to
+      today: "Thursday 15 October" with nothing beside it read as today. -#}
+  {{ day.strftime('%A') }} {{ day.isoformat()|date_short }}
+  {%- if day == today %} · today
+  {%- elif (day - today).days == 1 %} · tomorrow · <a href="{{ url_for('arrivals_sheet_page', date=today.isoformat()) }}">today's sheet</a>
+  {%- else %} · <a href="{{ url_for('arrivals_sheet_page', date=today.isoformat()) }}">today's sheet</a>{% endif %}
   {%- if sheet.beds %} · {{ sheet.beds }} coming{% endif %}
   {%- if sheet.beds_unknown %}, and {{ sheet.beds_unknown }} Booking.com
   booking{{ '' if sheet.beds_unknown == 1 else 's' }} that did not say how many{% endif %}

@@ -34,6 +34,7 @@ at all: the person believes they have told the house and the rota never hears.
 """
 from _harness import Suite, clients, db
 
+import re
 from datetime import timedelta
 
 import _harness
@@ -111,6 +112,29 @@ def run():
             detail="ten hours against thirty-five agreed is a gap of -25, "
                    "which is worse than fifty against thirty-five: %s"
                    % [(r["name"], r["gap"]) for r in data["rows"][:3]])
+
+    # 14 October 2026. Both ends of the window are counted, so "four weeks"
+    # is today and the 27 days before it. The page asked for today minus 28
+    # days, which is 29 days of shifts against 28 days of contract: one more
+    # day's work than the contract it is measured against.
+    today = m.house_today()
+    s.check("four weeks, both ends counted, is four weeks of contract",
+            m.contracted_vs_worked(conn, today - timedelta(days=27), today)["weeks"] == 4.0)
+    # A ten-hour shift 28 days ago is the day before the window opens.
+    shift(over, 28, 10)
+    conn.commit()
+    page = oc.get("/admin/contracted-hours?weeks=4").get_data(as_text=True)
+    window = {r["name"]: r for r in m.contracted_vs_worked(
+        conn, today - timedelta(days=27), today)["rows"]}
+    s.check("the window leaves out the day before it",
+            window[TAG + " Overworked"]["worked"] == rows[TAG + " Overworked"]["worked"],
+            detail="%s vs %s" % (window[TAG + " Overworked"]["worked"],
+                                 rows[TAG + " Overworked"]["worked"]))
+    row = re.search(r"%s Overworked.*?</tr>" % TAG, page, re.S)
+    cells = re.findall(r'<td class="num">\s*(?:<strong>)?([^<]*)', row.group(0)) if row else []
+    s.check("and the page asks for that window: four weeks, fifty hours worked",
+            "Expected over 4 weeks" in page and len(cells) >= 3 and cells[2].strip() == "50",
+            detail="cells %s -- 60 would be the shift from the day before counted" % cells)
 
     # A clock-out before its clock-in poisons any bare SUM of hours.
     conn.execute(

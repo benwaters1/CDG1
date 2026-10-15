@@ -9439,7 +9439,7 @@ def labour_cost_breakdown(conn, start_iso, end_iso):
             # so a page can say what somebody worked whether or not the house
             # has a rate for them.
             unpriced_rows.append({"user_id": r["id"], "name": r["name"],
-                                  "hours": round(r["hours"], 1), "shifts": r["shifts"]})
+                                  "hours": round(r["hours"], 2), "shifts": r["shifts"]})
             continue
         # THE UNSOCIAL HOURS AND THE MEALS, each its own named figure.
         #
@@ -9461,7 +9461,7 @@ def labour_cost_breakdown(conn, start_iso, end_iso):
         rate = wage["employer_rate"] if (wage and wage["employer_rate"] is not None) else employer_pct
         employer = gross * (rate or 0) / 100.0
         rows.append({
-            "user_id": r["id"], "name": r["name"], "hours": round(r["hours"], 1),
+            "user_id": r["id"], "name": r["name"], "hours": round(r["hours"], 2),
             "shifts": r["shifts"], "basis": basis, "source": source,
             "employer_rate": rate or 0,
             "unsocial": unsocial, "premiums": premiums,
@@ -9478,7 +9478,7 @@ def labour_cost_breakdown(conn, start_iso, end_iso):
         "gross": round(sum(x["gross"] for x in rows), 2),
         "employer": round(sum(x["employer"] for x in rows), 2),
         "total": round(sum(x["total"] for x in rows), 2),
-        "hours": round(sum(x["hours"] for x in rows), 1),
+        "hours": round(sum(x["hours"] for x in rows), 2),
         # Broken out as well as folded in, so a page can show what the
         # unsocial hours and the meals came to without a second definition
         # of either.
@@ -9492,7 +9492,7 @@ def labour_cost_breakdown(conn, start_iso, end_iso):
         # the money covers, which is what a wage bill wants; this is the rest,
         # so hours worked is always `hours` + `unpriced_hours`.
         "unpriced_rows": unpriced_rows,
-        "unpriced_hours": round(sum(x["hours"] for x in unpriced_rows), 1),
+        "unpriced_hours": round(sum(x["hours"] for x in unpriced_rows), 2),
         "employer_rate": employer_pct,
         "priced_any": bool(rows),
     }
@@ -9612,6 +9612,38 @@ def estimated_labour_cost(conn, start_iso, end_iso):
     # and every caller wants to.
     return ((b["total"] if b["priced_any"] else None), b["hours"],
             len(b["unpriced"]), b["estimated_count"], b["typed_count"])
+
+
+def labour_cost_month_by_month(conn, start, end):
+    """estimated_labour_cost for a window, worked out one calendar month at a
+    time and added up -- the same five values.
+
+    A window longer than a month cannot be costed in one go and still agree
+    with its own months. labour_cost_breakdown prices whoever clocked in
+    during the window, and a salaried person is charged a month's salary for
+    every month the window covers. So in one call, a single shift in October
+    charged their salary for January to October; month by month, they were
+    charged only in the months they clocked in. Financials showed €1,277 net
+    for January to October above six monthly rows that netted €18,549
+    between them. Summed by month, a year is its twelve months by
+    construction, and a month is exactly what it was before.
+    """
+    total, any_priced, hours = 0.0, False, 0.0
+    unpriced, estimated, typed = set(), set(), set()
+    cursor = start
+    while cursor < end:
+        step = min(add_months(date(cursor.year, cursor.month, 1), 1), end)
+        b = labour_cost_breakdown(conn, cursor.isoformat(), step.isoformat())
+        if b["priced_any"]:
+            any_priced = True
+            total += b["total"]
+        hours += b["hours"]
+        unpriced.update(b["unpriced"])
+        estimated.update(r["user_id"] for r in b["rows"] if r["source"] != "wage on file")
+        typed.update(r["user_id"] for r in b["rows"] if r["source"] == "wage on file")
+        cursor = step
+    return ((round(total, 2) if any_priced else None), round(hours, 2),
+            len(unpriced), len(estimated), len(typed))
 
 
 def _shift_hours(start_time, end_time):
@@ -9984,6 +10016,9 @@ app.jinja_env.filters["dates_in_words"] = dates_in_words
 
 
 _MONEY_BY_HAND_IN_TEXT = re.compile(r"(-?)€\s?(-?)(\d{4,}(?:\.\d{1,2})?)(?![\d,])")
+# "in 0 day(s)" and "3 day(s) ago", as the jobs wrote them before in_words.
+_DAYS_AHEAD_IN_TEXT = re.compile(r"\bin (\d+) day\(s\)")
+_DAYS_AGO_IN_TEXT = re.compile(r"\b(\d+) day\(s\) ago\b")
 
 
 def house_words(text):
@@ -9991,7 +10026,10 @@ def house_words(text):
 
     Its dates in words (dates_in_words), and its money in the one spelling:
     a notification stored before money had one way of being written says
-    "€3400", and is read as "€3,400". The stored line is not touched.
+    "€3400", and is read as "€3,400". And how far off a day is, the way
+    in_words says it: a job switched off keeps the last thing it said, so
+    Automation went on printing "nobody arrives in 0 day(s)" for a job whose
+    code now says "today". The stored line is not touched.
     """
     if not text:
         return text
@@ -10001,7 +10039,9 @@ def house_words(text):
         amount = float(m.group(3)) * (-1 if (m.group(1) or m.group(2)) else 1)
         return money(amount, 2 if places else 0)
 
-    return _MONEY_BY_HAND_IN_TEXT.sub(_money, dates_in_words(text))
+    said = _DAYS_AHEAD_IN_TEXT.sub(lambda m: in_words(int(m.group(1))), dates_in_words(text))
+    said = _DAYS_AGO_IN_TEXT.sub(lambda m: in_words(-int(m.group(1))), said)
+    return _MONEY_BY_HAND_IN_TEXT.sub(_money, said)
 
 
 app.jinja_env.filters["house_words"] = house_words
@@ -10965,8 +11005,8 @@ def financial_month_summary(conn, month_start, month_end):
     ).fetchone()["total"]
 
     (labour_cost, _labour_hours, labour_unpriced,
-     labour_estimated, labour_typed) = estimated_labour_cost(
-        conn, month_start.isoformat(), month_end.isoformat())
+     labour_estimated, labour_typed) = labour_cost_month_by_month(
+        conn, month_start, month_end)
 
     # Capital spend, counted separately. It is not subtracted from net,
     # because net is meant to say how the house TRADED and a new roof is not
@@ -11716,6 +11756,19 @@ def in_words(days):
 
 
 app.jinja_env.filters["in_words"] = in_words
+
+
+def counted(n, word, plural=None):
+    """A number with its noun agreeing: "1 day", "3 days", "2.5 days".
+
+    "(s)" is what a sentence says when nobody decided how many there were.
+    The house's letters, warnings and exports said "3 day(s)", "1 month(s)"
+    and "2 run(s)" where the number was right there to be read."""
+    shown = quantity(n) if isinstance(n, float) else n
+    return f"{shown} {word if n == 1 else (plural or word + 's')}"
+
+
+app.jinja_env.globals["counted"] = counted
 # "Jean Moreau" is JM, not JE: the cards took the first two letters of the
 # first name, so Demo Housekeeper and Demo Server were both DE.
 app.jinja_env.filters["initials"] = lambda name: initials_for(name)
@@ -11884,6 +11937,88 @@ def money(value, places=2, up_to=None):
 def euro(value):
     """Whole euros, as the summary tiles write them: money() to no places."""
     return money(value or 0, 0)
+
+
+def _not_a_number(value):
+    """None, an empty string, or a float that holds no number (nan, inf)."""
+    return value is None or value == "" or str(value).strip().lower() in (
+        "nan", "inf", "-inf", "infinity", "-infinity")
+
+
+def _plain_number(value, places):
+    """Decimal(value) rounded half up to `places`, trailing zeros dropped --
+    or None when it is not a number."""
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    step = Decimal(1).scaleb(-places) if places else Decimal(1)
+    amount = amount.quantize(step, rounding=ROUND_HALF_UP)
+    if amount == 0:
+        amount = abs(amount)
+    return amount.normalize() if amount == amount.to_integral() else amount
+
+
+def quantity(value, places=2):
+    """How many of something, as a person writes it: 12, 2.5, 0.75.
+
+    Stock is kept in REAL columns, so a count of two bottles came back from
+    the database as 2.0 and the cellar, the pass screen and the shopping list
+    printed "2.0 each" and "+12.0 each" -- beside a reorder level the same
+    pages had already rounded to 6. A whole number is written whole; a part
+    keeps the decimals it has, up to `places`. A value nobody recorded is a
+    dash, and a shortfall carries a real minus sign."""
+    if _not_a_number(value):
+        return "—"
+    amount = _plain_number(value, places)
+    if amount is None:
+        return str(value)
+    text = f"{abs(amount):f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return f"{'−' if amount < 0 else ''}{text}"
+
+
+def box_value(value, places=None):
+    """A number put back into a box for editing: 9600, not 9600.0.
+
+    The edit forms wrote the stored float straight into value="..." and the
+    owner opened an event quote to find "9600.0" in the price, a workshop at
+    "2800.0", a promo code worth "10.0". `places` is for money -- 4.5 goes
+    back as 4.50, as it was typed; a whole amount stays whole either way.
+    Nothing stored is an empty box, never the word None. A minus here is the
+    ASCII one, because the box is read back as a number."""
+    if _not_a_number(value):
+        return ""
+    amount = _plain_number(value, places if places is not None else 6)
+    if amount is None:
+        return str(value)
+    if amount == amount.to_integral():
+        return f"{amount.to_integral():f}"
+    if places is not None:
+        return f"{amount:.{places}f}"
+    return f"{amount:f}".rstrip("0").rstrip(".")
+
+
+def month_words(value):
+    """A month for a person: "October 2026", from a date, "2026-10" or
+    "2026-10-01". Held, not earned printed its months as "1 October 2026"
+    (a day standing in for a month) and Booking shape as "2026-09"."""
+    if value is None or value == "":
+        return ""
+    if isinstance(value, (date, datetime)):
+        return f"{value.strftime('%B')} {value.year}"
+    text = str(value).strip()
+    try:
+        parsed = datetime.strptime(text[:7], "%Y-%m")
+    except ValueError:
+        return text
+    return f"{parsed.strftime('%B')} {parsed.year}"
+
+
+app.jinja_env.filters["month_words"] = month_words
+app.jinja_env.filters["qty"] = lambda v, places=2: quantity(v, places)
+app.jinja_env.filters["box"] = lambda v, places=None: box_value(v, places)
 
 
 def guests_overview(conn, period, today):
@@ -14068,11 +14203,11 @@ def create_leaver_documents(conn, employee, on_date=None):
         "",
         "WHAT THIS APP KNOWS",
         "-" * 62,
-        f"Leave earned and not taken:  {accrual['owed_on_departure']:g} day(s)",
-        f"  earned {accrual['accrued']:g} over {accrual['months_worked']} month(s) "
-        f"from {accrual['year_start'].isoformat()}",
+        f"Leave earned and not taken:  {counted(accrual['owed_on_departure'], 'day')}",
+        f"  earned {accrual['accrued']:g} over {counted(accrual['months_worked'], 'month')} "
+        f"from {format_date_short(accrual['year_start'].isoformat())}",
         f"  taken  {accrual['taken']}",
-        f"  at {accrual['rate']:g} day(s) per month worked",
+        f"  at {counted(accrual['rate'], 'day')} per month worked",
         "",
         "STILL TO BE ADDED BY WHOEVER RUNS PAYROLL",
         "-" * 62,
@@ -21923,7 +22058,7 @@ def booking_shape(conn, start=None, end=None):
     leads, stays, by_month = [], [], {}
     lead_counts = {label: 0 for _lo, _hi, label in LEAD_BUCKETS}
     stay_counts = {label: 0 for _lo, _hi, label in STAY_BUCKETS}
-    undated = 0
+    undated = entered_after = 0
     for r in rows:
         arrival = parse_date(r["arrival_date"])
         depart = parse_date(r["departure_date"])
@@ -21939,9 +22074,13 @@ def booking_shape(conn, start=None, end=None):
             lead = (arrival - booked).days
             # A negative lead time is a booking entered after the guest
             # arrived -- a walk-in typed up later. Real, and not a lead time.
+            # Counted, so the lead rows plus this add up to the stays: "5
+            # stays counted" sat over lead-time rows totalling 1.
             if lead >= 0:
                 leads.append(lead)
                 lead_counts[_bucket(lead, LEAD_BUCKETS)] += 1
+            else:
+                entered_after += 1
             key = arrival.strftime("%Y-%m")
             slot = by_month.setdefault(key, {"month": key, "leads": [], "stays": []})
             if lead >= 0:
@@ -21957,6 +22096,7 @@ def booking_shape(conn, start=None, end=None):
 
     return {
         "start": start, "end": end, "total": len(rows), "undated": undated,
+        "entered_after": entered_after,
         "median_lead": _median(leads), "median_stay": _median(stays),
         "longest_lead": max(leads) if leads else None,
         "lead_rows": [{"band": label, "count": lead_counts[label],
@@ -22141,10 +22281,17 @@ def channel_cost(conn, start=None, end=None):
             "revenue": round(revenue, 2), "rate": rate, "cost": cost,
             "net": round(revenue - cost, 2) if cost is not None else None,
         })
+    # What the house keeps is only known once every channel that took money
+    # has a rate. It was revenue less the commission that IS known, so a
+    # channel with no rate counted as free in the total -- €6,140 kept above a
+    # row that said "—" -- which is the claim this page exists not to make.
+    every_rate = all(r["cost"] is not None for r in out if r["revenue"])
     return {
         "start": start, "end": end, "rows": out,
         "revenue": round(total_rev, 2), "cost": round(total_cost, 2),
-        "net": round(total_rev - total_cost, 2),
+        "net": round(total_rev - total_cost, 2) if every_rate else None,
+        "net_priced": round(sum(r["net"] for r in out if r["net"] is not None), 2),
+        "every_rate": every_rate,
         "unpriced": sorted(set(unpriced)),
         "unrecorded": next((r["bookings"] for r in out if r["source"] == "Not recorded"), 0),
         "channels": KNOWN_CHANNELS,
@@ -22905,12 +23052,17 @@ def seasonality(conn, years=3, today=None):
         })
 
     busiest = max(month_rows, key=lambda r: r["occupancy"]) if month_rows else None
-    quietest = min((r for r in month_rows if r["measured_days"]),
-                   key=lambda r: r["occupancy"], default=None)
+    # A month is only "the quietest" if it is quieter than the rest. min()
+    # picked the first of ten months all at 0.0% and called January it.
+    measured = [r for r in month_rows if r["measured_days"]]
+    low = min((r["occupancy"] for r in measured), default=None)
+    lows = [r for r in measured if r["occupancy"] == low]
+    quietest = lows[0] if len(lows) == 1 else None
     return {
         "start": start, "today": today, "years": years,
         "months": month_rows, "weekdays": weekday_rows,
         "busiest": busiest, "quietest": quietest,
+        "quiet_tied": len(lows) if len(lows) > 1 else 0, "quiet_low": low,
         "nights_counted": sum(r["nights"] for r in month_rows),
         "csv": [{"period": r["name"], "kind": "month", "nights": r["nights"],
                  "occupancy_pct": r["occupancy"], "adr": r["adr"]} for r in month_rows]
@@ -23127,6 +23279,12 @@ def table_utilisation(conn, start=None, end=None):
     seats = conn.execute(
         "SELECT COALESCE(SUM(seats), 0) AS s FROM restaurant_tables WHERE active = 1"
     ).fetchone()["s"] or 0
+    # Full is what the house will TAKE, not what the furniture holds. Booking
+    # stops at the covers set on the restaurant's settings, so against 42
+    # seats a night the house had closed as full read 47.6%. The seats are
+    # still the denominator where no cap is set.
+    settings = get_restaurant_settings(conn)
+    cap = (settings["capacity"] if settings and settings["capacity"] else 0) or seats
 
     rows = conn.execute(
         """SELECT dinner_date, COALESCE(SUM(party_size), 0) AS covers,
@@ -23144,19 +23302,20 @@ def table_utilisation(conn, start=None, end=None):
             "date": r["dinner_date"],
             "weekday": day.strftime("%a") if day else "",
             "covers": r["covers"], "bookings": r["bookings"],
-            "fill": round(r["covers"] / seats * 100, 1) if seats else None,
+            "fill": round(r["covers"] / cap * 100, 1) if cap else None,
         })
     served = [r for r in out if r["covers"]]
     return {
         "start": start, "end": end, "seats": seats, "rows": out[:90],
+        "covers_a_night": cap, "capped": bool(cap and cap != seats),
         "nights": len(served),
         "covers": sum(r["covers"] for r in out),
         "average_fill": round(sum(r["fill"] for r in served) / len(served), 1)
-        if served and seats else None,
+        if served and cap else None,
         "best": max(served, key=lambda r: r["covers"]) if served else None,
-        # No table plan means no denominator, and a percentage of nothing is
-        # not a small number, it is not a number.
-        "no_seating": seats == 0,
+        # No table plan and no cap means no denominator, and a percentage of
+        # nothing is not a small number, it is not a number.
+        "no_seating": cap == 0,
         "csv": [{"date": r["date"], "covers": r["covers"], "fill_pct": r["fill"]}
                 for r in out],
     }
@@ -24877,7 +25036,7 @@ def report_labour(conn, period):
         + [{"name": r["name"], "hours": r["hours"], "shifts": r["shifts"],
             "cost": None} for r in cost["unpriced_rows"]],
         key=lambda p: (-p["hours"], p["name"] or ""))
-    total_hours = round(cost["hours"] + cost["unpriced_hours"], 1)
+    total_hours = round(cost["hours"] + cost["unpriced_hours"], 2)
     total_cost = cost["total"] if cost["priced_any"] else 0.0
     unpriced = len(cost["unpriced"])
     estimated, typed = cost["estimated_count"], cost["typed_count"]
@@ -25210,7 +25369,11 @@ def contracted_vs_worked(conn, start, end):
     for e in entries:
         worked[e["user_id"]] = worked.get(e["user_id"], 0.0) + hours.get(e["id"], 0.0)
 
-    weeks = max((end - start).days, 1) / 7.0
+    # Both ends are in: the hours above run to the end of `end`, so the days
+    # are the difference plus one. It was the difference, and "4 weeks"
+    # counted 29 days of shifts against 28 of contract -- a day of somebody's
+    # work read as overtime every time the page was opened.
+    weeks = max((end - start).days + 1, 1) / 7.0
     out = []
     for p in people:
         did = round(worked.get(p["id"], 0.0), 2)
@@ -32085,12 +32248,23 @@ def void_report(conn, *, start=None, end=None, today=None):
         r["voids"] += 1
         r["value"] = round(r["value"] + value, 2)
 
-    for p in by_person.values():
+    # What each person RANG UP is what they sold plus what of theirs was
+    # struck off. Against the sold half alone a share could pass 100% (it
+    # read 166.7%) on a page labelled "of what was rung up".
+    voided_of_theirs = {}
+    for r in rows:
+        uid = r["line"]["added_by_user_id"]
+        voided_of_theirs[uid] = voided_of_theirs.get(uid, 0.0) + r["value"]
+    for uid, p in by_person.items():
         # None, not nought, when they rang up nothing at all: a share of
         # nothing is not a small share, it is not a share. The same
-        # distinction the no-show rate and the attach rate both make.
-        p["share"] = (round(p["value"] / p["sold"] * 100, 1)
-                      if p["sold"] > 0.005 else None)
+        # distinction the no-show rate and the attach rate both make. And
+        # none for "nobody recorded": voided by nobody against added by
+        # nobody is two unrelated people.
+        rung = p["sold"] + voided_of_theirs.get(uid, 0.0)
+        p["rung_up"] = round(rung, 2)
+        p["share"] = (round(p["value"] / rung * 100, 1)
+                      if uid is not None and rung > 0.005 else None)
 
     total_value = round(sum(r["value"] for r in rows), 2)
     total_sold = round(sum(sold_by.values()), 2)
@@ -32103,8 +32277,9 @@ def void_report(conn, *, start=None, end=None, today=None):
         "voids": len(rows),
         "value": total_value,
         "sold": total_sold,
-        "share": (round(total_value / total_sold * 100, 1)
-                  if total_sold > 0.005 else None),
+        "rung_up": round(total_sold + total_value, 2),
+        "share": (round(total_value / (total_sold + total_value) * 100, 1)
+                  if total_sold + total_value > 0.005 else None),
         "after_sent": sum(1 for r in rows if r["after_sent"]),
         "after_close": sum(1 for r in rows if r["after_close"]),
         "csv": [{"service_date": r["service_date"], "what": r["what"],
@@ -32642,7 +32817,7 @@ def backup_job_failure_note(conn):
             WHERE job_name = 'backup_email' AND last_status = 'failed'""").fetchone()
     if not row:
         return ""
-    return (f"The scheduled backup has failed {row['fails']} run(s) in a row. "
+    return (f"The scheduled backup has failed {counted(row['fails'], 'run')} in a row. "
             f"It reports: {row['last_message'] or 'no message'}\n\n")
 
 
@@ -33727,7 +33902,7 @@ def staff_dashboard():
                 restaurant_alerts.append({"title": "Dinner reservations awaiting a decision", "detail": str(pending_dinners_count), "link": url_for("admin_restaurant")})
             opening = parse_date(restaurant_settings_row["opening_date"]) if restaurant_settings_row["opening_date"] else None
             if opening and today < opening <= today + timedelta(days=14):
-                restaurant_alerts.append({"title": "Restaurant opens soon", "detail": f"{(opening - today).days} day(s) — {opening.isoformat()}", "link": url_for("admin_restaurant")})
+                restaurant_alerts.append({"title": "Restaurant opens soon", "detail": f"{in_words((opening - today).days)} — {format_date_short(opening.isoformat())}", "link": url_for("admin_restaurant")})
         pending_workshop_regs = conn.execute(
             "SELECT COUNT(*) AS c FROM workshop_bookings WHERE status = 'pending'"
         ).fetchone()["c"]
@@ -41189,7 +41364,8 @@ def management_texting():
         messages.append({
             "kind": kind, "label": spec["label"], "body": body,
             "segments": sms_segments(body),
-            "when": f"{spec['days_before']} day(s) before",
+            "when": ({0: "on the day", 1: "the day before"}.get(spec["days_before"])
+                     or f"{spec['days_before']} days before"),
         })
     conn.close()
 
@@ -42243,7 +42419,7 @@ def export_vat_csv():
     rows.append(_row(
         source="TOTAL", vat=working["total_vat"],
         basis=f"working paper, not a return; "
-              f"{working['days_not_closed']} day(s) in this period never closed off"))
+              f"{counted(working['days_not_closed'], 'day')} in this period never closed off"))
     return csv_response(fieldnames, rows, f"vat-working-{period['start_iso']}.csv")
 
 
@@ -42325,9 +42501,12 @@ def admin_terms():
 @app.route("/guests")
 @login_required
 def guests():
-    """Two distinct things on one page: who is physically here right now (derived
-    from bookings) and the standing guest profiles (this table). They used to be
-    the same list, which is what let a cancelled booking leave a phantom guest."""
+    """Who is in the house right now, and everybody the house has a record of.
+
+    Two distinct things on one page: who is physically here right now (derived
+    from bookings) and the standing guest profiles (the guests table). They
+    used to be the same list, which is what let a cancelled booking leave a
+    phantom guest. (The reports index prints the first paragraph to the owner.)"""
     q = request.args.get("q", "").strip()
     conn = get_db()
     today = house_today()
@@ -45943,11 +46122,15 @@ def manage_booking(manage_token):
                 # what's owed, so it goes to the owner for a deliberate
                 # decision rather than silently rewriting a commitment
                 # that's already been made (and possibly paid for).
+                # "their The King Room booking from 2026-10-16 → 2026-10-20": the
+                # room's name carries its own article, and the dates are kept,
+                # so they are written as the house writes them.
                 note = (
-                    f"{booking['guest_name']} would like to move their {booking['room_name']} booking from "
-                    f"{booking['arrival_date']} → {booking['departure_date']} to "
-                    f"{new_arrival.isoformat()} → {new_departure.isoformat()}. Those new dates are "
-                    f"available — review and apply the change from the booking's edit page if you're happy with it."
+                    f"{booking['guest_name']} would like to move their booking in {booking['room_name']} from "
+                    f"{format_date_range(booking['arrival_date'], booking['departure_date'])} to "
+                    f"{format_date_range(new_arrival.isoformat(), new_departure.isoformat())}. "
+                    f"Those new dates are available — review and apply the change from the "
+                    f"booking's edit page if you're happy with it."
                 )
                 now = datetime.now(timezone.utc).isoformat()
                 cur = conn.execute(
@@ -46628,7 +46811,7 @@ def submit_event_inquiry():
         send_email(
             owner_to, f"New event inquiry — {event_type} ({reference_code})",
             f"{contact_name} ({contact_email}) inquired about hosting a {event_type}"
-            f"{f', preferred date {preferred_date}' if preferred_date else ''}"
+            f"{f', preferred date {format_date_short(preferred_date)}' if preferred_date else ''}"
             f"{f', {guest_count} guests' if guest_count else ''}.\n\n{message or ''}\n\n"
             f"Review: {url_for('admin_events', _external=True)}",
         )
@@ -47018,7 +47201,7 @@ def events_view(rows, args, bills):
             facet("when", "When", _event_when, order=["Current", "History"], default="Current"),
             facet("state", "Status", lambda e: (e["status"] or "").capitalize(),
                   order=["New", "Contacted", "Quoted", "Confirmed", "Declined", "Cancelled"]),
-            facet("kind", "Kind", lambda e: (e["event_type"] or "").capitalize() or None, limit=8),
+            facet("kind", "Event type", lambda e: (e["event_type"] or "").capitalize() or None, limit=8),
             facet("money", "Money", money),
         ],
         sorts=[
@@ -52999,7 +53182,8 @@ def workshop_manage(manage_token):
             # owner for a deliberate decision rather than auto-applying.
             note = (
                 f"{booking['guest_name']} would like to move their {booking['title']} registration from "
-                f"{booking['start_date']} to {new_session['start_date']}. That date has room — review and "
+                f"{format_date_short(booking['start_date'])} to "
+                f"{format_date_short(new_session['start_date'])}. That date has room — review and "
                 f"apply the change from the workshop registrations page if you're happy with it."
             )
             now = datetime.now(timezone.utc).isoformat()
@@ -54129,7 +54313,7 @@ def new_room_issue():
     if arrival:
         when = in_words(days_until(arrival["arrival_date"]))
         urgency = (f" {arrival['guest_name']} arrives {when} "
-                   f"({arrival['arrival_date']}, {arrival['party_size']} guests).")
+                   f"({format_date_short(arrival['arrival_date'])}, {arrival['party_size']} guests).")
 
     task_note = ""
     if assigned_to.isdigit() and room:
@@ -55974,7 +56158,13 @@ def reply_to_feedback(feedback_id):
     if not row:
         conn.close()
         abort(404)
-    reply = (request.form.get("reply", "") or "").strip()[:2000]
+    # "Just mark it read" says so by name, and then nothing in the box counts:
+    # the box holds the last reply, and reading it here sent that reply to
+    # the guest again every time a review was only being marked read.
+    if request.form.get("mark_read"):
+        reply = ""
+    else:
+        reply = (request.form.get("reply", "") or "").strip()[:2000]
     now_iso = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """UPDATE guest_feedback
@@ -56197,7 +56387,11 @@ def admin_bookings():
 
     counts = {
         "pending": sum(1 for b in all_bookings if b["status"] == "pending"),
-        "confirmed": sum(1 for b in all_bookings if b["status"] == "confirmed"),
+        # Here now or still to come, as the list opens: the tile counted
+        # every confirmed stay there has ever been ("11 Confirmed") above a
+        # chip counting the current ones ("Confirmed 6").
+        "confirmed": sum(1 for b in all_bookings if b["status"] == "confirmed"
+                         and (b["departure_date"] or "") > today_iso),
         "total_rooms": len(rooms),
     }
     confirmed_counts_by_email = {}
@@ -57615,6 +57809,12 @@ def checkout_booking(booking_id):
     if not booking:
         conn.close()
         abort(404)
+    # Nobody checks out of a stay that has not begun: this writes the room's
+    # turnover checklist and asks the guest how it went.
+    if (booking["arrival_date"] or "") > house_today_iso() or booking["no_show_at"]:
+        conn.close()
+        flash("They haven't arrived yet, so they can't have checked out.", "error")
+        return redirect(url_for("admin_bookings"))
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
 
     now = datetime.now(timezone.utc)
@@ -60132,7 +60332,7 @@ def admin_restaurant():
         employees=employees, today=today, profit=profit, prev_month=prev_month, next_month=next_month,
         shifts_by_date=shifts_by_date, no_show_count=no_show_count,
         refunded_by_reservation=refunded_by_reservation, no_show_history=no_show_history,
-        overview=overview, period=period,
+        overview=overview, period=period, service_today=service_day().isoformat(),
     )
 
 
@@ -60262,6 +60462,14 @@ def mark_restaurant_no_show(reservation_id):
     if not booking:
         conn.close()
         abort(404)
+    # Not before the evening has come. The button was drawn on every
+    # confirmed table, next week's included, and the house's no-show count
+    # (and the warning after a third) could be fed a dinner that had not
+    # happened yet. The restaurant's day, so 01:30 is still last night.
+    if (booking["dinner_date"] or "") > service_day().isoformat():
+        conn.close()
+        flash("That dinner hasn't happened yet, so nobody can have failed to turn up.", "error")
+        return redirect(url_for("admin_restaurant"))
     cur = conn.execute(
         "UPDATE restaurant_bookings SET no_show_at = ? WHERE id = ? AND status = 'confirmed' AND no_show_at IS NULL",
         (datetime.now(timezone.utc).isoformat(), reservation_id),
@@ -66104,6 +66312,10 @@ def revenue_to_send():
             "sent": bool(e["pennylane_invoice_id"]),
             "sent_at": e["pennylane_synced_at"],
             "lag_days": lag,
+            # Not yet a cost to send: nobody has said yes to it. A scan the
+            # reader could not read arrives pending at €0, and it sat under
+            # "Not sent" beside the one the banner counted.
+            "pending": (e["status"] or "approved") == "pending",
         })
 
     # Read before the close, like the stays above it.
@@ -66116,7 +66328,8 @@ def revenue_to_send():
                      "sent": pennylane_already_sent(conn, "pos_day", closure["id"])})
     conn.close()
     waiting = [r for r in rows if not r["sent"] and r["total"] > 0]
-    costs_waiting = [c for c in costs if not c["sent"] and c["total"] > 0]
+    costs_waiting = [c for c in costs if not c["sent"] and c["total"] > 0 and not c["pending"]]
+    costs_unapproved = [c for c in costs if not c["sent"] and c["pending"]]
     # The lag on the ones that DID go. Reported as a median rather than a
     # mean: one expense sent eight months late would otherwise make a
     # perfectly good quarter look bad.
@@ -66128,7 +66341,8 @@ def revenue_to_send():
     events_waiting = [e for e in events if not e["sent"] and e["total"] > 0]
     return render_template(
         "revenue_to_send.html", rows=rows, waiting=waiting, days=days,
-        costs=costs, costs_waiting=costs_waiting, typical_lag=typical_lag,
+        costs=costs, costs_waiting=costs_waiting, costs_unapproved=costs_unapproved,
+        typical_lag=typical_lag,
         days_waiting=days_waiting, ateliers=ateliers,
         ateliers_waiting=ateliers_waiting,
         waiting_total=round(sum(r["total"] for r in waiting)
@@ -66998,7 +67212,8 @@ def contracted_hours_page():
     weeks = request.args.get("weeks", "4")
     weeks = int(weeks) if weeks.isdigit() and 1 <= int(weeks) <= 52 else 4
     end = house_today()
-    start = end - timedelta(weeks=weeks)
+    # Today and the days before it, `weeks` weeks of them and not a day more.
+    start = end - timedelta(weeks=weeks) + timedelta(days=1)
     conn = get_db()
     data = contracted_vs_worked(conn, start, end)
     conn.close()
@@ -68819,10 +69034,12 @@ def management_financials():
 @owner_required
 def annual_summary():
     """Twelve months of takings and costs, as the accountant wants them."""
+    # The house's year: from midnight to 02:00 on 1 January the UTC one is
+    # still last year, and the summary opened on the year just closed.
     try:
-        year = int(request.args.get("year", "") or datetime.now(timezone.utc).year)
+        year = int(request.args.get("year", "") or house_today().year)
     except ValueError:
-        year = datetime.now(timezone.utc).year
+        year = house_today().year
     year_start = date(year, 1, 1)
     year_end = date(year + 1, 1, 1)
 
@@ -70937,7 +71154,7 @@ def management_budget():
                        note = excluded.note, updated_at = excluded.updated_at""",
                 (n, revenue, cost, note, now_iso))
             changed += 1
-        log_audit(conn, "budget_set", details=f"{changed} month(s)")
+        log_audit(conn, "budget_set", details=counted(changed, "month"))
         conn.commit()
         conn.close()
         flash(f"{changed} month{'' if changed == 1 else 's'} set.", "success")
@@ -71203,9 +71420,12 @@ def delete_recurring_cost(cost_id):
 @app.route("/management/insurance")
 @owner_required
 def management_insurance():
-    """Kept as an address, not a page: insurance is now part of the company
+    """The house's insurance policies, what they cover and when each renews.
+
+    Kept as an address, not a page: insurance is now part of the company
     record. Bookmarks, the dashboard's expiry links and anything already
-    pointing here still land on the policies rather than a 404."""
+    pointing here still land on the policies rather than a 404. (The reports
+    index prints the first paragraph above to the owner.)"""
     return redirect(url_for("management_company_info") + "#insurance")
 
 
@@ -76983,7 +77203,12 @@ def empty_nights(conn, *, days=90, today=None):
     # Longest first: a week between two bookings is something a guest can
     # actually take, and a stray Tuesday is not.
     runs.sort(key=lambda r: (-r["nights"], r["from"]))
-    sellable = [r for r in runs if not r["below_minimum"]]
+    # Worth filling means a stay somebody could take: two nights or more, and
+    # not below the room's own minimum. With every room at a minimum of one,
+    # each stray Tuesday counted -- "26 gaps worth filling" on a page that
+    # says nobody books a Tuesday on its own. A single night is still a run,
+    # still listed, still sellable to a walk-in; it is just not a campaign.
+    sellable = [r for r in runs if not r["below_minimum"] and r["nights"] >= 2]
     # What the rooms could have been sold: every room-night except the ones
     # the house held and nothing else had, which were never on offer.
     possible = len(rooms) * (last - day).days - off_sale
@@ -80671,7 +80896,10 @@ def history_for(conn, kind, record_id):
     # data.keys is dict.keys -- the method -- and the page 500s on a name that
     # reads perfectly. Named for what it means instead.
     return {"kind": kind, "label": label, "row": row, "title": title,
-            "found_under": keys,
+            # What a person would search by. The row's own number is a key the
+            # log is searched under too, but "Found under GUD-QAL4HV, 4972"
+            # told the owner nothing they could use.
+            "found_under": [k for k in keys if not k.isdigit()] or keys,
             "entries": record_history(conn, keys, about=about)}
 
 
@@ -80714,12 +80942,14 @@ def audit_list_view(conn, args):
             return None
         if stamp == today.isoformat():
             return "Today"
+        # Stretches that do not overlap, named as stretches: "Last 7 days"
+        # counted everything but today, beside a Today chip of its own.
         if stamp >= (today - timedelta(days=7)).isoformat():
-            return "Last 7 days"
+            return "Earlier this week"
         if stamp >= (today - timedelta(days=30)).isoformat():
-            return "Last 30 days"
+            return "Earlier this month"
         if stamp >= (today - timedelta(days=365)).isoformat():
-            return "This year"
+            return "Earlier this year"
         return "Older"
 
     return list_view(
@@ -80731,7 +80961,8 @@ def audit_list_view(conn, args):
                   order=[label for label, _t in AUDIT_KINDS] + ["Other"]),
             facet("who", "Who", audit_who, limit=8),
             facet("when", "When", when,
-                  order=["Today", "Last 7 days", "Last 30 days", "This year", "Older"]),
+                  order=["Today", "Earlier this week", "Earlier this month",
+                         "Earlier this year", "Older"]),
             # Written as the Action column writes it: "Refund issued", not the
             # key with its underscores taken out.
             facet("action", "Action",
@@ -81059,6 +81290,52 @@ def change_log_fields(row):
     return [(k, v, None) for k, v in old.items() if v not in (None, "")]
 
 
+_CHANGE_LOG_MONEY = ("amount", "price", "paid", "total", "deposit", "fee", "balance",
+                     "cost", "premium")
+
+
+def change_log_value(field, value, people):
+    """One stored value as the page shows it. The log printed what the row
+    held: "2026-10-14T19:55:40.501526+00:00", "1000.0", "Issued by user id
+    1". The record itself is untouched -- this is the reading of it."""
+    if value in (None, "") or isinstance(value, bool):
+        return value
+    f = field.lower()
+    if f == "user_id" or f.endswith("_user_id"):
+        try:
+            return people.get(int(value)) or "somebody since removed"
+        except (TypeError, ValueError):
+            return value
+    if isinstance(value, str):
+        if f == "method" or f.endswith("_method"):
+            return payment_method_label(value)
+        if f.endswith("_at") and _MOMENT_TEXT_START.match(value):
+            return local_datetime_str(value) or value
+        if (f.endswith("_date") or f.endswith("_on") or f in ("valid_from", "valid_until")) \
+                and _ISO_DAY_TEXT.match(value):
+            return format_date_short(value) or value
+        return value
+    if isinstance(value, (int, float)):
+        if any(word in f for word in _CHANGE_LOG_MONEY):
+            return money(value)
+        if f.startswith("is_"):
+            return "Yes" if value else "No"
+        if isinstance(value, float):
+            return quantity(value, 6)
+    return value
+
+
+_MOMENT_TEXT_START = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")
+_ISO_DAY_TEXT = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def change_log_label(field):
+    """A column's name for a person: "issued_by_user_id" is "Issued by"."""
+    if field.endswith("_user_id"):
+        field = field[:-len("_user_id")]
+    return field.replace("_", " ").capitalize()
+
+
 def change_log_who(row):
     """Who made a change, in words."""
     if row["actor_name"]:
@@ -81117,6 +81394,7 @@ def change_log_rows(conn, where="1=1", params=()):
                                   f"({','.join('?' * len(chunk))})", chunk).fetchall():
                 names[(table, x["id"])] = x["name"]
     today = house_today()
+    people = {u["id"]: u["name"] for u in conn.execute("SELECT id, name FROM users")}
     for r in rows:
         table, values = r["table_name"], r["values"]
         kind = CHANGE_LOG_TABLES.get(table, table)
@@ -81135,15 +81413,18 @@ def change_log_rows(conn, where="1=1", params=()):
             r["object"] = f"{kind} {own}" if own else f"{kind} #{r['row_id']}"
         r["kind"] = kind
         r["who"] = change_log_who(r)
-        r["fields"] = [(k.replace("_", " ").capitalize(), b, a) for k, b, a in change_log_fields(r)]
+        r["fields"] = [(change_log_label(k), change_log_value(k, b, people),
+                        change_log_value(k, a, people)) for k, b, a in change_log_fields(r)]
         r["field_names"] = " ".join(f for f, _b, _a in r["fields"])
         r["field_values"] = " ".join(str(v) for _f, b, a in r["fields"] for v in (b, a)
                                      if v not in (None, ""))
         r["when"] = local_datetime_str(r["created_at"])
         day = house_date_iso(r["created_at"]) or ""
+        # As the mail log names them: "Today 2 · Last 7 days 10013" read as
+        # if the second included the first.
         r["period"] = ("Today" if day == today.isoformat() else
-                       "Last 7 days" if day >= (today - timedelta(days=7)).isoformat() else
-                       "Last 30 days" if day >= (today - timedelta(days=30)).isoformat() else
+                       "Earlier this week" if day >= (today - timedelta(days=7)).isoformat() else
+                       "Earlier this month" if day >= (today - timedelta(days=30)).isoformat() else
                        "Older")
         r["action_words"] = r["action"].capitalize()
     return rows
@@ -81162,7 +81443,7 @@ def change_log_list_view(conn, args):
                   order=list(CHANGE_LOG_TABLES.values())),
             facet("who", "Who", lambda r: r["who"], limit=8),
             facet("when", "When", lambda r: r["period"],
-                  order=["Today", "Last 7 days", "Last 30 days", "Older"]),
+                  order=["Today", "Earlier this week", "Earlier this month", "Older"]),
         ],
         sorts=[
             sort_option("recent", "Most recent first", lambda r: r["id"], reverse=True),
@@ -81193,7 +81474,10 @@ def export_changes_log_csv():
     conn.close()
     out = []
     for r in lv["rows"]:
-        for field, before, after in r["fields"] or [("", None, None)]:
+        # The values as stored, for a spreadsheet: the page reads them in
+        # words ("€1,000.00", "14 October 2026, 21:55"), a sum cannot.
+        raw = [(change_log_label(k), b, a) for k, b, a in change_log_fields(r)]
+        for field, before, after in raw or [("", None, None)]:
             out.append({"when": r["when"], "action": r["action_words"], "what": r["object"],
                         "who": r["who"], "where": r["endpoint"] or "", "field": field,
                         "before": "" if before is None else before,
@@ -83090,10 +83374,10 @@ def readiness_checks(conn, *, include_slow=True):
         run = conn.execute(
             """SELECT last_status, last_message, consecutive_failures AS fails
                  FROM automation_runs WHERE job_name = 'backup_email'""").fetchone()
-        head = (f"Last backup was {days:.0f} day(s) ago, but one is meant to be taken "
+        head = (f"Last backup was {in_words(-round(days))}, but one is meant to be taken "
                 f"every {interval_h:.0f}h. ")
         if run and run["last_status"] == "failed":
-            why = (f"The job has failed {run['fails']} run(s) in a row and reports: "
+            why = (f"The job has failed {counted(run['fails'], 'run')} in a row and reports: "
                    f"{run['last_message'] or 'no message'}")
         elif run and run["last_status"] == "ok":
             # The worst of the three: the job believes it worked, so the copy
@@ -84823,10 +85107,13 @@ def my_hours():
         total_hours, total_shifts = worked["hours"], worked["shifts"]
     else:
         counted = [e["hours"] for e in entries if e["hours"] is not None]
-        total_hours, total_shifts = round(sum(counted), 1), len(counted)
+        total_hours, total_shifts = round(sum(counted), 2), len(counted)
 
     overview = [
-        overview_cell("Hours", f"{total_hours:.1f}", sub="h",
+        # The same spelling as the rows under it: they said 4.50 and 8.00 over
+        # a band that said 12.5, and a total in a coarser unit than its rows
+        # cannot be checked by adding them up.
+        overview_cell("Hours", quantity(total_hours), sub="h",
                       hint="net of breaks taken"),
         overview_cell("Shifts", total_shifts),
         overview_cell("At your rate", euro(mine["gross"]) if mine else "—",

@@ -78,7 +78,7 @@
           <td class="num">
             <input type="text" name="qty_{{ i }}" inputmode="decimal" style="width:80px;"
                  aria-label="Quantity — {{ line.description }}"
-                   value="{{ line.quantity }}">
+                   value="{{ line.quantity|box }}">
           </td>
           <td>
             <select name="item_{{ i }}"

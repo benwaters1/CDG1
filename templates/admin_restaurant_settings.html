@@ -24,7 +24,7 @@
     </div>
     <div>
       <label class="field-label" for="admin_restaurant_settings-price-per-person">Price per person (€)</label>
-      <input id="admin_restaurant_settings-price-per-person" type="number" name="price_per_person" min="0" step="0.01" value="{{ settings['price_per_person'] if settings['price_per_person'] is not none else '' }}">
+      <input id="admin_restaurant_settings-price-per-person" type="number" name="price_per_person" min="0" step="0.01" value="{{ settings['price_per_person']|box(2) }}">
     </div>
     <div>
       <label class="field-label" for="admin_restaurant_settings-lead-user-id">Restaurant lead</label>
@@ -37,11 +37,11 @@
     </div>
     <div>
       <label class="field-label" for="admin_restaurant_settings-profit-share-percent">Chef/partner profit share (%)</label>
-      <input id="admin_restaurant_settings-profit-share-percent" type="number" name="profit_share_percent" min="0" max="100" step="0.1" value="{{ settings['profit_share_percent'] }}">
+      <input id="admin_restaurant_settings-profit-share-percent" type="number" name="profit_share_percent" min="0" max="100" step="0.1" value="{{ settings['profit_share_percent']|box }}">
     </div>
     <div>
       <label class="field-label" for="admin_restaurant_settings-deposit-percent">Deposit at booking (%, optional)</label>
-      <input id="admin_restaurant_settings-deposit-percent" type="number" name="deposit_percent" min="0" max="100" step="1" value="{{ settings['deposit_percent'] if settings['deposit_percent'] is not none else '' }}" placeholder="Leave blank to charge in full online">
+      <input id="admin_restaurant_settings-deposit-percent" type="number" name="deposit_percent" min="0" max="100" step="1" value="{{ settings['deposit_percent']|box }}" placeholder="Leave blank to charge in full online">
     </div>
   </div>
   <p class="upload-hint" style="margin-top:6px;">When set, online payment only collects this percentage as a deposit — the rest is due at the restaurant. Guests still see the full total up front; only the online charge is reduced.</p>
@@ -50,6 +50,7 @@
     <input type="checkbox" name="enabled" {{ 'checked' if settings['enabled'] }}>
     Online reservations open (public booking page + guest check-in)
   </label>
+  <p class="upload-hint" style="margin-top:6px;">Leave this off until the dining room is actually ready — the reservations queue and settings stay usable either way.</p>
 
   {# Off unless the house asks for it. Nobody's guests should start receiving
      mail because an upgrade shipped with a box ticked. #}
@@ -61,7 +62,6 @@
   address — the guest whose room it went on, or who booked the table. A walk-in
   paying cash is unaffected, and the receipt can still be sent by hand from the
   tab.</p>
-  <p class="upload-hint" style="margin-top:6px;">Leave this off until the dining room is actually ready — the reservations queue and settings stay usable either way.</p>
 
   {# THE DINING SWITCH. What the public site says about dinner, everywhere it
      says it -- nav, drawer, footer, the Book menu, the homepage, Stay, Contact,

@@ -322,9 +322,15 @@ def run():
     band, facts = _known_since_on_page(r.get_data(as_text=True))
     s.check("the owner's band says so", band == m.format_date_short(_ago(0)[:10]),
             detail=f"band reads {band!r}")
-    s.check("and so does the list everybody sees",
-            facts == m.format_date_short(_ago(0)[:10]),
+    # Once each: the owner has the band, so the list under it does not say it
+    # again (14 October 2026); a colleague has no band, so their list does.
+    s.check("and the owner's list does not repeat it", facts is None,
             detail=f"facts read {facts!r}")
+    seen = ec.get(f"/guests/{soon_id}")
+    _band, theirs = _known_since_on_page(seen.get_data(as_text=True))
+    s.check("while a colleague's list, with no band above it, says so",
+            seen.status_code == 200 and theirs == m.format_date_short(_ago(0)[:10]),
+            detail=f"HTTP {seen.status_code}, facts read {theirs!r}")
 
     # A request declined long before their first stay. The house heard from
     # them the day they wrote -- not on the dates they asked for, which they

@@ -149,7 +149,7 @@
             <span class="mini-status status-declined">No figure on file</span>
           {% endif %}
         </td>
-        <td class="upload-hint">{{ r.effective_from or '—' }}</td>
+        <td class="upload-hint">{{ r.effective_from|date_short or '—' }}</td>
         <td class="upload-hint">{{ r.person.pay_rate or '—' }}{% if r.person.pay_type %}
           ({{ r.person.pay_type }}){% endif %}</td>
       </tr>
@@ -236,7 +236,7 @@
       {% for h in history %}
       <tr>
         <td>{{ h['employee_name'] }}</td>
-        <td>{{ h['effective_from'] }}</td>
+        <td>{{ h['effective_from']|date_short or '—' }}</td>
         <td class="upload-hint">{{ 'By the hour' if h['basis'] == 'hourly' else 'By the month' }}</td>
         <td class="num">{{ h['gross_amount']|money }}</td>
         <td class="upload-hint">{{ h['note'] or '—' }}</td>

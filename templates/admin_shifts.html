@@ -29,6 +29,8 @@
 {% endfor %}
 {% endif %}
 
+<details class="refund-box">
+  <summary>+ Add a shift</summary>
 <form method="post" action="{{ url_for('new_shift') }}" class="search-bar">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div>
@@ -57,8 +59,9 @@
     <label class="field-label" for="admin_shifts-role-note">Role / note</label>
     <input id="admin_shifts-role-note" type="text" name="role_note" placeholder="e.g. Front desk cover">
   </div>
-  <button type="submit" class="btn-mini">+ Add shift</button>
+  <button type="submit" class="btn-mini">Add the shift</button>
 </form>
+</details>
 
 {# Not a search-bar: that stacks every group inside it in a column, which
    stretched Copy last week and Next week across the page one above the

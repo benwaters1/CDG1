@@ -73,8 +73,8 @@
   </div>
 </div>
 
-<div class="expense-card" style="margin-bottom:18px;">
-  <div class="expense-head"><strong>Quick add</strong></div>
+<details class="refund-box">
+  <summary>+ Add a task</summary>
   {% include "_task_add_form.html" %}
   <form method="post" action="{{ url_for('new_task') }}" class="search-bar" style="margin-top:0;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -95,9 +95,9 @@
       <label class="field-label" for="admin_overview-due-date">Due date</label>
       <input id="admin_overview-due-date" type="date" name="due_date" value="{{ sheet.anchor.isoformat() }}">
     </div>
-    <button type="submit" class="btn-mini">+ Add my task</button>
+    <button type="submit" class="btn-mini">Add my task</button>
   </form>
-</div>
+</details>
 
 <div class="task-list" id="overview-rows">
 {% if not sheet.rows %}
@@ -124,7 +124,7 @@
       {% if r.priority == 'high' %}<span class="mini-status status-declined">high priority</span>{% endif %}
       {% if r.status == 'in_progress' %}<span class="mini-status status-pending">in progress</span>{% endif %}
       {% if r.repeat_weekly %}<span title="Repeats weekly">↻</span>{% endif %}
-      {% if r.detail %} <span class="upload-hint">— {{ r.detail }}</span>{% endif %}
+      {% if r.detail %} <span class="upload-hint">— {{ r.detail|house_words }}</span>{% endif %}
       {% if r.status != 'done' and r.date and r.date < today.isoformat() %} <span class="task-overdue-badge">Overdue</span>{% endif %}
     </span>
     <span class="origin-badge">{{ {'manual':'added','checklist':'checklist','recurring':'recurring','guest_request':'guest request'}[r.origin] }}</span>
@@ -136,18 +136,18 @@
     {% if r.assignee_id %}
     <form method="post" action="{{ url_for('direct_task', task_id=r.id) }}" title="Direct now — sends a push, needs accept/reject">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">⚡</button>
+      <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">⚡ Direct now</button>
     </form>
     {% else %}
     <form method="post" action="{{ url_for('direct_task', task_id=r.id) }}" style="display:flex; gap:4px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <select name="employee_id" required style="font-size:11px; padding:1px;">
+      <select name="employee_id" required style="font-size:11px; padding:1px;" aria-label="Who to direct it to">
         <option value="">Direct to…</option>
         {% for e in sheet.employees %}
         <option value="{{ e['id'] }}">{{ e['name'] }}</option>
         {% endfor %}
       </select>
-      <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">⚡</button>
+      <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">⚡ Direct</button>
     </form>
     {% endif %}
     {% endif %}

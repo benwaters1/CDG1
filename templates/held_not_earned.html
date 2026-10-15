@@ -48,7 +48,7 @@
   <tbody>
     {% for month, amount in data.by_month %}
     <tr class="{{ 'row-alert' if month[:4] != today.year|string }}">
-      <td>{{ month|date_short }}</td>
+      <td>{{ month|month_words }}</td>
       <td class="num">{{ amount|money }}</td>
     </tr>
     {% endfor %}

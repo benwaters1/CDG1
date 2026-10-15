@@ -17,7 +17,9 @@
 <p class="upload-hint" style="margin:-12px 0 20px;">
   {#- Every figure the result is made from, so the line adds up: it read
       "€20,840 in, €0 out, €18,681 net" with the staff cost left out. -#}
-  {{ current_financials.month.strftime('%B') }} so far: {{ current_financials.revenue|money(0) }} taken
+  {#- "So far" and "taken" said it had happened. It is every stay booked
+      for the month, the guests still to come included. -#}
+  {{ current_financials.month.strftime('%B') }}, as booked: {{ current_financials.revenue|money(0) }} for the month
   (VAT included, after refunds), less {{ current_financials.expenses_total|money(0) }} spent
   and {{ (current_financials.labour_cost or 0)|money(0) }} staff{% if current_financials.labour_estimated %} (estimated){% endif %}:
   <strong{% if current_financials.net < 0 %} style="color:var(--danger);"{% endif %}>{{ current_financials.net|money(0) }} left</strong> —

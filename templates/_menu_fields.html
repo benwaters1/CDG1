@@ -51,7 +51,7 @@
   <div>
     <label class="field-label">How much per serving</label>
     <input aria-label="How much per serving" type="text" name="stock_qty_per_unit" inputmode="decimal"
-           value="{{ item['stock_qty_per_unit'] if item else 1 }}">
+           value="{{ item['stock_qty_per_unit']|box if item else 1 }}">
     <span class="field-hint">1 = one whole stock unit. For wine sold by the glass,
       set the bottle size below instead and let each pour work it out.</span>
   </div>

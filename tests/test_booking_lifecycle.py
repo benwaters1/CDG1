@@ -124,9 +124,34 @@ def run():
     s.check("moving a booking onto an occupied night is refused",
             moved["arrival_date"] == (base + timedelta(days=20)).isoformat(), r3)
 
+    s.section("Not before they have arrived")
+    # 14 October 2026: a stay next week was offered "Guest checked out", and
+    # the route took it -- the room's turnover checklist was written for a
+    # room still waiting for its guest, and they were asked how it went.
+    _cleanup()
+    today = m.house_today()
+    ahead = _make_booking(room["id"], today + timedelta(days=5), today + timedelta(days=7),
+                          total=room_2n)
+    page = oc.get("/admin/bookings?when=all").get_data(as_text=True)
+    s.check("a stay still to come is on the list",
+            ahead["reference_code"] in page, detail="the check below would prove nothing")
+    s.check("and is not offered 'Guest checked out'",
+            f"/admin/bookings/{ahead['id']}/checkout" not in page)
+    oc.post(f"/admin/bookings/{ahead['id']}/checkout",
+            data={"assigned_to_user_id": str(emp["id"])}, follow_redirects=True)
+    conn = db()
+    early = conn.execute("SELECT checked_out_at FROM bookings WHERE id = ?",
+                         (ahead["id"],)).fetchone()["checked_out_at"]
+    raised = conn.execute("SELECT COUNT(*) AS c FROM tasks WHERE booking_id = ?",
+                          (ahead["id"],)).fetchone()["c"]
+    conn.close()
+    s.check("the route will not check them out", early is None, detail=str(early))
+    s.check("nor write a turnover checklist for the room", raised == 0,
+            detail=f"{raised} tasks")
+
     s.section("Checking out, twice")
     _cleanup()
-    out = _make_booking(room["id"], base - timedelta(days=5), base - timedelta(days=2),
+    out = _make_booking(room["id"], today - timedelta(days=5), today - timedelta(days=2),
                         total=room_2n)
     first = oc.post(f"/admin/bookings/{out['id']}/checkout",
                     data={"assigned_to_user_id": str(emp["id"])}, follow_redirects=True)
