@@ -170,13 +170,15 @@ def _files(s):
         # A price for two places, and one person named: brought across, with a
         # note the owner has to say they read.
         _reg("Kim", f"{TAG}Solo", two, agreed=5200, paid=520, minute=7),
+        # Booked for a week that has since moved: nothing here starts that day.
+        _reg("Lou", f"{TAG}Moved", one + timedelta(days=7), agreed=2600, paid=0, minute=8),
     ]) + "\n"
     people = "first_name,last_name,person_id,email,num_programs,overall_balance\n" + "\n".join(
         f"{f},{TAG}{l},{i},{LOW}.{f.lower()}@example.invalid,1,0"
         for i, (f, l) in enumerate([("Ann", "Full"), ("Bob", "Part"), ("Cara", "Pair"),
                                     ("Dan", "Pair"), ("Eve", "Twice"), ("Fay", "Gone"),
                                     ("Hal", "Nothing"), ("Jon", "Transfer"),
-                                    ("Kim", "Solo")])) + "\n"
+                                    ("Kim", "Solo"), ("Lou", "Moved")])) + "\n"
     programmes = ("program_id,title,date_start,date_end\n"
                   f"1,The Autumn One,{one.isoformat()},{(one + timedelta(days=4)).isoformat()}\n"
                   f"2,The Summer One,{two.isoformat()},{(two + timedelta(days=4)).isoformat()}\n")
@@ -280,6 +282,9 @@ def _run(s, oc, mail):
     s.check("the couple is one registration for two", "with Dan " in page)
     s.check("the called-off session stops Fay", "has been called off here" in page)
     s.check("nobody on the customer list stops Ivy", "no email address for them" in page)
+    lou = page[page.find(f"Lou {TAG}Moved"):]
+    s.check("a session that has moved stops Lou, rather than landing on another week",
+            "No session in this app starts on" in lou[:3000], detail=lou[:600])
     s.check("a payment Stripe does not hold stops Jon", "Stripe has €0.00 from" in page)
     s.check("Eve's €999 for a retreat already over is listed as not matched", "pi_eve_old" in page)
     s.check("the refunded €50 is not a payment at all", "pi_ann_x" not in page)
@@ -292,7 +297,7 @@ def _run(s, oc, mail):
                                 m.parse_stripe_payments(files[3]), due_days=30,
                                 today=house_today(), stripe_given=True)
         conn.close()
-    want = {"agreed": 2600 + 2210 + 5200 + 2600 + 2600 + 2600 + 2600 + 2600 + 2600 + 5200,
+    want = {"agreed": 2600 + 2210 + 5200 + 2600 + 2600 + 2600 + 2600 + 2600 + 2600 + 5200 + 2600,
             "paid": round(2600 + 777.77 + 1560 + 780 + 260 + 260 + 0 + 260 + 300 + 520, 2)}
     s.check("the plan's totals are the export's, to the cent",
             plan["export"]["agreed"] == want["agreed"] and plan["export"]["paid"] == want["paid"]
@@ -322,7 +327,7 @@ def _run(s, oc, mail):
     s.section("Brought across: confirmed, silent, as agreed, every payment its own")
     token, keys = _token(page), _keys(page)
     s.check("the blocked ones cannot be ticked",
-            not any("fay" in k or "ivy" in k or "jon" in k for k in keys), detail=str(keys))
+            not any(w in k for k in keys for w in ("fay", "ivy", "jon", "lou")), detail=str(keys))
     r = oc.post("/management/import-registrations",
                 data={"action": "run", "token": token, "bring": keys}, follow_redirects=True)
     s.check("Kim's price for two places, with one named, is a note to read",
