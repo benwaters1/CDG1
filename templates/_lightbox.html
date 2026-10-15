@@ -25,8 +25,12 @@
   var img=dlg.querySelector('[data-lb-img]'), cap=dlg.querySelector('[data-lb-cap]');
   var shots=[], at=0;
 
-  function collect(){
-    shots=[...document.querySelectorAll('.g-lb-scope img')]
+  /* 15 Oct: an element with data-lb-group keeps its own set - a photo inside it opens only that set (the nearby
+     places' cards). Everything else behaves exactly as before. */
+  var group=null;
+  function collect(g){
+    group=g||null;
+    shots=[...(group ? group.querySelectorAll('img') : document.querySelectorAll('.g-lb-scope img:not([data-lb-group] img)'))]
       .filter(function(i){ return i.currentSrc || i.src; });
     shots.forEach(function(i,n){
       i.style.cursor='zoom-in';
@@ -58,13 +62,15 @@
   function open(n){ collect(); show(n); if(!dlg.open) dlg.showModal(); }
 
   document.addEventListener('click', function(e){
+    var b=e.target.closest('[data-lb-open]');
+    if(b){ var bg=b.closest('[data-lb-group]'); if(bg){ e.preventDefault(); collect(bg); show(0); if(!dlg.open) dlg.showModal(); } return; }
     var i=e.target.closest('.g-lb-scope img'); if(!i) return;
-    collect(); open(+i.dataset.lbIndex||0);
+    var g=i.closest('[data-lb-group]'); collect(g); show(+i.dataset.lbIndex||0); if(!dlg.open) dlg.showModal();
   });
   document.addEventListener('keydown', function(e){
     if(e.key!=='Enter' && e.key!==' ') return;
     var i=e.target.closest && e.target.closest('.g-lb-scope img'); if(!i) return;
-    e.preventDefault(); collect(); open(+i.dataset.lbIndex||0);
+    e.preventDefault(); var g=i.closest('[data-lb-group]'); collect(g); show(+i.dataset.lbIndex||0); if(!dlg.open) dlg.showModal();
   });
   dlg.querySelector('[data-lb-close]').addEventListener('click', function(){ dlg.close(); });
   dlg.querySelector('[data-lb-prev]').addEventListener('click', function(){ show(at-1); });

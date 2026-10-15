@@ -25,6 +25,8 @@
     now - and the bathrooms, from the old site's bathrooms page. -#}
 {% set FALLBACK = {
   'inside': [
+    {'url': url_for('static', filename='img/more/king-room-canopy.jpg'), 'caption': 'The King Room, its canopied four-poster'},
+    {'url': url_for('static', filename='img/more/blue-bedroom.jpg'), 'caption': 'The Family Suite, the blue bedroom'},
     {'url': url_for('static', filename='img/xx/the-kitchen.jpg'), 'caption': 'The kitchen, its table laid with fresh produce'},
     {'url': url_for('static', filename='img/xx/salon-floral-curtains.jpg'), 'caption': 'A salon, the mountains through its windows'},
     {'url': url_for('static', filename='img/xx/sunlit-bedroom.jpg'), 'caption': 'A sunlit bedroom, the mountains through the window'},
@@ -78,6 +80,7 @@
     {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1731560627745-OAYXOK7F1XCM5B4HSRXM/Kitchen+1.JPG?format=1500w", 'caption': 'Fruit on the kitchen table'}
   ],
   'grounds': [
+    {'url': url_for('static', filename='img/more/the-kitchen-garden.jpg'), 'caption': 'The kitchen garden'},
     {'url': url_for('static', filename='img/grounds/late-summer-flowers-urn.jpg'), 'caption': 'Late-summer flowers around an old urn, the mountains beyond'},
     {'url': url_for('static', filename='img/xx/garden-chateau-mountains.jpg'), 'caption': 'The château over its garden, the mountains beyond'},
     {'url': url_for('static', filename='img/xx/garden-sofas-mountains.jpg'), 'caption': 'Sofas on the lawn, facing the mountains'},
@@ -175,6 +178,10 @@
     {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1590986069796-39991EMK3UO1B0VQB4KI/Cha%CC%82teau+Discoveries+14.png?format=1500w", 'caption': 'A carved relief, found in the château'}
   ],
   'life': [
+    {'url': url_for('static', filename='img/more/fish-with-herbs.jpg'), 'caption': 'Fish with herbs on a floral plate'},
+    {'url': url_for('static', filename='img/more/terrace-at-night.jpg'), 'caption': 'A terrace at night, strung with lights'},
+    {'url': url_for('static', filename='img/more/flowers-and-meringues.jpg'), 'caption': 'Flowers and meringues'},
+    {'url': url_for('static', filename='img/more/raspberries-and-village.jpg'), 'caption': 'Raspberries, the village and the mountains below'},
     {'url': url_for('static', filename='img/life/cooking-over-the-fire.jpg'), 'caption': 'Cooking outdoors, over an open fire'},
     {'url': url_for('static', filename='img/life/asparagus-on-the-grill.jpg'), 'caption': 'White asparagus on the grill, in the grounds'},
     {'url': url_for('static', filename='img/dining/on-the-grill.jpg'), 'caption': 'On the grill, over the fire'},
@@ -291,7 +298,7 @@
       {% if gal['blurb'] %}<p class="g-p" style="margin-bottom:var(--s5);">{{ gal['blurb'] }}</p>{% endif %}
       {% set shown = gal['images'] or FALLBACK.get(gal['slug'], []) %}
       {% if shown %}
-      <div class="g-grid g-grid--3 g-grid--gal" style="margin-bottom:var(--s7);">
+      <div class="g-grid g-grid--3 g-grid--gal g-lb-scope" style="margin-bottom:var(--s7);">
         {% for img in shown %}
         <figure style="margin:0;">
           <img src="{{ img['url'] }}" alt="{{ img['caption'] or gal['title'] }}" loading="lazy"
