@@ -12,7 +12,7 @@
    is the one line a search engine shows under the link, so five rooms
    competed against each other with identical copy. Falls back to the
    general sentence for a room with no rate on it yet. #}
-{% block description %}{{ room_name(room['name']) }} at Château de Gudanes, a Class I monument under restoration in the Pyrénées.{% if room['max_occupancy'] %} Sleeps {{ room['max_occupancy'] }}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}.{% elif room['price_per_night'] %} From &euro;{{ room['price_per_night']|int }} a night.{% endif %} Breakfast included.{% endblock %}
+{% block description %}{{ room_name(room['name']) }} at Château de Gudanes, a Class I monument under restoration in the Pyrénées.{% if room['max_occupancy'] %} {% if (room['max_children'] or 0)|int > 0 %}For {{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}Sleeps {{ room['max_occupancy'] }}{% endif %}{% if room['price_per_night'] %}, from &euro;{{ room['price_per_night']|int }} a night{% endif %}.{% elif room['price_per_night'] %} From &euro;{{ room['price_per_night']|int }} a night.{% endif %} Breakfast included.{% endblock %}
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba4114a3-c057-4df8-8fd9-c080ebc6fff2/Chambre+Olympe+de+Gouges+2.jpg?format=1200w{% endblock %}
 {% set sticky_bar = 'none' %}
@@ -49,7 +49,11 @@
     <p class="g-fr">Votre chambre <span class="g-fr__en">Your room</span></p>
     <h1 class="g-display" >{{ room_name(room['name']) }}</h1>
     <p class="g-room__meta">
-      {% if room['price_per_night'] %}<span class="g-fig" data-eur="{{ room['price_per_night']|int }}">€{{ '{:,.0f}'.format(room['price_per_night']) }}</span> per night, room and breakfast{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{%- endif %}</p>
+      {#- 15 Oct (owner): the top price said the standard rate while the booking card priced the chosen dates. With dates it is
+          now the quote's own nightly figure, and the date script below keeps it in step. -#}
+      {%- set _q = initial_quote if (initial_quote is defined and initial_quote and initial_quote.available and initial_quote.per_night) else none %}
+      {%- set _pn = _q.per_night if _q else room['price_per_night'] %}
+      {% if room['price_per_night'] %}<span class="g-fig" id="room_top_price" data-base="{{ room['price_per_night'] }}" data-eur="{{ _pn }}">€{{ ('{:,.0f}' if (_pn|float) == (_pn|int) else '{:,.2f}').format(_pn|float) }}</span> <span id="room_top_label">{{ 'a night for your dates' if _q else 'per night' }}</span>, room and breakfast{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{%- endif %}</p>
     {#- 10 Oct (owner: "when you click dates and book a room it still has select dates at the top - you have to scroll to see
         your entered dates"). The chosen dates, under the price, and the way on to the form that already holds them. -#}
     {%- if arrival and departure %}
@@ -76,7 +80,7 @@
        three bathroom sentences became one table; the form and its summary card are the only price. #}
     {%- set _private = (room['bathroom'] or 'private')|lower == 'private' %}
     <dl class="g-glance">
-      <div><dt>Sleeps</dt><dd>Up to {{ room['max_occupancy'] }}</dd></div>
+      <div><dt>Sleeps</dt><dd>{% if (room['max_children'] or 0)|int > 0 %}{{ room['max_adults'] }} adults and {{ room['max_children'] }} children{% else %}Up to {{ room['max_occupancy'] }}{% endif %}</dd></div>
       {% if _bl %}<div><dt>The bed</dt><dd>{{ _bl }}</dd></div>{% endif %}
       {% if _rn == 'The King Room' %}<div><dt>In the room</dt><dd>A bath and a basin of its own</dd></div>{% endif %}
       <div class="g-glance__wide"><dt>Your bathroom</dt><dd>{{ 'Private, and yours alone, ' if _private else '' }}on the ground floor<span class="g-glance__sub">A powder room, with a toilet and basin, in the upstairs vestibule</span></dd></div>
@@ -396,6 +400,7 @@
           <p class="g-hint g-terms-line" style="margin:0 0 var(--s3)">By booking, you agree to the <a href="{{ url_for('terms_page') }}" target="_blank" rel="noopener">terms and conditions</a>.</p>
 
           {% if stripe_enabled and room['price_per_night'] %}
+          <p class="g-foot-note"><strong>Non-refundable.</strong> Payments are not refunded if you cancel.</p>
           <button type="submit" class="g-btn g-submit">Pay &amp; book</button>
           <p class="g-foot-note">Your booking is confirmed the moment your payment goes through. You get a reference code and a link to manage your reservation.</p>
         {{ payment_safety(compact=true) }}
@@ -726,9 +731,18 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
           barTotal(d.total);
           totalRow.hidden=false;
           note.textContent=d.per_night?money(d.per_night)+' a night average.':'';
+          topPrice(d.per_night||null);
         })
         .catch(function(){});
     },250);
+  }
+  /* 15 Oct: the price at the top of the page follows the chosen dates, as the booking card does. */
+  function topPrice(pn){
+    var el=document.getElementById('room_top_price'), lab=document.getElementById('room_top_label'); if(!el) return;
+    var v = pn || parseFloat(el.getAttribute('data-base'));
+    el.setAttribute('data-eur', v);
+    el.textContent='€'+(Math.round(v)===v ? v.toLocaleString('en-GB') : v.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}));
+    if(lab) lab.textContent = pn ? 'a night for your dates' : 'per night';
   }
   [arrive,depart,party].forEach(function(el){ el.addEventListener('change',refreshQuote); });
   /* party_size is filled in by script, and script fires no event, so a guest
@@ -836,7 +850,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
       <dl class="g-plate__l">
         <div><dt>The payment</dt><dd>Paid in full when you book, by Stripe. Your card details never reach the château</dd></div>
         <div><dt>The booking</dt><dd>Confirmed straight away, with your dates held</dd></div>
-        <div><dt>Cancellation</dt><dd>Non-refundable. Write to us and we can sometimes move your dates instead</dd></div>
+        <div><dt>Cancellation</dt><dd>Non-refundable: payments are not refunded if you cancel. Write to us, as sometimes we can move your dates</dd></div>
         <div><dt>Your reference</dt><dd>Emailed at once, with a link to see your booking and add to it</dd></div>
         <div><dt>Breakfast</dt><dd>Included every morning, in the rate you see</dd></div>
         <div><dt>Minimum stay</dt><dd>{% set _mn = (room['min_nights'] if room and room['min_nights'] else 1)|int %}{{ _mn }} night{{ 's' if _mn != 1 }}</dd></div>

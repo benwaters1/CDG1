@@ -8509,7 +8509,8 @@ NAV_AREAS = {
         # ENDPOINT_AREA is built last-wins and payroll happens to fall after
         # team in the dict. Reordering these areas would have quietly handed
         # the payroll pack back to anyone with team access.
-        "export_equipment_csv", "export_pay_history_csv",
+        # export_pay_history_csv is deliberately NOT here: see OWNER_ONLY_AREAS.
+        "export_equipment_csv",
         "export_team_csv", "new_absence", "new_candidate",
         # new_check_in_note / delete_check_in_note are deliberately NOT here.
         # Reading a 1:1 note is gated by ROLE -- profile() allows the owner or
@@ -8966,6 +8967,13 @@ OWNER_ONLY_AREAS = {
     # employee holds their own copy. Attaching one stays in team: whoever
     # is handed the paper can file it without being able to reopen it.
     "view_absence_note": "team",
+    # Everybody's pay-rate history in one file. A profile shows pay history to
+    # the owner and nobody else, and the Team page only ever drew this link
+    # for the owner, but the export sat in `team` -- so anybody with team,
+    # three live presets, could download every colleague's pay history by
+    # typing the address, the manager's and the owner's included. The route
+    # checks role == owner as well, as profile() does.
+    "export_pay_history_csv": "team",
     "download_backup": "management",
     "new_check_in_note": "team",
     "pos_archive": "till",
@@ -9465,38 +9473,83 @@ def access_covers(actor, target):
     return t.issubset(a)
 
 
-def refused_upwards(person, doing, back="directory"):
-    """The refusal for acting on somebody who can reach more than you can.
+def why_not_act_on(person, own=False):
+    """Why the signed-in person may not act on `person`'s record, or None.
 
-    None when the signed-in person covers `person`. Otherwise flashes the
-    sentence and returns where to send them: the Team page unless told
-    otherwise, and never the person's profile -- a profile is readable only by
-    the owner or the person themselves, so a refused caller sent there gets a
-    403 and the explanation never renders.
+    "upwards" when `person` can reach more of the app than they can. "own"
+    when it is their own record and `own` says that counts: access_covers is
+    true of anybody against themselves, so without it the one record a
+    member of staff could always change was their own -- their own pay, their
+    own time off, their own hours. An owner acting on their own record is the
+    house deciding, and is never refused.
+
+    The bare reason, so a bulk action can group it (bulk_message) and a single
+    one can say it in a sentence (refused_upwards).
     """
-    if access_covers(current_user(), person):
+    me = current_user()
+    if own and me["role"] != "owner" and person["id"] == me["id"]:
+        return "own"
+    return None if access_covers(me, person) else "upwards"
+
+
+# What a non-owner is told when the record is their own. The edit form's is
+# longer because there IS a page for the part that is theirs.
+OWN_RECORD = "Your own record is the owner's to change."
+OWN_HR_RECORD = "Your own HR record is the owner's to change."
+OWN_TIME_OFF = "Your own time off is the owner's to decide."
+OWN_HOURS = "Your own hours are the owner's to correct."
+OWN_WAGE = "Your own wage is the owner's to record."
+
+
+def refused_upwards(person, doing, back="directory", own=None):
+    """The refusal for acting on somebody who can reach more than you can --
+    or, when `own` is given, on yourself.
+
+    None when the signed-in person may. Otherwise flashes the sentence and
+    returns where to send them: the Team page unless told otherwise, and never
+    the person's profile -- a profile is readable only by the owner or the
+    person themselves, so a refused caller sent there gets a 403 and the
+    explanation never renders. `own` is the sentence for a non-owner acting on
+    their own record; without it, their own record is not refused.
+    """
+    why = why_not_act_on(person, own=bool(own))
+    if why is None:
         return None
-    flash(f"{person['name']} can reach more of the app than you can, so "
-          f"{doing} is the owner's to do.", "error")
+    if why == "own":
+        flash(own, "error")
+    else:
+        flash(f"{person['name']} can reach more of the app than you can, so "
+              f"{doing} is the owner's to do.", "error")
     return redirect(url_for(back))
 
 
-def refused_upwards_for(conn, user_id, doing, back="admin_hr"):
+def refused_upwards_for(conn, user_id, doing, back="admin_hr", own=None):
     """refused_upwards for somebody known only by id, as the HR page's forms
     know them. Nobody by that id is not a refusal: the caller's own
     not-found handling answers that."""
     person = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    return refused_upwards(person, doing, back) if person else None
+    return refused_upwards(person, doing, back, own=own) if person else None
 
 
-def refuses_upwards(doing):
+def refuses_upwards(doing, own=OWN_RECORD, own_back=None):
     """For a route under /directory/<user_id>/ that changes that person's
     record: refuse it, before anything else runs, when they can reach more
-    of the app than the caller can.
+    of the app than the caller can -- or when it is the caller's own.
 
     Before the check, anybody with `team` could open the owner's record, mark
     it inactive, and login then turned the owner away; and anybody with
     `rota` could set the owner's arrival PIN and sign in as them at /arrive.
+    And because everybody covers themselves, anybody with `team` could open
+    their OWN record and change their own pay, status and leave entitlement,
+    and read the notes their profile calls private to the owner.
+
+    Their own record is refused by default, so a route added under
+    /directory/<user_id>/ later is closed to the person it is about without
+    anybody remembering to say so. A route that IS theirs would pass own=None;
+    none does today -- what a member of staff changes about themselves lives
+    elsewhere (edit_own_contact_info, upload_document). The refusal sends them
+    to their own profile, which they can read, or to `own_back` where there is
+    a page for the part that is theirs.
     """
     def decorate(view):
         @wraps(view)
@@ -9507,6 +9560,10 @@ def refuses_upwards(doing):
             conn.close()
             if not person:
                 abort(404)
+            if own and why_not_act_on(person, own=True) == "own":
+                flash(own, "error")
+                return redirect(url_for(own_back) if own_back
+                                else url_for("profile", user_id=person["id"]))
             refused = refused_upwards(person, doing)
             if refused:
                 return refused
@@ -15397,6 +15454,26 @@ def atelier_holding_the_house(conn, arrival, departure):
     return None
 
 
+# What a guest is told when their dates are taken. The reasons below are
+# for the house -- which booking, which channel -- and a guest hears none of
+# it: not that another channel exists, and never "free", which reads as "no
+# charge" (owner, 15 October 2026).
+GUEST_DATES_TAKEN = "Those dates are already reserved. Please choose others."
+DATES_OVERLAP_BOOKING = "Those dates overlap an existing booking."
+DATES_BLOCKED_CHANNEL = "Those dates are blocked on another booking channel."
+
+
+def for_a_guest(reason):
+    """The reason an availability check gave, as a guest should read it.
+
+    The two that describe the house's own bookkeeping become the one plain
+    sentence; anything written for a guest already (a season closure's own
+    note, a departure before the arrival) is passed through unchanged."""
+    if reason in (DATES_OVERLAP_BOOKING, DATES_BLOCKED_CHANNEL):
+        return GUEST_DATES_TAKEN
+    return reason
+
+
 def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=None, include_pending=True):
     """arrival/departure are date objects; departure is the checkout day
     (exclusive), so a checkout and another guest's check-in on the same day
@@ -15420,11 +15497,11 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
         if exclude_booking_id and bid == exclude_booking_id:
             continue
         if b_start and b_end and arrival < b_end and b_start < departure:
-            return False, "Those dates overlap an existing booking."
+            return False, DATES_OVERLAP_BOOKING
 
     for b_start, b_end in picture["blocked"].get(room_id, ()):
         if b_start and b_end and arrival < b_end and b_start < departure:
-            return False, "Those dates are blocked on another booking channel."
+            return False, DATES_BLOCKED_CHANNEL
 
     for b_start, b_end, mode, note in picture["manual"].get(room_id, ()):
         if b_start and b_end and arrival < b_end and b_start < departure:
@@ -27824,7 +27901,15 @@ HOUSE_AREAS = {"room": "rooms", "workshop": "workshops", "event": "events",
 def house_address_for(conn, area):
     """Where the house reads about its own business in one area: the area's own
     mailbox when one is connected, the address the site gives guests for it
-    when not, and the owner when there is neither."""
+    when not, and the owner when there is neither.
+
+    EVERY BOOKING NOTICE ASKS THIS, not owner_email. They all went to the
+    owner's sign-in address, which is accounts@ -- the money inbox -- so every
+    stay booked, changed or cancelled landed among the invoices (the owner,
+    15 October 2026: "I don't want accounts to receive every booking"). Now a
+    stay or a dinner reaches reservations@ and an atelier or an event
+    experience@, the same inboxes a guest's reply reaches. Money that needs
+    the owner, and the daily summary, still go to owner_email."""
     return reply_to_for(area) or PUBLIC_CONTACT.get(area) or owner_email(conn)
 
 
@@ -28982,17 +29067,22 @@ def tech_email(conn):
     return tech_email_setting(conn) or owner_email(conn)
 
 
-# Every kind of mail the house sends to ITSELF, and which of the two helpers
-# decides where it goes, so the Guest email page can say "Backups ->
-# website@" without anybody reading code. test_tech_email holds each "tech"
-# line against the code that sends it.
+# Every kind of mail the house sends to ITSELF, and what decides where it
+# goes -- "tech" is tech_email, "owner" is owner_email, and an area is
+# house_address_for that area -- so the Guest email page can say "Backups ->
+# website@" and "Stays -> reservations@" without anybody reading code.
+# test_tech_email holds each line against the code that sends it.
 HOUSE_MAIL_ROUTES = (
     ("Backups by email", "tech"),
     ("The email provider's test message", "tech"),
-    ("The daily summary and the morning note", "owner"),
-    ("New bookings, changes, cancellations, enquiries and waitlist requests", "owner"),
+    ("Stays: booked, waiting on you, changed, cancelled, extras, the waitlist", "rooms"),
+    ("Guests writing in, and the contact page", "rooms"),
+    ("Dinners: changed, cancelled, the waitlist", "restaurant"),
+    ("Ateliers: cancelled, moved, the waitlist", "workshops"),
+    ("Events: enquiries, changes, quotes accepted, holds that lapsed", "events"),
     ("Money that needs you: a balance not taken, a paid booking that clashes", "owner"),
-    ("Reviews, guests writing in, the contact page", "owner"),
+    ("The daily summary and the morning note", "owner"),
+    ("A poor review", "owner"),
 )
 
 
@@ -29424,7 +29514,7 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
             })
         if subject:
             send_email(guest_email, subject, body, html=letter)
-    owner_to = owner_email(conn)
+    owner_to = house_address_for(conn, "rooms")
     if owner_to:
         # Two different things to read at breakfast. "Somebody booked" is news;
         # "somebody is waiting on you" is a job, and the subject line says
@@ -31148,6 +31238,24 @@ def inject_user():
         """
         return can_reach(user, endpoint) if user else False
 
+    acted_on = {}
+
+    def acts_on(user_id):
+        """Why this person may not act on somebody's record -- "upwards" or
+        "own" -- or None, for a page that draws a button per person: Approve
+        on a time-off request, Repair on a clocking. The routes refuse those
+        rows (why_not_act_on, own included), and a button drawn anyway sends
+        somebody from a page that offered it straight into a refusal. Once
+        per person per page."""
+        if not user or user_id is None:
+            return None
+        if user_id not in acted_on:
+            conn = get_db()
+            person = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            conn.close()
+            acted_on[user_id] = why_not_act_on(person, own=True) if person else None
+        return acted_on[user_id]
+
     if user:
         conn = get_db()
         unread_notifications_count = conn.execute(
@@ -31212,7 +31320,8 @@ def inject_user():
         "pending_events_count": pending_events_count,
         "open_email_flags_count": open_email_flags_count,
         "chat_unread_count": chat_unread_count,
-        "may": may, "can": can, "user_areas": areas, "area_titles": AREA_TITLES,
+        "may": may, "can": can, "acts_on": acts_on,
+        "user_areas": areas, "area_titles": AREA_TITLES,
         # The sidebar, built only when base.html draws it -- the public pages
         # and the letters render through here too and have no use for it.
         "nav_menu": (lambda: build_nav(user, request.endpoint, {
@@ -34432,7 +34541,10 @@ def owner_home_next_up(conn, today, day_rows):
             hh, mm = (int(x) for x in r["time"].split(":")[:2])
         except ValueError:
             continue
-        when = datetime.combine(today, dtime(hh, mm), tzinfo=timezone.utc)
+        # The time on a row is the house's clock -- "14:00" is two in the
+        # afternoon in the Ariege. Read as UTC, every countdown ran an hour or
+        # two out, and an event just ahead could be skipped as already past.
+        when = datetime.combine(today, dtime(hh, mm), tzinfo=LOCAL_TZ)
         if when < now:
             continue
         mins = int((when - now).total_seconds() // 60)
@@ -34447,11 +34559,16 @@ def owner_home_next_up(conn, today, day_rows):
            ORDER BY bookings.arrival_date LIMIT 1""", (today.isoformat(),)).fetchone()
     if not nxt:
         return None
+    # The next arrival is not always tomorrow's. It was labelled "Tomorrow"
+    # whatever its date, so on 15 October the home page said Tess Hoffman was
+    # arriving tomorrow, for a stay on 12 November (the owner spotted it).
+    # Tomorrow only when it is; otherwise the day itself.
+    arriving = parse_date(nxt["arrival_date"])
     return {"time": nxt["estimated_arrival_time"] or "—",
             "title": f"{nxt['guest_name']} arriving",
             "room": f"{nxt['room_name']} · party of {nxt['party_size']}",
             "note": "", "countdown": format_date_human(nxt["arrival_date"]),
-            "tomorrow": True}
+            "tomorrow": arriving == today + timedelta(days=1)}
 
 
 @app.route("/")
@@ -35371,6 +35488,11 @@ def export_team_csv():
 @app.route("/directory/pay-history/export.csv")
 @owner_required
 def export_pay_history_csv():
+    # The owner's, as pay history on a profile is: owner-only on purpose (see
+    # OWNER_ONLY_AREAS), and by ROLE as well, because a member of staff on the
+    # full-access preset reaches every page and is still not the house.
+    if current_user()["role"] != "owner":
+        abort(403)
     conn = get_db()
     rows = conn.execute(
         """SELECT pay_rate_history.*, users.name AS employee_name, changer.name AS changed_by_name
@@ -35475,9 +35597,12 @@ def new_employee():
         job_role = request.form.get("job_role", "").strip()
         phone = request.form.get("phone", "").strip()
         start_date = request.form.get("start_date", "").strip()
-        pay_rate = request.form.get("pay_rate", "").strip()
-        pay_type = request.form.get("pay_type", "").strip()
-        notes = request.form.get("notes", "").strip()
+        # Pay and the notes are the owner's, here as on edit_employee: anybody
+        # else adds the person and the owner sets what they are paid.
+        is_owner = current_user()["role"] == "owner"
+        pay_rate = request.form.get("pay_rate", "").strip() if is_owner else ""
+        pay_type = request.form.get("pay_type", "").strip() if is_owner else ""
+        notes = request.form.get("notes", "").strip() if is_owner else ""
         annual_leave_days = request.form.get("annual_leave_days", "").strip()
         annual_leave_days = int(annual_leave_days) if annual_leave_days.isdigit() else None
         contract_type, contract_end_date, trial_end_date, notice_period_days = contract_fields_from_form()
@@ -35526,6 +35651,10 @@ def new_employee():
             # mail server's timeout has no business holding the write lock.
             sent, why = send_staff_sign_in_letter(email, new_employee_row, onboarding_url)
             sign_in_letter_flash(name, email, onboarding_url, sent, why)
+            # The new profile is the owner's to read; anybody else goes back to
+            # the Team page rather than to a 403 that hides the link above.
+            if not is_owner:
+                return redirect(url_for("directory"))
             return redirect(url_for("profile", user_id=new_employee_row["id"]))
         except sqlite3.IntegrityError:
             conn.close()
@@ -35651,7 +35780,11 @@ def profile(user_id):
 @owner_required
 # On the form as well as the save: the form shows pay, notes and the contract,
 # and it is the owner's record of somebody senior, not the caller's to read.
-@refuses_upwards("changing their record")
+# Nor their own: the part of it that is theirs has its own page.
+@refuses_upwards("changing their record",
+                 own=OWN_RECORD + " Your phone number and emergency contact "
+                                  "are yours, here.",
+                 own_back="edit_own_contact_info")
 def edit_employee(user_id):
     conn = get_db()
     person = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -35680,9 +35813,17 @@ def edit_employee(user_id):
                     "AND id != ?", (user_id,)).fetchone()):
             status = "active"
             status_kept = True
-        pay_rate = request.form.get("pay_rate", "").strip()
-        pay_type = request.form.get("pay_type", "").strip()
-        notes = request.form.get("notes", "").strip()
+        # PAY AND THE NOTES ARE THE OWNER'S. Pay history on a profile is the
+        # owner's alone and the profile calls the notes "private to you, not
+        # shown to" the person -- so for anybody else the form does not draw
+        # them, and whatever arrives in their place is ignored: the stored
+        # values are written back as they were, and no pay change is recorded.
+        if current_user()["role"] == "owner":
+            pay_rate = request.form.get("pay_rate", "").strip()
+            pay_type = request.form.get("pay_type", "").strip()
+            notes = request.form.get("notes", "").strip()
+        else:
+            pay_rate, pay_type, notes = person["pay_rate"], person["pay_type"], person["notes"]
         skills = request.form.get("skills", "").strip()
         emergency_contact_name = request.form.get("emergency_contact_name", "").strip()
         emergency_contact_phone = request.form.get("emergency_contact_phone", "").strip()
@@ -36501,7 +36642,8 @@ def new_certification():
         flash("That employee is no longer on the team — the list has changed "
               "since this page was opened.", "error")
         return redirect(url_for("admin_hr"))
-    refused = refused_upwards_for(conn, int(user_id), "recording their certifications")
+    refused = refused_upwards_for(conn, int(user_id), "recording their certifications",
+                                  own=OWN_HR_RECORD)
     if refused:
         conn.close()
         return refused
@@ -36531,7 +36673,8 @@ def delete_certification(cert_id):
     cert = conn.execute("SELECT user_id FROM certifications WHERE id = ?",
                         (cert_id,)).fetchone()
     refused = cert and refused_upwards_for(conn, cert["user_id"],
-                                           "removing their certifications")
+                                           "removing their certifications",
+                                           own=OWN_HR_RECORD)
     if refused:
         conn.close()
         return refused
@@ -36563,7 +36706,8 @@ def new_absence():
         flash("That employee is no longer on the team — the list has changed "
               "since this page was opened.", "error")
         return redirect(url_for("admin_hr"))
-    refused = refused_upwards_for(conn, int(user_id), "recording their absences")
+    refused = refused_upwards_for(conn, int(user_id), "recording their absences",
+                                  own=OWN_HR_RECORD)
     if refused:
         conn.close()
         return refused
@@ -36590,7 +36734,8 @@ def absence_return_to_work(absence_id):
     absence = conn.execute("SELECT user_id FROM absences WHERE id = ?",
                            (absence_id,)).fetchone()
     refused = absence and refused_upwards_for(conn, absence["user_id"],
-                                              "recording their return to work")
+                                              "recording their return to work",
+                                              own=OWN_HR_RECORD)
     if refused:
         conn.close()
         return refused
@@ -36616,8 +36761,9 @@ def new_performance_review():
     rating = request.form.get("overall_rating", "").strip()
     conn = get_db()
     # Somebody who reaches more of the house than you is not yours to review:
-    # a shared review is what a promotion or a dismissal is argued from.
-    refused = refused_upwards_for(conn, int(user_id), "reviewing them")
+    # a shared review is what a promotion or a dismissal is argued from. Nor
+    # are you.
+    refused = refused_upwards_for(conn, int(user_id), "reviewing them", own=OWN_HR_RECORD)
     if refused:
         conn.close()
         return refused
@@ -36652,7 +36798,8 @@ def share_performance_review(review_id):
     if not review:
         conn.close()
         abort(404)
-    refused = refused_upwards_for(conn, review["user_id"], "sharing their review")
+    refused = refused_upwards_for(conn, review["user_id"], "sharing their review",
+                                  own=OWN_HR_RECORD)
     if refused:
         conn.close()
         return refused
@@ -39441,6 +39588,8 @@ def arrive_signin(user_id):
 
 @app.route("/directory/<int:user_id>/set-pin", methods=["POST"])
 @owner_required
+# Their own as well, by default: the PIN is what puts somebody on the
+# timesheet, and the profile's PIN card says it is set for them, not by them.
 @refuses_upwards("setting their arrival PIN")
 def set_quick_pin(user_id):
     """Set or clear a staff member's arrival PIN."""
@@ -40488,6 +40637,14 @@ def new_wage_record():
         flash("That employee is no longer on the team — the list has changed "
               "since this page was opened.", "error")
         return redirect(url_for("admin_wages"))
+    # The wage is the figure payroll and Money ahead read, and the owner sets
+    # it. Anybody with `payroll` -- two presets -- could record their own, or
+    # a colleague's who reaches more than they do.
+    refused = refused_upwards_for(conn, int(user_id), "recording their wage",
+                                  back="admin_wages", own=OWN_WAGE)
+    if refused:
+        conn.close()
+        return refused
     conn.execute(
         """INSERT INTO wage_records (user_id, effective_from, basis, gross_amount,
            employer_rate, note, created_by_user_id, created_at)
@@ -40570,6 +40727,13 @@ def repair_time_entry(entry_id):
     if not entry:
         conn.close()
         abort(404)
+    # Hours are what somebody is paid for: not yours to change for anybody who
+    # reaches more than you, nor for yourself.
+    refused = refused_upwards_for(conn, entry["user_id"], "correcting their hours",
+                                  back="admin_timesheets", own=OWN_HOURS)
+    if refused:
+        conn.close()
+        return refused
 
     action = request.form.get("action", "")
     clock_in = parse_datetime_iso(entry["clock_in_at"])
@@ -40614,6 +40778,11 @@ def resolve_timesheet_correction(correction_id):
     if not correction:
         conn.close()
         abort(404)
+    refused = refused_upwards_for(conn, correction["user_id"], "correcting their hours",
+                                  back="admin_timesheet_corrections", own=OWN_HOURS)
+    if refused:
+        conn.close()
+        return refused
     entry = conn.execute(
         "SELECT * FROM time_entries WHERE id = ?", (correction["time_entry_id"],)
     ).fetchone()
@@ -40675,6 +40844,11 @@ def dismiss_timesheet_correction(correction_id):
         conn.close()
         flash("That correction has already been dealt with.", "error")
         return redirect(url_for("admin_timesheet_corrections"))
+    refused = refused_upwards_for(conn, correction["user_id"], "turning down their correction",
+                                  back="admin_timesheet_corrections", own=OWN_HOURS)
+    if refused:
+        conn.close()
+        return refused
     conn.execute(
         """UPDATE timesheet_corrections SET status = 'dismissed', resolved_at = ?
            WHERE id = ? AND status = 'pending'""",
@@ -40784,6 +40958,8 @@ def upload_absence_note(absence_id):
     if not absence:
         conn.close()
         abort(404)
+    # Their own note is NOT refused (no `own`): it is evidence they bring,
+    # not a judgement made about them, and they cannot reopen it once filed.
     refused = refused_upwards_for(conn, absence["user_id"], "attaching their doctor's note")
     if refused:
         conn.close()
@@ -43913,7 +44089,7 @@ def guest_account_message(token):
         flash("Thank you — we have that.", "success")   # same answer either way
         return redirect(url_for("guest_account", token=token))
 
-    owner_to = owner_email(conn)
+    owner_to = house_address_for(conn, "rooms")
     # The audit line says they wrote, not what: what a guest writes is theirs,
     # and the audit trail is kept forever. What they wrote is kept with the
     # rest of their correspondence, on the same two-year rule.
@@ -46077,7 +46253,7 @@ def join_waitlist():
          party_size, notes or None, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
-    owner_to = owner_email(conn)
+    owner_to = house_address_for(conn, "rooms")
     if owner_to:
         send_email(
             owner_to, "New waitlist request",
@@ -46277,7 +46453,7 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
     if not free:
         quote.update(available=False,
                      reason=(why if why and why == season_note_for(conn, room["id"], arrival, departure)
-                             else "Those dates are no longer free."))
+                             else GUEST_DATES_TAKEN))
         return quote
     # On request: priced as ever, booked as a request the house answers.
     quote["on_request"] = rules["on_request"]
@@ -46664,7 +46840,7 @@ def book_room(room_id):
         else:
             ok, reason = claim_range(conn, room_id, arrival, departure)
             if not ok:
-                error = reason
+                error = for_a_guest(reason)
             else:
                 error = house_capacity_error(conn, arrival, departure, party_size)
 
@@ -47762,7 +47938,7 @@ def manage_booking(manage_token):
             log_audit(conn, "booking_cancelled_by_guest", target=booking["reference_code"])
         conn.commit()
         if cur.rowcount:
-            owner_to = owner_email(conn)
+            owner_to = house_address_for(conn, "rooms")
             if owner_to:
                 paid_note = " They had paid — refund it from the booking admin page if appropriate." if booking["payment_status"] == "paid" else ""
                 send_email(
@@ -47909,7 +48085,8 @@ def manage_booking(manage_token):
         else:
             ok, reason = claim_range(conn, booking["room_id"], new_arrival, new_departure, exclude_booking_id=booking["id"])
             if not ok:
-                flash(f"Those dates aren't available: {reason}", "error")
+                flash(for_a_guest(reason) if for_a_guest(reason) == GUEST_DATES_TAKEN
+                      else f"Those dates aren't available: {reason}", "error")
             elif booking["status"] == "pending" and booking["payment_status"] != "paid":
                 # Nothing's been committed or charged yet, so it's safe to
                 # apply immediately rather than routing a still-pending
@@ -47942,7 +48119,7 @@ def manage_booking(manage_token):
                                  if c not in ("arrival_date", "departure_date",
                                               "total_price")}})))
                 conn.commit()
-                owner_to = owner_email(conn)
+                owner_to = house_address_for(conn, "rooms")
                 if owner_to:
                     send_email(
                         owner_to, f"Guest changed dates — {booking['reference_code']}",
@@ -48031,7 +48208,7 @@ def manage_booking(manage_token):
                 restamp_stay(conn, booking["id"])
                 log_audit(conn, "guest_extended_stay", target=booking["reference_code"],
                           details=f"+{nights} night(s), +{money(added)}")
-                owner_to = owner_email(conn)
+                owner_to = house_address_for(conn, "rooms")
                 conn.commit()      # before send_email, which needs its own write lock
                 if owner_to:
                     send_email(
@@ -48107,7 +48284,7 @@ def manage_booking(manage_token):
                                   scheduled_for=when_on)
                 log_audit(conn, "guest_added_extra", target=booking["reference_code"],
                           details=f"{quantity} x {extra['name']}")
-                owner_to = owner_email(conn)
+                owner_to = house_address_for(conn, "rooms")
                 # Commit before sending. send_email falls back to writing the
                 # message into email_outbox on its own connection, which cannot
                 # take a write lock while this transaction is still open — the
@@ -48640,7 +48817,7 @@ def submit_event_inquiry():
     inquiry = conn.execute("SELECT * FROM event_inquiries WHERE manage_token = ?", (manage_token,)).fetchone()
     send_event_email(conn, inquiry, "event_inquiry_received", event_email_context(inquiry))
 
-    owner_to = owner_email(conn)
+    owner_to = house_address_for(conn, "events")
     if owner_to:
         send_email(
             owner_to, f"New event inquiry — {event_type} ({reference_code})",
@@ -48747,7 +48924,7 @@ def event_manage(manage_token):
             (guest_count, message or None, inquiry["id"]))
         conn.commit()
 
-        owner_to = owner_email(conn)
+        owner_to = house_address_for(conn, "events")
         if owner_to:
             changes = []
             if guest_count != was_count:
@@ -48777,7 +48954,7 @@ def event_manage(manage_token):
         )
         conn.commit()
         if cur.rowcount:
-            owner_to = owner_email(conn)
+            owner_to = house_address_for(conn, "events")
             if owner_to:
                 send_email(
                     owner_to, f"Event inquiry cancelled — {inquiry['reference_code']}",
@@ -50389,7 +50566,7 @@ def place_event_hold(conn, event_id, start_iso, end_iso, *, days=None,
     if room:
         ok, why = is_range_available(conn, room["id"], start, end + timedelta(days=1))
         if not ok:
-            return None, f"Those dates are not free: {why}"
+            return None, f"Those dates are already reserved. {why}"
     try:
         days = int(days) if days else EVENT_HOLD_DAYS_DEFAULT
     except (TypeError, ValueError):
@@ -50431,9 +50608,9 @@ def lapse_event_holds(conn, *, now=None):
             WHERE released_at IS NULL AND expires_at <= ?""",
         (now.isoformat(), now.isoformat()))
     conn.commit()
-    # The owner is TOLD. A date coming back on the market is news -- it is a
+    # The house is TOLD. A date coming back on the market is news -- it is a
     # weekend that can be sold again, and nobody would otherwise know.
-    to_address = owner_email(conn)
+    to_address = house_address_for(conn, "events")
     if to_address:
         lines = "\n".join(
             f"- {h['start_date']} to {h['end_date']} — {h['kind']} for "
@@ -51246,7 +51423,7 @@ def restaurant_manage(manage_token):
             (party_size, dietary or None, new_total, booking["id"]))
         conn.commit()
 
-        owner_to = owner_email(conn)
+        owner_to = house_address_for(conn, "restaurant")
         if owner_to:
             changes = []
             if party_size != was_party:
@@ -51283,7 +51460,7 @@ def restaurant_manage(manage_token):
         )
         conn.commit()
         if cur.rowcount:
-            owner_to = owner_email(conn)
+            owner_to = house_address_for(conn, "restaurant")
             if owner_to:
                 paid_note = " They had paid — refund it from the restaurant admin page if appropriate." if booking["payment_status"] == "paid" else ""
                 send_email(
@@ -53904,11 +54081,12 @@ def email_health(conn):
         ("Money: receipts, statements, balances, refunds", "accounts"),
         ("Anything else", None))]
     # The other direction: what the SITE sends to the house, and to which
-    # inbox. Worked out by the same two helpers the senders call, so the page
-    # cannot say website@ while the job sends to accounts@.
+    # inbox. Worked out by the same helpers the senders call, so the page
+    # cannot say reservations@ while the notice goes to accounts@.
     owner_to = owner_email(conn) or ""
     tech_to = tech_email(conn) or ""
-    house_mail = [(label, tech_to if kind == "tech" else owner_to)
+    house_mail = [(label, tech_to if kind == "tech" else owner_to if kind == "owner"
+                   else house_address_for(conn, kind) or "")
                   for label, kind in HOUSE_MAIL_ROUTES]
     return {
         "tech_email": tech_email_setting(conn),
@@ -54940,7 +55118,7 @@ def workshop_manage(manage_token):
         )
         conn.commit()
         if cur.rowcount:
-            owner_to = owner_email(conn)
+            owner_to = house_address_for(conn, "workshops")
             if owner_to:
                 send_email(
                     owner_to,
@@ -55022,7 +55200,7 @@ def workshop_manage(manage_token):
                 (new_session_id, deposit_amount, balance_amount, balance_due_date, booking["id"]),
             )
             conn.commit()
-            owner_to = owner_email(conn)
+            owner_to = house_address_for(conn, "workshops")
             if owner_to:
                 send_email(
                     owner_to, f"Guest moved dates — {booking['reference_code']}",
@@ -60568,7 +60746,7 @@ def rebook_guest(guest_id):
                                     include_pending=True)
     if not available:
         conn.close()
-        flash(f"Those nights are not free: {reason}", "error")
+        flash(f"Those nights are already reserved. {reason}", "error")
         return redirect(url_for("guest_detail", guest_id=guest_id))
 
     try:
@@ -64336,7 +64514,7 @@ def join_restaurant_waitlist():
          datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
-    owner_to = owner_email(conn)
+    owner_to = house_address_for(conn, "restaurant")
     if owner_to:
         send_email(
             owner_to, "New dinner waitlist request",
@@ -67312,7 +67490,7 @@ def join_workshop_waitlist():
         (session_id, name, email, phone or None, party_size, notes or None, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
-    owner_to = owner_email(conn)
+    owner_to = house_address_for(conn, "workshops")
     if owner_to:
         send_email(
             owner_to, "New workshop waitlist request",
@@ -69854,7 +70032,7 @@ def event_quote(token):
             log_audit(conn, "event_quote_accepted", target=event["reference_code"],
                       details=f"v{quote['version']} by {who}")
             conn.commit()
-            to_address = owner_email(conn)
+            to_address = house_address_for(conn, "events")
             conn.close()
             if to_address:
                 send_email(
@@ -87692,7 +87870,7 @@ def bulk_approve_queue():
             req = conn.execute(
                 "SELECT * FROM leave_requests WHERE id = ?", (item_id,)
             ).fetchone()
-            who = conn.execute("SELECT name FROM users WHERE id = ?",
+            who = conn.execute("SELECT * FROM users WHERE id = ?",
                                (req["user_id"],)).fetchone() if req else None
             if not req:
                 skipped.append((f"time off #{item_id}", "no longer there"))
@@ -87700,6 +87878,17 @@ def bulk_approve_queue():
             if req["status"] != "pending":
                 skipped.append((who["name"] if who else f"time off #{item_id}",
                                 f"already {req['status']}"))
+                continue
+            # The question decide_leave asks, asked here too: ticked in a
+            # batch, the manager's time off and your own were approved without
+            # it, and the page said "Approved".
+            why = who and why_not_act_on(who, own=True)
+            if why:
+                skipped.append((who["name"], {
+                    "own": "your own time off is the owner's to decide",
+                    "upwards": "they can reach more of the app than you can, "
+                               "so their time off is the owner's to decide",
+                }[why]))
                 continue
             conn.execute(
                 "UPDATE leave_requests SET status = 'approved', decided_at = ? WHERE id = ?",
@@ -87943,6 +88132,15 @@ def decide_leave(request_id):
     if status not in ("approved", "declined"):
         abort(400)
     conn = get_db()
+    # Not the time off of somebody who reaches more than you, and not your
+    # own: the bulk queue asks the same question (bulk_approve_queue).
+    asked = conn.execute("SELECT user_id FROM leave_requests WHERE id = ?",
+                         (request_id,)).fetchone()
+    refused = asked and refused_upwards_for(conn, asked["user_id"], "deciding their time off",
+                                            back="admin_leave", own=OWN_TIME_OFF)
+    if refused:
+        conn.close()
+        return refused
     ok, message, req = apply_leave_decision(conn, request_id, status)
     conn.close()
     if req is None:
@@ -100807,7 +101005,7 @@ def contact_page():
         ("Answer an enquiry from %s" % ("%s (%s)" % (name, email) if name else email),
          notes, house_today_iso(), datetime.now(timezone.utc).isoformat()))
     conn.commit()
-    to = owner_email(conn)
+    to = house_address_for(conn, "rooms")
     conn.close()
     if to:
         send_email(to, "Someone asked about staying",

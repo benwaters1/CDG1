@@ -6,7 +6,6 @@
        {% from '_roompick.html' import room_pick %}
        {{ room_pick(rooms) }}
    ========================================================================== #}
-{% from '_room_copy.html' import room_note %}
 {# 2 Oct: every room has a private bathroom and every bedroom is up the original staircase, so the bathroom and stairs
    questions could not change the answer (and "sharing one is fine" suggested shared bathrooms). What tells the rooms
    apart is how many it sleeps and the bed - so two questions. No price talk, no adjoining-rooms promise. #}
@@ -20,15 +19,16 @@
     <fieldset class="g-pick__q">
       <legend>How many of you?</legend>
       <label><input type="radio" name="pk_n" value="2" checked> One or two</label>
-      <label><input type="radio" name="pk_n" value="3"> Three</label>
-      <label><input type="radio" name="pk_n" value="5"> Four or five</label>
+      <label><input type="radio" name="pk_n" value="4"> Three or four</label>
+      <label><input type="radio" name="pk_n" value="5"> Five</label>
+      <label><input type="radio" name="pk_n" value="6"> Six or more</label>
     </fieldset>
 
-    <fieldset class="g-pick__q">
+    <fieldset class="g-pick__q" data-pick-bed>
       <legend>How do you like to sleep?</legend>
-      <label><input type="radio" name="pk_b" value="queen" checked> One bed, a queen</label>
+      <label><input type="radio" name="pk_b" value="king" checked> One bed, a king</label>
       <label><input type="radio" name="pk_b" value="twin"> Two separate beds</label>
-      <label><input type="radio" name="pk_b" value="king"> A king, with a bath in the room</label>
+      <label><input type="radio" name="pk_b" value="kingbath"> A king, with a bath in the room</label>
       <label><input type="radio" name="pk_b" value="emperor"> The biggest bed in the château</label>
     </fieldset>
 
@@ -44,36 +44,38 @@
 <script>
 (function(){
   var box=document.querySelector('[data-pick]'); if(!box) return;
-  /* Built from the rooms the macro is handed, so it follows admin. The bed is read from the room's note. */
+  /* 15 Oct (owner): one or two -> the room by bed; three or four -> two rooms; six or more -> a private stay.
+     Five -> the Family Suite (two adults, three children) or three rooms. The Queen Room has a king bed now, so
+     the bed is read from the room's NAME, not its text (both would say "king"). */
   var R=[
   {%- for r in rooms %}
    {n:{{ (r['name'] or '')|tojson }},
-    s:{{ r['max_occupancy'] or 2 }},
-    w:{{ (room_note(r['name']) or r['description'] or '')|tojson }},
     url:{{ url_for('book_room', room_id=r['id'])|tojson }}}{{ ',' if not loop.last }}
   {%- endfor %}
   ];
-  R.forEach(function(r){ var t=(r.w+' '+r.n).toLowerCase();
-    r.bed = /emperor/.test(t)?'emperor' : /king/.test(t)?'king' : /queen/.test(t)?'queen' : /twin/.test(t)?'twin' : /family/.test(t)?'family' : ''; });
-  var WHY={twin:'it has two separate beds', queen:'it has a queen bed', king:'it has a king bed, with a bath in the room', emperor:'it has the biggest bed in the house, an emperor'};
+  R.forEach(function(r){ var t=r.n.toLowerCase();
+    r.bed = /king/.test(t)?'kingbath' : /queen/.test(t)?'king' : /twin/.test(t)?'twin' : /gold/.test(t)?'emperor' : /family/.test(t)?'family' : ''; });
+  var WHY={king:'it has a king bed', twin:'it has two separate beds', kingbath:'it has a king bed, with a bath in the room', emperor:'it has the biggest bed in the house, an emperor'};
+  var BATH=' Every room has its own private bathroom, on the ground floor.';
+  var STAY={{ url_for('book_rooms')|tojson }}, PRIVATE={{ url_for('events_private')|tojson }};
+  var bedQ=box.querySelector('[data-pick-bed]');
+  function show(name, why, href, label){
+    box.querySelector('[data-pick-name]').textContent=name;
+    box.querySelector('[data-pick-why]').textContent=why;
+    box.querySelector('[data-pick-link]').innerHTML='<a href="'+href+'" class="g-btn g-btn--solid">'+label+'</a>';
+  }
   function paint(){
     var n=+box.querySelector('[name=pk_n]:checked').value,
         b=box.querySelector('[name=pk_b]:checked').value;
-    var pool=R.filter(function(r){ return r.s>=n; }).sort(function(a,c){ return a.s-c.s; });
-    var match=pool.filter(function(r){ return r.bed===b; });
-    var pick=(n<4 && match[0]) || pool[0], why='';
-    if(!pick){
-      box.querySelector('[data-pick-name]').textContent='Ask us';
-      box.querySelector('[data-pick-why]').textContent='Tell us how many of you there are, and we will suggest the right room.';
-      box.querySelector('[data-pick-link]').innerHTML='<a href="{{ url_for('contact_page') }}" class="g-btn">Write to us</a>';
-      return;
-    }
-    if(n>=4) why='Because it sleeps up to '+pick.s+', the room for a family or a group of friends';
-    else if(match[0]===pick) why='Because '+WHY[b]+(n===3?', and it sleeps three':'');
-    else why='The room with that bed sleeps two, so for '+(n===3?'three':'you')+' this is the one';
-    box.querySelector('[data-pick-name]').textContent=pick.n;
-    box.querySelector('[data-pick-why]').textContent=why+'. Like every room, it has a private bathroom of its own.';
-    box.querySelector('[data-pick-link]').innerHTML='<a href="'+pick.url+'" class="g-btn g-btn--solid">See this room</a>';
+    bedQ.disabled=(n>2); bedQ.style.opacity=(n>2)?'.45':'';
+    if(n>=6){ show('A Private Stay', 'For six or more, take the whole château, for your group alone.', PRIVATE, 'See private stays'); return; }
+    if(n===5){
+      var fam=R.filter(function(r){ return r.bed==='family'; })[0];
+      show(fam? fam.n : 'Three rooms', 'For two adults and three children of eight or over, the Family Suite. For five adults, three rooms.' , fam? fam.url : STAY, fam? 'See this room' : 'See the rooms'); return; }
+    if(n===4){ show('Two Rooms', 'For three or four of you, take two rooms. Each sleeps two, and each has its own private bathroom, on the ground floor.', STAY, 'See the rooms'); return; }
+    var pick=R.filter(function(r){ return r.bed===b; })[0];
+    if(!pick){ show('Ask us', 'Tell us how many of you there are, and we will suggest the right room.', {{ url_for('contact_page')|tojson }}, 'Write to us'); return; }
+    show(pick.n, 'Because '+WHY[b]+'.'+BATH, pick.url, 'See this room');
   }
   box.addEventListener('change', paint);
   paint();
