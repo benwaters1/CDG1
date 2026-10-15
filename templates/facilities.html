@@ -15,7 +15,7 @@
 {# Needs: @app.route("/facilities") -> render_template("facilities.html") #}
 
 <section class="g-hero">
-  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/03bb742f-839e-47c4-b4fc-7e4d2fd52e8f/Screenshot+2026-08-12+at+3.13.20+pm.png?format=2500w" alt="The château above its terraced gardens, the mountains beyond">
+  <img style="object-position: center 38%" loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ url_for('static', filename='img/xx/garden-chateau-mountains-2400.jpg') }}" alt="The château over its garden, the mountains beyond">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Ten Acres Above the Valley</p>
@@ -84,18 +84,21 @@
   <h2 class="g-place">The Grounds</h2>
   <p class="g-p g-intro">The formal gardens, the terraces, the pool and the parkland, with the mountains on every side.</p>
   <ul class="g-befgrid g-gallery">
+    <li><figure><img src="{{ url_for('static', filename='img/grounds/late-summer-flowers-urn-800.jpg') }}" srcset="{{ url_for('static', filename='img/grounds/late-summer-flowers-urn-800.jpg') }} 800w, {{ url_for('static', filename='img/grounds/late-summer-flowers-urn.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="Late-summer flowers around an old urn, the mountains beyond" loading="lazy"><figcaption>Late-summer flowers around an old urn, the mountains beyond</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fad6453b-f801-43fb-b3bc-6ed223ec09e0/Rebecca%26Ken_Preview_paulinaweddings.com-1_websize.jpg?format=1000w" alt="The château, the gardens and the pool from above" loading="lazy"><figcaption>From above, with the pool</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24dd7adf-2d85-46bd-8399-4a3fc96ce444/Gardens+-+Formal+Gardens+2.jpg?format=1000w" alt="The formal gardens in flower" loading="lazy"><figcaption>The formal gardens</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/dcbab094-c5e9-4450-b4e2-b8045cd85708/Screen+Shot+2023-02-09+at+1.30.36+pm.png?format=1000w" alt="The gardens below the château" loading="lazy"><figcaption>Below the château</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aa7e337d-6a3c-437b-9b9f-a128c57f849e/Screenshot+2026-07-31+at+2.08.26+pm.png?format=1000w" alt="The château in the late sun, the mountains around it" loading="lazy"><figcaption>The late sun</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e7d7162c-28a2-4083-962d-ecc142dfdac8/Chateau+de+Gudanes+-+Summer+1.jpg?format=1000w" alt="Through the gates in summer" loading="lazy"><figcaption>Through the gates in summer</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/bd9a0a5d-ebc1-4f91-b7d8-6ed0560cec33/Screenshot+2026-08-15+at+3.08.47+pm.png?format=1000w" alt="The château and its gardens, the mountains around" loading="lazy"><figcaption>The gardens and the mountains</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/rk/from-the-garden.jpg') }}" alt="The château from the garden" loading="lazy"><figcaption>The gardens and the mountains</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/88924c05-3cda-4481-8a8f-5145405147c0/Screenshot+2026-08-15+at+5.12.55+pm.png?format=1000w" alt="The gardens, the mountains beyond" loading="lazy"><figcaption>Late summer</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/8ae931a3-3935-4f46-b742-e7d26cb6508a/Screenshot+2026-07-18+at+8.03.37+pm.png?format=1000w" alt="The château among the trees, the mountains behind" loading="lazy"><figcaption>Among the trees</figcaption></figure></li>
-    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/99530054-b37e-429a-9026-6a92ac8dadec/Screenshot+2024-06-02+at+10.53.53+am.png?format=1000w" alt="The parkland" loading="lazy"><figcaption>The parkland</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/rk/across-the-far-lawn.jpg') }}" alt="The château across the far lawn" loading="lazy"><figcaption>Among the trees</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/rk/park-to-the-mountains.jpg') }}" alt="The park, running to the mountains in the mist" loading="lazy"><figcaption>The park, running to the mountains in the mist</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="The gates in spring" loading="lazy"><figcaption>The gates in spring</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/7a36c33c-f53e-4ea3-976b-14191b0cbdc5/Screenshot%2B2026-08-15%2Bat%2B3.08.35%2Bpm.png?format=1000w" alt="The château in summer, the gardens before it" loading="lazy"><figcaption>Summer, the gardens before the château</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/748f2e28-aac7-4076-99a9-2cd362f5b94e/Screenshot+2026-08-12+at+3.52.50+pm.png?format=1000w" alt="A guest on the terrace" loading="lazy"><figcaption>On the terrace</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/evoke/chateau-in-the-mist.jpg') }}" alt="The château in the mist" loading="lazy"><figcaption>The château in the mist</figcaption></figure></li>
+    <li><figure><img src="{{ url_for('static', filename='img/evoke/below-the-mountains.jpg') }}" alt="The château below the mountains" loading="lazy"><figcaption>The château below the mountains</figcaption></figure></li>
   </ul>
 </div></section>
 

@@ -8,7 +8,7 @@
 {%- set _ph = [(first_src, alt)] -%}
 {%- set _key = first_src.split('?')[0].split('/')[-1] -%}
 {%- for src, a in (ROOM_PHOTOS.get(name, []) + ROOM_EXTRA.get(name, [])) -%}
-  {%- set _s = src|replace('max2048x2048', 'max1024x768') -%}
+  {%- set _s = src -%}{#- 14 Oct: full 2048px - the 1024x768 versions were measured soft on the room cards -#}
   {%- if 'squarespace-cdn.com' in _s and 'format=' not in _s -%}{%- set _s = _s.split('?')[0] ~ '?format=1000w' -%}{%- endif -%}
   {%- if _s.split('?')[0].split('/')[-1] != _key -%}{%- set _ = _ph.append((_s, a)) -%}{%- endif -%}
 {%- endfor -%}

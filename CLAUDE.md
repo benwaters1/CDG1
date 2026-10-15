@@ -13,6 +13,12 @@ and the accounting that ties them together. Two-tier permissions — the
 employee side stays simple (tasks, who's here, calendar), the owner side is
 full business control.
 
+The live chateaugudanes.com (Squarespace) is out of date and is being replaced
+by this app's public pages. For any fact about the house — times, children,
+pets, prices, extras — the templates, the extras table and the booking terms
+here are the truth, not the live site. An agent pulled guest facts off the live
+site on 14 Oct 2026 and got cots, check-in and checkout wrong.
+
 Deployed to Railway from `main`. **Pushing to `main` deploys to production.**
 
 ## Rules that cause real damage if ignored
