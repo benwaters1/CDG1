@@ -7084,6 +7084,26 @@ def init_db():
             )"""),
         ("addin_send_checks_at",
          "CREATE INDEX IF NOT EXISTS addin_send_checks_at ON addin_send_checks(at)"),
+        # A registration brought across from RetreatGuru carries the key it had
+        # there, so bringing the same export across twice finds it rather than
+        # making a second. Unique where set; a registration made here has none.
+        ("workshop_bookings_import_key",
+         "ALTER TABLE workshop_bookings ADD COLUMN import_key TEXT"),
+        ("workshop_bookings_import_key_once",
+         "CREATE UNIQUE INDEX IF NOT EXISTS workshop_bookings_import_key_once "
+         "ON workshop_bookings(import_key) WHERE import_key IS NOT NULL"),
+        # The files an import was checked against, held between the check and
+        # the run so the run is of exactly what was looked at. Names and
+        # addresses: deleted the moment the run is done, and a day after the
+        # check whatever happens.
+        ("import_drafts_table",
+         """CREATE TABLE IF NOT EXISTS import_drafts (
+              token TEXT PRIMARY KEY,
+              kind TEXT NOT NULL,
+              payload TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+            )"""),
         # THE CHECK ON SEND FOR SOMEBODY THE DASHBOARD DOES NOT KNOW. Microsoft
         # 365 vouches that they hold one of the house's own accounts. That is
         # enough to check their prices before a guest reads them, and not enough
@@ -8830,6 +8850,8 @@ OWNER_ONLY_AREAS = {
     # no preset reaches it at all, plus role == owner on the read and the
     # write alike.
     "import_guests": "management",
+    # The same, for their registrations and what they paid.
+    "import_registrations": "management",
     "assistant_say_route": "management",
     "assistant_confirm_route": "management",
     "assistant_clear_route": "management",
@@ -29633,9 +29655,15 @@ def _intent_id(session):
 
 
 def _card_ref(value):
-    """A Stripe id a refund could be pointed at, or None."""
+    """A Stripe id a refund could be pointed at, or None.
+
+    A charge id (ch_) counts too. Payments brought across from RetreatGuru
+    were taken through the house's own Stripe account, and one taken without
+    a PaymentIntent is known by its charge alone; a refund of it goes back to
+    that charge (make_refund), not to some other card or by hand.
+    """
     value = (value or "").strip() if isinstance(value, str) else ""
-    return value if value.startswith(("pi_", "cs_")) else None
+    return value if value.startswith(("pi_", "cs_", "ch_")) else None
 
 
 CARD_BRAND_WORDS = {
@@ -29663,7 +29691,9 @@ def card_from_stripe(ref):
     if not ref or not stripe_enabled():
         return None
     try:
-        if ref.startswith("cs_"):
+        if ref.startswith("ch_"):
+            intent = {"latest_charge": stripe.Charge.retrieve(ref)}
+        elif ref.startswith("cs_"):
             session = stripe.checkout.Session.retrieve(
                 ref, expand=["payment_intent.latest_charge"])
             intent = sval(session, "payment_intent")
@@ -30008,7 +30038,7 @@ def _refund_target(conn, payment):
     card = payment.get("card") if payment else None
     if not card:
         return None
-    if card.startswith("pi_"):
+    if card.startswith(("pi_", "ch_")):
         return card
     try:
         intent = _intent_id(stripe.checkout.Session.retrieve(card))
@@ -30135,8 +30165,12 @@ def make_refund(conn, category, booking, amount, reason, method="stripe", user_i
                 # double-submit or a retry return the SAME refund instead of a
                 # second; what has gone back so far is in it, so a second
                 # genuine refund of the same amount is not taken for a replay.
+                # A charge taken without a PaymentIntent -- some of those
+                # brought across from RetreatGuru -- is refunded by the charge.
+                target = ({"charge": intent} if intent.startswith("ch_")
+                          else {"payment_intent": intent})
                 refund = stripe.Refund.create(
-                    payment_intent=intent, amount=cents,
+                    **target, amount=cents,
                     # Marked as ours, so the webhook that reports it back does
                     # not record it a second time as one made elsewhere.
                     metadata={"made_by": "gudanes", "category": category,
@@ -41841,6 +41875,634 @@ def import_guests():
     flash(message, category)
     return render_template("import_guests.html", guest_count=guest_count,
                            result=result, money=money)
+
+
+# ---------------------------------------------------------------------------
+# BRINGING THE RETREATGURU REGISTRATIONS ACROSS (October 2026).
+#
+# About thirty people booked ateliers on the old system and paid deposits or
+# part payments there, through the house's own Stripe account. They come across
+# with exactly what they agreed and exactly what they paid, and are asked for
+# nothing and written to by nothing until the owner says so.
+#
+# Nothing on the ordinary path is safe for them. Registering by hand prices at
+# today's price and today's deposit and sends the confirmation with a link to
+# pay a deposit they paid in August. So this writes each registration itself:
+# confirmed, do_not_email on, its agreed price, every payment as its own line
+# with the Stripe id it came through, its balance and due date stated rather
+# than worked out by the new rules, and the key it had in RetreatGuru so a
+# second run changes nothing.
+#
+# The export has no registration id, no programme, no dates and no email. Each
+# is recovered and shown before anything is written:
+#   - the key is the name and the moment it was submitted, which is unique;
+#   - the programme starts booking_window days after it was submitted, and the
+#     session is the one in this app starting that day;
+#   - the email is the customer list's, by name.
+# A couple is two rows: one carrying the price of both, one at nought. The
+# nought row is the companion and becomes the second person on the first.
+# ---------------------------------------------------------------------------
+
+RG_IMPORT_KIND = "retreatguru_registrations"
+RG_DRAFT_HOURS = 24
+
+
+def _rg_rows(text):
+    """A CSV's rows with lower-cased, trimmed headers, or [] if unreadable."""
+    import csv as _csv
+    import io as _io
+    try:
+        rows = list(_csv.DictReader(_io.StringIO(text or "")))
+    except Exception:                            # pragma: no cover - malformed
+        return []
+    return [{(k or "").strip().lower().lstrip("﻿"): (v or "").strip()
+             for k, v in row.items() if k} for row in rows]
+
+
+def _rg_text(raw):
+    """Uploaded bytes as text: the exports carry a byte-order mark, and the
+    customer list comes out of RetreatGuru in Windows' own encoding."""
+    for encoding in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return ""                                    # pragma: no cover - latin-1 reads anything
+
+
+def _rg_name_key(first, last):
+    return (" ".join((first or "").lower().split()), " ".join((last or "").lower().split()))
+
+
+def _rg_first_name(first, last):
+    """The first name, with the surname taken off where somebody typed their
+    whole name into the first-name box ("Stephanie Anderson" / "Anderson")."""
+    first, last = (first or "").strip(), (last or "").strip()
+    if last and first.lower().endswith(" " + last.lower()):
+        return first[: -len(last)].strip()
+    return first
+
+
+def parse_rg_registrations(text, today):
+    """The registrations export: the ones still to come and not cancelled.
+
+    Returns (registrations, counts). Each registration's money is read as the
+    export states it -- registration_amount is the price agreed, after any
+    discount; payments_refunds_total is what has been paid, net of refunds;
+    balance_due is what is left -- and `sums` says whether the three agree to
+    the cent. Reads and decides nothing; writes nothing.
+    """
+    out, counts = [], {"read": 0, "past": 0, "cancelled": 0, "undated": 0}
+    for row in _rg_rows(text):
+        counts["read"] += 1
+        if row.get("cancelled"):
+            counts["cancelled"] += 1
+            continue
+        submitted = row.get("submitted", "")
+        window = row.get("booking_window", "")
+        try:
+            submitted_on = date.fromisoformat(submitted[:10])
+            start = submitted_on + timedelta(days=int(window))
+        except ValueError:
+            counts["undated"] += 1
+            continue
+        if start < today:
+            counts["past"] += 1
+            continue
+        first = _rg_first_name(row.get("first_name"), row.get("last_name"))
+        last = (row.get("last_name") or "").strip()
+        agreed = _guest_import_money(row.get("registration_amount")) or 0.0
+        paid = _guest_import_money(row.get("payments_refunds_total")) or 0.0
+        owing = _guest_import_money(row.get("balance_due")) or 0.0
+        out.append({
+            "key": "retreatguru:" + "|".join((" ".join(first.lower().split()),
+                                              " ".join(last.lower().split()), submitted.strip())),
+            "first": first, "last": last, "name": f"{first} {last}".strip(),
+            "submitted": submitted.strip(), "submitted_on": submitted_on, "start": start,
+            "phone": row.get("phone", ""), "roommate": row.get("roommate", ""),
+            "discount_code": (row.get("discount_code") or "").upper(),
+            "list_price": _guest_import_money(row.get("items_discounts_total")) or 0.0,
+            "agreed": agreed, "paid": paid, "owing": owing,
+            "sums": abs(round(agreed - paid - owing, 2)) < 0.005,
+        })
+    return out, counts
+
+
+def parse_rg_programmes(text):
+    """The programme list, by the day each starts: {date: [programme]}."""
+    out = {}
+    for row in _rg_rows(text):
+        try:
+            start = date.fromisoformat((row.get("date_start") or "")[:10])
+        except ValueError:
+            continue
+        out.setdefault(start, []).append({
+            "id": row.get("program_id", ""), "title": row.get("title", ""),
+            "start": start, "end": (row.get("date_end") or "")[:10]})
+    return out
+
+
+def parse_rg_people(text):
+    """The customer list: (people for import_guest_rows, {(first, last): [email]})."""
+    people, _problems = parse_guest_import(text)
+    names = {}
+    for row in _rg_rows(text):
+        email = (row.get("email") or "").strip().lower()
+        if "@" not in email:
+            continue
+        key = _rg_name_key(_rg_first_name(row.get("first_name"), row.get("last_name")),
+                           row.get("last_name"))
+        if email not in names.setdefault(key, []):
+            names[key].append(email)
+    return people, names
+
+
+def parse_stripe_payments(text):
+    """A Stripe dashboard export of payments: the ones that went through, each
+    with what is left of it after refunds. Headers are matched loosely, as the
+    dashboard words them differently from one export to the next."""
+    def pick(row, *names):
+        for n in names:
+            if row.get(n):
+                return row[n]
+        return ""
+    out = []
+    for row in _rg_rows(text):
+        status = pick(row, "status").lower()
+        captured = pick(row, "captured").lower()
+        if status and status not in ("paid", "succeeded"):
+            continue
+        if captured in ("false", "no"):
+            continue
+        currency = pick(row, "currency").lower()
+        if currency and currency != "eur":
+            continue
+        amount = _guest_import_money(pick(row, "amount")) or 0.0
+        refunded = _guest_import_money(pick(row, "amount refunded", "amount_refunded")) or 0.0
+        charge = pick(row, "id", "charge id", "charge_id")
+        intent = pick(row, "paymentintent id", "payment intent id", "payment_intent",
+                      "payment_intent_id")
+        out.append({
+            "id": charge, "intent": intent,
+            # The PaymentIntent is what a refund is pointed at; a charge made
+            # without one is refunded by the charge itself.
+            "ref": intent if intent.startswith("pi_") else charge,
+            "email": pick(row, "customer email", "customer_email", "email",
+                          "receipt email").lower(),
+            "created": pick(row, "created date (utc)", "created (utc)", "created",
+                            "created_utc"),
+            "amount": amount, "refunded": refunded, "net": round(amount - refunded, 2),
+            "description": pick(row, "description"),
+        })
+    return [p for p in out if p["net"] > 0.005 and (p["id"] or p["intent"])]
+
+
+def _rg_stripe_match(charges, paid):
+    """The fewest of these charges that add up to `paid` to the cent, earliest
+    first, or None. A person's charges are a handful, so every combination is
+    tried rather than guessed at."""
+    import itertools as _it
+    target = round(paid * 100)
+    ordered = sorted(charges, key=lambda c: (c["created"], c["ref"]))
+    for size in range(1, len(ordered) + 1):
+        for combo in _it.combinations(ordered, size):
+            if round(sum(c["net"] for c in combo) * 100) == target:
+                return list(combo)
+    return None
+
+
+def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days, today,
+                   stripe_given, unmatched_ok=False):
+    """What bringing these registrations across would do, line by line, and
+    everything wrong with it. The check shows this; the run writes it.
+
+    `blocking` problems stop the run; `notes` are for the owner to read and
+    decide. Nothing here writes.
+
+    unmatched_ok: a payment RetreatGuru records and Stripe does not hold -- a
+    bank transfer, say -- is brought across as paid, but not by card, so any
+    refund of it is made by hand. Without it, such a payment stops the run.
+    """
+    sessions_by_day = {}
+    for s in conn.execute(
+            """SELECT ws.*, w.title, w.price_per_person FROM workshop_sessions ws
+                 JOIN workshops w ON w.id = ws.workshop_id"""):
+        sessions_by_day.setdefault(s["start_date"], []).append(s)
+    already = {r["import_key"]: r for r in conn.execute(
+        "SELECT * FROM workshop_bookings WHERE import_key IS NOT NULL")}
+
+    rows = []
+    for reg in sorted(registrations, key=lambda r: (r["start"], r["submitted"])):
+        line = dict(reg, blocking=[], notes=[], companions=[], companion_of=None,
+                    session=None, programme=None, email=None, charges=[], party=1)
+        programme = programmes.get(reg["start"], [])
+        line["programme"] = programme[0] if len(programme) == 1 else None
+        found = [s for s in sessions_by_day.get(reg["start"].isoformat(), [])]
+        live_sessions = [s for s in found if not s["cancelled_at"]]
+        if not found:
+            line["blocking"].append(f"No session in this app starts on "
+                                    f"{format_date_human(reg['start'].isoformat())}.")
+        elif not live_sessions:
+            line["blocking"].append("The session starting that day has been called off here.")
+        elif len(live_sessions) > 1:
+            line["blocking"].append("More than one session starts that day; which one is "
+                                    "for a person to say.")
+        else:
+            line["session"] = live_sessions[0]
+            prog_end = (line["programme"] or {}).get("end")
+            if prog_end and prog_end != line["session"]["end_date"]:
+                line["notes"].append(
+                    f"RetreatGuru has it ending {format_date_human(prog_end)}; the session "
+                    f"here ends {format_date_human(line['session']['end_date'])}.")
+        emails = names.get(_rg_name_key(reg["first"], reg["last"]), [])
+        if len(emails) == 1:
+            line["email"] = emails[0]
+        elif not emails:
+            line["blocking"].append("Nobody of this name is on the customer list, so there is "
+                                    "no email address for them.")
+        else:
+            line["blocking"].append("More than one person of this name is on the customer "
+                                    "list: " + ", ".join(emails) + ".")
+        if not reg["sums"]:
+            line["blocking"].append(
+                f"The export does not add up: {money(reg['agreed'])} agreed, "
+                f"{money(reg['paid'])} paid, {money(reg['owing'])} said to be left.")
+        if reg["key"] in already:
+            line["done"] = already[reg["key"]]
+        rows.append(line)
+
+    # COUPLES. The companion's row carries nothing; the other carries both
+    # prices. The companion is found by the room note pointing either way.
+    def mentions(text, person):
+        text = (text or "").lower()
+        return bool(person["first"]) and person["first"].lower() in text
+
+    def apart(a, b):
+        try:
+            return abs((datetime.fromisoformat(a["submitted"]) -
+                        datetime.fromisoformat(b["submitted"])).total_seconds())
+        except ValueError:
+            return float("inf")
+    for comp in [r for r in rows if r["agreed"] == 0 and r["paid"] == 0 and r["owing"] == 0]:
+        # The room note, either way; or, with no note at all, the same surname
+        # registered within ten minutes -- a couple filling in the form together.
+        candidates = [r for r in rows
+                      if r is not comp and r["start"] == comp["start"] and r["agreed"] > 0
+                      and (mentions(r["roommate"], comp) or mentions(comp["roommate"], r)
+                           or (r["last"].lower() == comp["last"].lower()
+                               and apart(r, comp) <= 600))]
+        unit = (candidates[0]["session"] or {})["price_per_person"] if candidates and \
+            candidates[0]["session"] else None
+
+        def room_for_another(r):
+            implied = round(r["list_price"] / unit) if unit else 1
+            return implied >= 1 + len(r["companions"]) + 1
+        open_ = [r for r in candidates if room_for_another(r)]
+        partner = min(open_ or candidates, key=lambda r: apart(r, comp), default=None)
+        if partner:
+            partner["companions"].append(comp["name"])
+            comp["companion_of"] = partner["key"]
+        else:
+            comp["notes"].append("Registered at nothing, and travelling with nobody this "
+                                 "can find. Brought across as a place costing nothing.")
+
+    # Party size, and the price checked against it.
+    for line in rows:
+        if line["companion_of"]:
+            continue
+        line["party"] = 1 + len(line["companions"])
+        unit = line["session"]["price_per_person"] if line["session"] else None
+        if unit and line["list_price"]:
+            implied = round(line["list_price"] / unit)
+            if implied and implied != line["party"]:
+                line["notes"].append(
+                    f"The price before any discount is {money(line['list_price'])}, which is "
+                    f"{implied} place{'' if implied == 1 else 's'} at {money(unit)}; "
+                    f"{line['party']} {'is' if line['party'] == 1 else 'are'} named.")
+
+    # THE SAME PERSON TWICE ON ONE RETREAT. Each row is its own registration
+    # with its own money -- the export is believed -- but it is shown, because
+    # an abandoned first attempt brought across is a debt nobody owes.
+    seen = {}
+    for line in rows:
+        if line["companion_of"] or not line["email"]:
+            continue
+        seen.setdefault((line["email"], line["start"]), []).append(line)
+    for (_email, _start), group in seen.items():
+        if len(group) > 1:
+            times = ", ".join(g["submitted"][11:16] or g["submitted"] for g in group)
+            for g in group:
+                g["notes"].append(
+                    f"Registered {len(group)} times for this retreat (at {times} on "
+                    f"{format_date_human(g['submitted_on'].isoformat())}). Each is brought "
+                    "across as its own registration unless you untick it.")
+                g["duplicate"] = True
+
+    # STRIPE. Each payment RetreatGuru says was made is matched to the card
+    # payments Stripe holds for that address, to the cent, each used once.
+    by_email = {}
+    for c in charges if stripe_given else []:
+        by_email.setdefault(c["email"], []).append(c)
+    for line in rows:
+        line["paid_other"] = 0.0
+        if line["companion_of"] or line["paid"] <= 0.005 or not line["email"]:
+            continue
+        pool = by_email.get(line["email"], [])
+        match = _rg_stripe_match(pool, line["paid"]) if stripe_given else None
+        if match is not None:
+            line["charges"] = match
+            for c in match:
+                pool.remove(c)
+            continue
+        if stripe_given:
+            have = round(sum(c["net"] for c in pool), 2)
+            why = (f"RetreatGuru says {money(line['paid'])} was paid; Stripe has "
+                   f"{money(have)} from {line['email']} not already matched"
+                   + (", in amounts that do not add up to it." if pool else "."))
+        else:
+            why = (f"RetreatGuru says {money(line['paid'])} was paid, and no Stripe export "
+                   "was given to find the card payments behind it.")
+        if unmatched_ok:
+            line["paid_other"] = line["paid"]
+            line["notes"].append(why + " Brought across as paid, not by card: a refund of "
+                                       "it is made by hand.")
+        else:
+            line["blocking"].append(why)
+    leftover = [c for pool in by_email.values() for c in pool]
+
+    for line in rows:
+        if line["companion_of"]:
+            continue
+        line["due_date"] = (line["start"] - timedelta(days=due_days)).isoformat()
+
+    # Places: what the session would hold once these are in.
+    per_session = {}
+    for line in rows:
+        if line["session"] and not line["companion_of"] and not line.get("done"):
+            per_session.setdefault(line["session"]["id"], []).append(line)
+    capacity = []
+    for sid, lines in per_session.items():
+        s = lines[0]["session"]
+        taken = conn.execute(
+            "SELECT COALESCE(SUM(party_size), 0) AS n FROM workshop_bookings "
+            "WHERE session_id = ? AND status = 'confirmed'", (sid,)).fetchone()["n"]
+        coming = sum(l["party"] for l in lines)
+        capacity.append({"title": s["title"], "start": s["start_date"], "taken": taken,
+                         "coming": coming, "capacity": s["capacity"],
+                         "over": max(0, taken + coming - (s["capacity"] or 0))})
+
+    def total(selected, field):
+        return round(sum(l[field] for l in selected), 2)
+    payers = [l for l in rows if not l["companion_of"]]
+    return {
+        "rows": rows, "payers": payers, "leftover": leftover, "capacity": capacity,
+        "due_days": due_days, "stripe_given": stripe_given, "unmatched_ok": unmatched_ok,
+        "export": {f: total(rows, f) for f in ("agreed", "paid", "owing")},
+        "count": len(payers), "people": sum(l["party"] for l in payers),
+    }
+
+
+def rg_plan_totals(plan, selected):
+    """Agreed, paid and owing over the registrations chosen to come across."""
+    chosen = [l for l in plan["payers"] if l["key"] in selected]
+    return {f: round(sum(l[f] for l in chosen), 2) for f in ("agreed", "paid", "owing")}
+
+
+def run_rg_import(conn, plan, selected, people, *, user_id):
+    """Write the chosen registrations, exactly as planned, in one transaction.
+
+    Returns (made, kept, problems). Nothing is written unless every chosen
+    registration is clear of blocking problems, and nothing is sent to anybody:
+    no letter, no notification, no pay link. Each comes across with
+    do_not_email on. After writing, the ledger of every one is read back and
+    must say what the export said, to the cent, or nothing is kept at all.
+    """
+    chosen = [l for l in plan["payers"] if l["key"] in selected]
+    problems = [(l["name"], "; ".join(l["blocking"])) for l in chosen if l["blocking"]]
+    if problems:
+        return [], [], problems
+
+    now = datetime.now(timezone.utc).isoformat()
+    on = format_date_human(house_today_iso())
+    wanted = {l["email"] for l in chosen}
+    import_guest_rows(conn, [p for p in people if p["email"] in wanted], dry_run=False)
+
+    made, kept = [], []
+    for l in chosen:
+        if l.get("done"):
+            kept.append(l["name"])
+            continue
+        s = l["session"]
+        total = l["agreed"]
+        discount = 0.0
+        if l["list_price"] > l["agreed"] + 0.005:
+            total, discount = l["list_price"], round(l["list_price"] - l["agreed"], 2)
+        payments = l["charges"]
+        first_paid = min((c["created"] for c in payments), default=None)
+        paid_at = _rg_moment(first_paid) if first_paid else _rg_moment(l["submitted"])
+        # The guest's own page lets a balance be paid only once a deposit has
+        # been. With something paid, that something was the deposit; with
+        # nothing paid, the whole price is what is due first.
+        if l["paid"] > 0.005:
+            deposit, deposit_paid_at, balance = l["paid"], paid_at or now, l["owing"]
+        else:
+            deposit, deposit_paid_at, balance = l["agreed"], None, 0.0
+        provenance = (f"Brought across from the old booking system (RetreatGuru) on {on}. "
+                      f"Registered there {format_date_human(l['submitted_on'].isoformat())}"
+                      + (f", code {l['discount_code']}" if l["discount_code"] else "") + ".")
+        cur = conn.execute(
+            """INSERT INTO workshop_bookings
+               (session_id, reference_code, manage_token, guest_name, guest_email, guest_phone,
+                party_size, notes, status, total_price, created_at, decided_at, occupancy_type,
+                requested_roommate, deposit_amount, deposit_paid_at, balance_amount,
+                balance_due_date, do_not_email, discount_amount, import_key)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, 'double', ?, ?, ?, ?, ?, 1, ?, ?)""",
+            (s["id"], make_workshop_reference_code(), secrets.token_urlsafe(24), l["name"],
+             l["email"], l["phone"] or None, l["party"], provenance, total,
+             _rg_moment(l["submitted"]) or now, now, l["roommate"] or None, deposit,
+             deposit_paid_at, balance, l["due_date"], discount or None, l["key"]))
+        bid = cur.lastrowid
+        conn.execute("INSERT INTO workshop_booking_guests (workshop_booking_id, guest_name, "
+                     "is_lead, created_at) VALUES (?, ?, 1, ?)", (bid, l["name"], now))
+        for companion in l["companions"]:
+            conn.execute("INSERT INTO workshop_booking_guests (workshop_booking_id, guest_name, "
+                         "is_lead, created_at) VALUES (?, ?, 0, ?)", (bid, companion, now))
+        if discount:
+            conn.execute(
+                """INSERT INTO workshop_transactions (workshop_booking_id, kind, description,
+                     amount, method, created_by_user_id, created_at)
+                   VALUES (?, 'discount', ?, ?, NULL, ?, ?)""",
+                (bid, (f"Code {l['discount_code']}, in RetreatGuru" if l["discount_code"]
+                       else "Price agreed in RetreatGuru"), discount, user_id,
+                 _rg_moment(l["submitted"]) or now))
+        for c in payments:
+            conn.execute(
+                """INSERT INTO workshop_transactions (workshop_booking_id, kind, description,
+                     amount, method, created_by_user_id, created_at, stripe_ref)
+                   VALUES (?, 'payment', ?, ?, 'stripe', ?, ?, ?)""",
+                (bid, "Paid through RetreatGuru", c["net"], user_id,
+                 _rg_moment(c["created"]) or now, c["ref"]))
+        if l["paid_other"] > 0.005:
+            conn.execute(
+                """INSERT INTO workshop_transactions (workshop_booking_id, kind, description,
+                     amount, method, created_by_user_id, created_at)
+                   VALUES (?, 'payment', ?, ?, 'other', ?, ?)""",
+                (bid, "Paid in RetreatGuru (no card payment found in Stripe)",
+                 l["paid_other"], user_id, _rg_moment(l["submitted"]) or now))
+        restamp_workshop_balance(conn, bid)
+        owed, charged, paid = workshop_balance_due(conn, bid)
+        if (owed, charged, paid) != (round(l["owing"], 2), round(l["agreed"], 2),
+                                     round(l["paid"], 2)):
+            conn.rollback()
+            return [], [], [(l["name"], f"after writing, the ledger says {money(charged)} "
+                                        f"charged, {money(paid)} paid, {money(owed)} owed; "
+                                        f"RetreatGuru says {money(l['agreed'])}, "
+                                        f"{money(l['paid'])}, {money(l['owing'])}. Nothing "
+                                        "was kept.")]
+        log_audit(conn, "workshop_registration_imported", target=l["name"],
+                  details=f"{s['title']} {s['start_date']}: {money(l['agreed'])} agreed, "
+                          f"{money(l['paid'])} paid, {money(l['owing'])} owing "
+                          f"(RetreatGuru, {l['submitted']})")
+        made.append(l["name"])
+    return made, kept, []
+
+
+def _rg_moment(text):
+    """A timestamp from either export, as this app stores a moment (UTC ISO)."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text[:19], fmt).replace(tzinfo=timezone.utc).isoformat()
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
+    except ValueError:
+        return None
+
+
+def _rg_plan_from_draft(conn, payload, today):
+    """Rebuild the plan from the files the owner checked, exactly."""
+    regs, counts = parse_rg_registrations(payload["registrations"], today)
+    programmes = parse_rg_programmes(payload.get("programmes", ""))
+    people, names = parse_rg_people(payload["people"])
+    charges = parse_stripe_payments(payload.get("stripe", ""))
+    plan = plan_rg_import(conn, regs, programmes, names, charges,
+                          due_days=int(payload.get("due_days") or WORKSHOP_BALANCE_DAYS),
+                          today=today, stripe_given=bool(payload.get("stripe")),
+                          unmatched_ok=bool(payload.get("unmatched_ok")))
+    plan["counts"] = counts
+    return plan, people
+
+
+@app.route("/management/import-registrations", methods=["GET", "POST"])
+@owner_required
+def import_registrations():
+    """Bring the RetreatGuru registrations across: check first, then run.
+
+    Owner only, by role as well as by area, as for the guest import. A check
+    writes nothing and keeps the four files for a day so the run is of exactly
+    what was looked at; the run takes the registrations ticked on the check,
+    writes them in one go, and deletes the files.
+    """
+    user = current_user()
+    if not user or user["role"] != "owner":
+        abort(403)
+    today = house_today()
+    conn = get_db()
+    conn.execute("DELETE FROM import_drafts WHERE created_at < ?",
+                 ((datetime.now(timezone.utc) - timedelta(hours=RG_DRAFT_HOURS)).isoformat(),))
+    conn.commit()
+
+    if request.method == "GET":
+        imported = conn.execute(
+            """SELECT wb.*, w.title, ws.start_date FROM workshop_bookings wb
+                 JOIN workshop_sessions ws ON ws.id = wb.session_id
+                 JOIN workshops w ON w.id = ws.workshop_id
+                WHERE wb.import_key IS NOT NULL ORDER BY ws.start_date, wb.guest_name""").fetchall()
+        conn.close()
+        return render_template("import_registrations.html", plan=None, token=None,
+                               imported=imported, default_days=WORKSHOP_BALANCE_DAYS)
+
+    action = request.form.get("action", "check")
+    if action == "check":
+        files = {}
+        for field in ("registrations", "programmes", "people", "stripe"):
+            upload = request.files.get(field)
+            files[field] = _rg_text(upload.read()) if upload and upload.filename else ""
+        if not files["registrations"] or not files["people"]:
+            conn.close()
+            flash("The registrations export and the customer list are both needed: the "
+                  "registrations have no email addresses of their own.", "error")
+            return redirect(url_for("import_registrations"))
+        raw_days = (request.form.get("due_days") or "").strip()
+        files["due_days"] = int(raw_days) if raw_days.isdigit() else WORKSHOP_BALANCE_DAYS
+        files["unmatched_ok"] = request.form.get("unmatched_ok") == "on"
+        token = secrets.token_urlsafe(18)
+        conn.execute("INSERT INTO import_drafts (token, kind, payload, created_at, "
+                     "user_id) VALUES (?, ?, ?, ?, ?)",
+                     (token, RG_IMPORT_KIND, json.dumps(files),
+                      datetime.now(timezone.utc).isoformat(), user["id"]))
+        conn.commit()
+        plan, _people = _rg_plan_from_draft(conn, files, today)
+        conn.close()
+        return render_template("import_registrations.html", plan=plan, token=token,
+                               imported=None, default_days=WORKSHOP_BALANCE_DAYS,
+                               totals=rg_plan_totals(plan, {l["key"] for l in plan["payers"]}))
+
+    # action == "run"
+    token = request.form.get("token", "")
+    draft = conn.execute("SELECT * FROM import_drafts WHERE token = ? AND kind = ?",
+                         (token, RG_IMPORT_KIND)).fetchone()
+    if not draft:
+        conn.close()
+        flash("That check is more than a day old or has already been run. Check again.",
+              "error")
+        return redirect(url_for("import_registrations"))
+    payload = json.loads(draft["payload"])
+    plan, people = _rg_plan_from_draft(conn, payload, today)
+    selected = set(request.form.getlist("bring"))
+    if not selected:
+        conn.close()
+        flash("Nothing was ticked, so nothing was brought across.", "error")
+        return redirect(url_for("import_registrations"))
+    flagged = [l for l in plan["payers"] if l["key"] in selected and (l["notes"] or l.get("duplicate"))]
+    if flagged and request.form.get("checked_flags") != "on":
+        conn.close()
+        flash("Some of the ticked registrations have something to look at. Read them, then "
+              "tick \"I have read every note\" and run it again.", "error")
+        return redirect(url_for("import_registrations"))
+    try:
+        made, kept, problems = run_rg_import(conn, plan, selected, people, user_id=user["id"])
+    except sqlite3.IntegrityError as e:
+        conn.rollback()
+        made, kept, problems = [], [], [("the import", f"stopped with nothing kept ({e})")]
+    if problems:
+        conn.rollback()
+        conn.close()
+        message, category = bulk_message("Brought across", "registration", 0, problems)
+        flash(message, category)
+        return redirect(url_for("import_registrations"))
+    totals = rg_plan_totals(plan, selected)
+    log_audit(conn, "registrations_imported", target="RetreatGuru",
+              details=f"{len(made)} brought across, {len(kept)} already here; "
+                      f"{money(totals['agreed'])} agreed, {money(totals['paid'])} paid, "
+                      f"{money(totals['owing'])} owing")
+    conn.execute("DELETE FROM import_drafts WHERE token = ?", (token,))
+    conn.commit()
+    conn.close()
+    left_out = [(l["name"], ("could not come across: " + l["blocking"][0]) if l["blocking"]
+                 else "not ticked")
+                for l in plan["payers"] if l["key"] not in selected]
+    message, category = bulk_message(
+        "Brought across", "registration", len(made), left_out,
+        detail=(f"{len(kept)} already here, unchanged. " if kept else "")
+               + f"{money(totals['agreed'])} agreed, {money(totals['paid'])} paid, "
+                 f"{money(totals['owing'])} owing. Nobody has been written to.")
+    flash(message, category)
+    return redirect(url_for("import_registrations"))
 
 
 @app.route("/management/import-catalogue", methods=["GET", "POST"])
