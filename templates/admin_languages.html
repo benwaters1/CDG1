@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Languages{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Languages</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_automation') }}" class="btn-ghost">Automation</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The public site is written in English and served in French and Spanish. A visitor whose
+  browser is set to French or Spanish gets that language without choosing it. Each sentence is
+  translated once by Claude and kept, and anything not translated yet is shown in English,
+  so a page is never broken by a missing translation.
+</p>
+
+<div class="stat-tiles">
+  {% for p in progress %}
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ p.percent }}%</span>
+    <span class="stat-tile-label">{{ p.name }}: {{ p.done }} sentences translated, {{ p.waiting }} waiting</span></span></div>
+  {% endfor %}
+</div>
+
+<h2 class="section-heading">Translating</h2>
+{% if not provider %}
+  <p class="statement-missing">
+    Nothing can be translated: there is no Claude key. Set <code>ANTHROPIC_API_KEY</code> in
+    Railway, and the waiting sentences are translated on the next run.
+  </p>
+{% elif not job_on %}
+  <p class="statement-missing">
+    The translation job is switched off, so nothing waiting is being translated. Turn on
+    &ldquo;Translate new public-page text&rdquo; under <a href="{{ url_for('admin_automation') }}">Automation</a>.
+  </p>
+{% else %}
+  <p>
+    Every ten minutes, {{ per_run }} waiting sentences go to Claude.
+    {% set _waiting = progress|sum(attribute='waiting') %}
+    {% if _waiting %}At that pace the {{ _waiting }} waiting take about
+      {{ ((_waiting / per_run)|round(0, 'ceil')|int * 10) // 60 }} hours
+      {{ ((_waiting / per_run)|round(0, 'ceil')|int * 10) % 60 }} minutes.
+    {% else %}Nothing is waiting: every sentence a page has shown is translated.{% endif %}
+  </p>
+  {% if job %}<p class="muted">Last run {{ job['last_ran_at']|house_when }}: {{ job['last_message'] or job['last_status'] or 'no outcome recorded' }}.</p>{% endif %}
+{% endif %}
+{% if last_error %}<p class="statement-missing">The last call to Claude failed: {{ last_error }}</p>{% endif %}
+
+<h2 class="section-heading">Every page</h2>
+<p>
+  A sentence is only queued once somebody has read its page in that language. After a
+  handover changes the site, or to translate the whole site before anyone has, read every
+  page now.
+</p>
+<form method="post" action="{{ url_for('admin_languages_queue') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="btn-primary" {{ 'disabled' if queueing }}>
+    {{ 'Reading the pages now' if queueing else 'Queue every page for translation' }}</button>
+</form>
+
+<h2 class="section-heading">The language picker</h2>
+<p>
+  {% if switcher_on %}French and Spanish are offered at the top of every public page.
+  {% else %}The picker is hidden: visitors can only get French or Spanish from their browser's
+  setting. Offer it once the pages read well in both.{% endif %}
+</p>
+<form method="post" action="{{ url_for('admin_languages_switcher') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="show" value="{{ '0' if switcher_on else '1' }}">
+  <button type="submit" class="{{ 'btn-ghost' if switcher_on else 'btn-primary' }}">
+    {{ 'Hide the language picker' if switcher_on else 'Offer French and Spanish on the site' }}</button>
+</form>
+
+{% endblock %}

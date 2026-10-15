@@ -193,6 +193,13 @@ def _the_squarespace_sitemap(s, c):
         s.check(f"{path} goes to {want}", lands(path) == want,
                 detail=f"{lands(path)} — {why}")
 
+    # Squarespace's own shop pages: every Squarespace site has them.
+    for path in ("/boutique", "/cart"):
+        r = c.get(path)
+        s.check(f"{path}, the old shop, goes to the front page",
+                r.status_code == 301 and (r.headers.get("Location") or "") == "/",
+                detail=f"{r.status_code} {r.headers.get('Location')}")
+
 
 def _old_sections(s, c):
     s.section("A page under an old section that no sitemap listed")
@@ -351,6 +358,14 @@ def _one_address(s, c):
         r = c.get("/definitely-not-a-page", base_url=RAILWAY)
         s.check("and a page that is not there still says so",
                 r.status_code == 404, detail=str(r.status_code))
+        # The Outlook add-in is installed in everybody's Outlook at the Railway
+        # address. Moved, it stops loading -- and Office will not follow a
+        # redirect to a host its manifest does not list.
+        moved = [p for p in ("/outlook-addin/taskpane", "/outlook-addin/compose",
+                             "/outlook-addin/launchevent.html", "/outlook-addin/manifest.xml")
+                 if (c.get(p, base_url=RAILWAY).headers.get("Location") or "").startswith(HOUSE)]
+        s.check("and the Outlook add-in stays on the Railway address", not moved,
+                detail=str(moved))
 
         s.section("It never sends the house to the platform")
         m.PUBLIC_BASE_URL = RAILWAY

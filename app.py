@@ -8591,6 +8591,7 @@ NAV_AREAS = {
     ],
     "comms": [
         "website_analytics",
+        "admin_languages", "admin_languages_switcher", "admin_languages_queue",
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
         "campaign_send_detail", "allow_email_again", "remove_email_optout",
         "admin_images", "admin_image_upload",
@@ -9179,6 +9180,7 @@ OWNER_MENU = [
             _nav("admin_gallery", "Public Gallery", "folder"),
             _nav("admin_images", "Site Photographs", "folder"),
             _nav("admin_photo_mirror", "Photo Mirror", "folder"),
+            _nav("admin_languages", "Languages", "megaphone"),
             _nav("admin_promo_codes", "Promo Codes", "receipt"),
         ]),
     ]),
@@ -25633,6 +25635,8 @@ def swap_mirrored(html, index, overrides=None):
     # 190KB and carries 23 of these; scanning it 93 times to swap 23 of them
     # is 18MB of string work on every request, and this runs on every page the
     # public sees.
+    by_base = {}
+
     def instead(match):
         url = match.group(0)
         # An override first: it is the house saying "not that picture, this
@@ -25641,6 +25645,21 @@ def swap_mirrored(html, index, overrides=None):
             return overrides[url]
         if url in index:
             return "/mirrored-photo/" + index[url]
+        # THE SAME PHOTOGRAPH AT ANOTHER SIZE. Squarespace sizes by query
+        # string, and a page that adds the size itself as it renders
+        # (?format=1000w) asks for an address no template spells out, so the
+        # mirror never fetched that exact one and the page went on loading it
+        # from Squarespace -- the Noel atelier on /workshops, 15 October 2026,
+        # the one photograph left on the account. Any size we hold will do.
+        if not by_base:
+            for table, kind in ((overrides, "o"), (index, "i")):
+                for held_url, value in table.items():
+                    by_base.setdefault((kind, held_url.split("?", 1)[0]), value)
+        base = url.split("?", 1)[0]
+        if ("o", base) in by_base:
+            return by_base[("o", base)]
+        if ("i", base) in by_base:
+            return "/mirrored-photo/" + by_base[("i", base)]
         return url
 
     return _MIRROR_URL_RE.sub(instead, html)
@@ -39901,6 +39920,9 @@ PALETTE_PAGES = [
     # Named as the house talks about it. It was listed as "Photographs we do
     # not own" and found by "mirror" under that name, which nobody looking
     # for the photo mirror recognised as the answer.
+    ("Languages: French and Spanish", "admin_languages",
+     "language languages french spanish francais espanol translate translation "
+     "translations picker switcher claude"),
     ("Photo mirror: the site's photographs", "admin_photo_mirror",
      "images photos squarespace cdn hotlink mirror copy copies logo pictures "
      "gallery who hosts our pictures we do not own"),
@@ -55111,6 +55133,46 @@ def mirror_cache_index():
     return index
 
 
+# The photograph a shared link shows, as a full address. Facebook, WhatsApp and
+# iMessage read og:image from the page and fetch it from wherever it says,
+# with nothing to resolve a path against -- so "/mirrored-photo/..." (what the
+# photo swap writes) and "/static/img/..." (what a handover writes) gave every
+# shared link a blank card. Found by the design side on 15 October.
+_SHARE_IMAGE_META = re.compile(
+    r"<meta\b[^>]*\b(?:property|name)=[\"'](?:og:image(?::secure_url)?|twitter:image)[\"'][^>]*>",
+    re.I)
+
+
+@app.after_request
+def share_images_in_full(response):
+    """Make every link-preview image on a page a full https address.
+
+    Registered above serve_our_own_photographs on purpose: Flask runs these in
+    the reverse of the order they are written, so this sees the page after the
+    swap has put the house's own copies in. On the house's address once the
+    site is live, so a preview never points at the Railway one.
+    """
+    if response.direct_passthrough:
+        return response
+    if not (response.content_type or "").startswith("text/html"):
+        return response
+    raw = response.get_data()
+    if b"og:image" not in raw and b"twitter:image" not in raw:
+        return response
+    body = raw.decode("utf-8", "replace")
+    home = house_address()
+    base = f"{home[0]}://{home[1]}" if home else request.url_root.rstrip("/")
+
+    def in_full(match):
+        return re.sub(r"(\bcontent=[\"'])/(?!/)",
+                      lambda m: m.group(1) + base + "/", match.group(0))
+
+    done = _SHARE_IMAGE_META.sub(in_full, body)
+    if done != body:
+        response.set_data(done)
+    return response
+
+
 @app.after_request
 def serve_our_own_photographs(response):
     """Send the house's copy of a photograph wherever one is held.
@@ -55348,6 +55410,167 @@ def put_back_site_photo(override_id):
     forget_site_overrides()
     flash("Put back to the picture that was there before.", "success")
     return redirect(url_for("site_photographs"))
+
+
+
+# THE LANGUAGES PAGE. French and Spanish were built long ago -- a translator
+# over every public page, a queue of the sentences it could not translate, and
+# a job that sends the queue to Claude every ten minutes -- and none of it was
+# anywhere the owner looks. On 15 October 2026, the day before launch, he
+# asked where they were. The deployment had 464 sentences translated and 347
+# waiting, and most pages had never been queued at all: a sentence joins the
+# queue only when somebody reads its page in that language, and before launch
+# nobody had. The language picker hung on a setting nothing wrote. This page
+# shows where each language stands, queues every page on request (after a
+# handover, say), and holds the switch for the picker.
+LANGUAGE_QUEUE_INLINE = False       # tests read the pages in the request itself
+_LANGUAGE_QUEUE_LOCK = threading.Lock()
+
+
+def language_progress(conn):
+    """Per language: sentences translated, waiting and left alone, and how far."""
+    out = []
+    for code, name in LANGUAGE_NAMES.items():
+        counts = {r["status"]: r["c"] for r in conn.execute(
+            """SELECT status, COUNT(*) AS c FROM page_translations
+                WHERE lang = ? GROUP BY status""", (code,))}
+        done = counts.get("machine", 0) + counts.get("approved", 0)
+        waiting = counts.get("wanted", 0)
+        out.append({"code": code, "name": name, "done": done, "waiting": waiting,
+                    "left": counts.get("skip", 0),
+                    "percent": (100 * done // (done + waiting)) if done + waiting else 0})
+    return out
+
+
+def pages_a_visitor_can_reach(client):
+    """Every page in the sitemap, and every page the front page links to.
+
+    What a visitor can actually reach, rather than every route the app has:
+    walking the url_map would also knock on staff pages and on the doors
+    machines use, and a GET that does something is not a thing to send a
+    crawler at on the live site.
+    """
+    paths = set()
+    xml = client.get("/sitemap.xml", headers={"DNT": "1"}).get_data(as_text=True)
+    paths.update(urlparse(u).path for u in re.findall(r"<loc>([^<]+)</loc>", xml))
+    home = client.get("/", headers={"DNT": "1"}).get_data(as_text=True)
+    for href in re.findall(r'href="(/[^"#?]*)"', home):
+        if not href.startswith(("/static", "/language/", "/login", "/logout")):
+            paths.add(href)
+    return sorted(p for p in paths if p)
+
+
+def queue_every_page():
+    """Read every public page once in each language, so its sentences queue.
+
+    The same path a visitor's read takes -- translate_public_page notes what it
+    could not translate, flush_wanted_translations writes it down -- so this
+    cannot disagree with what a French visitor would be served. Sent as a
+    browser that asks not to be tracked, so the house reading its own site is
+    not counted as visitors. Returns (pages read, sentences now waiting).
+    """
+    client = app.test_client()
+    read = 0
+    for path in pages_a_visitor_can_reach(client):
+        for code in LANGUAGE_NAMES:
+            try:
+                r = client.get(path, headers={"Accept-Language": code, "DNT": "1"})
+            except Exception:
+                continue
+            if r.status_code == 200 and _PUBLIC_BODY in r.get_data():
+                read += 1
+    conn = get_db()
+    try:
+        waiting = conn.execute(
+            "SELECT COUNT(*) AS c FROM page_translations WHERE status = 'wanted'"
+        ).fetchone()["c"]
+    finally:
+        conn.close()
+    return read, waiting
+
+
+def _queue_in_background():
+    try:
+        queue_every_page()
+    except Exception as e:                      # pragma: no cover - last resort
+        print("[queue every page failed] %s" % e)
+    finally:
+        _LANGUAGE_QUEUE_LOCK.release()
+
+
+@app.route("/admin/languages")
+@owner_required
+def admin_languages():
+    """French and Spanish on the public site: how far each has got, and the switch."""
+    conn = get_db()
+    progress = language_progress(conn)
+    switcher = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'show_language_switcher'").fetchone()
+    last_error = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'page_translation_last_error'").fetchone()
+    job = conn.execute(
+        """SELECT last_status, last_message, last_ran_at FROM automation_runs
+            WHERE job_name = 'page_translation'""").fetchone()
+    job_on = get_automation_settings(conn).get("automation_page_translation_enabled") == "1"
+    conn.close()
+    return render_template(
+        "admin_languages.html", progress=progress,
+        switcher_on=bool(switcher and switcher["value"] == "1"),
+        provider=claude_configured(), job_on=job_on, job=job,
+        last_error=(last_error["value"] if last_error else "") or "",
+        queueing=_LANGUAGE_QUEUE_LOCK.locked(),
+        per_run=TRANSLATION_MAX_PER_RUN)
+
+
+@app.route("/admin/languages/switcher", methods=["POST"])
+@owner_required
+def admin_languages_switcher():
+    """Offer French and Spanish on the site, or stop offering them."""
+    on = request.form.get("show") == "1"
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO app_settings (key, value) VALUES ('show_language_switcher', ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+        # Empty for off, not "0": the public pages ask `if
+        # site.get('show_language_switcher')`, and "0" is a string, so true.
+        ("1" if on else "",))
+    log_audit(conn, "language_switcher", None,
+              "French and Spanish offered on the site" if on else "Language picker hidden")
+    conn.commit()
+    conn.close()
+    flash("French and Spanish are offered on every public page." if on else
+          "The language picker is hidden. French and Spanish browsers still get "
+          "their language.", "success")
+    return redirect(url_for("admin_languages"))
+
+
+@app.route("/admin/languages/queue", methods=["POST"])
+@owner_required
+def admin_languages_queue():
+    """Read every public page in French and Spanish, so all of it is translated."""
+    if not _LANGUAGE_QUEUE_LOCK.acquire(blocking=False):
+        flash("Already reading the pages. Give it a minute, then look again.", "error")
+        return redirect(url_for("admin_languages"))
+    if LANGUAGE_QUEUE_INLINE:
+        # In a thread even here. Read from inside this request, every page
+        # would share its `g` -- and with it the language already worked out
+        # for whoever pressed the button, English -- so nothing would queue.
+        done = {}
+        worker = threading.Thread(target=lambda: done.update(
+            zip(("read", "waiting"), queue_every_page())))
+        try:
+            worker.start()
+            worker.join()
+        finally:
+            _LANGUAGE_QUEUE_LOCK.release()
+        flash(f"Read {done.get('read', 0)} pages; {done.get('waiting', 0)} sentences "
+              "are waiting to be translated.", "success")
+    else:
+        threading.Thread(target=_queue_in_background, daemon=True).start()
+        flash("Reading every page in French and Spanish. It takes about a minute; "
+              "what it finds is translated over the next few hours, "
+              f"{TRANSLATION_MAX_PER_RUN} sentences every ten minutes.", "success")
+    return redirect(url_for("admin_languages"))
 
 
 @app.route("/admin/photo-mirror")
@@ -67259,6 +67482,7 @@ SETTINGS_PLACES = [
         ("admin_images", "Site photographs", "The photographs on the public pages"),
         ("admin_gallery", "Public gallery", "What the gallery shows"),
         ("admin_photo_mirror", "Copies of the photographs", "The house's own copy of every image"),
+        ("admin_languages", "Languages", "French and Spanish on the site, and the language picker"),
     ]),
 ]
 
@@ -100625,6 +100849,10 @@ LEGACY_PATHS = [
     ("/terms-and-conditions-productions", "terms_page", False),
     ("/terms-and-conditions-wedding-reservation", "terms_page", False),
     ("/terms-and-conditions-weddings-for-guests", "terms_page", False),
+    # Squarespace's own shop pages, which every Squarespace site has whether
+    # it sold anything or not, and which old links and crawlers still ask for.
+    ("/boutique", "dashboard", True),
+    ("/cart", "dashboard", True),
     ("/rooms", "book_rooms", True),
     ("/accommodation", "book_rooms", True),
     ("/bedrooms", "book_rooms", True),

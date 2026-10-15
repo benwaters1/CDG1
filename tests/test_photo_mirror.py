@@ -153,6 +153,18 @@ def run():
     s.check("a photograph not held yet still points where it always did",
             FAKE_TWO in half and "/mirrored-photo/" + held in half)
 
+    # A page that adds Squarespace's size as it renders (?format=1000w) asks
+    # for an address no template spells out, so the mirror never fetched that
+    # exact one. The Noel atelier on /workshops, 15 October 2026.
+    base = FAKE_URL.split("?")[0]
+    sized = m.swap_mirrored('<img src="%s?format=1000w">' % base, {base: held})
+    s.check("the same photograph at another size is served from our copy",
+            "/mirrored-photo/" + held in sized and "squarespace" not in sized, detail=sized)
+    other = m.swap_mirrored('<img src="%s?format=1000w">' % FAKE_TWO.split("?")[0],
+                            {base: held})
+    s.check("but a different photograph is not mistaken for it",
+            "mirrored-photo" not in other, detail=other)
+
     # -------------------------------------------------------------- the index
     s.section("What counts as held")
 

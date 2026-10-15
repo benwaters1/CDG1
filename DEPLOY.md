@@ -52,22 +52,36 @@ rest are left exactly as they are.
 the change takes minutes rather than hours. Have the readiness page
 (`/admin/readiness`) showing nothing red.
 
-1. **In Railway**, *Settings → Networking → Custom domain*: add
-   `www.chateaugudanes.com` and `chateaugudanes.com`. Railway shows a CNAME
-   target for each (and may ask for a TXT record to prove the domain is yours).
-2. **At the DNS host (Syrahost)**, change only these:
-   - `www` — the CNAME `ext.squarespace.com` becomes the target Railway gave.
+**Where the DNS actually is (checked 15 October 2026).** Not on Crazy Domains'
+own "DNS Settings" page, which is out of date and unused: it is in the cPanel of
+the **"Unlimited Email"** product (Control Panel → Zone Editor), behind the
+nameservers ns1/ns2.syrahost.com, about 50 records. **That product renews on 25
+October; if it lapses, the DNS and the email go with it.** Its zone editor has
+no ALIAS record, so the bare domain cannot point at Railway from there: either
+move the DNS to Cloudflare (free; every record copied across first, email ones
+checked before the nameservers change), or keep it here and forward the bare
+domain to www.
+
+1. **In Railway** (*CDG1 → Settings → Networking → Custom domain*):
+   `www.chateaugudanes.com` was added on 15 October, port 8080, www only. It
+   waits for these two records:
+   - `CNAME` `www` → `sssix12f.up.railway.app`
+   - `TXT` `_railway-verify.www` → `railway-verify=d20d6aae856d7e3be01a7085ea4966a923dc8d3e23fba926f8ad7785a3638a02`
+2. **At the DNS (the cPanel zone editor, or Cloudflare)**, change only these:
+   - `www` — the CNAME `ext.squarespace.com` becomes `sssix12f.up.railway.app`,
+     and the TXT above is added.
    - `chateaugudanes.com` itself — the four Squarespace `A` records
      (`198.49.23.144/.145`, `198.185.159.144/.145`) go. A bare domain cannot
-     hold a CNAME, so this needs an ALIAS/ANAME record (or "CNAME flattening")
-     pointing at Railway's target. If Syrahost has no such thing, forward the
-     bare domain to `https://www.chateaugudanes.com` instead.
+     hold a CNAME: with Cloudflare, a flattened CNAME to Railway; from the
+     cPanel, a redirect of the bare domain to `https://www.chateaugudanes.com`.
    - In the SPF record, take out `+a`. Once the bare domain points at Railway,
      `+a` would let any server behind Railway's addresses send mail as the
      house.
-   - **Leave alone:** the MX record (Outlook), the two `MS=` records, the rest
-     of the SPF, and everything on `send.` and `resend._domainkey.send`
-     (Resend). Those are the email.
+   - **Leave alone:** the MX record (Outlook), autodiscover, the two Microsoft
+     DKIM records (`selector1` and `selector2._domainkey`), the two `MS=`
+     records and `gck97xs2wdxyttyjdjtz`, the rest of the SPF, `_dmarc`, and
+     everything on `send.` (`resend._domainkey.send`, `send.send`,
+     `rsend.send`, Resend). Those are the email.
 3. **Wait until Railway shows both domains with a certificate** and
    `https://www.chateaugudanes.com` opens the new site.
 4. **Only then, in Railway's variables:** `PUBLIC_BASE_URL` =
@@ -80,11 +94,51 @@ the change takes minutes rather than hours. Have the readiness page
    to Squarespace. The app refuses to treat a Railway address as the house's,
    and the readiness page goes red if `SITE_IS_LIVE` is on without a proper
    one.
-5. **Then:** in Stripe and Resend, point the webhooks at the house's address
-   (the Railway ones keep working, but it is the address to keep); add the
-   real domain to the Outlook add-in's sign-in redirect (see the add-in
-   section); tick *Write to guests*; submit `/sitemap.xml` in Google Search
-   Console.
+5. **Then:** add the real domain to the Outlook add-in's sign-in redirect (see
+   the add-in section); tick *Write to guests*; submit `/sitemap.xml` in Google
+   Search Console. The Stripe and Resend webhooks stay on the Railway address,
+   which keeps answering and is never redirected (webhooks, the calendar feeds
+   and `/outlook-addin/*` are not moved, by design).
+
+### Stripe, test keys to live
+
+The account (Chateau de Gudanes SASU) is shared with other live integrations
+(RetreatGuru until the switch, BNBForms, webkul), and its default API version is
+2014-07-22. So the site gets **its own restricted key**, and its webhook is
+created by `tools/stripe_webhook.py` at the API version the app's library pins
+(`stripe.api_version`, 2026-07-29.dahlia), because the dashboard offers only
+2014-07-22 or the newest.
+
+1. **Restricted key**, in the live dashboard (Developers → API keys → Create
+   restricted key), with only what the app calls:
+   - Checkout Sessions: **Write** (create, retrieve, list)
+   - PaymentIntents: **Write** (create, retrieve, cancel: the till and the card reader)
+   - Charges: **Read** (the charge behind a payment, for the fee and the refunds)
+   - Refunds: **Write** (the refund desk; the owner decides every refund)
+   - Customers: **Write** (one is made for a saved card)
+   - Terminal → Readers: **Write**, only if the card reader is used
+   - Webhook Endpoints: **Write**, only while running step 2, then set back to None
+   - everything else: None
+
+   Make the same restricted key in **test** mode first and do the end-to-end
+   test booking with it: a permission that is missing fails there, with
+   Stripe naming it, instead of in front of a guest.
+2. **The webhook**, from this folder in a terminal, with the restricted live key
+   set for that one command (never pasted anywhere else):
+   `$env:STRIPE_SECRET_KEY = "rk_live_..."; python tools/stripe_webhook.py --create`
+   It refuses if the site's endpoint already exists, and writes the signing
+   secret to `.env.stripe-webhook-live` (gitignored). `--list` shows every
+   endpoint on the account with its API version; run it with the test key to
+   see which version the test endpoint is on.
+3. **Railway → Variables**, all three at once (one deploy):
+   `STRIPE_SECRET_KEY` = the `rk_live_` key, `STRIPE_PUBLISHABLE_KEY` = the
+   `pk_live_` key, `STRIPE_WEBHOOK_SECRET` = the value in
+   `.env.stripe-webhook-live`. Then delete that file, and check the Go-live
+   checklist says "Live keys".
+4. **Later, not on switch day:** roll the shared `sk_live_` (the PC incident)
+   once RetreatGuru is retired and BNBForms and webkul are confirmed unused;
+   then upgrade the account's default API version. The site is unaffected by
+   either, since it no longer uses that key and its webhook is pinned.
 
 The old Squarespace addresses (`/chateau-ateliers`, `/nightly-reservation`,
 the celebrations portfolio, the terms pages and the rest) are redirected by

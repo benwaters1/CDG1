@@ -13,7 +13,7 @@ than "somebody calls it by name":
   - a route, reached by URL;
   - a decorator, applied rather than called;
   - a Flask hook — before_request, after_request, errorhandler, context
-    processor, template filter;
+    processor, template filter, url_defaults;
   - HANDED SOMEWHERE rather than called: every scheduled job in this app is
     an element of a tuple in AUTOMATION_JOBS, and nothing calls
     run_backup_email_job by name;
@@ -74,7 +74,10 @@ def _reachable(src, tree, templates):
                 if any(h in seg for h in ("app.route", "before_request",
                                           "after_request", "errorhandler",
                                           "context_processor", "template_filter",
-                                          "template_global", "teardown")):
+                                          "template_global", "teardown",
+                                          # Flask calls it while building every
+                                          # address (the stylesheet's version).
+                                          "url_defaults")):
                     hooked.add(node.name)
                 # A decorator is applied, not called by name.
                 if isinstance(d, ast.Name):
