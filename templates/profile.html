@@ -5,7 +5,22 @@
 <div class="page-head">
   <h1>{{ person['name'] }}</h1>
   {% if user['role'] == 'owner' %}
-  <a href="{{ url_for('edit_employee', user_id=person['id']) }}" class="btn-primary">{{ t('Edit profile') }}</a>
+  {# THE ONE SIGN-IN BUTTON, at the top. It used to be a card low on the page
+     that showed only once an account was claimed, and the owner went looking
+     for it and did not find it. Either way it emails them a fresh link; the
+     card below shows the link too, in case the letter does not arrive. No
+     Jinja inside the onsubmit attribute: interpolating a name into a confirm()
+     broke a page once already. #}
+  <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <a href="{{ url_for('edit_employee', user_id=person['id']) }}" class="btn-primary" style="margin-top:0;">{{ t('Edit profile') }}</a>
+    {% if person['role'] == 'employee' %}
+    <form method="post" action="{{ url_for('regenerate_invite', user_id=person['id']) }}" style="margin:0;"
+          {% if person['account_claimed'] %}onsubmit="return confirm('This stops their current password working and emails them a link to choose a new one. Continue?')"{% endif %}>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-mini">{{ t('Reset their password') if person['account_claimed'] else t('Send the invite again') }}</button>
+    </form>
+    {% endif %}
+  </div>
   {% elif person['id'] == user['id'] %}
   <a href="{{ url_for('edit_own_contact_info') }}" class="btn-mini">{{ t('Update phone / emergency contact') }}</a>
   {% endif %}
@@ -14,41 +29,31 @@
 <div class="profile-layout">
 
   <div class="profile-main">
-    {% if onboarding_url %}
-    <div class="detail-card" style="border-color:var(--gold);">
-      <h3>{{ t('Invitation pending') }}</h3>
-      <p class="pay-disclaimer" style="margin-top:0;">{{ person['name'] }} hasn't activated their account yet. Share this link with them directly:</p>
-      <p class="share-link-box">{{ onboarding_url }}</p>
-      <form method="post" action="{{ url_for('regenerate_invite', user_id=person['id']) }}" style="margin-top:10px;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn-mini">{{ t('Generate a new link') }}</button>
-      </form>
-    </div>
-    {% endif %}
-
-    {% if can_reset_signin %}
-    {# The only way back in for somebody locked out. /forgot-password needs an
-       email provider, and while there isn't one it tells them to ask the owner
-       to reset it directly -- so this has to exist for a claimed account, not
-       just for an invitation still pending. It is destructive, so it asks
-       first, and the copy says what it does rather than "regenerate". No Jinja
-       inside the onsubmit attribute: interpolating a name into a confirm()
-       broke a page once already. #}
-    <div class="detail-card">
-      <h3>{{ t('Sign-in trouble') }}</h3>
+    {% if user['role'] == 'owner' and person['role'] == 'employee' %}
+    {# How they get in, said in words, under the button above. The only way back
+       in for somebody locked out while no email provider is configured, so it
+       shows for a claimed account as much as for an invitation still pending.
+       The link is on screen as well as emailed, because mail fails. #}
+    <div class="detail-card" id="sign-in"{% if onboarding_url %} style="border-color:var(--gold);"{% endif %}>
+      <h3>{{ t('Signing in') }}</h3>
       <p class="pay-disclaimer" style="margin-top:0;">
-        {% if email_enabled %}
-        {{ t("They can reset their own password from the login page. Use this only if they can't.") }}
-        {% else %}
-        {{ t('No email provider is configured, so nobody can reset their own password yet. This is the only way back in.') }}
-        {% endif %}
+        {{ t('Signs in as {email}.', email=person['email']) }}
+        <a href="{{ url_for('edit_employee', user_id=person['id']) }}#sign-in">{{ t('Change it') }}</a>
       </p>
-      <p class="pay-disclaimer">{{ t('This voids the password they use now and gives you a fresh link to send them.') }}</p>
-      <form method="post" action="{{ url_for('regenerate_invite', user_id=person['id']) }}"
-            onsubmit="return confirm('This stops their current password working. You will need to send them the new link. Continue?')">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn-mini">{{ t('Reset their sign-in') }}</button>
-      </form>
+      {% if onboarding_url %}
+      <p class="pay-disclaimer">{{ t("Their invitation hasn't been used yet. If the email didn't reach them, share this link directly:") }}</p>
+      <p class="share-link-box">{{ onboarding_url }}</p>
+      <p class="pay-disclaimer">{{ t('Send the invite again emails them a fresh link, and this one stops working.') }}</p>
+      {% else %}
+      <p class="pay-disclaimer">
+        {% if email_enabled %}
+        {{ t('They can reset their own password from the sign-in page.') }}
+        {% else %}
+        {{ t('No email provider is configured, so nobody can reset their own password yet.') }}
+        {% endif %}
+        {{ t('Reset their password voids the password they use now: it no longer works, and they are emailed a link to choose a new one.') }}
+      </p>
+      {% endif %}
     </div>
     {% endif %}
 

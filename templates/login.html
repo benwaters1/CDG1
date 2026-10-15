@@ -17,12 +17,16 @@
       </div>
       <button type="submit" class="btn-primary btn-block">Sign in</button>
     </form>
+    {# Straight under the button and underlined, where somebody who has just
+       been told their password is wrong is already looking. It sat at the
+       foot of the card in faint grey, below the PIN note, and read as small
+       print rather than as the way back in. #}
+    <p style="text-align:center; margin-top:14px;"><a href="{{ url_for('forgot_password') }}" style="text-decoration:underline;">Forgot your password?</a></p>
 
   <p class="upload-hint" style="text-align:center; margin-top:16px;">
     On a shared iPad or phone at the château?
     <a href="{{ url_for('arrive') }}">Sign in with your PIN and clock on</a>.
   </p>
-    <p style="text-align:center; margin-top:14px;"><a href="{{ url_for('forgot_password') }}" class="small-link" style="color:var(--steel);">Forgot your password?</a></p>
   </div>
 </div>
 {% endblock %}
