@@ -9019,6 +9019,7 @@ OWNER_MENU = [
             _nav("admin_feedback", "Guest Feedback", "contacts"),
             _nav("guest_dates", "Dates Worth Knowing", "calendar"),
             _nav("import_guests", "Import Guests", "guests"),
+            _nav("import_registrations", "Bring Registrations Across", "workshop"),
         ]),
     ]),
     ("restaurant", "Restaurant", "restaurant", ("till",), ("pending_restaurant_count",), [
