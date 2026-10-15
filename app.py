@@ -42018,10 +42018,12 @@ def parse_rg_people(text):
     return people, names
 
 
-def parse_stripe_payments(text):
-    """A Stripe dashboard export of payments: the ones that went through, each
-    with what is left of it after refunds. Headers are matched loosely, as the
-    dashboard words them differently from one export to the next."""
+def _stripe_export_rows(text):
+    """Every card payment in a Stripe dashboard export that went through, with
+    what was refunded on it. Headers are matched loosely, as the dashboard words
+    them differently from one export to the next. A payment refunded in full is
+    marked Refunded rather than Paid, and is kept here: what came back matters
+    as much as what came in."""
     def pick(row, *names):
         for n in names:
             if row.get(n):
@@ -42031,7 +42033,8 @@ def parse_stripe_payments(text):
     for row in _rg_rows(text):
         status = pick(row, "status").lower()
         captured = pick(row, "captured").lower()
-        if status and status not in ("paid", "succeeded"):
+        if status and status not in ("paid", "succeeded", "refunded", "partially refunded",
+                                     "partially_refunded"):
             continue
         if captured in ("false", "no"):
             continue
@@ -42055,7 +42058,20 @@ def parse_stripe_payments(text):
             "amount": amount, "refunded": refunded, "net": round(amount - refunded, 2),
             "description": pick(row, "description"),
         })
-    return [p for p in out if p["net"] > 0.005 and (p["id"] or p["intent"])]
+    return [p for p in out if p["id"] or p["intent"]]
+
+
+def parse_stripe_payments(text):
+    """The payments in a Stripe export, each with what is left of it after
+    refunds. One refunded in full is not a payment at all."""
+    return [p for p in _stripe_export_rows(text) if p["net"] > 0.005]
+
+
+def parse_stripe_refunds(text):
+    """The payments in a Stripe export that had money given back, in part or
+    in full. RetreatGuru is not told about a refund made in Stripe, so its
+    export can still call that money paid."""
+    return [p for p in _stripe_export_rows(text) if p["refunded"] > 0.005]
 
 
 def _rg_stripe_match(charges, paid):
@@ -42073,7 +42089,7 @@ def _rg_stripe_match(charges, paid):
 
 
 def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days, today,
-                   stripe_given, unmatched_ok=False):
+                   stripe_given, unmatched_ok=False, refunds=()):
     """What bringing these registrations across would do, line by line, and
     everything wrong with it. The check shows this; the run writes it.
 
@@ -42223,7 +42239,19 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
         else:
             why = (f"RetreatGuru says {money(line['paid'])} was paid, and no Stripe export "
                    "was given to find the card payments behind it.")
-        if unmatched_ok:
+        # Money Stripe gave back to this address. A refund made in Stripe is
+        # never reported to RetreatGuru, so its export goes on calling the
+        # money paid -- and bringing that across "paid, not by card" would
+        # record as paid what the guest already has back. Not on a tick.
+        back = [r for r in refunds if stripe_given and r["email"] == line["email"]]
+        if back:
+            line["blocking"].append(
+                why + f" Stripe shows {money(sum(r['refunded'] for r in back))} refunded to "
+                "this address (" + ", ".join(
+                    f"{money(r['refunded'])} of {money(r['amount'])}, {r['ref']}" for r in back)
+                + "), which RetreatGuru will not know about. It cannot come across as paid "
+                "until that is settled by hand.")
+        elif unmatched_ok:
             line["paid_other"] = line["paid"]
             line["notes"].append(why + " Brought across as paid, not by card: a refund of "
                                        "it is made by hand.")
@@ -42391,6 +42419,7 @@ def _rg_plan_from_draft(conn, payload, today):
     people, names = parse_rg_people(payload["people"])
     charges = parse_stripe_payments(payload.get("stripe", ""))
     plan = plan_rg_import(conn, regs, programmes, names, charges,
+                          refunds=parse_stripe_refunds(payload.get("stripe", "")),
                           due_days=int(payload.get("due_days") or WORKSHOP_BALANCE_DAYS),
                           today=today, stripe_given=bool(payload.get("stripe")),
                           unmatched_ok=bool(payload.get("unmatched_ok")))
