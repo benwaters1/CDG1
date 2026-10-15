@@ -418,8 +418,10 @@ def run():
                 detail=f"{result} / {to_addrs}")
         if sent_mail:
             body = sent_mail[0][2]
+            # "€6,000.00", as money() writes it: the reminder said "6000.00",
+            # with no euro sign, once the wording of 8 October took it out.
             s.check("for what is actually owed, not the whole quote",
-                    "6000.00" in body,
+                    "€6,000.00" in body,
                     detail=f"{body[:200]!r} — 8000 is the quote and 2000 came in; "
                            "a reminder and a bill disagreeing in front of a guest "
                            "is the failure")

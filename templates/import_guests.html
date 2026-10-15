@@ -8,7 +8,10 @@
 
 <div class="page-head">
   <h1>Import guests</h1>
-  <a href="{{ url_for('guests') }}" class="btn-ghost">Guests</a>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('import_registrations') }}" class="btn-ghost">Bring registrations across</a>
+    <a href="{{ url_for('guests') }}" class="btn-ghost">Guests</a>
+  </div>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
   Brings the guest list in from the system this one replaced, so somebody who

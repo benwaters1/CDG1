@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Bring registrations across{% endblock %}
+{% block content %}
+
+{#  The same shape as Import guests: a check that writes nothing, then a run
+    of exactly what was checked. Money, so every figure the export states is
+    shown beside what will be written, and the totals at the foot must equal
+    the export's to the cent.  #}
+
+<div class="page-head">
+  <h1>Bring registrations across</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('import_guests') }}" class="btn-ghost">Import guests</a>
+    <a href="{{ url_for('admin_workshop_registrations') }}" class="btn-ghost">Registrations</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The ateliers people booked on RetreatGuru, brought into this system with exactly what they
+  agreed and exactly what they paid. Each comes across confirmed, with its payments and the
+  Stripe payment behind each one, its balance and when it is due, and with emails switched
+  off: <strong>nobody is written to, asked to pay, or reminded</strong> until you switch it
+  on for them. Bringing the same files across twice changes nothing the second time.
+</p>
+
+<div class="detail-card">
+  <h3>The files</h3>
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="check">
+    <p class="manual-body wraps"><label class="field-label" for="rg-registrations">Registrations export (RetreatGuru, Registrations)</label>
+      <input id="rg-registrations" type="file" name="registrations" accept=".csv,text/csv" required></p>
+    <p class="manual-body wraps"><label class="field-label" for="rg-people">Customer list (RetreatGuru, People) &mdash; for the email addresses</label>
+      <input id="rg-people" type="file" name="people" accept=".csv,text/csv" required></p>
+    <p class="manual-body wraps"><label class="field-label" for="rg-programmes">Programmes (RetreatGuru, Programs) &mdash; to name each one</label>
+      <input id="rg-programmes" type="file" name="programmes" accept=".csv,text/csv"></p>
+    <p class="manual-body wraps"><label class="field-label" for="rg-stripe">Stripe payments export (Stripe dashboard, Payments, Export)</label>
+      <input id="rg-stripe" type="file" name="stripe" accept=".csv,text/csv"></p>
+    <p class="manual-body wraps"><label class="field-label" for="rg-days">The balance is due this many days before each retreat starts</label>
+      <input id="rg-days" type="number" name="due_days" min="0" max="365" value="{{ plan.due_days if plan else default_days }}" style="width:90px;"></p>
+    <label class="checkbox-row">
+      <input type="checkbox" name="unmatched_ok"{{ ' checked' if plan and plan.unmatched_ok }}>
+      <span>A payment Stripe does not hold (a bank transfer, say) is brought across as paid, not by card, and refunded by hand if it ever is. Unticked, it stops the run.</span>
+    </label>
+    <button type="submit" class="btn-primary" style="margin-top:12px;">Check, without saving anything</button>
+  </form>
+</div>
+
+{% if plan %}
+<h2 class="section-heading">What it would do</h2>
+<p class="upload-hint" style="margin-top:-8px;"><strong>Nothing has been saved.</strong>
+  {{ plan.counts.read }} rows read: {{ plan.count }} registration{{ '' if plan.count == 1 else 's' }}
+  for {{ plan.people }} {{ 'person' if plan.people == 1 else 'people' }} still to come;
+  {{ plan.counts.past }} for retreats already over and {{ plan.counts.cancelled }} cancelled, which stay where they are.</p>
+
+{% set blocked = plan.payers|selectattr('blocking')|list %}
+{% set noted = plan.payers|rejectattr('blocking')|selectattr('notes')|list %}
+<div class="mini-list">
+  <div class="mini-row"><span class="mini-name">Every row: agreed = paid + owing, to the cent</span>
+    <span class="mini-role">{% if plan.rows|rejectattr('sums')|list %}<span class="mini-status status-declined">no</span>{% else %}<span class="mini-status status-confirmed">yes</span>{% endif %}</span></div>
+  <div class="mini-row"><span class="mini-name">Every payment found in Stripe, each Stripe payment used once</span>
+    <span class="mini-role">{% if not plan.stripe_given %}<span class="mini-status status-pending">no Stripe export given</span>{% elif plan.payers|selectattr('paid_other')|list or blocked %}<span class="mini-status status-pending">see below</span>{% else %}<span class="mini-status status-confirmed">yes</span>{% endif %}</span></div>
+  <div class="mini-row"><span class="mini-name">The totals below equal the export's</span>
+    <span class="mini-role">{% if totals.agreed == plan.export.agreed and totals.paid == plan.export.paid and totals.owing == plan.export.owing %}<span class="mini-status status-confirmed">yes</span>{% else %}<span class="mini-status status-declined">no</span>{% endif %}</span></div>
+  <div class="mini-row"><span class="mini-name">Registrations that cannot come across as they are</span>
+    <span class="mini-role">{{ blocked|length }}</span></div>
+  <div class="mini-row"><span class="mini-name">Registrations with something for you to read</span>
+    <span class="mini-role">{{ noted|length }}</span></div>
+  <div class="mini-row"><span class="mini-name">Emails sent or queued by bringing them across</span>
+    <span class="mini-role">none</span></div>
+</div>
+
+{% if plan.capacity %}
+<h3 class="section-heading">Places</h3>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Session</th><th>Already booked here</th><th>Coming across</th><th>Places</th><th></th></tr></thead>
+  <tbody>
+    {% for c in plan.capacity %}
+    <tr>
+      <th scope="row">{{ c.title }}, {{ c.start|date_short }}</th>
+      <td>{{ c.taken }}</td><td>{{ c.coming }}</td><td>{{ c.capacity }}</td>
+      <td>{% if c.over %}<span class="mini-status status-declined">{{ c.over }} over</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="action" value="run">
+  <input type="hidden" name="token" value="{{ token }}">
+  <h3 class="section-heading">Each registration</h3>
+  <div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Bring</th><th>Who</th><th>Retreat</th><th>People</th><th>Agreed</th><th>Paid</th><th>Owing</th><th>Due</th></tr></thead>
+    <tbody>
+      {% for l in plan.payers %}
+      <tr>
+        <td><input type="checkbox" name="bring" value="{{ l.key }}" aria-label="Bring {{ l.name }} across"{{ ' checked' if not l.blocking }}{{ ' disabled' if l.blocking }}></td>
+        <th scope="row">{{ l.name }}{% if l.email %}<br><span class="upload-hint">{{ l.email }}</span>{% endif %}
+          {% if l.done %}<br><span class="mini-status status-confirmed">already here</span>{% endif %}</th>
+        <td>{% if l.programme %}{{ l.programme.title }}{% else %}RetreatGuru, starting {{ l.start.isoformat()|date_short }}{% endif %}
+          {% if l.session %}<br><span class="upload-hint">here: {{ l.session.title }}, {{ l.session.start_date|date_short }} &ndash; {{ l.session.end_date|date_short }}</span>{% endif %}</td>
+        <td>{{ l.party }}{% if l.companions %}<br><span class="upload-hint">with {{ l.companions|join(', ') }}</span>{% endif %}</td>
+        <td>{{ l.agreed|money }}{% if l.list_price > l.agreed + 0.005 %}<br><span class="upload-hint">{{ l.list_price|money }} less {{ l.discount_code or 'a discount' }}</span>{% endif %}</td>
+        <td>{{ l.paid|money }}{% for c in l.charges %}<br><span class="upload-hint">{{ c.net|money }} &middot; {{ c.ref }}</span>{% endfor %}{% if l.paid_other %}<br><span class="upload-hint">not by card</span>{% endif %}</td>
+        <td>{{ l.owing|money }}</td>
+        <td>{{ l.due_date|date_short if l.due_date }}</td>
+      </tr>
+      {% if l.blocking or l.notes or l.credit_options %}
+      <tr>
+        <td></td>
+        <td colspan="7">
+          {% for b in l.blocking %}<p class="flash flash-error" style="margin:2px 0;">{{ b }}</p>{% endfor %}
+          {% for n in l.notes %}<p class="upload-hint" style="margin:2px 0;">{{ n }}</p>{% endfor %}
+          {% for c in l.credit_options %}
+          {# RetreatGuru sometimes took money paid some other way off the price
+             instead of calling it paid. Ticked, it comes across as paid against
+             its own Stripe id, the price goes back up by the same amount, and
+             what is owed does not move. Never assumed. #}
+          <label class="checkbox-row" style="margin:4px 0;">
+            <input type="checkbox" name="credit" value="{{ l.key }}|{{ c.ref }}"{{ ' disabled' if l.blocking }}>
+            <span>Stripe has {{ c.net|money }} from this address that matches nothing here
+              ({{ c.description or 'no description' }}{% if c.on %}, {{ c.on|date_short }}{% endif %}, {{ c.ref }}).
+              If RetreatGuru took it off this price rather than calling it paid, tick to bring it
+              across as paid: the price becomes {{ (l.agreed + c.net)|money }}, paid
+              {{ (l.paid + c.net)|money }}, and {{ l.owing|money }} is still owed.</span>
+          </label>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><th scope="row" colspan="4">Total of everything in the export</th>
+        <td>{{ plan.export.agreed|money }}</td><td>{{ plan.export.paid|money }}</td><td>{{ plan.export.owing|money }}</td><td></td></tr>
+      <tr><th scope="row" colspan="4">Total of what is ticked now</th>
+        <td>{{ totals.agreed|money }}</td><td>{{ totals.paid|money }}</td><td>{{ totals.owing|money }}</td><td></td></tr>
+    </tfoot>
+  </table>
+  </div>
+
+  {% if plan.leftover %}
+  <p class="upload-hint">In the Stripe export and not matched to any of these registrations ({{ plan.leftover|length }}):
+    {% for c in plan.leftover %}{{ c.email or 'no email' }} {{ c.net|money }} ({{ c.ref }}){{ '; ' if not loop.last else '.' }}{% endfor %}
+    Payments for retreats already over are expected here.</p>
+  {% endif %}
+
+  <label class="checkbox-row" style="margin-top:12px;">
+    <input type="checkbox" name="checked_flags">
+    <span>I have read every note above, and the ticked registrations are the ones to bring across.</span>
+  </label>
+  <button type="submit" class="btn-primary" style="margin-top:12px;">Bring the ticked registrations across</button>
+</form>
+{% endif %}
+
+{% if imported %}
+<h2 class="section-heading">Brought across already</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Who</th><th>Retreat</th><th>People</th><th>Emails</th></tr></thead>
+  <tbody>
+    {% for r in imported %}
+    <tr>
+      <th scope="row">{{ r['guest_name'] }}</th>
+      <td>{{ r['title'] }}, {{ r['start_date']|date_short }}</td>
+      <td>{{ r['party_size'] }}</td>
+      <td>{{ 'off' if r['do_not_email'] else 'on' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% endblock %}
