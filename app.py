@@ -8509,7 +8509,8 @@ NAV_AREAS = {
         # ENDPOINT_AREA is built last-wins and payroll happens to fall after
         # team in the dict. Reordering these areas would have quietly handed
         # the payroll pack back to anyone with team access.
-        "export_equipment_csv", "export_pay_history_csv",
+        # export_pay_history_csv is deliberately NOT here: see OWNER_ONLY_AREAS.
+        "export_equipment_csv",
         "export_team_csv", "new_absence", "new_candidate",
         # new_check_in_note / delete_check_in_note are deliberately NOT here.
         # Reading a 1:1 note is gated by ROLE -- profile() allows the owner or
@@ -8966,6 +8967,13 @@ OWNER_ONLY_AREAS = {
     # employee holds their own copy. Attaching one stays in team: whoever
     # is handed the paper can file it without being able to reopen it.
     "view_absence_note": "team",
+    # Everybody's pay-rate history in one file. A profile shows pay history to
+    # the owner and nobody else, and the Team page only ever drew this link
+    # for the owner, but the export sat in `team` -- so anybody with team,
+    # three live presets, could download every colleague's pay history by
+    # typing the address, the manager's and the owner's included. The route
+    # checks role == owner as well, as profile() does.
+    "export_pay_history_csv": "team",
     "download_backup": "management",
     "new_check_in_note": "team",
     "pos_archive": "till",
@@ -9465,38 +9473,83 @@ def access_covers(actor, target):
     return t.issubset(a)
 
 
-def refused_upwards(person, doing, back="directory"):
-    """The refusal for acting on somebody who can reach more than you can.
+def why_not_act_on(person, own=False):
+    """Why the signed-in person may not act on `person`'s record, or None.
 
-    None when the signed-in person covers `person`. Otherwise flashes the
-    sentence and returns where to send them: the Team page unless told
-    otherwise, and never the person's profile -- a profile is readable only by
-    the owner or the person themselves, so a refused caller sent there gets a
-    403 and the explanation never renders.
+    "upwards" when `person` can reach more of the app than they can. "own"
+    when it is their own record and `own` says that counts: access_covers is
+    true of anybody against themselves, so without it the one record a
+    member of staff could always change was their own -- their own pay, their
+    own time off, their own hours. An owner acting on their own record is the
+    house deciding, and is never refused.
+
+    The bare reason, so a bulk action can group it (bulk_message) and a single
+    one can say it in a sentence (refused_upwards).
     """
-    if access_covers(current_user(), person):
+    me = current_user()
+    if own and me["role"] != "owner" and person["id"] == me["id"]:
+        return "own"
+    return None if access_covers(me, person) else "upwards"
+
+
+# What a non-owner is told when the record is their own. The edit form's is
+# longer because there IS a page for the part that is theirs.
+OWN_RECORD = "Your own record is the owner's to change."
+OWN_HR_RECORD = "Your own HR record is the owner's to change."
+OWN_TIME_OFF = "Your own time off is the owner's to decide."
+OWN_HOURS = "Your own hours are the owner's to correct."
+OWN_WAGE = "Your own wage is the owner's to record."
+
+
+def refused_upwards(person, doing, back="directory", own=None):
+    """The refusal for acting on somebody who can reach more than you can --
+    or, when `own` is given, on yourself.
+
+    None when the signed-in person may. Otherwise flashes the sentence and
+    returns where to send them: the Team page unless told otherwise, and never
+    the person's profile -- a profile is readable only by the owner or the
+    person themselves, so a refused caller sent there gets a 403 and the
+    explanation never renders. `own` is the sentence for a non-owner acting on
+    their own record; without it, their own record is not refused.
+    """
+    why = why_not_act_on(person, own=bool(own))
+    if why is None:
         return None
-    flash(f"{person['name']} can reach more of the app than you can, so "
-          f"{doing} is the owner's to do.", "error")
+    if why == "own":
+        flash(own, "error")
+    else:
+        flash(f"{person['name']} can reach more of the app than you can, so "
+              f"{doing} is the owner's to do.", "error")
     return redirect(url_for(back))
 
 
-def refused_upwards_for(conn, user_id, doing, back="admin_hr"):
+def refused_upwards_for(conn, user_id, doing, back="admin_hr", own=None):
     """refused_upwards for somebody known only by id, as the HR page's forms
     know them. Nobody by that id is not a refusal: the caller's own
     not-found handling answers that."""
     person = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    return refused_upwards(person, doing, back) if person else None
+    return refused_upwards(person, doing, back, own=own) if person else None
 
 
-def refuses_upwards(doing):
+def refuses_upwards(doing, own=OWN_RECORD, own_back=None):
     """For a route under /directory/<user_id>/ that changes that person's
     record: refuse it, before anything else runs, when they can reach more
-    of the app than the caller can.
+    of the app than the caller can -- or when it is the caller's own.
 
     Before the check, anybody with `team` could open the owner's record, mark
     it inactive, and login then turned the owner away; and anybody with
     `rota` could set the owner's arrival PIN and sign in as them at /arrive.
+    And because everybody covers themselves, anybody with `team` could open
+    their OWN record and change their own pay, status and leave entitlement,
+    and read the notes their profile calls private to the owner.
+
+    Their own record is refused by default, so a route added under
+    /directory/<user_id>/ later is closed to the person it is about without
+    anybody remembering to say so. A route that IS theirs would pass own=None;
+    none does today -- what a member of staff changes about themselves lives
+    elsewhere (edit_own_contact_info, upload_document). The refusal sends them
+    to their own profile, which they can read, or to `own_back` where there is
+    a page for the part that is theirs.
     """
     def decorate(view):
         @wraps(view)
@@ -9507,6 +9560,10 @@ def refuses_upwards(doing):
             conn.close()
             if not person:
                 abort(404)
+            if own and why_not_act_on(person, own=True) == "own":
+                flash(own, "error")
+                return redirect(url_for(own_back) if own_back
+                                else url_for("profile", user_id=person["id"]))
             refused = refused_upwards(person, doing)
             if refused:
                 return refused
@@ -31135,6 +31192,24 @@ def inject_user():
         """
         return can_reach(user, endpoint) if user else False
 
+    acted_on = {}
+
+    def acts_on(user_id):
+        """Why this person may not act on somebody's record -- "upwards" or
+        "own" -- or None, for a page that draws a button per person: Approve
+        on a time-off request, Repair on a clocking. The routes refuse those
+        rows (why_not_act_on, own included), and a button drawn anyway sends
+        somebody from a page that offered it straight into a refusal. Once
+        per person per page."""
+        if not user or user_id is None:
+            return None
+        if user_id not in acted_on:
+            conn = get_db()
+            person = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            conn.close()
+            acted_on[user_id] = why_not_act_on(person, own=True) if person else None
+        return acted_on[user_id]
+
     if user:
         conn = get_db()
         unread_notifications_count = conn.execute(
@@ -31199,7 +31274,8 @@ def inject_user():
         "pending_events_count": pending_events_count,
         "open_email_flags_count": open_email_flags_count,
         "chat_unread_count": chat_unread_count,
-        "may": may, "can": can, "user_areas": areas, "area_titles": AREA_TITLES,
+        "may": may, "can": can, "acts_on": acts_on,
+        "user_areas": areas, "area_titles": AREA_TITLES,
         # The sidebar, built only when base.html draws it -- the public pages
         # and the letters render through here too and have no use for it.
         "nav_menu": (lambda: build_nav(user, request.endpoint, {
@@ -35366,6 +35442,11 @@ def export_team_csv():
 @app.route("/directory/pay-history/export.csv")
 @owner_required
 def export_pay_history_csv():
+    # The owner's, as pay history on a profile is: owner-only on purpose (see
+    # OWNER_ONLY_AREAS), and by ROLE as well, because a member of staff on the
+    # full-access preset reaches every page and is still not the house.
+    if current_user()["role"] != "owner":
+        abort(403)
     conn = get_db()
     rows = conn.execute(
         """SELECT pay_rate_history.*, users.name AS employee_name, changer.name AS changed_by_name
@@ -35470,9 +35551,12 @@ def new_employee():
         job_role = request.form.get("job_role", "").strip()
         phone = request.form.get("phone", "").strip()
         start_date = request.form.get("start_date", "").strip()
-        pay_rate = request.form.get("pay_rate", "").strip()
-        pay_type = request.form.get("pay_type", "").strip()
-        notes = request.form.get("notes", "").strip()
+        # Pay and the notes are the owner's, here as on edit_employee: anybody
+        # else adds the person and the owner sets what they are paid.
+        is_owner = current_user()["role"] == "owner"
+        pay_rate = request.form.get("pay_rate", "").strip() if is_owner else ""
+        pay_type = request.form.get("pay_type", "").strip() if is_owner else ""
+        notes = request.form.get("notes", "").strip() if is_owner else ""
         annual_leave_days = request.form.get("annual_leave_days", "").strip()
         annual_leave_days = int(annual_leave_days) if annual_leave_days.isdigit() else None
         contract_type, contract_end_date, trial_end_date, notice_period_days = contract_fields_from_form()
@@ -35521,6 +35605,10 @@ def new_employee():
             # mail server's timeout has no business holding the write lock.
             sent, why = send_staff_sign_in_letter(email, new_employee_row, onboarding_url)
             sign_in_letter_flash(name, email, onboarding_url, sent, why)
+            # The new profile is the owner's to read; anybody else goes back to
+            # the Team page rather than to a 403 that hides the link above.
+            if not is_owner:
+                return redirect(url_for("directory"))
             return redirect(url_for("profile", user_id=new_employee_row["id"]))
         except sqlite3.IntegrityError:
             conn.close()
@@ -35646,7 +35734,11 @@ def profile(user_id):
 @owner_required
 # On the form as well as the save: the form shows pay, notes and the contract,
 # and it is the owner's record of somebody senior, not the caller's to read.
-@refuses_upwards("changing their record")
+# Nor their own: the part of it that is theirs has its own page.
+@refuses_upwards("changing their record",
+                 own=OWN_RECORD + " Your phone number and emergency contact "
+                                  "are yours, here.",
+                 own_back="edit_own_contact_info")
 def edit_employee(user_id):
     conn = get_db()
     person = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -35675,9 +35767,17 @@ def edit_employee(user_id):
                     "AND id != ?", (user_id,)).fetchone()):
             status = "active"
             status_kept = True
-        pay_rate = request.form.get("pay_rate", "").strip()
-        pay_type = request.form.get("pay_type", "").strip()
-        notes = request.form.get("notes", "").strip()
+        # PAY AND THE NOTES ARE THE OWNER'S. Pay history on a profile is the
+        # owner's alone and the profile calls the notes "private to you, not
+        # shown to" the person -- so for anybody else the form does not draw
+        # them, and whatever arrives in their place is ignored: the stored
+        # values are written back as they were, and no pay change is recorded.
+        if current_user()["role"] == "owner":
+            pay_rate = request.form.get("pay_rate", "").strip()
+            pay_type = request.form.get("pay_type", "").strip()
+            notes = request.form.get("notes", "").strip()
+        else:
+            pay_rate, pay_type, notes = person["pay_rate"], person["pay_type"], person["notes"]
         skills = request.form.get("skills", "").strip()
         emergency_contact_name = request.form.get("emergency_contact_name", "").strip()
         emergency_contact_phone = request.form.get("emergency_contact_phone", "").strip()
@@ -36496,7 +36596,8 @@ def new_certification():
         flash("That employee is no longer on the team — the list has changed "
               "since this page was opened.", "error")
         return redirect(url_for("admin_hr"))
-    refused = refused_upwards_for(conn, int(user_id), "recording their certifications")
+    refused = refused_upwards_for(conn, int(user_id), "recording their certifications",
+                                  own=OWN_HR_RECORD)
     if refused:
         conn.close()
         return refused
@@ -36526,7 +36627,8 @@ def delete_certification(cert_id):
     cert = conn.execute("SELECT user_id FROM certifications WHERE id = ?",
                         (cert_id,)).fetchone()
     refused = cert and refused_upwards_for(conn, cert["user_id"],
-                                           "removing their certifications")
+                                           "removing their certifications",
+                                           own=OWN_HR_RECORD)
     if refused:
         conn.close()
         return refused
@@ -36558,7 +36660,8 @@ def new_absence():
         flash("That employee is no longer on the team — the list has changed "
               "since this page was opened.", "error")
         return redirect(url_for("admin_hr"))
-    refused = refused_upwards_for(conn, int(user_id), "recording their absences")
+    refused = refused_upwards_for(conn, int(user_id), "recording their absences",
+                                  own=OWN_HR_RECORD)
     if refused:
         conn.close()
         return refused
@@ -36585,7 +36688,8 @@ def absence_return_to_work(absence_id):
     absence = conn.execute("SELECT user_id FROM absences WHERE id = ?",
                            (absence_id,)).fetchone()
     refused = absence and refused_upwards_for(conn, absence["user_id"],
-                                              "recording their return to work")
+                                              "recording their return to work",
+                                              own=OWN_HR_RECORD)
     if refused:
         conn.close()
         return refused
@@ -36611,8 +36715,9 @@ def new_performance_review():
     rating = request.form.get("overall_rating", "").strip()
     conn = get_db()
     # Somebody who reaches more of the house than you is not yours to review:
-    # a shared review is what a promotion or a dismissal is argued from.
-    refused = refused_upwards_for(conn, int(user_id), "reviewing them")
+    # a shared review is what a promotion or a dismissal is argued from. Nor
+    # are you.
+    refused = refused_upwards_for(conn, int(user_id), "reviewing them", own=OWN_HR_RECORD)
     if refused:
         conn.close()
         return refused
@@ -36647,7 +36752,8 @@ def share_performance_review(review_id):
     if not review:
         conn.close()
         abort(404)
-    refused = refused_upwards_for(conn, review["user_id"], "sharing their review")
+    refused = refused_upwards_for(conn, review["user_id"], "sharing their review",
+                                  own=OWN_HR_RECORD)
     if refused:
         conn.close()
         return refused
@@ -39436,6 +39542,8 @@ def arrive_signin(user_id):
 
 @app.route("/directory/<int:user_id>/set-pin", methods=["POST"])
 @owner_required
+# Their own as well, by default: the PIN is what puts somebody on the
+# timesheet, and the profile's PIN card says it is set for them, not by them.
 @refuses_upwards("setting their arrival PIN")
 def set_quick_pin(user_id):
     """Set or clear a staff member's arrival PIN."""
@@ -40483,6 +40591,14 @@ def new_wage_record():
         flash("That employee is no longer on the team — the list has changed "
               "since this page was opened.", "error")
         return redirect(url_for("admin_wages"))
+    # The wage is the figure payroll and Money ahead read, and the owner sets
+    # it. Anybody with `payroll` -- two presets -- could record their own, or
+    # a colleague's who reaches more than they do.
+    refused = refused_upwards_for(conn, int(user_id), "recording their wage",
+                                  back="admin_wages", own=OWN_WAGE)
+    if refused:
+        conn.close()
+        return refused
     conn.execute(
         """INSERT INTO wage_records (user_id, effective_from, basis, gross_amount,
            employer_rate, note, created_by_user_id, created_at)
@@ -40565,6 +40681,13 @@ def repair_time_entry(entry_id):
     if not entry:
         conn.close()
         abort(404)
+    # Hours are what somebody is paid for: not yours to change for anybody who
+    # reaches more than you, nor for yourself.
+    refused = refused_upwards_for(conn, entry["user_id"], "correcting their hours",
+                                  back="admin_timesheets", own=OWN_HOURS)
+    if refused:
+        conn.close()
+        return refused
 
     action = request.form.get("action", "")
     clock_in = parse_datetime_iso(entry["clock_in_at"])
@@ -40609,6 +40732,11 @@ def resolve_timesheet_correction(correction_id):
     if not correction:
         conn.close()
         abort(404)
+    refused = refused_upwards_for(conn, correction["user_id"], "correcting their hours",
+                                  back="admin_timesheet_corrections", own=OWN_HOURS)
+    if refused:
+        conn.close()
+        return refused
     entry = conn.execute(
         "SELECT * FROM time_entries WHERE id = ?", (correction["time_entry_id"],)
     ).fetchone()
@@ -40670,6 +40798,11 @@ def dismiss_timesheet_correction(correction_id):
         conn.close()
         flash("That correction has already been dealt with.", "error")
         return redirect(url_for("admin_timesheet_corrections"))
+    refused = refused_upwards_for(conn, correction["user_id"], "turning down their correction",
+                                  back="admin_timesheet_corrections", own=OWN_HOURS)
+    if refused:
+        conn.close()
+        return refused
     conn.execute(
         """UPDATE timesheet_corrections SET status = 'dismissed', resolved_at = ?
            WHERE id = ? AND status = 'pending'""",
@@ -40779,6 +40912,8 @@ def upload_absence_note(absence_id):
     if not absence:
         conn.close()
         abort(404)
+    # Their own note is NOT refused (no `own`): it is evidence they bring,
+    # not a judgement made about them, and they cannot reopen it once filed.
     refused = refused_upwards_for(conn, absence["user_id"], "attaching their doctor's note")
     if refused:
         conn.close()
@@ -87687,7 +87822,7 @@ def bulk_approve_queue():
             req = conn.execute(
                 "SELECT * FROM leave_requests WHERE id = ?", (item_id,)
             ).fetchone()
-            who = conn.execute("SELECT name FROM users WHERE id = ?",
+            who = conn.execute("SELECT * FROM users WHERE id = ?",
                                (req["user_id"],)).fetchone() if req else None
             if not req:
                 skipped.append((f"time off #{item_id}", "no longer there"))
@@ -87695,6 +87830,17 @@ def bulk_approve_queue():
             if req["status"] != "pending":
                 skipped.append((who["name"] if who else f"time off #{item_id}",
                                 f"already {req['status']}"))
+                continue
+            # The question decide_leave asks, asked here too: ticked in a
+            # batch, the manager's time off and your own were approved without
+            # it, and the page said "Approved".
+            why = who and why_not_act_on(who, own=True)
+            if why:
+                skipped.append((who["name"], {
+                    "own": "your own time off is the owner's to decide",
+                    "upwards": "they can reach more of the app than you can, "
+                               "so their time off is the owner's to decide",
+                }[why]))
                 continue
             conn.execute(
                 "UPDATE leave_requests SET status = 'approved', decided_at = ? WHERE id = ?",
@@ -87938,6 +88084,15 @@ def decide_leave(request_id):
     if status not in ("approved", "declined"):
         abort(400)
     conn = get_db()
+    # Not the time off of somebody who reaches more than you, and not your
+    # own: the bulk queue asks the same question (bulk_approve_queue).
+    asked = conn.execute("SELECT user_id FROM leave_requests WHERE id = ?",
+                         (request_id,)).fetchone()
+    refused = asked and refused_upwards_for(conn, asked["user_id"], "deciding their time off",
+                                            back="admin_leave", own=OWN_TIME_OFF)
+    if refused:
+        conn.close()
+        return refused
     ok, message, req = apply_leave_decision(conn, request_id, status)
     conn.close()
     if req is None:

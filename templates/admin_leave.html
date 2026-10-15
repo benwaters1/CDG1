@@ -93,10 +93,17 @@
     {% endif %}
 
     {% if r['status'] == 'pending' %}
+    {# Not drawn where decide_leave would refuse it: your own time off, or
+       that of somebody who can reach more of the app than you can. #}
+    {% set why = acts_on(r['user_id']) %}
+    {% if why %}
+    <p class="upload-hint">{{ "Your own, so the owner decides it." if why == 'own' else "The owner's to decide: " ~ r['employee_name'] ~ " can reach more of the app than you can." }}</p>
+    {% else %}
     <div class="expense-actions">
       <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
       <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="declined"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
     </div>
+    {% endif %}
     {% endif %}
   </div>
   {% endfor %}

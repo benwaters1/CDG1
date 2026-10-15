@@ -25,19 +25,27 @@
   {% set r = item['row'] %}
   <div class="expense-card">
     {% if item['kind'] == 'leave' %}
+    {# Your own time off, or the time off of somebody who reaches more of the
+       app than you, is refused by decide_leave and skipped by the bulk
+       approve alike -- so neither the buttons nor the tick box are drawn. #}
+    {% set why = acts_on(r['user_id']) %}
     <div class="expense-head">
       <div>
-        <input type="checkbox" name="items" value="leave:{{ r['id'] }}" form="bulk-approve-form" class="bulk-check" style="margin-right:8px;">
+        {% if not why %}<input type="checkbox" name="items" value="leave:{{ r['id'] }}" form="bulk-approve-form" class="bulk-check" style="margin-right:8px;">{% endif %}
         <span class="mini-status status-pending" style="margin-right:8px;">Time off</span>
         <strong>{{ r['employee_name'] }}</strong> — {{ date_range(r['start_date'], r['end_date']) }}
       </div>
     </div>
     {% if r['reason'] %}<p class="manual-body">{{ r['reason'] }}</p>{% endif %}
     <p class="upload-hint">Requested {{ r['requested_at']|house_day|date_short }} · <a href="{{ url_for('admin_leave') }}" style="color:inherit;">full time off list</a></p>
+    {% if why %}
+    <p class="upload-hint">{{ "Your own, so the owner decides it." if why == 'own' else "The owner's to decide: " ~ r['employee_name'] ~ " can reach more of the app than you can." }}</p>
+    {% else %}
     <div class="expense-actions">
       <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
       <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="declined"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
     </div>
+    {% endif %}
     {% elif item['kind'] == 'correction' %}
     {# Deliberately has no bulk checkbox: "approve everything" shouldn't
        silently rewrite timesheets, which is a pay record. #}
@@ -52,10 +60,15 @@
       {% if r['clock_in_at'] %}Logged {{ local_datetime_str(r['clock_in_at']) }}{% if r['clock_out_at'] %} → {{ local_datetime_str(r['clock_out_at']) }}{% else %} → still open{% endif %} · {% endif %}
       Raised {{ r['created_at']|house_day|date_short }} · <a href="{{ url_for('admin_timesheet_corrections') }}" style="color:inherit;">all corrections</a>
     </p>
+    {% set why = acts_on(r['user_id']) %}
+    {% if why %}
+    <p class="upload-hint">{{ "Your own hours, so the owner corrects them." if why == 'own' else "The owner's to correct: " ~ r['employee_name'] ~ " can reach more of the app than you can." }}</p>
+    {% else %}
     <div class="expense-actions">
       <form method="post" action="{{ url_for('resolve_timesheet_correction', correction_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Mark resolved</button></form>
       <form method="post" action="{{ url_for('dismiss_timesheet_correction', correction_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini btn-mini-danger">Dismiss</button></form>
     </div>
+    {% endif %}
     {% else %}
     <div class="expense-head">
       <div>

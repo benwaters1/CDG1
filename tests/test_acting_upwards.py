@@ -96,6 +96,14 @@ def _cleanup(conn):
         "SELECT id FROM users WHERE email LIKE ? OR name LIKE ?", (TAG + "%", TAG + "%"))]
     if ids:
         marks = ",".join("?" * len(ids))
+        # The files behind their documents -- a person added through the form
+        # gets a draft agreement on the disk -- before the rows that name them.
+        for row in conn.execute(f"SELECT filename FROM documents WHERE user_id IN ({marks})",
+                                ids).fetchall():
+            try:
+                os.remove(os.path.join(m.UPLOAD_DIR, row["filename"]))
+            except OSError:
+                pass
         # Every column anywhere that points at users, cascading or not: the
         # audit log keeps its actors, and a review keeps its reviewer.
         tables = [r["name"] for r in conn.execute(
@@ -246,13 +254,37 @@ def _checks(s, conn, oc, owner_id):
     s.check("and changes their pay", _row(conn, wide["id"])["pay_rate"] == "€16/hour", r)
 
     s.section("A peer on the same preset may, and lands somewhere they can read")
+    r = nc.get(f"/directory/{peer['id']}/edit")
+    page = r.get_data(as_text=True)
+    s.check("the peer's form opens", r.status_code == 200, detail=f"HTTP {r.status_code}")
+    s.check("without the pay on it -- that is the owner's",
+            'name="pay_rate"' not in page and 'name="pay_type"' not in page)
+    s.check("or the notes the profile calls private to the owner",
+            'name="notes"' not in page and "as found" not in page)
     r = nc.post(f"/directory/{peer['id']}/edit",
-                data=_form_of(peer, notes=f"{TAG} handover"), follow_redirects=True)
-    s.check("the peer's notes changed", _row(conn, peer["id"])["notes"] == f"{TAG} handover", r)
+                data=_form_of(peer, skills=f"{TAG} first aid", pay_rate="€99/hour",
+                              pay_type="Monthly", notes=f"{TAG} handover"),
+                follow_redirects=True)
+    after = _row(conn, peer["id"])
+    s.check("the peer's skills changed", after["skills"] == f"{TAG} first aid", r)
+    s.check("but pay and notes posted anyway were ignored",
+            after["pay_rate"] == "€14/hour" and after["pay_type"] is None
+            and after["notes"] == "as found",
+            detail=f"{after['pay_rate']!r} / {after['pay_type']!r} / {after['notes']!r}")
+    s.check("and no pay change was written down for them",
+            not conn.execute("SELECT 1 FROM pay_rate_history WHERE user_id = ?",
+                             (peer["id"],)).fetchone())
     s.check("on the Team page, with the confirmation -- not a 403 hiding whether it saved",
             r.status_code == 200 and _landed(r) == "/directory"
             and "Profile updated." in _said(r),
             detail=f"HTTP {r.status_code} at {_landed(r)}: {_said(r)}")
+    r = oc.get(f"/directory/{peer['id']}/edit")
+    page = r.get_data(as_text=True)
+    s.check("the owner's form for the same person has both -- or the two above prove nothing",
+            'name="pay_rate"' in page and 'name="notes"' in page and "as found" in page)
+    oc.post(f"/directory/{peer['id']}/edit",
+            data=_form_of(_row(conn, peer["id"]), notes=f"{TAG} owner's note"))
+    s.check("and the owner changes the notes", _row(conn, peer["id"])["notes"] == f"{TAG} owner's note")
 
     # ====================================================== the last owner
     s.section("The last active owner cannot be marked inactive, even by themselves")
@@ -524,6 +556,381 @@ def _checks(s, conn, oc, owner_id):
             s.check(f"{who}'s {table} row is still there",
                     conn.execute(f"SELECT 1 FROM {table} WHERE id = ?",
                                  (item_ids[(target, table)],)).fetchone() is not None)
+
+    sent = []
+    was_mail, was_note = m.send_email, m.send_notification
+    m.send_email = lambda *a, **kw: sent.append(a) or False
+    m.send_notification = lambda *a, **kw: sent.append(a)
+    try:
+        _own_record(s, conn, oc, nc, fc, narrow, peer, full)
+        _pay_history(s, conn, oc, nc, fc, wide, peer, small_owner)
+        _rota(s, conn, oc, nc, _client(wide["id"]), narrow, peer, wide, full, small_owner)
+        _wages(s, conn, oc, _client(wide["id"]), narrow, wide, full, small_owner)
+    finally:
+        m.send_email, m.send_notification = was_mail, was_note
+
+
+def _said_own(r, sentence):
+    """Refused because it is their own: the sentence, on a page they can read."""
+    return r.status_code == 200 and sentence in _said(r)
+
+
+def _own_record(s, conn, oc, nc, fc, narrow, peer, full):
+    # ====================================================== their own record
+    s.section("Nobody but an owner changes their own record")
+    own = m.OWN_RECORD
+    r = nc.get(f"/directory/{narrow['id']}/edit", follow_redirects=True)
+    s.check("their own edit form is refused, readably", _said_own(r, own), r,
+            detail=f"HTTP {r.status_code} at {_landed(r)}: {_said(r)}")
+    s.check("and sends them to the page for the part that IS theirs",
+            _landed(r) == "/my-contact-info", detail=_landed(r))
+    s.check("without their pay, or the owner's notes about them, on it",
+            'name="pay_rate"' not in r.get_data(as_text=True)
+            and "as found" not in r.get_data(as_text=True))
+    before = dict(_row(conn, narrow["id"]))
+    r = nc.post(f"/directory/{narrow['id']}/edit",
+                data=_form_of(narrow, pay_rate="€40/hour", status="inactive",
+                              annual_leave_days="60", notes=f"{TAG} mine"),
+                follow_redirects=True)
+    after = dict(_row(conn, narrow["id"]))
+    s.check("posting it anyway is refused", _said_own(r, own), r)
+    s.check("their pay, status, leave and notes are as they were",
+            {k: after[k] for k in ("pay_rate", "status", "annual_leave_days", "notes")}
+            == {k: before[k] for k in ("pay_rate", "status", "annual_leave_days", "notes")},
+            detail=str({k: after[k] for k in ("pay_rate", "status", "annual_leave_days", "notes")}))
+    s.check("and no pay change was written down",
+            not conn.execute("SELECT 1 FROM pay_rate_history WHERE user_id = ?",
+                             (narrow["id"],)).fetchone())
+    r = fc.post(f"/directory/{full['id']}/edit",
+                data=_form_of(full, pay_rate="€40/hour"), follow_redirects=True)
+    s.check("nor does full-access staff, who reaches every page",
+            _said_own(r, own) and _row(conn, full["id"])["pay_rate"] == "€14/hour", r)
+
+    s.section("Every route under /directory/<id>/ refuses the person it is about")
+    item_ids = {}
+    for table, col, extra in (("onboarding_items", "label", ", sort_order"),
+                              ("offboarding_items", "label", ", sort_order"),
+                              ("equipment_items", "label", ""),
+                              ("check_in_notes", "body", "")):
+        stamp = "issued_at" if table == "equipment_items" else "created_at"
+        conn.execute(f"INSERT INTO {table} (user_id, {col}{extra}, {stamp}) "
+                     f"VALUES (?, ?{', 0' if extra else ''}, ?)",
+                     (narrow["id"], f"{TAG} own {table}", NOW))
+        item_ids[table] = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    conn.commit()
+    # Reading their own profile and adding their own document are theirs, and
+    # are not decorated; everything that CHANGES the record is.
+    theirs = {"profile", "upload_document"}
+    rules = sorted((r for r in m.app.url_map.iter_rules()
+                    if r.rule.startswith("/directory/<int:user_id>")
+                    and r.endpoint not in theirs), key=lambda r: r.rule)
+    s.check("the sweep finds the routes it is meant to",
+            {"edit_employee", "set_quick_pin", "toggle_employee_status", "delete_employee",
+             "regenerate_invite", "change_staff_email"} <= {r.endpoint for r in rules},
+            detail=str(sorted(r.endpoint for r in rules)))
+    before = dict(_row(conn, narrow["id"]))
+    for rule in rules:
+        url = rule.rule.replace("<int:user_id>", str(narrow["id"]))
+        for seg, table in (("/onboarding/", "onboarding_items"),
+                           ("/offboarding/", "offboarding_items"),
+                           ("/equipment/", "equipment_items"), ("/notes/", "check_in_notes")):
+            if seg in rule.rule:
+                url = re.sub(r"<int:\w+>", str(item_ids[table]), url)
+        for method in sorted(rule.methods - {"HEAD", "OPTIONS"}):
+            r = nc.open(url, method=method, follow_redirects=True)
+            # The 1:1 notes are in no area, so they answer 403 before asking.
+            s.check(f"{method} {rule.rule}: the rota on themselves",
+                    r.status_code == 403 or _said_own(r, own), r,
+                    detail=f"HTTP {r.status_code} at {_landed(r)}: {_said(r)}")
+    changed = {k for k, v in dict(_row(conn, narrow["id"])).items() if before[k] != v}
+    s.check("and nothing on their own row moved", not changed, detail=str(sorted(changed)))
+    for table, item in item_ids.items():
+        s.check(f"their own {table} row is still there",
+                conn.execute(f"SELECT 1 FROM {table} WHERE id = ?", (item,)).fetchone()
+                is not None)
+    oc.post(f"/directory/{narrow['id']}/set-pin", data={"pin": "5937"})
+    s.check("while the owner still sets their PIN -- the refusal is not of everybody",
+            bool(_row(conn, narrow["id"])["quick_pin_hash"]))
+
+    s.section("Adding somebody: pay and notes are the owner's there too")
+    for caller, by, email in ((nc, "the rota", f"{TAG}.newbie@example.com"),
+                              (oc, "the owner", f"{TAG}.owners-newbie@example.com")):
+        caller.post("/directory/new", data={
+            "name": f"{TAG} New {by}", "email": email, "job_role": "Housekeeper",
+            "pay_rate": "€30/hour", "pay_type": "Hourly", "notes": f"{TAG} secret"})
+        made = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        s.check(f"{by} adds them", made is not None)
+        if made is None:
+            continue
+        if caller is nc:
+            s.check("with no pay and no notes, whatever was posted",
+                    not made["pay_rate"] and not made["pay_type"] and not made["notes"],
+                    detail=f"{made['pay_rate']!r} / {made['notes']!r}")
+        else:
+            s.check("with the pay and notes the owner gave",
+                    made["pay_rate"] == "€30/hour" and made["notes"] == f"{TAG} secret")
+
+    s.section("And their own HR record, on the HR page")
+    hr_own = m.OWN_HR_RECORD
+
+    def count(table, extra="1=1"):
+        return conn.execute(f"SELECT COUNT(*) FROM {table} WHERE user_id = ? AND {extra}",
+                            (narrow["id"],)).fetchone()[0]
+
+    r = nc.post("/admin/hr/absences/new", data={
+        "user_id": narrow["id"], "start_date": "2026-10-01", "kind": "sick"},
+        follow_redirects=True)
+    s.check("no absence recorded against themselves",
+            _said_own(r, hr_own) and count("absences") == 0, r, detail=_said(r))
+    r = nc.post("/admin/hr/certifications/new", data={
+        "user_id": narrow["id"], "name": f"{TAG} own cert"}, follow_redirects=True)
+    s.check("no certification of their own vouched for by themselves",
+            _said_own(r, hr_own) and count("certifications") == 0, r)
+    r = nc.post("/admin/hr/reviews/new", data={
+        "user_id": narrow["id"], "review_date": "2026-10-15", "strengths": TAG},
+        follow_redirects=True)
+    s.check("no review of themselves", _said_own(r, hr_own) and count("performance_reviews") == 0, r)
+    conn.execute("INSERT INTO certifications (user_id, name, required, created_at) "
+                 "VALUES (?, ?, 1, ?)", (narrow["id"], f"{TAG} lapsed", NOW))
+    conn.execute("INSERT INTO absences (user_id, start_date, end_date, kind, created_at) "
+                 "VALUES (?, '2026-09-01', '2026-09-02', 'sick', ?)", (narrow["id"], NOW))
+    conn.execute("INSERT INTO performance_reviews (user_id, reviewer_user_id, review_date, "
+                 "status, created_at) VALUES (?, ?, '2026-10-15', 'draft', ?)",
+                 (narrow["id"], peer["id"], NOW))
+    conn.commit()
+    cert = conn.execute("SELECT id FROM certifications WHERE user_id = ?",
+                        (narrow["id"],)).fetchone()["id"]
+    absence = conn.execute("SELECT id FROM absences WHERE user_id = ?",
+                           (narrow["id"],)).fetchone()["id"]
+    review = conn.execute("SELECT id FROM performance_reviews WHERE user_id = ?",
+                          (narrow["id"],)).fetchone()["id"]
+    r = nc.post(f"/admin/hr/certifications/{cert}/delete", follow_redirects=True)
+    s.check("nor a lapsed one of their own quietly removed",
+            _said_own(r, hr_own) and count("certifications") == 1, r)
+    r = nc.post(f"/admin/hr/absences/{absence}/return-to-work",
+                data={"return_to_work_note": TAG}, follow_redirects=True)
+    s.check("nor their own return to work signed off",
+            _said_own(r, hr_own) and count("absences", "return_to_work_done_at IS NOT NULL") == 0, r)
+    r = nc.post(f"/admin/hr/reviews/{review}/share", follow_redirects=True)
+    s.check("nor a review of them shared by them",
+            _said_own(r, hr_own) and count("performance_reviews", "status = 'draft'") == 1, r)
+    r = nc.post(f"/hr/absences/{absence}/note", follow_redirects=True)
+    s.check("their own doctor's note IS theirs to hand in -- it asks for the file",
+            "Choose a file first." in _said(r) and hr_own not in _said(r), r, detail=_said(r))
+
+
+def _pay_history(s, conn, oc, nc, fc, wide, peer, small_owner):
+    # ====================================================== pay history
+    s.section("The pay history export is the owner's, as pay history on a profile is")
+    url = "/directory/pay-history/export.csv"
+    s.check("owner-only on purpose", "export_pay_history_csv" in m.OWNER_ONLY_ENDPOINTS)
+    s.check("and in no area", "export_pay_history_csv" not in m.ENDPOINT_AREA)
+    conn.execute("INSERT INTO pay_rate_history (user_id, old_pay_rate, new_pay_rate, "
+                 "changed_by_user_id, changed_at) VALUES (?, '€14/hour', '€15/hour', ?, ?)",
+                 (wide["id"], wide["id"], NOW))
+    conn.commit()
+    for caller, by in ((nc, "the rota (team)"), (_client(wide["id"]), "the manager (team and payroll)"),
+                       (fc, "full-access staff")):
+        r = caller.get(url)
+        s.check(f"{by} cannot download it", r.status_code == 403,
+                detail=f"HTTP {r.status_code}: {r.get_data(as_text=True)[:80]!r}")
+    r = oc.get(url)
+    body = r.get_data(as_text=True)
+    s.check("the owner can, with the manager's change in it",
+            r.status_code == 200 and wide["name"] in body and "€15/hour" in body,
+            detail=f"HTTP {r.status_code}")
+
+    page = oc.get("/directory").get_data(as_text=True)
+    s.check("the owner's Team page links to it", url in page,
+            detail="if this fails the check below proves nothing")
+    conn.execute("UPDATE users SET status = 'active' WHERE id = ?", (small_owner["id"],))
+    conn.commit()
+    try:
+        r = _client(small_owner["id"]).get("/directory")
+        page = r.get_data(as_text=True)
+        s.check("an owner on a narrow preset gets the Team page's owner links "
+                "without one that answers 403",
+                r.status_code == 200 and "/directory/export.csv" in page and url not in page,
+                detail=f"HTTP {r.status_code}")
+    finally:
+        conn.execute("UPDATE users SET status = 'inactive' WHERE id = ?", (small_owner["id"],))
+        conn.commit()
+
+
+def _rota(s, conn, oc, nc, wc, narrow, peer, wide, full, small_owner):
+    # ====================================================== time off
+    s.section("Deciding time off is refused upwards, and for your own")
+    asked = {}
+    for person in (narrow, peer, wide, full, small_owner):
+        conn.execute("INSERT INTO leave_requests (user_id, start_date, end_date, reason, "
+                     "leave_type, status, requested_at) VALUES (?, '2026-12-01', '2026-12-03', "
+                     "?, 'vacation', 'pending', ?)", (person["id"], TAG, NOW))
+        asked[person["id"]] = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    conn.commit()
+
+    def leave(person):
+        return conn.execute("SELECT status FROM leave_requests WHERE id = ?",
+                            (asked[person["id"]],)).fetchone()["status"]
+
+    page = nc.get("/admin/leave", query_string={"who": peer["name"]}).get_data(as_text=True)
+    s.check("the rota's leave page offers a peer's decision",
+            f"/admin/leave/{asked[peer['id']]}/decide" in page,
+            detail="if this fails the two below prove nothing")
+    page = nc.get("/admin/leave", query_string={"who": wide["name"]}).get_data(as_text=True)
+    s.check("but not the manager's, and says why",
+            f"/admin/leave/{asked[wide['id']]}/decide" not in page
+            and "can reach more of the app than you can" in html.unescape(page))
+    page = nc.get("/admin/leave", query_string={"who": narrow["name"]}).get_data(as_text=True)
+    s.check("nor their own", f"/admin/leave/{asked[narrow['id']]}/decide" not in page
+            and "Your own, so the owner decides it." in html.unescape(page))
+
+    for person, who in ((wide, "the manager"), (small_owner, "an owner"),
+                        (full, "full-access staff")):
+        r = nc.post(f"/admin/leave/{asked[person['id']]}/decide",
+                    data={"status": "approved"}, follow_redirects=True)
+        s.check(f"the rota cannot approve {who}'s time off",
+                _refused(r) and leave(person) == "pending", r, detail=_said(r))
+    s.check("and the refusal lands on the leave page",
+            _landed(r) == "/admin/leave", detail=_landed(r))
+    r = nc.post(f"/admin/leave/{asked[narrow['id']]}/decide",
+                data={"status": "approved"}, follow_redirects=True)
+    s.check("nor their own", _said_own(r, m.OWN_TIME_OFF) and leave(narrow) == "pending", r,
+            detail=_said(r))
+    nc.post(f"/admin/leave/{asked[peer['id']]}/decide", data={"status": "declined"})
+    s.check("but a peer's, yes", leave(peer) == "declined")
+
+    s.section("The bulk approve asks the same question, and says what it skipped")
+    page = wc.get("/admin/approvals").get_data(as_text=True)
+    s.check("the manager's queue has a tick box for the rota's time off",
+            f'value="leave:{asked[narrow["id"]]}"' in page,
+            detail="if this fails the check below proves nothing")
+    s.check("and none for their own, an owner's, or full-access staff's",
+            not any(f'value="leave:{asked[p["id"]]}"' in page for p in (wide, small_owner, full)))
+    r = wc.post("/admin/approvals/bulk", data={"items": [
+        f"leave:{asked[p['id']]}" for p in (narrow, wide, small_owner, full)]},
+        follow_redirects=True)
+    said = _said(r)
+    s.check("the rota's is approved", leave(narrow) == "approved", r, detail=said)
+    s.check("their own, the owner's and full-access staff's are not",
+            leave(wide) == leave(small_owner) == leave(full) == "pending",
+            detail=f"{leave(wide)} / {leave(small_owner)} / {leave(full)}")
+    s.check("and the message names them, with why -- not a cheerful total",
+            "Approved 1 of 4" in said and wide["name"] in said
+            and "your own time off is the owner's to decide" in said
+            and small_owner["name"] in said and full["name"] in said
+            and "can reach more of the app than you can" in said, detail=said)
+    oc.post(f"/admin/leave/{asked[wide['id']]}/decide", data={"status": "approved"})
+    s.check("the owner approves the manager's", leave(wide) == "approved")
+
+    # ====================================================== hours
+    s.section("Correcting somebody's hours is refused upwards, and for your own")
+    entry = {}
+    for person in (narrow, peer, wide, small_owner):
+        # Ends before it starts: the kind repair_time_entry exists to fix.
+        conn.execute("INSERT INTO time_entries (user_id, clock_in_at, clock_out_at, auto_closed) "
+                     "VALUES (?, '2026-10-10T16:00:00+00:00', '2026-10-10T08:00:00+00:00', 0)",
+                     (person["id"],))
+        entry[person["id"]] = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    conn.commit()
+
+    def clock_out(person):
+        return conn.execute("SELECT clock_out_at FROM time_entries WHERE id = ?",
+                            (entry[person["id"]],)).fetchone()["clock_out_at"]
+
+    page = nc.get("/admin/timesheets", query_string={"who": peer["name"]}).get_data(as_text=True)
+    s.check("the rota's timesheets offer to fix a peer's clocking",
+            f"/admin/timesheets/{entry[peer['id']]}/repair" in page,
+            detail="if this fails the two below prove nothing")
+    page = nc.get("/admin/timesheets", query_string={"who": wide["name"]}).get_data(as_text=True)
+    s.check("but not the manager's", f"/admin/timesheets/{entry[wide['id']]}/repair" not in page
+            and "can reach more of the app than you can" in html.unescape(page))
+    page = nc.get("/admin/timesheets", query_string={"who": narrow["name"]}).get_data(as_text=True)
+    s.check("nor their own", f"/admin/timesheets/{entry[narrow['id']]}/repair" not in page
+            and "Your own hours, so the owner corrects them." in html.unescape(page))
+
+    for person, who in ((wide, "the manager"), (small_owner, "an owner")):
+        r = nc.post(f"/admin/timesheets/{entry[person['id']]}/repair",
+                    data={"action": "void"}, follow_redirects=True)
+        s.check(f"the rota cannot repair {who}'s clocking",
+                _refused(r) and clock_out(person) == "2026-10-10T08:00:00+00:00", r)
+    r = nc.post(f"/admin/timesheets/{entry[narrow['id']]}/repair",
+                data={"action": "void"}, follow_redirects=True)
+    s.check("nor their own", _said_own(r, m.OWN_HOURS)
+            and clock_out(narrow) == "2026-10-10T08:00:00+00:00", r, detail=_said(r))
+    nc.post(f"/admin/timesheets/{entry[peer['id']]}/repair", data={"action": "void"})
+    s.check("but a peer's, yes", clock_out(peer) == "2026-10-10T16:00:00+00:00")
+    oc.post(f"/admin/timesheets/{entry[wide['id']]}/repair", data={"action": "void"})
+    s.check("and the owner repairs the manager's", clock_out(wide) == "2026-10-10T16:00:00+00:00")
+
+    s.section("And so is deciding a correction somebody asked for")
+    asked_fix = {}
+    for person in (narrow, peer, wide):
+        for n in (1, 2):
+            conn.execute("INSERT INTO timesheet_corrections (time_entry_id, user_id, note, "
+                         "status, created_at) VALUES (?, ?, ?, 'pending', ?)",
+                         (entry[person["id"]], person["id"], f"{TAG} fix {n}", NOW))
+            asked_fix[(person["id"], n)] = conn.execute(
+                "SELECT last_insert_rowid() AS id").fetchone()["id"]
+    conn.commit()
+
+    def fix(person, n):
+        return conn.execute("SELECT status FROM timesheet_corrections WHERE id = ?",
+                            (asked_fix[(person["id"], n)],)).fetchone()["status"]
+
+    page = nc.get("/admin/timesheets/corrections").get_data(as_text=True)
+    s.check("the corrections page offers a peer's",
+            f"/admin/timesheets/corrections/{asked_fix[(peer['id'], 1)]}/resolve" in page,
+            detail="if this fails the check below proves nothing")
+    s.check("but not the manager's, nor their own",
+            not any(f"/admin/timesheets/corrections/{asked_fix[(p['id'], n)]}/{verb}" in page
+                    for p in (wide, narrow) for n in (1, 2) for verb in ("resolve", "dismiss")))
+    for verb, n in (("resolve", 1), ("dismiss", 2)):
+        r = nc.post(f"/admin/timesheets/corrections/{asked_fix[(wide['id'], n)]}/{verb}",
+                    data={"clock_in_time": "09:00"}, follow_redirects=True)
+        s.check(f"the rota cannot {verb} the manager's", _refused(r) and fix(wide, n) == "pending", r)
+        r = nc.post(f"/admin/timesheets/corrections/{asked_fix[(narrow['id'], n)]}/{verb}",
+                    data={"clock_in_time": "09:00"}, follow_redirects=True)
+        s.check(f"nor {verb} their own", _said_own(r, m.OWN_HOURS)
+                and fix(narrow, n) == "pending", r, detail=_said(r))
+        nc.post(f"/admin/timesheets/corrections/{asked_fix[(peer['id'], n)]}/{verb}")
+        s.check(f"but {verb} a peer's, yes",
+                fix(peer, n) == ("resolved" if verb == "resolve" else "dismissed"))
+    s.check("and the manager's clocking was never moved",
+            conn.execute("SELECT clock_in_at FROM time_entries WHERE id = ?",
+                         (entry[wide["id"]],)).fetchone()["clock_in_at"]
+            == "2026-10-10T16:00:00+00:00")
+
+
+def _wages(s, conn, oc, wc, narrow, wide, full, small_owner):
+    # ====================================================== wages
+    s.section("Recording a wage is refused upwards, and for your own")
+
+    def wages(person):
+        return conn.execute("SELECT COUNT(*) FROM wage_records WHERE user_id = ?",
+                            (person["id"],)).fetchone()[0]
+
+    def record(caller, person):
+        return caller.post("/admin/payroll/wages/new", data={
+            "user_id": person["id"], "basis": "hourly", "gross_amount": "15",
+            "effective_from": "2026-10-01", "note": TAG}, follow_redirects=True)
+
+    page = wc.get("/admin/payroll/wages").get_data(as_text=True)
+    s.check("the manager's wage form offers the rota",
+            f'<option value="{narrow["id"]}">' in page,
+            detail="if this fails the check below proves nothing")
+    s.check("but not themselves, or full-access staff",
+            f'<option value="{wide["id"]}">' not in page
+            and f'<option value="{full["id"]}">' not in page)
+    r = record(wc, wide)
+    s.check("the manager cannot record their own wage",
+            _said_own(r, m.OWN_WAGE) and wages(wide) == 0, r, detail=_said(r))
+    for person, who in ((full, "full-access staff"), (small_owner, "an owner")):
+        r = record(wc, person)
+        s.check(f"nor {who}'s", _refused(r) and wages(person) == 0, r, detail=_said(r))
+    record(wc, narrow)
+    s.check("but the rota's, yes", wages(narrow) == 1)
+    record(oc, wide)
+    s.check("and the owner records the manager's", wages(wide) == 1)
 
 
 if __name__ == "__main__":

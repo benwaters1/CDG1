@@ -6,8 +6,12 @@
   <h1>{% if employee %}Edit {{ employee['name'] }}{% else %}Add Employee{% endif %}</h1>
   {% if employee %}
   {# Who changed this person's record, and when. Asked in earnest exactly
-     once — after a change nobody will own up to. #}
+     once — after a change nobody will own up to. Only for whoever can open
+     it: the history is in management, and a link that answers 403 is worse
+     than none. #}
+  {% if can('record_history_page') %}
   <p><a class="small-link" href="{{ url_for('record_history_page', kind='employee', record_id=employee['id']) }}">What changed on this record</a></p>
+  {% endif %}
 
   {# THE SIGN-IN ADDRESS, in a form of its own. It is a credential rather than
      a profile field -- login finds the account by it -- so it is checked,
@@ -103,6 +107,9 @@
       </div>
     </div>
 
+    {# Pay and the notes are the owner's: not drawn for anybody else, and
+       edit_employee keeps the stored values whatever is posted. #}
+    {% if user['role'] == 'owner' %}
     <div class="field-row-2">
       <div>
         <label class="field-label" for="employee_form-pay-rate">Pay rate (reference only)</label>
@@ -113,6 +120,7 @@
         <input id="employee_form-pay-type" type="text" name="pay_type" placeholder="e.g. Hourly, salaried" value="{{ employee['pay_type'] if employee else '' }}">
       </div>
     </div>
+    {% endif %}
 
     <label class="field-label" for="employee_form-annual-leave-days">Annual leave entitlement (days/year)</label>
     <input id="employee_form-annual-leave-days" type="number" name="annual_leave_days" min="0" step="1" placeholder="e.g. 25" value="{{ employee['annual_leave_days'] if employee and employee['annual_leave_days'] is not none else '' }}">
@@ -135,8 +143,10 @@
     <input aria-label="Phone" type="tel" name="emergency_contact_phone" placeholder="Phone" value="{{ employee['emergency_contact_phone'] or '' }}" style="margin-top:8px;" autocomplete="tel">
     {% endif %}
 
+    {% if user['role'] == 'owner' %}
     <label class="field-label" for="employee_form-notes">Notes</label>
     <textarea id="employee_form-notes" name="notes" placeholder="Schedule notes, preferences — nothing sensitive.">{{ employee['notes'] if employee else '' }}</textarea>
+    {% endif %}
 
     <button type="submit" class="btn-primary">{% if employee %}Save changes{% else %}Add employee{% endif %}</button>
   </form>
