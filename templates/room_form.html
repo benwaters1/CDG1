@@ -111,23 +111,39 @@
     <div class="field-row-2" style="margin-top:14px;">
       <div>
         <label class="field-label" for="bed_setup">Beds</label>
+        {# Whatever the room already says is offered too, and chosen, so a save
+           made to change something else leaves it as it was. Without it a bed
+           the list does not name ("Queen and doubles") matched nothing, the
+           blank option went back, and the bed went off the booking page. #}
+        {% set _bed = room['bed_setup'] if room else none %}
         <select id="bed_setup" name="bed_setup">
           <option value="">— choose —</option>
+          {% if _bed and _bed not in bed_setups %}<option value="{{ _bed }}" selected>{{ _bed }} (as entered)</option>{% endif %}
           {% for b in bed_setups %}
-          <option value="{{ b }}" {{ 'selected' if room and room['bed_setup'] == b }}>{{ b }}</option>
+          <option value="{{ b }}" {{ 'selected' if _bed == b }}>{{ b }}</option>
           {% endfor %}
         </select>
       </div>
       <div>
         <label class="field-label" for="bathroom">Bathroom</label>
+        {% set _bath = room['bathroom'] if room else none %}
         <select id="bathroom" name="bathroom">
           <option value="">— choose —</option>
-          {% for b in bathroom_types %}
-          <option value="{{ b }}" {{ 'selected' if room and room['bathroom'] == b }}>{{ b }}</option>
+          {% if _bath and _bath not in bathroom_types %}<option value="{{ _bath }}" selected>{{ _bath }} (as entered — choose one of the two)</option>{% endif %}
+          {% for key, label in bathroom_types.items() %}
+          <option value="{{ key }}" {{ 'selected' if _bath == key }}>{{ label }}</option>
           {% endfor %}
         </select>
+        <span class="field-hint">The booking pages say a private bathroom is the room's own, on the ground floor.</span>
       </div>
     </div>
+    <label class="field-label" for="outlook" style="margin-top:14px;">The view</label>
+    <input type="text" id="outlook" name="outlook" list="outlooks" maxlength="60"
+           value="{{ room['outlook'] or '' if room else '' }}" placeholder="mountain">
+    <datalist id="outlooks">
+      <option value="mountain"><option value="garden"><option value="valley"><option value="village">
+    </datalist>
+    <span class="field-hint">A word or two. The Stay cards read it as &ldquo;Mountain view&rdquo;. Leave it blank if the windows look onto nothing worth saying.</span>
   </section>
 
   <section class="form-section">
