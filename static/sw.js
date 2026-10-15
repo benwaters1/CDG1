@@ -110,7 +110,12 @@ self.addEventListener('fetch', function(event) {
         }
         return response;
       }).catch(function() {
-        return caches.match(request);
+        // The stylesheet's address carries a version (?v=...) that changes
+        // with its contents. Offline, the copy saved under another version
+        // is still far better than none, so fall back to it.
+        return caches.match(request).then(function(hit) {
+          return hit || caches.match(request, {ignoreSearch: true});
+        });
       })
     );
   }

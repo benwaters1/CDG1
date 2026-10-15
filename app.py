@@ -1546,6 +1546,54 @@ app = Flask(__name__)
 # Locally and in tests nothing sends these headers, and nothing changes.
 from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+
+# A VERSION ON EVERY STYLESHEET AND SCRIPT ADDRESS, so a design change reaches
+# everybody at once. /static/gudanes.css was the same address before and after
+# every handover, and a returning visitor's browser, holding a copy it had no
+# reason to doubt, could show last week's styling over this week's pages for a
+# while (raised by the design side, 15 October 2026).
+#
+# Added to the address by url_for itself rather than typed into the templates:
+# public_base.html arrives whole in every handover, and a stamp typed into it
+# would be gone with the next zip. Done here it needs nothing from anybody.
+#
+# A fingerprint of the file's CONTENTS, not its date. Every deploy rebuilds
+# every file, so a date would send everyone to fetch an unchanged stylesheet
+# after each push; this changes only when the file does. Stylesheets and
+# scripts only: the photographs do not change under the same name, and
+# hashing the two hundred on the gallery would cost its first visitor.
+_STATIC_STAMPS = {}
+STAMPED_STATIC = (".css", ".js")
+
+
+def static_stamp(filename):
+    """Ten characters of the file's SHA-256, or None if it is not there."""
+    if not filename.endswith(STAMPED_STATIC):
+        return None
+    path = os.path.join(app.static_folder, filename)
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    seen = (st.st_mtime_ns, st.st_size)
+    cached = _STATIC_STAMPS.get(filename)
+    if cached and cached[0] == seen:
+        return cached[1]
+    with open(path, "rb") as fh:
+        stamp = hashlib.sha256(fh.read()).hexdigest()[:10]
+    _STATIC_STAMPS[filename] = (seen, stamp)
+    return stamp
+
+
+@app.url_defaults
+def stamp_static_addresses(endpoint, values):
+    if endpoint == "static" and "v" not in values:
+        stamp = static_stamp(values.get("filename") or "")
+        if stamp:
+            values["v"] = stamp
+
+
 # IMPORTANT: this secret key is regenerated every time the app starts unless
 # you set a real one via the FLASK_SECRET_KEY environment variable. Set that
 # in your real deployment so logged-in sessions survive restarts. See

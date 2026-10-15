@@ -393,6 +393,7 @@ SUITES = [
     "test_outbox_retention",
     "test_orphan_pages",
     "test_palette_search",
+    "test_static_stamp",
     "test_readiness_on_home",
     "test_owner_figures",
     "test_meetings",
