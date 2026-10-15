@@ -385,8 +385,14 @@
         <td>
           {{ a['reason'] or '—' }}
           {% if a['doctor_note_filename'] %}
+            {# Opening it is the owner's (it is a medical certificate); anybody
+               else is told it is there, not shown a link that answers 403. #}
+            {% if can('view_absence_note') %}
             <a href="{{ url_for('view_absence_note', absence_id=a['id']) }}"
                target="_blank" rel="noopener" class="upload-hint">certificate attached</a>
+            {% else %}
+            <span class="upload-hint">certificate attached</span>
+            {% endif %}
           {% elif not a['self_certified'] %}
             {# Says a doctor certified it, with nothing behind the claim. #}
             <span class="mini-status status-pending">certified, no note</span>

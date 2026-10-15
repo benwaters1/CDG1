@@ -8459,7 +8459,8 @@ NAV_AREAS = {
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         "run_hr_escalation_now", "set_monthly_staff_cost",
-        "update_hr_escalation_rules", "upload_absence_note", "view_absence_note",
+        # view_absence_note is deliberately NOT here: see OWNER_ONLY_AREAS.
+        "update_hr_escalation_rules", "upload_absence_note",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         
@@ -8884,6 +8885,13 @@ OWNER_ONLY_AREAS = {
     "assign_access_preset": "management",
     "data_request_erase": "management",
     "delete_check_in_note": "team",
+    # A doctor's note. Its docstring said owner-only from the day it was
+    # written; the sweep that gave every unmapped page an area put it in
+    # `team` with the rest, so anybody with team -- three live presets --
+    # could open any colleague's medical certificate. Health data, and the
+    # employee holds their own copy. Attaching one stays in team: whoever
+    # is handed the paper can file it without being able to reopen it.
+    "view_absence_note": "team",
     "download_backup": "management",
     "new_check_in_note": "team",
     "pos_archive": "till",
@@ -9359,15 +9367,76 @@ def can_reach(user, endpoint):
 def access_covers(actor, target):
     """Whether `actor` has at least everything `target` has.
 
-    Used where an action hands somebody the keys to another account. A full
-    owner covers everybody; nobody covers a full owner but another one.
+    Used where an action hands somebody the keys to another account, or
+    changes somebody's record. A full owner covers everybody; nobody covers a
+    full owner but another one.
+
+    And nobody but an owner covers an OWNER, whatever their areas say. The
+    owner role carries more than its areas -- every profile, the 1:1 notes,
+    pay history are gated on role -- so an owner given a narrow preset would
+    otherwise be covered by anybody holding the same few areas, who could then
+    mark them inactive and lock them out of their own house. That holds for a
+    member of staff on the full-access preset too: reaching every page is not
+    the same as being the house.
     """
+    if target["role"] == "owner" and actor["role"] != "owner":
+        return False
     a, t = user_access(actor), user_access(target)
     if "*" in a:
         return True
     if "*" in t:
         return False
     return t.issubset(a)
+
+
+def refused_upwards(person, doing, back="directory"):
+    """The refusal for acting on somebody who can reach more than you can.
+
+    None when the signed-in person covers `person`. Otherwise flashes the
+    sentence and returns where to send them: the Team page unless told
+    otherwise, and never the person's profile -- a profile is readable only by
+    the owner or the person themselves, so a refused caller sent there gets a
+    403 and the explanation never renders.
+    """
+    if access_covers(current_user(), person):
+        return None
+    flash(f"{person['name']} can reach more of the app than you can, so "
+          f"{doing} is the owner's to do.", "error")
+    return redirect(url_for(back))
+
+
+def refused_upwards_for(conn, user_id, doing, back="admin_hr"):
+    """refused_upwards for somebody known only by id, as the HR page's forms
+    know them. Nobody by that id is not a refusal: the caller's own
+    not-found handling answers that."""
+    person = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return refused_upwards(person, doing, back) if person else None
+
+
+def refuses_upwards(doing):
+    """For a route under /directory/<user_id>/ that changes that person's
+    record: refuse it, before anything else runs, when they can reach more
+    of the app than the caller can.
+
+    Before the check, anybody with `team` could open the owner's record, mark
+    it inactive, and login then turned the owner away; and anybody with
+    `rota` could set the owner's arrival PIN and sign in as them at /arrive.
+    """
+    def decorate(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            conn = get_db()
+            person = conn.execute("SELECT * FROM users WHERE id = ?",
+                                  (kwargs["user_id"],)).fetchone()
+            conn.close()
+            if not person:
+                abort(404)
+            refused = refused_upwards(person, doing)
+            if refused:
+                return refused
+            return view(*args, **kwargs)
+        return wrapped
+    return decorate
 
 
 def owner_required(view):
@@ -35282,6 +35351,9 @@ def profile(user_id):
 
 @app.route("/directory/<int:user_id>/edit", methods=["GET", "POST"])
 @owner_required
+# On the form as well as the save: the form shows pay, notes and the contract,
+# and it is the owner's record of somebody senior, not the caller's to read.
+@refuses_upwards("changing their record")
 def edit_employee(user_id):
     conn = get_db()
     person = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -35295,6 +35367,21 @@ def edit_employee(user_id):
         phone = request.form.get("phone", "").strip()
         start_date = request.form.get("start_date", "").strip()
         status = request.form.get("status", "active")
+        if status not in ("active", "inactive"):
+            status = person["status"]
+        # THE LAST OWNER STAYS ACTIVE. login turns an inactive account away and
+        # nothing inside the app can bring it back, so an owner marking
+        # themselves inactive here -- one wrong option in a select -- would
+        # leave the house with nobody who can sign in to undo it. The rest of
+        # the form is saved, and the flash says which part was not.
+        status_kept = False
+        if (person["role"] == "owner" and person["status"] == "active"
+                and status != "active"
+                and not conn.execute(
+                    "SELECT 1 FROM users WHERE role = 'owner' AND status = 'active' "
+                    "AND id != ?", (user_id,)).fetchone()):
+            status = "active"
+            status_kept = True
         pay_rate = request.form.get("pay_rate", "").strip()
         pay_type = request.form.get("pay_type", "").strip()
         notes = request.form.get("notes", "").strip()
@@ -35334,7 +35421,16 @@ def edit_employee(user_id):
             )
         conn.commit()
         conn.close()
-        flash("Profile updated.", "success")
+        if status_kept:
+            flash(f"Saved, except the status: {person['name']} is the only active "
+                  "owner, and an inactive owner cannot sign in to undo it.", "error")
+        else:
+            flash("Profile updated.", "success")
+        # The profile is the owner's or the person's own to read; anybody else
+        # who may edit somebody goes back to the Team page rather than to a 403
+        # that hides whether the save happened.
+        if current_user()["role"] != "owner" and current_user()["id"] != user_id:
+            return redirect(url_for("directory"))
         return redirect(url_for("profile", user_id=user_id))
 
     conn.close()
@@ -35343,6 +35439,7 @@ def edit_employee(user_id):
 
 @app.route("/directory/<int:user_id>/toggle-status", methods=["POST"])
 @owner_required
+@refuses_upwards("marking them active or inactive")
 def toggle_employee_status(user_id):
     conn = get_db()
     person = conn.execute("SELECT * FROM users WHERE id = ? AND role = 'employee'", (user_id,)).fetchone()
@@ -35361,8 +35458,19 @@ def toggle_employee_status(user_id):
 
 @app.route("/directory/<int:user_id>/delete", methods=["POST"])
 @owner_required
+@refuses_upwards("removing them")
 def delete_employee(user_id):
     conn = get_db()
+    # An employee, and one who exists, BEFORE anything is removed. The delete
+    # below was scoped to role='employee' but the document files were taken
+    # off the disk first, for whoever the id named -- so pointed at an owner
+    # with no hours on record it kept the row, removed their files, and
+    # reported "Employee removed."
+    person = conn.execute("SELECT name FROM users WHERE id = ? AND role = 'employee'",
+                          (user_id,)).fetchone()
+    if not person:
+        conn.close()
+        abort(404)
     # Mirrors delete_room/delete_promo_code's own guard against destroying
     # real history — worked hours and pay-rate changes are payroll records,
     # not disposable app data, and PRAGMA foreign_keys=ON means a hard
@@ -35376,15 +35484,13 @@ def delete_employee(user_id):
         conn.close()
         flash("Can't delete an employee with timesheet or pay history — mark them inactive instead.", "error")
         return redirect(url_for("directory"))
-    person = conn.execute("SELECT name FROM users WHERE id = ?", (user_id,)).fetchone()
     docs = conn.execute("SELECT filename FROM documents WHERE user_id = ?", (user_id,)).fetchall()
     for d in docs:
         path = os.path.join(UPLOAD_DIR, d["filename"])
         if os.path.exists(path):
             os.remove(path)
     conn.execute("DELETE FROM users WHERE id = ? AND role = 'employee'", (user_id,))
-    if person:
-        log_audit(conn, "employee_deleted", target=person["name"])
+    log_audit(conn, "employee_deleted", target=person["name"])
     conn.commit()
     conn.close()
     flash("Employee removed.", "success")
@@ -35393,6 +35499,7 @@ def delete_employee(user_id):
 
 @app.route("/directory/<int:user_id>/regenerate-invite", methods=["POST"])
 @owner_required
+@refuses_upwards("resetting their sign-in")
 def regenerate_invite(user_id):
     conn = get_db()
     person = conn.execute("SELECT * FROM users WHERE id = ? AND role = 'employee'", (user_id,)).fetchone()
@@ -35406,16 +35513,8 @@ def regenerate_invite(user_id):
     # reset the manager's sign-in and claim the account.
     #
     # Not made owner-only, which would stop whoever runs the rota re-inviting
-    # a housekeeper who has lost their link. Refused only upwards.
-    if not access_covers(current_user(), person):
-        conn.close()
-        flash(f"{person['name']} can reach more of the app than you can, so "
-              "resetting their sign-in is the owner's to do.", "error")
-        # Back to the directory, NOT to their profile. A profile is readable
-        # only by the owner or the person themselves, so redirecting there
-        # sends the refused caller to a 403 and the explanation never renders
-        # -- an unexplained refusal, which is the thing the message is for.
-        return redirect(url_for("directory"))
+    # a housekeeper who has lost their link. Refused only upwards, by the
+    # decorator, before this runs.
     was_claimed = bool(person["account_claimed"])
     onboarding_url = reissue_staff_link(conn, user_id)
     # This overwrites a password hash with random bytes, which is the most
@@ -35445,6 +35544,10 @@ def regenerate_invite(user_id):
 
 @app.route("/directory/<int:user_id>/email", methods=["POST"])
 @owner_required
+# Refused upwards before anything else, to the Team page, as resetting a
+# sign-in is: a refused caller sent to somebody else's record would get a 403
+# instead of the sentence.
+@refuses_upwards("changing their sign-in address")
 def change_staff_email(user_id):
     """Change the address a member of staff signs in with, for them.
 
@@ -35476,12 +35579,6 @@ def change_staff_email(user_id):
     if person["role"] == "owner":
         return refuse("An owner changes their own sign-in address, on Change "
                       "email, with their password.")
-    if not access_covers(current_user(), person):
-        # To the Team page, as regenerate_invite does: a refused caller sent
-        # to somebody else's record would get a 403 instead of this sentence.
-        return refuse(f"{person['name']} can reach more of the app than you can, "
-                      "so changing their sign-in address is the owner's to do.",
-                      url_for("directory"))
 
     # NORMALISED EXACTLY AS LOGIN NORMALISES (see change_email): stored any
     # other way, it is an address that can never be typed back in.
@@ -35581,6 +35678,7 @@ def change_staff_email(user_id):
 
 @app.route("/directory/<int:user_id>/onboarding/<int:item_id>/toggle", methods=["POST"])
 @owner_required
+@refuses_upwards("changing their onboarding checklist")
 def toggle_onboarding_item(user_id, item_id):
     conn = get_db()
     item = conn.execute(
@@ -35597,6 +35695,7 @@ def toggle_onboarding_item(user_id, item_id):
 
 @app.route("/directory/<int:user_id>/onboarding/new", methods=["POST"])
 @owner_required
+@refuses_upwards("changing their onboarding checklist")
 def new_onboarding_item(user_id):
     label = request.form.get("label", "").strip()
     if label:
@@ -35615,6 +35714,7 @@ def new_onboarding_item(user_id):
 
 @app.route("/directory/<int:user_id>/onboarding/<int:item_id>/delete", methods=["POST"])
 @owner_required
+@refuses_upwards("changing their onboarding checklist")
 def delete_onboarding_item(user_id, item_id):
     conn = get_db()
     conn.execute("DELETE FROM onboarding_items WHERE id = ? AND user_id = ?", (item_id, user_id))
@@ -35625,6 +35725,7 @@ def delete_onboarding_item(user_id, item_id):
 
 @app.route("/directory/<int:user_id>/offboarding/<int:item_id>/toggle", methods=["POST"])
 @owner_required
+@refuses_upwards("changing their offboarding checklist")
 def toggle_offboarding_item(user_id, item_id):
     conn = get_db()
     item = conn.execute(
@@ -35641,6 +35742,7 @@ def toggle_offboarding_item(user_id, item_id):
 
 @app.route("/directory/<int:user_id>/offboarding/new", methods=["POST"])
 @owner_required
+@refuses_upwards("changing their offboarding checklist")
 def new_offboarding_item(user_id):
     label = request.form.get("label", "").strip()
     if label:
@@ -35659,6 +35761,7 @@ def new_offboarding_item(user_id):
 
 @app.route("/directory/<int:user_id>/offboarding/<int:item_id>/delete", methods=["POST"])
 @owner_required
+@refuses_upwards("changing their offboarding checklist")
 def delete_offboarding_item(user_id, item_id):
     conn = get_db()
     conn.execute("DELETE FROM offboarding_items WHERE id = ? AND user_id = ?", (item_id, user_id))
@@ -35669,6 +35772,7 @@ def delete_offboarding_item(user_id, item_id):
 
 @app.route("/directory/<int:user_id>/equipment/new", methods=["POST"])
 @owner_required
+@refuses_upwards("changing what they have been lent")
 def new_equipment_item(user_id):
     label = request.form.get("label", "").strip()
     notes = request.form.get("notes", "").strip()
@@ -35685,6 +35789,7 @@ def new_equipment_item(user_id):
 
 @app.route("/directory/<int:user_id>/equipment/<int:item_id>/toggle-returned", methods=["POST"])
 @owner_required
+@refuses_upwards("changing what they have been lent")
 def toggle_equipment_returned(user_id, item_id):
     conn = get_db()
     item = conn.execute(
@@ -35702,6 +35807,7 @@ def toggle_equipment_returned(user_id, item_id):
 
 @app.route("/directory/<int:user_id>/equipment/<int:item_id>/delete", methods=["POST"])
 @owner_required
+@refuses_upwards("changing what they have been lent")
 def delete_equipment_item(user_id, item_id):
     conn = get_db()
     conn.execute("DELETE FROM equipment_items WHERE id = ? AND user_id = ?", (item_id, user_id))
@@ -35873,6 +35979,9 @@ def delete_candidate(candidate_id):
 
 @app.route("/directory/<int:user_id>/notes/new", methods=["POST"])
 @owner_required
+# Unmapped, so only the full-access preset reaches these -- which a member of
+# staff can hold, and which must not reach the owner's own record.
+@refuses_upwards("writing their 1:1 notes")
 def new_check_in_note(user_id):
     body = request.form.get("body", "").strip()
     if body:
@@ -35888,6 +35997,7 @@ def new_check_in_note(user_id):
 
 @app.route("/directory/<int:user_id>/notes/<int:note_id>/delete", methods=["POST"])
 @owner_required
+@refuses_upwards("writing their 1:1 notes")
 def delete_check_in_note(user_id, note_id):
     conn = get_db()
     conn.execute("DELETE FROM check_in_notes WHERE id = ? AND user_id = ?", (note_id, user_id))
@@ -36093,6 +36203,10 @@ def new_certification():
         flash("That employee is no longer on the team — the list has changed "
               "since this page was opened.", "error")
         return redirect(url_for("admin_hr"))
+    refused = refused_upwards_for(conn, int(user_id), "recording their certifications")
+    if refused:
+        conn.close()
+        return refused
     conn.execute(
         """INSERT INTO certifications (user_id, name, issuer, reference, issued_date,
            expiry_date, required, notes, created_at)
@@ -36116,6 +36230,13 @@ def new_certification():
 @owner_required
 def delete_certification(cert_id):
     conn = get_db()
+    cert = conn.execute("SELECT user_id FROM certifications WHERE id = ?",
+                        (cert_id,)).fetchone()
+    refused = cert and refused_upwards_for(conn, cert["user_id"],
+                                           "removing their certifications")
+    if refused:
+        conn.close()
+        return refused
     conn.execute("DELETE FROM certifications WHERE id = ?", (cert_id,))
     conn.commit()
     conn.close()
@@ -36144,6 +36265,10 @@ def new_absence():
         flash("That employee is no longer on the team — the list has changed "
               "since this page was opened.", "error")
         return redirect(url_for("admin_hr"))
+    refused = refused_upwards_for(conn, int(user_id), "recording their absences")
+    if refused:
+        conn.close()
+        return refused
     conn.execute(
         """INSERT INTO absences (user_id, start_date, end_date, kind, reason,
            self_certified, recorded_by_user_id, created_at)
@@ -36164,6 +36289,13 @@ def new_absence():
 def absence_return_to_work(absence_id):
     note = request.form.get("return_to_work_note", "").strip()
     conn = get_db()
+    absence = conn.execute("SELECT user_id FROM absences WHERE id = ?",
+                           (absence_id,)).fetchone()
+    refused = absence and refused_upwards_for(conn, absence["user_id"],
+                                              "recording their return to work")
+    if refused:
+        conn.close()
+        return refused
     conn.execute(
         """UPDATE absences SET return_to_work_note = ?, return_to_work_done_at = ?
            WHERE id = ?""",
@@ -36185,6 +36317,12 @@ def new_performance_review():
         return redirect(url_for("admin_hr"))
     rating = request.form.get("overall_rating", "").strip()
     conn = get_db()
+    # Somebody who reaches more of the house than you is not yours to review:
+    # a shared review is what a promotion or a dismissal is argued from.
+    refused = refused_upwards_for(conn, int(user_id), "reviewing them")
+    if refused:
+        conn.close()
+        return refused
     conn.execute(
         """INSERT INTO performance_reviews (user_id, reviewer_user_id, review_date,
            period_start, period_end, overall_rating, strengths, improvements, goals,
@@ -36216,6 +36354,10 @@ def share_performance_review(review_id):
     if not review:
         conn.close()
         abort(404)
+    refused = refused_upwards_for(conn, review["user_id"], "sharing their review")
+    if refused:
+        conn.close()
+        return refused
     # Only a draft can be shared, and only the press that actually moves it
     # should tell the employee anything. Notifying regardless meant a second
     # press sent somebody back to re-read a review they had already signed,
@@ -39001,6 +39143,7 @@ def arrive_signin(user_id):
 
 @app.route("/directory/<int:user_id>/set-pin", methods=["POST"])
 @owner_required
+@refuses_upwards("setting their arrival PIN")
 def set_quick_pin(user_id):
     """Set or clear a staff member's arrival PIN."""
     pin = request.form.get("pin", "").strip()
@@ -40340,6 +40483,10 @@ def upload_absence_note(absence_id):
     if not absence:
         conn.close()
         abort(404)
+    refused = refused_upwards_for(conn, absence["user_id"], "attaching their doctor's note")
+    if refused:
+        conn.close()
+        return refused
 
     file = request.files.get("note")
     if not file or file.filename == "":
