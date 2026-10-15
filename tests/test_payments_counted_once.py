@@ -393,8 +393,12 @@ def run():
     _deposit_checkout(bid, fake)
     asked = fake.checkout.Session.calls[0] if fake.checkout.Session.calls else {}
     s.check("no Customer is made", not fake.Customer.calls)
-    s.check("and the card is not kept", "payment_intent_data" not in asked
-            and asked.get("customer_email"), detail=f"{sorted(asked)}")
+    # Read as the setting itself: every checkout now carries payment_intent_data
+    # for its label in Stripe (stripe_payment_label), so its mere presence no
+    # longer says anything about the card.
+    s.check("and the card is not kept",
+            "setup_future_usage" not in (asked.get("payment_intent_data") or {})
+            and asked.get("customer_email"), detail=f"{asked.get('payment_intent_data')}")
 
     s.section("A Customer that cannot be made costs the convenience, not the deposit")
     _cleanup()
@@ -404,7 +408,8 @@ def run():
     asked = fake.checkout.Session.calls[0] if fake.checkout.Session.calls else {}
     s.check("the deposit can still be paid", bool(url))
     s.check("as a one-off, by email", asked.get("customer_email") and "customer" not in asked
-            and "payment_intent_data" not in asked, detail=f"{sorted(asked)}")
+            and "setup_future_usage" not in (asked.get("payment_intent_data") or {}),
+            detail=f"{sorted(asked)}")
 
     s.section("The guest's page says what will happen from what is on file")
     _cleanup()
