@@ -159,6 +159,7 @@ from urllib.parse import quote, urlencode, urlparse, parse_qsl
 from zoneinfo import ZoneInfo
 from calendar import monthrange
 
+from html import unescape as html_unescape
 from html.parser import HTMLParser
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -42018,6 +42019,36 @@ def parse_rg_people(text):
     return people, names
 
 
+def _stripe_money(value):
+    """A figure out of a Stripe export, or None. The dashboard writes amounts
+    the way the account's language does: "1547,00" from a French account,
+    "1,547.00" from an English one. Reading the comma as a thousands mark, as
+    the RetreatGuru reader can, would make that first one a hundred times too
+    much. The decimal mark is the LAST of comma or point; anything that does
+    not read cleanly comes back None rather than a guess."""
+    text = (value or "").strip()
+    for mark in ("€", "EUR", "eur", " ", chr(0xA0), chr(0x202F)):  # spaces, incl. no-break
+        text = text.replace(mark, "")
+    if not text:
+        return None
+    if "," in text and "." in text:
+        decimal = "," if text.rfind(",") > text.rfind(".") else "."
+        text = text.replace("." if decimal == "," else ",", "").replace(",", ".")
+    elif "," in text:
+        if re.fullmatch(r"-?\d+,\d{1,2}", text):
+            text = text.replace(",", ".")
+        elif re.fullmatch(r"-?\d{1,3}(,\d{3})+", text):
+            text = text.replace(",", "")
+        else:
+            return None
+    elif re.fullmatch(r"-?\d{1,3}(\.\d{3})+", text):
+        text = text.replace(".", "")
+    try:
+        return round(float(text), 2)
+    except ValueError:
+        return None
+
+
 def _stripe_export_rows(text):
     """Every card payment in a Stripe dashboard export that went through, with
     what was refunded on it. Headers are matched loosely, as the dashboard words
@@ -42041,8 +42072,8 @@ def _stripe_export_rows(text):
         currency = pick(row, "currency").lower()
         if currency and currency != "eur":
             continue
-        amount = _guest_import_money(pick(row, "amount")) or 0.0
-        refunded = _guest_import_money(pick(row, "amount refunded", "amount_refunded")) or 0.0
+        amount = _stripe_money(pick(row, "amount")) or 0.0
+        refunded = _stripe_money(pick(row, "amount refunded", "amount_refunded")) or 0.0
         charge = pick(row, "id", "charge id", "charge_id")
         intent = pick(row, "paymentintent id", "payment intent id", "payment_intent",
                       "payment_intent_id")
@@ -42056,7 +42087,7 @@ def _stripe_export_rows(text):
             "created": pick(row, "created date (utc)", "created (utc)", "created",
                             "created_utc"),
             "amount": amount, "refunded": refunded, "net": round(amount - refunded, 2),
-            "description": pick(row, "description"),
+            "description": html_unescape(pick(row, "description")).strip(),
         })
     return [p for p in out if p["id"] or p["intent"]]
 
@@ -42258,6 +42289,17 @@ def plan_rg_import(conn, registrations, programmes, names, charges, *, due_days,
         else:
             line["blocking"].append(why)
     leftover = [c for pool in by_email.values() for c in pool]
+    for c in leftover:
+        c["on"] = house_date_iso(_rg_moment(c["created"])) if c["created"] else ""
+    # A payment Stripe holds from this address that matched nothing. RetreatGuru
+    # has been known to take money paid some other way -- a room booked by
+    # mistake, say -- off the PRICE rather than call it paid, so the guest's
+    # own statement would say they had paid nothing. Offered on the check,
+    # never assumed: the owner ticks it, and what is owed does not move.
+    for line in rows:
+        line["credit_options"] = [c for c in leftover if line["email"]
+                                  and c["email"] == line["email"]
+                                  and not line["companion_of"]]
 
     for line in rows:
         if line["companion_of"]:
@@ -42297,7 +42339,7 @@ def rg_plan_totals(plan, selected):
     return {f: round(sum(l[f] for l in chosen), 2) for f in ("agreed", "paid", "owing")}
 
 
-def run_rg_import(conn, plan, selected, people, *, user_id):
+def run_rg_import(conn, plan, selected, people, *, user_id, credits=()):
     """Write the chosen registrations, exactly as planned, in one transaction.
 
     Returns (made, kept, problems). Nothing is written unless every chosen
@@ -42305,11 +42347,25 @@ def run_rg_import(conn, plan, selected, people, *, user_id):
     no letter, no notification, no pay link. Each comes across with
     do_not_email on. After writing, the ledger of every one is read back and
     must say what the export said, to the cent, or nothing is kept at all.
+
+    `credits` are "key|stripe ref" pairs the owner ticked: a payment made some
+    other way that RetreatGuru took off the price. It comes across as paid,
+    against its own Stripe id, with the price put back up by the same amount,
+    so what is owed is exactly what RetreatGuru says.
     """
     chosen = [l for l in plan["payers"] if l["key"] in selected]
     problems = [(l["name"], "; ".join(l["blocking"])) for l in chosen if l["blocking"]]
     if problems:
         return [], [], problems
+    ticked = set(credits)
+    credited_to = {l["key"]: [c for c in l.get("credit_options", [])
+                              if f"{l['key']}|{c['ref']}" in ticked]
+                   for l in chosen if not l.get("done")}
+    refs = [c["ref"] for picked in credited_to.values() for c in picked]
+    twice = sorted({r for r in refs if refs.count(r) > 1})
+    if twice:
+        return [], [], [("the import", "one Stripe payment was put towards two "
+                                       "registrations: " + ", ".join(twice))]
 
     now = datetime.now(timezone.utc).isoformat()
     on = format_date_human(house_today_iso())
@@ -42322,23 +42378,29 @@ def run_rg_import(conn, plan, selected, people, *, user_id):
             kept.append(l["name"])
             continue
         s = l["session"]
-        total = l["agreed"]
+        credit = credited_to.get(l["key"], [])
+        credited = round(sum(c["net"] for c in credit), 2)
+        agreed, paid_in = round(l["agreed"] + credited, 2), round(l["paid"] + credited, 2)
+        total = agreed
         discount = 0.0
         if l["list_price"] > l["agreed"] + 0.005:
-            total, discount = l["list_price"], round(l["list_price"] - l["agreed"], 2)
+            total = round(l["list_price"] + credited, 2)
+            discount = round(l["list_price"] - l["agreed"], 2)
         payments = l["charges"]
-        first_paid = min((c["created"] for c in payments), default=None)
+        first_paid = min((c["created"] for c in payments + credit), default=None)
         paid_at = _rg_moment(first_paid) if first_paid else _rg_moment(l["submitted"])
         # The guest's own page lets a balance be paid only once a deposit has
         # been. With something paid, that something was the deposit; with
         # nothing paid, the whole price is what is due first.
-        if l["paid"] > 0.005:
-            deposit, deposit_paid_at, balance = l["paid"], paid_at or now, l["owing"]
+        if paid_in > 0.005:
+            deposit, deposit_paid_at, balance = paid_in, paid_at or now, l["owing"]
         else:
-            deposit, deposit_paid_at, balance = l["agreed"], None, 0.0
+            deposit, deposit_paid_at, balance = agreed, None, 0.0
         provenance = (f"Brought across from the old booking system (RetreatGuru) on {on}. "
                       f"Registered there {format_date_human(l['submitted_on'].isoformat())}"
-                      + (f", code {l['discount_code']}" if l["discount_code"] else "") + ".")
+                      + (f", code {l['discount_code']}" if l["discount_code"] else "") + "."
+                      + (f" {money(credited)} paid through another booking was taken off the "
+                         "price there; here it is shown as paid." if credited else ""))
         cur = conn.execute(
             """INSERT INTO workshop_bookings
                (session_id, reference_code, manage_token, guest_name, guest_email, guest_phone,
@@ -42371,6 +42433,15 @@ def run_rg_import(conn, plan, selected, people, *, user_id):
                    VALUES (?, 'payment', ?, ?, 'stripe', ?, ?, ?)""",
                 (bid, "Paid through RetreatGuru", c["net"], user_id,
                  _rg_moment(c["created"]) or now, c["ref"]))
+        for c in credit:
+            conn.execute(
+                """INSERT INTO workshop_transactions (workshop_booking_id, kind, description,
+                     amount, method, created_by_user_id, created_at, stripe_ref)
+                   VALUES (?, 'payment', ?, ?, 'stripe', ?, ?, ?)""",
+                (bid, "Paid through another booking"
+                      + (f" ({c['description']})" if c["description"] else "")
+                      + " and put towards this retreat", c["net"], user_id,
+                 _rg_moment(c["created"]) or now, c["ref"]))
         if l["paid_other"] > 0.005:
             conn.execute(
                 """INSERT INTO workshop_transactions (workshop_booking_id, kind, description,
@@ -42380,19 +42451,21 @@ def run_rg_import(conn, plan, selected, people, *, user_id):
                  l["paid_other"], user_id, _rg_moment(l["submitted"]) or now))
         restamp_workshop_balance(conn, bid)
         owed, charged, paid = workshop_balance_due(conn, bid)
-        if (owed, charged, paid) != (round(l["owing"], 2), round(l["agreed"], 2),
-                                     round(l["paid"], 2)):
+        if (owed, charged, paid) != (round(l["owing"], 2), agreed, paid_in):
             conn.rollback()
             return [], [], [(l["name"], f"after writing, the ledger says {money(charged)} "
                                         f"charged, {money(paid)} paid, {money(owed)} owed; "
-                                        f"RetreatGuru says {money(l['agreed'])}, "
-                                        f"{money(l['paid'])}, {money(l['owing'])}. Nothing "
-                                        "was kept.")]
+                                        f"it should say {money(agreed)}, {money(paid_in)}, "
+                                        f"{money(l['owing'])}. Nothing was kept.")]
         log_audit(conn, "workshop_registration_imported", target=l["name"],
                   details=f"{s['title']} {s['start_date']}: {money(l['agreed'])} agreed, "
                           f"{money(l['paid'])} paid, {money(l['owing'])} owing "
-                          f"(RetreatGuru, {l['submitted']})")
+                          f"(RetreatGuru, {l['submitted']})"
+                          + (f"; plus {money(credited)} paid through another booking "
+                             f"({', '.join(c['ref'] for c in credit)}), shown as paid"
+                             if credited else ""))
         made.append(l["name"])
+        plan["credited"] = round(plan.get("credited", 0.0) + credited, 2)
     return made, kept, []
 
 
@@ -42504,8 +42577,10 @@ def import_registrations():
         flash("Some of the ticked registrations have something to look at. Read them, then "
               "tick \"I have read every note\" and run it again.", "error")
         return redirect(url_for("import_registrations"))
+    credits = set(request.form.getlist("credit"))
     try:
-        made, kept, problems = run_rg_import(conn, plan, selected, people, user_id=user["id"])
+        made, kept, problems = run_rg_import(conn, plan, selected, people, user_id=user["id"],
+                                             credits=credits)
     except sqlite3.IntegrityError as e:
         conn.rollback()
         made, kept, problems = [], [], [("the import", f"stopped with nothing kept ({e})")]
@@ -42516,10 +42591,15 @@ def import_registrations():
         flash(message, category)
         return redirect(url_for("import_registrations"))
     totals = rg_plan_totals(plan, selected)
+    # What the import says it wrote, not what was ticked: the summary is a
+    # report of the ledger, and a tick that did nothing must not read as done.
+    credited = plan.get("credited", 0.0)
+    also = (f" Plus {money(credited)} paid through another booking, which RetreatGuru "
+            "took off the price, now shown as paid." if credited else "")
     log_audit(conn, "registrations_imported", target="RetreatGuru",
               details=f"{len(made)} brought across, {len(kept)} already here; "
                       f"{money(totals['agreed'])} agreed, {money(totals['paid'])} paid, "
-                      f"{money(totals['owing'])} owing")
+                      f"{money(totals['owing'])} owing." + also)
     conn.execute("DELETE FROM import_drafts WHERE token = ?", (token,))
     conn.commit()
     conn.close()
@@ -42530,7 +42610,8 @@ def import_registrations():
         "Brought across", "registration", len(made), left_out,
         detail=(f"{len(kept)} already here, unchanged. " if kept else "")
                + f"{money(totals['agreed'])} agreed, {money(totals['paid'])} paid, "
-                 f"{money(totals['owing'])} owing. Nobody has been written to.")
+                 f"{money(totals['owing'])} owing, as RetreatGuru says.{also} "
+                 "Nobody has been written to.")
     flash(message, category)
     return redirect(url_for("import_registrations"))
 

@@ -109,12 +109,26 @@
         <td>{{ l.owing|money }}</td>
         <td>{{ l.due_date|date_short if l.due_date }}</td>
       </tr>
-      {% if l.blocking or l.notes %}
+      {% if l.blocking or l.notes or l.credit_options %}
       <tr>
         <td></td>
         <td colspan="7">
           {% for b in l.blocking %}<p class="flash flash-error" style="margin:2px 0;">{{ b }}</p>{% endfor %}
           {% for n in l.notes %}<p class="upload-hint" style="margin:2px 0;">{{ n }}</p>{% endfor %}
+          {% for c in l.credit_options %}
+          {# RetreatGuru sometimes took money paid some other way off the price
+             instead of calling it paid. Ticked, it comes across as paid against
+             its own Stripe id, the price goes back up by the same amount, and
+             what is owed does not move. Never assumed. #}
+          <label class="checkbox-row" style="margin:4px 0;">
+            <input type="checkbox" name="credit" value="{{ l.key }}|{{ c.ref }}"{{ ' disabled' if l.blocking }}>
+            <span>Stripe has {{ c.net|money }} from this address that matches nothing here
+              ({{ c.description or 'no description' }}{% if c.on %}, {{ c.on|date_short }}{% endif %}, {{ c.ref }}).
+              If RetreatGuru took it off this price rather than calling it paid, tick to bring it
+              across as paid: the price becomes {{ (l.agreed + c.net)|money }}, paid
+              {{ (l.paid + c.net)|money }}, and {{ l.owing|money }} is still owed.</span>
+          </label>
+          {% endfor %}
         </td>
       </tr>
       {% endif %}

@@ -175,6 +175,9 @@ def _files(s):
         # Paid in full on RetreatGuru, then refunded in Stripe, which
         # RetreatGuru never hears about: its export still says paid.
         _reg("Mo", f"{TAG}Refunded", two, agreed=2600, paid=2600, minute=9),
+        # Paid €969.59 by booking a room by mistake, which RetreatGuru took off
+        # her PRICE (2600 - 969.59 = 1630.41, less 15%) rather than calling paid.
+        _reg("Nia", f"{TAG}Credit", two, agreed=1240.41, paid=0, list_price=1630.41, minute=10),
     ]) + "\n"
     people = "first_name,last_name,person_id,email,num_programs,overall_balance\n" + "\n".join(
         f"{f},{TAG}{l},{i},{LOW}.{f.lower()}@example.invalid,1,0"
@@ -182,21 +185,21 @@ def _files(s):
                                     ("Dan", "Pair"), ("Eve", "Twice"), ("Fay", "Gone"),
                                     ("Hal", "Nothing"), ("Jon", "Transfer"),
                                     ("Kim", "Solo"), ("Lou", "Moved"),
-                                    ("Mo", "Refunded")])) + "\n"
+                                    ("Mo", "Refunded"), ("Nia", "Credit")])) + "\n"
     programmes = ("program_id,title,date_start,date_end\n"
                   f"1,The Autumn One,{one.isoformat()},{(one + timedelta(days=4)).isoformat()}\n"
                   f"2,The Summer One,{two.isoformat()},{(two + timedelta(days=4)).isoformat()}\n")
     when = (one - timedelta(days=60)).isoformat()
     stripe_rows = [
-        ("ch_ann_1", "pi_ann_1", "2,600.00", "0.00", "ann"),
-        ("ch_bob_1", "", "500.00", "0.00", "bob"),              # a charge with no PaymentIntent
-        ("ch_bob_2", "pi_bob_2", "277.77", "0.00", "bob"),
-        ("ch_cara_1", "pi_cara_1", "1,560.00", "0.00", "cara"),
-        ("ch_eve_1", "pi_eve_1", "780.00", "0.00", "eve"),
-        ("ch_eve_2", "pi_eve_2", "260.00", "0.00", "eve"),
-        ("ch_eve_old", "pi_eve_old", "999.00", "0.00", "eve"),  # a retreat already over
-        ("ch_ann_x", "pi_ann_x", "50.00", "50.00", "ann"),      # refunded in full: not a payment
-        ("ch_kim_1", "pi_kim_1", "520.00", "0.00", "kim"),
+        ("ch_ann_1", "pi_ann_1", "2600,00", "0,00", "ann"),
+        ("ch_bob_1", "", "500,00", "0,00", "bob"),              # a charge with no PaymentIntent
+        ("ch_bob_2", "pi_bob_2", "277,77", "0,00", "bob"),
+        ("ch_cara_1", "pi_cara_1", "1560,00", "0,00", "cara"),
+        ("ch_eve_1", "pi_eve_1", "780,00", "0,00", "eve"),
+        ("ch_eve_2", "pi_eve_2", "260,00", "0,00", "eve"),
+        ("ch_eve_old", "pi_eve_old", "999,00", "0,00", "eve"),  # a retreat already over
+        ("ch_ann_x", "pi_ann_x", "50,00", "50,00", "ann"),      # refunded in full: not a payment
+        ("ch_kim_1", "pi_kim_1", "520,00", "0,00", "kim"),
     ]
     stripe = ("id,PaymentIntent ID,Created date (UTC),Amount,Amount Refunded,Currency,Status,"
               "Customer Email,Description\n" + "\n".join(
@@ -204,8 +207,11 @@ def _files(s):
                   "RetreatGuru registration"
                   for c, pi, a, r, who in stripe_rows)) + "\n"
     # Refunded in full: the dashboard marks it Refunded, not Paid.
-    stripe += (f'ch_mo_1,pi_mo_1,{when} 09:00:00,"2,600.00","2,600.00",eur,Refunded,'
+    stripe += (f'ch_mo_1,pi_mo_1,{when} 09:00:00,"2600,00","2600,00",eur,Refunded,'
                f'{LOW}.mo@example.invalid,RetreatGuru registration\n')
+    # Nia's room, booked by mistake: a py_ payment, no PaymentIntent.
+    stripe += (f'py_nia_1,,{when} 09:00:00,"969,59","0,00",eur,Paid,'
+               f'{LOW}.nia@example.invalid,Reservation #148\n')
     return regs, people, programmes, stripe
 
 
@@ -272,6 +278,14 @@ def _run(s, oc, mail):
     files = _files(sess)
     one, two = sess["one"][1].isoformat(), sess["two"][1].isoformat()
 
+    s.section("Stripe's amounts, however the account's language writes them")
+    read = {v: m._stripe_money(v) for v in ("1547,00", "1,90", "64,50", "2,600.00", "1.547,00",
+                                            "1 547,00", "960.00", "2720", "abc", "")}
+    s.check("a French account's 1547,00 is €1,547.00, not €154,700",
+            read == {"1547,00": 1547.0, "1,90": 1.9, "64,50": 64.5, "2,600.00": 2600.0,
+                     "1.547,00": 1547.0, "1 547,00": 1547.0, "960.00": 960.0,
+                     "2720": 2720.0, "abc": None, "": None}, detail=str(read))
+
     s.section("The check writes nothing, and adds up to the export")
     conn = db()
     before = _counts(conn)
@@ -298,6 +312,10 @@ def _run(s, oc, mail):
             in page)
     s.check("Eve's €999 for a retreat already over is listed as not matched", "pi_eve_old" in page)
     s.check("the refunded €50 is not a payment at all", "pi_ann_x" not in page)
+    s.check("Nia's €969.59 is offered as paid towards her retreat, not assumed",
+            '|py_nia_1"' in page and "Reservation #148" in page
+            and "the price becomes €2,210.00, paid €969.59, and €1,240.41 is still owed"
+            in " ".join(page.split()))
     s.check("it says no email goes", "Emails sent or queued by bringing them across" in page)
     with m.app.test_request_context():
         conn = db()
@@ -307,7 +325,8 @@ def _run(s, oc, mail):
                                 m.parse_stripe_payments(files[3]), due_days=30,
                                 today=house_today(), stripe_given=True)
         conn.close()
-    want = {"agreed": 2600 + 2210 + 5200 + 2600 + 2600 + 2600 + 2600 + 2600 + 2600 + 5200 + 2600 + 2600,
+    want = {"agreed": round(2600 + 2210 + 5200 + 2600 + 2600 + 2600 + 2600 + 2600 + 2600 + 5200
+                           + 2600 + 2600 + 1240.41, 2),
             "paid": round(2600 + 777.77 + 1560 + 780 + 260 + 260 + 0 + 260 + 300 + 520 + 2600, 2)}
     s.check("the plan's totals are the export's, to the cent",
             plan["export"]["agreed"] == want["agreed"] and plan["export"]["paid"] == want["paid"]
@@ -346,14 +365,15 @@ def _run(s, oc, mail):
             any("I have read every note" in f for f in flashes(r)), detail=str(flashes(r)))
     with _Stood():
         r = oc.post("/management/import-registrations", data={
-            "action": "run", "token": token, "bring": keys, "checked_flags": "on"},
+            "action": "run", "token": token, "bring": keys, "checked_flags": "on",
+            "credit": [k + "|py_nia_1" for k in keys if k.startswith("retreatguru:nia|")]},
             follow_redirects=True)
     said = " ".join(flashes(r))
     s.check("it says what it did, and that nobody has been written to",
-            "Brought across 7" in said and "Nobody has been written to" in said, detail=said)
+            "Brought across 8" in said and "Nobody has been written to" in said, detail=said)
     conn = db()
     rows = _mine(conn)
-    s.check("seven registrations", len(rows) == 7, detail=str(sorted(rows)))
+    s.check("eight registrations", len(rows) == 8, detail=str(sorted(rows)))
     s.check("all confirmed, emails off, each with its RetreatGuru key",
             all(r["status"] == "confirmed" and r["do_not_email"] == 1 and r["import_key"]
                 for r in rows.values()))
@@ -365,6 +385,8 @@ def _run(s, oc, mail):
         f"Eve {TAG}Twice|{two}": (2340.0, 2600.0, 260.0),
         f"Hal {TAG}Nothing|{two}": (2600.0, 2600.0, 0.0),
         f"Kim {TAG}Solo|{two}": (4680.0, 5200.0, 520.0),
+        # RetreatGuru's €1,240.41 owing, unmoved; the €969.59 now shown as paid.
+        f"Nia {TAG}Credit|{two}": (1240.41, 2210.0, 969.59),
     }
     for key, figures in expect.items():
         row = rows.get(key)
@@ -383,6 +405,17 @@ def _run(s, oc, mail):
             sorted((l["amount"], l["stripe_ref"], l["method"]) for l in lines if l["kind"] == "payment")
             == [(277.77, "pi_bob_2", "stripe"), (500.0, "ch_bob_1", "stripe")],
             detail=str([dict(l) for l in lines]))
+    nia = rows.get(f"Nia {TAG}Credit|{two}")
+    nia_lines = conn.execute("SELECT kind, amount, method, stripe_ref FROM workshop_transactions "
+                             "WHERE workshop_booking_id = ? ORDER BY id",
+                             (nia["id"],)).fetchall() if nia else []
+    s.check("Nia: the full price, the discount, and the room money paid against its Stripe id",
+            nia and nia["total_price"] == 2600 and sorted(
+                (l["kind"], l["amount"], l["method"], l["stripe_ref"]) for l in nia_lines)
+            == [("discount", 390.0, None, None), ("payment", 969.59, "stripe", "py_nia_1")],
+            detail=str([dict(l) for l in nia_lines]))
+    s.check("and the summary says so",
+            "Plus €969.59 paid through another booking" in said, detail=said)
     cara = rows.get(f"Cara {TAG}Pair|{one}")
     party = [g["guest_name"] for g in conn.execute(
         "SELECT guest_name FROM workshop_booking_guests WHERE workshop_booking_id = ? "
