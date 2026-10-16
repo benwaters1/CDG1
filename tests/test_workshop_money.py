@@ -294,13 +294,15 @@ def run():
             after["total_price"] == 1300.0 and after["single_supplement"] == 400.0,
             detail=f"got {after['total_price']} / {after['single_supplement']}")
 
-    # A guest booking through the actual form. A private room is no longer
-    # sold here — it is quoted per enquiry and set by staff afterwards — so
-    # what matters is that asking for one anyway cannot buy one, and that the
-    # shared price is what reaches the money.
+    # A guest booking through the actual form. A room to yourself is sold
+    # here only to one guest coming alone (owner, 16 Oct; test_solo_occupancy
+    # covers that sale), so what matters for a party of two is that asking for
+    # one anyway cannot buy one, and that the shared price is what reaches the
+    # money.
     pub = m.app.test_client()
     page = pub.get(f"/workshops/register/{session_row['id']}").get_data(as_text=True)
-    s.check("the form does not sell a private room", 'value="solo"' not in page)
+    s.check("the form offers a room to yourself at the supplement set",
+            'value="solo"' in page and "+€400" in page)
     r = pub.post(f"/workshops/register/{session_row['id']}", data={
         "guest_name": f"{TAG} form guest", "guest_email": f"{TAG.lower()}f@example.invalid",
         "party_size": "2", "occupancy_type": "solo", "notes": "",

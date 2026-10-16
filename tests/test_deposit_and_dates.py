@@ -36,6 +36,7 @@ def _cleanup():
     conn.execute("DELETE FROM workshops WHERE title LIKE ?", (TAG + "%",))
     conn.execute("UPDATE bookings SET party_id = NULL WHERE reference_code LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM booking_parties WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM deposit_rules WHERE label LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
     conn.commit()
     conn.close()
@@ -223,5 +224,35 @@ def run():
     s.check("confirming one already confirmed says so, not that somebody else did",
             any("already confirmed" in f for f in flashes(r)), detail=f"{flashes(r)}")
 
+    _the_page_shows_what_is_charged(s)
     _cleanup()
     return s
+
+
+def _the_page_shows_what_is_charged(s):
+    """Handover z22 put the euro amounts on the registration page, worked out
+    in the browser as the guest types. The server charges
+    resolve_deposit_percent(), and a deposit rule can ask a bigger party for
+    more -- so a page reading the workshop's own percent would show 10% and
+    charge 50. The route hands the page the percent for every party size."""
+    s.section("The registration page shows the deposit it will charge")
+    import json
+    wid = _workshop("Rule", 10)
+    sid = _session(wid, "rule", 131)
+    conn = db()
+    start = conn.execute("SELECT start_date FROM workshop_sessions WHERE id = ?", (sid,)).fetchone()["start_date"]
+    conn.execute("INSERT INTO deposit_rules (category, start_date, end_date, min_party_size, deposit_percent, "
+                 "label, created_at) VALUES ('workshop', ?, ?, 4, 50, ?, ?)",
+                 (start, start, f"{TAG} four or more", _harness.datetime_now()))
+    conn.commit()
+    page = m.app.test_client().get(f"/workshops/register/{sid}").get_data(as_text=True)
+    found = re.search(r"var pcts = (\{.*?\});", page)
+    shown = {int(k): v for k, v in json.loads(found.group(1)).items()} if found else {}
+    charged = {n: m.resolve_deposit_percent(conn, "workshop", start, n, 10) for n in range(1, 11)}
+    conn.close()
+    s.check("the page is given a percent for every party size the form allows",
+            sorted(shown) == list(range(1, 11)), detail=f"{sorted(shown)}")
+    s.check("and each is the one the booking will be charged",
+            shown == charged, detail=f"page {shown} / charge {charged}")
+    s.check("so four guests see the rule's 50 and one sees the atelier's 10",
+            shown.get(4) == 50 and shown.get(1) == 10, detail=f"{shown}")

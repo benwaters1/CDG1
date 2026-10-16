@@ -43493,6 +43493,17 @@ def restoration_page():
     return render_template("restoration.html")
 
 
+@app.route("/history")
+def history_page():
+    """The house from 1213 to now (owner, 15 Oct 2026: "a proper history page").
+
+    Static copy from the design side. /history was the old Squarespace
+    address, sent to the Restoration page by LEGACY_PATHS until this page
+    existed; it is the page itself now, so it keeps that address's ranking.
+    """
+    return render_template("history.html")
+
+
 @app.route("/gallery")
 def gallery_page():
     """Photographs, in the sections the public menu already links to.
@@ -46700,7 +46711,7 @@ def api_validate_promo_code():
         session_id_raw = request.form.get("session_id", "").strip()
         party_size = int(request.form.get("party_size", "")) if request.form.get("party_size", "").isdigit() else 0
         price_row = conn.execute(
-            """SELECT workshops.price_per_person FROM workshop_sessions
+            """SELECT workshops.price_per_person, workshops.single_supplement FROM workshop_sessions
                JOIN workshops ON workshops.id = workshop_sessions.workshop_id
                WHERE workshop_sessions.id = ?""",
             (session_id_raw,),
@@ -46708,7 +46719,14 @@ def api_validate_promo_code():
         if not price_row or party_size < 1 or not price_row["price_per_person"]:
             conn.close()
             return jsonify({"valid": False, "message": "Enter your party size first."})
-        subtotal = price_row["price_per_person"] * party_size
+        # A room to yourself is in the subtotal the booking will charge, so a
+        # percentage code must preview against it too. The same narrowing as
+        # the registration POST: one guest, a supplement set — anything else
+        # is priced as sharing there, so it is previewed as sharing here.
+        occupancy_type = request.form.get("occupancy_type", "").strip()
+        if not (occupancy_type == "solo" and party_size == 1):
+            occupancy_type = "double"
+        subtotal = workshop_subtotal(price_row, party_size, occupancy_type)[0]
     else:
         conn.close()
         return jsonify({"valid": False, "message": "Unknown booking type."}), 400
@@ -46919,6 +46937,9 @@ WORKSHOP_PREFILL = {
     "dietary_notes": "dietary_notes", "medical_notes": "medical_notes",
     "special_occasion": "special_occasion",
     "requested_roommate": "requested_roommate", "promo_code": "promo_code",
+    # The room-to-myself tick (z22), so it survives a validation error once
+    # the route offers it (solo_bookable).
+    "occupancy_type": "occupancy_type",
 }
 EVENT_PREFILL = {
     "contact_name": "contact_name", "contact_email": "contact_email",
@@ -52975,15 +52996,32 @@ def parse_money(raw):
     return round(value, 2) if value >= 0 else None
 
 
-# What a guest may choose for themselves on the public registration form.
+# What a guest may always choose for themselves on the public registration form.
 #
-# 'solo' is deliberately absent. A private room on an atelier is arranged with
-# the château directly: the price depends on the atelier, the dates and what is
-# actually free, so it is quoted per enquiry rather than carried as a standing
-# supplement. Staff can still set solo on a booking by hand, which is how one
-# that was arranged over the phone gets recorded.
+# 'solo' is not in it because it is not always on offer: a room to yourself is
+# sold online only when the atelier carries a supplement and a room is free —
+# see workshop_solo_bookable(). Where it is not on offer a posted 'solo' still
+# becomes 'double', so a private room is never given away for nothing. Staff
+# can set solo on a booking by hand, which is how one arranged over the phone
+# gets recorded.
 PUBLIC_OCCUPANCY_TYPES = ("double", "triple")
 ALL_OCCUPANCY_TYPES = ("solo", "double", "triple")
+
+
+def workshop_solo_bookable(workshop, rooms_left):
+    """True when a guest coming alone may buy a room to themselves online.
+
+    Three things, all needed (owner, 15 Oct; handover z22 item 12): a priced
+    atelier, a supplement above nothing — 'solo' at no supplement is a private
+    room given away — and at least one room still free on the session. The
+    registration page offers the tick from this and the POST accepts 'solo'
+    from this, so the page can never offer what the route then refuses.
+    """
+    try:
+        supplement = float(workshop["single_supplement"] or 0)
+    except (KeyError, IndexError, TypeError, ValueError):
+        supplement = 0.0
+    return bool(supplement > 0 and workshop["price_per_person"] and rooms_left >= 1)
 
 
 def workshop_single_supplement(workshop, occupancy_type):
@@ -55327,6 +55365,18 @@ def workshop_register(session_id):
         # Don't offer a private room the château cannot give: the same reason
         # a taken night is not clickable on the booking calendar.
         "solo_possible": rooms_left >= 1 or not bookable_room_count(conn),
+        # Whether "A room to myself, +€X" is offered and charged online. The
+        # POST below accepts 'solo' only on the same answer.
+        "solo_bookable": workshop_solo_bookable(session_row, rooms_left),
+        # The deposit percent create_workshop_booking will charge, for each
+        # party size the form allows. The page works out the amounts as the
+        # guest types (handover z22); a deposit rule can vary by party size,
+        # so the workshop's own percent alone could show one figure and
+        # charge another.
+        "deposit_by_party": {
+            n: resolve_deposit_percent(conn, "workshop", session_row["start_date"], n,
+                                       session_row["deposit_percent"])
+            for n in range(1, (session_row["capacity"] or 15) + 1)},
     }
 
     if request.method == "POST":
@@ -55345,13 +55395,17 @@ def workshop_register(session_id):
         party_size_raw = request.form.get("party_size", "").strip()
         party_size = int(party_size_raw) if party_size_raw.isdigit() else None
         occupancy_type = request.form.get("occupancy_type", "double").strip()
-        # A private room is arranged with the château directly, not booked
-        # online: what it costs depends on the atelier, the dates and what is
-        # free, so it is quoted case by case rather than carrying a standing
-        # supplement. The refusal is here rather than only in the form because
-        # hiding an <option> stops nobody from posting the value — and 'solo'
-        # with no supplement set is a private room given away for nothing.
-        if occupancy_type not in PUBLIC_OCCUPANCY_TYPES:
+        # A room to yourself is sold here only for one guest on an atelier that
+        # carries a supplement (the page hides the tick for a larger party).
+        # Anything else posting 'solo' becomes 'double', as it always has: the
+        # refusal is here rather than only in the form because hiding a tick
+        # stops nobody from posting the value, and 'solo' with no supplement is
+        # a private room given away for nothing. Whether a room is still FREE
+        # is asked again below under the write lock, because a guest who ticked
+        # it was promised one and must not be quietly put in a shared room.
+        solo_wanted = (occupancy_type == "solo" and party_size == 1
+                       and workshop_solo_bookable(session_row, 1))
+        if occupancy_type not in PUBLIC_OCCUPANCY_TYPES and not solo_wanted:
             occupancy_type = "double"
         requested_roommate = request.form.get("requested_roommate", "").strip()[:200]
         dietary_notes = request.form.get("dietary_notes", "").strip()[:500]
@@ -55379,6 +55433,13 @@ def workshop_register(session_id):
             # read "room for you".
             error = "This session is fully booked — join the waitlist below, or choose another date."
             fully_booked = True
+        elif solo_wanted and (bookable_room_count(conn)
+                              - session_rooms_used(conn, session_id)) < 1:
+            # Counted after claim_workshop_places took the lock, so two guests
+            # ticking it for the last free room cannot both be sold it.
+            error = ("The last room to yourself on these dates has just been taken. "
+                     "You can still come and share a room with another guest travelling solo.")
+            page["solo_bookable"] = False
         else:
             # end_date is the last day the guests are still there (they check
             # out that morning, the same convention a workshop uses to hold
@@ -93135,10 +93196,10 @@ def make_channel_door_link(reservation_id):
 # ---------------------------------------------------------------------------
 # THE HOUSE CALENDAR.
 #
-# One real Microsoft 365 calendar, "Château de Gudanes — House", that the app
-# WRITES to and everybody reads -- on a desk, in a browser, on a phone -- with
-# the stays, the dinners, the ateliers, the events, the tasks and the rota in
-# it. An .ics subscription was the obvious way and the wrong one: Outlook
+# One real Microsoft 365 calendar -- the house mailbox's own default calendar,
+# "House" in Outlook's directory -- that the app WRITES to and everybody reads
+# -- on a desk, in a browser, on a phone -- with the stays, the dinners, the
+# ateliers, the events, the tasks and the rota in it. An .ics subscription was the obvious way and the wrong one: Outlook
 # refreshes a subscribed feed every few hours, so a stay booked at ten was not
 # on anybody's phone until the afternoon. Written into Exchange, it is there in
 # under a minute.
@@ -93161,7 +93222,11 @@ def make_channel_door_link(reservation_id):
 # holds it to that, and the privacy notice says so.
 # ---------------------------------------------------------------------------
 
+# The .ics feed's name. Microsoft's copy is not called this any more: it is
+# the house mailbox's default calendar, which Outlook's directory lists under
+# the mailbox's own display name.
 HOUSE_CALENDAR_NAME = "Château de Gudanes — House"
+HOUSE_CALENDAR_DIRECTORY_NAME = "House"
 # (key, label, mark, Outlook preset colour). The mark leads every subject so
 # the area reads on a phone, where category colours do not always show.
 HOUSE_CALENDAR_AREAS = [
@@ -93199,6 +93264,10 @@ HOUSE_CALENDAR_SETTINGS = {
     # writing had stopped; this is what tells them apart.
     "in_range": "house_calendar_in_range",
     "shared_by_hand": "house_calendar_shared_by_hand",
+    # The calendar the app wrote to before this one, while its old events are
+    # taken out of it; whether that is done; and what the page says about it.
+    "retired": "house_calendar_retired_id", "retired_empty": "house_calendar_retired_empty",
+    "retired_note": "house_calendar_retired_note",
 }
 # Windows' name for the house's zone, which every Graph create and update
 # accepts; Graph lists Europe/Paris as well, but warns that writes "might not
@@ -93493,32 +93562,100 @@ def graph_send(method, path, token, body=None, headers=None):
 
 
 def ensure_house_calendar(conn, token):
-    """The house calendar's id: the one already made, or one found by name,
-    or a new one. Also puts the area categories, with their colours, into the
-    mailbox -- which needs MailboxSettings.ReadWrite; without it the events
-    still carry their category names and the page says why there is no colour."""
+    """The house calendar's id: the DEFAULT calendar of the house mailbox.
+
+    It used to be a second calendar inside that mailbox, made by name, and
+    nobody could see it. Outlook's Add calendar -> From directory -> House adds
+    a mailbox's default calendar and no other, and a shared mailbox's other
+    calendars can only be given out by an invitation sent from inside it. So
+    the events go where Outlook looks, and the app never makes a calendar.
+
+    When the id is not the one stored -- the move off the named calendar, or
+    HOUSE_CALENDAR_MAILBOX pointed at another mailbox -- every event the app
+    remembers is in the OLD calendar, and patching one by its id would go on
+    writing there (an event's address is the mailbox's, not the calendar's).
+    So they are forgotten, each is made once in this calendar on the same
+    pass, and the old calendar is marked to be emptied of them by
+    empty_retired_house_calendar. The sharing recorded was the old calendar's,
+    so that goes too.
+
+    Also puts the area categories, with their colours, into the mailbox --
+    which needs MailboxSettings.ReadWrite; without it the events still carry
+    their category names and the page says why there is no colour."""
     mb = HOUSE_CALENDAR_MAILBOX
-    cal_id = _hc_get(conn, "id")
-    if cal_id:
-        if graph_get(f"/users/{mb}/calendars/{cal_id}", token, params={"$select": "id"}) is not None:
-            return cal_id
-        if "answered 404" not in (graph_last_error() or ""):
-            raise HouseCalendarError(graph_last_error() or "the calendar could not be read")
-    listing = graph_get(f"/users/{mb}/calendars", token, params={"$select": "id,name", "$top": "100"})
-    if listing is None:
-        raise HouseCalendarError(graph_last_error() or f"{mb}'s calendars could not be read")
-    found = next((c["id"] for c in listing.get("value", []) if c.get("name") == HOUSE_CALENDAR_NAME),
-                 None)
-    if not found:
-        status, made, err = graph_send("POST", f"/users/{mb}/calendars", token,
-                                       {"name": HOUSE_CALENDAR_NAME, "color": "lightBrown"})
-        if status not in (200, 201) or not made or not made.get("id"):
-            raise HouseCalendarError(err or "Microsoft did not make the calendar")
-        found = made["id"]
-    _hc_set(conn, "id", found)
+    found = graph_get(f"/users/{mb}/calendar", token, params={"$select": "id"})
+    if found is None or not found.get("id"):
+        raise HouseCalendarError(graph_last_error() or f"{mb}'s calendar could not be read")
+    cal_id = found["id"]
+    stored = _hc_get(conn, "id")
+    if stored == cal_id:
+        return cal_id
+    if stored:
+        conn.execute("DELETE FROM house_calendar_events")
+        _hc_set(conn, "retired", stored)
+        _hc_set(conn, "retired_empty", "")
+        _hc_set(conn, "retired_note", "")
+        _hc_set(conn, "shared", "")
+        _hc_set(conn, "shared_by_hand", "")
+    _hc_set(conn, "id", cal_id)
     ensure_house_categories(conn, token)
     conn.commit()
-    return found
+    return cal_id
+
+
+def empty_retired_house_calendar(conn, token, budget, *, full=False):
+    """Take the app's events out of the calendar it wrote to before, a pass at
+    a time. Returns (removed, waiting).
+
+    Only events carrying the app's key go, and none the app still counts as
+    its own -- so anything a person put there by hand stays, and if the old
+    calendar ever turned out to be the current one, nothing of today's is
+    touched. The calendar itself is never deleted: that is the owner's call,
+    and the page names it. Once it is empty it is looked at again only on the
+    nightly check, which forgets it the night it has been deleted."""
+    old = _hc_get(conn, "retired")
+    if not old or (_hc_get(conn, "retired_empty") and not full):
+        return 0, 0
+    mb = HOUSE_CALENDAR_MAILBOX
+    about = graph_get(f"/users/{mb}/calendars/{old}", token, params={"$select": "id,name"})
+    if about is None:
+        if "answered 404" in (graph_last_error() or ""):
+            # Deleted, or in a mailbox the app no longer writes: nothing to move.
+            for name in ("retired", "retired_empty", "retired_note"):
+                _hc_set(conn, name, "")
+            return 0, 0
+        _hc_set(conn, "retired_note", "The calendar the app used before could not be read, so "
+                                      "its old events are still in it: "
+                                      + (graph_last_error() or "no answer"))
+        return 0, 0
+    called = f'"{about.get("name") or "the old calendar"}"'
+    try:
+        remote = house_calendar_remote(token, old)
+    except HouseCalendarError as e:
+        _hc_set(conn, "retired_note", f"The app's old events in {called} could not be listed: {e}")
+        return 0, 0
+    claimed = {r["graph_id"] for r in conn.execute(
+        "SELECT graph_id FROM house_calendar_events WHERE graph_id IS NOT NULL")}
+    left = [gid for gid, ev in remote.items() if ev["key"] and gid not in claimed]
+    removed, refused = 0, []
+    for gid in left[:max(budget, 0)]:
+        status, _b, err = graph_send("DELETE", f"/users/{mb}/events/{gid}", token)
+        if status in (200, 204, 404):
+            removed += 1
+        else:
+            refused.append(err or f"remove refused ({status})")
+    waiting = len(left) - removed - len(refused)
+    if refused or waiting:
+        _hc_set(conn, "retired_note",
+                f"Moving off {called}: {len(left) - removed} of the app's old events still to take "
+                "out of it" + (f". Microsoft refused: {refused[-1]}" if refused else "") + ".")
+    else:
+        _hc_set(conn, "retired_empty", "1")
+        _hc_set(conn, "retired_note",
+                f"The app's events have been taken out of {called}, the calendar it wrote to "
+                f"before. The calendar itself is still in {mb}, with anything a person put in it "
+                "by hand. Delete it when nobody needs it; this line goes the night after.")
+    return removed, waiting
 
 
 def ensure_house_categories(conn, token):
@@ -93699,10 +93836,16 @@ def sync_house_calendar(conn, *, full=False):
                 continue
         conn.execute("DELETE FROM house_calendar_events WHERE key = ?", (key,))
         counts["removed"] += 1
+    # After this calendar is right, with what the pass has left to spend.
+    conn.commit()
+    counts["moved_out"], waiting = empty_retired_house_calendar(
+        conn, token, HOUSE_CALENDAR_MAX_WRITES - writes, full=full)
+    counts["waiting"] += waiting
     now_iso = datetime.now(timezone.utc).isoformat()
     _hc_set(conn, "last_check", now_iso)
     _hc_set(conn, "in_range", str(len(desired)))
-    if counts["created"] or counts["updated"] or counts["removed"] or counts["strays"]:
+    if (counts["created"] or counts["updated"] or counts["removed"] or counts["strays"]
+            or counts["moved_out"]):
         _hc_set(conn, "last_change", now_iso)
     if not counts["failed"]:
         _hc_set(conn, "last_ok", now_iso)
@@ -93716,7 +93859,8 @@ def sync_house_calendar(conn, *, full=False):
 def house_calendar_counts_words(counts):
     said = [f"{counts[k]} {w}" for k, w in (
         ("created", "added"), ("updated", "updated"), ("removed", "removed"),
-        ("strays", "strays cleared"), ("restored", "put back"), ("failed", "refused"),
+        ("strays", "strays cleared"), ("restored", "put back"),
+        ("moved_out", "taken out of the old calendar"), ("failed", "refused"),
         ("waiting", "waiting for the next pass")) if counts.get(k)]
     if said:
         return ", ".join(said)
@@ -93763,7 +93907,7 @@ def house_calendar_tick():
             if counts["failed"]:
                 house_calendar_note_failure(
                     conn, f"{counts['failed']} event(s) were refused; the page lists them")
-            if any(counts[k] for k in ("created", "updated", "removed", "failed")):
+            if any(counts[k] for k in ("created", "updated", "removed", "moved_out", "failed")):
                 record_job_run(conn, "house_calendar_sync", not counts["failed"],
                                house_calendar_counts_words(counts))
             return counts
@@ -93796,9 +93940,10 @@ def run_house_calendar_reconcile_job(conn):
 
 def house_calendar_share_command():
     """The one line of Exchange Online PowerShell that shares the calendar
-    with everybody, for when Graph cannot."""
-    return (f'Set-MailboxFolderPermission -Identity "{HOUSE_CALENDAR_MAILBOX}:\\Calendar\\'
-            f'{HOUSE_CALENDAR_NAME}" -User Default -AccessRights Reviewer')
+    with everybody, for when Graph cannot. The mailbox's own Calendar folder,
+    with nothing under it: that is the calendar the app writes."""
+    return (f'Set-MailboxFolderPermission -Identity "{HOUSE_CALENDAR_MAILBOX}:\\Calendar" '
+            f'-User Default -AccessRights Reviewer')
 
 
 def house_calendar_org_entry(perms):
@@ -93958,7 +94103,7 @@ def house_calendar_status(conn):
         "last_error_at": _hc_get(conn, "last_error_at"),
         "last_reconcile": _hc_get(conn, "last_reconcile"),
         "categories_note": _hc_get(conn, "categories"), "shared_note": _hc_get(conn, "shared"),
-        "in_range": _hc_get(conn, "in_range"),
+        "in_range": _hc_get(conn, "in_range"), "retired_note": _hc_get(conn, "retired_note"),
         "by_area": by_area, "written": sum(1 for r in rows if r["graph_id"]),
         "failures": failures[:40], "failure_count": len(failures),
     }
@@ -94009,7 +94154,7 @@ def admin_house_calendar():
             for key, label, _m, _c in HOUSE_CALENDAR_AREAS]
     return render_template("admin_house_calendar.html", st=st, feeds=feeds,
                            areas=HOUSE_CALENDAR_AREAS, chosen=areas, preview=preview[:60],
-                           window=(start, end), name=HOUSE_CALENDAR_NAME,
+                           window=(start, end), name=HOUSE_CALENDAR_DIRECTORY_NAME,
                            share_command=house_calendar_share_command(),
                            poll=HOUSE_CALENDAR_POLL_SECONDS)
 
@@ -101625,7 +101770,7 @@ LEGACY_PATHS = [
     ("/la-table", "restaurant_info", True),
     ("/the-chateau", "restoration_page", True),
     ("/about", "restoration_page", True),
-    ("/history", "restoration_page", True),
+    # /history is a page of its own since handover z22 (history_page).
     # The house writes. If it ever publishes that writing at its own address,
     # a 301 cached in every returning reader's browser would be in the way.
     ("/blog", "gallery_page", False),
@@ -101912,7 +102057,8 @@ def sitemap():
         ("events_weddings", "0.7"), ("events_private", "0.6"),
         ("events_photoshoots", "0.6"), ("press", "0.5"), ("story", "0.7"),
         ("facilities_page", "0.7"),
-        ("restoration_page", "0.7"), ("gallery_page", "0.6"), ("contact_page", "0.6"),
+        ("restoration_page", "0.7"), ("history_page", "0.7"),
+        ("gallery_page", "0.6"), ("contact_page", "0.6"),
         ("whats_on", "0.5"), ("terms_page", "0.3"),
     ]
     urls = []

@@ -31,9 +31,15 @@ class FakeGraph:
         self.bodies = {}            # message id -> text
         self.sent = {}              # mailbox -> [sent message dicts]
         self.refuse_mailboxes = {}  # mailbox -> status code to answer with
-        self.calendars = {}         # calendar id -> {"name", "events": {id: body}}
+        # Every mailbox has a default calendar, as Microsoft's do; it is the
+        # one Outlook's "From directory" adds, and the one the app writes.
+        self.default_calendar = "calDefault"
+        self.calendars = {          # calendar id -> {"name", "events": {id: body}}
+            self.default_calendar: {"name": "Calendar", "events": {}}}
         self.categories = []
-        self.permissions = {}       # calendar id -> [permission dicts]
+        self.permissions = {        # calendar id -> [permission dicts]
+            self.default_calendar: [{"id": "orgperm", "role": "freeBusyRead",
+                                     "emailAddress": {"name": "My Organization"}}]}
         self.refuse_subjects = set()   # substrings of a subject whose writes are refused
         self.refuse_categories = False
         self._next = 0
@@ -91,11 +97,15 @@ class FakeGraph:
             return {"value": list(self.sent.get(mailbox, []))}
         if rest == "calendars":
             return {"value": [{"id": cid, "name": c["name"]} for cid, c in self.calendars.items()]}
+        if rest == "calendar":
+            if self.default_calendar not in self.calendars:
+                return self._fail(404)
+            return {"id": self.default_calendar}
         hit = re.match(r"^calendars/([^/]+)$", rest)
         if hit:
             if hit.group(1) not in self.calendars:
                 return self._fail(404)
-            return {"id": hit.group(1)}
+            return {"id": hit.group(1), "name": self.calendars[hit.group(1)]["name"]}
         hit = re.match(r"^calendars/([^/]+)/events$", rest)
         if hit:
             cal = self.calendars.get(hit.group(1))

@@ -84,6 +84,7 @@
   <h2 class="g-place">The Grounds</h2>
   <p class="g-p g-intro">The formal gardens, the terraces, the pool and the parkland, with the mountains on every side.</p>
   <ul class="g-befgrid g-gallery">
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1588481793519-FMDXIS4O8HRN9DJXTTQ1/Alfie+And+Bruce.jpg?format=1000w" alt="Bruce and Alfie in the hay meadow below the cliffs, an old cart behind them" loading="lazy"><figcaption>Bruce and Alfie in the hay meadow</figcaption></figure></li>
     <li><figure><img src="{{ url_for('static', filename='img/grounds/late-summer-flowers-urn-800.jpg') }}" srcset="{{ url_for('static', filename='img/grounds/late-summer-flowers-urn-800.jpg') }} 800w, {{ url_for('static', filename='img/grounds/late-summer-flowers-urn.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="Late-summer flowers around an old urn, the mountains beyond" loading="lazy"><figcaption>Late-summer flowers around an old urn, the mountains beyond</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/fad6453b-f801-43fb-b3bc-6ed223ec09e0/Rebecca%26Ken_Preview_paulinaweddings.com-1_websize.jpg?format=1000w" alt="The château, the gardens and the pool from above" loading="lazy"><figcaption>From above, with the pool</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/24dd7adf-2d85-46bd-8399-4a3fc96ce444/Gardens+-+Formal+Gardens+2.jpg?format=1000w" alt="The formal gardens in flower" loading="lazy"><figcaption>The formal gardens</figcaption></figure></li>
@@ -100,6 +101,9 @@
     <li><figure><img src="{{ url_for('static', filename='img/evoke/chateau-in-the-mist.jpg') }}" alt="The château in the mist" loading="lazy"><figcaption>The château in the mist</figcaption></figure></li>
     <li><figure><img src="{{ url_for('static', filename='img/evoke/below-the-mountains.jpg') }}" alt="The château below the mountains" loading="lazy"><figcaption>The château below the mountains</figcaption></figure></li>
   </ul>
+  {#- Put back after z22: Bruce is in this gallery, and wherever the animals are named the allergy line goes
+      with them (test_animals). -#}
+  {{ animals_note() }}
 </div></section>
 
 

@@ -219,10 +219,10 @@ def run():
     with fake, m.app.test_request_context("/"):
         first = m.sync_house_calendar(conn)
         made = [c for c in fake.calls if c[0] == "POST" and c[1].endswith("/calendars")]
-        s.check("the calendar is made, under the house's name",
-                len(made) == 1 and made[0][2]["name"] == m.HOUSE_CALENDAR_NAME,
-                detail=str(made)[:200])
         cal_id = m._hc_get(conn, "id")
+        s.check("it writes the mailbox's own calendar, and makes none",
+                not made and cal_id == fake.default_calendar,
+                detail=f"{cal_id}; {str(made)[:200]}")
         events = fake.calendars[cal_id]["events"] if cal_id in fake.calendars else {}
         s.check("every event the app calendar has is written",
                 first["created"] == len(items) and len(events) == len(items),
@@ -414,8 +414,8 @@ def run():
         s.check("the button says what to run instead",
                 "Set-MailboxFolderPermission" in said
                 and "-User Default -AccessRights Reviewer" in said, detail=said[-600:])
-        s.check("naming this calendar in this mailbox",
-                f'"{MAILBOX}:' + chr(92) + "Calendar" + chr(92) + m.HOUSE_CALENDAR_NAME + '"' in said)
+        s.check("naming this mailbox's own calendar",
+                f'"{MAILBOX}:' + chr(92) + 'Calendar" ' in said, detail=said[-300:])
         s.check("and the owner's own entry is not taken for the organisation's",
                 fake.permissions[cal_id][0]["role"] == "write")
         r = oc.post("/admin/house-calendar/shared-by-hand", follow_redirects=True)

@@ -171,6 +171,15 @@ FR = {
     "charged in EUR": "débité en EUR",
     "Ariège · French Pyrénées · Restored since 2013":
         "Ariège · Pyrénées françaises · En restauration depuis 2013",
+    # The dates under the engraving at the foot of every page, and the
+    # History page's link (handover z22, 16 Oct 2026; wording from the
+    # design side's FOR-CODE, item 8).
+    "Eight centuries at Gudanes": "Huit siècles à Gudanes",
+    "The fortress": "La forteresse",
+    "The château, by Gabriel": "Le château, par Gabriel",
+    "The History": "L'histoire",
+    # The top bar's short name for What's On in the Ariège (z22).
+    "What’s On": "Que faire",
     "In the Ariège": "En Ariège",
 
     # -- Booking ---------------------------------------------------------
@@ -882,6 +891,12 @@ ES = {
     "charged in EUR": "cobrado en EUR",
     "Ariège · French Pyrénées · Restored since 2013":
         "Ariège · Pirineos franceses · En restauración desde 2013",
+    # The dates under the engraving, and the History page's link (z22).
+    "Eight centuries at Gudanes": "Ocho siglos en Gudanes",
+    "The fortress": "La fortaleza",
+    "The château, by Gabriel": "El castillo, de Gabriel",
+    "The History": "La historia",
+    "What’s On": "Qué hacer",
     "In the Ariège": "En el Ariège",
 
     # -- Booking ---------------------------------------------------------
