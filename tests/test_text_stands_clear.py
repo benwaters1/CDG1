@@ -53,6 +53,9 @@ import test_staff_header_on_a_phone as phone
 
 m = _harness.m
 TAG = "ZZSTANDCLEAR"
+REVENUE = "/management/revenue-to-send"
+APPROVAL_LINE_NOW = '<p class="upload-hint" style="margin:0 0 14px;">'
+APPROVAL_LINE_THEN = '<p class="upload-hint" style="margin:-6px 0 14px;">'
 WIDTHS = (1100, 600, 390)   # a desk, a small tablet or a large phone, a phone
 CHUNK = 40          # frames per browser: a few hundred iframes in one page times out
 
@@ -261,7 +264,8 @@ def run():
         # page once per run and shares them: in a full run it has already
         # read these before the rows above existed.
         fresh = {"dashboard": "/", "admin_workshops": "/admin/workshops",
-                 "admin_tasks": "/admin/tasks", "breakfast": "/breakfast"}
+                 "admin_tasks": "/admin/tasks", "breakfast": "/breakfast",
+                 "revenue_to_send": REVENUE}
         pages = [(ep, url, html) for ep, url, html in sweep.owner_pages(oc)
                  if ep not in fresh]
         home = oc.get("/")
@@ -282,6 +286,34 @@ def run():
                 breakfast.status_code == 200
                 and TAG + " Croissants" in breakfast.get_data(as_text=True), breakfast)
         pages.append(("breakfast", "/breakfast", breakfast.get_data(as_text=True)))
+        # The revenue page with a cost waiting for approval (the supplier
+        # invoice above) and nothing approved still unsent, so the line about
+        # the one waiting sits straight under the paragraph, no red box
+        # between. Its -6px printed it into that paragraph (795ae0d) -- seen
+        # only where an earlier suite or a fresh database left exactly this
+        # state, because the shared sweep read the page in whatever state it
+        # found, and a copy of the house's data always has the box. Anything
+        # approved and unsent is marked sent for the one read, then put back
+        # exactly as it was.
+        unsent = conn.execute(
+            """SELECT id, pennylane_invoice_id FROM expenses
+                WHERE COALESCE(status, 'approved') NOT IN ('pending', 'rejected')
+                  AND COALESCE(pennylane_invoice_id, '') = ''""").fetchall()
+        try:
+            conn.executemany("UPDATE expenses SET pennylane_invoice_id = ? WHERE id = ?",
+                             [(TAG, r["id"]) for r in unsent])
+            conn.commit()
+            revenue = oc.get(REVENUE)
+        finally:
+            conn.executemany("UPDATE expenses SET pennylane_invoice_id = ? WHERE id = ?",
+                             [(r["pennylane_invoice_id"], r["id"]) for r in unsent])
+            conn.commit()
+        said = revenue.get_data(as_text=True)
+        s.check("the revenue page renders with a cost waiting for approval and no red box",
+                revenue.status_code == 200 and "waiting for your approval" in said
+                and not re.search(r"costs?\s+(?:has|have)\s+not been sent", said)
+                and APPROVAL_LINE_NOW in said, revenue)
+        pages.append(("revenue_to_send", REVENUE, said))
     finally:
         _cleanup(conn)
         conn.close()
@@ -297,7 +329,7 @@ def run():
 
     # The control: the pages whose faults were found, with the old rules back.
     control_urls = ("/admin/overview", "/change-password", "/", "/admin/pos/journal",
-                    "/breakfast")
+                    "/breakfast", REVENUE)
     frames = []
     for i, url in enumerate(names):
         for w in WIDTHS:
@@ -307,7 +339,8 @@ def run():
             # And the figure and its note written flush again, as they were.
             files.append(files[names.index(url)].replace("</head>", OLD_RULES + "</head>", 1)
                          .replace('<wbr><span class="overview-sub">',
-                                  '<span class="overview-sub">'))
+                                  '<span class="overview-sub">')
+                         .replace(APPROVAL_LINE_NOW, APPROVAL_LINE_THEN))
             for w in WIDTHS:
                 frames.append({"page": len(files) - 1, "width": w, "name": url,
                                "control": True})
@@ -356,6 +389,11 @@ def run():
                             "static", "style.css"), encoding="utf-8").read()
     s.check("a task card's controls wrap rather than run into the next day",
             bool(re.search(r"\.task-card-head\s*\{[^}]*flex-wrap:\s*wrap", css)))
+    s.check("the revenue page's approval line is reported over the paragraph above it",
+            any("waiting for your approval" in x for w in WIDTHS
+                for x in ctl.get((REVENUE, w), {}).get("onText", [])),
+            detail=json.dumps([x for w in WIDTHS
+                               for x in ctl.get((REVENUE, w), {}).get("onText", [])][:3]))
     s.check("the breakfast checklist is reported wider than a phone",
             ctl.get(("/breakfast", 390), {}).get("docW", 0) > 390,
             detail=f"{ctl.get(('/breakfast', 390), {}).get('docW')}px")
