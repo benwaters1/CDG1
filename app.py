@@ -92857,10 +92857,10 @@ def make_channel_door_link(reservation_id):
 # ---------------------------------------------------------------------------
 # THE HOUSE CALENDAR.
 #
-# One real Microsoft 365 calendar, "Château de Gudanes — House", that the app
-# WRITES to and everybody reads -- on a desk, in a browser, on a phone -- with
-# the stays, the dinners, the ateliers, the events, the tasks and the rota in
-# it. An .ics subscription was the obvious way and the wrong one: Outlook
+# One real Microsoft 365 calendar -- the house mailbox's own default calendar,
+# "House" in Outlook's directory -- that the app WRITES to and everybody reads
+# -- on a desk, in a browser, on a phone -- with the stays, the dinners, the
+# ateliers, the events, the tasks and the rota in it. An .ics subscription was the obvious way and the wrong one: Outlook
 # refreshes a subscribed feed every few hours, so a stay booked at ten was not
 # on anybody's phone until the afternoon. Written into Exchange, it is there in
 # under a minute.
@@ -92883,7 +92883,11 @@ def make_channel_door_link(reservation_id):
 # holds it to that, and the privacy notice says so.
 # ---------------------------------------------------------------------------
 
+# The .ics feed's name. Microsoft's copy is not called this any more: it is
+# the house mailbox's default calendar, which Outlook's directory lists under
+# the mailbox's own display name.
 HOUSE_CALENDAR_NAME = "Château de Gudanes — House"
+HOUSE_CALENDAR_DIRECTORY_NAME = "House"
 # (key, label, mark, Outlook preset colour). The mark leads every subject so
 # the area reads on a phone, where category colours do not always show.
 HOUSE_CALENDAR_AREAS = [
@@ -92917,6 +92921,10 @@ HOUSE_CALENDAR_SETTINGS = {
     # writing had stopped; this is what tells them apart.
     "in_range": "house_calendar_in_range",
     "shared_by_hand": "house_calendar_shared_by_hand",
+    # The calendar the app wrote to before this one, while its old events are
+    # taken out of it; whether that is done; and what the page says about it.
+    "retired": "house_calendar_retired_id", "retired_empty": "house_calendar_retired_empty",
+    "retired_note": "house_calendar_retired_note",
 }
 # Windows' name for the house's zone, which every Graph create and update
 # accepts; Graph lists Europe/Paris as well, but warns that writes "might not
@@ -93211,32 +93219,100 @@ def graph_send(method, path, token, body=None, headers=None):
 
 
 def ensure_house_calendar(conn, token):
-    """The house calendar's id: the one already made, or one found by name,
-    or a new one. Also puts the area categories, with their colours, into the
-    mailbox -- which needs MailboxSettings.ReadWrite; without it the events
-    still carry their category names and the page says why there is no colour."""
+    """The house calendar's id: the DEFAULT calendar of the house mailbox.
+
+    It used to be a second calendar inside that mailbox, made by name, and
+    nobody could see it. Outlook's Add calendar -> From directory -> House adds
+    a mailbox's default calendar and no other, and a shared mailbox's other
+    calendars can only be given out by an invitation sent from inside it. So
+    the events go where Outlook looks, and the app never makes a calendar.
+
+    When the id is not the one stored -- the move off the named calendar, or
+    HOUSE_CALENDAR_MAILBOX pointed at another mailbox -- every event the app
+    remembers is in the OLD calendar, and patching one by its id would go on
+    writing there (an event's address is the mailbox's, not the calendar's).
+    So they are forgotten, each is made once in this calendar on the same
+    pass, and the old calendar is marked to be emptied of them by
+    empty_retired_house_calendar. The sharing recorded was the old calendar's,
+    so that goes too.
+
+    Also puts the area categories, with their colours, into the mailbox --
+    which needs MailboxSettings.ReadWrite; without it the events still carry
+    their category names and the page says why there is no colour."""
     mb = HOUSE_CALENDAR_MAILBOX
-    cal_id = _hc_get(conn, "id")
-    if cal_id:
-        if graph_get(f"/users/{mb}/calendars/{cal_id}", token, params={"$select": "id"}) is not None:
-            return cal_id
-        if "answered 404" not in (graph_last_error() or ""):
-            raise HouseCalendarError(graph_last_error() or "the calendar could not be read")
-    listing = graph_get(f"/users/{mb}/calendars", token, params={"$select": "id,name", "$top": "100"})
-    if listing is None:
-        raise HouseCalendarError(graph_last_error() or f"{mb}'s calendars could not be read")
-    found = next((c["id"] for c in listing.get("value", []) if c.get("name") == HOUSE_CALENDAR_NAME),
-                 None)
-    if not found:
-        status, made, err = graph_send("POST", f"/users/{mb}/calendars", token,
-                                       {"name": HOUSE_CALENDAR_NAME, "color": "lightBrown"})
-        if status not in (200, 201) or not made or not made.get("id"):
-            raise HouseCalendarError(err or "Microsoft did not make the calendar")
-        found = made["id"]
-    _hc_set(conn, "id", found)
+    found = graph_get(f"/users/{mb}/calendar", token, params={"$select": "id"})
+    if found is None or not found.get("id"):
+        raise HouseCalendarError(graph_last_error() or f"{mb}'s calendar could not be read")
+    cal_id = found["id"]
+    stored = _hc_get(conn, "id")
+    if stored == cal_id:
+        return cal_id
+    if stored:
+        conn.execute("DELETE FROM house_calendar_events")
+        _hc_set(conn, "retired", stored)
+        _hc_set(conn, "retired_empty", "")
+        _hc_set(conn, "retired_note", "")
+        _hc_set(conn, "shared", "")
+        _hc_set(conn, "shared_by_hand", "")
+    _hc_set(conn, "id", cal_id)
     ensure_house_categories(conn, token)
     conn.commit()
-    return found
+    return cal_id
+
+
+def empty_retired_house_calendar(conn, token, budget, *, full=False):
+    """Take the app's events out of the calendar it wrote to before, a pass at
+    a time. Returns (removed, waiting).
+
+    Only events carrying the app's key go, and none the app still counts as
+    its own -- so anything a person put there by hand stays, and if the old
+    calendar ever turned out to be the current one, nothing of today's is
+    touched. The calendar itself is never deleted: that is the owner's call,
+    and the page names it. Once it is empty it is looked at again only on the
+    nightly check, which forgets it the night it has been deleted."""
+    old = _hc_get(conn, "retired")
+    if not old or (_hc_get(conn, "retired_empty") and not full):
+        return 0, 0
+    mb = HOUSE_CALENDAR_MAILBOX
+    about = graph_get(f"/users/{mb}/calendars/{old}", token, params={"$select": "id,name"})
+    if about is None:
+        if "answered 404" in (graph_last_error() or ""):
+            # Deleted, or in a mailbox the app no longer writes: nothing to move.
+            for name in ("retired", "retired_empty", "retired_note"):
+                _hc_set(conn, name, "")
+            return 0, 0
+        _hc_set(conn, "retired_note", "The calendar the app used before could not be read, so "
+                                      "its old events are still in it: "
+                                      + (graph_last_error() or "no answer"))
+        return 0, 0
+    called = f'"{about.get("name") or "the old calendar"}"'
+    try:
+        remote = house_calendar_remote(token, old)
+    except HouseCalendarError as e:
+        _hc_set(conn, "retired_note", f"The app's old events in {called} could not be listed: {e}")
+        return 0, 0
+    claimed = {r["graph_id"] for r in conn.execute(
+        "SELECT graph_id FROM house_calendar_events WHERE graph_id IS NOT NULL")}
+    left = [gid for gid, ev in remote.items() if ev["key"] and gid not in claimed]
+    removed, refused = 0, []
+    for gid in left[:max(budget, 0)]:
+        status, _b, err = graph_send("DELETE", f"/users/{mb}/events/{gid}", token)
+        if status in (200, 204, 404):
+            removed += 1
+        else:
+            refused.append(err or f"remove refused ({status})")
+    waiting = len(left) - removed - len(refused)
+    if refused or waiting:
+        _hc_set(conn, "retired_note",
+                f"Moving off {called}: {len(left) - removed} of the app's old events still to take "
+                "out of it" + (f". Microsoft refused: {refused[-1]}" if refused else "") + ".")
+    else:
+        _hc_set(conn, "retired_empty", "1")
+        _hc_set(conn, "retired_note",
+                f"The app's events have been taken out of {called}, the calendar it wrote to "
+                f"before. The calendar itself is still in {mb}, with anything a person put in it "
+                "by hand. Delete it when nobody needs it; this line goes the night after.")
+    return removed, waiting
 
 
 def ensure_house_categories(conn, token):
@@ -93417,10 +93493,16 @@ def sync_house_calendar(conn, *, full=False):
                 continue
         conn.execute("DELETE FROM house_calendar_events WHERE key = ?", (key,))
         counts["removed"] += 1
+    # After this calendar is right, with what the pass has left to spend.
+    conn.commit()
+    counts["moved_out"], waiting = empty_retired_house_calendar(
+        conn, token, HOUSE_CALENDAR_MAX_WRITES - writes, full=full)
+    counts["waiting"] += waiting
     now_iso = datetime.now(timezone.utc).isoformat()
     _hc_set(conn, "last_check", now_iso)
     _hc_set(conn, "in_range", str(len(desired)))
-    if counts["created"] or counts["updated"] or counts["removed"] or counts["strays"]:
+    if (counts["created"] or counts["updated"] or counts["removed"] or counts["strays"]
+            or counts["moved_out"]):
         _hc_set(conn, "last_change", now_iso)
     if not counts["failed"]:
         _hc_set(conn, "last_ok", now_iso)
@@ -93434,7 +93516,8 @@ def sync_house_calendar(conn, *, full=False):
 def house_calendar_counts_words(counts):
     said = [f"{counts[k]} {w}" for k, w in (
         ("created", "added"), ("updated", "updated"), ("removed", "removed"),
-        ("strays", "strays cleared"), ("restored", "put back"), ("failed", "refused"),
+        ("strays", "strays cleared"), ("restored", "put back"),
+        ("moved_out", "taken out of the old calendar"), ("failed", "refused"),
         ("waiting", "waiting for the next pass")) if counts.get(k)]
     if said:
         return ", ".join(said)
@@ -93481,7 +93564,7 @@ def house_calendar_tick():
             if counts["failed"]:
                 house_calendar_note_failure(
                     conn, f"{counts['failed']} event(s) were refused; the page lists them")
-            if any(counts[k] for k in ("created", "updated", "removed", "failed")):
+            if any(counts[k] for k in ("created", "updated", "removed", "moved_out", "failed")):
                 record_job_run(conn, "house_calendar_sync", not counts["failed"],
                                house_calendar_counts_words(counts))
             return counts
@@ -93514,9 +93597,10 @@ def run_house_calendar_reconcile_job(conn):
 
 def house_calendar_share_command():
     """The one line of Exchange Online PowerShell that shares the calendar
-    with everybody, for when Graph cannot."""
-    return (f'Set-MailboxFolderPermission -Identity "{HOUSE_CALENDAR_MAILBOX}:\\Calendar\\'
-            f'{HOUSE_CALENDAR_NAME}" -User Default -AccessRights Reviewer')
+    with everybody, for when Graph cannot. The mailbox's own Calendar folder,
+    with nothing under it: that is the calendar the app writes."""
+    return (f'Set-MailboxFolderPermission -Identity "{HOUSE_CALENDAR_MAILBOX}:\\Calendar" '
+            f'-User Default -AccessRights Reviewer')
 
 
 def house_calendar_org_entry(perms):
@@ -93676,7 +93760,7 @@ def house_calendar_status(conn):
         "last_error_at": _hc_get(conn, "last_error_at"),
         "last_reconcile": _hc_get(conn, "last_reconcile"),
         "categories_note": _hc_get(conn, "categories"), "shared_note": _hc_get(conn, "shared"),
-        "in_range": _hc_get(conn, "in_range"),
+        "in_range": _hc_get(conn, "in_range"), "retired_note": _hc_get(conn, "retired_note"),
         "by_area": by_area, "written": sum(1 for r in rows if r["graph_id"]),
         "failures": failures[:40], "failure_count": len(failures),
     }
@@ -93727,7 +93811,7 @@ def admin_house_calendar():
             for key, label, _m, _c in HOUSE_CALENDAR_AREAS]
     return render_template("admin_house_calendar.html", st=st, feeds=feeds,
                            areas=HOUSE_CALENDAR_AREAS, chosen=areas, preview=preview[:60],
-                           window=(start, end), name=HOUSE_CALENDAR_NAME,
+                           window=(start, end), name=HOUSE_CALENDAR_DIRECTORY_NAME,
                            share_command=house_calendar_share_command(),
                            poll=HOUSE_CALENDAR_POLL_SECONDS)
 
