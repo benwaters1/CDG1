@@ -146,7 +146,9 @@ def run():
         # deleted -- so it went on refusing bookings for every suite that ran
         # after this one.
         (workshop["id"], ws_day.isoformat(),
-         (ws_day + timedelta(days=2)).isoformat(), TAG))
+         # Ends the day after its last night: the night a workshop ends is
+         # for sale (owner, 16 Oct 2026).
+         (ws_day + timedelta(days=3)).isoformat(), TAG))
     ev_day = _clear(base + timedelta(days=40))
     conn.execute(
         """INSERT INTO event_inquiries (reference_code, manage_token, event_type,
