@@ -118,6 +118,11 @@ machine at the last count.
   wages are a typed number the owner sets, not one the app infers.
 - **Anything that becomes a task appears on the calendar automatically.**
   `build_overview` / `build_calendar` cells carry `events`, not `rows`.
+  A row with only a `date` shows on that one day. Anything that lasts longer
+  (a stay's nights, an atelier, a wedding) goes through `_spanning_row`, so
+  it carries `until` and `run` and shows on every day it covers. The
+  RetreatGuru ateliers showed on their first day only until 15 Oct 2026.
+  Guarded by `test_calendar_every_day`.
 - **List pages.** Every list gets `list_view()` — search, counted chips,
   sort. Never add another one-off search box.
 - **The dev database holds live config.** Email templates and settings are

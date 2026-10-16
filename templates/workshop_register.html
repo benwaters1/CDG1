@@ -318,7 +318,9 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   var partySize = document.querySelector('[name="party_size"]').value;
   if (!code) { resultEl.textContent = 'Enter a code first.'; return; }
   resultEl.textContent = 'Checking...';
-  var body = new URLSearchParams({category: 'workshop', code: code, session_id: '{{ session["id"] }}', party_size: partySize});
+  var soloBox = document.getElementById('occupancy_solo');
+  var body = new URLSearchParams({category: 'workshop', code: code, session_id: '{{ session["id"] }}', party_size: partySize,
+    occupancy_type: (soloBox && soloBox.checked && partySize === '1') ? 'solo' : ''});
   fetch('{{ url_for("api_validate_promo_code") }}', {method: 'POST', body: body})
     .then(function(r) { return r.json(); })
     .then(function(data) {
