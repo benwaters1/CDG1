@@ -1469,11 +1469,25 @@ def terminal_cancel(reader_id, intent_id):
 
     Both are attempted regardless of the other failing: a reader left showing
     an amount nobody is paying is worse than an untidy error.
+
+    The reader is shared by every table, and the till stops it by itself when
+    a bill is settled another way -- or when the owner checks a settled tab
+    hours later. So the reader is cleared only while it is asking for THIS
+    payment; clearing whatever it happened to be doing would stop the next
+    table's tap. The intent is cancelled either way, and once it is, no
+    reader can take it.
     """
     problems = []
     if reader_id:
         try:
-            stripe.terminal.Reader.cancel_action(reader_id)
+            reader = stripe.terminal.Reader.retrieve(reader_id)
+            action = sval(reader, "action") or {}
+            asking = sval(sval(action, "process_payment_intent") or {}, "payment_intent")
+            if asking is not None and not isinstance(asking, str):
+                asking = sval(asking, "id")          # expanded rather than an id
+            if (sval(action, "status") == "in_progress"
+                    and (not intent_id or asking == intent_id)):
+                stripe.terminal.Reader.cancel_action(reader_id)
         except Exception as e:
             problems.append(str(e))
     if intent_id:
@@ -34658,6 +34672,66 @@ def owner_home_warnings(conn, today):
               " is that until now nobody could see it had happened.",
             len(settled_after), "admin_voids")
 
+    # A bill settled another way while the card reader was still asking for
+    # it. If the guest tapped, they paid twice and the till does not know: it
+    # finds out only when somebody asks the reader, and a settled tab is not
+    # a page anybody opens again. No window -- it is true until it is
+    # checked, and checking it closes it either way. A charge already on the
+    # books is left out, because tabs settled on the reader before 16 Oct 2026
+    # still carry theirs.
+    left = conn.execute(
+        """SELECT o.id, o.table_label, o.service_date, o.payment_method
+             FROM pos_orders o
+            WHERE o.status != 'open' AND COALESCE(o.payment_intent_id, '') != ''
+              AND NOT EXISTS (SELECT 1 FROM pos_payments p
+                               WHERE p.method = 'card_terminal'
+                                 AND p.reference = o.payment_intent_id)
+            ORDER BY o.closed_at DESC""").fetchall()
+    if left:
+        first = left[0]
+        how = {"cash": "in cash", "card_link": "by the QR link", "room": "to a room",
+               "card_terminal": "by card", "comp": "on the house"}.get(
+                   first["payment_method"] or "", "another way")
+        add("attention",
+            f"{len(left)} card payment{'' if len(left) == 1 else 's'} left on the "
+            f"reader for {'a bill' if len(left) == 1 else 'bills'} already settled",
+            f"{first['table_label']}"
+            + (f" on {format_date_short(first['service_date'])}"
+               if first["service_date"] else "")
+            + f" was settled {how} while the reader was still asking for it. "
+              "Press Check the reader on the tab: a tap that went through goes on "
+              "the books, and one that did not is stopped.",
+            len(left), "pos_order", order_id=first["id"])
+
+    # A bill that took more than it came to: two ways of paying for one
+    # meal, most often a tap on the reader after it had been settled another
+    # way. The money is on the books; whether it goes back is the owner's
+    # call, and it is made in Stripe -- nothing here refunds by itself. A
+    # fortnight, like the voids above, because nothing on the till records a
+    # refund made in Stripe that would close it sooner.
+    over = conn.execute(
+        """SELECT o.id, o.table_label, o.service_date, o.settled_total,
+                  SUM(p.amount) AS paid
+             FROM pos_orders o JOIN pos_payments p ON p.order_id = o.id
+            WHERE o.status = 'paid' AND o.service_date >= ?
+            GROUP BY o.id
+           HAVING SUM(p.amount) > COALESCE(o.settled_total, 0) + 0.005
+            ORDER BY SUM(p.amount) - COALESCE(o.settled_total, 0) DESC""",
+        ((today - timedelta(days=14)).isoformat(),)).fetchall()
+    if over:
+        worst = over[0]
+        extra = round(worst["paid"] - (worst["settled_total"] or 0), 2)
+        add("attention",
+            f"{len(over)} bill{'' if len(over) == 1 else 's'} took more than "
+            f"{'it' if len(over) == 1 else 'they'} came to",
+            f"{worst['table_label']}"
+            + (f" on {format_date_short(worst['service_date'])}"
+               if worst["service_date"] else "")
+            + f" took {euro(worst['paid'])} against a {euro(worst['settled_total'] or 0)} "
+              f"bill, {euro(extra)} over. If the guest paid twice, refund the extra "
+              "from Stripe.",
+            len(over), "pos_order", order_id=worst["id"])
+
     # A guest waiting for an answer the booking page promised within a day.
     # First, because everything else on this panel is about the house and
     # this one is about somebody who is waiting -- and because if nobody gets
@@ -38735,6 +38809,19 @@ def pos_order(order_id):
     # taken at booking is on the screen the order is actually tapped into.
     diet = mark_dietary_risk(menu, bill["lines"], context["dietary"] if context else "")
     reader_on = terminal_ready(conn)
+    # While the reader asks, nothing else may settle the tab, and the page says
+    # so instead of offering buttons the routes would refuse.
+    reader_waiting = (pos_reader_waiting(bill["order"])
+                      if bill["order"]["status"] == "open" else None)
+    # Settled another way with the reader still asking, and nobody has checked
+    # whether the guest tapped. A charge already on the books does not count:
+    # tabs settled on the reader before 16 Oct 2026 still carry theirs.
+    left_on_reader = (bill["order"]["status"] != "open"
+                      and bool(bill["order"]["payment_intent_id"])
+                      and not pos_reader_charge_recorded(conn, bill["order"]["payment_intent_id"]))
+    took_too_much = (round(-bill["outstanding"], 2)
+                     if bill["order"]["status"] == "paid" and bill["outstanding"] < -0.005
+                     else 0)
     # Offered before it is asked for: the address on the room or the table
     # booking, so the common case is one tap rather than typing an address off
     # somebody's phone screen in bad light.
@@ -38750,6 +38837,8 @@ def pos_order(order_id):
         allergens=ALLERGENS, merge=merge,
         formule_menu=formule_menu, formules=formules, formule_choices=formule_choices,
         packages=packages, diet=diet, reader_on=reader_on,
+        reader_waiting=reader_waiting, left_on_reader=left_on_reader,
+        took_too_much=took_too_much,
         receipt_email_default=receipt_email_default)
 
 
@@ -39282,11 +39371,21 @@ def pos_take_payment_route(order_id):
     if method not in POS_PAYMENT_METHODS:
         abort(400)
     conn = get_db()
+    # Under the write lock from the first read, so the reader cannot be put to
+    # work on this tab between the check below and the payment being written.
+    # Nothing in here waits on the network before the commit; the receipt
+    # mail goes after it.
+    conn.execute("BEGIN IMMEDIATE")
     bill = pos_bill(conn, order_id)
     if not bill or bill["order"]["status"] != "open":
         conn.close()
         flash("That tab is closed.", "error")
         return redirect(url_for("pos_home"))
+    waiting = pos_reader_waiting(bill["order"])
+    if waiting:
+        conn.close()
+        flash(waiting, "error")
+        return redirect(url_for("pos_order", order_id=order_id))
 
     raw = (request.form.get("amount", "") or "").strip().replace(",", ".")
     try:
@@ -40105,6 +40204,18 @@ def pos_take_card(order_id):
         conn.execute("UPDATE pos_orders SET payment_intent_id = ? WHERE id = ?",
                      (intent_id, order_id))
         conn.commit()
+        # Stripe took a second or two to answer, and in that time another
+        # device may have settled the tab or merged it away. Written onto the
+        # tab first either way, so it is never a charge attached to nothing;
+        # then stopped, because nothing is owed.
+        now = conn.execute("SELECT status FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+        if now and now["status"] != "open":
+            who = current_user()
+            answer = pos_reader_settle(conn, order_id, user_id=who["id"] if who else None)
+            conn.close()
+            flash("This tab was settled while the reader was being asked. "
+                  + (answer["message"] if answer else ""), "error")
+            return redirect(url_for("pos_order", order_id=order_id))
     conn.close()
     if error:
         flash(error, "error")
@@ -40122,6 +40233,184 @@ def pos_reader_charge_recorded(conn, intent_id):
         (intent_id,)).fetchone() is not None
 
 
+def pos_reader_waiting(order):
+    """Why this tab cannot be paid another way right now, or None.
+
+    While the reader is asking for a tab, nothing else may settle it. Cash
+    taken in the meantime closed the tab with the reader still asking; the
+    guest tapped anyway, and the poll -- seeing a closed tab -- answered
+    "Settled" and wrote nothing. Stripe had EUR 40, the books EUR 20. The page
+    and the routes ask this same question, so the page never offers a button
+    the route will refuse.
+    """
+    if not (order["payment_intent_id"] or "").strip():
+        return None
+    return ("A card payment is waiting on the reader for this table. Let it "
+            "finish, or cancel it, before taking the bill another way.")
+
+
+def pos_follow_merges(conn, order_id):
+    """The tab a tab's lines are on now: itself, or the one it was merged into.
+
+    Money that arrives for a tab after it was merged away follows its lines --
+    paid onto the void tab, it would sit where no bill and no cash-up reads.
+    """
+    seen = set()
+    while order_id not in seen:
+        seen.add(order_id)
+        tab = conn.execute("SELECT status, merged_into_order_id FROM pos_orders WHERE id = ?",
+                           (order_id,)).fetchone()
+        if not tab or tab["status"] != "void" or not tab["merged_into_order_id"]:
+            break
+        order_id = tab["merged_into_order_id"]
+    return order_id
+
+
+def pos_reader_settle(conn, order_id, *, stop=False, user_id=None):
+    """Bring one tab's books into line with what the card reader has done.
+
+    Returns {"state", "message", "settled", "paid_twice", "recorded"}, or None
+    for no such tab. The poll calls it as it is; the Cancel button calls it
+    with `stop`.
+
+    The rule it keeps: a charge comes off a tab in one of two ways only --
+    written to the books, or Stripe saying it can no longer be taken. Cancel
+    used to clear it whatever Stripe answered, so a guest who had tapped a
+    second before the button was pressed had paid, the tab stayed open, and
+    the next thing anybody did was take the bill again.
+
+    A tab that is no longer open owes nothing, so whatever is still on the
+    reader for it is stopped, exactly as Cancel would. That happens when a
+    phone pays the QR link while the reader is asking, which nothing can
+    refuse: the guest has already paid. If the reader took the card anyway,
+    the charge is written to the settled tab -- the bill shows it took more
+    than it came to, and the owner sees it. It is never refunded from here.
+    """
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        return None
+    is_open = order["status"] == "open"
+    intent_id = order["payment_intent_id"]
+    answer = {"state": "idle", "message": "", "settled": not is_open,
+              "paid_twice": False, "recorded": 0.0}
+    if not intent_id:
+        if not is_open:
+            answer.update(state="succeeded", message="Settled.")
+        return answer
+
+    def let_go():
+        # Only THIS one: a press on another device may have put a fresh
+        # payment on the reader since the tab was read.
+        conn.execute("UPDATE pos_orders SET payment_intent_id = NULL "
+                     "WHERE id = ? AND payment_intent_id = ?", (order_id, intent_id))
+        conn.commit()
+
+    if pos_reader_charge_recorded(conn, intent_id):
+        # Already on the books -- a tab settled on the reader before charges
+        # were taken off it once recorded, then reopened. Nothing to ask.
+        let_go()
+        answer.update(state="succeeded", message="That card payment is already recorded.")
+        return answer
+
+    stopping = stop or not is_open
+    reader = terminal_reader_id(conn)
+    conn.commit()                     # nothing held open while Stripe is asked
+    problems = terminal_cancel(reader, intent_id) if stopping else ""
+    if stopping and not problems:
+        # Stripe accepted the cancel, so the intent can no longer be charged.
+        state, message, intent = "failed", "", None
+    else:
+        # Not stopping, or the stop was refused -- most often because the
+        # guest has just tapped and the charge went through. Ask what it did.
+        state, message, intent = terminal_payment_state(intent_id)
+
+    if state == "succeeded":
+        return pos_reader_record(conn, order_id, intent_id, intent, user_id=user_id)
+    if state == "failed":
+        let_go()
+        if not is_open:
+            message = ("This bill was settled another way, so the card payment "
+                       "was cancelled — the reader is clear.")
+        elif stopping:
+            message = "Card payment cancelled — the reader is clear."
+        answer.update(state="failed", message=message)
+        return answer
+    # Still waiting, or Stripe could not be asked. The charge stays on the tab
+    # -- the one thing that must not happen is to forget a tap in progress.
+    if stopping and state == "unknown":
+        message = (f"Stripe could not be reached ({problems}), so the card payment "
+                   "stays on this tab until it can be asked. Try again in a minute.")
+    elif stopping:
+        message = (("This bill was settled another way, but the reader could not be "
+                    "stopped" if not is_open else "The reader could not be stopped")
+                   + f" ({problems}). The guest may be tapping now; if the payment "
+                   "goes through, it will be recorded here.")
+    answer.update(state=state, message=message, settled=False)
+    return answer
+
+
+def pos_reader_record(conn, order_id, intent_id, intent, *, user_id=None):
+    """Write one charge the reader took. Part of pos_reader_settle.
+
+    One charge, one payment. The intent stayed on the tab after it was
+    recorded, so a charge that left something owing (a coffee added while the
+    guest tapped) reloaded the page, polled again and was recorded a second
+    time: EUR 20 on the card, EUR 40 on the books. So the intent is taken OFF
+    the tab before the payment is written, in the same transaction -- the
+    UPDATE is the claim, and a second poll (this page open on two devices)
+    waits for it and then finds nothing to claim. A charge already on the
+    books is never written again, whichever tab it is on now. The unique index
+    on pos_payments is the last word.
+    """
+    claimed = conn.execute(
+        "UPDATE pos_orders SET payment_intent_id = NULL "
+        "WHERE id = ? AND payment_intent_id = ?", (order_id, intent_id)).rowcount
+    if not claimed or pos_reader_charge_recorded(conn, intent_id):
+        conn.commit()
+        now = conn.execute("SELECT status FROM pos_orders WHERE id = ?",
+                           (order_id,)).fetchone()
+        return {"state": "succeeded", "message": "That card payment is already recorded.",
+                "settled": bool(now) and now["status"] != "open", "paid_twice": False,
+                "recorded": 0.0}
+    lands_on = pos_follow_merges(conn, order_id)
+    tab = conn.execute("SELECT status, table_label FROM pos_orders WHERE id = ?",
+                       (lands_on,)).fetchone()
+    is_open = tab["status"] == "open"
+    # Trust Stripe for the amount, exactly as the webhook does — the guest
+    # tapped what the reader asked for, and recomputing it here would let a
+    # line added mid-tap change what we record as taken.
+    taken = round((sval(intent, "amount_received") or sval(intent, "amount") or 0)
+                  / 100.0, 2) if intent else 0.0
+    if taken <= 0 and is_open:
+        taken = pos_bill(conn, lands_on)["outstanding"]
+    if taken <= 0:
+        conn.rollback()               # the charge stays on the tab, to be asked again
+        return {"state": "unknown", "settled": False, "paid_twice": False, "recorded": 0.0,
+                "message": "Stripe says the card was paid but not how much. "
+                           "Look it up in Stripe before taking anything else."}
+    pos_take_payment(conn, lands_on, taken, "card_terminal",
+                     reference=intent_id, user_id=user_id, raised_on=order_id)
+    if is_open:
+        after = pos_close_if_settled(conn, lands_on, "card_terminal", user_id=user_id)
+        conn.commit()
+        settled = after["outstanding"] <= 0.01
+        return {"state": "succeeded", "settled": settled, "paid_twice": False,
+                "recorded": taken,
+                "message": (f"{money(taken)} taken on the reader." if not settled
+                            else f"Settled — {money(after['total'])}.")}
+    # The bill was settled another way while the reader was asking, and the
+    # guest tapped anyway. On the books it goes, against the tab it was for,
+    # and the tab now shows it took more than it came to. Closing it again
+    # would write a second settlement into the journal for one bill.
+    log_audit(conn, "pos_reader_charge_after_settled", target=tab["table_label"],
+              details=f"{money(taken)} · {intent_id}")
+    conn.commit()
+    return {"state": "succeeded", "settled": True, "paid_twice": True, "recorded": taken,
+            "message": f"{money(taken)} was taken on the reader after this bill had "
+                       "been settled another way. It is on the books — refund it "
+                       "from Stripe if the guest has paid twice."}
+
+
 @app.route("/pos/<int:order_id>/card-status")
 @login_required
 def pos_card_status(order_id):
@@ -40129,84 +40418,68 @@ def pos_card_status(order_id):
 
     Settles the tab itself the moment Stripe says the money arrived, so the
     payment cannot succeed without the tab closing — the two must not be able
-    to disagree.
+    to disagree. It asks a settled tab too: the charge that went unrecorded
+    was always one that landed after the tab had closed.
     """
     conn = get_db()
-    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
-    if not order:
-        conn.close()
-        return jsonify(state="unknown", message="No such tab."), 404
-    if order["status"] != "open":
-        conn.close()
-        return jsonify(state="succeeded", message="Settled.", settled=True)
-    if not order["payment_intent_id"]:
-        conn.close()
-        return jsonify(state="idle", message="")
-
-    intent_id = order["payment_intent_id"]
-    state, message, intent = terminal_payment_state(intent_id)
-    settled = False
-    if state == "succeeded":
-        # One charge, one payment. The intent stayed on the tab after it was
-        # recorded, so a charge that left something owing (a coffee added while
-        # the guest tapped) reloaded the page, polled again and was recorded a
-        # second time: EUR 20 on the card, EUR 40 on the books, the coffee never
-        # taken and the tab closed. A tab reopened after a reader payment did the
-        # same. So the intent is taken OFF the tab before the payment is written,
-        # in the same transaction -- the UPDATE is the claim, and a second poll
-        # (this page open on two devices) waits for it and then finds nothing to
-        # claim. A charge already on the books is never written again, whichever
-        # tab it is on now. The unique index on pos_payments is the last word.
-        claimed = conn.execute(
-            "UPDATE pos_orders SET payment_intent_id = NULL "
-            "WHERE id = ? AND payment_intent_id = ?", (order_id, intent_id)).rowcount
-        if not claimed or pos_reader_charge_recorded(conn, intent_id):
-            conn.commit()
-            now = conn.execute("SELECT status FROM pos_orders WHERE id = ?",
-                               (order_id,)).fetchone()
-            conn.close()
-            return jsonify(state="succeeded", message="That card payment is already recorded.",
-                           settled=bool(now) and now["status"] != "open")
-        # Trust Stripe for the amount, exactly as the webhook does — the guest
-        # tapped what the reader asked for, and recomputing it here would let a
-        # line added mid-tap change what we record as taken.
-        taken = round((sval(intent, "amount_received") or 0) / 100.0, 2) if intent else 0.0
-        if taken <= 0:
-            taken = pos_bill(conn, order_id)["outstanding"]
-        who = current_user()
-        user = who["id"] if who else None
-        pos_take_payment(conn, order_id, taken, "card_terminal",
-                         reference=intent_id, user_id=user)
-        after = pos_close_if_settled(conn, order_id, "card_terminal", user_id=user)
-        conn.commit()
-        settled = after["outstanding"] <= 0.01
-        message = (f"{money(taken)} taken on the reader."
-                   if not settled else f"Settled — {money(after['total'])}.")
-    elif state == "failed":
-        # Clear the reference so the next attempt starts a fresh payment rather
-        # than polling a dead one forever. Only THIS one: a press on another
-        # device may have put a fresh payment on the reader since it was read.
-        conn.execute("UPDATE pos_orders SET payment_intent_id = NULL "
-                     "WHERE id = ? AND payment_intent_id = ?", (order_id, intent_id))
-        conn.commit()
+    who = current_user()
+    answer = pos_reader_settle(conn, order_id, user_id=who["id"] if who else None)
     conn.close()
-    return jsonify(state=state, message=message, settled=settled)
+    if answer is None:
+        return jsonify(state="unknown", message="No such tab."), 404
+    return jsonify(**answer)
 
 
 @app.route("/pos/<int:order_id>/cancel-card", methods=["POST"])
 @login_required
 def pos_cancel_card(order_id):
+    """Stop the reader asking for this tab -- or record the tap that beat it.
+
+    Also the owner's way to settle a charge left on the reader for a bill that
+    was paid another way: the same button, on the settled tab.
+
+    When Stripe cannot be asked at all, the charge stays on the tab and the
+    tab cannot be paid another way -- which during an outage leaves a table
+    unable to pay. So the owner, and only the owner, can let it go anyway
+    once they have looked at the reader themselves. That is put on the audit
+    log with the charge's Stripe id, because it is the one way a charge can
+    leave a tab without the till knowing what it did.
+    """
     conn = get_db()
-    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    order = conn.execute("SELECT payment_intent_id FROM pos_orders WHERE id = ?",
+                         (order_id,)).fetchone()
     if not order:
         conn.close()
         abort(404)
-    problems = terminal_cancel(terminal_reader_id(conn), order["payment_intent_id"])
-    conn.execute("UPDATE pos_orders SET payment_intent_id = NULL WHERE id = ?", (order_id,))
-    conn.commit()
+    if not order["payment_intent_id"]:
+        conn.close()
+        flash("There was no card payment waiting on the reader.", "success")
+        return redirect(url_for("pos_order", order_id=order_id))
+    who = current_user()
+    answer = pos_reader_settle(conn, order_id, stop=True, user_id=who["id"] if who else None)
+    if (answer["state"] == "unknown" and request.form.get("let_go") == "1"
+            and who and who["role"] == "owner"):
+        order = conn.execute("SELECT table_label, payment_intent_id FROM pos_orders "
+                             "WHERE id = ?", (order_id,)).fetchone()
+        intent_id = order["payment_intent_id"]
+        if intent_id:
+            conn.execute("UPDATE pos_orders SET payment_intent_id = NULL "
+                         "WHERE id = ? AND payment_intent_id = ?", (order_id, intent_id))
+            log_audit(conn, "pos_reader_let_go_unchecked", target=order["table_label"],
+                      details=f"{intent_id} · {answer['message']}")
+            conn.commit()
+            conn.close()
+            flash(f"Let go without Stripe's answer. If the reader did take the card, the "
+                  f"charge is in Stripe as {intent_id} and is not on the books here.", "error")
+            return redirect(url_for("pos_order", order_id=order_id))
     conn.close()
-    flash(problems or "Card payment cancelled — the reader is clear.",
-          "error" if problems else "success")
+    if answer["recorded"] and not answer["paid_twice"]:
+        flash("The guest had already tapped, so the payment went through: "
+              + answer["message"], "success")
+    elif answer["state"] in ("succeeded", "failed") and not answer["paid_twice"]:
+        flash(answer["message"], "success")
+    else:
+        flash(answer["message"], "error")
     return redirect(url_for("pos_order", order_id=order_id))
 
 
@@ -40388,6 +40661,13 @@ def pos_pay_link(order_id):
     if bill["outstanding"] <= 0:
         conn.close()
         flash("Nothing left to charge on this tab.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+    # A phone paying while the reader asks is the one double payment nothing
+    # can refuse afterwards: the guest has paid the moment the link is used.
+    waiting = pos_reader_waiting(bill["order"])
+    if waiting:
+        conn.close()
+        flash(waiting, "error")
         return redirect(url_for("pos_order", order_id=order_id))
     if not stripe_enabled():
         conn.close()
@@ -48047,14 +48327,8 @@ def settle_pos_from_stripe_session(conn, stripe_session, meta):
     # The session id on the payment and the tab_merged entry in the journal
     # say how it got there, and the payment's own entry names the tab the
     # link was raised on.
-    raised_on, seen = order_id, set()
-    while order_id not in seen:
-        seen.add(order_id)
-        tab = conn.execute("SELECT status, merged_into_order_id FROM pos_orders WHERE id = ?",
-                           (order_id,)).fetchone()
-        if not tab or tab["status"] != "void" or not tab["merged_into_order_id"]:
-            break
-        order_id = tab["merged_into_order_id"]
+    raised_on = order_id
+    order_id = pos_follow_merges(conn, order_id)
     pos_take_payment(conn, order_id, amount, "card_link",
                      reference=stripe_session["id"],
                      stripe_session_id=stripe_session["id"], raised_on=raised_on)
@@ -48079,6 +48353,20 @@ def settle_pos_from_stripe_session(conn, stripe_session, meta):
     # committing, so the payment, the settled tab and the journal line were
     # all thrown away: the tab stayed open with the money taken.
     conn.commit()
+    # Paid on a phone while the reader was still asking for the same bill.
+    # Nothing could refuse this payment, so the reader is what gets stopped --
+    # here, and not only by a till page that happens to be open and polling.
+    # After the commit, because it asks Stripe. If the reader took the card
+    # first, that charge goes on the books instead of being cancelled.
+    tab = conn.execute("SELECT status, payment_intent_id FROM pos_orders WHERE id = ?",
+                       (order_id,)).fetchone()
+    if tab and tab["status"] != "open" and tab["payment_intent_id"]:
+        try:
+            pos_reader_settle(conn, order_id)
+        except Exception as e:
+            # The payment above is saved. The reader is the till's to sort
+            # out, and the owner home lists any tab it is left asking for.
+            print(f"[pos] couldn't stop the reader for tab {order_id}: {e}")
     return True
 
 
