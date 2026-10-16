@@ -153,10 +153,11 @@ def run():
     ok, why = ask(50)
     s.check("a workshop takes the whole château, this room included",
             not ok and "workshop" in (why or "").lower(), detail=str(why))
-    # End-INCLUSIVE, unlike a booking's departure day: a workshop finishing
-    # on the 52nd still holds the 52nd.
-    s.check("and holds its last day, where a departure would not",
-            not ask(52)[0])
+    # Its guests leave on its end date, so that night is sold to guests
+    # staying on (owner, 16 Oct 2026); the night before it is still held.
+    s.check("and holds the night before it ends", not ask(51)[0])
+    s.check("but not the night it ends, so its guests can stay on",
+            ask(52)[0], detail=str(ask(52)[1]))
     conn.execute("DELETE FROM workshop_sessions WHERE workshop_id = ?", (wid,))
     conn.execute("DELETE FROM workshops WHERE id = ?", (wid,))
 
