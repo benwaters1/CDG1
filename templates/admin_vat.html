@@ -45,6 +45,20 @@
 </div>
 {% endif %}
 
+{% if working.unreadable_days %}
+<div class="alert-band">
+  {# Closed and sealed, but not in a shape the till writes. Left out rather
+     than guessed at -- and said, because from August to October 2026 every
+     closed day was left out of this page with nothing to show for it. #}
+  <strong>{{ working.unreadable_days|length }}
+    {% if working.unreadable_days|length == 1 %}{{ t('closed day in this period could not be read.') }}{% else %}{{ t('closed days in this period could not be read.') }}{% endif %}</strong>
+  {{ t('Their sealed VAT is not in the form the till writes, so it is left out of the till figures below rather than guessed at. Have it looked at before these figures go to your accountant.') }}
+  <span class="pass-short-row">
+    {% for d in working.unreadable_days %}<a href="{{ url_for('pos_day', date=d) }}">{{ d|date_short }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+  </span>
+</div>
+{% endif %}
+
 {% if not working.lines %}
   <div class="empty-state">{{ t('Nothing collected in this period.') }}</div>
 {% else %}

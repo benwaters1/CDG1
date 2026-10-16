@@ -20943,6 +20943,43 @@ def pos_closure_for(conn, kind, period):
                 by_method=json.loads(row["by_method_json"])) if row else None
 
 
+def closure_vat_bands(vat_json):
+    """A sealed closure's VAT as {rate: {"gross", "vat", "net"}}, or None.
+
+    pos_close_period seals each rate as a band of three figures. The VAT
+    working paper read them as a flat {rate: amount} instead: adding a band to
+    a number raised a TypeError, the TypeError was caught and skipped, and not
+    one closed till day reached the working paper -- with nothing on the page
+    to say so. So anything other than bands comes back as None, for the
+    caller to NAME, never as an empty map it would read as a quiet night.
+
+    An empty map is a day that sold nothing. That is a reading, not a fault.
+    """
+    try:
+        raw = json.loads(vat_json)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    bands = {}
+    for rate, band in raw.items():
+        try:
+            rate = float(rate)
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(band, dict):
+            return None
+        acc = bands.setdefault(rate, {"gross": 0.0, "vat": 0.0, "net": 0.0})
+        for k in acc:
+            v = band.get(k)
+            # bool is an int to Python; NaN and infinity are numbers to json.
+            if isinstance(v, bool) or not isinstance(v, (int, float)) \
+                    or not abs(v) < float("inf"):
+                return None
+            acc[k] = round(acc[k] + v, 2)
+    return bands
+
+
 def pos_lines_by_course(lines):
     """Lines grouped the way the kitchen reads them."""
     grouped = {}
@@ -44569,10 +44606,13 @@ def export_vat_csv():
             for l in working["lines"]]
     # The caveat travels with the file. A CSV lands in an accountant's inbox
     # with none of the page around it.
+    unreadable = working["unreadable_days"]
     rows.append(_row(
         source="TOTAL", vat=working["total_vat"],
         basis=f"working paper, not a return; "
-              f"{counted(working['days_not_closed'], 'day')} in this period never closed off"))
+              f"{counted(working['days_not_closed'], 'day')} in this period never closed off"
+              + (f"; {counted(len(unreadable), 'closed day')} unreadable and not in "
+                 f"the till figures ({', '.join(unreadable)})" if unreadable else "")))
     return csv_response(fieldnames, rows, f"vat-working-{period['start_iso']}.csv")
 
 
@@ -97139,7 +97179,8 @@ def vat_working(conn, start, end, today=None):
         those streams yet -- booking_payments only fills in when Stripe is live.
 
     Days in the period that were never closed off are counted and reported, so
-    a short figure is visibly short rather than quietly wrong.
+    a short figure is visibly short rather than quietly wrong. So are closed
+    days whose sealed VAT cannot be read (closure_vat_bands).
 
     City tax is deliberately absent. Taxe de séjour is collected for the commune
     and is not the château's VATable revenue; it is stored apart from
@@ -97149,23 +97190,31 @@ def vat_working(conn, start, end, today=None):
     lines = []
 
     # ---- the till: read the sealed closures, per rate -------------------
+    # Each band's gross and net are sealed beside its VAT, so the line carries
+    # all three as they were closed rather than a VAT figure on its own.
     by_rate = {}
     closed_days = set()
+    unreadable_days = []
     for row in conn.execute(
         "SELECT period, vat_json FROM pos_closures WHERE kind = 'day' "
-        "AND period >= ? AND period < ?",
+        "AND period >= ? AND period < ? ORDER BY period",
         (s_iso, e_iso),
     ).fetchall():
         closed_days.add(row["period"])
-        try:
-            for rate, amount in (json.loads(row["vat_json"]) or {}).items():
-                by_rate[str(rate)] = round(by_rate.get(str(rate), 0) + (amount or 0), 2)
-        except (ValueError, TypeError):
+        bands = closure_vat_bands(row["vat_json"])
+        if bands is None:
+            # Closed, so not "never closed off" -- but not in the figure
+            # either, and named so that a short till total says it is short.
+            unreadable_days.append(row["period"])
             continue
-    for rate, vat in sorted(by_rate.items(), key=lambda kv: float(kv[0] or 0)):
+        for rate, band in bands.items():
+            acc = by_rate.setdefault(rate, {"gross": 0.0, "vat": 0.0, "net": 0.0})
+            for k in acc:
+                acc[k] = round(acc[k] + band[k], 2)
+    for rate, band in sorted(by_rate.items()):
         lines.append({
-            "source": f"Restaurant till — {float(rate):g}%", "rate": float(rate or 0),
-            "gross": None, "net": None, "vat": vat,
+            "source": f"Restaurant till — {rate:g}%", "rate": rate,
+            "gross": band["gross"], "net": band["net"], "vat": band["vat"],
             "basis": "sealed daily closure", "exact": True,
         })
 
@@ -97299,6 +97348,7 @@ def vat_working(conn, start, end, today=None):
         "estimated_vat": round(sum(l["vat"] for l in lines if not l["exact"]), 2),
         "days_in_period": span_days, "days_closed": len(closed_days),
         "days_not_closed": unclosed, "unclosed_days": unclosed_days,
+        "unreadable_days": unreadable_days,
     }
 
 
