@@ -905,8 +905,8 @@ def rollover_hour_is_safe(hour=None, day=None):
 # rewritten from here: terms_time_mismatches reads them and the owner home
 # says when they disagree with this.
 #
-# Not HOUSE_CALENDAR_CHECK_IN, which is when a stay is blocked out on the
-# staff's Outlook calendar and is never shown to a guest.
+# The staff's Outlook calendar blocks a stay by these too (HOUSE_CALENDAR_CHECK_IN,
+# since 16 October; it had its own 4pm and 11am).
 CHECK_IN_TIME = "15:00"
 CHECK_OUT_TIME = "10:00"
 
@@ -2593,6 +2593,51 @@ def letter_rule_breaches(template_key, subject, body):
             "it says the beds are new, and the rooms are furnished from the "
             "brocantes, antiques beside new pieces (owner, 15 October)")})
     return out
+
+
+# The sentences the owner corrected on 15 October, as stored letters carry
+# them: the stay confirmation as shipped before 5 October and as shipped from
+# then until 15 October. Swapped a sentence at a time, so whatever else the
+# owner has written in a letter stays exactly as it is.
+LETTER_WORDS_2026_10_16 = (
+    ("Five bedrooms of ninety-four are finished, and one of them is yours",
+     "Five guest rooms are open, and one of them is yours"),
+    ("Five bedrooms are open to guests, and one of them is yours",
+     "Five guest rooms are open, and one of them is yours"),
+    ("The floors, the beds and the bathrooms are new.",
+     "The floors and the bathrooms are new, and the rooms are furnished from the brocantes."),
+    ("the beds, the floors and the bathrooms are new.",
+     "the floors and the bathrooms are new, and the rooms are furnished from the brocantes."),
+)
+
+
+def apply_letter_words_2026_10_16(conn):
+    """Once: those sentences, put right in every stored letter that has them.
+
+    The exception to "read, never rewritten" above, made because the owner
+    asked for it on 16 October 2026 ("fix these"): five guest rooms, never
+    five bedrooms, and never new beds. Exact sentences only -- a letter that
+    says it some other way is left to the rules above to name -- and once, by
+    the flag in app_settings, so a sentence the owner writes back later stays
+    written. Returns how many letters changed."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'letter_words_2026_10_16'").fetchone():
+        return 0
+    changed = 0
+    for row in conn.execute("SELECT template_key, body FROM email_templates").fetchall():
+        body = row["body"] or ""
+        fixed = body
+        for old, new in LETTER_WORDS_2026_10_16:
+            fixed = fixed.replace(old, new)
+        if fixed != body:
+            conn.execute("UPDATE email_templates SET body = ? WHERE template_key = ?",
+                         (fixed, row["template_key"]))
+            changed += 1
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('letter_words_2026_10_16', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        print(f"[letters] five guest rooms, no new beds: {changed} stored letter(s) corrected")
+    return changed
 
 
 def stored_letter_drift(conn):
@@ -7732,6 +7777,8 @@ def init_db():
             "AND subject = ? AND body = ?",
             (new_subject, new_body, template_key, old_subject, old_body))
     conn.commit()
+    # 16 Oct: five guest rooms and no new beds, in stored letters too.
+    apply_letter_words_2026_10_16(conn)
 
     for slug, name, description, areas, full, order in DEFAULT_ACCESS_PRESETS:
         if not conn.execute("SELECT 1 FROM access_presets WHERE slug = ?", (slug,)).fetchone():
@@ -7928,6 +7975,8 @@ def init_db():
     apply_room_lineup(conn)
     # And the owner's corrections of 15 October on top of it, once.
     apply_room_facts_2026_10_15(conn)
+    # And the view the old room form wiped, once.
+    apply_room_views_2026_10_16(conn)
 
     # WHERE THE GATES ARE.
     #
@@ -49827,6 +49876,31 @@ def apply_room_facts_2026_10_15(conn):
     conn.commit()
     if changed:
         print(f"[rooms] the 15 October facts: {changed} room(s) corrected")
+    return changed
+
+
+# The view the room form wiped before it had a field for it (owner, 15 October;
+# fixed in ba27414). The Gold Suite -- the old "Suite with Mountain View" -- was
+# saved through the form and lost "Mountain view" off the Stay cards; the other
+# four still show theirs. Once, and only into a blank, so a view the owner has
+# since typed is kept and one he clears later stays cleared.
+ROOM_VIEWS_2026_10_16 = {"The Gold Suite": "mountain"}
+
+
+def apply_room_views_2026_10_16(conn):
+    """Once: put back a view the old room form wiped. Returns how many rooms."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'room_views_2026_10_16'").fetchone():
+        return 0
+    changed = 0
+    for name, outlook in ROOM_VIEWS_2026_10_16.items():
+        changed += conn.execute(
+            "UPDATE rooms SET outlook = ? WHERE name = ? AND COALESCE(TRIM(outlook), '') = ''",
+            (outlook, name)).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('room_views_2026_10_16', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        print(f"[rooms] the view put back on {changed} room(s)")
     return changed
 
 
@@ -92926,8 +93000,12 @@ HOUSE_CALENDAR_PAST_DAYS = 30
 HOUSE_CALENDAR_AHEAD_DAYS = 548
 HOUSE_CALENDAR_POLL_SECONDS = 30
 HOUSE_CALENDAR_MAX_WRITES = 150     # per pass; anything more waits for the next
-HOUSE_CALENDAR_CHECK_IN = "16:00"
-HOUSE_CALENDAR_CHECK_OUT = "11:00"
+# A stay is blocked on the staff's calendar from when the guest may arrive to
+# when they must leave -- the house's own times, so the calendar the team
+# plans by agrees with what every guest is told (owner, 16 October 2026: it
+# said 4pm to 11am after the house moved to 3pm and 10am).
+HOUSE_CALENDAR_CHECK_IN = CHECK_IN_TIME
+HOUSE_CALENDAR_CHECK_OUT = CHECK_OUT_TIME
 HOUSE_CALENDAR_DINNER_HOURS = 3
 # The property every event the app writes carries, so the nightly reconcile can
 # tell the app's events from anything a person added by hand.
