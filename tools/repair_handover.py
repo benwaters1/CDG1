@@ -1837,14 +1837,18 @@ def repair_room_count_lines():
     return n
 
 
-# 12 October (the owner): nothing to ariege@. Anything general goes to
-# reservations@, anything about money to accounts@, workshops and events to
-# experience@. Every address a public page printed was a general one -- the
-# footer, contact, the legal and privacy notices, press, the error page and
-# the table lookup -- so each becomes reservations@. The design side has been
-# asked to carry it, but every zip built on an older copy would bring ariege@
-# straight back; test_confirmed_facts names any that get past.
-RETIRED_ADDRESSES = (("ariege@chateaugudanes.com", "reservations@chateaugudanes.com"),)
+# Addresses the owner has retired, each with the one that replaced it. Every
+# zip built on an older copy would bring a retired one straight back, so this
+# swaps it on the way in.
+#
+# EMPTY SINCE 15 OCTOBER. On 12 October the owner said nothing to ariege@ and
+# this turned every ariege@ on a public page into reservations@. On 15 October
+# he brought it back for general enquiries -- the footer and the Contact page
+# (handovers z21 and z22) -- and took reservations@ out of the footer. Left in,
+# this would have quietly put reservations@ back over his own choice on every
+# handover. Letters still reply from reservations@ (test_letters_named); that
+# is about who answers mail, not what a page prints.
+RETIRED_ADDRESSES = ()
 
 
 def repair_retired_addresses():

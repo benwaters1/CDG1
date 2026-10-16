@@ -2386,11 +2386,24 @@ _ROOM_CONFIRMED_BODY_5OCT = (
     "{stay_details}\n\n"
     "The walls of the house stay as the centuries left them; the beds, the floors and the bathrooms are new. If anything "
     "at all needs saying before you arrive, reply to this message; it reaches us.\n\n" + PAYMENT_SAFETY_LINE)
+# 15 Oct (owner, handover z22): "five guest rooms", never "five bedrooms" -- the
+# house has more bedrooms than the five it lets -- and never new beds: the rooms
+# are furnished from the brocantes, antiques beside new pieces. The 5 Oct body
+# above stays word for word, because it is how init_db recognises a letter
+# stored that day and never edited, and brings it up to this one.
+_ROOM_CONFIRMED_BODY = (
+    _ROOM_CONFIRMED_BODY_5OCT
+    .replace("Five bedrooms are open to guests, and one of them is yours",
+             "Five guest rooms are open, and one of them is yours")
+    .replace("the beds, the floors and the bathrooms are new.",
+             "the floors and the bathrooms are new, and the rooms are furnished from the brocantes."))
 
 
 def _email_wording_5oct(key, subject, body):
     if key == "room_confirmed":
-        body = _ROOM_CONFIRMED_BODY_5OCT
+        # _APPLY_8OCT is off only while _email_wording_as_of_5oct works out
+        # what 5 October stored, which must read as it did that day.
+        body = _ROOM_CONFIRMED_BODY if _APPLY_8OCT else _ROOM_CONFIRMED_BODY_5OCT
     body = body.replace("You can settle it online before you travel, or on arrival if you would rather:",
                         "You can settle it online before you travel:")
     for a, b in _EMAIL_CONTRACTIONS:
@@ -2521,6 +2534,11 @@ _SAYS_NOT = re.compile(r"\b(?:no|not|nothing|never|none)\b|n[’']t\b", re.I)
 # 5 October, or an owner's own version of either.
 _CARD_ONLY_CLAIM = re.compile(r"\bonly ever\b[^.]*\b(?:card|chateaugudanes\.com)\b", re.I)
 _RETIRED_ROOM_COUNT = re.compile(r"\bninety[- ]four\b", re.I)
+# 15 Oct (owner, z22): five GUEST rooms -- the house has more bedrooms than it
+# lets -- and nothing says the beds are new: the rooms are furnished from the
+# brocantes. "The bedrooms are reached by the original staircase" is neither.
+_RETIRED_ROOM_WORDS = re.compile(r"\bfive bedrooms\b", re.I)
+_NEW_BEDS = re.compile(r"\bnew beds?\b|\bbeds?\b[^.]{0,60}?\b(?:are|is) new\b", re.I)
 
 
 def _squash(text):
@@ -2566,6 +2584,14 @@ def letter_rule_breaches(template_key, subject, body):
         out.append({"rule": "room_count", "untrue": True, "said": (
             "it still says “ninety-four”, which the owner retired on "
             "5 October: the house has about fifty-five rooms")})
+    if _RETIRED_ROOM_WORDS.search(text):
+        out.append({"rule": "room_words", "untrue": True, "said": (
+            "it says “five bedrooms”, and the house has more bedrooms than "
+            "that: five are guest rooms (owner, 15 October)")})
+    if _NEW_BEDS.search(text):
+        out.append({"rule": "new_beds", "untrue": True, "said": (
+            "it says the beds are new, and the rooms are furnished from the "
+            "brocantes, antiques beside new pieces (owner, 15 October)")})
     return out
 
 
@@ -50311,8 +50337,9 @@ def house_room_facts_cached():
 def house_room_facts(conn):
     """How many rooms the house lets, and what the cheapest one costs.
 
-    Both facts are written in prose on ten public pages -- "five bedrooms",
-    "from EUR220 a night" -- and both are owned by the rooms table. They are
+    Both facts are written in prose on ten public pages -- "five guest rooms"
+    (never "five bedrooms" since 15 October: the house has more bedrooms than
+    it lets), "from EUR220 a night" -- and both are owned by the rooms table. They are
     true this morning. Add a sixth room or change a price and ten pages are
     wrong at once, and one of them carries the first figure a guest ever
     reads.

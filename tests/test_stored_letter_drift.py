@@ -99,8 +99,11 @@ def _run(s, oc, conn):
     _set(conn, "room_confirmed", DRIFT_ROOM_CONFIRMED)
     _set(conn, "room_balance_before", DRIFT_BALANCE_BEFORE)
     found = {d["key"]: {b["rule"] for b in d["breaches"]} for d in m.stored_letter_drift(conn)}
-    s.check("the confirmation: no payment sentence, and ninety-four",
-            found.get("room_confirmed") == {"payment_line", "room_count"}, detail=str(found))
+    # "Five bedrooms of ninety-four": since 15 October the first two words are
+    # a rule of their own as well (five GUEST rooms).
+    s.check("the confirmation: no payment sentence, ninety-four, and five bedrooms",
+            found.get("room_confirmed") == {"payment_line", "room_count", "room_words"},
+            detail=str(found))
     s.check("the reminder: no payment sentence, and pay on arrival",
             found.get("room_balance_before") == {"payment_line", "pay_at_house"}, detail=str(found))
     s.check("and nothing else", set(found) == {"room_confirmed", "room_balance_before"},
@@ -146,6 +149,22 @@ def _run(s, oc, conn):
     ev = m.letter_rule_breaches("event_balance_reminder", "x", "Pay it here.\n\n" + m._PAYMENT_SAFETY_LINE_5OCT)
     s.check("an event letter carrying the card-only line is untrue",
             [b["rule"] for b in ev] == ["event_card_only"] and ev[0]["untrue"], detail=str(ev))
+
+    s.section("Five guest rooms, and no new beds (owner, 15 October)")
+    # The stay confirmation as it shipped from 5 to 15 October -- what a
+    # letter stored in that time and never edited still says.
+    old = m.letter_rule_breaches("room_confirmed", "x", m._ROOM_CONFIRMED_BODY_5OCT)
+    s.check("the confirmation of 5 October is named for both",
+            {b["rule"] for b in old} >= {"room_words", "new_beds"} and all(b["untrue"] for b in old
+                                                                          if b["rule"] in ("room_words", "new_beds")),
+            detail=str([b["rule"] for b in old]))
+    shipped_now = dict((k, b) for k, _l, _s, b in m.DEFAULT_EMAIL_TEMPLATES)["room_confirmed"]
+    s.check("and the one shipped now says five guest rooms, with no new beds",
+            "Five guest rooms are open" in shipped_now and not m._NEW_BEDS.search(shipped_now)
+            and "brocantes" in shipped_now, detail=shipped_now[:300])
+    s.check("the staircase sentence is not about how many rooms there are",
+            m.letter_rule_breaches("room_confirmed", "x", "The bedrooms are reached by the original "
+                                   "staircase. {stay_details} " + m.PAYMENT_SAFETY_LINE) == [])
 
     s.section("It closes itself")
     oc.post("/management/email-templates/room_balance_before/restore")
