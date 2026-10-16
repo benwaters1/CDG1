@@ -264,6 +264,31 @@
   {%- for y in [22,32,42,52,62,72] %}
   <path d="M48 {{ y }}q-12-2-16-10q11 0 16 10zM48 {{ y+4 }}q12-2 16-10q-11 0-16 10z" opacity=".85"/>
   {%- endfor %}
+{#- 16 Oct (owner): four more for the workshops' entertainments - a crêpe pan, a wedge of cheese, pétanque boules and the
+    jack, a cocktail coupe beside a bottle of the château's syrup. -#}
+{%- elif kind == 'crepe' %}
+  <path d="M6 80h84" opacity=".7"/>
+  <path d="M12 56q0 12 30 12t30-12"/><ellipse cx="42" cy="56" rx="30" ry="9"/>
+  <path d="M71 53l19-7" /><path d="M86 45l5 2-3 3" opacity=".7"/>
+  <path d="M24 56q18-9 36 0q-18 5-36 0z" opacity=".75"/><path d="M34 55q8-3 16 0" opacity=".45"/>
+  <path d="M34 40q-3-5 0-10t0-10M46 40q-3-5 0-10M58 40q-3-5 0-10t0-10" opacity=".45"/>
+{%- elif kind == 'cheese' %}
+  <path d="M6 80h84" opacity=".7"/>
+  <path d="M14 58l42-24 26 24z" opacity=".85"/><path d="M14 58h68v16H14z"/>
+  <circle cx="28" cy="66" r="3"/><circle cx="46" cy="69" r="2"/><circle cx="64" cy="65" r="3.4"/><circle cx="54" cy="47" r="2.4" opacity=".7"/><circle cx="38" cy="51" r="1.6" opacity=".7"/>
+  <path d="M70 30l14-12M80 22l6 6" opacity=".55"/>
+{%- elif kind == 'boules' %}
+  <path d="M6 74h84" opacity=".7"/><path d="M12 80q36-4 72 0" opacity=".35"/>
+  <circle cx="28" cy="62" r="11"/><path d="M18 58q10 5 20 0M18 66q10 5 20 0" opacity=".5"/>
+  <circle cx="54" cy="64" r="9"/><path d="M46 61q8 4 16 0M46 67q8 4 16 0" opacity=".5"/>
+  <circle cx="76" cy="69" r="3.2"/>
+  <path d="M60 36q10-14 24-8" opacity=".45"/><path d="M80 25l4 3-4 3" opacity=".45"/>
+{%- elif kind == 'cocktail' %}
+  <path d="M6 80h84" opacity=".7"/>
+  <path d="M22 28h40q-2 18-20 20q-18-2-20-20z"/><path d="M27 34h30" opacity=".45"/>
+  <path d="M42 48v24"/><path d="M30 76q12-5 24 0"/>
+  <path d="M56 26q6-10 14-8q-4 8-14 8z" opacity=".7"/><path d="M58 28l-6-10" opacity=".55"/>
+  <path d="M72 78V56l4-6v-8h6v8l4 6v22z" opacity=".85"/><path d="M73 64h12" opacity=".5"/>
 {%- elif kind == 'mountains' %}
   <path d="M2 80l20-34 10 14 16-30 16 26 8-10 22 34"/><path d="M42 40l6-10 6 10M18 54l4-8 4 6" opacity=".6"/>
   <path d="M2 88q23-5 46 0t46 0" opacity=".5"/>

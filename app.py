@@ -905,8 +905,8 @@ def rollover_hour_is_safe(hour=None, day=None):
 # rewritten from here: terms_time_mismatches reads them and the owner home
 # says when they disagree with this.
 #
-# Not HOUSE_CALENDAR_CHECK_IN, which is when a stay is blocked out on the
-# staff's Outlook calendar and is never shown to a guest.
+# The staff's Outlook calendar blocks a stay by these too (HOUSE_CALENDAR_CHECK_IN,
+# since 16 October; it had its own 4pm and 11am).
 CHECK_IN_TIME = "15:00"
 CHECK_OUT_TIME = "10:00"
 
@@ -2396,11 +2396,24 @@ _ROOM_CONFIRMED_BODY_5OCT = (
     "{stay_details}\n\n"
     "The walls of the house stay as the centuries left them; the beds, the floors and the bathrooms are new. If anything "
     "at all needs saying before you arrive, reply to this message; it reaches us.\n\n" + PAYMENT_SAFETY_LINE)
+# 15 Oct (owner, handover z22): "five guest rooms", never "five bedrooms" -- the
+# house has more bedrooms than the five it lets -- and never new beds: the rooms
+# are furnished from the brocantes, antiques beside new pieces. The 5 Oct body
+# above stays word for word, because it is how init_db recognises a letter
+# stored that day and never edited, and brings it up to this one.
+_ROOM_CONFIRMED_BODY = (
+    _ROOM_CONFIRMED_BODY_5OCT
+    .replace("Five bedrooms are open to guests, and one of them is yours",
+             "Five guest rooms are open, and one of them is yours")
+    .replace("the beds, the floors and the bathrooms are new.",
+             "the floors and the bathrooms are new, and the rooms are furnished from the brocantes."))
 
 
 def _email_wording_5oct(key, subject, body):
     if key == "room_confirmed":
-        body = _ROOM_CONFIRMED_BODY_5OCT
+        # _APPLY_8OCT is off only while _email_wording_as_of_5oct works out
+        # what 5 October stored, which must read as it did that day.
+        body = _ROOM_CONFIRMED_BODY if _APPLY_8OCT else _ROOM_CONFIRMED_BODY_5OCT
     body = body.replace("You can settle it online before you travel, or on arrival if you would rather:",
                         "You can settle it online before you travel:")
     for a, b in _EMAIL_CONTRACTIONS:
@@ -2531,6 +2544,11 @@ _SAYS_NOT = re.compile(r"\b(?:no|not|nothing|never|none)\b|n[’']t\b", re.I)
 # 5 October, or an owner's own version of either.
 _CARD_ONLY_CLAIM = re.compile(r"\bonly ever\b[^.]*\b(?:card|chateaugudanes\.com)\b", re.I)
 _RETIRED_ROOM_COUNT = re.compile(r"\bninety[- ]four\b", re.I)
+# 15 Oct (owner, z22): five GUEST rooms -- the house has more bedrooms than it
+# lets -- and nothing says the beds are new: the rooms are furnished from the
+# brocantes. "The bedrooms are reached by the original staircase" is neither.
+_RETIRED_ROOM_WORDS = re.compile(r"\bfive bedrooms\b", re.I)
+_NEW_BEDS = re.compile(r"\bnew beds?\b|\bbeds?\b[^.]{0,60}?\b(?:are|is) new\b", re.I)
 
 
 def _squash(text):
@@ -2576,7 +2594,60 @@ def letter_rule_breaches(template_key, subject, body):
         out.append({"rule": "room_count", "untrue": True, "said": (
             "it still says “ninety-four”, which the owner retired on "
             "5 October: the house has about fifty-five rooms")})
+    if _RETIRED_ROOM_WORDS.search(text):
+        out.append({"rule": "room_words", "untrue": True, "said": (
+            "it says “five bedrooms”, and the house has more bedrooms than "
+            "that: five are guest rooms (owner, 15 October)")})
+    if _NEW_BEDS.search(text):
+        out.append({"rule": "new_beds", "untrue": True, "said": (
+            "it says the beds are new, and the rooms are furnished from the "
+            "brocantes, antiques beside new pieces (owner, 15 October)")})
     return out
+
+
+# The sentences the owner corrected on 15 October, as stored letters carry
+# them: the stay confirmation as shipped before 5 October and as shipped from
+# then until 15 October. Swapped a sentence at a time, so whatever else the
+# owner has written in a letter stays exactly as it is.
+LETTER_WORDS_2026_10_16 = (
+    ("Five bedrooms of ninety-four are finished, and one of them is yours",
+     "Five guest rooms are open, and one of them is yours"),
+    ("Five bedrooms are open to guests, and one of them is yours",
+     "Five guest rooms are open, and one of them is yours"),
+    ("The floors, the beds and the bathrooms are new.",
+     "The floors and the bathrooms are new, and the rooms are furnished from the brocantes."),
+    ("the beds, the floors and the bathrooms are new.",
+     "the floors and the bathrooms are new, and the rooms are furnished from the brocantes."),
+)
+
+
+def apply_letter_words_2026_10_16(conn):
+    """Once: those sentences, put right in every stored letter that has them.
+
+    The exception to "read, never rewritten" above, made because the owner
+    asked for it on 16 October 2026 ("fix these"): five guest rooms, never
+    five bedrooms, and never new beds. Exact sentences only -- a letter that
+    says it some other way is left to the rules above to name -- and once, by
+    the flag in app_settings, so a sentence the owner writes back later stays
+    written. Returns how many letters changed."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'letter_words_2026_10_16'").fetchone():
+        return 0
+    changed = 0
+    for row in conn.execute("SELECT template_key, body FROM email_templates").fetchall():
+        body = row["body"] or ""
+        fixed = body
+        for old, new in LETTER_WORDS_2026_10_16:
+            fixed = fixed.replace(old, new)
+        if fixed != body:
+            conn.execute("UPDATE email_templates SET body = ? WHERE template_key = ?",
+                         (fixed, row["template_key"]))
+            changed += 1
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('letter_words_2026_10_16', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        print(f"[letters] five guest rooms, no new beds: {changed} stored letter(s) corrected")
+    return changed
 
 
 def stored_letter_drift(conn):
@@ -7716,6 +7787,8 @@ def init_db():
             "AND subject = ? AND body = ?",
             (new_subject, new_body, template_key, old_subject, old_body))
     conn.commit()
+    # 16 Oct: five guest rooms and no new beds, in stored letters too.
+    apply_letter_words_2026_10_16(conn)
 
     for slug, name, description, areas, full, order in DEFAULT_ACCESS_PRESETS:
         if not conn.execute("SELECT 1 FROM access_presets WHERE slug = ?", (slug,)).fetchone():
@@ -7910,6 +7983,10 @@ def init_db():
     # on: on a fresh database the rooms only have the names it looks for once
     # ROOM_IDENTITY has given them.
     apply_room_lineup(conn)
+    # And the owner's corrections of 15 October on top of it, once.
+    apply_room_facts_2026_10_15(conn)
+    # And the view the old room form wiped, once.
+    apply_room_views_2026_10_16(conn)
 
     # WHERE THE GATES ARE.
     #
@@ -43331,6 +43408,17 @@ def restoration_page():
     return render_template("restoration.html")
 
 
+@app.route("/history")
+def history_page():
+    """The house from 1213 to now (owner, 15 Oct 2026: "a proper history page").
+
+    Static copy from the design side. /history was the old Squarespace
+    address, sent to the Restoration page by LEGACY_PATHS until this page
+    existed; it is the page itself now, so it keeps that address's ranking.
+    """
+    return render_template("history.html")
+
+
 @app.route("/gallery")
 def gallery_page():
     """Photographs, in the sections the public menu already links to.
@@ -46538,7 +46626,7 @@ def api_validate_promo_code():
         session_id_raw = request.form.get("session_id", "").strip()
         party_size = int(request.form.get("party_size", "")) if request.form.get("party_size", "").isdigit() else 0
         price_row = conn.execute(
-            """SELECT workshops.price_per_person FROM workshop_sessions
+            """SELECT workshops.price_per_person, workshops.single_supplement FROM workshop_sessions
                JOIN workshops ON workshops.id = workshop_sessions.workshop_id
                WHERE workshop_sessions.id = ?""",
             (session_id_raw,),
@@ -46546,7 +46634,14 @@ def api_validate_promo_code():
         if not price_row or party_size < 1 or not price_row["price_per_person"]:
             conn.close()
             return jsonify({"valid": False, "message": "Enter your party size first."})
-        subtotal = price_row["price_per_person"] * party_size
+        # A room to yourself is in the subtotal the booking will charge, so a
+        # percentage code must preview against it too. The same narrowing as
+        # the registration POST: one guest, a supplement set — anything else
+        # is priced as sharing there, so it is previewed as sharing here.
+        occupancy_type = request.form.get("occupancy_type", "").strip()
+        if not (occupancy_type == "solo" and party_size == 1):
+            occupancy_type = "double"
+        subtotal = workshop_subtotal(price_row, party_size, occupancy_type)[0]
     else:
         conn.close()
         return jsonify({"valid": False, "message": "Unknown booking type."}), 400
@@ -46757,6 +46852,9 @@ WORKSHOP_PREFILL = {
     "dietary_notes": "dietary_notes", "medical_notes": "medical_notes",
     "special_occasion": "special_occasion",
     "requested_roommate": "requested_roommate", "promo_code": "promo_code",
+    # The room-to-myself tick (z22), so it survives a validation error once
+    # the route offers it (solo_bookable).
+    "occupancy_type": "occupancy_type",
 }
 EVENT_PREFILL = {
     "contact_name": "contact_name", "contact_email": "contact_email",
@@ -49755,9 +49853,13 @@ DINING_MODES = {
 # again, and the owner's own edits are left alone for good.
 #
 # old name, new name, price a night, sleeps, beds, place on the site (by price)
+#
+# The Twin Room's two beds are doubles and it sleeps two, and the Queen Room's
+# bed is a king (owner, 15 October 2026; see apply_room_facts_2026_10_15,
+# which puts the same on a database that already has the line-up).
 ROOM_LINEUP = [
-    ("Chambre Tilleul", "The Twin Room", 280, 3, "Twin beds", 1),
-    ("Chambre Cerise", "The Queen Room", 280, 2, "Queen bed", 2),
+    ("Chambre Tilleul", "The Twin Room", 280, 2, "Two double beds", 1),
+    ("Chambre Cerise", "The Queen Room", 280, 2, "King bed", 2),
     ("Chambre du Levant", "The King Room", 380, 2, "King bed", 3),
     ("Chambre \u00c9meraude", "The Gold Suite", 480, 2, "Emperor bed", 4),
     ("Les Deux Chambres", "The Family Suite", 580, 5, "Queen and doubles", 5),
@@ -49767,10 +49869,9 @@ ROOM_LINEUP = [
 # with one neighbouring room" for two rooms that no longer share, and a
 # fallback is exactly where an untrue sentence waits to be shown.
 ROOM_LINEUP_WORDS = {
-    "The Twin Room": "Two beds that can be made up as a twin or pushed together "
-                     "as a double, whichever suits, and a private bathroom on the "
-                     "first floor. The most straightforward room in the house.",
-    "The Queen Room": "A quiet room with a queen bed, floral papers and a marble "
+    "The Twin Room": "Two double beds and a private bathroom on the first floor. "
+                     "The most straightforward room in the house.",
+    "The Queen Room": "A quiet room with a king bed, floral papers and a marble "
                       "chimneypiece, and a private bathroom on the first floor. "
                       "Brass fittings and hexagonal terracotta underfoot, among "
                       "the most recently restored work in the building.",
@@ -49818,6 +49919,89 @@ def apply_room_lineup(conn):
     if changed:
         conn.commit()
         print(f"[rooms] the 24 September line-up: {changed} room(s) renamed and repriced")
+    return changed
+
+
+# The rooms as the owner described them on 15 October 2026, set once on top of
+# the 24 September line-up. By current name, and only while the row still has
+# it; the flag in app_settings means a later edit by hand is never undone.
+# Rooms are two to a room for stays; the Family Suite is two adults and three
+# children; the Twin Room's two beds are doubles; the Queen Room's bed is a
+# king (as _room_copy.html already says).
+ROOM_FACTS_2026_10_15 = {
+    "The Twin Room": {"bed_setup": "Two double beds", "max_adults": 2,
+                      "max_children": 0, "max_occupancy": 2},
+    "The Queen Room": {"bed_setup": "King bed"},
+    "The Family Suite": {"max_adults": 2, "max_children": 3, "max_occupancy": 5},
+}
+# The stock descriptions those beds made untrue (the 24 September wording),
+# replaced only while a room still carries it word for word.
+ROOM_WORDS_2026_10_15 = {
+    "The Twin Room": ("Two beds that can be made up as a twin or pushed together "
+                      "as a double, whichever suits, and a private bathroom on the "
+                      "first floor. The most straightforward room in the house.",
+                      ROOM_LINEUP_WORDS["The Twin Room"]),
+    "The Queen Room": (ROOM_LINEUP_WORDS["The Queen Room"].replace("a king bed", "a queen bed"),
+                       ROOM_LINEUP_WORDS["The Queen Room"]),
+}
+
+
+def apply_room_facts_2026_10_15(conn):
+    """Once: the beds, the sleeping numbers and the feature tags as the owner
+    gave them on 15 October 2026. Returns how many rooms changed.
+
+    The feature tags lose anything that states the beds or which bathroom --
+    the Twin and Queen pages showed "Shared bathroom" under "Private bathroom,
+    on the ground floor" -- and any feature stored as its key is written as
+    its words, because the guest pages print the column as it stands."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'room_facts_2026_10_15'").fetchone():
+        return 0
+    changed = 0
+    for room in conn.execute("SELECT * FROM rooms").fetchall():
+        sets = {}
+        cleaned = clean_room_amenities(room["amenities"])
+        if cleaned != (room["amenities"] or None):
+            sets["amenities"] = cleaned
+        for column, value in ROOM_FACTS_2026_10_15.get(room["name"], {}).items():
+            if room[column] != value:
+                sets[column] = value
+        old, new = ROOM_WORDS_2026_10_15.get(room["name"], (None, None))
+        if old and (room["description"] or "") == old:
+            sets["description"] = new
+        if sets:
+            conn.execute(f"UPDATE rooms SET {', '.join(c + ' = ?' for c in sets)} WHERE id = ?",
+                         (*sets.values(), room["id"]))
+            changed += 1
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('room_facts_2026_10_15', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        print(f"[rooms] the 15 October facts: {changed} room(s) corrected")
+    return changed
+
+
+# The view the room form wiped before it had a field for it (owner, 15 October;
+# fixed in ba27414). The Gold Suite -- the old "Suite with Mountain View" -- was
+# saved through the form and lost "Mountain view" off the Stay cards; the other
+# four still show theirs. Once, and only into a blank, so a view the owner has
+# since typed is kept and one he clears later stays cleared.
+ROOM_VIEWS_2026_10_16 = {"The Gold Suite": "mountain"}
+
+
+def apply_room_views_2026_10_16(conn):
+    """Once: put back a view the old room form wiped. Returns how many rooms."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'room_views_2026_10_16'").fetchone():
+        return 0
+    changed = 0
+    for name, outlook in ROOM_VIEWS_2026_10_16.items():
+        changed += conn.execute(
+            "UPDATE rooms SET outlook = ? WHERE name = ? AND COALESCE(TRIM(outlook), '') = ''",
+            (outlook, name)).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('room_views_2026_10_16', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        print(f"[rooms] the view put back on {changed} room(s)")
     return changed
 
 
@@ -50404,8 +50588,9 @@ def house_room_facts_cached():
 def house_room_facts(conn):
     """How many rooms the house lets, and what the cheapest one costs.
 
-    Both facts are written in prose on ten public pages -- "five bedrooms",
-    "from EUR220 a night" -- and both are owned by the rooms table. They are
+    Both facts are written in prose on ten public pages -- "five guest rooms"
+    (never "five bedrooms" since 15 October: the house has more bedrooms than
+    it lets), "from EUR220 a night" -- and both are owned by the rooms table. They are
     true this morning. Add a sixth room or change a price and ten pages are
     wrong at once, and one of them carries the first figure a guest ever
     reads.
@@ -52730,15 +52915,32 @@ def parse_money(raw):
     return round(value, 2) if value >= 0 else None
 
 
-# What a guest may choose for themselves on the public registration form.
+# What a guest may always choose for themselves on the public registration form.
 #
-# 'solo' is deliberately absent. A private room on an atelier is arranged with
-# the château directly: the price depends on the atelier, the dates and what is
-# actually free, so it is quoted per enquiry rather than carried as a standing
-# supplement. Staff can still set solo on a booking by hand, which is how one
-# that was arranged over the phone gets recorded.
+# 'solo' is not in it because it is not always on offer: a room to yourself is
+# sold online only when the atelier carries a supplement and a room is free —
+# see workshop_solo_bookable(). Where it is not on offer a posted 'solo' still
+# becomes 'double', so a private room is never given away for nothing. Staff
+# can set solo on a booking by hand, which is how one arranged over the phone
+# gets recorded.
 PUBLIC_OCCUPANCY_TYPES = ("double", "triple")
 ALL_OCCUPANCY_TYPES = ("solo", "double", "triple")
+
+
+def workshop_solo_bookable(workshop, rooms_left):
+    """True when a guest coming alone may buy a room to themselves online.
+
+    Three things, all needed (owner, 15 Oct; handover z22 item 12): a priced
+    atelier, a supplement above nothing — 'solo' at no supplement is a private
+    room given away — and at least one room still free on the session. The
+    registration page offers the tick from this and the POST accepts 'solo'
+    from this, so the page can never offer what the route then refuses.
+    """
+    try:
+        supplement = float(workshop["single_supplement"] or 0)
+    except (KeyError, IndexError, TypeError, ValueError):
+        supplement = 0.0
+    return bool(supplement > 0 and workshop["price_per_person"] and rooms_left >= 1)
 
 
 def workshop_single_supplement(workshop, occupancy_type):
@@ -55086,6 +55288,18 @@ def workshop_register(session_id):
         # Don't offer a private room the château cannot give: the same reason
         # a taken night is not clickable on the booking calendar.
         "solo_possible": rooms_left >= 1 or not bookable_room_count(conn),
+        # Whether "A room to myself, +€X" is offered and charged online. The
+        # POST below accepts 'solo' only on the same answer.
+        "solo_bookable": workshop_solo_bookable(session_row, rooms_left),
+        # The deposit percent create_workshop_booking will charge, for each
+        # party size the form allows. The page works out the amounts as the
+        # guest types (handover z22); a deposit rule can vary by party size,
+        # so the workshop's own percent alone could show one figure and
+        # charge another.
+        "deposit_by_party": {
+            n: resolve_deposit_percent(conn, "workshop", session_row["start_date"], n,
+                                       session_row["deposit_percent"])
+            for n in range(1, (session_row["capacity"] or 15) + 1)},
     }
 
     if request.method == "POST":
@@ -55104,13 +55318,17 @@ def workshop_register(session_id):
         party_size_raw = request.form.get("party_size", "").strip()
         party_size = int(party_size_raw) if party_size_raw.isdigit() else None
         occupancy_type = request.form.get("occupancy_type", "double").strip()
-        # A private room is arranged with the château directly, not booked
-        # online: what it costs depends on the atelier, the dates and what is
-        # free, so it is quoted case by case rather than carrying a standing
-        # supplement. The refusal is here rather than only in the form because
-        # hiding an <option> stops nobody from posting the value — and 'solo'
-        # with no supplement set is a private room given away for nothing.
-        if occupancy_type not in PUBLIC_OCCUPANCY_TYPES:
+        # A room to yourself is sold here only for one guest on an atelier that
+        # carries a supplement (the page hides the tick for a larger party).
+        # Anything else posting 'solo' becomes 'double', as it always has: the
+        # refusal is here rather than only in the form because hiding a tick
+        # stops nobody from posting the value, and 'solo' with no supplement is
+        # a private room given away for nothing. Whether a room is still FREE
+        # is asked again below under the write lock, because a guest who ticked
+        # it was promised one and must not be quietly put in a shared room.
+        solo_wanted = (occupancy_type == "solo" and party_size == 1
+                       and workshop_solo_bookable(session_row, 1))
+        if occupancy_type not in PUBLIC_OCCUPANCY_TYPES and not solo_wanted:
             occupancy_type = "double"
         requested_roommate = request.form.get("requested_roommate", "").strip()[:200]
         dietary_notes = request.form.get("dietary_notes", "").strip()[:500]
@@ -55138,6 +55356,13 @@ def workshop_register(session_id):
             # read "room for you".
             error = "This session is fully booked — join the waitlist below, or choose another date."
             fully_booked = True
+        elif solo_wanted and (bookable_room_count(conn)
+                              - session_rooms_used(conn, session_id)) < 1:
+            # Counted after claim_workshop_places took the lock, so two guests
+            # ticking it for the last free room cannot both be sold it.
+            error = ("The last room to yourself on these dates has just been taken. "
+                     "You can still come and share a room with another guest travelling solo.")
+            page["solo_bookable"] = False
         else:
             # end_date is the last day the guests are still there (they check
             # out that morning, the same convention a workshop uses to hold
@@ -92878,10 +93103,10 @@ def make_channel_door_link(reservation_id):
 # ---------------------------------------------------------------------------
 # THE HOUSE CALENDAR.
 #
-# One real Microsoft 365 calendar, "Château de Gudanes — House", that the app
-# WRITES to and everybody reads -- on a desk, in a browser, on a phone -- with
-# the stays, the dinners, the ateliers, the events, the tasks and the rota in
-# it. An .ics subscription was the obvious way and the wrong one: Outlook
+# One real Microsoft 365 calendar -- the house mailbox's own default calendar,
+# "House" in Outlook's directory -- that the app WRITES to and everybody reads
+# -- on a desk, in a browser, on a phone -- with the stays, the dinners, the
+# ateliers, the events, the tasks and the rota in it. An .ics subscription was the obvious way and the wrong one: Outlook
 # refreshes a subscribed feed every few hours, so a stay booked at ten was not
 # on anybody's phone until the afternoon. Written into Exchange, it is there in
 # under a minute.
@@ -92904,7 +93129,11 @@ def make_channel_door_link(reservation_id):
 # holds it to that, and the privacy notice says so.
 # ---------------------------------------------------------------------------
 
+# The .ics feed's name. Microsoft's copy is not called this any more: it is
+# the house mailbox's default calendar, which Outlook's directory lists under
+# the mailbox's own display name.
 HOUSE_CALENDAR_NAME = "Château de Gudanes — House"
+HOUSE_CALENDAR_DIRECTORY_NAME = "House"
 # (key, label, mark, Outlook preset colour). The mark leads every subject so
 # the area reads on a phone, where category colours do not always show.
 HOUSE_CALENDAR_AREAS = [
@@ -92920,8 +93149,12 @@ HOUSE_CALENDAR_PAST_DAYS = 30
 HOUSE_CALENDAR_AHEAD_DAYS = 548
 HOUSE_CALENDAR_POLL_SECONDS = 30
 HOUSE_CALENDAR_MAX_WRITES = 150     # per pass; anything more waits for the next
-HOUSE_CALENDAR_CHECK_IN = "16:00"
-HOUSE_CALENDAR_CHECK_OUT = "11:00"
+# A stay is blocked on the staff's calendar from when the guest may arrive to
+# when they must leave -- the house's own times, so the calendar the team
+# plans by agrees with what every guest is told (owner, 16 October 2026: it
+# said 4pm to 11am after the house moved to 3pm and 10am).
+HOUSE_CALENDAR_CHECK_IN = CHECK_IN_TIME
+HOUSE_CALENDAR_CHECK_OUT = CHECK_OUT_TIME
 HOUSE_CALENDAR_DINNER_HOURS = 3
 # The property every event the app writes carries, so the nightly reconcile can
 # tell the app's events from anything a person added by hand.
@@ -92938,6 +93171,10 @@ HOUSE_CALENDAR_SETTINGS = {
     # writing had stopped; this is what tells them apart.
     "in_range": "house_calendar_in_range",
     "shared_by_hand": "house_calendar_shared_by_hand",
+    # The calendar the app wrote to before this one, while its old events are
+    # taken out of it; whether that is done; and what the page says about it.
+    "retired": "house_calendar_retired_id", "retired_empty": "house_calendar_retired_empty",
+    "retired_note": "house_calendar_retired_note",
 }
 # Windows' name for the house's zone, which every Graph create and update
 # accepts; Graph lists Europe/Paris as well, but warns that writes "might not
@@ -93232,32 +93469,100 @@ def graph_send(method, path, token, body=None, headers=None):
 
 
 def ensure_house_calendar(conn, token):
-    """The house calendar's id: the one already made, or one found by name,
-    or a new one. Also puts the area categories, with their colours, into the
-    mailbox -- which needs MailboxSettings.ReadWrite; without it the events
-    still carry their category names and the page says why there is no colour."""
+    """The house calendar's id: the DEFAULT calendar of the house mailbox.
+
+    It used to be a second calendar inside that mailbox, made by name, and
+    nobody could see it. Outlook's Add calendar -> From directory -> House adds
+    a mailbox's default calendar and no other, and a shared mailbox's other
+    calendars can only be given out by an invitation sent from inside it. So
+    the events go where Outlook looks, and the app never makes a calendar.
+
+    When the id is not the one stored -- the move off the named calendar, or
+    HOUSE_CALENDAR_MAILBOX pointed at another mailbox -- every event the app
+    remembers is in the OLD calendar, and patching one by its id would go on
+    writing there (an event's address is the mailbox's, not the calendar's).
+    So they are forgotten, each is made once in this calendar on the same
+    pass, and the old calendar is marked to be emptied of them by
+    empty_retired_house_calendar. The sharing recorded was the old calendar's,
+    so that goes too.
+
+    Also puts the area categories, with their colours, into the mailbox --
+    which needs MailboxSettings.ReadWrite; without it the events still carry
+    their category names and the page says why there is no colour."""
     mb = HOUSE_CALENDAR_MAILBOX
-    cal_id = _hc_get(conn, "id")
-    if cal_id:
-        if graph_get(f"/users/{mb}/calendars/{cal_id}", token, params={"$select": "id"}) is not None:
-            return cal_id
-        if "answered 404" not in (graph_last_error() or ""):
-            raise HouseCalendarError(graph_last_error() or "the calendar could not be read")
-    listing = graph_get(f"/users/{mb}/calendars", token, params={"$select": "id,name", "$top": "100"})
-    if listing is None:
-        raise HouseCalendarError(graph_last_error() or f"{mb}'s calendars could not be read")
-    found = next((c["id"] for c in listing.get("value", []) if c.get("name") == HOUSE_CALENDAR_NAME),
-                 None)
-    if not found:
-        status, made, err = graph_send("POST", f"/users/{mb}/calendars", token,
-                                       {"name": HOUSE_CALENDAR_NAME, "color": "lightBrown"})
-        if status not in (200, 201) or not made or not made.get("id"):
-            raise HouseCalendarError(err or "Microsoft did not make the calendar")
-        found = made["id"]
-    _hc_set(conn, "id", found)
+    found = graph_get(f"/users/{mb}/calendar", token, params={"$select": "id"})
+    if found is None or not found.get("id"):
+        raise HouseCalendarError(graph_last_error() or f"{mb}'s calendar could not be read")
+    cal_id = found["id"]
+    stored = _hc_get(conn, "id")
+    if stored == cal_id:
+        return cal_id
+    if stored:
+        conn.execute("DELETE FROM house_calendar_events")
+        _hc_set(conn, "retired", stored)
+        _hc_set(conn, "retired_empty", "")
+        _hc_set(conn, "retired_note", "")
+        _hc_set(conn, "shared", "")
+        _hc_set(conn, "shared_by_hand", "")
+    _hc_set(conn, "id", cal_id)
     ensure_house_categories(conn, token)
     conn.commit()
-    return found
+    return cal_id
+
+
+def empty_retired_house_calendar(conn, token, budget, *, full=False):
+    """Take the app's events out of the calendar it wrote to before, a pass at
+    a time. Returns (removed, waiting).
+
+    Only events carrying the app's key go, and none the app still counts as
+    its own -- so anything a person put there by hand stays, and if the old
+    calendar ever turned out to be the current one, nothing of today's is
+    touched. The calendar itself is never deleted: that is the owner's call,
+    and the page names it. Once it is empty it is looked at again only on the
+    nightly check, which forgets it the night it has been deleted."""
+    old = _hc_get(conn, "retired")
+    if not old or (_hc_get(conn, "retired_empty") and not full):
+        return 0, 0
+    mb = HOUSE_CALENDAR_MAILBOX
+    about = graph_get(f"/users/{mb}/calendars/{old}", token, params={"$select": "id,name"})
+    if about is None:
+        if "answered 404" in (graph_last_error() or ""):
+            # Deleted, or in a mailbox the app no longer writes: nothing to move.
+            for name in ("retired", "retired_empty", "retired_note"):
+                _hc_set(conn, name, "")
+            return 0, 0
+        _hc_set(conn, "retired_note", "The calendar the app used before could not be read, so "
+                                      "its old events are still in it: "
+                                      + (graph_last_error() or "no answer"))
+        return 0, 0
+    called = f'"{about.get("name") or "the old calendar"}"'
+    try:
+        remote = house_calendar_remote(token, old)
+    except HouseCalendarError as e:
+        _hc_set(conn, "retired_note", f"The app's old events in {called} could not be listed: {e}")
+        return 0, 0
+    claimed = {r["graph_id"] for r in conn.execute(
+        "SELECT graph_id FROM house_calendar_events WHERE graph_id IS NOT NULL")}
+    left = [gid for gid, ev in remote.items() if ev["key"] and gid not in claimed]
+    removed, refused = 0, []
+    for gid in left[:max(budget, 0)]:
+        status, _b, err = graph_send("DELETE", f"/users/{mb}/events/{gid}", token)
+        if status in (200, 204, 404):
+            removed += 1
+        else:
+            refused.append(err or f"remove refused ({status})")
+    waiting = len(left) - removed - len(refused)
+    if refused or waiting:
+        _hc_set(conn, "retired_note",
+                f"Moving off {called}: {len(left) - removed} of the app's old events still to take "
+                "out of it" + (f". Microsoft refused: {refused[-1]}" if refused else "") + ".")
+    else:
+        _hc_set(conn, "retired_empty", "1")
+        _hc_set(conn, "retired_note",
+                f"The app's events have been taken out of {called}, the calendar it wrote to "
+                f"before. The calendar itself is still in {mb}, with anything a person put in it "
+                "by hand. Delete it when nobody needs it; this line goes the night after.")
+    return removed, waiting
 
 
 def ensure_house_categories(conn, token):
@@ -93438,10 +93743,16 @@ def sync_house_calendar(conn, *, full=False):
                 continue
         conn.execute("DELETE FROM house_calendar_events WHERE key = ?", (key,))
         counts["removed"] += 1
+    # After this calendar is right, with what the pass has left to spend.
+    conn.commit()
+    counts["moved_out"], waiting = empty_retired_house_calendar(
+        conn, token, HOUSE_CALENDAR_MAX_WRITES - writes, full=full)
+    counts["waiting"] += waiting
     now_iso = datetime.now(timezone.utc).isoformat()
     _hc_set(conn, "last_check", now_iso)
     _hc_set(conn, "in_range", str(len(desired)))
-    if counts["created"] or counts["updated"] or counts["removed"] or counts["strays"]:
+    if (counts["created"] or counts["updated"] or counts["removed"] or counts["strays"]
+            or counts["moved_out"]):
         _hc_set(conn, "last_change", now_iso)
     if not counts["failed"]:
         _hc_set(conn, "last_ok", now_iso)
@@ -93455,7 +93766,8 @@ def sync_house_calendar(conn, *, full=False):
 def house_calendar_counts_words(counts):
     said = [f"{counts[k]} {w}" for k, w in (
         ("created", "added"), ("updated", "updated"), ("removed", "removed"),
-        ("strays", "strays cleared"), ("restored", "put back"), ("failed", "refused"),
+        ("strays", "strays cleared"), ("restored", "put back"),
+        ("moved_out", "taken out of the old calendar"), ("failed", "refused"),
         ("waiting", "waiting for the next pass")) if counts.get(k)]
     if said:
         return ", ".join(said)
@@ -93502,7 +93814,7 @@ def house_calendar_tick():
             if counts["failed"]:
                 house_calendar_note_failure(
                     conn, f"{counts['failed']} event(s) were refused; the page lists them")
-            if any(counts[k] for k in ("created", "updated", "removed", "failed")):
+            if any(counts[k] for k in ("created", "updated", "removed", "moved_out", "failed")):
                 record_job_run(conn, "house_calendar_sync", not counts["failed"],
                                house_calendar_counts_words(counts))
             return counts
@@ -93535,9 +93847,10 @@ def run_house_calendar_reconcile_job(conn):
 
 def house_calendar_share_command():
     """The one line of Exchange Online PowerShell that shares the calendar
-    with everybody, for when Graph cannot."""
-    return (f'Set-MailboxFolderPermission -Identity "{HOUSE_CALENDAR_MAILBOX}:\\Calendar\\'
-            f'{HOUSE_CALENDAR_NAME}" -User Default -AccessRights Reviewer')
+    with everybody, for when Graph cannot. The mailbox's own Calendar folder,
+    with nothing under it: that is the calendar the app writes."""
+    return (f'Set-MailboxFolderPermission -Identity "{HOUSE_CALENDAR_MAILBOX}:\\Calendar" '
+            f'-User Default -AccessRights Reviewer')
 
 
 def house_calendar_org_entry(perms):
@@ -93697,7 +94010,7 @@ def house_calendar_status(conn):
         "last_error_at": _hc_get(conn, "last_error_at"),
         "last_reconcile": _hc_get(conn, "last_reconcile"),
         "categories_note": _hc_get(conn, "categories"), "shared_note": _hc_get(conn, "shared"),
-        "in_range": _hc_get(conn, "in_range"),
+        "in_range": _hc_get(conn, "in_range"), "retired_note": _hc_get(conn, "retired_note"),
         "by_area": by_area, "written": sum(1 for r in rows if r["graph_id"]),
         "failures": failures[:40], "failure_count": len(failures),
     }
@@ -93748,7 +94061,7 @@ def admin_house_calendar():
             for key, label, _m, _c in HOUSE_CALENDAR_AREAS]
     return render_template("admin_house_calendar.html", st=st, feeds=feeds,
                            areas=HOUSE_CALENDAR_AREAS, chosen=areas, preview=preview[:60],
-                           window=(start, end), name=HOUSE_CALENDAR_NAME,
+                           window=(start, end), name=HOUSE_CALENDAR_DIRECTORY_NAME,
                            share_command=house_calendar_share_command(),
                            poll=HOUSE_CALENDAR_POLL_SECONDS)
 
@@ -96668,16 +96981,19 @@ EXPENSE_DOC_TYPES = {
 # it. Held as data so the form, the guest-facing page and any future filter
 # read from one list — the old free-text field meant "Private bathroom" and
 # "private bath" were different things and neither could be searched.
+#
+# The beds and which bathroom are NOT ticks: each is asked once, in its own
+# field (bed_setup, bathroom), because the guest pages read those fields. As
+# ticks as well they were asked twice and could disagree -- and did, on the
+# guest page: "Private bathroom, on the ground floor" from the field above a
+# "Shared bathroom" tag from the ticks (15 October 2026).
 ROOM_AMENITIES = {
     "Sleeping": [
-        ("emperor_bed", "Emperor bed"), ("king_bed", "King bed"),
-        ("double_bed", "Double bed"), ("twin_beds", "Twin beds"),
         ("sofa_bed", "Sofa bed"), ("cot_available", "Cot available"),
         ("extra_bed", "Extra bed possible"),
     ],
     "Bathroom": [
-        ("ensuite", "En-suite"), ("private_bathroom", "Private bathroom"),
-        ("shared_bathroom", "Shared bathroom"), ("bath", "Bathtub"),
+        ("bath", "Bathtub"),
         ("shower", "Shower"), ("robes", "Robes & slippers"),
         ("toiletries", "Toiletries"), ("hairdryer", "Hairdryer"),
     ],
@@ -96703,6 +97019,27 @@ ROOM_AMENITIES = {
     ],
 }
 AMENITY_LABELS = {k: v for group in ROOM_AMENITIES.values() for k, v in group}
+# The column holds the WORDS, because the guest pages print it as it stands:
+# a tick saved as its key put "mountain_view" on the booking page. The form
+# reads either, so a room saved under the old keys still shows its ticks.
+AMENITY_KEYS_BY_LABEL = {v.casefold(): k for k, v in AMENITY_LABELS.items()}
+
+
+def amenity_key(token):
+    """The amenity a stored word or key stands for, or None if it is free text."""
+    token = (token or "").strip()
+    if token in AMENITY_LABELS:
+        return token
+    return AMENITY_KEYS_BY_LABEL.get(token.casefold())
+
+
+def says_bed_or_bathroom(token):
+    """Whether a feature tag states the beds or which bathroom -- the two facts
+    that have fields of their own and that a tag must not contradict."""
+    t = (token or "").strip().casefold()
+    return bool(t) and ("bathroom" in t or "en-suite" in t or "ensuite" in t
+                        or t.endswith(" bed") or t.endswith(" beds")
+                        or "bedding" in t)
 
 # What the bathroom asks of you. Deliberately not a yes/no: "over-bath
 # shower" is the answer that catches most people out, and a tickbox marked
@@ -96720,8 +97057,12 @@ ACCESS_BATHROOMS = {
 # who came back in March has not stopped needing it.
 ACCESS_NEEDS_RETENTION_MONTHS = 12
 
-BED_SETUPS = ["Emperor bed", "King bed", "Queen bed", "Double bed", "Twin beds",
-              "Twin or double", "Two bedrooms", "Bunk room"]
+# "Two double beds" and "Queen and doubles" are the Twin Room and the Family
+# Suite (owner, 15 October 2026); a room's own value is offered as well, so
+# a bed the list does not name is never lost on a save.
+BED_SETUPS = ["Emperor bed", "King bed", "Queen bed", "Double bed", "Two double beds",
+              "Twin beds", "Twin or double", "Queen and doubles", "Two bedrooms",
+              "Bunk room"]
 # STORED AS THE WORD THE GUEST PAGES READ. The Stay cards, the room page and
 # the comparison table all test for "private" and "shared", and this used to
 # offer "En-suite / Private, not en-suite / Shared" -- none of which they
@@ -96770,15 +97111,33 @@ def room_amenity_keys(room):
     """The amenity keys a room has. Tolerates the old free-text column, so a
     room set up before this existed keeps working."""
     raw = (room["amenities"] or "") if room else ""
-    return {a.strip() for a in raw.split(",") if a.strip() and a.strip() in AMENITY_LABELS}
+    return {amenity_key(a) for a in raw.split(",") if amenity_key(a)}
 
 
 def room_amenity_freetext(room):
     """Anything in the old column that isn't a known amenity — preserved rather
-    than thrown away when a legacy room is edited."""
+    than thrown away when a legacy room is edited. Not the beds or which
+    bathroom: those have fields of their own, and a tag here contradicted them."""
     raw = (room["amenities"] or "") if room else ""
     return ", ".join(a.strip() for a in raw.split(",")
-                     if a.strip() and a.strip() not in AMENITY_LABELS)
+                     if a.strip() and not amenity_key(a) and not says_bed_or_bathroom(a))
+
+
+def clean_room_amenities(text):
+    """A stored feature list as the guest pages should read it: each known
+    feature in its words (a key becomes its label), and no tag that states
+    the beds or which bathroom. None for nothing."""
+    out = []
+    for token in (text or "").split(","):
+        token = token.strip()
+        key = amenity_key(token)
+        # A known feature first: "Sofa bed" is a feature, not the beds.
+        if not token or (not key and says_bed_or_bathroom(token)):
+            continue
+        word = AMENITY_LABELS[key] if key else token
+        if word not in out:
+            out.append(word)
+    return ", ".join(out) or None
 
 
 def room_fields_from_form():
@@ -96795,7 +97154,10 @@ def room_fields_from_form():
         except ValueError:
             return None
 
-    checked = [k for k in request.form.getlist("amenities") if k in AMENITY_LABELS]
+    # Saved as the words a guest reads; clean_room_amenities also keeps a bed
+    # or a bathroom typed into "anything else" out of the list.
+    checked = [AMENITY_LABELS[k] for k in request.form.getlist("amenities")
+               if k in AMENITY_LABELS]
     extra = (request.form.get("amenities_other", "") or "").strip()
     if extra:
         checked += [a.strip() for a in extra.split(",") if a.strip()]
@@ -96831,7 +97193,7 @@ def room_fields_from_form():
                             if (request.form.get("access_bathroom", "") or "").strip()
                             in ACCESS_BATHROOMS else None),
         "access_notes": (request.form.get("access_notes", "") or "").strip()[:400] or None,
-        "amenities": ", ".join(checked) or None,
+        "amenities": clean_room_amenities(", ".join(checked)),
     }
 
 
@@ -101315,7 +101677,7 @@ LEGACY_PATHS = [
     ("/la-table", "restaurant_info", True),
     ("/the-chateau", "restoration_page", True),
     ("/about", "restoration_page", True),
-    ("/history", "restoration_page", True),
+    # /history is a page of its own since handover z22 (history_page).
     # The house writes. If it ever publishes that writing at its own address,
     # a 301 cached in every returning reader's browser would be in the way.
     ("/blog", "gallery_page", False),
@@ -101602,7 +101964,8 @@ def sitemap():
         ("events_weddings", "0.7"), ("events_private", "0.6"),
         ("events_photoshoots", "0.6"), ("press", "0.5"), ("story", "0.7"),
         ("facilities_page", "0.7"),
-        ("restoration_page", "0.7"), ("gallery_page", "0.6"), ("contact_page", "0.6"),
+        ("restoration_page", "0.7"), ("history_page", "0.7"),
+        ("gallery_page", "0.6"), ("contact_page", "0.6"),
         ("whats_on", "0.5"), ("terms_page", "0.3"),
     ]
     urls = []

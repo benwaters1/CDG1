@@ -13,8 +13,8 @@
 {% block title_fr %}Séjourner au château{% endblock %}
 {% block description_fr %}Cinq chambres dans un Monument Historique classé des Pyrénées ariégeoises, en restauration depuis 2013. {% if house_rooms and house_rooms.from_price %}À partir de {{ house_rooms.from_price }} € la nuit, {% endif %}petit-déjeuner compris.{% endblock %}
 {% block title %}Stay the Night in a French Château{% endblock %}
-{% block description %}Five bedrooms inside a château under restoration in the French Pyrénées. Antique French beds, breakfast included, and the pool and parkland with them.{% endblock %}
-{% block og_desc %}Five bedrooms inside a château under restoration in the French Pyrénées. Antique French beds, breakfast included, and the pool and parkland with them.{% endblock %}
+{% block description %}Five guest rooms inside a château under restoration in the French Pyrénées. Antique French beds, breakfast included, and the pool and parkland with them.{% endblock %}
+{% block og_desc %}Five guest rooms inside a château under restoration in the French Pyrénées. Antique French beds, breakfast included, and the pool and parkland with them.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/393b1bed-532a-41a0-8000-c964f7fec141/Screenshot+2023-08-23+at+2.28.37+pm.png?format=1200w{% endblock %}
 {% block bodyclass %} has-hero hero--short{% endblock %}
 {% block content %}
@@ -22,7 +22,7 @@
 {% from '_exclusive.html' import exclusive %}
 {% from '_notify.html' import notify %}
 {% from '_before.html' import honest, terms_upfront, packing, arriving %}
-{% from '_animals.html' import animals, animals_note %}
+{% from '_animals.html' import bruce_card, animals, animals_note %}
 {% from '_roompick.html' import room_pick %}
 {% from '_weekcost.html' import week_cost %}
 {% from '_flexible.html' import flexible %}
@@ -60,7 +60,7 @@
   <p class="g-hero__eyebrow">Cinq Chambres · Ariège</p>
     <h1 class="g-hero__title">Stay the Night</h1>
     {# The page's first priority had a title and a button and nothing between them. #}
-    <p class="g-hero__lede">The walls as the centuries left them. The beds, the linen and the bathrooms new.</p>
+    <p class="g-hero__lede">The walls as the centuries left them, the rooms furnished from the brocantes, old pieces beside new.</p>
     <p class="g-hero__cta"><a href="#rooms" class="g-btn g-btn--solid">See the rooms</a></p>
 </div>
 </section>
@@ -85,7 +85,7 @@
    restoration". It said nothing about availability. The lede carries it. #}
 
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-p g-lede-first">Five bedrooms, each brought back from ruin, in an eighteenth-century château in the Pyrénées. A stay is your room, breakfast and the lounge, with the pool, tennis and the grounds outside.</p>
+  <p class="g-p g-lede-first">Five guest rooms, each brought back from ruin, in an eighteenth-century château in the Pyrénées. A stay is your room, breakfast and the lounge, with the pool, tennis and the grounds outside.</p>
   <p class="g-p">It is a restoration, not a renovation. The walls stay as they are, by law, while the beds and the bathrooms are new: the comforts on which nothing has been compromised. Every stay helps bring the château back to life.</p>
 </div></section>
 
@@ -94,7 +94,7 @@
   <p class="g-fr">Une nuit au château <span class="g-fr__en">A night at the château</span></p>
   <p class="g-eyebrow">Your Stay</p>
   <h2 class="g-place">A Night at Gudanes</h2>
-  <p class="g-p g-lede-first">You come through the gates and up the drive, and the château rises at the end of it. Your room is up the original staircase: a new bed, walls the centuries left as they are, and a new bathroom of your own on the ground floor.</p>
+  <p class="g-p g-lede-first">You come through the gates and up the drive, and the château rises at the end of it. Your room is up the original staircase: antiques from the brocantes beside new pieces, walls the centuries left as they are, and a bathroom of your own on the ground floor.</p>
   <p class="g-p">The morning begins with breakfast. The day is yours: the pool, the tennis court, the grounds, or the valley below, and the lounge to come back to. In the evening the château goes quiet.</p>
 </div></section>
 
@@ -135,7 +135,7 @@
   <p class="g-fr">Les chambres <span class="g-fr__en">The rooms</span></p>
   <p class="g-eyebrow">The Rooms</p>
   <h2 id="rooms" class="g-place">Five Rooms, Each Its Own</h2>
-  <p class="g-p g-lede-first">Each room is different, because the château is: its own shape, its own light, its own view of the valley and the mountains. All five share what matters most: a new bed, a bathroom of your own on the ground floor, and walls left as the centuries made them.</p>
+  <p class="g-p g-lede-first">Each room is different, because the château is: its own shape, its own light, its own view of the valley and the mountains. All five share what matters most: antiques from the brocantes beside new pieces, a bathroom of your own on the ground floor, and walls left as the centuries made them.</p>
   {% if searched %}
   <div class="g-searched" role="status">
     <p class="g-searched__dates">
@@ -333,7 +333,7 @@
 <section class="g-sec g-gallery-sec"><div class="g-wrap">
   <p class="g-fr">Une nuit ici <span class="g-fr__en">A night here</span></p>
   <h2 class="g-place">Your Room, Breakfast and the Lounge</h2>
-  <p class="g-p g-intro">Five bedrooms, breakfast in the morning, and the lounge to come back to.</p>
+  <p class="g-p g-intro">Five guest rooms, breakfast in the morning, and the lounge to come back to.</p>
   <ul class="g-befgrid g-gallery g-lb-scope">
     <li><figure><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w" alt="The Gold Suite, the four-poster bed" loading="lazy"><figcaption>The Gold Suite</figcaption></figure></li>
     <li><figure><img src="{{ url_for('static', filename='img/views/chair-flowers-window-800.jpg') }}" srcset="{{ url_for('static', filename='img/views/chair-flowers-window-800.jpg') }} 800w, {{ url_for('static', filename='img/views/chair-flowers-window.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="A chair by the window, the mountains beyond" loading="lazy"><figcaption>A chair by the window, the mountains beyond</figcaption></figure></li>
@@ -352,8 +352,8 @@
     guest rooms; no salons or other bedrooms here. -#}
 <section class="g-sec g-sec--sand g-gallery-sec"><div class="g-wrap">
   <p class="g-fr">Le domaine <span class="g-fr__en">The grounds</span></p>
-  <h2 class="g-place">The Grounds Are Yours</h2>
-  <p class="g-p g-intro">A night here comes with the grounds: the pool, the formal garden and the lawns, and the mountains all around.</p>
+  <h2 class="g-place">A Château Park to Explore</h2>
+  <p class="g-p g-intro">A night here comes with the château&rsquo;s park to explore: the pool, the formal garden and the lawns, and the mountains all around.</p>
   <ul class="g-befgrid g-gallery g-lb-scope">
     <li><figure><img src="{{ url_for('static', filename='img/rk/from-the-air-pool-garden-800.jpg') }}" srcset="{{ url_for('static', filename='img/rk/from-the-air-pool-garden-800.jpg') }} 800w, {{ url_for('static', filename='img/rk/from-the-air-pool-garden.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The château, the formal garden and the pool" loading="lazy"><figcaption>The château, the formal garden and the pool</figcaption></figure></li>
     <li><figure><img src="{{ url_for('static', filename='img/xx/garden-chateau-mountains-800.jpg') }}" srcset="{{ url_for('static', filename='img/xx/garden-chateau-mountains-800.jpg') }} 800w, {{ url_for('static', filename='img/xx/garden-chateau-mountains.jpg') }} 1600w" sizes="(min-width: 60rem) 33vw, 50vw" alt="The château over its garden, the mountains beyond" loading="lazy"><figcaption>The château over its garden, the mountains beyond</figcaption></figure></li>
@@ -418,6 +418,26 @@
   <p class="g-p g-eat__also">The village also has a small supermarket and a tabac, for anything forgotten.</p>
 </div></section>
 {% endif %}
+{#- 15 Oct (owner): "days out is good" - the five best, each with its drive and its season; more on What's On. -#}
+<section class="g-sec g-sec--sand" id="days-out"><div class="g-wrap">
+  <p class="g-fr">Sorties <span class="g-fr__en">Days out</span></p>
+  <h2 class="g-place">Days Out</h2>
+  <p class="g-p">The valley around the château is one of the quietest corners of France, with a great deal within half an hour.</p>
+  <ul class="g-eat">
+    {%- for kind, name, where, text in [
+      ('bath', 'The thermal baths', 'Ax-les-Thermes · about twenty minutes · all year', 'Les Bains du Couloubret: Roman-style baths fed by the hottest springs in the Pyrénées, with pools inside and out, hammam, sauna and massages.'),
+      ('kayak', 'On the river', 'Sinsat · about ten minutes · May to October', 'Canoe, kayak or paddle-board down the Ariège with Waterploof, guided or on your own, with a minibus back.'),
+      ('mountains', 'Painted caves', 'Niaux and Tarascon · about twenty minutes', 'The prehistoric paintings of Niaux, among the few originals still open to visitors, and the Parc de la Préhistoire.'),
+      ('brocante', 'Market day at Mirepoix', 'Mirepoix · just under an hour · Monday mornings', 'One of the finest markets in the region, under the timbered arcades of a medieval square, with brocantes all around.'),
+      ('ski', 'Snow', 'Plateau de Beille and Ax 3 Domaines · December to March', 'Cross-country skiing, snowshoes and sled dogs on the Plateau de Beille, at the top of the château&rsquo;s road, and downhill skiing at Ax 3 Domaines.')] %}
+    <li class="g-eat__i">
+      <div class="g-eat__ill" aria-hidden="true">{{ illus(kind) }}</div>
+      <div><h3 class="g-eat__t">{{ name }}</h3><p class="g-eat__where">{{ where }}</p><p class="g-eat__d">{{ text|safe }}</p></div>
+    </li>
+    {%- endfor %}
+  </ul>
+  <p class="g-p g-eat__also"><a href="{{ url_for('whats_on') }}">More in What&rsquo;s On in the Ariège</a></p>
+</div></section>
 <!-- ============ COMPARE THE ROOMS ============ -->
 {# Driven by the same `rooms` the cards above use, so it can never disagree
    with them. Scrolls sideways on a phone rather than shrinking to nothing. #}
@@ -683,7 +703,7 @@
    panel -- and the warning that has to travel with them was imported
    and never called. A guest who reacts to cats was reading the
    charming half. #}
-<div class="g-wrap">{{ animals_note() }}</div>
+<div class="g-wrap">{{ bruce_card() }}</div>
 
 <div class="g-mono__wrap">{{ monogram() }}</div>
 

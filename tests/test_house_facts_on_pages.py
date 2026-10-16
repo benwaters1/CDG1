@@ -62,9 +62,15 @@ COUNTS = {
 # without this the guard reported thirty disagreements that were all the same
 # true sentence -- and a guard that cries wolf on the front page gets switched
 # off inside a week.
+#
+# "guest rooms" since 15 October (owner, handover z22): the house has more
+# bedrooms than it lets, so the pages say "five guest rooms". "bedrooms" stays
+# in, because a page that went back to saying it would still be a claim. Not
+# bare "rooms": "the Family Suite or three rooms" in the room finder is about a
+# party's size, not how many the house lets.
 CLAIM = re.compile(
     r"(?<![-\w])(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
-    r"\s+(bedrooms)\b", re.I)
+    r"\s+(bedrooms|guest\s+rooms)\b", re.I)
 
 # The one match that is HISTORY rather than a claim about today. The
 # restoration timeline says five bedrooms against 2022 because five was true

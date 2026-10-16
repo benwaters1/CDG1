@@ -11438,3 +11438,122 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 /* Family Suite: its photographs are upright - a taller header and portrait-shaped grid photographs on its room page */
 .g .g-room--family .g-roomhero{ height: clamp(22rem, 72vh, 46rem); object-position: center 40%; }
 .g .g-room--family .g-strip.g-roomgal img{ aspect-ratio: 4 / 5 !important; }
+
+/* 15 Oct (owner): "centre the guest" - the Guests cell is centred, and its label follows, but a number field ignores
+   inherited alignment, so the 2 sat on the left under a centred GUESTS. */
+.g .g-herosearch__f--n input{ text-align: center; }
+
+/* 15 Oct (owner: "a calendar doesn't pop up here on the computer"). The drawer's date boxes kept the dark drawer's
+   near-white text and a whitened calendar icon on the cream drawer, so only the selected "dd" showed and the icon
+   was all but invisible. Dark text, a visible icon, and every date box shows a pointer (the click opens the
+   calendar - see the script in public_base.html). */
+.g #g-mainnav .g-qbook__f input{ color: var(--ink); background: #FFFDF8; border-color: rgba(115,86,45,.45); }
+.g #g-mainnav .g-qbook__f input::-webkit-calendar-picker-indicator{ filter: none; opacity: .8; }
+.g input[type="date"]{ cursor: pointer; }
+.g input[type="date"]::-webkit-calendar-picker-indicator{ cursor: pointer; }
+
+/* 15 Oct (owner: "the story of the chateau is weirdly placed and needs to be more prominent"). The homepage's dark
+   "Experience the Château in Full" band: the story link was a small italic underline beside a large gold button. It is
+   now the gold button's partner - same height, lettering and spacing, outlined in white on the navy. */
+.g .g-full .g-full__btns{ display: inline-flex; flex-direction: column; align-items: stretch; gap: var(--s3); max-width: 100%; }
+.g .g-full .g-full__cta{ justify-content: center; }
+.g .g-full .g-full__link{
+  display: inline-flex; align-items: center; justify-content: center; min-height: 50px; padding: 0 var(--s6);
+  background: transparent; border: 1px solid rgba(255,255,255,.85); color: #fff;
+  font-family: var(--ui); font-style: normal; font-weight: 600; font-size: 13px; letter-spacing: .14em;
+  text-transform: uppercase; text-decoration: none;
+  transition: background-color .2s ease, color .2s ease, border-color .2s ease;
+}
+.g .g-full .g-full__link:hover, .g .g-full .g-full__link:focus-visible{ background: #fff; color: var(--blue-deep); border-color: #fff; }
+@media (max-width: 560px){
+  .g .g-full .g-full__btns{ display: flex; }
+}
+
+/* 15 Oct: the history on the Restoration page ("Eight Centuries"), kept to a reading width above the old postcards; the
+   #history anchor clears the sticky header. */
+.g .g-history{ max-width: 46rem; margin: 0 0 var(--s7); }
+.g .g-history .g-p + .g-p{ margin-top: var(--s4); }
+.g .g-anchor{ display: block; position: relative; top: -110px; visibility: hidden; }
+
+/* 15 Oct: the workshop registration panel shows the amounts - Total, Due today (larger, in gilt), Balance with its date. */
+.g .g-dossier .g-pay-row--now dt{ color: var(--gilt-on-dark, #C6A66E); }
+.g .g-dossier .g-pay-row--now dd{ font-size: 1.35em; color: #fff; }
+.g .g-dossier .g-pay-row[hidden]{ display: none; }
+
+/* =============================================================================
+   15 Oct: THE HISTORY PAGE (history.html) - the tagline 1213 · 1741 · 2013 in the hero, three key dates, and six chapters,
+   each text beside its framed pictures (alternating sides), in the manner of the Restoration page's old postcards.
+   ============================================================================= */
+.g .g-hist-tag{ margin: var(--s4) 0 0; font-family: var(--serif); font-size: clamp(1.15rem, 2.4vw, 1.6rem); letter-spacing: .18em; color: var(--gilt-on-dark, #C6A66E); }
+.g .g-hist-tag span{ margin: 0 .35em; opacity: .8; }
+.g .g-hist-dates{ list-style: none; margin: var(--s6) 0 0; padding: var(--s5) 0 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s5); }
+.g .g-hist-dates li{ margin: 0; }
+.g .g-hist-dates b{ display: block; font-family: var(--serif); font-weight: 400; font-size: clamp(2rem, 4vw, 2.8rem); line-height: 1; color: var(--gilt, #9A7B45); margin-bottom: var(--s2); }
+.g .g-hist-dates span{ display: block; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.g .g-hist__num{ margin: 0 0 var(--s2); font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--gilt, #9A7B45); }
+.g .g-hist__grid{ display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: clamp(2rem, 5vw, 4.5rem); align-items: center; }
+.g .g-hist__grid--flip > .g-hist__text{ order: 2; }
+.g .g-hist__grid .g-place, .g .g-hist__grid .g-p{ max-width: none; }
+.g .g-hist__figs{ display: grid; gap: var(--s5); }
+.g .g-hist__fig{ margin: 0; }
+.g .g-hist__fig img{ width: 100%; height: auto; display: block; border: 1px solid var(--line); box-shadow: 0 18px 34px -26px rgba(20,48,95,.5); }
+.g .g-hist__fig--engraving img{ background: #FFFDF8; padding: var(--s3); }
+.g .g-hist__fig figcaption{ margin-top: var(--s2); font-family: var(--serif); font-style: italic; font-size: 16px; color: var(--ink-2); }
+.g .g-hist__cta{ display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s5); }
+@media (max-width: 860px){
+  .g .g-hist__grid{ grid-template-columns: 1fr; }
+  .g .g-hist__grid--flip > .g-hist__text{ order: 0; }
+  .g .g-hist-dates{ grid-template-columns: 1fr; gap: var(--s4); }
+}
+.g .g-hist-tag--home{ margin-top: var(--s3); }
+.g .g-hist-tag--home a{ color: inherit; text-decoration: none; }
+.g .g-hist-tag--home a:hover, .g .g-hist-tag--home a:focus-visible{ text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 1px; }
+.g .g-hero .g-hist-tag--home a, .g main .g-hero .g-hist-tag--home a{ text-decoration: none; border: 0; box-shadow: none; background: none; display: inline; min-height: 0; }
+
+/* 15 Oct (owner): the foot-of-page device - "Eight centuries at Gudanes", then 1213 · 1741 · 2013, each with what it was.
+   Large gilt numerals, small white labels, fine gilt rules between; the whole block opens the history. */
+.g .g-crest__dates{ display: inline-block; margin: var(--s5) auto 0; color: #fff; text-decoration: none; }
+.g .g-crest__lead{ display: block; font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: rgba(255,255,255,.62); margin-bottom: var(--s4); }
+.g .g-crest__row{ display: flex; justify-content: center; align-items: stretch; }
+.g .g-crest__date{ display: flex; flex-direction: column; align-items: center; padding: 0 clamp(1rem, 3vw, 2.5rem); }
+.g .g-crest__date + .g-crest__date{ border-left: 1px solid rgba(198,166,110,.45); }
+.g .g-crest__date b{ font-family: var(--serif); font-weight: 400; font-size: clamp(1.9rem, 3.6vw, 2.6rem); line-height: 1; letter-spacing: .04em; color: var(--gilt-on-dark, #C6A66E); }
+.g .g-crest__date em{ margin-top: var(--s2); font-family: var(--ui); font-style: normal; font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.82); }
+.g .g-crest__dates:hover b, .g .g-crest__dates:focus-visible b{ color: #fff; }
+.g .g-crest__dates:focus-visible{ outline: 2px solid var(--gilt-on-dark, #C6A66E); outline-offset: 8px; }
+@media (max-width: 560px){
+  .g .g-crest__date{ padding: 0 .7rem; }
+  .g .g-crest__date em{ font-size: 10.5px; letter-spacing: .1em; max-width: 7.5rem; text-align: center; line-height: 1.35; }
+}
+/* History chapters: the drawing sits above the chapter number, left-aligned with the text. */
+.g .g-hist__text .g-hist__vig{ width: 64px; margin: 0 0 var(--s3); }
+.g .g-creed .g-creed__q{ margin-top: 0; padding-top: 0; border-top: 0; }
+
+/* 15 Oct (owner): Bruce - his portrait in a round gilt-edged frame beside the line about him and the allergy note. */
+.g .g-bruce{ display: grid; grid-template-columns: auto minmax(0, 1fr); gap: clamp(1.25rem, 4vw, 2.5rem); align-items: center; margin: var(--s6) 0; }
+.g .g-bruce__fig{ margin: 0; width: clamp(120px, 16vw, 180px); aspect-ratio: 1; border-radius: 50%; overflow: hidden; border: 1px solid var(--gilt, #9A7B45); box-shadow: 0 0 0 6px var(--paper, #F6F1E6), 0 0 0 7px rgba(154,123,69,.45); }
+.g .g-bruce__fig img{ width: 100%; height: 100%; object-fit: cover; object-position: center 40%; display: block; }
+.g .g-bruce__h{ font-family: var(--serif); font-weight: 400; font-size: clamp(1.6rem, 3vw, 2.1rem); margin: var(--s2) 0 var(--s3); color: var(--ink); }
+.g .g-bruce .g-p{ max-width: 38rem; }
+.g .g-bruce .g-limit{ margin-top: var(--s4); }
+@media (max-width: 560px){ .g .g-bruce{ grid-template-columns: 1fr; justify-items: start; } }
+
+/* 16 Oct (owner): the château's own entertainments, under each itinerary - a ruled board of small drawings, like a
+   cruise programme set in the château's own type. */
+.g .g-ents{ margin-top: var(--s8, 64px); padding-top: var(--s6); border-top: 1px solid rgba(154,123,69,.4); }
+.g .g-ents__h{ font-family: var(--serif); font-weight: 400; font-size: clamp(1.6rem, 3vw, 2.2rem); color: var(--ink); margin: var(--s2) 0 var(--s3); }
+.g .g-ents__lede{ font-size: 17px; line-height: 1.6; max-width: 44rem; margin: 0 0 var(--s5); }
+.g .g-ents__grid{ list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: 0 clamp(16px, 3vw, 36px); }
+.g .g-ents__i{ display: grid; grid-template-columns: 52px minmax(0,1fr); gap: 14px; align-items: center; padding: 14px 0; border-bottom: 1px solid rgba(154,123,69,.22); }
+.g .g-ents__ill{ color: var(--gilt, #9A7B45); width: 52px; height: 52px; }
+.g .g-ents__ill svg{ width: 100%; height: 100%; }
+.g .g-ents__t{ display: flex; flex-direction: column; gap: 2px; }
+.g .g-ents__fr{ font-family: var(--serif); font-style: italic; font-size: 14px; color: var(--gold-deep, #7A5E2C); }
+.g .g-ents__en{ font-family: var(--serif); font-size: 18px; line-height: 1.25; color: var(--ink); }
+.g .g-ents__l{ font-size: 14px; line-height: 1.4; color: var(--ink-soft, #4A5568); }
+@media (min-width: 900px){
+  .g .g-ents__grid{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .g .g-ents__grid--3{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.g .g-ents__fr{ color: #6B5025; }
+.g .g-ents__l{ color: #3F4A5A; }

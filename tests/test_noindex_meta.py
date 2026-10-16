@@ -46,7 +46,7 @@ BASE = os.path.join(TPL, "public_base.html")
 
 # Public pages: must NOT be noindex, or the site disappears from search.
 PUBLIC = ["/", "/book", "/restaurant", "/workshops", "/events",
-          "/gallery", "/contact", "/facilities", "/restoration"]
+          "/gallery", "/contact", "/facilities", "/restoration", "/history"]
 
 NOINDEX = re.compile(r'<meta[^>]+name=["\']robots["\'][^>]+noindex', re.I)
 

@@ -1,14 +1,15 @@
 {% extends "public_base.html" %}
 {% from '_illus.html' import illus %}
 {% block title %}The Family{% endblock %}
-{% block description %}Karina Waters bought Château de Gudanes in 2013, and has been restoring it since. What happened next, and why it is still happening.{% endblock %}
+{% block description %}The Waters family bought Château de Gudanes in 2013, and has been restoring it since. What happened next, and why it is still happening.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba4114a3-c057-4df8-8fd9-c080ebc6fff2/Chambre+Olympe+de+Gouges+2.jpg?format=1200w{% endblock %}
 {% block title_fr %}La famille{% endblock %}
-{% block description_fr %}Karina Waters a acheté le château de Gudanes en 2013 et le restaure depuis.{% endblock %}
+{% block description_fr %}La famille Waters a acheté le château de Gudanes en 2013 et le restaure depuis.{% endblock %}
 {% set crumbs = [('The family', None)] %}
 {% block content %}
 {% from '_marks.html' import mark, monogram %}
 {% from '_stay_panel.html' import stay_panel with context %}
+{% from '_animals.html' import animals_note %}
 
 <section class="g-sec g-sec--tight"><div class="g-wrap">
   <p class="g-fr">Une famille, pas une société <span class="g-fr__en">A family, not a company</span></p>
@@ -24,7 +25,7 @@
   <p class="g-fr">Une maison de famille <span class="g-fr__en">A family château</span></p>
   <p class="g-eyebrow">The Story</p>
   <h2 class="g-place">A Family Château</h2>
-  <p class="g-p g-lede-first">When Karina Waters bought Château de Gudanes in 2013, it was classified as a ruin: floors remained in only three of its rooms, and 500 tonnes of rubble had to be cleared before the work could begin. Since then the restoration has been followed the world over, room by room, and the château has begun, slowly, to live again. In 2016 the restoration received the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco.</p>
+  <p class="g-p g-lede-first">When the Waters family bought Château de Gudanes in 2013, it was classified as a ruin: floors remained in only three of its rooms, and 500 tonnes of rubble had to be cleared before the work could begin. Since then the restoration has been followed the world over, room by room, and the château has begun, slowly, to live again. In 2016 the restoration received the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco.</p>
   <p class="g-p">Gudanes is a family château, not a hotel. Guests are welcomed into it as it returns, and the workshops, the full Gudanes experience, let them stay long enough to become part of its story.</p>
   <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Discover the full experience</a></p>
     </div>
@@ -33,20 +34,20 @@
       <p class="g-fr">La famille <span class="g-fr__en">The family</span></p>
   <p class="g-eyebrow">The Family</p>
   <h2 class="g-place">Since 2013</h2>
-  <p class="g-p g-lede-first">Karina Waters bought Château de Gudanes in 2013, and has been bringing it back ever since. She is its châtelaine.</p>
-  <p class="g-p">A château like this was never meant to stand empty, so it is lived in while it is restored. Five bedrooms are open to guests, and the workshops bring people to stay, cook and take part in the château as it comes back.</p>
+  <p class="g-p g-lede-first">The Waters family bought Château de Gudanes in 2013, and has been bringing it back ever since.</p>
+  <p class="g-p">A château like this was never meant to stand empty, so it is lived in while it is restored. Five guest rooms are open, and the workshops bring people to stay, cook and take part in the château as it comes back.</p>
   <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a> <a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the full experience</a></p>
     </div>
   </div>
 </div></section>
 
 <section class="g-sec g-sec--sand g-person-sec"><div class="g-wrap g-person">
-  <figure class="g-person__fig"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/61684200-6d8b-4438-a170-ff92cc99a0a8/Screenshot+2026-08-12+at+8.37.48+pm.png?format=1000w" alt="Karina, owner and châtelaine of Château de Gudanes, lighting the candles" loading="lazy"></figure>
+  <figure class="g-person__fig"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/61684200-6d8b-4438-a170-ff92cc99a0a8/Screenshot+2026-08-12+at+8.37.48+pm.png?format=1000w" alt="Lighting the candles at Château de Gudanes" loading="lazy"></figure>
   <div class="g-person__t">
     <span class="g-hill" aria-hidden="true">{{ illus('laurel') }}</span>
     <p class="g-fr">La famille <span class="g-fr__en">The family</span></p>
     <h2 class="g-place">The Family</h2>
-    <p class="g-p">The restoration began in November 2013 as a family undertaking. Karina leads the restoration and the care of the château, room by room, as its owner and châtelaine. Every decision about the walls, the rooms and the guests who come to stay passes through her. The restoration has been privately funded, with no grants.</p>
+    <p class="g-p">The restoration began in November 2013 as a family undertaking. The family leads the restoration and the care of the château, room by room, and every decision about the walls, the rooms and the guests who come to stay passes through them. The restoration has been privately funded, with no grants.</p>
   </div>
 </div></section>
 
@@ -70,8 +71,12 @@
 <section class="g-sec g-gallery-sec"><div class="g-wrap">
   <p class="g-fr">La maisonnée <span class="g-fr__en">The household</span></p>
   <h2 class="g-place">The People Who Keep It</h2>
-  <p class="g-p g-intro">The family, the kitchen and the people who look after the château and its guests.</p>
+  <p class="g-p g-intro">The family, the kitchen and the people who look after the château and its guests, and Bruce, the French bulldog, who looks after all of them.</p>
   <ul class="g-befgrid g-gallery">
+    {#- 15 Oct (owner): Bruce - "everyone loves him"; the Christmas ones belong here rather than on the Noël workshop. -#}
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1586814184307-PRBEXYIKAU816PYCGTSZ/Me+and+Lari+pastry+kitchen+with+Brucey.jpg?format=1000w" alt="Two of the team in aprons in the pastry kitchen, holding Bruce" loading="lazy"><figcaption>In the pastry kitchen, with Bruce</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1587881704710-HV3GWORU8Q339A5RB5Y7/christmas+bruce+2.jpg?format=1000w" alt="Bruce in a green winter coat, a Christmas tree lit behind him" loading="lazy"><figcaption>Bruce, dressed for winter</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1587881723318-ZJBZOKH25VMJCIQYNMRI/christmas+bruce+1.jpg?format=1000w" alt="Bruce by the Christmas tree" loading="lazy"><figcaption>Bruce at Christmas</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c7a763e0-e047-4bc6-ac87-6bc312a89731/_DSC9185.jpg?format=1000w" alt="Laying the table in the salon" loading="lazy"><figcaption>Laying the table in the salon</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1786539831270-OCIZ2OFNTUC22Z6T9SMI/Screenshot%2B2026-08-12%2Bat%2B8.38.07%2Bpm.png?format=1000w" alt="The chef in the candlelit salon" loading="lazy"><figcaption>The chef, before dinner</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/4a0ae86a-ad32-4b6d-a8d9-45476c3cb734/Screenshot+2026-08-12+at+8.41.31+pm.png?format=1000w" alt="By the window, in black and white" loading="lazy"><figcaption>By the window</figcaption></figure></li>
@@ -82,6 +87,9 @@
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/35718cba-ae0d-4d2a-adc1-cace54a9e369/Screenshot+2026-08-12+at+8.40.54+pm.png?format=1000w" alt="In the salon, flowers on the table" loading="lazy"><figcaption>In the salon, flowers on the table</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9e7fe534-e9e9-498a-a050-53a072fafbe7/Screenshot+2026-08-12+at+9.11.24+pm.png?format=1000w" alt="The chef, in black and white" loading="lazy"><figcaption>The chef</figcaption></figure></li>
   </ul>
+  {#- Put back after z22: Bruce is in this gallery, and wherever the animals are named the allergy line goes
+      with them (test_animals). -#}
+  {{ animals_note() }}
 </div></section>
 
 {% endblock %}

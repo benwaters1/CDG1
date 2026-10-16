@@ -171,6 +171,15 @@ FR = {
     "charged in EUR": "débité en EUR",
     "Ariège · French Pyrénées · Restored since 2013":
         "Ariège · Pyrénées françaises · En restauration depuis 2013",
+    # The dates under the engraving at the foot of every page, and the
+    # History page's link (handover z22, 16 Oct 2026; wording from the
+    # design side's FOR-CODE, item 8).
+    "Eight centuries at Gudanes": "Huit siècles à Gudanes",
+    "The fortress": "La forteresse",
+    "The château, by Gabriel": "Le château, par Gabriel",
+    "The History": "L'histoire",
+    # The top bar's short name for What's On in the Ariège (z22).
+    "What’s On": "Que faire",
     "In the Ariège": "En Ariège",
 
     # -- Booking ---------------------------------------------------------
@@ -294,8 +303,8 @@ FR = {
     "Five rooms · breakfast included": "Cinq chambres · petit-déjeuner compris",
     "A room and breakfast, your own dates": "Une chambre et le petit-déjeuner, à vos dates",
     "Five rooms · from one night": "Cinq chambres · dès une nuit",
-    "The full experience": "L'expérience complète",
-    "Three to seven nights · every meal, wine and a tour of the château": "Trois à sept nuits · tous les repas, le vin et une visite du château",
+    "Cooking, the brocantes and the restoration": "La cuisine, les brocantes et la restauration",
+    "Three to seven nights · every meal and drink included": "Trois à sept nuits · tous les repas et les boissons compris",
     "Three to seven nights · full board · itinerary included": "De trois à sept nuits · pension complète · programme compris",
     "Fixed dates, a small group": "Dates fixes, en petit groupe",
     "Manage an existing booking": "Gérer une réservation existante",
@@ -692,7 +701,8 @@ FR = {
     'The ateliers': 'Les ateliers',
     'Your events': 'Vos événements',
     'stays &amp; general': 'séjours et questions générales',
-    'workshops &amp; events': 'ateliers et événements',
+    'workshops & events': 'ateliers et événements',
+    'For now, the château is open only to its guests.': "Pour l'instant, le château n'est ouvert qu'à ses hôtes.",
     # Handover q, 7 October: new English on the nav and the
     # booking pages. t() falls back silently, so without these a
     # French guest gets one English phrase mid-sentence and
@@ -881,6 +891,12 @@ ES = {
     "charged in EUR": "cobrado en EUR",
     "Ariège · French Pyrénées · Restored since 2013":
         "Ariège · Pirineos franceses · En restauración desde 2013",
+    # The dates under the engraving, and the History page's link (z22).
+    "Eight centuries at Gudanes": "Ocho siglos en Gudanes",
+    "The fortress": "La fortaleza",
+    "The château, by Gabriel": "El castillo, de Gabriel",
+    "The History": "La historia",
+    "What’s On": "Qué hacer",
     "In the Ariège": "En el Ariège",
 
     # -- Booking ---------------------------------------------------------
@@ -1004,8 +1020,8 @@ ES = {
     "Five rooms · breakfast included": "Cinco habitaciones · desayuno incluido",
     "A room and breakfast, your own dates": "Habitación y desayuno, en sus fechas",
     "Five rooms · from one night": "Cinco habitaciones · desde una noche",
-    "The full experience": "La experiencia completa",
-    "Three to seven nights · every meal, wine and a tour of the château": "De tres a siete noches · todas las comidas, el vino y una visita al castillo",
+    "Cooking, the brocantes and the restoration": "La cocina, las brocantes y la restauración",
+    "Three to seven nights · every meal and drink included": "De tres a siete noches · todas las comidas y bebidas incluidas",
     "Three to seven nights · full board · itinerary included": "De tres a siete noches · pensión completa · programa incluido",
     "Fixed dates, a small group": "Fechas fijas, en grupo reducido",
     "Manage an existing booking": "Gestionar una reserva existente",
@@ -1306,7 +1322,8 @@ ES = {
     'The ateliers': 'Los talleres',
     'Your events': 'Sus eventos',
     'stays &amp; general': 'estancias y consultas generales',
-    'workshops &amp; events': 'talleres y eventos',
+    'workshops & events': 'talleres y eventos',
+    'For now, the château is open only to its guests.': 'Por ahora, el castillo solo está abierto a sus huéspedes.',
     # Handover q, 7 October. See the note on the French table.
     'Ask to move your dates': 'Solicitar un cambio de fechas',
     'Find an Enquiry': 'Buscar una consulta',
