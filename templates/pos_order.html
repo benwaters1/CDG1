@@ -309,6 +309,15 @@
       <!-- ============================ bill ============================ -->
       <div class="till-totals">
         <div class="till-total-row"><span>Subtotal</span><span>€{{ '%.2f'|format(bill.gross) }}</span></div>
+        {% if bill.package_charge %}
+        {# The package's own price is a sale in its own right, so it is a row
+           that adds, beside the row that says what it covered. #}
+        <div class="till-total-row">
+          <span>{{ bill.package_row['name'] if bill.package_row else 'Drinks package' }}
+            {%- if bill.package_units > 1 %} — {{ bill.package_units }} × €{{ '%.2f'|format(bill.package_unit_price) }}{% endif %}</span>
+          <span>€{{ '%.2f'|format(bill.package_charge) }}</span>
+        </div>
+        {% endif %}
         {% if bill.package %}
         <div class="till-total-row is-off">
           <span>{{ bill.package_row['name'] if bill.package_row else 'Package' }} covered</span>
@@ -371,16 +380,20 @@
               {% for pk in packages %}
               <option value="{{ pk['id'] }}" {{ 'selected' if order['package_id'] == pk['id'] }}>
                 {{ pk['name'] }}
-                {%- if pk['kind'] == 'allowance' %} — €{{ '%.2f'|format(pk['allowance_amount'] or 0) }} per {{ pk['per'] }}{% endif %}
+                {%- if pk['kind'] == 'allowance' %} — €{{ '%.2f'|format(pk['allowance_amount'] or 0) }} of drinks per {{ pk['per'] }}{% endif %}
+                {#- Said before it is chosen: the price goes on the bill. #}
+                {%- if pk['price'] %} — charged €{{ '%.2f'|format(pk['price']) }} per {{ pk['per'] }}{% endif %}
               </option>
               {% endfor %}
             </select>
             <button type="submit" class="btn-mini" style="margin-top:8px;">Apply</button>
           </form>
-          {% if bill.package %}
+          {% if bill.package or bill.package_charge %}
           <p class="upload-hint" style="margin-top:6px;">
-            €{{ '%.2f'|format(bill.package) }} of drinks covered so far. Anything past the
-            allowance is charged as normal.
+            {% if bill.package_charge %}€{{ '%.2f'|format(bill.package_charge) }} on the bill for the package.{% endif %}
+            €{{ '%.2f'|format(bill.package) }} of drinks covered so far. Anything
+            {{ 'not on its list' if bill.package_row and bill.package_row['kind'] == 'fixed' else 'past the allowance' }}
+            is charged as normal.
           </p>
           {% endif %}
         </details>
@@ -417,15 +430,33 @@
             <input id="pos_order-table-label" type="text" name="table_label" value="{{ order['table_label'] }}">
             <button type="submit" class="btn-mini" style="margin-top:8px;">Rename</button>
           </form>
-          {% if other_tables %}
+          {# Built by pos_merge_options, the same rule the route applies. A tab
+             that has taken money keeps its bill, so it is offered the other
+             table to bring onto it rather than a merge that would leave the
+             money behind on a void tab. #}
+          {% if merge and merge.into %}
           <form method="post" action="{{ url_for('pos_move_table', order_id=order['id']) }}" style="margin-top:10px;"
                 onsubmit="return confirm('Move every item on this tab onto that table?');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label class="field-label" for="pos_order-merge-into">Merge into</label>
             <select id="pos_order-merge-into" name="merge_into">
-              {% for t in other_tables %}<option value="{{ t['id'] }}">{{ t['table_label'] }}</option>{% endfor %}
+              {% for t in merge.into %}<option value="{{ t['id'] }}">{{ t['table_label'] }}</option>{% endfor %}
             </select>
             <button type="submit" class="btn-mini" style="margin-top:8px;">Merge</button>
+          </form>
+          {% endif %}
+          {% if merge and merge.why %}
+          <p class="upload-hint" id="pos_order-merge-why" style="margin-top:10px;">{{ merge.why }}</p>
+          {% endif %}
+          {% if merge and merge.bring %}
+          <form method="post" action="{{ url_for('pos_move_table', order_id=order['id']) }}" style="margin-top:8px;"
+                onsubmit="return confirm('Move every item on that table onto this one?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="field-label" for="pos_order-merge-from">Bring onto this table</label>
+            <select id="pos_order-merge-from" name="merge_from">
+              {% for t in merge.bring %}<option value="{{ t['id'] }}">{{ t['table_label'] }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="btn-mini" style="margin-top:8px;">Bring it over</button>
           </form>
           {% endif %}
         </details>

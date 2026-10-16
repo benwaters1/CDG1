@@ -149,10 +149,22 @@
 </p>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th>Gross</th><th class="num">Service</th><th class="num">Discounts</th><th class="num">VAT within</th></tr></thead>
+    {# Drinks packages, when the day had any: what the packages themselves were
+       charged, and the drinks they covered. Without both, Gross less Discounts
+       plus Service is not the figure the VAT is taken from, and nothing on the
+       page says why. A day closed before they were recorded has neither, and
+       shows the table as it was then. #}
+    {% set packages = report.package_charged or report.package_covered %}
+    <thead><tr><th>Gross</th>
+      {%- if packages %}<th class="num">Packages charged</th><th class="num">Drinks covered</th>{% endif -%}
+      <th class="num">Service</th><th class="num">Discounts</th><th class="num">VAT within</th></tr></thead>
     <tbody>
       <tr>
         <td>€{{ '%.2f'|format(report.gross) }}</td>
+        {% if packages %}
+        <td class="num">€{{ '%.2f'|format(report.package_charged or 0) }}</td>
+        <td class="num">€{{ '%.2f'|format(report.package_covered or 0) }}</td>
+        {% endif %}
         <td class="num">€{{ '%.2f'|format(report.service) }}</td>
         <td class="num">€{{ '%.2f'|format(report.discounts) }}</td>
         <td class="num">€{{ '%.2f'|format(report.vat) }}</td>
