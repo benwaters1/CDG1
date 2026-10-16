@@ -6363,6 +6363,15 @@ def init_db():
          "REFERENCES drink_packages(id) ON DELETE SET NULL"),
         ("pos_orders_package_credit",
          "ALTER TABLE pos_orders ADD COLUMN package_credit REAL NOT NULL DEFAULT 0"),
+        # The package's own price as billed on this tab, and the VAT rate it
+        # carried, both set when the package is worked out. Stored rather than
+        # read off drink_packages at print time, for the same reason the
+        # covered amount sits on the line: a bill reprinted next year has to
+        # say what was charged then, whatever the price or the rate is now.
+        ("pos_orders_package_charge",
+         "ALTER TABLE pos_orders ADD COLUMN package_charge REAL NOT NULL DEFAULT 0"),
+        ("pos_orders_package_vat_rate",
+         "ALTER TABLE pos_orders ADD COLUMN package_vat_rate REAL"),
         # A line the package paid for. Kept on the line rather than inferred,
         # so a bill reprinted next year still shows what was covered.
         ("pos_lines_package_covered",
@@ -6477,6 +6486,14 @@ def init_db():
         ("opening_float", "ALTER TABLE pos_closures ADD COLUMN opening_float REAL"),
         ("counted_cash", "ALTER TABLE pos_closures ADD COLUMN counted_cash REAL"),
         ("cash_variance", "ALTER TABLE pos_closures ADD COLUMN cash_variance REAL"),
+        # What drinks packages charged and what they covered, so a closure's
+        # own figures reconcile to its VAT: gross, less covered, plus charged,
+        # less discounts, plus service. NULL on a day closed before these were
+        # recorded, which is "not recorded", not nothing.
+        ("package_charged_total",
+         "ALTER TABLE pos_closures ADD COLUMN package_charged_total REAL"),
+        ("package_covered_total",
+         "ALTER TABLE pos_closures ADD COLUMN package_covered_total REAL"),
         ("restaurant_tables", """CREATE TABLE IF NOT EXISTS restaurant_tables (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             label TEXT NOT NULL UNIQUE,
@@ -19938,14 +19955,21 @@ def pos_menu(conn, *, service_date=None, service="dinner", include_unavailable=T
 #
 #   fixed     — named drinks that come with the meal. Rung up as normal so the
 #               kitchen and the cellar still see them, then covered in full,
-#               with the package price charged once instead.
+#               with the package price charged instead.
 #   allowance — a euro budget per cover. Drinks are rung up normally and the
 #               package absorbs them up to the limit; anything past it is
 #               charged. That is what "25 EUR of wine included" actually means,
 #               and it is the shape that needs the arithmetic to be right.
 #
+# Either shape can carry a price of its own, per cover or per table as the
+# package says. It is a row of its own on the bill. Until 16 Oct 2026 it was
+# worked out, netted against the covered amount into package_credit, and then
+# read by nothing, so a 40 EUR wine pairing covering a 30 EUR bottle billed
+# nothing at all. A price of 0 is the package bundled into the menu price.
+#
 # The covered amount lives on the LINE, not inferred at print time, so a bill
-# reprinted next year still shows what was covered and what was not.
+# reprinted next year still shows what was covered and what was not. The price
+# lives on the tab for the same reason.
 # ---------------------------------------------------------------------------
 
 # Only drink lines can be covered. A package that quietly absorbed the beef
@@ -19959,12 +19983,39 @@ def package_for(conn, package_id):
     return conn.execute("SELECT * FROM drink_packages WHERE id = ?", (package_id,)).fetchone()
 
 
+def package_vat_rate(conn, package):
+    """The VAT rate a drinks package's own price is billed at.
+
+    The highest rate among the drinks it can cover. A fixed list of juices is
+    a 10% supply and a wine pairing a 20% one; one price over both that is not
+    broken down is taxed at the higher rate, so that is the safe one. An
+    allowance can be spent on anything on the drinks list, wine included, so
+    it carries the alcohol rate. Each drink's rate comes from menu_vat_rate,
+    the same answer the till gives when that drink is rung up.
+    """
+    if package["kind"] == "fixed":
+        rates = [menu_vat_rate(conn, item) for item in conn.execute(
+            """SELECT menu_items.* FROM drink_package_items
+               JOIN menu_items ON menu_items.id = drink_package_items.menu_item_id
+               WHERE drink_package_items.package_id = ?""", (package["id"],)).fetchall()]
+        if rates:
+            return max(rates)
+    return tax_rate(conn, "vat_alcohol")
+
+
 def apply_package(conn, order_id):
-    """Work out what the package covers on this tab, and mark it on the lines.
+    """Work out what the package covers on this tab, and what it costs.
+
+    Marks the covered amount on each line and puts the package's own price on
+    the tab (package_charge, at package_vat_rate). Returns what was covered.
+    package_credit is kept equal to that, the tab-level copy of the lines'
+    sum; until 16 Oct 2026 it held covered-minus-price, which nothing read.
 
     Recomputed from scratch every time rather than adjusted incrementally: a
     voided drink has to give its allowance back, and an allowance that only
-    ever went down would quietly overcharge the next table to order.
+    ever went down would quietly overcharge the next table to order. The price
+    is recomputed with it, because a per-cover price has to follow the covers
+    when the party grows, shrinks, or is merged with another table.
     """
     order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
     if not order:
@@ -19975,19 +20026,23 @@ def apply_package(conn, order_id):
         (order_id,)).fetchall()
 
     # Clear first, so removing a package or voiding a drink actually releases
-    # what it was holding.
+    # what it was holding, and taking the package off takes its price off too.
     conn.execute("UPDATE pos_order_lines SET package_covered = 0 WHERE order_id = ?",
                  (order_id,))
     if not package:
-        conn.execute("UPDATE pos_orders SET package_credit = 0 WHERE id = ?", (order_id,))
+        conn.execute("UPDATE pos_orders SET package_credit = 0, package_charge = 0, "
+                     "package_vat_rate = NULL WHERE id = ?", (order_id,))
         return 0.0
 
     drinkable = [l for l in lines
                  if (l["course"] or "") in PACKAGE_COURSES and not l["is_supplement"]]
+    # Per cover or per table, as the owner set it on the package. The admin
+    # page says "charged EUR 40 per cover" for both shapes, so both mean it.
+    units = (order["covers"] or 1) if package["per"] == "cover" else 1
 
     if package["kind"] == "fixed":
         # Everything on the included list is covered outright; the package
-        # price is charged once instead.
+        # price is charged instead.
         included = {r["menu_item_id"] for r in conn.execute(
             "SELECT menu_item_id FROM drink_package_items WHERE package_id = ?",
             (package["id"],)).fetchall() if r["menu_item_id"]}
@@ -19997,16 +20052,12 @@ def apply_package(conn, order_id):
                 amount = round((l["unit_price"] or 0) * (l["quantity"] or 0), 2)
                 conn.execute("UPDATE pos_order_lines SET package_covered = ? WHERE id = ?",
                              (amount, l["id"]))
-                covered += amount
-        charge = round((package["price"] or 0) *
-                       (order["covers"] or 1 if package["per"] == "cover" else 1), 2)
-        credit = round(covered - charge, 2)
+                covered = round(covered + amount, 2)
     else:
         # An allowance is a budget. Spend it against the dearest drinks first:
         # a guest who ordered a 40 EUR bottle and a 4 EUR water expects the
         # bottle to be what the package went on.
-        budget = round((package["allowance_amount"] or 0) *
-                       ((order["covers"] or 1) if package["per"] == "cover" else 1), 2)
+        budget = round((package["allowance_amount"] or 0) * units, 2)
         remaining = budget
         for l in sorted(drinkable, key=lambda x: -((x["unit_price"] or 0) * (x["quantity"] or 0))):
             if remaining <= 0:
@@ -20017,13 +20068,14 @@ def apply_package(conn, order_id):
                 conn.execute("UPDATE pos_order_lines SET package_covered = ? WHERE id = ?",
                              (take, l["id"]))
                 remaining = round(remaining - take, 2)
-        credit = round(budget - remaining, 2)
-        charge = round(package["price"] or 0, 2)
-        if charge:
-            credit = round(credit - charge, 2)
+        covered = round(budget - remaining, 2)
 
-    conn.execute("UPDATE pos_orders SET package_credit = ? WHERE id = ?", (credit, order_id))
-    return credit
+    charge = round((package["price"] or 0) * units, 2)
+    conn.execute(
+        "UPDATE pos_orders SET package_credit = ?, package_charge = ?, package_vat_rate = ? "
+        "WHERE id = ?",
+        (covered, charge, package_vat_rate(conn, package) if charge else None, order_id))
+    return covered
 
 
 def pos_bill(conn, order_id):
@@ -20047,6 +20099,25 @@ def pos_bill(conn, order_id):
     service = round(order["service_charge"] or 0, 2)
     deposit = round(order["deposit_credit"] or 0, 2)
     package = round(sum(l["package_covered"] or 0 for l in live), 2)
+    # The package's own price, as apply_package stored it on the tab. A sale
+    # of drink in its own right, so it is added to the bill and taxed, not
+    # netted against what the package covered.
+    package_row = package_for(conn, order["package_id"])
+    package_charge = round(order["package_charge"] or 0, 2)
+    package_charge_rate = None
+    package_units = 1
+    if package_charge:
+        package_charge_rate = (float(order["package_vat_rate"])
+                               if order["package_vat_rate"] is not None
+                               else tax_rate(conn, "vat_alcohol"))
+        if package_row and package_row["per"] == "cover":
+            # How many covers the stored charge is for, read off the charge
+            # itself where the price divides it, so the words beside the row
+            # cannot disagree with the figure in it.
+            price = package_row["price"] or 0
+            whole = round(package_charge / price) if price else 0
+            package_units = (whole if whole and abs(whole * price - package_charge) < 0.005
+                             else (order["covers"] or 1))
 
     # VAT is extracted from the gross (French prices are TTC), per rate.
     #
@@ -20065,6 +20136,9 @@ def pos_bill(conn, order_id):
     # spreading it across the food would move consideration from the 20% base
     # to the 10% one and under-declare. Because the covered amount is recorded
     # on each line, it can be taken off exactly where it landed.
+    #
+    # The package's own price goes in at the rate it was billed at, like any
+    # other line. A discount on the bill then reduces it too, in proportion.
     by_rate = {}
     for l in live:
         rate = l["vat_rate"] if l["vat_rate"] is not None else 0
@@ -20072,11 +20146,14 @@ def pos_bill(conn, order_id):
         b = by_rate.setdefault(float(rate), {"gross": 0.0, "vat": 0.0, "net": 0.0})
         b["gross"] += amount
         b["covered"] = round(b.get("covered", 0.0) + (l["package_covered"] or 0), 2)
+    if package_charge:
+        b = by_rate.setdefault(float(package_charge_rate), {"gross": 0.0, "vat": 0.0, "net": 0.0})
+        b["gross"] += package_charge
     adjustment = service - discount
     # Apportion the discount and service over what is left after the package
     # has taken its share, so the two reductions cannot both claim the same
     # euro of a covered drink.
-    apportion_base = round(gross - package, 2)
+    apportion_base = round(gross - package + package_charge, 2)
     for rate, b in by_rate.items():
         net_of_package = b["gross"] - b.get("covered", 0.0)
         share = (net_of_package / apportion_base) if apportion_base else 0
@@ -20087,11 +20164,16 @@ def pos_bill(conn, order_id):
     paid = round(conn.execute(
         "SELECT COALESCE(SUM(amount), 0) AS t FROM pos_payments WHERE order_id = ?",
         (order_id,)).fetchone()["t"], 2)
-    total = round(max(0.0, gross - package - discount + service - deposit), 2)
+    total = round(max(0.0, gross - package + package_charge - discount + service - deposit), 2)
     return {
         "order": order, "lines": lines, "live": live,
         "gross": gross, "discount": discount, "service": service, "deposit": deposit,
-        "package": package, "package_row": package_for(conn, order["package_id"]),
+        "package": package, "package_row": package_row,
+        # The bill's package-price row: the amount, the rate it is taxed at,
+        # and covers x each for the words beside it.
+        "package_charge": package_charge, "package_charge_rate": package_charge_rate,
+        "package_units": package_units,
+        "package_unit_price": round(package_charge / package_units, 2) if package_charge else 0.0,
         "vat_by_rate": dict(sorted(by_rate.items())),
         "vat_total": round(sum(b["vat"] for b in by_rate.values()), 2),
         "total": total, "paid": paid, "outstanding": round(total - paid, 2),
@@ -20811,7 +20893,7 @@ def pos_close_period(conn, kind, period, user_id=None, *,
         (start, end)).fetchall()
         if start <= (service_day_iso(o["closed_at"] or o["opened_at"]) or "") <= end]
 
-    gross = discount = service = 0.0
+    gross = discount = service = package_charged = package_covered = 0.0
     covers = 0
     vat = {}
     for o in orders:
@@ -20819,6 +20901,8 @@ def pos_close_period(conn, kind, period, user_id=None, *,
         gross += bill["gross"]
         discount += bill["discount"]
         service += bill["service"]
+        package_charged += bill["package_charge"]
+        package_covered += bill["package"]
         covers += bill["covers"]
         for rate, b in bill["vat_by_rate"].items():
             acc = vat.setdefault(str(rate), {"gross": 0.0, "vat": 0.0, "net": 0.0})
@@ -20858,9 +20942,14 @@ def pos_close_period(conn, kind, period, user_id=None, *,
     variance = (round(counted_cash - expected_cash, 2)
                 if counted_cash is not None else None)
 
+    # The drinks packages go inside the hash with everything else: what they
+    # charged is a sale of the day's, and what they covered is the reason
+    # gross and VAT differ by more than the discounts and service explain.
+    package_charged, package_covered = round(package_charged, 2), round(package_covered, 2)
     body = _canonical({
         "kind": kind, "period": period, "gross": round(gross, 2),
         "discount": round(discount, 2), "service": round(service, 2),
+        "package_charged": package_charged, "package_covered": package_covered,
         "taken": taken, "vat": vat, "methods": methods,
         "tickets": len(orders), "covers": covers, "perpetual": perpetual,
         "float": opening_float, "counted": counted_cash, "variance": variance,
@@ -20869,12 +20958,14 @@ def pos_close_period(conn, kind, period, user_id=None, *,
 
     conn.execute(
         """INSERT INTO pos_closures (kind, period, first_sequence, last_sequence, gross_total,
-           discount_total, service_total, taken_total, vat_json, by_method_json,
+           discount_total, service_total, package_charged_total, package_covered_total,
+           taken_total, vat_json, by_method_json,
            ticket_count, covers, perpetual_total, opening_float, counted_cash,
            cash_variance, prev_hash, hash, closed_by_user_id, closed_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (kind, period, first_seq, last_seq, round(gross, 2), round(discount, 2),
-         round(service, 2), taken, json.dumps(vat), json.dumps(methods),
+         round(service, 2), package_charged, package_covered,
+         taken, json.dumps(vat), json.dumps(methods),
          len(orders), covers, perpetual, opening_float, counted_cash, variance,
          prev_hash, digest, user_id, now))
     pos_journal_append(conn, f"closure_{kind}",
@@ -21331,15 +21422,32 @@ def pos_close_if_settled(conn, order_id, method, *, user_id=None):
          datetime.now(timezone.utc).isoformat(), after["total"], order_id))
     log_audit(conn, "pos_tab_settled", target=after["order"]["table_label"],
               details=f"{money(after['total'])}")
-    pos_journal_append(conn, "tab_settled", {
-        "table": after["order"]["table_label"], "total": after["total"],
-        "gross": after["gross"], "discount": after["discount"],
-        "service": after["service"], "deposit": after["deposit"],
-        "vat": {str(k): v for k, v in after["vat_by_rate"].items()},
-        "covers": after["covers"], "method": method,
-        "receipt_number": pos_allocate_receipt_number(conn, order_id),
-    }, order_id=order_id, user_id=user_id)
+    pos_journal_append(conn, "tab_settled",
+                       pos_settled_entry(after, method,
+                                         pos_allocate_receipt_number(conn, order_id)),
+                       order_id=order_id, user_id=user_id)
     return after
+
+
+def pos_settled_entry(bill, method, receipt_number):
+    """The tab_settled journal record. One shape for every way a tab settles.
+
+    Its figures add up to its total: gross, less what a drinks package
+    covered, plus the package's own price, less the discount, plus service,
+    less the deposit. Entries written before 16 Oct 2026 have no package
+    figures, so an older entry for a tab that had a package does not add up.
+    The journal is never edited, which is why keys were added rather than the
+    old ones changed.
+    """
+    return {
+        "table": bill["order"]["table_label"], "total": bill["total"],
+        "gross": bill["gross"], "discount": bill["discount"],
+        "service": bill["service"], "deposit": bill["deposit"],
+        "package_covered": bill["package"], "package_charge": bill["package_charge"],
+        "vat": {str(k): v for k, v in bill["vat_by_rate"].items()},
+        "covers": bill["covers"], "method": method,
+        "receipt_number": receipt_number,
+    }
 
 
 def pos_day_report(conn, on_date):
@@ -21364,13 +21472,15 @@ def pos_day_report(conn, on_date):
     orders = [o for o in orders
               if service_day_iso(o["closed_at"] or o["opened_at"]) == day]
     by_method, gross, vat, covers, service, discounts = {}, 0.0, 0.0, 0, 0.0, 0.0
-    owed = 0.0
+    owed = package_charged = package_covered = 0.0
     for o in orders:
         bill = pos_bill(conn, o["id"])
         gross += bill["gross"]
         vat += bill["vat_total"]
         service += bill["service"]
         discounts += bill["discount"]
+        package_charged += bill["package_charge"]
+        package_covered += bill["package"]
         covers += bill["covers"]
         owed += bill["total"]
         payments = conn.execute(
@@ -21389,6 +21499,8 @@ def pos_day_report(conn, on_date):
         "date": day, "orders": orders, "tabs": len(orders), "covers": covers,
         "gross": round(gross, 2), "vat": round(vat, 2), "service": round(service, 2),
         "discounts": round(discounts, 2), "by_method": by_method,
+        "package_charged": round(package_charged, 2),
+        "package_covered": round(package_covered, 2),
         "owed": round(owed, 2),
     })
 
@@ -38276,15 +38388,42 @@ def pos_set_package(order_id):
         conn.close()
         abort(404)
     conn.execute("UPDATE pos_orders SET package_id = ? WHERE id = ?", (package_id, order_id))
-    credit = apply_package(conn, order_id)
-    pos_journal_append(conn, "package_set",
-                       {"package_id": package_id, "covered": credit},
-                       order_id=order_id, user_id=session.get("user_id"))
+    covered, charge = pos_reprice_package(conn, order_id, user_id=session.get("user_id"),
+                                          always=True)
     conn.commit()
     conn.close()
-    flash(f"Package applied — {money(credit)} covered." if package_id
-          else "Package removed.", "success")
+    if not package_id:
+        flash("Package removed.", "success")
+    elif charge:
+        flash(f"Package applied — {money(charge)} on the bill for the package, "
+              f"{money(covered)} of drinks covered.", "success")
+    else:
+        flash(f"Package applied — {money(covered)} covered.", "success")
     return redirect(url_for("pos_order", order_id=order_id))
+
+
+def pos_reprice_package(conn, order_id, *, user_id=None, always=False):
+    """Work the tab's package out again, and journal what that did to the bill.
+
+    Returns (covered, charge). package_set records both, the charge it
+    replaced, and the covers it was sized on, so the journal alone says why a
+    bill moved. Written whenever either figure moved, or every time when
+    `always` (somebody chose the package). Call it after any change that sizes
+    the package: the package itself, or the covers it is priced on.
+    """
+    before = conn.execute("SELECT package_credit, package_charge FROM pos_orders WHERE id = ?",
+                          (order_id,)).fetchone()
+    covered = apply_package(conn, order_id)
+    after = conn.execute("SELECT package_id, package_charge, covers FROM pos_orders WHERE id = ?",
+                         (order_id,)).fetchone()
+    charge = round(after["package_charge"] or 0, 2)
+    was = round(before["package_charge"] or 0, 2)
+    if always or charge != was or covered != round(before["package_credit"] or 0, 2):
+        pos_journal_append(conn, "package_set", {
+            "package_id": after["package_id"], "covered": covered,
+            "charge": charge, "charge_was": was, "covers": after["covers"],
+        }, order_id=order_id, user_id=user_id)
+    return covered, charge
 
 
 @app.route("/admin/restaurant/packages")
@@ -38606,6 +38745,12 @@ def pos_adjust(order_id):
                          (max(1, int(request.form.get("covers", "1"))), order_id))
         except ValueError:
             pass
+        else:
+            # A per-cover package is sized on the covers: both its allowance
+            # and its own price. A party of two that becomes three owes a
+            # third pairing, and nothing else would put it on the bill.
+            if order["package_id"]:
+                pos_reprice_package(conn, order_id, user_id=session.get("user_id"))
     conn.commit()
     conn.close()
     return redirect(url_for("pos_order", order_id=order_id))
@@ -38897,6 +39042,16 @@ def pos_receipt_email_context(conn, bill):
     items = "\n".join(rows) or "  (nothing on this tab)"
 
     totals = []
+    # A drinks package: its own price, then what it covered, as the printed
+    # note has them. Without the second the lines above add up to more than
+    # the total and nothing on the email says why.
+    package_name = bill["package_row"]["name"] if bill["package_row"] else "Drinks package"
+    if bill["package_charge"]:
+        each = (f" ({bill['package_units']} x \u20ac{bill['package_unit_price']:,.2f})"
+                if bill["package_units"] > 1 else "")
+        totals.append(f"  {package_name}{each}   \u20ac{bill['package_charge']:,.2f}")
+    if bill["package"]:
+        totals.append(f"  {package_name}, drinks included   -\u20ac{bill['package']:,.2f}")
     if bill["discount"]:
         totals.append(f"  Discount   -\u20ac{bill['discount']:,.2f}")
     if bill["service"]:
@@ -39165,6 +39320,11 @@ def pos_day():
         report = pos_day_takings(dict(
             report, gross=closure["gross_total"],
             discounts=closure["discount_total"], service=closure["service_total"],
+            # None on a day closed before packages were recorded. Not filled
+            # in from the live tabs: that would pass today's arithmetic off
+            # as the frozen figure.
+            package_charged=closure["package_charged_total"],
+            package_covered=closure["package_covered_total"],
             covers=closure["covers"], tabs=closure["ticket_count"],
             by_method=closure["by_method"],
             vat=round(sum(v["vat"] for v in closure["vat"].values()), 2)))
@@ -39275,7 +39435,8 @@ def pos_archive_bundle(conn, year):
         (start, end)).fetchall()
     closures = conn.execute(
         """SELECT kind, period, first_sequence, last_sequence, gross_total, discount_total,
-                  service_total, taken_total, vat_json, by_method_json, ticket_count,
+                  service_total, package_charged_total, package_covered_total,
+                  taken_total, vat_json, by_method_json, ticket_count,
                   covers, perpetual_total, prev_hash, hash, closed_at FROM pos_closures
            WHERE period LIKE ? ORDER BY closed_at""", (f"{year}%",)).fetchall()
     tickets = conn.execute(
@@ -39323,6 +39484,9 @@ CONSERVATION
   A conserver six ans (LPF art. L. 102 B). Obligation d'inalterabilite,
   securisation, conservation et archivage : CGI art. 286, I-3 bis.
   Les prix sont exprimes TTC. La TVA est ventilee par taux dans clotures.csv.
+  Formules boisson : package_charged_total est le prix des formules facture,
+  package_covered_total la valeur des boissons comprises dans une formule
+  (vide pour une cloture anterieure a leur enregistrement).
 """
 
     buf = io.BytesIO()
@@ -39333,7 +39497,8 @@ CONSERVATION
             "user_id", "payload", "prev_hash", "hash"]))
         zf.writestr("clotures.csv", sheet(closures, [
             "kind", "period", "first_sequence", "last_sequence", "gross_total",
-            "discount_total", "service_total", "taken_total", "vat_json",
+            "discount_total", "service_total", "package_charged_total",
+            "package_covered_total", "taken_total", "vat_json",
             "by_method_json", "ticket_count", "covers", "perpetual_total",
             "prev_hash", "hash", "closed_at"]))
         zf.writestr("tickets.csv", sheet(tickets, [
@@ -47377,14 +47542,10 @@ def settle_pos_from_stripe_session(conn, stripe_session, meta):
              datetime.now(timezone.utc).isoformat(), bill["total"], order_id))
         log_audit(conn, "pos_tab_settled", target=bill["order"]["table_label"],
                   details=f"{money(bill['total'])} by card link")
-        pos_journal_append(conn, "tab_settled", {
-            "table": bill["order"]["table_label"], "total": bill["total"],
-            "gross": bill["gross"], "discount": bill["discount"],
-            "service": bill["service"], "deposit": bill["deposit"],
-            "vat": {str(k): v for k, v in bill["vat_by_rate"].items()},
-            "covers": bill["covers"], "method": "card_link",
-            "receipt_number": pos_allocate_receipt_number(conn, order_id),
-        }, order_id=order_id)
+        pos_journal_append(conn, "tab_settled",
+                           pos_settled_entry(bill, "card_link",
+                                             pos_allocate_receipt_number(conn, order_id)),
+                           order_id=order_id)
     # Saved here. The webhook is the only caller -- the guest's phone returns
     # to the staff tab page, which records nothing -- and it closes without
     # committing, so the payment, the settled tab and the journal line were
@@ -68464,6 +68625,19 @@ def send_booking_to_pennylane(conn, booking, user_id=None):
     return True, f"Sent {money(total)} for {booking['reference_code']}."
 
 
+def pos_closure_sales(closure):
+    """What a closed day sold, TTC: its sealed VAT bands added up.
+
+    The amount send_pos_day_to_pennylane invoices, so the page that offers to
+    send a day states what will actually go. gross_total is the menu-price
+    total before discounts, service and drinks packages; it is neither, and
+    it left a package's own price out entirely.
+    """
+    bands = json.loads(closure["vat_json"] or "{}")
+    return round(sum(float(b.get("net") or 0) + float(b.get("vat") or 0)
+                     for b in bands.values()), 2)
+
+
 def pos_day_pennylane_lines(conn, closure):
     """A day's takings as accounting lines, one per VAT rate.
 
@@ -68814,7 +68988,7 @@ def revenue_to_send():
             """SELECT * FROM pos_closures WHERE kind = 'day'
                 ORDER BY period DESC LIMIT 120""").fetchall():
         days.append({"closure": closure,
-                     "total": round(float(closure["gross_total"] or 0), 2),
+                     "total": pos_closure_sales(closure),
                      "sent": pennylane_already_sent(conn, "pos_day", closure["id"])})
     conn.close()
     waiting = [r for r in rows if not r["sent"] and r["total"] > 0]
@@ -83874,7 +84048,10 @@ _ISO_DAY_TEXT = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # chained by hash) and stays exactly as stored; this is only its reading.
 _JOURNAL_MONEY = {"gross", "vat", "amount", "total", "service", "discount", "deposit",
                   "net", "unit_price", "supplement", "variance", "taken", "price",
-                  "perpetual", "counted", "covered"}
+                  "perpetual", "counted", "covered",
+                  # A drinks package's own price on package_set and
+                  # tab_settled, and what it covered on the bill.
+                  "charge", "charge_was", "package_charge", "package_covered"}
 _JOURNAL_LABELS = {
     "receipt_number": "Receipt", "unit_price": "Each", "vat_rate": "VAT rate",
     "perpetual": "Running total", "counted": "Counted", "covers_moved": "Covers moved",

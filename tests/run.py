@@ -95,6 +95,7 @@ SUITES = [
     "test_formule",
     "test_beverage_pours",
     "test_packages",
+    "test_package_price",
     "test_insurance",
     "test_vault",
     "test_vault_key_change",

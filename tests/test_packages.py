@@ -158,6 +158,12 @@ def run():
     fixed_bill = m.pos_bill(conn, order2["id"])
     s.check("a drink on the list is covered outright",
             fixed_bill["package"] == 30.0, detail=str(fixed_bill["package"]))
+    # The section's title promised this and nothing checked it: until 16 Oct
+    # 2026 the EUR 40 was worked out and never billed, and this table owed 0.
+    # test_package_price holds the rest of it.
+    s.check("and the package's own price is charged instead",
+            fixed_bill["package_charge"] == 40.0 and fixed_bill["total"] == 40.0,
+            detail=f"{fixed_bill['package_charge']} / {fixed_bill['total']}")
 
     s.section("It is on the bill, and in the journal")
     page = oc.get(f"/pos/{order2['id']}/receipt").get_data(as_text=True)
