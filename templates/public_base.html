@@ -36,7 +36,7 @@
 {%- set _t_fr %}{% block title_fr %}{% endblock %}{% endset %}
 {%- set _d_fr %}{% block description_fr %}{% endblock %}{% endset %}
 <title>{% if lang == 'fr' and _t_fr|trim %}{{ _t_fr|trim }}{% else %}{% block title %}Stay{% endblock %}{% endif %} — Château de Gudanes</title>
-<meta name="description" content="{% if lang == 'fr' and _d_fr|trim %}{{ _d_fr|trim }}{% else %}{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013: five bedrooms, and workshop retreats.{% endblock %}{% endif %}">
+<meta name="description" content="{% if lang == 'fr' and _d_fr|trim %}{{ _d_fr|trim }}{% else %}{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013: five guest rooms, and workshop retreats.{% endblock %}{% endif %}">
 
 {# Shared to Instagram, WhatsApp or a message, a link showed a bare URL with
    no image. These give it the château and the page's own title. #}
@@ -156,7 +156,7 @@ window.houseDay = (function () {
   "telephone": "+33 6 28 06 97 76",
   "image": "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w",
   "sameAs": ["https://www.instagram.com/chateaugudanes/", "https://www.facebook.com/chateaudegudanes/"],
-  "email": "reservations@chateaugudanes.com",
+  "email": "ariege@chateaugudanes.com",
   "address": {
     "@type": "PostalAddress",
     "streetAddress": "2 Route de Beille",
@@ -363,7 +363,7 @@ window.houseDay = (function () {
         <p class="g-navwrap__group" style="margin-top:var(--s6)">Château de Gudanes</p>
         <p class="g-navwrap__addr">2 Route de Beille, Château-Verdun, Ariège 09310, France</p>
         <p><a href="tel:+33628069776">+33 6 28 06 97 76</a></p>
-        <p><a href="mailto:reservations@chateaugudanes.com">reservations@chateaugudanes.com</a></p>
+        <p><a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></p>
 
         {# The switcher is hidden until the prose is translated (TRANSLATION_GAP
            option 1). Without the guard on the box itself, hiding the switcher left an
@@ -429,8 +429,8 @@ window.houseDay = (function () {
           </span>
           <span class="g-bookmenu__txt">
             <b>{{ t('Workshops') }}</b>
-            <em>{{ t('The full experience') }}</em>
-            <span class="g-bookmenu__meta">{{ t('Three to seven nights · every meal, wine and a tour of the château') }}</span>
+            <em>{{ t('Cooking, the brocantes and the restoration') }}</em>
+            <span class="g-bookmenu__meta">{{ t('Three to seven nights · every meal and drink included') }}</span>
           </span>
         </a>
 
@@ -544,12 +544,13 @@ window.houseDay = (function () {
           <a href="tel:+33628069776">+33 6 28 06 97 76</a><br>
           {# Two bare addresses gave a guest no way to tell which to write to. The
              contact page splits them; the footer now says so too. #}
-          <a href="mailto:reservations@chateaugudanes.com">reservations@chateaugudanes.com</a> <span class="g-footer__k">{{ t('stays') }}</span><br>
-          <a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a> <span class="g-footer__k">{{ t('workshops &amp; events') }}</span><br>
-          <a href="mailto:reservations@chateaugudanes.com">reservations@chateaugudanes.com</a> <span class="g-footer__k">{{ t('general enquiries') }}</span>
+          <a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a> <span class="g-footer__k">{{ t('workshops & events') }}</span><br>
+          <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a> <span class="g-footer__k">{{ t('general enquiries') }}</span>
           {%- if _dm == 'open' %}{% set _fw = when_text()|trim %}{% if _fw %}<br>
           <a href="{{ url_for('restaurant_info') }}">La Table</a> <span class="g-footer__k">{{ _fw }}</span>{% endif %}{% endif %}
         </p>
+        {#- 15 Oct (owner): say, with elegance, that the château is only open to guests for now. -#}
+        <p class="g-footer__contact" style="margin:var(--s3) 0 0; font-style:italic;">{{ t('For now, the château is open only to its guests.') }}</p>
         <p class="g-footer__contact g-footer__social" style="margin:var(--s3) 0 0;">
           <a href="{{ url_for('social_page') }}">{{ t('Photographs') }}</a> ·
           <a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a> ·
@@ -1344,6 +1345,16 @@ window.houseDay = (function () {
     });
   });
 })();
+</script>
+<script>
+/* 15 Oct (owner): on a computer a date box only opened its calendar from the small icon. A click anywhere in the box
+   opens it now. showPicker() needs the click itself (user activation) and is in current Chrome, Edge, Firefox and
+   Safari; where it is missing or refused, the box behaves exactly as before - typing still works. */
+document.addEventListener('click', function(e){
+  var el = e.target && e.target.closest ? e.target.closest('input[type="date"]') : null;
+  if (!el || el.disabled || el.readOnly || typeof el.showPicker !== 'function') return;
+  try { el.showPicker(); } catch (err) {}
+}, true);  /* capture: the drawer stops clicks from bubbling, so listen on the way down */
 </script>
 </body>
 </html>

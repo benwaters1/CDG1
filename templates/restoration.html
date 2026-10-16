@@ -9,7 +9,7 @@
   "@type": "LandmarksOrHistoricalBuildings",
   "@id": "https://chateaugudanes.com/#chateau",
   "name": "Château de Gudanes",
-  "description": "An eighteenth-century château in the Ariège, built in 1741: a Class I Historic Monument under restoration since 2013, with five bedrooms open to guests.",
+  "description": "An eighteenth-century château in the Ariège, built in 1741: a Class I Historic Monument under restoration since 2013, with five guest rooms.",
   "address": {"@type":"PostalAddress","addressLocality":"Château-Verdun",
     "postalCode":"09310","addressRegion":"Ariège","addressCountry":"FR"},
   {% if house_pin %}"geo": {"@type":"GeoCoordinates","latitude":{{ house_pin.lat }},"longitude":{{ house_pin.lng }}},{% endif %}
@@ -48,11 +48,11 @@
     <ul class="g-time">
       <li><b>1741</b><span>The château is built.</span></li>
       <li><b>1994</b><span>Classified a Historic Monument: classé, the highest level of protection in France.</span></li>
-      <li><b>2013</b><span>Karina Waters buys it, and the restoration begins.</span></li>
+      <li><b>2013</b><span>The Waters family buys it, and the restoration begins.</span></li>
       <li><b>2014</b><span>The first winter spent inside: no electricity, heating or water yet, and a tent pitched in one of the rooms against the cold.</span></li>
       <li><b>2016</b><span>The restoration receives the Medal of Honour of the Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco.</span></li>
       <li><b>2020</b><span>Work begins on bringing back the gardens.</span></li>
-      <li><b>Now</b><span>A Class I Historic Monument under restoration, with five bedrooms open to guests, and the workshops.</span></li>
+      <li><b>Now</b><span>A Class I Historic Monument under restoration, with five guest rooms, and the workshops.</span></li>
     </ul>
   </div>
 </section>
@@ -309,7 +309,7 @@
   <div class="g-vignette" aria-hidden="true">{{ illus('bed') }}</div>
   <p class="g-fr">Venir à Gudanes <span class="g-fr__en">Coming to Gudanes</span></p>
   <h2 class="g-place">Stay While It Happens</h2>
-  <p class="g-p g-lede-first">Five bedrooms are open to guests: bare walls on one side of the door, new floors and beds on the other. The workshops open the rest of the château. Every stay helps the restoration go on.</p>
+  <p class="g-p g-lede-first">Five guest rooms are open: bare walls on one side of the door, new floors and antiques from the brocantes on the other. The workshops open the rest of the château. Every stay helps the restoration go on.</p>
   <p class="g-closer__cta">
     <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See the rooms</a>
     <a href="{{ url_for('workshops_public') }}" class="g-btn">Discover the full experience</a>
