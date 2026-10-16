@@ -99,7 +99,7 @@ def run():
     s.check("the night before arrival is free",
             (base - timedelta(days=1)).isoformat() not in nights)
 
-    s.section("A workshop holds the whole house, end date included")
+    s.section("A workshop holds the whole house, up to the night it ends")
     _cleanup()
     room_id = _room()
     w_start, w_end = base + timedelta(days=10), base + timedelta(days=14)
@@ -117,10 +117,12 @@ def run():
     conn.commit()
     nights = m.unavailable_nights(conn, room_id, window_start, window_end)
     conn.close()
-    span = [(w_start + timedelta(days=i)) for i in range((w_end - w_start).days + 1)]
-    s.check(f"all {len(span)} days of the session are held, end date included",
+    span = [(w_start + timedelta(days=i)) for i in range((w_end - w_start).days)]
+    s.check(f"all {len(span)} nights of the session are held",
             all(d.isoformat() in nights for d in span),
             detail=f"missing {[d.isoformat() for d in span if d.isoformat() not in nights]}")
+    s.check("the night it ends is not, so its guests can stay on",
+            w_end.isoformat() not in nights, detail=repr(nights.get(w_end.isoformat())))
     s.check("the reason names the atelier, so the guest knows why",
             "Atelier" in nights.get(w_start.isoformat(), ""),
             detail=f"got {nights.get(w_start.isoformat())!r}")

@@ -15674,13 +15674,23 @@ def _availability_picture(conn, *, fresh=False):
     # a guest is shown, because "not available" sends whoever is at the desk
     # hunting for a booking that does not exist.
     #
-    # END-INCLUSIVE, like the code this replaces: a workshop finishing on the
-    # 5th still holds the 5th, where a booking departing on the 5th does not.
+    # Each span is END-INCLUSIVE: the last date in it is a night that is held.
     # A sitting that has been called off holds nothing.
+    #
+    # A workshop holds its first night to the night BEFORE it ends. Its guests
+    # leave on the end date, so that night is the house's to sell, and a
+    # workshop guest can stay on with a nightly booking (owner, 16 Oct 2026).
+    # It used to hold the end date as well, which turned away the very guests
+    # who wanted to stay. A one-day sitting still holds its day. Events and
+    # holds keep their end date: an event's guests are there that night.
+    # The channel feed adds a day either side for Booking.com; that buffer is
+    # theirs, not this site's (generate_room_ics).
     for row in sessions_holding_the_house(conn):
         why = f"Those dates are held for a workshop ({row['title']})."
-        picture["house"].append((
-            parse_date(row["start_date"]), parse_date(row["end_date"]), why))
+        w_start, w_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+        if w_start and w_end:
+            w_end = max(w_start, w_end - timedelta(days=1))
+        picture["house"].append((w_start, w_end, why))
         picture["night_label"][why] = f"Held for {row['title']}"
     for row in conn.execute(
             """SELECT preferred_date, end_date, event_type FROM event_inquiries
@@ -15718,7 +15728,9 @@ def atelier_holding_the_house(conn, arrival, departure):
 
     {'start_date', 'end_date'} or None. Read from the SAME picture
     is_range_available refuses from, with the same end-inclusive overlap, so
-    the page cannot give a reason that is not the reason.
+    the page cannot give a reason that is not the reason. `end_date` is the
+    last night it holds, which for a workshop is the night before it ends:
+    the page says the house is free from the day after, and it is.
 
     None unless it is also TRUE that the house is free the day after. The page
     says "it is free again from the day after", and two ateliers back to back,
@@ -15795,8 +15807,9 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
             return False, "Those dates aren't available."
 
     # A workshop, a confirmed event or a live hold takes the whole château,
-    # so these apply to every room. End-inclusive: a workshop finishing on
-    # the 5th still holds the 5th.
+    # so these apply to every room. Each span is end-inclusive, as the
+    # picture builds it: an event on the 5th holds the 5th, and a workshop
+    # ending on the 5th holds to the 4th, so its guests can stay on.
     for h_start, h_end, why in picture["house"]:
         if h_start and h_end and arrival <= h_end and h_start < departure:
             return False, why
@@ -16137,11 +16150,11 @@ def unavailable_nights(conn, room_id, start, end):
       - a booking, a channel stay (blocked_dates) or the owner's block on
         this room (room_blocks) holds start..end-1: the checkout morning is
         free, standard hotel convention
-      - a workshop, a confirmed event or a live hold takes the whole house
-        start..end INCLUSIVE, because its guests are still in the house that
-        morning. An event with no end, or an end before its start, holds its
-        single start day. The picture decides that, so this cannot decide it
-        differently.
+      - a confirmed event or a live hold takes the whole house start..end
+        INCLUSIVE; a workshop takes it start..end-1, because the night it ends
+        is sold to guests staying on (owner, 16 Oct 2026). An event with no
+        end, or an end before its start, holds its single start day. The
+        picture decides all of that, so this cannot decide it differently.
 
     On top of those, one thing the range check leaves to the booking forms:
     a night on which the house is already at its legal ceiling.
@@ -28343,6 +28356,56 @@ def generate_room_ics(conn, room):
             f"SUMMARY:{ical_escape('Closed — ' + room['name'])}",
             "END:VEVENT",
         ]
+
+    def closed(uid, first, stop, summary):
+        """One all-day span: nights first..stop-1, DTEND exclusive as iCal has it."""
+        lines.extend([
+            "BEGIN:VEVENT",
+            f"UID:{uid}@gudanes-hr.local",
+            f"DTSTAMP:{now_stamp}",
+            f"DTSTART;VALUE=DATE:{first.strftime('%Y%m%d')}",
+            f"DTEND;VALUE=DATE:{stop.strftime('%Y%m%d')}",
+            f"SUMMARY:{ical_escape(summary)}",
+            "END:VEVENT",
+        ])
+
+    # Whatever takes the whole house closes this room on the channels too
+    # (owner, 16 Oct 2026). Before this the feed carried only the nightly
+    # bookings, so Booking.com went on selling rooms in a house given over to
+    # a workshop or a wedding, and the house found out when the guest did.
+    #
+    # A workshop goes out with a day either side: the night before it starts,
+    # for setting up, and the night it ends, for turning the house round.
+    # That buffer is for the channels only. On this site both nights are for
+    # sale, so a workshop's own guests can come early or stay on
+    # (_availability_picture).
+    for s in sessions_holding_the_house(conn):
+        w_start, w_end = parse_date(s["start_date"]), parse_date(s["end_date"])
+        if w_start and w_end:
+            closed(f"ws-{s['id']}", w_start - timedelta(days=1),
+                   max(w_end, w_start) + timedelta(days=1),
+                   "Closed — " + room["name"])
+    # Confirmed events and live holds, read from the picture the booking check
+    # refuses from, so the channels are closed on exactly the nights this site
+    # is. Its spans are end-inclusive; iCal's DTEND is the morning after.
+    # Workshops are left out of this pass: they went out above, with the buffer.
+    for h_start, h_end, why in _availability_picture(conn)["house"]:
+        if not (h_start and h_end) or why.startswith("Those dates are held for a workshop"):
+            continue
+        tag = hashlib.sha1(why.encode("utf-8")).hexdigest()[:8]
+        closed(f"house-{h_start.isoformat()}-{h_end.isoformat()}-{tag}",
+               h_start, h_end + timedelta(days=1), "Closed — " + room["name"])
+
+    # Nothing is sold more than a year ahead. Without this a channel would
+    # offer any date it liked, three years out, at a rate nobody has set.
+    # Rebuilt on every request, so the window moves forward a day at a time.
+    today = house_today()
+    try:
+        window_end = today.replace(year=today.year + 3)
+    except ValueError:  # 29 February
+        window_end = today.replace(year=today.year + 3, day=28)
+    closed("window", today + timedelta(days=365), window_end, "Not yet open")
+
     lines.append("END:VCALENDAR")
     return "\r\n".join(lines) + "\r\n"
 
@@ -56340,12 +56403,23 @@ def workshop_manage(manage_token):
     # promises: the house takes a balance from the card by hand as well, so
     # what matters is whether there IS a card.
     card_on_file = bool(booking["stripe_customer_id"] and booking["stripe_payment_method_id"])
+    # "Stay a little longer": the night before the workshop and the night it
+    # ends, as (arrival, departure) for the rooms page. The night it ends is
+    # free because the picture holds a workshop only to the night before its
+    # end date. Whether a room is actually free is the rooms page's answer;
+    # these only open it on the right dates.
+    extend_before = extend_after = None
+    w_start, w_end = parse_date(booking["start_date"]), parse_date(booking["end_date"])
+    if w_start and w_end:
+        extend_before = ((w_start - timedelta(days=1)).isoformat(), w_start.isoformat())
+        extend_after = (w_end.isoformat(), (w_end + timedelta(days=1)).isoformat())
     return render_template(
         "workshop_manage.html", booking=booking, stripe_enabled=stripe_enabled(), guests=guests,
         part_payment_minimum=PART_PAYMENT_MINIMUM, card_on_file=card_on_file,
         custom_fields=custom_fields, custom_responses=custom_responses,
         balance_due=balance_due, total_charged=total_charged, total_paid=total_paid,
         other_sessions=other_sessions,
+        extend_before=extend_before, extend_after=extend_after,
     )
 
 
