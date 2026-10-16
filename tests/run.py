@@ -260,6 +260,7 @@ SUITES = [
     "test_no_control_characters",
     "test_extra_vat",
     "test_ics_feeds",
+    "test_workshop_nights_and_channels",
     "test_shift_actions",
     "test_guest_account",
     "test_bulk_confirm",

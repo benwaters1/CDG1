@@ -233,8 +233,10 @@ def run():
                                (w_off - m.house_today()).days + span + 2)
         off_start, off_end = w_off + timedelta(days=2), w_off + timedelta(days=5)
         live_start, live_end = w_live + timedelta(days=2), w_live + timedelta(days=5)
-        off_days = _days(off_start, off_end)
-        live_days = _days(live_start, live_end)
+        # The nights each one holds: up to the night before it ends. The night
+        # it ends is sold to its guests staying on (owner, 16 Oct 2026).
+        off_days = _days(off_start, off_end - timedelta(days=1))
+        live_days = _days(live_start, live_end - timedelta(days=1))
 
         # What the room and the house look like with no atelier at all. The
         # call-off has to put things back to exactly this.
@@ -256,10 +258,11 @@ def run():
         ok, why = _ask(m.is_range_available, room["id"], off_start, off_end + timedelta(days=1))
         s.check("the room gate refuses the atelier's dates", not ok, detail=f"{ok} {why!r}")
         s.check("and says which atelier", f"{TAG} CALLED" in (why or ""), detail=f"{why!r}")
-        ok, why = _ask(m.is_range_available, room["id"], off_end, off_end + timedelta(days=2))
-        s.check("including an arrival on its last day", not ok,
+        ok, why = _ask(m.is_range_available, room["id"], off_end - timedelta(days=1),
+                       off_end + timedelta(days=1))
+        s.check("including an arrival on the night before it ends", not ok,
                 detail=f"{ok} {why!r} — the atelier's guests are still in the "
-                       "house that morning")
+                       "house that night")
         taken = set(_ask(m.nights_already_taken))
         s.check("the picker strikes its nights out", set(off_days) <= taken,
                 detail=f"missing {sorted(set(off_days) - taken)}")
@@ -274,7 +277,8 @@ def run():
                 detail=f"listed: {sorted(set(off_days) & empty)}, held: {page['house']}")
         held = _ask(m.atelier_holding_the_house, off_start, off_start + timedelta(days=1))
         s.check("and names it as what is holding the house",
-                held == {"start_date": off_start.isoformat(), "end_date": off_end.isoformat()},
+                held == {"start_date": off_start.isoformat(),
+                         "end_date": (off_end - timedelta(days=1)).isoformat()},
                 detail=f"{held}")
         s.check("next free nights look past it",
                 _next_free_from(room["id"], off_start) != off_start.isoformat(),
@@ -354,7 +358,8 @@ def run():
                 detail=f"listed: {sorted(set(live_days) & empty)}, held: {page['house']}")
         held = _ask(m.atelier_holding_the_house, live_start, live_start + timedelta(days=1))
         s.check("and it is still named as holding the house",
-                held == {"start_date": live_start.isoformat(), "end_date": live_end.isoformat()},
+                held == {"start_date": live_start.isoformat(),
+                         "end_date": (live_end - timedelta(days=1)).isoformat()},
                 detail=f"{held}")
         peak = _ask(m.peak_guests_in_house, live_start, live_end + timedelta(days=1))
         s.check("with its guests still counted", peak == base_peak_live + 2,

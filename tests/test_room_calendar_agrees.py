@@ -197,7 +197,9 @@ def _checks(s, conn):
     conn.execute(
         """INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity,
            notes, created_at) VALUES (?, ?, ?, 10, ?, ?)""",
-        (wid, d(14).isoformat(), d(16).isoformat(), TAG, stamp))
+        # Ends on the 17th, so it holds 14-16: the night a workshop ends is
+        # sold to its guests staying on (owner, 16 Oct 2026).
+        (wid, d(14).isoformat(), d(17).isoformat(), TAG, stamp))
     conn.commit()
 
     event(d(20), d(21))                         # a two-day wedding
@@ -251,7 +253,7 @@ def _checks(s, conn):
             not greyed(6, 7) and not clear(8), detail=f"{greyed(6, 7)} {clear(8)}")
     s.check("and the owner's own block on the room",
             not greyed(10, 11) and not clear(12), detail=f"{greyed(10, 11)} {clear(12)}")
-    s.check("a workshop holds its last day as well",
+    s.check("a workshop holds to the night before it ends, and frees that night",
             not greyed(14, 15, 16) and not clear(13, 17),
             detail=f"{greyed(14, 15, 16)} {clear(13, 17)}")
 

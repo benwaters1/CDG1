@@ -176,8 +176,9 @@ def run():
                    "that is free the day after")
     s.check("and says when the house is free again",
             "free again from the day after" in page)
-    # Back to back: the day after is also held, so "free again" would be false.
-    _atelier(start + timedelta(days=3), days=2)
+    # Back to back: the next one arrives the day this one leaves, so the day
+    # after its last night is held too and "free again" would be false.
+    _atelier(start + timedelta(days=2), days=2)
     page = anon.get(q).get_data(as_text=True)
     s.check("but not when the day after is held too",
             "free again from the day after" not in page,
