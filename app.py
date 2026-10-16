@@ -7205,6 +7205,21 @@ def init_db():
     except (sqlite3.OperationalError, sqlite3.IntegrityError) as e:
         print(f"[init] event_payments: checkout-once index not built ({e})")
 
+    # Each charge taken on the card reader on the books once. The till's poll
+    # recorded the same PaymentIntent again on every reload while the tab stayed
+    # open, so a charge that left a coffee owing was counted twice and closed
+    # the tab. The poll now claims the charge before writing it; this is what
+    # stops any later path writing it a second time. Outside the loop for the
+    # reason above: a till that hit the old fault may already hold a duplicate.
+    try:
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS pos_payments_reader_charge_once "
+            "ON pos_payments(reference) WHERE method = 'card_terminal' "
+            "AND reference IS NOT NULL")
+        conn.commit()
+    except (sqlite3.OperationalError, sqlite3.IntegrityError) as e:
+        print(f"[init] pos_payments: reader-charge-once index not built ({e})")
+
     hold_legacy_balance_stamps(conn)
     link_held_letters(conn)
     backfill_consent_history(conn)
@@ -39464,6 +39479,17 @@ def pos_take_card(order_id):
     return redirect(url_for("pos_order", order_id=order_id))
 
 
+def pos_reader_charge_recorded(conn, intent_id):
+    """Whether a card charge taken on the reader is already on the books.
+
+    Asked of every tab, not just the one polling: a Stripe PaymentIntent is one
+    charge wherever its payment row has since moved, and it is written once.
+    """
+    return bool(intent_id) and conn.execute(
+        "SELECT 1 FROM pos_payments WHERE method = 'card_terminal' AND reference = ?",
+        (intent_id,)).fetchone() is not None
+
+
 @app.route("/pos/<int:order_id>/card-status")
 @login_required
 def pos_card_status(order_id):
@@ -39485,9 +39511,30 @@ def pos_card_status(order_id):
         conn.close()
         return jsonify(state="idle", message="")
 
-    state, message, intent = terminal_payment_state(order["payment_intent_id"])
+    intent_id = order["payment_intent_id"]
+    state, message, intent = terminal_payment_state(intent_id)
     settled = False
     if state == "succeeded":
+        # One charge, one payment. The intent stayed on the tab after it was
+        # recorded, so a charge that left something owing (a coffee added while
+        # the guest tapped) reloaded the page, polled again and was recorded a
+        # second time: EUR 20 on the card, EUR 40 on the books, the coffee never
+        # taken and the tab closed. A tab reopened after a reader payment did the
+        # same. So the intent is taken OFF the tab before the payment is written,
+        # in the same transaction -- the UPDATE is the claim, and a second poll
+        # (this page open on two devices) waits for it and then finds nothing to
+        # claim. A charge already on the books is never written again, whichever
+        # tab it is on now. The unique index on pos_payments is the last word.
+        claimed = conn.execute(
+            "UPDATE pos_orders SET payment_intent_id = NULL "
+            "WHERE id = ? AND payment_intent_id = ?", (order_id, intent_id)).rowcount
+        if not claimed or pos_reader_charge_recorded(conn, intent_id):
+            conn.commit()
+            now = conn.execute("SELECT status FROM pos_orders WHERE id = ?",
+                               (order_id,)).fetchone()
+            conn.close()
+            return jsonify(state="succeeded", message="That card payment is already recorded.",
+                           settled=bool(now) and now["status"] != "open")
         # Trust Stripe for the amount, exactly as the webhook does — the guest
         # tapped what the reader asked for, and recomputing it here would let a
         # line added mid-tap change what we record as taken.
@@ -39497,7 +39544,7 @@ def pos_card_status(order_id):
         who = current_user()
         user = who["id"] if who else None
         pos_take_payment(conn, order_id, taken, "card_terminal",
-                         reference=order["payment_intent_id"], user_id=user)
+                         reference=intent_id, user_id=user)
         after = pos_close_if_settled(conn, order_id, "card_terminal", user_id=user)
         conn.commit()
         settled = after["outstanding"] <= 0.01
@@ -39505,9 +39552,10 @@ def pos_card_status(order_id):
                    if not settled else f"Settled — {money(after['total'])}.")
     elif state == "failed":
         # Clear the reference so the next attempt starts a fresh payment rather
-        # than polling a dead one forever.
-        conn.execute("UPDATE pos_orders SET payment_intent_id = NULL WHERE id = ?",
-                     (order_id,))
+        # than polling a dead one forever. Only THIS one: a press on another
+        # device may have put a fresh payment on the reader since it was read.
+        conn.execute("UPDATE pos_orders SET payment_intent_id = NULL "
+                     "WHERE id = ? AND payment_intent_id = ?", (order_id, intent_id))
         conn.commit()
     conn.close()
     return jsonify(state=state, message=message, settled=settled)

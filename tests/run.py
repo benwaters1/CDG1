@@ -180,6 +180,7 @@ SUITES = [
     "test_letters_named",
     "test_delivery_reports",
     "test_terminal",
+    "test_reader_charge_once",
     "test_arrive",
     "test_timesheet_repair",
     "test_staff_lifecycle",
