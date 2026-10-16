@@ -905,8 +905,8 @@ def rollover_hour_is_safe(hour=None, day=None):
 # rewritten from here: terms_time_mismatches reads them and the owner home
 # says when they disagree with this.
 #
-# Not HOUSE_CALENDAR_CHECK_IN, which is when a stay is blocked out on the
-# staff's Outlook calendar and is never shown to a guest.
+# The staff's Outlook calendar blocks a stay by these too (HOUSE_CALENDAR_CHECK_IN,
+# since 16 October; it had its own 4pm and 11am).
 CHECK_IN_TIME = "15:00"
 CHECK_OUT_TIME = "10:00"
 
@@ -1980,7 +1980,15 @@ class HouseConnection(sqlite3.Connection):
                         (self.actor_user_id, self.actor, self.endpoint, self.claim_floor))
             except sqlite3.OperationalError:
                 pass            # before the change log exists: nothing to claim
-        return super().commit()
+        done = super().commit()
+        # Letters queue_undelivered held back while this request had a write
+        # open go into the outbox as soon as nothing it opened still has one,
+        # rather than waiting for the request (or a whole automation tick) to
+        # end. Popped before filing: filing commits too.
+        if (has_request_context() and g.get("_held_letters")
+                and not request_holds_a_write()):
+            file_held_letters(g.pop("_held_letters"))
+        return done
 
 
 def change_actor():
@@ -2069,7 +2077,9 @@ def close_open_connections(exc):
     # AFTER the closes, deliberately. Letters the house sent during this
     # request are filed now that nothing it opened is still holding the write
     # lock; doing it inline would make every guest email wait on the caller's
-    # own transaction.
+    # own transaction. Held letters first: their rows are what the record of
+    # each one points at.
+    file_held_letters(g.pop("_held_letters", None) or [])
     write_guest_messages(g.pop("_guest_messages", None) or [])
     # And the page view, for the same reason.
     write_page_view(g.pop("_page_view", None))
@@ -2593,6 +2603,51 @@ def letter_rule_breaches(template_key, subject, body):
             "it says the beds are new, and the rooms are furnished from the "
             "brocantes, antiques beside new pieces (owner, 15 October)")})
     return out
+
+
+# The sentences the owner corrected on 15 October, as stored letters carry
+# them: the stay confirmation as shipped before 5 October and as shipped from
+# then until 15 October. Swapped a sentence at a time, so whatever else the
+# owner has written in a letter stays exactly as it is.
+LETTER_WORDS_2026_10_16 = (
+    ("Five bedrooms of ninety-four are finished, and one of them is yours",
+     "Five guest rooms are open, and one of them is yours"),
+    ("Five bedrooms are open to guests, and one of them is yours",
+     "Five guest rooms are open, and one of them is yours"),
+    ("The floors, the beds and the bathrooms are new.",
+     "The floors and the bathrooms are new, and the rooms are furnished from the brocantes."),
+    ("the beds, the floors and the bathrooms are new.",
+     "the floors and the bathrooms are new, and the rooms are furnished from the brocantes."),
+)
+
+
+def apply_letter_words_2026_10_16(conn):
+    """Once: those sentences, put right in every stored letter that has them.
+
+    The exception to "read, never rewritten" above, made because the owner
+    asked for it on 16 October 2026 ("fix these"): five guest rooms, never
+    five bedrooms, and never new beds. Exact sentences only -- a letter that
+    says it some other way is left to the rules above to name -- and once, by
+    the flag in app_settings, so a sentence the owner writes back later stays
+    written. Returns how many letters changed."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'letter_words_2026_10_16'").fetchone():
+        return 0
+    changed = 0
+    for row in conn.execute("SELECT template_key, body FROM email_templates").fetchall():
+        body = row["body"] or ""
+        fixed = body
+        for old, new in LETTER_WORDS_2026_10_16:
+            fixed = fixed.replace(old, new)
+        if fixed != body:
+            conn.execute("UPDATE email_templates SET body = ? WHERE template_key = ?",
+                         (fixed, row["template_key"]))
+            changed += 1
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('letter_words_2026_10_16', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        print(f"[letters] five guest rooms, no new beds: {changed} stored letter(s) corrected")
+    return changed
 
 
 def stored_letter_drift(conn):
@@ -6363,6 +6418,15 @@ def init_db():
          "REFERENCES drink_packages(id) ON DELETE SET NULL"),
         ("pos_orders_package_credit",
          "ALTER TABLE pos_orders ADD COLUMN package_credit REAL NOT NULL DEFAULT 0"),
+        # The package's own price as billed on this tab, and the VAT rate it
+        # carried, both set when the package is worked out. Stored rather than
+        # read off drink_packages at print time, for the same reason the
+        # covered amount sits on the line: a bill reprinted next year has to
+        # say what was charged then, whatever the price or the rate is now.
+        ("pos_orders_package_charge",
+         "ALTER TABLE pos_orders ADD COLUMN package_charge REAL NOT NULL DEFAULT 0"),
+        ("pos_orders_package_vat_rate",
+         "ALTER TABLE pos_orders ADD COLUMN package_vat_rate REAL"),
         # A line the package paid for. Kept on the line rather than inferred,
         # so a bill reprinted next year still shows what was covered.
         ("pos_lines_package_covered",
@@ -6477,6 +6541,14 @@ def init_db():
         ("opening_float", "ALTER TABLE pos_closures ADD COLUMN opening_float REAL"),
         ("counted_cash", "ALTER TABLE pos_closures ADD COLUMN counted_cash REAL"),
         ("cash_variance", "ALTER TABLE pos_closures ADD COLUMN cash_variance REAL"),
+        # What drinks packages charged and what they covered, so a closure's
+        # own figures reconcile to its VAT: gross, less covered, plus charged,
+        # less discounts, plus service. NULL on a day closed before these were
+        # recorded, which is "not recorded", not nothing.
+        ("package_charged_total",
+         "ALTER TABLE pos_closures ADD COLUMN package_charged_total REAL"),
+        ("package_covered_total",
+         "ALTER TABLE pos_closures ADD COLUMN package_covered_total REAL"),
         ("restaurant_tables", """CREATE TABLE IF NOT EXISTS restaurant_tables (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             label TEXT NOT NULL UNIQUE,
@@ -7231,6 +7303,21 @@ def init_db():
     except (sqlite3.OperationalError, sqlite3.IntegrityError) as e:
         print(f"[init] event_payments: checkout-once index not built ({e})")
 
+    # Each charge taken on the card reader on the books once. The till's poll
+    # recorded the same PaymentIntent again on every reload while the tab stayed
+    # open, so a charge that left a coffee owing was counted twice and closed
+    # the tab. The poll now claims the charge before writing it; this is what
+    # stops any later path writing it a second time. Outside the loop for the
+    # reason above: a till that hit the old fault may already hold a duplicate.
+    try:
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS pos_payments_reader_charge_once "
+            "ON pos_payments(reference) WHERE method = 'card_terminal' "
+            "AND reference IS NOT NULL")
+        conn.commit()
+    except (sqlite3.OperationalError, sqlite3.IntegrityError) as e:
+        print(f"[init] pos_payments: reader-charge-once index not built ({e})")
+
     hold_legacy_balance_stamps(conn)
     link_held_letters(conn)
     backfill_consent_history(conn)
@@ -7732,6 +7819,8 @@ def init_db():
             "AND subject = ? AND body = ?",
             (new_subject, new_body, template_key, old_subject, old_body))
     conn.commit()
+    # 16 Oct: five guest rooms and no new beds, in stored letters too.
+    apply_letter_words_2026_10_16(conn)
 
     for slug, name, description, areas, full, order in DEFAULT_ACCESS_PRESETS:
         if not conn.execute("SELECT 1 FROM access_presets WHERE slug = ?", (slug,)).fetchone():
@@ -7928,6 +8017,8 @@ def init_db():
     apply_room_lineup(conn)
     # And the owner's corrections of 15 October on top of it, once.
     apply_room_facts_2026_10_15(conn)
+    # And the view the old room form wiped, once.
+    apply_room_views_2026_10_16(conn)
 
     # WHERE THE GATES ARE.
     #
@@ -14061,6 +14152,47 @@ def _overview_task_range(conn, range_start, range_end):
     ).fetchall()
 
 
+def _run_words(run, first_day, last_day):
+    """Where a stretch of days sits in a run: 'night 2 of 3', 'days 2–4 of 5',
+    or '3 days' when the stretch is the whole run."""
+    begins = parse_date(run["first"])
+    k = (parse_date(first_day) - begins).days + 1
+    j = (parse_date(last_day) - begins).days + 1
+    n, unit = run["count"], run["unit"]
+    if k == 1 and j == n:
+        return f"{n} {unit}s"
+    if k == j:
+        return f"{unit} {k} of {n}"
+    return f"{unit}s {k}–{j} of {n}"
+
+
+def _spanning_row(row, run, first_day, last_day, lo, hi):
+    """`row` as it covers [first_day, last_day] -- clipped to the window
+    [lo, hi) -- or None when none of those days is in the window.
+
+    THINGS THAT LAST MORE THAN A DAY. Every row used to carry one date, and the
+    calendar put it in that one cell: a four-day atelier showed on its first
+    day and nowhere after, a stay showed as an arrival and a departure with
+    empty nights between, and a wedding that began the day before the window
+    showed nowhere at all. Now a row says which days it covers: `date` is the
+    first of them inside the window (so a list still files it once, under a
+    day it is looking at) and `until` the last. build_calendar puts it in every
+    cell between, each copy saying which day of the run it is.
+
+    `run` is the whole run the row belongs to -- {"first", "count", "unit"} --
+    which can begin before the row does: a stay's nights after the first are
+    one row, counted from the night they arrived.
+    """
+    start = max(first_day, lo)
+    end = min(last_day, (parse_date(hi) - timedelta(days=1)).isoformat())
+    if start > end:
+        return None
+    run = dict(run, title=row["title"], short=row["short"])
+    words = _run_words(run, start, end)
+    return dict(row, date=start, until=end, run=run,
+                title=f"{row['title']} · {words}" if run["count"] > 1 else row["title"])
+
+
 def build_overview(conn, view, anchor, fetch_window=None):
     """The unified ops feed — bookings and staff tasks in one filterable
     list for the given date window. Lane/guest/origin/employee filters run
@@ -14072,6 +14204,11 @@ def build_overview(conn, view, anchor, fetch_window=None):
     prev/next anchors alone. The calendar page uses it so a month grid can
     also fill the leading/trailing days it borrows from the adjacent months —
     those cells would otherwise render deceptively empty rather than blank.
+
+    A row that lasts longer than a day — the nights of a stay, the days of an
+    atelier or a wedding — carries `until` and `run` (see _spanning_row), and
+    appears in a list once, on its first day in the window. Everything else is
+    on its one `date`.
     """
     if view == "day":
         range_start = anchor
@@ -14117,12 +14254,32 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "id": t["id"], "link": None,
         })
 
+    lo, hi = query_start.isoformat(), query_end.isoformat()
+
+    def staying(row, arrival, departure, guest, room):
+        """The nights after the first, as one row: the first night is the
+        arrival's, and the departure morning is not a night. A stay of 9 to 12
+        March is the arrival on the 9th, this on the 10th and 11th, and the
+        departure on the 12th -- the nights the room grid fills, with the
+        morning they leave shown as the departure it is."""
+        came, goes = parse_date(arrival), parse_date(departure)
+        if not (came and goes) or (goes - came).days < 2:
+            return None
+        nights = (goes - came).days
+        second = (came + timedelta(days=1)).isoformat()
+        last = (goes - timedelta(days=1)).isoformat()
+        here = dict(row, title=f"{guest} in residence — {room}", short=guest, staying=True)
+        return _spanning_row(here, {"first": arrival, "count": nights, "unit": "night"},
+                             second, last, lo, hi)
+
+    # Every stay with a day in the window: arriving in it, leaving in it, or
+    # in the house right through it.
     bookings = conn.execute(
         """SELECT bookings.*, rooms.name AS room_name FROM bookings
            JOIN rooms ON rooms.id = bookings.room_id
            WHERE status IN ('pending','confirmed')
-             AND ((arrival_date >= ? AND arrival_date < ?) OR (departure_date >= ? AND departure_date < ?))""",
-        (query_start.isoformat(), query_end.isoformat(), query_start.isoformat(), query_end.isoformat()),
+             AND arrival_date < ? AND departure_date >= ?""",
+        (hi, lo),
     ).fetchall()
     for b in bookings:
         booking_link = url_for("admin_bookings", q=b["reference_code"])
@@ -14153,33 +14310,36 @@ def build_overview(conn, view, anchor, fetch_window=None):
                 "assignee_id": None, "assignee_name": None, "id": b["id"], "link": booking_link,
                 "facts": stay,
             })
+        leaving = {
+            "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
+            "scheduled": True, "status": b["status"], "acknowledgment_status": None,
+            "priority": None, "repeat_weekly": 0, "date": b["departure_date"],
+            "title": f"{b['guest_name']} departs — {b['room_name']}",
+            "short": f"↑ {b['guest_name']}",
+            "detail": f"Party of {b['party_size']}",
+            "assignee_id": None, "assignee_name": None, "id": b["id"], "link": booking_link,
+            "facts": stay,
+        }
         if query_start.isoformat() <= b["departure_date"] < query_end.isoformat():
-            rows.append({
-                "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
-                "scheduled": True, "status": b["status"], "acknowledgment_status": None,
-                "priority": None, "repeat_weekly": 0, "date": b["departure_date"],
-                "title": f"{b['guest_name']} departs — {b['room_name']}",
-                "short": f"↑ {b['guest_name']}",
-                "detail": f"Party of {b['party_size']}",
-                "assignee_id": None, "assignee_name": None, "id": b["id"], "link": booking_link,
-                "facts": stay,
-            })
+            rows.append(leaving)
+        nights = staying(leaving, b["arrival_date"], b["departure_date"],
+                         b["guest_name"], b["room_name"])
+        if nights:
+            rows.append(nights)
 
     # Booking.com's guests arrive and leave on the same calendar. Their link is
     # the Booking.com page, where their emails are; there is no booking of the
     # house's own to open.
-    lo, hi = query_start.isoformat(), query_end.isoformat()
     for st in channel_stays(conn):
         link = url_for("management_booking_com", q=st["reference_code"]) if st["reference_code"] \
             else url_for("management_booking_com")
         room = st["room_name"] or "room not stated"
         party = (f"Party of {st['party_size']}" if st["party_size"]
                  else "Party size not stated")
+        made = None
         for day, verb, arrow in ((st["arrival_date"], "arrives", "↓"),
                                  (st["departure_date"], "departs", "↑")):
-            if not (lo <= day < hi):
-                continue
-            rows.append({
+            made = {
                 "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
                 "scheduled": True, "status": "confirmed", "acknowledgment_status": None,
                 "priority": None, "repeat_weekly": 0, "date": day,
@@ -14192,7 +14352,13 @@ def build_overview(conn, view, anchor, fetch_window=None):
                           "room": st["room_name"] or "", "guest": st["guest_name"],
                           "party": st["party_size"], "ref": st["reference_code"] or "",
                           "channel": st["channel"], "eta": "", "flight": ""},
-            })
+            }
+            if lo <= day < hi:
+                rows.append(made)
+        nights = staying(made, st["arrival_date"], st["departure_date"], st["guest_name"],
+                         f"{room} · {st['channel']}")
+        if nights:
+            rows.append(nights)
 
     dinners = conn.execute(
         """SELECT * FROM restaurant_bookings WHERE status IN ('pending', 'confirmed')
@@ -14238,6 +14404,51 @@ def build_overview(conn, view, anchor, fetch_window=None):
                       "ref": r["reference_code"]},
         })
 
+    # THE ATELIER'S OTHER DAYS. Each place is on the first day, where the
+    # guests begin; after that the sitting is one row, so a four-day atelier
+    # with ten places is ten names on the Monday and one line on each of the
+    # three days after rather than forty. A sitting that has been called off
+    # is not running, whoever is still on its list. Imported registrations
+    # (RetreatGuru, 15 Oct 2026) are places on a session like any other and
+    # come through here the same way.
+    for ses in conn.execute(
+            f"""SELECT workshop_sessions.id, workshop_sessions.start_date,
+                       workshop_sessions.end_date, workshops.title,
+                       COUNT(*) AS places, COALESCE(SUM(workshop_bookings.party_size), 0) AS people,
+                       SUM(workshop_bookings.status = 'pending') AS pending,
+                       GROUP_CONCAT(workshop_bookings.guest_name, ', ') AS names
+                  FROM workshop_bookings
+                  JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                  JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                 WHERE workshop_bookings.status IN ('pending', 'confirmed')
+                   AND {SESSION_IS_LIVE}
+                   AND workshop_sessions.start_date < ? AND workshop_sessions.end_date >= ?
+                   AND workshop_sessions.end_date > workshop_sessions.start_date
+                 GROUP BY workshop_sessions.id""", (hi, lo)).fetchall():
+        first, last = parse_date(ses["start_date"]), parse_date(ses["end_date"])
+        if not (first and last):
+            continue
+        places, people, pending = ses["places"], ses["people"], ses["pending"] or 0
+        running = _spanning_row({
+            "kind": "workshop", "lane": "workshop", "is_guest": True, "origin": "booking",
+            "scheduled": True, "status": "pending" if pending == places else "confirmed",
+            "acknowledgment_status": None, "priority": None, "repeat_weekly": 0,
+            "date": ses["start_date"],
+            "title": (f"{ses['title']} — {places} booking{'' if places == 1 else 's'}, "
+                      f"{people} {'person' if people == 1 else 'people'}"
+                      + (f" ({pending} to confirm)" if pending else "")),
+            "short": ses["title"],
+            "detail": ses["names"] or "",
+            "assignee_id": None, "assignee_name": None, "id": f"session{ses['id']}",
+            "link": url_for("admin_workshop_registrations"),
+            "facts": {"session": ses["id"], "workshop": ses["title"], "running": True,
+                      "start": ses["start_date"], "end": ses["end_date"],
+                      "places": places, "people": people, "pending": pending},
+        }, {"first": ses["start_date"], "count": (last - first).days + 1, "unit": "day"},
+            (first + timedelta(days=1)).isoformat(), ses["end_date"], lo, hi)
+        if running:
+            rows.append(running)
+
     # What the house has promised a guest for a particular day: a board on
     # arrival, a transfer on the Tuesday. Here because it is work on a date
     # like anything else, and a promise that lives only on its own page is one
@@ -14271,15 +14482,25 @@ def build_overview(conn, view, anchor, fetch_window=None):
 
     # EVENTS, WEDDINGS AND PARTIES, which were on no calendar at all: a
     # wedding confirmed for June showed on the events page and nowhere a
-    # person planning the week would look. A confirmed event on its first day;
-    # an enquiry somebody is holding dates for, on those dates, marked held.
+    # person planning the week would look. A confirmed event on each of its
+    # days; an enquiry somebody is holding dates for, on those dates, marked
+    # held. (Both used to sit on their first day only, so a wedding that began
+    # the day before the window was on no day of it.)
+    def over_days(row, first, last):
+        """`row` on every day from `first` to `last`, both included."""
+        a, b = parse_date(first), parse_date(last) or parse_date(first)
+        if not (a and b) or b < a:
+            return row if lo <= (first or "") < hi else None
+        return _spanning_row(row, {"first": first, "count": (b - a).days + 1, "unit": "day"},
+                             first, b.isoformat(), lo, hi)
+
     for e in conn.execute(
             """SELECT * FROM event_inquiries
                 WHERE status = 'confirmed' AND preferred_date IS NOT NULL
                   AND preferred_date < ? AND COALESCE(end_date, preferred_date) >= ?""",
             (query_end.isoformat(), query_start.isoformat())).fetchall():
         what = (e["event_type"] or "event").replace("_", " ")
-        rows.append({
+        rows.extend(r for r in [over_days({
             "kind": "event", "lane": "event", "is_guest": True, "origin": "booking",
             "scheduled": True, "status": e["status"], "acknowledgment_status": None,
             "priority": None, "repeat_weekly": 0, "date": e["preferred_date"],
@@ -14295,7 +14516,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
                       "start": e["preferred_date"], "end": e["end_date"] or e["preferred_date"],
                       "arrival_time": e["arrival_time"] or "", "ref": e["reference_code"],
                       "held": False, "held_until": ""},
-        })
+        }, e["preferred_date"], e["end_date"] or e["preferred_date"])] if r)
     now_iso = datetime.now(timezone.utc).isoformat()
     for h in conn.execute(
             """SELECT event_holds.*, event_inquiries.contact_name, event_inquiries.event_type,
@@ -14306,7 +14527,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
                   AND event_holds.start_date < ? AND event_holds.end_date >= ?""",
             (now_iso, query_end.isoformat(), query_start.isoformat())).fetchall():
         what = (h["event_type"] or "event").replace("_", " ")
-        rows.append({
+        rows.extend(r for r in [over_days({
             "kind": "event", "lane": "event", "is_guest": True, "origin": "booking",
             "scheduled": False, "status": "held", "acknowledgment_status": None,
             "priority": None, "repeat_weekly": 0, "date": h["start_date"],
@@ -14320,7 +14541,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
                       "start": h["start_date"], "end": h["end_date"], "arrival_time": "",
                       "ref": h["reference_code"], "held": True,
                       "held_until": house_date_iso(h["expires_at"])},
-        })
+        }, h["start_date"], h["end_date"])] if r)
 
     # ROOMS THE OWNER HAS CLOSED, which were on no calendar: two suites shut
     # for the winter showed on the Close rooms page and nowhere a person
@@ -14442,16 +14663,37 @@ def build_calendar(conn, view, anchor, viewer=None):
                               else url_for("my_shifts") if r["kind"] == "shift" else None))
                 for r in rows]
 
-    by_date = {}
+    # Each row in every cell it covers, not just the first: a row that lasts
+    # (see _spanning_row) is copied into each of its days, saying which day of
+    # the run that is. In a cell, what begins that day comes first and what is
+    # carried on from an earlier one after it, so a month cell that can show
+    # four things shows the day's arrivals before the guests already here.
+    begins, carried, source = {}, {}, {}
     for row in rows:
-        if row["date"]:
-            by_date.setdefault(row["date"], []).append(row)
+        if not row["date"]:
+            continue
+        first = parse_date(row["date"])
+        last = parse_date(row.get("until") or row["date"]) or first
+        run = row.get("run")
+        day = max(first, grid_start)
+        while day <= last and day < grid_end:
+            iso = day.isoformat()
+            copy = row
+            if run and run["count"] > 1:
+                k = (day - parse_date(run["first"])).days + 1
+                copy = dict(row, date=iso, until=iso,
+                            title=f"{run['title']} · {run['unit']} {k} of {run['count']}",
+                            short=f"{run['short']} · {run['unit']} {k}")
+            later = bool(run) and iso > run["first"]
+            (carried if later else begins).setdefault(iso, []).append(copy)
+            source[id(copy)] = id(row)
+            day += timedelta(days=1)
 
     today = house_today()
     cells = []
     d = grid_start
     while d < grid_end:
-        events = by_date.get(d.isoformat(), [])
+        events = begins.get(d.isoformat(), []) + carried.get(d.isoformat(), [])
         cells.append({
             "date": d,
             "iso": d.isoformat(),
@@ -14470,7 +14712,8 @@ def build_calendar(conn, view, anchor, viewer=None):
         "span_start": span_start, "span_end": span_end - timedelta(days=1),
         "prev_anchor": sheet["prev_anchor"], "next_anchor": sheet["next_anchor"],
         "employees": sheet["employees"], "owner_id": sheet["owner_id"],
-        "total_events": sum(len(c["events"]) for c in cells if c["in_span"]),
+        # Things, not cells: a four-day atelier is one item in the week.
+        "total_events": len({source[id(e)] for c in cells if c["in_span"] for e in c["events"]}),
     }
 
 
@@ -15300,9 +15543,13 @@ def claim_range(conn, room_id, arrival, departure, exclude_booking_id=None,
     was just made rather than the world as it was before.
 
     The lock is released by the CALLER'S existing conn.commit(). That is not
-    incidental: send_email falls back to the outbox on its own connection,
-    which cannot write while a transaction is open here, so every caller must
-    commit before it sends. They all already do, for exactly that reason.
+    incidental: every caller must commit before it sends, or the letter goes
+    over the network with every booking in the house queued behind it. One
+    did not -- a refused confirm_booking_by_id returns with this lock still
+    held, and create_booking's fallback letters went out under it, which also
+    cost the guest their "Payment received" until queue_undelivered learned
+    to wait for the write. create_booking now commits after a confirm either
+    way.
 
     Read-only callers must NOT use this. The room grid, the quote and the
     availability calendar all ask the same question without acting on it, and
@@ -19938,14 +20185,21 @@ def pos_menu(conn, *, service_date=None, service="dinner", include_unavailable=T
 #
 #   fixed     — named drinks that come with the meal. Rung up as normal so the
 #               kitchen and the cellar still see them, then covered in full,
-#               with the package price charged once instead.
+#               with the package price charged instead.
 #   allowance — a euro budget per cover. Drinks are rung up normally and the
 #               package absorbs them up to the limit; anything past it is
 #               charged. That is what "25 EUR of wine included" actually means,
 #               and it is the shape that needs the arithmetic to be right.
 #
+# Either shape can carry a price of its own, per cover or per table as the
+# package says. It is a row of its own on the bill. Until 16 Oct 2026 it was
+# worked out, netted against the covered amount into package_credit, and then
+# read by nothing, so a 40 EUR wine pairing covering a 30 EUR bottle billed
+# nothing at all. A price of 0 is the package bundled into the menu price.
+#
 # The covered amount lives on the LINE, not inferred at print time, so a bill
-# reprinted next year still shows what was covered and what was not.
+# reprinted next year still shows what was covered and what was not. The price
+# lives on the tab for the same reason.
 # ---------------------------------------------------------------------------
 
 # Only drink lines can be covered. A package that quietly absorbed the beef
@@ -19959,12 +20213,39 @@ def package_for(conn, package_id):
     return conn.execute("SELECT * FROM drink_packages WHERE id = ?", (package_id,)).fetchone()
 
 
+def package_vat_rate(conn, package):
+    """The VAT rate a drinks package's own price is billed at.
+
+    The highest rate among the drinks it can cover. A fixed list of juices is
+    a 10% supply and a wine pairing a 20% one; one price over both that is not
+    broken down is taxed at the higher rate, so that is the safe one. An
+    allowance can be spent on anything on the drinks list, wine included, so
+    it carries the alcohol rate. Each drink's rate comes from menu_vat_rate,
+    the same answer the till gives when that drink is rung up.
+    """
+    if package["kind"] == "fixed":
+        rates = [menu_vat_rate(conn, item) for item in conn.execute(
+            """SELECT menu_items.* FROM drink_package_items
+               JOIN menu_items ON menu_items.id = drink_package_items.menu_item_id
+               WHERE drink_package_items.package_id = ?""", (package["id"],)).fetchall()]
+        if rates:
+            return max(rates)
+    return tax_rate(conn, "vat_alcohol")
+
+
 def apply_package(conn, order_id):
-    """Work out what the package covers on this tab, and mark it on the lines.
+    """Work out what the package covers on this tab, and what it costs.
+
+    Marks the covered amount on each line and puts the package's own price on
+    the tab (package_charge, at package_vat_rate). Returns what was covered.
+    package_credit is kept equal to that, the tab-level copy of the lines'
+    sum; until 16 Oct 2026 it held covered-minus-price, which nothing read.
 
     Recomputed from scratch every time rather than adjusted incrementally: a
     voided drink has to give its allowance back, and an allowance that only
-    ever went down would quietly overcharge the next table to order.
+    ever went down would quietly overcharge the next table to order. The price
+    is recomputed with it, because a per-cover price has to follow the covers
+    when the party grows, shrinks, or is merged with another table.
     """
     order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
     if not order:
@@ -19975,19 +20256,23 @@ def apply_package(conn, order_id):
         (order_id,)).fetchall()
 
     # Clear first, so removing a package or voiding a drink actually releases
-    # what it was holding.
+    # what it was holding, and taking the package off takes its price off too.
     conn.execute("UPDATE pos_order_lines SET package_covered = 0 WHERE order_id = ?",
                  (order_id,))
     if not package:
-        conn.execute("UPDATE pos_orders SET package_credit = 0 WHERE id = ?", (order_id,))
+        conn.execute("UPDATE pos_orders SET package_credit = 0, package_charge = 0, "
+                     "package_vat_rate = NULL WHERE id = ?", (order_id,))
         return 0.0
 
     drinkable = [l for l in lines
                  if (l["course"] or "") in PACKAGE_COURSES and not l["is_supplement"]]
+    # Per cover or per table, as the owner set it on the package. The admin
+    # page says "charged EUR 40 per cover" for both shapes, so both mean it.
+    units = (order["covers"] or 1) if package["per"] == "cover" else 1
 
     if package["kind"] == "fixed":
         # Everything on the included list is covered outright; the package
-        # price is charged once instead.
+        # price is charged instead.
         included = {r["menu_item_id"] for r in conn.execute(
             "SELECT menu_item_id FROM drink_package_items WHERE package_id = ?",
             (package["id"],)).fetchall() if r["menu_item_id"]}
@@ -19997,16 +20282,12 @@ def apply_package(conn, order_id):
                 amount = round((l["unit_price"] or 0) * (l["quantity"] or 0), 2)
                 conn.execute("UPDATE pos_order_lines SET package_covered = ? WHERE id = ?",
                              (amount, l["id"]))
-                covered += amount
-        charge = round((package["price"] or 0) *
-                       (order["covers"] or 1 if package["per"] == "cover" else 1), 2)
-        credit = round(covered - charge, 2)
+                covered = round(covered + amount, 2)
     else:
         # An allowance is a budget. Spend it against the dearest drinks first:
         # a guest who ordered a 40 EUR bottle and a 4 EUR water expects the
         # bottle to be what the package went on.
-        budget = round((package["allowance_amount"] or 0) *
-                       ((order["covers"] or 1) if package["per"] == "cover" else 1), 2)
+        budget = round((package["allowance_amount"] or 0) * units, 2)
         remaining = budget
         for l in sorted(drinkable, key=lambda x: -((x["unit_price"] or 0) * (x["quantity"] or 0))):
             if remaining <= 0:
@@ -20017,13 +20298,14 @@ def apply_package(conn, order_id):
                 conn.execute("UPDATE pos_order_lines SET package_covered = ? WHERE id = ?",
                              (take, l["id"]))
                 remaining = round(remaining - take, 2)
-        credit = round(budget - remaining, 2)
-        charge = round(package["price"] or 0, 2)
-        if charge:
-            credit = round(credit - charge, 2)
+        covered = round(budget - remaining, 2)
 
-    conn.execute("UPDATE pos_orders SET package_credit = ? WHERE id = ?", (credit, order_id))
-    return credit
+    charge = round((package["price"] or 0) * units, 2)
+    conn.execute(
+        "UPDATE pos_orders SET package_credit = ?, package_charge = ?, package_vat_rate = ? "
+        "WHERE id = ?",
+        (covered, charge, package_vat_rate(conn, package) if charge else None, order_id))
+    return covered
 
 
 def pos_bill(conn, order_id):
@@ -20047,6 +20329,25 @@ def pos_bill(conn, order_id):
     service = round(order["service_charge"] or 0, 2)
     deposit = round(order["deposit_credit"] or 0, 2)
     package = round(sum(l["package_covered"] or 0 for l in live), 2)
+    # The package's own price, as apply_package stored it on the tab. A sale
+    # of drink in its own right, so it is added to the bill and taxed, not
+    # netted against what the package covered.
+    package_row = package_for(conn, order["package_id"])
+    package_charge = round(order["package_charge"] or 0, 2)
+    package_charge_rate = None
+    package_units = 1
+    if package_charge:
+        package_charge_rate = (float(order["package_vat_rate"])
+                               if order["package_vat_rate"] is not None
+                               else tax_rate(conn, "vat_alcohol"))
+        if package_row and package_row["per"] == "cover":
+            # How many covers the stored charge is for, read off the charge
+            # itself where the price divides it, so the words beside the row
+            # cannot disagree with the figure in it.
+            price = package_row["price"] or 0
+            whole = round(package_charge / price) if price else 0
+            package_units = (whole if whole and abs(whole * price - package_charge) < 0.005
+                             else (order["covers"] or 1))
 
     # VAT is extracted from the gross (French prices are TTC), per rate.
     #
@@ -20065,6 +20366,9 @@ def pos_bill(conn, order_id):
     # spreading it across the food would move consideration from the 20% base
     # to the 10% one and under-declare. Because the covered amount is recorded
     # on each line, it can be taken off exactly where it landed.
+    #
+    # The package's own price goes in at the rate it was billed at, like any
+    # other line. A discount on the bill then reduces it too, in proportion.
     by_rate = {}
     for l in live:
         rate = l["vat_rate"] if l["vat_rate"] is not None else 0
@@ -20072,10 +20376,13 @@ def pos_bill(conn, order_id):
         b = by_rate.setdefault(float(rate), {"gross": 0.0, "vat": 0.0, "net": 0.0})
         b["gross"] += amount
         b["covered"] = round(b.get("covered", 0.0) + (l["package_covered"] or 0), 2)
+    if package_charge:
+        b = by_rate.setdefault(float(package_charge_rate), {"gross": 0.0, "vat": 0.0, "net": 0.0})
+        b["gross"] += package_charge
     # What the meal comes to before any deposit is credited, and so what the
     # rate rows add up to. Never below nothing: a discount bigger than the bill
     # makes the meal free, not a meal the house owes VAT back on.
-    before_deposit = round(max(0.0, gross - package - discount + service), 2)
+    before_deposit = round(max(0.0, gross - package + package_charge - discount + service), 2)
     for rate, amount in pos_split_by_rate(by_rate, before_deposit).items():
         b = by_rate[rate]
         b["gross"] = amount
@@ -20087,13 +20394,19 @@ def pos_bill(conn, order_id):
         (order_id,)).fetchone()["t"], 2)
     total = round(max(0.0, before_deposit - deposit), 2)
     issued = pos_vat_as_issued(conn, order, by_rate, gross=gross, discount=discount,
-                               service=service, deposit=deposit, total=total)
+                               service=service, deposit=deposit, total=total,
+                               package_covered=package, package_charge=package_charge)
     if issued is not None:
         by_rate = issued
     return {
         "order": order, "lines": lines, "live": live,
         "gross": gross, "discount": discount, "service": service, "deposit": deposit,
-        "package": package, "package_row": package_for(conn, order["package_id"]),
+        "package": package, "package_row": package_row,
+        # The bill's package-price row: the amount, and covers x each for the
+        # words beside it. Its rate is in vat_by_rate with everything else.
+        "package_charge": package_charge,
+        "package_units": package_units,
+        "package_unit_price": round(package_charge / package_units, 2) if package_charge else 0.0,
         "vat_by_rate": dict(sorted(by_rate.items())),
         "vat_total": round(sum(b["vat"] for b in by_rate.values()), 2),
         "total": total, "paid": paid, "outstanding": round(total - paid, 2),
@@ -20105,13 +20418,16 @@ def pos_bill(conn, order_id):
 def pos_split_by_rate(by_rate, charged):
     """Share what the bill comes to over its VAT rates, to the cent.
 
-    `by_rate` is {rate: {"gross": served, "covered": package}}, and `charged`
-    is the bill after the package, the discount and the service. Returns
-    {rate: amount}, and the amounts add up to exactly `charged`.
+    `by_rate` is {rate: {"gross": served, "covered": package}}, the package's
+    own price already in the gross of the rate it was billed at, and `charged`
+    is the bill after the package, its price, the discount and the service.
+    Returns {rate: amount}, and the amounts add up to exactly `charged`.
 
     Each rate is weighted by what is left on it once the package has taken its
     share, so the package comes off the rate its drinks carry and the discount
-    and service cannot both claim the same euro of a covered drink.
+    and service cannot both claim the same euro of a covered drink. The
+    package's price is weighed like any other line on its rate, so a discount
+    reduces it in proportion.
 
     The rates used to be rounded one at a time. With a discount or a service
     charge on a bill of three rates -- food, wine and a line rung up with no
@@ -20170,8 +20486,10 @@ def pos_vat_as_issued(conn, order, by_rate, **figures):
     None, and the bill uses its own arithmetic, when the tab is open, when it
     was reopened after it was settled, when it was settled before the journal
     existed, or when the entry no longer describes the bill -- the gross,
-    discount, service, deposit, total or set of rates has moved since. Rows
-    from an entry like that would be the VAT on a different meal.
+    discount, service, deposit, package, total or set of rates has moved
+    since. Rows from an entry like that would be the VAT on a different meal.
+    A figure an older entry predates (the package ones arrived on 16 October
+    2026, see pos_settled_entry) is not held against it; the total still is.
     """
     if order["status"] == "open":
         return None
@@ -20185,8 +20503,9 @@ def pos_vat_as_issued(conn, order, by_rate, **figures):
         payload = json.loads(row["payload"])
         issued = {float(rate): {k: float(v) for k, v in band.items()}
                   for rate, band in (payload.get("vat") or {}).items()}
-        if any(abs(float(payload.get(key) or 0) - value) > 0.005
-               for key, value in figures.items()):
+        if "total" not in payload or any(
+                key in payload and abs(float(payload[key] or 0) - value) > 0.005
+                for key, value in figures.items()):
             return None
     except (ValueError, TypeError, AttributeError):
         return None
@@ -20907,7 +21226,7 @@ def pos_close_period(conn, kind, period, user_id=None, *,
         (start, end)).fetchall()
         if start <= (service_day_iso(o["closed_at"] or o["opened_at"]) or "") <= end]
 
-    gross = discount = service = 0.0
+    gross = discount = service = package_charged = package_covered = 0.0
     covers = 0
     vat = {}
     for o in orders:
@@ -20915,6 +21234,8 @@ def pos_close_period(conn, kind, period, user_id=None, *,
         gross += bill["gross"]
         discount += bill["discount"]
         service += bill["service"]
+        package_charged += bill["package_charge"]
+        package_covered += bill["package"]
         covers += bill["covers"]
         for rate, b in bill["vat_by_rate"].items():
             acc = vat.setdefault(str(rate), {"gross": 0.0, "vat": 0.0, "net": 0.0})
@@ -20954,9 +21275,14 @@ def pos_close_period(conn, kind, period, user_id=None, *,
     variance = (round(counted_cash - expected_cash, 2)
                 if counted_cash is not None else None)
 
+    # The drinks packages go inside the hash with everything else: what they
+    # charged is a sale of the day's, and what they covered is the reason
+    # gross and VAT differ by more than the discounts and service explain.
+    package_charged, package_covered = round(package_charged, 2), round(package_covered, 2)
     body = _canonical({
         "kind": kind, "period": period, "gross": round(gross, 2),
         "discount": round(discount, 2), "service": round(service, 2),
+        "package_charged": package_charged, "package_covered": package_covered,
         "taken": taken, "vat": vat, "methods": methods,
         "tickets": len(orders), "covers": covers, "perpetual": perpetual,
         "float": opening_float, "counted": counted_cash, "variance": variance,
@@ -20965,12 +21291,14 @@ def pos_close_period(conn, kind, period, user_id=None, *,
 
     conn.execute(
         """INSERT INTO pos_closures (kind, period, first_sequence, last_sequence, gross_total,
-           discount_total, service_total, taken_total, vat_json, by_method_json,
+           discount_total, service_total, package_charged_total, package_covered_total,
+           taken_total, vat_json, by_method_json,
            ticket_count, covers, perpetual_total, opening_float, counted_cash,
            cash_variance, prev_hash, hash, closed_by_user_id, closed_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (kind, period, first_seq, last_seq, round(gross, 2), round(discount, 2),
-         round(service, 2), taken, json.dumps(vat), json.dumps(methods),
+         round(service, 2), package_charged, package_covered,
+         taken, json.dumps(vat), json.dumps(methods),
          len(orders), covers, perpetual, opening_float, counted_cash, variance,
          prev_hash, digest, user_id, now))
     pos_journal_append(conn, f"closure_{kind}",
@@ -21367,13 +21695,16 @@ def minutes_since(iso_stamp):
 
 def pos_take_payment(conn, order_id, amount, method, *, reference=None, line_ids=None,
                      seats=None, room_booking_id=None, stripe_session_id=None,
-                     user_id=None):
+                     user_id=None, raised_on=None):
     """Record one payment against a tab. A tab may take several.
 
     That is what splitting a bill is: three cards and the rest on the room is
     three rows, and they add up. The old till took one payment and closed, so
     a split table had to be rung up as separate tabs and the covers count was
     wrong for the rest of time.
+
+    `raised_on` is the tab a payment link was shown for, when that is not the
+    tab the money lands on — a link paid after its table was merged away.
     """
     conn.execute(
         """INSERT INTO pos_payments (order_id, amount, method, reference, covers_line_ids,
@@ -21388,10 +21719,13 @@ def pos_take_payment(conn, order_id, amount, method, *, reference=None, line_ids
     # The receipt number is allocated here, at the first payment, so a table
     # that sits down and leaves does not eat a number and leave a hole.
     receipt = pos_allocate_receipt_number(conn, order_id)
-    pos_journal_append(conn, "payment_taken", {
+    entry = {
         "payment_id": payment_id, "amount": round(float(amount), 2), "method": method,
         "receipt_number": receipt, "seats": seats or None, "reference": reference,
-    }, order_id=order_id, user_id=user_id)
+    }
+    if raised_on and raised_on != order_id:
+        entry["raised_on_order_id"] = raised_on
+    pos_journal_append(conn, "payment_taken", entry, order_id=order_id, user_id=user_id)
     return payment_id
 
 
@@ -21427,15 +21761,195 @@ def pos_close_if_settled(conn, order_id, method, *, user_id=None):
          datetime.now(timezone.utc).isoformat(), after["total"], order_id))
     log_audit(conn, "pos_tab_settled", target=after["order"]["table_label"],
               details=f"{money(after['total'])}")
-    pos_journal_append(conn, "tab_settled", {
-        "table": after["order"]["table_label"], "total": after["total"],
-        "gross": after["gross"], "discount": after["discount"],
-        "service": after["service"], "deposit": after["deposit"],
-        "vat": {str(k): v for k, v in after["vat_by_rate"].items()},
-        "covers": after["covers"], "method": method,
-        "receipt_number": pos_allocate_receipt_number(conn, order_id),
-    }, order_id=order_id, user_id=user_id)
+    pos_journal_append(conn, "tab_settled",
+                       pos_settled_entry(after, method,
+                                         pos_allocate_receipt_number(conn, order_id)),
+                       order_id=order_id, user_id=user_id)
     return after
+
+
+def pos_settled_entry(bill, method, receipt_number):
+    """The tab_settled journal record. One shape for every way a tab settles.
+
+    Its figures add up to its total: gross, less what a drinks package
+    covered, plus the package's own price, less the discount, plus service,
+    less the deposit. Entries written before 16 Oct 2026 have no package
+    figures, so an older entry for a tab that had a package does not add up.
+    The journal is never edited, which is why keys were added rather than the
+    old ones changed.
+    """
+    return {
+        "table": bill["order"]["table_label"], "total": bill["total"],
+        "gross": bill["gross"], "discount": bill["discount"],
+        "service": bill["service"], "deposit": bill["deposit"],
+        "package_covered": bill["package"], "package_charge": bill["package_charge"],
+        "vat": {str(k): v for k, v in bill["vat_by_rate"].items()},
+        "covers": bill["covers"], "method": method,
+        "receipt_number": receipt_number,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Merging two tabs.
+#
+# A merge moves every line off one tab onto another and voids the one it
+# emptied. Payments do NOT move, and that is deliberate. Each one was
+# journalled against the tab it was taken on, under that tab's receipt number,
+# and the journal cannot be rewritten to say otherwise; nothing else in the app
+# ever changes a stored payment either. So a tab that has already taken money
+# is never the one that gets emptied. Before this, a table that had put EUR 5
+# in cash towards EUR 20 could be merged into the next table: the EUR 5 stayed
+# on the void tab, the merged bill asked for the full amount again, the
+# cash-up (which reads settled tabs only) lost the EUR 5 so the drawer came out
+# over, and a receipt number sat on a void tab with nothing on it.
+#
+# The way round is to merge the other direction: the tab with the money keeps
+# its bill and the other table's lines come onto it. The page offers that
+# instead, and the route says so if it is asked for the wrong way round.
+# ---------------------------------------------------------------------------
+
+def pos_money_held(conn, order_ids):
+    """What each tab already holds, for the tabs that hold anything.
+
+    {order_id: {"paid", "payments", "receipt_number", "card_waiting"}}. A tab
+    holds money if a payment has been taken on it, if it has been given a
+    receipt number (which happens at the first payment), or if a charge is
+    sitting on the card reader for it. Tabs holding nothing are left out, so
+    `order_id in held` is the question a merge asks.
+
+    One pair of queries for any number of tabs, because the till page asks it
+    for every open table at once.
+    """
+    ids = [int(i) for i in order_ids]
+    if not ids:
+        return {}
+    marks = ",".join("?" * len(ids))
+    tabs = conn.execute(
+        f"SELECT id, receipt_number, payment_intent_id FROM pos_orders WHERE id IN ({marks})",
+        ids).fetchall()
+    paid = {r["order_id"]: r for r in conn.execute(
+        f"""SELECT order_id, COUNT(*) AS n, COALESCE(SUM(amount), 0) AS t
+              FROM pos_payments WHERE order_id IN ({marks}) GROUP BY order_id""",
+        ids).fetchall()}
+    held = {}
+    for t in tabs:
+        receipt = (t["receipt_number"] or "").strip() or None
+        card = bool((t["payment_intent_id"] or "").strip())
+        p = paid.get(t["id"])
+        if receipt or card or p:
+            held[t["id"]] = {"paid": round(p["t"], 2) if p else 0.0,
+                             "payments": p["n"] if p else 0,
+                             "receipt_number": receipt, "card_waiting": card}
+    return held
+
+
+def pos_held_sentence(subject, h):
+    """'Table 4 has already taken EUR 5.00 on receipt 2026-000047', or the
+    nearest true thing when there is no money yet but a number was issued."""
+    if h["payments"] and abs(h["paid"]) >= 0.005:
+        said = f"{subject} has already taken {money(h['paid'])}"
+        return f"{said} on receipt {h['receipt_number']}" if h["receipt_number"] else said
+    if h["receipt_number"]:
+        return f"{subject} already has receipt {h['receipt_number']}"
+    return f"{subject} has a payment on it"
+
+
+def pos_merge_refusal(source, into, held):
+    """Why `source` cannot be merged into `into`, or None if it can.
+
+    Pure: `held` is pos_money_held() for both tabs. The till page asks this
+    for every pair it might offer and the route asks it for the one pair it
+    was sent, so the page cannot offer a merge the route will refuse.
+    """
+    for tab in (source, into):
+        h = held.get(tab["id"])
+        if h and h["card_waiting"]:
+            # On the tab being emptied, the charge would complete against a
+            # void tab, and the reader's status check answers "settled" for
+            # any tab that is not open -- so the money would be taken at
+            # Stripe and recorded nowhere. On the tab being merged into, the
+            # bill would change under a charge already on the reader.
+            return (f"A card payment is waiting on the reader for Table "
+                    f"{tab['table_label']}. Let it finish, or cancel it, before merging.")
+    h = held.get(source["id"])
+    if not h:
+        return None
+    took = pos_held_sentence(f"Table {source['table_label']}", h)
+    if into["id"] not in held:
+        return (f"{took}, and money stays on the bill it was paid against. "
+                f"Bring Table {into['table_label']} onto Table {source['table_label']} "
+                f"instead.")
+    return (f"{took}, and Table {into['table_label']} has taken money too, so each "
+            f"settles as its own bill.")
+
+
+def pos_merge_options(conn, order):
+    """What the till page offers for merging this tab, in both directions.
+
+    `into`: open tabs this one can be merged into. `bring`: open tabs that can
+    be brought onto this one -- offered only when this tab holds money, which
+    is when merging the other way is refused. `why`: the sentence saying so.
+    """
+    out = {"into": [], "bring": [], "why": None}
+    others = conn.execute(
+        "SELECT id, table_label FROM pos_orders WHERE status = 'open' AND id != ? "
+        "ORDER BY table_label", (order["id"],)).fetchall()
+    if not others:
+        return out
+    held = pos_money_held(conn, [order["id"]] + [t["id"] for t in others])
+    mine = held.get(order["id"])
+    if mine and mine["card_waiting"]:
+        out["why"] = ("A card payment is waiting on the reader for this table. "
+                      "Let it finish, or cancel it, before merging.")
+        return out
+    out["into"] = [t for t in others if pos_merge_refusal(order, t, held) is None]
+    if mine:
+        out["bring"] = [t for t in others if pos_merge_refusal(t, order, held) is None]
+        out["why"] = pos_held_sentence("This table", mine) + (
+            ", so it keeps its bill: bring the other table onto this one."
+            if out["bring"] else
+            ", so it keeps its bill. None of the other open tables can be brought "
+            "onto it: each has taken money too, or has a card payment waiting.")
+    return out
+
+
+def pos_merge_tabs(conn, source_id, into_id, *, user_id=None):
+    """Merge one open tab into another. Returns (surviving tab id, message);
+    the id is None when the merge was refused and nothing was written.
+
+    Decides and writes under the write lock, so a payment cannot land on the
+    source between being checked for and the source being voided -- a phone
+    payment arriving by webhook, or a second tablet taking cash.
+    """
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+    if source_id == into_id:
+        return None, "That is this table."
+    source = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (source_id,)).fetchone()
+    into = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (into_id,)).fetchone()
+    if not source or source["status"] != "open" or not into or into["status"] != "open":
+        return None, "That table isn't open."
+    refusal = pos_merge_refusal(source, into, pos_money_held(conn, [source_id, into_id]))
+    if refusal:
+        return None, refusal
+    moved = conn.execute("UPDATE pos_order_lines SET order_id = ? WHERE order_id = ?",
+                         (into_id, source_id)).rowcount
+    conn.execute(
+        # 'void' rather than a new status: the schema constrains this
+        # column, and a merged tab genuinely holds nothing — every line
+        # moved, and it never took any money. merged_into_order_id says
+        # where they went.
+        """UPDATE pos_orders SET status = 'void', merged_into_order_id = ?, closed_at = ?
+           WHERE id = ?""", (into_id, datetime.now(timezone.utc).isoformat(), source_id))
+    conn.execute("UPDATE pos_orders SET covers = covers + ?, deposit_credit = deposit_credit + ? "
+                 "WHERE id = ?", (source["covers"] or 0, source["deposit_credit"] or 0, into_id))
+    pos_journal_append(conn, "tab_merged",
+                       {"from_table": source["table_label"], "into_table": into["table_label"],
+                        "into_order_id": into_id, "covers_moved": source["covers"] or 0,
+                        "lines_moved": moved,
+                        "deposit_moved": round(source["deposit_credit"] or 0, 2)},
+                       order_id=source_id, user_id=user_id)
+    return into_id, f"Merged {source['table_label']} into {into['table_label']}."
 
 
 def pos_day_report(conn, on_date):
@@ -21460,13 +21974,15 @@ def pos_day_report(conn, on_date):
     orders = [o for o in orders
               if service_day_iso(o["closed_at"] or o["opened_at"]) == day]
     by_method, gross, vat, covers, service, discounts = {}, 0.0, 0.0, 0, 0.0, 0.0
-    owed = 0.0
+    owed = package_charged = package_covered = 0.0
     for o in orders:
         bill = pos_bill(conn, o["id"])
         gross += bill["gross"]
         vat += bill["vat_total"]
         service += bill["service"]
         discounts += bill["discount"]
+        package_charged += bill["package_charge"]
+        package_covered += bill["package"]
         covers += bill["covers"]
         owed += bill["total"]
         payments = conn.execute(
@@ -21485,6 +22001,8 @@ def pos_day_report(conn, on_date):
         "date": day, "orders": orders, "tabs": len(orders), "covers": covers,
         "gross": round(gross, 2), "vat": round(vat, 2), "service": round(service, 2),
         "discounts": round(discounts, 2), "by_method": by_method,
+        "package_charged": round(package_charged, 2),
+        "package_covered": round(package_covered, 2),
         "owed": round(owed, 2),
     })
 
@@ -28541,33 +29059,91 @@ def held_mail_split(conn, now=None, limit=None):
     return (sendable[:limit] if limit else sendable), stale
 
 
-def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reason, error=None):
-    """Keep a message that could not be sent, so it can go out later.
+class HeldLetter:
+    """A letter on its way into email_outbox, and the row it became.
 
-    Deliberately opens and closes its own connection and swallows everything:
-    this runs on the failure path of a side effect, and the request that
-    triggered it has real work to finish — recording a booking, deciding an
-    expense. Failing to file a failure must not lose the thing that succeeded.
+    `id` is None until it is filed, and stays None if filing failed -- which
+    is how the record of the letter knows to say "failed" rather than "held".
     """
+    __slots__ = ("values", "id")
+
+    def __init__(self, values):
+        self.values = values
+        self.id = None
+
+
+def request_holds_a_write():
+    """True while a connection this request opened has a write not committed."""
+    for conn in g.get("_open_db_connections") or ():
+        try:
+            if conn.in_transaction:
+                return True
+        except sqlite3.ProgrammingError:        # closed already
+            pass
+    return False
+
+
+def file_held_letters(letters):
+    """Write letters into email_outbox: one connection, one commit.
+
+    Swallows everything, for queue_undelivered's reason. A failure is printed
+    per letter and leaves its id None, so nothing points at a row that is not
+    there.
+    """
+    if not letters:
+        return
     try:
         conn = get_db()
         try:
-            cur = conn.execute(
-                """INSERT INTO email_outbox (to_address, subject, body, ics_content,
-                   ics_filename, reason, last_error, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (to_address, subject, body, ics_content, ics_filename, reason, error,
-                 datetime.now(timezone.utc).isoformat()),
-            )
+            for letter in letters:
+                letter.id = conn.execute(
+                    """INSERT INTO email_outbox (to_address, subject, body, ics_content,
+                       ics_filename, reason, last_error, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", letter.values).lastrowid
             conn.commit()
-            # Which row, so the letter's record can say "held" and be put right
-            # the day it is sent from here.
-            return cur.lastrowid
         finally:
             conn.close()
     except Exception as e:                     # pragma: no cover - last resort
-        print(f"[outbox write failed] To: {to_address} | Subject: {subject} | Error: {e}")
-    return None
+        for letter in letters:
+            letter.id = None
+            print(f"[outbox write failed] To: {letter.values[0]} | "
+                  f"Subject: {letter.values[1]} | Error: {e}")
+
+
+def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reason, error=None):
+    """Keep a message that could not be sent, so it can go out later.
+
+    Deliberately on a connection of its own, with everything swallowed: this
+    runs on the failure path of a side effect, and the request that triggered
+    it has real work to finish — recording a booking, deciding an expense.
+    Failing to file a failure must not lose the thing that succeeded.
+
+    NOT ALWAYS AT ONCE, because the request is often the writer. SQLite allows
+    one, and a helper several calls down -- claim_range taking the booking
+    lock, a line in a registration's message history -- may have written on
+    the request's connection with nobody committing yet. A second connection
+    then waits the whole busy_timeout on a lock its own request holds, gives up
+    with "database is locked", and the letter was gone with a print line to
+    show for it: a paid stay's "Payment received" and the house's "Needs you"
+    among them, whenever guest mail was held or the provider was down. Eleven
+    in one run of the suite. test_outbox_lock reads the source for the shape,
+    and a write inside a helper is invisible to it.
+
+    So while this request holds a write, the letter waits in g and is filed
+    the moment that write is committed (HouseConnection.commit), or as the
+    request ends if it never is. What comes back is then a HeldLetter whose id
+    is filled in on filing; keep_guest_message waits the same way and is
+    written after it, so the record of the letter still points at its row.
+    """
+    letter = HeldLetter((to_address, subject, body, ics_content, ics_filename, reason,
+                         error, datetime.now(timezone.utc).isoformat()))
+    if has_request_context() and request_holds_a_write():
+        g.setdefault("_held_letters", []).append(letter)
+        return letter
+    file_held_letters([letter])
+    # Which row, so the letter's record can say "held" and be put right the
+    # day it is sent from here.
+    return letter.id
 
 
 # How long a message to a guest is kept. Two years past the stay: long enough
@@ -28821,6 +29397,10 @@ def write_guest_messages(rows):
                     to_address, subject, body, channel, delivered = row
                     row = {"to_address": to_address, "subject": subject, "body": body,
                            "channel": channel, "delivered": delivered}
+                if isinstance(row.get("outbox_id"), HeldLetter):
+                    # Filed after the request's write (queue_undelivered); the
+                    # row it became, or None if it could not be.
+                    row = dict(row, outbox_id=row["outbox_id"].id)
                 channel = row.get("channel") or "email"
                 by_mail = channel in ("email", "form")
                 about = row.get("about") or (None, None)
@@ -29633,6 +30213,10 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
         confirmed_now, _why = confirm_booking_by_id(
             conn, new_row["id"],
             online="the site, paid for online" if payment_status == "paid" else "the site")
+        # A refusal leaves commit to its caller, and the room-taken one leaves
+        # claim_range's lock held. Released here, before the letters below go
+        # over the network with every other booking queued behind it.
+        conn.commit()
 
     checkin_url = url_for("guest_checkin", manage_token=manage_token, _external=True)
     detail_lines = [
@@ -35265,6 +35849,9 @@ def office_display():
     who_is_here = guests_in_residence(conn, today)
 
     overview_today = build_overview(conn, "day", today)
+    # The screen's own panel lists who is in the house; its Today list is what
+    # happens today, so a guest on the third night of five is not on it twice.
+    overview_today["rows"] = [r for r in overview_today["rows"] if not r.get("staying")]
     dashboard_calendar = build_dashboard_calendar(conn, today)
     today_stats = build_office_display_stats(conn, today, who_is_here)
     queues = build_office_display_queues(conn, today)
@@ -38233,9 +38820,10 @@ def pos_order(order_id):
         """SELECT pos_payments.*, users.name AS taken_by FROM pos_payments
            LEFT JOIN users ON users.id = pos_payments.taken_by_user_id
            WHERE order_id = ? ORDER BY id""", (order_id,)).fetchall()
-    other_tables = conn.execute(
-        "SELECT id, table_label FROM pos_orders WHERE status = 'open' AND id != ? ORDER BY table_label",
-        (order_id,)).fetchall()
+    # Worked out by the same rule the move route applies, so the page never
+    # offers a merge that would be refused -- and when this tab has taken
+    # money, it offers the direction that keeps it.
+    merge = pos_merge_options(conn, bill["order"]) if bill["order"]["status"] == "open" else None
     # The set menu for tonight, if there is one — the panel only shows when a
     # published card actually carries a price.
     card = menu_for_date(conn, bill["order"]["service_date"]) if bill["order"]["service_date"] else None
@@ -38262,7 +38850,7 @@ def pos_order(order_id):
         context=context, in_house=in_house, payments=payments,
         payment_methods=POS_PAYMENT_METHODS, void_reasons=POS_VOID_REASONS,
         line_states=POS_LINE_STATES, service_states=POS_SERVICE_STATES,
-        allergens=ALLERGENS, other_tables=other_tables,
+        allergens=ALLERGENS, merge=merge,
         formule_menu=formule_menu, formules=formules, formule_choices=formule_choices,
         packages=packages, diet=diet, reader_on=reader_on,
         receipt_email_default=receipt_email_default)
@@ -38372,15 +38960,42 @@ def pos_set_package(order_id):
         conn.close()
         abort(404)
     conn.execute("UPDATE pos_orders SET package_id = ? WHERE id = ?", (package_id, order_id))
-    credit = apply_package(conn, order_id)
-    pos_journal_append(conn, "package_set",
-                       {"package_id": package_id, "covered": credit},
-                       order_id=order_id, user_id=session.get("user_id"))
+    covered, charge = pos_reprice_package(conn, order_id, user_id=session.get("user_id"),
+                                          always=True)
     conn.commit()
     conn.close()
-    flash(f"Package applied — {money(credit)} covered." if package_id
-          else "Package removed.", "success")
+    if not package_id:
+        flash("Package removed.", "success")
+    elif charge:
+        flash(f"Package applied — {money(charge)} on the bill for the package, "
+              f"{money(covered)} of drinks covered.", "success")
+    else:
+        flash(f"Package applied — {money(covered)} covered.", "success")
     return redirect(url_for("pos_order", order_id=order_id))
+
+
+def pos_reprice_package(conn, order_id, *, user_id=None, always=False):
+    """Work the tab's package out again, and journal what that did to the bill.
+
+    Returns (covered, charge). package_set records both, the charge it
+    replaced, and the covers it was sized on, so the journal alone says why a
+    bill moved. Written whenever either figure moved, or every time when
+    `always` (somebody chose the package). Call it after any change that sizes
+    the package: the package itself, or the covers it is priced on.
+    """
+    before = conn.execute("SELECT package_credit, package_charge FROM pos_orders WHERE id = ?",
+                          (order_id,)).fetchone()
+    covered = apply_package(conn, order_id)
+    after = conn.execute("SELECT package_id, package_charge, covers FROM pos_orders WHERE id = ?",
+                         (order_id,)).fetchone()
+    charge = round(after["package_charge"] or 0, 2)
+    was = round(before["package_charge"] or 0, 2)
+    if always or charge != was or covered != round(before["package_credit"] or 0, 2):
+        pos_journal_append(conn, "package_set", {
+            "package_id": after["package_id"], "covered": covered,
+            "charge": charge, "charge_was": was, "covers": after["covers"],
+        }, order_id=order_id, user_id=user_id)
+    return covered, charge
 
 
 @app.route("/admin/restaurant/packages")
@@ -38702,6 +39317,12 @@ def pos_adjust(order_id):
                          (max(1, int(request.form.get("covers", "1"))), order_id))
         except ValueError:
             pass
+        else:
+            # A per-cover package is sized on the covers: both its allowance
+            # and its own price. A party of two that becomes three owes a
+            # third pairing, and nothing else would put it on the bill.
+            if order["package_id"]:
+                pos_reprice_package(conn, order_id, user_id=session.get("user_id"))
     conn.commit()
     conn.close()
     return redirect(url_for("pos_order", order_id=order_id))
@@ -38710,10 +39331,14 @@ def pos_adjust(order_id):
 @app.route("/pos/<int:order_id>/move", methods=["POST"])
 @login_required
 def pos_move_table(order_id):
-    """Rename a table, or merge it into another.
+    """Rename a table, merge it into another, or bring another onto it.
 
     A party moving from the terrace to inside, or two tables becoming one, is
     ordinary. Without this it means re-ringing the whole order.
+
+    Two directions because a tab that has already taken money cannot be the
+    one emptied (see pos_merge_tabs): when it has, the other table is brought
+    onto it instead, so the money and the lines end up on one bill either way.
     """
     conn = get_db()
     order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
@@ -38721,43 +39346,24 @@ def pos_move_table(order_id):
         conn.close()
         abort(404)
     target = (request.form.get("merge_into", "") or "").strip()
-    if target.isdigit():
-        # A tab cannot be merged into itself. The page builds this list from
-        # `other_tables` so it never offers it, but the list is a convenience
-        # and not a boundary — the route takes whatever id the POST carries.
-        # Without this the lines move nowhere, the covers double, and the tab
-        # is voided with its order still sitting on it: a voided tab is never
-        # paid, so a table's whole bill quietly leaves the day's takings and
-        # has to be re-rung, which is the exact thing this route exists to
-        # avoid.
-        if int(target) == order_id:
+    bring = (request.form.get("merge_from", "") or "").strip()
+    if target.isdigit() or bring.isdigit():
+        # Whatever id the POST carries, not only what the page offered: the
+        # lists on the page are a convenience and not a boundary. A tab merged
+        # into itself would move its lines nowhere, double its covers and void
+        # itself with its order still on it; pos_merge_tabs refuses that, a
+        # tab that is not open, and a tab that has taken money being emptied.
+        source, into = ((order_id, int(target)) if target.isdigit()
+                        else (int(bring), order_id))
+        kept, message = pos_merge_tabs(conn, source, into, user_id=session.get("user_id"))
+        if kept is None:
             conn.close()
-            flash("That is this table.", "error")
+            flash(message, "error")
             return redirect(url_for("pos_order", order_id=order_id))
-        into = conn.execute("SELECT * FROM pos_orders WHERE id = ? AND status = 'open'",
-                            (target,)).fetchone()
-        if not into:
-            conn.close()
-            flash("That table isn't open.", "error")
-            return redirect(url_for("pos_order", order_id=order_id))
-        conn.execute("UPDATE pos_order_lines SET order_id = ? WHERE order_id = ?",
-                     (into["id"], order_id))
-        conn.execute(
-            # 'void' rather than a new status: the schema constrains this
-            # column, and a merged tab genuinely holds nothing — every line
-            # moved. merged_into_order_id says where they went.
-            """UPDATE pos_orders SET status = 'void', merged_into_order_id = ?, closed_at = ?
-               WHERE id = ?""", (into["id"], datetime.now(timezone.utc).isoformat(), order_id))
-        conn.execute("UPDATE pos_orders SET covers = covers + ?, deposit_credit = deposit_credit + ? "
-                     "WHERE id = ?", (order["covers"] or 0, order["deposit_credit"] or 0, into["id"]))
-        pos_journal_append(conn, "tab_merged",
-                           {"from_table": order["table_label"], "into_table": into["table_label"],
-                            "into_order_id": into["id"], "covers_moved": order["covers"] or 0},
-                           order_id=order_id, user_id=session.get("user_id"))
         conn.commit()
         conn.close()
-        flash(f"Merged into {into['table_label']}.", "success")
-        return redirect(url_for("pos_order", order_id=into["id"]))
+        flash(message, "success")
+        return redirect(url_for("pos_order", order_id=kept))
 
     label = (request.form.get("table_label", "") or "").strip()
     if label:
@@ -38993,6 +39599,16 @@ def pos_receipt_email_context(conn, bill):
     items = "\n".join(rows) or "  (nothing on this tab)"
 
     totals = []
+    # A drinks package: its own price, then what it covered, as the printed
+    # note has them. Without the second the lines above add up to more than
+    # the total and nothing on the email says why.
+    package_name = bill["package_row"]["name"] if bill["package_row"] else "Drinks package"
+    if bill["package_charge"]:
+        each = (f" ({bill['package_units']} x \u20ac{bill['package_unit_price']:,.2f})"
+                if bill["package_units"] > 1 else "")
+        totals.append(f"  {package_name}{each}   \u20ac{bill['package_charge']:,.2f}")
+    if bill["package"]:
+        totals.append(f"  {package_name}, drinks included   -\u20ac{bill['package']:,.2f}")
     if bill["discount"]:
         totals.append(f"  Discount   -\u20ac{bill['discount']:,.2f}")
     if bill["service"]:
@@ -39261,6 +39877,11 @@ def pos_day():
         report = pos_day_takings(dict(
             report, gross=closure["gross_total"],
             discounts=closure["discount_total"], service=closure["service_total"],
+            # None on a day closed before packages were recorded. Not filled
+            # in from the live tabs: that would pass today's arithmetic off
+            # as the frozen figure.
+            package_charged=closure["package_charged_total"],
+            package_covered=closure["package_covered_total"],
             covers=closure["covers"], tabs=closure["ticket_count"],
             by_method=closure["by_method"],
             vat=round(sum(v["vat"] for v in closure["vat"].values()), 2)))
@@ -39371,7 +39992,8 @@ def pos_archive_bundle(conn, year):
         (start, end)).fetchall()
     closures = conn.execute(
         """SELECT kind, period, first_sequence, last_sequence, gross_total, discount_total,
-                  service_total, taken_total, vat_json, by_method_json, ticket_count,
+                  service_total, package_charged_total, package_covered_total,
+                  taken_total, vat_json, by_method_json, ticket_count,
                   covers, perpetual_total, prev_hash, hash, closed_at FROM pos_closures
            WHERE period LIKE ? ORDER BY closed_at""", (f"{year}%",)).fetchall()
     tickets = conn.execute(
@@ -39419,6 +40041,9 @@ CONSERVATION
   A conserver six ans (LPF art. L. 102 B). Obligation d'inalterabilite,
   securisation, conservation et archivage : CGI art. 286, I-3 bis.
   Les prix sont exprimes TTC. La TVA est ventilee par taux dans clotures.csv.
+  Formules boisson : package_charged_total est le prix des formules facture,
+  package_covered_total la valeur des boissons comprises dans une formule
+  (vide pour une cloture anterieure a leur enregistrement).
 """
 
     buf = io.BytesIO()
@@ -39429,7 +40054,8 @@ CONSERVATION
             "user_id", "payload", "prev_hash", "hash"]))
         zf.writestr("clotures.csv", sheet(closures, [
             "kind", "period", "first_sequence", "last_sequence", "gross_total",
-            "discount_total", "service_total", "taken_total", "vat_json",
+            "discount_total", "service_total", "package_charged_total",
+            "package_covered_total", "taken_total", "vat_json",
             "by_method_json", "ticket_count", "covers", "perpetual_total",
             "prev_hash", "hash", "closed_at"]))
         zf.writestr("tickets.csv", sheet(tickets, [
@@ -39588,6 +40214,17 @@ def pos_take_card(order_id):
     return redirect(url_for("pos_order", order_id=order_id))
 
 
+def pos_reader_charge_recorded(conn, intent_id):
+    """Whether a card charge taken on the reader is already on the books.
+
+    Asked of every tab, not just the one polling: a Stripe PaymentIntent is one
+    charge wherever its payment row has since moved, and it is written once.
+    """
+    return bool(intent_id) and conn.execute(
+        "SELECT 1 FROM pos_payments WHERE method = 'card_terminal' AND reference = ?",
+        (intent_id,)).fetchone() is not None
+
+
 @app.route("/pos/<int:order_id>/card-status")
 @login_required
 def pos_card_status(order_id):
@@ -39609,9 +40246,30 @@ def pos_card_status(order_id):
         conn.close()
         return jsonify(state="idle", message="")
 
-    state, message, intent = terminal_payment_state(order["payment_intent_id"])
+    intent_id = order["payment_intent_id"]
+    state, message, intent = terminal_payment_state(intent_id)
     settled = False
     if state == "succeeded":
+        # One charge, one payment. The intent stayed on the tab after it was
+        # recorded, so a charge that left something owing (a coffee added while
+        # the guest tapped) reloaded the page, polled again and was recorded a
+        # second time: EUR 20 on the card, EUR 40 on the books, the coffee never
+        # taken and the tab closed. A tab reopened after a reader payment did the
+        # same. So the intent is taken OFF the tab before the payment is written,
+        # in the same transaction -- the UPDATE is the claim, and a second poll
+        # (this page open on two devices) waits for it and then finds nothing to
+        # claim. A charge already on the books is never written again, whichever
+        # tab it is on now. The unique index on pos_payments is the last word.
+        claimed = conn.execute(
+            "UPDATE pos_orders SET payment_intent_id = NULL "
+            "WHERE id = ? AND payment_intent_id = ?", (order_id, intent_id)).rowcount
+        if not claimed or pos_reader_charge_recorded(conn, intent_id):
+            conn.commit()
+            now = conn.execute("SELECT status FROM pos_orders WHERE id = ?",
+                               (order_id,)).fetchone()
+            conn.close()
+            return jsonify(state="succeeded", message="That card payment is already recorded.",
+                           settled=bool(now) and now["status"] != "open")
         # Trust Stripe for the amount, exactly as the webhook does — the guest
         # tapped what the reader asked for, and recomputing it here would let a
         # line added mid-tap change what we record as taken.
@@ -39621,7 +40279,7 @@ def pos_card_status(order_id):
         who = current_user()
         user = who["id"] if who else None
         pos_take_payment(conn, order_id, taken, "card_terminal",
-                         reference=order["payment_intent_id"], user_id=user)
+                         reference=intent_id, user_id=user)
         after = pos_close_if_settled(conn, order_id, "card_terminal", user_id=user)
         conn.commit()
         settled = after["outstanding"] <= 0.01
@@ -39629,9 +40287,10 @@ def pos_card_status(order_id):
                    if not settled else f"Settled — {money(after['total'])}.")
     elif state == "failed":
         # Clear the reference so the next attempt starts a fresh payment rather
-        # than polling a dead one forever.
-        conn.execute("UPDATE pos_orders SET payment_intent_id = NULL WHERE id = ?",
-                     (order_id,))
+        # than polling a dead one forever. Only THIS one: a press on another
+        # device may have put a fresh payment on the reader since it was read.
+        conn.execute("UPDATE pos_orders SET payment_intent_id = NULL "
+                     "WHERE id = ? AND payment_intent_id = ?", (order_id, intent_id))
         conn.commit()
     conn.close()
     return jsonify(state=state, message=message, settled=settled)
@@ -43375,6 +44034,17 @@ def restoration_page():
     return render_template("restoration.html")
 
 
+@app.route("/history")
+def history_page():
+    """The house from 1213 to now (owner, 15 Oct 2026: "a proper history page").
+
+    Static copy from the design side. /history was the old Squarespace
+    address, sent to the Restoration page by LEGACY_PATHS until this page
+    existed; it is the page itself now, so it keeps that address's ranking.
+    """
+    return render_template("history.html")
+
+
 @app.route("/gallery")
 def gallery_page():
     """Photographs, in the sections the public menu already links to.
@@ -46582,7 +47252,7 @@ def api_validate_promo_code():
         session_id_raw = request.form.get("session_id", "").strip()
         party_size = int(request.form.get("party_size", "")) if request.form.get("party_size", "").isdigit() else 0
         price_row = conn.execute(
-            """SELECT workshops.price_per_person FROM workshop_sessions
+            """SELECT workshops.price_per_person, workshops.single_supplement FROM workshop_sessions
                JOIN workshops ON workshops.id = workshop_sessions.workshop_id
                WHERE workshop_sessions.id = ?""",
             (session_id_raw,),
@@ -46590,7 +47260,14 @@ def api_validate_promo_code():
         if not price_row or party_size < 1 or not price_row["price_per_person"]:
             conn.close()
             return jsonify({"valid": False, "message": "Enter your party size first."})
-        subtotal = price_row["price_per_person"] * party_size
+        # A room to yourself is in the subtotal the booking will charge, so a
+        # percentage code must preview against it too. The same narrowing as
+        # the registration POST: one guest, a supplement set — anything else
+        # is priced as sharing there, so it is previewed as sharing here.
+        occupancy_type = request.form.get("occupancy_type", "").strip()
+        if not (occupancy_type == "solo" and party_size == 1):
+            occupancy_type = "double"
+        subtotal = workshop_subtotal(price_row, party_size, occupancy_type)[0]
     else:
         conn.close()
         return jsonify({"valid": False, "message": "Unknown booking type."}), 400
@@ -46801,6 +47478,9 @@ WORKSHOP_PREFILL = {
     "dietary_notes": "dietary_notes", "medical_notes": "medical_notes",
     "special_occasion": "special_occasion",
     "requested_roommate": "requested_roommate", "promo_code": "promo_code",
+    # The room-to-myself tick (z22), so it survives a validation error once
+    # the route offers it (solo_bookable).
+    "occupancy_type": "occupancy_type",
 }
 EVENT_PREFILL = {
     "contact_name": "contact_name", "contact_email": "contact_email",
@@ -47452,15 +48132,35 @@ def settle_pos_from_stripe_session(conn, stripe_session, meta):
     if not order_id.isdigit():
         return False
     order_id = int(order_id)
-    if conn.execute("SELECT 1 FROM pos_payments WHERE stripe_session_id = ?",
-                    (stripe_session["id"],)).fetchone():
-        return False
     amount = (sval(stripe_session, "amount_total") or 0) / 100.0
     if amount <= 0:
         return False
+    # Under the write lock from here: the tab is looked up and paid in one
+    # step, so a merge on the till cannot void it in between, and two
+    # deliveries of the same webhook cannot both pass the check below.
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+    if conn.execute("SELECT 1 FROM pos_payments WHERE stripe_session_id = ?",
+                    (stripe_session["id"],)).fetchone():
+        return False
+    # The link is for the table it was shown on, and the guest may pay it an
+    # hour later. If that table has since been merged into another, its lines
+    # are on the other bill and it is void: paid there, the money would sit
+    # on a tab no bill and no cash-up ever reads. So it follows the lines.
+    # The session id on the payment and the tab_merged entry in the journal
+    # say how it got there, and the payment's own entry names the tab the
+    # link was raised on.
+    raised_on, seen = order_id, set()
+    while order_id not in seen:
+        seen.add(order_id)
+        tab = conn.execute("SELECT status, merged_into_order_id FROM pos_orders WHERE id = ?",
+                           (order_id,)).fetchone()
+        if not tab or tab["status"] != "void" or not tab["merged_into_order_id"]:
+            break
+        order_id = tab["merged_into_order_id"]
     pos_take_payment(conn, order_id, amount, "card_link",
                      reference=stripe_session["id"],
-                     stripe_session_id=stripe_session["id"])
+                     stripe_session_id=stripe_session["id"], raised_on=raised_on)
     bill = pos_bill(conn, order_id)
     if bill and bill["outstanding"] <= 0.01 and bill["order"]["status"] == "open":
         conn.execute(
@@ -47473,14 +48173,10 @@ def settle_pos_from_stripe_session(conn, stripe_session, meta):
              datetime.now(timezone.utc).isoformat(), bill["total"], order_id))
         log_audit(conn, "pos_tab_settled", target=bill["order"]["table_label"],
                   details=f"{money(bill['total'])} by card link")
-        pos_journal_append(conn, "tab_settled", {
-            "table": bill["order"]["table_label"], "total": bill["total"],
-            "gross": bill["gross"], "discount": bill["discount"],
-            "service": bill["service"], "deposit": bill["deposit"],
-            "vat": {str(k): v for k, v in bill["vat_by_rate"].items()},
-            "covers": bill["covers"], "method": "card_link",
-            "receipt_number": pos_allocate_receipt_number(conn, order_id),
-        }, order_id=order_id)
+        pos_journal_append(conn, "tab_settled",
+                           pos_settled_entry(bill, "card_link",
+                                             pos_allocate_receipt_number(conn, order_id)),
+                           order_id=order_id)
     # Saved here. The webhook is the only caller -- the guest's phone returns
     # to the staff tab page, which records nothing -- and it closes without
     # committing, so the payment, the settled tab and the journal line were
@@ -49923,6 +50619,31 @@ def apply_room_facts_2026_10_15(conn):
     conn.commit()
     if changed:
         print(f"[rooms] the 15 October facts: {changed} room(s) corrected")
+    return changed
+
+
+# The view the room form wiped before it had a field for it (owner, 15 October;
+# fixed in ba27414). The Gold Suite -- the old "Suite with Mountain View" -- was
+# saved through the form and lost "Mountain view" off the Stay cards; the other
+# four still show theirs. Once, and only into a blank, so a view the owner has
+# since typed is kept and one he clears later stays cleared.
+ROOM_VIEWS_2026_10_16 = {"The Gold Suite": "mountain"}
+
+
+def apply_room_views_2026_10_16(conn):
+    """Once: put back a view the old room form wiped. Returns how many rooms."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'room_views_2026_10_16'").fetchone():
+        return 0
+    changed = 0
+    for name, outlook in ROOM_VIEWS_2026_10_16.items():
+        changed += conn.execute(
+            "UPDATE rooms SET outlook = ? WHERE name = ? AND COALESCE(TRIM(outlook), '') = ''",
+            (outlook, name)).rowcount
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('room_views_2026_10_16', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        print(f"[rooms] the view put back on {changed} room(s)")
     return changed
 
 
@@ -52836,15 +53557,32 @@ def parse_money(raw):
     return round(value, 2) if value >= 0 else None
 
 
-# What a guest may choose for themselves on the public registration form.
+# What a guest may always choose for themselves on the public registration form.
 #
-# 'solo' is deliberately absent. A private room on an atelier is arranged with
-# the château directly: the price depends on the atelier, the dates and what is
-# actually free, so it is quoted per enquiry rather than carried as a standing
-# supplement. Staff can still set solo on a booking by hand, which is how one
-# that was arranged over the phone gets recorded.
+# 'solo' is not in it because it is not always on offer: a room to yourself is
+# sold online only when the atelier carries a supplement and a room is free —
+# see workshop_solo_bookable(). Where it is not on offer a posted 'solo' still
+# becomes 'double', so a private room is never given away for nothing. Staff
+# can set solo on a booking by hand, which is how one arranged over the phone
+# gets recorded.
 PUBLIC_OCCUPANCY_TYPES = ("double", "triple")
 ALL_OCCUPANCY_TYPES = ("solo", "double", "triple")
+
+
+def workshop_solo_bookable(workshop, rooms_left):
+    """True when a guest coming alone may buy a room to themselves online.
+
+    Three things, all needed (owner, 15 Oct; handover z22 item 12): a priced
+    atelier, a supplement above nothing — 'solo' at no supplement is a private
+    room given away — and at least one room still free on the session. The
+    registration page offers the tick from this and the POST accepts 'solo'
+    from this, so the page can never offer what the route then refuses.
+    """
+    try:
+        supplement = float(workshop["single_supplement"] or 0)
+    except (KeyError, IndexError, TypeError, ValueError):
+        supplement = 0.0
+    return bool(supplement > 0 and workshop["price_per_person"] and rooms_left >= 1)
 
 
 def workshop_single_supplement(workshop, occupancy_type):
@@ -54623,6 +55361,10 @@ def send_workshop_email(conn, booking, template_key, context, statement=False,
                       area="workshops", about=("workshop", booking["id"]),
                       template_key=template_key, sent_by=sent_by)
     log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "sent" if sent else "failed")
+    # Kept as it is written. Left open, the line sits across whatever the
+    # caller sends next -- the house's "Payment received from ..." straight
+    # after a receipt -- and that letter goes over the network under a write.
+    conn.commit()
     return bool(sent)
 
 
@@ -55188,6 +55930,18 @@ def workshop_register(session_id):
         # Don't offer a private room the château cannot give: the same reason
         # a taken night is not clickable on the booking calendar.
         "solo_possible": rooms_left >= 1 or not bookable_room_count(conn),
+        # Whether "A room to myself, +€X" is offered and charged online. The
+        # POST below accepts 'solo' only on the same answer.
+        "solo_bookable": workshop_solo_bookable(session_row, rooms_left),
+        # The deposit percent create_workshop_booking will charge, for each
+        # party size the form allows. The page works out the amounts as the
+        # guest types (handover z22); a deposit rule can vary by party size,
+        # so the workshop's own percent alone could show one figure and
+        # charge another.
+        "deposit_by_party": {
+            n: resolve_deposit_percent(conn, "workshop", session_row["start_date"], n,
+                                       session_row["deposit_percent"])
+            for n in range(1, (session_row["capacity"] or 15) + 1)},
     }
 
     if request.method == "POST":
@@ -55206,13 +55960,17 @@ def workshop_register(session_id):
         party_size_raw = request.form.get("party_size", "").strip()
         party_size = int(party_size_raw) if party_size_raw.isdigit() else None
         occupancy_type = request.form.get("occupancy_type", "double").strip()
-        # A private room is arranged with the château directly, not booked
-        # online: what it costs depends on the atelier, the dates and what is
-        # free, so it is quoted case by case rather than carrying a standing
-        # supplement. The refusal is here rather than only in the form because
-        # hiding an <option> stops nobody from posting the value — and 'solo'
-        # with no supplement set is a private room given away for nothing.
-        if occupancy_type not in PUBLIC_OCCUPANCY_TYPES:
+        # A room to yourself is sold here only for one guest on an atelier that
+        # carries a supplement (the page hides the tick for a larger party).
+        # Anything else posting 'solo' becomes 'double', as it always has: the
+        # refusal is here rather than only in the form because hiding a tick
+        # stops nobody from posting the value, and 'solo' with no supplement is
+        # a private room given away for nothing. Whether a room is still FREE
+        # is asked again below under the write lock, because a guest who ticked
+        # it was promised one and must not be quietly put in a shared room.
+        solo_wanted = (occupancy_type == "solo" and party_size == 1
+                       and workshop_solo_bookable(session_row, 1))
+        if occupancy_type not in PUBLIC_OCCUPANCY_TYPES and not solo_wanted:
             occupancy_type = "double"
         requested_roommate = request.form.get("requested_roommate", "").strip()[:200]
         dietary_notes = request.form.get("dietary_notes", "").strip()[:500]
@@ -55240,6 +55998,13 @@ def workshop_register(session_id):
             # read "room for you".
             error = "This session is fully booked — join the waitlist below, or choose another date."
             fully_booked = True
+        elif solo_wanted and (bookable_room_count(conn)
+                              - session_rooms_used(conn, session_id)) < 1:
+            # Counted after claim_workshop_places took the lock, so two guests
+            # ticking it for the last free room cannot both be sold it.
+            error = ("The last room to yourself on these dates has just been taken. "
+                     "You can still come and share a room with another guest travelling solo.")
+            page["solo_bookable"] = False
         else:
             # end_date is the last day the guests are still there (they check
             # out that morning, the same convention a workshop uses to hold
@@ -68560,6 +69325,19 @@ def send_booking_to_pennylane(conn, booking, user_id=None):
     return True, f"Sent {money(total)} for {booking['reference_code']}."
 
 
+def pos_closure_sales(closure):
+    """What a closed day sold, TTC: its sealed VAT bands added up.
+
+    The amount send_pos_day_to_pennylane invoices, so the page that offers to
+    send a day states what will actually go. gross_total is the menu-price
+    total before discounts, service and drinks packages; it is neither, and
+    it left a package's own price out entirely.
+    """
+    bands = json.loads(closure["vat_json"] or "{}")
+    return round(sum(float(b.get("net") or 0) + float(b.get("vat") or 0)
+                     for b in bands.values()), 2)
+
+
 def pos_day_pennylane_lines(conn, closure):
     """A day's takings as accounting lines, one per VAT rate.
 
@@ -68910,7 +69688,7 @@ def revenue_to_send():
             """SELECT * FROM pos_closures WHERE kind = 'day'
                 ORDER BY period DESC LIMIT 120""").fetchall():
         days.append({"closure": closure,
-                     "total": round(float(closure["gross_total"] or 0), 2),
+                     "total": pos_closure_sales(closure),
                      "sent": pennylane_already_sent(conn, "pos_day", closure["id"])})
     conn.close()
     waiting = [r for r in rows if not r["sent"] and r["total"] > 0]
@@ -83970,7 +84748,10 @@ _ISO_DAY_TEXT = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # chained by hash) and stays exactly as stored; this is only its reading.
 _JOURNAL_MONEY = {"gross", "vat", "amount", "total", "service", "discount", "deposit",
                   "net", "unit_price", "supplement", "variance", "taken", "price",
-                  "perpetual", "counted", "covered"}
+                  "perpetual", "counted", "covered",
+                  # A drinks package's own price on package_set and
+                  # tab_settled, and what it covered on the bill.
+                  "charge", "charge_was", "package_charge", "package_covered"}
 _JOURNAL_LABELS = {
     "receipt_number": "Receipt", "unit_price": "Each", "vat_rate": "VAT rate",
     "perpetual": "Running total", "counted": "Counted", "covers_moved": "Covers moved",
@@ -92980,10 +93761,10 @@ def make_channel_door_link(reservation_id):
 # ---------------------------------------------------------------------------
 # THE HOUSE CALENDAR.
 #
-# One real Microsoft 365 calendar, "Château de Gudanes — House", that the app
-# WRITES to and everybody reads -- on a desk, in a browser, on a phone -- with
-# the stays, the dinners, the ateliers, the events, the tasks and the rota in
-# it. An .ics subscription was the obvious way and the wrong one: Outlook
+# One real Microsoft 365 calendar -- the house mailbox's own default calendar,
+# "House" in Outlook's directory -- that the app WRITES to and everybody reads
+# -- on a desk, in a browser, on a phone -- with the stays, the dinners, the
+# ateliers, the events, the tasks and the rota in it. An .ics subscription was the obvious way and the wrong one: Outlook
 # refreshes a subscribed feed every few hours, so a stay booked at ten was not
 # on anybody's phone until the afternoon. Written into Exchange, it is there in
 # under a minute.
@@ -93006,7 +93787,11 @@ def make_channel_door_link(reservation_id):
 # holds it to that, and the privacy notice says so.
 # ---------------------------------------------------------------------------
 
+# The .ics feed's name. Microsoft's copy is not called this any more: it is
+# the house mailbox's default calendar, which Outlook's directory lists under
+# the mailbox's own display name.
 HOUSE_CALENDAR_NAME = "Château de Gudanes — House"
+HOUSE_CALENDAR_DIRECTORY_NAME = "House"
 # (key, label, mark, Outlook preset colour). The mark leads every subject so
 # the area reads on a phone, where category colours do not always show.
 HOUSE_CALENDAR_AREAS = [
@@ -93022,8 +93807,12 @@ HOUSE_CALENDAR_PAST_DAYS = 30
 HOUSE_CALENDAR_AHEAD_DAYS = 548
 HOUSE_CALENDAR_POLL_SECONDS = 30
 HOUSE_CALENDAR_MAX_WRITES = 150     # per pass; anything more waits for the next
-HOUSE_CALENDAR_CHECK_IN = "16:00"
-HOUSE_CALENDAR_CHECK_OUT = "11:00"
+# A stay is blocked on the staff's calendar from when the guest may arrive to
+# when they must leave -- the house's own times, so the calendar the team
+# plans by agrees with what every guest is told (owner, 16 October 2026: it
+# said 4pm to 11am after the house moved to 3pm and 10am).
+HOUSE_CALENDAR_CHECK_IN = CHECK_IN_TIME
+HOUSE_CALENDAR_CHECK_OUT = CHECK_OUT_TIME
 HOUSE_CALENDAR_DINNER_HOURS = 3
 # The property every event the app writes carries, so the nightly reconcile can
 # tell the app's events from anything a person added by hand.
@@ -93040,6 +93829,10 @@ HOUSE_CALENDAR_SETTINGS = {
     # writing had stopped; this is what tells them apart.
     "in_range": "house_calendar_in_range",
     "shared_by_hand": "house_calendar_shared_by_hand",
+    # The calendar the app wrote to before this one, while its old events are
+    # taken out of it; whether that is done; and what the page says about it.
+    "retired": "house_calendar_retired_id", "retired_empty": "house_calendar_retired_empty",
+    "retired_note": "house_calendar_retired_note",
 }
 # Windows' name for the house's zone, which every Graph create and update
 # accepts; Graph lists Europe/Paris as well, but warns that writes "might not
@@ -93182,7 +93975,12 @@ def house_calendar_items(conn, start, end, areas=None):
             s = sessions.setdefault(f["session"], {"title": f.get("workshop") or "Atelier",
                                                    "start": f.get("start"), "end": f.get("end"),
                                                    "places": 0, "people": 0, "pending": 0,
-                                                   "link": r.get("link")})
+                                                   "link": r.get("link"), "running": None})
+            if f.get("running"):
+                # The sitting's own row for its later days: it carries the
+                # whole sitting's numbers, and is not another place on it.
+                s["running"] = f
+                continue
             s["places"] += 1
             s["people"] += f.get("party") or 1
             s["pending"] += 1 if r["status"] == "pending" else 0
@@ -93238,6 +94036,11 @@ def house_calendar_items(conn, start, end, areas=None):
     for session_id, s in sessions.items():
         if not s["start"]:
             continue
+        if not s["places"] and s["running"]:
+            # Begun before the window, so its places are not in it; the
+            # sitting's own row counts them.
+            s.update(places=s["running"]["places"], people=s["running"]["people"],
+                     pending=s["running"]["pending"])
         key = f"session:{session_id}"
         items[key] = {"key": key, "area": "ateliers", "all_day": True,
                       "subject": f"{marks['ateliers']} {s['title']} · {s['places']} booked, "
@@ -93334,32 +94137,100 @@ def graph_send(method, path, token, body=None, headers=None):
 
 
 def ensure_house_calendar(conn, token):
-    """The house calendar's id: the one already made, or one found by name,
-    or a new one. Also puts the area categories, with their colours, into the
-    mailbox -- which needs MailboxSettings.ReadWrite; without it the events
-    still carry their category names and the page says why there is no colour."""
+    """The house calendar's id: the DEFAULT calendar of the house mailbox.
+
+    It used to be a second calendar inside that mailbox, made by name, and
+    nobody could see it. Outlook's Add calendar -> From directory -> House adds
+    a mailbox's default calendar and no other, and a shared mailbox's other
+    calendars can only be given out by an invitation sent from inside it. So
+    the events go where Outlook looks, and the app never makes a calendar.
+
+    When the id is not the one stored -- the move off the named calendar, or
+    HOUSE_CALENDAR_MAILBOX pointed at another mailbox -- every event the app
+    remembers is in the OLD calendar, and patching one by its id would go on
+    writing there (an event's address is the mailbox's, not the calendar's).
+    So they are forgotten, each is made once in this calendar on the same
+    pass, and the old calendar is marked to be emptied of them by
+    empty_retired_house_calendar. The sharing recorded was the old calendar's,
+    so that goes too.
+
+    Also puts the area categories, with their colours, into the mailbox --
+    which needs MailboxSettings.ReadWrite; without it the events still carry
+    their category names and the page says why there is no colour."""
     mb = HOUSE_CALENDAR_MAILBOX
-    cal_id = _hc_get(conn, "id")
-    if cal_id:
-        if graph_get(f"/users/{mb}/calendars/{cal_id}", token, params={"$select": "id"}) is not None:
-            return cal_id
-        if "answered 404" not in (graph_last_error() or ""):
-            raise HouseCalendarError(graph_last_error() or "the calendar could not be read")
-    listing = graph_get(f"/users/{mb}/calendars", token, params={"$select": "id,name", "$top": "100"})
-    if listing is None:
-        raise HouseCalendarError(graph_last_error() or f"{mb}'s calendars could not be read")
-    found = next((c["id"] for c in listing.get("value", []) if c.get("name") == HOUSE_CALENDAR_NAME),
-                 None)
-    if not found:
-        status, made, err = graph_send("POST", f"/users/{mb}/calendars", token,
-                                       {"name": HOUSE_CALENDAR_NAME, "color": "lightBrown"})
-        if status not in (200, 201) or not made or not made.get("id"):
-            raise HouseCalendarError(err or "Microsoft did not make the calendar")
-        found = made["id"]
-    _hc_set(conn, "id", found)
+    found = graph_get(f"/users/{mb}/calendar", token, params={"$select": "id"})
+    if found is None or not found.get("id"):
+        raise HouseCalendarError(graph_last_error() or f"{mb}'s calendar could not be read")
+    cal_id = found["id"]
+    stored = _hc_get(conn, "id")
+    if stored == cal_id:
+        return cal_id
+    if stored:
+        conn.execute("DELETE FROM house_calendar_events")
+        _hc_set(conn, "retired", stored)
+        _hc_set(conn, "retired_empty", "")
+        _hc_set(conn, "retired_note", "")
+        _hc_set(conn, "shared", "")
+        _hc_set(conn, "shared_by_hand", "")
+    _hc_set(conn, "id", cal_id)
     ensure_house_categories(conn, token)
     conn.commit()
-    return found
+    return cal_id
+
+
+def empty_retired_house_calendar(conn, token, budget, *, full=False):
+    """Take the app's events out of the calendar it wrote to before, a pass at
+    a time. Returns (removed, waiting).
+
+    Only events carrying the app's key go, and none the app still counts as
+    its own -- so anything a person put there by hand stays, and if the old
+    calendar ever turned out to be the current one, nothing of today's is
+    touched. The calendar itself is never deleted: that is the owner's call,
+    and the page names it. Once it is empty it is looked at again only on the
+    nightly check, which forgets it the night it has been deleted."""
+    old = _hc_get(conn, "retired")
+    if not old or (_hc_get(conn, "retired_empty") and not full):
+        return 0, 0
+    mb = HOUSE_CALENDAR_MAILBOX
+    about = graph_get(f"/users/{mb}/calendars/{old}", token, params={"$select": "id,name"})
+    if about is None:
+        if "answered 404" in (graph_last_error() or ""):
+            # Deleted, or in a mailbox the app no longer writes: nothing to move.
+            for name in ("retired", "retired_empty", "retired_note"):
+                _hc_set(conn, name, "")
+            return 0, 0
+        _hc_set(conn, "retired_note", "The calendar the app used before could not be read, so "
+                                      "its old events are still in it: "
+                                      + (graph_last_error() or "no answer"))
+        return 0, 0
+    called = f'"{about.get("name") or "the old calendar"}"'
+    try:
+        remote = house_calendar_remote(token, old)
+    except HouseCalendarError as e:
+        _hc_set(conn, "retired_note", f"The app's old events in {called} could not be listed: {e}")
+        return 0, 0
+    claimed = {r["graph_id"] for r in conn.execute(
+        "SELECT graph_id FROM house_calendar_events WHERE graph_id IS NOT NULL")}
+    left = [gid for gid, ev in remote.items() if ev["key"] and gid not in claimed]
+    removed, refused = 0, []
+    for gid in left[:max(budget, 0)]:
+        status, _b, err = graph_send("DELETE", f"/users/{mb}/events/{gid}", token)
+        if status in (200, 204, 404):
+            removed += 1
+        else:
+            refused.append(err or f"remove refused ({status})")
+    waiting = len(left) - removed - len(refused)
+    if refused or waiting:
+        _hc_set(conn, "retired_note",
+                f"Moving off {called}: {len(left) - removed} of the app's old events still to take "
+                "out of it" + (f". Microsoft refused: {refused[-1]}" if refused else "") + ".")
+    else:
+        _hc_set(conn, "retired_empty", "1")
+        _hc_set(conn, "retired_note",
+                f"The app's events have been taken out of {called}, the calendar it wrote to "
+                f"before. The calendar itself is still in {mb}, with anything a person put in it "
+                "by hand. Delete it when nobody needs it; this line goes the night after.")
+    return removed, waiting
 
 
 def ensure_house_categories(conn, token):
@@ -93540,10 +94411,16 @@ def sync_house_calendar(conn, *, full=False):
                 continue
         conn.execute("DELETE FROM house_calendar_events WHERE key = ?", (key,))
         counts["removed"] += 1
+    # After this calendar is right, with what the pass has left to spend.
+    conn.commit()
+    counts["moved_out"], waiting = empty_retired_house_calendar(
+        conn, token, HOUSE_CALENDAR_MAX_WRITES - writes, full=full)
+    counts["waiting"] += waiting
     now_iso = datetime.now(timezone.utc).isoformat()
     _hc_set(conn, "last_check", now_iso)
     _hc_set(conn, "in_range", str(len(desired)))
-    if counts["created"] or counts["updated"] or counts["removed"] or counts["strays"]:
+    if (counts["created"] or counts["updated"] or counts["removed"] or counts["strays"]
+            or counts["moved_out"]):
         _hc_set(conn, "last_change", now_iso)
     if not counts["failed"]:
         _hc_set(conn, "last_ok", now_iso)
@@ -93557,7 +94434,8 @@ def sync_house_calendar(conn, *, full=False):
 def house_calendar_counts_words(counts):
     said = [f"{counts[k]} {w}" for k, w in (
         ("created", "added"), ("updated", "updated"), ("removed", "removed"),
-        ("strays", "strays cleared"), ("restored", "put back"), ("failed", "refused"),
+        ("strays", "strays cleared"), ("restored", "put back"),
+        ("moved_out", "taken out of the old calendar"), ("failed", "refused"),
         ("waiting", "waiting for the next pass")) if counts.get(k)]
     if said:
         return ", ".join(said)
@@ -93604,7 +94482,7 @@ def house_calendar_tick():
             if counts["failed"]:
                 house_calendar_note_failure(
                     conn, f"{counts['failed']} event(s) were refused; the page lists them")
-            if any(counts[k] for k in ("created", "updated", "removed", "failed")):
+            if any(counts[k] for k in ("created", "updated", "removed", "moved_out", "failed")):
                 record_job_run(conn, "house_calendar_sync", not counts["failed"],
                                house_calendar_counts_words(counts))
             return counts
@@ -93637,9 +94515,10 @@ def run_house_calendar_reconcile_job(conn):
 
 def house_calendar_share_command():
     """The one line of Exchange Online PowerShell that shares the calendar
-    with everybody, for when Graph cannot."""
-    return (f'Set-MailboxFolderPermission -Identity "{HOUSE_CALENDAR_MAILBOX}:\\Calendar\\'
-            f'{HOUSE_CALENDAR_NAME}" -User Default -AccessRights Reviewer')
+    with everybody, for when Graph cannot. The mailbox's own Calendar folder,
+    with nothing under it: that is the calendar the app writes."""
+    return (f'Set-MailboxFolderPermission -Identity "{HOUSE_CALENDAR_MAILBOX}:\\Calendar" '
+            f'-User Default -AccessRights Reviewer')
 
 
 def house_calendar_org_entry(perms):
@@ -93799,7 +94678,7 @@ def house_calendar_status(conn):
         "last_error_at": _hc_get(conn, "last_error_at"),
         "last_reconcile": _hc_get(conn, "last_reconcile"),
         "categories_note": _hc_get(conn, "categories"), "shared_note": _hc_get(conn, "shared"),
-        "in_range": _hc_get(conn, "in_range"),
+        "in_range": _hc_get(conn, "in_range"), "retired_note": _hc_get(conn, "retired_note"),
         "by_area": by_area, "written": sum(1 for r in rows if r["graph_id"]),
         "failures": failures[:40], "failure_count": len(failures),
     }
@@ -93850,7 +94729,7 @@ def admin_house_calendar():
             for key, label, _m, _c in HOUSE_CALENDAR_AREAS]
     return render_template("admin_house_calendar.html", st=st, feeds=feeds,
                            areas=HOUSE_CALENDAR_AREAS, chosen=areas, preview=preview[:60],
-                           window=(start, end), name=HOUSE_CALENDAR_NAME,
+                           window=(start, end), name=HOUSE_CALENDAR_DIRECTORY_NAME,
                            share_command=house_calendar_share_command(),
                            poll=HOUSE_CALENDAR_POLL_SECONDS)
 
@@ -101466,7 +102345,7 @@ LEGACY_PATHS = [
     ("/la-table", "restaurant_info", True),
     ("/the-chateau", "restoration_page", True),
     ("/about", "restoration_page", True),
-    ("/history", "restoration_page", True),
+    # /history is a page of its own since handover z22 (history_page).
     # The house writes. If it ever publishes that writing at its own address,
     # a 301 cached in every returning reader's browser would be in the way.
     ("/blog", "gallery_page", False),
@@ -101753,7 +102632,8 @@ def sitemap():
         ("events_weddings", "0.7"), ("events_private", "0.6"),
         ("events_photoshoots", "0.6"), ("press", "0.5"), ("story", "0.7"),
         ("facilities_page", "0.7"),
-        ("restoration_page", "0.7"), ("gallery_page", "0.6"), ("contact_page", "0.6"),
+        ("restoration_page", "0.7"), ("history_page", "0.7"),
+        ("gallery_page", "0.6"), ("contact_page", "0.6"),
         ("whats_on", "0.5"), ("terms_page", "0.3"),
     ]
     urls = []

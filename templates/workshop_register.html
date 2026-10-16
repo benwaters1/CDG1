@@ -17,6 +17,10 @@
    the register route (fresh, rate-limited and validation-error), and a variable
    passed by hand would sooner or later be missing from one of them. #}
 {% set supplement = (session['single_supplement'] or 0) if session['price_per_person'] else 0 %}
+{#- 15 Oct (owner): mention the single supplement only when it is set, has a price, and can be booked and paid here. The server
+    must say so (solo_bookable): until it accepts 'solo' online, the page offers sharing only, so the price shown and the price
+    charged can never differ. -#}
+{% set _solo = (supplement > 0) and (solo_bookable is defined and solo_bookable) %}
 
 {# CONTRACT: method="post", no action (posts to /workshops/register/<session_id>).
    csrf_token first. Fields: party_size, guest_name, guest_email,
@@ -53,12 +57,23 @@
             {% if session and session['capacity'] %}<p class="g-hint">Up to {{ session['capacity'] }} on this workshop.</p>{% endif %}
             {% if session['price_per_person'] %}
             <p class="g-hint" id="occupancy_total"></p>
+            <p class="g-hint" id="occupancy_due"></p>
             {% endif %}
           </div>
 
+          {% if _solo %}
           <p class="g-hint g-hint--block">
-            Coming alone, you share with another guest travelling solo, or take a room to yourself with a single supplement.
+            Coming alone, you share a room with another guest travelling solo, or take a room to yourself for €{{ '{:,.0f}'.format(supplement) }} more.
           </p>
+          <div class="g-field" id="solo_field">
+            <label class="g-check"><input type="checkbox" name="occupancy_type" value="solo" id="occupancy_solo"{% if prefill_occupancy_type is defined and prefill_occupancy_type == 'solo' %} checked{% endif %}>
+              A room to myself, +€{{ '{:,.0f}'.format(supplement) }}</label>
+          </div>
+          {% else %}
+          <p class="g-hint g-hint--block">
+            Coming alone, you share a room with another guest travelling solo.
+          </p>
+          {% endif %}
 
 
           <div class="g-field">
@@ -186,18 +201,24 @@
         <dl class="g-dossier__l">
           <div><dt>Dates</dt><dd>{{ date_range(session['start_date'], session['end_date']) }}</dd></div>
           {% if session['instructor_name'] %}<div><dt>With</dt><dd>{{ session['instructor_name'] }}</dd></div>{% endif %}
-          {% if session['price_per_person'] %}<div><dt>Per person</dt><dd>€{{ '{:,.0f}'.format(session['price_per_person']) }}</dd></div>{% endif %}
+          {% if session['price_per_person'] %}<div><dt>Per person</dt><dd>€{{ '{:,.0f}'.format(session['price_per_person']) }}</dd></div>
+          {#- 15 Oct (owner: "the payment amount of 10% isn't clear"): the amounts themselves, worked out as the server will
+              (compute_workshop_payment_terms: deposit = total x percent, balance due 30 days before; inside 30 days, all now),
+              following the guest count and any promo code. Filled by the script below; hidden until it runs. -#}
+          <div class="g-pay-row" id="ws_total_row" hidden><dt>Total</dt><dd id="ws_total"></dd></div>
+          <div class="g-pay-row g-pay-row--now" id="ws_now_row" hidden><dt id="ws_now_k">Due today</dt><dd id="ws_now"></dd></div>
+          <div class="g-pay-row" id="ws_bal_row" hidden><dt>Balance</dt><dd id="ws_bal"></dd></div>{% endif %}
         </dl>
 
         {% if session['price_per_person'] %}
         {# Without the route's windows (or a deposit percent) this read "the balance is due  days before". #}
         {%- set _bd = windows.workshop_balance_days if windows else none %}
-        <p class="g-foot-note">{% if session['deposit_percent'] %}A {{ session['deposit_percent'] }}% deposit is due at booking; {% else %}Nothing is due at booking; {% endif %}{% if _bd %}the balance is due {{ _bd }} days before the stay, or in full if you are booking within {{ _bd }} days of it.{% else %}the balance is due before the stay.{% endif %}</p>
+        <p class="g-foot-note" id="ws_terms_note">{% if session['deposit_percent'] %}A {{ session['deposit_percent'] }}% deposit is due at booking; {% else %}Nothing is due at booking; {% endif %}{% if _bd %}the balance is due {{ _bd }} days before the stay, or in full if you are booking within {{ _bd }} days of it.{% else %}the balance is due before the stay.{% endif %}</p>
         {% endif %}
 
         <p class="g-hint g-terms-line" style="margin:0 0 var(--s3)">By registering, you agree to the <a href="{{ url_for('terms_page') }}" target="_blank" rel="noopener">terms and conditions</a>.</p>
 
-        <button type="submit" class="g-btn g-submit">Pay &amp; register</button>
+        <button type="submit" class="g-btn g-submit" id="ws_pay_btn">Pay &amp; register</button>
         <p class="g-foot-note">Your place is confirmed as you register, and held from that moment. You will get a reference code and a link to manage your registration and payment.</p>
         {{ payment_safety(compact=true) }}
       </aside>
@@ -211,21 +232,83 @@
 // The running total, so the figure on the confirmation is never a surprise.
 // Deliberately the same arithmetic as workshop_subtotal() in app.py — price
 // times party size. Rooms are allocated by the château rather than chosen
-// here, so there is no supplement to add. The server is still what charges;
+// here (a room to yourself only where the server offers it - solo_bookable). The server is still what charges;
 // this only shows what it is going to do.
 (function() {
   var totalEl = document.getElementById('occupancy_total');
   if (!totalEl) return;
   var price = {{ session['price_per_person'] or 0 }};
+  var supp = {{ supplement if _solo else 0 }};
+  var soloEl = document.getElementById('occupancy_solo'), soloField = document.getElementById('solo_field');
+  // The percent the server will charge for each party size (deposit_by_party, from the route): a deposit rule can
+  // vary by party size, so the workshop's own percent alone could show one figure and charge another.
+  var pcts = {{ (deposit_by_party if deposit_by_party is defined and deposit_by_party else {})|tojson }};
+  var pct0 = {{ session['deposit_percent'] or 0 }}, pct = pct0;
+  var balDays = {{ (windows.workshop_balance_days if windows and windows.workshop_balance_days else 30) }};
+  var today = '{{ house_today_iso() }}', start = '{{ session['start_date'] }}';
   var partyEl = document.querySelector('[name="party_size"]');
+  var $ = function(id) { return document.getElementById(id); };
+  var dueEl = $('occupancy_due'), btn = $('ws_pay_btn'), note = $('ws_terms_note');
+  // The promo preview gives the discount for the party size it was asked about; a new party size asks again.
+  window.wsPromo = { discount: 0, party: 0 };
+  function utc(iso) { var p = iso.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]); }
+  function eur(v) {
+    var whole = Math.abs(v - Math.round(v)) < 0.005;
+    return '€' + v.toLocaleString('en-GB', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 });
+  }
+  var daysUntil = (utc(start) - utc(today)) / 86400000;
+  // As compute_workshop_payment_terms: inside the balance window, everything now; otherwise the deposit, which
+  // is nothing at all when the percent is 0 (no payment is taken at registration then).
+  var allNow = daysUntil < balDays;
+  var balDate = new Date(utc(start) - balDays * 86400000)
+      .toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+  function show(id, on) { var el = $(id); if (el) el.hidden = !on; }
   function render() {
     var party = parseInt(partyEl.value, 10);
-    if (!party || party < 1) { totalEl.textContent = ''; return; }
-    var total = price * party;
-    totalEl.textContent = 'Total for ' + party
-      + (party === 1 ? ' guest: €' : ' guests: €') + total.toLocaleString('en-GB');
+    if (!party || party < 1) {
+      totalEl.textContent = ''; dueEl.textContent = '';
+      show('ws_total_row', false); show('ws_now_row', false); show('ws_bal_row', false);
+      btn.textContent = 'Pay & register'; return;
+    }
+    // A room to yourself is for someone coming alone; the server charges (price + supplement) x party for 'solo'.
+    if (soloField) { soloField.hidden = party !== 1; if (party !== 1 && soloEl) soloEl.checked = false; }
+    var solo = !!(soloEl && soloEl.checked && party === 1);
+    pct = (pcts[party] !== undefined && pcts[party] !== null) ? +pcts[party] : pct0;
+    var subtotal = Math.round((price + (solo ? supp : 0)) * party * 100) / 100;
+    var discount = (window.wsPromo.party === party) ? window.wsPromo.discount : 0;
+    var total = Math.round((subtotal - discount) * 100) / 100;
+    var now = allNow ? total : Math.round(total * pct) / 100;
+    var bal = Math.round((total - now) * 100) / 100;
+    totalEl.textContent = 'Total for ' + party + (party === 1 ? ' guest: ' : ' guests: ') + eur(total)
+      + (solo ? ', with a room to yourself' : '') + (discount ? ' (after ' + eur(discount) + ' off)' : '');
+    dueEl.textContent = allNow ? 'The full amount, ' + eur(total) + ', is paid today.'
+      : !pct ? 'Nothing is paid today. The ' + eur(total) + ' is due by ' + balDate + '.'
+      : pct + '% deposit today: ' + eur(now) + '. The balance of ' + eur(bal) + ' is due by ' + balDate + '.';
+    $('ws_total').textContent = eur(total);
+    $('ws_now_k').textContent = allNow ? 'Due today, in full' : !pct ? 'Due today' : 'Due today (' + pct + '% deposit)';
+    $('ws_now').textContent = eur(now);
+    $('ws_bal').textContent = bal > 0 ? eur(bal) + ' by ' + balDate : '';
+    show('ws_total_row', true); show('ws_now_row', true); show('ws_bal_row', !allNow && bal > 0);
+    if (note) note.textContent = allNow
+      ? 'The retreat is less than ' + balDays + ' days away, so the full amount is paid today.'
+      : !pct ? 'Nothing is paid today. The full amount is due by ' + balDate + ', ' + balDays + ' days before the retreat; we will send you a link to pay it.'
+      : 'You pay a ' + pct + '% deposit today. The balance is due by ' + balDate + ', ' + balDays + ' days before the retreat; we will send you a link to pay it.';
+    btn.textContent = now > 0 ? 'Pay ' + eur(now) + ' & register' : 'Register';
   }
-  partyEl.addEventListener('input', render);
+  window.wsRender = render;
+  if (soloEl) soloEl.addEventListener('change', function() {
+    if (window.wsPromo.party) { window.wsPromo = { discount: 0, party: 0 };
+      var code = document.getElementById('promo_code'); if (code && code.value.trim()) document.getElementById('promo_apply_btn').click(); }
+    render();
+  });
+  partyEl.addEventListener('input', function() {
+    if (window.wsPromo.party && window.wsPromo.party !== parseInt(partyEl.value, 10)) {
+      window.wsPromo = { discount: 0, party: 0 };
+      var code = document.getElementById('promo_code');
+      if (code && code.value.trim()) document.getElementById('promo_apply_btn').click();
+    }
+    render();
+  });
   render();
 })();
 
@@ -235,10 +318,16 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   var partySize = document.querySelector('[name="party_size"]').value;
   if (!code) { resultEl.textContent = 'Enter a code first.'; return; }
   resultEl.textContent = 'Checking...';
-  var body = new URLSearchParams({category: 'workshop', code: code, session_id: '{{ session["id"] }}', party_size: partySize});
+  var soloBox = document.getElementById('occupancy_solo');
+  var body = new URLSearchParams({category: 'workshop', code: code, session_id: '{{ session["id"] }}', party_size: partySize,
+    occupancy_type: (soloBox && soloBox.checked && partySize === '1') ? 'solo' : ''});
   fetch('{{ url_for("api_validate_promo_code") }}', {method: 'POST', body: body})
     .then(function(r) { return r.json(); })
-    .then(function(data) { resultEl.textContent = data.message || ''; resultEl.style.color = data.valid ? 'var(--success)' : 'var(--danger)'; })
+    .then(function(data) {
+      resultEl.textContent = data.message || ''; resultEl.style.color = data.valid ? 'var(--success)' : 'var(--danger)';
+      window.wsPromo = data.valid ? { discount: +data.discount_amount || 0, party: parseInt(partySize, 10) } : { discount: 0, party: 0 };
+      if (window.wsRender) window.wsRender();
+    })
     .catch(function() { resultEl.textContent = 'Could not check that code right now.'; });
 });
 </script>
@@ -323,7 +412,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         <div><dt>Transfers</dt><dd>{% if _tx %}From Toulouse on the first day, and back on the last{% else %}Not included on these dates. The château is an hour and three quarters from Toulouse-Blagnac by road, and three minutes from Les Cabannes station{% endif %}</dd></div>
         <div><dt>To hold a place</dt><dd>A deposit now. The balance closer to the date, or pay it yourself</dd></div>
         <div><dt>Children</dt><dd>Eight and over, and welcome at the table</dd></div>
-        <div><dt>Sharing</dt><dd>Rooms are arranged for two. A single supplement applies if you would rather not</dd></div>
+        <div><dt>Sharing</dt><dd>Rooms are arranged for two{% if _solo %}. A room to yourself is €{{ '{:,.0f}'.format(supplement) }} more{% endif %}</dd></div>
         <div><dt>Changing</dt><dd>Move to another session from your booking link, without emailing anyone</dd></div>
       </dl>
     </div>

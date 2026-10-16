@@ -1,0 +1,154 @@
+{% extends "public_base.html" %}
+{#- 15 Oct (owner): "i want a proper history page ... really good like the restoration page ... some images but not heaps,
+    maybe 8", and the tagline 1213 · 1741 · 2013. Facts: the Wikipedia article the owner says a historian wrote (1213 first
+    record, the Wars of Religion, ruins by 1671, the 1730 marriage, the salon, the consortium 1989-2009, 2010, 2013 and the
+    discoveries), the old site's History page (the de Sales succession, the Revolution, the Astrié family, the crests and the
+    monogrammed balconies, the camps) and the Monument Historique record (built 1741-1750 by Gabriel). Nothing beyond them.
+    Eight images, all already on the site. Route: /history (see FOR-CODE). -#}
+{% block schema %}
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Article","headline":"The History of Château de Gudanes",
+ "about":{"@type":"LandmarksOrHistoricalBuildings","name":"Château de Gudanes",
+  "address":{"@type":"PostalAddress","streetAddress":"2 Route de Beille","addressLocality":"Château-Verdun","postalCode":"09310","addressCountry":"FR"}},
+ "description":"From a fort first recorded in 1213 to a château built in 1741 to designs by Ange-Jacques Gabriel, and its restoration since 2013."}
+</script>
+{% endblock %}
+{% block title_fr %}L&rsquo;histoire{% endblock %}
+{% block description_fr %}Un fort cité dès 1213, un château construit à partir de 1741 sur les plans d&rsquo;Ange-Jacques Gabriel, et sa restauration depuis 2013.{% endblock %}
+{% block title %}The History{% endblock %}
+{% block description %}Eight centuries at Gudanes: a fort first recorded in 1213, a château built from 1741 to designs by Ange-Jacques Gabriel, and its restoration since 2013.{% endblock %}
+{% block og_desc %}A fort first recorded in 1213, a château begun in 1741, a restoration since 2013.{% endblock %}
+{% block og_image %}{{ url_for('static', filename='img/history/postcard-chateau-de-gudannes.jpg', _external=True) }}{% endblock %}
+{% block bodyclass %} has-hero hero--tall{% endblock %}
+{% block content %}
+{% from '_marks.html' import monogram %}
+{% from '_illus.html' import illus %}
+
+<section class="g-hero g-hist-hero">
+  <img loading="eager" fetchpriority="high" decoding="async" class="g-hero__img" src="{{ url_for('static', filename='img/history/postcard-chateau-de-gudannes.jpg') }}" alt="An early postcard of the château, with figures and a bicycle on the drive">
+  <div class="g-hero__wash"></div>
+  <div class="g-hero__in">
+    <p class="g-hero__eyebrow">Monument Historique Classé · Château-Verdun</p>
+    <h1 class="g-hero__title">Eight Centuries at Gudanes</h1>
+    <p class="g-hist-tag" aria-label="1213, 1741, 2013">1213 <span aria-hidden="true">·</span> 1741 <span aria-hidden="true">·</span> 2013</p>
+  </div>
+</section>
+
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+  <p class="g-fr">L&rsquo;histoire <span class="g-fr__en">The history</span></p>
+  <p class="g-p g-lede-first">A fort on the site by 1213, ransacked in the Wars of Religion and a ruin by 1671; a new château built from 1741 for the man they called <em lang="fr">le Roi des Pyrénées</em>; the Revolution, the ironmasters and the long decline; and, since 2013, its return. This is the story of the place you stay in.</p>
+  <ol class="g-hist-dates">
+    <li><b>1213</b><span>The fort is first recorded, among the fortifications of the County of Foix</span></li>
+    <li><b>1741</b><span>The château is begun, to designs by Ange-Jacques Gabriel</span></li>
+    <li><b>2013</b><span>The Waters family buys it, and the restoration begins</span></li>
+  </ol>
+</div></section>
+
+<div class="g-mono__wrap">{{ monogram() }}</div>
+
+{#- I · the fort, and the Wars of Religion -#}
+<section class="g-sec g-sec--sand g-hist" id="the-fort"><div class="g-wrap">
+  <div class="g-hist__grid">
+    <div class="g-hist__text">
+      <div class="g-vignette g-hist__vig" aria-hidden="true">{{ illus('mountains') }}</div>
+      <p class="g-hist__num">I · 1213 – 1671</p>
+      <p class="g-fr">Le fort <span class="g-fr__en">The fort</span></p>
+      <h2 class="g-place">A Fort Above the Valley</h2>
+      <p class="g-p">The commune of Château-Verdun takes its name from a medieval fort on this site. It is first recorded in 1213, when Raymond-Roger, Count of Foix, counted it among the fortifications of his county in a report to the Counts of Toulouse, and early in the fourteenth century Pierre Arnaud de Château-Verdun was seneschal of the County of Foix. The fort later passed to the de Sales, a branch of the de Lordat family, long powerful in Toulouse.</p>
+      <p class="g-p">In the Wars of Religion the barony of Gudanes belonged to Fantillon de Sales, a prominent Huguenot. In 1567 Huguenots fleeing Pamiers were massacred at Les Cabannes, just below the château, and the next year Fantillon led a reprisal on Tarascon. In 1580 the Catholic people of Gudanes rose against him and ransacked the castle; Fantillon fled, and was later killed. His Catholic brother, Jean-Paul, inherited the barony, and the family were made Marquis de Gudanes, with vast forests across the Pyrénées. By 1671 the old castle was recorded as a ruin.</p>
+    </div>
+    <figure class="g-hist__fig"><img src="{{ url_for('static', filename='img/history/postcard-valley.jpg') }}" alt="The château in its valley below the mountain, on an early postcard" loading="lazy"><figcaption>The valley the fort once guarded, on an early postcard</figcaption></figure>
+  </div>
+</div></section>
+
+{#- II · le Roi des Pyrénées, and Gabriel -#}
+<section class="g-sec g-hist" id="the-chateau"><div class="g-wrap">
+  <div class="g-hist__grid g-hist__grid--flip">
+    <div class="g-hist__text">
+      <div class="g-vignette g-hist__vig" aria-hidden="true">{{ illus('chateau') }}</div>
+      <p class="g-hist__num">II · 1730 – 1750</p>
+      <p class="g-fr">Le Roi des Pyrénées <span class="g-fr__en">The King of the Pyrénées</span></p>
+      <h2 class="g-place">A Château by Gabriel</h2>
+      <p class="g-p">The last Marquis, Louis-Gaspard de Sales, baron of Château-Verdun, Aston and Luzenac and the king&rsquo;s commandant for the province of Foix, grew richer still through his marriage to Marie de Lordat in 1730, and was known as <em lang="fr">le Roi des Pyrénées</em>. He brought the architect Ange-Jacques Gabriel, who designed the Petit Trianon at Versailles and the Place de la Concorde, to design a new château on the site of the old.</p>
+      <p class="g-p">It was built between 1741 and 1750, and the Marquis filled it with company: the writer Laurent Angliviel de la Beaumelle, the mathematician Charles Marie de La Condamine, the naturalist Buffon, Diderot, Montesquieu and Voltaire.</p>
+    </div>
+    <div class="g-hist__figs">
+      <figure class="g-hist__fig g-hist__fig--engraving"><img src="{{ url_for('static', filename='img/chateau_engraving.png') }}" alt="An engraving of the château's front elevation" loading="lazy"><figcaption>The front elevation</figcaption></figure>
+      <figure class="g-hist__fig"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1731560671148-2HACTI6LRTTC97OLK4VF/Cha%CC%82teau+de+Gudanes+-+Salon+de+Musique.jpg?format=1500w" alt="The Salon de Musique, door after door" loading="lazy"><figcaption>The Salon de Musique, where the Marquis received his guests</figcaption></figure>
+    </div>
+  </div>
+</div></section>
+
+{#- III · the Revolution, the Astrié family, 1830 -#}
+<section class="g-sec g-sec--sand g-hist" id="the-revolution"><div class="g-wrap g-wrap--narrow">
+  <div class="g-vignette" aria-hidden="true">{{ illus('key') }}</div>
+  <p class="g-hist__num">III · 1789 – 1830</p>
+  <p class="g-fr">La Révolution <span class="g-fr__en">The Revolution</span></p>
+  <h2 class="g-place">Revolution and the Ironmasters</h2>
+  <p class="g-p">With no son to follow him, Louis-Gaspard left everything to his son-in-law, Louis-Guillaume de Mengaud, Baron de la Hage, a <em lang="fr">président à mortier</em> of the Parlement de Toulouse, on condition that one of his children take the de Sales name and arms. Then came the Revolution. The Parlement was abolished, de Mengaud was among the first to be arrested, and he died before he could be tried; his property was confiscated all the same. Barely fifty years after it was built, the château had left the de Sales family.</p>
+  <p class="g-p">It passed to the Astrié family of Ax, ironmasters of the new bourgeoisie, who were ennobled in 1824 as d&rsquo;Astrié de Gudanes. In the summer of 1830 the château was pillaged twice, on the 7th and the 10th of August, in the War of the Demoiselles: local men, masked and sometimes dressed as women, rising against the landowners who had taken away their right to the forests.</p>
+</div></section>
+
+{#- IV · the de Limairac -#}
+<section class="g-sec g-hist" id="the-family"><div class="g-wrap">
+  <div class="g-hist__grid">
+    <div class="g-hist__text">
+      <div class="g-vignette g-hist__vig" aria-hidden="true">{{ illus('laurel') }}</div>
+      <p class="g-hist__num">IV · 1843 – 1922</p>
+      <p class="g-fr">Les Limairac <span class="g-fr__en">The de Limairac</span></p>
+      <h2 class="g-place">Crests Above the Door</h2>
+      <p class="g-p">From 1843 the château belonged to Charlotte d&rsquo;Astrié and her husband, the politician Charles Jean de Limairac. Theirs are the crests above the front door today, the silver greyhound of de Limairac and the silver tower of d&rsquo;Astrié, and the wrought-iron balconies carry Charlotte&rsquo;s monogram, a C, an A and an L intertwined.</p>
+      <p class="g-p">Renovations are recorded between 1870 and 1875, and Charlotte&rsquo;s descendants lived at Gudanes into the twentieth century.</p>
+    </div>
+    <figure class="g-hist__fig"><img src="{{ url_for('static', filename='img/history/old-photograph-terraces.jpg') }}" alt="The château above its terraced gardens, in an early photograph" loading="lazy"><figcaption>The château above its terraced gardens, in an early photograph</figcaption></figure>
+  </div>
+</div></section>
+
+{#- V · the long decline -#}
+<section class="g-sec g-sec--sand g-hist" id="the-decline"><div class="g-wrap">
+  <div class="g-hist__grid g-hist__grid--flip">
+    <div class="g-hist__text">
+      <div class="g-vignette g-hist__vig" aria-hidden="true">{{ illus('window') }}</div>
+      <p class="g-hist__num">V · 1970 – 2013</p>
+      <p class="g-fr">Le déclin <span class="g-fr__en">The decline</span></p>
+      <h2 class="g-place">Very Nearly Lost</h2>
+      <p class="g-p">In the 1970s and 80s it housed children&rsquo;s holiday camps. In 1989 an English consortium bought it to make a luxury hotel of seventeen apartments, but in 1994 the château was classified a Historic Monument, planning permission stalled, and in 2009 the consortium gave up and put it on the market. By 2010 the roof was in danger of collapse.</p>
+      <p class="g-p">When the Waters family bought it in 2013, several floors had fallen in, the roof was open to the sky in four places and trees were growing inside. The floors lay under rubble, rotten wood, fallen plaster and mushrooms, green mould covered the walls, and the château had never had heating or electricity.</p>
+    </div>
+    <div class="g-hist__figs">
+      <figure class="g-hist__fig"><img src="{{ url_for('static', filename='img/history/horse-dining-room-b.jpg') }}" alt="A horse before a painted panel and a marble fireplace, before the work" loading="lazy"><figcaption>A horse in the dining room, before the work</figcaption></figure>
+      <figure class="g-hist__fig"><img src="{{ url_for('static', filename='img/found/mountains-through-the-roof-800.jpg') }}" alt="The mountains seen through the open roof" loading="lazy"><figcaption>The mountains, through the roof</figcaption></figure>
+    </div>
+  </div>
+</div></section>
+
+{#- John Ruskin, The Seven Lamps of Architecture (1849) - public domain; the old site's About page closed on it. -#}
+<section class="g-sec g-creed"><div class="g-wrap">
+  <div class="g-creed__in">
+    <div class="g-creed__q">
+      <p>&ldquo;When we build, let us think that we build for ever. Let it not be for present delight, nor for present use alone; let it be such work as our descendants will thank us for.&rdquo;</p>
+      <cite>John Ruskin, 1849</cite>
+    </div>
+  </div>
+</div></section>
+
+{#- VI · 2013, and what it gave up -#}
+<section class="g-sec g-hist" id="since-2013"><div class="g-wrap">
+  <div class="g-hist__grid">
+    <div class="g-hist__text">
+      <div class="g-vignette g-hist__vig" aria-hidden="true">{{ illus('restoration') }}</div>
+      <p class="g-hist__num">VI · Since 2013</p>
+      <p class="g-fr">Le retour <span class="g-fr__en">The return</span></p>
+      <h2 class="g-place">What the Walls Kept</h2>
+      <p class="g-p">Much of the original interior had survived: carved woodwork, stained glass, gilt-framed mirrors and ornamental plaster. As the work has gone on, the château has given up its secrets: a fresco hidden behind wallpaper, two towers of the medieval fort that the family had thought long gone, and, through a hole three metres deep in a floor, a forgotten part of the cellars, perhaps a safe passage in the Second World War.</p>
+      <p class="g-p">The restoration goes on, room by room, as a Class I Historic Monument, with five guest rooms open and the workshops.</p>
+      <p class="g-hist__cta">
+        <a href="{{ url_for('restoration_page') }}" class="g-btn g-btn--solid">The restoration</a>
+        <a href="{{ url_for('book_rooms') }}" class="g-btn">Stay the night</a>
+      </p>
+    </div>
+    <figure class="g-hist__fig"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1500w" alt="The restoration of a fresco, close up" loading="lazy"><figcaption>A painted medallion, brought back</figcaption></figure>
+  </div>
+</div></section>
+<div class="g-mono__wrap">{{ monogram() }}</div>
+{% endblock %}

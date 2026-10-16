@@ -219,6 +219,8 @@ window.houseDay = (function () {
 <nav class="g-nav" aria-label="{{ t('Main') }}">
       <a href="{{ url_for('book_rooms') }}"{% if NAV_HERE == 'book_rooms' %} class="is-here" aria-current="page"{% endif %}>{{ t('Stay') }}</a>
       <a href="{{ url_for('workshops_public') }}"{% if NAV_HERE == 'workshops_public' %} class="is-here" aria-current="page"{% endif %}>{{ t('Workshops') }}</a>
+      {#- 15 Oct (owner): What's On in the top bar too. -#}
+      <a href="{{ url_for('whats_on') }}"{% if NAV_HERE == 'whats_on' %} class="is-here" aria-current="page"{% endif %}>{{ t("What’s On") }}</a>
       {% if _dm != 'hidden' %}<a href="{{ url_for('restaurant_info') }}"{% if NAV_HERE == 'restaurant_info' %} class="is-here" aria-current="page"{% endif %}>{{ t('Dining') }}</a>{% endif %}
       <div class="g-nav__has-sub">
         <a href="{{ url_for('events_info') }}"{% if NAV_HERE == 'events_info' %} class="is-here" aria-current="page"{% endif %} aria-haspopup="true" aria-expanded="false">{{ t('Events') }}<span class="g-nav__caret" aria-hidden="true"></span></a>
@@ -232,7 +234,7 @@ window.houseDay = (function () {
       </div>
       <a href="{{ url_for('facilities_page') }}"{% if NAV_HERE == 'facilities_page' %} class="is-here" aria-current="page"{% endif %}>{{ t('The Estate') }}</a>
       <a href="{{ url_for('restoration_page') }}"{% if NAV_HERE == 'restoration_page' %} class="is-here" aria-current="page"{% endif %}>{{ t('Restoration') }}</a>
-      <a href="{{ url_for('gallery_page') }}"{% if NAV_HERE == 'gallery_page' %} class="is-here" aria-current="page"{% endif %}>{{ t('Gallery') }}</a>
+      {#- 15 Oct: Gallery left the top bar to make room for What's On (still in the menu panel and the footer). -#}
       <a href="{{ url_for('contact_page') }}"{% if NAV_HERE == 'contact_page' %} class="is-here" aria-current="page"{% endif %}>{{ t('Contact') }}</a>
     </nav>
     <button type="button" class="g-navbtn" aria-expanded="false" aria-controls="g-mainnav">
@@ -277,6 +279,11 @@ window.houseDay = (function () {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M12 3v6M8 5l4 4 4-4"/><path d="M6 21h12M9 21v-4a3 3 0 0 1 6 0v4"/></svg>
           {{ t('Workshops') }}
         </a>
+        {#- 15 Oct (owner): "move the what's on in ariege up on the menu" - beside the stays, not at the bottom. -#}
+        <a href="/whats-on" class="g-navwrap__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+          {{ t("What’s On in the Ariège") }}
+        </a>
         {% if _dm != 'hidden' %}<a href="{{ url_for('restaurant_info') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M8 9c0-1.5 1.5-3 4-3s4 1.5 4 3"/></svg>
           {{ t('Dining') }}
@@ -300,6 +307,9 @@ window.houseDay = (function () {
             <em>{{ t('Under restoration since 2013') }}</em>
           </span>
         </a>
+        <a href="/history" class="g-navwrap__item g-navwrap__item--sm">
+          {{ t('The History') }} <svg class="g-navwrap__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6"/></svg>
+        </a>
         <a href="/facilities" class="g-navwrap__item g-navwrap__item--sm">
           {{ t('The Estate') }} <svg class="g-navwrap__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6"/></svg>
         </a>
@@ -316,10 +326,6 @@ window.houseDay = (function () {
         <div class="g-navwrap__divider"></div>
 
         <p class="g-navwrap__group">{{ t('Plan Your Visit') }}</p>
-        <a href="/whats-on" class="g-navwrap__item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
-          {{ t("What’s On in the Ariège") }}
-        </a>
         <a href="/contact" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/></svg>
           {{ t('Contact') }}
@@ -363,7 +369,7 @@ window.houseDay = (function () {
         <p class="g-navwrap__group" style="margin-top:var(--s6)">Château de Gudanes</p>
         <p class="g-navwrap__addr">2 Route de Beille, Château-Verdun, Ariège 09310, France</p>
         <p><a href="tel:+33628069776">+33 6 28 06 97 76</a></p>
-        <p><a href="mailto:reservations@chateaugudanes.com">reservations@chateaugudanes.com</a></p>
+        <p><a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></p>
 
         {# The switcher is hidden until the prose is translated (TRANSLATION_GAP
            option 1). Without the guard on the box itself, hiding the switcher left an
@@ -532,7 +538,16 @@ window.houseDay = (function () {
   <div class="g-crest g-crest--foot">
     <img loading="lazy" decoding="async" src="{{ url_for('static', filename='img/chateau_engraving.png') }}"
          alt="Château de Gudanes, Château-Verdun, France">
-    <p class="g-crest__note">{{ t('Ariège · French Pyrénées · Restored since 2013') }}</p>
+    {#- 15 Oct (owner): "it has to say what these dates are, like a marketing tool" - the three dates of the house, each with
+        what it was, under the engraving at the foot of every page, linking to the history. -#}
+    <a class="g-crest__dates" href="/history">
+      <span class="g-crest__lead">{{ t('Eight centuries at Gudanes') }}</span>
+      <span class="g-crest__row">
+        <span class="g-crest__date"><b>1213</b><em>{{ t('The fortress') }}</em></span>
+        <span class="g-crest__date"><b>1741</b><em>{{ t('The château, by Gabriel') }}</em></span>
+        <span class="g-crest__date"><b>2013</b><em>{{ t('The restoration') }}</em></span>
+      </span>
+    </a>
   </div>
   <div class="g-wrap">
     <div class="g-footer__grid">
@@ -568,13 +583,14 @@ window.houseDay = (function () {
         <ul>
           <li><a href="{{ url_for('book_rooms') }}">{{ t('Stay the Night') }}</a></li>
           <li><a href="{{ url_for('workshops_public') }}">Workshops</a></li>
+          <li><a href="{{ url_for('whats_on') }}">{{ t("What’s On in the Ariège") }}</a></li>
           {% if _dm != 'hidden' %}<li><a href="{{ url_for('restaurant_info') }}">{{ t('Dining') }}</a></li>{% endif %}
           <li><a href="{{ url_for('facilities_page') }}">{{ t('The Estate') }}</a></li>
-          <li><a href="{{ url_for('whats_on') }}">{{ t("What’s On in the Ariège") }}</a></li>
           <li><a href="{{ url_for('events_info') }}">{{ t('Weddings & Celebrations') }}</a></li>
           <li><a href="/restoration">{{ t('The Restoration') }}</a></li>
           <li><a href="/gallery">{{ t('Gallery') }}</a></li>
           <li><a href="{{ url_for('press') }}">{{ t('Press') }}</a></li>
+          <li><a href="/history">{{ t('The History') }}</a></li>
           <li><a href="{{ url_for('story') }}">{{ t('The Family') }}</a></li>
         </ul>
       </div>

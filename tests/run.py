@@ -95,6 +95,7 @@ SUITES = [
     "test_formule",
     "test_beverage_pours",
     "test_packages",
+    "test_package_price",
     "test_insurance",
     "test_vault",
     "test_vault_key_change",
@@ -180,6 +181,7 @@ SUITES = [
     "test_letters_named",
     "test_delivery_reports",
     "test_terminal",
+    "test_reader_charge_once",
     "test_arrive",
     "test_timesheet_repair",
     "test_staff_lifecycle",
@@ -302,6 +304,7 @@ SUITES = [
     "test_private_urls",
     "test_optout_and_flags",
     "test_till_and_toggles",
+    "test_till_merge_money",
     "test_expense_files",
     "test_guest_bill_loop",
     "test_outstanding",
@@ -401,6 +404,7 @@ SUITES = [
     "test_room_edit_keeps",
     "test_stay_list_price",
     "test_stripe_labels",
+    "test_corrections_2026_10_16",
     "test_languages_page",
     "test_share_images",
     "test_stripe_webhook_tool",
@@ -486,10 +490,13 @@ SUITES = [
     "test_outlook_addin",
     "test_send_check",
     "test_house_calendar",
+    "test_house_calendar_default",
     # Brief of 15 October 2026.
     "test_tech_email",
     "test_staff_accounts",
     "test_check_in_times",
+    # Ateliers and stays on every day they cover, 15 October 2026.
+    "test_calendar_every_day",
 ]
 
 

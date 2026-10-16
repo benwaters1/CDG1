@@ -73,14 +73,20 @@ def run():
     night = m.service_day().isoformat()
     made = [0]
 
-    def ring(lines, *, discount=0.0, service=0.0, deposit=0.0):
-        """A tab with these lines: (unit_price, quantity, vat_rate, covered[, voided])."""
+    def ring(lines, *, discount=0.0, service=0.0, deposit=0.0, package_charge=0.0):
+        """A tab with these lines: (unit_price, quantity, vat_rate, covered[, voided]).
+
+        `package_charge` is a drinks package's own price, billed at 20% the
+        way apply_package stores it on the tab.
+        """
         made[0] += 1
         oid = conn.execute(
             """INSERT INTO pos_orders (table_label, covers, status, service_date, opened_at,
-                   discount_amount, service_charge, deposit_credit)
-               VALUES (?, 2, 'open', ?, ?, ?, ?, ?)""",
-            (f"{TAG}{made[0]}", night, now, discount, service, deposit)).lastrowid
+                   discount_amount, service_charge, deposit_credit,
+                   package_charge, package_vat_rate)
+               VALUES (?, 2, 'open', ?, ?, ?, ?, ?, ?, ?)""",
+            (f"{TAG}{made[0]}", night, now, discount, service, deposit,
+             package_charge, 20.0 if package_charge else None)).lastrowid
         for price, qty, rate, covered, *rest in lines:
             conn.execute(
                 """INSERT INTO pos_order_lines (order_id, name, unit_price, quantity,
@@ -95,8 +101,8 @@ def run():
 
     def before_deposit(bill):
         # What the meal comes to before any deposit: what the rows must add to.
-        return round(max(0.0, bill["gross"] - bill["package"] - bill["discount"]
-                         + bill["service"]), 2)
+        return round(max(0.0, bill["gross"] - bill["package"] + bill["package_charge"]
+                         - bill["discount"] + bill["service"]), 2)
 
     def settle(oid):
         bill = m.pos_bill(conn, oid)
@@ -156,10 +162,13 @@ def run():
         if rng.random() < 0.04:
             discount = round(rng.uniform(400, 900), 2)          # bigger than the bill
         deposit = round(rng.uniform(5, 80), 2) if rng.random() < 0.2 else 0.0
-        oid = ring(lines, discount=discount, service=service, deposit=deposit)
+        charge = round(rng.uniform(15, 90), 2) if rng.random() < 0.15 else 0.0
+        oid = ring(lines, discount=discount, service=service, deposit=deposit,
+                   package_charge=charge)
         bill = m.pos_bill(conn, oid)
 
-        want = round(max(0.0, bill["gross"] - bill["package"] - discount + service), 2)
+        want = round(max(0.0, bill["gross"] - bill["package"] + bill["package_charge"]
+                         - discount + service), 2)
         got = rows_sum(bill)
         label = f"#{n} rows {got} bill {want}"
         if abs(got - want) > 0.005:
@@ -178,6 +187,9 @@ def run():
                 b = served.setdefault(float(rate), [0.0, 0.0])
                 b[0] += price * qty
                 b[1] += covered
+        if charge:
+            # The package's own price is a line at its rate like any other.
+            served.setdefault(20.0, [0.0, 0.0])[0] += charge
         weights = {r: round(g - c, 2) for r, (g, c) in served.items()}
         whole = sum(weights.values())
         if whole > 0.005:
