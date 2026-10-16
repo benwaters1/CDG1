@@ -123,6 +123,7 @@
           <option value="{{ b }}" {{ 'selected' if _bed == b }}>{{ b }}</option>
           {% endfor %}
         </select>
+        <span class="field-hint">The booking pages say this as the bed, so the beds are not a tick below.</span>
       </div>
       <div>
         <label class="field-label" for="bathroom">Bathroom</label>
@@ -134,7 +135,7 @@
           <option value="{{ key }}" {{ 'selected' if _bath == key }}>{{ label }}</option>
           {% endfor %}
         </select>
-        <span class="field-hint">The booking pages say a private bathroom is the room's own, on the ground floor.</span>
+        <span class="field-hint">The booking pages say a private bathroom is the room's own, on the ground floor. It is not a tick below.</span>
       </div>
     </div>
     <label class="field-label" for="outlook" style="margin-top:14px;">The view</label>
@@ -168,7 +169,7 @@
     {% if leftover %}
     <label class="field-label" style="margin-top:12px;">Also listed (typed in before)</label>
     <input type="text" name="amenities_other" value="{{ leftover }}">
-    <span class="field-hint">From before there were tick boxes. Tick the equivalents above and clear this.</span>
+    <span class="field-hint">From before there were tick boxes. Tick the equivalents above and clear this. The beds and the bathroom belong in their own boxes above, so a bed or a bathroom typed here is left out.</span>
     {% else %}
     <input type="hidden" name="amenities_other" value="">
     {% endif %}

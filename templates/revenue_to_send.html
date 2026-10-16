@@ -194,8 +194,10 @@
   {{ euro(costs_waiting|sum(attribute='total')) }} the accountant has not seen.
 </div>
 {% endif %}
+{#- No negative margin: with no banner above it (nothing unsent yet) the line
+    rode up into the paragraph before and printed over it. -#}
 {% if costs_unapproved %}
-<p class="upload-hint" style="margin:-6px 0 14px;">
+<p class="upload-hint" style="margin:0 0 14px;">
   {{ costs_unapproved|length }} more {{ 'is' if costs_unapproved|length == 1 else 'are' }}
   waiting for your approval on <a href="{{ url_for('expenses') }}">Expenses</a> before
   {{ 'it' if costs_unapproved|length == 1 else 'they' }} can go.
