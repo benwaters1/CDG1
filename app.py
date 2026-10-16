@@ -20218,9 +20218,9 @@ def pos_bill(conn, order_id):
         "order": order, "lines": lines, "live": live,
         "gross": gross, "discount": discount, "service": service, "deposit": deposit,
         "package": package, "package_row": package_row,
-        # The bill's package-price row: the amount, the rate it is taxed at,
-        # and covers x each for the words beside it.
-        "package_charge": package_charge, "package_charge_rate": package_charge_rate,
+        # The bill's package-price row: the amount, and covers x each for the
+        # words beside it. Its rate is in vat_by_rate with everything else.
+        "package_charge": package_charge,
         "package_units": package_units,
         "package_unit_price": round(package_charge / package_units, 2) if package_charge else 0.0,
         "vat_by_rate": dict(sorted(by_rate.items())),

@@ -96,6 +96,12 @@ def _till_rows(page):
                        r'<span>(.*?)</span>', page, re.S)]
 
 
+def _stamped_rate(conn, order_id):
+    """The VAT rate apply_package stamped on the tab for the package's price."""
+    return conn.execute("SELECT package_vat_rate FROM pos_orders WHERE id = ?",
+                        (order_id,)).fetchone()["package_vat_rate"]
+
+
 def _package_entries(conn, order_id):
     return [json.loads(r["payload"]) for r in conn.execute(
         "SELECT payload FROM pos_journal WHERE event_type = 'package_set' AND order_id = ? "
@@ -140,8 +146,8 @@ def run():
             detail=flashes)
 
     s.section("Taxed at the wine's rate, and the VAT rows add up to the total")
-    s.check("a pairing of wine is billed at the alcohol rate",
-            bill["package_charge_rate"] == alcohol, detail=str(bill["package_charge_rate"]))
+    s.check("a pairing of wine is billed at the alcohol rate, stamped on the tab",
+            _stamped_rate(conn, t1["id"]) == alcohol, detail=str(_stamped_rate(conn, t1["id"])))
     s.check("the whole EUR 40 is in the alcohol band",
             round(bill["vat_by_rate"].get(alcohol, {}).get("gross", 0), 2) == 40.0,
             detail=str(bill["vat_by_rate"]))
@@ -220,7 +226,7 @@ def run():
     s.check("so the table owes the magret and the package",
             bill["total"] == 72.0, detail=str(bill["total"]))
     s.check("an allowance can go on wine, so it carries the alcohol rate",
-            bill["package_charge_rate"] == alcohol, detail=str(bill["package_charge_rate"]))
+            _stamped_rate(conn, t2["id"]) == alcohol, detail=str(_stamped_rate(conn, t2["id"])))
     s.check("the juice it covered still comes off the soft-drink rate it was rung at",
             round(bill["vat_by_rate"].get(food, {}).get("gross", 0), 2) == 32.0,
             detail=str(bill["vat_by_rate"]))
@@ -269,7 +275,7 @@ def run():
     oc.post(f"/pos/{t4['id']}/package", data={"package_id": softs["id"]})
     bill = m.pos_bill(conn, t4["id"])
     s.check("so a juice pairing bills its price at the soft-drink rate",
-            bill["package_charge_rate"] == food
+            _stamped_rate(conn, t4["id"]) == food
             and round(bill["vat_by_rate"].get(food, {}).get("gross", 0), 2) == 12.0
             and alcohol not in bill["vat_by_rate"], detail=str(bill["vat_by_rate"]))
 
