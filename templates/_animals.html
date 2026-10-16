@@ -18,9 +18,7 @@
   <p class="g-fr">Les habitants à quatre pattes <span class="g-fr__en">The four-legged residents</span></p>
   <p class="g-eyebrow">Also In Residence</p>
   <h2 class="g-place">Bruce and Four Cats</h2>
-  <div class="g-mark__wrap">{{ mark('bruce') }}</div>
-
-  {{ animals_note() }}
+  {{ bruce_card() }}
 </div></section>
 {% endmacro %}
 
@@ -32,4 +30,18 @@
   Bruce, a French bulldog, and four cats live here. If anyone in your party has an animal
   allergy, tell us when you book.
 </p>
+{% endmacro %}
+
+{#- 15 Oct (owner: "we need bruce on there, everyone loves him"; no photographs of the cats). His portrait from the old
+    site's journal, beside the allergy line - the charm and the fact together. -#}
+{% macro bruce_card() %}
+<div class="g-bruce">
+  <figure class="g-bruce__fig"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1587390168314-TLFRCWMU63WVKBM27KSV/Blog%252Bpost%252BBruce.jpg?format=500w" alt="Bruce, the château's French bulldog, looking up" loading="lazy"></figure>
+  <div class="g-bruce__b">
+    <p class="g-eyebrow">Also in residence</p>
+    <h3 class="g-bruce__h">Bruce</h3>
+    <p class="g-p">The château&rsquo;s French bulldog, who goes wherever he likes and is usually first to say hello. Four cats live here too, mostly out of doors.</p>
+    <p class="g-limit g-limit--warn"><span class="g-limit__k">Before you book</span> If anyone in your party has an animal allergy, tell us when you book.</p>
+  </div>
+</div>
 {% endmacro %}

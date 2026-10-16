@@ -9,6 +9,7 @@
 {% block content %}
 {% from '_marks.html' import mark, monogram %}
 {% from '_stay_panel.html' import stay_panel with context %}
+{% from '_animals.html' import animals_note %}
 
 <section class="g-sec g-sec--tight"><div class="g-wrap">
   <p class="g-fr">Une famille, pas une société <span class="g-fr__en">A family, not a company</span></p>
@@ -70,8 +71,12 @@
 <section class="g-sec g-gallery-sec"><div class="g-wrap">
   <p class="g-fr">La maisonnée <span class="g-fr__en">The household</span></p>
   <h2 class="g-place">The People Who Keep It</h2>
-  <p class="g-p g-intro">The family, the kitchen and the people who look after the château and its guests.</p>
+  <p class="g-p g-intro">The family, the kitchen and the people who look after the château and its guests, and Bruce, the French bulldog, who looks after all of them.</p>
   <ul class="g-befgrid g-gallery">
+    {#- 15 Oct (owner): Bruce - "everyone loves him"; the Christmas ones belong here rather than on the Noël workshop. -#}
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1586814184307-PRBEXYIKAU816PYCGTSZ/Me+and+Lari+pastry+kitchen+with+Brucey.jpg?format=1000w" alt="Two of the team in aprons in the pastry kitchen, holding Bruce" loading="lazy"><figcaption>In the pastry kitchen, with Bruce</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1587881704710-HV3GWORU8Q339A5RB5Y7/christmas+bruce+2.jpg?format=1000w" alt="Bruce in a green winter coat, a Christmas tree lit behind him" loading="lazy"><figcaption>Bruce, dressed for winter</figcaption></figure></li>
+    <li><figure><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1587881723318-ZJBZOKH25VMJCIQYNMRI/christmas+bruce+1.jpg?format=1000w" alt="Bruce by the Christmas tree" loading="lazy"><figcaption>Bruce at Christmas</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c7a763e0-e047-4bc6-ac87-6bc312a89731/_DSC9185.jpg?format=1000w" alt="Laying the table in the salon" loading="lazy"><figcaption>Laying the table in the salon</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/1786539831270-OCIZ2OFNTUC22Z6T9SMI/Screenshot%2B2026-08-12%2Bat%2B8.38.07%2Bpm.png?format=1000w" alt="The chef in the candlelit salon" loading="lazy"><figcaption>The chef, before dinner</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/4a0ae86a-ad32-4b6d-a8d9-45476c3cb734/Screenshot+2026-08-12+at+8.41.31+pm.png?format=1000w" alt="By the window, in black and white" loading="lazy"><figcaption>By the window</figcaption></figure></li>
@@ -82,6 +87,9 @@
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/35718cba-ae0d-4d2a-adc1-cace54a9e369/Screenshot+2026-08-12+at+8.40.54+pm.png?format=1000w" alt="In the salon, flowers on the table" loading="lazy"><figcaption>In the salon, flowers on the table</figcaption></figure></li>
     <li><figure><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9e7fe534-e9e9-498a-a050-53a072fafbe7/Screenshot+2026-08-12+at+9.11.24+pm.png?format=1000w" alt="The chef, in black and white" loading="lazy"><figcaption>The chef</figcaption></figure></li>
   </ul>
+  {#- Put back after z22: Bruce is in this gallery, and wherever the animals are named the allergy line goes
+      with them (test_animals). -#}
+  {{ animals_note() }}
 </div></section>
 
 {% endblock %}

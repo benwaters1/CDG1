@@ -43328,6 +43328,17 @@ def restoration_page():
     return render_template("restoration.html")
 
 
+@app.route("/history")
+def history_page():
+    """The house from 1213 to now (owner, 15 Oct 2026: "a proper history page").
+
+    Static copy from the design side. /history was the old Squarespace
+    address, sent to the Restoration page by LEGACY_PATHS until this page
+    existed; it is the page itself now, so it keeps that address's ranking.
+    """
+    return render_template("history.html")
+
+
 @app.route("/gallery")
 def gallery_page():
     """Photographs, in the sections the public menu already links to.
@@ -46754,6 +46765,9 @@ WORKSHOP_PREFILL = {
     "dietary_notes": "dietary_notes", "medical_notes": "medical_notes",
     "special_occasion": "special_occasion",
     "requested_roommate": "requested_roommate", "promo_code": "promo_code",
+    # The room-to-myself tick (z22), so it survives a validation error once
+    # the route offers it (solo_bookable).
+    "occupancy_type": "occupancy_type",
 }
 EVENT_PREFILL = {
     "contact_name": "contact_name", "contact_email": "contact_email",
@@ -55166,6 +55180,15 @@ def workshop_register(session_id):
         # Don't offer a private room the château cannot give: the same reason
         # a taken night is not clickable on the booking calendar.
         "solo_possible": rooms_left >= 1 or not bookable_room_count(conn),
+        # The deposit percent create_workshop_booking will charge, for each
+        # party size the form allows. The page works out the amounts as the
+        # guest types (handover z22); a deposit rule can vary by party size,
+        # so the workshop's own percent alone could show one figure and
+        # charge another.
+        "deposit_by_party": {
+            n: resolve_deposit_percent(conn, "workshop", session_row["start_date"], n,
+                                       session_row["deposit_percent"])
+            for n in range(1, (session_row["capacity"] or 15) + 1)},
     }
 
     if request.method == "POST":
@@ -101532,7 +101555,7 @@ LEGACY_PATHS = [
     ("/la-table", "restaurant_info", True),
     ("/the-chateau", "restoration_page", True),
     ("/about", "restoration_page", True),
-    ("/history", "restoration_page", True),
+    # /history is a page of its own since handover z22 (history_page).
     # The house writes. If it ever publishes that writing at its own address,
     # a 301 cached in every returning reader's browser would be in the way.
     ("/blog", "gallery_page", False),
@@ -101819,7 +101842,8 @@ def sitemap():
         ("events_weddings", "0.7"), ("events_private", "0.6"),
         ("events_photoshoots", "0.6"), ("press", "0.5"), ("story", "0.7"),
         ("facilities_page", "0.7"),
-        ("restoration_page", "0.7"), ("gallery_page", "0.6"), ("contact_page", "0.6"),
+        ("restoration_page", "0.7"), ("history_page", "0.7"),
+        ("gallery_page", "0.6"), ("contact_page", "0.6"),
         ("whats_on", "0.5"), ("terms_page", "0.3"),
     ]
     urls = []

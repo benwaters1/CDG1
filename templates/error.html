@@ -22,27 +22,12 @@
   {# Kept from the page this replaced: the one line that tells somebody the
      house would rather hear about a broken link than have them give up. #}
   <p class="g-hint">If you were following a link from us and it has not worked, write to
-    <a href="mailto:reservations@chateaugudanes.com">reservations@chateaugudanes.com</a> and we will sort it out.</p>
+    <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a> and we will sort it out.</p>
 </div></section>
 
 <img class="g-formhero" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9b008241-5364-4a3e-a8fc-a9d6cf61a603/IMG_4368.JPG?format=1500w" alt="The château lit at night, under the stars" loading="lazy">
 
 
-<div class="g-wrap">
-  {# The site moved off Squarespace, so these paths are still in Google, in old
-     newsletters and on other people's blogs. Listed so the dev can 301 the
-     ones that earn it rather than guessing which mattered. #}
-  <details class="g-lost__old">
-    <summary>Came from an old link?</summary>
-    <p class="g-p">The site was rebuilt, so a few addresses changed. These are the ones that moved:</p>
-    <ul class="g-lost__l">
-      <li><code>/rooms</code>, <code>/accommodation</code>, <code>/bedrooms</code> — now <a href="{{ url_for('book_rooms') }}">Stay</a></li>
-      <li><code>/workshops</code>, <code>/courses</code>, <code>/retreats</code> — now <a href="{{ url_for('workshops_public') }}">Workshops</a></li>
-      {% if _dm != 'hidden' %}<li><code>/dining</code>, <code>/food</code>, <code>/restaurant</code> — now <a href="{{ url_for('restaurant_info') }}">Dining</a></li>{% endif %}
-      <li><code>/the-chateau</code>, <code>/about</code>, <code>/history</code> — now <a href="{{ url_for('restoration_page') }}">The Restoration</a></li>
-      <li><code>/blog</code>, <code>/journal</code>, <code>/news</code> — now <a href="{{ url_for('gallery_page') }}">Gallery</a></li>
-    </ul>
-  </details>
-</div>
+{#- 15 Oct: the 'Came from an old link?' list removed - technical, and the 32 real old addresses already redirect. -#}
 
 {% endblock %}
