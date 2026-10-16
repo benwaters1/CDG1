@@ -294,8 +294,8 @@ FR = {
     "Five rooms · breakfast included": "Cinq chambres · petit-déjeuner compris",
     "A room and breakfast, your own dates": "Une chambre et le petit-déjeuner, à vos dates",
     "Five rooms · from one night": "Cinq chambres · dès une nuit",
-    "The full experience": "L'expérience complète",
-    "Three to seven nights · every meal, wine and a tour of the château": "Trois à sept nuits · tous les repas, le vin et une visite du château",
+    "Cooking, the brocantes and the restoration": "La cuisine, les brocantes et la restauration",
+    "Three to seven nights · every meal and drink included": "Trois à sept nuits · tous les repas et les boissons compris",
     "Three to seven nights · full board · itinerary included": "De trois à sept nuits · pension complète · programme compris",
     "Fixed dates, a small group": "Dates fixes, en petit groupe",
     "Manage an existing booking": "Gérer une réservation existante",
@@ -692,7 +692,8 @@ FR = {
     'The ateliers': 'Les ateliers',
     'Your events': 'Vos événements',
     'stays &amp; general': 'séjours et questions générales',
-    'workshops &amp; events': 'ateliers et événements',
+    'workshops & events': 'ateliers et événements',
+    'For now, the château is open only to its guests.': "Pour l'instant, le château n'est ouvert qu'à ses hôtes.",
     # Handover q, 7 October: new English on the nav and the
     # booking pages. t() falls back silently, so without these a
     # French guest gets one English phrase mid-sentence and
@@ -1004,8 +1005,8 @@ ES = {
     "Five rooms · breakfast included": "Cinco habitaciones · desayuno incluido",
     "A room and breakfast, your own dates": "Habitación y desayuno, en sus fechas",
     "Five rooms · from one night": "Cinco habitaciones · desde una noche",
-    "The full experience": "La experiencia completa",
-    "Three to seven nights · every meal, wine and a tour of the château": "De tres a siete noches · todas las comidas, el vino y una visita al castillo",
+    "Cooking, the brocantes and the restoration": "La cocina, las brocantes y la restauración",
+    "Three to seven nights · every meal and drink included": "De tres a siete noches · todas las comidas y bebidas incluidas",
     "Three to seven nights · full board · itinerary included": "De tres a siete noches · pensión completa · programa incluido",
     "Fixed dates, a small group": "Fechas fijas, en grupo reducido",
     "Manage an existing booking": "Gestionar una reserva existente",
@@ -1306,7 +1307,8 @@ ES = {
     'The ateliers': 'Los talleres',
     'Your events': 'Sus eventos',
     'stays &amp; general': 'estancias y consultas generales',
-    'workshops &amp; events': 'talleres y eventos',
+    'workshops & events': 'talleres y eventos',
+    'For now, the château is open only to its guests.': 'Por ahora, el castillo solo está abierto a sus huéspedes.',
     # Handover q, 7 October. See the note on the French table.
     'Ask to move your dates': 'Solicitar un cambio de fechas',
     'Find an Enquiry': 'Buscar una consulta',

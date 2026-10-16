@@ -147,11 +147,15 @@ def run():
     s.check("a stay is one event, not an arrival and a departure",
             s1 is not None and sum(1 for i in items if i["key"] == f"stay:{stay1}") == 1,
             detail=str([k for k in by_key if k.startswith("stay:")])[:200])
+    # The house's own times, the ones every guest is told -- 3pm and 10am since
+    # 15 October. The calendar kept 4pm and 11am of its own until 16 October.
     s.check("from check-in on the day they arrive",
-            s1 and s1["start"] == f"{_iso(today + timedelta(days=10))}T16:00:00",
+            s1 and s1["start"] == f"{_iso(today + timedelta(days=10))}T{m.CHECK_IN_TIME}:00"
+            and m.CHECK_IN_TIME == "15:00",
             detail=s1 and s1["start"])
     s.check("to check-out on the day they leave",
-            s1 and s1["end"] == f"{_iso(today + timedelta(days=13))}T11:00:00",
+            s1 and s1["end"] == f"{_iso(today + timedelta(days=13))}T{m.CHECK_OUT_TIME}:00"
+            and m.CHECK_OUT_TIME == "10:00",
             detail=s1 and s1["end"])
     s.check("with the guest, how many, and the room",
             s1 and f"{TAG} Guest S1" in s1["subject"] and "×2" in s1["subject"]

@@ -33,7 +33,7 @@
         <div class="g-three__b">
           <span class="g-three__ill" aria-hidden="true">{{ illus('fourposter') }}</span>
           <h3 class="g-three__t">Stay the night</h3>
-          <p class="g-three__d">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} bedrooms. Room and breakfast.</p>
+          <p class="g-three__d">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }} guest rooms. Room and breakfast.</p>
           {% if house_rooms and house_rooms.from_price %}<p class="g-price"><span class="g-price__k">From</span><span class="g-price__n">&euro;{{ house_rooms.from_price }}</span><span class="g-price__u">a night · room and breakfast</span></p>{% endif %}
           <p class="g-three__a">
             <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check dates</a>
