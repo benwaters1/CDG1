@@ -421,6 +421,7 @@ SUITES = [
     "test_guest_preferences_apply",
     "test_party_bill",
     "test_split_bill",
+    "test_till_vat_rows",
     "test_correspondence",
     "test_second_contact",
     "test_record_history",

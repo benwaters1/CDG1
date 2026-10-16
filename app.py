@@ -20072,22 +20072,24 @@ def pos_bill(conn, order_id):
         b = by_rate.setdefault(float(rate), {"gross": 0.0, "vat": 0.0, "net": 0.0})
         b["gross"] += amount
         b["covered"] = round(b.get("covered", 0.0) + (l["package_covered"] or 0), 2)
-    adjustment = service - discount
-    # Apportion the discount and service over what is left after the package
-    # has taken its share, so the two reductions cannot both claim the same
-    # euro of a covered drink.
-    apportion_base = round(gross - package, 2)
-    for rate, b in by_rate.items():
-        net_of_package = b["gross"] - b.get("covered", 0.0)
-        share = (net_of_package / apportion_base) if apportion_base else 0
-        b["gross"] = round(net_of_package + adjustment * share, 2)
+    # What the meal comes to before any deposit is credited, and so what the
+    # rate rows add up to. Never below nothing: a discount bigger than the bill
+    # makes the meal free, not a meal the house owes VAT back on.
+    before_deposit = round(max(0.0, gross - package - discount + service), 2)
+    for rate, amount in pos_split_by_rate(by_rate, before_deposit).items():
+        b = by_rate[rate]
+        b["gross"] = amount
         b["vat"] = round(b["gross"] - b["gross"] / (1 + rate / 100), 2) if rate else 0.0
         b["net"] = round(b["gross"] - b["vat"], 2)
 
     paid = round(conn.execute(
         "SELECT COALESCE(SUM(amount), 0) AS t FROM pos_payments WHERE order_id = ?",
         (order_id,)).fetchone()["t"], 2)
-    total = round(max(0.0, gross - package - discount + service - deposit), 2)
+    total = round(max(0.0, before_deposit - deposit), 2)
+    issued = pos_vat_as_issued(conn, order, by_rate, gross=gross, discount=discount,
+                               service=service, deposit=deposit, total=total)
+    if issued is not None:
+        by_rate = issued
     return {
         "order": order, "lines": lines, "live": live,
         "gross": gross, "discount": discount, "service": service, "deposit": deposit,
@@ -20098,6 +20100,100 @@ def pos_bill(conn, order_id):
         "unsent": [l for l in live if l["state"] == "new"],
         "covers": order["covers"] or 1,
     }
+
+
+def pos_split_by_rate(by_rate, charged):
+    """Share what the bill comes to over its VAT rates, to the cent.
+
+    `by_rate` is {rate: {"gross": served, "covered": package}}, and `charged`
+    is the bill after the package, the discount and the service. Returns
+    {rate: amount}, and the amounts add up to exactly `charged`.
+
+    Each rate is weighted by what is left on it once the package has taken its
+    share, so the package comes off the rate its drinks carry and the discount
+    and service cannot both claim the same euro of a covered drink.
+
+    The rates used to be rounded one at a time. With a discount or a service
+    charge on a bill of three rates -- food, wine and a line rung up with no
+    rate, which reads as 0% -- about one bill in four came to a cent more or
+    less than the bill, and the receipt printed a Total TTC its own VAT lines
+    did not add up to. (Two rates almost never missed: two shares that add up
+    to whole cents round to whole cents unless both sit on a half.)
+
+    So the split is done in whole cents by largest remainder: every rate gets
+    its share rounded down, and the cents still owed go one each to the rates
+    the rounding cost most. Ties go to the larger share, then the higher rate,
+    so the order the lines were rung in never decides where a cent lands.
+    """
+    if not by_rate:
+        return {}
+
+    def in_cents(euros):
+        # Rounded to the cent first: 437.965 * 100 is 43796.4999... in floating
+        # point, so rounding after the multiply would lose the half cent.
+        return int(round(round(euros, 2) * 100))
+
+    cents = in_cents(charged)
+    weights = {rate: in_cents(b["gross"] - b.get("covered", 0.0))
+               for rate, b in by_rate.items()}
+    if sum(weights.values()) <= 0:
+        # The package took the whole bill, so there is nothing left to weigh a
+        # service charge by. Weighed by what was served instead -- spread over
+        # nothing, it fell out of the VAT altogether.
+        weights = {rate: in_cents(b["gross"]) for rate, b in by_rate.items()}
+    whole = sum(weights.values())
+    if whole <= 0:
+        # Nothing on the bill has a price. Whatever is charged goes on the
+        # highest rate, the one that cannot under-declare.
+        top = max(by_rate)
+        return {rate: (cents if rate == top else 0) / 100 for rate in by_rate}
+    share = {rate: cents * w // whole for rate, w in weights.items()}
+    left = cents - sum(share.values())
+    for rate in sorted(weights, key=lambda r: (-(cents * weights[r] % whole),
+                                               -weights[r], -r))[:left]:
+        share[rate] += 1
+    return {rate: c / 100 for rate, c in share.items()}
+
+
+def pos_vat_as_issued(conn, order, by_rate, **figures):
+    """The VAT rows a settled bill was issued with, read back from the journal.
+
+    A settled bill's VAT is what its `tab_settled` entry recorded, not what
+    today's arithmetic makes of its lines. The split above was changed in
+    October 2026 so the rows add up; a bill settled before then may carry a
+    row a cent away from what the fixed split gives, and its reprint, its
+    emailed copy and the closure of its day must all say what was handed to
+    the guest and hashed into the journal -- a note that changes after it was
+    issued is not the same note. Bills settled since then read back exactly
+    what the split gives, so for them this changes nothing.
+
+    None, and the bill uses its own arithmetic, when the tab is open, when it
+    was reopened after it was settled, when it was settled before the journal
+    existed, or when the entry no longer describes the bill -- the gross,
+    discount, service, deposit, total or set of rates has moved since. Rows
+    from an entry like that would be the VAT on a different meal.
+    """
+    if order["status"] == "open":
+        return None
+    row = conn.execute(
+        "SELECT event_type, payload FROM pos_journal WHERE order_id = ? "
+        "AND event_type IN ('tab_settled', 'tab_reopened') "
+        "ORDER BY sequence DESC LIMIT 1", (order["id"],)).fetchone()
+    if not row or row["event_type"] != "tab_settled":
+        return None
+    try:
+        payload = json.loads(row["payload"])
+        issued = {float(rate): {k: float(v) for k, v in band.items()}
+                  for rate, band in (payload.get("vat") or {}).items()}
+        if any(abs(float(payload.get(key) or 0) - value) > 0.005
+               for key, value in figures.items()):
+            return None
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if set(issued) != set(by_rate) or any(
+            not {"gross", "vat", "net"} <= set(band) for band in issued.values()):
+        return None
+    return issued
 
 
 # ---------------------------------------------------------------------------
