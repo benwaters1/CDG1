@@ -46546,7 +46546,7 @@ def api_validate_promo_code():
         session_id_raw = request.form.get("session_id", "").strip()
         party_size = int(request.form.get("party_size", "")) if request.form.get("party_size", "").isdigit() else 0
         price_row = conn.execute(
-            """SELECT workshops.price_per_person FROM workshop_sessions
+            """SELECT workshops.price_per_person, workshops.single_supplement FROM workshop_sessions
                JOIN workshops ON workshops.id = workshop_sessions.workshop_id
                WHERE workshop_sessions.id = ?""",
             (session_id_raw,),
@@ -46554,7 +46554,14 @@ def api_validate_promo_code():
         if not price_row or party_size < 1 or not price_row["price_per_person"]:
             conn.close()
             return jsonify({"valid": False, "message": "Enter your party size first."})
-        subtotal = price_row["price_per_person"] * party_size
+        # A room to yourself is in the subtotal the booking will charge, so a
+        # percentage code must preview against it too. The same narrowing as
+        # the registration POST: one guest, a supplement set — anything else
+        # is priced as sharing there, so it is previewed as sharing here.
+        occupancy_type = request.form.get("occupancy_type", "").strip()
+        if not (occupancy_type == "solo" and party_size == 1):
+            occupancy_type = "double"
+        subtotal = workshop_subtotal(price_row, party_size, occupancy_type)[0]
     else:
         conn.close()
         return jsonify({"valid": False, "message": "Unknown booking type."}), 400
@@ -52828,15 +52835,32 @@ def parse_money(raw):
     return round(value, 2) if value >= 0 else None
 
 
-# What a guest may choose for themselves on the public registration form.
+# What a guest may always choose for themselves on the public registration form.
 #
-# 'solo' is deliberately absent. A private room on an atelier is arranged with
-# the château directly: the price depends on the atelier, the dates and what is
-# actually free, so it is quoted per enquiry rather than carried as a standing
-# supplement. Staff can still set solo on a booking by hand, which is how one
-# that was arranged over the phone gets recorded.
+# 'solo' is not in it because it is not always on offer: a room to yourself is
+# sold online only when the atelier carries a supplement and a room is free —
+# see workshop_solo_bookable(). Where it is not on offer a posted 'solo' still
+# becomes 'double', so a private room is never given away for nothing. Staff
+# can set solo on a booking by hand, which is how one arranged over the phone
+# gets recorded.
 PUBLIC_OCCUPANCY_TYPES = ("double", "triple")
 ALL_OCCUPANCY_TYPES = ("solo", "double", "triple")
+
+
+def workshop_solo_bookable(workshop, rooms_left):
+    """True when a guest coming alone may buy a room to themselves online.
+
+    Three things, all needed (owner, 15 Oct; handover z22 item 12): a priced
+    atelier, a supplement above nothing — 'solo' at no supplement is a private
+    room given away — and at least one room still free on the session. The
+    registration page offers the tick from this and the POST accepts 'solo'
+    from this, so the page can never offer what the route then refuses.
+    """
+    try:
+        supplement = float(workshop["single_supplement"] or 0)
+    except (KeyError, IndexError, TypeError, ValueError):
+        supplement = 0.0
+    return bool(supplement > 0 and workshop["price_per_person"] and rooms_left >= 1)
 
 
 def workshop_single_supplement(workshop, occupancy_type):
@@ -55180,6 +55204,9 @@ def workshop_register(session_id):
         # Don't offer a private room the château cannot give: the same reason
         # a taken night is not clickable on the booking calendar.
         "solo_possible": rooms_left >= 1 or not bookable_room_count(conn),
+        # Whether "A room to myself, +€X" is offered and charged online. The
+        # POST below accepts 'solo' only on the same answer.
+        "solo_bookable": workshop_solo_bookable(session_row, rooms_left),
         # The deposit percent create_workshop_booking will charge, for each
         # party size the form allows. The page works out the amounts as the
         # guest types (handover z22); a deposit rule can vary by party size,
@@ -55207,13 +55234,17 @@ def workshop_register(session_id):
         party_size_raw = request.form.get("party_size", "").strip()
         party_size = int(party_size_raw) if party_size_raw.isdigit() else None
         occupancy_type = request.form.get("occupancy_type", "double").strip()
-        # A private room is arranged with the château directly, not booked
-        # online: what it costs depends on the atelier, the dates and what is
-        # free, so it is quoted case by case rather than carrying a standing
-        # supplement. The refusal is here rather than only in the form because
-        # hiding an <option> stops nobody from posting the value — and 'solo'
-        # with no supplement set is a private room given away for nothing.
-        if occupancy_type not in PUBLIC_OCCUPANCY_TYPES:
+        # A room to yourself is sold here only for one guest on an atelier that
+        # carries a supplement (the page hides the tick for a larger party).
+        # Anything else posting 'solo' becomes 'double', as it always has: the
+        # refusal is here rather than only in the form because hiding a tick
+        # stops nobody from posting the value, and 'solo' with no supplement is
+        # a private room given away for nothing. Whether a room is still FREE
+        # is asked again below under the write lock, because a guest who ticked
+        # it was promised one and must not be quietly put in a shared room.
+        solo_wanted = (occupancy_type == "solo" and party_size == 1
+                       and workshop_solo_bookable(session_row, 1))
+        if occupancy_type not in PUBLIC_OCCUPANCY_TYPES and not solo_wanted:
             occupancy_type = "double"
         requested_roommate = request.form.get("requested_roommate", "").strip()[:200]
         dietary_notes = request.form.get("dietary_notes", "").strip()[:500]
@@ -55241,6 +55272,13 @@ def workshop_register(session_id):
             # read "room for you".
             error = "This session is fully booked — join the waitlist below, or choose another date."
             fully_booked = True
+        elif solo_wanted and (bookable_room_count(conn)
+                              - session_rooms_used(conn, session_id)) < 1:
+            # Counted after claim_workshop_places took the lock, so two guests
+            # ticking it for the last free room cannot both be sold it.
+            error = ("The last room to yourself on these dates has just been taken. "
+                     "You can still come and share a room with another guest travelling solo.")
+            page["solo_bookable"] = False
         else:
             # end_date is the last day the guests are still there (they check
             # out that morning, the same convention a workshop uses to hold
