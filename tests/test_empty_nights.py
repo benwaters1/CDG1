@@ -360,7 +360,8 @@ def _run(s, mine):
 
 
 def _house(s, oc, today, base, d, room, booked):
-    """Ateliers, confirmed events and live holds: every room, last day included."""
+    """Ateliers, confirmed events and live holds: every room. An event or a hold
+    holds its last day; an atelier holds to the night before it ends."""
     s.section("A night held for the whole house is not an empty one")
     stamp = datetime.now(timezone.utc).isoformat()
     now = datetime.now(timezone.utc)
@@ -409,7 +410,9 @@ def _house(s, oc, today, base, d, room, booked):
         conn.execute(
             """INSERT INTO workshop_sessions (workshop_id, start_date, end_date,
                capacity, notes, created_at) VALUES (?, ?, ?, 10, ?, ?)""",
-            (wid, d(62).isoformat(), d(64).isoformat(), TAG, stamp))
+            # Ends on the 65th, so it holds 62-64: the night a workshop ends is
+            # sold to its guests staying on (owner, 16 Oct 2026).
+            (wid, d(62).isoformat(), d(65).isoformat(), TAG, stamp))
         conn.commit()
         event("WED", d(68), d(69))
         # An enquiry nobody has confirmed holds nothing of its own; the hold on
@@ -437,11 +440,11 @@ def _house(s, oc, today, base, d, room, booked):
         now_listed = _listed(after, room["id"])
         return [d(o).isoformat() for o in offsets if d(o) not in now_listed]
 
-    s.check("every night of an atelier is out of every room's runs, its last day too",
+    s.check("every night of an atelier is out of every room's runs, to the night before it ends",
             not listed_anywhere([62, 63, 64]),
             detail=f"still listed: {listed_anywhere([62, 63, 64])[:3]} -- the booking "
                    "check refuses every room on these, and the page offered them")
-    s.check("while the night before and the morning after are empty",
+    s.check("while the night before and the night it ends are empty",
             not not_listed([61, 65]), detail=str(not_listed([61, 65])))
     s.check("both days of a confirmed event are out",
             not listed_anywhere([68, 69]) and not not_listed([67, 70]),
