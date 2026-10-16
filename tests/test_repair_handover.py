@@ -452,26 +452,24 @@ def run():
     finally:
         shutil.rmtree(cwd, ignore_errors=True)
 
-    s.section("The address the owner retired is swapped for the one that replaced it")
-    # 12 October: nothing to ariege@ -- reservations@ for anything general.
-    # Every zip built on an older copy prints ariege@ in the footer again.
+    s.section("An address the owner brought back is left as he wrote it")
+    # 12 October: nothing to ariege@, and this swapped it for reservations@.
+    # 15 October (z21, z22): ariege@ is back for general enquiries, in the
+    # footer and on Contact. A repair that still swapped it would undo the
+    # owner's choice on every handover, without a word.
     cwd = tempfile.mkdtemp(prefix="ztest-repair-address-")
     try:
         _git(cwd, "init", "-q")
-        _write(cwd, "templates/footer.html",
-               '<a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a>\n'
-               '<a href="mailto:accounts@chateaugudanes.com">accounts@chateaugudanes.com</a>\n')
+        footer = ('<a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a>\n'
+                  '<a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a>\n')
+        _write(cwd, "templates/footer.html", footer)
         _git(cwd, "add", "-A")
-        _git(cwd, "commit", "-q", "-m", "a footer from an older copy")
+        _git(cwd, "commit", "-q", "-m", "the footer as z22 has it")
         code, out = _run(cwd, src)
         fixed = _read(cwd, "templates/footer.html")
-        s.check("the link and the words both become reservations@",
-                'href="mailto:reservations@chateaugudanes.com">reservations@chateaugudanes.com<' in fixed
-                and "ariege@" not in fixed, detail=fixed)
-        s.check("and other addresses are left alone",
-                "accounts@chateaugudanes.com" in fixed, detail=fixed)
-        s.check("it reports what it changed",
-                re.search(r"restored\s+2\s+the address the owner retired", out) is not None,
+        s.check("ariege@ stays ariege@", fixed == footer, detail=fixed)
+        s.check("and nothing is reported as restored",
+                re.search(r"restored\s+[1-9]\d*\s+the address the owner retired", out) is None,
                 detail=out[-300:])
         code2, out2 = _run(cwd, src)
         s.check("a second run leaves it alone",

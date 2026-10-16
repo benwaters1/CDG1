@@ -460,6 +460,7 @@ SUITES = [
     "test_handover_check",
     "test_repair_handover",
     "test_room_channel_name",
+    "test_room_facts",
     "test_job_hour_windows",
     "test_whatsapp_channel",
     "test_till_touch_targets",

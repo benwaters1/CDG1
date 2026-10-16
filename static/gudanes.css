@@ -11438,3 +11438,16 @@ body.at-top.has-hero .g-top .g-nav a.is-here, body.at-top.has-hero .g-top .g-nav
 /* Family Suite: its photographs are upright - a taller header and portrait-shaped grid photographs on its room page */
 .g .g-room--family .g-roomhero{ height: clamp(22rem, 72vh, 46rem); object-position: center 40%; }
 .g .g-room--family .g-strip.g-roomgal img{ aspect-ratio: 4 / 5 !important; }
+
+/* 15 Oct (owner): "centre the guest" - the Guests cell is centred, and its label follows, but a number field ignores
+   inherited alignment, so the 2 sat on the left under a centred GUESTS. */
+.g .g-herosearch__f--n input{ text-align: center; }
+
+/* 15 Oct (owner: "a calendar doesn't pop up here on the computer"). The drawer's date boxes kept the dark drawer's
+   near-white text and a whitened calendar icon on the cream drawer, so only the selected "dd" showed and the icon
+   was all but invisible. Dark text, a visible icon, and every date box shows a pointer (the click opens the
+   calendar - see the script in public_base.html). */
+.g #g-mainnav .g-qbook__f input{ color: var(--ink); background: #FFFDF8; border-color: rgba(115,86,45,.45); }
+.g #g-mainnav .g-qbook__f input::-webkit-calendar-picker-indicator{ filter: none; opacity: .8; }
+.g input[type="date"]{ cursor: pointer; }
+.g input[type="date"]::-webkit-calendar-picker-indicator{ cursor: pointer; }
