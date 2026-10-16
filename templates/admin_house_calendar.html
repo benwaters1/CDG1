@@ -10,7 +10,7 @@
   </div>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
-  One Microsoft 365 calendar, <strong>{{ name }}</strong>, that the app writes and everybody reads —
+  One Microsoft 365 calendar, <strong>{{ name }}</strong> — the house mailbox's own — that the app writes and everybody reads —
   in Outlook on a computer, on the web and on a phone. The stays, the dinners, the ateliers,
   the events, the tasks and the rota, exactly as the app's own calendar has them, kept up to
   date every {{ poll }} seconds and checked against Microsoft's copy every night. Names, rooms
@@ -41,6 +41,7 @@
     {% if st.calendar_id %}<tr><th scope="row">Microsoft's id for it</th><td><code style="overflow-wrap:anywhere;">{{ st.calendar_id }}</code></td></tr>{% endif %}
     {% if st.shared_note %}<tr><th scope="row">Shared</th><td>{{ st.shared_note }}</td></tr>{% endif %}
     {% if st.categories_note %}<tr><th scope="row">Colours</th><td>{{ st.categories_note }}</td></tr>{% endif %}
+    {% if st.retired_note %}<tr><th scope="row">The old calendar</th><td>{{ st.retired_note }}</td></tr>{% endif %}
   </tbody>
 </table>
 </div>
@@ -166,7 +167,7 @@
       <br><code>New-ApplicationAccessPolicy -AppId &lt;the calendar app's client id&gt; -PolicyScopeGroupId GudanesHouseCalendar@chateaugudanes.com -AccessRight RestrictAccess -Description "House calendar app: the house mailbox only"</code>
       <br><code>Test-ApplicationAccessPolicy -Identity house@chateaugudanes.com -AppId &lt;client id&gt;</code> should say <em>Granted</em>, and the same for accounts@ should say <em>Denied</em>. It can take up to an hour to apply.</li>
     <li><strong>Railway variables:</strong> <code>MS_CALENDAR_CLIENT_ID</code>, <code>MS_CALENDAR_CLIENT_SECRET</code>, <code>HOUSE_CALENDAR_MAILBOX</code> (e.g. house@chateaugudanes.com). The tenant is the mail reader's <code>MS_GRAPH_TENANT_ID</code>. Redeploy.</li>
-    <li><strong>Share it.</strong> Come back here and press <em>Share with everybody, read only</em>. Each person then adds it once: Outlook → Calendar → Add calendar → From directory → <em>House</em> → {{ name }}. It then shows in Outlook on their phone as well.</li>
+    <li><strong>Share it.</strong> Come back here and press <em>Share with everybody, read only</em>. Each person then adds it once: Outlook → Calendar → Add calendar → From directory → <em>{{ name }}</em> → Add. It is the house mailbox's own calendar, so it arrives under that name, <em>{{ name }}</em>, with nothing more to choose. It then shows in Outlook on their phone as well.</li>
   </ol>
 </div>
 

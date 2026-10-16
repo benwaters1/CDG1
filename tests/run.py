@@ -402,6 +402,7 @@ SUITES = [
     "test_room_edit_keeps",
     "test_stay_list_price",
     "test_stripe_labels",
+    "test_corrections_2026_10_16",
     "test_languages_page",
     "test_share_images",
     "test_stripe_webhook_tool",
@@ -486,6 +487,7 @@ SUITES = [
     "test_outlook_addin",
     "test_send_check",
     "test_house_calendar",
+    "test_house_calendar_default",
     # Brief of 15 October 2026.
     "test_tech_email",
     "test_staff_accounts",

@@ -65,7 +65,10 @@ def run():
     s.check("no old path is listed over a real route", not shadowed,
             detail=f"{shadowed} — these are the pages themselves, and a "
                    "redirect on one answers 200 all the way to the wrong page")
-    for path in ("/workshops", "/gallery", "/events", "/restaurant", "/book"):
+    # /history was an old address sent to the Restoration page; since z22 it
+    # is the History page itself, and a redirect left on it would hide it.
+    for path in ("/workshops", "/gallery", "/events", "/restaurant", "/book",
+                 "/history"):
         s.check(f"{path} still serves its own page",
                 c.get(path).status_code == 200,
                 detail=str(c.get(path).status_code))

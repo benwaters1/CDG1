@@ -704,7 +704,8 @@ checks the code against it.
 
 Owner page: Settings → House calendar (`/admin/house-calendar`).
 
-One Microsoft 365 calendar, "Château de Gudanes — House", that the app writes
+One Microsoft 365 calendar — the house mailbox's own default calendar, listed
+as "House" in Outlook's directory — that the app writes
 every thirty seconds — stays, dinners, ateliers, events, tasks and the rota,
 exactly as `/calendar` shows them — and everybody reads in Outlook on their
 computer and phone. Names, rooms and dates only. Checked against Microsoft's
@@ -736,9 +737,20 @@ it write into every inbox it reads.
 4. Railway: `MS_CALENDAR_CLIENT_ID`, `MS_CALENDAR_CLIENT_SECRET`,
    `HOUSE_CALENDAR_MAILBOX`. Redeploy.
 5. On the house calendar page, press **Share with everybody, read only**.
+   If Microsoft lists no organisation-wide entry, run the line the page
+   gives instead:
+   `Set-MailboxFolderPermission -Identity "house@chateaugudanes.com:\Calendar" -User Default -AccessRights Reviewer`
    Each person adds it once: Outlook → Calendar → Add calendar → From
-   directory → House → "Château de Gudanes — House". It then appears in
-   Outlook on their phone too.
+   directory → House → Add. It then appears in Outlook on their phone too.
+
+The app writes into the mailbox's **default** calendar, never a second one:
+From directory adds a mailbox's default calendar and nothing else, and a
+shared mailbox's other calendars can only be handed out by an invitation sent
+from inside it. Until 16 October 2026 it wrote into a second calendar,
+"Château de Gudanes — House", which nobody could add. When the calendar's id
+changes, the next pass makes each event once in the new calendar and takes the
+app's events out of the old one; the old calendar itself is left for the owner
+to delete, and the page says so.
 
 The same page makes a token-protected `.ics` link (`/calendar/house.ics`,
 and one per area) for a phone without Microsoft 365, and can replace the

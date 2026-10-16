@@ -38,7 +38,7 @@ m = _harness.m
 # Every public page a stranger can open without a token of their own.
 PUBLIC = ["/", "/book", "/restaurant", "/restaurant/book", "/workshops",
           "/events", "/events/weddings", "/events/photoshoots", "/events/private",
-          "/facilities", "/restoration", "/gallery", "/press", "/story",
+          "/facilities", "/restoration", "/history", "/gallery", "/press", "/story",
           "/contact", "/privacy", "/book/manage"]
 
 
