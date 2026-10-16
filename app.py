@@ -20679,7 +20679,20 @@ def pos_allocate_receipt_number(conn, order_id):
 
     Allocated at payment rather than at open, so a table that sits down and
     changes its mind does not eat a number and leave a hole nobody can explain.
+
+    Unique because it reads the last number and writes the next one while
+    holding SQLite's single write lock, so a second tablet settling at the
+    same moment waits and then reads the number this one wrote. Every caller
+    today has already written in this transaction (the payment row, the
+    settled tab), and that write is what was holding the lock. Nothing said
+    so, and a caller that numbered a bill BEFORE writing anything would have
+    let two tablets both read 41 and both write 42; the unique index on
+    receipt_number would then refuse the second, failing a payment that may
+    already have been taken at the card reader. So the lock is taken here
+    whenever the caller has not already got it.
     """
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
     order = conn.execute("SELECT receipt_number FROM pos_orders WHERE id = ?",
                          (order_id,)).fetchone()
     if order and order["receipt_number"]:
