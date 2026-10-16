@@ -1980,7 +1980,15 @@ class HouseConnection(sqlite3.Connection):
                         (self.actor_user_id, self.actor, self.endpoint, self.claim_floor))
             except sqlite3.OperationalError:
                 pass            # before the change log exists: nothing to claim
-        return super().commit()
+        done = super().commit()
+        # Letters queue_undelivered held back while this request had a write
+        # open go into the outbox as soon as nothing it opened still has one,
+        # rather than waiting for the request (or a whole automation tick) to
+        # end. Popped before filing: filing commits too.
+        if (has_request_context() and g.get("_held_letters")
+                and not request_holds_a_write()):
+            file_held_letters(g.pop("_held_letters"))
+        return done
 
 
 def change_actor():
@@ -2069,7 +2077,9 @@ def close_open_connections(exc):
     # AFTER the closes, deliberately. Letters the house sent during this
     # request are filed now that nothing it opened is still holding the write
     # lock; doing it inline would make every guest email wait on the caller's
-    # own transaction.
+    # own transaction. Held letters first: their rows are what the record of
+    # each one points at.
+    file_held_letters(g.pop("_held_letters", None) or [])
     write_guest_messages(g.pop("_guest_messages", None) or [])
     # And the page view, for the same reason.
     write_page_view(g.pop("_page_view", None))
@@ -7292,6 +7302,21 @@ def init_db():
         conn.commit()
     except (sqlite3.OperationalError, sqlite3.IntegrityError) as e:
         print(f"[init] event_payments: checkout-once index not built ({e})")
+
+    # Each charge taken on the card reader on the books once. The till's poll
+    # recorded the same PaymentIntent again on every reload while the tab stayed
+    # open, so a charge that left a coffee owing was counted twice and closed
+    # the tab. The poll now claims the charge before writing it; this is what
+    # stops any later path writing it a second time. Outside the loop for the
+    # reason above: a till that hit the old fault may already hold a duplicate.
+    try:
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS pos_payments_reader_charge_once "
+            "ON pos_payments(reference) WHERE method = 'card_terminal' "
+            "AND reference IS NOT NULL")
+        conn.commit()
+    except (sqlite3.OperationalError, sqlite3.IntegrityError) as e:
+        print(f"[init] pos_payments: reader-charge-once index not built ({e})")
 
     hold_legacy_balance_stamps(conn)
     link_held_letters(conn)
@@ -15518,9 +15543,13 @@ def claim_range(conn, room_id, arrival, departure, exclude_booking_id=None,
     was just made rather than the world as it was before.
 
     The lock is released by the CALLER'S existing conn.commit(). That is not
-    incidental: send_email falls back to the outbox on its own connection,
-    which cannot write while a transaction is open here, so every caller must
-    commit before it sends. They all already do, for exactly that reason.
+    incidental: every caller must commit before it sends, or the letter goes
+    over the network with every booking in the house queued behind it. One
+    did not -- a refused confirm_booking_by_id returns with this lock still
+    held, and create_booking's fallback letters went out under it, which also
+    cost the guest their "Payment received" until queue_undelivered learned
+    to wait for the write. create_booking now commits after a confirm either
+    way.
 
     Read-only callers must NOT use this. The room grid, the quote and the
     availability calendar all ask the same question without acting on it, and
@@ -28927,33 +28956,91 @@ def held_mail_split(conn, now=None, limit=None):
     return (sendable[:limit] if limit else sendable), stale
 
 
-def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reason, error=None):
-    """Keep a message that could not be sent, so it can go out later.
+class HeldLetter:
+    """A letter on its way into email_outbox, and the row it became.
 
-    Deliberately opens and closes its own connection and swallows everything:
-    this runs on the failure path of a side effect, and the request that
-    triggered it has real work to finish — recording a booking, deciding an
-    expense. Failing to file a failure must not lose the thing that succeeded.
+    `id` is None until it is filed, and stays None if filing failed -- which
+    is how the record of the letter knows to say "failed" rather than "held".
     """
+    __slots__ = ("values", "id")
+
+    def __init__(self, values):
+        self.values = values
+        self.id = None
+
+
+def request_holds_a_write():
+    """True while a connection this request opened has a write not committed."""
+    for conn in g.get("_open_db_connections") or ():
+        try:
+            if conn.in_transaction:
+                return True
+        except sqlite3.ProgrammingError:        # closed already
+            pass
+    return False
+
+
+def file_held_letters(letters):
+    """Write letters into email_outbox: one connection, one commit.
+
+    Swallows everything, for queue_undelivered's reason. A failure is printed
+    per letter and leaves its id None, so nothing points at a row that is not
+    there.
+    """
+    if not letters:
+        return
     try:
         conn = get_db()
         try:
-            cur = conn.execute(
-                """INSERT INTO email_outbox (to_address, subject, body, ics_content,
-                   ics_filename, reason, last_error, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (to_address, subject, body, ics_content, ics_filename, reason, error,
-                 datetime.now(timezone.utc).isoformat()),
-            )
+            for letter in letters:
+                letter.id = conn.execute(
+                    """INSERT INTO email_outbox (to_address, subject, body, ics_content,
+                       ics_filename, reason, last_error, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", letter.values).lastrowid
             conn.commit()
-            # Which row, so the letter's record can say "held" and be put right
-            # the day it is sent from here.
-            return cur.lastrowid
         finally:
             conn.close()
     except Exception as e:                     # pragma: no cover - last resort
-        print(f"[outbox write failed] To: {to_address} | Subject: {subject} | Error: {e}")
-    return None
+        for letter in letters:
+            letter.id = None
+            print(f"[outbox write failed] To: {letter.values[0]} | "
+                  f"Subject: {letter.values[1]} | Error: {e}")
+
+
+def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reason, error=None):
+    """Keep a message that could not be sent, so it can go out later.
+
+    Deliberately on a connection of its own, with everything swallowed: this
+    runs on the failure path of a side effect, and the request that triggered
+    it has real work to finish — recording a booking, deciding an expense.
+    Failing to file a failure must not lose the thing that succeeded.
+
+    NOT ALWAYS AT ONCE, because the request is often the writer. SQLite allows
+    one, and a helper several calls down -- claim_range taking the booking
+    lock, a line in a registration's message history -- may have written on
+    the request's connection with nobody committing yet. A second connection
+    then waits the whole busy_timeout on a lock its own request holds, gives up
+    with "database is locked", and the letter was gone with a print line to
+    show for it: a paid stay's "Payment received" and the house's "Needs you"
+    among them, whenever guest mail was held or the provider was down. Eleven
+    in one run of the suite. test_outbox_lock reads the source for the shape,
+    and a write inside a helper is invisible to it.
+
+    So while this request holds a write, the letter waits in g and is filed
+    the moment that write is committed (HouseConnection.commit), or as the
+    request ends if it never is. What comes back is then a HeldLetter whose id
+    is filled in on filing; keep_guest_message waits the same way and is
+    written after it, so the record of the letter still points at its row.
+    """
+    letter = HeldLetter((to_address, subject, body, ics_content, ics_filename, reason,
+                         error, datetime.now(timezone.utc).isoformat()))
+    if has_request_context() and request_holds_a_write():
+        g.setdefault("_held_letters", []).append(letter)
+        return letter
+    file_held_letters([letter])
+    # Which row, so the letter's record can say "held" and be put right the
+    # day it is sent from here.
+    return letter.id
 
 
 # How long a message to a guest is kept. Two years past the stay: long enough
@@ -29207,6 +29294,10 @@ def write_guest_messages(rows):
                     to_address, subject, body, channel, delivered = row
                     row = {"to_address": to_address, "subject": subject, "body": body,
                            "channel": channel, "delivered": delivered}
+                if isinstance(row.get("outbox_id"), HeldLetter):
+                    # Filed after the request's write (queue_undelivered); the
+                    # row it became, or None if it could not be.
+                    row = dict(row, outbox_id=row["outbox_id"].id)
                 channel = row.get("channel") or "email"
                 by_mail = channel in ("email", "form")
                 about = row.get("about") or (None, None)
@@ -30019,6 +30110,10 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
         confirmed_now, _why = confirm_booking_by_id(
             conn, new_row["id"],
             online="the site, paid for online" if payment_status == "paid" else "the site")
+        # A refusal leaves commit to its caller, and the room-taken one leaves
+        # claim_range's lock held. Released here, before the letters below go
+        # over the network with every other booking queued behind it.
+        conn.commit()
 
     checkin_url = url_for("guest_checkin", manage_token=manage_token, _external=True)
     detail_lines = [
@@ -40016,6 +40111,17 @@ def pos_take_card(order_id):
     return redirect(url_for("pos_order", order_id=order_id))
 
 
+def pos_reader_charge_recorded(conn, intent_id):
+    """Whether a card charge taken on the reader is already on the books.
+
+    Asked of every tab, not just the one polling: a Stripe PaymentIntent is one
+    charge wherever its payment row has since moved, and it is written once.
+    """
+    return bool(intent_id) and conn.execute(
+        "SELECT 1 FROM pos_payments WHERE method = 'card_terminal' AND reference = ?",
+        (intent_id,)).fetchone() is not None
+
+
 @app.route("/pos/<int:order_id>/card-status")
 @login_required
 def pos_card_status(order_id):
@@ -40037,9 +40143,30 @@ def pos_card_status(order_id):
         conn.close()
         return jsonify(state="idle", message="")
 
-    state, message, intent = terminal_payment_state(order["payment_intent_id"])
+    intent_id = order["payment_intent_id"]
+    state, message, intent = terminal_payment_state(intent_id)
     settled = False
     if state == "succeeded":
+        # One charge, one payment. The intent stayed on the tab after it was
+        # recorded, so a charge that left something owing (a coffee added while
+        # the guest tapped) reloaded the page, polled again and was recorded a
+        # second time: EUR 20 on the card, EUR 40 on the books, the coffee never
+        # taken and the tab closed. A tab reopened after a reader payment did the
+        # same. So the intent is taken OFF the tab before the payment is written,
+        # in the same transaction -- the UPDATE is the claim, and a second poll
+        # (this page open on two devices) waits for it and then finds nothing to
+        # claim. A charge already on the books is never written again, whichever
+        # tab it is on now. The unique index on pos_payments is the last word.
+        claimed = conn.execute(
+            "UPDATE pos_orders SET payment_intent_id = NULL "
+            "WHERE id = ? AND payment_intent_id = ?", (order_id, intent_id)).rowcount
+        if not claimed or pos_reader_charge_recorded(conn, intent_id):
+            conn.commit()
+            now = conn.execute("SELECT status FROM pos_orders WHERE id = ?",
+                               (order_id,)).fetchone()
+            conn.close()
+            return jsonify(state="succeeded", message="That card payment is already recorded.",
+                           settled=bool(now) and now["status"] != "open")
         # Trust Stripe for the amount, exactly as the webhook does — the guest
         # tapped what the reader asked for, and recomputing it here would let a
         # line added mid-tap change what we record as taken.
@@ -40049,7 +40176,7 @@ def pos_card_status(order_id):
         who = current_user()
         user = who["id"] if who else None
         pos_take_payment(conn, order_id, taken, "card_terminal",
-                         reference=order["payment_intent_id"], user_id=user)
+                         reference=intent_id, user_id=user)
         after = pos_close_if_settled(conn, order_id, "card_terminal", user_id=user)
         conn.commit()
         settled = after["outstanding"] <= 0.01
@@ -40057,9 +40184,10 @@ def pos_card_status(order_id):
                    if not settled else f"Settled — {money(after['total'])}.")
     elif state == "failed":
         # Clear the reference so the next attempt starts a fresh payment rather
-        # than polling a dead one forever.
-        conn.execute("UPDATE pos_orders SET payment_intent_id = NULL WHERE id = ?",
-                     (order_id,))
+        # than polling a dead one forever. Only THIS one: a press on another
+        # device may have put a fresh payment on the reader since it was read.
+        conn.execute("UPDATE pos_orders SET payment_intent_id = NULL "
+                     "WHERE id = ? AND payment_intent_id = ?", (order_id, intent_id))
         conn.commit()
     conn.close()
     return jsonify(state=state, message=message, settled=settled)
@@ -55130,6 +55258,10 @@ def send_workshop_email(conn, booking, template_key, context, statement=False,
                       area="workshops", about=("workshop", booking["id"]),
                       template_key=template_key, sent_by=sent_by)
     log_workshop_message(conn, booking["id"], subject, booking["guest_email"], "sent" if sent else "failed")
+    # Kept as it is written. Left open, the line sits across whatever the
+    # caller sends next -- the house's "Payment received from ..." straight
+    # after a receipt -- and that letter goes over the network under a write.
+    conn.commit()
     return bool(sent)
 
 
