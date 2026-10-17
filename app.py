@@ -5092,6 +5092,20 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        -- DATES FOR THE HOUSE: anything worth knowing that is not a booking,
+        -- a task or a shift -- the school holidays, a market, a family
+        -- visit. On the app's calendar and in the house calendar in Outlook.
+        -- end_date is the LAST day it covers, both included.
+        CREATE TABLE IF NOT EXISTS house_dates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            note TEXT,
+            created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        );
+
         -- A closure kept to be put on again: "Winter, the Gold Suite and the
         -- Family Suite, closed for the season". Month and day only, so the
         -- same season applies to any year; end_md is the day the rooms are
@@ -8944,6 +8958,7 @@ NAV_AREAS = {
         "admin_house_calendar", "admin_house_calendar_sync", "admin_house_calendar_share",
         "admin_house_calendar_shared_by_hand",
         "admin_house_calendar_feed_link", "admin_house_calendar_areas",
+        "admin_house_dates_add", "admin_house_dates_delete",
         "admin_readiness", "admin_photo_mirror", "fetch_photo_mirror",
         "photo_intake", "uploaded_file", "photo_at_size",
         "photo_tray", "set_aside_arrival", "bring_back_arrival",
@@ -14572,6 +14587,25 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "facts": {"room": c["room_name"], "start": c["start_date"], "end": c["end_date"],
                       "why": c["reason"] or "", "mode": c["display_mode"] or "booked"},
         })
+
+    # DATES FOR THE HOUSE: the school holidays, a market, a family visit --
+    # anything the owner puts on the House calendar page that is not a booking
+    # or a task. On every day it covers, like an event.
+    for hd in conn.execute(
+            """SELECT * FROM house_dates WHERE start_date < ? AND end_date >= ?
+                ORDER BY start_date, id""",
+            (query_end.isoformat(), query_start.isoformat())).fetchall():
+        rows.extend(r for r in [over_days({
+            "kind": "date", "lane": "date", "is_guest": False, "origin": "owner",
+            "scheduled": True, "status": "noted", "acknowledgment_status": None,
+            "priority": None, "repeat_weekly": 0, "date": hd["start_date"],
+            "title": hd["title"], "short": hd["title"],
+            "detail": hd["note"] or "",
+            "assignee_id": None, "assignee_name": None, "id": hd["id"],
+            "link": url_for("admin_house_calendar") + f"#date-{hd['id']}",
+            "facts": {"start": hd["start_date"], "end": hd["end_date"],
+                      "note": hd["note"] or ""},
+        }, hd["start_date"], hd["end_date"])] if r)
 
     # THE ROTA: who is working, when. On the calendar because a week with a
     # wedding on Saturday and two people rostered is one picture, and it was
@@ -93882,8 +93916,11 @@ HOUSE_CALENDAR_AREAS = [
     ("events", "Events", "🥂", "preset9"),
     ("tasks", "Tasks", "✔", "preset2"),
     ("rota", "Rota", "👤", "preset5"),
+    ("dates", "Dates", "📅", "preset8"),
 ]
 HOUSE_CALENDAR_AREA_KEYS = [a[0] for a in HOUSE_CALENDAR_AREAS]
+# The areas a saved choice was made from before `areas_known` was kept.
+HOUSE_CALENDAR_AREAS_BEFORE_DATES = ("rooms", "restaurant", "ateliers", "events", "tasks", "rota")
 HOUSE_CALENDAR_PAST_DAYS = 30
 HOUSE_CALENDAR_AHEAD_DAYS = 548
 HOUSE_CALENDAR_POLL_SECONDS = 30
@@ -93905,6 +93942,9 @@ HOUSE_CALENDAR_SETTINGS = {
     "last_reconcile": "house_calendar_last_reconcile", "ics_token": "house_calendar_ics_token",
     "areas": "house_calendar_areas", "categories": "house_calendar_categories_note",
     "shared": "house_calendar_shared_note",
+    # The areas there were when the choice above was saved, so an area added
+    # since is carried rather than taken as unticked.
+    "areas_known": "house_calendar_areas_known",
     # How many events the app had for the window on the last pass. "Nothing
     # written" read the same whether the app had nothing to write or the
     # writing had stopped; this is what tells them apart.
@@ -93956,10 +93996,19 @@ def _hc_set(conn, name, value):
 
 
 def house_calendar_areas(conn):
+    """The areas the house calendar carries. A saved choice covers only the
+    areas there were when it was saved: one added since (Dates, 17 October
+    2026) is carried until somebody unticks it, rather than left off because
+    a choice made before it existed did not tick it. `areas_known` is the
+    list the choice was made from; a choice saved before that was kept was
+    made from the six areas there were then."""
     raw = _hc_get(conn, "areas")
     if not raw:
         return list(HOUSE_CALENDAR_AREA_KEYS)
-    return [a for a in raw.split(",") if a in HOUSE_CALENDAR_AREA_KEYS]
+    chosen = [a for a in raw.split(",") if a in HOUSE_CALENDAR_AREA_KEYS]
+    known = set((_hc_get(conn, "areas_known") or ",".join(HOUSE_CALENDAR_AREAS_BEFORE_DATES))
+                .split(","))
+    return chosen + [a for a in HOUSE_CALENDAR_AREA_KEYS if a not in known and a not in chosen]
 
 
 def house_calendar_switched_on(conn):
@@ -94089,6 +94138,13 @@ def house_calendar_items(conn, start, end, areas=None):
                               f"Guests arrive {f['arrival_time']}" if f.get("arrival_time") else "",
                               f"Dates held until {f['held_until']}" if f.get("held") else "") if x)
                           + link_line(full_link(r.get("link")))}
+        elif kind == "date" and "dates" in areas and f.get("start"):
+            key = f"date:{r['id']}"
+            items[key] = {"key": key, "area": "dates", "all_day": True,
+                          "subject": f"{marks['dates']} {r['title']}",
+                          "start": f"{f['start']}T00:00:00",
+                          "end": f"{day_after(f.get('end') or f['start'])}T00:00:00",
+                          "location": "", "body": f.get("note") or ""}
         elif kind == "task" and "tasks" in areas and r.get("date") and r["lane"] != "owner" \
                 and r["status"] != "done":
             key = f"task:{r['id']}"
@@ -94801,6 +94857,7 @@ def admin_house_calendar():
     areas = house_calendar_areas(conn)
     start, end = house_calendar_window()
     preview = house_calendar_items(conn, house_today(), house_today() + timedelta(days=14), areas)
+    dates_ahead, dates_past = house_dates_list(conn)
     conn.close()
     feeds = None
     if token:
@@ -94812,7 +94869,9 @@ def admin_house_calendar():
                            areas=HOUSE_CALENDAR_AREAS, chosen=areas, preview=preview[:60],
                            window=(start, end), name=HOUSE_CALENDAR_DIRECTORY_NAME,
                            share_command=house_calendar_share_command(),
-                           poll=HOUSE_CALENDAR_POLL_SECONDS)
+                           poll=HOUSE_CALENDAR_POLL_SECONDS,
+                           dates_ahead=dates_ahead, dates_past=dates_past,
+                           dates_on="dates" in areas)
 
 
 @app.route("/admin/house-calendar/sync", methods=["POST"])
@@ -94906,6 +94965,7 @@ def admin_house_calendar_areas():
         return redirect(url_for("admin_house_calendar"))
     conn = get_db()
     _hc_set(conn, "areas", ",".join(chosen))
+    _hc_set(conn, "areas_known", ",".join(HOUSE_CALENDAR_AREA_KEYS))
     log_audit(conn, "house_calendar_areas", details=", ".join(chosen))
     conn.commit()
     conn.close()
@@ -94913,6 +94973,98 @@ def admin_house_calendar_areas():
     flash(f"The house calendar now carries: {', '.join(labels)}. It changes within a minute.",
           "success")
     return redirect(url_for("admin_house_calendar"))
+
+
+HOUSE_DATE_TITLE_MAX = 120
+HOUSE_DATE_MAX_DAYS = 366
+
+
+def house_dates_list(conn, today=None):
+    """The dates on the House calendar page: the ones still to come or still
+    running first, soonest first, then the last few that have finished."""
+    today = (today or house_today()).isoformat()
+    upcoming = conn.execute(
+        """SELECT house_dates.*, users.name AS created_by_name FROM house_dates
+             LEFT JOIN users ON users.id = house_dates.created_by
+            WHERE end_date >= ? ORDER BY start_date, id""", (today,)).fetchall()
+    past = conn.execute(
+        """SELECT house_dates.*, users.name AS created_by_name FROM house_dates
+             LEFT JOIN users ON users.id = house_dates.created_by
+            WHERE end_date < ? ORDER BY end_date DESC, id DESC LIMIT 10""", (today,)).fetchall()
+    return [dict(r) for r in upcoming], [dict(r) for r in past]
+
+
+def house_date_problems(title, start, end):
+    """What is wrong with a date before it is saved, in words, or []."""
+    problems = []
+    if not title:
+        problems.append("give it a name")
+    elif len(title) > HOUSE_DATE_TITLE_MAX:
+        problems.append(f"keep the name under {HOUSE_DATE_TITLE_MAX} characters")
+    if not start:
+        problems.append("choose the first day")
+    elif not end:
+        problems.append("the last day is not a date")
+    elif end < start:
+        problems.append("the last day is before the first")
+    elif (end - start).days + 1 > HOUSE_DATE_MAX_DAYS:
+        problems.append(f"keep it under {HOUSE_DATE_MAX_DAYS} days")
+    return problems
+
+
+@app.route("/admin/house-calendar/dates", methods=["POST"])
+@owner_required
+def admin_house_dates_add():
+    """A date for the house -- the school holidays, a market, a visit -- on
+    the app's calendar and, within a minute, in the house calendar in
+    Outlook. The last day is optional: left empty it is one day."""
+    title = " ".join((request.form.get("title") or "").split())
+    start = parse_date(request.form.get("start_date") or "")
+    raw_end = (request.form.get("end_date") or "").strip()
+    end = parse_date(raw_end) if raw_end else start
+    note = (request.form.get("note") or "").strip()[:2000]
+    problems = house_date_problems(title, start, end)
+    if problems:
+        flash("Not added: " + "; ".join(problems) + ".", "error")
+        return redirect(url_for("admin_house_calendar") + "#dates")
+    user = current_user()
+    conn = get_db()
+    cur = conn.execute(
+        """INSERT INTO house_dates (title, start_date, end_date, note, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (title, start.isoformat(), end.isoformat(), note or None, user["id"],
+         datetime.now(timezone.utc).isoformat()))
+    log_audit(conn, "house_date_added",
+              details=f"{title}: {start.isoformat()} to {end.isoformat()}")
+    on = "dates" in house_calendar_areas(conn)
+    conn.commit()
+    conn.close()
+    when = (format_date_short(start.isoformat()) if start == end else
+            f"{format_date_short(start.isoformat())} to {format_date_short(end.isoformat())}")
+    flash(f"Added {title}, {when}. " + (
+        "It is on the app's calendar now and in the house calendar within a minute."
+        if on else "It is on the app's calendar. Dates is unticked under What it carries, "
+                   "so it is not going into the house calendar."), "success")
+    return redirect(url_for("admin_house_calendar") + f"#date-{cur.lastrowid}")
+
+
+@app.route("/admin/house-calendar/dates/<int:date_id>/delete", methods=["POST"])
+@owner_required
+def admin_house_dates_delete(date_id):
+    """Take a date off. The house calendar loses it on the next pass."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM house_dates WHERE id = ?", (date_id,)).fetchone()
+    if not row:
+        conn.close()
+        flash("That date is not there any more; nothing was removed.", "error")
+        return redirect(url_for("admin_house_calendar") + "#dates")
+    conn.execute("DELETE FROM house_dates WHERE id = ?", (date_id,))
+    log_audit(conn, "house_date_removed",
+              details=f"{row['title']}: {row['start_date']} to {row['end_date']}")
+    conn.commit()
+    conn.close()
+    flash(f"Removed {row['title']}. It leaves the house calendar within a minute.", "success")
+    return redirect(url_for("admin_house_calendar") + "#dates")
 
 
 AUTOMATION_JOBS = [

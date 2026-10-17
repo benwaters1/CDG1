@@ -58,7 +58,7 @@
 
 <div class="cal-filters" id="cal-filters">
   <span class="cal-filter-label">Show</span>
-  {% for key, label in [('booking','Bookings'), ('restaurant','Restaurant'), ('workshop','Workshops'), ('event','Events'), ('task','Staff tasks'), ('shift','Rota'), ('owner','My tasks')] %}
+  {% for key, label in [('booking','Bookings'), ('restaurant','Restaurant'), ('workshop','Workshops'), ('event','Events'), ('task','Staff tasks'), ('shift','Rota'), ('date','Dates'), ('owner','My tasks')] %}
   <button type="button" class="cal-chip is-on" data-filter-lane="{{ key }}" onclick="toggleCalLane(this)">
     <span class="cal-ev-dot cal-ev-{{ key }}"></span>{{ label }}
   </button>

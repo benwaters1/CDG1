@@ -36,6 +36,7 @@
       <option value="event">Events</option>
       <option value="task">Staff tasks</option>
       <option value="shift">Rota</option>
+      <option value="date">Dates</option>
       <option value="owner">My tasks</option>
     </select>
   </div>
@@ -178,6 +179,11 @@
   {% elif r.kind == 'shift' %}
   <div class="task-row" data-kind="shift" data-lane="shift" data-guest="employee" data-scheduled="1" data-employee="{{ r.assignee_id or '' }}" data-status="{{ r.status }}">
     <span class="lane-badge lane-shift">Rota</span>
+    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail|house_words }}</span>{% endif %}</span>
+  </div>
+  {% elif r.kind == 'date' %}
+  <div class="task-row" data-kind="date" data-lane="date" data-guest="employee" data-scheduled="1" data-employee="" data-status="noted">
+    <span class="lane-badge lane-date">Date</span>
     <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail|house_words }}</span>{% endif %}</span>
   </div>
   {% else %}
