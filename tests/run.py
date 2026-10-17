@@ -503,6 +503,10 @@ SUITES = [
     "test_check_in_times",
     # Ateliers and stays on every day they cover, 15 October 2026.
     "test_calendar_every_day",
+    # Booking.com's subject-only booking email, paired with the room's
+    # calendar; every Booking.com block drawn; one atelier chip a day
+    # (handover z27, 17 October 2026).
+    "test_booking_com_subject_stays",
 ]
 
 

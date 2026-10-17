@@ -56,6 +56,8 @@ MAY_WRITE_IN_CODE = {
     "join_workshop_waitlist": "a notice to the owner",
     "guest_account_message": "a guest's message passed to the owner",
     "tell_the_house_about_a_review": "a notice to the owner",
+    "tell_house_of_booking_com": "a notice to reservations@ that Booking.com has booked, "
+                                 "changed or cancelled a stay",
     "lapse_event_holds": "a notice to the owner",
     "contact_page": "an enquiry passed to the house",
     "pass_message": "the kitchen calling the floor",

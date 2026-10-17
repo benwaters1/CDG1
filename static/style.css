@@ -1502,6 +1502,10 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
 .cal-ev-shift .cal-ev-dot, .cal-ev-dot.cal-ev-shift{ background:var(--steel-deep); }
 .cal-ev-extra{ background:var(--cal-extra-bg); }
 .cal-ev-extra .cal-ev-dot, .cal-ev-dot.cal-ev-extra{ background:var(--cal-extra-ink); }
+/* A stay booked on Booking.com: a booking like any other, so the Bookings
+   filter carries it, but marked as the channel's by a stripe down its edge as
+   well as the "B." its words begin with. */
+.cal-ev-channel{ box-shadow:inset 3px 0 0 var(--steel-deep); }
 
 /* Every chip opens its card, so a chip with no page of its own to go to is a
    button rather than a dead span -- and looks like the links beside it. */

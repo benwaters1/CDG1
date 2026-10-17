@@ -7153,6 +7153,25 @@ def init_db():
         ("ota_reservations_door_token_once",
          "CREATE UNIQUE INDEX IF NOT EXISTS ota_reservations_door_token_once "
          "ON ota_reservations(door_token) WHERE door_token IS NOT NULL"),
+        # Booking.com's "New booking!" email now says only the reservation
+        # number and the arrival day, in its subject. The room and the
+        # departure come from the room's Booking.com calendar block that
+        # starts that day (pair_booking_com_stays), and these say which:
+        # matched_by is 'mail' (the email named the room), 'ical' (paired
+        # with a block) or 'hand' (the owner typed it); match_note says why
+        # one is not matched yet; extranet_url is the email's link to the
+        # stay on Booking.com, where the guest's name is when the email
+        # leaves it out.
+        ("ota_reservations_matched_by",
+         "ALTER TABLE ota_reservations ADD COLUMN matched_by TEXT"),
+        ("ota_reservations_match_note",
+         "ALTER TABLE ota_reservations ADD COLUMN match_note TEXT"),
+        ("ota_reservations_extranet_url",
+         "ALTER TABLE ota_reservations ADD COLUMN extranet_url TEXT"),
+        # When the house was told about a booking email (or decided not to
+        # be): one letter to reservations@ per email, never two.
+        ("ota_mail_house_told_at",
+         "ALTER TABLE ota_mail ADD COLUMN house_told_at TEXT"),
         # What happened to a letter after the provider took it: Resend's own
         # id for it, so a delivery report can find its line, and the report.
         ("mail_log_provider_id", "ALTER TABLE mail_log ADD COLUMN provider_id TEXT"),
@@ -9058,6 +9077,11 @@ OWNER_ONLY_AREAS = {
     # the money is Booking.com's and the thing the owner acts on here is the
     # legal register, not a guest conversation.
     "channel_stays_page": "management",
+    # Adding one by hand, taking back one typed by mistake, and reading the
+    # rooms' Booking.com calendars now: the same page's own buttons.
+    "add_channel_stay": "management",
+    "remove_channel_stay": "management",
+    "sync_channel_stays_now": "management",
     "restoration_record": "management",
     # The camera roll. Management rather than estate: it decides what appears
     # on the house's public pages, which is the owner's call and not a
@@ -11466,7 +11490,7 @@ def prep_channel_departures(conn, today=None):
     iso = day.isoformat()
     now = datetime.now(timezone.utc).isoformat()
     made = 0
-    for st in channel_stays(conn):
+    for st in channel_stays(conn, blocks=False):
         if st["departure_date"] != iso or not st["room_id"]:
             continue
         cur = conn.execute(
@@ -13089,7 +13113,7 @@ def management_overview(conn, period, today):
 OTA_CHANNEL_LABELS = {"booking.com": "Booking.com"}
 
 
-def channel_stays(conn):
+def channel_stays(conn, blocks=True):
     """Stays booked through Booking.com, shaped like the house's own bookings.
 
     Every list the house works from -- who is here, who arrives today, the
@@ -13132,8 +13156,61 @@ def channel_stays(conn):
             "room_name": rooms.get(r["room_id"]) or r["room_label"] or None,
             "arrival_date": r["arrival_date"], "departure_date": r["departure_date"],
             "party_size": r["guests"],
+            "extranet_url": r["extranet_url"], "from_calendar": False,
             # What a bookings row has and a channel stay does not: said as
             # nothing rather than left out, so a list reading them finds None.
+            "guest_email": None, "special_requests": None, "estimated_arrival_time": None,
+            "arrival_prepped_at": None, "checked_out_at": None,
+        })
+    if blocks:
+        out += booking_com_calendar_only_stays(conn, rooms)
+        out.sort(key=lambda st: (st["arrival_date"], st["guest_name"] or ""))
+    return out
+
+
+def booking_com_calendar_only_stays(conn, rooms=None):
+    """Booking.com stays the house knows only from a room's calendar.
+
+    The calendar sync blocks the nights of every Booking.com stay; an email
+    says who it is, but only for stays booked since the reader was set up,
+    and only once it has been matched to its block. Every other block was a
+    room the house could not sell and nobody was told to prepare: on no
+    calendar, no arrivals, no Today. Each is a stay of its own here, with no
+    name and no reservation, its own room and its own nights.
+
+    `channel_stays(conn, blocks=False)` leaves them out, for a caller that
+    acts on the reservation itself (a police fiche, a door link, a turnover
+    checklist tied to it) and so needs one.
+
+    Not a block already matched to an email's stay (or a cancelled one's,
+    while the calendar catches up), and not one lying over the house's own
+    booking or closure in that room: a channel can echo back the nights the
+    house sent it, and those are not a second guest.
+    """
+    if rooms is None:
+        rooms = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
+    claimed = {(r["room_id"], r["arrival_date"]) for r in conn.execute(
+        """SELECT room_id, arrival_date FROM ota_reservations
+            WHERE room_id IS NOT NULL AND COALESCE(arrival_date, '') != ''""")}
+    house = {}
+    for r in conn.execute(
+            """SELECT room_id, arrival_date AS a, departure_date AS d FROM bookings
+                WHERE status IN ('pending', 'confirmed')
+               UNION ALL
+               SELECT room_id, start_date AS a, end_date AS d FROM room_blocks"""):
+        house.setdefault(r["room_id"], []).append((r["a"], r["d"]))
+    out = []
+    for room_id, start, end in booking_com_blocks(conn):
+        if (room_id, start) in claimed:
+            continue
+        if any(a and d and a < end and d > start for a, d in house.get(room_id, ())):
+            continue
+        out.append({
+            "channel": "Booking.com", "ota_reservation_id": None, "reference_code": None,
+            "guest_name": "A Booking.com guest", "named": False,
+            "room_id": room_id, "room_name": rooms.get(room_id),
+            "arrival_date": start, "departure_date": end, "party_size": None,
+            "extranet_url": None, "from_calendar": True,
             "guest_email": None, "special_requests": None, "estimated_arrival_time": None,
             "arrival_prepped_at": None, "checked_out_at": None,
         })
@@ -14275,7 +14352,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
         came, goes = parse_date(arrival), parse_date(departure)
         return (goes - came).days if came and goes and goes > came else 0
 
-    def staying(row, arrival, departure, guest, room):
+    def staying(row, arrival, departure, guest, room, title=None, short=None):
         """The nights after the first, as one row: the first night is the
         arrival's, and the departure morning is not a night. A stay of 9 to 12
         March is the arrival on the 9th, this on the 10th and 11th, and the
@@ -14287,8 +14364,8 @@ def build_overview(conn, view, anchor, fetch_window=None):
         nights = (goes - came).days
         second = (came + timedelta(days=1)).isoformat()
         last = (goes - timedelta(days=1)).isoformat()
-        here = dict(row, title=f"{guest} in residence — {room}", short=guest, staying=True,
-                    badge="")
+        here = dict(row, title=title or f"{guest} in residence — {room}", short=short or guest,
+                    staying=True, badge="")
         return _spanning_row(here, {"first": arrival, "count": nights, "unit": "night"},
                              second, last, lo, hi)
 
@@ -14353,15 +14430,30 @@ def build_overview(conn, view, anchor, fetch_window=None):
         if nights:
             rows.append(nights)
 
-    # Booking.com's guests arrive and leave on the same calendar. Their link is
-    # the Booking.com page, where their emails are; there is no booking of the
-    # house's own to open.
+    # Booking.com's guests arrive and leave on the same calendar, each stay
+    # labelled the way the house says it -- "Booking.com – The Twin Room –
+    # 29–30 Oct" -- with the guest and the reservation where they are known,
+    # and "B." on the chip, which survives a month cell's ellipsis when the
+    # rest of the words do not. That includes a stay known only from a room's
+    # Booking.com calendar (booking_com_calendar_only_stays): it held the room
+    # and was on no calendar at all. Their link is the Booking.com page; there
+    # is no booking of the house's own to open.
     for st in channel_stays(conn):
-        link = url_for("management_booking_com", q=st["reference_code"]) if st["reference_code"] \
-            else url_for("management_booking_com")
+        if st["reference_code"]:
+            link = url_for("management_booking_com", q=st["reference_code"])
+        else:
+            link = url_for("channel_stays_page")
         room = st["room_name"] or "room not stated"
         party = (f"Party of {st['party_size']}" if st["party_size"]
                  else "Party size not stated")
+        label = f"{st['channel']} – {room} – {stay_span_short(st['arrival_date'], st['departure_date'])}"
+        who = " · ".join(x for x in ((st["guest_name"] if st["named"] else ""),
+                                     st["reference_code"] or "") if x)
+        label_who = label + (f" · {who}" if who else "")
+        tag = f"{st['channel'][:1]}."
+        name = st["guest_name"] if st["named"] else room
+        detail = (f"{party} · only on Booking.com's calendar: no email has said who"
+                  if st.get("from_calendar") else f"{party} · booked through {st['channel']}")
         made = None
         n = nights_of(st["arrival_date"], st["departure_date"])
         for day, verb, arrow, badge, when in (
@@ -14372,21 +14464,27 @@ def build_overview(conn, view, anchor, fetch_window=None):
                 "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
                 "scheduled": True, "status": "confirmed", "acknowledgment_status": None,
                 "priority": None, "repeat_weekly": 0, "date": day,
-                "title": f"{st['guest_name']} {verb} — {room} · {st['channel']}{when}",
-                "short": f"{arrow} {st['guest_name']}", "badge": badge,
-                "detail": f"{party} · booked through {st['channel']}",
+                "title": f"{label_who} · {verb}{when}",
+                "short": f"{tag} {arrow} {name}", "badge": badge,
+                "detail": detail, "channel": st["channel"],
                 "assignee_id": None, "assignee_name": None,
-                "id": f"ota{st['ota_reservation_id']}", "link": link,
+                "id": (f"ota{st['ota_reservation_id']}" if st["ota_reservation_id"]
+                       else f"ical{st['room_id']}-{st['arrival_date']}"),
+                "link": link,
                 "facts": {"arrival": st["arrival_date"], "departure": st["departure_date"],
                           "room": st["room_name"] or "", "guest": st["guest_name"],
+                          "named": st["named"], "label": label, "room_id": st["room_id"],
                           "party": st["party_size"], "ref": st["reference_code"] or "",
                           "channel": st["channel"], "eta": "", "flight": "", "nights": n,
-                          "booking_id": None, "requests": ""},
+                          "booking_id": None, "requests": "",
+                          "extranet": st.get("extranet_url") or "",
+                          "from_calendar": bool(st.get("from_calendar"))},
             }
             if lo <= day < hi:
                 rows.append(made)
         nights = staying(made, st["arrival_date"], st["departure_date"], st["guest_name"],
-                         f"{room} · {st['channel']}")
+                         f"{room} · {st['channel']}", title=f"{label_who} · in residence",
+                         short=f"{tag} {name}")
         if nights:
             rows.append(nights)
 
@@ -14725,6 +14823,8 @@ def build_calendar(conn, view, anchor, viewer=None):
     owner_view = viewer is None or viewer["role"] == "owner"
     cards = calendar_cards(conn, rows, owner_view)
     rows = [dict(r, card=calendar_uid(r)) for r in rows]
+    if view != "day":
+        rows = one_chip_per_workshop_day(rows)
 
     # Each row in every cell it covers, not just the first: a row that lasts
     # (see _spanning_row) is copied into each of its days, saying which day of
@@ -14785,6 +14885,51 @@ def build_calendar(conn, view, anchor, viewer=None):
         "total_events": len({source[id(e)] for c in cells if c["in_span"] for e in c["events"]}),
         "cards": list(cards.values()),
     }
+
+
+def one_chip_per_workshop_day(rows):
+    """An atelier's places on its first day, as ONE chip: "Immersive Artisan
+    Workshops – 8 guests arrive".
+
+    build_overview gives each place its own row, which is right for a list
+    and for the day view, where each is a guest by name. In a month cell it
+    was eight chips reading "Immersive Artisan Wor…", which looked like the
+    same thing entered eight times and pushed the day's arrivals under "+5
+    more". The names are on the chip's card (calendar_cards), which every
+    place shares, and on the day view.
+    """
+    out, firsts = [], {}
+    for r in rows:
+        f = r.get("facts") or {}
+        if r["kind"] != "workshop" or not f.get("session") or f.get("running"):
+            out.append(r)
+            continue
+        key = (f["session"], r["date"])
+        if key not in firsts:
+            firsts[key] = {"row": r, "people": 0, "places": 0, "pending": 0}
+            out.append(key)
+        g = firsts[key]
+        g["people"] += f.get("party") or 1
+        g["places"] += 1
+        g["pending"] += r["status"] == "pending"
+    merged = []
+    for r in out:
+        if not isinstance(r, tuple):
+            merged.append(r)
+            continue
+        g = firsts[r]
+        first = g["row"]
+        title = (first.get("facts") or {}).get("workshop") or first["short"]
+        arrive = f"{title} – {_plural(g['people'], 'guest')} arrive"
+        # The count in the badge as well, which sits outside the ellipsis: a
+        # month cell cuts "Immersive Artisan Workshops – 8 guests arrive" to
+        # "Immersive Artisan Work…", and the number is the news.
+        merged.append(dict(
+            first, id=f"session{r[0]}-{r[1]}", short=arrive, badge=f"{g['people']} arrive",
+            title=arrive + (f" ({g['pending']} to confirm)" if g["pending"] else ""),
+            status="pending" if g["pending"] == g["places"] else "confirmed",
+            detail=""))
+    return merged
 
 
 def calendar_uid(row):
@@ -14877,9 +15022,16 @@ def calendar_cards(conn, rows, owner_view):
         if kind == "booking" and f.get("arrival"):
             n = f.get("nights") or 0
             channel = f.get("channel") or ""
-            c = card(r, f.get("guest") or r["short"],
+            # A Booking.com stay with no name is called what the house calls
+            # it, and says where the name is: the email left it out, and the
+            # extranet has it.
+            unnamed = bool(channel) and not f.get("named")
+            c = card(r, f.get("label") if unnamed else (f.get("guest") or r["short"]),
                      " · ".join(x for x in (f.get("room") or "room not stated", channel) if x),
-                     [("Dates", f"{_cal_day(f['arrival'])} → {_cal_day(f['departure'])}"
+                     [("Guest name", ("not known: only Booking.com's calendar has this stay"
+                                      if f.get("from_calendar") else "in the Booking.com extranet")
+                       if unnamed else ""),
+                      ("Dates", f"{_cal_day(f['arrival'])} → {_cal_day(f['departure'])}"
                                 + (f" · {_plural(n, 'night')}" if n else "")),
                       ("Guests", f.get("party") or ""),
                       ("Arriving", f"about {f['eta']}" if f.get("eta") else ""),
@@ -14898,6 +15050,12 @@ def calendar_cards(conn, rows, owner_view):
             c["timeline"] = [(_cal_day(d) if d else "", words) for d, words in days]
             c["timeline"].append((_cal_day(f["departure"]), f"Leaves, by {CHECK_OUT_TIME}"))
             c["extras"] = extras.get(("room", f.get("booking_id")), [])
+            if f.get("extranet"):
+                c["actions"].append(("Booking.com extranet", f["extranet"]))
+            if owner_view and f.get("from_calendar"):
+                c["actions"].append(("Add the guest by hand", url_for(
+                    "channel_stays_page", room=f.get("room_id") or "",
+                    arrive=f["arrival"], leave=f["departure"]) + "#add-stay"))
             if owner_view and f.get("booking_id"):
                 c["actions"] += [("Edit", url_for("edit_booking", booking_id=f["booking_id"])),
                                  ("Arrival card", url_for("arrival_card", booking_id=f["booking_id"])),
@@ -16227,7 +16385,7 @@ def room_month_rows(conn, first_day, today=None):
     # else; the emails know who it is. So the named stay is drawn first, and the
     # anonymous block under it only where no email has said who is coming.
     named_by_room = {}
-    for st in channel_stays(conn):
+    for st in channel_stays(conn, blocks=False):
         if st["room_id"]:
             named_by_room.setdefault(st["room_id"], []).append(st)
     kept_open = {(r["room_id"], r["start_date"], r["end_date"]) for r in conn.execute(
@@ -58383,6 +58541,10 @@ def sync_all_ical_sources():
     for source in sources:
         if sync_ical_source(conn, source):
             ok_count += 1
+    # Paired once every calendar has been read, never between two of them:
+    # with only the first room's read, a stay starting the same day in a
+    # second room would be given to the first.
+    pair_booking_com_stays(conn)
     conn.close()
     flash(f"Synced {ok_count} of {len(sources)} calendar{'s' if len(sources) != 1 else ''}.",
           "success" if ok_count == len(sources) else "error")
@@ -58660,6 +58822,7 @@ def api_sync_ical():
             "unchanged": log_row["unchanged"] if log_row else 0,
             "error": log_row["error"] if log_row else None,
         })
+    pair_booking_com_stays(conn)
     conn.close()
     return {"synced": ok_count, "total": len(sources), "sources": results}, 200
 
@@ -59609,6 +59772,7 @@ def new_ical_source(room_id):
     conn.commit()
     source = conn.execute("SELECT * FROM ical_sources WHERE id = ?", (cur.lastrowid,)).fetchone()
     ok = sync_ical_source(conn, source)
+    pair_booking_com_stays(conn)
     conn.close()
     flash("Calendar added and synced." if ok else "Calendar added, but the first sync failed — check the URL.",
           "success" if ok else "error")
@@ -59624,6 +59788,7 @@ def sync_ical_source_now(source_id):
         conn.close()
         abort(404)
     ok = sync_ical_source(conn, source)
+    pair_booking_com_stays(conn)
     conn.close()
     flash("Synced." if ok else "Sync failed — check the URL.", "success" if ok else "error")
     return redirect(url_for("admin_rooms"))
@@ -75796,6 +75961,8 @@ def channel_stays_page():
     # a cancelled stay still needs to be visible, and one that arrived with no
     # dates is exactly the row somebody has to go and look at.
     rows = []
+    with_mail = {r["ota_reservation_id"] for r in conn.execute(
+        "SELECT DISTINCT ota_reservation_id FROM ota_mail WHERE ota_reservation_id IS NOT NULL")}
     fiches = {r["ota_reservation_id"]: r["n"] for r in conn.execute(
         """SELECT ota_reservation_id, COUNT(*) AS n
              FROM channel_police_register GROUP BY ota_reservation_id""")}
@@ -75818,7 +75985,18 @@ def channel_stays_page():
         if a and d and d > a:
             row["nights"] = (d - a).days
         row["upcoming"] = bool(a and a >= today)
+        row["hand"] = r["matched_by"] == "hand"
+        row["has_mail"] = r["id"] in with_mail
         rows.append(row)
+    # The stays only a room's Booking.com calendar knows about: on every
+    # calendar and list now, and here to be named by hand.
+    calendar_only = [dict(st, nights=(parse_date(st["departure_date"])
+                                      - parse_date(st["arrival_date"])).days)
+                     for st in booking_com_calendar_only_stays(conn)
+                     if st["departure_date"] > today.isoformat()]
+    room_choices = conn.execute(
+        "SELECT id, name FROM rooms ORDER BY sort_order, name").fetchall()
+    sources = booking_com_ical_sources(conn)
     conn.close()
 
     live = [r for r in rows if r["status"] == "confirmed"]
@@ -75843,6 +76021,10 @@ def channel_stays_page():
                           len([r for r in live if r["also_ours"]]),
                           hint="left off the other lists so nothing counts "
                                "twice; worth seeing that the pair exists"),
+            overview_cell("Only on the calendar", len(calendar_only),
+                          hint="a room's Booking.com calendar has the stay and no "
+                               "email has said who; on the calendar and the "
+                               "arrivals all the same"),
         ],
     }
 
@@ -75872,8 +76054,139 @@ def channel_stays_page():
         ],
         default_sort="arrival",
     )
+    # A link from a calendar card, or an unmatched stay's own row, arrives
+    # with what it already knows filled in.
+    prefill = {k: (request.args.get(k) or "").strip()[:40]
+               for k in ("number", "room", "arrive", "leave")}
     return render_template("channel_stays.html", rows=lv["rows"], lv=lv,
-                           summary=summary, today=today.isoformat())
+                           summary=summary, today=today.isoformat(),
+                           calendar_only=calendar_only, room_choices=room_choices,
+                           prefill=prefill, sources=sources)
+
+
+@app.route("/admin/channel-stays/add", methods=["POST"])
+@owner_required
+def add_channel_stay():
+    """A Booking.com stay typed in by the owner.
+
+    For the bookings that came before the mailbox was read, which only the
+    room's calendar knows about, and for a stay the reader could not match
+    (two rooms with a Booking.com stay starting the same day). The same
+    reservation number fills in the stay already here rather than making a
+    second one: what the owner types wins over what was guessed from a
+    calendar, and pairing never moves it again (matched_by 'hand').
+    """
+    f = request.form
+    number = re.sub(r"\D", "", f.get("reservation_number") or "")
+    arrive, leave = parse_date(f.get("arrival_date")), parse_date(f.get("departure_date"))
+    name = " ".join((f.get("guest_name") or "").split())[:80] or None
+    guests = (f.get("guests") or "").strip()
+    conn = get_db()
+    room = conn.execute("SELECT id, name FROM rooms WHERE id = ?",
+                        (f.get("room_id") or "",)).fetchone()
+    wrong = ("the reservation number is Booking.com's, eight to twelve digits"
+             if not 8 <= len(number) <= 12 else
+             "choose the room" if not room else
+             "give the day they arrive and the day they leave" if not (arrive and leave) else
+             "they leave after the day they arrive" if leave <= arrive else
+             "the number of guests is a number" if guests and not guests.isdigit() else None)
+    if wrong:
+        conn.close()
+        flash(f"Not added: {wrong}.", "error")
+        return redirect(url_for("channel_stays_page", number=number, room=f.get("room_id") or "",
+                                arrive=f.get("arrival_date") or "",
+                                leave=f.get("departure_date") or "") + "#add-stay")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    sets = {"room_id": room["id"], "arrival_date": arrive.isoformat(),
+            "departure_date": leave.isoformat(), "matched_by": "hand", "match_note": None,
+            "updated_at": now_iso}
+    if name:
+        sets["guest_name"] = name
+    if guests:
+        sets["guests"] = int(guests)
+    row = conn.execute(
+        "SELECT id FROM ota_reservations WHERE channel = 'booking.com' AND reservation_number = ?",
+        (number,)).fetchone()
+    if row:
+        conn.execute("UPDATE ota_reservations SET " + ", ".join(f"{k} = ?" for k in sets)
+                     + " WHERE id = ?", (*sets.values(), row["id"]))
+        said = "filled in"
+    else:
+        # No last_event_at: an email about it, read later however old, still
+        # counts as news (a cancellation must be able to cancel it).
+        conn.execute(
+            """INSERT INTO ota_reservations (channel, reservation_number, status, guest_name,
+                   arrival_date, departure_date, room_id, guests, matched_by,
+                   first_seen_at, updated_at)
+               VALUES ('booking.com', ?, 'confirmed', ?, ?, ?, ?, ?, 'hand', ?, ?)""",
+            (number, name, sets["arrival_date"], sets["departure_date"], room["id"],
+             sets.get("guests"), now_iso, now_iso))
+        said = "added"
+    log_audit(conn, "channel_stay_by_hand", target=f"Booking.com {number}",
+              details=f"{said}: {room['name']}, {sets['arrival_date']} to {sets['departure_date']}")
+    conn.commit()
+    conn.close()
+    flash(f"Booking.com reservation {number} {said}: {room['name']}, "
+          f"{stay_span_short(sets['arrival_date'], sets['departure_date'])}.", "success")
+    return redirect(url_for("channel_stays_page"))
+
+
+@app.route("/admin/channel-stays/<int:reservation_id>/remove", methods=["POST"])
+@owner_required
+def remove_channel_stay(reservation_id):
+    """Take back a Booking.com stay the owner typed in by mistake.
+
+    Only one typed by hand that no email is about: a stay Booking.com has
+    told the house of is Booking.com's to cancel, and a police fiche on it is
+    a legal register entry that does not go with a typing mistake.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM ota_reservations WHERE id = ?", (reservation_id,)).fetchone()
+    why = None
+    if not row:
+        why = "there is no such stay"
+    elif row["matched_by"] != "hand":
+        why = "only a stay typed in by hand can be taken back here"
+    elif conn.execute("SELECT 1 FROM ota_mail WHERE ota_reservation_id = ?",
+                      (reservation_id,)).fetchone():
+        why = "Booking.com has written about it, so it is Booking.com's to cancel"
+    elif conn.execute("SELECT 1 FROM channel_police_register WHERE ota_reservation_id = ?",
+                      (reservation_id,)).fetchone():
+        why = "it has a police fiche, which is a register entry and stays"
+    if why:
+        conn.close()
+        flash(f"Not removed: {why}.", "error")
+        return redirect(url_for("channel_stays_page"))
+    conn.execute("UPDATE tasks SET ota_reservation_id = NULL WHERE ota_reservation_id = ?",
+                 (reservation_id,))
+    conn.execute("DELETE FROM ota_reservations WHERE id = ?", (reservation_id,))
+    log_audit(conn, "channel_stay_removed", target=f"Booking.com {row['reservation_number']}",
+              details="typed in by hand, taken back")
+    conn.commit()
+    conn.close()
+    flash(f"Booking.com reservation {row['reservation_number']} taken off.", "success")
+    return redirect(url_for("channel_stays_page"))
+
+
+@app.route("/admin/channel-stays/sync", methods=["POST"])
+@owner_required
+def sync_channel_stays_now():
+    """Read every room's Booking.com calendar now, pair, and tell the house."""
+    conn = get_db()
+    sources = booking_com_ical_sources(conn)
+    if not sources:
+        conn.close()
+        flash("No room has a Booking.com calendar to read. Add its address on the room's "
+              "page under calendar sync.", "error")
+        return redirect(url_for("channel_stays_page"))
+    answered = sync_booking_com_calendars(conn)
+    told = settle_booking_com_stays(conn, sync=False)
+    conn.close()
+    flash(f"Read {answered} of {len(sources)} Booking.com calendar"
+          f"{'' if len(sources) == 1 else 's'}"
+          + (f"; told the house of {told}" if told else "") + ".",
+          "success" if answered == len(sources) else "error")
+    return redirect(url_for("channel_stays_page"))
 
 
 @app.route("/admin/restoration")
@@ -79287,7 +79600,7 @@ def stays_missing_fiches(conn, today=None, days_back=30):
         if state and state["outstanding"]:
             out.append(state)
     # And Booking.com's, which the obligation covers just the same.
-    for st in channel_stays(conn):
+    for st in channel_stays(conn, blocks=False):
         if since <= st["arrival_date"] <= day.isoformat():
             state = channel_register_needed(conn, st)
             if state["outstanding"]:
@@ -91257,7 +91570,12 @@ def run_daily_digest_job(conn):
 def run_ical_sync_job(conn):
     sources = conn.execute("SELECT * FROM ical_sources").fetchall()
     ok_count = sum(1 for source in sources if sync_ical_source(conn, source))
-    return f"synced {ok_count}/{len(sources)} source(s)"
+    # A Booking.com stay whose block has just appeared is matched now, and the
+    # house hears about it within the hour rather than at the next email.
+    told = settle_booking_com_stays(conn, sync=False)
+    return (f"synced {ok_count}/{len(sources)} source(s)"
+            + (f"; told the house of {told} Booking.com booking{'s' if told != 1 else ''}"
+               if told else ""))
 
 
 def run_room_balance_reminder_job(conn, days_before):
@@ -93079,6 +93397,22 @@ def classify_booking_com_email(subject, from_address="", reply_to="", body=""):
     return "other"
 
 
+def booking_com_extranet_link(links, number=None):
+    """The email's link to the stay in Booking.com's extranet, or None.
+
+    Only a link whose host is booking.com's own (anybody can send mail to the
+    address and sign it Booking.com), on the extranet's host, and the one that
+    names the reservation where one does."""
+    ours = [l.get("href") or "" for l in (links or [])
+            if is_booking_com_link(l.get("href"))
+            and (urlparse(l.get("href")).hostname or "").lower().startswith("admin.")]
+    if number:
+        named = [h for h in ours if number in h]
+        if named:
+            return named[0][:2000]
+    return ours[0][:2000] if ours else None
+
+
 def parse_booking_com_email(subject, from_address, from_name, reply_to, body, links, rooms=()):
     """What one Booking.com email says, as fields. Anything not stated is None.
 
@@ -93106,11 +93440,27 @@ def parse_booking_com_email(subject, from_address, from_name, reply_to, body, li
     dates = ota_dates(whole)
     got["arrival_date"] = _ota_date_after(_OTA_ARRIVE, whole, dates)
     got["departure_date"] = _ota_date_after(_OTA_LEAVE, whole, dates)
+    # THE SUBJECT'S DAY IS THE ARRIVAL. Since October 2026 Booking.com's
+    # "New booking!" email says nothing in its body but a link, and its
+    # subject says "(5979778151, Thursday, 29 October 2026)" -- the number and
+    # the day they arrive. Without this the stay had no date at all and was
+    # filed as "been and gone" before it had begun.
+    subject_day = None
+    if kind in OTA_RESERVATION_KINDS:
+        subject_dates = ota_dates(subject)
+        subject_day = subject_dates[0][1] if subject_dates else None
+        if subject_day and not got["arrival_date"]:
+            got["arrival_date"] = subject_day
     if kind in OTA_RESERVATION_KINDS and not (got["arrival_date"] and got["departure_date"]):
-        # No labels: two dates a stay apart, in order, are the stay.
+        # No labels: two dates a stay apart, in order, are the stay -- unless
+        # the subject has already said the arrival and the pair does not start
+        # on it (a body's "booked on 17 October" is not the first night).
         distinct = list(dict.fromkeys(iso for _pos, iso in dates))
         if len(distinct) >= 2:
             a, b = distinct[0], distinct[1]
+            if subject_day and a != subject_day:
+                later = [d for d in distinct if d > subject_day]
+                a, b = subject_day, (later[0] if later else subject_day)
             if a < b and (date.fromisoformat(b) - date.fromisoformat(a)).days <= 60:
                 got["arrival_date"] = got["arrival_date"] or a
                 got["departure_date"] = got["departure_date"] or b
@@ -93147,6 +93497,8 @@ def parse_booking_com_email(subject, from_address, from_name, reply_to, body, li
 
     if kind in OTA_RESERVATION_KINDS and not (got["reservation_number"] or got["arrival_date"]):
         kind = got["kind"] = "other"
+    got["extranet_url"] = (booking_com_extranet_link(links, got["reservation_number"])
+                           if kind in OTA_RESERVATION_KINDS else None)
 
     for rx in _OTA_GUESTS:
         m = rx.search(whole)
@@ -93227,7 +93579,9 @@ def _ota_reservation(conn, got, received_at, now_iso):
     if not number or got["kind"] not in OTA_RESERVATION_KINDS:
         return None
     fields = {k: got.get(k) for k in ("guest_name", "arrival_date", "departure_date",
-                                      "room_label", "room_id", "guests", "amount", "currency")}
+                                      "room_label", "room_id", "guests", "amount", "currency",
+                                      "extranet_url")}
+    fields["matched_by"] = "mail" if got.get("room_id") else None
     status = "cancelled" if got["kind"] == "reservation_cancelled" else "confirmed"
     row = conn.execute(
         "SELECT * FROM ota_reservations WHERE channel = 'booking.com' AND reservation_number = ?",
@@ -93236,8 +93590,8 @@ def _ota_reservation(conn, got, received_at, now_iso):
         cur = conn.execute(
             """INSERT INTO ota_reservations (channel, reservation_number, status, guest_name,
                    arrival_date, departure_date, room_label, room_id, guests, amount, currency,
-                   first_seen_at, last_event_at, updated_at)
-               VALUES ('booking.com', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   extranet_url, matched_by, first_seen_at, last_event_at, updated_at)
+               VALUES ('booking.com', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (number, status, *fields.values(), now_iso, received_at, now_iso))
         return cur.lastrowid
     newer = received_at >= (row["last_event_at"] or "")
@@ -93250,11 +93604,226 @@ def _ota_reservation(conn, got, received_at, now_iso):
     if newer:
         sets["status"] = status
         sets["last_event_at"] = received_at
+        # A CHANGED STAY WAS PAIRED WITH THE OLD DATES' BLOCK. Its room and
+        # departure came from the calendar, not from any email, so once the
+        # stay moves they describe the stay it used to be: moved from 29-30
+        # October to the 20th, it would read as ten nights. They are cleared
+        # here, where the email did not restate them, and paired again with
+        # the block that starts on the new day (pair_booking_com_stays).
+        if got["kind"] == "reservation_changed" and row["matched_by"] == "ical":
+            if not got.get("departure_date"):
+                sets["departure_date"] = None
+            if not got.get("room_id"):
+                sets["room_id"] = None
+                sets["matched_by"] = None
     if sets:
         sets["updated_at"] = now_iso
         conn.execute("UPDATE ota_reservations SET " + ", ".join(f"{k} = ?" for k in sets)
                      + " WHERE id = ?", (*sets.values(), row["id"]))
     return row["id"]
+
+
+def stay_span_short(arrival, departure=None):
+    """'29–30 Oct', '30 Oct–2 Nov', or 'from 29 Oct' with no departure."""
+    a, d = parse_date(arrival), parse_date(departure)
+    if not a:
+        return ""
+    if not d or d <= a:
+        return f"from {a.day} {a:%b}"
+    if (a.year, a.month) == (d.year, d.month):
+        return f"{a.day}–{d.day} {a:%b}"
+    return f"{a.day} {a:%b}–{d.day} {d:%b}"
+
+
+def booking_com_ical_sources(conn, room_ids=None):
+    """The rooms' Booking.com calendar feeds: the source's address is on
+    booking.com, or it is called Booking.com. `room_ids` narrows to rooms."""
+    out = []
+    for s in conn.execute("SELECT * FROM ical_sources ORDER BY id").fetchall():
+        if not (is_booking_com_link(s["url"]) or "booking" in (s["label"] or "").lower()):
+            continue
+        if room_ids is not None and s["room_id"] not in room_ids:
+            continue
+        out.append(s)
+    return out
+
+
+def booking_com_blocks(conn):
+    """Every stay a Booking.com calendar has blocked, as (room_id, start, end)."""
+    ids = [s["id"] for s in booking_com_ical_sources(conn)]
+    if not ids:
+        return []
+    marks = ",".join("?" * len(ids))
+    return [(r["room_id"], r["start_date"], r["end_date"]) for r in conn.execute(
+        f"""SELECT DISTINCT room_id, start_date, end_date FROM blocked_dates
+             WHERE ical_source_id IN ({marks}) AND end_date > start_date
+             ORDER BY start_date, room_id""", ids)]
+
+
+def pair_booking_com_stays(conn):
+    """Give each Booking.com stay its room and departure from the calendars.
+
+    Booking.com's booking email says the reservation number and the day they
+    arrive, and nothing else. Its calendar for each room says which nights are
+    taken and nothing else. Together they are the stay: the block in a room's
+    Booking.com calendar that starts on the arrival day is that stay's room
+    and nights.
+
+    Only where it is ONE block. Two rooms with a Booking.com stay starting the
+    same day cannot be told apart from here, and a guess sends the house to
+    make the wrong bed; the stay is left unmatched with a note saying which
+    rooms it could be, for the owner to choose. A block another stay has
+    already been matched to is not offered again.
+
+    Safe to run as often as anything likes. A stay paired before is paired
+    again, so a departure Booking.com has moved arrives with the next sync. A
+    room the email named is kept, and so is anything the owner typed. The ids
+    of stays that gained a room are returned.
+    """
+    blocks = booking_com_blocks(conn)
+    rooms = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
+    stays = conn.execute(
+        """SELECT * FROM ota_reservations
+            WHERE status = 'confirmed' AND COALESCE(arrival_date, '') != ''
+            ORDER BY first_seen_at, id""").fetchall()
+    claimed = {(s["room_id"], s["arrival_date"]): s["id"] for s in stays if s["room_id"]}
+    gained, now_iso = [], datetime.now(timezone.utc).isoformat()
+    for s in stays:
+        how = s["matched_by"]
+        if how == "hand":
+            continue
+        if how != "ical" and s["room_id"] and s["departure_date"]:
+            continue            # the email said the room and the nights
+        day = s["arrival_date"]
+        starting = [b for b in blocks if b[1] == day
+                    and claimed.get((b[0], b[1]), s["id"]) == s["id"]]
+        if how != "ical" and s["room_id"]:
+            starting = [b for b in starting if b[0] == s["room_id"]]
+        if how != "ical" and s["departure_date"]:
+            exact = [b for b in starting if b[2] == s["departure_date"]]
+            if exact:
+                starting = exact
+        sets = {}
+        if len(starting) == 1:
+            room_id, _start, end = starting[0]
+            sets = {"room_id": room_id, "match_note": None,
+                    "matched_by": "mail" if how == "mail" else "ical"}
+            if how == "ical" or not s["departure_date"]:
+                sets["departure_date"] = end
+            claimed[(room_id, day)] = s["id"]
+            if not s["room_id"]:
+                gained.append(s["id"])
+        elif len(starting) > 1:
+            if not (how == "ical" and s["room_id"] in {b[0] for b in starting}):
+                names = " and ".join(rooms.get(b[0], "a room") for b in starting)
+                sets = {"room_id": None, "matched_by": None,
+                        "match_note": (f"Not matched: a Booking.com stay starts on "
+                                       f"{format_date_short(day)} in {len(starting)} rooms "
+                                       f"({names}). Choose the room by hand.")}
+        elif not s["room_id"]:
+            sets = {"match_note": (f"Not matched yet: no room's Booking.com calendar shows a "
+                                   f"stay starting {format_date_short(day)}. It is matched "
+                                   f"when the calendar next shows it.")}
+        sets = {k: v for k, v in sets.items() if s[k] != v}
+        if sets:
+            sets["updated_at"] = now_iso
+            conn.execute("UPDATE ota_reservations SET " + ", ".join(f"{k} = ?" for k in sets)
+                         + " WHERE id = ?", (*sets.values(), s["id"]))
+    conn.commit()
+    return gained
+
+
+def sync_booking_com_calendars(conn, room_ids=None):
+    """Read the rooms' Booking.com calendars NOW, rather than at the next
+    hourly sync. How many answered. `room_ids` None is every room's."""
+    answered = sum(1 for s in booking_com_ical_sources(conn, room_ids)
+                   if sync_ical_source(conn, s))
+    pair_booking_com_stays(conn)
+    return answered
+
+
+BOOKING_COM_LETTER_VERBS = {"reservation_new": "Booked", "reservation_changed": "Changed",
+                            "reservation_cancelled": "Cancelled"}
+
+
+def tell_house_of_booking_com(conn, *, now=None):
+    """One letter to reservations@ for each Booking.com booking email.
+
+    "Booked on Booking.com – The Twin Room, 29–30 Oct, reservation
+    5979778151". The email itself says almost nothing, so the letter waits
+    until the stay has been matched to its room, which is the part that
+    tells the house which bed to make. A cancellation goes at once: there is
+    nothing to wait for.
+
+    An email read more than two days after it came is history (a first read
+    of a fortnight's mailbox), and nobody is written to about it. Each email
+    is marked before its letter goes, so a slow mail server never sends two.
+    """
+    now = now or datetime.now(timezone.utc)
+    rows = conn.execute(
+        f"""SELECT ota_mail.id AS mail_id, ota_mail.kind, ota_mail.received_at,
+                   ota_reservations.*
+              FROM ota_mail
+              JOIN ota_reservations ON ota_reservations.id = ota_mail.ota_reservation_id
+             WHERE ota_mail.house_told_at IS NULL AND ota_mail.from_booking_com = 1
+               AND ota_mail.kind IN ({','.join('?' * len(OTA_RESERVATION_KINDS))})
+             ORDER BY ota_mail.received_at, ota_mail.id""", OTA_RESERVATION_KINDS).fetchall()
+    rooms = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms")}
+    letters = []
+    for r in rows:
+        when = parse_datetime_iso(r["received_at"])
+        old = bool(when and now - when > timedelta(days=2))
+        cancelled = r["kind"] == "reservation_cancelled"
+        # A booking already cancelled by the time it was matched is told once,
+        # by its cancellation.
+        moot = not cancelled and r["status"] != "confirmed"
+        if not (old or moot or cancelled or (r["room_id"] and r["departure_date"])):
+            continue            # not matched yet: the letter waits for the room
+        conn.execute("UPDATE ota_mail SET house_told_at = ? WHERE id = ?",
+                     (now.isoformat(), r["mail_id"]))
+        if old or moot:
+            continue
+        room = rooms.get(r["room_id"]) or r["room_label"] or "room not matched"
+        span = stay_span_short(r["arrival_date"], r["departure_date"])
+        subject = (f"{BOOKING_COM_LETTER_VERBS[r['kind']]} on Booking.com – {room}, "
+                   f"{span}, reservation {r['reservation_number']}")
+        lines = [
+            f"Guest name: {r['guest_name']}" if r["guest_name"]
+            else "Guest name: in the Booking.com extranet",
+            f"Room: {room}",
+            f"Arrives: {format_date_human(r['arrival_date'])}, from {CHECK_IN_TIME}"
+            if r["arrival_date"] else None,
+            f"Leaves: {format_date_human(r['departure_date'])}, by {CHECK_OUT_TIME}"
+            if r["departure_date"] else None,
+            f"Guests: {r['guests']}" if r["guests"] else None,
+            f"Reservation: {r['reservation_number']}",
+            "",
+            ("Booking.com has cancelled this stay. The room is free again once the "
+             "calendar sync agrees." if cancelled else
+             "Booked and paid on Booking.com. Nothing to send them: Booking.com has "
+             "confirmed it. The room is on the calendar and the arrivals."),
+        ]
+        if r["extranet_url"]:
+            lines += ["", "On Booking.com:", r["extranet_url"]]
+        lines += ["", "Every Booking.com stay:", external_url("channel_stays_page")]
+        letters.append((subject, "\n".join(l for l in lines if l is not None)))
+    conn.commit()
+    to = house_address_for(conn, "rooms") if letters else None
+    sent = 0
+    for subject, body in letters:
+        if to and send_email(to, subject, body, area="rooms"):
+            sent += 1
+    return sent
+
+
+def settle_booking_com_stays(conn, room_ids=None, sync=True):
+    """After Booking.com's email: read the calendars at once (`room_ids`, or
+    every Booking.com calendar when the email did not say the room), pair the
+    stays with their blocks, and tell the house. Letters sent."""
+    if sync:
+        sync_booking_com_calendars(conn, room_ids)
+    pair_booking_com_stays(conn)
+    return tell_house_of_booking_com(conn)
 
 
 def _ota_notify(conn, mail_id, got, received_at):
@@ -93350,6 +93919,10 @@ def ingest_booking_com_email(conn, *, source, source_id, received_at, from_addre
     if reservation_id:
         conn.execute("UPDATE ota_mail SET ota_reservation_id = ? WHERE id = ?",
                      (reservation_id, mail_id))
+    if not notify:
+        # Added by hand, perhaps weeks old: the house is not written to about
+        # it (tell_house_of_booking_com), for the reason nobody's phone buzzes.
+        conn.execute("UPDATE ota_mail SET house_told_at = ? WHERE id = ?", (now_iso, mail_id))
     conn.commit()
     # Only Booking.com's own mail raises a notification. Anybody can write to
     # the address and call themselves Booking.com; that email is kept and
@@ -93383,7 +93956,7 @@ def run_booking_com_mail_job(conn):
                 "$orderby": "receivedDateTime asc", "$top": "100"})
     if page is None:
         return f"could not read {mailbox} — {graph_last_error() or 'no reason given'}"
-    new = {}
+    new, fresh_ids = {}, []
     for msg in page.get("value", []):
         sender = (msg.get("from") or {}).get("emailAddress") or {}
         reply = next(((r.get("emailAddress") or {}).get("address") or ""
@@ -93398,9 +93971,41 @@ def run_booking_com_mail_job(conn):
             html=html or "", text=text or "", mailbox=mailbox)
         if fresh:
             new[kind] = new.get(kind, 0) + 1
+            fresh_ids.append(_id)
+    told = after_booking_com_mail(conn, fresh_ids)
     if not new:
-        return f"nothing new in {mailbox}"
-    return "kept " + ", ".join(f"{n} × {OTA_KINDS[k].lower()}" for k, n in sorted(new.items()))
+        return f"nothing new in {mailbox}" + (f"; told the house of {told}" if told else "")
+    return ("kept " + ", ".join(f"{n} × {OTA_KINDS[k].lower()}" for k, n in sorted(new.items()))
+            + (f"; told the house of {told}" if told else ""))
+
+
+def after_booking_com_mail(conn, mail_ids):
+    """What follows a run of Booking.com email: SYNC NOW, pair, tell.
+
+    A booking email used to wait for the hourly calendar sync before the room
+    was blocked here, so for up to an hour the house could sell the same room
+    twice. Now the calendar of the room the emails are about is read at once
+    -- every room's Booking.com calendar when an email does not say which,
+    which since October 2026 is every new booking. Pairing and the letters run
+    every time, emails or not: a block that has appeared since the last run
+    matches a stay that was waiting for it. Letters sent.
+    """
+    rooms, every_room, any_booking = set(), False, False
+    if mail_ids:
+        marks = ",".join("?" * len(mail_ids))
+        for r in conn.execute(
+                f"""SELECT ota_mail.kind, ota_reservations.room_id
+                      FROM ota_mail LEFT JOIN ota_reservations
+                        ON ota_reservations.id = ota_mail.ota_reservation_id
+                     WHERE ota_mail.id IN ({marks})""", list(mail_ids)):
+            if r["kind"] not in OTA_RESERVATION_KINDS:
+                continue
+            any_booking = True
+            if r["room_id"] and r["kind"] != "reservation_changed":
+                rooms.add(r["room_id"])
+            else:
+                every_room = True       # not said, or it may have moved room
+    return settle_booking_com_stays(conn, None if every_room else rooms, sync=any_booking)
 
 
 def booking_com_waiting(conn, *, now=None):
@@ -93820,6 +94425,10 @@ def upload_booking_com_email():
             kept.append(OTA_KINDS.get(kind, kind).lower())
         else:
             skipped.append((label, "it is already here"))
+    if done:
+        # A booking email added by hand is paired with the calendars as one
+        # read from the mailbox is, from the blocks already here.
+        pair_booking_com_stays(conn)
     conn.close()
     message, category = bulk_message(
         "Kept", "email", done, skipped, detail=", ".join(kept) if kept else "")
@@ -94349,7 +94958,7 @@ def door_stays_ahead(conn, *, days=14, today=None):
                     "off": bool(b["door_access_off_at"]), "access": door_access(conn, booking=b),
                     "link": url_for("guest_door", manage_token=b["manage_token"], _external=True)
                     if has_request_context() else None, "channel": None})
-    for st in channel_stays(conn):
+    for st in channel_stays(conn, blocks=False):
         if not (st["departure_date"] >= iso and st["arrival_date"] <= until):
             continue
         r = conn.execute("SELECT * FROM ota_reservations WHERE id = ?",
@@ -96247,10 +96856,14 @@ AUTOMATION_SWITCHES = [
                 ("automation_email_scan_lookback_days", "Look back (days)", "days_back")),
      "needs": "graph"},
     {"key": "automation_booking_com_mail_enabled", "job": "booking_com_mail",
-     "runs": ("run_booking_com_mail_job",), "group": "house", "reaches": ("you",),
+     "runs": ("run_booking_com_mail_job",), "group": "guests", "reaches": ("guests", "you"),
      "label": "Read Booking.com's email into the site",
      "what": "Every ten minutes, files what Booking.com sends and tells you when a "
-             "guest has written. Nothing until the mailbox is set."},
+             "guest has written. A booking, change or cancellation reads the rooms' "
+             "Booking.com calendars at once, matches the stay to its room and tells "
+             "reservations@. If that frees nights, the next guest on the waiting list "
+             "for them is told, as the calendar sync does. Nothing until the mailbox "
+             "is set."},
     {"key": "automation_watch_tasks_enabled", "job": "watch_tasks",
      "runs": ("run_watch_tasks_job",), "group": "house", "reaches": ("team", "you"),
      "label": "Turn blocking findings into tasks",
