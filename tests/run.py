@@ -183,6 +183,7 @@ SUITES = [
     "test_terminal",
     "test_reader_charge_once",
     "test_reader_while_settled",
+    "test_reader_webhook",
     "test_arrive",
     "test_timesheet_repair",
     "test_staff_lifecycle",
@@ -499,12 +500,18 @@ SUITES = [
     "test_house_calendar",
     "test_house_calendar_default",
     "test_calendar_cards",
+    # Dates for the house -- the school holidays -- 17 October 2026.
+    "test_house_dates",
     # Brief of 15 October 2026.
     "test_tech_email",
     "test_staff_accounts",
     "test_check_in_times",
     # Ateliers and stays on every day they cover, 15 October 2026.
     "test_calendar_every_day",
+    # Booking.com's subject-only booking email, paired with the room's
+    # calendar; every Booking.com block drawn; one atelier chip a day
+    # (handover z27, 17 October 2026).
+    "test_booking_com_subject_stays",
 ]
 
 

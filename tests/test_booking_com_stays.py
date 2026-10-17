@@ -301,9 +301,13 @@ def _run(s, oc, ec, owner, conn):
     with m.app.test_request_context("/"):
         rows = m.build_overview(conn, "week", today)["rows"]
     mine = [r for r in rows if TAG in (r["title"] or "")]
+    # Labelled the way the house says it (handover z27): "Booking.com – The
+    # Twin Room – 29–30 Oct", then the guest and the reservation.
     s.check("the week's calendar has the Booking.com arrival and departure",
-            any(r["title"].startswith(f"Ines {TAG} Roca arrives") for r in mine)
-            and any(r["title"].startswith(f"Tom {TAG} Vale departs") for r in mine),
+            any(r["title"].startswith("Booking.com – ") and f" · Ines {TAG} Roca · " in r["title"]
+                and " · arrives" in r["title"] for r in mine)
+            and any(r["title"].startswith("Booking.com – ") and f" · Tom {TAG} Vale · " in r["title"]
+                    and " · departs" in r["title"] for r in mine),
             detail=str([r["title"] for r in mine]))
     s.check("each linking to the Booking.com page, not to a booking that is not there",
             all("/management/booking-com" in (r["link"] or "") for r in mine) and bool(mine))

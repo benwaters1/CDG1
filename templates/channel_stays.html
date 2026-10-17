@@ -17,6 +17,18 @@
 
 {% with cells = summary.cells %}{% include "_overview_band.html" %}{% endwith %}
 
+<div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:10px 0 4px;">
+  {% if sources %}
+  <form method="post" action="{{ url_for('sync_channel_stays_now') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini">Read the Booking.com calendars now</button>
+  </form>
+  {% endif %}
+  <a href="#add-stay" class="btn-mini">Add a stay by hand</a>
+  <span class="upload-hint">A booking email reads its room's calendar at once; every
+    calendar is read again each hour.</span>
+</div>
+
 {% include "_list_toolbar.html" %}
 
 {% if not rows %}
@@ -42,7 +54,7 @@
       {% for r in rows %}
       <tr>
         <th scope="row" style="font-weight:500;">
-          {{ r['guest_name'] or 'Not named by the channel' }}
+          {{ r['guest_name'] or ('Booking.com – ' ~ (r['room_name'] or 'room not matched')) }}
           {% if r['status'] != 'confirmed' %}
             <span class="mini-status status-inactive">{{ r['status'] }}</span>
           {% elif r['upcoming'] %}
@@ -57,13 +69,20 @@
             {%- if r['arrival_date'] %} · {{ r['arrival_date']|date_short }}
               → {{ r['departure_date']|date_short }}{% else %} · no dates on it{% endif %}
             {%- if r['guests'] %} · {{ r['guests'] }} guest{{ '' if r['guests'] == 1 else 's' }}{% endif %}
+            {%- if r['hand'] %} · typed in by hand{% endif %}
           </span>
+          {% if not r['guest_name'] and r['status'] == 'confirmed' %}
+          <br><span class="upload-hint">Guest name: in the Booking.com extranet
+            {%- if r['extranet_url'] %} · <a href="{{ r['extranet_url'] }}" class="small-link" rel="noopener noreferrer" target="_blank">open it</a>{% endif %}</span>
+          {% endif %}
         </th>
         <td>
           {% if r['matched'] %}{{ r['room_name'] }}
           {% else %}
             <span class="mini-status status-pending">Not matched</span>
             {% if r['room_label'] %}<br><span class="upload-hint">{{ r['room_label'] }}</span>{% endif %}
+            {% if r['match_note'] %}<br><span class="upload-hint">{{ r['match_note'] }}</span>{% endif %}
+            {% if r['status'] == 'confirmed' %}<br><a class="small-link" href="{{ url_for('channel_stays_page', number=r['reservation_number'], arrive=r['arrival_date'] or '', leave=r['departure_date'] or '') }}#add-stay">Fill in by hand</a>{% endif %}
           {% endif %}
         </td>
         <td>{{ r['nights'] or '—' }}</td>
@@ -79,12 +98,87 @@
           {%- if r['amount'] %}{{ r['currency'] or '€' }}{{ '%.2f'|format(r['amount']) }}
           {%- else %}—{% endif %}
         </td>
-        <td><span class="upload-hint">{{ r['reservation_number'] }}</span></td>
+        <td><span class="upload-hint">{{ r['reservation_number'] }}</span>
+          {% if r['hand'] and not r['has_mail'] and not r['fiche_count'] %}
+          <form method="post" action="{{ url_for('remove_channel_stay', reservation_id=r['id']) }}"
+                onsubmit="return confirm('Take this stay off? Only a stay typed in by hand can be.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Take off</button>
+          </form>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 {% endif %}
+
+{% if calendar_only %}
+<h2 class="section-heading">Only on the calendar</h2>
+<p class="upload-hint">These nights are blocked by a room's Booking.com calendar and no
+  email has said who is coming — booked before the mailbox was read, or not matched yet.
+  They are on the calendar, Today and the arrivals as Booking.com stays. Add the guest
+  from the extranet to name them.</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Stay</th><th scope="col">Room</th><th scope="col">Nights</th><th scope="col"></th></tr></thead>
+    <tbody>
+      {% for st in calendar_only %}
+      <tr>
+        <th scope="row">Booking.com – {{ st['room_name'] or 'a room' }} – {{ st['arrival_date']|date_short }} → {{ st['departure_date']|date_short }}</th>
+        <td>{{ st['room_name'] or '—' }}</td>
+        <td>{{ st['nights'] }}</td>
+        <td><a class="small-link" href="{{ url_for('channel_stays_page', room=st['room_id'], arrive=st['arrival_date'], leave=st['departure_date']) }}#add-stay">Add the guest</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<h2 class="section-heading" id="add-stay">Add a Booking.com stay by hand</h2>
+<p class="upload-hint">For a booking that came before the mailbox was read, or one that
+  could not be matched to its room. The reservation number, the room and the dates are
+  on the extranet. The same number fills in the stay already here.</p>
+<form method="post" action="{{ url_for('add_channel_stay') }}" style="max-width:640px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <section class="form-section">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="cs-number">Reservation number</label>
+        <input type="text" id="cs-number" name="reservation_number" inputmode="numeric" required value="{{ prefill.number }}">
+      </div>
+      <div>
+        <label class="field-label" for="cs-room">Room</label>
+        <select id="cs-room" name="room_id" required>
+          <option value="">Choose…</option>
+          {% for room in room_choices %}<option value="{{ room['id'] }}" {{ 'selected' if prefill.room == room['id']|string }}>{{ room['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="cs-arrive">Arrives</label>
+        <input type="date" id="cs-arrive" name="arrival_date" required value="{{ prefill.arrive }}">
+      </div>
+      <div>
+        <label class="field-label" for="cs-leave">Leaves</label>
+        <input type="date" id="cs-leave" name="departure_date" required value="{{ prefill.leave }}">
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="cs-name">Guest name (if you have it)</label>
+        <input type="text" id="cs-name" name="guest_name" maxlength="80">
+      </div>
+      <div>
+        <label class="field-label" for="cs-guests">Guests (if you know)</label>
+        <input type="number" id="cs-guests" name="guests" min="1" max="30">
+      </div>
+    </div>
+    <button type="submit" class="btn-primary">Add the stay</button>
+  </section>
+</form>
 
 {% endblock %}

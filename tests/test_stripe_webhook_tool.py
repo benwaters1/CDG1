@@ -49,7 +49,8 @@ def run():
     src = open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
     start = src.index('@app.route("/webhooks/stripe"')
     handler = src[start:src.index("\n@app.route(", start + 10)]
-    named = set(re.findall(r'"((?:checkout|charge|refund)\.[a-z_.]+[a-z_])"', handler))
+    named = set(re.findall(r'"((?:checkout|charge|refund|payment_intent)\.[a-z_.]+[a-z_])"',
+                           handler))
     missing = sorted(e for e in named if e not in tool.EVENTS)
     s.check("every event the handler names is in the list", not missing and named,
             detail=f"{missing} — Stripe would never send it, and the booking it "
@@ -83,7 +84,7 @@ def run():
     s.check("pinned to the version the app's library speaks",
             calls.get("api_version") == stripe.api_version, detail=str(calls.get("api_version")))
     s.check("for the site's webhook address", calls.get("url", "").endswith("/webhooks/stripe"))
-    s.check("asking for the eleven events", calls.get("enabled_events") == tool.EVENTS)
+    s.check("asking for every event in the list", calls.get("enabled_events") == tool.EVENTS)
     s.check("the secret went to the file", fake_secret in written)
     s.check("and neither the key nor the secret was printed",
             fake_key not in said and fake_secret not in said, detail=said[-300:])

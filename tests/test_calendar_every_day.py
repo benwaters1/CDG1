@@ -183,9 +183,23 @@ def _run(s, mail, conn):
         days = {d: m.build_calendar(conn, "day", mon + timedelta(days=d), viewer=owner)
                 for d in range(-1, 5)}
     cells = {c["date"]: c for c in week["cells"]}
-    s.check("Monday names both places, the imported one too",
-            _mine(cells[mon], f"Ida {TAG}Imported") and _mine(cells[mon], f"Abe {TAG}Here"),
+    # One chip for the places on the first day, in a week or a month (handover
+    # z27: eight identical chips read as duplicates); the guests by name are
+    # on the day view and on the chip's card.
+    s.check("Monday has the atelier once, saying how many arrive",
+            [e["title"] for e in _mine(cells[mon], f"{TAG} Plaster")]
+            == [f"{TAG} Plaster – 2 guests arrive"],
             detail=str(_titles(cells[mon]))[:300])
+    monday = days[0]["cells"][0]
+    s.check("Monday's day view names both places, the imported one too",
+            _mine(monday, f"Ida {TAG}Imported") and _mine(monday, f"Abe {TAG}Here"),
+            detail=str(_titles(monday))[:300])
+    card = next((c for c in week["cards"]
+                 if c["uid"] == _mine(cells[mon], f"{TAG} Plaster")[0]["card"]), None)
+    s.check("and so does the chip's card",
+            card and any(f"Ida {TAG}Imported" in n for n in card["names"])
+            and any(f"Abe {TAG}Here" in n for n in card["names"]),
+            detail=str(card and card["names"]))
     for k in (2, 3, 4):
         day = mon + timedelta(days=k - 1)
         on = _mine(cells[day], f"{TAG} Plaster")
@@ -303,13 +317,14 @@ def _run(s, mail, conn):
                 for c in through["cells"]),
             detail=str([len(_mine(c, f"Lev {TAG}Long")) for c in through["cells"]]))
     s.check("a Booking.com guest the same",
-            all(_mine(c, f"Ola {TAG}Channel in residence") for c in through["cells"]),
+            all(any(" · in residence" in e["title"] for e in _mine(c, f"Ola {TAG}Channel · "))
+                for c in through["cells"]),
             detail=str([len(_mine(c, f"Ola {TAG}Channel")) for c in through["cells"]]))
     lev = [r for r in listed if r["title"].startswith(f"Lev {TAG}Long")]
     s.check("the week's list has them once, not once a night",
             len(lev) == 1 and lev[0]["date"] == wk.isoformat()
             and "nights 4–10 of 13" in lev[0]["title"], detail=str([r["title"] for r in lev]))
-    ola = [r for r in listed if r["title"].startswith(f"Ola {TAG}Channel")]
+    ola = [r for r in listed if f"Ola {TAG}Channel" in r["title"]]
     s.check("linking to the Booking.com page like its arrival and departure",
             ola and all("/management/booking-com" in (r["link"] or "") for r in ola))
     s.check("the arrival before the week is not put in it as an arrival",

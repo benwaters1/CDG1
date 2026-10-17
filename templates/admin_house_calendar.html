@@ -106,6 +106,78 @@
 </details>
 {% endif %}
 
+<h2 class="section-heading" id="dates">Dates for the house</h2>
+<p class="upload-hint" style="margin-top:-6px;">Anything worth knowing that is not a booking or a task — the school holidays, a market, a family visit. It goes on the app's calendar straight away and into the house calendar within a minute.{% if not dates_on %} <strong>Dates is unticked under What it carries, so these are on the app's calendar only.</strong>{% endif %}</p>
+<form method="post" action="{{ url_for('admin_house_dates_add') }}" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field-label" for="hd-title">What</label>
+  <input type="text" id="hd-title" name="title" maxlength="120" required placeholder="Vacances de la Toussaint (Zone C)">
+  <div style="display:flex; gap:12px; flex-wrap:wrap;">
+    <div>
+      <label class="field-label" for="hd-start">First day</label>
+      <input type="date" id="hd-start" name="start_date" required>
+    </div>
+    <div>
+      <label class="field-label" for="hd-end">Last day</label>
+      <input type="date" id="hd-end" name="end_date">
+    </div>
+  </div>
+  <p class="field-hint">The last day is the last one it covers. Leave it empty for a single day.</p>
+  <label class="field-label" for="hd-note">Note</label>
+  <textarea id="hd-note" name="note" rows="2" maxlength="2000" placeholder="Optional — shows in the event in Outlook"></textarea>
+  <button type="submit" class="btn-mini">Add to the calendar</button>
+</form>
+
+{% if dates_ahead %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>What</th><th>From</th><th>To</th><th>Note</th><th></th></tr></thead>
+  <tbody>
+    {% for d in dates_ahead %}
+    <tr id="date-{{ d.id }}">
+      <th scope="row">{{ d.title }}</th>
+      <td>{{ d.start_date|date_short }}</td>
+      <td>{{ d.end_date|date_short }}</td>
+      <td>{{ d.note or '' }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin_house_dates_delete', date_id=d.id) }}"
+              onsubmit="return confirm('Take this date off the calendar?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-mini">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state">No dates coming up.</div>
+{% endif %}
+{% if dates_past %}
+<details class="refund-box">
+  <summary>Finished ({{ dates_past|length }})</summary>
+  <div class="table-wrap">
+  <table class="data-table">
+    <tbody>
+      {% for d in dates_past %}
+      <tr id="date-{{ d.id }}">
+        <th scope="row">{{ d.title }}</th>
+        <td>{{ d.start_date|date_short }} to {{ d.end_date|date_short }}</td>
+        <td>
+          <form method="post" action="{{ url_for('admin_house_dates_delete', date_id=d.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
+{% endif %}
+
 <h2 class="section-heading">What it carries</h2>
 <form method="post" action="{{ url_for('admin_house_calendar_areas') }}" class="detail-card">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
