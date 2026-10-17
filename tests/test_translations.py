@@ -14,6 +14,8 @@ threshold would either block work or be set so low it proves nothing; a printed
 number makes the gap visible every run, the same argument as the endpoint
 coverage report in run.py.
 """
+import re as regex
+
 from _harness import Suite, clients, db
 import _harness
 
@@ -113,6 +115,35 @@ def run():
     fresh2 = m.app.test_client()
     page = fresh2.get("/", headers={"Accept-Language": "ja-JP,ja;q=0.9"}).get_data(as_text=True)
     s.check("a language we don't offer falls back to English", 'lang="en"' in page)
+
+    s.section("The address the alternates advertise is the page they promise (z27 item 8)")
+    # public_base.html gives search engines /?lang=fr as the French page.
+    # Nothing read the parameter, so on the live site that address was the
+    # English page: "Eight centuries at Gudanes" under the engraving of the
+    # French homepage, though translations.py has the French. Asked of an
+    # English browser, because that is the reader the link has to win over.
+    # The <html> tag, not lang="fr" anywhere: the home page has French
+    # sub-headings marked lang="fr" in every language.
+    def html_lang(body):
+        found = regex.search(r'<html[^>]*\blang="([a-z]+)"', body)
+        return found.group(1) if found else None
+    eng = m.app.test_client()
+    page = eng.get("/?lang=fr", headers={"Accept-Language": "en-GB,en;q=0.9"}).get_data(as_text=True)
+    s.check("/?lang=fr is French, to an English browser", html_lang(page) == "fr",
+            detail=str(html_lang(page)))
+    device = [translations.translate(x, "fr") for x in
+              ("Eight centuries at Gudanes", "The fortress", "The château, by Gabriel", "The restoration")]
+    s.check("and the footer's dates say so in French",
+            all(x in page for x in device) and "Eight centuries at Gudanes" not in page,
+            detail=str([x for x in device if x not in page]))
+    s.check("the French is really French", device[0] == "Huit siècles à Gudanes", detail=device[0])
+    page = eng.get("/?lang=es").get_data(as_text=True)
+    s.check("and /?lang=es Spanish", html_lang(page) == "es" and "Ocho siglos en Gudanes" in page)
+    s.check("a guest who followed it stays in it",
+            html_lang(eng.get("/").get_data(as_text=True)) == "es")
+    s.check("an unoffered one in the address is ignored",
+            html_lang(m.app.test_client().get("/?lang=de", headers={
+                "Accept-Language": "en"}).get_data(as_text=True)) == "en")
 
     s.section("The booking funnel itself, not just the shell around it")
     # A guest can reach a French home page and then hit English the moment they

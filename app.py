@@ -60581,8 +60581,16 @@ def remember_guest_language(conn, email):
 def current_language():
     """The language to render in, for whoever is reading.
 
-    Three sources, most specific first:
+    Four sources, most specific first:
 
+      0. The address itself: ?lang=fr. public_base.html advertises the French
+         and Spanish pages to search engines at exactly that address, and
+         nothing read it, so /?lang=fr was the English page with a French
+         address -- "Eight centuries at Gudanes" in the footer of the French
+         homepage (z27 item 8), and every word around it in English too. A
+         language in the address is what the link promised, so it wins for
+         that page, and a guest who followed it stays in it (the session,
+         never a signed-in person's saved choice).
       1. A signed-in person's saved language. Staff read the app every day, so
          the choice belongs to the account rather than the browser session — a
          housekeeper should not re-pick French each login, and must not inherit
@@ -60604,6 +60612,12 @@ def current_language():
     if cached:
         return cached
     lang = None
+    asked = request.args.get("lang")
+    if asked in translations.LANGUAGES:
+        lang = asked
+        session["lang"] = asked
+        g._lang = lang
+        return lang
     user = current_user()
     if user is not None:
         try:
