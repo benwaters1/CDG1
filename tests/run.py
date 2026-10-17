@@ -406,6 +406,7 @@ SUITES = [
     "test_stay_list_price",
     "test_stripe_labels",
     "test_corrections_2026_10_16",
+    "test_room_names_2026_10_16",
     "test_languages_page",
     "test_share_images",
     "test_stripe_webhook_tool",

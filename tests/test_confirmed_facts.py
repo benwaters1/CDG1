@@ -82,6 +82,10 @@ RETIRED = {
     "les autres à venir": "never the rest to come (owner, 9 October)",
     "les autres attendent": "never the rest to come (owner, 9 October)",
     "as the restoration reaches them": "never why five, nor when more will open",
+    # 15 October: the Twin Room's two beds are doubles (owner). Its line in
+    # room_note came back as "a twin room" in z22 and again in z26;
+    # tools/repair_handover.py now rewrites it on install.
+    "a twin room, with a private bathroom": "the Twin Room has two double beds",
 }
 COMMENTS = re.compile(r"\{#.*?#\}|<!--.*?-->", re.S)
 

@@ -10,7 +10,7 @@
   </div>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
-  Close any rooms for any dates, all at once: the Gold Suite and the Family Suite over the winter,
+  Close any rooms for any dates, all at once: the Marquis Suite and the Family Suite over the winter,
   while the others stay open. A closed room cannot be booked here for those dates, and the calendar
   Booking.com and the other channels read from this site closes them there too. Below that, what a
   room asks of a stay in a run of dates without closing: a longer minimum, on request, another price.
@@ -28,7 +28,7 @@
       {% endfor %}
       <div class="close-rooms-shortcuts">
         {% if big_two|length == 2 %}
-        <button type="button" class="btn-mini" onclick="pickRooms('close-form', {{ big_two|tojson }})">The Gold Suite and the Family Suite</button>
+        <button type="button" class="btn-mini" onclick="pickRooms('close-form', {{ big_two|tojson }})">The Marquis Suite and the Family Suite</button>
         {% endif %}
         <button type="button" class="btn-mini" onclick="pickRooms('close-form', 'all')">Every room</button>
         <button type="button" class="btn-ghost" onclick="pickRooms('close-form', [])">Clear</button>
@@ -54,7 +54,7 @@
     </fieldset>
 
     <label class="field-label" for="close-note">What it says to a guest, when closed for the season</label>
-    <input id="close-note" type="text" name="note" maxlength="160" placeholder="The Gold Suite reopens on 1 April.">
+    <input id="close-note" type="text" name="note" maxlength="160" placeholder="The Marquis Suite reopens on 1 April.">
     <p class="field-hint">Left empty, each room says when it reopens, in its own name.</p>
 
     <label class="field-label" for="close-reason">Why (for the house only)</label>
@@ -149,7 +149,7 @@
       {% endfor %}
       <div class="close-rooms-shortcuts">
         {% if big_two|length == 2 %}
-        <button type="button" class="btn-mini" onclick="pickRooms('rules-form', {{ big_two|tojson }})">The Gold Suite and the Family Suite</button>
+        <button type="button" class="btn-mini" onclick="pickRooms('rules-form', {{ big_two|tojson }})">The Marquis Suite and the Family Suite</button>
         {% endif %}
         <button type="button" class="btn-mini" onclick="pickRooms('rules-form', 'all')">Every room</button>
       </div>
