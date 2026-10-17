@@ -74,6 +74,7 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <label class="field-label" for="arranged-note-{{ l['id'] }}">A note for whoever hands it over</label>
           <input id="arranged-note-{{ l['id'] }}" type="text" name="note" maxlength="120"
+                 aria-label="A note for whoever hands it over"
                  placeholder="{{ 'Jean’s taxi, 06 12 34 56 78' if r.transfer else 'Ordered from the épicerie, ready Friday' }}">
           <button type="submit" class="btn-mini">Mark arranged</button>
         </form>

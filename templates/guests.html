@@ -166,7 +166,7 @@
         and when next. What they have been worth is on their own page, from each
         stay's bill, rather than a cheaper sum here. -#}
     {% set h = history.get(g['id']) %}
-    <p class="manual-body upload-hint">
+    <p class="manual-body upload-hint wraps">
       {% if h and h.stays %}{{ h.stays }} stay{{ '' if h.stays == 1 else 's' }}, {{ h.nights }} night{{ '' if h.nights == 1 else 's' }}
         &middot; last here {{ h.last|date_short }}
       {%- else %}Not stayed yet{% endif %}
