@@ -170,6 +170,10 @@ window.houseDay = (function () {
   "currenciesAccepted": "EUR",
   "paymentAccepted": "Credit Card",
   "petsAllowed": false,
+  {# Read from CHECK_IN_TIME / CHECK_OUT_TIME in app.py, never typed: the
+     times moved once already (z15), and test_check_in_times holds it. #}
+  "checkinTime": "{{ check_in_time }}",
+  "checkoutTime": "{{ check_out_time }}",
   "amenityFeature": [
     {"@type": "LocationFeatureSpecification", "name": "Swimming pool", "value": true},
     {"@type": "LocationFeatureSpecification", "name": "Tennis court", "value": true},

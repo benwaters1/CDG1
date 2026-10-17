@@ -10914,6 +10914,10 @@ app.jinja_env.globals["contact_address"] = lambda area: contact_address(area)
 app.jinja_env.globals["check_in_at"] = CHECK_IN_WORDS
 app.jinja_env.globals["check_out_at"] = CHECK_OUT_WORDS
 app.jinja_env.globals["check_in_hour"] = int(CHECK_IN_TIME[:2])
+# The same two, as "15:00", for the LodgingBusiness structured data: schema.org
+# reads checkinTime as a clock time, not "3pm" (z27 item 4).
+app.jinja_env.globals["check_in_time"] = CHECK_IN_TIME
+app.jinja_env.globals["check_out_time"] = CHECK_OUT_TIME
 app.jinja_env.globals["clock_words"] = clock_words
 # Money on a page was formatted inline, template by template, with
 # '%.2f'|format and a euro sign typed next to it. One definition instead, so a
