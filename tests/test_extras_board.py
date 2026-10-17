@@ -38,6 +38,9 @@ def _cleanup():
         conn.execute("DELETE FROM booking_extras WHERE booking_id = ?", (bid,))
         conn.execute("DELETE FROM vehicle_transfers WHERE booking_id = ?", (bid,))
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM vehicle_transfers WHERE vehicle_id IN "
+                 "(SELECT id FROM vehicles WHERE name LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM vehicles WHERE name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM extras WHERE name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM tasks WHERE origin = ? AND title LIKE ?",
                  (m.WATCH_TASK_ORIGIN, f"%{TAG}%"))
@@ -158,8 +161,14 @@ def run():
         s.check("it can be undone", r and not r["arranged"] and r["arrange_now"])
 
         s.section("A transfer is arranged by booking the car")
+        # Its own car, so the check does not lean on whatever the database it
+        # runs on happens to hold: a fresh seed has no vehicle at all, and this
+        # passed only on a copy of the house's (another session found it).
         conn = db()
-        vehicle = conn.execute("SELECT id FROM vehicles ORDER BY id LIMIT 1").fetchone()
+        conn.execute("INSERT INTO vehicles (name, created_at) VALUES (?, ?)",
+                     (f"{TAG} car", datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        vehicle = conn.execute("SELECT id FROM vehicles WHERE name = ?", (f"{TAG} car",)).fetchone()
         if vehicle:
             conn.execute(
                 """INSERT INTO vehicle_transfers (vehicle_id, guest_name, direction, scheduled_at,
@@ -171,8 +180,7 @@ def run():
         conn.close()
         r = _row(_board(), t_line)
         s.check("a run on the Transfers page for the stay counts as arranged",
-                bool(vehicle) and r and r["arranged"] and r["arranged_by_run"],
-                detail="no vehicle in the copy to book a run in" if not vehicle else "")
+                bool(vehicle) and r and r["arranged"] and r["arranged_by_run"])
 
         s.section("A stay not yet confirmed")
         waiting = _stay("C", today + timedelta(days=5), status="pending")
