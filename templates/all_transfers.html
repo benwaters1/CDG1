@@ -67,7 +67,8 @@
       {%- if b['party_size'] %} · {{ b['party_size'] }} {{ 'person' if b['party_size'] == 1 else 'people' }}{% endif %}
       {%- if b['transfer_flight_number'] %} · flight {{ b['transfer_flight_number'] }}{% endif %}
       {%- if b['transfer_arrival_time'] %}, landing {{ b['transfer_arrival_time'] }}{% endif %}
-      {%- if not b['transfer_flight_number'] %} · no flight given yet{% endif %}
+      {%- if b['transfer_extra_notes'] %} · they wrote: “{{ b['transfer_extra_notes'] }}”{% endif %}
+      {%- if not b['transfer_flight_number'] and not b['transfer_extra_notes'] %} · no flight given yet{% endif %}
     </span>
     {% if user['role'] == 'owner' %}
       {% for v in vehicles %}

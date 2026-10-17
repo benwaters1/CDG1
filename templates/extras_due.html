@@ -1,105 +1,197 @@
 {% extends "base.html" %}
-{% block title %}What we owe guests{% endblock %}
+{% from "_icons.html" import icon %}
+{% block title %}Extras to prepare{% endblock %}
 {% block content %}
 
 {#
-  A list of jobs, not a page of figures. No prices anywhere: somebody carrying a
-  hamper upstairs does not need to know what the guest paid for it, and a list
-  of what everyone in the house has spent is not something to leave on a table.
+  The run sheet for everything the house owes its guests: what, for whom,
+  when, and how far it has got -- asked for, arranged, handed over.
 
-  Overdue is its own group rather than a colour on a sorted list. A transfer
-  that was for yesterday is a different problem from one that is for this
-  afternoon, and it is the one nobody notices when the two are mixed together.
+  For the shift, a list of jobs: no prices anywhere, because somebody carrying
+  a hamper upstairs does not need to know what the guest paid for it, and this
+  gets printed and left on tables. The owner also sees what each line is worth,
+  and the stays not yet confirmed.
+
+  Overdue is a section of its own rather than a colour on a sorted list. A
+  transfer that was for yesterday is a different problem from one for this
+  afternoon, and it is the one nobody notices when the two are mixed.
+
+  "Arrange by" is the day minus the notice the catalogue gives for the extra.
+  Only a transfer or something with notice has one: a bottle from the cellar
+  does not need arranging, it needs carrying upstairs.
 #}
+{% macro due_row(r, unconfirmed=False) %}
+{% set l = r.line %}
+<tr>
+  <td>
+    <strong>{{ l['name'] }}</strong>
+    {%- if l['quantity'] and l['quantity'] > 1 %} &times;{{ l['quantity'] }}{% endif %}
+    {% if l['notes'] %}<span class="upload-hint">{{ l['notes'] }}</span>{% endif %}
+  </td>
+  <td>
+    {% if owner %}<a href="{{ booking_href(l['booking_id'], l['reference_code']) }}">{{ l['guest_name'] }}</a>
+    {% else %}{{ l['guest_name'] }}{% endif %}
+    <span class="upload-hint">
+      {{ l['room_name'] or 'room to be chosen' }} &middot;
+      {{ date_range(l['arrival_date'], l['departure_date']) }}
+      {%- if l['party_size'] %} &middot; {{ l['party_size'] }} {{ 'guest' if l['party_size'] == 1 else 'guests' }}{% endif %}
+      {%- if r.transfer and l['transfer_flight_number'] %} &middot; flight {{ l['transfer_flight_number'] }}
+        {%- if l['transfer_arrival_time'] %}, landing {{ l['transfer_arrival_time'] }}{% endif %}{% endif %}
+    </span>
+    {% if l['guest_phone'] %}<a class="small-link" href="tel:{{ l['guest_phone']|replace(' ', '') }}">{{ l['guest_phone'] }}</a>{% endif %}
+    {% if r.in_house %}<span class="mini-status status-current">here now</span>{% endif %}
+  </td>
+  <td>
+    {% if r.overdue %}<span class="mini-status status-unpaid">{{ r.when|date_short }}</span>
+    {% elif r.today %}<span class="mini-status status-confirmed">today</span>
+    {% elif r.when %}{{ r.when|date_short }}
+    {% else %}<span class="upload-hint">during their stay</span>{% endif %}
+  </td>
+  <td>
+    {% if r.arranged %}
+      <span class="mini-status status-confirmed">arranged</span>
+      <span class="upload-hint">
+        {%- if r.arranged_by_run %}a run is booked on Transfers
+        {%- else %}{{ l['arranged_by'] or 'somebody' }}, {{ l['arranged_at']|date_short }}{% endif %}
+        {%- if l['arranged_note'] %} &middot; {{ l['arranged_note'] }}{% endif %}
+      </span>
+    {% elif r.needs_arranging %}
+      {% if r.arrange_now %}<span class="mini-status status-unpaid">arrange now</span>
+      {% else %}<span class="mini-status status-pending">to arrange</span>{% endif %}
+      {% if r.arrange_by %}<span class="upload-hint">by {{ r.arrange_by|date_short }}</span>{% endif %}
+    {% else %}
+      <span class="upload-hint">nothing to arrange</span>
+    {% endif %}
+  </td>
+  {% if owner %}<td class="num">{{ r.value|money }}</td>{% endif %}
+  <td>
+    {% if not unconfirmed %}
+    <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">
+      {% if r.needs_arranging and not r.arranged %}
+      <details class="refund-box" style="margin:0;">
+        <summary>Arranged</summary>
+        <form method="post" action="{{ url_for('mark_extra_arranged', line_id=l['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="field-label" for="arranged-note-{{ l['id'] }}">A note for whoever hands it over</label>
+          <input id="arranged-note-{{ l['id'] }}" type="text" name="note" maxlength="120"
+                 aria-label="A note for whoever hands it over"
+                 placeholder="{{ 'Jean’s taxi, 06 12 34 56 78' if r.transfer else 'Ordered from the épicerie, ready Friday' }}">
+          <button type="submit" class="btn-mini">Mark arranged</button>
+        </form>
+        {% if r.transfer and owner %}
+          {% for v in vehicles %}
+          <a href="{{ url_for('vehicle_transfers_page', vehicle_id=v['id'], booking_id=l['booking_id']) }}" class="small-link">Or book a run in {{ v['name'] }}</a>
+          {% endfor %}
+        {% endif %}
+      </details>
+      {% elif l['arranged_at'] %}
+      <form method="post" action="{{ url_for('mark_extra_arranged', line_id=l['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="undo" value="1">
+        <button type="submit" class="small-link" style="background:none; border:0; padding:0; cursor:pointer;">Not arranged after all</button>
+      </form>
+      {% endif %}
+      <form method="post" action="{{ url_for('mark_extra_delivered', line_id=l['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini" style="white-space:nowrap;">Handed over</button>
+      </form>
+    </div>
+    {% endif %}
+  </td>
+</tr>
+{% endmacro %}
+
 <div class="page-head">
-  <h1>What we owe guests</h1>
+  <h1>Extras to prepare</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    {% if owner %}<a href="{{ url_for('admin_extras') }}" class="small-link">The catalogue</a>{% endif %}
+    <a href="{{ url_for('all_transfers') }}" class="small-link">Transfers</a>
+    <button type="button" class="btn-mini" onclick="window.print()">Print</button>
+  </div>
+</div>
+
+<div class="stat-tiles">
+  <a class="stat-tile" href="{{ url_for('extras_due_page') }}#due-overdue">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if due.overdue else 'stat-tile-icon-success' }}">{{ icon('bell', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ due.overdue|length }}</span><span class="stat-tile-label">Overdue</span></span>
+  </a>
+  <a class="stat-tile" href="{{ url_for('extras_due_page') }}#due-today">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ due.today|length }}</span><span class="stat-tile-label">To hand over today</span></span>
+  </a>
+  <a class="stat-tile" href="{{ url_for('extras_due_page', state='Arrange now') }}">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if due.arrange_now else 'stat-tile-icon-success' }}">{{ icon('tasks', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ due.arrange_now|length }}</span><span class="stat-tile-label">To arrange now</span></span>
+  </a>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('bookings', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ due.count }}</span><span class="stat-tile-label">Still to hand over</span></span>
+  </div>
+  {% if owner %}
+  <a class="stat-tile" href="#due-unconfirmed">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-gold' if due.unconfirmed else 'stat-tile-icon-success' }}">{{ icon('approvals', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ due.unconfirmed|length }}</span><span class="stat-tile-label">On stays not yet confirmed</span></span>
+  </a>
+  {% endif %}
 </div>
 
 {% if not due.rows %}
-  <p class="upload-hint">Nothing outstanding — everything ordered has been
-  handed over.</p>
+  <div class="empty-state">Nothing outstanding — everything ordered has been
+  handed over.</div>
+{% else %}
+  {% include "_list_toolbar.html" %}
+  {% if not lv.rows %}
+    <div class="empty-state">Nothing matches that.
+      <a href="{{ url_for('extras_due_page') }}">Show all {{ due.count }}</a></div>
+  {% endif %}
 {% endif %}
 
-{% if due.overdue %}
-<h2 class="section-heading" style="margin-top:0;">Overdue — {{ due.overdue|length }}</h2>
+{% for key, label, rows in groups if rows %}
+<h2 class="section-heading" id="due-{{ key }}">{{ label }} — {{ rows|length }}</h2>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th>What</th><th>Who</th><th>Was for</th><th></th></tr></thead>
+    <thead><tr>
+      <th>What</th><th>Guest and stay</th><th>{{ 'Was for' if key == 'overdue' else 'When' }}</th>
+      <th>Arranging</th>{% if owner %}<th class="num">Worth</th>{% endif %}<th></th>
+    </tr></thead>
     <tbody>
-      {% for r in due.overdue %}
-      <tr>
-        <td><strong>{{ r.line['name'] }}</strong>
-          {%- if r.line['quantity'] and r.line['quantity'] > 1 %} ×{{ r.line['quantity'] }}{% endif %}
-          {% if r.line['notes'] %}<span class="upload-hint">{{ r.line['notes'] }}</span>{% endif %}
-        </td>
-        <td>{{ r.line['guest_name'] }}
-          <span class="upload-hint">{{ r.line['room_name'] or 'room TBC' }}</span></td>
-        <td><span class="mini-status status-unpaid">{{ r.when|date_short }}</span></td>
-        <td>
-          <form method="post" action="{{ url_for('mark_extra_delivered', line_id=r.line['id']) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn-mini">Done</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
+      {% for r in rows %}{{ due_row(r) }}{% endfor %}
     </tbody>
   </table>
 </div>
-{% endif %}
+{% endfor %}
 
-{% set pending = due.rows | rejectattr('overdue') | list %}
-{% if pending %}
-<h2 class="section-heading" style="margin-top:{{ '24px' if due.overdue else '0' }};">
-  Still to hand over — {{ pending|length }}</h2>
-<div class="table-wrap">
-  <table class="data-table">
-    <thead><tr><th>What</th><th>Who</th><th>When</th><th></th></tr></thead>
-    <tbody>
-      {# Overdue rows are in their own table above; repeating them here would
-         have somebody tick the same job off twice and wonder why. #}
-      {% for r in pending %}
-      <tr>
-        <td><strong>{{ r.line['name'] }}</strong>
-          {%- if r.line['quantity'] and r.line['quantity'] > 1 %} ×{{ r.line['quantity'] }}{% endif %}
-          {% if r.line['notes'] %}<span class="upload-hint">{{ r.line['notes'] }}</span>{% endif %}
-        </td>
-        <td>{{ r.line['guest_name'] }}
-          <span class="upload-hint">{{ r.line['room_name'] or 'room TBC' }}</span>
-          {%- if r.in_house %} <span class="mini-status status-current">here now</span>{% endif %}
-        </td>
-        <td>
-          {% if r.today %}<span class="mini-status status-confirmed">today</span>
-          {% elif r.when %}{{ r.when|date_short }}
-          {% else %}<span class="upload-hint">during their stay</span>{% endif %}
-        </td>
-        <td>
-          <form method="post" action="{{ url_for('mark_extra_delivered', line_id=r.line['id']) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn-mini">Done</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-<p class="upload-hint">Ticking something off records who handed it over and
-when. It does not change what the guest is charged — handing over a hamper is a
+{% if due.rows %}
+<p class="upload-hint">Marking something arranged records who sorted it and
+when, and a note for whoever hands it over. Ticking it off records who handed it
+over. Neither changes what the guest is charged — handing over a hamper is a
 reason to charge for it, not to stop.</p>
 {% endif %}
 
+{% if owner and due.unconfirmed %}
+<h2 class="section-heading" id="due-unconfirmed">On stays not yet confirmed — {{ due.unconfirmed|length }}</h2>
+<p class="upload-hint" style="margin-top:-6px;">Not jobs yet: these join the
+list above the moment the stay is confirmed. Here so that a paid stay waiting on
+you, with a car to the airport on it, is not on no list at all.</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>What</th><th>Guest and stay</th><th>When</th><th>Arranging</th><th class="num">Worth</th><th></th></tr></thead>
+    <tbody>
+      {% for r in due.unconfirmed %}{{ due_row(r, unconfirmed=True) }}{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 {% if done %}
-<h2 class="section-heading">Done tonight</h2>
+<h2 class="section-heading">Handed over today</h2>
 <p class="upload-hint" style="margin-top:-6px;">
-  The name and the time have been recorded on every delivery since this was
-  built and shown nowhere &mdash; so when a guest said something never came,
-  the only answer was that somebody ticked it off at some point.
+  Who handed each one over, and when — so when a guest says something never
+  came, there is an answer.
 </p>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th>What</th><th>Who for</th><th>Room</th><th>Ticked off by</th><th>When</th></tr></thead>
+    <thead><tr><th>What</th><th>Who for</th><th>Room</th><th>Handed over by</th><th>When</th><th></th></tr></thead>
     <tbody>
       {% for d in done %}
       <tr>
@@ -108,6 +200,13 @@ reason to charge for it, not to stop.</p>
         <td>{{ d['room_name'] or '&mdash;'|safe }}</td>
         <td>{{ d['delivered_by'] or 'nobody recorded' }}</td>
         <td>{{ local_time_str(d['when']) if d['when'] else '&mdash;'|safe }}</td>
+        <td>
+          <form method="post" action="{{ url_for('mark_extra_delivered', line_id=d['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="undo" value="1">
+            <button type="submit" class="btn-mini" title="It was ticked by mistake: put it back on the list">Undo</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
