@@ -6,7 +6,7 @@
   <h1>Rooms</h1>
   <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
     <a href="{{ url_for('close_rooms_page') }}" class="btn-mini">Close rooms for dates</a>
-    <a href="{{ url_for('admin_bookings') }}" class="btn-mini">Booking requests</a>
+    <a href="{{ url_for('admin_bookings') }}" class="btn-mini">Bookings</a>
     <a href="{{ url_for('book_rooms') }}" class="btn-mini">View public page</a>
     <form method="post" action="{{ url_for('sync_all_ical_sources') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Sync all calendars</button></form>
     <a href="{{ url_for('new_room') }}" class="btn-primary" style="margin-top:0;">+ Add room</a>

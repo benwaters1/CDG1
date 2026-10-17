@@ -1,0 +1,604 @@
+{% extends "base.html" %}
+{% block title %}{{ b['guest_name'] }} · {{ b['reference_code'] }}{% endblock %}
+{% block content %}
+
+{# ONE STAY. Who, where and when at the top; then what they asked for and when
+   they want it, the money and the refunds, every letter and text, moving the
+   dates, and last of all the housekeeping. Every button here is the action the
+   rest of the app already uses, posted with back=booking so it returns here. #}
+
+<p class="bk-crumb"><a href="{{ url_for('admin_bookings') }}">← Bookings</a></p>
+
+<div class="page-head bk-page-head">
+  <div class="bk-title">
+    <h1>{{ b['guest_name'] }}</h1>
+    <p class="bk-subtitle">
+      {{ b['room_name'] }} · {{ date_range(b['arrival_date'], b['departure_date']) }} ·
+      {{ nights }} night{{ '' if nights == 1 else 's' }} · {{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}
+    </p>
+    <p class="bk-chips">
+      <span class="mini-status status-{{ b['status'] }}">{{ b['status'] }}</span>
+      {% if where %}<span class="mini-status {{ 'status-onshift' if where == 'Here now' else 'status-declined' if where == 'Did not arrive' else 'status-past' if where == 'Gone' else 'status-upcoming' }}">{{ where }}</span>{% endif %}
+      {% if bill.owed %}<span class="mini-status status-overdue">{{ bill.owed|money }} owed</span>
+      {% elif bill.paid and b['status'] == 'confirmed' %}<span class="mini-status status-paid">paid</span>{% endif %}
+      {% if b['party_name'] %}<a href="{{ url_for('party_statement', party_id=b['party_id']) }}" class="mini-status status-upcoming">{{ b['party_name'] }}</a>{% endif %}
+      {% if stays_here and stays_here['n'] > 1 %}<a href="{{ url_for('guest_booking_history', email=b['guest_email']) }}" class="mini-status status-onshift">returning · stay {{ stays_here['n'] }} · {{ stays_here['spend']|money(0) }}</a>{% endif %}
+      {% if caution %}<a href="{{ url_for('guest_detail', guest_id=caution['id']) }}" class="mini-status status-declined" title="{{ caution['caution'] }}">{{ caution_levels[caution['caution_level']] }}</a>{% endif %}
+      <span class="bk-ref">{{ b['reference_code'] }}</span>
+    </p>
+  </div>
+  <div class="bk-head-actions">
+    {% if b['status'] == 'pending' %}
+    <form method="post" action="{{ url_for('confirm_booking', booking_id=b['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
+      <button type="submit" class="btn-mini">Confirm booking</button>
+    </form>
+    {% endif %}
+    {% if b['status'] in ('pending', 'confirmed') %}<a href="#move" class="btn-ghost">Move dates</a>{% endif %}
+    {% if b['guest_email'] %}<a href="#write" class="btn-ghost">Write to guest</a>{% endif %}
+    {% if can('refund_desk') %}<a href="#money" class="btn-ghost">Refund</a>{% endif %}
+    {% if b['status'] in ('pending', 'confirmed') %}<a href="{{ url_for('edit_booking', booking_id=b['id']) }}" class="btn-ghost">Edit details</a>{% endif %}
+  </div>
+</div>
+
+<nav class="bk-tabs" aria-label="On this page">
+  <a href="#stay">Guest &amp; stay</a>
+  <a href="#extras">Add-ons{% if live_extras %} ({{ live_extras|length }}){% endif %}</a>
+  <a href="#money">Money</a>
+  <a href="#messages">Messages{% if messages %} ({{ messages|length }}){% endif %}</a>
+  {% if b['status'] in ('pending', 'confirmed') %}<a href="#move">Move dates</a>{% endif %}
+  <a href="#housekeeping">Arrival &amp; departure</a>
+  {% if can('record_history_page') %}<a href="{{ url_for('record_history_page', kind='booking', record_id=b['id']) }}">What changed</a>{% endif %}
+</nav>
+
+{% if requests_open %}
+<div class="detail-card bk-alert">
+  <h3>Waiting on the house</h3>
+  {% for t in requests_open %}
+  <p><strong>{{ t['title'] }}</strong>{% if t['due_date'] %} <span class="upload-hint">· {{ t['due_date']|date_short }}</span>{% endif %}<br>
+     <span class="upload-hint">{{ t['notes'] }}</span></p>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="stat-tiles bk-money-tiles">
+  <div class="stat-tile"><span class="stat-tile-body"><span class="stat-tile-value">{{ bill.total|money }}</span><span class="stat-tile-label">The stay costs</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body"><span class="stat-tile-value">{{ bill.paid|money }}</span><span class="stat-tile-label">Paid, after refunds</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    {% if bill.overpaid %}<span class="stat-tile-value">{{ bill.overpaid|money }}</span><span class="stat-tile-label">In credit</span>
+    {% else %}<span class="stat-tile-value{{ ' owed-flag' if bill.owed }}">{{ bill.owed|money }}</span><span class="stat-tile-label">Still owed{% if bill.balance_due_date and bill.owed %}, due {{ bill.balance_due_date|date_short }}{% endif %}</span>{% endif %}
+  </span></div>
+  <div class="stat-tile"><span class="stat-tile-body"><span class="stat-tile-value">{{ bill.refunded|money }}</span><span class="stat-tile-label">Refunded</span></span></div>
+</div>
+
+{# ---------------------------------------------------------------- stay #}
+<section id="stay" class="bk-grid">
+  <div class="detail-card">
+    <h3>The guest</h3>
+    <dl class="bk-facts">
+      <dt>Name</dt><dd>{{ b['guest_name'] }}</dd>
+      <dt>Email</dt><dd>{% if b['guest_email'] %}<a href="{{ url_for('guest_by_email', email=b['guest_email']) }}">{{ b['guest_email'] }}</a>{% else %}<span class="mini-status status-pending">none — give them the card</span>{% endif %}</dd>
+      <dt>Telephone</dt><dd>{{ b['guest_phone'] or '—' }}</dd>
+      {% if b['guest_address'] or b['guest_country'] %}
+      <dt>Address</dt><dd>{{ [b['guest_address'], ((b['guest_city'] or '') ~ ' ' ~ (b['guest_postcode'] or ''))|trim, b['guest_country']]|select|join(', ') }}</dd>
+      {% endif %}
+      {% if b['booked_by_name'] %}<dt>Booked and paid by</dt><dd>{{ b['booked_by_name'] }} · {{ b['booked_by_email'] }}</dd>{% endif %}
+      {% if b['second_contact_name'] or b['second_contact_email'] %}<dt>Also written to</dt><dd>{{ b['second_contact_name'] }} {{ b['second_contact_email'] }}</dd>{% endif %}
+      {% if caution %}<dt>Caution</dt><dd class="owed-flag">{{ caution['caution'] }}</dd>{% endif %}
+    </dl>
+  </div>
+  <div class="detail-card">
+    <h3>The stay</h3>
+    <dl class="bk-facts">
+      <dt>Room</dt><dd>{{ b['room_name'] }}</dd>
+      <dt>Arrives</dt><dd>{{ b['arrival_date']|date_short }}{% if b['estimated_arrival_time'] %}, {{ b['estimated_arrival_time'] }}{% endif %}</dd>
+      <dt>Leaves</dt><dd>{{ b['departure_date']|date_short }}</dd>
+      <dt>Guests</dt><dd>{{ b['party_size'] }}{% if b['guests_under_18'] %}, {{ b['guests_under_18'] }} under 18{% endif %} <span class="upload-hint">· room sleeps {{ b['max_occupancy'] }}</span></dd>
+      {% if b['special_occasion'] %}<dt>Celebrating</dt><dd>{{ b['special_occasion'] }}</dd>{% endif %}
+      {% if b['special_requests'] %}<dt>They asked</dt><dd class="wraps">{{ b['special_requests'] }}</dd>{% endif %}
+      {% if b['transfer_flight_number'] or b['transfer_arrival_time'] or b['transfer_notes'] %}
+      <dt>Transfer</dt><dd>{{ b['transfer_flight_number'] or 'flight to be confirmed' }}{% if b['transfer_arrival_time'] %}, landing {{ b['transfer_arrival_time'] }}{% endif %}{% if b['transfer_notes'] %} — {{ b['transfer_notes'] }}{% endif %}</dd>
+      {% endif %}
+      <dt>Came through</dt><dd>{{ (b['source'] or 'website')|replace('_', ' ')|capitalize }}{% if b['heard_via'] %} <span class="upload-hint">· heard of us: {{ b['heard_via']|replace('_', ' ') }}</span>{% endif %}</dd>
+      <dt>Booked</dt><dd>{{ b['created_at']|house_day|date_short }}{% if b['decided_at'] %} <span class="upload-hint">· {{ 'confirmed' if b['status'] == 'confirmed' else b['status'] }} {{ b['decided_at']|house_day|date_short }}</span>{% endif %}</dd>
+      {% if b['cancel_reason'] %}<dt>Why cancelled</dt><dd>{{ cancel_reasons.get(b['cancel_reason'], b['cancel_reason']) }}</dd>{% endif %}
+      {% if b['decline_reason'] %}<dt>Why declined</dt><dd>{{ decline_reasons.get(b['decline_reason'], b['decline_reason']) }}</dd>{% endif %}
+    </dl>
+    <p class="bk-links">
+      <a href="{{ url_for('arrival_card', booking_id=b['id']) }}" target="_blank" rel="noopener">Arrival card</a>
+      · <a href="{{ url_for('split_bill', booking_id=b['id']) }}">Split the bill</a>
+      {% if b['status'] in ('pending', 'confirmed') %}· <a href="{{ url_for('edit_booking', booking_id=b['id']) }}">Edit details</a>{% endif %}
+    </p>
+  </div>
+</section>
+
+{% if group and group|length > 1 %}
+<div class="detail-card">
+  <h3>Travelling together</h3>
+  <p>{% for g in group %}{% if g['id'] != b['id'] %}<a href="{{ url_for('admin_booking', booking_id=g['id']) }}">{{ g['guest_name'] }} — {{ g['room_name'] }}</a>{% if not loop.last %} · {% endif %}{% endif %}{% endfor %}</p>
+</div>
+{% endif %}
+
+{# ---------------------------------------------------------------- extras #}
+<section id="extras">
+<h2 class="section-heading">Add-ons</h2>
+{% if extras %}
+<div class="table-wrap">
+  <table class="data-table bk-extras-table bk-stack">
+    <thead><tr><th scope="col">What</th><th scope="col">When they want it</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Each</th><th scope="col" class="num">Total</th><th scope="col">State</th><th scope="col"><span class="visually-hidden">Change</span></th></tr></thead>
+    <tbody>
+    {% for x in extras %}
+      <tr{% if x.status == 'cancelled' %} class="bk-row-off"{% endif %}>
+        <th scope="row">{{ x.name }}{% if x.in_booking_total %}<span class="cell-note">booked with the room</span>{% else %}<span class="cell-note">added {{ x.created_at|house_day|date_short }}</span>{% endif %}</th>
+        <td data-label="When">
+          {% if x.scheduled_for %}<strong>{{ x.scheduled_for|date_short }}</strong>{% if x.notes %}<span class="cell-note">{{ x.notes }}</span>{% endif %}
+          {% elif x.notes %}{{ x.notes }}
+          {% else %}<span class="upload-hint">For the stay{% if x.asks_when %} — no day chosen{% endif %}</span>{% endif %}
+        </td>
+        <td class="num" data-label="Qty">{{ x.quantity }}</td>
+        <td class="num" data-label="Each">{{ x.unit_price|money }}</td>
+        <td class="num" data-label="Total">{{ x.total|money }}</td>
+        <td data-label="State">
+          <span class="mini-status status-{{ 'paid' if x.status == 'delivered' else 'cancelled' if x.status == 'cancelled' else 'pending' if x.status == 'requested' else 'confirmed' }}">{{ x.status }}</span>
+          {% if x.delivered_at %}<span class="cell-note">{{ x.delivered_at|house_day|date_short }}</span>{% endif %}
+        </td>
+        <td class="bk-line-actions">
+          {% if x.status not in ('cancelled', 'delivered') and stay_day_choices %}
+          <details class="bk-fold">
+            <summary>Change day</summary>
+            <form method="post" action="{{ url_for('change_extra_when', line_id=x.id) }}" class="bk-inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="extra_when" aria-label="Day">
+                {% for d in stay_day_choices %}<option value="{{ d }}" {{ 'selected' if d == x.scheduled_for }}>{{ d|date_short }}</option>{% endfor %}
+              </select>
+              <input type="text" name="extra_note" maxlength="120" placeholder="Time or note" aria-label="Time or note"
+                     value="{{ (x.notes or '')|replace('On arrival — ', '')|replace('On arrival', '') }}">
+              <button type="submit" class="btn-mini">Save</button>
+            </form>
+          </details>
+          {% endif %}
+          {% if x.status != 'cancelled' %}
+          <form method="post" action="{{ url_for('cancel_booking_extra_line', line_id=x.id) }}"
+                onsubmit="return confirm('Take {{ x.name }} off this stay? It comes off the bill; any money already paid stays until you refund it.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-text-danger">Take off</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty-state">Nothing extra on this stay.</p>
+{% endif %}
+
+{% if b['status'] in ('pending', 'confirmed') and addable and stay_day_choices %}
+<details class="detail-card bk-fold-card">
+  <summary><strong>Add something to this stay</strong></summary>
+  <form method="post" action="{{ url_for('add_extra_to_booking', booking_id=b['id']) }}" class="bk-form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="register-field">
+      <label class="field-label" for="add-extra">What</label>
+      <select id="add-extra" name="extra_id" required>
+        <option value="">Choose…</option>
+        {% for e in addable %}<option value="{{ e['id'] }}">{{ e['name'] }} — {{ e['price']|money }}{% if e['lead_time_days'] %} ({{ e['lead_time_days'] }} days' notice){% endif %}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="register-field">
+      <label class="field-label" for="add-qty">How many</label>
+      <input id="add-qty" type="number" name="quantity" value="1" min="1" max="50">
+    </div>
+    <div class="register-field">
+      <label class="field-label" for="add-when">Which day</label>
+      <select id="add-when" name="extra_when">
+        <option value="">For the stay / on arrival</option>
+        {% for d in stay_day_choices %}<option value="{{ d }}">{{ d|date_short }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="register-field">
+      <label class="field-label" for="add-note">Time or note</label>
+      <input id="add-note" type="text" name="extra_note" maxlength="120" placeholder="e.g. 6pm, on the terrace">
+    </div>
+    <p><button type="submit" class="btn-mini">Add to the bill</button></p>
+  </form>
+</details>
+{% endif %}
+</section>
+
+{# ---------------------------------------------------------------- money #}
+<section id="money">
+<h2 class="section-heading">Money</h2>
+<div class="bk-grid">
+  <div class="detail-card">
+    <h3>The bill</h3>
+    <div class="table-wrap">
+      <table class="data-table">
+        <tbody>
+        {% for l in bill.lines %}
+          <tr><th scope="row">{{ l.label }}</th><td class="num">{{ l.amount|money }}</td></tr>
+        {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr><th scope="row">Total</th><td class="num">{{ bill.total|money }}</td></tr>
+          <tr><th scope="row">Paid, after refunds</th><td class="num">{{ bill.paid|money }}</td></tr>
+          <tr><th scope="row">{{ 'In credit' if bill.overpaid else 'Still owed' }}</th><td class="num{{ ' owed-flag' if bill.owed }}">{{ (bill.overpaid or bill.owed)|money }}</td></tr>
+        </tfoot>
+      </table>
+    </div>
+    {% if bill.deposit %}<p class="upload-hint">Deposit {{ bill.deposit|money }} — {{ 'paid' if bill.deposit_paid else 'not paid yet' }}.{% if bill.balance_due_date %} Balance due {{ bill.balance_due_date|date_short }}{% if bill.balance_overdue %}, <strong class="owed-flag">overdue</strong>{% endif %}.{% endif %}</p>{% endif %}
+    <form method="post" action="{{ url_for('send_stay_statement', booking_id=b['id']) }}" class="bk-inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
+      <button type="submit" class="btn-ghost">Email the statement</button>
+    </form>
+  </div>
+
+  <div class="detail-card">
+    <h3>What came in</h3>
+    {% if refund.payments %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th scope="col">When</th><th scope="col">How</th><th scope="col" class="num">Paid</th><th scope="col" class="num">Gone back</th></tr></thead>
+        <tbody>
+        {% for p in refund.payments %}
+          <tr>
+            <td>{{ p.at|house_day|date_short if p.at else '—' }}</td>
+            <td>{{ p.method_label }}{% if p.card %}<span class="cell-note">card, through Stripe</span>{% elif p.reference %}<span class="cell-note">{{ p.reference }}</span>{% endif %}{% if p.payer %}<span class="cell-note">{{ p.payer }}</span>{% endif %}</td>
+            <td class="num">{{ p.amount|money }}</td>
+            <td class="num">{{ p.refunded|money if p.refunded else '—' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty-state">No payment recorded yet.</p>
+    {% endif %}
+    {% if refund.history %}
+    <h3 class="bk-subhead">Refunds made</h3>
+    <ul class="bk-list">
+      {% for r in refund.history %}
+      <li><strong>{{ r['amount']|money }}</strong> · {{ 'to the card' if r['method'] == 'stripe' else r['method']|replace('_', ' ') }} · {{ local_datetime_str(r['created_at']) }}
+        <span class="cell-note">{{ r['reason'] }}{% if r['by_name'] %} — {{ r['by_name'] }}{% endif %}{% if r['guest_told_at'] %} · they were told{% endif %}{% if r['reduces_bill'] %} · {{ r['reduces_bill']|money }} off the bill{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</div>
+
+{# THE REFUND. Separate from cancelling, and never automatic: the house is
+   non-refundable as standard, and money goes back when a person decides it
+   should. The form is the refund desk's own -- it posts there and comes back
+   here -- so there is one engine, one ledger, one letter. #}
+<div class="detail-card bk-refund">
+  <h3>Give money back</h3>
+  {% if not can('refund_desk') %}
+  <p class="upload-hint">Giving money back is the owner's call.{% if refund.ceiling > 0 %} {{ refund.ceiling|money }} could go back.{% endif %}</p>
+  {% elif refund.ceiling > 0 %}
+  <p class="upload-hint">Up to {{ refund.ceiling|money }} can go back. Non-refundable as standard: this is a decision, not a step in cancelling.</p>
+  <form method="post" action="{{ url_for('refund_desk', category='room', booking_id=b['id']) }}"
+        onsubmit="return confirm('Make this refund? A refund to a card moves real money.');" class="bk-form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
+    <div class="register-field">
+      <label class="field-label" for="refund-payment">Against</label>
+      <select id="refund-payment" name="payment">
+        {% for p in refund.payments if p.refundable > 0 %}
+        <option value="{{ p.key }}">{{ p.method_label }}, {{ p.at|house_day|date_short if p.at else 'earlier' }} — up to {{ p.refundable|money }}</option>
+        {% endfor %}
+        {% if refund.refundable_count > 1 %}<option value="all">All of it, {{ refund.ceiling|money }}, each back the way it came</option>{% endif %}
+      </select>
+    </div>
+    <div class="register-field">
+      <label class="field-label" for="refund-amount">Amount (€)</label>
+      <input id="refund-amount" type="number" name="amount" step="0.01" min="0.01" max="{{ '%.2f'|format(refund.ceiling) }}" placeholder="Blank = all that payment can">
+    </div>
+    <div class="register-field">
+      <label class="field-label" for="refund-method">How it goes back</label>
+      <select id="refund-method" name="method">
+        <option value="">The way it was paid</option>
+        <option value="stripe">To the card, through Stripe</option>
+        <option value="bank_transfer">Bank transfer, recorded here</option>
+        <option value="cash">Cash, recorded here</option>
+        <option value="other">Some other way, recorded here</option>
+      </select>
+    </div>
+    <div class="register-field">
+      <label class="field-label" for="refund-why">Why</label>
+      <select id="refund-why" name="reason_code" required>
+        <option value="">Choose…</option>
+        {% for code, label in refund.reasons %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="register-field bk-wide">
+      <label class="field-label" for="refund-note">Note</label>
+      <input id="refund-note" type="text" name="note" maxlength="300" placeholder="What happened, in a line. Needed for “Something else”.">
+    </div>
+    {% if refund.stands %}
+    <fieldset class="bk-wide bk-radios">
+      <legend class="field-label">What it does to the bill</legend>
+      <label class="checkbox-row"><input type="radio" name="bill" value="{{ refund.bill_reduced }}" checked> <span>They pay less: it comes off the bill</span></label>
+      <label class="checkbox-row"><input type="radio" name="bill" value="{{ refund.bill_stands }}"> <span>The price stands: they still owe it</span></label>
+    </fieldset>
+    {% endif %}
+    {% if refund.email %}
+    <label class="checkbox-row bk-wide"><input type="checkbox" name="tell_guest" value="1" checked> <span>Tell them: a letter to {{ refund.email }} saying what went back and how</span></label>
+    {% endif %}
+    <p class="bk-wide"><button type="submit" class="btn-mini btn-mini-danger">Make the refund</button>
+      <a href="{{ url_for('refund_desk', category='room', booking_id=b['id']) }}" class="small-link">Full refund desk</a></p>
+  </form>
+  {% else %}
+  <p class="upload-hint">Nothing has been paid that could go back.</p>
+  {% endif %}
+</div>
+</section>
+
+{# ---------------------------------------------------------------- messages #}
+<section id="messages">
+<h2 class="section-heading">Messages</h2>
+{% if not texts.live %}
+<p class="flash flash-error bk-note">Writing to guests is switched off for the whole house: letters and texts are kept, not sent, until it is switched on.</p>
+{% endif %}
+<div class="bk-grid">
+  <div class="detail-card">
+    <h3>Letters and texts</h3>
+    {% if waiting %}
+    <p class="owed-flag"><strong>{{ waiting|length }} waiting to go out</strong></p>
+    <ul class="bk-list">
+      {% for w in waiting %}<li>{{ w['subject'] }} <span class="cell-note">{{ local_datetime_str(w['created_at']) }} · {{ w['reason'] }}{% if w['last_error'] %} — {{ w['last_error'] }}{% endif %}</span></li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if messages %}
+    <ul class="bk-messages">
+    {% for m in messages %}
+      <li>
+        <details>
+          <summary>
+            <span class="mini-status {{ 'status-upcoming' if m['channel'] in ('sms', 'whatsapp') else 'status-past' }}">{{ 'text' if m['channel'] == 'sms' else m['channel'] }}</span>
+            {% if (m['direction'] or 'out') == 'in' %}<span class="mini-status status-onshift">from them</span>{% endif %}
+            <strong>{{ m['subject'] or ('Text message' if m['channel'] in ('sms', 'whatsapp') else 'No subject') }}</strong>
+            <span class="cell-note">{{ local_datetime_str(m['created_at']) }} · to {{ m['to_address'] }}{% if m['sent_by_name'] %} · by {{ m['sent_by_name'] }}{% endif %}
+              · {% if m['delivered'] %}<span class="bk-ok">sent</span>{% else %}<span class="owed-flag">did not go{% if m['failure'] %}: {{ m['failure'] }}{% endif %}</span>{% endif %}{% if m['delivery'] %} · {{ m['delivery'] }}{% endif %}</span>
+          </summary>
+          <div class="bk-message-body">{{ m['body'] }}</div>
+        </details>
+      </li>
+    {% endfor %}
+    </ul>
+    <p class="upload-hint"><a href="{{ url_for('booking_correspondence', booking_id=b['id']) }}">Everything on one page</a></p>
+    {% else %}
+    <p class="empty-state">Nothing has been sent to this guest yet — or it went before the house kept copies.</p>
+    {% endif %}
+
+    <h3 class="bk-subhead">Texts the house sends by itself</h3>
+    <ul class="bk-list">
+      {% for t in texts.texts %}
+      <li><strong>The {{ t.label }} text</strong> —
+        {% if t.state == 'sent' %}<span class="bk-ok">sent {{ local_datetime_str(t.sent_at) }}</span>
+        {% elif t.state == 'due' %}goes {{ 'the morning of' if t.kind == 'checkin' else 'the evening of' }} {{ t.due|date_short }}{% if not texts.provider %} <span class="upload-hint">(held until a texting service is connected)</span>{% endif %}
+        {% elif t.state == 'cannot' %}<span class="owed-flag">will not go: {{ t.refusal }}</span>
+        {% elif t.state == 'missed' %}<span class="upload-hint">not sent; the day has passed</span>
+        {% elif t.state == 'off' %}<span class="upload-hint">not sent: the stay is {{ b['status'] }}</span>
+        {% else %}<span class="upload-hint">only once the stay is confirmed</span>{% endif %}
+        <span class="cell-note">“{{ t.body }}”</span></li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="detail-card">
+    <h3>Send</h3>
+    {% if b['status'] == 'confirmed' and b['guest_email'] %}
+    <form method="post" action="{{ url_for('resend_room_confirmation', booking_id=b['id']) }}"
+          onsubmit="return confirm('Send the confirmation to {{ b['guest_email'] }} again?');" class="bk-inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-mini">Send the confirmation again</button>
+      <span class="upload-hint">with the calendar invite and their links</span>
+    </form>
+    {% endif %}
+
+    {% if b['guest_email'] %}
+    <details class="bk-fold" id="write" {{ 'open' if not messages }}>
+      <summary><strong>Write to {{ b['guest_name'].split(' ')[0] }}</strong></summary>
+      <form method="post" action="{{ url_for('write_about_booking', booking_id=b['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="field-label" for="write-subject">Subject</label>
+        <input id="write-subject" type="text" name="subject" maxlength="200" required value="Your stay at Château de Gudanes — {{ b['reference_code'] }}">
+        <label class="field-label" for="write-body">Letter</label>
+        <textarea id="write-body" name="body" rows="7" required>Dear {{ b['guest_name'].split(' ')[0] }},
+
+</textarea>
+        <p class="upload-hint">Goes to {{ b['guest_email'] }}{% if b['second_contact_email'] or b['booked_by_email'] %} and whoever they asked us to copy{% endif %}, and is kept here.</p>
+        <button type="submit" class="btn-mini">Send the letter</button>
+      </form>
+    </details>
+    {% else %}
+    <p class="upload-hint">No email address on this booking. Add one under Edit details, or hand them the arrival card.</p>
+    {% endif %}
+
+    <details class="bk-fold" id="text">
+      <summary><strong>Text {{ b['guest_phone'] or 'them' }}</strong></summary>
+      {% if texts.refusal %}
+      <p class="owed-flag">Cannot text this booking: {{ texts.refusal }}.</p>
+      {% else %}
+      <form method="post" action="{{ url_for('text_about_booking', booking_id=b['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="field-label" for="text-body">Text</label>
+        <textarea id="text-body" name="body" rows="3" maxlength="480" required></textarea>
+        <p class="upload-hint">{% if texts.provider %}Goes now, as a text, and is kept here.{% else %}No texting service is connected yet, so it is kept and goes when one is.{% endif %} Keep it under 160 characters for one message.</p>
+        <button type="submit" class="btn-mini">Send the text</button>
+      </form>
+      {% endif %}
+    </details>
+  </div>
+</div>
+</section>
+
+{# ---------------------------------------------------------------- move #}
+{% if b['status'] in ('pending', 'confirmed') %}
+<section id="move">
+<h2 class="section-heading">Move dates</h2>
+<div class="detail-card">
+  <form method="get" action="{{ url_for('admin_booking', booking_id=b['id']) }}#move" class="bk-form-grid">
+    <div class="register-field">
+      <label class="field-label" for="move-arrival">New arrival</label>
+      <input id="move-arrival" type="date" name="move_arrival" required value="{{ move_arrival or b['arrival_date'] }}">
+    </div>
+    <div class="register-field">
+      <label class="field-label" for="move-departure">New departure</label>
+      <input id="move-departure" type="date" name="move_departure" required value="{{ move_departure or b['departure_date'] }}">
+    </div>
+    <p><button type="submit" class="btn-mini">Check the dates and the price</button></p>
+  </form>
+
+  {% if move_problem %}<p class="owed-flag">{{ move_problem }}</p>{% endif %}
+  {% if move %}
+  <div class="bk-quote">
+    {% if not move.available %}
+    <p class="owed-flag"><strong>Not free:</strong> {{ move.why_not }}</p>
+    {% else %}
+    <p class="bk-ok"><strong>{{ b['room_name'] }} is free</strong> {{ date_range(move.arrival, move.departure) }} — {{ move.nights }} night{{ '' if move.nights == 1 else 's' }} (was {{ move.old_nights }}).</p>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th scope="col"></th><th scope="col" class="num">Now</th><th scope="col" class="num">After the move</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">The room</th><td class="num">{{ move.old_room|money }}</td><td class="num">{{ move.new_room|money }}</td></tr>
+          {% if move.old_tax or move.new_tax %}<tr><th scope="row">Taxe de séjour</th><td class="num">{{ move.old_tax|money }}</td><td class="num">{{ move.new_tax|money }}</td></tr>{% endif %}
+          <tr><th scope="row">The whole bill</th><td class="num">{{ move.bill_total|money }}</td><td class="num">{{ move.new_bill_total|money }}</td></tr>
+        </tbody>
+        <tfoot>
+          <tr><th scope="row">Difference</th><td></td><td class="num{{ ' owed-flag' if move.difference > 0 }}">{{ '+' if move.difference > 0 }}{{ move.difference|money }}</td></tr>
+          <tr><th scope="row">{{ 'They would be in credit' if move.credit_after else 'They would owe' }}</th><td></td><td class="num">{{ (move.credit_after or move.owed_after)|money }}</td></tr>
+        </tfoot>
+      </table>
+    </div>
+    {% if move.moved_extras %}
+    <p class="upload-hint">Add-ons that move with it: {% for m in move.moved_extras %}{{ m.name }} {{ m.was|date_short }} → {{ m.to|date_short }}{% if not loop.last %}; {% endif %}{% endfor %}.</p>
+    {% endif %}
+    {% if group and group|length > 1 %}<p class="upload-hint">Only this room moves. The others in {{ b['party_name'] or 'the party' }} keep their dates.</p>{% endif %}
+    {% if move.credit_after %}<p class="upload-hint">If they are in credit afterwards, give it back from Money above — moving does not refund anything by itself.</p>{% endif %}
+    <form method="post" action="{{ url_for('move_booking_dates', booking_id=b['id']) }}"
+          onsubmit="return confirm('Move this stay to {{ move.arrival }} – {{ move.departure }}?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="arrival_date" value="{{ move.arrival }}">
+      <input type="hidden" name="departure_date" value="{{ move.departure }}">
+      {% if move.too_short %}
+      <label class="checkbox-row"><input type="checkbox" name="allow_short" value="1"> <span>Shorter than this room's {{ move.min_nights }}-night minimum on those dates. Let it anyway.</span></label>
+      {% endif %}
+      {% if b['guest_email'] %}
+      <label class="checkbox-row"><input type="checkbox" name="tell_guest" value="1" checked> <span>Send {{ b['guest_email'] }} the new dates</span></label>
+      {% endif %}
+      <button type="submit" class="btn-mini">Move the stay</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+</section>
+{% endif %}
+
+{# ---------------------------------------------------------------- housekeeping #}
+<section id="housekeeping">
+<h2 class="section-heading">Arrival &amp; departure</h2>
+<div class="detail-card bk-housekeeping">
+  {% if stay_tasks %}
+  <ul class="bk-list bk-tasks">
+    {% for t in stay_tasks %}
+    <li><span class="mini-status {{ 'status-paid' if t['status'] == 'done' else 'status-pending' }}">{{ 'done' if t['status'] == 'done' else 'to do' }}</span>
+      {{ t['title'] }}{% if t['due_date'] %} <span class="upload-hint">· {{ t['due_date']|date_short }}</span>{% endif %}
+      <span class="upload-hint">· {{ t['assignee'] or 'nobody yet' }}</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if b['status'] == 'confirmed' %}
+    {% if b['arrival_prepped_at'] %}
+    <p class="bk-ok">✓ Arrival prep assigned {{ b['arrival_prepped_at']|house_day|date_short }}.</p>
+    {% elif not b['checked_out_at'] %}
+    {% set on_shift = scheduled.get(b['arrival_date'], []) %}
+    <form method="post" action="{{ url_for('prepare_arrival', booking_id=b['id']) }}" class="bk-inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
+      <select name="assigned_to_user_id" required aria-label="Who prepares the arrival">
+        <option value="">Prepare the room — who?</option>
+        {% for e in employees %}<option value="{{ e['id'] }}" {{ 'selected' if e['id'] in on_shift }}>{{ e['name'] }}{{ ' (on shift)' if e['id'] in on_shift }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn-ghost">Assign arrival prep</button>
+    </form>
+    {% endif %}
+    {% if b['checked_out_at'] %}
+    <p class="bk-ok">✓ Checked out {{ b['checked_out_at']|house_day|date_short }} — turnover assigned.</p>
+    {% elif b['arrival_date'] <= today_iso and not b['no_show_at'] %}
+    {% set on_shift = scheduled.get(today_iso, []) %}
+    <form method="post" action="{{ url_for('checkout_booking', booking_id=b['id']) }}" class="bk-inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
+      <select name="assigned_to_user_id" required aria-label="Who turns the room over">
+        <option value="">Turn the room over — who?</option>
+        {% for e in employees %}<option value="{{ e['id'] }}" {{ 'selected' if e['id'] in on_shift }}>{{ e['name'] }}{{ ' (on shift)' if e['id'] in on_shift }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn-ghost">Guest checked out</button>
+    </form>
+    {% endif %}
+    {% if b['no_show_at'] %}
+    <form method="post" action="{{ url_for('undo_booking_no_show', booking_id=b['id']) }}" class="bk-inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
+      <span class="mini-status status-declined">did not arrive</span>
+      <button type="submit" class="btn-ghost">They did arrive after all</button>
+    </form>
+    {% elif b['arrival_date'] <= today_iso and not b['checked_out_at'] %}
+    <form method="post" action="{{ url_for('mark_booking_no_show', booking_id=b['id']) }}" class="bk-inline-form"
+          onsubmit="return confirm('Mark {{ b['reference_code'] }} as never arrived? Nothing is charged or refunded.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
+      <input aria-label="What happened (optional)" type="text" name="note" placeholder="What happened (optional)" maxlength="300">
+      <button type="submit" class="btn-text-danger">Did not arrive</button>
+    </form>
+    {% endif %}
+  {% elif b['status'] == 'pending' %}
+    <p class="upload-hint">Arrival prep is offered once the stay is confirmed.</p>
+  {% else %}
+    <p class="upload-hint">This stay is {{ b['status'] }}.</p>
+  {% endif %}
+</div>
+</section>
+
+{# ---------------------------------------------------------------- cancel #}
+{% if b['status'] in ('pending', 'confirmed') %}
+<section id="cancel">
+<details class="detail-card bk-danger">
+  <summary><strong>{{ 'Decline this request' if b['status'] == 'pending' else 'Cancel this booking' }}</strong></summary>
+  {% if b['status'] == 'pending' %}
+  <form method="post" action="{{ url_for('decline_booking', booking_id=b['id']) }}" class="bk-inline-form"
+        onsubmit="return confirm('Decline this request? The guest is told.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
+    <select name="decline_reason" aria-label="Why? (optional)">
+      <option value="">Why? (optional)</option>
+      {% for key, label in decline_reasons.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn-mini btn-mini-danger">Decline</button>
+  </form>
+  {% else %}
+  <p class="upload-hint">Cancelling frees the room, writes to the guest and works the waitlist. It moves no money:
+    {% if refund.ceiling > 0 %}{{ refund.ceiling|money }} paid stays with the house unless you give it back under Money.{% else %}nothing has been paid.{% endif %}</p>
+  <form method="post" action="{{ url_for('cancel_booking_admin', booking_id=b['id']) }}" class="bk-inline-form"
+        onsubmit="return confirm('Cancel {{ b['reference_code'] }}? The guest is told. No money moves.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="booking">
+    <select name="cancel_reason" aria-label="Why? (optional)">
+      <option value="">Why? (optional)</option>
+      {% for key, label in cancel_reasons.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn-mini btn-mini-danger">Cancel the booking</button>
+  </form>
+  {% endif %}
+</details>
+</section>
+{% endif %}
+
+<script>
+(function () {
+  function openTarget() {
+    var el = location.hash && document.getElementById(location.hash.slice(1));
+    if (el && el.tagName === 'DETAILS') { el.open = true; }
+  }
+  window.addEventListener('hashchange', openTarget);
+  openTarget();
+})();
+</script>
+
+{% endblock %}

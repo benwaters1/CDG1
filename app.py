@@ -8573,6 +8573,12 @@ NAV_AREAS = {
         "mark_booking_no_show", "undo_booking_no_show", "rebook_guest",
         "party_statement", "party_email", "party_statements", "send_stay_statement",
         "booking_correspondence", "save_review_link", "ask_for_a_review",
+        # One stay's own page and what is done from it. With edit_booking and
+        # cancel_booking_admin, where the same hands already reach; the refund
+        # form on it is still behind refund_desk.
+        "admin_booking", "move_booking_dates", "resend_room_confirmation",
+        "write_about_booking", "text_about_booking", "add_extra_to_booking",
+        "change_extra_when",
         "arrivals_sheet_page", "issue_access_code", "access_code_returned",
         "walk_in_booking", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
@@ -9185,7 +9191,8 @@ OWNER_MENU = [
     ("stays", "Accommodation", "rooms", ("guests",), (), [
         ("Bookings", [
             _nav("admin_bookings", "Bookings", "bookings",
-                 ("confirm_booking", "decline_booking", "checkout_booking", "edit_booking")),
+                 ("confirm_booking", "decline_booking", "checkout_booking", "edit_booking",
+                  "admin_booking")),
             _nav("admin_calendar", "Booking Calendar", "calendar"),
             _nav("arrivals_sheet_page", "Arrivals", "calendar"),
             _nav("admin_rooms", "Rooms", "rooms", ("new_room", "edit_room")),
@@ -14287,7 +14294,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
         (hi, lo),
     ).fetchall()
     for b in bookings:
-        booking_link = url_for("admin_bookings", q=b["reference_code"])
+        booking_link = url_for("admin_booking", booking_id=b["id"])
         # The stay as a whole, on both of its rows, so a calendar that wants
         # one event per stay (the house calendar) builds it from this list
         # rather than asking the database a second way.
@@ -16007,7 +16014,7 @@ def room_month_rows(conn, first_day, today=None):
                 b_start, b_end = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
                 if b_start <= d < b_end:
                     status, label = b["status"], b["guest_name"]
-                    key, link = f"b{b['id']}", url_for("edit_booking", booking_id=b["id"])
+                    key, link = f"b{b['id']}", url_for("admin_booking", booking_id=b["id"])
                     break
             if status == "free":
                 for st in named_by_room.get(room["id"], []):
@@ -35904,7 +35911,7 @@ def _search_sources():
             "line": lambda r: (f"{r['room_name']} \u00b7 {r['arrival_date']} to "
                                f"{r['departure_date']} \u00b7 {r['reference_code']}"),
             "status": lambda r: (r["status"], r["status"]),
-            "href": lambda r: url_for("edit_booking", booking_id=r["id"]),
+            "href": lambda r: url_for("admin_booking", booking_id=r["id"]),
         },
         {
             "key": "guests",
@@ -40998,7 +41005,7 @@ def api_palette():
         ).fetchall():
             out.append({"kind": "Booking", "label": f"{r['guest_name']} — {r['reference_code']}",
                         "sub": f"arrives {r['arrival_date']}",
-                        "url": url_for("edit_booking", booking_id=r["id"]), "score": 2})
+                        "url": url_for("admin_booking", booking_id=r["id"]), "score": 2})
         for r in conn.execute(
             """SELECT id, name, job_role FROM users
                WHERE role = 'employee' AND name LIKE ? ORDER BY name LIMIT 5""", (needle,),
@@ -52767,7 +52774,7 @@ def record_sms_consent(conn, raw_number, source=None):
     return number
 
 
-def file_guest_text(conn, number, body, *, delivered, channel="sms"):
+def file_guest_text(conn, number, body, *, delivered, channel="sms", booking_id=None):
     """Keep a copy of a text to a guest, against their stay.
 
     On the caller's connection, unlike the mail side. send_sms already joins
@@ -52776,8 +52783,11 @@ def file_guest_text(conn, number, body, *, delivered, channel="sms"):
 
     A HELD text is filed too, marked as not gone. The house needs to be able to
     say "we wrote, it did not reach you" as readily as "we never wrote".
+
+    booking_id when the sender knows which stay it is about -- a text written
+    from a booking's own page -- rather than whichever stay the number last had.
     """
-    booking_id = booking_for_contact(conn, phone=number)
+    booking_id = booking_id or booking_for_contact(conn, phone=number)
     guest_id = guest_for_contact(conn, phone=number)
     if not booking_id and not guest_id:
         return
@@ -52794,7 +52804,7 @@ def file_guest_text(conn, number, body, *, delivered, channel="sms"):
 
 
 def send_sms(conn, raw_number, body, purpose="transactional", hold=True,
-             channel="sms", template_id="", variables=None, note=""):
+             channel="sms", template_id="", variables=None, note="", booking_id=None):
     """Send a text, or keep it until there is a way to.
 
     Returns (sent, refusal). A refusal is a decision — the wrong number, a
@@ -52833,7 +52843,8 @@ def send_sms(conn, raw_number, body, purpose="transactional", hold=True,
             """INSERT INTO sms_outbox (phone, body, purpose, reason, created_at,
                channel) VALUES (?, ?, ?, 'the house is not writing to guests yet', ?, ?)""",
             (number, body, purpose, datetime.now(timezone.utc).isoformat(), channel))
-        file_guest_text(conn, number, body, delivered=False, channel=channel)
+        file_guest_text(conn, number, body, delivered=False, channel=channel,
+                        booking_id=booking_id)
         return False, None          # held, not refused
     # Asked of the channel this message is actually going on. Gating on
     # sms_enabled() alone would hold every message in a house that had set up
@@ -52847,7 +52858,8 @@ def send_sms(conn, raw_number, body, purpose="transactional", hold=True,
                channel) VALUES (?, ?, ?, 'no provider configured', ?, ?)""",
             (number, body, purpose, datetime.now(timezone.utc).isoformat(),
              channel))
-        file_guest_text(conn, number, body, delivered=False, channel=channel)
+        file_guest_text(conn, number, body, delivered=False, channel=channel,
+                        booking_id=booking_id)
         return False, None          # held, not refused
     ok, result = sms_provider_send(number, body, channel, template_id, variables)
     # `note` carries the reason a channel was CHOSEN, which is the question
@@ -52863,7 +52875,8 @@ def send_sms(conn, raw_number, body, purpose="transactional", hold=True,
          datetime.now(timezone.utc).isoformat(),
          datetime.now(timezone.utc).isoformat() if ok else None,
          result if ok else None, None if ok else str(result)[:400], channel))
-    file_guest_text(conn, number, body, delivered=ok, channel=channel)
+    file_guest_text(conn, number, body, delivered=ok, channel=channel,
+                    booking_id=booking_id)
     return bool(ok), None
 
 
@@ -59728,15 +59741,23 @@ def admin_bookings():
             return None
         return "Here now" if (b["arrival_date"] or "") <= today_iso_pre else "Still to come"
 
+    # Which stays have something extra on them, asked once for the list.
+    with_extras = {r["booking_id"] for r in conn.execute(
+        """SELECT DISTINCT booking_id FROM booking_extras
+            WHERE category = 'room' AND status != 'cancelled'""").fetchall()}
+
     lv = list_view(
         all_bookings, legacy,
         search=["guest_name", "guest_email", "guest_phone", "reference_code", "room_name",
                 "party_name"],
         search_hint="Search guest, email, telephone, reference or room",
         facets=[
-            facet("when", "When",
+            # The values stay "Current" and "History" -- they are in saved
+            # views and bookmarks -- and say what they mean on the chip.
+            facet("when", "Show",
                   lambda b: "History" if (b["departure_date"] or "") <= today_iso_pre
-                  else "Current", order=["Current", "History"], default="Current"),
+                  else "Current", order=["Current", "History"], default="Current",
+                  labels={"Current": "Here or still to come", "History": "Past stays"}),
             facet("stage", "Where they are", _stage, order=["Here now", "Still to come"]),
             # Pending first: a request nobody has answered is the only thing on
             # this page with a clock running on it.
@@ -59744,6 +59765,8 @@ def admin_bookings():
                   order=["Pending", "Confirmed", "Cancelled", "Declined"]),
             facet("room", "Room", lambda b: b["room_name"], limit=12),
             facet("money", "Money", lambda b: "Owes money" if owed_by_booking.get(b["id"]) else None),
+            facet("extras", "Add-ons",
+                  lambda b: "With add-ons" if b["id"] in with_extras else None),
         ],
         sorts=[
             sort_option("arrival", "Arriving soonest",
@@ -59761,6 +59784,27 @@ def admin_bookings():
     )
     bookings = lv["rows"]
 
+    # WHAT EACH ROW COSTS AND HAS PAID, from the bill -- the one definition of
+    # what a stay owes -- for the rows on the screen. total_price alone left out
+    # the tourist tax and anything added since, so a row read "€830" over a
+    # bill of €833.20.
+    bill_by_booking = {b["id"]: booking_bill(conn, b["id"]) for b in bookings}
+    # Every extra on its own line with the day it is wanted, gathered once for
+    # the page. The list printed extras_summary, a line of text written at
+    # booking time with no day in it, so the board for the Saturday read
+    # exactly like the board on arrival -- and anything added later not at all.
+    shown = {b["id"] for b in bookings}
+    extras_by_booking = {}
+    for line in conn.execute(
+            """SELECT booking_id, name, quantity, scheduled_for, notes, status
+                 FROM booking_extras
+                WHERE category = 'room' AND status != 'cancelled'
+                ORDER BY scheduled_for IS NULL, scheduled_for, created_at""").fetchall():
+        if line["booking_id"] in shown:
+            extras_by_booking.setdefault(line["booking_id"], []).append(
+                {"name": line["name"], "quantity": line["quantity"] or 1,
+                 "status": line["status"], "when": extra_when_words(line)})
+
     today = house_today()
     today_iso = today.isoformat()
     week_ahead_iso = (today + timedelta(days=7)).isoformat()
@@ -59777,6 +59821,11 @@ def admin_bookings():
         "confirmed": sum(1 for b in all_bookings if b["status"] == "confirmed"
                          and (b["departure_date"] or "") > today_iso),
         "total_rooms": len(rooms),
+        "here": sum(1 for b in active if b["status"] == "confirmed"
+                    and (b["arrival_date"] or "") <= today_iso < (b["departure_date"] or "")
+                    and not b["no_show_at"]),
+        "owed": round(sum(owed_by_booking.values()), 2),
+        "owing": sum(1 for v in owed_by_booking.values() if v),
     }
     confirmed_counts_by_email = {}
     confirmed_spend_by_email = {}
@@ -59827,7 +59876,630 @@ def admin_bookings():
         returning_emails=returning_emails, confirmed_spend_by_email=confirmed_spend_by_email,
         scheduled_by_date=scheduled_by_date, today_iso=today_iso,
         refunded_by_booking=refunded_by_booking,
+        bill_by_booking=bill_by_booking, extras_by_booking=extras_by_booking,
     )
+
+
+# ---------------------------------------------------------------------------
+# ONE STAY, ON ONE PAGE.
+#
+# The list was the only view of a booking the house had, and everything about
+# a stay hung off it as a card: the extras as one line of text with no day on
+# it, the letters on a page of their own nobody could find, a date change
+# hidden behind "Edit", and a refund strip under a tick box. The pieces all
+# existed -- the refund desk, the correspondence, the date gate, the day an
+# extra is wanted -- and none of them could be seen together. This page puts
+# them together, and every action on it is the action the rest of the app
+# already uses, so nothing here is a second way of doing anything.
+# ---------------------------------------------------------------------------
+
+def booking_return(booking_id):
+    """Where an action on a stay goes back to: the stay's own page when it was
+    pressed there, the list otherwise."""
+    if (request.form.get("back") or request.args.get("back")) == "booking":
+        return url_for("admin_booking", booking_id=booking_id)
+    return url_for("admin_bookings")
+
+
+def _stay_row(conn, booking_id):
+    return conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name, rooms.max_occupancy,
+                  booking_parties.name AS party_name
+             FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+             LEFT JOIN booking_parties ON booking_parties.id = bookings.party_id
+            WHERE bookings.id = ?""", (booking_id,)).fetchone()
+
+
+def extra_when_words(line):
+    """When an extra is wanted, in words: "Sat 28 Oct · On arrival — 6pm"."""
+    day = line["scheduled_for"]
+    notes = (line["notes"] or "").strip()
+    if not day and not notes:
+        return ""
+    parts = []
+    if day:
+        d = parse_date(day)
+        # Weekday first: "the Saturday" is how the house talks about a stay.
+        parts.append(f"{d.strftime('%a')} {d.day} {d.strftime('%b')}" if d else day)
+    if notes:
+        parts.append(notes)
+    return " · ".join(parts)
+
+
+def booking_move_quote(conn, booking, arrival, departure):
+    """What moving a stay to these nights would do. (quote, problem).
+
+    The same gate the public form uses for the room itself -- is_range_available
+    here, claim_range when it is applied -- and the same pricing: the nights at
+    what the rate card says for THOSE nights, the extras carried over at what
+    they were sold for. The minimum stay is reported rather than enforced: the
+    house can let a single night the website would not, and says so when it
+    does.
+    """
+    if not arrival or not departure:
+        return None, "Choose both new dates."
+    if departure <= arrival:
+        return None, "The departure has to be after the arrival."
+    old_arrival = parse_date(booking["arrival_date"])
+    old_departure = parse_date(booking["departure_date"])
+    if (arrival, departure) == (old_arrival, old_departure):
+        return None, "Those are the dates it already has."
+    room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
+    free, why = is_range_available(conn, booking["room_id"], arrival, departure,
+                                   exclude_booking_id=booking["id"])
+    nights = (departure - arrival).days
+    old_nights = (old_departure - old_arrival).days if old_arrival and old_departure else 0
+    old_room = round(quoted_room_total(conn, booking, room), 2)
+    new_room = round(compute_room_total(conn, room, arrival, departure), 2)
+    extras_portion = round((booking["total_price"] or 0) - old_room, 2)
+    if booking["city_tax"]:
+        new_tax, _a, _r = compute_city_tax(conn, booking["party_size"] or 1,
+                                           booking["guests_under_18"] or 0, nights)
+    else:
+        new_tax = booking["city_tax"] or 0
+    old_tax = round(booking["city_tax"] or 0, 2)
+    bill = booking_bill(conn, booking["id"])
+    difference = round((new_room - old_room) + ((new_tax or 0) - old_tax), 2)
+    new_bill_total = round(bill["total"] + difference, 2)
+    least = stay_rules(conn, room, arrival, departure)["min_nights"]
+    # Extras with a day: where each would land. Moved by as many days as the
+    # arrival moved, and onto the first day if that falls outside the stay.
+    shift = (arrival - old_arrival).days if old_arrival else 0
+    days = set(stay_days(arrival, departure))
+    moved_extras = []
+    for line in extras_for_booking(conn, "room", booking["id"]):
+        if (line["status"] or "") == "cancelled" or not line["scheduled_for"]:
+            continue
+        was = parse_date(line["scheduled_for"])
+        if not was:
+            continue
+        lands = was + timedelta(days=shift)
+        if lands not in days:
+            lands = arrival
+        if lands != was:
+            moved_extras.append({"id": line["id"], "name": line["name"],
+                                 "was": was.isoformat(), "to": lands.isoformat()})
+    return {
+        "arrival": arrival.isoformat(), "departure": departure.isoformat(),
+        "nights": nights, "old_nights": old_nights,
+        "available": bool(free), "why_not": why,
+        "old_room": old_room, "new_room": new_room,
+        "old_tax": old_tax, "new_tax": round(new_tax or 0, 2),
+        "extras_portion": extras_portion,
+        "new_total_price": round(new_room + extras_portion, 2),
+        "difference": difference,
+        "bill_total": bill["total"], "new_bill_total": new_bill_total,
+        "paid": bill["paid"],
+        "owed_after": round(max(new_bill_total - bill["paid"], 0.0), 2),
+        "credit_after": round(max(bill["paid"] - new_bill_total, 0.0), 2),
+        "min_nights": least, "too_short": nights < least,
+        "moved_extras": moved_extras,
+    }, None
+
+
+def booking_messages(conn, booking):
+    """Every letter and text to this stay's guest, newest first, with whether
+    it went -- and anything still waiting in the outbox for their address."""
+    rows = conn.execute(
+        """SELECT guest_messages.*, mail_log.delivery AS delivery,
+                  mail_log.delivery_detail AS delivery_detail,
+                  users.name AS sent_by_name
+             FROM guest_messages
+             LEFT JOIN mail_log ON mail_log.guest_message_id = guest_messages.id
+             LEFT JOIN users ON users.id = guest_messages.sent_by_user_id
+            WHERE guest_messages.booking_id = ?
+               OR (guest_messages.about_category = 'room' AND guest_messages.about_id = ?)
+            ORDER BY guest_messages.created_at DESC, guest_messages.id DESC""",
+        (booking["id"], booking["id"])).fetchall()
+    seen, messages = set(), []
+    for r in rows:
+        if r["id"] in seen:
+            continue
+        seen.add(r["id"])
+        messages.append(r)
+    address = (booking["guest_email"] or "").strip().casefold()
+    waiting = conn.execute(
+        """SELECT * FROM email_outbox WHERE sent_at IS NULL AND LOWER(to_address) = ?
+            ORDER BY created_at DESC""", (address,)).fetchall() if address else []
+    return messages, waiting
+
+
+def booking_texts_plan(conn, booking):
+    """The texts the house sends a stay by itself, and where each one stands."""
+    number, refusal = can_text(conn, booking["guest_phone"], "transactional")
+    out = []
+    for kind, spec in GUEST_TEXTS.items():
+        sent = booking[spec["stamp"]] if spec["stamp"] in booking.keys() else None
+        on = parse_date(booking[spec["date_column"]] or "")
+        due = (on - timedelta(days=spec["days_before"])) if on else None
+        if sent:
+            state = "sent"
+        elif booking["status"] in ("cancelled", "declined"):
+            state = "off"
+        elif booking["status"] != "confirmed":
+            state = "not_confirmed"
+        elif refusal:
+            state = "cannot"
+        elif due and due < house_today():
+            state = "missed"
+        else:
+            state = "due"
+        out.append({"kind": kind, "label": spec["label"], "sent_at": sent,
+                    "due": due.isoformat() if due else None, "state": state,
+                    "refusal": refusal,
+                    "body": guest_text_body(conn, booking, kind)})
+    return {"number": number, "refusal": refusal, "texts": out,
+            "provider": bool(sms_enabled() or whatsapp_enabled()),
+            "live": guest_mail_live()}
+
+
+@app.route("/admin/bookings/<int:booking_id>")
+@owner_required
+def admin_booking(booking_id):
+    """One stay: who, where, when, what they asked for, what they paid, what
+    they have been told -- and everything that can be done to it."""
+    conn = get_db()
+    booking = _stay_row(conn, booking_id)
+    if not booking:
+        conn.close()
+        abort(404)
+    today = house_today()
+    arrival = parse_date(booking["arrival_date"])
+    departure = parse_date(booking["departure_date"])
+    nights = (departure - arrival).days if arrival and departure else 0
+    bill = booking_bill(conn, booking_id)
+    refund = refund_desk_context(conn, "room", booking)
+
+    # The extras, each on its own line with the day it is wanted.
+    catalogue = {e["id"]: e for e in conn.execute("SELECT * FROM extras").fetchall()}
+    extras = []
+    for line in extras_for_booking(conn, "room", booking_id):
+        e = catalogue.get(line["extra_id"]) if line["extra_id"] else None
+        extras.append({
+            "id": line["id"], "name": line["name"], "quantity": line["quantity"] or 1,
+            "unit_price": line["unit_price"] or 0,
+            "total": round((line["unit_price"] or 0) * (line["quantity"] or 1), 2),
+            "scheduled_for": line["scheduled_for"], "notes": line["notes"],
+            "when": extra_when_words(line), "status": line["status"] or "confirmed",
+            "delivered_at": line["delivered_at"] if "delivered_at" in line.keys() else None,
+            "asks_when": bool(e and e["ask_when"]),
+            "in_booking_total": bool(line["in_booking_total"]),
+            "created_at": line["created_at"],
+        })
+    live_extras = [x for x in extras if x["status"] != "cancelled"]
+    # Days an extra can still be put on: from today if the stay has begun.
+    earliest = today if (arrival and arrival < today) else None
+    stay_day_choices = [d.isoformat() for d in stay_days(arrival, departure, earliest)] \
+        if arrival and departure else []
+    addable = conn.execute(
+        """SELECT * FROM extras WHERE active = 1 ORDER BY sort_order, name""").fetchall()
+
+    messages, waiting = booking_messages(conn, booking)
+    texts = booking_texts_plan(conn, booking)
+
+    # A move asked for on the page: worked out, not applied.
+    move, move_problem = None, None
+    if request.args.get("move_arrival") or request.args.get("move_departure"):
+        move, move_problem = booking_move_quote(
+            conn, booking, parse_date(request.args.get("move_arrival", "")),
+            parse_date(request.args.get("move_departure", "")))
+    # Anything the guest asked for that nobody has answered yet -- above all a
+    # change of dates on a paid stay, which waits here for a person to decide.
+    requests_open = conn.execute(
+        """SELECT * FROM tasks WHERE booking_id = ? AND status != 'done'
+              AND origin = 'guest_request'
+            ORDER BY created_at DESC""", (booking_id,)).fetchall()
+    # The house's own jobs for this stay -- preparing the room, turning it
+    # over -- with who has them and whether they are done.
+    stay_tasks = conn.execute(
+        """SELECT tasks.*, users.name AS assignee FROM tasks
+             LEFT JOIN users ON users.id = tasks.assigned_to_user_id
+            WHERE tasks.booking_id = ? AND COALESCE(tasks.origin, '') != 'guest_request'
+            ORDER BY tasks.due_date, tasks.id""", (booking_id,)).fetchall()
+
+    caution = guest_caution_for(conn, email=booking["guest_email"], name=booking["guest_name"])
+    stays_here = conn.execute(
+        """SELECT COUNT(*) AS n, COALESCE(SUM(total_price), 0) AS spend FROM bookings
+            WHERE status = 'confirmed' AND guest_email != ''
+              AND LOWER(guest_email) = LOWER(?)""",
+        (booking["guest_email"] or "",)).fetchone()
+    employees = conn.execute(
+        "SELECT * FROM users WHERE role = 'employee' ORDER BY name").fetchall()
+    scheduled = {}
+    for row in conn.execute(
+            "SELECT shift_date, user_id FROM shifts WHERE shift_date IN (?, ?)",
+            (booking["arrival_date"], today.isoformat())).fetchall():
+        scheduled.setdefault(row["shift_date"], set()).add(row["user_id"])
+    group = booking_group(conn, booking_id)
+    conn.close()
+
+    if not arrival or not departure:
+        where = None
+    elif booking["status"] in ("cancelled", "declined"):
+        where = None
+    elif booking["no_show_at"]:
+        where = "Did not arrive"
+    elif booking["checked_out_at"] or departure <= today:
+        where = "Gone"
+    elif arrival <= today:
+        where = "Here now"
+    elif arrival == today + timedelta(days=1):
+        where = "Arrives tomorrow"
+    else:
+        days = (arrival - today).days
+        where = f"Arrives in {days} days"
+
+    return render_template(
+        "admin_booking.html", b=booking, bill=bill, refund=refund, nights=nights,
+        extras=extras, live_extras=live_extras, addable=addable,
+        stay_day_choices=stay_day_choices,
+        messages=messages, waiting=waiting, texts=texts,
+        move=move, move_problem=move_problem,
+        move_arrival=request.args.get("move_arrival", ""),
+        move_departure=request.args.get("move_departure", ""),
+        requests_open=requests_open, stay_tasks=stay_tasks,
+        caution=caution, caution_levels=CAUTION_LEVELS,
+        stays_here=stays_here, employees=employees, scheduled=scheduled,
+        group=group, where=where, today_iso=today.isoformat(),
+        decline_reasons=DECLINE_REASONS, cancel_reasons=CANCEL_REASONS,
+    )
+
+
+@app.route("/admin/bookings/<int:booking_id>/move-dates", methods=["POST"])
+@owner_required
+def move_booking_dates(booking_id):
+    """Move a stay to other nights: checked, repriced, written down, and told.
+
+    The same steps as the edit page took, on their own -- the edit form posts
+    every field on the booking, so it cannot be the way a date alone is moved
+    from anywhere else. Availability is claimed with claim_range, which holds
+    the write lock across the check and the write, so two moves cannot both
+    take the last free nights.
+    """
+    conn = get_db()
+    booking = _stay_row(conn, booking_id)
+    if not booking:
+        conn.close()
+        abort(404)
+    back = url_for("admin_booking", booking_id=booking_id)
+    if booking["status"] not in ("pending", "confirmed"):
+        conn.close()
+        flash("Only a pending or confirmed stay can be moved.", "error")
+        return redirect(back)
+    arrival = parse_date(request.form.get("arrival_date", ""))
+    departure = parse_date(request.form.get("departure_date", ""))
+    quote, problem = booking_move_quote(conn, booking, arrival, departure)
+    if problem:
+        conn.close()
+        flash(problem, "error")
+        return redirect(back)
+    if quote["too_short"] and request.form.get("allow_short") != "1":
+        conn.close()
+        flash(f"That is {quote['nights']} night{'s' if quote['nights'] != 1 else ''}, and "
+              f"this room asks for {quote['min_nights']} on those dates. Tick the box "
+              "to let it anyway.", "error")
+        return redirect(url_for("admin_booking", booking_id=booking_id,
+                                move_arrival=quote["arrival"],
+                                move_departure=quote["departure"]) + "#move")
+    ok, reason = claim_range(conn, booking["room_id"], arrival, departure,
+                             exclude_booking_id=booking_id)
+    if not ok:
+        conn.rollback()
+        conn.close()
+        flash(f"Those dates are not free: {reason}", "error")
+        return redirect(back)
+    room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
+    new_room = compute_room_total(conn, room, arrival, departure)
+    new_total = round(new_room + quote["extras_portion"], 2) or None
+    changes = booking_edit_changes(booking, {
+        "arrival_date": quote["arrival"], "departure_date": quote["departure"],
+        "total_price": new_total,
+        **{c: booking[c] for c, _l, _k in BOOKING_EDIT_FIELDS
+           if c not in ("arrival_date", "departure_date", "total_price")}})
+    conn.execute(
+        "UPDATE bookings SET arrival_date = ?, departure_date = ?, total_price = ? WHERE id = ?",
+        (quote["arrival"], quote["departure"], new_total, booking_id))
+    stamp_room_total(conn, booking_id, new_room, quote["arrival"], quote["departure"])
+    restamp_stay(conn, booking_id)
+    # The board on Saturday goes with the stay: moved by as many days as the
+    # arrival moved, or onto the first day if that falls outside it. Left where
+    # it was, it would be prepared for a room that is empty that night.
+    for m in quote["moved_extras"]:
+        conn.execute("UPDATE booking_extras SET scheduled_for = ? WHERE id = ?",
+                     (m["to"], m["id"]))
+        changes.append(f"{m['name']} {format_date_human(m['was'])} → {format_date_human(m['to'])}")
+    if quote["too_short"]:
+        changes.append(f"shorter than the {quote['min_nights']}-night minimum, let anyway")
+    # A guest's own request for new dates is answered by this, whichever dates
+    # it was answered with.
+    answered = conn.execute(
+        """UPDATE tasks SET status = 'done', completed_at = ?
+            WHERE booking_id = ? AND origin = 'guest_request' AND status != 'done'
+              AND title LIKE 'Date change request%'""",
+        (datetime.now(timezone.utc).isoformat(), booking_id)).rowcount
+    log_audit(conn, "booking_dates_moved", target=booking["reference_code"],
+              details="; ".join(changes))
+    conn.commit()
+
+    told = False
+    if request.form.get("tell_guest") == "1":
+        moved = _stay_row(conn, booking_id)
+        subject, body, letter = render_email_template(conn, "room_updated", {
+            "guest_name": moved["guest_name"], "room_name": moved["room_name"],
+            "arrival_date": format_date_human(moved["arrival_date"]),
+            "departure_date": format_date_human(moved["departure_date"]),
+            "party_size": moved["party_size"], "reference_code": moved["reference_code"],
+            "checkin_url": url_for("guest_checkin", manage_token=moved["manage_token"],
+                                   _external=True),
+        })
+        if subject:
+            told = write_about_stay(moved, subject, body, html=letter,
+                                    sent_by=current_user()["id"])
+    conn.close()
+    diff = quote["difference"]
+    flash(f"Moved to {format_date_range(quote['arrival'], quote['departure'])}."
+          + (f" The bill goes up {money(diff)}." if diff > 0.005 else
+             f" The bill comes down {money(-diff)}." if diff < -0.005 else
+             " The price is the same.")
+          + (" The guest has been sent the new dates." if told else
+             " The guest has not been told." if request.form.get("tell_guest") != "1" else
+             " The letter is held: it could not go just now.")
+          + (" Their request for new dates is marked answered." if answered else ""),
+          "success")
+    return redirect(back)
+
+
+def room_portal_url(conn, booking):
+    """The guest's own link, minted if they have none. Can WRITE, so callers
+    take it before they commit and send."""
+    portal_token = guest_portal_token(conn, booking["guest_email"])
+    return (url_for("guest_portal", token=portal_token, _external=True)
+            if portal_token else "")
+
+
+def send_room_confirmation(conn, booking, room_name, portal_url="", sent_by=None):
+    """The confirmation letter, with its calendar invite and the guest's links.
+
+    The one way it is written: on confirming, and when the house sends it again
+    because the guest cannot find it. Returns whether the guest was written to.
+    Nothing here writes; the portal link is taken by the caller before its
+    commit (room_portal_url).
+    """
+    context, _card = room_confirmation_context(conn, booking, room_name,
+                                               portal_url=portal_url)
+    subject, body, _problems = email_template_text(conn, "room_confirmed", context)
+    return write_about_stay(
+        booking, subject, body,
+        ics_content=generate_booking_ics(booking, room_name),
+        ics_filename=f"{booking['reference_code']}.ics",
+        html=booking_confirmation_html(conn, booking, room_name),
+        sent_by=sent_by,
+    )
+
+
+@app.route("/admin/bookings/<int:booking_id>/resend-confirmation", methods=["POST"])
+@owner_required
+def resend_room_confirmation(booking_id):
+    """Send the confirmation again -- the same letter, as it would read now."""
+    conn = get_db()
+    booking = _stay_row(conn, booking_id)
+    if not booking:
+        conn.close()
+        abort(404)
+    back = url_for("admin_booking", booking_id=booking_id)
+    if booking["status"] != "confirmed":
+        conn.close()
+        flash("Only a confirmed stay has a confirmation to send.", "error")
+        return redirect(back)
+    if not (booking["guest_email"] or "").strip():
+        conn.close()
+        flash("There is no address on this booking to send it to.", "error")
+        return redirect(back)
+    portal_url = room_portal_url(conn, booking)
+    log_audit(conn, "booking_confirmation_resent", target=booking["reference_code"])
+    conn.commit()
+    went = send_room_confirmation(conn, booking, booking["room_name"],
+                                  portal_url=portal_url, sent_by=current_user()["id"])
+    conn.close()
+    flash(f"Confirmation sent again to {booking['guest_email']}." if went else
+          "The confirmation is held: it could not go just now, and will go when it can.",
+          "success" if went else "error")
+    return redirect(back + "#messages")
+
+
+@app.route("/admin/bookings/<int:booking_id>/write", methods=["POST"])
+@owner_required
+def write_about_booking(booking_id):
+    """A letter to the guest about this stay, kept with the stay.
+
+    Through write_about_stay, so whoever the guest asked to be copied hears it
+    too, and filed against the booking rather than found later by address.
+    """
+    conn = get_db()
+    booking = _stay_row(conn, booking_id)
+    if not booking:
+        conn.close()
+        abort(404)
+    back = url_for("admin_booking", booking_id=booking_id)
+    subject = " ".join((request.form.get("subject") or "").split())[:200]
+    body = (request.form.get("body") or "").strip()[:8000]
+    if not (booking["guest_email"] or "").strip():
+        conn.close()
+        flash("There is no address on this booking to write to.", "error")
+        return redirect(back)
+    if not subject or not body:
+        conn.close()
+        flash("A letter needs a subject and something to say.", "error")
+        return redirect(back + "#messages")
+    log_audit(conn, "guest_written_to", target=booking["reference_code"], details=subject)
+    conn.commit()
+    went = write_about_stay(booking, subject, body, html=letter_html(subject, body),
+                            sent_by=current_user()["id"])
+    conn.close()
+    flash(f"Sent to {booking['guest_email']}." if went else
+          "Kept to send later: it could not go just now.",
+          "success" if went else "error")
+    return redirect(back + "#messages")
+
+
+@app.route("/admin/bookings/<int:booking_id>/text", methods=["POST"])
+@owner_required
+def text_about_booking(booking_id):
+    """A text to the guest's telephone, through the same gate as every text."""
+    conn = get_db()
+    booking = _stay_row(conn, booking_id)
+    if not booking:
+        conn.close()
+        abort(404)
+    back = url_for("admin_booking", booking_id=booking_id) + "#messages"
+    body = " ".join((request.form.get("body") or "").split())[:480]
+    if not body:
+        conn.close()
+        flash("Say something in the text.", "error")
+        return redirect(back)
+    went, refusal = send_sms(conn, booking["guest_phone"], body,
+                             purpose="transactional", booking_id=booking_id)
+    if refusal:
+        conn.close()
+        flash(f"Not sent: {refusal}.", "error")
+        return redirect(back)
+    log_audit(conn, "guest_texted", target=booking["reference_code"])
+    conn.commit()
+    conn.close()
+    flash("Text sent." if went else
+          "The text is held: there is no way to send texts just now, and it will go when there is.",
+          "success" if went else "error")
+    return redirect(back)
+
+
+@app.route("/admin/bookings/<int:booking_id>/extras/add", methods=["POST"])
+@owner_required
+def add_extra_to_booking(booking_id):
+    """Put an extra on a stay for the guest, with the day they want it.
+
+    The guest can do this from their own page; a guest on the telephone asking
+    for the board on Saturday could not be helped from this side at all. The
+    notice an extra needs is the guest's rule, not the house's: staff are told
+    it is short notice, and decide.
+    """
+    conn = get_db()
+    booking = _stay_row(conn, booking_id)
+    if not booking:
+        conn.close()
+        abort(404)
+    back = url_for("admin_booking", booking_id=booking_id) + "#extras"
+    if booking["status"] not in ("pending", "confirmed"):
+        conn.close()
+        flash("Extras go on a pending or confirmed stay.", "error")
+        return redirect(back)
+    raw = request.form.get("extra_id", "")
+    extra = conn.execute("SELECT * FROM extras WHERE id = ? AND active = 1",
+                         (int(raw),)).fetchone() if raw.isdigit() else None
+    qty_raw = request.form.get("quantity", "1").strip()
+    quantity = int(qty_raw) if qty_raw.isdigit() and int(qty_raw) > 0 else 0
+    if not extra:
+        conn.close()
+        flash("Choose something to add.", "error")
+        return redirect(back)
+    if not quantity or quantity > 50:
+        conn.close()
+        flash("Say how many, from 1 to 50.", "error")
+        return redirect(back)
+    held_now = extras_held(conn, "room", booking_id).get(extra["id"], 0)
+    if extra["max_qty"] and held_now + quantity > extra["max_qty"]:
+        conn.close()
+        flash(f"{extra['name']}: at most {extra['max_qty']} on a booking, and "
+              f"{held_now} {'is' if held_now == 1 else 'are'} on it already.", "error")
+        return redirect(back)
+    arrival = parse_date(booking["arrival_date"])
+    departure = parse_date(booking["departure_date"])
+    today = house_today()
+    when_on, when_notes = None, None
+    if request.form.get("extra_when") or request.form.get("extra_note") or extra["ask_when"]:
+        when_on, when_notes, problem = read_extra_when(
+            request.form.get("extra_when", ""), request.form.get("extra_note", ""),
+            arrival, departure, extra["name"],
+            earliest=today if arrival and arrival < today else None)
+        if problem:
+            conn.close()
+            flash(problem, "error")
+            return redirect(back)
+    add_booking_extra(conn, "room", booking_id, extra, quantity, notes=when_notes,
+                      user_id=current_user()["id"], scheduled_for=when_on)
+    log_audit(conn, "booking_extra_added", target=booking["reference_code"],
+              details=f"{quantity} × {extra['name']}"
+                      + (f", for {format_date_human(when_on)}" if when_on else ""))
+    conn.commit()
+    conn.close()
+    short = bool(extra["lead_time_days"] and arrival and extra_too_soon(extra, arrival))
+    flash(f"{quantity} × {extra['name']} added, {money((extra['price'] or 0) * quantity)} on the bill"
+          + (f", for {format_date_human(when_on)}" if when_on else "") + "."
+          + (f" Short notice: it usually needs {extra['lead_time_days']} days." if short else ""),
+          "success")
+    return redirect(back)
+
+
+@app.route("/admin/bookings/extras/<int:line_id>/when", methods=["POST"])
+@owner_required
+def change_extra_when(line_id):
+    """Move the day an extra is wanted -- and with it the list and the calendar,
+    which both read the day off the line."""
+    conn = get_db()
+    line = conn.execute(
+        """SELECT booking_extras.*, bookings.reference_code, bookings.arrival_date,
+                  bookings.departure_date
+             FROM booking_extras JOIN bookings ON bookings.id = booking_extras.booking_id
+            WHERE booking_extras.id = ? AND booking_extras.category = 'room'""",
+        (line_id,)).fetchone()
+    if not line:
+        conn.close()
+        abort(404)
+    back = url_for("admin_booking", booking_id=line["booking_id"]) + "#extras"
+    if (line["status"] or "") in ("cancelled", "delivered"):
+        conn.close()
+        flash("That one is already settled.", "error")
+        return redirect(back)
+    arrival, departure = parse_date(line["arrival_date"]), parse_date(line["departure_date"])
+    today = house_today()
+    when_on, when_notes, problem = read_extra_when(
+        request.form.get("extra_when", ""), request.form.get("extra_note", ""),
+        arrival, departure, line["name"],
+        earliest=today if arrival and arrival < today else None)
+    if problem:
+        conn.close()
+        flash(problem, "error")
+        return redirect(back)
+    conn.execute("UPDATE booking_extras SET scheduled_for = ?, notes = ? WHERE id = ?",
+                 (when_on, when_notes, line_id))
+    log_audit(conn, "booking_extra_rescheduled", target=line["reference_code"],
+              details=f"{line['name']}: "
+                      f"{format_date_human(line['scheduled_for']) if line['scheduled_for'] else 'no day'}"
+                      f" → {format_date_human(when_on)}")
+    conn.commit()
+    conn.close()
+    flash(f"{line['name']} is now for {format_date_human(when_on)}.", "success")
+    return redirect(back)
 
 
 def remember_guest(conn, email):
@@ -61003,10 +61675,10 @@ def confirm_booking_by_id(conn, booking_id, *, online=None):
     # This is the moment the guest gets a standing profile, so it is also the
     # moment their own link becomes real — and this email is the one place a
     # first-time guest is certain to see it. It rides in {stay_details}, so no
-    # wording anybody has edited is disturbed by adding it.
-    portal_token = guest_portal_token(conn, booking["guest_email"])
-    portal_url = (url_for("guest_portal", token=portal_token, _external=True)
-                  if portal_token else "")
+    # wording anybody has edited is disturbed by adding it. Minted BEFORE the
+    # commit: making it can write, and a write left open across the send is
+    # the "database is locked" that loses held mail.
+    portal_url = room_portal_url(conn, booking)
     # Commit before sending. With no email provider configured send_email falls
     # back to email_outbox on its own connection, which cannot take a write lock
     # while this transaction is open — so the guest's confirmation, with its
@@ -61015,19 +61687,9 @@ def confirm_booking_by_id(conn, booking_id, *, online=None):
     # Safe for bulk_confirm_bookings too: it confirms in a loop, and each
     # booking being durable as it goes is what you want if the loop dies.
     conn.commit()
-    context, _card = room_confirmation_context(conn, booking, room["name"],
-                                               portal_url=portal_url)
-    subject, body, _problems = email_template_text(conn, "room_confirmed", context)
-    write_about_stay(
-        booking, subject, body,
-        ics_content=generate_booking_ics(booking, room["name"]),
-        ics_filename=f"{booking['reference_code']}.ics",
-        # The same letter, drawn. Empty if the template will not render, and
-        # the plain text above goes out regardless — a guest hearing nothing
-        # about a room the house has just taken off the market is the one
-        # outcome worth guarding against here.
-        html=booking_confirmation_html(conn, booking, room["name"]),
-    )
+    # One sender for this and the booking page's "send it again", so the two
+    # cannot drift apart.
+    send_room_confirmation(conn, booking, room["name"], portal_url=portal_url)
     return True, None
 
 
@@ -61042,11 +61704,11 @@ def confirm_booking(booking_id):
         if reason == "not found or not pending":
             abort(404)
         flash(f"Could not confirm: {reason}", "error")
-        return redirect(url_for("admin_bookings"))
+        return redirect(booking_return(booking_id))
     conn.commit()
     conn.close()
     flash("Booking confirmed and added to the guest list.", "success")
-    return redirect(url_for("admin_bookings"))
+    return redirect(booking_return(booking_id))
 
 
 @app.route("/admin/bookings/bulk-confirm", methods=["POST"])
@@ -61117,17 +61779,17 @@ def mark_booking_no_show(booking_id):
     if booking["status"] != "confirmed":
         conn.close()
         flash("Only a confirmed booking can be marked as not arrived.", "error")
-        return redirect(url_for("admin_bookings"))
+        return redirect(booking_return(booking_id))
     if booking["no_show_at"]:
         conn.close()
         flash("Already marked as not arrived.", "error")
-        return redirect(url_for("admin_bookings"))
+        return redirect(booking_return(booking_id))
     arrival = parse_date(booking["arrival_date"])
     if arrival and arrival > house_today():
         conn.close()
         flash(f"{booking['reference_code']} is not due until "
               f"{format_date_human(booking['arrival_date'])}.", "error")
-        return redirect(url_for("admin_bookings"))
+        return redirect(booking_return(booking_id))
     note = (request.form.get("note", "") or "").strip()[:300]
     conn.execute(
         "UPDATE bookings SET no_show_at = ?, owner_note = CASE WHEN ? = '' THEN owner_note "
@@ -61158,7 +61820,7 @@ def mark_booking_no_show(booking_id):
         msg += (" It was paid in full. Refunds are a judgement call, so nothing "
                 "has been moved.")
     flash(msg, "success")
-    return redirect(url_for("admin_bookings"))
+    return redirect(booking_return(booking_id))
 
 
 @app.route("/admin/bookings/<int:booking_id>/no-show/undo", methods=["POST"])
@@ -61172,12 +61834,12 @@ def undo_booking_no_show(booking_id):
     if cur.rowcount == 0:
         conn.close()
         flash("That booking is not marked as not arrived.", "error")
-        return redirect(url_for("admin_bookings"))
+        return redirect(booking_return(booking_id))
     log_audit(conn, "booking_no_show_undone", target=str(booking_id))
     conn.commit()
     conn.close()
     flash("Taken off. The stay counts as normal again.", "success")
-    return redirect(url_for("admin_bookings"))
+    return redirect(booking_return(booking_id))
 
 
 @app.route("/admin/bookings/<int:booking_id>/checkout", methods=["POST"])
@@ -61186,7 +61848,7 @@ def checkout_booking(booking_id):
     assigned_to = request.form.get("assigned_to_user_id", "")
     if not assigned_to.isdigit():
         flash("Choose who the turnover task goes to.", "error")
-        return redirect(url_for("admin_bookings"))
+        return redirect(booking_return(booking_id))
 
     conn = get_db()
     booking = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
@@ -61198,7 +61860,7 @@ def checkout_booking(booking_id):
     if (booking["arrival_date"] or "") > house_today_iso() or booking["no_show_at"]:
         conn.close()
         flash("They haven't arrived yet, so they can't have checked out.", "error")
-        return redirect(url_for("admin_bookings"))
+        return redirect(booking_return(booking_id))
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
 
     now = datetime.now(timezone.utc)
@@ -61213,7 +61875,7 @@ def checkout_booking(booking_id):
     if cur.rowcount == 0:
         conn.close()
         flash("This booking was already checked out.", "error")
-        return redirect(url_for("admin_bookings"))
+        return redirect(booking_return(booking_id))
     log_audit(conn, "booking_checked_out", target=booking["reference_code"])
     room_note = f"{booking['guest_name']} checked out, party of {booking['party_size']}."
     for i, title in enumerate(CHECKOUT_CHECKLIST):
@@ -61240,7 +61902,7 @@ def checkout_booking(booking_id):
         (booking_id,)).fetchone())
     conn.close()
     flash(f"Checked out. {len(CHECKOUT_CHECKLIST)} turnover tasks assigned for {room['name']}.", "success")
-    return redirect(url_for("admin_bookings"))
+    return redirect(booking_return(booking_id))
 
 
 @app.route("/extras/due")
@@ -62267,7 +62929,7 @@ def prepare_arrival(booking_id):
     assigned_to = request.form.get("assigned_to_user_id", "")
     if not assigned_to.isdigit():
         flash("Choose who the prep tasks go to.", "error")
-        return redirect(url_for("admin_bookings"))
+        return redirect(booking_return(booking_id))
 
     conn = get_db()
     booking = conn.execute("SELECT * FROM bookings WHERE id = ? AND status = 'confirmed'", (booking_id,)).fetchone()
@@ -62284,7 +62946,7 @@ def prepare_arrival(booking_id):
     if cur.rowcount == 0:
         conn.close()
         flash("This booking was already prepped.", "error")
-        return redirect(url_for("admin_bookings"))
+        return redirect(booking_return(booking_id))
     room_note = prep_note(booking)
     if booking["special_requests"]:
         room_note += f" Requests: {booking['special_requests']}"
@@ -62301,7 +62963,7 @@ def prepare_arrival(booking_id):
     conn.commit()
     conn.close()
     flash(f"{len(ARRIVAL_PREP_CHECKLIST)} arrival prep tasks assigned for {room['name']}.", "success")
-    return redirect(url_for("admin_bookings"))
+    return redirect(booking_return(booking_id))
 
 
 def decline_booking_by_id(conn, booking_id, *, refund=True, user_id=None, via=None):
@@ -62463,7 +63125,7 @@ def decline_booking(booking_id):
     waiting = (f" The {money(held)} they paid is on the owner's list to give back."
                if held > 0.005 and not may_refund else "")
     flash("Booking declined." + (" Payment refunded." if refunded else (f" Refund failed: {refund_error}" if refund_error else "")) + waiting + waitlist_note, "success")
-    return redirect(url_for("admin_bookings"))
+    return redirect(booking_return(booking_id))
 
 
 @app.route("/admin/bookings/bulk-decline", methods=["POST"])
@@ -62546,7 +63208,7 @@ def cancel_booking_admin(booking_id):
     if not cur.rowcount:
         conn.close()
         flash("That booking was already cancelled or decided.", "error")
-        return redirect(url_for("admin_bookings"))
+        return redirect(booking_return(booking_id))
     log_audit(conn, "booking_cancelled", target=booking["reference_code"],
               details=CANCEL_REASONS.get(why) if why else None)
     conn.commit()
@@ -62598,7 +63260,7 @@ def cancel_booking_admin(booking_id):
     money_note = (f" {money(still_held)} is still held — issue a refund from the booking if you want to give any of it back."
                   if still_held > 0 else "")
     flash("Booking cancelled." + refund_note + money_note + waitlist_note, "success")
-    return redirect(url_for("admin_bookings"))
+    return redirect(booking_return(booking_id))
 
 
 def refunds_view(rows, args):
@@ -62800,7 +63462,7 @@ def refund_desk_context(conn, category, booking):
         bill = booking_bill(conn, bid)
         head = {"who": row["guest_name"], "what": row["room_name"],
                 "when": format_date_range(row["arrival_date"], row["departure_date"]),
-                "back": url_for("admin_bookings", q=ref, when=LIST_ALL)}
+                "back": url_for("admin_booking", booking_id=bid)}
         money = {"cost": bill["total"], "received": bill["paid"], "refunded": bill["refunded"],
                  "owed": bill["owed"], "credit": bill["overpaid"]}
     elif category == "workshop":
@@ -63213,6 +63875,9 @@ def refund_desk(category, booking_id):
                                            current_user()["id"])
         conn.close()
         flash(message, kind)
+        # Back to the stay's own page when the refund was made from its panel.
+        if category == "room" and request.form.get("back") == "booking":
+            return redirect(url_for("admin_booking", booking_id=booking_id) + "#money")
         return redirect(url_for("refund_desk", category=category, booking_id=booking_id))
     context = refund_desk_context(conn, category, booking)
     conn.close()
@@ -63432,7 +64097,7 @@ def edit_booking(booking_id):
             write_about_stay(booking, subject, body, html=letter)
         flash(("Booking updated." + (" The guest has been sent the new details." if told else ""))
               if changes else "Nothing had changed.", "success")
-        return redirect(url_for("admin_bookings"))
+        return redirect(url_for("admin_booking", booking_id=booking_id))
 
     group = booking_group(conn, booking["id"])
     conn.close()
@@ -67519,6 +68184,8 @@ def send_stay_statement(booking_id):
     conn.close()
     flash(f"Statement sent to {member['label']}." if sent
           else f"Not sent to {member['label']}: {why}.", "success" if sent else "error")
+    if request.form.get("back") == "booking":
+        return redirect(url_for("admin_booking", booking_id=booking_id) + "#messages")
     return redirect(url_for("party_statement", party_id=party_id) if party_id
                     else url_for("admin_bookings"))
 
@@ -80415,7 +81082,7 @@ def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
 
 
 def write_about_stay(booking, subject, body, side="stay",
-                     ics_content=None, ics_filename=None, html=None):
+                     ics_content=None, ics_filename=None, html=None, sent_by=None):
     """Write to everybody a stay concerns, and say whether the guest got it.
 
     THE RULE THIS EXISTS FOR. Sending to a second person is one line at every
@@ -80433,7 +81100,8 @@ def write_about_stay(booking, subject, body, side="stay",
         return False
     about = ("room", booking["id"])
     delivered = send_email(people[0], subject, body, ics_content=ics_content,
-                           ics_filename=ics_filename, html=html, about=about)
+                           ics_filename=ics_filename, html=html, about=about,
+                           sent_by=sent_by)
     # WHY THEY ARE GETTING THIS. A bill landing in a stranger's inbox with no
     # explanation reads as a mistake, or worse as a scam -- so the copy says
     # who asked us to write to them, and the original does not carry the line.
@@ -80448,7 +81116,8 @@ def write_about_stay(booking, subject, body, side="stay",
         # the explanation is worth more to the person reading it than a
         # prettier one without. Revisit when the shell has a slot for it.
         send_email(address, subject, body + note,
-                   ics_content=ics_content, ics_filename=ics_filename, about=about)
+                   ics_content=ics_content, ics_filename=ics_filename, about=about,
+                   sent_by=sent_by)
     return delivered
 
 

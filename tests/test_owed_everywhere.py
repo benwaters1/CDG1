@@ -19,6 +19,7 @@ each way differently:
 Every figure here now comes from one definition per kind -- booking_bill, the
 atelier ledger, event_bill -- and this checks each place reads it.
 """
+import re
 from datetime import datetime, timedelta, timezone
 
 from _harness import Suite, clients, db, house_today
@@ -244,7 +245,11 @@ def run():
 
     s.section("The bookings list says what a stay still owes")
     page = oc.get("/admin/bookings").get_data(as_text=True)
-    s.check("the stay shows its €200 owed", "€200.00 still owed" in page)
+    # In the Owed column of its row, from the bill -- the list is a table now,
+    # so the figure is under a heading rather than followed by the words.
+    s.check("the stay shows its €200 owed",
+            re.search(r'data-label="Owed"[^>]*>\s*<strong class="owed-flag">€200\.00<', page)
+            is not None)
     money = oc.get("/admin/bookings?money=Owes+money").get_data(as_text=True)
     s.check("and 'owes money' is a chip", f"{TAG}-Real" in money and f"{TAG}-Over" not in money)
 

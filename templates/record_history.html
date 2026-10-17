@@ -17,13 +17,10 @@
   <h1>What changed</h1>
   <div style="display:flex; gap:10px; align-items:center;">
     {% if data.kind == 'booking' %}
-    {# The edit page refuses a stay that is no longer pending or confirmed --
-       which is most of the stays whose history anybody asks about. #}
-    {% if data.row['status'] in ('pending', 'confirmed') %}
-    <a href="{{ url_for('edit_booking', booking_id=data.row['id']) }}" class="btn-ghost">The booking</a>
-    {% else %}
-    <a href="{{ url_for('admin_bookings', q=data.row['reference_code']) }}" class="btn-ghost">The booking</a>
-    {% endif %}
+    {# The stay's own page, which opens whatever became of it -- the edit
+       page refuses a stay no longer pending or confirmed, which is most of
+       the stays whose history anybody asks about. #}
+    <a href="{{ url_for('admin_booking', booking_id=data.row['id']) }}" class="btn-ghost">The booking</a>
     <a href="{{ url_for('booking_correspondence', booking_id=data.row['id']) }}" class="btn-ghost">What we've said</a>
     {% elif data.kind == 'workshop_booking' %}
     <a href="{{ url_for('admin_workshop_registrations', q=data.row['reference_code']) }}" class="btn-ghost">The registration</a>
