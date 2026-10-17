@@ -2421,7 +2421,8 @@ _ROOM_CONFIRMED_BODY_5OCT = (
 _ROOM_CONFIRMED_BODY = (
     _ROOM_CONFIRMED_BODY_5OCT
     .replace("Five bedrooms are open to guests, and one of them is yours",
-             "Five guest rooms are open, and one of them is yours")
+             # The count from the rooms on sale, not written (z28 item 6).
+             "{Room_count_word} guest rooms are open, and one of them is yours")
     .replace("the beds, the floors and the bathrooms are new.",
              "the floors and the bathrooms are new, and the rooms are furnished from the brocantes."))
 
@@ -2566,6 +2567,22 @@ _RETIRED_ROOM_COUNT = re.compile(r"\bninety[- ]four\b", re.I)
 # brocantes. "The bedrooms are reached by the original staircase" is neither.
 _RETIRED_ROOM_WORDS = re.compile(r"\bfive bedrooms\b", re.I)
 _NEW_BEDS = re.compile(r"\bnew beds?\b|\bbeds?\b[^.]{0,60}?\b(?:are|is) new\b", re.I)
+# How many guest rooms a letter says the house has, in words. (?<![-\w]) so
+# "ninety-four guest rooms" is not read as four -- that one has its own rule.
+_GUEST_ROOM_COUNT = re.compile(
+    r"(?<![-\w])(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
+    r"\s+guest\s+rooms\b", re.I)
+# The tags that say it for the letter, filled from the rooms on sale when the
+# letter is made (z28 item 6): "{Room_count_word} guest rooms are open" says
+# five while the sixth room is hidden and six the day it is ticked Bookable.
+# The capital one is for the start of a sentence.
+HOUSE_MERGE_TAGS = ("room_count_word", "Room_count_word")
+
+
+def house_merge_values():
+    """{tag: value} for the tags any letter may use about the house itself."""
+    word = house_room_facts_cached()["count_word"]
+    return {"room_count_word": word, "Room_count_word": word[:1].upper() + word[1:]}
 
 
 def _squash(text):
@@ -2619,6 +2636,19 @@ def letter_rule_breaches(template_key, subject, body):
         out.append({"rule": "new_beds", "untrue": True, "said": (
             "it says the beds are new, and the rooms are furnished from the "
             "brocantes, antiques beside new pieces (owner, 15 October)")})
+    # A count written into the letter, when the rooms on sale say otherwise.
+    # The day the sixth room goes on sale, a letter still saying "Five guest
+    # rooms are open" is named here, and so on the owner home, rather than
+    # found by a guest. Only asked when the letter states a count.
+    said_counts = {m_.group(1).lower() for m_ in _GUEST_ROOM_COUNT.finditer(text)}
+    if said_counts:
+        lets = house_room_facts_cached()["count_word"]
+        wrong = sorted(c for c in said_counts if c != lets)
+        if wrong:
+            out.append({"rule": "guest_room_count", "untrue": True, "said": (
+                f"it says “{wrong[0]} guest rooms”, and the house lets {lets}. "
+                "{Room_count_word} says it for you, and stays right when a room "
+                "goes on or off sale")})
     return out
 
 
@@ -5526,20 +5556,16 @@ def init_db():
         ("rooms_bed_setup", "ALTER TABLE rooms ADD COLUMN bed_setup TEXT"),
         ("rooms_bathroom", "ALTER TABLE rooms ADD COLUMN bathroom TEXT"),
         ("rooms_outlook", "ALTER TABLE rooms ADD COLUMN outlook TEXT"),
-        # NO BEDROOM IS ON THE GROUND FLOOR. The bedrooms are upstairs and
-        # the bathrooms are down, confirmed by the owner. One room carried
-        # floor = 'ground', and _roompick reads that column to answer the
-        # question "how are you with stairs?" -- so somebody who said stairs
-        # were difficult was recommended that room with the words "it is on
-        # the ground floor, so no staircase". A wrong fact in a column is a
-        # promise the app then makes in its own voice.
-        #
-        # Cleared rather than rewritten: "not the ground floor" is what is
-        # known, and the picker treats an empty floor as upstairs, which is
-        # the safe side. The owner sets the real one per room at
-        # /admin/rooms/<id>/edit, where this field already lives.
-        ("rooms_floor_no_ground",
-         "UPDATE rooms SET floor = NULL WHERE LOWER(COALESCE(floor, '')) = 'ground'"),
+        # "rooms_floor_no_ground" stood here: an UPDATE, run on every boot,
+        # clearing any room whose floor was 'ground', because no bedroom was
+        # on the ground floor and the picker had told a guest who found stairs
+        # difficult "it is on the ground floor, so no staircase". On 17 October
+        # 2026 the house added one that is (The Twin Room (Ground Floor), z28
+        # item 4), so the premise went and so did the migration. It was saved
+        # as "Ground floor" and survived only because this matched 'ground'
+        # exactly. What still holds is the reason it was written: that room is
+        # on the ground floor and STILL REACHED BY STAIRS, so nothing may call
+        # it step-free -- test_confirmed_facts holds the picker to that.
         # The bathroom in the words the guest pages read. The old drop-down
         # wrote "Shared" and "Private, not en-suite", which the comparison
         # table and the Stay cards do not recognise (see BATHROOM_TYPES).
@@ -7868,7 +7894,9 @@ def init_db():
         room_cols = {c["name"] for c in conn.execute("PRAGMA table_info(rooms)").fetchall()}
         for room in DEFAULT_ROOMS:
             fields = {k: v for k, v in room.items() if k in room_cols}
-            fields["active"] = 1
+            # On sale unless the seed says otherwise: the sixth room is seeded
+            # off sale, as it is on the live site until the owner ticks it.
+            fields["active"] = room.get("active", 1)
             fields["export_token"] = secrets.token_urlsafe(20)
             conn.execute(
                 f"INSERT INTO rooms ({', '.join(fields)}) "
@@ -13324,6 +13352,8 @@ HOME_ROOM_ORDER = [
     "The King Suite",
     "The Marquis Suite",
     "The Family Suite",
+    # The sixth room, last (owner, 17 October 2026, z28 item 6).
+    "The Twin Room (Ground Floor)",
 ]
 
 # Giving the rooms their own names, and moving what the old names carried into
@@ -13355,14 +13385,12 @@ ROOM_IDENTITY = [
      "King bed", "private", "mountain", None, None),
     ("Family Suite with Mountain View", "Les Deux Chambres",
      "Queen and doubles", "private", "mountain", 140, None),
-    # floor None, NOT "ground". No bedroom is on the ground floor -- the
-    # owner confirmed it and rooms_floor_no_ground clears the column -- but
-    # that migration runs while the table is still EMPTY on a fresh install,
-    # and this rename runs after the seed, so it wrote "ground" straight back.
-    # The live database was fine, because its rooms are already renamed and
-    # this is skipped. A new deploy, a restore to an empty volume, or the test
-    # copy got a room picker telling somebody who said stairs were difficult
-    # "it is on the ground floor, so no staircase".
+    # floor None, NOT "ground": this room is upstairs, like every bedroom
+    # but one. It once seeded "ground" here, and a fresh install's room
+    # picker told somebody who said stairs were difficult "it is on the
+    # ground floor, so no staircase". The one room that IS on the ground
+    # floor, The Twin Room (Ground Floor) since 17 October 2026, is seeded
+    # by apply_room_six_2026_10_17 -- and is still reached by stairs.
     ("Double with Shared Bathroom", "Chambre Cerise",
      "Double bed", "shared", None, None, None),
     ("Twin/Double with Shared Bathroom", "Chambre Tilleul",
@@ -13418,6 +13446,30 @@ DEFAULT_ROOMS = [
         "sort_order": 4,
         "max_children": 0,
         "description": "A generous 70 sq m suite with sweeping mountain views. Sit in comfort by the fireplace.",
+    },
+    # The sixth room (owner, 17 October 2026, z28 item 6), under its own name
+    # from the start: nothing renames it, and the five above reach theirs
+    # through ROOM_IDENTITY, ROOM_LINEUP and ROOM_NAMES_2026_10_16. Seeded OFF
+    # SALE, as it is on the live site, because it cannot be let until the
+    # five-rooms-a-night limit is live (MAX_ROOMS_LET_PER_NIGHT). On the ground
+    # floor and still reached by stairs.
+    {
+        "name": "The Twin Room (Ground Floor)",
+        "channel_name": "Twin Room with Mountain View",
+        "price_per_night": 270.0,
+        "max_occupancy": 2,
+        "min_nights": 1,
+        "sort_order": 5,
+        "max_adults": 2,
+        "max_children": 0,
+        "bed_setup": "Queen bed and double bed",
+        "bathroom": "private",
+        "outlook": "mountain",
+        "floor": "Ground floor",
+        "workshop_room": 1,
+        "active": 0,
+        "description": ("A queen bed and a double bed, with a private bathroom of its own "
+                        "next door. On the ground floor, though still reached by stairs."),
     },
 ]
 
@@ -51526,11 +51578,17 @@ DINING_MODES = {
 # The Twin Room's two beds are doubles and it sleeps two, and the Queen Room's
 # bed is a king (owner, 15 October 2026; see apply_room_facts_2026_10_15,
 # which puts the same on a database that already has the line-up).
+#
+# The prices are the live site's of 17 October 2026 (z28 item 6), so a fresh
+# install, a restore to an empty volume and the test seed price the rooms as
+# guests see them: 270, 270, 350, 440, 580. They were the 24 September figures
+# (280, 280, 380, 480), which the owner has since changed in Admin. A database
+# that already has the line-up is not touched -- this matches old names only.
 ROOM_LINEUP = [
-    ("Chambre Tilleul", "The Twin Room", 280, 2, "Two double beds", 1),
-    ("Chambre Cerise", "The Queen Room", 280, 2, "King bed", 2),
-    ("Chambre du Levant", "The King Room", 380, 2, "King bed", 3),
-    ("Chambre \u00c9meraude", "The Gold Suite", 480, 2, "Emperor bed", 4),
+    ("Chambre Tilleul", "The Twin Room", 270, 2, "Two double beds", 1),
+    ("Chambre Cerise", "The Queen Room", 270, 2, "King bed", 2),
+    ("Chambre du Levant", "The King Room", 350, 2, "King bed", 3),
+    ("Chambre \u00c9meraude", "The Gold Suite", 440, 2, "Emperor bed", 4),
     ("Les Deux Chambres", "The Family Suite", 580, 5, "Queen and doubles", 5),
 ]
 # The words each room is described in, the same as _room_copy.html's. The
@@ -51557,6 +51615,13 @@ ROOM_LINEUP_WORDS = {
     "The Family Suite": "Two bedrooms opening into one another, sleeping five, "
                         "with the valley on both sides. Children of eight and over "
                         "are welcome. A private bathroom on the first floor.",
+    # _room_copy.html's words (z28). Not in ROOM_LINEUP, so no rename uses it;
+    # it is here so this table has every room. DEFAULT_ROOMS carries the same
+    # sentence, because it is defined above this and seeds the room by it;
+    # test_room_lineup holds the two together.
+    "The Twin Room (Ground Floor)": "A queen bed and a double bed, with a private "
+                                    "bathroom of its own next door. On the ground "
+                                    "floor, though still reached by stairs.",
 }
 
 
@@ -55338,7 +55403,7 @@ EMAIL_TEMPLATE_TAGS = {
     "workshop_waitlist_opening": ("dates", "name", "register_url", "workshop_title"),
     "room_confirmed": ("arrival_date", "checkin_url", "departure_date", "door_url", "first_name",
                        "guest_name", "manage_url", "party_size", "reference_code",
-                       "room_name", "stay_details"),
+                       "room_name", "stay_details") + HOUSE_MERGE_TAGS,
     "room_request_received": ("checkin_url", "guest_name", "reference_code",
                               "room_name", "stay_lines"),
     "room_paid_awaiting": ("checkin_url", "guest_name", "reference_code", "room_name",
@@ -55474,6 +55539,15 @@ def merge_email_text(source, context):
     Three or more line breaks are closed to two: a block tag with nothing to
     say (no add-ons, no account link) otherwise leaves a hole in the letter.
     """
+    # The house's own facts, filled here for every letter that names one, so
+    # no send site, preview or test has to remember to pass them -- and they
+    # win over the context, because they are facts about the house and never
+    # about one letter (a preview's stand-in "{room_count_word}" included).
+    if source and any("{%s}" % tag in source for tag in HOUSE_MERGE_TAGS):
+        try:
+            context = {**context, **house_merge_values()}
+        except Exception:           # pragma: no cover - a letter still goes
+            pass
     try:
         text = (source or "").format(**context)
     except (KeyError, IndexError, ValueError, AttributeError):
@@ -59862,16 +59936,20 @@ def new_room():
             """INSERT INTO rooms (name, channel_name, description, max_occupancy, max_adults, max_children,
                price_per_night, min_nights, size_sqm, bed_setup, bathroom, outlook, floor,
                access_steps, access_car_metres, access_bathroom, access_notes,
-               export_token, sort_order, photo_filename, amenities)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               export_token, sort_order, photo_filename, amenities, active)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
             (f["name"], f["channel_name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"],
              f["access_steps"], f["access_car_metres"], f["access_bathroom"],
              f["access_notes"],
-             # workshop_room defaults to 0. The checkbox is on the edit form
-             # only, like Bookable: a new room starts off both lists and
-             # putting it on either is a deliberate act afterwards.
+             # Off both lists. The checkboxes are on the edit form only: a new
+             # room starts off sale and off the workshops, and putting it on
+             # either is a deliberate act afterwards. `active` is said here
+             # rather than left to the column, which defaults to 1 -- so the
+             # comment said "off" while the room went on sale the moment it
+             # was saved. The sixth room did, on 17 October, and had to be
+             # hidden by hand (z28 item 3). workshop_room defaults to 0.
              secrets.token_urlsafe(20), max_order + 1, photo_filename, f["amenities"]),
         )
         conn.commit()
@@ -98792,7 +98870,7 @@ DRAFT_SCHEMA = {
     },
 }
 DRAFT_SYSTEM = """\
-You draft email replies for the people who answer the guests of Château de Gudanes, a restored château in the Ariège, France, with five guest rooms, a table d'hôte dinner and ateliers (craft workshops). A person reads every draft and sends it themselves; you never send anything.
+You draft email replies for the people who answer the guests of Château de Gudanes, a restored château in the Ariège, France, with {room_count} guest rooms, a table d'hôte dinner and ateliers (craft workshops). A person reads every draft and sends it themselves; you never send anything.
 
 How to write:
 - Write in the guest's language: the language of their most recent message, or the language on their profile if there is no message. When translating, use the target language given.
@@ -98824,7 +98902,10 @@ def draft_reply_with_claude(context, compose_text):
     if not claude_configured():
         return None
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, timeout=120)
-    stable = DRAFT_SYSTEM.format(rules=HOUSE_DRAFTING_RULES)
+    # The room count is read, not written: it said "five" in prose, and the
+    # house lets six the day the sixth room is ticked Bookable (z28 item 6).
+    stable = DRAFT_SYSTEM.format(rules=HOUSE_DRAFTING_RULES,
+                                 room_count=house_room_facts_cached()["count_word"])
     house = json.dumps(context.get("house") or {}, default=str, sort_keys=True)
     request_part = {k: v for k, v in context.items() if k not in ("house",)}
     user_content = (
@@ -99108,10 +99189,11 @@ ACCESS_NEEDS_RETENTION_MONTHS = 12
 
 # "Two double beds" and "Queen and doubles" are the Twin Room and the Family
 # Suite (owner, 15 October 2026); a room's own value is offered as well, so
-# a bed the list does not name is never lost on a save.
+# a bed the list does not name is never lost on a save. "Queen bed and double
+# bed" is The Twin Room (Ground Floor) (owner, 17 October 2026, z28 item 5).
 BED_SETUPS = ["Emperor bed", "King bed", "Queen bed", "Double bed", "Two double beds",
-              "Twin beds", "Twin or double", "Queen and doubles", "Two bedrooms",
-              "Bunk room"]
+              "Twin beds", "Twin or double", "Queen and doubles", "Queen bed and double bed",
+              "Two bedrooms", "Bunk room"]
 # STORED AS THE WORD THE GUEST PAGES READ. The Stay cards, the room page and
 # the comparison table all test for "private" and "shared", and this used to
 # offer "En-suite / Private, not en-suite / Shared" -- none of which they

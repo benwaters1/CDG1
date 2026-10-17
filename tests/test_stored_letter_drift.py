@@ -159,9 +159,40 @@ def _run(s, oc, conn):
                                                                           if b["rule"] in ("room_words", "new_beds")),
             detail=str([b["rule"] for b in old]))
     shipped_now = dict((k, b) for k, _l, _s, b in m.DEFAULT_EMAIL_TEMPLATES)["room_confirmed"]
-    s.check("and the one shipped now says five guest rooms, with no new beds",
-            "Five guest rooms are open" in shipped_now and not m._NEW_BEDS.search(shipped_now)
+    s.check("and the one shipped now reads the count of guest rooms, with no new beds",
+            "{Room_count_word} guest rooms are open" in shipped_now
+            and not m._NEW_BEDS.search(shipped_now)
             and "brocantes" in shipped_now, detail=shipped_now[:300])
+
+    s.section("The count of guest rooms is read, not written (z28 item 6)")
+    # The sixth room goes on sale by a tick in Admin. A letter with "Five"
+    # typed into it is wrong that morning, and so is the shipped one unless
+    # it reads the count; both are checked against the rooms on sale.
+    facts = m.house_room_facts(conn)
+    word = facts["count_word"]
+    filled = m.merge_email_text(shipped_now, m.sample_merge_context("room_confirmed"))
+    s.check("the shipped letter says how many rooms are on sale, in words",
+            f"{word.capitalize()} guest rooms are open" in filled, detail=filled[:160])
+    s.check("and the lower-case tag reads the same count",
+            m.merge_email_text("of the {room_count_word} guest rooms", {}) == f"of the {word} guest rooms")
+    other = next(w for n, w in m.ROOM_COUNT_WORDS.items() if w != word)
+    typed = f"{other.capitalize()} guest rooms are open, and one of them is yours. " \
+            "{stay_details} " + m.PAYMENT_SAFETY_LINE
+    named = [b for b in m.letter_rule_breaches("room_confirmed", "x", typed)
+             if b["rule"] == "guest_room_count"]
+    s.check("a letter with another count typed into it is named, as untrue",
+            len(named) == 1 and named[0]["untrue"] and other in named[0]["said"]
+            and word in named[0]["said"], detail=str(named))
+    right = f"{word.capitalize()} guest rooms are open. {{stay_details}} " + m.PAYMENT_SAFETY_LINE
+    s.check("and one that types the right count is not",
+            not [b for b in m.letter_rule_breaches("room_confirmed", "x", right)
+                 if b["rule"] == "guest_room_count"])
+    s.check("nor is \"ninety-four guest rooms\" read as four",
+            not [b for b in m.letter_rule_breaches(
+                "room_confirmed", "x", "ninety-four guest rooms " + m.PAYMENT_SAFETY_LINE)
+                 if b["rule"] == "guest_room_count"])
+    s.check("and the tag is one the confirmation may use",
+            not m.unknown_merge_tags("room_confirmed", "x", "{Room_count_word} {room_count_word}"))
     s.check("the staircase sentence is not about how many rooms there are",
             m.letter_rule_breaches("room_confirmed", "x", "The bedrooms are reached by the original "
                                    "staircase. {stay_details} " + m.PAYMENT_SAFETY_LINE) == [])
