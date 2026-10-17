@@ -10,7 +10,7 @@
    promises that "the kitchen will cook for them", which this macro could not
    take back when the dining switch closes the restaurant. #}
 {#- 10 Oct (owner: "the description of the rooms needs to be expanded"). From the owner's confirmations (6 Oct: King =
-    the four-poster that is not gold; Gold Suite = the gold four-poster; Queen = Chambre Olympe de Gouges; Twin = Chambre
+    the four-poster that is not gold; Marquis Suite = the gold four-poster; Queen = Chambre Olympe de Gouges; Twin = Chambre
     Jeanne d'Arc, the tapestry above the beds; Family Suite = Chambre Bleue + Chambre des Fleurs), Karina's Captain's Log
     (Jeanne d'Arc divided from a larger room in 2021, old floorboards; Olympe de Gouges - hallway caved in, unreachable,
     floor and ceiling intact, slate floor lifted and kept), and the owner's wallpaper (one Family Suite bedroom). The first
@@ -18,9 +18,9 @@
 {% macro room_copy(name, fallback='') -%}
 {%- set RM_DESC = {
   'The Twin Room':    'Two gilded beds beneath an old tapestry, in the Chambre Jeanne d’Arc. Once half of a much larger room, it was divided in 2021 and laid with old wooden floorboards.',
-  'The Queen Room':   'A king bed in the Chambre Olympe de Gouges, one of the few rooms whose floor and ceiling survived. Before the restoration its hallway had caved in and the room could not be reached; its original slate floor was lifted and kept safe.',
-  'The King Room':    'A king bed beneath a four-poster canopy, with a bath and a basin in the room itself.',
-  'The Gold Suite':   'A gilded four-poster with an emperor bed, and armchairs by the fireplace, within walls left as they were found.',
+  'The King Room':   'A king bed in the Chambre Olympe de Gouges, one of the few rooms whose floor and ceiling survived. Before the restoration its hallway had caved in and the room could not be reached; its original slate floor was lifted and kept safe.',
+  'The King Suite':    'A king bed beneath a four-poster canopy, with a bath and a basin in the room itself.',
+  'The Marquis Suite':   'A gilded four-poster with an emperor bed, and armchairs by the fireplace, within walls left as they were found.',
   'The Family Suite': 'Two bedrooms for a family, the Chambre Bleue and the Chambre des Fleurs. In one of them the original wallpaper has been printed anew by the company that first made it, from its original templates. Children of eight and over are welcome.'
 } -%}
 {{- RM_DESC.get(name) or fallback -}}
@@ -32,6 +32,9 @@
    room['name'], so a name that lived only here would have a guest book one
    room and be written to about another. Kept as a macro rather than deleted
    because four templates call it. #}
+{#- 16 Oct (owner): the rooms renamed - the Queen Room is the King Room (it has a king bed), the King Room with the bath is
+    the King Suite, the Gold Suite is the Marquis Suite. Every name-keyed list here and in the templates uses the new names;
+    Admin must be renamed in the same sitting (FOR-CODE 20). -#}
 {% macro room_name(db_name) -%}
 {{- db_name -}}
 {%- endmacro %}
@@ -41,9 +44,9 @@
 {% macro room_note(db_name) -%}
 {%- set MAP = {
   'The Twin Room':    'two double beds, with a private bathroom',
-  'The Queen Room':   'a king bed, with a private bathroom',
-  'The King Room':    'a king bed, with a bath in the room',
-  'The Gold Suite':   'an emperor bed, with a private bathroom',
+  'The King Room':   'a king bed, with a private bathroom',
+  'The King Suite':    'a king bed, with a bath in the room',
+  'The Marquis Suite':   'an emperor bed, with a private bathroom',
   'The Family Suite': 'for a family, with a private bathroom'
 } -%}
 {{- MAP.get(db_name, '') -}}

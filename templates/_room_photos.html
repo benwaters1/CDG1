@@ -1,6 +1,6 @@
 {#- 5 Oct (owner: "the room photos don't match booking.com, and the room photos when you've selected should be the correct
     ones"). Each room's own photographs, as tagged to that room on the Booking.com listing (Bed and Breakfast Chateau de
-    Gudanes): Twin, Queen, Suite (= the Gold Suite) and Family Suite. The King Room has none there - it keeps its own
+    Gudanes): Twin, Queen, Suite (= the Marquis Suite) and Family Suite. The King Suite has none there - it keeps its own
     photograph until room photos are uploaded in the admin (an uploaded photo always wins).
     Booking.com images only load with their signature (?k=...); the app's photo mirror should hold them too
     (LAUNCH_CHECKLIST: add cf.bstatic.com to the mirror). -#}
@@ -10,24 +10,24 @@
 {#- 6 Oct (owner): the King Room is the four-poster bed that is not gold - the château's own photographs (none on
     Booking.com). -#}
 {%- set ROOM_PHOTOS = {
-  'The King Room': [
-    ('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/393b1bed-532a-41a0-8000-c964f7fec141/Screenshot+2023-08-23+at+2.28.37+pm.png?format=2500w', 'The King Room, the four-poster bed'),
-    ('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/b2a8b7f3-150f-42cf-b311-ea8901270793/Screenshot+2023-08-23+at+2.28.50+pm.png?format=1500w', 'The King Room, the four-poster and its canopy'),
+  'The King Suite': [
+    ('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/393b1bed-532a-41a0-8000-c964f7fec141/Screenshot+2023-08-23+at+2.28.37+pm.png?format=2500w', 'The King Suite, the four-poster bed'),
+    ('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/b2a8b7f3-150f-42cf-b311-ea8901270793/Screenshot+2023-08-23+at+2.28.50+pm.png?format=1500w', 'The King Suite, the four-poster and its canopy'),
   ],
   'The Twin Room': [
     (_BK ~ '921671142.jpg?k=0463664adc5e7567227c32258c08ab5670be8c953791d63ad7c98e8f075ae85e&o=', 'The two beds in the Twin Room'),
     (_BK ~ '921670896.jpg?k=a988f75d70a0bf03bc5a97dd99b3ebc692d77eabc0820f88a3245d44e7a49f28&o=', 'The Twin Room'),
     (_BK ~ '921671149.jpg?k=a99b3aa66a3c823dbdc953387c2af1ed5b2f4a7c3e959db84f6a126bc8b19141&o=', 'The Twin Room, by the window'),
   ],
-  'The Queen Room': [
-    (_BK ~ '921671001.jpg?k=81d3277437f8a0c9290ba074cc8fe547c7d49e2e27ebf78b25d319923482ce9f&o=', 'The Queen Room'),
-    (_BK ~ '798764955.jpg?k=d8653db73b32b57205f0af9b550ee5ee521deae7ec1638ed4dafcc67057d01c9&o=', 'The bed in the Queen Room'),
-    (_BK ~ '798764951.jpg?k=dd03eaa0759e0ec0da87d5272a0091623d54e13e073ace8580be58a478a5c56c&o=', 'The Queen Room, the seating'),
+  'The King Room': [
+    (_BK ~ '921671001.jpg?k=81d3277437f8a0c9290ba074cc8fe547c7d49e2e27ebf78b25d319923482ce9f&o=', 'The King Room'),
+    (_BK ~ '798764955.jpg?k=d8653db73b32b57205f0af9b550ee5ee521deae7ec1638ed4dafcc67057d01c9&o=', 'The bed in the King Room'),
+    (_BK ~ '798764951.jpg?k=dd03eaa0759e0ec0da87d5272a0091623d54e13e073ace8580be58a478a5c56c&o=', 'The King Room, the seating'),
   ],
-  'The Gold Suite': [
-    (_BK ~ '903132433.jpg?k=fc8c9e1901ebe5a7e4fd9946bb22ace693da1ff02dfae59801351b2ed1e31753&o=', 'The Gold Suite, the bed and the fireside chairs'),
-    (_BK ~ '903132506.jpg?k=811b8839a6591fedad373a4fdadbe663f017a838829239048e179d2c57106ff8&o=', 'The mirror above the fireplace in the Gold Suite'),
-    (_BK ~ '903132525.jpg?k=b560290a40931fdc0c28b32329c5485e9a48ecbe4450795bb3fa2ec0ecdbd9a1&o=', 'The Gold Suite, the bed and a table'),
+  'The Marquis Suite': [
+    (_BK ~ '903132433.jpg?k=fc8c9e1901ebe5a7e4fd9946bb22ace693da1ff02dfae59801351b2ed1e31753&o=', 'The Marquis Suite, the bed and the fireside chairs'),
+    (_BK ~ '903132506.jpg?k=811b8839a6591fedad373a4fdadbe663f017a838829239048e179d2c57106ff8&o=', 'The mirror above the fireplace in the Marquis Suite'),
+    (_BK ~ '903132525.jpg?k=b560290a40931fdc0c28b32329c5485e9a48ecbe4450795bb3fa2ec0ecdbd9a1&o=', 'The Marquis Suite, the bed and a table'),
   ],
   'The Family Suite': [
     (_BK ~ '799432953.jpg?k=bfe46237a062c76163feac464aa8a8aa65e4f2d55d0bebc5842f0b5f785c5fa6&o=', 'The second bedroom, Family Suite'),
@@ -39,20 +39,20 @@
   ],
 } -%}
 {#- 6 Oct: the château's own photographs of the same rooms, matched by eye to the Booking.com ones (the valet stand and
-    red cushions of the Queen Room; the gold four-poster of the Gold Suite; the red velvet bed under the portrait and the
-    floral wallpaper of the Family Suite's two bedrooms). The King Room's own are above. -#}
-{#- 14 Oct (owner): "the Twin, Queen, King and Family all do" have the mountain view; the Gold Suite faces the front of the château - a different view, so none of these is used
+    red cushions of the King Room; the gold four-poster of the Marquis Suite; the red velvet bed under the portrait and the
+    floral wallpaper of the Family Suite's two bedrooms). The King Suite's own are above. -#}
+{#- 14 Oct (owner): "the Twin, Queen, King and Family all do" have the mountain view; the Marquis Suite faces the front of the château - a different view, so none of these is used
     for it (add its own window photograph to its list when there is one) - one of the
     owner's window photographs (spring 2017) for each, "The view from your window".
-    14 Oct (owner): the only four-posters are the King Room (wooden bed) and the Gold Suite (gold bed) - Paulina Bruni's
+    14 Oct (owner): the only four-posters are the King Room (wooden bed) and the Marquis Suite (gold bed) - Paulina Bruni's
     four-poster photograph is the King Room. 15 Oct (owner): the Family Suite is two bedrooms, the blue one and the floral one.
     Nightly (Stay, room pages, Booking.com) shows only the five guest rooms;
     the château's other bedrooms are used for workshops, private events and weddings and may appear on those pages. -#}
 {%- set ROOM_EXTRA = {
   'The Twin Room': [('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1691467283089-Z9QX59G01KY8N8VFBTZG/Chambre+Jeanne+d%27Arc.PNG?format=1500w', 'The Twin Room, the tapestry above the beds'), ('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f48b527d-f987-44e5-b612-bd5cedb2ea5b/Screenshot+2026-07-31+at+2.15.48+pm.png?format=1500w', 'The Twin Room by candlelight'), (url_for('static', filename='img/views/mountain-spring-sky-800.jpg'), 'The view from your window')],
-  'The Queen Room': [('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba4114a3-c057-4df8-8fd9-c080ebc6fff2/Chambre+Olympe+de+Gouges+2.jpg?format=1500w', 'The Queen Room'), (url_for('static', filename='img/views/mist-on-the-mountain-800.jpg'), 'The view from your window')],
-  'The King Room': [(url_for('static', filename='img/rk/four-poster-bedroom.jpg'), 'The King Room, its wooden four-poster'), (url_for('static', filename='img/more/king-room-canopy.jpg'), 'The King Room, its canopied four-poster'), (url_for('static', filename='img/views/mountains-open-window-800.jpg'), 'The view from your window')],
-  'The Gold Suite': [('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg?format=1500w', 'The Gold Suite, the four-poster bed')],
+  'The King Room': [('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/ba4114a3-c057-4df8-8fd9-c080ebc6fff2/Chambre+Olympe+de+Gouges+2.jpg?format=1500w', 'The King Room'), (url_for('static', filename='img/views/mist-on-the-mountain-800.jpg'), 'The view from your window')],
+  'The King Suite': [(url_for('static', filename='img/rk/four-poster-bedroom.jpg'), 'The King Suite, its wooden four-poster'), (url_for('static', filename='img/more/king-room-canopy.jpg'), 'The King Suite, its canopied four-poster'), (url_for('static', filename='img/views/mountains-open-window-800.jpg'), 'The view from your window')],
+  'The Marquis Suite': [('https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg?format=1500w', 'The Marquis Suite, the four-poster bed')],
   'The Family Suite': [(url_for('static', filename='img/more/blue-bedroom.jpg'), 'The Family Suite, the blue bedroom'), ('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c9165a78-1300-47a7-b1c0-b46f4172bf44/Screenshot+2026-07-30+at+8.03.10+pm.png?format=1500w', 'The Family Suite, the blue bedroom'), ('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/9d1b8c99-13c5-4bc9-9a69-9a32a4c1eb8c/Screenshot+2026-07-20+at+2.31.12+pm.png?format=1500w', 'The Family Suite, the floral bedroom'), ('https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c90f49a0-5f8f-489f-8d51-2f3ea727c57a/Screenshot+2026-07-30+at+7.54.08+pm.png?format=1500w', 'The floral bedroom of the Family Suite, from the window'), (url_for('static', filename='img/views/clouds-over-the-peaks-800.jpg'), 'The view from your window')]
 } -%}
 {#- A bathroom, for strips that need one (the bathrooms are downstairs; these are not room-specific). -#}

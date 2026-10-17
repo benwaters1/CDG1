@@ -37,6 +37,9 @@ TAG = "ZZVAT"
 def _cleanup():
     conn = db()
     conn.execute("DELETE FROM pos_closures WHERE period LIKE '2031-%'")
+    conn.execute("DELETE FROM pos_order_lines WHERE order_id IN "
+                 "(SELECT id FROM pos_orders WHERE table_label LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM pos_orders WHERE table_label LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM refunds WHERE reason LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM event_inquiries WHERE contact_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
@@ -44,16 +47,45 @@ def _cleanup():
     conn.close()
 
 
-def _sealed_day(day, vat_by_rate, taken=0.0):
-    """A closed day with its VAT already sealed, as the till leaves it."""
+def _sealed_day(day, sold):
+    """A day that took money at the till and was closed off by the till's own
+    close, so its VAT is sealed in exactly the shape the app writes.
+
+    `sold` is [(price, vat_rate), ...], VAT-inclusive. This used to write the
+    closure by hand as a flat {rate: amount}, a shape pos_close_period has
+    never written -- so the suite stayed green while every real closed day
+    was missing from the working paper.
+    """
+    conn = db()
+    conn.execute(
+        """INSERT INTO pos_orders (table_label, covers, status, service_state,
+           service_date, settled_total, payment_method, opened_at, closed_at)
+           VALUES (?, 2, 'paid', 'bill', ?, ?, 'card_terminal', ?, ?)""",
+        (f"{TAG}-sealed-{day}", day, sum(p for p, _ in sold),
+         f"{day}T18:30:00+00:00", f"{day}T20:30:00+00:00"))
+    oid = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    for price, rate in sold:
+        conn.execute(
+            """INSERT INTO pos_order_lines (order_id, name, unit_price, quantity,
+               course, state, vat_rate, created_at)
+               VALUES (?, ?, ?, 1, 'main', 'served', ?, ?)""",
+            (oid, f"{TAG} dish", price, rate, f"{day}T19:00:00+00:00"))
+    closure, created = m.pos_close_period(conn, "day", day)
+    conn.commit()
+    conn.close()
+    assert created, f"{day} was already closed"
+    return closure
+
+
+def _hand_written_closure(day, vat_json):
+    """A closure row put in by hand, for the shapes the till never writes."""
     conn = db()
     conn.execute(
         """INSERT INTO pos_closures (kind, period, gross_total, discount_total,
            service_total, taken_total, vat_json, by_method_json, ticket_count,
            covers, perpetual_total, prev_hash, hash, closed_at)
-           VALUES ('day', ?, ?, 0, 0, ?, ?, '{}', 1, 2, 0, 'x', ?, ?)""",
-        (day, taken, taken, json.dumps(vat_by_rate), f"{TAG}{day}",
-         datetime.now(timezone.utc).isoformat()))
+           VALUES ('day', ?, 0, 0, 0, 0, ?, '{}', 1, 2, 0, 'x', ?, ?)""",
+        (day, vat_json, f"{TAG}{day}", datetime.now(timezone.utc).isoformat()))
     conn.commit()
     conn.close()
 
@@ -99,17 +131,39 @@ def run():
     nxt_start, nxt_end = date(2031, 4, 1), date(2031, 5, 1)
 
     s.section("The till figures are read from the sealed closures, per rate")
-    _sealed_day("2031-03-10", {"10": 24.0, "20": 8.0}, taken=300.0)
-    _sealed_day("2031-03-11", {"10": 6.0}, taken=70.0)
+    # Closed by the till itself. VAT-inclusive: 264 at 10% is 240 + 24,
+    # 48 at 20% is 40 + 8, 66 at 10% is 60 + 6.
+    sealed = _sealed_day("2031-03-10", [(264.0, 10), (48.0, 20)])
+    _sealed_day("2031-03-11", [(66.0, 10)])
+    band = json.loads(sealed["vat_json"]).get("10.0")
+    s.check("the till seals each rate as a band of gross, VAT and net",
+            isinstance(band, dict) and set(band) == {"gross", "vat", "net"},
+            detail=f"sealed {sealed['vat_json']} — the working paper must read "
+                   "what the till writes, not what a test assumed")
     w = _working(start, end)
-    rates = {l["source"]: l["vat"] for l in w["lines"] if "till" in l["source"]}
-    s.check("food and alcohol are kept apart", len(rates) == 2, detail=f"{rates}")
+    till = {l["rate"]: l for l in w["lines"] if "till" in l["source"]}
+    s.check("food and alcohol are kept apart", sorted(till) == [10.0, 20.0],
+            detail=f"{sorted(till)} — every closed day was skipped, and the "
+                   "page showed no till line at all")
     s.check("the 10% band adds up across days",
-            any(abs(v - 30.0) < 0.01 for v in rates.values()), detail=f"{rates}")
-    s.check("and the 20% band", any(abs(v - 8.0) < 0.01 for v in rates.values()),
-            detail=f"{rates}")
+            abs(till.get(10.0, {}).get("vat", 0) - 30.0) < 0.01,
+            detail=f"{till.get(10.0)}")
+    s.check("and the 20% band", abs(till.get(20.0, {}).get("vat", 0) - 8.0) < 0.01,
+            detail=f"{till.get(20.0)}")
+    s.check("the sealed gross and net come with it, not a dash",
+            till.get(10.0, {}).get("gross") == 330.0 and till.get(10.0, {}).get("net") == 300.0
+            and till.get(20.0, {}).get("gross") == 48.0 and till.get(20.0, {}).get("net") == 40.0,
+            detail=f"{till}")
     s.check("they are marked exact, not estimated",
-            all(l["exact"] for l in w["lines"] if "till" in l["source"]))
+            bool(till) and all(l["exact"] for l in till.values()))
+    s.check("and nothing read cleanly is reported as unreadable",
+            w["unreadable_days"] == [], detail=str(w["unreadable_days"]))
+    page = oc.get("/admin/vat?period=month&date=2031-03-15").get_data(as_text=True)
+    s.check("the till's lines are on the page",
+            "Restaurant till — 10%" in page and "Restaurant till — 20%" in page,
+            detail="the owner reads the page, not the dict")
+    s.check("and no unreadable-day warning on a clean month",
+            "could not be read" not in page)
 
     s.section("A day nobody closed is reported, not quietly missing")
     s.check("31 days in March", w["days_in_period"] == 31, detail=f"{w['days_in_period']}")
@@ -146,7 +200,7 @@ def run():
 
     s.section("The boundary day belongs to one period, not both")
     # An inclusive end put 1 April in March AND in April.
-    _sealed_day("2031-04-01", {"10": 100.0}, taken=1100.0)
+    _sealed_day("2031-04-01", [(1100.0, 10)])
     march = _working(start, end)
     april = _working(nxt_start, nxt_end)
     march_vat = sum(l["vat"] for l in march["lines"] if "till" in l["source"])
@@ -157,6 +211,50 @@ def run():
     s.check("and each day is counted once across the boundary",
             abs((march_vat + april_vat) - 138.0) < 0.01,
             detail=f"{march_vat} + {april_vat}")
+
+    s.section("A closed day that cannot be read is named, not skipped")
+    # The old read caught the TypeError a band raised and moved on, so every
+    # closed day vanished and the page said nothing. A shape the till does not
+    # write must now be reported -- and still not guessed at.
+    bands = m.closure_vat_bands
+    s.check("the band shape the till writes reads back as bands",
+            bands('{"10.0": {"gross": 64.0, "vat": 5.82, "net": 58.18}}')
+            == {10.0: {"gross": 64.0, "vat": 5.82, "net": 58.18}})
+    s.check("a day that sold nothing is a reading, not a fault", bands("{}") == {})
+    for label, raw in (("a flat {rate: amount}", '{"10": 5.0}'),
+                       ("a band missing its VAT", '{"10": {"gross": 11.0, "net": 10.0}}'),
+                       ("a rate that is not a number", '{"food": {"gross": 1, "vat": 0, "net": 1}}'),
+                       ("a figure that is text", '{"10": {"gross": "11", "vat": 1, "net": 10}}'),
+                       ("NaN", '{"10": {"gross": 11, "vat": NaN, "net": 10}}'),
+                       ("a list", "[1, 2]"), ("not JSON", "{oops"), ("null", "null")):
+        s.check(f"{label} is unreadable", bands(raw) is None, detail=str(bands(raw)))
+
+    may, june = date(2031, 5, 1), date(2031, 6, 1)
+    _sealed_day("2031-05-14", [(110.0, 10)])
+    _hand_written_closure("2031-05-15", json.dumps({"10": 5.0}))
+    # A real close of a night nothing was sold: sealed as {}, and quiet.
+    conn = db()
+    m.pos_close_period(conn, "day", "2031-05-16")
+    conn.commit()
+    conn.close()
+    w_may = _working(may, june)
+    s.check("the unreadable day is named", w_may["unreadable_days"] == ["2031-05-15"],
+            detail=f"{w_may['unreadable_days']} — a closure the page cannot read "
+                   "must not look like a quiet night")
+    s.check("a quiet night is not", "2031-05-16" not in w_may["unreadable_days"])
+    s.check("it is still a closed day, not one 'never closed off'",
+            w_may["days_closed"] == 3 and "2031-05-15" not in w_may["unclosed_days"],
+            detail=f"closed {w_may['days_closed']}, unclosed {w_may['unclosed_days']}")
+    s.check("its figure is left out rather than guessed at",
+            abs(sum(l["vat"] for l in w_may["lines"] if l["exact"]) - 10.0) < 0.01,
+            detail=f"{[l for l in w_may['lines'] if l['exact']]}")
+    may_page = oc.get("/admin/vat?period=month&date=2031-05-15").get_data(as_text=True)
+    s.check("the page says so", "closed day in this period could not be read" in may_page,
+            detail="the warning is what stops a short figure going to the accountant")
+    s.check("and links to the day's cash-up", "/pos/day?date=2031-05-15" in may_page)
+    may_csv = oc.get("/admin/vat/export.csv?period=month&date=2031-05-15").get_data(as_text=True)
+    s.check("and so does the export, which arrives without the page",
+            "unreadable" in may_csv and "2031-05-15" in may_csv, detail=may_csv[-300:])
 
     s.section("VAT comes out of a gross price, not on top of it")
     # Prices here include VAT. times-the-rate would give 110 on 1100 at 10%.

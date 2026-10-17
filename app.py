@@ -8019,6 +8019,9 @@ def init_db():
     apply_room_facts_2026_10_15(conn)
     # And the view the old room form wiped, once.
     apply_room_views_2026_10_16(conn)
+    # And the names of 16 October, once, LAST: the three above find the rooms
+    # by the names they had before it.
+    apply_room_names_2026_10_16(conn)
 
     # WHERE THE GATES ARE.
     #
@@ -13281,12 +13284,14 @@ def guests_in_residence(conn, today):
 # Suite and the Twin/Double). Applied once, as a correction to the arbitrary
 # order the rooms were seeded in -- after that the Rooms page owns it and this
 # list is only a record of where it started. apply_room_lineup sets the same
-# order on a database that already had the old one.
+# order on a database that already had the old one. Under the names of 16
+# October (apply_room_names_2026_10_16): the King Room is the old Queen Room,
+# the King Suite the old King Room, the Marquis Suite the old Gold Suite.
 HOME_ROOM_ORDER = [
     "The Twin Room",
-    "The Queen Room",
     "The King Room",
-    "The Gold Suite",
+    "The King Suite",
+    "The Marquis Suite",
     "The Family Suite",
 ]
 
@@ -15833,7 +15838,7 @@ ON_REQUEST_NOTE = ("These dates are taken on request: send it, and the house "
 
 
 def default_closure_note(room_name, back_on_sale):
-    """'The Gold Suite reopens on 1 April.' -- back_on_sale is the first day
+    """'The Marquis Suite reopens on 1 April.' -- back_on_sale is the first day
     the room can be had again, as a closure's end_date is."""
     return f"{room_name} reopens on {format_date_short(back_on_sale)}."
 
@@ -21329,6 +21334,43 @@ def pos_closure_for(conn, kind, period):
                        (kind, period)).fetchone()
     return dict(row, vat=json.loads(row["vat_json"]),
                 by_method=json.loads(row["by_method_json"])) if row else None
+
+
+def closure_vat_bands(vat_json):
+    """A sealed closure's VAT as {rate: {"gross", "vat", "net"}}, or None.
+
+    pos_close_period seals each rate as a band of three figures. The VAT
+    working paper read them as a flat {rate: amount} instead: adding a band to
+    a number raised a TypeError, the TypeError was caught and skipped, and not
+    one closed till day reached the working paper -- with nothing on the page
+    to say so. So anything other than bands comes back as None, for the
+    caller to NAME, never as an empty map it would read as a quiet night.
+
+    An empty map is a day that sold nothing. That is a reading, not a fault.
+    """
+    try:
+        raw = json.loads(vat_json)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    bands = {}
+    for rate, band in raw.items():
+        try:
+            rate = float(rate)
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(band, dict):
+            return None
+        acc = bands.setdefault(rate, {"gross": 0.0, "vat": 0.0, "net": 0.0})
+        for k in acc:
+            v = band.get(k)
+            # bool is an int to Python; NaN and infinity are numbers to json.
+            if isinstance(v, bool) or not isinstance(v, (int, float)) \
+                    or not abs(v) < float("inf"):
+                return None
+            acc[k] = round(acc[k] + v, 2)
+    return bands
 
 
 def pos_lines_by_course(lines):
@@ -45338,10 +45380,13 @@ def export_vat_csv():
             for l in working["lines"]]
     # The caveat travels with the file. A CSV lands in an accountant's inbox
     # with none of the page around it.
+    unreadable = working["unreadable_days"]
     rows.append(_row(
         source="TOTAL", vat=working["total_vat"],
         basis=f"working paper, not a return; "
-              f"{counted(working['days_not_closed'], 'day')} in this period never closed off"))
+              f"{counted(working['days_not_closed'], 'day')} in this period never closed off"
+              + (f"; {counted(len(unreadable), 'closed day')} unreadable and not in "
+                 f"the till figures ({', '.join(unreadable)})" if unreadable else "")))
     return csv_response(fieldnames, rows, f"vat-working-{period['start_iso']}.csv")
 
 
@@ -50710,6 +50755,69 @@ def apply_room_views_2026_10_16(conn):
     return changed
 
 
+# The rooms renamed, on the owner's word of 16 October 2026 (handover z26): the
+# Queen Room has a king bed, so it is the King Room; the King Room with the bath
+# in it is the King Suite; the Gold Suite is the Marquis Suite. The Twin Room
+# and the Family Suite keep their names.
+#
+# Done here rather than left to the room admin because "The King Room" changes
+# MEANING -- it moves from the room with the bath to the old Queen Room -- and
+# the public templates match photographs and words to a room by its name. From
+# the moment z26's templates are served until the rows carry the new names, the
+# €380 room would show the other room's photographs. Renaming on the same boot
+# that first serves those templates leaves no such moment.
+#
+# In order, because the second takes the name the first gives up. Renamed, not
+# recreated, so bookings, photographs, blocks and reviews follow the row. Once,
+# by a flag, and NOT by matching the old name: after the run "The King Room" is
+# the old Queen Room, and a rename keyed on that name alone would make it the
+# King Suite on the next deploy. A room whose new name is already taken -- the
+# owner renamed it by hand first -- is left alone, and so is an old name two
+# rows answer to, rather than guessing which was meant.
+#
+# old name, new name, the name Booking.com lists it under. Booking.com mail is
+# matched to a room by its channel name first and its own name after, longest
+# first; "King Room with Mountain View" would otherwise find the new King Room
+# by name, which is the other room. Written only where the room has none, so a
+# channel name the owner has set is kept.
+ROOM_NAMES_2026_10_16 = [
+    ("The King Room", "The King Suite", "King Room with Mountain View"),
+    ("The Queen Room", "The King Room", "Queen"),
+    ("The Gold Suite", "The Marquis Suite", "Suite with Mountain View"),
+]
+
+
+def apply_room_names_2026_10_16(conn):
+    """Once: the three rooms renamed as the owner asked on 16 October 2026.
+    Returns how many rooms were renamed."""
+    if conn.execute("SELECT 1 FROM app_settings WHERE key = 'room_names_2026_10_16'").fetchone():
+        return 0
+    rows = conn.execute("SELECT id, name FROM rooms").fetchall()
+    ids = {}
+    for r in rows:
+        ids.setdefault(_room_key(r["name"]), []).append(r["id"])
+    changed = 0
+    for old, new, channel in ROOM_NAMES_2026_10_16:
+        found = ids.get(_room_key(old), [])
+        if len(found) != 1 or ids.get(_room_key(new)):
+            if len(found) > 1:
+                print(f"[rooms] {len(found)} rooms are called {old!r}; none renamed {new!r}")
+            continue
+        conn.execute(
+            """UPDATE rooms SET name = ?,
+                   channel_name = COALESCE(NULLIF(TRIM(channel_name), ''), ?)
+               WHERE id = ?""", (new, channel, found[0]))
+        ids.pop(_room_key(old))
+        ids[_room_key(new)] = found
+        changed += 1
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('room_names_2026_10_16', ?)",
+                 (datetime.now(timezone.utc).isoformat(),))
+    conn.commit()
+    if changed:
+        print(f"[rooms] the 16 October names: {changed} room(s) renamed")
+    return changed
+
+
 def dining_mode(conn):
     """'open', 'closed' (for the season) or 'hidden' (switched off). 'open' if unset.
 
@@ -54655,7 +54763,7 @@ SAMPLE_MERGE_VALUES = {
     "contact_name": "Marie Dubois",
     "name": "Marie Dubois",
     "reference_code": "GUD-4417",
-    "room_name": "The Gold Suite",
+    "room_name": "The Marquis Suite",
     "workshop_title": "Noël at Gudanes",
     "event_type": "wedding",
     "dates": "14 to 17 October 2026",
@@ -54680,7 +54788,7 @@ SAMPLE_MERGE_VALUES = {
     "balance_line": "Balance of \u20ac736.60 due by 30 September 2026.",
     "dietary_line": "No shellfish, and one guest is coeliac.",
     "refund_note": "Nothing has been charged.",
-    "what_for": "for your stay in The Gold Suite, 14 to 17 October 2026",
+    "what_for": "for your stay in The Marquis Suite, 14 to 17 October 2026",
     "period": ", 1 September 2026 to 30 September 2026",
     "refund_how": ("It is going back to the card you paid with. Banks usually take "
                    "five to ten working days to show it."),
@@ -59077,7 +59185,7 @@ def close_rooms_page():
     """Close rooms for dates, keep the closures as seasons, and set what a room
     asks of a stay in a run of dates -- all rooms on one calendar beneath.
 
-    Asked for as "a really easy way": the Gold Suite and the Family Suite over
+    Asked for as "a really easy way": the Marquis Suite and the Family Suite over
     the winter while the other three stay open. A block was one room, one
     form, on a page that drew five of them, with no way to say how a closed
     room shows and nothing to put the same winter back next year.
@@ -59093,9 +59201,11 @@ def close_rooms_page():
     conn = get_db()
     rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
     names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM rooms").fetchall()}
-    # The owner's two big rooms, by name, for the one-tick shortcut.
+    # The owner's two big rooms, by name, for the one-tick shortcut. The Gold
+    # Suite is the Marquis Suite since 16 October; either name is the big one.
     big_two = [r["id"] for r in rooms
-               if any(n in (r["name"] or "").lower() for n in ("gold suite", "family suite"))]
+               if any(n in (r["name"] or "").lower()
+                      for n in ("marquis suite", "gold suite", "family suite"))]
     closures = conn.execute(
         """SELECT room_blocks.*, rooms.name AS room_name, users.name AS by_name
              FROM room_blocks JOIN rooms ON rooms.id = room_blocks.room_id
@@ -97965,7 +98075,8 @@ def vat_working(conn, start, end, today=None):
         those streams yet -- booking_payments only fills in when Stripe is live.
 
     Days in the period that were never closed off are counted and reported, so
-    a short figure is visibly short rather than quietly wrong.
+    a short figure is visibly short rather than quietly wrong. So are closed
+    days whose sealed VAT cannot be read (closure_vat_bands).
 
     City tax is deliberately absent. Taxe de séjour is collected for the commune
     and is not the château's VATable revenue; it is stored apart from
@@ -97975,23 +98086,31 @@ def vat_working(conn, start, end, today=None):
     lines = []
 
     # ---- the till: read the sealed closures, per rate -------------------
+    # Each band's gross and net are sealed beside its VAT, so the line carries
+    # all three as they were closed rather than a VAT figure on its own.
     by_rate = {}
     closed_days = set()
+    unreadable_days = []
     for row in conn.execute(
         "SELECT period, vat_json FROM pos_closures WHERE kind = 'day' "
-        "AND period >= ? AND period < ?",
+        "AND period >= ? AND period < ? ORDER BY period",
         (s_iso, e_iso),
     ).fetchall():
         closed_days.add(row["period"])
-        try:
-            for rate, amount in (json.loads(row["vat_json"]) or {}).items():
-                by_rate[str(rate)] = round(by_rate.get(str(rate), 0) + (amount or 0), 2)
-        except (ValueError, TypeError):
+        bands = closure_vat_bands(row["vat_json"])
+        if bands is None:
+            # Closed, so not "never closed off" -- but not in the figure
+            # either, and named so that a short till total says it is short.
+            unreadable_days.append(row["period"])
             continue
-    for rate, vat in sorted(by_rate.items(), key=lambda kv: float(kv[0] or 0)):
+        for rate, band in bands.items():
+            acc = by_rate.setdefault(rate, {"gross": 0.0, "vat": 0.0, "net": 0.0})
+            for k in acc:
+                acc[k] = round(acc[k] + band[k], 2)
+    for rate, band in sorted(by_rate.items()):
         lines.append({
-            "source": f"Restaurant till — {float(rate):g}%", "rate": float(rate or 0),
-            "gross": None, "net": None, "vat": vat,
+            "source": f"Restaurant till — {rate:g}%", "rate": rate,
+            "gross": band["gross"], "net": band["net"], "vat": band["vat"],
             "basis": "sealed daily closure", "exact": True,
         })
 
@@ -98125,6 +98244,7 @@ def vat_working(conn, start, end, today=None):
         "estimated_vat": round(sum(l["vat"] for l in lines if not l["exact"]), 2),
         "days_in_period": span_days, "days_closed": len(closed_days),
         "days_not_closed": unclosed, "unclosed_days": unclosed_days,
+        "unreadable_days": unreadable_days,
     }
 
 

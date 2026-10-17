@@ -1419,12 +1419,17 @@ def repair_gold_suite_photograph():
     if not os.path.exists(os.path.join(ROOT, rel)):
         return 0
     src = _read(rel)
-    wrong = ('<img src="%s?format=1000w" alt="The Gold Suite' % KITCHEN_PHOTO)
-    if wrong not in src:
-        return 0
-    src = src.replace(wrong, '<img src="%s?format=1000w" alt="The Gold Suite' % GOLD_SUITE_PHOTO, 1)
-    _write(rel, src)
-    return 1
+    # The Marquis Suite since 16 October (z26); a zip built before then still
+    # calls it the Gold Suite.
+    n = 0
+    for name in ("The Gold Suite", "The Marquis Suite"):
+        wrong = '<img src="%s?format=1000w" alt="%s' % (KITCHEN_PHOTO, name)
+        if wrong in src:
+            src = src.replace(wrong, '<img src="%s?format=1000w" alt="%s' % (GOLD_SUITE_PHOTO, name), 1)
+            n += 1
+    if n:
+        _write(rel, src)
+    return n
 
 
 def repair_tour_is_an_extra():
@@ -1740,6 +1745,11 @@ PHRASE_CORRECTIONS = [
     (re.compile(r"\bWhat Is Free\b"), "What Is Available"),
     (re.compile(r"\bwhat else is free\b"), "what else is available"),
     (re.compile(r"\bwhat is free\b"), "what is available"),
+    # 15 October: the Twin Room's two beds are doubles (owner). z22 and z26
+    # both brought back "a twin room" as its line in _room_copy.html's
+    # room_note, the words a guest reads beside the room they are choosing.
+    (re.compile(r"'a twin room, with a private bathroom'"),
+     "'two double beds, with a private bathroom'"),
 ]
 _COMMENT_SPLIT = re.compile(r"(\{#.*?#\}|<!--.*?-->)", re.S)
 
