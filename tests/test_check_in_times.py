@@ -60,18 +60,29 @@ def typed_stay_times(text):
     return out
 
 
-def _lodging(page):
-    """The first LodgingBusiness in a page's JSON-LD, top level or as a
-    ContactPage's mainEntity, or None."""
+LODGING_TYPES = ("LodgingBusiness", "Hotel")
+
+
+def _lodgings(page):
+    """Every LodgingBusiness or Hotel in a page's JSON-LD, top level or as a
+    ContactPage's mainEntity. The Stay page carries its own Hotel beside the
+    sitewide LodgingBusiness, under the same @id, so both make the claim."""
+    found = []
     for block in re.findall(r'<script type="application/ld\+json">(.*?)</script>', page, re.S):
         try:
             data = json.loads(block)
         except ValueError:
             continue
         for item in (data, data.get("mainEntity") if isinstance(data, dict) else None):
-            if isinstance(item, dict) and item.get("@type") == "LodgingBusiness":
-                return item
-    return None
+            if isinstance(item, dict) and item.get("@type") in LODGING_TYPES:
+                found.append(item)
+    return found
+
+
+def _lodging(page):
+    """The first of them, or None."""
+    found = _lodgings(page)
+    return found[0] if found else None
 
 
 def _home(conn):
@@ -177,21 +188,25 @@ def _checks(s, oc, conn):
     # scripts, so a typed "15:00" in the JSON-LD would pass it: checked here.
     # A visitor, not the owner: "/" is the dashboard to anyone signed in.
     guest = m.app.test_client()
-    for url in ("/", "/contact"):
-        lodging = _lodging(guest.get(url).get_data(as_text=True))
-        s.check(f"{url}: the LodgingBusiness says check-in 15:00, check-out 10:00",
-                lodging is not None and lodging.get("checkinTime") == m.CHECK_IN_TIME
-                and lodging.get("checkoutTime") == m.CHECK_OUT_TIME,
-                detail=str(lodging and {k: lodging.get(k) for k in ("checkinTime", "checkoutTime")}))
+    # /book carries a Hotel of its own as well as the sitewide one (z28).
+    pages = ("/", "/contact", "/book")
+    for url in pages:
+        found = _lodgings(guest.get(url).get_data(as_text=True))
+        s.check(f"{url}: every LodgingBusiness and Hotel says check-in 15:00, check-out 10:00",
+                found and all(x.get("checkinTime") == m.CHECK_IN_TIME
+                              and x.get("checkoutTime") == m.CHECK_OUT_TIME for x in found),
+                detail=str([(x.get("@type"), x.get("checkinTime"), x.get("checkoutTime"))
+                            for x in found]))
     was = (m.app.jinja_env.globals["check_in_time"], m.app.jinja_env.globals["check_out_time"])
     m.app.jinja_env.globals["check_in_time"], m.app.jinja_env.globals["check_out_time"] = "16:00", "11:00"
     try:
-        moved = [_lodging(guest.get(u).get_data(as_text=True)) for u in ("/", "/contact")]
+        moved = [x for u in pages for x in _lodgings(guest.get(u).get_data(as_text=True))]
     finally:
         m.app.jinja_env.globals["check_in_time"], m.app.jinja_env.globals["check_out_time"] = was
-    s.check("change the value and the structured data follows, on both pages",
-            all(x and x.get("checkinTime") == "16:00" and x.get("checkoutTime") == "11:00"
-                for x in moved), detail=str(moved and [x and x.get("checkinTime") for x in moved]))
+    s.check("change the value and the structured data follows, on every page",
+            len(moved) >= len(pages)
+            and all(x.get("checkinTime") == "16:00" and x.get("checkoutTime") == "11:00"
+                    for x in moved), detail=str([x.get("checkinTime") for x in moved]))
     s.check("the reader finds a LodgingBusiness when there is one, and only then",
             _lodging('<script type="application/ld+json">{"@type":"LodgingBusiness","checkinTime":"9"}</script>')
             == {"@type": "LodgingBusiness", "checkinTime": "9"}
