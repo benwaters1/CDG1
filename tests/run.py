@@ -499,6 +499,8 @@ SUITES = [
     "test_house_calendar",
     "test_house_calendar_default",
     "test_calendar_cards",
+    # Dates for the house -- the school holidays -- 17 October 2026.
+    "test_house_dates",
     # Brief of 15 October 2026.
     "test_tech_email",
     "test_staff_accounts",

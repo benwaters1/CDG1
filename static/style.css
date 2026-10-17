@@ -765,6 +765,7 @@ body.staff-shell a.mini-row:hover{
 .lane-badge.lane-event{ background:var(--status-danger-bg); color:var(--danger); }
 .lane-badge.lane-shift{ background:var(--status-neutral-bg); color:var(--steel-deep); }
 .lane-badge.lane-extra{ background:var(--cal-extra-bg); color:var(--cal-extra-ink); }
+.lane-badge.lane-date{ background:var(--status-neutral-bg); color:var(--gold-on-warn); }
 .origin-badge{ font-size:10.5px; color:var(--ink-soft); }
 .overview-filters{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
 .overview-filters select, .overview-filters input[type="text"]{ font-size:12.5px; padding:5px 8px; }
@@ -1558,6 +1559,10 @@ button.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-sh
   .cal-card{ padding:0 16px 18px; }
   .cal-month .cal-ev-badge{ display:none; }
 }
+/* Dates for the house (school holidays, a market): context, not work, so
+   the quietest fill with a rule down the side to tell it from a task. */
+.cal-ev-date{ background:var(--status-neutral-bg); box-shadow:inset 3px 0 0 var(--gold-on-warn); }
+.cal-ev-date .cal-ev-dot, .cal-ev-dot.cal-ev-date{ background:var(--gold-on-warn); }
 
 .cal-more{ font-size:10.5px; color:var(--steel); text-decoration:none; padding-left:6px; }
 .cal-more:hover{ text-decoration:underline; }
