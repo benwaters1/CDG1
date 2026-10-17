@@ -45,8 +45,10 @@
 (function(){
   var box=document.querySelector('[data-pick]'); if(!box) return;
   /* 15 Oct (owner): one or two -> the room by bed; three or four -> two rooms; six or more -> a private stay.
-     Five -> the Family Suite (two adults, three children) or three rooms. The Queen Room has a king bed now, so
-     the bed is read from the room's NAME, not its text (both would say "king"). */
+     Five -> the Family Suite (two adults, three children) or three rooms. The King Room has a king bed now, so
+     the bed is read from the room's NAME, not its text (both would say "king").
+     16 Oct (owner): renamed - the King Suite is the king with the bath, the King Room (the old Queen Room) the
+     king, the Marquis Suite (the old Gold Suite) the emperor. "king suite" is asked first: both say "king". */
   var R=[
   {%- for r in rooms %}
    {n:{{ (r['name'] or '')|tojson }},
@@ -54,7 +56,7 @@
   {%- endfor %}
   ];
   R.forEach(function(r){ var t=r.n.toLowerCase();
-    r.bed = /king/.test(t)?'kingbath' : /queen/.test(t)?'king' : /twin/.test(t)?'twin' : /gold/.test(t)?'emperor' : /family/.test(t)?'family' : ''; });
+    r.bed = /king suite/.test(t)?'kingbath' : /king|queen/.test(t)?'king' : /twin/.test(t)?'twin' : /marquis|gold/.test(t)?'emperor' : /family/.test(t)?'family' : ''; });
   var WHY={king:'it has a king bed', twin:'it has two separate beds', kingbath:'it has a king bed, with a bath in the room', emperor:'it has the biggest bed in the house, an emperor'};
   var BATH=' Every room has its own private bathroom, on the ground floor.';
   var STAY={{ url_for('book_rooms')|tojson }}, PRIVATE={{ url_for('events_private')|tojson }};

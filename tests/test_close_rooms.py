@@ -37,7 +37,8 @@ def _rooms():
         rows = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
     finally:
         conn.close()
-    big = [r for r in rows if any(n in r["name"].lower() for n in ("gold suite", "family suite"))]
+    # The Gold Suite is the Marquis Suite since 16 October.
+    big = [r for r in rows if any(n in r["name"].lower() for n in ("marquis suite", "family suite"))]
     rest = [r for r in rows if r not in big]
     return (big if len(big) == 2 else rows[:2]), (rest or rows[2:])
 
@@ -89,7 +90,7 @@ def run():
     s.check("the page opens", page.status_code == 200, page)
     body = page.get_data(as_text=True)
     s.check("with the shortcut for the two big rooms",
-            len(big) < 2 or "The Gold Suite and the Family Suite" in body
+            len(big) < 2 or "The Marquis Suite and the Family Suite" in body
             or not all("suite" in r["name"].lower() for r in big))
     r = oc.post("/admin/rooms/close", data={
         "room_id": [str(x["id"]) for x in big], "start_date": first.isoformat(),

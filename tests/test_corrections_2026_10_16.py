@@ -33,13 +33,17 @@ def run():
     s = Suite("Put right once, 16 October")
     conn = db()
     put_letters = keep_rows(conn, "email_templates", "template_key = 'room_confirmed'")
-    # The room's view only, put back by UPDATE: keep_rows deletes and re-inserts,
-    # and a room row is what its bookings and photographs hang from.
-    was = conn.execute("SELECT id, outlook FROM rooms WHERE name = 'The Gold Suite'").fetchone()
+    # The room's view and name only, put back by UPDATE: keep_rows deletes and
+    # re-inserts, and a room row is what its bookings and photographs hang from.
+    # The Gold Suite is the Marquis Suite since the names of 16 October, which
+    # run after this on every boot; the view is put back under the name it had.
+    was = conn.execute("SELECT id, name, outlook FROM rooms WHERE name IN "
+                       "('The Marquis Suite', 'The Gold Suite')").fetchone()
 
     def put_rooms():
         if was:
-            conn.execute("UPDATE rooms SET outlook = ? WHERE id = ?", (was["outlook"], was["id"]))
+            conn.execute("UPDATE rooms SET name = ?, outlook = ? WHERE id = ?",
+                         (was["name"], was["outlook"], was["id"]))
             conn.commit()
     put_flags = keep_rows(conn, "app_settings",
                           "key IN ('letter_words_2026_10_16', 'room_views_2026_10_16')")
@@ -76,11 +80,13 @@ def run():
                              "'room_confirmed'").fetchone()["body"] == OLD_LETTER)
 
         s.section("The Gold Suite's view")
-        gold = conn.execute("SELECT id FROM rooms WHERE name = 'The Gold Suite'").fetchone()
+        gold = was
         if not gold:
-            s.check("there is a Gold Suite to put it back on", False,
+            s.check("there is a Gold Suite (the Marquis Suite) to put it back on", False,
                     detail="reported rather than skipped")
         else:
+            # Under the name the 16 October rename found it by.
+            conn.execute("UPDATE rooms SET name = 'The Gold Suite' WHERE id = ?", (gold["id"],))
             conn.execute("DELETE FROM app_settings WHERE key = 'room_views_2026_10_16'")
             conn.execute("UPDATE rooms SET outlook = NULL WHERE id = ?", (gold["id"],))
             conn.commit()

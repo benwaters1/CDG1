@@ -67,6 +67,9 @@ FR = {
     'day in this period was never closed off.': "jour de cette période n'a jamais été clôturé.",
     'days in this period were never closed off.': "jours de cette période n'ont jamais été clôturés.",
     'Their takings are not in the till figures below. Close them on the Cash up page and this number will change.': 'Leurs recettes ne figurent pas dans les chiffres de caisse ci-dessous. Clôturez-les sur la page Clôture de caisse et ce nombre changera.',
+    'closed day in this period could not be read.': "jour clôturé de cette période n'a pas pu être lu.",
+    'closed days in this period could not be read.': "jours clôturés de cette période n'ont pas pu être lus.",
+    'Their sealed VAT is not in the form the till writes, so it is left out of the till figures below rather than guessed at. Have it looked at before these figures go to your accountant.': "Leur TVA scellée n'est pas sous la forme qu'écrit la caisse : elle est donc laissée hors des chiffres de caisse ci-dessous plutôt que devinée. Faites-la vérifier avant de transmettre ces chiffres à votre comptable.",
     'Set on the Rates page. Only your accountant can confirm which apply here — a wrong rate is charged to every guest until somebody notices.': "Définis sur la page Taux. Seul votre comptable peut confirmer lesquels s'appliquent ici : un mauvais taux est facturé à chaque client jusqu'à ce que quelqu'un le remarque.",
     'Taxe de séjour is not on this page. It is collected for the commune rather than earned by the château, and it is held apart from room prices — so nothing here includes it.': "La taxe de séjour ne figure pas ici. Elle est collectée pour la commune et non gagnée par le château, et elle est tenue à part du prix des chambres : rien ici ne l'inclut.",
     # The till bar.
@@ -789,6 +792,9 @@ ES = {
     'day in this period was never closed off.': 'día de este período nunca se cerró.',
     'days in this period were never closed off.': 'días de este período nunca se cerraron.',
     'Their takings are not in the till figures below. Close them on the Cash up page and this number will change.': 'Sus ingresos no están en las cifras de caja de abajo. Ciérrelos en la página de Cierre de caja y este número cambiará.',
+    'closed day in this period could not be read.': 'día cerrado de este período no se pudo leer.',
+    'closed days in this period could not be read.': 'días cerrados de este período no se pudieron leer.',
+    'Their sealed VAT is not in the form the till writes, so it is left out of the till figures below rather than guessed at. Have it looked at before these figures go to your accountant.': 'Su IVA sellado no tiene la forma que escribe la caja, así que queda fuera de las cifras de caja de abajo en lugar de suponerse. Hágalo revisar antes de enviar estas cifras a su gestor.',
     'Set on the Rates page. Only your accountant can confirm which apply here — a wrong rate is charged to every guest until somebody notices.': 'Definidos en la página Tipos. Solo su contable puede confirmar cuáles aplican aquí: un tipo erróneo se cobra a cada huésped hasta que alguien lo note.',
     'Taxe de séjour is not on this page. It is collected for the commune rather than earned by the château, and it is held apart from room prices — so nothing here includes it.': 'La tasa turística no aparece aquí. Se recauda para el municipio y no la gana el château, y se mantiene aparte del precio de las habitaciones: nada aquí la incluye.',
     # The till bar.

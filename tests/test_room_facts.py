@@ -165,14 +165,17 @@ def run():
                 detail=str(m.room_amenity_keys(_room(conn, TAG + " Suite"))))
 
         s.section("The owner's corrections of 15 October are on the rooms")
+        # The Queen Room is the King Room since 16 October (apply_room_names_2026_10_16).
         twin, queen, family = (_room(conn, n) for n in
-                               ("The Twin Room", "The Queen Room", "The Family Suite"))
+                               ("The Twin Room", "The King Room", "The Family Suite"))
+        s.check("the three rooms are there to be checked", twin and queen and family,
+                detail="reported rather than skipped")
         if twin:
             s.check("the Twin Room's two beds are doubles, and it sleeps two",
                     twin["bed_setup"] == "Two double beds" and twin["max_occupancy"] == 2,
                     detail=f"{twin['bed_setup']!r}, sleeps {twin['max_occupancy']}")
         if queen:
-            s.check("the Queen Room's bed is a king", queen["bed_setup"] == "King bed",
+            s.check("the King Room's bed (the old Queen Room's) is a king", queen["bed_setup"] == "King bed",
                     detail=repr(queen["bed_setup"]))
         if family:
             s.check("the Family Suite is two adults and three children",
@@ -197,7 +200,7 @@ def run():
         s.section("The guest's own page says one thing")
         if queen:
             text = visible_text(anon.get(f"/book/{queen['id']}").get_data(as_text=True))
-            s.check("the Queen Room's page says a king bed and no queen bed",
+            s.check("the King Room's page says a king bed and no queen bed",
                     "King bed" in text and "Queen bed" not in text and "queen bed" not in text,
                     detail=text[:200])
             s.check("and no 'Shared bathroom' under its private one",
