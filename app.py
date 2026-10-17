@@ -1419,7 +1419,10 @@ def terminal_collect_payment(conn, order_id, total, description, reader_id):
             payment_method_types=["card_present"],
             capture_method="automatic",
             description=description,
-            metadata={"pos_order_id": str(order_id)},
+            # `kind` marks it as the till's own. The account is shared with
+            # other integrations, and the webhook that records a tap nobody
+            # polled for acts only on a charge it can tell is ours.
+            metadata={"pos_order_id": str(order_id), "kind": "pos_reader"},
         )
     except Exception as e:
         return None, f"Couldn't start the payment: {e}"
@@ -41063,6 +41066,16 @@ def pos_reader_record(conn, order_id, intent_id, intent, *, user_id=None):
         return {"state": "succeeded", "message": "That card payment is already recorded.",
                 "settled": bool(now) and now["status"] != "open", "paid_twice": False,
                 "recorded": 0.0}
+    return pos_reader_write(conn, order_id, intent_id, intent, user_id=user_id)
+
+
+def pos_reader_write(conn, order_id, intent_id, intent, *, user_id=None):
+    """Put one reader charge on the books, for the tab it was raised on.
+
+    The caller has already made sure it is not there: pos_reader_record by
+    claiming it off the tab, the Stripe webhook by holding the write lock
+    while it looked. Commits, or rolls back if Stripe gave no amount.
+    """
     lands_on = pos_follow_merges(conn, order_id)
     tab = conn.execute("SELECT status, table_label FROM pos_orders WHERE id = ?",
                        (lands_on,)).fetchone()
@@ -41100,6 +41113,88 @@ def pos_reader_record(conn, order_id, intent_id, intent, *, user_id=None):
             "message": f"{money(taken)} was taken on the reader after this bill had "
                        "been settled another way. It is on the books — refund it "
                        "from Stripe if the guest has paid twice."}
+
+
+def pos_reader_charge_from_webhook(conn, intent):
+    """Stripe's report of a charge taken on the reader, put on the books.
+
+    The till only finds out about a tap by asking -- the page's poll, Cancel,
+    or the owner's Check the reader -- and a till page closed, asleep or out
+    of signal asks nobody. Stripe sends payment_intent.succeeded whatever the
+    till is doing, so this is the backstop.
+
+    It writes through the poll's own claim. A tab still carrying the charge
+    has it claimed off and written by pos_reader_record, so the poll and this
+    arriving together write one row between them, and a retried event finds
+    nothing left to claim. A charge on no tab and not on the books is one that
+    left its tab without Stripe's answer -- the owner let it go while Stripe
+    could not be asked -- and the guest had tapped after all. It goes on the
+    tab it was raised for, following any merge since, and a tab settled
+    meanwhile shows it took more than it came to. Nothing is refunded here.
+
+    Every PaymentIntent on the account fires the event: room checkouts, the QR
+    link, and the other integrations sharing the account. Only a card_present
+    charge naming a tab is looked at, and one on no tab is acted on only if it
+    is the till's own -- marked so when it was made, or let go on the record.
+    Returns a short note for the log.
+    """
+    def note(answer):
+        if answer["paid_twice"]:
+            return "recorded, on a bill already settled"
+        if answer["recorded"]:
+            return "recorded"
+        return "already recorded" if answer["state"] == "succeeded" else answer["state"]
+
+    intent_id = sval(intent, "id") or ""
+    raised_on = (smeta(intent).get("pos_order_id") or "").strip()
+    if (sval(intent, "status") != "succeeded" or not intent_id.startswith("pi_")
+            or "card_present" not in list(sval(intent, "payment_method_types") or [])
+            or not raised_on.isdigit()):
+        return "not a reader charge"
+    raised_on = int(raised_on)
+    # Under the write lock from the first read: a poll's claim waits for this
+    # and then finds the charge gone, and two deliveries of one event cannot
+    # both find it missing.
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+    carrier = conn.execute(
+        "SELECT id FROM pos_orders WHERE payment_intent_id = ? "
+        "ORDER BY id = ? DESC, id LIMIT 1", (intent_id, raised_on)).fetchone()
+    if carrier:
+        return note(pos_reader_record(conn, carrier["id"], intent_id, intent))
+    if pos_reader_charge_recorded(conn, intent_id):
+        conn.commit()
+        return "already recorded"
+    ours = (smeta(intent).get("kind") == "pos_reader" or conn.execute(
+        "SELECT 1 FROM audit_log WHERE action = 'pos_reader_let_go_unchecked' "
+        "AND substr(details, 1, ?) = ?", (len(intent_id) + 1, intent_id + " ")).fetchone())
+    if not ours:
+        conn.rollback()
+        return "not the till's charge"
+    taken = round((sval(intent, "amount_received") or 0) / 100.0, 2)
+    tab = conn.execute("SELECT table_label FROM pos_orders WHERE id = ?",
+                       (raised_on,)).fetchone()
+    if not tab:
+        # The till's own charge, for a tab that is not here. Nowhere to put
+        # it, so it goes in front of the owner rather than into a log -- once,
+        # however often Stripe sends it.
+        if not conn.execute("SELECT 1 FROM tasks WHERE origin = 'payment' AND instr(notes, ?)",
+                            (intent_id,)).fetchone():
+            conn.execute(
+                """INSERT INTO tasks (title, notes, priority, due_date, status,
+                     origin, created_at)
+                   VALUES (?, ?, 'high', ?, 'open', 'payment', ?)""",
+                (f"{money(taken)} taken on the card reader for no tab",
+                 f"Stripe reports a card payment on the till's reader for tab {raised_on}, "
+                 "which is not in the till. It is not on the books. Find the table it "
+                 f"was for and record it there, or refund it from Stripe. Stripe id {intent_id}.",
+                 service_day_iso(), datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        return "no such tab"
+    log_audit(conn, "pos_reader_charge_reported", target=tab["table_label"],
+              details=f"{money(taken)} · {intent_id} · on no tab when Stripe reported it",
+              actor=None)
+    return note(pos_reader_write(conn, raised_on, intent_id, intent))
 
 
 @app.route("/pos/<int:order_id>/card-status")
@@ -41143,8 +41238,19 @@ def pos_cancel_card(order_id):
         conn.close()
         abort(404)
     if not order["payment_intent_id"]:
+        # Most often because the tap was recorded a moment before the press
+        # -- by Stripe's own report, with no poll needed. "Nothing waiting"
+        # alone reads as "the card did not go through", and the next thing a
+        # waiter does with that is take the bill again in cash.
+        just_paid = conn.execute(
+            "SELECT amount FROM pos_payments WHERE order_id = ? AND method = 'card_terminal' "
+            "AND created_at >= ? ORDER BY id DESC LIMIT 1",
+            (order_id, (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat())
+        ).fetchone()
         conn.close()
-        flash("There was no card payment waiting on the reader.", "success")
+        flash(f"The guest's card payment had already gone through: {money(just_paid['amount'])} "
+              "is on the bill." if just_paid
+              else "There was no card payment waiting on the reader.", "success")
         return redirect(url_for("pos_order", order_id=order_id))
     who = current_user()
     answer = pos_reader_settle(conn, order_id, stop=True, user_id=who["id"] if who else None)
@@ -49196,6 +49302,29 @@ def stripe_webhook():
                     record_refund_from_stripe(conn, r)
             else:
                 record_refund_from_stripe(conn, obj)
+        except Exception as e:
+            print(f"[stripe webhook] {event['type']} failed: {e}")
+            raise
+        finally:
+            conn.close()
+
+    elif event["type"] == "payment_intent.succeeded":
+        # A tap on the till's card reader. The till records it by asking
+        # Stripe from an open page, and nothing asks once that page is shut;
+        # this is the report that arrives either way. Every other kind of
+        # payment fires it too and is left to its own event above.
+        intent = event["data"]["object"]
+        conn = get_db()
+        try:
+            note = pos_reader_charge_from_webhook(conn, intent)
+            if note not in ("not a reader charge", "not the till's charge"):
+                print(f"[stripe webhook] reader charge {sval(intent, 'id')}: {note}")
+        except sqlite3.IntegrityError:
+            # Another path wrote it first. The claim should make that
+            # impossible; the unique index on the reader's payments is the
+            # last word if it does not, and either way the charge is on the
+            # books once, which is what Stripe needs to hear.
+            conn.rollback()
         except Exception as e:
             print(f"[stripe webhook] {event['type']} failed: {e}")
             raise
