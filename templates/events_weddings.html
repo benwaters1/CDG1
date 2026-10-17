@@ -130,7 +130,7 @@
     <li><figure><img src="{{ src }}" alt="{{ alt }}" loading="lazy"></figure></li>
     {%- endfor %}
   </ul>
-  <p class="g-p"><a class="g-btn" href="{{ url_for('book_rooms') }}#rooms">See all five rooms</a></p>
+  <p class="g-p"><a class="g-btn" href="{{ url_for('book_rooms') }}#rooms">See all {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} rooms</a></p>
 </div></section>
 
 {{ nearby_stays(heading='Where Your Wedding Guests Stay', intro='Fifteen of your guests stay at the château itself. For the rest of your party, three lovely places close by, the nearest at the foot of the drive.', fr='Vos invités', fr_en='Your guests') }}

@@ -104,7 +104,7 @@
     </div>
     <div class="g-key__i">
       <p class="g-key__k">Guest rooms</p>
-      <p class="g-key__v">Five</p>
+      <p class="g-key__v">{{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five')|capitalize }}</p>
     </div>
     <div class="g-key__i">
       <p class="g-key__k">The Owners</p>

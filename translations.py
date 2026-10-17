@@ -304,6 +304,10 @@ FR = {
     "Dining only — a table at La Table": "Dîner seulement — une table à La Table",
     "Five rooms · from €{price} a night · breakfast included": "Cinq chambres · à partir de {price} € la nuit · petit-déjeuner compris",
     "Five rooms · breakfast included": "Cinq chambres · petit-déjeuner compris",
+    # 17 Oct: a sixth room. The templates ask for "<count> rooms · ..." from house_rooms, so both are here.
+    "Six rooms · breakfast included": "Six chambres · petit-déjeuner compris",
+    "Six rooms · from one night": "Six chambres · dès une nuit",
+    "Six rooms · from €{price} a night · breakfast included": "Six chambres · à partir de {price} € la nuit · petit-déjeuner compris",
     "A room and breakfast, your own dates": "Une chambre et le petit-déjeuner, à vos dates",
     "Five rooms · from one night": "Cinq chambres · dès une nuit",
     "Cooking, the brocantes and the restoration": "La cuisine, les brocantes et la restauration",
@@ -1028,6 +1032,10 @@ ES = {
     "Dining only — a table at La Table": "Solo cena — una mesa en La Table",
     "Five rooms · from €{price} a night · breakfast included": "Cinco habitaciones · desde {price} € la noche · desayuno incluido",
     "Five rooms · breakfast included": "Cinco habitaciones · desayuno incluido",
+    # 17 Oct: a sixth room (see FR).
+    "Six rooms · breakfast included": "Seis habitaciones · desayuno incluido",
+    "Six rooms · from one night": "Seis habitaciones · desde una noche",
+    "Six rooms · from €{price} a night · breakfast included": "Seis habitaciones · desde {price} € la noche · desayuno incluido",
     "A room and breakfast, your own dates": "Habitación y desayuno, en sus fechas",
     "Five rooms · from one night": "Cinco habitaciones · desde una noche",
     "Cooking, the brocantes and the restoration": "La cocina, las brocantes y la restauración",

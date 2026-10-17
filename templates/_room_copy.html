@@ -21,7 +21,8 @@
   'The King Room':   'A king bed in the Chambre Olympe de Gouges, one of the few rooms whose floor and ceiling survived. Before the restoration its hallway had caved in and the room could not be reached; its original slate floor was lifted and kept safe.',
   'The King Suite':    'A king bed beneath a four-poster canopy, with a bath and a basin in the room itself.',
   'The Marquis Suite':   'A gilded four-poster with an emperor bed, and armchairs by the fireplace, within walls left as they were found.',
-  'The Family Suite': 'Two bedrooms for a family, the Chambre Bleue and the Chambre des Fleurs. In one of them the original wallpaper has been printed anew by the company that first made it, from its original templates. Children of eight and over are welcome.'
+  'The Family Suite': 'Two bedrooms for a family, the Chambre Bleue and the Chambre des Fleurs. In one of them the original wallpaper has been printed anew by the company that first made it, from its original templates. Children of eight and over are welcome.',
+  'The Twin Room (Ground Floor)': 'A queen bed and a double bed, with a private bathroom of its own next door. On the ground floor, though still reached by stairs.'
 } -%}
 {{- RM_DESC.get(name) or fallback -}}
 {%- endmacro %}
@@ -47,7 +48,30 @@
   'The King Room':   'a king bed, with a private bathroom',
   'The King Suite':    'a king bed, with a bath in the room',
   'The Marquis Suite':   'an emperor bed, with a private bathroom',
-  'The Family Suite': 'for a family, with a private bathroom'
+  'The Family Suite': 'for a family, with a private bathroom',
+  'The Twin Room (Ground Floor)': 'a queen bed and a double bed, with a private bathroom next door'
 } -%}
 {{- MAP.get(db_name, '') -}}
+{%- endmacro %}
+
+{#- 17 Oct (owner): a sixth room, The Twin Room (Ground Floor) - a queen and a double, sleeps 2, mountain view, EUR270, open
+    in winter. It is on the ground floor but STILL REACHED BY STAIRS (owner: "make that clear"), so nothing may call it
+    step-free, and its private bathroom is next door rather than downstairs. No more than five rooms are let on any one
+    night (the chambres d'hotes limit; owner's choice of 17 Oct) - that is enforced by the app, not by these pages.
+    Where its bathroom is and how it is reached are said by the two macros below, so every page says the same thing.
+    Keyed on the name like the rest of this file; FOR-CODE (z28 note): a bathroom_where column would replace it. -#}
+{# Where the room's bathroom is, in a few words: "next door" or "on the ground floor". #}
+{% macro room_bath_where(db_name) -%}
+{{- 'next door' if db_name in ['The Twin Room (Ground Floor)'] else 'on the ground floor' -}}
+{%- endmacro %}
+
+{# The bathroom line on a room card: the column decides private or shared, the room decides where. #}
+{% macro room_bath(db_name, bathroom) -%}
+{%- if (bathroom or '')|lower == 'private' -%}Private bathroom, {{ room_bath_where(db_name) }}
+{%- elif bathroom -%}{{ bathroom|capitalize }} bathroom{%- endif -%}
+{%- endmacro %}
+
+{# How the room is reached. Every bedroom is reached by stairs, the ground-floor one included. #}
+{% macro room_stairs(db_name) -%}
+{{- 'No lift; on the ground floor, but still reached by stairs' if db_name in ['The Twin Room (Ground Floor)'] else 'No lift; the bedrooms are on the top floor' -}}
 {%- endmacro %}

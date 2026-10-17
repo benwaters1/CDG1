@@ -73,7 +73,7 @@
     <p class="g-p">
       The rooms that are finished are open to guests, and that is what pays
       for the rest of it.
-      <a href="{{ url_for('book_rooms') }}">The five that are ready</a>, or
+      <a href="{{ url_for('book_rooms') }}">The {{ (house_rooms.count_word if house_rooms and house_rooms.count_word else 'five') }} open to guests</a>, or
       <a href="{{ url_for('workshops_public') }}">the ateliers, where you work
       on the building yourself</a>.
     </p>
