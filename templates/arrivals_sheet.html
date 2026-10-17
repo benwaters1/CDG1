@@ -184,7 +184,7 @@
         <td>arriving</td>
         <td>{{ st['room_name'] or 'not stated' }}</td>
         <td>{{ st['party_size'] or 'not stated' }}</td>
-        <td>{% if can('management_booking_com') %}<a href="{{ url_for('management_booking_com', q=st['reference_code']) }}" class="small-link">{{ st['reference_code'] }}</a>{% else %}{{ st['reference_code'] }}{% endif %}</td>
+        <td>{% if not st['reference_code'] %}<span class="upload-hint">only on Booking.com's calendar</span>{% elif can('management_booking_com') %}<a href="{{ url_for('management_booking_com', q=st['reference_code']) }}" class="small-link">{{ st['reference_code'] }}</a>{% else %}{{ st['reference_code'] }}{% endif %}</td>
       </tr>
       {% endfor %}
       {% for st in sheet.channel_leaving %}
@@ -193,7 +193,7 @@
         <td>leaving</td>
         <td>{{ st['room_name'] or 'not stated' }}</td>
         <td>{{ st['party_size'] or 'not stated' }}</td>
-        <td>{% if can('management_booking_com') %}<a href="{{ url_for('management_booking_com', q=st['reference_code']) }}" class="small-link">{{ st['reference_code'] }}</a>{% else %}{{ st['reference_code'] }}{% endif %}</td>
+        <td>{% if not st['reference_code'] %}<span class="upload-hint">only on Booking.com's calendar</span>{% elif can('management_booking_com') %}<a href="{{ url_for('management_booking_com', q=st['reference_code']) }}" class="small-link">{{ st['reference_code'] }}</a>{% else %}{{ st['reference_code'] }}{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

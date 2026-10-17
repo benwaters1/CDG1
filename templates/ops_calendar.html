@@ -15,7 +15,7 @@
    to land on a 403. #}
 {% macro event_chip(e, compact=False) %}
 {% set tag = 'a' if e.link else 'button' %}
-<{{ tag }} class="cal-ev cal-ev-{{ e.lane }} {{ 'cal-ev-pending' if e.status in ('pending', 'requested', 'held') }} {{ 'cal-ev-done' if (e.kind == 'task' and e.status == 'done') or (e.kind == 'extra' and e.status == 'delivered') }} {{ 'cal-ev-overdue' if (e.kind == 'task' and e.status != 'done' and e.date and e.date < today.isoformat()) or e.overdue }}"
+<{{ tag }} class="cal-ev cal-ev-{{ e.lane }} {{ 'cal-ev-channel' if e.channel }} {{ 'cal-ev-pending' if e.status in ('pending', 'requested', 'held') }} {{ 'cal-ev-done' if (e.kind == 'task' and e.status == 'done') or (e.kind == 'extra' and e.status == 'delivered') }} {{ 'cal-ev-overdue' if (e.kind == 'task' and e.status != 'done' and e.date and e.date < today.isoformat()) or e.overdue }}"
    {% if e.link %}href="{{ e.link }}"{% else %}type="button"{% endif %}
    data-card="{{ e.card }}"
    data-lane="{{ e.lane }}"
@@ -113,7 +113,7 @@
 
 <div class="cal-filters" id="cal-filters">
   <span class="cal-filter-label">Show</span>
-  {% for key, label in [('booking','Bookings'), ('extra','Extras'), ('restaurant','Restaurant'), ('workshop','Workshops'), ('event','Events'), ('task','Staff tasks'), ('shift','Rota'), ('owner','My tasks')] %}
+  {% for key, label in [('booking','Bookings'), ('extra','Extras'), ('restaurant','Restaurant'), ('workshop','Workshops'), ('event','Events'), ('task','Staff tasks'), ('shift','Rota'), ('date','Dates'), ('owner','My tasks')] %}
   <button type="button" class="cal-chip is-on" data-filter-lane="{{ key }}" onclick="toggleCalLane(this)">
     <span class="cal-ev-dot cal-ev-{{ key }}"></span>{{ label }}
   </button>

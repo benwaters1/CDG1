@@ -499,6 +499,8 @@ SUITES = [
     "test_house_calendar",
     "test_house_calendar_default",
     "test_calendar_cards",
+    # Dates for the house -- the school holidays -- 17 October 2026.
+    "test_house_dates",
     # Brief of 15 October 2026.
     "test_tech_email",
     "test_staff_accounts",
@@ -507,6 +509,10 @@ SUITES = [
     "test_calendar_every_day",
     # The winter rest read from the rooms' own closures, z27 item 17.
     "test_winter_rest",
+    # Booking.com's subject-only booking email, paired with the room's
+    # calendar; every Booking.com block drawn; one atelier chip a day
+    # (handover z27, 17 October 2026).
+    "test_booking_com_subject_stays",
     # Five rooms let a night, never six: the sixth room, z28 item 1.
     "test_rooms_let_a_night",
 ]
