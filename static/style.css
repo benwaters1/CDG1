@@ -3336,6 +3336,11 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 .bk-week-col .detail-label{ display:block; }
 .bk-bulk{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:var(--s3) 0; }
 .bk-table td, .bk-table th{ vertical-align:top; }
+/* The table, not the page, is what its screen-reader-only labels are placed
+   against: absolutely placed with no positioned ancestor, they escaped the
+   table-wrap's scroll box and dragged a desk-width page to 1360px whenever
+   the table was wider than its box. */
+.bk-table, .bk-stack{ position:relative; }
 .bk-table .bk-tick{ width:1%; }
 .bk-guest{ min-width:11rem; }
 .bk-room{ white-space:nowrap; }
