@@ -16438,12 +16438,15 @@ def unavailable_nights(conn, room_id, start, end):
     for b_start, b_end in picture["blocked"].get(room_id, ()):
         if b_start and b_end:
             hold(b_start, b_end - timedelta(days=1), "Booked on another channel")
-    # A closure says what its mode says: closed for the season, or not
-    # available. Never why -- the reason is the house's own.
-    for b_start, b_end, mode, _note in picture["manual"].get(room_id, ()):
+    # A closure says what its mode says: closed for the season, in the words
+    # the owner wrote for guests ("The Marquis Suite reopens on 15 February"),
+    # or not available. Never the reason -- that field is "for the house only"
+    # on the Close rooms page ("family visit"), so it is not a guest's to read.
+    for b_start, b_end, mode, note in picture["manual"].get(room_id, ()):
         if b_start and b_end:
             hold(b_start, b_end - timedelta(days=1),
-                 "Closed for the season" if mode == "season" else "Not available")
+                 ((note or "").strip().rstrip(".") or "Closed for the season")
+                 if mode == "season" else "Not available")
 
     # Called-off sittings are already out: the picture asks
     # sessions_holding_the_house, like the gate.
@@ -47551,6 +47554,9 @@ def book_rooms():
 
     availability = {}
     unavailable_reason = {}
+    # {room_id: the owner's note} for rooms closed for the season on these
+    # nights. See below.
+    resting = {}
     # What THESE nights cost, room by room (owner, 15 October 2026, after the
     # live one-euro test booking). The cards multiplied the standard rate by
     # the nights, so a night the rate card sold at one euro read "265 for 1
@@ -47604,6 +47610,15 @@ def book_rooms():
                 unavailable_reason[room["id"]] = why
             elif not ok:
                 unavailable_reason[room["id"]] = "Not available these dates"
+            # A room closed for the season over these nights is RESTING: its
+            # card draws the winter box, in the owner's words, and the rooms
+            # still open say how they are kept warm. This used to be the
+            # template knowing the two suites by name and the winter by
+            # comparing month strings (z27 item 17), so renaming a suite or
+            # resting a room in March said nothing. The closure is the fact.
+            season = season_note_for(conn, room["id"], arrival, departure)
+            if season and not availability[room["id"]]:
+                resting[room["id"]] = season
             # compute_room_total is the one definition of a stay's room price;
             # the nightly rates are read only to say whether they differ, so
             # "a night" is not printed beside an average as though it were
@@ -47666,6 +47681,7 @@ def book_rooms():
         "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
         returning_guest=welcome, extras=stay_extras,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
+        resting=resting,
         stay_nights=stay_nights, room_quotes=room_quotes,
         nothing_available=nothing_available, next_free=next_free,
         blocking_atelier=blocking_atelier,

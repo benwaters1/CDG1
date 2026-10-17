@@ -503,6 +503,8 @@ SUITES = [
     "test_check_in_times",
     # Ateliers and stays on every day they cover, 15 October 2026.
     "test_calendar_every_day",
+    # The winter rest read from the rooms' own closures, z27 item 17.
+    "test_winter_rest",
 ]
 
 
