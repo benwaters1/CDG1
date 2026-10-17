@@ -67,6 +67,36 @@
     </form>
     {% endif %}
   </div>
+  {# Settled another way while the reader was still asking. If the guest
+     tapped, that is a second payment, and the till has not heard about it
+     until somebody asks: this button asks, records a tap that went through,
+     and stops one that did not. #}
+  {% if left_on_reader %}
+  <div class="flash flash-error" style="margin-bottom:14px;">
+    A card payment was still on the reader when this bill was settled.
+    If the guest tapped, they have paid twice.
+    <form method="post" action="{{ url_for('pos_cancel_card', order_id=order['id']) }}"
+          style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-mini">Check the reader</button>
+    </form>
+    {% if user['role'] == 'owner' %}
+    <form method="post" action="{{ url_for('pos_cancel_card', order_id=order['id']) }}"
+          style="display:inline;"
+          onsubmit="return confirm('Only if Stripe is not answering and you have looked at the reader yourself. If it took the card, that charge will not be on the books here.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="let_go" value="1">
+      <button type="submit" class="btn-mini btn-mini-danger">Stripe not answering? Let it go</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if took_too_much %}
+  <div class="flash flash-error" style="margin-bottom:14px;">
+    This bill has taken €{{ '%.2f'|format(took_too_much) }} more than it came to.
+    If the guest paid twice, refund the extra from Stripe.
+  </div>
+  {% endif %}
   {% endif %}
 
   {# The receipt, reachable after settling and not only before it.
@@ -466,7 +496,7 @@
       <h2 class="section-heading">Pay</h2>
 
       {% set seats_used = bill.live|map(attribute='seat_number')|select|unique|list|sort %}
-      {% if seats_used|length > 1 %}
+      {% if seats_used|length > 1 and not reader_waiting %}
       {# Splitting a bill: a tab can take several payments and they add up. #}
       <details class="till-adjust">
         <summary>Split by seat</summary>
@@ -489,8 +519,10 @@
       {# The card reader, driven from here. First, because it is the fastest way
          to take a card when one is set up: the amount appears on the reader, the
          guest taps, and the tab closes itself. It asks for what is OUTSTANDING,
-         not the whole bill — this till splits payments. #}
-      {% if reader_on %}
+         not the whole bill — this till splits payments.
+         Shown whenever a charge is on the tab, reader set up or not: the other
+         ways to pay are refused until it is finished or cancelled, so the way
+         to cancel it must never be the thing that is missing. #}
         {% if order['payment_intent_id'] %}
         <div class="quote-box" id="card-waiting" style="margin-bottom:10px;">
           <p class="quote-unavailable" id="card-message" style="color:var(--ink);">
@@ -501,6 +533,15 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-mini btn-mini-danger">Cancel the card payment</button>
           </form>
+          {% if user['role'] == 'owner' %}
+          <form method="post" action="{{ url_for('pos_cancel_card', order_id=order['id']) }}"
+                style="margin-top:8px;"
+                onsubmit="return confirm('Only if Stripe is not answering and you have looked at the reader yourself. If it took the card, that charge will not be on the books here.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="let_go" value="1">
+            <button type="submit" class="btn-text-danger">Stripe not answering? Let it go</button>
+          </form>
+          {% endif %}
         </div>
         <script>
         // Poll while the guest taps. The server records the payment and closes
@@ -518,10 +559,17 @@
               .then(function (r) { return r.ok ? r.json() : null; })
               .then(function (d) {
                 if (!d) { setTimeout(check, 2000); return; }
+                // Taken after the bill was settled another way: stay on the
+                // tab, which now says it took more than it came to.
+                if (d.paid_twice) { window.location.reload(); return; }
                 if (d.settled) { window.location = '{{ url_for("pos_home") }}'; return; }
                 // Part-paid on the card: reload so the rest of the bill is right.
                 if (d.state === 'succeeded') { window.location.reload(); return; }
                 if (d.state === 'failed') { window.location.reload(); return; }
+                // Nothing on the reader for this tab any more: Stripe's own
+                // report recorded the tap first, or another device did. The
+                // page is out of date, not the payment.
+                if (d.state === 'idle') { window.location.reload(); return; }
                 if (d.message) el.textContent = d.message;
                 setTimeout(check, 2000);
               })
@@ -530,7 +578,7 @@
           setTimeout(check, 1500);
         })();
         </script>
-        {% else %}
+        {% elif reader_on %}
         <form method="post" action="{{ url_for('pos_take_card', order_id=order['id']) }}"
               style="margin-bottom:10px;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -540,8 +588,13 @@
           <p class="upload-hint">The amount appears on the reader — they tap, and this tab closes itself.</p>
         </form>
         {% endif %}
-      {% endif %}
 
+      {% if reader_waiting %}
+      {# The routes refuse every other way to pay while the reader asks, so the
+         page does not offer them: cash taken here closed the tab under the
+         reader, and the guest's tap was then recorded nowhere. #}
+      <p class="upload-hint" id="reader-waiting-note">{{ reader_waiting }}</p>
+      {% else %}
       <form method="post" action="{{ url_for('pos_take_payment_route', order_id=order['id']) }}"
             class="till-pay-part">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -585,6 +638,7 @@
         <button type="submit" name="method" value="comp" class="btn-text-danger"
                 onclick="return confirm('Close this tab with nothing charged?');">On the house</button>
       </form>
+      {% endif %}
       {% endif %}
       {% endif %}
     </div>
