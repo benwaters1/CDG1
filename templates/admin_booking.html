@@ -61,7 +61,7 @@
 </div>
 {% endif %}
 
-<div class="stat-tiles bk-money-tiles">
+<div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body"><span class="stat-tile-value">{{ bill.total|money }}</span><span class="stat-tile-label">The stay costs</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body"><span class="stat-tile-value">{{ bill.paid|money }}</span><span class="stat-tile-label">Paid, after refunds</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
@@ -95,7 +95,7 @@
       <dt>Leaves</dt><dd>{{ b['departure_date']|date_short }}</dd>
       <dt>Guests</dt><dd>{{ b['party_size'] }}{% if b['guests_under_18'] %}, {{ b['guests_under_18'] }} under 18{% endif %} <span class="upload-hint">· room sleeps {{ b['max_occupancy'] }}</span></dd>
       {% if b['special_occasion'] %}<dt>Celebrating</dt><dd>{{ b['special_occasion'] }}</dd>{% endif %}
-      {% if b['special_requests'] %}<dt>They asked</dt><dd class="wraps">{{ b['special_requests'] }}</dd>{% endif %}
+      {% if b['special_requests'] %}<dt>They asked</dt><dd class="bk-pre">{{ b['special_requests'] }}</dd>{% endif %}
       {% if b['transfer_flight_number'] or b['transfer_arrival_time'] or b['transfer_notes'] %}
       <dt>Transfer</dt><dd>{{ b['transfer_flight_number'] or 'flight to be confirmed' }}{% if b['transfer_arrival_time'] %}, landing {{ b['transfer_arrival_time'] }}{% endif %}{% if b['transfer_notes'] %} — {{ b['transfer_notes'] }}{% endif %}</dd>
       {% endif %}
@@ -124,7 +124,7 @@
 <h2 class="section-heading">Add-ons</h2>
 {% if extras %}
 <div class="table-wrap">
-  <table class="data-table bk-extras-table bk-stack">
+  <table class="data-table bk-stack">
     <thead><tr><th scope="col">What</th><th scope="col">When they want it</th><th scope="col" class="num">Qty</th><th scope="col" class="num">Each</th><th scope="col" class="num">Total</th><th scope="col">State</th><th scope="col"><span class="visually-hidden">Change</span></th></tr></thead>
     <tbody>
     {% for x in extras %}

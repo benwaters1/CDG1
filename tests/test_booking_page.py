@@ -422,6 +422,31 @@ def run():
     s.check("a number that cannot take a text is refused, and says why",
             any("Not sent" in f for f in flashes(r)), detail=str(flashes(r)))
 
+    s.section("When it can go, the page says it went")
+    # Under test nothing leaves the building, so every send above was held and
+    # said so. Stood in here so the branch that tells the owner a letter or a
+    # text WENT is run too -- and says so only when it did.
+    sent, texted = [], []
+    real_send, real_sms = m.send_email, m.send_sms
+    m.send_email = lambda to, subject, body, **k: sent.append((to, subject)) or True
+    m.send_sms = lambda conn, number, body, **k: texted.append(body) or (True, None)
+    try:
+        r1 = oc.post(f"/admin/bookings/{stay['id']}/write",
+                     data={"subject": f"{TAG} Your table", "body": "Dear guest, it is booked."},
+                     follow_redirects=True)
+        r2 = oc.post(f"/admin/bookings/{stay['id']}/resend-confirmation", follow_redirects=True)
+        r3 = oc.post(f"/admin/bookings/{stay['id']}/text",
+                     data={"body": f"{TAG} See you at six."}, follow_redirects=True)
+    finally:
+        m.send_email, m.send_sms = real_send, real_sms
+    s.check("a letter that went says it went",
+            any("Sent to" in f for f in flashes(r1))
+            and (stay["guest_email"], f"{TAG} Your table") in sent, detail=str(flashes(r1)))
+    s.check("so does the confirmation sent again",
+            any("Confirmation sent again" in f for f in flashes(r2)), detail=str(flashes(r2)))
+    s.check("and a text", any(f == "Text sent." for f in flashes(r3))
+            and texted == [f"{TAG} See you at six."], detail=str(flashes(r3)))
+
     s.section("Refunds: asked for, partial, and back to this page")
     fake = _FakeStripe()
     r = _with_stripe(fake, lambda: oc.post(

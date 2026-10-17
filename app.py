@@ -59937,17 +59937,8 @@ def admin_bookings():
             confirmed_counts_by_email[b["guest_email"]] = confirmed_counts_by_email.get(b["guest_email"], 0) + 1
             confirmed_spend_by_email[b["guest_email"]] = confirmed_spend_by_email.get(b["guest_email"], 0) + (b["total_price"] or 0)
     returning_emails = {email for email, count in confirmed_counts_by_email.items() if count > 1}
-    employees = conn.execute("SELECT * FROM users WHERE role = 'employee' ORDER BY name").fetchall()
-    scheduled_by_date = {}
-    for row in conn.execute("SELECT shift_date, user_id FROM shifts WHERE shift_date >= ?", (today_iso,)).fetchall():
-        scheduled_by_date.setdefault(row["shift_date"], set()).add(row["user_id"])
-    # How much has already been handed back per booking, so the refund form can
-    # show what's actually left rather than the original total.
-    refunded_by_booking = {
-        r["booking_id"]: round(r["total"], 2) for r in conn.execute(
-            "SELECT booking_id, SUM(amount) AS total FROM refunds WHERE category = 'room' GROUP BY booking_id"
-        ).fetchall()
-    }
+    # Who prepares a room, and what has gone back, are asked on the stay's own
+    # page now (admin_booking), where they are acted on -- not for every row.
     # A caution against the rows it applies to. Gathered ONCE for the page and
     # matched in Python, not looked up per booking: a query per row is the
     # mistake the timesheet page had to be fixed for, and this list is long.
@@ -59968,7 +59959,7 @@ def admin_bookings():
 
     conn.close()
     return render_template(
-        "admin_bookings.html", owed_by_booking=owed_by_booking, bookings=bookings, counts=counts, rooms=rooms, employees=employees,
+        "admin_bookings.html", owed_by_booking=owed_by_booking, bookings=bookings, counts=counts, rooms=rooms,
         lv=lv,
         caution_by_booking=caution_by_booking, caution_levels=CAUTION_LEVELS,
         # status_filter / room_filter are no longer handed over: the toolbar renders
@@ -59977,8 +59968,7 @@ def admin_bookings():
         q=q,
         arriving_today=arriving_today, departing_today=departing_today, arriving_this_week=arriving_this_week,
         returning_emails=returning_emails, confirmed_spend_by_email=confirmed_spend_by_email,
-        scheduled_by_date=scheduled_by_date, today_iso=today_iso,
-        refunded_by_booking=refunded_by_booking,
+        today_iso=today_iso,
         bill_by_booking=bill_by_booking, extras_by_booking=extras_by_booking,
     )
 

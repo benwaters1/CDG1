@@ -126,8 +126,11 @@ def run():
          (arrival + timedelta(days=2)).isoformat(),
          datetime.now(timezone.utc).isoformat()))
     conn.commit()
+    pend_id = conn.execute("SELECT id FROM bookings WHERE reference_code = ?",
+                           (f"{TAG}-PEND",)).fetchone()["id"]
     conn.close()
-    listing = oc.get("/admin/bookings").get_data(as_text=True)
+    # On the request's own page, where declining it now lives.
+    listing = oc.get(f"/admin/bookings/{pend_id}").get_data(as_text=True)
     s.check("the reasons are on the page", 'name="decline_reason"' in listing,
             detail="the route reads a field no form sends, so it is always blank")
     s.check("and they are the decline reasons, not the cancellation ones",

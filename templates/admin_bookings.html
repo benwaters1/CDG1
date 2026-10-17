@@ -99,7 +99,7 @@
       {% set bill = bill_by_booking[b['id']] %}
       {% set owed = owed_by_booking.get(b['id'], 0) %}
       {% set here = b['status'] == 'confirmed' and b['arrival_date'] <= today_iso < b['departure_date'] and not b['no_show_at'] %}
-      <tr class="bk-row{% if here %} bk-row-here{% endif %}{% if b['status'] in ('cancelled', 'declined') %} bk-row-off{% endif %}">
+      <tr{% if here %} class="bk-row-here"{% elif b['status'] in ('cancelled', 'declined') %} class="bk-row-off"{% endif %}>
         <td class="bk-tick">
           {% if b['status'] in ('pending', 'confirmed') %}
           <input type="checkbox" value="{{ b['id'] }}" class="bulk-check" aria-label="Tick {{ b['reference_code'] }}">
@@ -112,7 +112,9 @@
             {%- if b['party_name'] %}<a href="{{ url_for('party_statement', party_id=b['party_id']) }}" class="mini-status status-upcoming" title="One bill for the whole party">{{ b['party_name'] }}</a>{% endif -%}
             {%- if b['guest_email'] in returning_emails %}<a href="{{ url_for('guest_booking_history', email=b['guest_email']) }}" class="mini-status status-onshift">returning · {{ (confirmed_spend_by_email[b['guest_email']])|money(0) }}</a>{% endif -%}
             {%- if caution_by_booking and caution_by_booking.get(b['id']) %}{% set c = caution_by_booking[b['id']] %}<a href="{{ url_for('guest_detail', guest_id=c['id']) }}" class="mini-status status-declined" title="{{ c['caution'] }}">{{ caution_levels[c['caution_level']] }}</a>{% endif -%}
-            {%- if not (b['guest_email'] or '').strip() %}<span class="mini-status status-pending">no email</span>{% endif -%}
+            {#- Everything else the house sends travels by email, so a guest
+                with none needs the card in their hand: the flag prints it. -#}
+            {%- if not (b['guest_email'] or '').strip() %}<a href="{{ url_for('arrival_card', booking_id=b['id']) }}" class="mini-status status-pending" target="_blank" rel="noopener" title="Print the arrival card: it is their only way to their bill">no email · print card</a>{% endif -%}
           </span>
         </td>
         <td data-label="Room" class="bk-room">{{ b['room_name'] }}</td>
