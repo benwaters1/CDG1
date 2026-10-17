@@ -220,7 +220,11 @@ def _run(s, conn):
     for rid in for_sale:
         block(rid, all_blocked)
     studio_booked = free_run(1)
-    for rid in for_sale[:-1]:
+    # Fewer than the five-rooms limit in all, studio included (z28): a guest in
+    # the studio is a room let, so five lets including it would close the
+    # night for the house's own limit, which is the next check's business.
+    some = for_sale[:min(len(for_sale) - 1, m.MAX_ROOMS_LET_PER_NIGHT - 2)]
+    for rid in some:
         book(rid, studio_booked)
     book(studio, studio_booked)
     conn.commit()
@@ -230,9 +234,23 @@ def _run(s, conn):
             detail="a workshop-only room standing empty is no room for a guest")
     s.check("and a booking on a room that is not for sale fills nothing",
             studio_booked.isoformat() not in taken,
-            detail=f"{studio_booked}: {len(for_sale) - 1} rooms booked and the "
+            detail=f"{studio_booked}: {len(some)} rooms booked and the "
                    "studio -- room "
                    f"{last} is still free")
+
+    s.section("Five rooms let closes the night for every other room (z28)")
+    # The house's limit, five a night: five let, and every other room for
+    # sale is refused "the house is full", so the picker strikes the night
+    # out even with a room standing empty.
+    if len(for_sale) > m.MAX_ROOMS_LET_PER_NIGHT - 1:
+        five_let = free_run(1)
+        for rid in for_sale[:m.MAX_ROOMS_LET_PER_NIGHT - 1]:
+            book(rid, five_let)
+        book(studio, five_let)
+        conn.commit()
+        taken = _taken(conn)
+        s.check("five let, the studio among them, strikes the night out",
+                five_let.isoformat() in taken, detail=f"{five_let}: room {last} empty, and refused")
 
     s.section("A page drawn after this request's own booking shows it")
     written = free_run(1)

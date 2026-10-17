@@ -8058,7 +8058,10 @@ def init_db():
 
     if not conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
                         ("rooms_initial_order_set",)).fetchone():
-        for position, room_name in enumerate(HOME_ROOM_ORDER):
+        # From 1, the line-up's own numbering (ROOM_LINEUP places the five at
+        # 1..5): counted from 0 here, the sixth room took 5 on a fresh install,
+        # level with the Family Suite, and sorted ahead of it by price.
+        for position, room_name in enumerate(HOME_ROOM_ORDER, 1):
             conn.execute("UPDATE rooms SET sort_order = ? WHERE name = ?",
                          (position, room_name))
         conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?)",
@@ -13459,7 +13462,7 @@ DEFAULT_ROOMS = [
         "price_per_night": 270.0,
         "max_occupancy": 2,
         "min_nights": 1,
-        "sort_order": 5,
+        "sort_order": 6,
         "max_adults": 2,
         "max_children": 0,
         "bed_setup": "Queen bed and double bed",
@@ -32559,6 +32562,20 @@ def nights_already_taken(conn, *, days=None):
             gone.setdefault(day, set()).add(room_id)
             day += timedelta(days=1)
     taken.update(day for day, rooms in gone.items() if rooms == for_sale)
+
+    # And a night the five-rooms limit closes (z28 item 1): five let, so the
+    # gate refuses every room that is not one of them, for "the house is
+    # full". Asked room by room, as is_range_available is, so the picker
+    # strikes out a night exactly when every room would refuse it.
+    if for_sale:
+        day = today
+        while day <= horizon:
+            let = rooms_let_on(picture, day)
+            if day not in taken and len(let) >= MAX_ROOMS_LET_PER_NIGHT and all(
+                    r in gone.get(day, ()) or len(let - {r}) >= MAX_ROOMS_LET_PER_NIGHT
+                    for r in for_sale):
+                taken.add(day)
+            day += timedelta(days=1)
     return sorted(day.isoformat() for day in taken)
 
 

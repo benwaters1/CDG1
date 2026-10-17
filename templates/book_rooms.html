@@ -262,6 +262,9 @@
                 still said "Shared bathroom" after every room became private. The column decides. -#}
             {% for tag in room['amenities'].split(',') if 'bathroom' not in tag|lower %}<li>{{ tag.strip() }}</li>{% endfor %}
             {% if room['bathroom'] %}<li>{{ room_bath(room_name(room['name'])|trim, room['bathroom']) }}</li>{% endif %}
+            {#- z27: the winter line in this branch too. It lived only in the derived list below, so a room with
+                features typed in Admin - four of the five on the house's own data - never said how it is kept warm. -#}
+            {% if _wdates and not _winter_room %}<li>Space heater and electric blankets</li>{% endif %}
           {% else %}
             {#- Read from the room's own columns. This used to sniff the
                 NAME for 'shared', 'king' and 'mountain', so renaming a room
