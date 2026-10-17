@@ -30570,8 +30570,15 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
                     stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
                     total_price_override=None, discount_amount_override=None,
                    guests_under_18=0, source="direct", confirm_now=False,
-                   extra_details=None, reference_code=None):
+                   extra_details=None, reference_code=None, record_payment=None):
     """Write a stay down. With confirm_now, it is booked rather than requested.
+
+    record_payment(conn, booking_id), when given, puts the money received on
+    the stay BEFORE anything is written to the guest. The confirmation reads
+    the bill, and the bill reads what has been received: recorded after it, a
+    guest who had paid in full by card was told the whole amount was still to
+    pay (GUD-CZ1XOG, 17 October 2026), while the house letter, which reads the
+    payment status, said "Paid in full".
 
     THE HOUSE TAKES BOOKINGS, NOT REQUESTS FOR BOOKINGS. Every stay used to
     land as 'pending' and wait for the owner to press confirm, which meant a
@@ -30705,6 +30712,9 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
                               scheduled_for=detail.get("on"),
                               notes=detail.get("notes"), in_booking_total=True)
     conn.commit()
+    if record_payment and new_row:
+        record_payment(conn, new_row["id"])
+        conn.commit()
 
     # Booked, not requested. confirm_booking_by_id commits and sends the
     # confirmation itself, so if this succeeds the letters below are the wrong
@@ -30804,6 +30814,52 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
     return reference_code, manage_token
 
 
+def card_payment_recorder(session):
+    """What create_booking runs to put a paid checkout's money on the new stay.
+
+    Its own function, outside create_booking_from_stripe_session, so that
+    function reads in the order things happen: the money is written and
+    committed inside create_booking, before the confirmation is sent.
+    """
+
+    def record_the_card_payment(conn, booking_id):
+        # Record the amount, not just the fact. Without this the stay shows as
+        # paid with nothing received against it, so adding a night later would
+        # look like the whole stay was owed again. And BEFORE the confirmation
+        # goes (create_booking calls this first): the letter's balance line
+        # reads the bill, so a payment recorded after it told a guest who had
+        # paid in full that all of it was still to pay.
+        received = (sval(session, "amount_total") or 0) / 100.0
+        # A ROW SAYING HOW IT ARRIVED, not only that it did.
+        #
+        # Every other way money reaches a stay writes one -- the balance paid
+        # online, cash at the desk, a voucher spent, all of them go in as a
+        # booking_payments row AND through record_booking_payment. This path,
+        # the first payment on a brand-new booking, only ever did the second
+        # half. So a stay showed as paid with nothing to account for it, and
+        # the card-fee report reads booking_payments: the fees the house pays
+        # on the one kind of payment that always carries a fee were the fees
+        # it could not see.
+        #
+        # The UNIQUE session id is the guard, exactly as in
+        # mark_booking_payment_paid: the success redirect and the webhook can
+        # be in flight together, and losing that race is the correct outcome
+        # rather than a 500 for a guest who has just paid.
+        try:
+            conn.execute(
+                """INSERT INTO booking_payments (booking_id, amount, method,
+                   stripe_session_id, stripe_payment_intent_id, created_at)
+                   VALUES (?, ?, 'stripe', ?, ?, ?)""",
+                (booking_id, round(received, 2), session["id"], _intent_id(session),
+                 datetime.now(timezone.utc).isoformat()))
+        except sqlite3.IntegrityError:
+            return
+        record_booking_payment(conn, booking_id, received,
+                               reference=sval(session, "payment_intent"))
+
+    return record_the_card_payment
+
+
 def create_booking_from_stripe_session(conn, session):
     """Rebuilds a booking from a completed Stripe Checkout Session's
     metadata. Used by both the success redirect and the webhook — whichever
@@ -30831,6 +30887,7 @@ def create_booking_from_stripe_session(conn, session):
         ).fetchall()
     arrival, departure = parse_date(meta["arrival_date"]), parse_date(meta["departure_date"])
     available, conflict_reason = claim_range(conn, room["id"], arrival, departure, include_pending=False)
+
     reference_code, manage_token = create_booking(
         conn, room, meta["guest_name"], meta["guest_email"], meta.get("guest_phone", ""),
         arrival, departure, int(meta["party_size"]), meta.get("special_requests", ""),
@@ -30847,42 +30904,10 @@ def create_booking_from_stripe_session(conn, session):
         extra_details=unpack_extra_details(meta.get("extra_when", "")),
         # The reference the payment in Stripe was labelled with.
         reference_code=(meta.get("reference_code") or "").strip() or None,
+        record_payment=card_payment_recorder(session),
     )
     # The guest's address and arrival time, carried through the card page as metadata.
     store_booking_guest_details(conn, "bookings", "reference_code", reference_code, read_guest_details(meta, ROOM_GUEST_DETAILS))
-    # Record the amount, not just the fact. Without this the stay shows as paid
-    # with nothing received against it, so adding a night later would look like
-    # the whole stay was owed again.
-    paid_row = conn.execute(
-        "SELECT id FROM bookings WHERE reference_code = ?", (reference_code,)).fetchone()
-    if paid_row:
-        received = (sval(session, "amount_total") or 0) / 100.0
-        # A ROW SAYING HOW IT ARRIVED, not only that it did.
-        #
-        # Every other way money reaches a stay writes one -- the balance paid
-        # online, cash at the desk, a voucher spent, all of them go in as a
-        # booking_payments row AND through record_booking_payment. This path,
-        # the first payment on a brand-new booking, only ever did the second
-        # half. So a stay showed as paid with nothing to account for it, and
-        # the card-fee report reads booking_payments: the fees the house pays
-        # on the one kind of payment that always carries a fee were the fees
-        # it could not see.
-        #
-        # The UNIQUE session id is the guard, exactly as in
-        # mark_booking_payment_paid: the success redirect and the webhook can
-        # be in flight together, and losing that race is the correct outcome
-        # rather than a 500 for a guest who has just paid.
-        try:
-            conn.execute(
-                """INSERT INTO booking_payments (booking_id, amount, method,
-                   stripe_session_id, stripe_payment_intent_id, created_at)
-                   VALUES (?, ?, 'stripe', ?, ?, ?)""",
-                (paid_row["id"], round(received, 2), session["id"], _intent_id(session),
-                 datetime.now(timezone.utc).isoformat()))
-        except sqlite3.IntegrityError:
-            pass
-        record_booking_payment(conn, paid_row["id"], received,
-                               reference=sval(session, "payment_intent"))
     # SAVED HERE, not left for the caller. create_booking commits the booking
     # itself, part way through; everything after it -- the guest's address and
     # arrival time, the payment row, the amount received -- sat in an open
@@ -81092,10 +81117,23 @@ def room_confirmation_context(conn, booking, room_name, *, portal_url=""):
         # The date whenever the house has set one: "before you arrive" leaves
         # the guest to work out which day, and the reminder goes on a schedule.
         due_on = bill.get("balance_due_date") if bill else None
-        details.append(
-            f"{balance_due} still to pay"
-            + (f", by {format_date_human(due_on)}" if due_on else "")
-            + ". You can settle it online on your booking page.")
+        paid_so_far = bill["paid"] if bill else 0
+        if paid_so_far > 0.005:
+            # 17 October (owner): part paid says both halves, so a guest who
+            # paid the deposit is not left wondering whether it arrived.
+            details.append(
+                f"Paid: {money(paid_so_far)}. Still to pay: {balance_due}"
+                + (f", by {format_date_human(due_on)}" if due_on else "")
+                + ". You can settle it online on your booking page.")
+        else:
+            details.append(
+                f"{balance_due} still to pay"
+                + (f", by {format_date_human(due_on)}" if due_on else "")
+                + ". You can settle it online on your booking page.")
+    elif bill and bill["paid"] > 0.005:
+        # Paid in full, said so (owner, 17 October): saying nothing about money
+        # to somebody who has just paid reads as though it had not arrived.
+        details.append(f"Paid in full: {money(bill['paid'])}. There is nothing more to pay.")
     details += ["", "Your booking page:", manage_url, "",
                 "Check in online \u2014 confirm your arrival time, tell us about "
                 "any requests" + (" and your airport transfer details"
